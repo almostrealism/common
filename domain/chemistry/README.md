@@ -6,7 +6,7 @@ The Chemistry Module provides a complete model of the periodic table and chemica
 
 This module exists to:
 
-1. **Model the Periodic Table** - Provides class representations of all chemical elements
+1. **Model the Periodic Table** - Provides enum constants for all 118 chemical elements
 2. **Define Atomic Structure** - Encapsulates electron shell configurations for each element
 3. **Enable Element Access** - Organized access to elements by groups, periods, and categories
 4. **Support Alloy Creation** - Probabilistic mixing of elements for material science applications
@@ -16,16 +16,16 @@ This module exists to:
 
 ### 1. Complete Periodic Table
 
-Access all 118 chemical elements through the `PeriodicTable` class:
+Access all 118 chemical elements through the `Element` enum (118 enum constants):
 
 ```java
 import org.almostrealism.chem.*;
 import org.almostrealism.physics.*;
 
 // Individual elements
-Element carbon = PeriodicTable.Carbon;
-Element gold = PeriodicTable.Gold;
-Element oxygen = PeriodicTable.Oxygen;
+Element carbon = Element.Carbon;
+Element gold = Element.Gold;
+Element oxygen = Element.Oxygen;
 
 // Construct atoms with proper electron configuration
 Atom carbonAtom = carbon.construct();
@@ -38,27 +38,27 @@ Access elements by chemical family, period, or group:
 
 ```java
 // By chemical family
-List<Element> alkaliMetals = PeriodicTable.alkaliMetals();     // Li, Na, K, Rb, Cs, Fr
-List<Element> nobleGases = PeriodicTable.nobleGasses();        // He, Ne, Ar, Kr, Xe, Rn
-List<Element> halogens = PeriodicTable.halogens();             // F, Cl, Br, I, At
-List<Element> transitionMetals = PeriodicTable.transitionMetals();
+List<Element> alkaliMetals = Element.alkaliMetals();     // Li, Na, K, Rb, Cs, Fr
+List<Element> nobleGases = Element.nobleGasses();        // He, Ne, Ar, Kr, Xe, Rn
+List<Element> halogens = Element.halogens();             // F, Cl, Br, I, At
+List<Element> transitionMetals = Element.transitionMetals();
 
 // By orbital block
-List<Element> sBlock = PeriodicTable.sBlock();  // Groups 1-2
-List<Element> pBlock = PeriodicTable.pBlock();  // Groups 13-18
+List<Element> sBlock = Element.sBlock();  // Groups 1-2
+List<Element> pBlock = Element.pBlock();  // Groups 13-18
 
 // By period (row)
-List<Element> period1 = PeriodicTable.Periods.first();   // H, He
-List<Element> period2 = PeriodicTable.Periods.second();  // Li, Be, B, C, N, O, F, Ne
+List<Element> period1 = Element.Periods.first();   // H, He
+List<Element> period2 = Element.Periods.second();  // Li, Be, B, C, N, O, F, Ne
 
 // By group (column)
-List<Element> group1 = PeriodicTable.Groups.first();     // Alkali metals
-List<Element> group18 = PeriodicTable.Groups.eighteenth(); // Noble gases
+List<Element> group1 = Element.Groups.first();     // Alkali metals
+List<Element> group18 = Element.Groups.eighteenth(); // Noble gases
 
 // Special groups
-List<Element> lanthanoids = PeriodicTable.lanthanoids(); // Rare earth elements
-List<Element> actinoids = PeriodicTable.actinoids();     // Actinide series
-List<Element> organics = PeriodicTable.organics();       // Common organic elements
+List<Element> lanthanoids = Element.lanthanoids(); // Rare earth elements
+List<Element> actinoids = Element.actinoids();     // Actinide series
+List<Element> organics = Element.organics();       // Common organic elements
 ```
 
 ### 3. Alloy Creation (Probabilistic Mixtures)
@@ -70,7 +70,7 @@ import org.almostrealism.chem.Alloy;
 
 // Bronze: 88% Copper, 12% Tin
 Alloy bronze = new Alloy(
-    Arrays.asList(PeriodicTable.Copper, PeriodicTable.Tin),
+    Arrays.asList(Element.Copper, Element.Tin),
     0.88, 0.12
 );
 
@@ -79,7 +79,7 @@ Atom atom = bronze.construct();
 
 // Steel: Iron with trace elements
 Alloy steel = new Alloy(
-    Arrays.asList(PeriodicTable.Iron, PeriodicTable.Carbon, PeriodicTable.Manganese),
+    Arrays.asList(Element.Iron, Element.Carbon, Element.Manganese),
     0.98, 0.015, 0.005
 );
 ```
@@ -87,10 +87,12 @@ Alloy steel = new Alloy(
 ## Key Interfaces
 
 ### Element
-The base interface for all chemical elements:
+The enum representing all 118 chemical elements:
 
 ```java
-public interface Element extends Atomic {
+public enum Element implements Atomic {
+    Hydrogen, Helium, Lithium, /* ... all 118 elements ... */ Oganesson;
+
     int getAtomicNumber();  // Returns atomic number (1 for H, 6 for C, etc.)
 }
 ```
@@ -118,60 +120,45 @@ public interface Substance extends Node {
 Each element encapsulates its electron shell configuration:
 
 ```java
-// Hydrogen: 1 electron in first shell
-public class Hydrogen implements Element {
-    public int getAtomicNumber() { return 1; }
+// Elements are enum constants with electron shell configurations
+// Hydrogen: 1 electron in first shell (atomic number 1)
+Element hydrogen = Element.Hydrogen;
+Atom h = hydrogen.construct();
 
-    public Atom construct() {
-        List<Shell> shells = Arrays.asList(
-            new Shell(1)  // 1 electron
-        );
-        return new Atom(getAtomicNumber(), shells);
-    }
-}
-
-// Carbon: 2 electrons in first shell, 4 in second shell
-public class Carbon implements Element {
-    public int getAtomicNumber() { return 6; }
-
-    public Atom construct() {
-        List<Shell> shells = new ArrayList<>();
-        shells.addAll(Helium.getShells());  // Reuse Helium's structure (2 electrons)
-        shells.add(new Shell(4));           // Add 4 electrons in second shell
-        return new Atom(getAtomicNumber(), shells);
-    }
-}
+// Carbon: 2 electrons in first shell, 4 in second shell (atomic number 6)
+Element carbon = Element.Carbon;
+Atom c = carbon.construct();
 ```
 
 ## Periodic Table Organization
 
-The `PeriodicTable` class provides multiple ways to access elements:
+The `Element` enum provides multiple ways to access elements:
 
 ### By Category
 ```java
-PeriodicTable.metals()              // All metallic elements
-PeriodicTable.nonMetals()           // Non-metallic elements
-PeriodicTable.mainGroup()           // Main group elements
-PeriodicTable.organics()            // C, H, N, O, P, S (common in organic chemistry)
+Element.metals()              // All metallic elements
+Element.nonMetals()           // Non-metallic elements
+Element.mainGroup()           // Main group elements
+Element.organics()            // C, H, N, O, P, S (common in organic chemistry)
 ```
 
 ### By Family
 ```java
-PeriodicTable.alkaliMetals()        // Group 1 (except H)
-PeriodicTable.alkalineEarthMetals() // Group 2
-PeriodicTable.transitionMetals()    // Transition elements
-PeriodicTable.halogens()            // Group 17
-PeriodicTable.nobleGasses()         // Group 18
-PeriodicTable.chalcogens()          // Group 16 (O, S, Se, Te, Po)
-PeriodicTable.pnictogens()          // Group 15 (N, P, As, Sb, Bi)
+Element.alkaliMetals()        // Group 1 (except H)
+Element.alkalineEarthMetals() // Group 2
+Element.transitionMetals()    // Transition elements
+Element.halogens()            // Group 17
+Element.nobleGasses()         // Group 18
+Element.chalcogens()          // Group 16 (O, S, Se, Te, Po)
+Element.pnictogens()          // Group 15 (N, P, As, Sb, Bi)
 ```
 
 ### By Block
 ```java
-PeriodicTable.sBlock()              // s-orbital block (Groups 1-2)
-PeriodicTable.pBlock()              // p-orbital block (Groups 13-18)
-PeriodicTable.lanthanoids()         // f-block: Lanthanide series
-PeriodicTable.actinoids()           // f-block: Actinide series
+Element.sBlock()              // s-orbital block (Groups 1-2)
+Element.pBlock()              // p-orbital block (Groups 13-18)
+Element.lanthanoids()         // f-block: Lanthanide series
+Element.actinoids()           // f-block: Actinide series
 ```
 
 ## Usage Examples
@@ -180,9 +167,9 @@ PeriodicTable.actinoids()           // f-block: Actinide series
 
 ```java
 // Access elements for organic compounds
-Element carbon = PeriodicTable.Carbon;
-Element hydrogen = PeriodicTable.Hydrogen;
-Element oxygen = PeriodicTable.Oxygen;
+Element carbon = Element.Carbon;
+Element hydrogen = Element.Hydrogen;
+Element oxygen = Element.Oxygen;
 
 // Construct individual atoms
 Atom C = carbon.construct();
@@ -197,12 +184,12 @@ Atom O = oxygen.construct();
 
 ```java
 // Find all metals with atomic number > 50
-List<Element> heavyMetals = PeriodicTable.metals().stream()
+List<Element> heavyMetals = Element.metals().stream()
     .filter(e -> e.getAtomicNumber() > 50)
     .collect(Collectors.toList());
 
 // Get organic elements (C, H, N, O, P, S)
-List<Element> organicElements = PeriodicTable.organics();
+List<Element> organicElements = Element.organics();
 ```
 
 ### Example 3: Material Science
@@ -210,12 +197,12 @@ List<Element> organicElements = PeriodicTable.organics();
 ```java
 // Create common alloys
 Alloy brass = new Alloy(
-    Arrays.asList(PeriodicTable.Copper, PeriodicTable.Zinc),
+    Arrays.asList(Element.Copper, Element.Zinc),
     0.70, 0.30  // 70% Cu, 30% Zn
 );
 
 Alloy solder = new Alloy(
-    Arrays.asList(PeriodicTable.Tin, PeriodicTable.Lead),
+    Arrays.asList(Element.Tin, Element.Lead),
     0.60, 0.40  // 60% Sn, 40% Pb
 );
 
@@ -265,7 +252,7 @@ for (int i = 0; i < 1000; i++) {
 
 ## All 118 Elements
 
-The module provides classes for all elements from Hydrogen (1) to Oganesson (118):
+The module provides enum constants for all elements from Hydrogen (1) to Oganesson (118):
 
 **Period 1**: Hydrogen, Helium
 **Period 2**: Lithium, Beryllium, Boron, Carbon, Nitrogen, Oxygen, Fluorine, Neon
@@ -275,7 +262,9 @@ The module provides classes for all elements from Hydrogen (1) to Oganesson (118
 **Period 6**: Cesium through Radon (including Lanthanides)
 **Period 7**: Francium through Oganesson (including Actinides)
 
-Each element is accessible via `PeriodicTable.[ElementName]`.
+Each element is accessible via `Element.[ElementName]`.
+
+**Note:** Atomic types (Atom, Shell, Orbital, etc.) now live in `org.almostrealism.chem` (moved from physics).
 
 ## Current Limitations
 

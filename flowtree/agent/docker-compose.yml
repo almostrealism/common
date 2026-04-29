@@ -1,0 +1,58 @@
+# ─── FlowTree Agent Pool ─────────────────────────────────────────────
+#
+# Starts a configurable number of FlowTree agent containers that
+# connect to an existing controller and execute ClaudeCodeJob instances.
+#
+# Pre-build (from repo root):
+#   mvn package -pl flowtree -am -DskipTests
+#   mvn dependency:copy-dependencies -pl flowtree -DoutputDirectory=target/dependency
+#
+# Quick start:
+#   cp .env.example .env        # edit with your values
+#   docker compose up -d
+#
+# Scale agents:
+#   docker compose up -d --scale agent=4
+#
+# ─────────────────────────────────────────────────────────────────────
+
+name: flowtree
+
+services:
+  agent:
+    build:
+      context: ../..
+      dockerfile: flowtree/agent/Dockerfile
+    deploy:
+      replicas: ${AGENT_COUNT:-2}
+      resources:
+        limits:
+          cpus: "${AGENT_CPUS:-4}"
+          memory: "${AGENT_MEMORY:-4g}"
+    # NO writable volumes. Each agent clones into its container-private
+    # overlay filesystem at /workspace/project and uses a container-private
+    # ~/.m2 — no sharing across containers, no carry-over across restarts.
+    # This is deliberate: writable shared volumes caused the April 2026
+    # cross-workstream collision documented in FLOWTREE_COLLISIONS.md.
+    # The entrypoint guard refuses to start if any writable volume is
+    # attached; adding any RW entry below will break the agent.
+    volumes:
+      - ${SSH_KEY_DIR}:/home/agent/.ssh:ro
+      - ${MODELS_DIR:-/Users/Shared/models}:/models:ro
+      - ${SAMPLES_DIR:-/dev/null}:/samples:ro
+    environment:
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:?Run claude setup-token and set this}
+      - FLOWTREE_ROOT_HOST=${FLOWTREE_ROOT_HOST:?Set to controller hostname}
+      - FLOWTREE_ROOT_PORT=${FLOWTREE_ROOT_PORT:-7766}
+      - FLOWTREE_WORKING_DIR=/workspace/project
+      - FLOWTREE_NODE_LABELS=${FLOWTREE_NODE_LABELS:-}
+      - GIT_USER_NAME=${GIT_USER_NAME:-FlowTree Agent}
+      - GIT_USER_EMAIL=${GIT_USER_EMAIL:-agent@flowtree.io}
+      - MAVEN_OPTS=${AGENT_JVM_OPTS:--Xmx2048m}
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    restart: unless-stopped
+

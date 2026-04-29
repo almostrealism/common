@@ -25,9 +25,11 @@ import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.io.TimingMetric;
 
+import java.lang.ref.Reference;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -172,15 +174,26 @@ import java.util.stream.Collectors;
  * @see DefaultLatchSemaphore
  */
 public class NativeExecution extends HardwareOperator {
+	/** If true, kernel execution is dispatched to the thread pool; if false, it runs synchronously. */
 	public static boolean enableExecutor = true;
 
+	/** Metric tracking dimension mask computation time for JNI kernel invocations. */
 	public static TimingMetric dimMaskMetric = Hardware.console.timing("dimMask");
 
+	/** Shared thread pool sized to the available CPU parallelism for concurrent kernel execution. */
 	private static ExecutorService executor = Executors.newFixedThreadPool(KernelPreferences.getCpuParallelism());
 
+	/** The native instruction set providing access to the compiled JNI function. */
 	private NativeInstructionSet inst;
+	/** Number of {@link io.almostrealism.code.MemoryData} arguments expected by the native function. */
 	private int argCount;
 
+	/**
+	 * Creates a native execution operator backed by a compiled JNI instruction set.
+	 *
+	 * @param inst The {@link NativeInstructionSet} providing the compiled native function
+	 * @param argCount Number of memory arguments expected by the native function
+	 */
 	protected NativeExecution(NativeInstructionSet inst, int argCount) {
 		this.inst = inst;
 		this.argCount = argCount;
@@ -223,37 +236,46 @@ public class NativeExecution extends HardwareOperator {
 
 		int p = getGlobalWorkSize() < inst.getParallelism() ? (int) getGlobalWorkSize() : inst.getParallelism();
 
+		KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(data);
+
 		DefaultLatchSemaphore latch = new DefaultLatchSemaphore(dependsOn, p);
 
-		if (enableExecutor) {
-			recordDuration(latch, () -> {
-				for (int i = 0; i < p; i++) {
-					int id = i;
+		try {
+			if (enableExecutor) {
+				recordDuration(latch, () -> {
+					for (int i = 0; i < p; i++) {
+						int id = i;
 
-					executor.submit(() -> {
-						try {
-							inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
-						} catch (Exception e) {
-							warn("Operation " + id + " of " +
-									getGlobalWorkSize() + " failed", e);
-						} finally {
-							latch.countDown();
-						}
-					});
-				}
+						executor.submit(() -> {
+							try {
+								inst.apply(getGlobalWorkOffset() + id, getGlobalWorkSize(), data);
+							} catch (Exception e) {
+								warn("Operation " + id + " of " +
+										getGlobalWorkSize() + " failed", e);
+							} finally {
+								latch.countDown();
+							}
+						});
+					}
 
-				// TODO  The user of the semaphore should decide when to wait
-				// TODO  rather than it happening proactively here
-				latch.waitFor();
-			});
-		} else {
-			recordDuration(latch, () -> {
-				for (int i = 0; i < inst.getParallelism(); i++) {
-					inst.apply(getGlobalWorkOffset() + i, getGlobalWorkSize(), data);
-					latch.countDown();
-				}
-			});
+					// TODO  The user of the semaphore should decide when to wait
+					// TODO  rather than it happening proactively here
+					latch.waitFor();
+				});
+			} else {
+				recordDuration(latch, () -> {
+					for (int i = 0; i < inst.getParallelism(); i++) {
+						inst.apply(getGlobalWorkOffset() + i, getGlobalWorkSize(), data);
+						latch.countDown();
+					}
+				});
+			}
+		} finally {
+			KernelMemoryGuard.releaseFor(guard, data);
 		}
+
+		Reference.reachabilityFence(data);
+		Reference.reachabilityFence(args);
 
 		return latch;
 	}

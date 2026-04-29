@@ -21,7 +21,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.DefaultKernelStructureContext;
 import io.almostrealism.kernel.KernelIndex;
-import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import org.almostrealism.io.ConsoleFeatures;
@@ -86,7 +86,7 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 		a.kernelSeries();
 
 		Expression b = kernel().multiply(8).divide(144).multiply(144);
-		Expression c = a.add(b).divide(18).multiply(9).imod(9);
+		a.add(b).divide(18).multiply(9).imod(9);
 
 		Expression p = kernel().multiply(8)
 				.imod(144)
@@ -137,14 +137,14 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 			// int result = (((((((kernel0 * 8) % (144)) / 8) + (((kernel0 * 8) / 144) * 144)) % (18)) == (0)) ? (1) : (0));
 			int result = ((((kernel0 * 8) % (144)) / 8) + (((kernel0 * 8) / 144) * 144)) % (18);
 			int simple = kernel0 % 18;
-			if (kernel0 % 100 == 0) System.out.println(kernel0 + " " + result);
+			if (kernel0 % 100 == 0) log(String.valueOf(kernel0 + " " + result));
 			Assert.assertEquals(result, simple);
 		}
 
 		for (int kernel0 = 0; kernel0 < 100; kernel0++) {
 			int global_id = kernel0;
 			int result = ((((((((((((((((((((((((global_id * 8) + 1) % (144)) / 8) + ((((global_id * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4) % (24)) / 12) + 5 + ((((((((((((((((((((((global_id * 8) + 1) % (144)) / 8) + ((((global_id * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4) / 24) * 24)) % (16));
-			System.out.println(kernel0 + " " + result);
+			log(String.valueOf(kernel0 + " " + result));
 		}
 	}
 
@@ -253,7 +253,7 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 				.add(5)
 				.add(kernel().multiply(8).add(1).imod(144).divide(8).add(kernel().multiply(8).add(1).divide(144).multiply(144).add(18).divide(18).multiply(9).add(4).divide(9).multiply(9).add(4).divide(18).multiply(9).add(4).divide(9).multiply(9).add(4).divide(36).multiply(36).add(4)).divide(24).multiply(24))
 				.imod(16);
-		System.out.println(p.getExpression(new LanguageOperationsStub()));
+		log(String.valueOf(p.getExpression(new LanguageOperationsStub())));
 		validateSeries(p);
 	}
 
@@ -265,7 +265,7 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 		series = kernel().add(0).kernelSeries();
 		Assert.assertEquals(1, series.getScale().getAsInt());
 
-		series = kernel().divide(1).multiply(8).add(0).kernelSeries();
+		kernel().divide(1).multiply(8).add(0).kernelSeries();
 	}
 
 	@Test(timeout = 30000)
@@ -298,10 +298,10 @@ public class KernelSeriesTests extends TestSuiteBase implements ExpressionFeatur
 		if (period < 500) {
 			for (int i = 0; i < 4; i++) {
 				for (int j = 0; j < period; j++) {
-					System.out.print(values[i * period + j] + " ");
+					log(String.valueOf(values[i * period + j] + " "));
 				}
 
-				System.out.println();
+				log("");
 			}
 		}
 

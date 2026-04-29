@@ -311,9 +311,6 @@ camera.setFocalLength(35.0);  // FOV = 2*atan(dimension/(2*focal))
 
 // Depth of field
 camera.setBlur(0.5);  // Aperture blur amount
-
-// Enable hardware acceleration
-PinholeCamera.enableHardwareAcceleration = true;
 ```
 
 **Projection:**
@@ -400,9 +397,9 @@ camera.setFocalLength(focalLength);
 ```java
 import org.almostrealism.projection.ProjectionFeatures;
 
-// Camera uses ProjectionFeatures for GPU acceleration
-PinholeCamera.enableHardwareAcceleration = true;
-
+// Hardware acceleration is always used — ray generation is compiled
+// to native kernels via ProjectionFeatures. Manual tensor manipulation
+// is never permitted.
 Producer<Ray> ray = camera.rayAt(screenPos, screenDim);
 
 // Internally compiles to native code:

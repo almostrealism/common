@@ -16,10 +16,9 @@
 
 package org.almostrealism.texture;
 
-import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.computations.GeneratedColorProducer;
@@ -89,28 +88,53 @@ import java.net.URL;
  * @see GraphicsConverter
  * @author Mike Murray
  */
-public class ImageTexture implements Texture, Editable {
-  private static final String[] propNames = {"Image Source", "X Scale", "Y Scale",
-  											"X Offset", "Y Offset"};
-  private static final String[] propDesc = {"URL to load image data from", "X scale factor", "Y scale factor",
-  											"X offset factor", "Y offset factor"};
-  private static final Class[] propTypes = {URL.class, Double.class, Double.class};
-  
+public class ImageTexture implements Texture, ConsoleFeatures {
+  /** Projection type constant for spherical (environment-map) UV projection. */
   public static final int SPHERICAL_PROJECTION = 1;
+
+  /** Projection type constant for planar projection onto the XY plane. */
   public static final int XY_PLANAR_PROJECTION = 2;
+
+  /** Projection type constant for planar projection onto the XZ plane. */
   public static final int XZ_PLANAR_PROJECTION = 3;
+
+  /** Projection type constant for planar projection onto the YZ plane. */
   public static final int YZ_PLANAR_PROJECTION = 4;
-  
+
+  /** The "north pole" reference vector used for spherical UV computation. */
   private final Vector northP = new Vector(0.0, 1.0, 0.0);
+
+  /** The "equator" reference vector used for spherical UV computation. */
   private final Vector equatorP = new Vector(1.0, 0.0, 0.0);
+
+  /** The cross product of {@link #northP} and {@link #equatorP}, used for spherical UV longitude. */
   private final Vector crossP = this.northP.crossProduct(this.equatorP);
-  
+
+  /** The UV projection type (one of the projection type constants). */
   private final int type;
-  
+
+  /** The URL of the source image. */
   private URL url;
-  private int width, height;
-  private double xScale, yScale;
-  private double xOff, yOff;
+
+  /** The width of the loaded image in pixels. */
+  private int width;
+
+  /** The height of the loaded image in pixels. */
+  private int height;
+
+  /** The horizontal scale factor applied to UV coordinates when sampling the image. */
+  private double xScale;
+
+  /** The vertical scale factor applied to UV coordinates when sampling the image. */
+  private double yScale;
+
+  /** The horizontal UV offset applied before image lookup. */
+  private double xOff;
+
+  /** The vertical UV offset applied before image lookup. */
+  private double yOff;
+
+  /** The flat array of packed ARGB pixels loaded from the image. */
   private int[] pixels;
 
   	/**
@@ -170,8 +194,20 @@ public class ImageTexture implements Texture, Editable {
   		this.update();
   	}
 
+  	/**
+  	 * Returns the URL of the image loaded by this texture.
+  	 *
+  	 * @return the source image URL
+  	 */
   	public URL getURL() { return url; }
-  	
+
+  	/**
+  	 * Loads the image from {@link #url} and extracts the pixel data using AWT.
+  	 *
+  	 * <p>Called automatically during construction. Must be called again if {@link #url} changes.</p>
+  	 *
+  	 * @throws RuntimeException if the image fails to load
+  	 */
   	protected void update() {
   		Image image = Toolkit.getDefaultToolkit().getImage(this.url);
   		MediaTracker m = new MediaTracker(new Panel());
@@ -180,7 +216,7 @@ public class ImageTexture implements Texture, Editable {
   		try {
   			m.waitForAll();
   		} catch (InterruptedException e) {
-  			System.err.println("ImageTexture: Wait for image loading was interrupted.");
+  			warn(e.getMessage(), e);
   		}
   		
   		if (m.isErrorAny()) throw new RuntimeException("ImageTexture: Error loading image.");
@@ -194,7 +230,7 @@ public class ImageTexture implements Texture, Editable {
   		try {
   			p.grabPixels();
   		} catch (InterruptedException e) {
-  			System.err.println("ImageTexture: Pixel grabbing interrupted.");
+  			warn(e.getMessage(), e);
   		}
   	}
 
@@ -243,9 +279,10 @@ public class ImageTexture implements Texture, Editable {
   	
 	/**
 	 * @see org.almostrealism.texture.Texture#operate(Vector)
-	 * 
+	 *
 	 * @throws NullPointerException  If pixel data is not loaded.
 	 */
+	@Override
 	public RGB operate(Vector t) {
 		Vector point = new Vector(t.getX(), t.getY(), t.getZ());
 
@@ -317,62 +354,6 @@ public class ImageTexture implements Texture, Editable {
 		}).get();
 	}
 
-    /** @see io.almostrealism.relation.Editable#getPropertyNames() */
-	@Override
-    public String[] getPropertyNames() { return ImageTexture.propNames; }
-
-    /** @see io.almostrealism.relation.Editable#getPropertyDescriptions() */
-	@Override
-    public String[] getPropertyDescriptions() { return ImageTexture.propDesc; }
-
-    /** @see io.almostrealism.relation.Editable#getPropertyTypes() */
-	@Override
-    public Class[] getPropertyTypes() { return ImageTexture.propTypes; }
-
-    /** @see io.almostrealism.relation.Editable#getPropertyValues() */
-	@Override
-    public Object[] getPropertyValues() { return new Object[] {this.url, Double.valueOf(this.xScale), Double.valueOf(this.yScale)}; }
-
-    /** @see io.almostrealism.relation.Editable#setPropertyValue(java.lang.Object, int) */
-	@Override
-    public void setPropertyValue(Object value, int index) {
-    		if (index >= ImageTexture.propTypes.length) {
-    			throw new IndexOutOfBoundsException("Index out of bounds: " + index);
-    		} else if (!ImageTexture.propTypes[index].isInstance(value)) {
-    			throw new IllegalArgumentException("Illegal argument: " + value.toString());
-    		} else {
-  	 		if (index == 0) this.url = (URL)value;
-  	 		else if (index == 1) this.xScale = ((Double)value).doubleValue();
-  	 		else if (index == 2) this.yScale = ((Double)value).doubleValue();
-  	 		else if (index == 3) this.xOff = ((Double)value).doubleValue();
-  	 		else if (index == 4) this.yOff = ((Double)value).doubleValue();
-			
-			this.update();
-    		}
-    }
-
-    /**
-     * @see io.almostrealism.relation.Editable#setPropertyValues(java.lang.Object[])
-     */
-	@Override
-    public void setPropertyValues(Object[] values) {
-		for (int i = 0; i < values.length; i++) {
-			this.setPropertyValue(values[i], i);
-		}
-    }
-    
-	/**
-	 * @return  An empty array.
-	 */
-	@Override
-	public Producer[] getInputPropertyValues() { return new Producer[0]; }
-	
-	/**
-	 * Does nothing.
-	 */
-	@Override
-	public void setInputPropertyValue(int index, Producer p) { }
-    
     /**
      * @return  "Image Texture".
      */

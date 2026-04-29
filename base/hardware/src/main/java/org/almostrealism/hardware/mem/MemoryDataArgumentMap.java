@@ -79,36 +79,74 @@ import java.util.function.Supplier;
  * @see MemoryReplacementManager
  */
 public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> {
+	/** If true, automatically detect and configure destination memory arguments for output. */
 	public static final boolean enableDestinationDetection = true;
+	/** If true, emit warning messages when aggregation constraints cannot be satisfied. */
 	public static boolean enableWarnings = false;
 
+	/** If true, aggregate multiple small off-heap arguments into a single kernel argument. Controlled by {@code AR_HARDWARE_ARGUMENT_AGGREGATION}. */
 	public static boolean enableArgumentAggregation = SystemUtils.isEnabled("AR_HARDWARE_ARGUMENT_AGGREGATION").orElse(true);
+	/** If true, include non-JVM (off-heap native) memory in argument aggregation. Controlled by {@code AR_HARDWARE_OFF_HEAP_AGGREGATION}. */
 	public static boolean enableOffHeapAggregation = SystemUtils.isEnabled("AR_HARDWARE_OFF_HEAP_AGGREGATION").orElse(false);
+	/** Maximum element count for an argument to be eligible for aggregation. Controlled by {@code AR_HARDWARE_AGGREGATE_MAX}. */
 	public static int maxAggregateLength = SystemUtils.getInt("AR_HARDWARE_AGGREGATE_MAX").orElse(1 * 1024 * 1024);
 
+	/** The compute context providing language, memory, and kernel support for this argument map. */
 	private final ComputeContext<MemoryData> context;
+	/** Metadata for the operation being compiled, used for argument naming. */
 	private final OperationMetadata metadata;
 
+	/** Maps raw memory objects to the argument variables created for them. */
 	private final Map<Memory, ArrayVariable<A>> mems;
+	/** Maps memory data references to their offset position within the aggregate argument. */
 	private final Map<MemoryDataRef, Integer> aggregatePositions;
+	/** All root delegate provider suppliers created by this map, for lifecycle management. */
 	private final List<RootDelegateProviderSupplier> rootDelegateSuppliers;
+	/** True if this map is being used for kernel (parallel) evaluation; false for scalar evaluation. */
 	private final boolean kernel;
 
+	/** Manages pre/post-processing operations for memory replacement during aggregation. */
 	private MemoryDataReplacementMap replacementMap;
+	/** Factory function creating aggregate memory buffers of a given element count. */
 	private IntFunction<MemoryData> aggregateGenerator;
+	/** Total number of elements accumulated in the aggregate argument so far. */
 	private int aggregateLength;
 
+	/** Lazily created aggregate memory buffer that holds all aggregated argument data. */
 	private MemoryData aggregateData;
+	/** Producer that provides the aggregate buffer to the kernel. */
 	private Producer<MemoryData> aggregateSupplier;
+	/** Argument variable for the aggregate buffer, created once and shared. */
 	private ArrayVariable<A> aggregateArgument;
 
+	/**
+	 * Creates an argument map without argument aggregation support.
+	 *
+	 * @param context Compute context providing language and memory services
+	 * @param metadata Operation metadata for argument naming
+	 */
 	public MemoryDataArgumentMap(ComputeContext<MemoryData> context,
 								 OperationMetadata metadata) { this(context, metadata, null); }
 
+	/**
+	 * Creates an argument map with aggregation enabled for kernel (parallel) evaluation.
+	 *
+	 * @param context Compute context providing language and memory services
+	 * @param metadata Operation metadata for argument naming
+	 * @param aggregateGenerator Factory function for creating aggregate memory buffers; may be null to disable
+	 */
 	public MemoryDataArgumentMap(ComputeContext<MemoryData> context, OperationMetadata metadata,
 								 IntFunction<MemoryData> aggregateGenerator) {
 		this(context, metadata, aggregateGenerator, true); }
 
+	/**
+	 * Creates a fully configured argument map.
+	 *
+	 * @param context Compute context providing language and memory services
+	 * @param metadata Operation metadata for argument naming
+	 * @param aggregateGenerator Factory function for creating aggregate memory buffers; may be null
+	 * @param kernel True if used for kernel evaluation; false for scalar evaluation
+	 */
 	public MemoryDataArgumentMap(ComputeContext<MemoryData> context, OperationMetadata metadata, IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
 		this.context = context;
 		this.metadata = metadata;
@@ -125,11 +163,15 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		}
 	}
 
+	/** Returns the operation list that copies data into the aggregate buffer before kernel execution. */
 	public OperationList getPrepareData() { return replacementMap == null ? new OperationList() : replacementMap.getPreprocess(); }
+	/** Returns the operation list that copies results out of the aggregate buffer after kernel execution. */
 	public OperationList getPostprocessData() { return replacementMap == null ? new OperationList() : replacementMap.getPostprocess(); }
 
+	/** Returns the memory replacement map tracking all argument aggregation replacements, or null if aggregation is disabled. */
 	public MemoryDataReplacementMap getReplacementMap() { return replacementMap; }
 
+	/** Returns true if any memory replacements have been registered (i.e., at least one argument was aggregated). */
 	public boolean hasReplacements() { return replacementMap != null && !replacementMap.isEmpty(); }
 
 	@Override
@@ -209,6 +251,12 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		}
 	}
 
+	/**
+	 * Creates a {@link RootDelegateProviderSupplier} for the given memory data and registers it for cleanup.
+	 *
+	 * @param md The memory data to create a root delegate provider for
+	 * @return New {@link RootDelegateProviderSupplier} wrapping the given memory data
+	 */
 	private RootDelegateProviderSupplier createDelegate(MemoryData md) {
 		RootDelegateProviderSupplier d = new RootDelegateProviderSupplier(md);
 		rootDelegateSuppliers.add(d);
@@ -226,6 +274,11 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		if (aggregateData != null) aggregateData.destroy();
 	}
 
+	/**
+	 * Returns the aggregate memory buffer, creating it on first access via the {@link #aggregateGenerator}.
+	 *
+	 * @return The aggregate {@link MemoryData}, or null if no elements have been aggregated
+	 */
 	protected MemoryData getAggregateData() {
 		if (aggregateLength > 0 && aggregateData == null) {
 			aggregateData = aggregateGenerator.apply(aggregateLength);
@@ -234,6 +287,11 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		return aggregateData;
 	}
 
+	/**
+	 * Returns the producer that provides the aggregate buffer to the kernel, creating it on first access.
+	 *
+	 * @return Producer for the aggregate {@link MemoryData}
+	 */
 	protected Producer<MemoryData> getAggregateSupplier() {
 		if (aggregateSupplier == null) {
 			aggregateSupplier = new AggregateProducer();
@@ -242,6 +300,12 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		return aggregateSupplier;
 	}
 
+	/**
+	 * Returns the argument variable for the aggregate buffer, creating it on first access.
+	 *
+	 * @param p Name provider for generating the argument variable name
+	 * @return Argument variable for the aggregate buffer
+	 */
 	protected ArrayVariable<A> getAggregateArgument(NameProvider p) {
 		if (aggregateArgument == null) {
 			aggregateArgument = delegateProvider.getArgument(p, (Supplier) getAggregateSupplier(), null, -1);
@@ -250,6 +314,18 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		return aggregateArgument;
 	}
 
+	/**
+	 * Generates an argument variable for the given memory data, or null if aggregation is not applicable.
+	 *
+	 * <p>If aggregation has already occurred for this memory data, returns a delegating argument
+	 * pointing to the correct position in the aggregate. Otherwise, the first eligible memory data
+	 * triggers creation of a new aggregate.</p>
+	 *
+	 * @param p   Name provider for generating variable names
+	 * @param key Supplier used as the cache key for this argument
+	 * @param md  Memory data to generate an argument for
+	 * @return Argument variable, or null if aggregation is not applicable
+	 */
 	private ArrayVariable<A> generateArgument(NameProvider p, Supplier key, MemoryData md) {
 		if (aggregateGenerator == null || !isAggregationTarget(md)) return null;
 
@@ -290,6 +366,9 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		return delegateProvider.getArgument(p, key, getAggregateArgument(p), pos);
 	}
 
+	/**
+	 * Internal {@link Producer} that provides the lazily created aggregate buffer to the kernel.
+	 */
 	private class AggregateProducer implements Producer<MemoryData> {
 		@Override
 		public Evaluable<MemoryData> get() {
@@ -297,6 +376,12 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		}
 	}
 
+	/**
+	 * Returns true if the value produced by the given producer is eligible for argument aggregation.
+	 *
+	 * @param p Producer to test
+	 * @return True if the produced value is a {@link MemoryData} that can be aggregated
+	 */
 	public static boolean isAggregationTarget(Producer<?> p) {
 		Evaluable<?> eval = p.get();
 		if (!(eval instanceof Provider)) return false;
@@ -305,6 +390,15 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		return v instanceof MemoryData && isAggregationTarget((MemoryData) v);
 	}
 
+	/**
+	 * Returns true if the given {@link MemoryData} is eligible for argument aggregation.
+	 *
+	 * <p>A memory data is eligible when aggregation is enabled, its size does not exceed
+	 * {@link #maxAggregateLength}, and (if off-heap aggregation is disabled) it uses JVM heap memory.</p>
+	 *
+	 * @param md Memory data to test
+	 * @return True if the memory data can be included in an aggregate argument
+	 */
 	public static boolean isAggregationTarget(MemoryData md) {
 		if (!enableArgumentAggregation || md == null || md.getMem() == null)
 			return false;
@@ -325,6 +419,15 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		return true;
 	}
 
+	/**
+	 * Creates and configures a {@link MemoryDataArgumentMap} with the appropriate delegate provider.
+	 *
+	 * @param context Compute context providing language and memory services
+	 * @param metadata Operation metadata for argument naming
+	 * @param aggregateGenerator Factory for creating aggregate buffers; may be null
+	 * @param kernel True if the map is used for kernel evaluation
+	 * @return Fully configured {@link MemoryDataArgumentMap}
+	 */
 	public static MemoryDataArgumentMap create(ComputeContext<MemoryData> context, OperationMetadata metadata, IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
 		MemoryDataArgumentMap map = new MemoryDataArgumentMap(context, metadata, aggregateGenerator, kernel);
 		map.setDelegateProvider(CollectionScopeInputManager.getInstance(context.getLanguage()));

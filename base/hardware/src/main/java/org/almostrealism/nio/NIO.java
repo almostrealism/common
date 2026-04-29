@@ -25,6 +25,13 @@ import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 
+/**
+ * JNI bridge for native I/O operations including shared memory mapping and buffer pointer extraction.
+ *
+ * <p>Loads the platform-specific native library ({@code libNIO.dylib} on macOS, {@code libNIO.so} on Linux)
+ * from the classpath and exposes low-level memory-mapped I/O operations for use by
+ * {@link NativeBufferMemoryProvider}.</p>
+ */
 public class NIO {
 	static {
 		String lib = SystemUtils.isMacOS() ? "libNIO.dylib" : "libNIO.so";
@@ -46,9 +53,36 @@ public class NIO {
 		System.load(tempLibFile.getAbsolutePath());
 	}
 
+	/**
+	 * Returns the native memory address of the given direct buffer.
+	 *
+	 * @param b Direct {@link Buffer} instance
+	 * @return Native pointer address for the buffer's backing memory
+	 */
 	public static native long pointerForBuffer(Buffer b);
 
+	/**
+	 * Maps a named shared memory region into a direct {@link ByteBuffer}.
+	 *
+	 * @param filePath Path name for the shared memory region
+	 * @param length   Size in bytes to map
+	 * @return Direct {@link ByteBuffer} backed by the shared memory region
+	 */
 	public static native ByteBuffer mapSharedMemory(String filePath, int length);
+
+	/**
+	 * Flushes changes in a shared memory buffer back to the underlying region.
+	 *
+	 * @param buffer Shared memory buffer to sync
+	 * @param length Number of bytes to sync
+	 */
 	public static native void syncSharedMemory(ByteBuffer buffer, int length);
+
+	/**
+	 * Unmaps a shared memory region previously mapped via {@link #mapSharedMemory}.
+	 *
+	 * @param buffer Shared memory buffer to unmap
+	 * @param length Number of bytes to unmap
+	 */
 	public static native void unmapSharedMemory(ByteBuffer buffer, int length);
 }

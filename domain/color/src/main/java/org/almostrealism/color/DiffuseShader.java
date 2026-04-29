@@ -16,7 +16,6 @@
 
 package org.almostrealism.color;
 
-import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -50,8 +49,11 @@ import org.almostrealism.geometry.RayFeatures;
  * @see org.almostrealism.color.Shader
  * @see org.almostrealism.geometry.ShadableIntersection
  */
-public class DiffuseShader implements Shader<ShaderContext>, Editable, RGBFeatures, RayFeatures {
+public class DiffuseShader implements Shader<ShaderContext>, RGBFeatures, RayFeatures {
+	/** Default singleton instance of {@link DiffuseShader} for convenience. */
 	public static DiffuseShader defaultDiffuseShader = new DiffuseShader();
+
+	/** When true, diagnostic output is written during shading evaluation. */
 	public static boolean produceOutput = false;
 
 	/** Constructs a new {@link DiffuseShader}. */
@@ -89,44 +91,6 @@ public class DiffuseShader implements Shader<ShaderContext>, Editable, RGBFeatur
 			return GeneratedColorProducer.fromProducer(this, RGB.blank());
 		}
 	}
-	
-	/** Returns a zero length array. */
-	@Override
-	public String[] getPropertyNames() { return new String[0]; }
-	
-	/** Returns a zero length array. */
-	@Override
-	public String[] getPropertyDescriptions() { return new String[0]; }
-	
-	/** Returns a zero length array. */
-	@Override
-	public Class[] getPropertyTypes() { return new Class[0]; }
-	
-	/** Returns a zero length array. */
-	@Override
-	public Object[] getPropertyValues() { return new Object[0]; }
-	
-	/** @throws IndexOutOfBoundsException */
-	@Override
-	public void setPropertyValue(Object value, int index) {
-		throw new IndexOutOfBoundsException("Index out of bounds: " + index);
-	}
-	
-	/**
-	 * Does nothing.
-	 */
-	@Override
-	public void setPropertyValues(Object[] values) {}
-	
-	/**
-	 * @return  An empty array.
-	 */
-	@Override
-	public Producer[] getInputPropertyValues() { return new Producer[0]; }
-	
-	/** Does nothing. */
-	@Override
-	public void setInputPropertyValue(int index, Producer p) {}
 	
 	/** Returns "Diffuse Shader". */
 	@Override

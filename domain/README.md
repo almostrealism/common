@@ -1,6 +1,6 @@
 # domain — Domain Models
 
-This layer provides concrete domain models for graphics, neural networks, simulation, and code integration. These modules combine the foundation and mathematical layers to implement domain-specific systems — color and lighting, neural network graphs, 3D scene management, physical simulation, evolutionary computation, and native code interop.
+This layer provides concrete domain models for graphics, neural networks, and simulation. These modules combine the foundation and mathematical layers to implement domain-specific systems — color and lighting, neural network graphs, 3D scene management, physical simulation, and evolutionary computation.
 
 ## Modules
 
@@ -22,5 +22,3 @@ Quantum and classical physics simulation. Models atomic structures (electrons, o
 ### [ar-chemistry](chemistry/README.md)
 Periodic table and chemical element representations. Provides all 118 elements with electron configurations, organized by groups, periods, families, and blocks. Supports `Alloy` creation for probabilistic element mixing and integrates with physics for atomic modeling and heredity for evolutionary material composition.
 
-### [ar-llvm](llvm/README.md)
-LLVM IR and C code integration via GraalVM polyglot. Enables execution of compiled LLVM IR and C code from Java for performance-critical operations. Supports custom kernel integration with the hardware module and native optimization for numerical loops.

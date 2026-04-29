@@ -17,7 +17,7 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 
 import java.util.List;
 import java.util.Objects;
@@ -26,10 +26,36 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+/**
+ * A collection expression that applies a single element-wise operation to all operands
+ * at every index.
+ *
+ * <p>For each output index, the same index is passed to every operand and the resulting
+ * values are combined by the {@code operation} function. Subclasses specialise this by
+ * supplying a fixed operation (e.g., {@link ProductCollectionExpression} uses multiplication).</p>
+ *
+ * <p>The {@link NonZeroIndexPolicy} controls how the unique non-zero offset is computed from
+ * the operand non-zero offsets, enabling the code generator to elide memory accesses for
+ * zero-valued elements.</p>
+ */
 public class UniformCollectionExpression extends OperandCollectionExpression {
+	/** The element-wise operation applied to the operand values at each index. */
 	private Function<Expression[], Expression<?>> operation;
+
+	/** The policy used to combine per-operand non-zero offsets, or {@code null} for the default. */
 	private NonZeroIndexPolicy indexPolicy;
 
+	/**
+	 * Creates a uniform collection expression with the given name, shape, operation, and operands.
+	 *
+	 * <p>When there is exactly one operand the index policy defaults to
+	 * {@link NonZeroIndexPolicy#DISJUNCTIVE}.</p>
+	 *
+	 * @param name      a descriptive name for this expression
+	 * @param shape     the output shape
+	 * @param operation the element-wise operation applied at each index
+	 * @param operands  the input operand expressions
+	 */
 	public UniformCollectionExpression(String name, TraversalPolicy shape,
 									   Function<Expression[], Expression<?>> operation,
 									   TraversableExpression... operands) {
@@ -41,14 +67,25 @@ public class UniformCollectionExpression extends OperandCollectionExpression {
 		}
 	}
 
+	/**
+	 * Returns the non-zero index policy used when computing the unique non-zero offset.
+	 *
+	 * @return the current policy, or {@code null} if none is set
+	 */
 	public NonZeroIndexPolicy getIndexPolicy() {
 		return indexPolicy;
 	}
 
+	/**
+	 * Sets the non-zero index policy.
+	 *
+	 * @param indexPolicy the policy to apply
+	 */
 	public void setIndexPolicy(NonZeroIndexPolicy indexPolicy) {
 		this.indexPolicy = indexPolicy;
 	}
 
+	/** {@inheritDoc} Returns {@code operation.apply(operand values at index)}. */
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		Expression args[] = new Expression[operands.length];
@@ -56,6 +93,7 @@ public class UniformCollectionExpression extends OperandCollectionExpression {
 		return (Expression<Double>) operation.apply(args);
 	}
 
+	/** {@inheritDoc} Applies the {@link NonZeroIndexPolicy} to compute the unique non-zero offset. */
 	@Override
 	public Expression uniqueNonZeroOffset(Index globalIndex, Index localIndex, Expression<?> targetIndex) {
 		if (indexPolicy == null)
@@ -99,6 +137,7 @@ public class UniformCollectionExpression extends OperandCollectionExpression {
 		}
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public boolean isIndexIndependent() {
 		List<TraversableExpression> constants = Stream.of(operands)
@@ -116,7 +155,27 @@ public class UniformCollectionExpression extends OperandCollectionExpression {
 		return false;
 	}
 
+	/**
+	 * Controls how per-operand non-zero offsets are combined when computing
+	 * the unique non-zero offset for this expression.
+	 */
 	public enum NonZeroIndexPolicy {
-		CONJUNCTIVE, DISJUNCTIVE, EXCLUSIVE
+		/**
+		 * All operands must have the same non-zero offset (not yet implemented).
+		 */
+		CONJUNCTIVE,
+
+		/**
+		 * The first operand with a non-null non-zero offset is used.
+		 * Appropriate when at most one operand is non-zero for any given index.
+		 */
+		DISJUNCTIVE,
+
+		/**
+		 * Exactly one non-index-independent operand may be non-zero; index-independent
+		 * operands must evaluate to zero. If multiple non-zero offsets disagree, falls back
+		 * to the default implementation.
+		 */
+		EXCLUSIVE
 	}
 }

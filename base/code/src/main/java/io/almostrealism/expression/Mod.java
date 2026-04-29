@@ -17,13 +17,14 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.IndexSequence;
-import io.almostrealism.kernel.IndexValues;
-import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexValues;
+import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ScopeSettings;
+import org.almostrealism.io.Console;
 
 import java.util.List;
 import java.util.Optional;
@@ -34,15 +35,55 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * A modulo expression ({@code a % b}) for both integer and floating-point operands.
+ *
+ * <p>Provides multiple simplification passes including constant folding, redundant-mod
+ * elimination, inner-sum rewriting, and power-of-two optimisation. Integer and
+ * floating-point modes are distinguished by the {@code fp} flag.</p>
+ *
+ * @param <T> the numeric result type
+ */
 public class Mod<T extends Number> extends BinaryExpression<T> {
+	/**
+	 * When {@code true}, {@code input % 2^n} is replaced with a bitwise-AND
+	 * {@code input & (2^n - 1)} for integer expressions.
+	 */
 	public static boolean enableMod2Optimization = false;
+
+	/**
+	 * When {@code true}, mod applied to a sum of the form {@code (k * x + (x % k)) % k^2}
+	 * is rewritten to a simpler product expression.
+	 */
 	public static boolean enableInnerSumSimplify = true;
+
+	/**
+	 * When {@code true}, a redundant outer mod is replaced by its inner mod operand
+	 * when the outer modulus is a multiple of the inner modulus.
+	 */
 	public static boolean enableRedundantModReplacement = true;
+
+	/**
+	 * When {@code true}, multiples of the modulus are removed from integer sum operands.
+	 */
 	public static boolean enableRemoveMultiples = true;
+
+	/**
+	 * When {@code true}, the upper bound of a mod expression is reported as
+	 * {@code modulus - 1} when the modulus is a known constant.
+	 */
 	public static boolean enableSpanUpperBound = true;
 
+	/** Whether this is a floating-point modulo ({@code true}) or integer modulo ({@code false}). */
 	private boolean fp;
 
+	/**
+	 * Constructs a modulo expression.
+	 *
+	 * @param a  the dividend
+	 * @param b  the divisor
+	 * @param fp {@code true} for floating-point modulo, {@code false} for integer modulo
+	 */
 	protected Mod(Expression<T> a, Expression<T> b, boolean fp) {
 		super(a.getType(), a, b);
 		this.fp = fp;
@@ -65,8 +106,19 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return fp ? "fmod(" + getChildren().get(0).getExpression(lang) + ", " + getChildren().get(1).getExpression(lang) + ")" :
-				getChildren().get(0).getWrappedExpression(lang) + " % " + getChildren().get(1).getWrappedExpression(lang);
+		if (fp) {
+			return "fmod(" + getChildren().get(0).getExpression(lang) + ", " +
+					getChildren().get(1).getExpression(lang) + ")";
+		}
+
+		String a = getChildren().get(0).getWrappedExpression(lang);
+		String b = getChildren().get(1).getWrappedExpression(lang);
+
+		if (getChildren().get(0).isPossiblyNegative()) {
+			return lang.floorMod(a, b);
+		}
+
+		return a + " % " + b;
 	}
 
 	@Override
@@ -202,6 +254,14 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		return Mod.of(children.get(0), children.get(1), fp);
 	}
 
+	/**
+	 * Creates a modulo expression for the given pair of operands, inferring the
+	 * floating-point flag from the operand types.
+	 *
+	 * @param inputs exactly two expressions: the dividend and the divisor
+	 * @return the simplified modulo expression
+	 * @throws UnsupportedOperationException if the number of inputs is not 2
+	 */
 	public static Expression of(Expression... inputs) {
 		if (inputs.length != 2) {
 			throw new UnsupportedOperationException();
@@ -210,14 +270,37 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		return of(inputs[0], inputs[1], inputs[0].isFP() || inputs[1].isFP());
 	}
 
+	/**
+	 * Creates a floating-point modulo expression.
+	 *
+	 * @param input the dividend
+	 * @param mod   the divisor
+	 * @return the simplified modulo expression
+	 */
 	public static Expression of(Expression input, Expression mod) {
 		return of(input, mod, true);
 	}
 
+	/**
+	 * Creates a modulo expression with the given floating-point flag.
+	 *
+	 * @param input the dividend
+	 * @param mod   the divisor
+	 * @param fp    {@code true} for floating-point modulo, {@code false} for integer modulo
+	 * @return the simplified modulo expression
+	 */
 	public static Expression of(Expression input, Expression mod, boolean fp) {
 		return Expression.process(create(input, mod, fp));
 	}
 
+	/**
+	 * Creates a modulo expression, applying the full suite of simplification passes.
+	 *
+	 * @param input the dividend expression
+	 * @param mod   the divisor expression
+	 * @param fp    {@code true} for floating-point modulo, {@code false} for integer modulo
+	 * @return the simplified expression or a new {@link Mod}
+	 */
 	protected static Expression create(Expression<?> input, Expression mod, boolean fp) {
 		if (fp || (input.longValue().isEmpty() && mod.longValue().isEmpty())) {
 			// There are no possible optimizations
@@ -292,6 +375,14 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		return new Mod(input, mod, fp);
 	}
 
+	/**
+	 * Attempts to simplify {@code (innerMod) % m} when the inner modulus is a
+	 * multiple of or equal to {@code m}.
+	 *
+	 * @param innerMod the inner mod expression
+	 * @param m        the outer modulus
+	 * @return the simplified expression, or {@code null} if no simplification applies
+	 */
 	private static Expression tryModSimplify(Mod<?> innerMod, long m) {
 		OptionalLong inMod = innerMod.getChildren().get(1).longValue();
 
@@ -308,6 +399,14 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		return null;
 	}
 
+	/**
+	 * Attempts to simplify {@code (k * x + (x % k)) % m} patterns when {@code k}
+	 * divides {@code m} and structural conditions are met.
+	 *
+	 * @param innerSum the sum expression inside the mod
+	 * @param m        the outer modulus
+	 * @return the simplified expression, or {@code null} if no simplification applies
+	 */
 	private static Expression trySumSimplify(Sum<?> innerSum, long m) {
 		if (!enableInnerSumSimplify || innerSum.getChildren().size() != 2) return null;
 
@@ -347,11 +446,17 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			Expression m1 = ExpressionFeatures.getInstance().e(constant + 1);
 			return Product.of(Mod.of(arg, m0, false), m1);
 		} else {
-			System.out.println("WARN: Inner sum simplify failed because " + constant + " * " + constant + " != " + m);
+			Console.root().warn("Inner sum simplify failed because " + constant + " * " + constant + " != " + m);
 			return null;
 		}
 	}
 
+	/**
+	 * Returns {@code true} if the given number is a positive power of two.
+	 *
+	 * @param number the value to test
+	 * @return {@code true} if {@code number} is a positive power of two
+	 */
 	private static boolean isPowerOf2(long number) {
 		return number > 0 && (number & (number - 1)) == 0;
 	}

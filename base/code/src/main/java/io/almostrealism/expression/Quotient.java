@@ -19,10 +19,10 @@ package io.almostrealism.expression;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.IndexSequence;
-import io.almostrealism.kernel.IndexValues;
-import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexValues;
+import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ScopeSettings;
 
@@ -35,12 +35,40 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * A division expression that represents a numerator divided by one or more denominators.
+ *
+ * <p>Generates code of the form {@code a / b}. Provides various simplification passes
+ * including constant folding, denominator extraction, and product-mod rewrites
+ * controlled by the static flags on this class.</p>
+ *
+ * @param <T> the numeric result type
+ */
 public class Quotient<T extends Number> extends NAryExpression<T> {
+	/**
+	 * When {@code true}, enables the rewrite of {@code (a % n) * (n + 1) / (n + 1)}
+	 * patterns to {@code a % n}.
+	 */
 	public static boolean enableProductModSimplify = true;
+
+	/**
+	 * When {@code true}, enables the arithmetic-generator simplification pass that
+	 * rewrites sums of products divided by a constant into simpler quotient forms.
+	 */
 	public static boolean enableArithmeticGenerator = true;
 
+	/**
+	 * The maximum combined denominator value allowed before the arithmetic-generator
+	 * simplification pass is skipped.
+	 */
 	public static long maxCombinedDenominator = Integer.MAX_VALUE;
 
+	/**
+	 * Constructs a quotient from a list of expressions where the first element is
+	 * the numerator and the remaining elements are denominators.
+	 *
+	 * @param values the numerator followed by the denominator(s)
+	 */
 	protected Quotient(List<Expression<?>> values) {
 		super((Class<T>) type(values), "/", values);
 	}
@@ -49,14 +77,24 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	@Override
 	public int getComputeCost() { return 6; }
 
+	/** Returns the numerator of this quotient (the first child expression). */
 	public Expression<?> getNumerator() { return getChildren().get(0); }
 
+	/**
+	 * Returns the effective denominator of this quotient. For a two-operand
+	 * quotient {@code a / b}, returns {@code b}. For multi-operand quotients
+	 * {@code a / b / c / ...}, returns the product {@code b * c * ...}.
+	 */
 	public Expression<?> getDenominator() {
-		// TODO  This should be supported
-		if (getChildren().size() > 2)
-			throw new UnsupportedOperationException();
+		if (getChildren().size() == 2) {
+			return getChildren().get(1);
+		}
 
-		return getChildren().get(1);
+		Expression<?> result = getChildren().get(1);
+		for (int i = 2; i < getChildren().size(); i++) {
+			result = Product.of(result, getChildren().get(i));
+		}
+		return result;
 	}
 
 	@Override
@@ -248,10 +286,23 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		return quotient(target.getShape(), List.of(derivativeNumerator, derivativeDenominator));
 	}
 
+	/**
+	 * Creates and post-processes a quotient expression.
+	 *
+	 * @param values the numerator followed by denominator expression(s)
+	 * @return a simplified or constant-folded expression
+	 */
 	public static Expression<?> of(Expression<?>... values) {
 		return Expression.process(create(values));
 	}
 
+	/**
+	 * Creates a quotient expression, applying unit-denominator pruning and constant folding.
+	 *
+	 * @param values the numerator followed by denominator expression(s)
+	 * @return the simplified expression or a new {@link Quotient}
+	 * @throws IllegalArgumentException if no operands are provided
+	 */
 	protected static Expression<?> create(Expression<?>... values) {
 		if (values.length == 0) throw new IllegalArgumentException();
 		if (values.length == 1) return values[0];
@@ -269,7 +320,11 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		}
 
 		if (operands.size() == 1) return operands.get(0);
-		if (operands.size() > 2) return new Quotient(operands);
+		if (operands.size() > 2) {
+			Expression<?> denominator = Product.of(
+					operands.subList(1, operands.size()).toArray(new Expression[0]));
+			return create(operands.get(0), denominator);
+		}
 
 		if (values[0] instanceof ArithmeticGenerator) {
 			return ((ArithmeticGenerator) values[0]).divide(operands.get(1));
@@ -408,12 +463,28 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		return new Quotient(operands);
 	}
 
+	/**
+	 * Searches the children of the given expression for the first constant term that
+	 * is divisible by {@code divisor}.
+	 *
+	 * @param e       the expression whose children are searched
+	 * @param divisor the divisor to test against
+	 * @return the first divisible child, or {@code null} if none is found
+	 */
 	private static Expression findDivisibleTerm(Expression<?> e, long divisor) {
 		return e.getChildren().stream()
 				.filter(c -> c.longValue().isPresent() && c.longValue().getAsLong() % divisor == 0 && c.longValue().getAsLong() > 0)
 				.findFirst().orElse(null);
 	}
 
+	/**
+	 * Attempts to simplify a {@code (product + mod) / divisor} pattern into a
+	 * single quotient when the structure matches.
+	 *
+	 * @param sum     the sum expression to analyse
+	 * @param divisor the divisor value
+	 * @return the simplified expression, or {@code null} if the pattern does not match
+	 */
 	private static Expression trySumSimplify(Sum<?> sum, long divisor) {
 		if (sum.getChildren().size() != 2) return null;
 
@@ -449,6 +520,14 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		return Quotient.of(arg, d);
 	}
 
+	/**
+	 * Attempts to simplify a {@code (mod * (divisor + 1)) / (divisor + 1)} pattern
+	 * into the underlying mod expression when enabled.
+	 *
+	 * @param p       the product expression to analyse
+	 * @param divisor the divisor value
+	 * @return the simplified expression, or {@code null} if the pattern does not match
+	 */
 	private static Expression tryProductSimplify(Product<?> p, long divisor) {
 		if (!enableProductModSimplify) return null;
 		if (divisor <= 1) return null;

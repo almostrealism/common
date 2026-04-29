@@ -16,17 +16,40 @@
 
 package org.almostrealism.texture;
 
+import org.almostrealism.io.ConsoleFeatures;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.PixelGrabber;
 import java.net.URL;
 
-public class URLImageSource implements ImageSource {
+/**
+ * An {@link ImageSource} that loads image data from a {@link URL}.
+ *
+ * <p>The image is loaded synchronously at construction time using AWT's {@link java.awt.MediaTracker}.
+ * Pixel data is extracted lazily on the first call to {@link #getPixels()} using a
+ * {@link java.awt.image.PixelGrabber}.</p>
+ *
+ * @see ImageSource
+ * @see ImageTexture
+ * @author Michael Murray
+ */
+public class URLImageSource implements ImageSource, ConsoleFeatures {
+	/** The URL from which the image is loaded. */
 	private final URL url;
-	
+
+	/** The AWT image loaded from the URL. */
 	private final Image image;
+
+	/** The lazily-loaded flat pixel array (packed ARGB integers). */
 	private int[] pixels;
 
+	/**
+	 * Constructs a {@link URLImageSource} by loading an image from the given URL.
+	 *
+	 * @param url the URL from which to load the image
+	 * @throws RuntimeException if the image fails to load
+	 */
 	public URLImageSource(URL url) {
 		this.url = url;
 
@@ -37,7 +60,7 @@ public class URLImageSource implements ImageSource {
 		try {
 			m.waitForAll();
 		} catch (InterruptedException e) {
-			System.err.println("ImageTexture: Wait for image loading was interrupted.");
+			warn(e.getMessage(), e);
 		}
 
 		if (m.isErrorAny()) throw new RuntimeException("ImageTexture: Error loading image.");
@@ -56,7 +79,7 @@ public class URLImageSource implements ImageSource {
 		try {
 			p.grabPixels();
 		} catch (InterruptedException e) {
-			System.err.println("ImageTexture: Pixel grabbing interrupted.");
+			warn(e.getMessage(), e);
 		}
 		
 		return pixels;

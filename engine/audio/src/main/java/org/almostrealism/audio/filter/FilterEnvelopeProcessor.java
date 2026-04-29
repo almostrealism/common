@@ -35,21 +35,42 @@ import org.almostrealism.hardware.mem.MemoryDataCopy;
  */
 // TODO  This should implement AudioProcessor
 public class FilterEnvelopeProcessor implements EnvelopeProcessor, CellFeatures, EnvelopeFeatures {
+	/** Maximum cutoff frequency in Hz that the ADSR envelope can sweep the filter to. */
 	public static double filterPeak = 20000;
 
+	/** Time source driving the filter's sample-by-sample processing. */
 	private final TimeCell clock;
 
+	/** Input audio buffer; audio is copied here before processing. */
 	private final PackedCollection input;
+
+	/** Output audio buffer; processed audio is written here. */
 	private final PackedCollection output;
 
+	/** Single-element collection holding the total envelope duration in seconds. */
 	private final PackedCollection duration;
+
+	/** Single-element collection holding the envelope attack time in seconds. */
 	private final PackedCollection attack;
+
+	/** Single-element collection holding the envelope decay time in seconds. */
 	private final PackedCollection decay;
+
+	/** Single-element collection holding the envelope sustain level (0.0–1.0). */
 	private final PackedCollection sustain;
+
+	/** Single-element collection holding the envelope release time in seconds. */
 	private final PackedCollection release;
 
+	/** Compiled processing pipeline that applies the filter envelope to the input buffer. */
 	private final Runnable process;
 
+	/**
+	 * Creates a FilterEnvelopeProcessor with the given sample rate and maximum buffer duration.
+	 *
+	 * @param sampleRate audio sample rate in Hz
+	 * @param maxSeconds maximum supported audio duration in seconds; determines buffer size
+	 */
 	public FilterEnvelopeProcessor(int sampleRate, double maxSeconds) {
 		input = new PackedCollection((int) (sampleRate * maxSeconds));
 		output = new PackedCollection((int) (sampleRate * maxSeconds));
@@ -71,22 +92,52 @@ public class FilterEnvelopeProcessor implements EnvelopeProcessor, CellFeatures,
 				.export(output).get();
 	}
 
+	/**
+	 * Sets the total envelope duration.
+	 *
+	 * @param duration envelope duration in seconds
+	 */
+	@Override
 	public void setDuration(double duration) {
 		this.duration.set(0, duration);
 	}
 
+	/**
+	 * Sets the envelope attack time.
+	 *
+	 * @param attack attack time in seconds
+	 */
+	@Override
 	public void setAttack(double attack) {
 		this.attack.set(0, attack);
 	}
 
+	/**
+	 * Sets the envelope decay time.
+	 *
+	 * @param decay decay time in seconds
+	 */
+	@Override
 	public void setDecay(double decay) {
 		this.decay.set(0, decay);
 	}
 
+	/**
+	 * Sets the envelope sustain level.
+	 *
+	 * @param sustain sustain level from 0.0 (silent) to 1.0 (full cutoff)
+	 */
+	@Override
 	public void setSustain(double sustain) {
 		this.sustain.set(0, sustain);
 	}
 
+	/**
+	 * Sets the envelope release time.
+	 *
+	 * @param release release time in seconds
+	 */
+	@Override
 	public void setRelease(double release) {
 		this.release.set(0, release);
 	}

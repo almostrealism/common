@@ -32,6 +32,7 @@ import org.almostrealism.geometry.Intersectable;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -62,20 +63,42 @@ import java.util.List;
  *
  * @see LightingEngine
  */
-public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implements DimensionAware {
+public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implements DimensionAware, ConsoleFeatures {
+	/** When true, additional ranked-choice selection details are logged to stdout. */
 	public static boolean enableVerbose = false;
 
+	/** Pre-computed pixel-position input buffer used in kernel mode. */
 	private PackedCollection input;
+	/** Cached rank values for each lighting engine, computed once per kernel invocation. */
 	private List<PackedCollection> ranks;
 
+	/** When true, intersection ranks are pre-computed for all pixel positions and cached. */
 	private boolean kernel;
+	/** Image width, height, and supersampling factors used to resolve pixel positions. */
 	private int width, height, ssw, ssh;
 
+	/**
+	 * Constructs an aggregator without kernel-mode pre-computation.
+	 *
+	 * @param r        The ray producer for this pixel
+	 * @param surfaces The scene surfaces to evaluate
+	 * @param lights   The scene lights to evaluate
+	 * @param context  Shader context; may be {@code null} to auto-construct per pair
+	 */
 	public LightingEngineAggregator(Producer<?> r, Iterable<Curve<PackedCollection>> surfaces,
 									Iterable<Light> lights, ShaderContext context) {
 		this(r, surfaces, lights, context, false);
 	}
 
+	/**
+	 * Constructs an aggregator with optional kernel-mode pre-computation.
+	 *
+	 * @param r        The ray producer for this pixel
+	 * @param surfaces The scene surfaces to evaluate
+	 * @param lights   The scene lights to evaluate
+	 * @param context  Shader context; may be {@code null} to auto-construct per pair
+	 * @param kernel   When true, all intersection ranks are pre-computed and cached for the full pixel grid
+	 */
 	public LightingEngineAggregator(Producer<?> r, Iterable<Curve<PackedCollection>> surfaces,
 									Iterable<Light> lights, ShaderContext context, boolean kernel) {
 		super(Intersection.e);
@@ -128,11 +151,9 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 
 		this.ranks = new ArrayList<>();
 		for (int i = 0; i < size(); i++) {
-			// CRITICAL: Use .each() to properly evaluate batch of rays - without it, only first ray processes correctly
 			PackedCollection rankCollection = new PackedCollection(shape(input.getCount(), 1).traverse(1));
 			this.ranks.add(rankCollection);
 
-			// Evaluate the rank producer
 			Producer rankProducer = get(i).getRank();
 			rankProducer.get().into(rankCollection.each()).evaluate(input);
 		}
@@ -146,6 +167,17 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 	}
 
 	// TODO  Rename this class to SurfaceLightingAggregator and have LightingEngineAggregator sum the lights instead of rank choice them
+	/**
+	 * Populates the aggregator with one {@link IntersectionalLightingEngine} for each surface-light pair.
+	 *
+	 * <p>For each combination of surface and light, a {@link ShaderContext} is constructed and an
+	 * {@link IntersectionalLightingEngine} is added to the ranked-choice list.</p>
+	 *
+	 * @param r        The ray producer
+	 * @param surfaces The scene surfaces
+	 * @param lights   The scene lights
+	 * @param context  Base shader context to clone per pair, or {@code null} to construct from scratch
+	 */
 	protected void init(Producer<?> r, Iterable<Curve<PackedCollection>> surfaces, Iterable<Light> lights, ShaderContext context) {
 		for (Curve<PackedCollection> s : surfaces) {
 			for (Light l : lights) {
@@ -193,8 +225,8 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 		boolean printLog = enableVerbose;
 
 		if (printLog) {
-			System.out.println("RankedChoiceProducer: pixel(" + x + "," + y + ") -> position=" + position);
-			System.out.println("  There are " + size() + " Producers to choose from");
+			log("RankedChoiceProducer: pixel(" + x + "," + y + ") -> position=" + position);
+			log("  There are " + size() + " Producers to choose from");
 		}
 
 		r: for (int i = 0; i < size(); i++) {
@@ -202,17 +234,17 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 
 			// Use valueAt(position, 0) for shape (N, 1) instead of get(position).getValue() for Scalar
 			double r = ranks.get(i).valueAt(position, 0);
-			if (printLog) System.out.println("  Engine " + i + ": rank[" + position + "] = " + r);
-			if (r < e && printLog) System.out.println("  " + p + " was skipped due to being less than " + e);
+			if (printLog) log("  Engine " + i + ": rank[" + position + "] = " + r);
+			if (r < e && printLog) log("  " + p + " was skipped due to being less than " + e);
 			if (r < e) continue r;
 
 			if (best == null) {
-				if (printLog) System.out.println(p + " was assigned (rank = " + r + ")");
+				if (printLog) log(p + " was assigned (rank = " + r + ")");
 				best = (Producer<PackedCollection>) p.getProducer();
 				rank = r;
 			} else {
 				if (r >= e && r < rank) {
-					if (printLog) System.out.println(p + " was assigned (rank = " + r + ")");
+					if (printLog) log(p + " was assigned (rank = " + r + ")");
 					best = (Producer<PackedCollection>) p.getProducer();
 					rank = r;
 				}
@@ -221,7 +253,7 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 			if (rank <= e) break r;
 		}
 
-		if (printLog) System.out.println(best + " was chosen\n----------");
+		if (printLog) log(best + " was chosen\n----------");
 
 		if (best == null) return null;
 
@@ -237,7 +269,7 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 		}
 
 		if (printLog) {
-			System.out.println("  Color evaluated: RGB(" + color.getRed() + ", " + color.getGreen() + ", " + color.getBlue() + ")");
+			log("  Color evaluated: RGB(" + color.getRed() + ", " + color.getGreen() + ", " + color.getBlue() + ")");
 		}
 
 		return color;

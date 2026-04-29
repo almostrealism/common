@@ -39,8 +39,10 @@ import java.util.stream.LongStream;
  * @see CollectionFeatures
  */
 public interface ShapeFeatures {
+	/** When true, logs a warning when a shape cannot be determined for a producer. */
 	boolean enableShapelessWarning = false;
 
+	/** Shared console for logging shape-related warnings and messages. */
 	Console console = CollectionFeatures.console;
 
 	/**
@@ -128,7 +130,7 @@ public interface ShapeFeatures {
 			return ((Shape) t).getShape();
 		} else {
 			if (enableShapelessWarning) {
-				System.out.println("WARN: " + t.getClass() + " does not have a Shape");
+				console.warn(t.getClass() + " does not have a Shape", null);
 			}
 
 			return shape(1);

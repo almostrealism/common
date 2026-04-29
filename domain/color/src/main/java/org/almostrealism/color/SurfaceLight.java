@@ -27,12 +27,16 @@ package org.almostrealism.color;
  */
 public interface SurfaceLight extends Light {
 	/**
+	 * Returns an array containing samples for this SurfaceLight instance.
+	 *
 	 * @param total  Total number of samples to return.
 	 * @return  An array containing samples for this SurfaceLight instance.
 	 */
 	Light[] getSamples(int total);
-	
+
 	/**
+	 * Returns an array containing samples for this SurfaceLight instance.
+	 *
 	 * @return  An array containing samples for this SurfaceLight instance.
 	 */
 	Light[] getSamples();

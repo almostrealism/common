@@ -30,10 +30,16 @@ import org.almostrealism.collect.PackedCollection;
  * @author  Michael Murray
  */
 public class VolumeAbsorber implements Absorber, Nameable, VectorFeatures {
+	/** The volume that determines which photon positions are eligible for absorption. */
 	protected Volume<?> volume;
+
+	/** The wrapped absorber that performs the actual photon absorption. */
 	protected Absorber absorber;
+
+	/** Optional name for this absorber, used in {@link #toString()}. */
 	protected String name;
-	
+
+	/** Constructs an empty {@code VolumeAbsorber} with no volume or absorber set. */
 	public VolumeAbsorber() { }
 	
 	/**
@@ -78,6 +84,8 @@ public class VolumeAbsorber implements Absorber, Nameable, VectorFeatures {
 	public void setVolume(Volume v) { this.volume = v; }
 	
 	/**
+	 * Returns the Volume instance used by this VolumeAbsorber.
+	 *
 	 * @return  The Volume instance used by this VolumeAbsorber.
 	 */
 	public Volume getVolume() { return this.volume; }

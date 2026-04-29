@@ -27,16 +27,38 @@ import java.util.Base64;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * A FlowTree {@code Job} that executes a Jython (Python on JVM) script.
+ *
+ * <p>The script is transmitted as a Base64-encoded string and decoded at execution time.
+ * Each invocation of {@link #run()} creates a fresh {@link PythonInterpreter} via
+ * try-with-resources to ensure proper cleanup. A thread-local interpreter pool is also
+ * provided via {@link #getInterpreter()} for use cases that prefer reuse over isolation.</p>
+ *
+ * <p>Instances are created either directly or through the nested {@link Factory} class,
+ * which integrates with the FlowTree job dispatch mechanism.</p>
+ */
 public class JythonJob implements Job {
+	/** Thread-local pool of reusable Python interpreters for repeated script execution. */
 	private static final ThreadLocal<PythonInterpreter> interpreters = new ThreadLocal<>();
 
+	/** The FlowTree task identifier associated with this job. */
 	private String taskId;
+	/** The decoded Jython source code to be executed. */
 	private String jython;
 
+	/** Completion signal notified when {@link #run()} finishes. */
 	private final CompletableFuture<Void> future = new CompletableFuture<>();
 
+	/** Default no-arg constructor used during job deserialization. */
 	public JythonJob() { }
 
+	/**
+	 * Creates a job with the given task identifier and Base64-encoded Jython source.
+	 *
+	 * @param taskId        the task identifier for this job
+	 * @param jythonBase64  the Jython script encoded in Base64
+	 */
 	protected JythonJob(String taskId, String jythonBase64) {
 		this.taskId = taskId;
 		set("code", jythonBase64);
@@ -60,8 +82,6 @@ public class JythonJob implements Job {
 
 	@Override
 	public void run() {
-		int index = 0;
-
 		try (PythonInterpreter pyInterp = new PythonInterpreter()) {
 			pyInterp.exec(getJython());
 		}
@@ -85,9 +105,22 @@ public class JythonJob implements Job {
 		}
 	}
 
+	/**
+	 * A FlowTree {@code AbstractJobFactory} that produces {@link JythonJob} instances
+	 * from a Base64-encoded Jython script.
+	 *
+	 * <p>Each call to {@link #nextJob()} returns a new {@code JythonJob} pre-loaded with
+	 * the encoded script, ready for dispatch to a FlowTree worker node.</p>
+	 */
 	public static class Factory extends AbstractJobFactory {
+		/** Creates a factory with a freshly generated task key and no script pre-loaded. */
 		public Factory() { super(KeyUtils.generateKey()); }
 
+		/**
+		 * Creates a factory pre-loaded with the specified Jython script.
+		 *
+		 * @param jython the Jython source code to encode and distribute as jobs
+		 */
 		public Factory(String jython) {
 			this();
 			this.set("code", Base64.getEncoder().encodeToString(jython.getBytes(StandardCharsets.UTF_8)));
@@ -109,6 +142,11 @@ public class JythonJob implements Job {
 		}
 	}
 
+	/**
+	 * Returns the thread-local {@link PythonInterpreter}, creating it on first access for the current thread.
+	 *
+	 * @return the interpreter for the calling thread
+	 */
 	protected static PythonInterpreter getInterpreter() {
 		if (interpreters.get() == null) {
 			interpreters.set(new PythonInterpreter());
@@ -117,6 +155,13 @@ public class JythonJob implements Job {
 		return interpreters.get();
 	}
 
+	/**
+	 * Executes a Jython instruction on the thread-local interpreter and returns any output written
+	 * to stdout or stderr.
+	 *
+	 * @param instruction the Jython source code to execute
+	 * @return the combined stdout/stderr output produced by the script
+	 */
 	public static String execute(String instruction) {
 		StringBuilder buf = new StringBuilder();
 		getInterpreter().setOut(new FunctionalWriter(buf::append));
@@ -125,6 +170,12 @@ public class JythonJob implements Job {
 		return buf.toString();
 	}
 
+	/**
+	 * Closes and removes the thread-local interpreter for the current thread.
+	 *
+	 * <p>This method should be called when the calling thread is done executing Jython scripts
+	 * to ensure the interpreter's resources (e.g., the embedded Python runtime) are released.</p>
+	 */
 	public static void closeInterpreter() {
 		PythonInterpreter interpreter = interpreters.get();
 

@@ -329,8 +329,8 @@ import java.util.stream.Stream;
  *
  * <h3>Flag Precedence in {@code get()}</h3>
  * <ol>
- *   <li>If {@code enableAutomaticOptimization &amp;&amp; !isUniform()} → call {@code optimize().get()}</li>
- *   <li>If {@code isComputation() &amp;&amp; (enableNonUniformCompilation || isUniform())} → compile to single kernel</li>
+ *   <li>If {@code enableAutomaticOptimization && !isUniform()} → call {@code optimize().get()}</li>
+ *   <li>If {@code isComputation() && (enableNonUniformCompilation || isUniform())} → compile to single kernel</li>
  *   <li>Otherwise → sequential {@link Runner} execution</li>
  * </ol>
  *
@@ -650,25 +650,40 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 */
 	public static boolean enableNonUniformCompilation = false;
 
+	/** Thread-local flag set when a kernel abort has been triggered; holds the offending MemoryData. */
 	private static ThreadLocal<MemoryData> abortFlag;
-	private static boolean abortArgs, abortScope;
+	/** If true, abort when argument evaluation fails; if false, abort when scope construction fails. */
+	private static boolean abortArgs;
+	/** If true, abort when scope construction (rather than argument evaluation) fails. */
+	private static boolean abortScope;
+	/** Optional abort handler invoked when compilation or evaluation is aborted. */
 	private static Abort abort;
 
 	static {
 		abortFlag = new ThreadLocal<>();
 	}
 
+	/** Maximum nesting depth of operation lists before compilation is forced. */
 	private static int maxDepth = 500;
+	/** Nesting depth at which an operation list is considered abortable. */
 	private static int abortableDepth = 1000;
+	/** Monotonically increasing counter used to generate unique function names. */
 	private static long functionCount = 0;
 
+	/** If true, this operation list may be compiled to a native kernel. */
 	private boolean enableCompilation;
+	/** Unique name used as the generated function name when this list is compiled. */
 	private String functionName;
+	/** Human-readable description for logging and profiling. */
 	private String description;
+	/** Optional fixed element count; when set, the kernel is sized to this value. */
 	private Long count;
 
+	/** Metadata describing the operation for profiling, naming, and context identification. */
 	private OperationMetadata metadata;
+	/** Optional profile for recording timing and invocation statistics per operation. */
 	private OperationProfile profile;
+	/** Compute requirements specifying which backend(s) this list should be executed on. */
 	private List<ComputeRequirement> requirements;
 
 	/**
@@ -959,11 +974,24 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				.collect(Collectors.toList());
 	}
 
+	/**
+	 * Returns true if this operation list contains no operations, or contains only empty nested lists.
+	 *
+	 * <p>An operation list is functionally empty even when it has entries if all entries are
+	 * themselves functionally empty {@link OperationList} instances.</p>
+	 *
+	 * @return True if there is no executable work in this list or any nested lists
+	 */
 	public boolean isFunctionallyEmpty() {
 		if (isEmpty()) return true;
 		return stream().noneMatch(o -> !(o instanceof OperationList) || !((OperationList) o).isFunctionallyEmpty());
 	}
 
+	/**
+	 * Returns the maximum nesting depth of non-empty operation lists within this list.
+	 *
+	 * @return Nesting depth; 0 for a functionally empty list
+	 */
 	public int getDepth() {
 		if (isFunctionallyEmpty()) return 0;
 
@@ -971,6 +999,14 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				.mapToInt(OperationList::getDepth).max().orElse(0) + 1;
 	}
 
+	/**
+	 * Flattens nested operation lists into a single level where possible.
+	 *
+	 * <p>Nested lists that have no specific compute requirements are inlined into the parent.
+	 * Lists with explicit requirements are kept as nested entries.</p>
+	 *
+	 * @return A new flattened {@link OperationList}
+	 */
 	public OperationList flatten() {
 		OperationList flat = stream()
 				.flatMap(o -> {
@@ -1193,9 +1229,13 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * Compiled runner for executing a sequence of operations with metadata and timing support.
 	 */
 	public static class Runner implements Runnable, Destroyable, OperationInfo, ConsoleFeatures {
+		/** Metadata describing this runner for profiling and identification. */
 		private OperationMetadata metadata;
+		/** Sequence of compiled runnables to execute when this runner is invoked. */
 		private List<Runnable> run;
+		/** Compute requirements constraining which backend executes this runner; may be null. */
 		private List<ComputeRequirement> requirements;
+		/** Listener notified with timing information after each run; may be null. */
 		private OperationTimingListener timingListener;
 
 		/**

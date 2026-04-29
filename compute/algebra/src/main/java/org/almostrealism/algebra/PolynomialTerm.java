@@ -52,9 +52,13 @@ package org.almostrealism.algebra;
  * @author  Michael Murray
  */
 public class PolynomialTerm {
+	/** The scalar coefficient of this polynomial term. */
 	private double coefficient;
+
+  	/** The exponents of x, y, and z variables in this term. */
   	private int expOfX, expOfY, expOfZ;
-  	
+
+  	/** The partial derivatives of this term with respect to x, y, and z. */
   	private PolynomialTerm dx, dy, dz;
 
 	/**
@@ -216,13 +220,20 @@ public class PolynomialTerm {
 		return output;
 	}
 	
+	/**
+	 * Returns a human-readable string representation of this polynomial term,
+	 * showing the coefficient and any non-zero exponent components.
+	 *
+	 * @return the string form of this term, e.g. {@code "2.0 * X ^ 3 * Y ^ 1"}
+	 */
+	@Override
 	public String toString() {
 		String value = String.valueOf(this.coefficient);
-		
+
 		if (this.expOfX != 0.0) value = value + " * X ^ " + this.expOfX;
 		if (this.expOfY != 0.0) value = value + " * Y ^ " + this.expOfY;
 		if (this.expOfZ != 0.0) value = value + " * Z ^ " + this.expOfZ;
-		
+
 		return value;
 	}
 }

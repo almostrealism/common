@@ -195,8 +195,11 @@ public class Interpolate extends CollectionProducerComputationBase {
 	 */
 	public static boolean enableFunctionalPosition = true;
 
+	/** Maps an array index expression to the corresponding time value. */
 	private final Function<Expression, Expression> timeForIndex;
+	/** Maps a time value expression to the corresponding fractional array index. */
 	private final Function<Expression, Expression> indexForTime;
+	/** Whether a rate producer was supplied and should be applied during interpolation. */
 	private final boolean applyRate;
 
 	/**
@@ -248,6 +251,12 @@ public class Interpolate extends CollectionProducerComputationBase {
 		this.applyRate = rate != null;
 	}
 
+	/**
+	 * Returns the expression that reads a single complex sample from the input series at the given position.
+	 *
+	 * @param pos the fractional index expression within the time-series
+	 * @return an expression evaluating to the series value at {@code pos}
+	 */
 	protected Expression getSeriesValue(Expression<?> pos) {
 		ArrayVariable<?> var = getArgument(1);
 
@@ -271,10 +280,20 @@ public class Interpolate extends CollectionProducerComputationBase {
 		return var.getValueRelative(pos);
 	}
 
+	/**
+	 * Returns the expression for the query time value taken from the position producer argument.
+	 *
+	 * @return an expression evaluating to the current kernel's time coordinate
+	 */
 	protected Expression getTime() {
 		return getArgument(2).reference(kernel());
 	}
 
+	/**
+	 * Returns the expression for the playback rate, or a constant 1.0 if no rate producer was supplied.
+	 *
+	 * @return an expression evaluating to the effective sample rate multiplier
+	 */
 	protected Expression<Double> getRate() {
 		if (applyRate) {
 			return getArgument(3).valueAt(0);
@@ -311,7 +330,6 @@ public class Interpolate extends CollectionProducerComputationBase {
 
 		String res = getArgument(0).reference(kernel(context)).getSimpleExpression(getLanguage());
 		String start = "0";
-		String end = getArgument(1).length().getSimpleExpression(getLanguage());
 		Expression<Double> rate = getRate();
 
 		String bankl_time = Product.of(Exponent.of(rate, e(-1.0)), timeForIndex.apply(left)).getSimpleExpression(getLanguage());
@@ -366,6 +384,16 @@ public class Interpolate extends CollectionProducerComputationBase {
 		return null;
 	}
 
+	/**
+	 * Computes the output shape for an interpolation given the series and position producers.
+	 *
+	 * <p>When {@link #enableAtomicShape} is {@code true}, always returns a scalar shape of size 1.
+	 * Otherwise, derives the shape from the position producer's traversal policy.</p>
+	 *
+	 * @param series   the producer supplying the time-series data
+	 * @param position the producer supplying the query positions
+	 * @return the output {@link TraversalPolicy} for this interpolation computation
+	 */
 	protected static TraversalPolicy computeShape(Producer<PackedCollection> series, Producer<PackedCollection> position) {
 		if (enableAtomicShape) {
 			return new TraversalPolicy(1);

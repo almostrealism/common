@@ -25,6 +25,7 @@ import org.almostrealism.collect.PackedCollection;
  * @see ADSREnvelope
  */
 public class DefaultADSREnvelopeData implements ADSREnvelopeData {
+	/** The PackedCollection holding the ADSR envelope state and parameter slots. */
 	private final PackedCollection storage;
 
 	/**

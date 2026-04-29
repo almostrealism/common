@@ -29,8 +29,6 @@ import org.junit.Test;
  */
 public class STFTComputationTest extends TestSuiteBase implements TemporalFeatures, TestFeatures {
 
-	private static final double TOLERANCE = 1e-6;
-
 	/**
 	 * Test basic STFT computation with a simple signal.
 	 */

@@ -18,7 +18,9 @@ package org.almostrealism.audio.synth.test;
 
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.audio.CellFeatures;
+import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.CellList;
+import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.line.BufferOutputLine;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.OutputLine;
@@ -102,7 +104,7 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 			cells.addRoot(synth);
 
 			// Map to output buffer
-			org.almostrealism.audio.WaveOutput waveOutput = new org.almostrealism.audio.WaveOutput(p(destination));
+			WaveOutput waveOutput = new WaveOutput(p(destination));
 			waveOutput.setCircular(true);
 			synth.setReceptor(waveOutput.getWriterCell(0));
 
@@ -409,7 +411,7 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 
 				// Create output
 				PackedCollection destination = new PackedCollection(1024);
-				org.almostrealism.audio.WaveOutput waveOutput = new org.almostrealism.audio.WaveOutput(p(destination));
+				WaveOutput waveOutput = new WaveOutput(p(destination));
 				waveOutput.setCircular(true);
 				synth.setReceptor(waveOutput.getWriterCell(0));
 

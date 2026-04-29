@@ -38,6 +38,11 @@ import java.util.stream.IntStream;
  * @author  Michael Murray
  */
 public class Ray extends PackedCollection implements GeometryFeatures, Cloneable {
+	/**
+	 * Constructs a Ray from a flat array of 6 coordinates: [ox, oy, oz, dx, dy, dz].
+	 *
+	 * @param coords the coordinate array containing origin (indices 0-2) and direction (indices 3-5)
+	 */
 	private Ray(double[] coords) {
 		this();
 		this.setMem(coords);
@@ -50,6 +55,12 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 		super(6);
 	}
 
+	/**
+	 * Constructs a Ray that shares memory with the specified delegate at the given offset.
+	 *
+	 * @param delegate       the backing memory data store
+	 * @param delegateOffset the element offset into the delegate
+	 */
 	public Ray(MemoryData delegate, int delegateOffset) {
 		super(new TraversalPolicy(6), 0, delegate, delegateOffset);
 	}
@@ -63,6 +74,11 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 		this.setDirection(direction);
 	}
 
+	/**
+	 * Constructs a Ray by copying the origin and direction from an existing Ray.
+	 *
+	 * @param source the Ray to copy from
+	 */
 	public Ray(Ray source) {
 		this();
 		this.setMem(0, source, 0, 6);
@@ -109,6 +125,8 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	}
 
 	/**
+	 * Returns the dot product of the origin of this ray with itself.
+	 *
 	 * @return  The dot product of the origin of this ray with itself.
 	 */
 	public Evaluable<PackedCollection> oDoto() {
@@ -117,6 +135,8 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	}
 	
 	/**
+	 * Returns the dot product of the direction of this ray with itself.
+	 *
 	 * @return  The dot product of the direction of this ray with itself.
 	 */
 	public Evaluable<PackedCollection> dDotd() {
@@ -125,6 +145,8 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	}
 	
 	/**
+	 * Returns the dot product of the origin of this ray with the direction of this ray.
+	 *
 	 * @return  The dot product of the origin of this ray with the direction of this ray.
 	 */
 	public Evaluable<PackedCollection> oDotd() {
@@ -133,6 +155,8 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	}
 	
 	/**
+	 * Returns the origin of this Ray object as a Vector object.
+	 *
 	 * @return  The origin of this Ray object as a Vector object.
 	 */
 	public Vector getOrigin() {
@@ -141,6 +165,8 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	}
 	
 	/**
+	 * Returns the direction of this Ray object as a Vector object.
+	 *
 	 * @return  The direction of this Ray object as a Vector object.
 	 */
 	public Vector getDirection() {
@@ -149,8 +175,9 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 	}
 	
 	/**
-	 * @return  The point on the ray represented by this {@link Ray} at distance t from the origin
-	 *          as a {@link PackedCollection}.
+	 * Returns the point on the ray represented by this {@link Ray} at distance t from the origin.
+	 *
+	 * @return  The point as a {@link PackedCollection}.
 	 */
 	public CollectionProducer pointAt(Producer<PackedCollection> t) {
 		return pointAt(v(this), t);
@@ -177,6 +204,7 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 		return new Ray(coords);
 	}
 
+	@Override
 	public double[] toArray() { return getMem().toArray(getOffset(), 6); }
 
 	/**
@@ -189,21 +217,46 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 					"] [" + coords[3] + ", " + coords[4] + ", " + coords[5] + "]";
 	}
 
+	/**
+	 * Returns the {@link TraversalPolicy} shape for a single Ray (6 elements: ox, oy, oz, dx, dy, dz).
+	 *
+	 * @return a TraversalPolicy with size 6
+	 */
 	public static TraversalPolicy shape() {
 		return new TraversalPolicy(6);
 	}
 
+	/**
+	 * Creates a blank (zero-initialized) Ray producer backed by a dynamic memory allocation.
+	 *
+	 * @return a producer that supplies a new blank Ray on each evaluation
+	 */
 	public static Producer<Ray> blank() {
 		Supplier<Ray> r = Ray::new;
 		IntFunction<MemoryBank<Ray>> b = (IntFunction) Ray::bank;
 		return new DynamicProducerForMemoryData<>(r, b);
 	}
 
+	/**
+	 * Creates a {@link PackedCollection} bank large enough to hold the specified number of Rays.
+	 * Each element in the bank is a Ray view into the underlying flat storage.
+	 *
+	 * @param count the number of Ray slots to allocate
+	 * @return a PackedCollection with shape (count, 6)
+	 */
 	public static PackedCollection bank(int count) {
 		return new PackedCollection(new TraversalPolicy(count, 6), 1, delegateSpec ->
 				new Ray(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
+	/**
+	 * Creates a Ray bank and populates it by evaluating the given source for each slot.
+	 *
+	 * @param count  the number of Ray slots
+	 * @param source a supplier of evaluables, one called per slot
+	 * @return a PackedCollection populated with evaluated Rays
+	 * @deprecated Populate banks via Producer compositions instead
+	 */
 	@Deprecated
 	public static PackedCollection bank(int count, Supplier<Evaluable<? extends Ray>> source) {
 		PackedCollection bank = Ray.bank(count);
@@ -214,12 +267,26 @@ public class Ray extends PackedCollection implements GeometryFeatures, Cloneable
 		return bank;
 	}
 
+	/**
+	 * Creates a Ray bank that shares memory with the given delegate at the specified offset.
+	 *
+	 * @param count          the number of Ray slots
+	 * @param delegate       the backing memory store
+	 * @param delegateOffset the element offset into the delegate
+	 * @return a PackedCollection with shape (count, 6) backed by the delegate
+	 */
 	public static PackedCollection bank(int count, MemoryData delegate, int delegateOffset) {
 		return new PackedCollection(new TraversalPolicy(count, 6), 1, delegateSpec ->
 				new Ray(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
 	}
 
+	/**
+	 * Returns a postprocessor function that wraps memory data as a Ray view.
+	 * Used to convert raw output buffers into typed Ray instances after evaluation.
+	 *
+	 * @return a BiFunction mapping (MemoryData, offset) to a Ray
+	 */
 	public static BiFunction<MemoryData, Integer, Ray> postprocessor() {
 		return (output, offset) -> new Ray(output, offset);
 	}

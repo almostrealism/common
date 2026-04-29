@@ -53,33 +53,64 @@ import java.util.stream.DoubleStream;
  */
 public class WaveDetailsFactory implements CodeFeatures {
 
+	/** When true, uses FFT-based difference metrics for similarity when feature data is unavailable. */
 	public static boolean enableFreqSimilarity = false;
 
+	/** Default number of frequency bins in the scaled FFT output. */
 	public static int defaultBins = 32; // 16;
+
+	/** Default time window size in seconds used for FFT aggregation. */
 	public static double defaultWindow = 0.25; // 0.125;
 
+	/** Shared default factory instance, created lazily at the default output sample rate. */
 	protected static WaveDetailsFactory defaultFactory;
 
 	/** Default batch size for batched similarity computation. */
 	public static final int SIMILARITY_BATCH_SIZE = 100;
 
+	/** Per-(frames, bins) cache of compiled cosine similarity evaluables. */
 	private static final Map<Long, Evaluable<PackedCollection>> cosineCalc = new ConcurrentHashMap<>();
 
+	/** Audio sample rate in Hz used when loading and analyzing audio data. */
 	private final int sampleRate;
+
+	/** Effective sample rate (in Hz) of one FFT time slice after pooling. */
 	private final double fftSampleRate;
 
+	/** Number of frequency bins in each output time frame after scaling. */
 	private final int freqBins;
+
+	/** Scale factor: number of raw FFT pool bins compressed into one output bin. */
 	private final int scaleBins;
+
+	/** Number of raw FFT time slices per output time frame. */
 	private final int scaleTime;
+
+	/** Reusable scratch buffer for the last partial FFT window. */
 	private final PackedCollection buffer;
+
+	/** Compiled sum operation that pools FFT bins within each time window. */
 	private final Evaluable<PackedCollection> sum;
 
+	/** Optional provider for computing feature vectors used in similarity scoring. */
 	private WaveDataFeatureProvider featureProvider;
 
+	/**
+	 * Creates a WaveDetailsFactory at the default bin count and window size.
+	 *
+	 * @param sampleRate audio sample rate in Hz
+	 */
 	public WaveDetailsFactory(int sampleRate) {
 		this(defaultBins, defaultWindow, sampleRate);
 	}
 
+	/**
+	 * Creates a WaveDetailsFactory with the specified FFT parameters.
+	 *
+	 * @param freqBins     number of output frequency bins per time frame (must divide {@link WaveData#FFT_POOL_BINS})
+	 * @param sampleWindow time window size in seconds for FFT aggregation
+	 * @param sampleRate   audio sample rate in Hz
+	 */
 	public WaveDetailsFactory(int freqBins, double sampleWindow, int sampleRate) {
 		if (WaveData.FFT_POOL_BINS % freqBins != 0) {
 			throw new IllegalArgumentException("FFT bins must be a factor of " + WaveData.FFT_POOL_BINS);
@@ -102,24 +133,50 @@ public class WaveDetailsFactory implements CodeFeatures {
 				.get();
 	}
 
+	/** Returns the audio sample rate used by this factory in Hz. */
 	public int getSampleRate() { return sampleRate; }
 
+	/** Returns the feature provider used for computing feature vectors, or null if none is set. */
 	public WaveDataFeatureProvider getFeatureProvider() {
 		return featureProvider;
 	}
 
+	/**
+	 * Sets the feature provider used to compute feature vectors for similarity scoring.
+	 *
+	 * @param featureProvider the feature provider, or null to disable feature extraction
+	 */
 	public void setFeatureProvider(WaveDataFeatureProvider featureProvider) {
 		this.featureProvider = featureProvider;
 	}
 
+	/**
+	 * Creates a WaveDetails for the audio file at the given path.
+	 *
+	 * @param file path to the audio file
+	 * @return a populated WaveDetails, or null if the file cannot be loaded
+	 */
 	public WaveDetails forFile(String file) {
 		return forProvider(new FileWaveDataProvider(file), null);
 	}
 
+	/**
+	 * Creates a WaveDetails for the audio supplied by the given provider.
+	 *
+	 * @param provider the audio data provider
+	 * @return a populated WaveDetails, or null if the provider is null
+	 */
 	public WaveDetails forProvider(WaveDataProvider provider) {
 		return forProvider(provider, null);
 	}
 
+	/**
+	 * Creates or updates a WaveDetails using the audio supplied by the given provider.
+	 *
+	 * @param provider the audio data provider
+	 * @param existing an existing WaveDetails to update, or null to create a new one
+	 * @return the populated WaveDetails
+	 */
 	public WaveDetails forProvider(WaveDataProvider provider, WaveDetails existing) {
 		if (existing == null) {
 			if (provider == null) return null;
@@ -138,11 +195,44 @@ public class WaveDetailsFactory implements CodeFeatures {
 		return forExisting(existing);
 	}
 
+	/**
+	 * Computes missing analysis data (FFT and/or features) for existing
+	 * {@link WaveDetails}.
+	 *
+	 * <p>This method transparently handles two input scenarios:</p>
+	 * <ul>
+	 *   <li><b>Audio waveform present</b> ({@code data} is non-null): FFT is
+	 *       computed from the waveform, then features are extracted via the
+	 *       autoencoder.</li>
+	 *   <li><b>Only frequency data present</b> ({@code data} is null but
+	 *       {@code freqData} is non-null): an audio waveform is first
+	 *       synthesized from the frequency magnitudes via
+	 *       {@link FrequencyToAudioConverter}, then features are extracted.
+	 *       This path is used for spatial drawings, which produce frequency
+	 *       data directly. The synthesized audio is not persisted — it is
+	 *       only needed as an intermediate step for autoencoder encoding.</li>
+	 * </ul>
+	 *
+	 * @param existing the WaveDetails to complete (modified in place)
+	 * @return the same WaveDetails instance with missing fields populated,
+	 *         or null if the input is null
+	 *
+	 * @see FrequencyToAudioConverter
+	 * @see AutoEncoderFeatureProvider
+	 */
 	public WaveDetails forExisting(WaveDetails existing) {
 		if (existing == null) return null;
 
+		// If no audio waveform is available but frequency data exists,
+		// synthesize audio via IFFT so that feature extraction can proceed.
+		// This is the normal path for spatial drawings.
+		if (existing.getData() == null && existing.getFreqData() != null) {
+			new FrequencyToAudioConverter().convert(existing);
+		}
+
+		if (existing.getData() == null) return existing;
+
 		WaveData data = existing.getWaveData();
-		if (data == null) return existing;
 
 		if (existing.getFreqFrameCount() <= 1) {
 			PackedCollection fft = null;
@@ -169,8 +259,8 @@ public class WaveDetailsFactory implements CodeFeatures {
 			}
 		}
 
-		if (featureProvider != null) {
-			PackedCollection features = prepareFeatures(new DynamicWaveDataProvider(existing.getIdentifier(), data));
+		if (featureProvider != null && existing.getFeatureData() == null) {
+			PackedCollection features = featureProvider.computeFeatures(data);
 			existing.setFeatureSampleRate(featureProvider.getFeatureSampleRate());
 			existing.setFeatureChannelCount(1);
 			existing.setFeatureBinCount(features.getShape().length(1));
@@ -356,6 +446,13 @@ public class WaveDetailsFactory implements CodeFeatures {
 								o.length(1, o.cv(shape, 1))))).get());
 	}
 
+	/**
+	 * Aggregates a raw pooled FFT result into scaled frequency bins and stores them in the output.
+	 *
+	 * @param fft    raw FFT data from {@link WaveData#fft(int, boolean)}, shape (timeSlices, poolBins, 1)
+	 * @param output destination collection with shape (count, freqBins, 1)
+	 * @return the output collection
+	 */
 	protected PackedCollection processFft(PackedCollection fft, PackedCollection output) {
 		if (fft.getShape().length(0) < 1) {
 			throw new IllegalArgumentException();
@@ -381,6 +478,13 @@ public class WaveDetailsFactory implements CodeFeatures {
 		return output;
 	}
 
+	/**
+	 * Computes feature vectors for the given audio provider using the configured feature provider.
+	 *
+	 * @param provider audio data provider to compute features for
+	 * @return PackedCollection of shape (frames, bins) containing feature vectors
+	 * @throws IllegalArgumentException if the resulting feature collection has fewer than 1 frame
+	 */
 	protected PackedCollection prepareFeatures(WaveDataProvider provider) {
 		PackedCollection features = featureProvider.computeFeatures(provider);
 
@@ -391,6 +495,11 @@ public class WaveDetailsFactory implements CodeFeatures {
 		return features;
 	}
 
+	/**
+	 * Returns the shared default factory, creating it at the default output sample rate if needed.
+	 *
+	 * @return the default WaveDetailsFactory instance
+	 */
 	public static WaveDetailsFactory getDefault() {
 		if (defaultFactory == null) {
 			defaultFactory = new WaveDetailsFactory(OutputLine.sampleRate);

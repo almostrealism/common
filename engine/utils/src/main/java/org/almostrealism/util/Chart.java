@@ -89,17 +89,37 @@ import java.util.List;
  * @author Mike Murray
  */
 public class Chart extends ArrayList<String> {
+	/** Fixed header prefix prepended to every chart line. */
 	private static final String header = "[--------]:";
+
+	/** Formats timestamps on chart lines in {@code hh:mm a} format. */
 	private DateFormat format = new SimpleDateFormat("hh:mm a");
+
+	/** Formats numeric values with three decimal places for chart output. */
 	private static NumberFormat dformat = new DecimalFormat("#.000");
-	
+
+	/** Maximum number of data points retained; older entries are discarded. */
 	private int max = 100;
+
+	/** Scaling factor applied to values when rendering the ASCII bar chart. */
 	private double scale = 0.05;
+
+	/** Maximum number of characters per chart bar line. */
 	private int div = 80;
+
+	/** Minimum gap in entries between recorded min/max events. */
 	private int minMaxOffset = 1;
+
+	/** Number of entries since the last recorded minimum and maximum respectively. */
 	private int sinceLastMin = 0, sinceLastMax = 0;
+
+	/** Running minimum and maximum observed values across all data points. */
 	private double minValue = Double.MAX_VALUE, maxValue;
+
+	/** The most recently completed value and the value currently being accumulated. */
 	private double lastValue, currentValue;
+
+	/** The list of raw data point values in insertion order. */
 	private List<Double> values;
 	
 	/**
@@ -127,11 +147,11 @@ public class Chart extends ArrayList<String> {
 		
 		Date now = new Date();
 		
-		StringBuffer b = new StringBuffer();
+		StringBuilder b = new StringBuilder();
 		b.append("[");
 		b.append(format.format(now));
 		b.append("]:");
-		
+
 		for (int i = 0; i < this.div; i++) if (a > i * this.scale) b.append("#");
 		
 		if (a < this.scale || a > this.scale * this.div) b.append(" " + dformat.format(a));
@@ -175,7 +195,7 @@ public class Chart extends ArrayList<String> {
 	public void addMessage(String msg) {
 		Date now = new Date();
 		
-		StringBuffer b = new StringBuffer();
+		StringBuilder b = new StringBuilder();
 		b.append("[");
 		b.append(format.format(now));
 		b.append("]: ");
@@ -206,7 +226,7 @@ public class Chart extends ArrayList<String> {
 	 *
 	 * @param buf the buffer to append the chart output to
 	 */
-	public void print(StringBuffer buf) {
+	public void print(StringBuilder buf) {
 		buf.append("Range: (");
 		
 		if (this.minValue < this.maxValue) {
@@ -239,8 +259,9 @@ public class Chart extends ArrayList<String> {
 	 *
 	 * @return the complete chart output including header, range, and all entries
 	 */
+	@Override
 	public String toString() {
-		StringBuffer b = new StringBuffer();
+		StringBuilder b = new StringBuilder();
 		this.print(b);
 		return b.toString();
 	}

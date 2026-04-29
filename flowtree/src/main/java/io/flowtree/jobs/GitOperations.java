@@ -22,9 +22,17 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Encapsulates all git and general subprocess execution for jobs that
@@ -64,10 +72,53 @@ public class GitOperations implements ConsoleFeatures {
     private static final String SSH_COMMAND =
             "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes";
 
+    /**
+     * Well-known paths where git may be installed on macOS and Linux.
+     * Checked in order when the bare {@code "git"} command cannot be found
+     * on the inherited {@code PATH}.
+     */
+    private static final String[] GIT_SEARCH_PATHS = {
+            "/usr/local/bin/git",
+            "/opt/homebrew/bin/git",
+            "/usr/bin/git"
+    };
+
+    /** Resolved git command, cached after first lookup. */
+    private static volatile String resolvedGitCommand;
+
+    /**
+     * Directories that should be present on {@code PATH} for subprocess
+     * execution. On macOS, when the JVM is launched from a non-login
+     * context (LaunchAgent, daemon, container entry point), the inherited
+     * {@code PATH} may be minimal. This list covers the standard system
+     * directories plus common installation targets for tools like
+     * {@code git}, {@code claude}, {@code gh}, and {@code node}.
+     *
+     * <p>The user home {@code ~/.local/bin} entry is resolved at runtime
+     * via {@link #EXTRA_PATH_HOME_LOCAL}.</p>
+     */
+    private static final String[] EXTRA_PATH_DIRS = {
+            "/bin",
+            "/usr/bin",
+            "/usr/sbin",
+            "/usr/local/bin",
+            "/opt/homebrew/bin"
+    };
+
+    /** {@code ~/.local/bin} — resolved once from the {@code user.home} property. */
+    private static final String EXTRA_PATH_HOME_LOCAL =
+            System.getProperty("user.home") + File.separator + ".local" + File.separator + "bin";
+
+    /** Directory in which git commands are executed; {@code null} uses the JVM cwd. */
     private final String workingDirectory;
+
+    /** Identifier used in log message formatting. */
     private final String taskId;
 
+    /** Git author and committer name applied via {@code GIT_AUTHOR_NAME} and {@code GIT_COMMITTER_NAME}. */
     private String gitUserName;
+
+    /** Git author and committer email applied via {@code GIT_AUTHOR_EMAIL} and {@code GIT_COMMITTER_EMAIL}. */
     private String gitUserEmail;
 
     /**
@@ -123,6 +174,34 @@ public class GitOperations implements ConsoleFeatures {
     }
 
     /**
+     * Returns whether a merge is currently in progress in this instance's
+     * working directory, detected by the presence of {@code .git/MERGE_HEAD}.
+     *
+     * <p>Use this before invoking {@code git merge --abort} to avoid the
+     * expected non-zero exit (and associated warning log) when no merge is
+     * active.</p>
+     *
+     * @return {@code true} if a merge is in progress, {@code false} otherwise
+     */
+    public boolean isMergeInProgress() {
+        return isMergeInProgress(workingDirectory);
+    }
+
+    /**
+     * Returns whether a merge is currently in progress in {@code workingDirectory},
+     * detected by the presence of {@code .git/MERGE_HEAD}.
+     *
+     * @param workingDirectory the repository working directory; {@code null}
+     *                         is treated as the JVM's current working directory
+     * @return {@code true} if a merge is in progress, {@code false} otherwise
+     */
+    public static boolean isMergeInProgress(String workingDirectory) {
+        File base = (workingDirectory == null || workingDirectory.isEmpty())
+                ? new File(".") : new File(workingDirectory);
+        return new File(base, ".git/MERGE_HEAD").exists();
+    }
+
+    /**
      * Executes a git command and returns the process exit code.
      *
      * <p>The command is constructed as {@code git <args>}. Standard error
@@ -138,7 +217,7 @@ public class GitOperations implements ConsoleFeatures {
      */
     public int execute(String... args) throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
-        command.add("git");
+        command.add(resolveGitCommand());
         command.addAll(Arrays.asList(args));
 
         ProcessBuilder pb = new ProcessBuilder(command);
@@ -171,7 +250,7 @@ public class GitOperations implements ConsoleFeatures {
      */
     public String executeWithOutput(String... args) throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
-        command.add("git");
+        command.add(resolveGitCommand());
         command.addAll(Arrays.asList(args));
 
         ProcessBuilder pb = new ProcessBuilder(command);
@@ -242,7 +321,7 @@ public class GitOperations implements ConsoleFeatures {
         log("Cloning " + repoUrl + " into " + targetPath + "...");
 
         List<String> command = new ArrayList<>();
-        command.add("git");
+        command.add(resolveGitCommand());
         command.add("clone");
         command.add(repoUrl);
         command.add(targetPath);
@@ -250,6 +329,7 @@ public class GitOperations implements ConsoleFeatures {
         ProcessBuilder pb = new ProcessBuilder(command);
         pb.redirectErrorStream(true);
         pb.environment().put("GIT_SSH_COMMAND", SSH_COMMAND);
+        augmentPath(pb);
 
         Process process = pb.start();
         String output = readProcessOutput(process);
@@ -327,6 +407,88 @@ public class GitOperations implements ConsoleFeatures {
     }
 
     /**
+     * Resolves the absolute path to the {@code git} executable.
+     *
+     * <p>On macOS, when the JVM is launched from a non-login context
+     * (LaunchAgent, daemon, or IDE), the inherited {@code PATH} may not
+     * include directories like {@code /usr/local/bin} or
+     * {@code /opt/homebrew/bin}. This method first attempts to use the
+     * bare {@code "git"} command; if that fails, it probes
+     * {@link #GIT_SEARCH_PATHS well-known installation paths}. The result
+     * is cached for the lifetime of the JVM.</p>
+     *
+     * @return the path to a usable git executable (never {@code null})
+     */
+    public static String resolveGitCommand() {
+        String cached = resolvedGitCommand;
+        if (cached != null) {
+            return cached;
+        }
+
+        // Try bare "git" first — works when PATH is correctly inherited
+        try {
+            Process probe = new ProcessBuilder("git", "--version")
+                    .redirectErrorStream(true).start();
+            probe.getInputStream().readAllBytes();
+            if (probe.waitFor() == 0) {
+                resolvedGitCommand = "git";
+                return "git";
+            }
+        } catch (IOException | InterruptedException ignored) {
+            // bare "git" not on PATH — fall through to search
+        }
+
+        for (String path : GIT_SEARCH_PATHS) {
+            File candidate = new File(path);
+            if (candidate.isFile() && candidate.canExecute()) {
+                resolvedGitCommand = path;
+                return path;
+            }
+        }
+
+        // Last resort — return bare "git" and let the caller surface the error
+        resolvedGitCommand = "git";
+        return "git";
+    }
+
+    /**
+     * Ensures that a {@link ProcessBuilder}'s {@code PATH} environment
+     * variable includes all directories required for subprocess execution.
+     *
+     * <p>On macOS, JVM processes launched from non-login contexts inherit
+     * a minimal {@code PATH} that may exclude directories like
+     * {@code /usr/local/bin}, {@code /opt/homebrew/bin}, or
+     * {@code ~/.local/bin}. This method inspects the current {@code PATH},
+     * appends any missing directories from a well-known set, and writes
+     * the result back into the process environment. Directories that do
+     * not exist on disk are skipped.</p>
+     *
+     * <p>This method is idempotent — calling it multiple times on the
+     * same {@link ProcessBuilder} has no additional effect.</p>
+     *
+     * @param pb the process builder whose environment will be augmented
+     */
+    public static void augmentPath(ProcessBuilder pb) {
+        Map<String, String> env = pb.environment();
+        String currentPath = env.getOrDefault("PATH", "");
+        Set<String> present = new LinkedHashSet<>(Arrays.asList(currentPath.split(File.pathSeparator)));
+
+        StringBuilder augmented = new StringBuilder(currentPath);
+        String[] allDirs = new String[EXTRA_PATH_DIRS.length + 1];
+        System.arraycopy(EXTRA_PATH_DIRS, 0, allDirs, 0, EXTRA_PATH_DIRS.length);
+        allDirs[allDirs.length - 1] = EXTRA_PATH_HOME_LOCAL;
+
+        for (String dir : allDirs) {
+            if (!present.contains(dir) && new File(dir).isDirectory()) {
+                augmented.append(File.pathSeparator).append(dir);
+                present.add(dir);
+            }
+        }
+
+        env.put("PATH", augmented.toString());
+    }
+
+    /**
      * Configures a {@link ProcessBuilder} for git command execution.
      *
      * <p>Sets the working directory, merges stderr into stdout, applies
@@ -344,7 +506,9 @@ public class GitOperations implements ConsoleFeatures {
     /**
      * Configures a {@link ProcessBuilder} for general command execution.
      *
-     * <p>Sets the working directory and merges stderr into stdout.</p>
+     * <p>Sets the working directory, merges stderr into stdout, and
+     * augments the {@code PATH} so that tools installed in common
+     * locations are reachable.</p>
      *
      * @param pb the process builder to configure
      */
@@ -353,6 +517,7 @@ public class GitOperations implements ConsoleFeatures {
             pb.directory(new File(workingDirectory));
         }
         pb.redirectErrorStream(true);
+        augmentPath(pb);
     }
 
     /**
@@ -393,5 +558,176 @@ public class GitOperations implements ConsoleFeatures {
             }
         }
         return output.toString();
+    }
+
+    /**
+     * Pattern that matches new Java method declarations in a unified diff.
+     * Matches lines beginning with {@code +} followed by an access modifier
+     * and method name immediately before an opening parenthesis.
+     */
+    public static final Pattern NEW_METHOD_PATTERN = Pattern.compile(
+            "^\\+[ \\t]+(?:public|private|protected)\\b.*\\b(\\w+)[ \\t]*\\(");
+
+    /**
+     * Returns {@code true} if {@code path} matches a scratch directory or file
+     * that should be excluded from placement and change-set reviews.
+     *
+     * @param path the candidate file path (relative to the working directory)
+     * @return {@code true} if the path should be excluded
+     */
+    public static boolean isExcludedPath(String path) {
+        return path.isEmpty()
+                || path.startsWith("claude-output/")
+                || path.startsWith(".claude/")
+                || path.startsWith("target/")
+                || path.equals("commit.txt")
+                || path.equals(".flowtree.lock")
+                || path.startsWith(".flowtree-locks/");
+    }
+
+    /**
+     * Parses new-line entries ({@code +} prefix) from a unified diff and adds
+     * any Java method names found to {@code sink}.
+     *
+     * @param diff the unified diff output
+     * @param sink the set to add discovered method names to
+     */
+    public static void extractMethodNamesFromDiff(String diff, Set<String> sink) {
+        for (String line : diff.split("\n")) {
+            if (line.startsWith("+++") || line.startsWith("---")) continue;
+            Matcher m = NEW_METHOD_PATTERN.matcher(line);
+            if (m.find()) sink.add(m.group(1));
+        }
+    }
+
+    /**
+     * Reads a Java source file and adds all method names with a public/private/protected
+     * access modifier to {@code sink}.
+     *
+     * @param relativePath path relative to the working directory (or absolute)
+     * @param workDir      working directory, or {@code null}
+     * @param sink         the set to add discovered method names to
+     * @param warn         consumer for warning messages
+     */
+    public static void extractMethodNamesFromFile(String relativePath,
+                                                   String workDir,
+                                                   Set<String> sink,
+                                                   Consumer<String> warn) {
+        File file = workDir != null ? new File(workDir, relativePath) : new File(relativePath);
+        if (!file.exists()) return;
+        try {
+            String source = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+            for (String line : source.split("\n")) {
+                Matcher m = NEW_METHOD_PATTERN.matcher("+ " + line);
+                if (m.find()) sink.add(m.group(1));
+            }
+        } catch (IOException e) {
+            warn.accept("Deduplication scan: cannot read " + relativePath + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Scans the working tree for new Java method declarations introduced since
+     * the base branch. Checks both tracked file diffs and untracked files.
+     *
+     * @param workDir    the working directory, or {@code null}
+     * @param baseBranch the base branch name (e.g. {@code "master"})
+     * @param warn       consumer for warning messages
+     * @return deduplicated list of new method names, order-preserving
+     */
+    public static List<String> extractNewMethodNames(String workDir, String baseBranch,
+                                                      Consumer<String> warn) {
+        Set<String> seen = new LinkedHashSet<>();
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    resolveGitCommand(), "diff", "origin/" + baseBranch, "--", "*.java");
+            if (workDir != null) pb.directory(new File(workDir));
+            pb.redirectErrorStream(true);
+            augmentPath(pb);
+            Process p = pb.start();
+            String diff = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            p.waitFor();
+            extractMethodNamesFromDiff(diff, seen);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warn.accept("Deduplication scan: failed to diff tracked Java files: " + e.getMessage());
+        } catch (IOException e) {
+            warn.accept("Deduplication scan: failed to diff tracked Java files: " + e.getMessage());
+        }
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    resolveGitCommand(), "ls-files", "--others", "--exclude-standard", "--", "*.java");
+            if (workDir != null) pb.directory(new File(workDir));
+            pb.redirectErrorStream(true);
+            augmentPath(pb);
+            Process p = pb.start();
+            String listing = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            p.waitFor();
+            for (String rel : listing.split("\n")) {
+                rel = rel.trim();
+                if (!rel.isEmpty()) extractMethodNamesFromFile(rel, workDir, seen, warn);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warn.accept("Deduplication scan: failed to list untracked Java files: " + e.getMessage());
+        } catch (IOException e) {
+            warn.accept("Deduplication scan: failed to list untracked Java files: " + e.getMessage());
+        }
+        return new ArrayList<>(seen);
+    }
+
+    /**
+     * Returns the paths of files that are new on the branch since the base branch,
+     * combining tracked newly-added files with untracked files. Excludes scratch
+     * paths ({@code claude-output/}, {@code .claude/}, {@code target/}, etc.).
+     *
+     * @param workDir    the working directory, or {@code null}
+     * @param baseBranch the base branch name (e.g. {@code "master"})
+     * @param warn       consumer for warning messages
+     * @return deduplicated list of new file paths, relative to the working directory
+     */
+    public static List<String> extractNewFilePaths(String workDir, String baseBranch,
+                                                    Consumer<String> warn) {
+        Set<String> seen = new LinkedHashSet<>();
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    resolveGitCommand(), "diff", "--name-only", "--diff-filter=A",
+                    "origin/" + baseBranch);
+            if (workDir != null) pb.directory(new File(workDir));
+            pb.redirectErrorStream(true);
+            augmentPath(pb);
+            Process p = pb.start();
+            String listing = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            p.waitFor();
+            for (String path : listing.split("\n")) {
+                String trimmed = path.trim();
+                if (!isExcludedPath(trimmed)) seen.add(trimmed);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warn.accept("Organizational placement scan: failed to diff tracked files: " + e.getMessage());
+        } catch (IOException e) {
+            warn.accept("Organizational placement scan: failed to diff tracked files: " + e.getMessage());
+        }
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    resolveGitCommand(), "ls-files", "--others", "--exclude-standard");
+            if (workDir != null) pb.directory(new File(workDir));
+            pb.redirectErrorStream(true);
+            augmentPath(pb);
+            Process p = pb.start();
+            String listing = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            p.waitFor();
+            for (String path : listing.split("\n")) {
+                String trimmed = path.trim();
+                if (!isExcludedPath(trimmed)) seen.add(trimmed);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warn.accept("Organizational placement scan: failed to list untracked files: " + e.getMessage());
+        } catch (IOException e) {
+            warn.accept("Organizational placement scan: failed to list untracked files: " + e.getMessage());
+        }
+        return new ArrayList<>(seen);
     }
 }

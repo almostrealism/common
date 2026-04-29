@@ -37,7 +37,6 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Parent;
-import io.almostrealism.relation.Sortable;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.uml.Nameable;
 import io.almostrealism.uml.Named;
@@ -312,6 +311,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 *
 	 * @return the compute requirements, or null if none specified
 	 */
+	@Override
 	public List<ComputeRequirement> getComputeRequirements() { return requirements; }
 
 	/**
@@ -1337,7 +1337,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	public static <T extends Argument<?>> boolean sortArguments(List<T> arguments) {
 		if (arguments != null) {
 			Comparator<T> c = Comparator.comparing(v -> Optional.ofNullable(v)
-					.map(Sortable::getSortHint).orElse(Integer.MAX_VALUE));
+					.map(Argument::getSortHint).orElse(Integer.MAX_VALUE));
 			c = c.thenComparing(v -> v == null || v.getName() == null ? "" : v.getName());
 			arguments.sort(c);
 			return true;

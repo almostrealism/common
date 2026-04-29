@@ -98,17 +98,26 @@ import java.util.stream.Collectors;
  * @author Michael Murray
  */
 public class CompiledModel implements Destroyable, CodeFeatures {
+	/** Shapes of all inputs (primary followed by auxiliary). */
 	private final List<TraversalPolicy> inputShapes;
+	/** Shape of the primary output collection. */
 	private final TraversalPolicy outputShape;
 
+	/** One-time setup/reset operation run before the first forward pass. */
 	private final Runnable setup;
 
+	/** Per-input consumers that stage data before each forward pass. */
 	private final List<? extends Consumer<PackedCollection>> updateInput;
+	/** Retrieves the output collection after the forward pass completes. */
 	private final Supplier<PackedCollection> retrieveOutput;
+	/** Compiled forward-pass operation. */
 	private final Runnable forward;
 
+	/** Stages the incoming gradient before the backward pass. */
 	private final Consumer<PackedCollection> updateGradient;
+	/** Retrieves the input gradient after the backward pass completes; may be {@code null}. */
 	private final Supplier<PackedCollection> retrieveGradient;
+	/** Compiled backward-pass operation; {@code null} when backprop is disabled. */
 	private final Runnable backward;
 
 	/**
@@ -222,14 +231,36 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		Destroyable.destroy(backward);
 	}
 
+	/**
+	 * Compiles the given model with backpropagation enabled and no operation profile.
+	 *
+	 * @param model the model to compile
+	 * @return a compiled, ready-to-run model
+	 */
 	public static CompiledModel compile(Model model) {
 		return compile(model, true, false, null);
 	}
 
+	/**
+	 * Compiles the given model with backpropagation enabled and the provided operation profile.
+	 *
+	 * @param model   the model to compile
+	 * @param profile the operation profile for timing instrumentation; may be {@code null}
+	 * @return a compiled, ready-to-run model
+	 */
 	public static CompiledModel compile(Model model, OperationProfile profile) {
 		return compile(model, true, false, profile);
 	}
 
+	/**
+	 * Compiles the given model, optionally enabling backpropagation and gradient retrieval.
+	 *
+	 * @param model          the model to compile
+	 * @param backprop       {@code true} to compile the backward pass
+	 * @param returnGradient {@code true} to allocate and return the input gradient after backward
+	 * @param profile        operation profile for timing instrumentation; may be {@code null}
+	 * @return a compiled, ready-to-run model
+	 */
 	public static CompiledModel compile(Model model,
 										boolean backprop, boolean returnGradient,
 										OperationProfile profile) {
@@ -312,9 +343,6 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	 * structures ({@link SequentialBlock}, {@link BranchBlock}) by recursing
 	 * into their children.
 	 *
-	 * <p>This must be called before the forward chain is built and optimized,
-	 * as it structurally rebuilds entry cells in each affected layer.</p>
-	 *
 	 * @param blocks the blocks to configure
 	 * @param inputTracking whether to enable input tracking
 	 */
@@ -334,15 +362,31 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		}
 	}
 
+	/**
+	 * Manages a single kernel input slot: holds the current {@link PackedCollection} and
+	 * exposes it as a {@link DynamicCollectionProducer} that is evaluated lazily at run time.
+	 */
 	protected static class InputManager implements Consumer<PackedCollection>,
 			Supplier<DynamicCollectionProducer>, ConsoleFeatures {
+		/** The expected shape of this input slot. */
 		private final TraversalPolicy shape;
+		/** The most recently provided input collection. */
 		private PackedCollection input;
 
+		/**
+		 * Creates an {@link InputManager} for a slot of the given shape.
+		 *
+		 * @param shape the expected traversal shape of this input
+		 */
 		public InputManager(TraversalPolicy shape) {
 			this.shape = shape;
 		}
 
+		/**
+		 * Returns the expected shape of this input slot.
+		 *
+		 * @return the traversal policy describing this input's shape
+		 */
 		public TraversalPolicy getShape() { return shape; }
 
 		@Override
@@ -357,6 +401,13 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 			this.input = input;
 		}
 
+		/**
+		 * Returns a {@link DynamicCollectionProducer} that supplies the most recently
+		 * accepted input collection at evaluation time.
+		 *
+		 * @return a producer backed by the current input
+		 */
+		@Override
 		public DynamicCollectionProducer get() {
 			return new DynamicCollectionProducer(shape, args -> input);
 		}

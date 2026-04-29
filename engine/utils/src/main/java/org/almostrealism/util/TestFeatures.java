@@ -102,6 +102,7 @@ import java.util.stream.LongStream;
  * @see TensorTestFeatures for tensor creation utilities
  */
 public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSettings {
+	/** Child console used for test-scoped logging, isolated from the root console output. */
 	Console console = Console.root.child();
 
 	/**
@@ -118,7 +119,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		}
 
 		value.reshape(shape(rows, colWidth).traverse()).print();
-		System.out.println("--");
+		log("--");
 	}
 
 	/**
@@ -407,10 +408,26 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		assertEquals(a, b, false);
 	}
 
+	/**
+	 * Asserts equality or inequality of two doubles using the hardware precision epsilon.
+	 *
+	 * @param a        the expected value
+	 * @param b        the actual value
+	 * @param positive {@code true} to assert equality, {@code false} to assert inequality
+	 */
 	private static void assertEquals(double a, double b, boolean positive) {
 		assertEquals(null, a, b, positive);
 	}
 
+	/**
+	 * Asserts equality or inequality of two doubles using the hardware precision epsilon,
+	 * with an optional message included in the assertion error.
+	 *
+	 * @param msg      optional message to include in the assertion error, or {@code null}
+	 * @param a        the expected value
+	 * @param b        the actual value
+	 * @param positive {@code true} to assert equality, {@code false} to assert inequality
+	 */
 	private static void assertEquals(String msg, double a, double b, boolean positive) {
 		double gap = Math.pow(10, 3) * Hardware.getLocalHardware().getPrecision().epsilon(true);
 		double fallbackGap = 10 * gap;
@@ -418,14 +435,14 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		if (Math.abs(a - b) >= gap) {
 			if (positive) {
 				if (Math.abs(a - b) >= fallbackGap) {
-					System.err.println("TestFeatures: " + b + " != " + a);
+					Console.root().warn(b + " != " + a, null);
 					throw new AssertionError(msg == null ? b + " != " + a : msg);
 				} else {
-					System.out.println("TestFeatures: " + b + " != " + a);
+					Console.root().println(String.valueOf(b) + " != " + a);
 				}
 			}
 		} else if (!positive) {
-			System.err.println("TestFeatures: " + b + " == " + a);
+			Console.root().warn(b + " == " + a, null);
 			throw new AssertionError(msg == null ? b + " == " + a : msg);
 		}
 	}
@@ -571,7 +588,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		AtomicReference<PackedCollection> outputRef = new AtomicReference<>();
 
 		if (kernel) {
-			System.out.println("TestFeatures: Running kernel evaluation...");
+			log("Running kernel evaluation...");
 			Producer<PackedCollection> p = supply.get();
 			profile(profile, () -> {
 				PackedCollection output = p.get().evaluate();

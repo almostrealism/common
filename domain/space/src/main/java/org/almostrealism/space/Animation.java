@@ -20,6 +20,7 @@ import org.almostrealism.algebra.Gradient;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.color.ShadableSurface;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.physics.Clock;
 import org.almostrealism.physics.RigidBody;
@@ -34,19 +35,68 @@ import java.util.List;
 import java.util.Properties;
 import java.util.function.Function;
 
-public class Animation<T extends ShadableSurface> extends Scene<T> implements Runnable, VectorFeatures {
+/**
+ * A physics-based animation engine that extends {@link Scene} to simulate rigid body
+ * dynamics and render frames over a series of time steps.
+ *
+ * <p>The animation loop advances each rigid body's state using a configurable time step
+ * ({@code dt}), evaluates applied forces (gravity, custom fields, etc.), detects and
+ * resolves collisions using impulse-based collision response, and optionally renders
+ * an image and/or writes a properties snapshot at each frame.
+ *
+ * <p>The number of physics iterations ({@code itr}) and the simulation time step ({@code dt})
+ * are set independently from the frame rate ({@code fdt}). Multiple physics steps can be
+ * executed per rendered frame.
+ *
+ * <p>If a velocity-dependent time step ({@code vdt}) is configured, the step size is
+ * automatically adjusted each frame to keep the average object speed below a target value.
+ *
+ * @param <T> the type of surface objects in this animation, must extend {@link ShadableSurface}
+ * @author Michael Murray
+ * @see Scene
+ * @see RigidBody
+ */
+public class Animation<T extends ShadableSurface> extends Scene<T> implements Runnable, VectorFeatures, ConsoleFeatures {
+	/** Number of physics iterations to execute. */
 	private int itr;
-	private double dt, fdt, vdt, totalTime;
-	private boolean sleep, render;
+
+	/** Physics time step per iteration (seconds). */
+	private double dt;
+
+	/** Duration of each rendered frame (seconds); inverse of frames per second. */
+	private double fdt;
+
+	/** Velocity-dependent time step divisor; if greater than 0.0, overrides {@code dt} each frame. */
+	private double vdt;
+
+	/** Total simulated time elapsed since the start of the animation (seconds). */
+	private double totalTime;
+
+	/** When true, the animation thread sleeps for the actual frame duration between frames. */
+	private boolean sleep;
+
+	/** When true, an image is rendered and written at each frame. */
+	private boolean render;
+
+	/** When true, a properties file with simulation state is written at each frame. */
 	private boolean logState;
 
+	/** Forces applied to rigid bodies during each iteration. */
 	private final List<Function<RigidBody, Gradient<?>>> forces;
 
+	/** Directory path for output files (state files, rendered images, encode scripts). */
 	private String dir;
 
+	/** Physics clock tracking simulated time. */
 	private Clock clock;
+
+	/** Optional listener notified at each rendered frame tick. */
 	private Temporal listener;
 
+	/**
+	 * Constructs a new {@link Animation} with an empty scene, an initialized physics clock,
+	 * and no forces, lights, or camera.
+	 */
 	public Animation() {
 		this.forces = new ArrayList<>();
 		this.clock = new Clock();
@@ -67,12 +117,32 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	 */
 	public void addForce(Function<RigidBody, Gradient<?>> f) { forces.add(f); }
 
+	/**
+	 * Sets the total number of physics iterations to execute when the animation is run.
+	 *
+	 * @param itr the number of iterations
+	 */
 	public void setIterations(int itr) { this.itr = itr; }
 
+	/**
+	 * Returns the total number of physics iterations to execute.
+	 *
+	 * @return the number of iterations
+	 */
 	public int getIterations() { return this.itr; }
 
+	/**
+	 * Sets the physics time step duration.
+	 *
+	 * @param dt the duration of each physics tick in seconds
+	 */
 	protected void setTickDuration(double dt) { this.dt = dt; }
 
+	/**
+	 * Returns the physics time step duration.
+	 *
+	 * @return the duration of each physics tick in seconds
+	 */
 	public double getTickDuration() { return dt; }
 
 	/**
@@ -82,6 +152,11 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	 */
 	public void setFPS(double fps) { this.fdt = 1.0 / fps; }
 
+	/**
+	 * Returns the duration of each rendered frame in seconds.
+	 *
+	 * @return the frame duration in seconds
+	 */
 	public double getFrameDuration() { return this.fdt; }
 
 	/**
@@ -91,10 +166,25 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	 */
 	public void setVDT(double vdt) { this.vdt = vdt; }
 
-	/** @return  The total time in seconds since the start of the simulation. */
+	/**
+	 * Returns the total time in seconds since the start of the simulation.
+	 *
+	 * @return  The total time in seconds since the start of the simulation.
+	 */
 	public double getTime() { return this.totalTime; }
 
+	/**
+	 * Sets the physics clock used to track simulated time.
+	 *
+	 * @param c the clock to use
+	 */
 	public void setClock(Clock c) { this.clock = c; }
+
+	/**
+	 * Returns the physics clock tracking simulated time.
+	 *
+	 * @return the physics clock
+	 */
 	public Clock getClock() { return this.clock; }
 
 	/** Delegates to {@link Scene#clone()}. */
@@ -108,18 +198,32 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	 */
 	public void setSleepEachFrame(boolean sleep) { this.sleep = sleep; }
 
+	/**
+	 * Returns whether the animation thread sleeps for the real frame duration between frames.
+	 *
+	 * @return true if the thread sleeps, false otherwise
+	 */
 	public boolean getSleepEachFrame() { return this.sleep; }
 
 	/**
+	 * Returns {@code true} if the simulation will render an image for each frame.
+	 *
 	 * @return  True if the simulation will render an image for each frame, false otherwise.
 	 */
 	public boolean getRenderEachFrame() { return render; }
 
 	/**
+	 * Sets whether the simulation should render an image for each frame.
+	 *
 	 * @param render  True if the simulation should render an image for each frame, false otherwise.
 	 */
 	public void setRenderEachFrame(boolean render) { this.render = render; }
 
+	/**
+	 * Computes the average linear velocity magnitude over all {@link RigidBody} objects in the scene.
+	 *
+	 * @return the mean linear velocity magnitude, or 0.0 if the scene is empty
+	 */
 	public double getAverageLinearVelocity() {
 		double total = 0.0;
 
@@ -131,26 +235,45 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 		return total / size();
 	}
 
+	/**
+	 * Sets the output directory for state files, rendered images, and encode scripts.
+	 *
+	 * @param dir the directory path (with trailing separator), or null to use the working directory
+	 */
 	public void setOutputDirectory(String dir) { this.dir = dir; }
 
+	/**
+	 * Returns the output directory for state files and rendered images.
+	 *
+	 * @return the directory path, or null if not set
+	 */
 	public String getOutputDirectory() { return this.dir; }
 
 	/**
+	 * Returns {@code true} if the simulation will output a properties file for each frame.
+	 *
 	 * @return  True if the simulation will output a properties file for each frame, false otherwise.
 	 */
 	public boolean getLogEachFrame() { return this.logState; }
 
 	/**
+	 * Sets whether the simulation should output a properties file for each frame.
+	 *
 	 * @param log  True if the simulation should output a properties file for each frame, false otherwise.
 	 */
 	public void setLogEachFrame(boolean log) { this.logState = log; }
 
+	/**
+	 * Sets a listener that is notified at each rendered frame during the animation.
+	 *
+	 * @param l the temporal listener to notify
+	 */
 	public void setListener(Temporal l) { this.listener = l; }
 
 	/** Runs the animation. */
 	@Override
 	public void run() {
-		System.out.println("Starting simulation (" + this.itr + "): dt = " + this.dt + "  fdt = " + this.fdt);
+		log("Starting simulation (" + this.itr + "): dt = " + this.dt + "  fdt = " + this.fdt);
 
 		String instance = "0";
 
@@ -159,9 +282,9 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 			pr.load(new FileInputStream(this.dir == null ? "instance" : (this.dir + "instance")));
 			instance = pr.getProperty("instance");
 		} catch (FileNotFoundException fnf) {
-			System.out.println("Instance file not found. Zero will be used.");
+			log("Instance file not found. Zero will be used.");
 		} catch (IOException ioe) {
-			System.out.println("Error reading instance file. Zero will be used.");
+			log("Error reading instance file. Zero will be used.");
 		}
 
 		int iterationsPerFrame = (int) (this.fdt / this.dt);
@@ -170,7 +293,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 			try {
 				if (getSleepEachFrame() && i * this.dt % this.fdt == 0) Thread.sleep((int)(this.fdt * 1000));
 			} catch (InterruptedException ie) {
-				ie.printStackTrace();
+				warn(ie.getMessage(), ie);
 			}
 
 			for (ShadableSurface s : this)
@@ -249,10 +372,8 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 
 			this.totalTime = this.totalTime + this.dt;
 
-			double microseconds = totalTime * 1000 * 1000;
-
 			// Move clock forward until it reaches the total time elapsed
-//			while (clock.getTime() < microseconds) {
+//			while (clock.getTime() < totalTime * 1000 * 1000) {
 //				clock.tick().run();
 //			}
 
@@ -263,7 +384,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 					long time = System.currentTimeMillis();
 					Properties p = this.generateProperties();
 
-					System.out.println("Writing simulation state: " + time);
+					log("Writing simulation state: " + time);
 
 					String head = "Simulation state for instance " + instance + ": " + this.totalTime;
 
@@ -271,7 +392,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 						p.store(new FileOutputStream(dir == null ? (time + ".state") : (dir + time + ".state")), head);
 					p.store(new FileOutputStream(dir == null ? "latest.state" : (dir + "latest.state")), head);
 				} catch (IOException ioe) {
-					System.out.println("IO error writing state " + i * this.dt);
+					log("IO error writing state " + i * this.dt);
 				}
 
 				if (this.render) this.writeImage(i, instance);
@@ -285,13 +406,19 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 				else
 					this.dt = this.vdt / this.getAverageLinearVelocity();
 
-				System.out.println("dt = " + this.dt);
+				log("dt = " + this.dt);
 			}
 		}
 
 		this.writeEncodeScript(instance);
 	}
 
+	/**
+	 * Generates a {@link Properties} object containing the current simulation state,
+	 * including time step, total elapsed time, frame duration, and velocity time step.
+	 *
+	 * @return a properties snapshot of the simulation state
+	 */
 	public Properties generateProperties() {
 		Properties p = new Properties();
 
@@ -303,6 +430,11 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 		return p;
 	}
 
+	/**
+	 * Restores simulation state from a previously saved {@link Properties} snapshot.
+	 *
+	 * @param p the properties object containing simulation state values
+	 */
 	public void loadProperties(Properties p) {
 		this.fdt = Double.parseDouble(p.getProperty("simulation.fdt", "1.0"));
 		this.vdt = Double.parseDouble(p.getProperty("simulation.vdt", "-1.0"));
@@ -311,7 +443,20 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 		dt = Double.parseDouble(p.getProperty("simulation.dt", "1"));
 	}
 
+	/**
+	 * Writes a rendered image for the specified frame to the output directory.
+	 * Subclasses override this method to implement actual image rendering.
+	 *
+	 * @param i        the iteration index
+	 * @param instance the simulation instance identifier
+	 */
 	public void writeImage(int i, String instance) { }
 
+	/**
+	 * Writes a script that can be used to encode the rendered frames into a video.
+	 * Subclasses override this method to produce the actual encode script.
+	 *
+	 * @param instance the simulation instance identifier
+	 */
 	public void writeEncodeScript(String instance) { }
 }

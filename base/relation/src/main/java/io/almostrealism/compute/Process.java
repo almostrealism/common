@@ -23,8 +23,12 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * The fundamental abstraction for composable, optimizable computational work.
@@ -212,6 +216,61 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 	}
 
 	/**
+	 * Returns the factor by which inlining this process into a consumer
+	 * multiplies the total output per use-site.
+	 *
+	 * <p>For most element-wise processes the per-use-site contribution is a
+	 * single pointwise value and this factor is {@code 1}. For processes whose
+	 * output carries multiple alternatives or repeated terms, this factor
+	 * should reflect the branching or unrolling width:</p>
+	 *
+	 * <ul>
+	 *   <li>{@code concat(a, b, ...)} &rarr; number of concatenated pieces,
+	 *       because both branches are retained at each use-site.</li>
+	 *   <li>{@code greaterThan} / {@code lessThan} &rarr; {@code 2} (both
+	 *       branches materialise at each use-site).</li>
+	 *   <li>Reductions (matmul, dot-product, sum) &rarr; the reduction width,
+	 *       because fully inlined they contribute one term per inner-dim position.</li>
+	 *   <li>Buffer references &rarr; {@code 1}.</li>
+	 * </ul>
+	 *
+	 * <p>Optimization strategies use this value together with depth and
+	 * parallelism accumulators to decide when isolating a subtree would
+	 * prevent catastrophic output size growth at compile time.</p>
+	 *
+	 * <p>The default returns {@code 1} (no expansion). Subclasses whose
+	 * per-use-site expansion width is greater than one <strong>must</strong>
+	 * override this method with a value that approximates the width.
+	 * The value does not have to be exact &mdash; a conservative
+	 * upper bound is acceptable.</p>
+	 *
+	 * @return the expansion width of this process, at least {@code 1}
+	 */
+	default long getExpansionWidth() {
+		return 1;
+	}
+
+	/**
+	 * Extracts the expansion width from an arbitrary object.
+	 *
+	 * <p>Returns the object's {@link #getExpansionWidth()} value if it is a
+	 * {@link Process}, otherwise {@code 1}. Used during context propagation
+	 * when the surrounding code may hold a bare {@link Supplier} rather than
+	 * a {@code Process}.</p>
+	 *
+	 * @param <T> the type of the object
+	 * @param c   the object to inspect
+	 * @return the expansion width of {@code c} if it is a process, else {@code 1}
+	 */
+	static <T> long expansionWidth(T c) {
+		if (c instanceof Process) {
+			return Math.max(1L, ((Process<?, ?>) c).getExpansionWidth());
+		}
+
+		return 1;
+	}
+
+	/**
 	 * Extracts the output size from an arbitrary object.
 	 *
 	 * <p>This utility method safely extracts output size from any object:</p>
@@ -233,11 +292,35 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 	}
 
 	/**
+	 * Logger used by {@link #of(Supplier)} to warn when a non-{@link Process} supplier
+	 * is wrapped. The resulting wrapper has an empty child list and a default
+	 * {@link #optimize(ProcessContext)}, so its subtree is invisible to the
+	 * optimization cascade &mdash; a routine source of silent coverage gaps.
+	 */
+	Logger processOfLogger = Logger.getLogger(Process.class.getName());
+
+	/**
+	 * Tracks supplier classes we've already warned about, so each distinct class
+	 * produces at most one log entry per JVM regardless of how many times
+	 * {@link #of(Supplier)} wraps an instance of that class.
+	 */
+	Set<String> processOfWarnedSupplierClasses = ConcurrentHashMap.newKeySet();
+
+	/**
 	 * Creates a process wrapper around a supplier.
 	 *
 	 * <p>This factory method creates an anonymous process that delegates to the
 	 * given supplier. If the supplier is itself a process, its children and
 	 * output size are preserved.</p>
+	 *
+	 * <p>When the supplier is <em>not</em> a {@link Process}, the resulting wrapper
+	 * has no children visible to the optimization cascade and its
+	 * {@link #optimize(ProcessContext)} is the default no-op. That hides any
+	 * internal structure of the supplier from strategies like
+	 * {@link ProcessOptimizationStrategy}. A warning is emitted the first time a
+	 * given supplier class is seen in that state, so these invisibility boundaries
+	 * can be audited and (where necessary) removed by arranging for the supplier
+	 * to implement {@code Process}.</p>
 	 *
 	 * @param <P>      the type of child processes
 	 * @param <T>      the result type
@@ -245,6 +328,19 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 	 * @return a process that delegates to the supplier
 	 */
 	static <P extends Process<?, ?>, T> Process<P, T> of(Supplier<T> supplier) {
+		if (!(supplier instanceof Process)) {
+			String key = supplier == null ? "null" : supplier.getClass().getName();
+			if (processOfWarnedSupplierClasses.add(key)) {
+				processOfLogger.log(Level.WARNING,
+						"Process.of() wrapping non-Process supplier of class {0}. "
+								+ "The resulting wrapper has no visible children and "
+								+ "a no-op optimize(), so this subtree is invisible "
+								+ "to the optimization cascade. Make the supplier "
+								+ "implement Process (ideally ParallelProcess) if its "
+								+ "contents should be reachable by strategies.",
+						key);
+			}
+		}
 		return new Process<>() {
 			@Override
 			public Collection<P> getChildren() {

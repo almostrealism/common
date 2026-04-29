@@ -76,13 +76,25 @@ import java.util.List;
 public class WeightedSumComputation
 		extends TraversableExpressionComputation {
 
+	/** The shape of the output collection produced by this computation. */
 	private final TraversalPolicy resultShape;
+
+	/** The traversal policy defining which positions in the input to use for each output element. */
 	private final TraversalPolicy inputPositions;
+
+	/** The traversal policy defining which positions in the weight tensor to use for each output element. */
 	private final TraversalPolicy weightPositions;
+
+	/** The group shape that defines the sub-dimensions of the input that are summed over. */
 	private final TraversalPolicy inputGroupShape;
+
+	/** The group shape that defines the sub-dimensions of the weights that are summed over. */
 	private final TraversalPolicy weightGroupShape;
 
+	/** The full shape of the input collection. */
 	private final TraversalPolicy inShape;
+
+	/** The full shape of the weight collection. */
 	private final TraversalPolicy weightShape;
 
 	/**

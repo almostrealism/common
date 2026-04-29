@@ -48,6 +48,7 @@ Executes a single Claude Code prompt. Extends `GitManagedJob`.
 | `workstreamUrl` | `null` | Controller URL for status events and Slack messaging |
 | `centralizedMcpConfig` | `null` | JSON mapping centralized MCP server names to HTTP URLs and tool names |
 | `pushedToolsConfig` | `null` | JSON mapping pushed tool server names to download URLs and tool names |
+| `deduplicationMode` | `null` | Post-work duplicate-method check. `"local"` runs an inline session before committing; `"spawn"` posts a follow-up job to the workstream. `null` disables. |
 
 **Results:**
 
@@ -75,6 +76,11 @@ ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(
 factory.setAllowedTools("Read,Edit,Bash,Glob,Grep");
 factory.setTargetBranch("feature/fixes");
 factory.setMaxBudgetUsd(25.0);
+
+// Optional: scan for duplicate methods after Claude Code finishes
+// "local"  — inline session before commit (recommended while iterating)
+// "spawn"  — separate follow-up job posted to the same workstream
+factory.setDeduplicationMode(ClaudeCodeJob.DEDUP_LOCAL);
 ```
 
 ### ClaudeCodeClient
@@ -117,15 +123,62 @@ Base class providing automatic git operations after job completion:
 - Binary files detected by content inspection
 - Files larger than 1MB (configurable via `setMaxFileSizeBytes`)
 
+## Deduplication Check
+
+One of the most common problems with agent-produced code is re-implementing functionality that already exists elsewhere in the codebase. Agents cannot search exhaustively, and their pattern-matching tends toward re-invention. The deduplication check is a post-work step that scans the changes for new Java method declarations and then runs an aggressive second session (or queues a separate job) whose sole purpose is to find and eliminate any duplicates before the work is committed.
+
+### How It Works
+
+After Claude Code finishes (`doWork()` completes) and before the changes are staged and committed, `ClaudeCodeJob.validateChanges()` runs the deduplication scan:
+
+1. `git diff origin/<baseBranch> -- '*.java'` is run to capture new lines in modified tracked Java files.
+2. `git ls-files --others --exclude-standard -- '*.java'` lists entirely new (untracked) Java files; all methods in these files are treated as new.
+3. New method declarations are extracted with a regex that matches `public|private|protected` access modifiers followed by a return type and a method name before `(`.
+4. If any new methods are found, a deduplication prompt is assembled listing all of them (up to 50; the session is told if the list was truncated).
+5. Depending on `deduplicationMode`, the prompt is either run inline or submitted as a new job.
+
+### Modes
+
+| Mode | Constant | Behaviour |
+|------|----------|-----------|
+| Disabled | `null` (default) | No deduplication scan. |
+| Inline | `ClaudeCodeJob.DEDUP_LOCAL` | A second Claude Code session is started immediately in the same working directory, with the dedup prompt replacing the original prompt. All session machinery (tools, budget, MCP config) is reused. The dedup edits land in the same working tree and are committed together with the original work. **No extra jobs are spawned; safe to iterate.** |
+| Spawn | `ClaudeCodeJob.DEDUP_SPAWN` | A follow-up `ClaudeCodeJob` is posted to the same workstream via `POST /api/submit` after the current commit. Requires a workstream URL. Fire-and-forget. |
+
+### The Deduplication Prompt
+
+The prompt is deliberately aggressive. Key points:
+
+- Each method in the list is *assumed to be a clone* of existing functionality until proven otherwise.
+- The agent is told that, by the numbers, the majority of new methods introduced by agent sessions are duplicates — renamed, slightly generalized, or relocated versions of what already exists.
+- The agent must search by keyword and logical purpose, not just by name. A clone that performs the same operation under a different name still counts.
+- The instruction is unambiguous: if a duplicate is found, remove the new method entirely and redirect all call sites to the existing one.
+
+### Infinite Loop Protection
+
+`DEDUP_LOCAL` runs exactly one additional session. It does not re-trigger `validateChanges()` (which is called from `GitManagedJob.run()`, not from within `executeSingleRun()`), and `deduplicationMode` is never propagated to spawned sessions, so there is no mechanism for the check to chain.
+
+### Via ar-manager MCP
+
+The `workstream_submit_task` tool exposes the `deduplication_mode` parameter:
+
+```
+workstream_submit_task(
+    prompt="Implement feature X",
+    workstream_id="ws-common",
+    deduplication_mode="local"   # or "spawn"
+)
+```
+
 ## MCP Tools
 
 Claude Code sessions started by `ClaudeCodeJob` automatically have access to these MCP tools:
 
-- **ar-slack** — Send messages back to the Slack channel and query job statistics via the controller's `FlowTreeApiEndpoint`
+- **ar-messages** — Store messages in the memory database and optionally notify the Slack channel, plus query job statistics via the controller's `FlowTreeApiEndpoint`
 - **ar-github** — Read and respond to GitHub PR review comments
 - **Project servers** — Any servers defined in `.mcp.json` (filtered by `.claude/settings.json`) are included automatically
 
-These tools are appended to `--allowedTools` regardless of the configured allowlist. The `ar-slack` tool uses the `AR_WORKSTREAM_URL` environment variable (derived from `workstreamUrl`) to route messages to the correct channel.
+These tools are appended to `--allowedTools` regardless of the configured allowlist. The `ar-messages` tool uses the `AR_WORKSTREAM_URL` environment variable (derived from `workstreamUrl`) to route messages to the correct channel.
 
 ### Centralized MCP Servers
 
@@ -138,7 +191,7 @@ When the controller's YAML config includes an `mcpServers` section, those server
 
 | Server | Mode | Reason |
 |--------|------|--------|
-| ar-slack | Pushed | Depends on per-job `AR_WORKSTREAM_URL` |
+| ar-messages | Pushed | Depends on per-job `AR_WORKSTREAM_URL` |
 | ar-github | Pushed | Depends on local git repo/branch |
 | ar-memory | Centralized | SQLite + FAISS state shared across agents |
 | ar-consultant | Centralized | Memory + history DB; must be shared |
@@ -161,7 +214,7 @@ When `centralizedMcpConfig` is set on a job, `buildMcpConfig()` emits `{"type":"
 
 Some MCP tools cannot run as centralized HTTP servers because they depend on per-job state:
 
-- **ar-slack** reads `AR_WORKSTREAM_URL` at module load time, and each agent job has a different workstream URL
+- **ar-messages** reads `AR_WORKSTREAM_URL` at module load time, and each agent job has a different workstream URL
 - **ar-github** detects the local git branch via subprocess, so it must run inside the agent's working directory
 
 These tools are **pushed** to dev containers: the controller serves the Python source files over HTTP, and `ClaudeCodeJob` downloads them to `~/.flowtree/tools/mcp/{name}/server.py` before starting Claude Code.
@@ -170,8 +223,8 @@ These tools are **pushed** to dev containers: the controller serves the Python s
 
 ```yaml
 pushedTools:
-  ar-slack:
-    source: tools/mcp/slack/server.py
+  ar-messages:
+    source: tools/mcp/messages/server.py
   ar-github:
     source: tools/mcp/github/server.py
     env:
@@ -204,7 +257,7 @@ When both are present, workstream-level env vars override the global pushed tool
 
 **Download-on-first-use:** Tools are only downloaded once per container. Subsequent jobs reuse the files already present in `~/.flowtree/tools/`. The `FLOWTREE_ROOT_HOST` environment variable is used to resolve the `0.0.0.0` placeholder in download URLs.
 
-**Backward compatibility:** When the `pushedTools` section is absent from the YAML, ar-slack and ar-github fall back to the hardcoded `tools/mcp/` paths (requiring the files to exist locally in the project directory).
+**Backward compatibility:** When the `pushedTools` section is absent from the YAML, ar-messages and ar-github fall back to the hardcoded `tools/mcp/` paths (requiring the files to exist locally in the project directory).
 
 ### McpToolDiscovery
 

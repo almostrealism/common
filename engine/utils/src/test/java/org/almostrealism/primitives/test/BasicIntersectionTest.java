@@ -21,6 +21,8 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.DiffuseShader;
 import org.almostrealism.color.PointLight;
+import org.almostrealism.color.RGB;
+import org.almostrealism.color.Shader;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ShadableIntersection;
@@ -92,8 +94,8 @@ public class BasicIntersectionTest extends TestSuiteBase {
 		Sphere sphere = new Sphere();
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
 		sphere.setSize(1.0);
-		sphere.setColor(new org.almostrealism.color.RGB(0.8, 0.2, 0.2)); // Red
-		sphere.setShaders(new org.almostrealism.color.Shader[]{
+		sphere.setColor(new RGB(0.8, 0.2, 0.2)); // Red
+		sphere.setShaders(new Shader[]{
 				DiffuseShader.defaultDiffuseShader
 		});
 
@@ -104,7 +106,7 @@ public class BasicIntersectionTest extends TestSuiteBase {
 
 		// Get color at that point
 		try {
-			org.almostrealism.color.RGB color = new org.almostrealism.color.RGB(sphere.getValueAt(point).get().evaluate(), 0);
+			RGB color = new RGB(sphere.getValueAt(point).get().evaluate(), 0);
 			log("Color at point: " + color);
 
 			// Should get back the red color we set
@@ -134,7 +136,7 @@ public class BasicIntersectionTest extends TestSuiteBase {
 			Producer<PackedCollection> colorProducer = light.getColorAt(point);
 
 			if (colorProducer != null) {
-				org.almostrealism.color.RGB color = new org.almostrealism.color.RGB(colorProducer.get().evaluate(), 0);
+				RGB color = new RGB(colorProducer.get().evaluate(), 0);
 				log("Light color at origin: " + color);
 			}
 		} catch (Exception e) {

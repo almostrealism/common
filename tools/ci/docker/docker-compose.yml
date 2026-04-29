@@ -13,6 +13,13 @@
 # See README.md for full documentation.
 # ─────────────────────────────────────────────────────────────────────
 
+# Explicit project name — without this, Docker Compose uses the parent
+# directory name ("docker"), which collides with any other runner fleet
+# whose compose file also lives in a directory named "docker" (e.g.,
+# the Mosaic Platform fleet). Sharing a project name between stacks
+# causes one `docker compose up` to tear down the other's containers.
+name: ar-ci
+
 services:
   runner:
     build:
@@ -29,4 +36,9 @@ services:
         limits:
           memory: ${RUNNER_MEMORY_LIMIT:-16g}
           cpus: "${RUNNER_CPU_LIMIT:-4}"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped

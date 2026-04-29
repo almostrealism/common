@@ -221,6 +221,7 @@ import java.util.List;
  * @author Michael Murray
  */
 public class MultiOrderFilter extends CollectionProducerComputationBase {
+	/** The number of cascaded filter stages applied to the input signal. */
 	private final int filterOrder;
 
 	/**

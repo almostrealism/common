@@ -26,6 +26,7 @@ import io.almostrealism.scope.Variable;
  * @param <T>  Type of the underlying data.
  */
 public class ResourceVariable<T> extends Variable<T, Variable<T, ?>> {
+	/** The resource whose data is exposed by this variable. */
 	private final Resource<T> res;
 
 	/**
@@ -38,5 +39,10 @@ public class ResourceVariable<T> extends Variable<T, Variable<T, ?>> {
 		this.res = r;
 	}
 
+	/**
+	 * Returns the underlying {@link Resource} whose data is exposed by this variable.
+	 *
+	 * @return The resource associated with this variable
+	 */
 	public Resource<T> getResource() { return res; }
 }

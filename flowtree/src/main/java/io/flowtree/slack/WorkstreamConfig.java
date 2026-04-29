@@ -20,11 +20,13 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import io.flowtree.jobs.ClaudeCodeJob;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,108 +53,331 @@ import java.util.UUID;
  * </pre>
  *
  * @author Michael Murray
- * @see SlackWorkstream
+ * @see Workstream
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class WorkstreamConfig {
 
+    /** Global default path for repo checkouts; used when no workingDirectory is set. */
     private String defaultWorkspacePath;
+    /**
+     * Legacy single Slack user ID automatically invited to newly created
+     * workstream channels. Superseded by {@link #channelOwnerUserIds} when
+     * that list is non-empty; retained for backwards compatibility with
+     * configs that predate multi-user invites.
+     */
     private String channelOwnerUserId;
+    /**
+     * Slack user IDs automatically invited to newly created workstream
+     * channels. When set, takes precedence over {@link #channelOwnerUserId}.
+     */
+    private List<String> channelOwnerUserIds;
+    /** Fallback Slack channel ID used when a workstream has no channel or posting fails. */
+    private String defaultChannel;
+    /** Named centralized MCP server entries (legacy; ar-manager supersedes these). */
     private Map<String, McpServerEntry> mcpServers = new LinkedHashMap<>();
+    /** Named pushed MCP tool entries served as files via the API endpoint. */
     private Map<String, PushedToolEntry> pushedTools = new LinkedHashMap<>();
+    /** Per-organization GitHub personal access tokens, keyed by org name. */
     private Map<String, GitHubOrgEntry> githubOrgs = new LinkedHashMap<>();
+    /** Ordered list of workstream configuration entries. */
     private List<WorkstreamEntry> workstreams = new ArrayList<>();
+    /** Per-workspace Slack configuration entries; empty list uses legacy single-token mode. */
+    private List<SlackWorkspaceEntry> slackWorkspaces = new ArrayList<>();
+
+    /**
+     * Configuration entry for a Slack workspace connection.
+     *
+     * <p>Each entry defines the bot/app token pair for one Slack team. Workstreams
+     * that reference this workspace by {@code slackWorkspaceId} are served by its
+     * connection. If the list is empty, the controller falls back to the legacy
+     * single-token resolution path via {@link SlackTokens#resolve(java.io.File)}.</p>
+     *
+     * <p>Tokens may be supplied inline ({@code botToken}/{@code appToken} fields) or
+     * via a JSON file ({@code tokensFile}). When {@code tokensFile} is set it takes
+     * priority over the inline fields.</p>
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class SlackWorkspaceEntry {
+        /** Slack team ID (T...) uniquely identifying this workspace. */
+        private String workspaceId;
+        /** Human-readable label for this workspace (used in logs and diagnostics). */
+        private String name;
+        /** Path to a JSON file with {@code botToken} and {@code appToken}. */
+        private String tokensFile;
+        /** Inline bot token (xoxb-...); used when {@code tokensFile} is absent. */
+        private String botToken;
+        /** Inline app token (xapp-...); used when {@code tokensFile} is absent. */
+        private String appToken;
+        /** Default Slack channel ID for fallback message delivery in this workspace. */
+        private String defaultChannel;
+        /**
+         * Single Slack user ID auto-invited to newly created channels in this
+         * workspace. Superseded by {@link #channelOwnerUserIds} when that list
+         * is non-empty; retained for backwards compatibility with configs that
+         * predate multi-user invites.
+         */
+        private String channelOwnerUserId;
+        /**
+         * Slack user IDs auto-invited to newly created channels in this
+         * workspace. When set, takes precedence over {@link #channelOwnerUserId}.
+         */
+        private List<String> channelOwnerUserIds;
+        /** Per-organization GitHub tokens scoped to this workspace. */
+        private Map<String, GitHubOrgEntry> githubOrgs = new LinkedHashMap<>();
+
+        /** Returns the Slack team ID (T...). */
+        public String getWorkspaceId() { return workspaceId; }
+        /** Sets the Slack team ID. */
+        public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
+
+        /** Returns the human-readable workspace label. */
+        public String getName() { return name; }
+        /** Sets the human-readable workspace label. */
+        public void setName(String name) { this.name = name; }
+
+        /** Returns the path to the JSON tokens file, or {@code null} for inline tokens. */
+        public String getTokensFile() { return tokensFile; }
+        /** Sets the path to the JSON tokens file. */
+        public void setTokensFile(String tokensFile) { this.tokensFile = tokensFile; }
+
+        /** Returns the inline bot token (xoxb-...). */
+        public String getBotToken() { return botToken; }
+        /** Sets the inline bot token. */
+        public void setBotToken(String botToken) { this.botToken = botToken; }
+
+        /** Returns the inline app token (xapp-...). */
+        public String getAppToken() { return appToken; }
+        /** Sets the inline app token. */
+        public void setAppToken(String appToken) { this.appToken = appToken; }
+
+        /** Returns the default fallback channel ID for this workspace. */
+        public String getDefaultChannel() { return defaultChannel; }
+        /** Sets the default fallback channel ID. */
+        public void setDefaultChannel(String defaultChannel) { this.defaultChannel = defaultChannel; }
+
+        /** Returns the legacy single Slack user ID auto-invited to new channels in this workspace. */
+        public String getChannelOwnerUserId() { return channelOwnerUserId; }
+        /** Sets the legacy single Slack user ID for auto-invite on channel creation. */
+        public void setChannelOwnerUserId(String channelOwnerUserId) { this.channelOwnerUserId = channelOwnerUserId; }
+
+        /** Returns the list of Slack user IDs auto-invited to new channels (nullable). */
+        public List<String> getChannelOwnerUserIds() { return channelOwnerUserIds; }
+        /** Sets the list of Slack user IDs for auto-invite on channel creation. */
+        public void setChannelOwnerUserIds(List<String> channelOwnerUserIds) {
+            this.channelOwnerUserIds = channelOwnerUserIds;
+        }
+
+        /**
+         * Returns the effective list of Slack user IDs to auto-invite when a
+         * new channel is created in this workspace. Resolves the legacy single
+         * {@code channelOwnerUserId} field and the plural
+         * {@code channelOwnerUserIds} list into one canonical list: the plural
+         * list wins when non-empty; otherwise the singular value becomes a
+         * one-element list; otherwise an empty list is returned.
+         *
+         * @return never {@code null}; empty when no auto-invite is configured
+         */
+        public List<String> effectiveChannelOwnerUserIds() {
+            if (channelOwnerUserIds != null && !channelOwnerUserIds.isEmpty()) {
+                return channelOwnerUserIds;
+            }
+            if (channelOwnerUserId != null && !channelOwnerUserId.isEmpty()) {
+                return List.of(channelOwnerUserId);
+            }
+            return List.of();
+        }
+
+        /** Returns the per-organization GitHub token map for this workspace. */
+        public Map<String, GitHubOrgEntry> getGithubOrgs() { return githubOrgs; }
+        /** Sets the per-organization GitHub token map. */
+        public void setGithubOrgs(Map<String, GitHubOrgEntry> githubOrgs) { this.githubOrgs = githubOrgs; }
+    }
 
     /**
      * Configuration entry for a single workstream.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class WorkstreamEntry {
+        /** Persistent identifier; generated if absent and saved back to YAML. */
         private String workstreamId;
+        /** The Slack channel ID this workstream is bound to. */
         private String channelId;
+        /** The human-readable Slack channel name. */
         private String channelName;
+        /** Optional agent endpoints; typically empty since agents connect inbound. */
         private List<AgentEntry> agents = new ArrayList<>();
+        /** Branch agents commit to by default. */
         private String defaultBranch;
+        /** Branch used as the base when the controller creates a new branch. */
         private String baseBranch;
+        /** Whether agents push commits to the remote origin. */
         private boolean pushToOrigin = true;
+        /** Local filesystem path to the checked-out repository. */
         private String workingDirectory;
+        /** Git clone URL for automatic repository checkout. */
         private String repoUrl;
+        /** Comma-separated list of Claude Code tool names the agent may use. */
         private String allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
+        /** Maximum number of agent turns per job. */
         private int maxTurns = 800;
+        /** Maximum spending budget per job in USD. */
         private double maxBudgetUsd = 100.0;
+        /** Git author name for commits. */
         private String gitUserName;
+        /** Git author email for commits. */
         private String gitUserEmail;
+        /** Per-workstream environment variables injected into pushed tool MCP configs. */
         private Map<String, String> env;
+        /** Optional path to a planning document the agent consults for context. */
         private String planningDocument;
+        /** GitHub organization name for org-based token selection. */
         private String githubOrg;
+        /** Additional repository URLs cloned alongside the primary repo. */
+        private List<String> dependentRepos;
+        /** Node labels that jobs submitted to this workstream must match by default. */
+        private Map<String, String> requiredLabels;
+        /** The Slack workspace ID (team ID) this workstream is bound to. */
+        private String slackWorkspaceId;
+        /** Default Claude Code model alias or full name applied to jobs in this workstream. */
+        private String model;
+        /** Default Claude Code effort/thinking level applied to jobs in this workstream. */
+        private String effort;
 
+        /** Returns the persistent workstream identifier. */
         public String getWorkstreamId() { return workstreamId; }
+        /** Sets the persistent workstream identifier. */
         public void setWorkstreamId(String workstreamId) { this.workstreamId = workstreamId; }
 
+        /** Returns the Slack channel ID (e.g., "C0123456789"). */
         public String getChannelId() { return channelId; }
+        /** Sets the Slack channel ID. */
         public void setChannelId(String channelId) { this.channelId = channelId; }
 
+        /** Returns the human-readable Slack channel name (e.g., "#project-agent"). */
         public String getChannelName() { return channelName; }
+        /** Sets the human-readable Slack channel name. */
         public void setChannelName(String channelName) { this.channelName = channelName; }
 
+        /** Returns the list of agent endpoint entries for this workstream. */
         public List<AgentEntry> getAgents() { return agents; }
+        /** Sets the list of agent endpoint entries for this workstream. */
         public void setAgents(List<AgentEntry> agents) { this.agents = agents; }
 
+        /** Returns the default git branch for agent commits. */
         public String getDefaultBranch() { return defaultBranch; }
+        /** Sets the default git branch for agent commits. */
         public void setDefaultBranch(String defaultBranch) { this.defaultBranch = defaultBranch; }
 
+        /** Returns the base branch used as the starting point for new branch creation. */
         public String getBaseBranch() { return baseBranch; }
+        /** Sets the base branch used when creating new target branches. */
         public void setBaseBranch(String baseBranch) { this.baseBranch = baseBranch; }
 
+        /** Returns whether agents should push commits to the remote origin. */
         public boolean isPushToOrigin() { return pushToOrigin; }
+        /** Sets whether agents should push commits to the remote origin. */
         public void setPushToOrigin(boolean pushToOrigin) { this.pushToOrigin = pushToOrigin; }
 
+        /** Returns the local working directory for the agent's git repository. */
         public String getWorkingDirectory() { return workingDirectory; }
+        /** Sets the local working directory for the agent's git repository. */
         public void setWorkingDirectory(String workingDirectory) { this.workingDirectory = workingDirectory; }
 
         /** Returns the git repository URL for automatic checkout. */
         public String getRepoUrl() { return repoUrl; }
+        /** Sets the git repository URL for automatic checkout. */
         public void setRepoUrl(String repoUrl) { this.repoUrl = repoUrl; }
 
+        /** Returns the comma-separated list of Claude Code tool names the agent may use. */
         public String getAllowedTools() { return allowedTools; }
+        /** Sets the comma-separated list of allowed Claude Code tool names. */
         public void setAllowedTools(String allowedTools) { this.allowedTools = allowedTools; }
 
+        /** Returns the maximum number of turns a Claude Code agent may take per job. */
         public int getMaxTurns() { return maxTurns; }
+        /** Sets the maximum number of turns per job. */
         public void setMaxTurns(int maxTurns) { this.maxTurns = maxTurns; }
 
+        /** Returns the maximum spending budget per job in USD. */
         public double getMaxBudgetUsd() { return maxBudgetUsd; }
+        /** Sets the maximum spending budget per job in USD. */
         public void setMaxBudgetUsd(double maxBudgetUsd) { this.maxBudgetUsd = maxBudgetUsd; }
 
+        /** Returns the git author name used for commits made by this workstream. */
         public String getGitUserName() { return gitUserName; }
+        /** Sets the git author name used for commits. */
         public void setGitUserName(String gitUserName) { this.gitUserName = gitUserName; }
 
+        /** Returns the git author email used for commits made by this workstream. */
         public String getGitUserEmail() { return gitUserEmail; }
+        /** Sets the git author email used for commits. */
         public void setGitUserEmail(String gitUserEmail) { this.gitUserEmail = gitUserEmail; }
 
         /** Returns per-workstream environment variables injected into pushed tool MCP configs. */
         public Map<String, String> getEnv() { return env; }
+        /** Sets per-workstream environment variables for pushed tools. */
         public void setEnv(Map<String, String> env) { this.env = env; }
 
         /** Returns the optional planning document path for broader goal context. */
         public String getPlanningDocument() { return planningDocument; }
+        /** Sets the planning document path for this workstream. */
         public void setPlanningDocument(String planningDocument) { this.planningDocument = planningDocument; }
 
         /** Returns the GitHub organization name for org-based token selection. */
         public String getGithubOrg() { return githubOrg; }
+        /** Sets the GitHub organization name for org-based token selection. */
         public void setGithubOrg(String githubOrg) { this.githubOrg = githubOrg; }
 
         /**
-         * Converts this entry to a {@link SlackWorkstream} instance.
+         * Returns the list of dependent repository URLs that should be
+         * checked out alongside the primary repo. Each repo is cloned
+         * as a sibling directory and managed with the same branch/commit
+         * lifecycle as the primary repo.
+         */
+        public List<String> getDependentRepos() { return dependentRepos; }
+        /** Sets the dependent repository URLs. */
+        public void setDependentRepos(List<String> dependentRepos) { this.dependentRepos = dependentRepos; }
+
+        /**
+         * Returns the Node labels that jobs submitted to this workstream must match by default.
+         * When a job submission does not include {@code requiredLabels}, these are applied.
+         */
+        public Map<String, String> getRequiredLabels() { return requiredLabels; }
+        /** Sets the default Node label requirements for jobs in this workstream. */
+        public void setRequiredLabels(Map<String, String> requiredLabels) { this.requiredLabels = requiredLabels; }
+
+        /**
+         * Returns the Slack workspace ID (team ID, e.g. "T0123456789") that this
+         * workstream is assigned to.  When absent, the workstream is assigned to the
+         * first (or only) workspace connection in the {@code slackWorkspaces} list.
+         */
+        public String getSlackWorkspaceId() { return slackWorkspaceId; }
+        /** Sets the Slack workspace ID for this workstream. */
+        public void setSlackWorkspaceId(String slackWorkspaceId) { this.slackWorkspaceId = slackWorkspaceId; }
+
+        /** Returns the default Claude Code model for jobs in this workstream, or {@code null}. */
+        public String getModel() { return model; }
+        /** Sets the default Claude Code model for jobs in this workstream. */
+        public void setModel(String model) { this.model = model; }
+
+        /** Returns the default Claude Code effort/thinking level for jobs in this workstream, or {@code null}. */
+        public String getEffort() { return effort; }
+        /** Sets the default Claude Code effort/thinking level for jobs in this workstream. */
+        public void setEffort(String effort) { this.effort = effort; }
+
+        /**
+         * Converts this entry to a {@link Workstream} instance.
          *
          * <p>If a {@code workstreamId} is present, it is used as the persistent
          * identifier. Otherwise, a random UUID is generated.</p>
          */
-        public SlackWorkstream toWorkstream() {
-            SlackWorkstream ws;
+        public Workstream toWorkstream() {
+            Workstream ws;
             if (workstreamId != null && !workstreamId.isEmpty()) {
-                ws = new SlackWorkstream(workstreamId, channelId, channelName);
+                ws = new Workstream(workstreamId, channelId, channelName);
             } else {
-                ws = new SlackWorkstream(channelId, channelName);
+                ws = new Workstream(channelId, channelName);
             }
             for (AgentEntry agent : agents) {
                 ws.addAgent(agent.getHost(), agent.getPort());
@@ -170,6 +395,11 @@ public class WorkstreamConfig {
             ws.setEnv(env);
             ws.setPlanningDocument(planningDocument);
             ws.setGithubOrg(githubOrg);
+            ws.setDependentRepos(dependentRepos);
+            ws.setRequiredLabels(requiredLabels);
+            ws.setSlackWorkspaceId(slackWorkspaceId);
+            ws.setModel(model);
+            ws.setEffort(effort);
             return ws;
         }
     }
@@ -179,20 +409,33 @@ public class WorkstreamConfig {
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class AgentEntry {
+        /** The agent hostname or IP address (default: {@code "localhost"}). */
         private String host = "localhost";
+        /** The port the agent's FlowTree node listens on (default: 7766). */
         private int port = 7766;
 
+        /** No-arg constructor for Jackson deserialization. */
         public AgentEntry() {}
 
+        /**
+         * Creates a new agent entry with the specified host and port.
+         *
+         * @param host the agent hostname or IP address
+         * @param port the agent port number
+         */
         public AgentEntry(String host, int port) {
             this.host = host;
             this.port = port;
         }
 
+        /** Returns the agent hostname or IP address. */
         public String getHost() { return host; }
+        /** Sets the agent hostname or IP address. */
         public void setHost(String host) { this.host = host; }
 
+        /** Returns the agent port number. */
         public int getPort() { return port; }
+        /** Sets the agent port number. */
         public void setPort(int port) { this.port = port; }
     }
 
@@ -205,16 +448,46 @@ public class WorkstreamConfig {
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class McpServerEntry {
+        /** Python source file path relative to the project root (for managed servers). */
         private String source;
+        /** HTTP port the managed server process listens on. */
         private int port;
+        /** URL of an already-running external server; when set, no subprocess is launched. */
+        private String url;
+        /** Explicit tool names exposed by this server; required when {@code url} is set. */
+        private List<String> tools;
 
         /** Returns the Python source file path (relative to project root). */
         public String getSource() { return source; }
+        /** Sets the Python source file path (relative to project root). */
         public void setSource(String source) { this.source = source; }
 
         /** Returns the HTTP port to listen on. */
         public int getPort() { return port; }
+        /** Sets the HTTP port for the managed MCP server process. */
         public void setPort(int port) { this.port = port; }
+
+        /**
+         * Returns the URL of an already-running centralized server.
+         * When set, the controller does not launch a subprocess —
+         * it simply passes the URL through to agents.
+         */
+        public String getUrl() { return url; }
+        /** Sets the URL of an already-running external MCP server. */
+        public void setUrl(String url) { this.url = url; }
+
+        /**
+         * Returns the explicit tool names for this server.
+         * Required when {@code url} is set (no source file to discover from).
+         */
+        public List<String> getTools() { return tools; }
+        /** Sets the explicit tool names exposed by this server. */
+        public void setTools(List<String> tools) { this.tools = tools; }
+
+        /** Returns true if this entry references an external server by URL. */
+        public boolean isExternal() {
+            return url != null && !url.isEmpty();
+        }
     }
 
     /**
@@ -227,15 +500,19 @@ public class WorkstreamConfig {
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class PushedToolEntry {
+        /** Python source file path relative to the config directory. */
         private String source;
+        /** Per-tool environment variables injected into the agent's MCP stdio config. */
         private Map<String, String> env;
 
         /** Returns the Python source file path (relative to config directory). */
         public String getSource() { return source; }
+        /** Sets the Python source file path (relative to config directory). */
         public void setSource(String source) { this.source = source; }
 
         /** Returns per-tool environment variables to inject into the MCP stdio config. */
         public Map<String, String> getEnv() { return env; }
+        /** Sets per-tool environment variables for the MCP stdio config. */
         public void setEnv(Map<String, String> env) { this.env = env; }
     }
 
@@ -248,10 +525,12 @@ public class WorkstreamConfig {
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class GitHubOrgEntry {
+        /** The GitHub personal access token for authenticating as this organization. */
         private String token;
 
         /** Returns the GitHub personal access token for this organization. */
         public String getToken() { return token; }
+        /** Sets the GitHub personal access token for this organization. */
         public void setToken(String token) { this.token = token; }
     }
 
@@ -275,6 +554,44 @@ public class WorkstreamConfig {
     public String getChannelOwnerUserId() { return channelOwnerUserId; }
     public void setChannelOwnerUserId(String channelOwnerUserId) { this.channelOwnerUserId = channelOwnerUserId; }
 
+    /** Returns the list of Slack user IDs auto-invited to new channels (nullable). */
+    public List<String> getChannelOwnerUserIds() { return channelOwnerUserIds; }
+    /** Sets the list of Slack user IDs for auto-invite on channel creation. */
+    public void setChannelOwnerUserIds(List<String> channelOwnerUserIds) {
+        this.channelOwnerUserIds = channelOwnerUserIds;
+    }
+
+    /**
+     * Returns the effective list of Slack user IDs to auto-invite on new
+     * channel creation. Resolves the legacy single {@link #channelOwnerUserId}
+     * and the plural {@link #channelOwnerUserIds} into one canonical list:
+     * the plural list wins when non-empty; otherwise the singular value
+     * becomes a one-element list; otherwise an empty list is returned.
+     *
+     * @return never {@code null}; empty when no auto-invite is configured
+     */
+    public List<String> effectiveChannelOwnerUserIds() {
+        if (channelOwnerUserIds != null && !channelOwnerUserIds.isEmpty()) {
+            return channelOwnerUserIds;
+        }
+        if (channelOwnerUserId != null && !channelOwnerUserId.isEmpty()) {
+            return List.of(channelOwnerUserId);
+        }
+        return List.of();
+    }
+
+    /**
+     * Returns the default Slack channel ID to use as a fallback when a
+     * workstream has no channel configured or when publishing to the
+     * configured channel fails.
+     *
+     * <p>This is a global setting. When set in the YAML configuration,
+     * all workstreams without a valid channel will fall back to this
+     * channel instead of silently dropping messages.</p>
+     */
+    public String getDefaultChannel() { return defaultChannel; }
+    public void setDefaultChannel(String defaultChannel) { this.defaultChannel = defaultChannel; }
+
     /** Returns the centralized MCP server configurations. */
     public Map<String, McpServerEntry> getMcpServers() { return mcpServers; }
     public void setMcpServers(Map<String, McpServerEntry> mcpServers) { this.mcpServers = mcpServers; }
@@ -287,8 +604,81 @@ public class WorkstreamConfig {
     public Map<String, GitHubOrgEntry> getGithubOrgs() { return githubOrgs; }
     public void setGithubOrgs(Map<String, GitHubOrgEntry> githubOrgs) { this.githubOrgs = githubOrgs; }
 
+    /**
+     * Returns a merged map of GitHub org name to token, combining the global
+     * {@code githubOrgs} with per-workspace {@code githubOrgs} overrides. When
+     * the same org name appears in both, the per-workspace entry takes precedence
+     * (last write wins across workspaces). Only entries with non-null, non-empty
+     * tokens are included.
+     *
+     * @return merged org-name → token map, in insertion order
+     */
+    public Map<String, String> mergedGithubOrgTokens() {
+        Map<String, String> orgTokens = new LinkedHashMap<>();
+        if (githubOrgs != null) {
+            for (Map.Entry<String, GitHubOrgEntry> entry : githubOrgs.entrySet()) {
+                String token = entry.getValue().getToken();
+                if (token != null && !token.isEmpty()) {
+                    orgTokens.put(entry.getKey(), token);
+                }
+            }
+        }
+        if (slackWorkspaces != null) {
+            for (SlackWorkspaceEntry wsEntry : slackWorkspaces) {
+                if (wsEntry.getGithubOrgs() == null) continue;
+                for (Map.Entry<String, GitHubOrgEntry> entry : wsEntry.getGithubOrgs().entrySet()) {
+                    String token = entry.getValue().getToken();
+                    if (token != null && !token.isEmpty()) {
+                        orgTokens.put(entry.getKey(), token);
+                    }
+                }
+            }
+        }
+        return orgTokens;
+    }
+
+    /**
+     * Returns a map from GitHub org name to the Slack workspace ID that owns it.
+     * Only orgs that are declared inside a workspace's {@code githubOrgs} section
+     * produce a mapping; globally-declared orgs (top-level {@code githubOrgs})
+     * are excluded because the multi-workspace schema treats top-level orgs as
+     * unscoped fallbacks.
+     *
+     * <p>When the same org is declared under multiple workspaces the last
+     * workspace wins, matching the merge order of {@link #mergedGithubOrgTokens()}.</p>
+     *
+     * @return org-name → workspace-ID map, in insertion order
+     */
+    public Map<String, String> orgToWorkspaceId() {
+        Map<String, String> mapping = new LinkedHashMap<>();
+        if (slackWorkspaces != null) {
+            for (SlackWorkspaceEntry wsEntry : slackWorkspaces) {
+                if (wsEntry.getGithubOrgs() == null) continue;
+                for (String org : wsEntry.getGithubOrgs().keySet()) {
+                    mapping.put(org, wsEntry.getWorkspaceId());
+                }
+            }
+        }
+        return mapping;
+    }
+
+    /** Returns the list of workstream configuration entries. */
     public List<WorkstreamEntry> getWorkstreams() { return workstreams; }
+    /** Sets the list of workstream configuration entries. */
     public void setWorkstreams(List<WorkstreamEntry> workstreams) { this.workstreams = workstreams; }
+
+    /**
+     * Returns the list of Slack workspace connection entries.
+     *
+     * <p>When this list is non-empty the controller creates one Bolt {@code App} and
+     * {@code SocketModeApp} per entry. When empty the controller falls back to the
+     * legacy single-token resolution path.</p>
+     */
+    public List<SlackWorkspaceEntry> getSlackWorkspaces() { return slackWorkspaces; }
+    /** Sets the list of Slack workspace connection entries. */
+    public void setSlackWorkspaces(List<SlackWorkspaceEntry> slackWorkspaces) {
+        this.slackWorkspaces = slackWorkspaces != null ? slackWorkspaces : new ArrayList<>();
+    }
 
     /**
      * Loads configuration from a YAML file.
@@ -351,16 +741,54 @@ public class WorkstreamConfig {
     }
 
     /**
-     * Converts all entries to SlackWorkstream instances.
+     * Converts all entries to Workstream instances.
      *
      * @return list of workstreams
      */
-    public List<SlackWorkstream> toWorkstreams() {
-        List<SlackWorkstream> result = new ArrayList<>();
+    public List<Workstream> toWorkstreams() {
+        List<Workstream> result = new ArrayList<>();
         for (WorkstreamEntry entry : workstreams) {
             result.add(entry.toWorkstream());
         }
         return result;
+    }
+
+    /**
+     * Clears any workstream entry fields whose values fail validation
+     * against the canonical lists in {@link ClaudeCodeJob}.  Currently
+     * checks {@code model} against {@link ClaudeCodeJob#VALID_MODELS}
+     * and {@code effort} against {@link ClaudeCodeJob#VALID_EFFORT_LEVELS};
+     * invalid values are reset to {@code null} so the runtime falls back
+     * to the CLI default rather than aborting startup with an
+     * {@link IllegalArgumentException} from {@link Workstream#setModel}
+     * or {@link Workstream#setEffort}.
+     *
+     * @return human-readable warnings describing each cleared value;
+     *         empty when no changes were made
+     */
+    public List<String> sanitize() {
+        List<String> warnings = new ArrayList<>();
+        for (WorkstreamEntry entry : workstreams) {
+            String entryId = entry.getWorkstreamId() != null
+                    ? entry.getWorkstreamId() : entry.getChannelName();
+            String model = entry.getModel();
+            if (model != null && !model.isEmpty()
+                    && !ClaudeCodeJob.VALID_MODELS.contains(model)) {
+                warnings.add("Workstream '" + entryId + "' has invalid model '"
+                        + model + "'; clearing (must be one of "
+                        + ClaudeCodeJob.VALID_MODELS + ")");
+                entry.setModel(null);
+            }
+            String effort = entry.getEffort();
+            if (effort != null && !effort.isEmpty()
+                    && !ClaudeCodeJob.VALID_EFFORT_LEVELS.contains(effort)) {
+                warnings.add("Workstream '" + entryId + "' has invalid effort '"
+                        + effort + "'; clearing (must be one of "
+                        + ClaudeCodeJob.VALID_EFFORT_LEVELS + ")");
+                entry.setEffort(null);
+            }
+        }
+        return warnings;
     }
 
     /**
@@ -380,7 +808,7 @@ public class WorkstreamConfig {
     }
 
     /**
-     * Adds a new workstream to the configuration from a {@link SlackWorkstream} instance.
+     * Adds a new workstream to the configuration from a {@link Workstream} instance.
      *
      * <p>This creates a new {@link WorkstreamEntry} from the workstream's current
      * state and appends it to the workstreams list. Used by {@code /flowtree setup}
@@ -388,7 +816,7 @@ public class WorkstreamConfig {
      *
      * @param ws the workstream to add
      */
-    public void addWorkstream(SlackWorkstream ws) {
+    public void addWorkstream(Workstream ws) {
         WorkstreamEntry entry = new WorkstreamEntry();
         entry.setWorkstreamId(ws.getWorkstreamId());
         entry.setChannelId(ws.getChannelId());
@@ -406,6 +834,11 @@ public class WorkstreamConfig {
         entry.setEnv(ws.getEnv());
         entry.setPlanningDocument(ws.getPlanningDocument());
         entry.setGithubOrg(ws.getGithubOrg());
+        entry.setDependentRepos(ws.getDependentRepos());
+        entry.setRequiredLabels(ws.getRequiredLabels());
+        entry.setSlackWorkspaceId(ws.getSlackWorkspaceId());
+        entry.setModel(ws.getModel());
+        entry.setEffort(ws.getEffort());
         workstreams.add(entry);
     }
 
@@ -418,8 +851,8 @@ public class WorkstreamConfig {
      *
      * @param activeWorkstreams the current in-memory workstreams
      */
-    public void syncFromWorkstreams(java.util.Collection<SlackWorkstream> activeWorkstreams) {
-        for (SlackWorkstream ws : activeWorkstreams) {
+    public void syncFromWorkstreams(Collection<Workstream> activeWorkstreams) {
+        for (Workstream ws : activeWorkstreams) {
             boolean found = false;
             for (WorkstreamEntry entry : workstreams) {
                 if (ws.getChannelId().equals(entry.getChannelId())) {
@@ -438,6 +871,11 @@ public class WorkstreamConfig {
                     entry.setEnv(ws.getEnv());
                     entry.setPlanningDocument(ws.getPlanningDocument());
                     entry.setGithubOrg(ws.getGithubOrg());
+                    entry.setDependentRepos(ws.getDependentRepos());
+                    entry.setRequiredLabels(ws.getRequiredLabels());
+                    entry.setSlackWorkspaceId(ws.getSlackWorkspaceId());
+                    entry.setModel(ws.getModel());
+                    entry.setEffort(ws.getEffort());
                     found = true;
                     break;
                 }

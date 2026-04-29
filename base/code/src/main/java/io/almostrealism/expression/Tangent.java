@@ -21,13 +21,32 @@ import io.almostrealism.lang.LanguageOperations;
 import java.util.List;
 import java.util.OptionalDouble;
 
+/**
+ * A tangent or hyperbolic-tangent expression applied to a single operand.
+ *
+ * <p>When {@code hyperbolic} is {@code false} this generates {@code tan(input)};
+ * when {@code true} it generates {@code tanh(input)}. If the operand is a constant
+ * the value is folded at construction time.</p>
+ */
 public class Tangent extends Expression<Double> {
+	/** When {@code true} this expression computes {@code tanh}; otherwise {@code tan}. */
 	private boolean hyperbolic;
 
+	/**
+	 * Constructs a standard tangent expression ({@code tan(input)}).
+	 *
+	 * @param input the angle operand
+	 */
 	protected Tangent(Expression<Double> input) {
 		this(input, false);
 	}
 
+	/**
+	 * Constructs a tangent or hyperbolic-tangent expression.
+	 *
+	 * @param input     the operand
+	 * @param hyperbolic {@code true} for {@code tanh}, {@code false} for {@code tan}
+	 */
 	protected Tangent(Expression<Double> input, boolean hyperbolic) {
 		super(Double.class, input);
 		this.hyperbolic = hyperbolic;
@@ -63,10 +82,23 @@ public class Tangent extends Expression<Double> {
 		return super.compare(e) && ((Tangent) e).hyperbolic == hyperbolic;
 	}
 
+	/**
+	 * Creates a standard tangent expression ({@code tan(input)}), folding constants.
+	 *
+	 * @param input the operand
+	 * @return a constant or a {@link Tangent} expression
+	 */
 	public static Expression<Double> of(Expression<Double> input) {
 		return of(input, false);
 	}
 
+	/**
+	 * Creates a tangent or hyperbolic-tangent expression, folding constants.
+	 *
+	 * @param input     the operand
+	 * @param hyperbolic {@code true} for {@code tanh}, {@code false} for {@code tan}
+	 * @return a constant or a {@link Tangent} expression
+	 */
 	public static Expression<Double> of(Expression<Double> input, boolean hyperbolic) {
 		OptionalDouble d = input.doubleValue();
 

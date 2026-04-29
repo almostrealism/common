@@ -16,7 +16,6 @@
 
 package org.almostrealism.color;
 
-import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
@@ -57,13 +56,9 @@ import org.almostrealism.geometry.DiscreteField;
  * @see DiffuseShader
  * @author Michael Murray
  */
-public class SilhouetteShader implements Evaluable<PackedCollection>, Editable, Shader<LightingContext>, RGBFeatures {
+public class SilhouetteShader implements Evaluable<PackedCollection>, Shader<LightingContext>, RGBFeatures {
+	/** The uniform color returned for all shaded pixels. */
 	private Producer<PackedCollection> color;
-
-	private final String[] names = { "Color" };
-	private final String[] desc = { "The color of the silhouette" };
-	private final Class[] types = { Evaluable.class };
-
 
 	/**
 	 * Constructs a new {@link SilhouetteShader} using black as a color.
@@ -91,66 +86,6 @@ public class SilhouetteShader implements Evaluable<PackedCollection>, Editable, 
 	 */
 	@Override
 	public PackedCollection evaluate(Object[] args) { return this.color.get().evaluate(args); }
-
-	/**
-	 * @see Editable#getPropertyNames()
-	 */
-	@Override
-	public String[] getPropertyNames() { return this.names; }
-
-	/**
-	 * @see Editable#getPropertyDescriptions()
-	 */
-	@Override
-	public String[] getPropertyDescriptions() { return this.desc; }
-
-	/**
-	 * @see Editable#getPropertyTypes()
-	 */
-	@Override
-	public Class[] getPropertyTypes() { return this.types; }
-
-	/**
-	 * @see Editable#getPropertyValues()
-	 */
-	@Override
-	public Object[] getPropertyValues() { return new Object[] {this.color}; }
-
-	/**
-	 * @see Editable#setPropertyValue(java.lang.Object, int)
-	 */
-	@Override
-	public void setPropertyValue(Object value, int index) {
-		if (index == 0)
-			this.color = (Producer<PackedCollection>) value;
-		else
-			throw new IllegalArgumentException("Illegal property index: " + index);
-	}
-
-	/**
-	 * @see Editable#setPropertyValues(java.lang.Object[])
-	 */
-	@Override
-	public void setPropertyValues(Object[] values) {
-		if (values.length > 0) this.color = (Producer<PackedCollection>) values[0];
-	}
-
-	/**
-	 * @see Editable#getInputPropertyValues()
-	 */
-	@Override
-	public Producer[] getInputPropertyValues() { return new Producer[] { this.color }; }
-
-	/**
-	 * @see Editable#setInputPropertyValue(int, Producer)
-	 */
-	@Override
-	public void setInputPropertyValue(int index, Producer p) {
-		if (index == 0)
-			this.color = (Producer<PackedCollection>) p;
-		else
-			throw new IllegalArgumentException("Illegal property index: " + index);
-	}
 
 	/**
 	 * @return  "Silhouette Shader".

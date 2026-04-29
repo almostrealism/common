@@ -95,6 +95,7 @@ import java.util.function.Consumer;
  * @author Michael Murray
  */
 public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<PackedCollection> {
+	/** The minimum wavelength (in samples) below which entries are considered stale and purged. */
 	private final double wavelength;
 
 	/**

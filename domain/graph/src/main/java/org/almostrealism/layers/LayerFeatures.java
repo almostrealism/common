@@ -19,8 +19,6 @@ package org.almostrealism.layers;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.cycle.Setup;
-import io.almostrealism.relation.Composition;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
@@ -70,21 +68,21 @@ import java.util.function.Supplier;
  * <h3>Linear Layers</h3>
  * <ul>
  *   <li>{@link #dense(int, int)} - Fully connected (dense) layer</li>
- *   <li>{@link #dense(PackedCollection, PackedCollection)} - Dense layer with pre-defined weights</li>
+ *   <li>{@code dense(PackedCollection, PackedCollection)} - Dense layer with pre-defined weights</li>
  * </ul>
  *
  * <h3>Convolutional Layers</h3>
  * <ul>
- *   <li>{@link #convolution2d(int, int, int)} - 2D convolution layer</li>
+ *   <li>{@code convolution2d(int, int, int)} - 2D convolution layer</li>
  *   <li>{@link #convolution1d(int, int, int, int, int, int, PackedCollection, PackedCollection)} - 1D convolution</li>
  *   <li>{@link #pool2d(int)} - 2D max pooling layer</li>
  * </ul>
  *
  * <h3>Normalization Layers</h3>
  * <ul>
- *   <li>{@link #norm(int)} - Group normalization</li>
- *   <li>{@link #norm(PackedCollection, PackedCollection)} - Layer normalization with weights</li>
- *   <li>{@link #rmsnorm(PackedCollection)} - RMS normalization</li>
+ *   <li>{@code norm(int)} - Group normalization</li>
+ *   <li>{@code norm(PackedCollection, PackedCollection)} - Layer normalization with weights</li>
+ *   <li>{@code rmsnorm(PackedCollection)} - RMS normalization</li>
  * </ul>
  *
  * <h3>Shape Manipulation</h3>
@@ -97,11 +95,11 @@ import java.util.function.Supplier;
  *
  * <h3>Composition Operations</h3>
  * <ul>
- *   <li>{@link #residual(Block)} - Residual connection</li>
- *   <li>{@link #accum(TraversalPolicy, CellularPropagation)} - Element-wise addition</li>
- *   <li>{@link #product(CellularPropagation)} - Element-wise multiplication</li>
- *   <li>{@link #concat(int, Block)} - Concatenation along an axis</li>
- *   <li>{@link #compose(String, TraversalPolicy, Block, TraversalPolicy, io.almostrealism.relation.Composition)} - General composition</li>
+ *   <li>{@link LayerRoutingFeatures#residual(Block)} - Residual connection</li>
+ *   <li>{@code accum(TraversalPolicy, CellularPropagation)} - Element-wise addition</li>
+ *   <li>{@code product(CellularPropagation)} - Element-wise multiplication</li>
+ *   <li>{@code concat(int, Block)} - Concatenation along an axis</li>
+ *   <li>{@link LayerRoutingFeatures#compose(String, TraversalPolicy, Block, TraversalPolicy, io.almostrealism.relation.Composition, io.almostrealism.compute.ComputeRequirement...)} - General composition</li>
  * </ul>
  *
  * <h2>Usage Patterns</h2>
@@ -139,9 +137,16 @@ import java.util.function.Supplier;
  */
 public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, ConsoleFeatures {
 
+	/**
+	 * When {@code false} (default), composite operations (e.g., accumulation, product) are always
+	 * used. When {@code true}, simpler non-composite paths may be taken when available.
+	 */
 	boolean allowNonComposites = false;
+
+	/** When {@code true} (default), weighted-sum accumulation blocks are generated for residual paths. */
 	boolean enableWeightedSum = true;
 
+	/** Child console used for layer-level diagnostic output. */
 	Console console = CollectionFeatures.console.child();
 
 	/**
@@ -203,6 +208,18 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		}
 	}
 
+	/**
+	 * Creates a cellular layer from raw forward and backward cells.
+	 *
+	 * @param name         a human-readable label for the layer
+	 * @param inputShape   the expected input shape
+	 * @param outputShape  the shape produced by the forward cell
+	 * @param forward      the forward-pass cell
+	 * @param backward     the backward-pass gradient propagation strategy
+	 * @param requirements optional compute requirements
+	 * @return the constructed {@link CellularLayer}
+	 * @deprecated prefer operator-based factory methods
+	 */
 	@Deprecated
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Cell<PackedCollection> forward, BackPropagation backward,
@@ -211,6 +228,12 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				Collections.emptyList(), new OperationList(), requirements);
 	}
 
+	/**
+	 * Creates a pass-through layer factory that invokes {@code consumer} with each forward-pass value.
+	 *
+	 * @param consumer the consumer that receives the evaluated output for inspection
+	 * @return a function that creates a monitoring block for any input shape
+	 */
 	default Function<TraversalPolicy, Block> monitor(Consumer<PackedCollection> consumer) {
 		return layer(Cell.of((in, next) -> {
 				OperationList op = new OperationList("Monitor Layer");
@@ -224,34 +247,87 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 			}), Cell.of((in, next) -> next.push(in)));
 	}
 
+	/**
+	 * Creates a shape-independent block factory from forward and backward factors.
+	 *
+	 * @param forward  the forward-pass differentiable factor
+	 * @param backward the backward-pass gradient factor
+	 * @return a function that creates a {@link DefaultBlock} for any input shape
+	 */
 	default Function<TraversalPolicy, Block> layer(Factor<PackedCollection> forward,
 												   Factor<PackedCollection> backward) {
 		return layer(Cell.of(forward), Cell.of(backward));
 	}
 
+	/**
+	 * Creates a shape-independent block factory from forward and backward cells.
+	 *
+	 * @param forward  the forward-pass cell
+	 * @param backward the backward-pass gradient cell
+	 * @return a function that creates a {@link DefaultBlock} for any input shape
+	 */
 	default Function<TraversalPolicy, Block> layer(Cell<PackedCollection> forward,
 												   Cell<PackedCollection> backward) {
 		return shape -> new DefaultBlock(shape, shape, forward, backward);
 	}
 
+	/**
+	 * Creates a cellular layer factory that accepts any input shape and keeps the same output shape.
+	 *
+	 * @param name         a human-readable label for the layer
+	 * @param operator     the differentiable forward operator
+	 * @param requirements optional compute requirements
+	 * @return a function that creates the layer for any given shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> layer(String name,
 														   Factor<PackedCollection> operator,
 														   ComputeRequirement... requirements) {
 		return shape -> layer(name, shape, operator, requirements);
 	}
 
+	/**
+	 * Creates a cellular layer where the input and output shapes are the same.
+	 *
+	 * @param name         a human-readable label for the layer
+	 * @param shape        the input (and output) shape
+	 * @param operator     the differentiable forward operator
+	 * @param requirements optional compute requirements
+	 * @return the constructed {@link CellularLayer}
+	 */
 	default CellularLayer layer(String name, TraversalPolicy shape,
 								Factor<PackedCollection> operator,
 								ComputeRequirement... requirements) {
 		return layer(name, shape, shape, operator, requirements);
 	}
 
+	/**
+	 * Creates a cellular layer with distinct input and output shapes and no learnable weights.
+	 *
+	 * @param name         a human-readable label for the layer
+	 * @param inputShape   the expected input shape
+	 * @param outputShape  the shape produced by the operator
+	 * @param operator     the differentiable forward operator
+	 * @param requirements optional compute requirements
+	 * @return the constructed {@link CellularLayer}
+	 */
+	@Override
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Factor<PackedCollection> operator,
 								ComputeRequirement... requirements) {
 		return layer(name, inputShape, outputShape, operator, Collections.emptyList(), requirements);
 	}
 
+	/**
+	 * Creates a cellular layer with learnable weights and a no-op setup operation.
+	 *
+	 * @param name         a human-readable label for the layer
+	 * @param inputShape   the expected input shape
+	 * @param outputShape  the shape produced by the operator
+	 * @param operator     the differentiable forward operator
+	 * @param weights      the learnable parameter collections
+	 * @param requirements optional compute requirements
+	 * @return the constructed {@link CellularLayer}
+	 */
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Factor<PackedCollection> operator,
 								List<PackedCollection> weights,
@@ -293,6 +369,24 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				weights, setup, requirements);
 	}
 
+	/**
+	 * Core layer factory that wires a forward cell and a backward propagation strategy into a
+	 * fully initialised {@link DefaultCellularLayer}.
+	 *
+	 * <p>The backward cell is wrapped in a {@link BackPropagationCell}. Input and output tracking
+	 * is enabled according to {@link Layer#ioTracking}. If monitoring is enabled, a
+	 * {@link MonitorReceptor} is installed on the layer's output.</p>
+	 *
+	 * @param name         a human-readable label for the layer
+	 * @param inputShape   the expected input shape
+	 * @param outputShape  the shape produced by the forward cell
+	 * @param forward      the forward-pass cell
+	 * @param backward     the backward-pass gradient propagation strategy
+	 * @param weights      the learnable parameter collections
+	 * @param setup        the setup operation to run before the first forward pass
+	 * @param requirements optional compute requirements
+	 * @return the fully initialised {@link CellularLayer}
+	 */
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Cell<PackedCollection> forward, BackPropagation backward,
 								List<PackedCollection> weights, Supplier<Runnable> setup,
@@ -308,127 +402,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 					weights.toArray(PackedCollection[]::new)));
 
 		backwardCell.setForwardInput(layer.getInput());
-		return layer;
-	}
-
-	default Function<TraversalPolicy, CellularLayer> compose(String name,
-															 Block aux,
-															 Composition<PackedCollection> operator,
-															 ComputeRequirement... requirements) {
-		return shape -> compose(name, shape, aux.getOutputShape(), aux, operator, requirements);
-	}
-
-	default Function<TraversalPolicy, CellularLayer> compose(String name,
-															 Block aux,
-															 TraversalPolicy outputShape,
-															 Composition<PackedCollection> operator,
-															 ComputeRequirement... requirements) {
-		return shape -> compose(name, shape, aux, outputShape, operator, requirements);
-	}
-
-	default CellularLayer compose(String name,
-								  TraversalPolicy inputShape,
-								  Block aux, TraversalPolicy outputShape,
-								  Composition<PackedCollection> operator,
-								  ComputeRequirement... requirements) {
-		return compose(name, inputShape, aux.getOutputShape(), outputShape, aux, operator, requirements);
-	}
-
-	default CellularLayer compose(String name,
-								  TraversalPolicy shape,
-								  CellularPropagation<PackedCollection> aux,
-								  Composition<PackedCollection> operator,
-								  ComputeRequirement... requirements) {
-		return compose(name, shape, shape, aux, operator, requirements);
-	}
-
-	default CellularLayer compose(String name,
-								  TraversalPolicy shape,
-								  TraversalPolicy auxShape,
-								  CellularPropagation<PackedCollection> aux,
-								  Composition<PackedCollection> operator,
-								  ComputeRequirement... requirements) {
-		return compose(name, shape, auxShape, shape, aux, operator, requirements);
-	}
-
-	default CellularLayer compose(String name,
-								  TraversalPolicy inputShape,
-								  TraversalPolicy auxShape,
-								  TraversalPolicy outputShape,
-								  CellularPropagation<PackedCollection> aux,
-								  Composition<PackedCollection> operator,
-								  ComputeRequirement... requirements) {
-		PackedCollection auxInput = Layer.ioTracking ? new PackedCollection(auxShape) : null;
-
-		// Capture the input coming in via aux, storing
-		// the actual value (if it is necessary)
-		Cell<PackedCollection> auxExit = Cell.of((in, next) -> {
-			if (auxInput == null) {
-				return next.push(in);
-			} else {
-				OperationList op = new OperationList(name + " composed layer (Entry)");
-				op.add(into(name + " composed layer (Input Record)", in,
-						p(auxInput), DefaultCellularLayer.enableMemoryDataCopy));
-				op.add(next.push(p(auxInput)));
-				return op;
-			}
-		});
-		aux.getForward().setReceptor(auxExit);
-
-		// Capture the result intended as input for the composition
-		Cell.CaptureReceptor<PackedCollection> auxReceptor = new Cell.CaptureReceptor<>();
-		auxExit.setReceptor(auxReceptor);
-
-		Supplier<Runnable> setup = new OperationList();
-		if (aux instanceof Setup) {
-			setup = ((Setup) aux).setup();
-		}
-
-		// Create a layer that composes its input with whatever was received for aux
-		DefaultCellularLayer layer = new DefaultCellularLayer(name, outputShape,
-				Cell.of((input, next) -> next == null ? new OperationList() :
-						next.push(operator.compose(input, auxReceptor.getReceipt()))),
-				null, Collections.emptyList(), setup);
-		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
-
-		layer.init(inputShape, Layer.ioTracking, true);
-
-		// Create gradient propagation for the main input
-		String mainName = name + " main";
-		BackPropagationCell mainBackward = new BackPropagationCell(mainName,
-				DefaultGradientPropagation.create(mainName, in -> operator.compose(in, p(auxInput))));
-		mainBackward.setForwardInput(layer.getInput());
-
-		// Create gradient propagation for the aux input
-		// and direct its output to the aux backward Cell
-		String auxName = name + " aux";
-		BackPropagationCell auxBackward = new BackPropagationCell(auxName,
-				DefaultGradientPropagation.create(auxName, in -> operator.compose(p(layer.getInput()), in)));
-		auxBackward.setForwardInput(auxInput);
-		auxBackward.setReceptor(aux.getBackward());
-
-		// Combine both backpropagation steps and attach the result to the layer
-		layer.setBackward(new LearningCell() {
-			@Override
-			public void setParameterUpdate(ParameterUpdate<PackedCollection> update) {
-				if (aux instanceof Learning) {
-					((Learning) aux).setParameterUpdate(update);
-				}
-			}
-
-			@Override
-			public Supplier<Runnable> push(Producer<PackedCollection> input) {
-				OperationList op = new OperationList(name + " Composed Backward");
-				op.add(auxBackward.push(input));
-				op.add(mainBackward.push(input));
-				return op;
-			}
-
-			@Override
-			public void setReceptor(Receptor<PackedCollection> r) {
-				mainBackward.setReceptor(r);
-			}
-		});
 		return layer;
 	}
 
@@ -503,18 +476,43 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return op;
 	}
 
+	/**
+	 * Creates a {@link CollectionReceptor} that writes into the given destination collection.
+	 *
+	 * @param dest the destination {@link PackedCollection}
+	 * @return a receptor that copies incoming values into {@code dest}
+	 */
 	default CollectionReceptor into(PackedCollection dest) {
 		return new CollectionReceptor(dest);
 	}
 
+	/**
+	 * Creates a {@link CollectionReceptor} that writes into a position within the given destination.
+	 *
+	 * @param dest the destination {@link PackedCollection}
+	 * @param pos  a producer for the offset position within {@code dest}
+	 * @return a receptor that copies incoming values into {@code dest} at the given position
+	 */
 	default CollectionReceptor into(PackedCollection dest, Producer<PackedCollection> pos) {
 		return new CollectionReceptor(dest, pos);
 	}
 
+	/**
+	 * Creates a flatten block factory that preserves the leading count dimension.
+	 *
+	 * @return a function that creates a flattening block for any input shape
+	 */
 	default Function<TraversalPolicy, Block> flattened() {
 		return flattened(true);
 	}
 
+	/**
+	 * Creates a flatten block factory.
+	 *
+	 * @param preserveCount when {@code true}, the leading batch/count dimension is preserved;
+	 *                      when {@code false}, all dimensions are collapsed to one
+	 * @return a function that creates a flattening block for any input shape
+	 */
 	default Function<TraversalPolicy, Block> flattened(boolean preserveCount) {
 		return shape -> {
 			TraversalPolicy outputShape = shape.flatten(preserveCount);
@@ -524,6 +522,14 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		};
 	}
 
+	/**
+	 * Creates a reshape block that reinterprets data with a new shape.
+	 *
+	 * @param inputShape  the original shape
+	 * @param outputShape the target shape; must have the same total size as {@code inputShape}
+	 * @return a block whose forward cell reshapes to {@code outputShape} and backward reshapes back
+	 * @throws IllegalArgumentException if the total sizes differ
+	 */
 	default Block reshape(TraversalPolicy inputShape, TraversalPolicy outputShape) {
 		if (inputShape.getTotalSize() != outputShape.getTotalSize()) {
 			throw new IllegalArgumentException("Cannot reshape " + inputShape + " to " + outputShape);
@@ -581,6 +587,14 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 						next.push(pad(inputShape, new TraversalPolicy(true, pos), in))));
 	}
 
+	/**
+	 * Creates a padding block that embeds the input at a given position within a larger shape.
+	 *
+	 * @param inputShape   the shape of the data to embed
+	 * @param paddedShape  the target padded shape
+	 * @param pos          the offset position within the padded output
+	 * @return a block whose forward cell pads to {@code paddedShape} and backward subsets back
+	 */
 	default Block pad(TraversalPolicy inputShape, TraversalPolicy paddedShape, int... pos) {
 			return new DefaultBlock(inputShape, paddedShape,
 				Cell.of((in, next) ->
@@ -798,8 +812,8 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 						upsampledFlat, 0, leftPadding);
 			}
 
-			CollectionProducer conv = upsampledFlat.reshape(batchSize, inputChannels, 1, paddedExpandedLength);
-			CollectionProducer filter = cp(filters).reshape(1, inputChannels, outputChannels, kernelSize);
+			upsampledFlat.reshape(batchSize, inputChannels, 1, paddedExpandedLength);
+			cp(filters).reshape(1, inputChannels, outputChannels, kernelSize);
 
 			CollectionProducer result;
 
@@ -853,11 +867,32 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 					new OperationList(), requirements);
 	}
 
+	/**
+	 * Creates a 2-D convolution block factory with an explicit channel count and a learnable bias.
+	 *
+	 * @param inputChannels the number of input channels; when not 1, the input shape is validated
+	 * @param filterCount   the number of convolutional filters
+	 * @param size          the spatial size of each filter
+	 * @param padding       the amount of zero-padding added to each spatial dimension
+	 * @param requirements  optional compute requirements
+	 * @return a function that creates a 2-D convolution block for any input shape
+	 */
 	default Function<TraversalPolicy, Block> convolution2d(int inputChannels, int filterCount, int size, int padding,
 																   ComputeRequirement... requirements) {
 		return convolution2d(inputChannels, filterCount, size, padding, true, requirements);
 	}
 
+	/**
+	 * Creates a 2-D convolution block factory with an explicit channel count and optional bias.
+	 *
+	 * @param inputChannels the number of input channels; when not 1, the input shape is validated
+	 * @param filterCount   the number of convolutional filters
+	 * @param size          the spatial size of each filter
+	 * @param padding       the amount of zero-padding added to each spatial dimension
+	 * @param bias          when {@code true}, a learnable bias is added to each filter output
+	 * @param requirements  optional compute requirements
+	 * @return a function that creates a 2-D convolution block for any input shape
+	 */
 	default Function<TraversalPolicy, Block> convolution2d(int inputChannels, int filterCount, int size, int padding,
 														   boolean bias, ComputeRequirement... requirements) {
 		if (inputChannels != 1) {
@@ -875,24 +910,74 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return shape -> convolution2d(shape, filterCount, size, padding, bias, requirements);
 	}
 
+	/**
+	 * Creates a 2-D convolution block factory with no padding and a learnable bias.
+	 *
+	 * @param filterCount  the number of convolutional filters
+	 * @param size         the spatial size of each filter (height and width)
+	 * @param requirements optional compute requirements
+	 * @return a function that creates a 2-D convolution block for any input shape
+	 */
 	default Function<TraversalPolicy, Block> convolution2d(int filterCount, int size, ComputeRequirement... requirements) {
 		return convolution2d(filterCount, size, 0, requirements);
 	}
 
+	/**
+	 * Creates a 2-D convolution block factory with the given padding and a learnable bias.
+	 *
+	 * @param filterCount  the number of convolutional filters
+	 * @param size         the spatial size of each filter
+	 * @param padding      the amount of zero-padding added to each spatial dimension
+	 * @param requirements optional compute requirements
+	 * @return a function that creates a 2-D convolution block for any input shape
+	 */
 	default Function<TraversalPolicy, Block> convolution2d(int filterCount, int size, int padding, ComputeRequirement... requirements) {
 		return shape -> convolution2d(shape, filterCount, size, padding, true, requirements);
 	}
 
+	/**
+	 * Creates a 2-D convolution block with no padding and a learnable bias.
+	 *
+	 * @param inputShape   the input shape (must be 4-D: batch × channels × height × width)
+	 * @param filterCount  the number of convolutional filters
+	 * @param size         the spatial size of each filter
+	 * @param requirements optional compute requirements
+	 * @return the constructed convolution block
+	 */
 	default Block convolution2d(TraversalPolicy inputShape, int filterCount,
 										int size, ComputeRequirement... requirements) {
 		return convolution2d(inputShape, filterCount, size, 0, true, requirements);
 	}
 
+	/**
+	 * Creates a 2-D convolution block with no padding and optional bias.
+	 *
+	 * @param inputShape   the input shape (must be 4-D)
+	 * @param filterCount  the number of convolutional filters
+	 * @param size         the spatial size of each filter
+	 * @param bias         when {@code true}, a learnable bias vector is added to each filter output
+	 * @param requirements optional compute requirements
+	 * @return the constructed convolution block
+	 */
 	default Block convolution2d(TraversalPolicy inputShape, int filterCount,
 										int size, boolean bias, ComputeRequirement... requirements) {
 		return convolution2d(inputShape, filterCount, size, 0, bias, requirements);
 	}
 
+	/**
+	 * Core 2-D convolution block factory.
+	 *
+	 * <p>Initialises filter and bias weights, builds the forward operator using the weighted-sum
+	 * convolution pattern, and wires backpropagation through {@link DefaultGradientPropagation}.</p>
+	 *
+	 * @param inputShape   the input shape (must be 4-D or auto-padded to 4-D)
+	 * @param filterCount  the number of convolutional filters
+	 * @param size         the spatial size of each filter
+	 * @param padding      the amount of zero-padding added to each spatial dimension
+	 * @param bias         when {@code true}, a learnable bias is added to each filter output
+	 * @param requirements optional compute requirements
+	 * @return the constructed convolution block
+	 */
 	default Block convolution2d(TraversalPolicy inputShape, int filterCount,
 								int size, int padding,
 								boolean bias, ComputeRequirement... requirements) {
@@ -980,10 +1065,28 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		}
 	}
 
+	/**
+	 * Creates a 2D max-pooling layer factory that applies the given pooling window size
+	 * to any input shape supplied at layer construction time.
+	 *
+	 * @param size the height and width of the square pooling window
+	 * @return a function that creates a {@link CellularLayer} for any 4-D input shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> pool2d(int size) {
 		return shape -> pool2d(shape, size);
 	}
 
+	/**
+	 * Creates a 2D max-pooling layer for a specific 4-D input shape.
+	 *
+	 * <p>The input is expected to have dimensions {@code (N, C, H, W)}.
+	 * The output shape is {@code (N, C, H/size, W/size)}.</p>
+	 *
+	 * @param inputShape   the 4-D input shape {@code (batch, channels, height, width)}
+	 * @param size         the height and width of the square pooling window
+	 * @param requirements optional compute requirements
+	 * @return the constructed max-pooling {@link CellularLayer}
+	 */
 	default CellularLayer pool2d(TraversalPolicy inputShape, int size, ComputeRequirement... requirements) {
 		inputShape = padDimensions(inputShape, 2, 4);
 
@@ -1010,35 +1113,91 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return layer("pool2d", inputShape, outputShape, operator, requirements);
 	}
 
+	/**
+	 * Creates a dense layer factory using the input shape's size as the node count.
+	 *
+	 * @param nodes the number of output nodes
+	 * @return a function that creates a dense layer for any input shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> dense(int nodes) {
 		return shape -> dense(shape.getSize(), nodes).apply(shape);
 	}
 
+	/**
+	 * Creates a dense layer factory with a learnable bias and weight initialisation.
+	 *
+	 * @param size  the number of input features
+	 * @param nodes the number of output nodes
+	 * @return a function that creates a dense layer for any input shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> dense(int size, int nodes) {
 		return dense(size, nodes, true);
 	}
 
+	/**
+	 * Creates a dense layer factory with weight initialisation and optional bias.
+	 *
+	 * @param size  the number of input features
+	 * @param nodes the number of output nodes
+	 * @param bias  when {@code true}, a learnable bias is added
+	 * @return a function that creates a dense layer for any input shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> dense(int size, int nodes, boolean bias) {
 		return dense(size, nodes, bias, true);
 	}
 
+	/**
+	 * Creates a dense layer factory with full control over bias and weight initialisation.
+	 *
+	 * @param size         the number of input features
+	 * @param nodes        the number of output nodes
+	 * @param bias         when {@code true}, a learnable bias is added
+	 * @param init         when {@code true}, weights are initialised from a scaled random normal distribution
+	 * @param requirements optional compute requirements
+	 * @return a function that creates a dense layer for any input shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> dense(int size, int nodes,
 														   boolean bias, boolean init,
 														   ComputeRequirement... requirements) {
 		return inputShape -> dense(inputShape, new PackedCollection(shape(nodes, size)), bias, init, requirements);
 	}
 
+	/**
+	 * Creates a dense layer factory backed by pre-allocated weights with no bias and no initialisation.
+	 *
+	 * @param weights      the pre-allocated weight matrix of shape {@code [nodes, size]}
+	 * @param requirements optional compute requirements
+	 * @return a function that creates a dense layer for any input shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> dense(PackedCollection weights,
 														   ComputeRequirement... requirements) {
 		return inputShape -> dense(inputShape, weights, false, false, requirements);
 	}
 
+	/**
+	 * Creates a dense layer factory backed by pre-allocated weights and biases.
+	 *
+	 * @param weights      the pre-allocated weight matrix of shape {@code [nodes, size]}
+	 * @param biases       the pre-allocated bias vector of shape {@code [nodes]}
+	 * @param requirements optional compute requirements
+	 * @return a function that creates a dense layer for any input shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> dense(PackedCollection weights,
 														   PackedCollection biases,
 														   ComputeRequirement... requirements) {
 		return inputShape -> dense(inputShape, weights, biases, false, requirements);
 	}
 
+	/**
+	 * Creates a dense layer, optionally allocating a bias collection.
+	 *
+	 * @param inputShape   the expected input shape
+	 * @param weights      the weight matrix of shape {@code [nodes, size]}
+	 * @param bias         when {@code true}, a zero-initialised bias collection is allocated
+	 * @param init         when {@code true}, weights are initialised from a scaled random normal distribution
+	 * @param requirements optional compute requirements
+	 * @return the constructed dense {@link CellularLayer}
+	 */
 	default CellularLayer dense(TraversalPolicy inputShape,
 								PackedCollection weights,
 								boolean bias, boolean init,
@@ -1048,6 +1207,20 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				init, requirements);
 	}
 
+	/**
+	 * Core dense layer factory with explicit weight and bias collections.
+	 *
+	 * <p>Builds a matrix-multiply operator ({@code weights @ input + bias}) and wraps it in
+	 * a {@link CellularLayer} with automatic differentiation for backpropagation.</p>
+	 *
+	 * @param inputShape   the expected input shape
+	 * @param weights      the weight matrix of shape {@code [nodes, size]}
+	 * @param biases       the bias vector of shape {@code [nodes]}, or {@code null} for no bias
+	 * @param init         when {@code true}, weights are initialised from a scaled random normal distribution
+	 * @param requirements optional compute requirements
+	 * @return the constructed dense {@link CellularLayer}
+	 * @throws IllegalArgumentException if the weight matrix is not 2-D or the size does not match the input
+	 */
 	default CellularLayer dense(TraversalPolicy inputShape,
 								PackedCollection weights,
 								PackedCollection biases,
@@ -1095,179 +1268,27 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				requirements);
 	}
 
-	@Deprecated
-	default CellularLayer accum(TraversalPolicy shape, Cell<PackedCollection> value, ComputeRequirement... requirements) {
-		if (!allowNonComposites) {
-			throw new UnsupportedOperationException("accum will not support backpropagation");
-		}
-
-		warn("accum will not support backpropagation");
-		return layer("accum", shape, shape, Cell.of((input, next) -> {
-			Cell.CaptureReceptor<PackedCollection> r = new Cell.CaptureReceptor<>();
-			value.setReceptor(r);
-
-			OperationList ops = new OperationList();
-			ops.add(value.push(input));
-			if (next != null) ops.add(next.push(add(traverseEach(input), traverseEach(r.getReceipt()))));
-			return ops;
-		}), null, requirements);
-	}
-
-	default CellularLayer accum(TraversalPolicy shape,
-								  CellularPropagation<PackedCollection> aux,
-								  ComputeRequirement... requirements) {
-		return compose("accum", shape, aux,
-				(input, auxValue) -> add(traverseEach(input), traverseEach(auxValue)),
-				requirements);
-	}
-
-	default Function<TraversalPolicy, CellularLayer> concat(int axis, Block aux, ComputeRequirement... requirements) {
-		return shape -> {
-			TraversalPolicy auxShape = aux.getOutputShape();
-			if (auxShape.getDimensions() != shape.getDimensions()) {
-				throw new IllegalArgumentException();
-			}
-
-			return concat(shape,
-					shape.replaceDimension(axis, shape.length(axis) + auxShape.length(axis)),
-					aux, requirements);
-		};
-	}
-
-	default CellularLayer concat(TraversalPolicy inputShape,
-								 TraversalPolicy outputShape,
-								 Block aux,
-								 ComputeRequirement... requirements) {
-		return compose("concat", inputShape, aux, outputShape,
-				(input, auxValue) -> concat(outputShape, input, auxValue),
-				requirements);
-	}
-
-	@Deprecated
-	default CellularLayer product(Producer<PackedCollection> value, ComputeRequirement... requirements) {
-		warn("product will not support backpropagation");
-		TraversalPolicy shape = shape(value);
-		return layer("product", shape, shape,
-				input -> multiply(traverseEach(input), traverseEach(value)),
-				requirements);
-	}
-
-	@Deprecated
-	default CellularLayer product(TraversalPolicy inputShape, TraversalPolicy outputShape,
-								  Cell<PackedCollection> a, Cell<PackedCollection> b,
-								  ComputeRequirement... requirements) {
-		warn("product will not support backpropagation");
-		return layer("product", inputShape, outputShape, Cell.of((input, next) -> {
-			Cell.CaptureReceptor<PackedCollection> ar = new Cell.CaptureReceptor<>();
-			a.setReceptor(ar);
-
-			Cell.CaptureReceptor<PackedCollection> br = new Cell.CaptureReceptor<>();
-			b.setReceptor(br);
-
-			OperationList ops = new OperationList();
-			ops.add(a.push(input));
-			ops.add(b.push(input));
-			if (next != null)
-				ops.add(next.push(multiply(traverseEach(ar.getReceipt()), traverseEach(br.getReceipt()))));
-			return ops;
-		}), null, requirements);
-	}
-
-	default Function<TraversalPolicy, CellularLayer> product(CellularPropagation<PackedCollection> aux,
-								  							 ComputeRequirement... requirements) {
-		return shape -> product(shape, aux, requirements);
-	}
-
-	default CellularLayer product(TraversalPolicy shape,
-								  CellularPropagation<PackedCollection> aux,
-								  ComputeRequirement... requirements) {
-		return compose("product", shape, aux,
-					(input, auxValue) -> multiply(traverseEach(input), traverseEach(auxValue)),
-				requirements);
-	}
-
-	default Function<TraversalPolicy, Block> residual(Function<TraversalPolicy, Block> block) {
-		return shape -> residual(block.apply(shape));
-	}
-
-	default Block residual(Block block) {
-		if (block.getInputShape().getTotalSize() != block.getOutputShape().getTotalSize())
-			throw new IllegalArgumentException();
-
-		SequentialBlock residual = new SequentialBlock(block.getInputShape());
-		residual.accum(block);
-		return residual;
-	}
-
-	default Function<TraversalPolicy, CellularLayer> similarity(
-			Block k, int c, int s1, int s2) {
-		if (k.getOutputShape().getDimensions() != 4 ||
-				k.getOutputShape().length(1) != c ||
-				k.getOutputShape().length(3) != s2) {
-			throw new IllegalArgumentException();
-		}
-
-		int batchSize = k.getOutputShape().length(0);
-		int dim = k.getOutputShape().length(2);
-
-		TraversalPolicy outputShape = shape(batchSize, c, s1, s2).traverseEach();
-
-		return compose("similarity", k, outputShape, (a, b) -> {
-			TraversalPolicy leftShape = shape(batchSize, c, dim, s1, 1);
-			TraversalPolicy rightShape = shape(batchSize, c, dim, 1, s2);
-
-			TraversalPolicy resultShape = shape(batchSize, c, 1, s1, s2);
-			TraversalPolicy leftPosition = leftShape.repeat(4, s2);
-			TraversalPolicy rightPosition = rightShape.repeat(3, s1);
-			TraversalPolicy groupShape = shape(1, 1, dim, 1, 1);
-
-			return weightedSum("similarity",
-					resultShape,
-					leftPosition, rightPosition,
-					groupShape, groupShape,
-					reshape(leftShape, c(a)),
-					reshape(rightShape, c(b)))
-					.reshape(outputShape);
-		});
-	}
-
-	default Function<TraversalPolicy, CellularLayer> weightedSum(
-			Block v, int heads, int dimHead, int size) {
-		if (v.getOutputShape().getDimensions() != 4 ||
-				v.getOutputShape().length(1) != heads ||
-				v.getOutputShape().length(2) != dimHead ||
-				v.getOutputShape().length(3) != size) {
-			throw new IllegalArgumentException();
-		}
-
-		int batchSize = v.getOutputShape().length(0);
-
-		if (enableWeightedSum) {
-			return null;
-		} else {
-			return compose("weightedSum", v, shape(batchSize, heads, size, dimHead),
-					(a, b) -> {
-						CollectionProducer pa = c(a)
-								.traverse(4)
-								.repeat(dimHead);
-						CollectionProducer pb = c(b)
-								.traverse(2)
-								.enumerate(3, 1)
-								.traverse(2)
-								.repeat(size);
-						return multiply(pa, pb)
-								.reshape(batchSize, heads, size, size, dimHead)
-								.traverse(3)
-								.enumerate(4, 1)
-								.sum(4);
-					});
-		}
-	}
-
+	/**
+	 * Creates a scalar scaling layer factory that multiplies every element of the input
+	 * by the given constant.
+	 *
+	 * @param scale        the scalar multiplier applied to all input elements
+	 * @param requirements optional compute requirements
+	 * @return a function that creates the scaling {@link CellularLayer} for any input shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> scale(double scale, ComputeRequirement... requirements) {
 		return shape -> scale(shape, scale, requirements);
 	}
 
+	/**
+	 * Creates a scalar scaling layer that multiplies every element of the given input shape
+	 * by the given constant.
+	 *
+	 * @param shape        the input and output shape
+	 * @param scale        the scalar multiplier applied to all input elements
+	 * @param requirements optional compute requirements
+	 * @return the constructed scaling {@link CellularLayer}
+	 */
 	default CellularLayer scale(TraversalPolicy shape, double scale, ComputeRequirement... requirements) {
 		return layer("scale", shape, shape, input -> multiply(c(input).each(), c(scale)), requirements);
 	}
@@ -1455,8 +1476,6 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 	 * @return
 	 */
 	default int normSize(TraversalPolicy shape, int groups, PackedCollection weights, PackedCollection biases) {
-		int size;
-
 		if (weights != null) {
 			return weights.getShape().getTotalSize();
 		} else if (biases != null) {
@@ -1466,20 +1485,52 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		}
 	}
 
+	/**
+	 * Creates a group-normalization layer factory with a single group and trainable parameters.
+	 *
+	 * @param requirements optional compute requirements
+	 * @return a function that creates a norm {@link CellularLayer} for any input shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> norm(ComputeRequirement... requirements) {
 		return norm(1, requirements);
 	}
 
+	/**
+	 * Creates a group-normalization layer factory with the given number of groups and trainable parameters.
+	 *
+	 * @param groups       the number of normalization groups
+	 * @param requirements optional compute requirements
+	 * @return a function that creates a norm {@link CellularLayer} for any input shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> norm(int groups, ComputeRequirement... requirements) {
 		return shape -> norm(shape, groups, requirements);
 	}
 
+	/**
+	 * Creates a group-normalization layer factory with pre-allocated weights and biases
+	 * and a single group, using the hardware default epsilon.
+	 *
+	 * @param weights      the normalization scale parameters
+	 * @param biases       the normalization shift parameters
+	 * @param requirements optional compute requirements
+	 * @return a function that creates a norm {@link CellularLayer} for any input shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> norm(PackedCollection weights,
 														  PackedCollection biases,
 														  ComputeRequirement... requirements) {
 		return shape -> norm(shape, 1, weights, biases, false, requirements);
 	}
 
+	/**
+	 * Creates a group-normalization layer factory with pre-allocated weights, biases, and
+	 * an explicit epsilon, using a single group.
+	 *
+	 * @param weights      the normalization scale parameters
+	 * @param biases       the normalization shift parameters
+	 * @param eps          small constant for numerical stability
+	 * @param requirements optional compute requirements
+	 * @return a function that creates a norm {@link CellularLayer} for any input shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> norm(PackedCollection weights,
 														  PackedCollection biases,
 														  double eps,
@@ -1488,15 +1539,42 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 	}
 
 
+	/**
+	 * Creates a trainable group-normalization layer for the given shape.
+	 *
+	 * @param shape        the input and output shape
+	 * @param groups       the number of normalization groups
+	 * @param requirements optional compute requirements
+	 * @return the constructed norm {@link CellularLayer}
+	 */
 	default CellularLayer norm(TraversalPolicy shape, int groups, ComputeRequirement... requirements) {
 		return norm(shape, groups, true, requirements);
 	}
 
+	/**
+	 * Creates a group-normalization layer with optional parameter training for the given shape.
+	 *
+	 * @param shape        the input and output shape
+	 * @param groups       the number of normalization groups
+	 * @param trainable    when {@code true}, scale and shift parameters are learnable
+	 * @param requirements optional compute requirements
+	 * @return the constructed norm {@link CellularLayer}
+	 */
 	default CellularLayer norm(TraversalPolicy shape, int groups,
 							   boolean trainable, ComputeRequirement... requirements) {
 		return norm(shape, normSize(shape, groups, null, null), groups, trainable, requirements);
 	}
 
+	/**
+	 * Creates a group-normalization layer with an explicit parameter size and optional training.
+	 *
+	 * @param shape        the input and output shape
+	 * @param size         the total number of normalization parameters
+	 * @param groups       the number of normalization groups
+	 * @param trainable    when {@code true}, scale and shift parameters are learnable
+	 * @param requirements optional compute requirements
+	 * @return the constructed norm {@link CellularLayer}
+	 */
 	default CellularLayer norm(TraversalPolicy shape, int size, int groups,
 							   boolean trainable, ComputeRequirement... requirements) {
 		return norm(shape, size, groups,
@@ -1505,6 +1583,16 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				true, requirements);
 	}
 
+	/**
+	 * Creates a group-normalization layer deriving the shape from the given weights or biases,
+	 * without initializing the parameters.
+	 *
+	 * @param groups       the number of normalization groups
+	 * @param weights      the normalization scale parameters (used to infer shape when non-null)
+	 * @param biases       the normalization shift parameters (used to infer shape when weights is null)
+	 * @param requirements optional compute requirements
+	 * @return the constructed norm {@link CellularLayer}
+	 */
 	default CellularLayer norm(int groups,
 							   PackedCollection weights,
 							   PackedCollection biases,
@@ -1512,6 +1600,17 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return norm(groups, weights, biases, false, requirements);
 	}
 
+	/**
+	 * Creates a group-normalization layer deriving the shape from the given weights or biases,
+	 * with optional parameter initialization.
+	 *
+	 * @param groups       the number of normalization groups
+	 * @param weights      the normalization scale parameters (used to infer shape when non-null)
+	 * @param biases       the normalization shift parameters (used to infer shape when weights is null)
+	 * @param init         when {@code true}, scale parameters are initialized to 1 and bias to 0
+	 * @param requirements optional compute requirements
+	 * @return the constructed norm {@link CellularLayer}
+	 */
 	default CellularLayer norm(int groups, PackedCollection weights, PackedCollection biases,
 							   boolean init, ComputeRequirement... requirements) {
 		TraversalPolicy shape;
@@ -1527,6 +1626,16 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return norm(shape, groups, weights, biases, init, requirements);
 	}
 
+	/**
+	 * Creates a group-normalization layer for the given shape with pre-allocated weights and biases,
+	 * using a single group and initializing the parameters.
+	 *
+	 * @param shape        the input and output shape
+	 * @param weights      the normalization scale parameters
+	 * @param biases       the normalization shift parameters
+	 * @param requirements optional compute requirements
+	 * @return the constructed norm {@link CellularLayer}
+	 */
 	default CellularLayer norm(TraversalPolicy shape,
 							   PackedCollection weights,
 							   PackedCollection biases,
@@ -1534,6 +1643,17 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return norm(shape, 1, weights, biases, requirements);
 	}
 
+	/**
+	 * Creates a group-normalization layer for the given shape with pre-allocated weights and biases,
+	 * initializing the parameters.
+	 *
+	 * @param shape        the input and output shape
+	 * @param groups       the number of normalization groups
+	 * @param weights      the normalization scale parameters
+	 * @param biases       the normalization shift parameters
+	 * @param requirements optional compute requirements
+	 * @return the constructed norm {@link CellularLayer}
+	 */
 	default CellularLayer norm(TraversalPolicy shape, int groups,
 							   PackedCollection weights,
 							   PackedCollection biases,
@@ -1541,6 +1661,18 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return norm(shape, groups, weights, biases, true, requirements);
 	}
 
+	/**
+	 * Creates a group-normalization layer with optional parameter initialization,
+	 * deriving the normalization size from the shape and weights.
+	 *
+	 * @param shape        the input and output shape
+	 * @param groups       the number of normalization groups
+	 * @param weights      the normalization scale parameters
+	 * @param biases       the normalization shift parameters
+	 * @param init         when {@code true}, scale parameters are initialized to 1 and bias to 0
+	 * @param requirements optional compute requirements
+	 * @return the constructed norm {@link CellularLayer}
+	 */
 	default CellularLayer norm(TraversalPolicy shape, int groups,
 							   PackedCollection weights,
 							   PackedCollection biases,
@@ -1550,6 +1682,19 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				groups, weights, biases, init, requirements);
 	}
 
+	/**
+	 * Creates a group-normalization layer with an explicit normalization size, using
+	 * the hardware default epsilon.
+	 *
+	 * @param shape        the input and output shape
+	 * @param size         the total number of normalization parameters
+	 * @param groups       the number of normalization groups
+	 * @param weights      the normalization scale parameters
+	 * @param biases       the normalization shift parameters
+	 * @param init         when {@code true}, scale parameters are initialized to 1 and bias to 0
+	 * @param requirements optional compute requirements
+	 * @return the constructed norm {@link CellularLayer}
+	 */
 	default CellularLayer norm(TraversalPolicy shape, int size, int groups,
 							   PackedCollection weights,
 							   PackedCollection biases,
@@ -1559,6 +1704,19 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				Hardware.getLocalHardware().epsilon(), init, requirements);
 	}
 
+	/**
+	 * Creates a group-normalization layer with an explicit epsilon value, deriving the
+	 * normalization size from the shape and weights.
+	 *
+	 * @param shape        the input and output shape
+	 * @param groups       the number of normalization groups
+	 * @param weights      the normalization scale parameters
+	 * @param biases       the normalization shift parameters
+	 * @param eps          small constant added to variance for numerical stability
+	 * @param init         when {@code true}, scale parameters are initialized to 1 and bias to 0
+	 * @param requirements optional compute requirements
+	 * @return the constructed norm {@link CellularLayer}
+	 */
 	default CellularLayer norm(TraversalPolicy shape, int groups,
 							   PackedCollection weights,
 							   PackedCollection biases,
@@ -1568,6 +1726,22 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 				groups, weights, biases, eps, init, requirements);
 	}
 
+	/**
+	 * Creates a fully specified group-normalization layer with explicit size and epsilon.
+	 *
+	 * <p>Normalizes the input over groups, applies learnable scale ({@code weights}) and
+	 * shift ({@code biases}) parameters, and outputs the same shape as the input.</p>
+	 *
+	 * @param shape        the input and output shape
+	 * @param size         the total number of normalization parameters
+	 * @param groups       the number of normalization groups
+	 * @param weights      the normalization scale parameters (may be null for no scaling)
+	 * @param biases       the normalization shift parameters (may be null for no bias)
+	 * @param eps          small constant added to variance for numerical stability
+	 * @param init         when {@code true}, scale parameters are initialized to 1 and bias to 0
+	 * @param requirements optional compute requirements
+	 * @return the constructed norm {@link CellularLayer}
+	 */
 	default CellularLayer norm(TraversalPolicy shape,
 							   int size, int groups,
 							   PackedCollection weights,
@@ -1612,10 +1786,27 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		}, prop, setup, requirements);
 	}
 
+	/**
+	 * Creates an RMS-normalization layer factory with trainable scale parameters and bias
+	 * for the given feature size.
+	 *
+	 * @param size         the number of features to normalize
+	 * @param requirements optional compute requirements
+	 * @return a function that creates the RMSNorm {@link CellularLayer} for any input shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> rmsnorm(int size, ComputeRequirement... requirements) {
 		return rmsnorm(size, true, requirements);
 	}
 
+	/**
+	 * Creates an RMS-normalization layer factory with trainable scale parameters and optional bias
+	 * for the given feature size.
+	 *
+	 * @param size         the number of features to normalize
+	 * @param bias         when {@code true}, a learnable bias is included
+	 * @param requirements optional compute requirements
+	 * @return a function that creates the RMSNorm {@link CellularLayer} for any input shape
+	 */
 	default Function<TraversalPolicy, CellularLayer> rmsnorm(int size, boolean bias, ComputeRequirement... requirements) {
 		return shape -> rmsnorm(shape,
 				new PackedCollection(shape(size)).fill(1.0),
@@ -1624,23 +1815,57 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 	}
 
 
+	/**
+	 * Creates an RMS-normalization layer using the shape of the provided weights and no bias.
+	 *
+	 * @param weights      the normalization scale parameters; their shape is used as the layer shape
+	 * @param requirements optional compute requirements
+	 * @return the constructed RMSNorm {@link CellularLayer}
+	 */
 	default CellularLayer rmsnorm(PackedCollection weights,
 								  ComputeRequirement... requirements) {
 		return rmsnorm(weights.getShape(), weights, null, requirements);
 	}
 
+	/**
+	 * Creates an RMS-normalization layer using the shape of the provided weights, no bias, and an
+	 * explicit epsilon.
+	 *
+	 * @param weights      the normalization scale parameters; their shape is used as the layer shape
+	 * @param epsilon      small constant for numerical stability
+	 * @param requirements optional compute requirements
+	 * @return the constructed RMSNorm {@link CellularLayer}
+	 */
 	default CellularLayer rmsnorm(PackedCollection weights,
 								  double epsilon,
 								  ComputeRequirement... requirements) {
 		return rmsnorm(weights.getShape(), weights, null, epsilon, requirements);
 	}
 
+	/**
+	 * Creates an RMS-normalization layer using the shape of the provided weights, with bias.
+	 *
+	 * @param weights      the normalization scale parameters; their shape is used as the layer shape
+	 * @param biases       the normalization shift parameters
+	 * @param requirements optional compute requirements
+	 * @return the constructed RMSNorm {@link CellularLayer}
+	 */
 	default CellularLayer rmsnorm(PackedCollection weights,
 								  PackedCollection biases,
 								  ComputeRequirement... requirements) {
 		return rmsnorm(weights.getShape(), weights, biases, requirements);
 	}
 
+	/**
+	 * Creates an RMS-normalization layer using the shape of the provided weights, with bias
+	 * and an explicit epsilon.
+	 *
+	 * @param weights      the normalization scale parameters; their shape is used as the layer shape
+	 * @param biases       the normalization shift parameters
+	 * @param epsilon      small constant for numerical stability
+	 * @param requirements optional compute requirements
+	 * @return the constructed RMSNorm {@link CellularLayer}
+	 */
 	default CellularLayer rmsnorm(PackedCollection weights,
 								  PackedCollection biases,
 								  double epsilon,
@@ -1648,12 +1873,31 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return rmsnorm(weights.getShape(), weights, biases, epsilon, requirements);
 	}
 
+	/**
+	 * Creates an RMS-normalization layer for the given shape with weights and no bias,
+	 * using the default epsilon of {@code 1e-5}.
+	 *
+	 * @param shape        the input and output shape
+	 * @param weights      the normalization scale parameters
+	 * @param requirements optional compute requirements
+	 * @return the constructed RMSNorm {@link CellularLayer}
+	 */
 	default CellularLayer rmsnorm(TraversalPolicy shape,
 								  PackedCollection weights,
 								  ComputeRequirement... requirements) {
 		return rmsnorm(shape, weights, null, requirements);
 	}
 
+	/**
+	 * Creates an RMS-normalization layer for the given shape with weights, no bias, and
+	 * an explicit epsilon.
+	 *
+	 * @param shape        the input and output shape
+	 * @param weights      the normalization scale parameters
+	 * @param epsilon      small constant for numerical stability
+	 * @param requirements optional compute requirements
+	 * @return the constructed RMSNorm {@link CellularLayer}
+	 */
 	default CellularLayer rmsnorm(TraversalPolicy shape,
 								  PackedCollection weights,
 								  double epsilon,
@@ -1661,6 +1905,16 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return rmsnorm(shape, weights, null, epsilon, requirements);
 	}
 
+	/**
+	 * Creates an RMS-normalization layer for the given shape with weights and bias,
+	 * using the default epsilon of {@code 1e-5}.
+	 *
+	 * @param shape        the input and output shape
+	 * @param weights      the normalization scale parameters
+	 * @param biases       the normalization shift parameters (may be null)
+	 * @param requirements optional compute requirements
+	 * @return the constructed RMSNorm {@link CellularLayer}
+	 */
 	default CellularLayer rmsnorm(TraversalPolicy shape,
 								  PackedCollection weights,
 								  PackedCollection biases,
@@ -1710,6 +1964,14 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		}, biases != null ? List.of(weights, biases) : List.of(weights), requirements);
 	}
 
+	/**
+	 * Returns a setup operation that initializes the given weight collection with random
+	 * normal values scaled by the given factor.
+	 *
+	 * @param weights the weight collection to initialize
+	 * @param scale   the scalar multiplier applied to each sampled normal value
+	 * @return a {@link Supplier} of the initialization {@link Runnable}
+	 */
 	default Supplier<Runnable> randnInit(PackedCollection weights, double scale) {
 		OperationList setup = new OperationList();
 		Random randn = randn(shape(weights));
@@ -1718,5 +1980,27 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 		return setup;
 	}
 
+	/**
+	 * Builds a linear-interpolation layer for the given input shape.
+	 *
+	 * @param inputShape must have total size {@code 3 * hiddenSize}
+	 * @param hiddenSize size of the output and of each segment in the input
+	 * @return a CellularLayer computing {@code from + weight * (to - from)}
+	 */
+	default CellularLayer lerpLayer(TraversalPolicy inputShape, int hiddenSize) {
+		TraversalPolicy outputShape = shape(hiddenSize);
+		return layer("lerp", inputShape, outputShape, input -> {
+			CollectionProducer inp = c(input);
+			CollectionProducer from = subset(outputShape, inp, 0);
+			CollectionProducer weight = subset(outputShape, inp, hiddenSize);
+			CollectionProducer to = subset(outputShape, inp, 2 * hiddenSize);
+			return from.add(weight.multiply(to.subtract(from)));
+		});
+	}
+
+	/**
+	 * A {@link Cell} that also implements {@link Learning}, combining data-flow
+	 * propagation with gradient-based weight update support.
+	 */
 	interface LearningCell extends Cell<PackedCollection>, Learning { }
 }

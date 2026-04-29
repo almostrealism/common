@@ -343,6 +343,7 @@ public class SquareWaveCell extends CollectionTemporalCellAdapter implements Sam
 	 * Internal data class that implements SquareWaveCellData using PolymorphicAudioData storage.
 	 */
 	private static class SquareWavePolymorphicData extends PolymorphicAudioData implements SquareWaveCellData {
+		/** Creates a SquareWavePolymorphicData with default polymorphic storage. */
 		public SquareWavePolymorphicData() {
 			super();
 		}

@@ -16,20 +16,34 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.kernel.ArrayIndexSequence;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.IndexSequence;
-import io.almostrealism.kernel.IndexValues;
-import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.sequence.ArrayIndexSequence;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexValues;
+import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
+/**
+ * A constant {@link Double} expression node that holds a literal floating-point value.
+ *
+ * <p>Renders to the language-specific representation of the value via
+ * {@link io.almostrealism.lang.LanguageOperations#getPrecision()}. The value is
+ * also exposed as an {@link java.util.OptionalDouble} and a {@link io.almostrealism.sequence.KernelSeries}
+ * with constant periodicity.</p>
+ */
 public class DoubleConstant extends Constant<Double> {
+	/** The literal double value held by this constant. */
 	private double value;
 
+	/**
+	 * Constructs a constant expression for the given double value.
+	 *
+	 * @param value the literal floating-point value
+	 */
 	public DoubleConstant(Double value) {
 		super(Double.class);
 		this.value = value;

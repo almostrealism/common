@@ -121,9 +121,9 @@ mkdir -p "${RUNNER_WORKDIR}"
 
 # ---------- Set AR environment variables ----------
 
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
-# AR_HARDWARE_DRIVER is intentionally left unset to auto-detect the best available backend
-mkdir -p "${AR_HARDWARE_LIBS}"
+# AR_HARDWARE_LIBS is intentionally NOT set — the system auto-detects a suitable directory.
+# Setting it to /tmp/ar_libs/ causes permission errors on shared or sandboxed systems.
+# AR_HARDWARE_DRIVER is intentionally left unset to auto-detect the best available backend.
 
 # ---------- Helper: remove runner config ----------
 

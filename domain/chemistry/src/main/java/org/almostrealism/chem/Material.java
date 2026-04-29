@@ -1,7 +1,5 @@
 package org.almostrealism.chem;
 
-import org.almostrealism.physics.Atomic;
-import org.almostrealism.physics.Element;
 
 /**
  * A simple wrapper class for atomic substances used in material science contexts.
@@ -43,9 +41,6 @@ import org.almostrealism.physics.Element;
  */
 public class Material {
 
-	/** The atomic substance that comprises this material. */
-	private final Atomic s;
-
 	/**
 	 * Creates a new material from the specified atomic substance.
 	 *
@@ -55,6 +50,5 @@ public class Material {
 	 * @param s the atomic substance that makes up this material
 	 */
 	public Material(Atomic s) {
-		this.s = s;
 	}
 }

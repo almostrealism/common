@@ -59,10 +59,12 @@ import org.almostrealism.geometry.Curve;
  * @author Michael Murray
  */
 public class AmbientLight implements Light, RGBFeatures {
+	/** The intensity of this ambient light, applied as a scalar multiplier to the color. */
 	private double intensity;
+
+	/** The base color of this ambient light. */
 	private RGB color;
 
-	private final Producer<PackedCollection> colorProducer = GeneratedColorProducer.fromProducer(this, multiply(() -> args -> color, c(intensity)));
 
 	/**
 	 * Constructs an AmbientLight object with the default intensity and color.

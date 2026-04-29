@@ -24,7 +24,7 @@
  *   <li>{@link io.flowtree.slack.SlackListener} - Parses Slack messages and creates jobs</li>
  *   <li>{@link io.flowtree.slack.SlackNotifier} - Posts status updates to Slack channels</li>
  *   <li>{@link io.flowtree.slack.FlowTreeApiEndpoint} - HTTP API for agent communication and job submission</li>
- *   <li>{@link io.flowtree.slack.SlackWorkstream} - Configuration for channel-to-agent mapping</li>
+ *   <li>{@link io.flowtree.slack.Workstream} - Configuration for channel-to-agent mapping</li>
  * </ul>
  *
  * <h2>Architecture</h2>
@@ -54,7 +54,7 @@
  * </ul>
  *
  * <h2>Future: MCP Memory Integration</h2>
- * <p>The workstream ID ({@link io.flowtree.slack.SlackWorkstream#getWorkstreamId()})
+ * <p>The workstream ID ({@link io.flowtree.slack.Workstream#getWorkstreamId()})
  * is designed to serve as a memory namespace for future MCP tool integration,
  * allowing both agents and operators to share persistent context.</p>
  *

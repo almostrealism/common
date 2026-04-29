@@ -23,6 +23,7 @@ import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.hardware.profile.RunData;
 import org.jocl.CL;
 import org.jocl.CLException;
@@ -31,6 +32,7 @@ import org.jocl.Sizeof;
 import org.jocl.cl_event;
 import org.jocl.cl_kernel;
 
+import java.lang.ref.Reference;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -213,85 +215,94 @@ public class CLOperator extends HardwareOperator {
 		long id = totalInvocations++;
 
 		if (enableVerboseLog) {
-			System.out.println("CL: " + prog.getMetadata().getDisplayName() + " (" + id + ")");
+			log("CL: " + prog.getMetadata().getDisplayName() + " (" + id + ")");
 		}
 
 		if (dependsOn != null) dependsOn.waitFor();
 		MemoryData data[] = prepareArguments(argCount, args);
 
-		recordDuration(null, () -> {
-			int index = 0;
-			long totalSize = 0;
+		KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(data);
 
-			try {
-				for (int i = 0; i < argCount; i++) {
-					if (data[i] != argCache[i]) {
-						CLMemory mem = (CLMemory) data[i].getMem();
-						totalSize += mem.getSize();
-						CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((CLMemory) data[i].getMem()).getMem()));
-					} else {
-						index++;
+		try {
+			recordDuration(null, () -> {
+				int index = 0;
+				long totalSize = 0;
+
+				try {
+					for (int i = 0; i < argCount; i++) {
+						if (data[i] != argCache[i]) {
+							CLMemory mem = (CLMemory) data[i].getMem();
+							totalSize += mem.getSize();
+							CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((CLMemory) data[i].getMem()).getMem()));
+						} else {
+							index++;
+						}
 					}
-				}
 
-				for (int i = 0; i < argCount; i++) {
-					if (data[i] != argCache[i]) {
-						CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-								Pointer.to(new int[]{data[i].getOffset()})); // Offset
-					} else {
-						index++;
+					for (int i = 0; i < argCount; i++) {
+						if (data[i] != argCache[i]) {
+							CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
+									Pointer.to(new int[]{data[i].getOffset()})); // Offset
+						} else {
+							index++;
+						}
 					}
-				}
 
-				for (int i = 0; i < argCount; i++) {
-					if (data[i] != argCache[i]) {
-						CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-								Pointer.to(new int[]{data[i].getAtomicMemLength()})); // Size
-					} else {
-						index++;
+					for (int i = 0; i < argCount; i++) {
+						if (data[i] != argCache[i]) {
+							CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
+									Pointer.to(new int[]{data[i].getAtomicMemLength()})); // Size
+						} else {
+							index++;
+						}
 					}
+
+					for (int i = 0; i < argCount; i++) {
+						argCache[i] = data[i];
+					}
+				} catch (CLException e) {
+					// TODO  This should use the exception processor also, but theres no way to pass the message details
+					throw new HardwareException(e.getMessage() + " for function " + name +
+							" (index = " + index + " argCount = " + argCount + ")", e);
 				}
 
-				for (int i = 0; i < argCount; i++) {
-					argCache[i] = data[i];
+				try {
+					if (enableVerboseLog) log(id + " - clEnqueueNDRangeKernel start");
+
+					cl_event event = new cl_event();
+
+					if (dependsOn instanceof CLSemaphore) {
+						CL.clEnqueueNDRangeKernel(context.getClQueue(getGlobalWorkSize() > 1), kernel, 1,
+								new long[]{getGlobalWorkOffset()}, new long[]{getGlobalWorkSize()},
+								null, 1,
+								new cl_event[]{((CLSemaphore) dependsOn).getEvent()}, event);
+					} else {
+						// if (dependsOn != null) dependsOn.waitFor();
+
+						CL.clEnqueueNDRangeKernel(context.getClQueue(getGlobalWorkSize() > 1), kernel, 1,
+								new long[]{getGlobalWorkOffset()}, new long[]{getGlobalWorkSize()},
+								null, 0, null, event);
+					}
+
+					context.processEvent(event, profile);
+
+					if (enableVerboseLog) log(id + " - clEnqueueNDRangeKernel end");
+
+					// TODO  This should return a semaphore
+					// return new CLSemaphore(context, event, profile);
+				} catch (CLException e) {
+					// TODO  This should use the exception processor also,
+					// TODO  but theres no way to pass the message details
+					throw new HardwareException(e.getMessage() + " for function " + name +
+							" (total bytes = " + totalSize + ")", e);
 				}
-			} catch (CLException e) {
-				// TODO  This should use the exception processor also, but theres no way to pass the message details
-				throw new HardwareException(e.getMessage() + " for function " + name +
-						" (index = " + index + " argCount = " + argCount + ")", e);
-			}
+			});
+		} finally {
+			KernelMemoryGuard.releaseFor(guard, data);
+		}
 
-			try {
-				if (enableVerboseLog) log(id + " - clEnqueueNDRangeKernel start");
-
-				cl_event event = new cl_event();
-
-				if (dependsOn instanceof CLSemaphore) {
-					CL.clEnqueueNDRangeKernel(context.getClQueue(getGlobalWorkSize() > 1), kernel, 1,
-							new long[]{getGlobalWorkOffset()}, new long[]{getGlobalWorkSize()},
-							null, 1,
-							new cl_event[]{((CLSemaphore) dependsOn).getEvent()}, event);
-				} else {
-					// if (dependsOn != null) dependsOn.waitFor();
-
-					CL.clEnqueueNDRangeKernel(context.getClQueue(getGlobalWorkSize() > 1), kernel, 1,
-							new long[]{getGlobalWorkOffset()}, new long[]{getGlobalWorkSize()},
-							null, 0, null, event);
-				}
-
-				context.processEvent(event, profile);
-
-				if (enableVerboseLog) log(id + " - clEnqueueNDRangeKernel end");
-
-				// TODO  This should return a semaphore
-				// return new CLSemaphore(context, event, profile);
-			} catch (CLException e) {
-				// TODO  This should use the exception processor also,
-				// TODO  but theres no way to pass the message details
-				throw new HardwareException(e.getMessage() + " for function " + name +
-						" (total bytes = " + totalSize + ")", e);
-			}
-		});
+		Reference.reachabilityFence(data);
+		Reference.reachabilityFence(args);
 
 		return null;
 	}

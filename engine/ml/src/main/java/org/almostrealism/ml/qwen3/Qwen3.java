@@ -5,14 +5,20 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
+import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -74,7 +80,7 @@ import java.util.function.Consumer;
  * @see AttentionFeatures
  * @author Michael Murray
  */
-public class Qwen3 implements AttentionFeatures {
+public class Qwen3 implements AttentionFeatures, ConsoleFeatures {
 	static {
 		// Disable off-heap memory allocation for simplicity
 		System.setProperty("AR_HARDWARE_OFF_HEAP_SIZE", "0");
@@ -83,13 +89,25 @@ public class Qwen3 implements AttentionFeatures {
 		System.setProperty("AR_GRAPH_PROPAGATION_WARNINGS", "disabled");
 	}
 
+	/** Model hyperparameters, either explicitly provided or inferred from weight shapes. */
 	private Qwen3Config config;
+
+	/** Weight tensors loaded from the protobuf checkpoint directory. */
 	private StateDictionary stateDict;
+
+	/** Byte-level BPE tokenizer specific to the Qwen3 vocabulary. */
 	private Qwen3Tokenizer tokenizer;
 
-	private AutoregressiveModel model;
+	/** The autoregressive inference model managing the generation loop. */
+	private AutoregressiveModel<Integer> model;
+
+	/** Performance profile node for tracking per-operation execution times. */
 	private OperationProfileNode profile;
-	private org.almostrealism.model.CompiledModel compiledModel;
+
+	/** The compiled transformer model ready for forward-pass execution. */
+	private CompiledModel compiledModel;
+
+	/** A single-element collection holding the current generation position index. */
 	private PackedCollection position;
 
 	/**
@@ -104,21 +122,18 @@ public class Qwen3 implements AttentionFeatures {
 		String tokenizer = args.length > 1 ? args[1] : "tokenizer.bin";
 		String prompt = args.length > 2 ? args[2] : null;
 
-		System.out.println("Loading Qwen3 model from: " + checkpoint);
+		Console.root().println("Loading Qwen3 model from: " + checkpoint);
 		Qwen3 qwen = new Qwen3(checkpoint, tokenizer);
 		qwen.setTemperature(0.7);
 
-		System.out.println("Generating " + steps + " tokens...");
+		Console.root().println("Generating " + steps + " tokens...");
 		long duration = qwen.run(steps, prompt,
-				token -> {
-					System.out.printf("%s", token);
-					System.out.flush();
-				});
+				token -> Console.root().println(String.valueOf(token)));
 
-		System.out.printf("\n\nTokens per second: %.2f\n", (steps - 1) / (double) duration * 1000);
+		Console.root().println("\n\nTokens per second: " + String.format("%.2f", (steps - 1) / (double) duration * 1000));
 		qwen.getProfile().print();
 
-		System.out.println("Done");
+		Console.root().println("Done");
 	}
 
 	/**
@@ -147,33 +162,33 @@ public class Qwen3 implements AttentionFeatures {
 		long start = System.currentTimeMillis();
 
 		// Load state dictionary
-		System.out.println("Loading weights from: " + weightsDirectory);
+		log("Loading weights from: " + weightsDirectory);
 		this.stateDict = new StateDictionary(weightsDirectory);
 
 		// Infer or validate config
 		if (config == null) {
-			System.out.println("Inferring configuration from weight shapes...");
+			log("Inferring configuration from weight shapes...");
 			config = inferConfigFromWeights(stateDict);
 		}
 		this.config = config;
-		System.out.println("Config: " + config);
+		log("Config: " + config);
 		config.validate();
 
-		System.out.println("Loaded weights in " + (System.currentTimeMillis() - start) + "ms");
+		log("Loaded weights in " + (System.currentTimeMillis() - start) + "ms");
 
 		// Load tokenizer if provided
 		if (tokenizerPath != null) {
 			this.tokenizer = new Qwen3Tokenizer(tokenizerPath);
-			System.out.println("Loaded tokenizer with " + tokenizer.getVocabSize() + " tokens");
+			log("Loaded tokenizer with " + tokenizer.getVocabSize() + " tokens");
 		} else {
-			System.out.println("Warning: No tokenizer provided. Model can only run with token IDs.");
+			warn("No tokenizer provided. Model can only run with token IDs.");
 			this.tokenizer = null;
 		}
 
 		// Create the model with profiling
 		profile = new OperationProfileNode("qwen3");
 		model = model(profile);
-		System.out.println("Model initialized");
+		log("Model initialized");
 	}
 
 	/**
@@ -201,7 +216,6 @@ public class Qwen3 implements AttentionFeatures {
 			throw new IllegalArgumentException("Cannot find QK-Norm weights");
 		}
 		int headCount = qNorm.getShape().length(0);
-		int headSize = qNorm.getShape().length(1);
 
 		// Get KV head count
 		PackedCollection kNorm = stateDict.get("model.layers.0.self_attn.k_norm.weight");
@@ -217,8 +231,9 @@ public class Qwen3 implements AttentionFeatures {
 				stateDict.get("lm_head.weight") == stateDict.get("model.embed_tokens.weight");
 		double ropeTheta = 1000000.0;
 
-		System.out.printf("Inferred config: dim=%d, hiddenDim=%d, layers=%d, heads=%d/%d, vocab=%d\n",
-				dim, hiddenDim, layerCount, headCount, kvHeadCount, vocabSize);
+		Console.root().println("Inferred config: dim=" + dim + ", hiddenDim=" + hiddenDim +
+				", layers=" + layerCount + ", heads=" + headCount + "/" + kvHeadCount +
+				", vocab=" + vocabSize);
 
 		return new Qwen3Config(dim, hiddenDim, layerCount, headCount, kvHeadCount,
 				vocabSize, seqLen, sharedWeights, ropeTheta);
@@ -239,18 +254,38 @@ public class Qwen3 implements AttentionFeatures {
 		this.model = model(profile);
 	}
 
+	/**
+	 * Returns the tokenizer used by this model.
+	 *
+	 * @return the Qwen3-specific tokenizer
+	 */
 	public Qwen3Tokenizer getTokenizer() {
 		return tokenizer;
 	}
 
+	/**
+	 * Returns the operation profile node for performance analysis.
+	 *
+	 * @return the profile node accumulated during model execution
+	 */
 	public OperationProfileNode getProfile() {
 		return profile;
 	}
 
+	/**
+	 * Returns the model configuration hyperparameters.
+	 *
+	 * @return the Qwen3 configuration
+	 */
 	public Qwen3Config getConfig() {
 		return config;
 	}
 
+	/**
+	 * Sets the sampling temperature for token selection.
+	 *
+	 * @param temperature 0.0 for greedy decoding; higher values increase randomness
+	 */
 	public void setTemperature(double temperature) {
 		model.setTemperature(temperature);
 	}
@@ -258,7 +293,7 @@ public class Qwen3 implements AttentionFeatures {
 	/**
 	 * For testing: Get the autoregressive model to access internals.
 	 */
-	public AutoregressiveModel getAutoregressiveModel() {
+	public AutoregressiveModel<Integer> getAutoregressiveModel() {
 		return model;
 	}
 
@@ -272,7 +307,7 @@ public class Qwen3 implements AttentionFeatures {
 	/**
 	 * For testing: Get the compiled model to inspect raw logits.
 	 */
-	public org.almostrealism.model.CompiledModel getCompiledModel() {
+	public CompiledModel getCompiledModel() {
 		return compiledModel;
 	}
 
@@ -296,14 +331,13 @@ public class Qwen3 implements AttentionFeatures {
 	 * @param requirements Compute requirements for hardware acceleration
 	 * @return Autoregressive model ready for inference
 	 */
-	protected AutoregressiveModel model(OperationProfile profile, ComputeRequirement... requirements) {
+	protected AutoregressiveModel<Integer> model(OperationProfile profile, ComputeRequirement... requirements) {
 		Model transformer = new Model(shape(1, config.dim));
 
 		// Placeholder for the index of the current step (position in sequence)
 		this.position = new PackedCollection(1);
 
 		int dim = config.dim;
-		int kvDim = config.dim * config.kvHeadCount / config.headCount;
 
 		// Get token embeddings and output weights
 		PackedCollection tokenEmbeddings = stateDict.get("model.embed_tokens.weight");
@@ -312,7 +346,8 @@ public class Qwen3 implements AttentionFeatures {
 		PackedCollection rmsFinalWeight = stateDict.get("model.norm.weight");
 
 		// Compute RoPE frequencies (not stored in state dict)
-		PackedCollection freqCis = computeRopeFreqs(config);
+		CollectionProducer freqCis = RotationFeatures.computeRopeFreqs(
+				config.ropeTheta, config.headSize, config.seqLen);
 
 		// Build transformer stack: 36 layers for Qwen3-4B
 		for (int i = 0; i < config.layerCount; i++) {
@@ -379,34 +414,6 @@ public class Qwen3 implements AttentionFeatures {
 				t -> tokenEmbeddings.range(shape(1, config.dim), t * config.dim));
 	}
 
-	/**
-	 * Compute RoPE frequency embeddings.
-	 */
-	private static PackedCollection computeRopeFreqs(Qwen3Config config) {
-		int headSize = config.headSize;
-		int seqLen = config.seqLen;
-		double theta = config.ropeTheta;
-
-		int freqDim = headSize / 2;
-		double[] freqs = new double[freqDim];
-		for (int i = 0; i < freqDim; i++) {
-			freqs[i] = 1.0 / Math.pow(theta, (2.0 * i) / headSize);
-		}
-
-		TraversalPolicy shape = new TraversalPolicy(seqLen, freqDim, 2);
-		PackedCollection freqCis = new PackedCollection(shape);
-
-		for (int pos = 0; pos < seqLen; pos++) {
-			for (int i = 0; i < freqDim; i++) {
-				double angle = pos * freqs[i];
-				int idx = (pos * freqDim + i) * 2;
-				freqCis.setMem(idx, Math.cos(angle));
-				freqCis.setMem(idx + 1, Math.sin(angle));
-			}
-		}
-
-		return freqCis;
-	}
 
 	/**
 	 * Run autoregressive generation for the specified number of steps.
@@ -426,17 +433,17 @@ public class Qwen3 implements AttentionFeatures {
 		}
 
 		// Encode prompt if provided
-		int[] promptTokens = null;
+		Integer[] promptTokens = null;
 		int promptTokenCount = 0;
 		if (prompt != null) {
-			promptTokens = tokenizer.encode(prompt, true, false);  // Add BOS, no EOS
+			int[] encoded = tokenizer.encode(prompt, true, false);  // Add BOS, no EOS
+			promptTokens = Arrays.stream(encoded).boxed().toArray(Integer[]::new);
 			promptTokenCount = promptTokens.length;
-			System.out.println("Encoded prompt: " + promptTokenCount + " tokens");
+			log("Encoded prompt: " + promptTokenCount + " tokens");
 		}
 
 		long start = 0;
 		int next;
-		int token = Qwen3Tokenizer.BOS_TOKEN;
 
 		model.setCurrentStep(0);  // Reset step counter for new generation
 		model.setCurrentToken(Qwen3Tokenizer.BOS_TOKEN);
@@ -454,7 +461,6 @@ public class Qwen3 implements AttentionFeatures {
 			// Decode token
 			String tokenStr = tokenizer.decode(new int[]{next});
 			output.accept(tokenStr);
-			token = next;
 
 			// Check for EOS
 			if (next == Qwen3Tokenizer.EOS_TOKEN) {

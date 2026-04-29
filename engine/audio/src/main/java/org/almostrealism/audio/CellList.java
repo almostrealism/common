@@ -16,7 +16,7 @@
 
 package org.almostrealism.audio;
 
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
@@ -33,7 +33,6 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.graph.temporal.CollectionTemporalCellAdapter;
 import org.almostrealism.graph.temporal.DefaultWaveCellData;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.heredity.Gene;
 import org.almostrealism.time.Temporal;
 import org.almostrealism.time.TemporalList;
@@ -260,16 +259,26 @@ import java.util.stream.Collectors;
  * @author Michael Murray
  */
 public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells, Destroyable {
+	/** Parent CellLists whose temporals tick before this list's cells. */
 	private final List<CellList> parents;
+
+	/** Root receptors that receive the final audio output from this chain. */
 	private final List<Receptor<PackedCollection>> roots;
+
+	/** Setup actions executed once before the first tick of this list. */
 	private final List<Setup> setups;
+
+	/** Temporal dependencies that must tick before each tick of this list. */
 	private final TemporalList requirements;
+
+	/** Finalization callbacks invoked when this list is destroyed. */
 	private final List<Runnable> finals;
 
+	/** Intermediate audio buffers used during processing. */
 	private List<PackedCollection> data;
+
+	/** Number of frames processed per tick segment; zero means process all frames per tick. */
 	private int tickSegmentSize;
-	private int tickLoopCount;
-	private Runnable tickPreAction;
 
 	/**
 	 * Creates a new CellList with the specified parent CellLists.
@@ -403,6 +412,12 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 		return branch(this, dest);
 	}
 
+	/**
+	 * Creates a polyphonic cell from the cells in this list, routing audio based on a decision producer.
+	 *
+	 * @param decision function mapping voice index to the decision producer that selects the active cell
+	 * @return a new CellList containing a PolymorphicAudioCell over this list's cells
+	 */
 	public CellList poly(IntFunction<CollectionProducer> decision) {
 		CellList l = poly(1, () -> null, decision,
 				stream().map(c -> (Function<DefaultWaveCellData, CollectionTemporalCellAdapter>) data -> (CollectionTemporalCellAdapter) c).toArray(Function[]::new));
@@ -414,69 +429,185 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 		return l;
 	}
 
+	/**
+	 * Creates a grid routing that cycles through cells using integer choice indices.
+	 *
+	 * @param duration the duration of each segment in seconds
+	 * @param segments the total number of segments
+	 * @param choices  function mapping segment index to a cell index
+	 * @return a new CellList with dynamic routing through this list's cells
+	 */
 	public CellList gr(double duration, int segments, IntUnaryOperator choices) {
 		return gr(this, duration, segments, choices);
 	}
 
+	/**
+	 * Creates a grid routing that cycles through cells using double-valued choice positions.
+	 *
+	 * @param duration the duration of each segment in seconds
+	 * @param segments the total number of segments
+	 * @param choices  function mapping segment index to a normalized choice position (0.0 to 1.0)
+	 * @return a new CellList with dynamic routing through this list's cells
+	 */
 	public CellList grid(double duration, int segments, IntToDoubleFunction choices) {
 		return grid(this, duration, segments, choices);
 	}
 
+	/**
+	 * Creates a grid routing that cycles through cells using producer-based choice values.
+	 *
+	 * @param duration the duration of each segment in seconds
+	 * @param segments the total number of segments
+	 * @param choices  function mapping segment index to a choice producer
+	 * @return a new CellList with dynamic routing through this list's cells
+	 */
 	public CellList grid(double duration, int segments, IntFunction<Producer<PackedCollection>> choices) {
 		return grid(this, duration, segments, choices);
 	}
 
+	/**
+	 * Applies a filter to each cell in this list.
+	 *
+	 * @param filter factory function mapping index to a processing factor
+	 * @return a new CellList with FilteredCells connected to each cell
+	 */
 	public CellList f(IntFunction<Factor<PackedCollection>> filter) {
 		return f(this, filter);
 	}
 
+	/**
+	 * Applies adjustable delay with unit scale to each cell in this list.
+	 *
+	 * @param delay function mapping index to a delay time producer
+	 * @return a new CellList with delay cells connected to each cell
+	 */
 	public CellList d(IntFunction<Producer<PackedCollection>> delay) { return d(this, delay); }
 
+	/**
+	 * Applies adjustable delay with custom scale to each cell in this list.
+	 *
+	 * @param delay function mapping index to a delay time producer
+	 * @param scale function mapping index to a scale factor producer
+	 * @return a new CellList with delay cells connected to each cell
+	 */
 	public CellList d(IntFunction<Producer<PackedCollection>> delay,
 					  IntFunction<Producer<PackedCollection>> scale) {
 		return d(this, delay, scale);
 	}
 
+	/**
+	 * Routes each cell through an adapter back into this list (self-routing without transmission).
+	 *
+	 * @param adapter factory function mapping index to a routing adapter cell
+	 * @return a new CellList with routing applied back into this list
+	 */
 	public CellList m(IntFunction<Cell<PackedCollection>> adapter) {
 		return m(this, adapter);
 	}
 
+	/**
+	 * Routes each cell through an adapter back into this list using a transmission gene.
+	 *
+	 * @param adapter      factory function mapping index to a routing adapter cell
+	 * @param transmission function mapping index to the routing gene
+	 * @return a new CellList with gene-controlled routing
+	 */
 	public CellList m(IntFunction<Cell<PackedCollection>> adapter, IntFunction<Gene<PackedCollection>> transmission) {
 		return m(this, adapter, transmission);
 	}
 
+	/**
+	 * Routes each cell through a list of adapter cells to a list of destination cells.
+	 *
+	 * @param adapter      list of adapter cells (one per source cell)
+	 * @param destinations list of destination cells to route to
+	 * @return a new CellList with routing applied
+	 */
 	public CellList m(List<Cell<PackedCollection>> adapter, List<Cell<PackedCollection>> destinations) {
 		return m(this, adapter, destinations);
 	}
 
+	/**
+	 * Routes each cell through a list of adapter cells to a list of destination cells with a transmission gene.
+	 *
+	 * @param adapter      list of adapter cells (one per source cell)
+	 * @param destinations list of destination cells to route to
+	 * @param transmission function mapping index to the routing gene, or null for full connectivity
+	 * @return a new CellList with gene-controlled routing
+	 */
 	public CellList m(List<Cell<PackedCollection>> adapter, List<Cell<PackedCollection>> destinations, IntFunction<Gene<PackedCollection>> transmission) {
 		return m(this, adapter, destinations, transmission);
 	}
 
+	/**
+	 * Routes each cell through a list of adapter cells back into this list with a transmission gene.
+	 *
+	 * @param adapter      list of adapter cells (one per source cell)
+	 * @param transmission function mapping index to the routing gene
+	 * @return a new CellList with gene-controlled self-routing
+	 */
 	public CellList mself(List<Cell<PackedCollection>> adapter, IntFunction<Gene<PackedCollection>> transmission) {
 		return mself(this, adapter, transmission);
 	}
 
+	/**
+	 * Routes each cell through an adapter to a list of destinations.
+	 *
+	 * @param adapter      factory function mapping index to a routing adapter cell
+	 * @param destinations list of destination cells to route to
+	 * @return a new CellList with routing applied
+	 */
 	public CellList m(IntFunction<Cell<PackedCollection>> adapter, List<Cell<PackedCollection>> destinations) {
 		return m(this, adapter, destinations);
 	}
 
+	/**
+	 * Routes each cell through an adapter to a list of destinations with a transmission gene.
+	 *
+	 * @param adapter      factory function mapping index to a routing adapter cell
+	 * @param destinations list of destination cells to route to
+	 * @param transmission function mapping index to the routing gene, or null for full connectivity
+	 * @return a new CellList with gene-controlled routing
+	 */
 	public CellList m(IntFunction<Cell<PackedCollection>> adapter,
 					  List<Cell<PackedCollection>> destinations,
 					  IntFunction<Gene<PackedCollection>> transmission) {
 		return m(this, adapter, destinations, transmission);
 	}
 
+	/**
+	 * Routes each cell through an adapter back into this list with a transmission gene and identity pass-through.
+	 *
+	 * @param adapter      factory function mapping index to a routing adapter cell
+	 * @param transmission function mapping index to the routing gene
+	 * @return a new CellList with gene-controlled self-routing and identity pass-through
+	 */
 	public CellList mself(IntFunction<Cell<PackedCollection>> adapter, IntFunction<Gene<PackedCollection>> transmission) {
 		return mself(this, adapter, transmission);
 	}
 
+	/**
+	 * Routes each cell through an adapter back into this list with a transmission gene and custom pass-through.
+	 *
+	 * @param adapter      factory function mapping index to a routing adapter cell
+	 * @param transmission function mapping index to the routing gene
+	 * @param passthrough  factory function mapping index to the pass-through cell
+	 * @return a new CellList with gene-controlled self-routing and custom pass-through
+	 */
 	public CellList mself(IntFunction<Cell<PackedCollection>> adapter,
 						  IntFunction<Gene<PackedCollection>> transmission,
 						  IntFunction<Cell<PackedCollection>> passthrough) {
 		return mself(this, adapter, transmission, passthrough);
 	}
 
+	/**
+	 * Routes each cell through an adapter to indexed destinations with a transmission gene.
+	 *
+	 * @param adapter      factory function mapping index to a routing adapter cell
+	 * @param destinations function mapping index to a destination cell
+	 * @param transmission function mapping index to the routing gene
+	 * @return a new CellList with gene-controlled routing
+	 */
 	public CellList m(IntFunction<Cell<PackedCollection>> adapter,
 					  IntFunction<Cell<PackedCollection>> destinations,
 					  IntFunction<Gene<PackedCollection>> transmission) {
@@ -550,20 +681,50 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 		return (in, out, frames) -> buffer(out);
 	}
 
+	/**
+	 * Exports cell audio output into pre-allocated wave data slots within a PackedCollection.
+	 *
+	 * @param destinations the destination PackedCollection with one slot per cell
+	 * @return a Supplier that runs the export operation
+	 */
 	public Supplier<Runnable> export(PackedCollection destinations) {
 		return export(this, destinations);
 	}
 
+	/**
+	 * Renders this list's cells to fixed-duration wave buffers and returns a CellList for playback.
+	 *
+	 * @param seconds the duration to render in seconds
+	 * @return a new CellList of WaveCells backed by the rendered audio
+	 */
 	public CellList mixdown(double seconds) { return mixdown(this, seconds); }
 
+	/**
+	 * Writes each cell in this list to a CSV file for debugging or analysis.
+	 *
+	 * @param f function mapping index to the CSV output file
+	 * @return a new CellList with finalization operations that write CSV files
+	 */
 	public CellList csv(IntFunction<File> f) {
 		return csv(this, f);
 	}
 
+	/**
+	 * Connects each cell in this list to a WaveOutput writer and returns the extended list.
+	 *
+	 * @param f function mapping index to the output file
+	 * @return a new CellList including the writer cells and finalization operations
+	 */
 	public CellList o(IntFunction<File> f) {
 		return o(this, f);
 	}
 
+	/**
+	 * Attaches a WaveOutput meter to each cell in this list for monitoring without replacing the receptor.
+	 *
+	 * @param f function mapping index to the output file
+	 * @return a new CellList with finalization operations that write the monitored audio
+	 */
 	public CellList om(IntFunction<File> f) {
 		return om(this, f);
 	}
@@ -721,54 +882,20 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 	 */
 	public void setTickSegmentSize(int size) { this.tickSegmentSize = size; }
 
-	/**
-	 * Sets an action to run before building the tick operation list.
-	 *
-	 * <p>This action runs when {@link #tick()} is called, before any
-	 * compilation occurs. It can be used to adjust global compilation
-	 * settings (e.g., optimization level) between setup and tick phases.</p>
-	 *
-	 * @param action the action to run before tick construction
-	 */
-	public void setTickPreAction(Runnable action) { this.tickPreAction = action; }
-
-	/**
-	 * Sets the number of iterations for a compiled tick loop.
-	 *
-	 * <p>When set to a positive value, {@link #tick()} wraps all tick
-	 * operations in a {@link Loop} that executes the specified number of
-	 * iterations in a single compiled native function call. The returned
-	 * {@link Runnable} executes all iterations on its first invocation
-	 * and is a no-op on subsequent calls.</p>
-	 *
-	 * <p>This eliminates per-tick overhead (argument marshalling, thread
-	 * creation) that dominates when the tick function is called hundreds
-	 * of thousands of times from Java. Instead, one native invocation
-	 * performs all iterations with only for-loop increment overhead
-	 * between iterations.</p>
-	 *
-	 * @param count number of iterations, or zero to disable
-	 */
-	public void setTickLoopCount(int count) { this.tickLoopCount = count; }
-
 	@Override
 	public Supplier<Runnable> tick() {
-		if (tickSegmentSize <= 0 && tickLoopCount <= 0 && tickPreAction == null) {
+		if (tickSegmentSize <= 0) {
 			OperationList tick = new OperationList("CellList Tick");
 			getAllRoots().stream().map(r -> r.push(c(0.0))).forEach(tick::add);
 			tick.add(getAllTemporals().tick());
 			return tick;
 		}
 
-		if (tickPreAction != null) {
-			tickPreAction.run();
-		}
-
 		List<Supplier<Runnable>> rootPushes = getAllRoots().stream()
 				.map(r -> r.push(c(0.0)))
 				.collect(Collectors.toList());
 
-		if (tickSegmentSize > 0 && rootPushes.size() > tickSegmentSize) {
+		if (rootPushes.size() > tickSegmentSize) {
 			OperationList tick = new OperationList("CellList Tick", false);
 
 			for (int i = 0; i < rootPushes.size(); i += tickSegmentSize) {
@@ -787,21 +914,6 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 		OperationList tick = new OperationList("CellList Tick");
 		rootPushes.forEach(tick::add);
 		tick.add(getAllTemporals().tick());
-
-		if (tickLoopCount > 0) {
-			Loop loop = new Loop(tick, tickLoopCount);
-			return () -> {
-				Runnable compiled = ((Supplier<Runnable>) loop).get();
-				boolean[] executed = {false};
-				return () -> {
-					if (!executed[0]) {
-						executed[0] = true;
-						compiled.run();
-					}
-				};
-			};
-		}
-
 		return tick;
 	}
 

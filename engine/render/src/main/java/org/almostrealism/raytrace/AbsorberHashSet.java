@@ -47,6 +47,7 @@ import org.almostrealism.geometry.Curve;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.physics.Absorber;
 import org.almostrealism.physics.AbsorberSet;
 import org.almostrealism.physics.Clock;
@@ -70,7 +71,8 @@ import java.util.Set;
  * @author  Michael Murray
  */
 public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> implements AbsorberSet<AbsorberHashSet.StoredItem>,
-																		ShadableSurface, Colorable, RGBFeatures, CodeFeatures {
+																		ShadableSurface, Colorable, RGBFeatures, CodeFeatures, ConsoleFeatures {
+	/** When true, front/back face detection is used during photon absorption. */
 	public static final boolean enableFrontBackDetection = false;
 
 	@Override
@@ -78,23 +80,53 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		return null;
 	}
 
-	private interface SetListener { void noteUpdate(); }
-	
+	/**
+	 * Internal listener interface for receiving notifications when the absorber set is modified.
+	 */
+	private interface SetListener {
+		/**
+		 * Called when the absorber set has been updated (absorber added or removed).
+		 */
+		void noteUpdate();
+	}
+
+	/**
+	 * A container associating an {@link Absorber} with its world-space position and optional
+	 * rendering data (color buffers, BRDF, incidence/exitance maps).
+	 */
 	public static class StoredItem {
+		/** The absorber held by this item. */
 		public Absorber absorber;
+		/** The spatial volume associated with the absorber (lazily computed if null). */
 		private Volume volume;
+		/** A producer providing the world-space position of this absorber. */
 		public Producer<PackedCollection> position;
+		/** Flags indicating whether this item has been checked during traversal, uses fast absorption, or is highlighted. */
 		boolean checked, fast, highlight;
-		
+
+		/** The bidirectional reflectance distribution function for this absorber, if any. */
 		SphericalProbabilityDistribution brdf;
-		
+
+		/** Listener notified when this item's color buffer changes. */
 		private BufferListener listener;
+		/** The color buffer accumulating emitted light from this absorber. */
 		private ColorBuffer buf;
+		/** Maps recording the incident and exitant irradiance distributions on this absorber's surface. */
 		private AveragedVectorMap2D incidence, exitance;
+		/** The [width, height] dimensions of the color buffer, used when the buffer type does not track them. */
 		private int[] wh;
 
+		/**
+		 * Creates an empty {@link StoredItem} with no absorber or position.
+		 */
 		public StoredItem() { }
 
+		/**
+		 * Creates a {@link StoredItem} associating the given absorber with its world-space position.
+		 *
+		 * @param a The absorber
+		 * @param p A producer for the absorber's world-space position
+		 */
 		public StoredItem(Absorber a, Producer<PackedCollection> p) {
 			this.absorber = a;
 			this.position = p;
@@ -124,8 +156,24 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		public int[] getWh() { return wh; }
 		public void setWh(int[] wh) { this.wh = wh; }
 
+		/**
+		 * Sets the buffer listener that is notified when this item's color or incidence buffers change.
+		 *
+		 * @param listener The listener to notify on buffer updates
+		 */
 		public void setBufferListener(BufferListener listener) { this.listener = listener; }
-		
+
+		/**
+		 * Initializes or replaces this item's color buffer with the specified dimensions and scale.
+		 *
+		 * <p>If {@link AbsorberHashSet#solidColorBuffer} is set, a 1x1 buffer is used regardless
+		 * of the specified dimensions. If {@link AbsorberHashSet#triangularColorBuffer} is set,
+		 * a triangular mesh buffer is used.</p>
+		 *
+		 * @param w Width of the color buffer in pixels
+		 * @param h Height of the color buffer in pixels
+		 * @param m Scale factor for the color buffer
+		 */
 		public void setColorBufferSize(int w, int h, double m) {
 			if (AbsorberHashSet.solidColorBuffer) {
 				this.buf = new ArrayColorBuffer();
@@ -145,6 +193,11 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 			this.wh = new int[] {w, h};
 		}
 		
+		/**
+		 * Returns the [width, height] dimensions of this item's color buffer.
+		 *
+		 * @return An int array with two elements: width and height
+		 */
 		public int[] getColorBufferDimensions() {
 			if (this.buf instanceof ArrayColorBuffer)
 				return ((ArrayColorBuffer) this.buf).getColorBufferDimensions();
@@ -154,6 +207,11 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 				return new int[2];
 		}
 		
+		/**
+		 * Returns the scale factor of this item's color buffer, or 0.0 if no buffer is set.
+		 *
+		 * @return The color buffer scale factor
+		 */
 		public double getColorBufferScale() {
 			if (this.buf == null)
 				return 0.0;
@@ -161,10 +219,29 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 				return this.buf.getScale();
 		}
 		
+		/**
+		 * Returns the color at the specified UV coordinates, delegating to the full form with no surface normal.
+		 *
+		 * @param u      Horizontal UV coordinate in [0, 1]
+		 * @param v      Vertical UV coordinate in [0, 1]
+		 * @param front  True for the front face; false for the back face
+		 * @param direct True to return the emitted spectrum directly; false to return the buffered color
+		 * @return The RGB color at the specified UV position
+		 */
 		public RGB getColorAt(double u, double v, boolean front, boolean direct) {
 			return this.getColorAt(u, v, front, direct, null);
 		}
-		
+
+		/**
+		 * Returns the color at the specified UV coordinates, optionally modulated by a surface normal.
+		 *
+		 * @param u      Horizontal UV coordinate in [0, 1]
+		 * @param v      Vertical UV coordinate in [0, 1]
+		 * @param front  True for the front face; false for the back face
+		 * @param direct True to return the emitted spectrum directly; false to return the buffered color
+		 * @param n      Optional surface normal for directional modulation (currently unused)
+		 * @return The RGB color at the specified UV position
+		 */
 		public RGB getColorAt(double u, double v, boolean front, boolean direct, Vector n) {
 			RGB c = null;
 			
@@ -188,62 +265,116 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 			return c;
 		}
 		
+		/**
+		 * Adds the given RGB color to this item's color buffer at the specified UV position.
+		 *
+		 * @param u     Horizontal UV coordinate in [0, 1]
+		 * @param v     Vertical UV coordinate in [0, 1]
+		 * @param front True for the front face; false for the back face
+		 * @param c     The color to add
+		 */
 		public void addColor(double u, double v, boolean front, RGB c) {
 			this.buf.addColor(u, v, front, c);
 			if (this.listener != null)
 				this.listener.updateColorBuffer(u, v, this.getVolume(), this.buf, front);
 		}
 		
+		/**
+		 * Records an incident irradiance sample at the given UV position.
+		 *
+		 * @param u     Horizontal UV coordinate in [0, 1]
+		 * @param v     Vertical UV coordinate in [0, 1]
+		 * @param e     The incident irradiance direction vector
+		 * @param front True for the front face; false for the back face
+		 */
 		public void addIncidence(double u, double v, Producer<PackedCollection> e, boolean front) {
 			this.incidence.addVector(u, v, e, front);
 			if (this.listener != null)
 				this.listener.updateIncidenceBuffer(u, v, this.getVolume(), this.incidence, front);
 		}
 
+		/**
+		 * Records an exitant irradiance sample at the given UV position.
+		 *
+		 * @param u     Horizontal UV coordinate in [0, 1]
+		 * @param v     Vertical UV coordinate in [0, 1]
+		 * @param e     The exitant irradiance direction vector
+		 * @param front True for the front face; false for the back face
+		 */
 		public void addExitance(double u, double v, Producer<PackedCollection> e, boolean front) {
 			this.exitance.addVector(u, v, e, front);
 			if (this.listener != null)
 				this.listener.updateExitanceBuffer(u, v, this.getVolume(), this.exitance, front);
 		}
 		
+		/**
+		 * Returns the {@link Volume} associated with this item's absorber, lazily computing it if needed.
+		 *
+		 * @return The volume, or {@code null} if the absorber has no associated volume
+		 */
 		public Volume getVolume() {
 			if (this.volume == null)
 				this.volume = AbsorberHashSet.getVolume(this.absorber);
 			return this.volume;
 		}
 		
+		@Override
 		public String toString() { return "StoredItem[" + this.absorber + "]"; }
 	}
 	
+	/** Order constant that iterates absorbers in insertion order. */
 	public static final int DEFAULT_ORDER = 1;
+	/** Order constant that iterates absorbers in a random shuffle order. */
 	public static final int RANDOM_ORDER = 2;
+	/** Order constant that iterates absorbers sorted by popularity (most accessed first). */
 	public static final int POPULAR_ORDER = 4;
+	/** When true, all items share a single 1x1 color buffer instead of per-item buffers. */
 	public static boolean solidColorBuffer = false, triangularColorBuffer = false;
-	
+
+	/** The bit depth used for color buffers stored on {@link StoredItem}s. */
 	public int colorDepth = 192; //  48; TODO  Re-enable 48 bit color when available
-	
+
+	/** The simulation clock shared with all child absorbers. */
 	private Clock clock;
+	/** The electrostatic potential map associated with this absorber set. */
 	private PotentialMap map;
+	/** The absorber currently selected to emit; the one closest to the camera; the most recently added. */
 	private StoredItem emitter, rclosest, closest, lastAdded;
+	/** Listener notified when color buffers change. */
 	private BufferListener listener;
-	
+
+	/** The set of {@link SetListener}s notified when the absorber set is modified. */
 	private final Set sList;
-	
+
+	/** The RGB color returned by {@link #getValueAt} for this set. */
 	private RGB rgb = new RGB(this.colorDepth, 0.0, 0.0, 0.0);
-	
+
+	/** The iteration order method (DEFAULT_ORDER, RANDOM_ORDER, or POPULAR_ORDER). */
 	private int order = 1;
+	/** When true, the set uses fast absorption via the cached closest absorber. */
 	private boolean fast = true;
+	/** The delay (in distance units) and epsilon used in fast absorption calculations. */
 	private double delay, e;
+	/** The half-angle of the spread cone used when scattering absorbed photons. */
 	private double spreadAngle;
+	/** The number of spread samples generated per photon absorption. */
 	private int spreadCount;
-	
+
+	/** Maximum distance beyond which absorbers are not considered for absorption. */
 	private double max = Double.MAX_VALUE, bound = Double.MAX_VALUE;
+	/** True after {@link #clearChecked()} has run; reset when the set is modified. */
 	private boolean cleared = false;
-	
+
+	/** The reusable sorted/shuffled iterator built for this absorber set. */
 	private Iterator items;
+	/** The thread currently using the shared {@link #items} iterator. */
 	private Thread itemsUser;
+	/** True while the items array is being rebuilt; indicates the shared iterator is not ready. */
 	private boolean itemsNow, itemsEnabled = false;
 	
+	/**
+	 * Constructs an empty {@link AbsorberHashSet} with no absorbers and an empty set listener list.
+	 */
 	public AbsorberHashSet() {
 		this.sList = new HashSet();
 	}
@@ -253,6 +384,14 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		return this.addAbsorber(a, x, a instanceof Fast);
 	}
 
+	/**
+	 * Adds an absorber at the specified position with an explicit fast-absorption flag.
+	 *
+	 * @param a    The absorber to add
+	 * @param x    A producer providing the absorber's world-space position
+	 * @param fast When true, the absorber participates in fast-path absorption
+	 * @return The new size of the set, or -1 if the absorber was already present
+	 */
 	public int addAbsorber(Absorber a, Producer x, boolean fast) {
 		a.setClock(this.clock);
 		StoredItem item = new StoredItem(a, x);
@@ -287,6 +426,13 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		return tot;
 	}
 
+	/**
+	 * Removes the {@link StoredItem} associated with the given absorber from the set.
+	 *
+	 * @param a The absorber to remove
+	 * @return The size of the set after removal
+	 */
+	@Override
 	public int removeAbsorber(Absorber a) {
 		Iterator itr = this.iterator();
 		
@@ -299,6 +445,10 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		return this.size();
 	}
 	
+	/**
+	 * Initializes all absorbers by refreshing their BRDF references and enabling the
+	 * shared items iterator for repeated traversal.
+	 */
 	public void init() {
 		Iterator itr = this.iterator(false);
 		
@@ -314,6 +464,9 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		this.itemsEnabled = true;
 	}
 	
+	/**
+	 * Clears all color buffer data from every stored item in the set.
+	 */
 	public void clearColorBuffers() {
 		Iterator itr = this.iterator(false);
 		
@@ -323,6 +476,12 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		}
 	}
 	
+	/**
+	 * Loads color buffer data for all stored items using the given scene factory.
+	 *
+	 * @param loader A factory that provides the scene used to load color buffer data
+	 * @throws IOException If an error occurs while loading color buffer data
+	 */
 	public void loadColorBuffers(Factory<Scene<ShadableSurface>> loader) throws IOException {
 		Iterator itr = this.iterator(false);
 		
@@ -332,19 +491,44 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		}
 	}
 	
+	/**
+	 * Loads the color buffer for a single stored item using the given scene factory.
+	 *
+	 * @param loader A factory providing the scene used to load color buffer data
+	 * @param it     The stored item whose color buffer is to be loaded
+	 * @throws IOException If an error occurs while loading the color buffer
+	 */
 	public void loadColorBuffer(Factory<Scene<ShadableSurface>> loader, StoredItem it) throws IOException {
 		// TODO
 	}
 	
+	/**
+	 * Sets the BRDF on the most recently added absorber.
+	 *
+	 * @param brdf The spherical probability distribution to assign
+	 */
 	public void setBRDF(SphericalProbabilityDistribution brdf) {
 		this.setBRDF(this.lastAdded.absorber, brdf);
 	}
 
 	// TODO  This should store the dimensions, and apply them to new absorbers that are added
+	/**
+	 * Sets the color buffer dimensions on the most recently added absorber.
+	 *
+	 * @param w Width of the color buffer in pixels
+	 * @param h Height of the color buffer in pixels
+	 * @param m Scale factor applied to the color buffer
+	 */
 	public void setColorBufferDimensions(int w, int h, double m) {
 		this.setColorBufferDimensions(this.lastAdded.absorber, w, h, m);
 	}
 	
+	/**
+	 * Sets the BRDF on the stored item associated with the specified absorber.
+	 *
+	 * @param a    The absorber whose BRDF is to be set
+	 * @param brdf The spherical probability distribution to assign
+	 */
 	public void setBRDF(Absorber a, SphericalProbabilityDistribution brdf) {
 		Iterator itr = this.iterator(false);
 		
@@ -359,6 +543,14 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		}
 	}
 	
+	/**
+	 * Sets the color buffer dimensions on the stored item associated with the specified absorber.
+	 *
+	 * @param a The absorber whose color buffer dimensions are to be set
+	 * @param w Width of the color buffer in pixels
+	 * @param h Height of the color buffer in pixels
+	 * @param m Scale factor applied to the color buffer
+	 */
 	public void setColorBufferDimensions(Absorber a, int w, int h, double m) {
 		Iterator itr = this.iterator(false);
 		
@@ -372,6 +564,11 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		}
 	}
 	
+	/**
+	 * Sets the buffer listener for all current and future stored items.
+	 *
+	 * @param l The listener to notify when color or incidence buffers change
+	 */
 	public void setBufferListener(BufferListener l) {
 		this.listener = l;
 		Iterator itr = this.iterator(false);
@@ -382,6 +579,12 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		}
 	}
 	
+	/**
+	 * Returns the position producer for the stored item associated with the given absorber.
+	 *
+	 * @param a The absorber to look up
+	 * @return The position producer, or {@code null} if the absorber is not in this set
+	 */
 	public Producer<PackedCollection> getLocation(Absorber a) {
 		Iterator itr = this.iterator(false);
 		
@@ -425,16 +628,12 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 			Vector nx = x.subtract(new Vector(closest.position.get().evaluate(), 0));
 			Vector y = nx.clone();
 			y.addTo(p.multiply(this.delay + this.e));
-			double d = this.getDistance(x.add(p.multiply(this.delay)), p, false);
-			
 			if (a instanceof Fast) {
 				double t = this.delay / PhysicalConstants.C;
 				((Fast) a).setAbsorbDelay(t);
 				((Fast) a).setOrigPosition(nx.toArray());
 			}
-			
-			Absorber b = null;
-			if (this.closest != null) b = this.closest.absorber;
+
 			this.closest = null;
 			
 			if (a.absorb(y, p, energy)) {
@@ -493,6 +692,15 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		return false;
 	}
 	
+	/**
+	 * Returns the {@link Volume} associated with the given absorber, if any.
+	 *
+	 * <p>Checks whether the absorber is a {@link VolumeAbsorber} or directly implements
+	 * {@link Volume}, and returns the corresponding volume.</p>
+	 *
+	 * @param a The absorber to query
+	 * @return The associated volume, or {@code null} if the absorber has no volume
+	 */
 	protected static Volume getVolume(Absorber a) {
 		Volume v = null;
 		
@@ -504,6 +712,21 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		return v;
 	}
 	
+	/**
+	 * Spreads photon energy across the absorber surface using the configured spread angle and count.
+	 *
+	 * <p>Generates {@link #spreadCount} random sample positions on the surface of a conic section
+	 * centered at the original incidence point. Each sample is tested for absorption and, if absorbed,
+	 * the incidence direction is recorded on the item's incidence map.</p>
+	 *
+	 * @param a      The absorber receiving the spread photon energy
+	 * @param n      The surface normal at the absorption point
+	 * @param ox     The original photon position before absorption
+	 * @param x      The adjusted position after applying the delay
+	 * @param p      The photon momentum/direction vector
+	 * @param energy The photon energy
+	 * @param it     The stored item associated with the absorber
+	 */
 	protected void spread(Absorber a, Vector n, double[] ox,
 						  double[] x, Vector p, double energy, StoredItem it) {
 		if (this.spreadAngle <= 0.0) return;
@@ -536,6 +759,10 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		}
 	}
 	
+	/**
+	 * Selects the next absorber to emit a photon by finding the first absorber whose
+	 * {@link Absorber#getNextEmit()} time is less than the current clock tick interval.
+	 */
 	protected void selectEmitter() {
 		Iterator itr = this.iterator(true);
 		
@@ -569,9 +796,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 				d = this.emitter.absorber.emit();
 				
 				if (d == null)
-					System.out.println("AbsorberHashSet: " +
-										this.emitter.absorber +
-										" emitted null.");
+					log(this.emitter.absorber + " emitted null.");
 				
 				boolean front = !enableFrontBackDetection || dotProduct(d, vol.getNormalAt(p)).get().evaluate().toDouble(0) >= 0.0;
 				
@@ -628,27 +853,55 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 	public Iterator absorberIterator() {
 		Iterator itr = new Iterator() {
 			private final Iterator itr = AbsorberHashSet.super.iterator();
-			
+
+			@Override
 			public boolean hasNext() { return this.itr.hasNext(); }
+			@Override
 			public Object next() { return ((StoredItem)this.itr.next()).absorber; }
+			@Override
 			public void remove() { this.itr.remove(); }
 		};
 		
 		return itr;
 	}
 	
+	/**
+	 * Notifies all registered {@link SetListener}s that the absorber set has been modified.
+	 */
 	public void notifySetListeners() {
 		Iterator itr = this.sList.iterator();
 		while (itr.hasNext()) ((SetListener)itr.next()).noteUpdate();
 	}
 	
+	/**
+	 * Registers a {@link SetListener} to receive notifications when the absorber set is modified.
+	 *
+	 * @param l The listener to register
+	 * @return Always returns {@code true}
+	 */
 	public boolean addSetListener(SetListener l) {
 		this.sList.add(l);
 		return true;
 	}
 	
+	/**
+	 * Returns an iterator over stored items without shuffling.
+	 *
+	 * @return An iterator that visits each stored item in default order
+	 */
+	@Override
 	public Iterator iterator() { return this.iterator(false); }
-	
+
+	/**
+	 * Returns an iterator over stored items, optionally shuffled for random traversal order.
+	 *
+	 * <p>When {@code shuffle} is false or {@link #order} is not {@link #RANDOM_ORDER}, a reusable
+	 * sorted iterator is returned and cached for the current thread. When {@code shuffle} is true
+	 * and {@link #order} is {@link #RANDOM_ORDER}, a new randomly shuffled iterator is returned.</p>
+	 *
+	 * @param shuffle When true and order is RANDOM_ORDER, the items are visited in random order
+	 * @return An iterator that visits each stored item
+	 */
 	public Iterator iterator(boolean shuffle) {
 		if (this.itemsNow || !this.itemsEnabled)
 			return super.iterator();
@@ -659,7 +912,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 			this.itemsUser = Thread.currentThread();
 			return this.items;
 		} else if (this.items != null) {
-			System.out.println("AbsorberHashSet: Needed extra iterator for " +
+			log("Needed extra iterator for " +
 								Thread.currentThread() + " (" + this.itemsUser + ")");
 		}
 		
@@ -668,13 +921,18 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 			
 			this.items = new Iterator() {
 				private final SetListener l = new SetListener() {
+					@Override
 					public void noteUpdate() { myNoteUpdate(); }
 				};
-				
+
 				private int index = 0;
 				private StoredItem[] data = AbsorberHashSet.this.toArray(new StoredItem[0]);
-				private final boolean b = AbsorberHashSet.this.addSetListener(l);
-				
+
+				{
+					AbsorberHashSet.this.addSetListener(l);
+				}
+
+				@Override
 				public boolean hasNext() {
 					if (this.index >= data.length) {
 						this.index = 0;
@@ -684,10 +942,12 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 						return true;
 					}
 				}
-				
+
+				@Override
 				public Object next() { return this.data[this.index++]; }
+				@Override
 				public void remove() { }
-				
+
 				public void myNoteUpdate() {
 					AbsorberHashSet.this.itemsNow = true;
 					this.data = AbsorberHashSet.this.toArray(new StoredItem[0]);
@@ -726,13 +986,20 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		
 		return new Iterator() {
 			private int index = 0;
-			
+
+			@Override
 			public boolean hasNext() { return index < itrs.length; }
+			@Override
 			public Object next() { return itrs[this.index++]; }
+			@Override
 			public void remove() { }
 		};
 	}
 	
+	/**
+	 * Resets the {@code checked} flag on all stored items, enabling them to be considered
+	 * in the next traversal pass.
+	 */
 	protected void clearChecked() {
 		if (this.cleared) return;
 		
@@ -745,23 +1012,61 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 		this.cleared = true;
 	}
 
+	/**
+	 * Sets the spatial bounding radius and updates the maximum proximity accordingly.
+	 *
+	 * @param bound The new bounding radius; max proximity is clamped to {@code 2 * bound}
+	 */
 	public void setBound(double bound) {
 		this.bound = bound;
 		this.max = Math.min(this.max, 2*this.bound);
 	}
 	
+	@Override
 	public double getBound() { return this.bound; }
 
+	@Override
 	public BoundingSolid calculateBoundingSolid() { throw new RuntimeException("getBoundingSolid not implemented"); }
 
+	/**
+	 * Returns the distance from position {@code p} along direction {@code d} to the nearest absorber,
+	 * using fast-path caching.
+	 *
+	 * @param p The starting position
+	 * @param d The direction vector
+	 * @return The distance to the nearest absorber, or a large value if none found
+	 */
+	@Override
 	public double getDistance(Vector p, Vector d) {
 		return this.getDistance(p, d, true, false);
 	}
-	
+
+	/**
+	 * Returns the distance from position {@code p} along direction {@code d} to the nearest absorber.
+	 *
+	 * @param p    The starting position
+	 * @param d    The direction vector
+	 * @param fast When true, uses the cached closest absorber for fast absorption
+	 * @return The distance to the nearest absorber, or a large value if none found
+	 */
 	public double getDistance(Vector p, Vector d, boolean fast) {
 		return this.getDistance(p, d, fast, false);
 	}
-	
+
+	/**
+	 * Returns the distance from position {@code p} along direction {@code d} to the nearest absorber,
+	 * with optional exclusion of the camera absorber.
+	 *
+	 * <p>Iterates all stored items, computing intersection distances via their associated volumes.
+	 * If fast mode is enabled and the closest absorber is a fast absorber, the delay is stored
+	 * and 0.0 is returned to signal immediate fast-path absorption.</p>
+	 *
+	 * @param p             The starting position
+	 * @param d             The direction vector
+	 * @param fast          When true, uses the cached closest absorber for fast absorption
+	 * @param excludeCamera When true, camera absorbers are skipped in the distance calculation
+	 * @return The distance to the nearest absorber, or a large value if none found
+	 */
 	public double getDistance(Vector p, Vector d, boolean fast, boolean excludeCamera) {
 		Iterator itr = this.iterator(false);
 		
@@ -859,7 +1164,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 
 				if (rclosest.highlight) {
 					if (Math.random() < 0.1)
-						System.out.println("AbsorberHashSet: " + rclosest + " was highlighted.");
+						AbsorberHashSet.this.log(rclosest + " was highlighted.");
 					return new RGB(colorDepth, 1.0, 1.0, 1.0);
 				}
 
@@ -868,7 +1173,7 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 				try {
 					point = new Ray(p.getIntersection().get(0).get().evaluate(), 0);
 				} catch (Exception ex) {
-					ex.printStackTrace();
+					AbsorberHashSet.this.warn(ex.getMessage(), ex);
 				}
 
 				Vector po = point.getOrigin();
@@ -956,11 +1261,10 @@ public class AbsorberHashSet extends HashSet<AbsorberHashSet.StoredItem> impleme
 				if (c != null) r.addTo(c);
 
 				if (Math.random() < 0.0000001) {
-					System.out.println("****************");
-					System.out.println("AbsorberHashSet: " + rclosest + " " + closest);
-					System.out.println("AbsorberHashSet: Colors = " + rgb + " " + b + " " + c );
-					System.out.println("AbsorberHashSet: Final = " + r);
-					System.out.println();
+					AbsorberHashSet.this.log("****************");
+					AbsorberHashSet.this.log(rclosest + " " + closest);
+					AbsorberHashSet.this.log("Colors = " + rgb + " " + b + " " + c);
+					AbsorberHashSet.this.log("Final = " + r);
 				}
 
 				return r;

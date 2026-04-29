@@ -52,7 +52,9 @@ public class SlackTokens {
 	/** Default file name looked up in the current working directory. */
 	public static final String DEFAULT_FILENAME = "slack-tokens.json";
 
+	/** The Slack Bot User OAuth Token used for posting messages (xoxb-...). */
 	private String botToken;
+	/** The Slack App-level token used for Socket Mode event delivery (xapp-...). */
 	private String appToken;
 
 	/** No-arg constructor for Jackson deserialization. */
@@ -80,6 +82,27 @@ public class SlackTokens {
 
 	/** Sets the App-level token for Socket Mode. */
 	public void setAppToken(String appToken) { this.appToken = appToken; }
+
+	/**
+	 * Creates a {@link SlackTokens} instance from a workspace configuration entry.
+	 *
+	 * <p>Resolution order within the entry (first match wins):</p>
+	 * <ol>
+	 *   <li>{@code tokensFile} — path to a JSON file containing
+	 *       {@code botToken} and {@code appToken}</li>
+	 *   <li>Inline {@code botToken} / {@code appToken} fields on the entry</li>
+	 * </ol>
+	 *
+	 * @param entry the workspace configuration entry
+	 * @return a {@link SlackTokens} instance
+	 * @throws IOException if {@code tokensFile} is set but cannot be read
+	 */
+	public static SlackTokens from(WorkstreamConfig.SlackWorkspaceEntry entry) throws IOException {
+		if (entry.getTokensFile() != null && !entry.getTokensFile().isEmpty()) {
+			return loadFromFile(new File(entry.getTokensFile()));
+		}
+		return new SlackTokens(entry.getBotToken(), entry.getAppToken());
+	}
 
 	/**
 	 * Loads tokens from a JSON file.

@@ -32,6 +32,7 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Signature;
 
+import java.lang.ref.WeakReference;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -107,6 +108,19 @@ public abstract class ComputationBase<I, O, T>
 	 * Once optimization is performed, the result is stored here to avoid redundant processing.
 	 */
 	protected ComputationBase<I, O, T> optimized;
+
+	/**
+	 * Weak reference to the {@link ScopeInputManager} that last drove
+	 * {@link #prepareScope(ScopeInputManager, KernelStructureContext)} for this
+	 * computation. Used to detect when a subsequent compilation is operating
+	 * against a different manager (and therefore a different
+	 * {@link ArgumentMap} / aggregate buffer), in which case any cached
+	 * argument variables on this node refer to memory aggregated by the
+	 * previous map and must be discarded. Held weakly so that retaining this
+	 * reference does not pin the previous map (and its aggregate buffer) in
+	 * memory.
+	 */
+	private WeakReference<ScopeInputManager> lastScopeInputManager;
 
 	/**
 	 * Prepares the operation metadata by incorporating process information and signature.
@@ -194,8 +208,15 @@ public abstract class ComputationBase<I, O, T>
 	 * Prepares the arguments for this computation using the provided argument map.
 	 * This method is part of the {@link ScopeLifecycle} and is called during compilation.
 	 *
-	 * <p>If arguments have already been prepared (indicated by non-null argument variables),
-	 * this method returns early to avoid redundant processing.
+	 * <p>If arguments have already been prepared (indicated by non-null argument
+	 * variables) and the same {@link ArgumentMap} is being used as on the
+	 * previous call, returns early to avoid redundant processing. If the
+	 * {@link ArgumentMap} differs (for example, because this node is being
+	 * recompiled into a new kernel), the cached argument state is invalidated
+	 * via {@link #resetArguments()} before being repopulated. This is necessary
+	 * because cached {@link ArrayVariable}s carry delegate pointers into the
+	 * previous map's aggregate buffer; reusing them under a different map would
+	 * cause the new kernel to read or write stale memory.
 	 *
 	 * @param map the argument map for resolving and registering arguments
 	 */
@@ -211,15 +232,25 @@ public abstract class ComputationBase<I, O, T>
 	 * This method is part of the {@link ScopeLifecycle} and sets up the language
 	 * operations and argument variables.
 	 *
-	 * <p>If the scope has already been prepared, this method returns early.
+	 * <p>If the scope has already been prepared by the same {@link ScopeInputManager}
+	 * as on the previous call, returns early to avoid redundant processing. If the
+	 * manager differs (for example, because this node is being recompiled into a new
+	 * kernel), the cached argument state is invalidated via {@link #resetArguments()}
+	 * before being repopulated. This is necessary because cached
+	 * {@link ArrayVariable}s carry delegate pointers into the previous manager's
+	 * underlying argument map (and its aggregate buffer); reusing them under a
+	 * different manager would cause the new kernel to read or write stale memory.
 	 *
 	 * @param manager the scope input manager providing language and argument services
 	 * @param context the kernel structure context for scope preparation
 	 */
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
-		if (getArgumentVariables() != null) return;
+		ScopeInputManager previous = lastScopeInputManager == null ? null : lastScopeInputManager.get();
+		if (getArgumentVariables() != null && previous == manager) return;
+		if (getArgumentVariables() != null) resetArguments();
 		this.lang = manager.getLanguage();
+		this.lastScopeInputManager = new WeakReference<>(manager);
 		ScopeLifecycle.prepareScope(getInputs().stream(), manager, context);
 		assignArguments(manager);
 	}
@@ -387,6 +418,7 @@ public abstract class ComputationBase<I, O, T>
 	 * @return the replacement computation with preserved compute requirements
 	 * @see ComputationBase#getComputeRequirements()
 	 */
+	@Override
 	public ComputationBase<I, O, T> generateReplacement(List<Process<?, ?>> inputs) {
 		ComputationBase<I, O, T> replacement = (ComputationBase<I, O, T>)
 				super.generateReplacement(inputs);

@@ -34,17 +34,17 @@ ar-compose
 
 | Class | Package | Responsibility |
 |-------|---------|----------------|
-| `AudioScene` | `org.almostrealism.audio` | Central orchestrator for audio scenes |
-| `MixdownManager` | `org.almostrealism.audio.arrange` | Effects routing, delays, reverb |
-| `AutomationManager` | `org.almostrealism.audio.arrange` | Parameter automation over time |
-| `GlobalTimeManager` | `org.almostrealism.audio.arrange` | Time tracking and reset points |
-| `EfxManager` | `org.almostrealism.audio.arrange` | Per-channel effects management |
-| `RiseManager` | `org.almostrealism.audio.arrange` | Rise/swell effect processing |
-| `SceneSectionManager` | `org.almostrealism.audio.arrange` | Musical section organization |
-| `AudioComposer` | `org.almostrealism.ml.audio` | ML-based audio generation |
-| `AudioLibraryPersistence` | `org.almostrealism.audio.persistence` | Save/load library to Protocol Buffer |
-| `LibraryDestination` | `org.almostrealism.audio.persistence` | Batched protobuf file management |
-| `PrototypeDiscovery` | `org.almostrealism.audio.discovery` | Find representative samples via graph algorithms |
+| `AudioScene` | `org.almostrealism.studio` | Central orchestrator for audio scenes |
+| `MixdownManager` | `org.almostrealism.studio.arrange` | Effects routing, delays, reverb |
+| `AutomationManager` | `org.almostrealism.studio.arrange` | Parameter automation over time |
+| `GlobalTimeManager` | `org.almostrealism.studio.arrange` | Time tracking and reset points |
+| `EfxManager` | `org.almostrealism.studio.arrange` | Per-channel effects management |
+| `RiseManager` | `org.almostrealism.studio.arrange` | Rise/swell effect processing |
+| `SceneSectionManager` | `org.almostrealism.studio.arrange` | Musical section organization |
+| `AudioComposer` | `org.almostrealism.studio.ml` | ML-based audio generation |
+| `AudioLibraryPersistence` | `org.almostrealism.studio.persistence` | Save/load library to Protocol Buffer |
+| `LibraryDestination` | `org.almostrealism.studio.persistence` | Batched protobuf file management |
+| `PrototypeDiscovery` | `org.almostrealism.studio.discovery` | Find representative samples via graph algorithms |
 
 ## AudioScene: The Central Orchestrator
 
@@ -59,7 +59,7 @@ ar-compose
 ### Execution Flow
 
 ```
-AudioScene.getCells(output)
+AudioScene.runnerRealTime(output, bufferSize)
     |
     +-- [1] setup phase (OperationList)
     |       +-- AutomationManager.setup()
@@ -69,7 +69,7 @@ AudioScene.getCells(output)
     |
     +-- [2] getPatternCells()
     |       +-- getPatternChannel() for each channel
-    |           +-- PatternSystemManager.sum()  <-- RENDERS ALL PATTERNS
+    |           +-- PatternSystemManager.sum()  <-- INCREMENTAL PER BUFFER
     |           +-- ChannelSection.process()
     |       +-- MixdownManager.cells()  <-- Creates CellList
     |
@@ -122,7 +122,7 @@ CellList cells(CellList sources, CellList wetSources, CellList riser,
 
 ## Arrangement Package
 
-The `org.almostrealism.audio.arrange` package contains:
+The `org.almostrealism.studio.arrange` package contains:
 
 ### GlobalTimeManager
 Manages global playback position with support for:
@@ -150,7 +150,7 @@ Per-channel effects including:
 
 ## Health and Optimization Package
 
-The `org.almostrealism.audio.health` package provides audio quality metrics:
+The `org.almostrealism.studio.health` package provides audio quality metrics:
 
 ### StableDurationHealthComputation
 Evaluates audio quality by measuring how long playback can continue before:
@@ -163,22 +163,21 @@ This is used for genetic algorithm fitness evaluation.
 
 ```java
 StableDurationHealthComputation health = new StableDurationHealthComputation(6);
-health.setTarget(audioScene.runner(output));
+int batchSize = health.getBatchSize();
 
-// Run evaluation
-Runnable start = runner.get();  // Setup + initial ticks
-Runnable iterate = runner.getContinue();  // Tick only
+// The realtime runner must be configured so each tick advances exactly batchSize frames
+TemporalCellular target = audioScene.runnerRealTime(output, channels, batchSize);
+health.setTarget(target);
 
-for (long frame = 0; frame < maxFrames; frame += batchSize) {
-    (frame == 0 ? start : iterate).run();
-    checkForClipping();
-    checkForSilence();
-}
+// setTarget compiles target.setup() / target.tick() into runnables; computeHealth()
+// runs setup() once and then tick() per batch until the duration or a clipping/silence
+// condition is reached.
+AudioHealthScore score = health.computeHealth();
 ```
 
 ## Generation Package
 
-The `org.almostrealism.audio.generative` package provides:
+The `org.almostrealism.studio.generative` package provides:
 
 ### GenerationManager
 Coordinates audio generation from various sources:
@@ -194,7 +193,7 @@ Manages generation resources including:
 
 ## ML Audio Package
 
-The `org.almostrealism.ml.audio` package provides:
+The `org.almostrealism.studio.ml` package provides:
 
 ### AudioComposer
 Generates audio using autoencoder-based latent space interpolation:
@@ -207,7 +206,7 @@ Enables weighted feature composition for audio generation.
 
 ## Persistence Package
 
-The `org.almostrealism.audio.persistence` package handles audio library storage.
+The `org.almostrealism.studio.persistence` package handles audio library storage.
 
 ### Key-Identifier Architecture
 
@@ -240,14 +239,14 @@ String filePath = provider.getKey();  // Actual file path!
 
 ## Discovery Package
 
-The `org.almostrealism.audio.discovery` package provides sample discovery tools.
+The `org.almostrealism.studio.discovery` package provides sample discovery tools.
 
 ### PrototypeDiscovery
 
 Console app for finding representative samples using graph algorithms.
 
 ```bash
-java -cp ... org.almostrealism.audio.discovery.PrototypeDiscovery \
+java -cp ... org.almostrealism.studio.discovery.PrototypeDiscovery \
   --data ~/.almostrealism/library --clusters 5
 ```
 
@@ -272,26 +271,15 @@ scene.setLibraryRoot(new FileWaveDataProviderNode(new File("samples/")));
 ### Rendering Audio
 
 ```java
-// Get cells for output
-Cells cells = scene.getCells(output);
+// Build the realtime runner. One tick advances exactly bufferSize frames.
+int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
+TemporalCellular runner = scene.runnerRealTime(output, bufferSize);
 
-// Create temporal runner
-TemporalCellular runner = scene.runner(output);
-
-// Execute setup + initial processing
 runner.setup().get().run();
-runner.tick().get().run();
-```
-
-### Buffered Playback
-
-```java
-// Buffer to output line
-CellList cells = scene.getCells(output);
-BufferedOutputScheduler scheduler = cells.buffer(outputLine);
-
-// Start real-time playback
-scheduler.start();
+Runnable tick = runner.tick().get();
+for (int i = 0; i < bufferCount; i++) {
+    tick.run();
+}
 ```
 
 ## Configuration
@@ -303,39 +291,34 @@ scheduler.start();
 MixdownManager.enableMixdown = false;      // Enable mixdown processing
 MixdownManager.enableReverb = true;        // Enable reverb effect
 MixdownManager.enableTransmission = true;  // Enable delay transmission
-
-// TemporalRunner
-TemporalRunner.enableOptimization = false; // Apply hardware optimization
-TemporalRunner.enableFlatten = true;       // Flatten operation lists
 ```
 
 ## AudioScene and Runner Lifecycle
 
 The `AudioScene` class is the central orchestration class for audio generation, managing patterns, effects, timing, and the audio cell pipeline.
 
-### AudioScene.runner() Method
+### AudioScene.runnerRealTime() Method
 
-The `runner()` method creates a `TemporalCellular` that wraps the audio generation pipeline for iterative execution.
+The `runnerRealTime()` method creates a `TemporalCellular` whose `tick()` runnable advances the pipeline by exactly `bufferSize` frames per call. Pattern audio is rendered incrementally per buffer.
 
 ```java
-import org.almostrealism.audio.AudioScene;
+import org.almostrealism.studio.AudioScene;
 import org.almostrealism.heredity.TemporalCellular;
 
-// Create AudioScene
-AudioScene scene = new AudioScene(animation, bpm, sampleRate);
+AudioScene<?> scene = new AudioScene<>(120.0, 6, 3, 44100);
 scene.loadSettings(settingsFile);
 
-// Create runner from the scene
-TemporalCellular runner = scene.runner(audioOutput);
+int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
+TemporalCellular runner = scene.runnerRealTime(audioOutput, bufferSize);
 
-// The runner provides setup() and tick() methods
 // Setup: initializes patterns, effects, timing - runs ONCE
 runner.setup().get().run();
 
-// Tick: advances the audio pipeline by one frame
-// Call repeatedly for continuous audio generation
-for (int frame = 0; frame < totalFrames; frame++) {
-    runner.tick().get().run();
+// Tick: advances the audio pipeline by `bufferSize` frames
+Runnable tick = runner.tick().get();
+int bufferCount = (totalFrames + bufferSize - 1) / bufferSize;
+for (int i = 0; i < bufferCount; i++) {
+    tick.run();
 }
 
 // Reset: resets the temporal state for another run
@@ -347,15 +330,15 @@ runner.reset();
 ```java
 // Run only specific channels (e.g., drums and bass)
 List<Integer> channels = List.of(0, 1);
-TemporalCellular runner = scene.runner(audioOutput, channels);
+TemporalCellular runner = scene.runnerRealTime(audioOutput, channels, bufferSize);
 ```
 
 ### Runner Lifecycle Flow
 
 ```
-AudioScene.runner()
+AudioScene.runnerRealTime(output, bufferSize)
     │
-    ├── getCells(output) → Cells
+    ├── getCells(output, channels, bufferSize, frameSupplier, waveCellFrame) → Cells
     │       │
     │       ├── AudioScene.setup (OperationList)
     │       │       ├── AutomationManager.setup()
@@ -368,21 +351,17 @@ AudioScene.runner()
     │
     └── Returns TemporalCellular
             │
-            ├── setup() → OperationList (flattened)
-            │       ├── AudioScene setup ops
-            │       └── Cells setup ops
+            ├── setup() → cells.setup()
             │
-            ├── tick() → Cells.tick()
+            ├── tick() → prepareBatch + compiled per-frame loop + advance
             │
-            └── reset() → Cells.reset()
+            └── reset() → frame=0; cells.reset()
 ```
 
 ### Memory Considerations
 
-The runner allocates pattern destination buffers on first use:
-- One `PackedCollection` per channel per voicing (MAIN/WET) per stereo channel
-- Size: `min(standardDurationFrames, totalSamples)` frames
-- Destroyed when `AudioScene.destroy()` is called or duration changes
+Pattern destination buffers (`PatternAudioBuffer`) are sized to `bufferSize` frames
+each and are reused across ticks. Destroyed when `AudioScene.destroy()` is called.
 
 ## Audio Scene Optimization
 
@@ -393,7 +372,7 @@ The compose module provides evolutionary optimization for audio scenes, breeding
 Evolutionary algorithm optimizer that breeds and evaluates audio scenes to maximize health fitness.
 
 ```java
-import org.almostrealism.audio.optimize.AudioSceneOptimizer;
+import org.almostrealism.studio.optimize.AudioSceneOptimizer;
 
 // Build optimizer from an AudioScene
 AudioSceneOptimizer optimizer = AudioSceneOptimizer.build(scene, cycles);
@@ -420,7 +399,7 @@ for (int gen = 0; gen < generations; gen++) {
 Manages a population of audio scene genomes, coordinating evaluation and execution.
 
 ```java
-import org.almostrealism.audio.optimize.AudioScenePopulation;
+import org.almostrealism.studio.optimize.AudioScenePopulation;
 
 // AudioScenePopulation wraps an AudioScene and maintains genome list
 AudioScenePopulation population = new AudioScenePopulation(scene);
@@ -450,7 +429,7 @@ population.generate(
 Fitness evaluator that measures how long an audio scene plays before clipping or silence.
 
 ```java
-import org.almostrealism.audio.health.StableDurationHealthComputation;
+import org.almostrealism.studio.health.StableDurationHealthComputation;
 
 // Create health computation
 StableDurationHealthComputation health = new StableDurationHealthComputation();
@@ -467,7 +446,7 @@ System.out.println("Stable duration: " + score.getScore());
 ```
 
 The health computation:
-1. Runs the temporal cellular in incremental batches via `TemporalRunner`
+1. Runs the temporal cellular by repeatedly calling `target.tick()` (each call advances `getBatchSize()` frames)
 2. Monitors for audio clipping (values > 1.0)
 3. Monitors for silence (sustained zero output)
 4. Returns a score based on stable playback duration
@@ -490,7 +469,7 @@ AudioSceneOptimizer
     │
     └── StableDurationHealthComputation (fitness evaluation)
             │
-            └── TemporalRunner (incremental execution)
+            └── target.tick() loop (one call per batch)
                     │
                     └── AudioHealthScore (fitness result)
 ```
@@ -509,23 +488,14 @@ optimizer.setHealthListener((signature, score) ->
 Genome<PackedCollection> best = optimizer.getBestGenome();
 ```
 
-## Real-Time Audio Considerations
+## Real-Time Audio
 
-### Current Architecture Limitations
-
-The current architecture has a significant limitation for real-time audio:
-
-1. **Pattern Pre-rendering**: `PatternSystemManager.sum()` renders the entire arrangement during the setup phase
-2. **Fixed Destination Buffers**: Pattern destinations are pre-allocated for the full duration
-3. **No Incremental Rendering**: Patterns cannot be rendered incrementally
-
-### Path to Real-Time
-
-See `REALTIME_AUDIO_SCENE.md` for the proposed solution involving:
-
-1. Buffer-aware pattern rendering
-2. Moving pattern sum to tick phase
-3. N-frame batch processing in cells
+`runnerRealTime(output, channels, bufferSize)` is the only audio rendering path. Each
+tick of the returned `TemporalCellular` calls `PatternAudioBuffer.prepareBatch()` to
+render the next `bufferSize` frames of pattern audio, then runs the compiled per-frame
+effects loop, then advances the global frame position. There is no separate offline
+path — health evaluation, optimizer rendering, and tests all drive the same realtime
+runner, sized so that one tick equals one batch.
 
 ## Testing
 
@@ -543,6 +513,5 @@ mcp__ar-test-runner__start_test_run
 - [ar-music README](../music/README.md) - Pattern and note management
 - [ar-audio README](../../engine/audio/README.md) - Cell infrastructure
 - [Audio Library Documentation](../../engine/audio/docs/AUDIO_LIBRARY.md)
-- [REALTIME_AUDIO_SCENE.md](./REALTIME_AUDIO_SCENE.md) - Real-time proposal
 - [AR-Optimize Module](../../engine/optimize/README.md) - Generic optimization framework
-- [AR-Time Module](../../compute/time/README.md) - TemporalRunner and temporal operations
+- [AR-Time Module](../../compute/time/README.md) - Temporal operations

@@ -19,9 +19,13 @@ package io.flowtree.slack;
 import com.slack.api.Slack;
 import com.slack.api.methods.MethodsClient;
 import com.slack.api.methods.SlackApiException;
+import com.slack.api.methods.response.chat.ChatGetPermalinkResponse;
 import com.slack.api.methods.response.chat.ChatPostMessageResponse;
 import com.slack.api.methods.response.conversations.ConversationsCreateResponse;
 import com.slack.api.methods.response.conversations.ConversationsInviteResponse;
+import com.slack.api.methods.response.conversations.ConversationsListResponse;
+import com.slack.api.model.Conversation;
+import com.slack.api.model.ConversationType;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
 import org.almostrealism.io.Alert;
@@ -29,11 +33,14 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
@@ -51,14 +58,31 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     /** Maximum number of completed jobs to retain per workstream. */
     private static final int MAX_JOB_HISTORY = 100;
 
-    private final String botToken;
+    /** Slack SDK methods client used to post messages and update threads. */
     private final MethodsClient client;
-    private final Map<String, SlackWorkstream> workstreams;
+    /** Registry of configured workstreams, keyed by workstream ID. */
+    private final Map<String, Workstream> workstreams;
+    /** Maps job ID to the Slack thread timestamp of its notification thread. */
     private final Map<String, String> jobThreadTs;
+    /** Stores the last {@link #MAX_JOB_HISTORY} completion events per workstream, keyed by workstream ID then job ID. */
     private final Map<String, Map<String, JobCompletionEvent>> jobHistory;
+    /** Flat index of all known {@link JobCompletionEvent} objects keyed by job ID. */
+    private final Map<String, JobCompletionEvent> jobById;
+    /** Records the most recent job start time (epoch ms) for each workstream, used for rate-limiting. */
+    private final Map<String, Long> lastJobStartTime;
+    /** Optional callback invoked with each Slack message text before it is sent. */
     private Consumer<String> messageCallback;
+    /** Persistent store for per-job timing and throughput statistics. */
     private JobStatsStore statsStore;
-    private String channelOwnerUserId;
+    /**
+     * Slack user IDs automatically invited to every private channel created
+     * by {@link #createChannel(String)}. Empty when no auto-invite is
+     * configured. Ordering is preserved so callers can rely on the first
+     * element being treated as the primary "owner" if needed in the future.
+     */
+    private List<String> channelOwnerUserIds = List.of();
+    /** Default Slack channel ID used when no workstream-specific channel is configured. */
+    private String defaultChannelId;
 
     /**
      * Creates a new notifier with the specified bot token.
@@ -66,10 +90,11 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @param botToken the Slack Bot User OAuth Token (xoxb-...)
      */
     public SlackNotifier(String botToken) {
-        this.botToken = botToken;
         this.workstreams = new HashMap<>();
         this.jobThreadTs = new HashMap<>();
         this.jobHistory = new HashMap<>();
+        this.jobById = new ConcurrentHashMap<>();
+        this.lastJobStartTime = new ConcurrentHashMap<>();
 
         if (botToken != null && !botToken.isEmpty()) {
             this.client = Slack.getInstance().methods(botToken);
@@ -84,8 +109,18 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      *
      * @param workstream the workstream configuration
      */
-    public void registerWorkstream(SlackWorkstream workstream) {
+    public void registerWorkstream(Workstream workstream) {
         workstreams.put(workstream.getWorkstreamId(), workstream);
+    }
+
+    /**
+     * Removes all registered workstreams from this notifier.
+     *
+     * <p>Called during configuration reload so that workstreams removed or moved
+     * between workspaces do not remain active after the reload completes.</p>
+     */
+    public void clearWorkstreams() {
+        workstreams.clear();
     }
 
     /**
@@ -94,7 +129,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @param workstreamId the workstream identifier
      * @return the workstream, or null if not registered
      */
-    public SlackWorkstream getWorkstream(String workstreamId) {
+    public Workstream getWorkstream(String workstreamId) {
         return workstreams.get(workstreamId);
     }
 
@@ -103,7 +138,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      *
      * @return an unmodifiable view of the workstream map
      */
-    public Map<String, SlackWorkstream> getWorkstreams() {
+    public Map<String, Workstream> getWorkstreams() {
         return Collections.unmodifiableMap(workstreams);
     }
 
@@ -137,11 +172,15 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 String channelId = response.getChannel().getId();
                 log("Created private Slack channel " + name + " (" + channelId + ")");
 
-                if (channelOwnerUserId != null && !channelOwnerUserId.isEmpty()) {
-                    inviteUserToChannel(channelId, channelOwnerUserId);
+                if (!channelOwnerUserIds.isEmpty()) {
+                    inviteUsersToChannel(channelId, channelOwnerUserIds);
                 }
 
                 return channelId;
+            } else if ("name_taken".equals(response.getError())) {
+                // Channel already exists — look it up by name
+                log("Channel '" + name + "' already exists, looking up by name");
+                return findChannelByName(name);
             } else {
                 warn("Failed to create channel '" + name + "': " + response.getError());
             }
@@ -153,26 +192,80 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
-     * Invites a user to a Slack channel.
+     * Finds a channel by name that the bot is a member of.
      *
-     * @param channelId the channel to invite the user to
-     * @param userId    the Slack user ID to invite
+     * <p>Uses {@code conversations.list} with {@code types=private_channel}
+     * to find channels the bot has access to. Only returns a match if the
+     * bot is already a member of the channel.</p>
+     *
+     * @param name the channel name (without #)
+     * @return the channel ID, or null if not found or bot is not a member
      */
-    private void inviteUserToChannel(String channelId, String userId) {
+    private String findChannelByName(String name) {
+        if (client == null) return null;
+
+        try {
+            String cursor = null;
+            do {
+                final String pageCursor = cursor;
+                ConversationsListResponse response =
+                    client.conversationsList(req -> {
+                        req.types(Arrays.asList(
+                            ConversationType.PRIVATE_CHANNEL,
+                            ConversationType.PUBLIC_CHANNEL));
+                        req.limit(200);
+                        if (pageCursor != null) req.cursor(pageCursor);
+                        return req;
+                    });
+
+                if (!response.isOk()) {
+                    warn("Failed to list channels: " + response.getError());
+                    return null;
+                }
+
+                for (Conversation channel : response.getChannels()) {
+                    if (name.equals(channel.getName()) && channel.isMember()) {
+                        String channelId = channel.getId();
+                        log("Found existing channel '" + name + "' (" + channelId + ")");
+                        return channelId;
+                    }
+                }
+
+                cursor = response.getResponseMetadata() != null
+                    ? response.getResponseMetadata().getNextCursor() : null;
+            } while (cursor != null && !cursor.isEmpty());
+
+            log("Channel '" + name + "' exists but bot is not a member");
+        } catch (IOException | SlackApiException e) {
+            warn("Error looking up channel '" + name + "': " + e.getMessage());
+        }
+
+        return null;
+    }
+
+    /**
+     * Invites a list of users to a Slack channel in a single API call.
+     * No-op when the list is empty.
+     *
+     * @param channelId the channel to invite the users to
+     * @param userIds   the Slack user IDs to invite
+     */
+    private void inviteUsersToChannel(String channelId, List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) return;
         try {
             ConversationsInviteResponse response = client.conversationsInvite(req -> req
                 .channel(channelId)
-                .users(Collections.singletonList(userId))
+                .users(userIds)
             );
 
             if (response.isOk()) {
-                log("Invited user " + userId + " to channel " + channelId);
+                log("Invited users " + userIds + " to channel " + channelId);
             } else {
-                warn("Failed to invite user " + userId + " to channel "
+                warn("Failed to invite users " + userIds + " to channel "
                     + channelId + ": " + response.getError());
             }
         } catch (IOException | SlackApiException e) {
-            warn("Error inviting user to channel: " + e.getMessage());
+            warn("Error inviting users to channel: " + e.getMessage());
         }
     }
 
@@ -183,6 +276,27 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      */
     public void setStatsStore(JobStatsStore store) {
         this.statsStore = store;
+        if (store != null) {
+            loadJobHistoryFromStore(store);
+        }
+    }
+
+    /**
+     * Pre-populates the in-memory job caches from the persistent store so that
+     * recent jobs survive a controller restart.  Loads up to
+     * {@link #MAX_JOB_HISTORY} jobs per registered workstream.
+     */
+    private void loadJobHistoryFromStore(JobStatsStore store) {
+        for (String wsId : workstreams.keySet()) {
+            List<JobCompletionEvent> recent = store.getRecentJobs(wsId, MAX_JOB_HISTORY);
+            // getRecentJobs returns newest-first; put oldest-first into the LRU map
+            for (int i = recent.size() - 1; i >= 0; i--) {
+                JobCompletionEvent e = recent.get(i);
+                trackJob(wsId, e);
+            }
+        }
+        log("Loaded job history from persistent store for "
+                + workstreams.size() + " workstream(s)");
     }
 
     /**
@@ -193,16 +307,65 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
-     * Sets the Slack user ID to be automatically invited to newly created channels.
+     * Sets a single Slack user ID to be automatically invited to newly
+     * created channels. Equivalent to {@code setChannelOwnerUserIds(List.of(userId))}
+     * when {@code userId} is non-null and non-empty; clears the invite list
+     * otherwise. Retained for backwards compatibility with callers that
+     * configure a single invitee.
      *
-     * <p>When set, {@link #createChannel(String)} will invite this user to every
-     * private channel it creates. Typically set from the {@code SLACK_CHANNEL_OWNER}
-     * environment variable during controller startup.</p>
-     *
-     * @param userId the Slack user ID (e.g., "U0123456789")
+     * @param userId the Slack user ID (e.g., "U0123456789"), or {@code null}
      */
     public void setChannelOwnerUserId(String userId) {
-        this.channelOwnerUserId = userId;
+        this.channelOwnerUserIds = (userId == null || userId.isEmpty())
+                ? List.of() : List.of(userId);
+    }
+
+    /**
+     * Sets the list of Slack user IDs to be automatically invited to newly
+     * created channels. A null or empty list disables auto-invite.
+     *
+     * @param userIds the list of Slack user IDs, or {@code null}
+     */
+    public void setChannelOwnerUserIds(List<String> userIds) {
+        this.channelOwnerUserIds = (userIds == null || userIds.isEmpty())
+                ? List.of() : List.copyOf(userIds);
+    }
+
+    /**
+     * Returns the first configured Slack user ID, or {@code null} if none is
+     * configured. Retained for backwards compatibility; prefer
+     * {@link #getChannelOwnerUserIds()}.
+     */
+    public String getChannelOwnerUserId() {
+        return channelOwnerUserIds.isEmpty() ? null : channelOwnerUserIds.get(0);
+    }
+
+    /**
+     * Returns the full list of Slack user IDs invited on channel creation.
+     * Never {@code null}; empty when no auto-invite is configured.
+     */
+    public List<String> getChannelOwnerUserIds() {
+        return channelOwnerUserIds;
+    }
+
+    /**
+     * Sets the default Slack channel ID used as a fallback when a
+     * workstream has no channel configured or when publishing to
+     * the configured channel fails.
+     *
+     * @param channelId the fallback Slack channel ID (e.g., "C0123456789")
+     */
+    public void setDefaultChannelId(String channelId) {
+        this.defaultChannelId = channelId;
+    }
+
+    /**
+     * Returns the default Slack channel ID used as a fallback.
+     *
+     * @return the fallback channel ID, or null if not configured
+     */
+    public String getDefaultChannelId() {
+        return defaultChannelId;
     }
 
     /**
@@ -214,12 +377,12 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @param branch the branch name to match (e.g., "feature/new-decoder")
      * @return the matching workstream, or null if no match is found
      */
-    public SlackWorkstream findWorkstreamByBranch(String branch) {
+    public Workstream findWorkstreamByBranch(String branch) {
         if (branch == null || branch.isEmpty()) {
             return null;
         }
 
-        for (SlackWorkstream ws : workstreams.values()) {
+        for (Workstream ws : workstreams.values()) {
             if (branch.equals(ws.getDefaultBranch())) {
                 return ws;
             }
@@ -237,7 +400,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @param repoUrl the repository URL to match (may be null)
      * @return the matching workstream, or null if no match is found
      */
-    public SlackWorkstream findWorkstreamByBranchAndRepo(String branch, String repoUrl) {
+    public Workstream findWorkstreamByBranchAndRepo(String branch, String repoUrl) {
         if (branch == null || branch.isEmpty()) {
             return null;
         }
@@ -246,7 +409,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             return findWorkstreamByBranch(branch);
         }
 
-        for (SlackWorkstream ws : workstreams.values()) {
+        for (Workstream ws : workstreams.values()) {
             if (branch.equals(ws.getDefaultBranch())
                     && repoUrl.equals(ws.getRepoUrl())) {
                 return ws;
@@ -280,13 +443,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      *                      this message timestamp (creating a thread)
      */
     public void onJobSubmitted(String workstreamId, JobCompletionEvent event, String replyTo) {
-        SlackWorkstream workstream = workstreams.get(workstreamId);
+        Workstream workstream = workstreams.get(workstreamId);
         if (workstream == null) {
             warn("Unknown workstream: " + workstreamId);
             return;
         }
 
         trackJob(workstreamId, event);
+        lastJobStartTime.put(workstreamId, System.currentTimeMillis());
 
         String message = formatSubmittedMessage(event, workstream);
         String ts;
@@ -305,11 +469,12 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 jobThreadTs.put(event.getJobId(), ts);
             }
         }
+
     }
 
     @Override
     public void onJobStarted(String workstreamId, JobCompletionEvent event) {
-        SlackWorkstream workstream = workstreams.get(workstreamId);
+        Workstream workstream = workstreams.get(workstreamId);
         if (workstream == null) {
             warn("Unknown workstream: " + workstreamId);
             return;
@@ -320,9 +485,18 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         if (statsStore != null) {
             statsStore.recordJobStarted(event.getJobId(), workstreamId,
                 event.getDescription(), event.getTimestamp());
+
+            // Persist the Slack message ts now that the job_timing row exists.
+            // (Moved here from onJobSubmitted so the UPDATE finds the newly created row.)
+            if (event.getJobId() != null) {
+                String linkTs = jobThreadTs.get(event.getJobId());
+                if (linkTs != null) {
+                    statsStore.updateJobSlackTs(event.getJobId(), linkTs);
+                }
+            }
         }
 
-        String message = formatStartedMessage(event, workstream);
+        String message = formatStartedMessage(event);
 
         // Thread under the submission message if one exists
         String threadTs = jobThreadTs.get(event.getJobId());
@@ -335,7 +509,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
     @Override
     public void onJobCompleted(String workstreamId, JobCompletionEvent event) {
-        SlackWorkstream workstream = workstreams.get(workstreamId);
+        Workstream workstream = workstreams.get(workstreamId);
         if (workstream == null) {
             warn("Unknown workstream: " + workstreamId);
             return;
@@ -344,16 +518,10 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         trackJob(workstreamId, event);
 
         if (statsStore != null) {
-            statsStore.recordJobCompleted(event.getJobId(),
-                workstreamId, event.getStatus().name(), event.getTimestamp(),
-                event.getDurationMs(), event.getDurationApiMs(),
-                event.getCostUsd(), event.getNumTurns(),
-                event.getSessionId(), event.getExitCode(),
-                event.getSubtype(), event.isSessionError(),
-                event.getPermissionDenials());
+            statsStore.recordJobCompleted(workstreamId, event);
         }
 
-        String message = formatCompletedMessage(event, workstream);
+        String message = formatCompletedMessage(event);
         String threadTs = event.getJobId() != null ? jobThreadTs.remove(event.getJobId()) : null;
 
         if (threadTs != null) {
@@ -374,26 +542,27 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @return the message timestamp (for threading), or null on failure
      */
     public String postMessage(String channelId, String text) {
-        if (channelId == null || channelId.isEmpty()) {
-            log("No channel ID - skipping message post");
+        String effectiveChannel = resolveChannel(channelId);
+        if (effectiveChannel == null) {
+            log("No channel ID and no default channel - skipping message post");
             return null;
         }
 
         // Notify callback for testing
         if (messageCallback != null) {
-            messageCallback.accept("{\"channel\":\"" + channelId + "\",\"text\":\"" +
+            messageCallback.accept("{\"channel\":\"" + effectiveChannel + "\",\"text\":\"" +
                                    escapeJson(text) + "\"}");
         }
 
         if (client == null) {
-            log("No bot token - message would be posted to " + channelId + ":");
+            log("No bot token - message would be posted to " + effectiveChannel + ":");
             log(text);
             return null;
         }
 
         try {
             ChatPostMessageResponse response = client.chatPostMessage(req -> req
-                .channel(channelId)
+                .channel(effectiveChannel)
                 .text(text)
                 .unfurlLinks(false)
                 .unfurlMedia(false)
@@ -402,12 +571,32 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             if (response.isOk()) {
                 return response.getTs();
             } else {
-                warn("Failed to post message: " + response.getError());
+                warn("Failed to post message to " + effectiveChannel + ": " + response.getError());
+                return postToFallbackChannel(effectiveChannel, text, null);
             }
         } catch (IOException | SlackApiException e) {
-            warn("Error posting message: " + e.getMessage());
+            warn("Error posting message to " + effectiveChannel + ": " + e.getMessage());
+            return postToFallbackChannel(effectiveChannel, text, null);
         }
+    }
 
+    /**
+     * Returns the Slack permalink for the given message, or {@code null} if unavailable.
+     *
+     * @param channelId the Slack channel ID
+     * @param messageTs the message timestamp (e.g., {@code "1234567890.123456"})
+     * @return a fully-qualified permalink URL, or {@code null} on failure
+     */
+    public String getPermalink(String channelId, String messageTs) {
+        if (client == null || channelId == null || messageTs == null) return null;
+        try {
+            ChatGetPermalinkResponse response = client.chatGetPermalink(req ->
+                    req.channel(channelId).messageTs(messageTs));
+            if (response.isOk()) return response.getPermalink();
+            warn("Failed to get permalink for message " + messageTs + ": " + response.getError());
+        } catch (IOException | SlackApiException e) {
+            warn("Error fetching permalink for message " + messageTs + ": " + e.getMessage());
+        }
         return null;
     }
 
@@ -420,19 +609,20 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @return the reply message timestamp, or null on failure
      */
     public String postMessageInThread(String channelId, String text, String threadTs) {
-        if (channelId == null || channelId.isEmpty()) {
-            log("No channel ID - skipping thread reply");
+        String effectiveChannel = resolveChannel(channelId);
+        if (effectiveChannel == null) {
+            log("No channel ID and no default channel - skipping thread reply");
             return null;
         }
 
         if (messageCallback != null) {
-            messageCallback.accept("{\"channel\":\"" + channelId +
+            messageCallback.accept("{\"channel\":\"" + effectiveChannel +
                                    "\",\"thread_ts\":\"" + escapeJson(threadTs) +
                                    "\",\"text\":\"" + escapeJson(text) + "\"}");
         }
 
         if (client == null) {
-            log("No bot token - thread reply would be posted to " + channelId +
+            log("No bot token - thread reply would be posted to " + effectiveChannel +
                 " (thread " + threadTs + "):");
             log(text);
             return null;
@@ -440,7 +630,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         try {
             ChatPostMessageResponse response = client.chatPostMessage(req -> req
-                .channel(channelId)
+                .channel(effectiveChannel)
                 .text(text)
                 .threadTs(threadTs)
                 .unfurlLinks(false)
@@ -450,10 +640,73 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             if (response.isOk()) {
                 return response.getTs();
             } else {
-                warn("Failed to post thread reply: " + response.getError());
+                warn("Failed to post thread reply to " + effectiveChannel + ": " + response.getError());
+                return postToFallbackChannel(effectiveChannel, text, null);
             }
         } catch (IOException | SlackApiException e) {
-            warn("Error posting thread reply: " + e.getMessage());
+            warn("Error posting thread reply to " + effectiveChannel + ": " + e.getMessage());
+            return postToFallbackChannel(effectiveChannel, text, null);
+        }
+    }
+
+    /**
+     * Resolves the effective channel ID for posting. If the provided channel
+     * is null or empty, falls back to the configured default channel.
+     *
+     * @param channelId the primary channel ID (may be null)
+     * @return the resolved channel ID, or null if no channel is available
+     */
+    private String resolveChannel(String channelId) {
+        if (channelId != null && !channelId.isEmpty()) {
+            return channelId;
+        }
+        return defaultChannelId;
+    }
+
+    /**
+     * Attempts to post a message to the default fallback channel after a
+     * failure on the primary channel. No-op if the default channel is not
+     * configured or is the same as the failed channel.
+     *
+     * @param failedChannel the channel that failed
+     * @param text          the message text
+     * @param threadTs      the thread timestamp (may be null for top-level messages)
+     * @return the message timestamp from the fallback post, or null
+     */
+    private String postToFallbackChannel(String failedChannel, String text, String threadTs) {
+        if (defaultChannelId == null || defaultChannelId.isEmpty()
+                || defaultChannelId.equals(failedChannel)) {
+            return null;
+        }
+
+        log("Falling back to default channel " + defaultChannelId);
+
+        try {
+            ChatPostMessageResponse response;
+            if (threadTs != null) {
+                response = client.chatPostMessage(req -> req
+                    .channel(defaultChannelId)
+                    .text(text)
+                    .threadTs(threadTs)
+                    .unfurlLinks(false)
+                    .unfurlMedia(false)
+                );
+            } else {
+                response = client.chatPostMessage(req -> req
+                    .channel(defaultChannelId)
+                    .text(text)
+                    .unfurlLinks(false)
+                    .unfurlMedia(false)
+                );
+            }
+
+            if (response.isOk()) {
+                return response.getTs();
+            } else {
+                warn("Failed to post to fallback channel: " + response.getError());
+            }
+        } catch (IOException | SlackApiException e) {
+            warn("Error posting to fallback channel: " + e.getMessage());
         }
 
         return null;
@@ -488,6 +741,63 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 }
             });
         jobs.put(event.getJobId(), event);
+        jobById.put(event.getJobId(), event);
+    }
+
+    /**
+     * Returns the workstream ID that owns the given job, by searching the
+     * in-memory job history. Returns {@code null} if not found.
+     *
+     * @param jobId the job identifier
+     * @return the workstream ID, or {@code null}
+     */
+    public String getWorkstreamIdForJob(String jobId) {
+        if (jobId == null) return null;
+        for (Map.Entry<String, Map<String, JobCompletionEvent>> entry : jobHistory.entrySet()) {
+            if (entry.getValue().containsKey(jobId)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns a specific job event by its job ID, across all workstreams.
+     * Checks the persistent store first (when available), then falls back
+     * to the in-memory cache.
+     *
+     * @param jobId the job identifier
+     * @return the most recent event for that job, or null if not found
+     */
+    public JobCompletionEvent getJob(String jobId) {
+        if (jobId == null) return null;
+        if (statsStore != null) {
+            JobCompletionEvent persisted = statsStore.getJob(jobId);
+            if (persisted != null) return persisted;
+        }
+        return jobById.get(jobId);
+    }
+
+    /**
+     * Returns recent jobs for a workstream from the persistent store (newest first),
+     * falling back to the in-memory cache when the store is unavailable.
+     *
+     * @param workstreamId the workstream identifier
+     * @param limit        maximum number of jobs to return
+     * @return list of events, newest first
+     */
+    public List<JobCompletionEvent> getRecentJobs(String workstreamId, int limit) {
+        if (statsStore != null) {
+            return statsStore.getRecentJobs(workstreamId, limit);
+        }
+        // In-memory fallback: history is oldest-first; return newest-first slice
+        Map<String, JobCompletionEvent> history = jobHistory.get(workstreamId);
+        if (history == null) return Collections.emptyList();
+        List<JobCompletionEvent> all = new ArrayList<>(history.values());
+        int fromIndex = Math.max(0, all.size() - limit);
+        List<JobCompletionEvent> page = new ArrayList<>(all.subList(fromIndex, all.size()));
+        Collections.reverse(page);
+        return page;
     }
 
     /**
@@ -503,11 +813,28 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
+     * Checks whether any job on the given workstream was started after the
+     * specified epoch timestamp. Used by the submission endpoint to skip
+     * stale auto-resolve jobs from CI pipelines that ran hours ago.
+     *
+     * <p>The tracking map is in-memory and reset on controller restart,
+     * which is safe: a restart means no false positives, only missed guards.</p>
+     *
+     * @param workstreamId the workstream identifier
+     * @param epochMillis  the epoch milliseconds threshold
+     * @return {@code true} if a more recent job exists
+     */
+    public boolean hasJobStartedAfter(String workstreamId, long epochMillis) {
+        Long last = lastJobStartTime.get(workstreamId);
+        return last != null && last > epochMillis;
+    }
+
+    /**
      * Fires an SMS alert via {@link Console#alert(Alert)} summarizing
      * the job completion. This is a no-op if no {@link org.almostrealism.io.AlertDeliveryProvider}
      * is registered (e.g., no {@code signalwire.properties} file).
      */
-    private void fireCompletionAlert(JobCompletionEvent event, SlackWorkstream workstream) {
+    private void fireCompletionAlert(JobCompletionEvent event, Workstream workstream) {
         StringBuilder sb = new StringBuilder();
         sb.append("Job ").append(event.getStatus().name().toLowerCase());
         if (workstream.getChannelName() != null) {
@@ -523,7 +850,15 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         Console.root().alert(new Alert(Alert.Severity.INFO, sb.toString()));
     }
 
-    private String formatSubmittedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
+    /**
+     * Formats the Slack message text sent when a job is first submitted to the
+     * queue, including description, target branch, and job ID.
+     *
+     * @param event       the submission event
+     * @param workstream  the workstream the job belongs to
+     * @return            formatted Slack message string
+     */
+    private String formatSubmittedMessage(JobCompletionEvent event, Workstream workstream) {
         StringBuilder sb = new StringBuilder();
         sb.append(":outbox_tray: *Job submitted:* ");
         sb.append(truncate(event.getDescription(), 100));
@@ -540,7 +875,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         return sb.toString();
     }
 
-    private String formatStartedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
+    /**
+     * Formats the Slack message text sent when a job transitions from queued to
+     * actively running.
+     *
+     * @param event       the started event
+     * @return            formatted Slack message string
+     */
+    private String formatStartedMessage(JobCompletionEvent event) {
         StringBuilder sb = new StringBuilder();
         sb.append(":arrows_counterclockwise: *Starting work:* ");
         sb.append(truncate(event.getDescription(), 100));
@@ -548,7 +890,15 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         return sb.toString();
     }
 
-    private String formatCompletedMessage(JobCompletionEvent event, SlackWorkstream workstream) {
+    /**
+     * Formats the Slack message text sent when a job completes (either
+     * successfully or with a failure), including status, file count, commit
+     * hash, cost, and error details as applicable.
+     *
+     * @param event       the completion event
+     * @return            formatted Slack message string
+     */
+    private String formatCompletedMessage(JobCompletionEvent event) {
         StringBuilder sb = new StringBuilder();
 
         switch (event.getStatus()) {
@@ -655,7 +1005,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             List<String> denied = event.getDeniedToolNames();
             if (!denied.isEmpty()) {
                 // Deduplicate and show unique denied tool names
-                List<String> unique = new java.util.ArrayList<>();
+                List<String> unique = new ArrayList<>();
                 for (String name : denied) {
                     if (!unique.contains(name)) unique.add(name);
                 }
@@ -699,6 +1049,13 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         return hours + "h " + remainingMinutes + "m";
     }
 
+    /**
+     * Escapes a string for safe inclusion in a JSON string literal, replacing
+     * backslash, double-quote, and common whitespace control characters.
+     *
+     * @param s  the string to escape, or {@code null}
+     * @return   the escaped string, or an empty string if {@code s} is {@code null}
+     */
     private static String escapeJson(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\")
@@ -708,6 +1065,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 .replace("\t", "\\t");
     }
 
+    /**
+     * Truncates a string to at most {@code maxLength} characters. Returns an
+     * empty string rather than {@code null} when the input is {@code null}.
+     *
+     * @param s          the string to truncate
+     * @param maxLength  maximum number of characters to retain
+     * @return           the (possibly truncated) string, never {@code null}
+     */
     private static String truncate(String s, int maxLength) {
         if (s == null) return "";
         if (s.length() <= maxLength) return s;

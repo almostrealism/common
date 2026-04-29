@@ -17,7 +17,6 @@
 package org.almostrealism.projection;
 
 import io.almostrealism.relation.Producer;
-import io.almostrealism.uml.ModelEntity;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.ScalarFeatures;
@@ -44,14 +43,27 @@ import org.almostrealism.io.DecodePostProcessing;
  * 
  * @author  Michael Murray
  */
-@ModelEntity
 public class OrthographicCamera implements Camera, Positioned, DecodePostProcessing, ScalarFeatures, PairFeatures, VectorFeatures, RayFeatures {
+	/** The position of the camera in 3D world space. */
 	private Vector location = new Vector(0.0, 0.0, 0.0);
+
+	/** The direction the camera is looking (does not need to be normalized). */
 	private Vector viewDirection = new Vector(0.0, 0.0, 1.0);
+
+	/** The up direction of the camera, used to compute the camera coordinate system. */
 	private Vector upDirection = new Vector(0.0, 1.0, 0.0);
+
+	/** The width (X) and height (Y) of the virtual projection plane in world units. */
 	private final Pair projectionDimensions = new Pair();
-  
-	protected Vector u, v, w;
+
+	/** The right direction unit vector of the camera coordinate system. */
+	protected Vector u;
+
+	/** The up direction unit vector of the camera coordinate system. */
+	protected Vector v;
+
+	/** The negative viewing direction unit vector of the camera coordinate system. */
+	protected Vector w;
   
 	/**
 	 * Constructs a new OrthographicCamera object with the defaults described above.
@@ -80,6 +92,16 @@ public class OrthographicCamera implements Camera, Positioned, DecodePostProcess
 		this.setProjectionDimensions(3.5, 2.0);
 	}
 	
+	/**
+	 * Constructs an OrthographicCamera with the specified location, viewing direction,
+	 * up direction, and projection dimensions.
+	 *
+	 * @param location       the camera position in 3D world space
+	 * @param viewDirection  the direction the camera looks
+	 * @param upDirection    the up orientation of the camera
+	 * @param projectionX    the width of the projection plane in world units
+	 * @param projectionY    the height of the projection plane in world units
+	 */
 	public OrthographicCamera(Vector location, Vector viewDirection, Vector upDirection,
 							double projectionX, double projectionY) {
 		this.setLocation(location);
@@ -179,8 +201,10 @@ public class OrthographicCamera implements Camera, Positioned, DecodePostProcess
 	public double getProjectionHeight() { return projectionDimensions.getY(); }
 	
 	/**
-	 * @return  A {@link TransformMatrix} object that can be used to convert coordinates in the
-	 *          coordinate system described by this {@link Camera} to the standard x, y, z coordinates.
+	 * Returns a {@link TransformMatrix} that converts coordinates in the
+	 * coordinate system described by this {@link Camera} to the standard x, y, z coordinates.
+	 *
+	 * @return  A {@link TransformMatrix} for coordinate conversion.
 	 */
 	public TransformMatrix getRotationMatrix() {
 	    double[][] matrix = {{this.u.getX(), this.u.getY(), this.u.getZ()},

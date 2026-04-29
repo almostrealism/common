@@ -17,6 +17,7 @@
 package io.flowtree.slack;
 
 import fi.iki.elonen.NanoHTTPD;
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.ClaudeCodeJob;
 import io.flowtree.jobs.ClaudeCodeJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
@@ -26,16 +27,19 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -53,7 +57,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
     @Test(timeout = 10000)
     public void testWorkstreamConfiguration() {
-        SlackWorkstream workstream = new SlackWorkstream("C0123456789", "#test-channel");
+        Workstream workstream = new Workstream("C0123456789", "#test-channel");
         workstream.addAgent("localhost", 7766);
         workstream.addAgent("localhost", 7767);
         workstream.setDefaultBranch("feature/test");
@@ -69,16 +73,16 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
     @Test(timeout = 10000)
     public void testAgentRoundRobin() {
-        SlackWorkstream workstream = new SlackWorkstream("C123", "#test");
+        Workstream workstream = new Workstream("C123", "#test");
         workstream.addAgent("host1", 7766);
         workstream.addAgent("host2", 7767);
         workstream.addAgent("host3", 7768);
 
         // Get agents in sequence
-        SlackWorkstream.AgentEndpoint a1 = workstream.getNextAgent();
-        SlackWorkstream.AgentEndpoint a2 = workstream.getNextAgent();
-        SlackWorkstream.AgentEndpoint a3 = workstream.getNextAgent();
-        SlackWorkstream.AgentEndpoint a4 = workstream.getNextAgent();
+        Workstream.AgentEndpoint a1 = workstream.getNextAgent();
+        Workstream.AgentEndpoint a2 = workstream.getNextAgent();
+        Workstream.AgentEndpoint a3 = workstream.getNextAgent();
+        Workstream.AgentEndpoint a4 = workstream.getNextAgent();
 
         assertEquals("host1", a1.getHost());
         assertEquals("host2", a2.getHost());
@@ -120,7 +124,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
             }
         });
 
-        SlackWorkstream workstream = new SlackWorkstream("C123", "#test");
+        Workstream workstream = new Workstream("C123", "#test");
         workstream.setDefaultBranch("feature/test");
         notifier.registerWorkstream(workstream);
 
@@ -243,135 +247,6 @@ public class SlackIntegrationTest extends TestSuiteBase {
     }
 
     @Test(timeout = 10000)
-    public void testYamlConfigLoading() throws IOException {
-        String yaml = "workstreams:\n" +
-                      "  - channelId: \"C0123456789\"\n" +
-                      "    channelName: \"#project-alpha\"\n" +
-                      "    agents:\n" +
-                      "      - host: \"localhost\"\n" +
-                      "        port: 7766\n" +
-                      "      - host: \"localhost\"\n" +
-                      "        port: 7767\n" +
-                      "    defaultBranch: \"feature/alpha\"\n" +
-                      "    pushToOrigin: true\n" +
-                      "    maxTurns: 100\n" +
-                      "    maxBudgetUsd: 25.0\n" +
-                      "  - channelId: \"C9876543210\"\n" +
-                      "    channelName: \"#project-beta\"\n" +
-                      "    agents:\n" +
-                      "      - host: \"192.168.1.100\"\n" +
-                      "        port: 7768\n" +
-                      "    defaultBranch: \"feature/beta\"\n";
-
-        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-
-        assertEquals(2, config.getWorkstreams().size());
-
-        // First workstream
-        WorkstreamConfig.WorkstreamEntry entry1 = config.getWorkstreams().get(0);
-        assertEquals("C0123456789", entry1.getChannelId());
-        assertEquals("#project-alpha", entry1.getChannelName());
-        assertEquals(2, entry1.getAgents().size());
-        assertEquals("localhost", entry1.getAgents().get(0).getHost());
-        assertEquals(7766, entry1.getAgents().get(0).getPort());
-        assertEquals("feature/alpha", entry1.getDefaultBranch());
-        assertEquals(100, entry1.getMaxTurns());
-        assertEquals(25.0, entry1.getMaxBudgetUsd(), 0.001);
-
-        // Second workstream
-        WorkstreamConfig.WorkstreamEntry entry2 = config.getWorkstreams().get(1);
-        assertEquals("C9876543210", entry2.getChannelId());
-        assertEquals("192.168.1.100", entry2.getAgents().get(0).getHost());
-
-        // Convert to SlackWorkstream objects
-        List<SlackWorkstream> workstreams = config.toWorkstreams();
-        assertEquals(2, workstreams.size());
-
-        SlackWorkstream ws1 = workstreams.get(0);
-        assertEquals("C0123456789", ws1.getChannelId());
-        assertEquals("#project-alpha", ws1.getChannelName());
-        assertEquals(2, ws1.getAgents().size());
-        assertEquals("feature/alpha", ws1.getDefaultBranch());
-    }
-
-    @Test(timeout = 10000)
-    public void testJsonConfigLoading() throws IOException {
-        String json = "{\"workstreams\":[" +
-                      "{\"channelId\":\"C111\",\"channelName\":\"#test\"," +
-                      "\"agents\":[{\"host\":\"localhost\",\"port\":7766}]," +
-                      "\"defaultBranch\":\"main\"}]}";
-
-        WorkstreamConfig config = WorkstreamConfig.loadFromJsonString(json);
-
-        assertEquals(1, config.getWorkstreams().size());
-        assertEquals("C111", config.getWorkstreams().get(0).getChannelId());
-        assertEquals("main", config.getWorkstreams().get(0).getDefaultBranch());
-    }
-
-    @Test(timeout = 10000)
-    public void testTokensLoadFromFile() throws IOException {
-        File tempFile = File.createTempFile("slack-tokens-test", ".json");
-        tempFile.deleteOnExit();
-
-        String json = "{ \"botToken\": \"xoxb-test-bot-token\", " +
-                       "\"appToken\": \"xapp-test-app-token\" }";
-        Files.write(tempFile.toPath(), json.getBytes());
-
-        SlackTokens tokens = SlackTokens.loadFromFile(tempFile);
-
-        assertEquals("xoxb-test-bot-token", tokens.getBotToken());
-        assertEquals("xapp-test-app-token", tokens.getAppToken());
-    }
-
-    @Test(timeout = 10000)
-    public void testTokensResolveFromExplicitFile() throws IOException {
-        File tempFile = File.createTempFile("slack-tokens-explicit", ".json");
-        tempFile.deleteOnExit();
-
-        String json = "{ \"botToken\": \"xoxb-explicit\", \"appToken\": \"xapp-explicit\" }";
-        Files.write(tempFile.toPath(), json.getBytes());
-
-        SlackTokens tokens = SlackTokens.resolve(tempFile);
-
-        assertEquals("xoxb-explicit", tokens.getBotToken());
-        assertEquals("xapp-explicit", tokens.getAppToken());
-    }
-
-    @Test(timeout = 10000)
-    public void testTokensIgnoresUnknownFields() throws IOException {
-        File tempFile = File.createTempFile("slack-tokens-extra", ".json");
-        tempFile.deleteOnExit();
-
-        String json = "{ \"botToken\": \"xoxb-123\", \"appToken\": \"xapp-456\", " +
-                       "\"unknownField\": \"ignored\" }";
-        Files.write(tempFile.toPath(), json.getBytes());
-
-        SlackTokens tokens = SlackTokens.loadFromFile(tempFile);
-
-        assertEquals("xoxb-123", tokens.getBotToken());
-        assertEquals("xapp-456", tokens.getAppToken());
-    }
-
-    @Test(timeout = 10000)
-    public void testConfigDefaults() throws IOException {
-        // Minimal config - should use defaults
-        String yaml = "workstreams:\n" +
-                      "  - channelId: \"C123\"\n" +
-                      "    agents:\n" +
-                      "      - host: \"localhost\"\n";
-
-        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
-
-        // Check defaults
-        assertEquals(7766, entry.getAgents().get(0).getPort()); // default port
-        assertEquals(800, entry.getMaxTurns()); // default turns
-        assertEquals(100.0, entry.getMaxBudgetUsd(), 0.001); // default budget
-        assertTrue(entry.isPushToOrigin()); // default push
-        assertEquals("Read,Edit,Write,Bash,Glob,Grep", entry.getAllowedTools()); // default tools
-    }
-
-    @Test(timeout = 10000)
     public void testApiEndpointPostMessage() throws Exception {
         AtomicReference<String> receivedChannel = new AtomicReference<>();
         AtomicReference<String> receivedText = new AtomicReference<>();
@@ -382,7 +257,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
             receivedText.set(FlowTreeApiEndpoint.extractJsonField(json, "text"));
         });
 
-        SlackWorkstream workstream = new SlackWorkstream("C_TEST_123", "#test");
+        Workstream workstream = new Workstream("C_TEST_123", "#test");
         notifier.registerWorkstream(workstream);
 
         FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
@@ -435,7 +310,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     @Test(timeout = 10000)
     public void testApiEndpointMissingText() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
-        SlackWorkstream workstream = new SlackWorkstream("C123", "#test");
+        Workstream workstream = new Workstream("C123", "#test");
         notifier.registerWorkstream(workstream);
 
         FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
@@ -469,7 +344,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     @Test(timeout = 10000)
     public void testApiEndpointSubmitMissingPrompt() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
-        SlackWorkstream workstream = new SlackWorkstream("C_SUBMIT_1", "#submit-test");
+        Workstream workstream = new Workstream("C_SUBMIT_1", "#submit-test");
         notifier.registerWorkstream(workstream);
 
         FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
@@ -533,7 +408,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     @Test(timeout = 10000)
     public void testApiEndpointSubmitNoServer() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
-        SlackWorkstream workstream = new SlackWorkstream("C_SUBMIT_2", "#submit-test");
+        Workstream workstream = new Workstream("C_SUBMIT_2", "#submit-test");
         notifier.registerWorkstream(workstream);
 
         FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
@@ -622,7 +497,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("feature/test"));
 
         // Verify workstream was registered
-        SlackWorkstream ws = listener.getWorkstream("C_SETUP_1");
+        Workstream ws = listener.getWorkstream("C_SETUP_1");
         assertNotNull(ws);
         assertEquals("/workspace/project", ws.getWorkingDirectory());
         assertEquals("feature/test", ws.getDefaultBranch());
@@ -637,7 +512,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackListener listener = new SlackListener(notifier);
 
         // Create initial workstream
-        SlackWorkstream ws = new SlackWorkstream("C_UPD_1", "#update-channel");
+        Workstream ws = new Workstream("C_UPD_1", "#update-channel");
         ws.setWorkingDirectory("/old/dir");
         ws.setDefaultBranch("old-branch");
         listener.registerWorkstream(ws);
@@ -680,7 +555,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream ws = new SlackWorkstream("C_INFO_1", "#info-channel");
+        Workstream ws = new Workstream("C_INFO_1", "#info-channel");
         ws.setWorkingDirectory("/workspace/project");
         ws.setDefaultBranch("feature/info");
         ws.setMaxBudgetUsd(25.0);
@@ -721,7 +596,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream ws = new SlackWorkstream("C_STATUS_1", "#status-channel");
+        Workstream ws = new Workstream("C_STATUS_1", "#status-channel");
         ws.setDefaultBranch("main");
         listener.registerWorkstream(ws);
 
@@ -740,7 +615,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream ws = new SlackWorkstream("C_CFG_1", "#config-channel");
+        Workstream ws = new Workstream("C_CFG_1", "#config-channel");
         ws.setMaxBudgetUsd(15.0);
         ws.setMaxTurns(75);
         ws.setDefaultBranch("develop");
@@ -763,7 +638,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream ws = new SlackWorkstream("C_CFG_2", "#config-channel");
+        Workstream ws = new Workstream("C_CFG_2", "#config-channel");
         ws.setMaxBudgetUsd(20.0);
         listener.registerWorkstream(ws);
 
@@ -779,7 +654,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream ws = new SlackWorkstream("C_CFG_3", "#config-channel");
+        Workstream ws = new Workstream("C_CFG_3", "#config-channel");
         listener.registerWorkstream(ws);
 
         AtomicReference<String> response = new AtomicReference<>();
@@ -818,7 +693,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream ws = new SlackWorkstream("C_CFG_4", "#config-channel");
+        Workstream ws = new Workstream("C_CFG_4", "#config-channel");
         listener.registerWorkstream(ws);
 
         AtomicReference<String> response = new AtomicReference<>();
@@ -831,7 +706,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream ws = new SlackWorkstream("C_JOBS_1", "#jobs-channel");
+        Workstream ws = new Workstream("C_JOBS_1", "#jobs-channel");
         listener.registerWorkstream(ws);
 
         // No jobs initially
@@ -857,7 +732,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream ws = new SlackWorkstream("C_CANCEL_1", "#cancel-channel");
+        Workstream ws = new Workstream("C_CANCEL_1", "#cancel-channel");
         listener.registerWorkstream(ws);
 
         AtomicReference<String> response = new AtomicReference<>();
@@ -885,7 +760,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         listener.setWorkstreamConfig(config, tempFile);
 
         // Register existing workstreams
-        for (SlackWorkstream ws : config.toWorkstreams()) {
+        for (Workstream ws : config.toWorkstreams()) {
             listener.registerWorkstream(ws);
         }
 
@@ -915,62 +790,10 @@ public class SlackIntegrationTest extends TestSuiteBase {
     }
 
     @Test(timeout = 10000)
-    public void testWorkstreamConfigAddWorkstream() {
-        WorkstreamConfig config = new WorkstreamConfig();
-
-        SlackWorkstream ws = new SlackWorkstream("C_ADD_1", "#add-channel");
-        ws.setWorkingDirectory("/workspace/test");
-        ws.setDefaultBranch("develop");
-        ws.setMaxBudgetUsd(20.0);
-        ws.setMaxTurns(75);
-
-        config.addWorkstream(ws);
-
-        assertEquals(1, config.getWorkstreams().size());
-        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
-        assertEquals("C_ADD_1", entry.getChannelId());
-        assertEquals("#add-channel", entry.getChannelName());
-        assertEquals("/workspace/test", entry.getWorkingDirectory());
-        assertEquals("develop", entry.getDefaultBranch());
-        assertEquals(20.0, entry.getMaxBudgetUsd(), 0.001);
-        assertEquals(75, entry.getMaxTurns());
-        assertEquals(ws.getWorkstreamId(), entry.getWorkstreamId());
-    }
-
-    @Test(timeout = 10000)
-    public void testWorkstreamConfigSyncFromWorkstreams() throws IOException {
-        // Start with a config that has one workstream
-        String yaml = "workstreams:\n"
-            + "  - channelId: \"C_SYNC\"\n"
-            + "    channelName: \"#sync-channel\"\n"
-            + "    defaultBranch: \"main\"\n"
-            + "    maxBudgetUsd: 10.0\n";
-
-        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        List<SlackWorkstream> wsList = config.toWorkstreams();
-        assertEquals(1, wsList.size());
-
-        // Modify the in-memory workstream
-        SlackWorkstream ws = wsList.get(0);
-        ws.setDefaultBranch("develop");
-        ws.setMaxBudgetUsd(25.0);
-        ws.setWorkingDirectory("/new/path");
-
-        // Sync back
-        config.syncFromWorkstreams(wsList);
-
-        // Verify the entry was updated
-        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
-        assertEquals("develop", entry.getDefaultBranch());
-        assertEquals(25.0, entry.getMaxBudgetUsd(), 0.001);
-        assertEquals("/new/path", entry.getWorkingDirectory());
-    }
-
-    @Test(timeout = 10000)
     public void testNotifierJobTracking() {
         SlackNotifier notifier = new SlackNotifier(null);
 
-        SlackWorkstream ws = new SlackWorkstream("C_TRACK_1", "#track-channel");
+        Workstream ws = new Workstream("C_TRACK_1", "#track-channel");
         notifier.registerWorkstream(ws);
 
         // No jobs initially
@@ -1001,13 +824,13 @@ public class SlackIntegrationTest extends TestSuiteBase {
     public void testFindWorkstreamByBranch() {
         SlackNotifier notifier = new SlackNotifier(null);
 
-        SlackWorkstream ws1 = new SlackWorkstream("ws-rings", "C_RINGS", "#rings");
+        Workstream ws1 = new Workstream("ws-rings", "C_RINGS", "#rings");
         ws1.setDefaultBranch("feature/new-decoder");
 
-        SlackWorkstream ws2 = new SlackWorkstream("ws-common", "C_COMMON", "#common");
+        Workstream ws2 = new Workstream("ws-common", "C_COMMON", "#common");
         ws2.setDefaultBranch("feature/pipeline-agents");
 
-        SlackWorkstream ws3 = new SlackWorkstream("ws-no-branch", "C_NONE", "#no-branch");
+        Workstream ws3 = new Workstream("ws-no-branch", "C_NONE", "#no-branch");
         // defaultBranch is null
 
         notifier.registerWorkstream(ws1);
@@ -1035,7 +858,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
 
         // Register a pipeline fallback workstream
-        SlackWorkstream pipelineWs = new SlackWorkstream("ws-pipeline", "C_PIPE", "#pipeline");
+        Workstream pipelineWs = new Workstream("ws-pipeline", "C_PIPE", "#pipeline");
         pipelineWs.setDefaultBranch(null);
         pipelineWs.setAllowedTools("Read,Glob,Grep");
         pipelineWs.setMaxBudgetUsd(5.0);
@@ -1045,7 +868,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         notifier.registerWorkstream(pipelineWs);
 
         // Register a richer workstream that matches a specific branch
-        SlackWorkstream ringsWs = new SlackWorkstream("ws-rings", "C_RINGS", "#rings");
+        Workstream ringsWs = new Workstream("ws-rings", "C_RINGS", "#rings");
         ringsWs.setDefaultBranch("feature/new-decoder");
         ringsWs.setAllowedTools("Read,Edit,Write,Bash,Glob,Grep");
         ringsWs.setMaxBudgetUsd(25.0);
@@ -1134,7 +957,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     @Test(timeout = 10000)
     public void testSlackManifestIncludesSlashCommand() throws IOException {
         // Load manifest from classpath (it's a resource in the same module)
-        java.io.InputStream is = getClass().getResourceAsStream("/slack-app-manifest.json");
+        InputStream is = getClass().getResourceAsStream("/slack-app-manifest.json");
         assertNotNull("Manifest should be on classpath", is);
 
         String content = new String(is.readAllBytes(), StandardCharsets.UTF_8);
@@ -1155,19 +978,19 @@ public class SlackIntegrationTest extends TestSuiteBase {
         try {
             // Seed jobs in the current week
             LocalDate today = LocalDate.now(ZoneOffset.UTC);
-            LocalDate monday = today.with(java.time.DayOfWeek.MONDAY);
+            LocalDate monday = today.with(DayOfWeek.MONDAY);
             Instant jobTime = monday.atStartOfDay(ZoneOffset.UTC).toInstant()
                 .plusSeconds(3600);
 
             store.recordJobStarted("j1", "ws-alpha", "Fix bug", jobTime);
             store.recordJobCompleted("j1", "ws-alpha", "SUCCESS",
                 jobTime.plusMillis(60000), 55000, 30000, 0.50, 10, "sess-1", 0,
-                "success", false, 0);
+                "success", false, 0, null, null, null, null);
 
             store.recordJobStarted("j2", "ws-beta", "Add feature", jobTime);
             store.recordJobCompleted("j2", "ws-beta", "FAILED",
                 jobTime.plusMillis(120000), 100000, 80000, 1.20, 25, "sess-2", 1,
-                "error_max_turns", true, 3);
+                "error_max_turns", true, 3, null, null, null, "max turns exceeded");
 
             SlackNotifier notifier = new SlackNotifier(null);
             FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
@@ -1278,16 +1101,16 @@ public class SlackIntegrationTest extends TestSuiteBase {
             + "\"cost_usd\":2.50,\"num_turns\":42,\"session_id\":\"sess-final\","
             + "\"subtype\":\"success\",\"is_error\":false}\n";
 
-        String result = io.flowtree.JsonFieldExtractor.extractLastJsonObject(ndjson, "result");
+        String result = JsonFieldExtractor.extractLastJsonObject(ndjson, "result");
         assertNotNull("Should find the result line", result);
         assertTrue("Should contain the result type", result.contains("\"type\":\"result\""));
 
         // Verify extracting metrics from the result line yields session-level values
-        long durationMs = io.flowtree.JsonFieldExtractor.extractLong(result, "duration_ms");
-        long durationApiMs = io.flowtree.JsonFieldExtractor.extractLong(result, "duration_api_ms");
-        double costUsd = io.flowtree.JsonFieldExtractor.extractDouble(result, "cost_usd");
-        int numTurns = io.flowtree.JsonFieldExtractor.extractInt(result, "num_turns");
-        String sessionId = io.flowtree.JsonFieldExtractor.extractString(result, "session_id");
+        long durationMs = JsonFieldExtractor.extractLong(result, "duration_ms");
+        long durationApiMs = JsonFieldExtractor.extractLong(result, "duration_api_ms");
+        double costUsd = JsonFieldExtractor.extractDouble(result, "cost_usd");
+        int numTurns = JsonFieldExtractor.extractInt(result, "num_turns");
+        String sessionId = JsonFieldExtractor.extractString(result, "session_id");
 
         assertEquals("Should get session-level duration, not per-turn", 1800000, durationMs);
         assertEquals(1500000, durationApiMs);
@@ -1302,22 +1125,22 @@ public class SlackIntegrationTest extends TestSuiteBase {
         String ndjson = "{\"duration_ms\":4000}\n"
             + "{\"duration_ms\":90000,\"cost_usd\":1.0}\n";
 
-        String result = io.flowtree.JsonFieldExtractor.extractLastJsonObject(ndjson, "result");
+        String result = JsonFieldExtractor.extractLastJsonObject(ndjson, "result");
         assertNotNull("Should fall back to last JSON object", result);
-        assertEquals(90000, io.flowtree.JsonFieldExtractor.extractLong(result, "duration_ms"));
+        assertEquals(90000, JsonFieldExtractor.extractLong(result, "duration_ms"));
     }
 
     @Test(timeout = 10000)
     public void testExtractLastJsonObjectNullInput() {
-        assertNull(io.flowtree.JsonFieldExtractor.extractLastJsonObject(null, "result"));
-        assertNull(io.flowtree.JsonFieldExtractor.extractLastJsonObject("", "result"));
+        assertNull(JsonFieldExtractor.extractLastJsonObject(null, "result"));
+        assertNull(JsonFieldExtractor.extractLastJsonObject("", "result"));
     }
 
     @Test(timeout = 10000)
     public void testExtractLastJsonObjectNullType() {
         // null type should return the very last JSON object
         String ndjson = "{\"a\":1}\n{\"b\":2}\n";
-        String result = io.flowtree.JsonFieldExtractor.extractLastJsonObject(ndjson, null);
+        String result = JsonFieldExtractor.extractLastJsonObject(ndjson, null);
         assertNotNull(result);
         assertTrue("Should be the last line", result.contains("\"b\""));
     }
@@ -1362,7 +1185,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
             assertTrue(response.contains("\"channelName\":\"w-project-plan-20260223-test\""));
 
             // Verify the workstream was actually registered and is findable by branch
-            SlackWorkstream registered = notifier.findWorkstreamByBranch("project/plan-20260223-test");
+            Workstream registered = notifier.findWorkstreamByBranch("project/plan-20260223-test");
             assertNotNull("Workstream should be findable by branch", registered);
             assertEquals("master", registered.getBaseBranch());
             assertEquals("docs/plans/PLAN-20260223-test.md", registered.getPlanningDocument());
@@ -1413,7 +1236,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        SlackWorkstream workstream = new SlackWorkstream(null, "w-test");
+        Workstream workstream = new Workstream(null, "w-test");
         workstream.setDefaultBranch("project/test");
         notifier.registerWorkstream(workstream);
 
@@ -1498,7 +1321,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     public void testChannellessWorkstreamJobNotification() {
         SlackNotifier notifier = new SlackNotifier(null);
 
-        SlackWorkstream workstream = new SlackWorkstream(null, "w-test");
+        Workstream workstream = new Workstream(null, "w-test");
         workstream.setDefaultBranch("project/test");
         notifier.registerWorkstream(workstream);
 
@@ -1549,12 +1372,12 @@ public class SlackIntegrationTest extends TestSuiteBase {
         listener.setWorkstreamConfig(config, tempFile);
 
         // Register the existing workstream first
-        for (SlackWorkstream ws : config.toWorkstreams()) {
+        for (Workstream ws : config.toWorkstreams()) {
             listener.registerWorkstream(ws);
         }
 
         // Now register a new workstream via the API path
-        SlackWorkstream newWs = new SlackWorkstream(null, "w-new-project");
+        Workstream newWs = new Workstream(null, "w-new-project");
         newWs.setDefaultBranch("project/plan-test");
         newWs.setBaseBranch("master");
         newWs.setPlanningDocument("docs/plans/PLAN-test.md");
@@ -1562,7 +1385,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         listener.registerAndPersistWorkstream(newWs);
 
         // Verify it's findable in the notifier
-        SlackWorkstream found = notifier.findWorkstreamByBranch("project/plan-test");
+        Workstream found = notifier.findWorkstreamByBranch("project/plan-test");
         assertNotNull("New workstream should be registered", found);
         assertEquals("docs/plans/PLAN-test.md", found.getPlanningDocument());
 
@@ -1571,4 +1394,444 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals(2, reloaded.getWorkstreams().size());
     }
 
+    /**
+     * Verifies the full lifecycle of the accept-automated-jobs controller
+     * config: default is false (safety measure), POST with
+     * {@code {"accept":true}} enables it, GET reflects the change, and
+     * POST with {@code {"accept":false}} disables it again.
+     */
+    @Test(timeout = 10000)
+    public void testAcceptAutomatedJobsConfig() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String configUrl = "http://localhost:" + port
+                    + "/api/config/accept-automated-jobs";
+
+            // Default should be false (automated jobs must be explicitly enabled)
+            assertFalse("Default should reject automated jobs",
+                    endpoint.isAcceptAutomatedJobs());
+
+            // GET should reflect false
+            HttpURLConnection getConn = (HttpURLConnection)
+                    new URL(configUrl).openConnection();
+            getConn.setRequestMethod("GET");
+            assertEquals(200, getConn.getResponseCode());
+            String getResponse = new String(
+                    getConn.getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertTrue("GET should report false",
+                    getResponse.contains("\"acceptAutomatedJobs\":false"));
+
+            // POST true to enable
+            HttpURLConnection postConn = (HttpURLConnection)
+                    new URL(configUrl).openConnection();
+            postConn.setRequestMethod("POST");
+            postConn.setDoOutput(true);
+            postConn.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = postConn.getOutputStream()) {
+                os.write("{\"accept\":true}".getBytes(StandardCharsets.UTF_8));
+            }
+            assertEquals(200, postConn.getResponseCode());
+            String postResponse = new String(
+                    postConn.getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertTrue("POST response should confirm true",
+                    postResponse.contains("\"acceptAutomatedJobs\":true"));
+            assertTrue("Endpoint field should now be true",
+                    endpoint.isAcceptAutomatedJobs());
+
+            // GET should now reflect true
+            HttpURLConnection getConn2 = (HttpURLConnection)
+                    new URL(configUrl).openConnection();
+            getConn2.setRequestMethod("GET");
+            assertEquals(200, getConn2.getResponseCode());
+            String getResponse2 = new String(
+                    getConn2.getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertTrue("GET should report true after update",
+                    getResponse2.contains("\"acceptAutomatedJobs\":true"));
+
+            // POST false to disable again
+            HttpURLConnection postConn2 = (HttpURLConnection)
+                    new URL(configUrl).openConnection();
+            postConn2.setRequestMethod("POST");
+            postConn2.setDoOutput(true);
+            postConn2.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = postConn2.getOutputStream()) {
+                os.write("{\"accept\":false}".getBytes(StandardCharsets.UTF_8));
+            }
+            assertEquals(200, postConn2.getResponseCode());
+            String postResponse2 = new String(
+                    postConn2.getInputStream().readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertTrue("POST response should confirm false",
+                    postResponse2.contains("\"acceptAutomatedJobs\":false"));
+            assertFalse("Endpoint field should now be false",
+                    endpoint.isAcceptAutomatedJobs());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+
+    // -------------------------------------------------------------------------
+    // Phase 1a: Multi-Tenant Config Schema Tests
+    // -------------------------------------------------------------------------
+
+    @Test(timeout = 10000)
+    public void testSlackWorkspaceEntryYamlRoundTrip() throws IOException {
+        String yaml = "slackWorkspaces:\n" +
+                      "  - workspaceId: \"T0123456789\"\n" +
+                      "    name: \"my-org\"\n" +
+                      "    botToken: \"xoxb-test\"\n" +
+                      "    appToken: \"xapp-test\"\n" +
+                      "    defaultChannel: \"C0987654321\"\n" +
+                      "    channelOwnerUserId: \"U0123456789\"\n" +
+                      "workstreams: []\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+        assertNotNull(config.getSlackWorkspaces());
+        assertEquals(1, config.getSlackWorkspaces().size());
+
+        WorkstreamConfig.SlackWorkspaceEntry entry = config.getSlackWorkspaces().get(0);
+        assertEquals("T0123456789", entry.getWorkspaceId());
+        assertEquals("my-org", entry.getName());
+        assertEquals("xoxb-test", entry.getBotToken());
+        assertEquals("xapp-test", entry.getAppToken());
+        assertEquals("C0987654321", entry.getDefaultChannel());
+        assertEquals("U0123456789", entry.getChannelOwnerUserId());
+    }
+
+    @Test(timeout = 10000)
+    public void testMultipleSlackWorkspacesYamlParsing() throws IOException {
+        String yaml = "slackWorkspaces:\n" +
+                      "  - workspaceId: \"T111\"\n" +
+                      "    name: \"workspace-one\"\n" +
+                      "    botToken: \"xoxb-one\"\n" +
+                      "    appToken: \"xapp-one\"\n" +
+                      "    githubOrgs:\n" +
+                      "      my-org:\n" +
+                      "        token: \"ghp_one\"\n" +
+                      "  - workspaceId: \"T222\"\n" +
+                      "    name: \"workspace-two\"\n" +
+                      "    tokensFile: \"/config/slack-tokens.json\"\n" +
+                      "workstreams: []\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+        assertEquals(2, config.getSlackWorkspaces().size());
+
+        WorkstreamConfig.SlackWorkspaceEntry ws1 = config.getSlackWorkspaces().get(0);
+        assertEquals("T111", ws1.getWorkspaceId());
+        assertEquals("workspace-one", ws1.getName());
+        assertEquals("xoxb-one", ws1.getBotToken());
+        assertNotNull(ws1.getGithubOrgs());
+        assertEquals("ghp_one", ws1.getGithubOrgs().get("my-org").getToken());
+
+        WorkstreamConfig.SlackWorkspaceEntry ws2 = config.getSlackWorkspaces().get(1);
+        assertEquals("T222", ws2.getWorkspaceId());
+        assertEquals("/config/slack-tokens.json", ws2.getTokensFile());
+    }
+
+    @Test(timeout = 10000)
+    public void testBackwardCompatNoSlackWorkspaces() throws IOException {
+        String yaml = "githubOrgs:\n" +
+                      "  my-org:\n" +
+                      "    token: \"ghp_token\"\n" +
+                      "workstreams:\n" +
+                      "  - channelId: \"C0123456789\"\n" +
+                      "    channelName: \"#project-agent\"\n" +
+                      "    defaultBranch: \"feature/work\"\n" +
+                      "    githubOrg: \"my-org\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+        // slackWorkspaces should be an empty list, not null
+        assertNotNull(config.getSlackWorkspaces());
+        assertEquals(0, config.getSlackWorkspaces().size());
+
+        // Top-level githubOrgs still accessible in single-workspace mode
+        assertNotNull(config.getGithubOrgs().get("my-org"));
+
+        // Regular workstreams still parse correctly; no slackWorkspaceId assigned
+        assertEquals(1, config.getWorkstreams().size());
+        assertEquals("C0123456789", config.getWorkstreams().get(0).getChannelId());
+        assertNull(config.getWorkstreams().get(0).getSlackWorkspaceId());
+    }
+
+    @Test(timeout = 10000)
+    public void testWorkstreamEntryWithSlackWorkspaceId() throws IOException {
+        String yaml = "slackWorkspaces:\n" +
+                      "  - workspaceId: \"T111\"\n" +
+                      "    botToken: \"xoxb-one\"\n" +
+                      "    appToken: \"xapp-one\"\n" +
+                      "workstreams:\n" +
+                      "  - channelId: \"C001\"\n" +
+                      "    channelName: \"#ws-with-id\"\n" +
+                      "    slackWorkspaceId: \"T111\"\n" +
+                      "    defaultBranch: \"feature/work\"\n" +
+                      "  - channelId: \"C002\"\n" +
+                      "    channelName: \"#ws-without-id\"\n" +
+                      "    defaultBranch: \"feature/other\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+        assertEquals(2, config.getWorkstreams().size());
+
+        WorkstreamConfig.WorkstreamEntry entryWithId = config.getWorkstreams().get(0);
+        assertEquals("C001", entryWithId.getChannelId());
+        assertEquals("T111", entryWithId.getSlackWorkspaceId());
+
+        WorkstreamConfig.WorkstreamEntry entryWithoutId = config.getWorkstreams().get(1);
+        assertEquals("C002", entryWithoutId.getChannelId());
+        assertNull(entryWithoutId.getSlackWorkspaceId());
+
+        // Verify toWorkstream() propagates slackWorkspaceId
+        List<Workstream> workstreams = config.toWorkstreams();
+        assertEquals("T111", workstreams.get(0).getSlackWorkspaceId());
+        assertNull(workstreams.get(1).getSlackWorkspaceId());
+    }
+
+    @Test(timeout = 10000)
+    public void testSlackTokensFromEntryInlineTokens() throws IOException {
+        WorkstreamConfig.SlackWorkspaceEntry entry = new WorkstreamConfig.SlackWorkspaceEntry();
+        entry.setWorkspaceId("T999");
+        entry.setBotToken("xoxb-inline-bot");
+        entry.setAppToken("xapp-inline-app");
+
+        SlackTokens tokens = SlackTokens.from(entry);
+
+        assertEquals("xoxb-inline-bot", tokens.getBotToken());
+        assertEquals("xapp-inline-app", tokens.getAppToken());
+    }
+
+    @Test(timeout = 10000)
+    public void testSlackTokensFromEntryTokensFile() throws IOException {
+        File tempFile = File.createTempFile("workspace-tokens-test", ".json");
+        tempFile.deleteOnExit();
+        Files.write(tempFile.toPath(),
+                "{ \"botToken\": \"xoxb-from-file\", \"appToken\": \"xapp-from-file\" }".getBytes());
+
+        WorkstreamConfig.SlackWorkspaceEntry entry = new WorkstreamConfig.SlackWorkspaceEntry();
+        entry.setWorkspaceId("T888");
+        entry.setTokensFile(tempFile.getAbsolutePath());
+        entry.setBotToken("xoxb-should-be-ignored");
+
+        SlackTokens tokens = SlackTokens.from(entry);
+
+        // tokensFile takes priority over inline fields
+        assertEquals("xoxb-from-file", tokens.getBotToken());
+        assertEquals("xapp-from-file", tokens.getAppToken());
+    }
+
+    @Test(timeout = 10000)
+    public void testSlackWorkspaceEntryUnknownFieldsIgnored() throws IOException {
+        String yaml = "slackWorkspaces:\n" +
+                      "  - workspaceId: \"T777\"\n" +
+                      "    botToken: \"xoxb-777\"\n" +
+                      "    futureField: \"ignored\"\n" +
+                      "workstreams: []\n";
+
+        // Should not throw
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertEquals("T777", config.getSlackWorkspaces().get(0).getWorkspaceId());
+    }
+
+    @Test(timeout = 10000)
+    public void testWorkstreamSlackWorkspaceIdPreservedInAddAndSync() {
+        WorkstreamConfig config = new WorkstreamConfig();
+
+        Workstream ws = new Workstream("ws-1", "C001", "#channel-one");
+        ws.setSlackWorkspaceId("T111");
+        ws.setDefaultBranch("main");
+
+        config.addWorkstream(ws);
+        assertEquals(1, config.getWorkstreams().size());
+        assertEquals("T111", config.getWorkstreams().get(0).getSlackWorkspaceId());
+
+        // Update via syncFromWorkstreams
+        ws.setSlackWorkspaceId("T222");
+        config.syncFromWorkstreams(List.of(ws));
+        assertEquals("T222", config.getWorkstreams().get(0).getSlackWorkspaceId());
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 1c: Listener and Notifier Routing Tests
+    // -------------------------------------------------------------------------
+
+    @Test(timeout = 10000)
+    public void testChannelKeyNullWorkspaceReturnsBareChannelId() {
+        assertEquals("C_ALPHA", SlackListener.channelKey(null, "C_ALPHA"));
+    }
+
+    @Test(timeout = 10000)
+    public void testChannelKeyWithWorkspaceReturnsCompositeKey() {
+        assertEquals("T111:C_ALPHA", SlackListener.channelKey("T111", "C_ALPHA"));
+    }
+
+    @Test(timeout = 10000)
+    public void testChannelKeyDifferentWorkspacesSameChannelProduceDifferentKeys() {
+        String keyA = SlackListener.channelKey("T111", "C_SHARED");
+        String keyB = SlackListener.channelKey("T222", "C_SHARED");
+        assertFalse("Same channel in different workspaces must produce different keys",
+                keyA.equals(keyB));
+    }
+
+    @Test(timeout = 10000)
+    public void testBackwardCompatNullWorkspaceIdRouting() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        Workstream ws = new Workstream("ws-back", "C_BACK", "#back");
+        ws.setDefaultBranch("main");
+        listener.registerWorkstream(ws);
+
+        // Bare channel ID lookup (legacy / 5-arg path) must still work
+        Workstream found = listener.getWorkstream("C_BACK");
+        assertNotNull("Backward compat: getWorkstream() with bare channel ID must work", found);
+        assertEquals("C_BACK", found.getChannelId());
+    }
+
+    @Test(timeout = 10000)
+    public void testWorkspaceAwareWorkstreamRegistration() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        Workstream ws = new Workstream("ws-multi", "C_MULTI", "#multi");
+        ws.setDefaultBranch("main");
+        ws.setSlackWorkspaceId("T111");
+        listener.registerWorkstream(ws);
+
+        // Composite key lookup: handleMessage with workspaceId=T111 should find it.
+        // Returns false (no agents/server), but the channel is found — does not trigger reload.
+        listener.handleMessage("C_MULTI", "U1", "hello", "ts1", null, "T111");
+        boolean found = listener.getWorkstreams().values().stream()
+                .anyMatch(w -> "C_MULTI".equals(w.getChannelId()));
+        assertTrue("Workspace-aware workstream should be registered", found);
+    }
+
+    @Test(timeout = 10000)
+    public void testSameChannelIdInTwoWorkspacesRoutedIndependently() {
+        SlackNotifier notifierA = new SlackNotifier(null);
+        SlackNotifier notifierB = new SlackNotifier(null);
+
+        SlackListener listener = new SlackListener(notifierA);
+
+        Map<String, SlackNotifier> byWorkspace = new HashMap<>();
+        byWorkspace.put("T111", notifierA);
+        byWorkspace.put("T222", notifierB);
+        listener.setNotifiersByWorkspace(byWorkspace);
+
+        Workstream wsA = new Workstream("ws-a", "C_SHARED", "#shared-a");
+        wsA.setDefaultBranch("main");
+        wsA.setSlackWorkspaceId("T111");
+        listener.registerWorkstream(wsA);
+
+        Workstream wsB = new Workstream("ws-b", "C_SHARED", "#shared-b");
+        wsB.setDefaultBranch("develop");
+        wsB.setSlackWorkspaceId("T222");
+        listener.registerWorkstream(wsB);
+
+        // Both workstreams are registered (two separate map entries)
+        assertEquals("Two workstreams with same channelId in different workspaces must coexist",
+                2, listener.getWorkstreams().size());
+
+        // Routing: T111 message goes to wsA (branch=main), T222 to wsB (branch=develop)
+        // We verify by examining the getWorkstreams() values
+        boolean hasMain = listener.getWorkstreams().values().stream()
+                .anyMatch(w -> "main".equals(w.getDefaultBranch()));
+        boolean hasDevelop = listener.getWorkstreams().values().stream()
+                .anyMatch(w -> "develop".equals(w.getDefaultBranch()));
+        assertTrue("wsA (main branch) must be registered", hasMain);
+        assertTrue("wsB (develop branch) must be registered", hasDevelop);
+    }
+
+    @Test(timeout = 10000)
+    public void testHandleMessageUnknownChannelReturnsFalseWithWorkspaceId() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        boolean handled = listener.handleMessage("C_UNKNOWN", "U1", "hello", "ts1", null, "T111");
+        assertFalse("Message to unknown channel must return false", handled);
+    }
+
+    @Test(timeout = 10000)
+    public void testSlashCommandSetupSetsSlackWorkspaceIdOnNewWorkstream() throws IOException {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        List<String> responses = new ArrayList<>();
+        SlackListener.SlashCommandResponder responder = text -> responses.add(text);
+
+        listener.handleSlashCommand("setup /workspace/project feature/test",
+                "C_SETUP_WS", "#setup-ws", responder, "T999");
+
+        // Workstream should be created and keyed under T999:C_SETUP_WS
+        boolean foundWithWorkspace = listener.getWorkstreams().values().stream()
+                .anyMatch(w -> "T999".equals(w.getSlackWorkspaceId())
+                        && "C_SETUP_WS".equals(w.getChannelId()));
+        assertTrue("Setup must store slackWorkspaceId on new workstream", foundWithWorkspace);
+    }
+
+    @Test(timeout = 10000)
+    public void testSlashCommandActiveFiltersWorkstreamsByWorkspace() throws IOException {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        Map<String, SlackNotifier> byWorkspace = new HashMap<>();
+        byWorkspace.put("T111", notifier);
+        listener.setNotifiersByWorkspace(byWorkspace);
+
+        // Register two workstreams: one in T111, one in T222
+        Workstream wsA = new Workstream("ws-act-a", "C_ACT_A", "#act-a");
+        wsA.setDefaultBranch("main");
+        wsA.setSlackWorkspaceId("T111");
+        listener.registerWorkstream(wsA);
+
+        Workstream wsB = new Workstream("ws-act-b", "C_ACT_B", "#act-b");
+        wsB.setDefaultBranch("develop");
+        wsB.setSlackWorkspaceId("T222");
+        listener.registerWorkstream(wsB);
+
+        // /flowtree active with workspaceId=T111 should not throw
+        // (stats store is null, so it returns the "not available" message)
+        List<String> responses = new ArrayList<>();
+        SlackListener.SlashCommandResponder responder = text -> responses.add(text);
+        listener.handleSlashCommand("active", "C_ACT_A", "#act-a", responder, "T111");
+
+        assertFalse("Active command should respond", responses.isEmpty());
+        // With null stats store, should get "not available"
+        assertTrue("With null stats store active command warns",
+                responses.get(0).contains("not available"));
+    }
+
+    @Test(timeout = 10000)
+    public void testSetNotifiersByWorkspaceIsUsedForNotifierResolution() {
+        SlackNotifier primaryNotifier = new SlackNotifier(null);
+        SlackNotifier workspaceNotifier = new SlackNotifier(null);
+
+        SlackListener listener = new SlackListener(primaryNotifier);
+
+        Map<String, SlackNotifier> byWorkspace = new HashMap<>();
+        byWorkspace.put("T_SPECIAL", workspaceNotifier);
+        listener.setNotifiersByWorkspace(byWorkspace);
+
+        // Register a workstream in T_SPECIAL
+        Workstream ws = new Workstream("ws-special", "C_SPECIAL", "#special");
+        ws.setSlackWorkspaceId("T_SPECIAL");
+        ws.setDefaultBranch("main");
+        listener.registerWorkstream(ws);
+
+        // The workstream should be registered in the workspace notifier, not the primary
+        // Verify by checking that the workspace notifier has the workstream
+        // (getRecentJobs returns non-null for a registered workstream)
+        Map<String, JobCompletionEvent> jobs = workspaceNotifier.getRecentJobs(ws.getWorkstreamId());
+        assertNotNull("Workspace notifier should have workstream registered", jobs);
+    }
 }
+

@@ -34,11 +34,7 @@ The hardware module enables:
 
 Before using any Almost Realism functionality, set the **required** environment variable:
 
-```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
-```
-
-- `AR_HARDWARE_LIBS`: Directory for generated native libraries (required)
+- `AR_HARDWARE_LIBS`: Directory for generated native libraries. **Auto-detected — do not set manually.** Setting this (especially to `/tmp/ar_libs/`) causes permission errors on shared or sandboxed systems.
 - `AR_HARDWARE_DRIVER`: Execution backend (optional; best left unset to auto-detect the best available backend). Can be set to `native`, `cl`, `mtl`, `gpu`, `cpu`, or `*` to force a specific backend.
 
 ### 2. Basic Usage
@@ -68,7 +64,6 @@ public class Example implements HardwareFeatures {
 Always set the required environment variable when running tests:
 
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
 mvn test
 ```
 
@@ -600,8 +595,7 @@ try {
 ### Required Variables
 
 ```bash
-# Directory for generated libraries (REQUIRED)
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 ```
 
 ### Backend Selection
@@ -638,10 +632,11 @@ export AR_HARDWARE_PRECISION=FP64
 ### Memory Configuration
 
 ```bash
-# Maximum memory allocation (2^SCALE x 64MB)
-export AR_HARDWARE_MEMORY_SCALE=4   # 1GB (default)
-export AR_HARDWARE_MEMORY_SCALE=6   # 4GB
-export AR_HARDWARE_MEMORY_SCALE=8   # 16GB
+# Maximum memory allocation (precision.bytes() * 2^SCALE * 64MB)
+# With FP32 (4 bytes): scale 4 = ~4GB, scale 6 = ~16GB, scale 7 = ~32GB
+export AR_HARDWARE_MEMORY_SCALE=4   # ~4GB (default, FP32)
+export AR_HARDWARE_MEMORY_SCALE=6   # ~16GB (FP32)
+export AR_HARDWARE_MEMORY_SCALE=7   # ~32GB (FP32)
 
 # Memory location (OpenCL only)
 export AR_HARDWARE_MEMORY_LOCATION=device   # GPU memory (fastest)
@@ -656,14 +651,14 @@ export AR_HARDWARE_NIO_MEMORY=true
 
 **Development (Fast Compilation, Easy Debugging):**
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 export AR_HARDWARE_PRECISION=FP64
 # AR_HARDWARE_DRIVER left unset to auto-detect the best available backend
 ```
 
 **Production GPU (Maximum Performance):**
 ```bash
-export AR_HARDWARE_LIBS=/var/ar_libs/
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 export AR_HARDWARE_DRIVER=gpu
 export AR_HARDWARE_PRECISION=FP32
 export AR_HARDWARE_MEMORY_SCALE=6
@@ -901,12 +896,9 @@ if (deep.getDepth() > 500) {
 
 ### Error: NoClassDefFoundError
 
-**Cause:** Missing `AR_HARDWARE_LIBS` environment variable.
+**Cause:** The auto-detected native library directory is not writable.
 
-**Solution:**
-```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/
-```
+**Solution:** Ensure the default directory (see `SystemUtils.getExtensionsPath()`) is writable. Do not override `AR_HARDWARE_LIBS` manually unless absolutely necessary.
 
 ### Slow First Execution
 
@@ -935,7 +927,7 @@ System.out.println("Compilable: " + canCompile);
 **Solution:**
 ```bash
 # Increase memory scale
-export AR_HARDWARE_MEMORY_SCALE=6  # 4GB
+export AR_HARDWARE_MEMORY_SCALE=6  # ~16GB (FP32)
 
 # Or use host memory
 export AR_HARDWARE_MEMORY_LOCATION=host

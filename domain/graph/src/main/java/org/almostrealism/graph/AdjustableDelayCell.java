@@ -27,24 +27,73 @@ import org.almostrealism.time.TemporalFeatures;
 
 import java.util.function.Supplier;
 
+/**
+ * A {@link SummationCell} that applies a variable-length delay line to incoming audio samples.
+ *
+ * <p>{@code AdjustableDelayCell} implements an audio delay effect using an
+ * {@link AcceleratedTimeSeries} ring buffer. The delay duration and playback
+ * scale can be controlled at runtime via producers, making them amenable to
+ * hardware-accelerated modulation.</p>
+ *
+ * <p>On each {@link #tick()}, the cell:</p>
+ * <ol>
+ *   <li>Writes the current cached value into the ring buffer at the write cursor</li>
+ *   <li>Reads the delayed value at the read cursor position</li>
+ *   <li>Purges old buffer entries past the read cursor</li>
+ *   <li>Advances both cursors by the scale factor</li>
+ *   <li>Resets the cached value and pushes the read value downstream</li>
+ * </ol>
+ *
+ * @see SummationCell
+ * @see AcceleratedTimeSeries
+ * @author Michael Murray
+ */
 public class AdjustableDelayCell extends SummationCell implements TemporalFeatures, Destroyable {
+	/** Default purge frequency for the ring buffer, in units of cursor advances per tick. */
 	public static double defaultPurgeFrequency = 1.0;
 
+	/** Audio sample rate in Hz, used to convert delay in seconds to frames. */
 	private final int sampleRate;
+
+	/** Ring buffer storing past samples for the delay line. */
 	private final AcceleratedTimeSeries buffer;
+
+	/** Read and write cursor pair for the ring buffer. */
 	private CursorPair cursors;
 
+	/** Producer for the delay duration (in seconds). */
 	private final Producer<PackedCollection> delay;
+
+	/** Producer for the playback scale factor (1.0 = normal speed). */
 	private final Producer<PackedCollection> scale;
 
+	/**
+	 * Creates a delay cell with a fixed delay duration in seconds.
+	 *
+	 * @param sampleRate the audio sample rate in Hz
+	 * @param delay      the delay duration in seconds
+	 */
 	public AdjustableDelayCell(int sampleRate, double delay) {
 		this(sampleRate, Ops.o().c(delay));
 	}
 
+	/**
+	 * Creates a delay cell with a producer-controlled delay duration and default scale of 1.0.
+	 *
+	 * @param sampleRate the audio sample rate in Hz
+	 * @param delay      producer for the delay duration in seconds
+	 */
 	public AdjustableDelayCell(int sampleRate, Producer<PackedCollection> delay) {
 		this(sampleRate, delay, Ops.o().c(1.0));
 	}
 
+	/**
+	 * Creates a delay cell with producer-controlled delay and scale, using the default buffer size.
+	 *
+	 * @param sampleRate the audio sample rate in Hz
+	 * @param delay      producer for the delay duration in seconds
+	 * @param scale      producer for the playback scale factor
+	 */
 	public AdjustableDelayCell(int sampleRate,
 							   Producer<PackedCollection> delay,
 							   Producer<PackedCollection> scale) {
@@ -75,26 +124,68 @@ public class AdjustableDelayCell extends SummationCell implements TemporalFeatur
 		this.scale = scale;
 	}
 
+	/**
+	 * Initializes the cursor pair to its default state.
+	 * Subclasses may override to provide a custom cursor implementation.
+	 */
 	protected void initCursors() {
 		cursors = new CursorPair();
 	}
 
+	/**
+	 * Returns the cursor pair managing read and write positions in the buffer.
+	 *
+	 * @return the cursor pair
+	 */
 	public CursorPair getCursors() { return cursors; }
 
+	/**
+	 * Returns the ring buffer holding past samples.
+	 *
+	 * @return the accelerated time series buffer
+	 */
 	public AcceleratedTimeSeries getBuffer() { return buffer; }
 
+	/**
+	 * Returns the producer for the delay duration.
+	 *
+	 * @return producer providing the delay in seconds
+	 */
 	public Producer<PackedCollection> getDelay() { return delay; }
 
+	/**
+	 * Returns the producer for the playback scale factor.
+	 *
+	 * @return producer providing the scale value
+	 */
 	public Producer<PackedCollection> getScale() { return scale; }
 
+	/**
+	 * Returns a producer for the left (write) cursor position.
+	 *
+	 * @return producer for the write cursor value
+	 */
 	protected Producer<PackedCollection> getLeftCursor()	{
 		return p(cursors.range(shape(1)));
 	}
 
+	/**
+	 * Returns a producer for the right (read) cursor position.
+	 *
+	 * @return producer for the read cursor value
+	 */
 	protected Producer<PackedCollection> getRightCursor() {
 		return p(cursors.range(shape(1), 1));
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Initializes the parent summation cell, sets the write cursor to 0,
+	 * and positions the read cursor at {@code sampleRate * delay} frames ahead.</p>
+	 *
+	 * @return a supplier that performs the setup operations
+	 */
 	@Override
 	public Supplier<Runnable> setup() {
 		OperationList setup = new OperationList("AdjustableDelayCell Setup");
@@ -104,6 +195,15 @@ public class AdjustableDelayCell extends SummationCell implements TemporalFeatur
 		return setup;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Writes the cached value to the ring buffer, reads the delayed value,
+	 * purges old entries, advances the cursors by the scale factor, resets
+	 * the cache, and pushes the delayed value downstream.</p>
+	 *
+	 * @return a supplier that performs all tick operations
+	 */
 	@Override
 	public Supplier<Runnable> tick() {
 		OperationList tick = new OperationList("AdjustableDelayCell Tick");
@@ -116,6 +216,11 @@ public class AdjustableDelayCell extends SummationCell implements TemporalFeatur
 		return tick;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Resets the parent state and clears the ring buffer.</p>
+	 */
 	@Override
 	public void reset() {
 		super.reset();

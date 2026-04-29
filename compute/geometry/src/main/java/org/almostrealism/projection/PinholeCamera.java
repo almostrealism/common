@@ -16,15 +16,9 @@
 
 package org.almostrealism.projection;
 
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.uml.ModelEntity;
-import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.DynamicCollectionProducer;
-import org.almostrealism.geometry.Ray;
 
 /**
  * A PinholeCamera object represents a camera in 3D. A PinholeCamera object stores the
@@ -48,11 +42,11 @@ import org.almostrealism.geometry.Ray;
  * 
  * @author  Michael Murray
  */
-@ModelEntity
 public class PinholeCamera extends OrthographicCamera implements ProjectionFeatures {
-	public static boolean enableHardwareAcceleration = true;
-
+  	/** The distance from the camera location to the projection plane. */
   	private double focalLength = 1.0;
+
+  	/** The amount of directional blur applied to each ray for depth-of-field effects. */
   	private double blur = 0.0;
 
 	/** Constructs a {@link PinholeCamera} with all default values as described above. */
@@ -117,11 +111,21 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 	/** Returns the focal length of this {@link PinholeCamera} as a double value. */
 	public double getFocalLength() { return this.focalLength; }
 	
-	/** @return  { Horizontal FOV, Vertical FOV }, measured in radians. */
+	/**
+	 * Returns the horizontal and vertical fields of view in radians.
+	 *
+	 * @return  { Horizontal FOV, Vertical FOV }, measured in radians.
+	 */
 	public double[] getFOV() {
 		return new double [] { getHorizontalFOV(), getVerticalFOV() };
 	}
 
+	/**
+	 * Returns the horizontal field of view in radians, computed from the projection width
+	 * and focal length.
+	 *
+	 * @return the horizontal field of view in radians
+	 */
 	public double getHorizontalFOV() {
 		return 2.0 * Math.atan(super.getProjectionWidth() / (2.0 * this.focalLength));
 	}
@@ -138,12 +142,29 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 		setProjectionWidth(aspect * getProjectionHeight());
 	}
 
+	/**
+	 * Returns the vertical field of view in radians, computed from the projection height
+	 * and focal length.
+	 *
+	 * @return the vertical field of view in radians
+	 */
 	public double getVerticalFOV() {
 		return 2.0 * Math.atan(super.getProjectionHeight() / (2.0 * this.focalLength));
 	}
-	
+
+	/**
+	 * Sets the amount of directional blur applied to each generated ray.
+	 * A value of 0.0 produces sharp rays with no depth-of-field blur.
+	 *
+	 * @param blur the blur amount
+	 */
 	public void setBlur(double blur) { this.blur = blur; }
-	
+
+	/**
+	 * Returns the blur amount applied to each generated ray.
+	 *
+	 * @return the blur amount
+	 */
 	public double getBlur() { return this.blur; }
 	
 	/**
@@ -153,75 +174,25 @@ public class PinholeCamera extends OrthographicCamera implements ProjectionFeatu
 	 * Although the pixels on the screen must be in integer coordinates, this method provides the ability to create
 	 * super high resolution images by allowing you to devote a single pixel to only a fraction of the theoretical
 	 * camera surface. This effect can be used to produce large images from small scenes while retaining accuracy.
+	 *
+	 * <p>Hardware acceleration must always be used for ray generation. Manual
+	 * manipulation of the underlying tensors is never permitted — all ray
+	 * computation must go through the {@link ProjectionFeatures} Producer
+	 * pipeline so it can be compiled to native kernels.</p>
 	 */
 	@Override
 	public CollectionProducer rayAt(Producer<?> posP, Producer<?> sdP) {
-//		if (Settings.produceOutput && Settings.produceCameraOutput) {
-//			Settings.cameraOut.println("CAMERA: U = " + this.u.toString() + ", V = " + this.v.toString() + ", W = " + this.w.toString());
-//		}
-
-		if (enableHardwareAcceleration) {
-			return rayAt(posP, sdP, getLocation(), getProjectionDimensions(),
-											blur, focalLength, u, v, w);
-		} else {
-			return new DynamicCollectionProducer(new TraversalPolicy(6), args -> {
-					Pair pos = new Pair((PackedCollection) posP.get().evaluate(args), 0);
-					Pair screenDim = new Pair((PackedCollection) sdP.get().evaluate(args), 0);
-
-					double au = -(getProjectionWidth() / 2);
-					double av = -(getProjectionHeight() / 2);
-					double bu = getProjectionWidth() / 2;
-					double bv = getProjectionHeight() / 2;
-
-					Vector p = u.multiply((au + (bu - au) * (pos.getX() / (screenDim.getX() - 1))));
-					Vector q = v.multiply((av + (bv - av) * (pos.getY() / (screenDim.getY() - 1))));
-					Vector r = w.multiply(-focalLength);
-
-					Vector rayDirection = p;
-					rayDirection.addTo(q);
-					rayDirection.addTo(r);
-
-					double l = rayDirection.length();
-
-					if (blur != 0.0) {
-						double a = blur * (-0.5 + Math.random());
-						double b = blur * (-0.5 + Math.random());
-
-						Vector u, v, w = rayDirection.clone();
-
-						Vector t = rayDirection.clone();
-
-						if (t.getX() < t.getY() && t.getY() < t.getZ()) {
-							t.setX(1.0);
-						} else if (t.getY() < t.getX() && t.getY() < t.getZ()) {
-							t.setY(1.0);
-						} else {
-							t.setZ(1.0);
-						}
-
-						w.divideBy(w.length());
-
-						u = t.crossProduct(w);
-						u.divideBy(u.length());
-
-						v = w.crossProduct(u);
-
-						rayDirection.addTo(u.multiply(a));
-						rayDirection.addTo(v.multiply(b));
-						rayDirection.multiplyBy(l / rayDirection.length());
-					}
-
-					Ray ray = new Ray(getLocation(), rayDirection);
-
-//					if (Settings.produceOutput && Settings.produceCameraOutput) {
-//						Settings.cameraOut.println("CAMERA (" + this.toString() + ") : Ray at (" + pos + ", " + screenDim + ") = " + ray.toString());
-//					}
-
-					return ray;
-				});
-		}
+		return rayAt(posP, sdP, getLocation(), getProjectionDimensions(),
+										blur, focalLength, u, v, w);
 	}
 	
+	/**
+	 * Returns a string representation of this camera including location, view direction,
+	 * and projection dimensions.
+	 *
+	 * @return a descriptive string for this PinholeCamera
+	 */
+	@Override
 	public String toString() {
 		return "PinholeCamera - " +
 				getLocation() + " " +

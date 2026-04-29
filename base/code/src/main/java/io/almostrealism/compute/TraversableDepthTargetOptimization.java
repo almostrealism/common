@@ -32,10 +32,19 @@ import java.util.stream.Stream;
  */
 public class TraversableDepthTargetOptimization implements ProcessOptimizationStrategy {
 
+	/** The maximum allowed {@link TraversableExpression} depth before isolation is triggered. */
 	private final int limit;
 
+	/**
+	 * Constructs the optimization with the default depth limit of 8.
+	 */
 	public TraversableDepthTargetOptimization() { this(8); }
 
+	/**
+	 * Constructs the optimization with the given depth limit.
+	 *
+	 * @param depthLimit the maximum traversable depth before children are isolated
+	 */
 	public TraversableDepthTargetOptimization(int depthLimit) {
 		this.limit = depthLimit;
 	}

@@ -120,7 +120,7 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 	 * low-pass and high-pass based on a runtime decision variable)
 	 * produces correct results when coefficients are pre-computed
 	 * into a buffer via the two-kernel approach used by
-	 * {@link org.almostrealism.audio.arrange.EfxManager}.
+	 * {@link org.almostrealism.studio.arrange.EfxManager}.
 	 *
 	 * <p>The choice expression tree is evaluated into a buffer in a
 	 * separate operation, then the buffer is passed to MultiOrderFilter

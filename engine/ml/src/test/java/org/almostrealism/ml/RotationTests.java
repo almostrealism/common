@@ -352,7 +352,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		// Load reference data
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -373,7 +373,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		PackedCollection expectedOutput = referenceData.get("expected_output");
 
 		log("\n=== Testing computeRotaryFreqs ===");
-		PackedCollection computedFreqs = computeRotaryFreqs(seqLen, invFreq);
+		PackedCollection computedFreqs = computeRotaryFreqs(seqLen, invFreq).evaluate();
 		log("Computed freqs shape - " + computedFreqs.getShape());
 		log("Expected freqs shape - " + freqs.getShape());
 
@@ -414,12 +414,11 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 		Producer<PackedCollection> pos = c(p, 0, 0);
 
-		CollectionProducer q = c(p(in)).traverse(2);
 		CollectionProducer r = subset(shape(1, headSize, 2),
 				c(p(weights)), pos);
 		// r = c(p(r.get().evaluate()));
 
-		// CollectionProducer<PackedCollection> o = multiplyComplex(traverse(1, p(in)), r.reshape(headSize, 2));
+		// CollectionProducer o = multiplyComplex(traverse(1, p(in)), r.reshape(headSize, 2));
 		// Repeat frequencies for each head - multiplyComplex doesn't properly broadcast
 		CollectionProducer o = multiplyComplex(traverse(1, p(in)), r.traverse(1).repeat(heads));
 
@@ -436,13 +435,73 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 				double expected = q0 * fcr - q1 * fci;
 				double actual = out.valueAt(h, i, 0);
-				System.out.println("RotationTests[" + h + "][" + i + "]: " + expected + " vs " + actual);
+				log("RotationTests[" + h + "][" + i + "]: " + expected + " vs " + actual);
 				assertEquals(expected, actual);
 
 				expected = q0 * fci + q1 * fcr;
 				actual = out.valueAt(h, i, 1);
-				System.out.println("RotationTests[" + h + "][" + i + "]: " + expected + " vs " + actual);
+				log("RotationTests[" + h + "][" + i + "]: " + expected + " vs " + actual);
 				assertEquals(expected, actual);
+			}
+		}
+	}
+
+	/**
+	 * Verify that {@link RotationFeatures#computeRopeFreqs} produces a frequency tensor
+	 * with the correct shape and numerically correct cos/sin values.
+	 *
+	 * <p>This test is the direct guard against reverting {@code computeRopeFreqs} to a
+	 * manual Java loop. If the CollectionProducer implementation is broken, this test
+	 * will fail with wrong values — do NOT work around a failure by switching to Java math.</p>
+	 */
+	@Test(timeout = 30000)
+	public void computeRopeFreqsShape() {
+		double theta = 10000.0;
+		int headDim = 8;
+		int seqLen = 4;
+		int freqDim = headDim / 2;
+
+		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, seqLen).evaluate();
+
+		assertEquals("Shape dim 0 (seqLen)", seqLen, freqCis.getShape().length(0));
+		assertEquals("Shape dim 1 (freqDim)", freqDim, freqCis.getShape().length(1));
+		assertEquals("Shape dim 2 (cos/sin pair)", 2, freqCis.getShape().length(2));
+	}
+
+	/**
+	 * Verify that {@link RotationFeatures#computeRopeFreqs} produces numerically correct
+	 * cos/sin values matching the expected RoPE formula.
+	 *
+	 * <p>For position {@code pos} and frequency index {@code f}:
+	 * <pre>
+	 * invFreq[f] = theta^(-2f/headDim)
+	 * angle      = pos * invFreq[f]
+	 * freqCis[pos, f, 0] = cos(angle)
+	 * freqCis[pos, f, 1] = sin(angle)
+	 * </pre>
+	 */
+	@Test(timeout = 30000)
+	public void computeRopeFreqsValues() {
+		double theta = 10000.0;
+		int headDim = 8;
+		int seqLen = 4;
+		int freqDim = headDim / 2;
+
+		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, seqLen).evaluate();
+
+		for (int pos = 0; pos < seqLen; pos++) {
+			for (int f = 0; f < freqDim; f++) {
+				double invFreq = Math.pow(theta, -2.0 * f / headDim);
+				double angle = pos * invFreq;
+
+				double expectedCos = Math.cos(angle);
+				double expectedSin = Math.sin(angle);
+
+				double actualCos = freqCis.valueAt(pos, f, 0);
+				double actualSin = freqCis.valueAt(pos, f, 1);
+
+				assertEquals("cos[" + pos + "," + f + "]", expectedCos, actualCos, 1e-6);
+				assertEquals("sin[" + pos + "," + f + "]", expectedSin, actualSin, 1e-6);
 			}
 		}
 	}

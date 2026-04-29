@@ -45,6 +45,7 @@ package io.almostrealism.frames;
  * @author  Michael Murray
  */
 public class CoordinationFrame {
+	/** The two predicates asserted to be equivalent or coordinated with each other. */
 	private Predicate a, b;
 
 	/**
@@ -64,5 +65,6 @@ public class CoordinationFrame {
 	 *
 	 * @return a string in the format "{@code a} is the same as {@code b}"
 	 */
+	@Override
 	public String toString() { return a + " is the same as " + b; }
 }

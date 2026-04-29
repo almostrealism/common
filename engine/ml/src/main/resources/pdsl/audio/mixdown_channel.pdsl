@@ -1,0 +1,121 @@
+// Mixdown Channel — per-channel mixdown signal path expressed in PDSL
+//
+// This file expresses the per-channel signal processing chain from
+// MixdownManager.createCells() declaratively so the framework can analyze,
+// partition, and optimize the computation graph.
+//
+// Signal flow:
+//
+//   input audio
+//     └─ highpass(hp_cutoff, sample_rate, filter_order)     // HP FIR (main path entry)
+//     └─ scale(volume)                                       // per-channel volume gain
+//     ├─ accum_blocks(
+//     │    { identity() },                                   // dry path
+//     │    { fir(wet_filter_coeffs)                          // wet EFX FIR filter
+//     │      scale(wet_level)                                // wet send level
+//     │      delay(delay_samples, buffer, head) }            // delay line echo
+//     │  )
+//     └─ lowpass(lp_cutoff, sample_rate, filter_order)      // LP FIR (master rolloff)
+//
+// Deferred (open issues):
+//   - Cross-channel transmission: requires multi-channel input constructs not
+//     yet available in PDSL. In MixdownManager this is the transmission chromosome
+//     that routes delay sends between channels via mself().
+//   - Reverb path: uses DelayNetwork (Java-level cell composition). No PDSL
+//     equivalent for multi-tap feedback networks exists yet.
+//   - IIR vs FIR: MixdownManager uses IIR biquad (AudioPassFilter from
+//     CellFeatures.hp()/lp()). This PDSL uses FIR approximation via
+//     highpass()/lowpass() (MultiOrderFilter). Audible differences may occur
+//     near the cutoff. See docs/plans/PDSL_AUDIO_DSP.md Part 9 (Risk 1).
+//
+// Note on producer-valued arguments: the layers below use literal scalars for
+// hp_cutoff, volume, lp_cutoff, wet_level, and delay_samples for simplicity.
+// PDSL now supports producer-valued arguments (the producer([shape]) form) on
+// every audio primitive used here, so any of these scalars can be promoted to
+// producer([1]) without changing the layer body — see mixdown_manager.pdsl for
+// the producer-valued forms used by MixdownManager's automation- and gene-driven
+// paths. This file is the simpler literal-only reference.
+//
+// Reference: MixdownManager.createCells() and MixdownManager.createEfx()
+
+// ---------------------------------------------------------------------------
+// Delay line state block
+//
+// Holds the mutable circular buffer and write-head used by mixdown_channel.
+// Both fields are caller-supplied PackedCollections that persist between calls.
+//
+// Parameters (all caller-supplied PackedCollections):
+//   buffer   Circular delay-line buffer; size must equal signal_size exactly
+//            (the implementation reshapes the input frame to the buffer size)
+//   head     1-element write-position counter (zero-initialised)
+// ---------------------------------------------------------------------------
+state mixdown_delay_state {
+    buffer: weight
+    head: weight
+}
+
+// ---------------------------------------------------------------------------
+// Main signal path (high-pass → volume → low-pass)
+//
+// Expresses the three-stage main path from MixdownManager.createCells():
+//   1. High-pass FIR filter (replaces IIR AudioPassFilter from CellFeatures.hp())
+//   2. Per-channel volume scaling
+//   3. Low-pass FIR filter (replaces IIR AudioPassFilter from CellFeatures.lp())
+//
+// This layer contains no state — all filtering is FIR (no feedback loops).
+// It is the PDSL approximation of the main branch in MixdownManager.
+//
+// Parameters:
+//   signal_size    Number of samples per audio frame (for shape inference)
+//   hp_cutoff      High-pass cutoff frequency in Hz (e.g., 200.0)
+//   volume         Linear gain applied after high-pass (e.g., 1.0)
+//   lp_cutoff      Low-pass cutoff frequency in Hz (e.g., 18000.0)
+//   sample_rate    Audio sample rate in Hz (e.g., 44100)
+//   filter_order   FIR filter order; higher = sharper rolloff (e.g., 40)
+// ---------------------------------------------------------------------------
+layer mixdown_main(signal_size: int, hp_cutoff: scalar, volume: scalar,
+                   lp_cutoff: scalar, sample_rate: scalar,
+                   filter_order: scalar) -> [1, signal_size] {
+    highpass(hp_cutoff, sample_rate, filter_order)
+    scale(volume)
+    lowpass(lp_cutoff, sample_rate, filter_order)
+}
+
+// ---------------------------------------------------------------------------
+// Full per-channel path (main path + wet/dry delay mix)
+//
+// Extends mixdown_main with a wet/dry signal split corresponding to the
+// EFX branch in MixdownManager.createCells(). The wet path applies a
+// pre-computed FIR filter (from FixedFilterChromosome), scales by wet_level,
+// then adds a delay-line echo. The dry path passes through unchanged.
+// The two paths are summed by accum_blocks.
+//
+// Requires mixdown_delay_state block in args (buffer, head).
+//
+// Parameters:
+//   signal_size        Number of samples per audio frame
+//   hp_cutoff          High-pass cutoff frequency in Hz (main path HP)
+//   volume             Linear gain applied after HP (per-channel volume)
+//   lp_cutoff          Low-pass cutoff frequency in Hz (master rolloff LP)
+//   sample_rate        Audio sample rate in Hz (e.g., 44100)
+//   filter_order       FIR filter order (e.g., 40)
+//   wet_filter_coeffs  Pre-computed FIR coefficients for wet EFX filter
+//                      (computed by FixedFilterChromosome — HP or LP depending on gene)
+//   wet_level          Wet send level, typically in [0, 0.5]
+//   delay_samples      Integer delay in samples (must be < buffer length)
+//
+// Deferred: cross-channel transmission and reverb path are not expressed here.
+// See the file header for details.
+// ---------------------------------------------------------------------------
+layer mixdown_channel(signal_size: int, hp_cutoff: scalar, volume: scalar,
+                      lp_cutoff: scalar, sample_rate: scalar, filter_order: scalar,
+                      wet_filter_coeffs: weight, wet_level: scalar,
+                      delay_samples: int) -> [1, signal_size] {
+    highpass(hp_cutoff, sample_rate, filter_order)
+    scale(volume)
+    accum_blocks(
+        { identity() },
+        { fir(wet_filter_coeffs); scale(wet_level); delay(delay_samples, buffer, head) }
+    )
+    lowpass(lp_cutoff, sample_rate, filter_order)
+}

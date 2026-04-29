@@ -226,40 +226,70 @@ import java.util.stream.Stream;
  * @see MemoryReplacementManager
  */
 public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetails>, Countable, ConsoleFeatures {
-	// TODO  Should be switched and removed
+	/** If true, infer kernel size from the first MemoryBank argument when not derivable from output. Pending removal. */
 	public static boolean enableArgumentKernelSize = true;
+	/** If true, infer kernel size from arguments that reference a ProducerArgumentReference. Pending removal. */
 	public static boolean enableArgumentReferenceKernelSize = true;
 
-	// TODO  Should be removed?
+	/** If true, use the output count to determine the kernel size rather than the declared count. */
 	public static boolean enableOutputCount = true;
 
+	/** If true, constant kernel arguments are evaluated once and cached across invocations. Controlled by {@code AR_HARDWARE_CONSTANT_CACHE}. */
 	public static boolean enableConstantCache =
 			SystemUtils.isEnabled("AR_HARDWARE_CONSTANT_CACHE").orElse(true);
+	/** If true, emit a warning when kernel size differs from the declared count. Controlled by {@code AR_HARDWARE_KERNEL_SIZE_WARNINGS}. */
 	public static boolean enableKernelSizeWarnings =
 			SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(false);
 
+	/** True if this factory produces kernel (parallel) operations; false for scalar operations. */
 	private boolean kernel;
+	/** True if the count is fixed at construction time and cannot be inferred from arguments. */
 	private boolean fixedCount;
+	/** Declared number of parallel work items (kernel size) for fixed-count operations. */
 	private int count;
 
+	/** Evaluates {@link ArrayVariable} producers into {@link Evaluable} instances for kernel dispatch. */
 	private ProcessArgumentEvaluator evaluator;
+	/** Ordered list of array variables representing kernel arguments, including output. */
 	private List<ArrayVariable<? extends T>> arguments;
+	/** Index of the output argument in {@link #arguments}; negative if no output is used. */
 	private int outputArgIndex;
 
+	/** Supplier of the memory replacement manager, used to redirect memory from one provider to another. */
 	private Supplier<MemoryReplacementManager> replacements;
 
+	/** The output {@link MemoryBank} passed to the last {@link #init} call. */
 	private MemoryBank output;
+	/** The positional arguments passed to the last {@link #init} call. */
 	private Object args[];
+	/** True if all positional arguments passed to {@link #init} are {@link io.almostrealism.code.MemoryData} instances. */
 	private boolean allMemoryData;
 
+	/** Resolved kernel size (number of parallel work items) for the current invocation. */
 	private long kernelSize;
+	/** Pre-resolved {@link MemoryData} instances for each kernel argument slot. */
 	private MemoryData kernelArgs[];
+	/** {@link Evaluable} instances for kernel arguments that could not be statically resolved. */
 	private Evaluable kernelArgEvaluables[];
+	/** {@link StreamingEvaluable} instances for asynchronous kernel arguments. */
 	private StreamingEvaluable asyncEvaluables[];
+	/** The most recently built {@link AcceleratedProcessDetails} instance. */
 	private AcceleratedProcessDetails currentDetails;
 
+	/** Executor used to dispatch asynchronous kernel execution when {@link Hardware#isAsync()} is true. */
 	private Executor executor;
 
+	/**
+	 * Constructs a factory for producing {@link AcceleratedProcessDetails} instances.
+	 *
+	 * @param kernel True if this is a kernel (parallel) operation; false for scalar
+	 * @param fixedCount True if the kernel size is fixed at construction time
+	 * @param count Declared number of parallel work items (used when fixedCount is true)
+	 * @param arguments Ordered list of array variables representing kernel arguments
+	 * @param outputArgIndex Index of the output argument in the arguments list; negative if no output
+	 * @param replacements Supplier of the memory replacement manager
+	 * @param executor Executor for asynchronous kernel dispatch
+	 */
 	public ProcessDetailsFactory(boolean kernel, boolean fixedCount, int count,
 								 List<ArrayVariable<? extends T>> arguments,
 								 int outputArgIndex,
@@ -288,12 +318,25 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	}
 
 	public boolean isKernel() { return kernel; }
+	@Override
 	public boolean isFixedCount() { return fixedCount; }
+	@Override
 	public long getCountLong() { return count; }
 
 	public ProcessArgumentEvaluator getEvaluator() { return evaluator; }
 	public void setEvaluator(ProcessArgumentEvaluator evaluator) { this.evaluator = evaluator; }
 
+	/**
+	 * Initializes this factory with an output bank and positional arguments for the next invocation.
+	 *
+	 * <p>Resolves kernel size, evaluates constant arguments, and prepares evaluables for
+	 * dynamic arguments. If the output and args are identical to those from the last call,
+	 * the factory is considered already initialized and returns immediately.</p>
+	 *
+	 * @param output Output {@link MemoryBank} to write results into; may be null for operations without output
+	 * @param args Positional arguments passed at evaluation time
+	 * @return This factory instance for chaining
+	 */
 	public ProcessDetailsFactory init(MemoryBank output, Object args[]) {
 		if (kernelArgEvaluables != null && output == this.output &&
 				Arrays.equals(args, this.args, (a, b) -> a == b ? 0 : 1)) {
@@ -392,6 +435,11 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		return this;
 	}
 	
+	/**
+	 * Clears cached evaluables so the next {@link #init} call fully re-evaluates all arguments.
+	 *
+	 * <p>Call this when argument producers may have changed since the last {@link #init} call.</p>
+	 */
 	public void reset() {
 		this.kernelArgEvaluables = null;
 		this.asyncEvaluables = null;
@@ -404,6 +452,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 *
 	 * @return the fully configured process details ready for execution
 	 */
+	@Override
 	public AcceleratedProcessDetails construct() {
 		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
 
@@ -532,6 +581,14 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		return result -> targetDetails.result(index, result);
 	}
 
+	/**
+	 * Executes a runnable either asynchronously via the executor or synchronously on the calling thread.
+	 *
+	 * <p>When {@link Hardware#isAsync()} is true, the runnable is submitted to the configured executor.
+	 * Otherwise it is run directly on the calling thread.</p>
+	 *
+	 * @param r The runnable to execute
+	 */
 	protected void execute(Runnable r) {
 		if (Hardware.getLocalHardware().isAsync()) {
 			executor.execute(r);
@@ -540,6 +597,15 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		}
 	}
 
+	/**
+	 * Returns the {@link ProducerArgumentReference} index for an argument variable, or -1 if not applicable.
+	 *
+	 * <p>Checks both the argument's producer directly and, if the producer is a {@link Delegated},
+	 * its delegate for a {@link ProducerArgumentReference}.</p>
+	 *
+	 * @param arg The argument variable to inspect
+	 * @return Referenced argument index, or -1 if the argument is not a reference
+	 */
 	private static int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {
 		if (arg.getProducer() instanceof ProducerArgumentReference) {
 			return ((ProducerArgumentReference) arg.getProducer()).getReferencedArgumentIndex();

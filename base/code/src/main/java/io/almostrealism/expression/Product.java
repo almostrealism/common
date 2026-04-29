@@ -20,11 +20,11 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.collect.ExpressionMatchingCollectionExpression;
-import io.almostrealism.kernel.ArrayIndexSequence;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.IndexSequence;
-import io.almostrealism.kernel.IndexValues;
-import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.sequence.ArrayIndexSequence;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexValues;
+import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.ArrayList;
@@ -36,16 +36,55 @@ import java.util.OptionalLong;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * A multiplication expression that computes the product of two or more sub-expressions.
+ *
+ * <p>Generates code of the form {@code a * b * c}. Various simplification passes are
+ * applied during construction and via the static factory methods, including zero
+ * detection, constant extraction, minus detection, and Mask promotion.</p>
+ *
+ * @param <T> the numeric result type
+ */
 public class Product<T extends Number> extends NAryExpression<T> {
+	/**
+	 * When {@code true}, detects a leading {@code -1} constant factor and converts it
+	 * to a {@link Negation} expression during simplification.
+	 */
 	public static boolean enableMinusDetection = true;
+
+	/**
+	 * When {@code true}, constant factors are extracted and combined into a single
+	 * leading constant during simplification.
+	 */
 	public static boolean enableConstantExtraction = true;
+
+	/**
+	 * When {@code true}, throws an {@link IllegalArgumentException} if all operands
+	 * are constant (a product of only constants should be folded rather than kept).
+	 */
 	public static boolean enableConstantExtractionValidation = false;
+
+	/**
+	 * When {@code true}, operands are sorted to enable structural sharing and
+	 * consistent code generation ordering.
+	 */
 	public static boolean enableSort = true;
 
+	/**
+	 * Constructs a product from a list of numeric expressions, inferring the result type.
+	 *
+	 * @param values the operand expressions to multiply together
+	 */
 	protected Product(List<Expression<? extends Number>> values) {
 		this((Class<T>) type(values), (List) values);
 	}
 
+	/**
+	 * Constructs a product with an explicit result type and operand list.
+	 *
+	 * @param type   the numeric result type
+	 * @param values the operand expressions to multiply together
+	 */
 	private Product(Class<T> type, List<Expression<T>> values) {
 		super(type, "*", (List) values);
 
@@ -243,10 +282,24 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		return children;
 	}
 
+	/**
+	 * Creates and post-processes a product expression.
+	 *
+	 * @param values the operand expressions to multiply together
+	 * @return a simplified or constant-folded expression
+	 */
 	public static Expression<?> of(Expression<?>... values) {
 		return Expression.process(create(values));
 	}
 
+	/**
+	 * Creates a product expression, applying zero-detection, constant-folding, and
+	 * Mask-promotion before returning the result.
+	 *
+	 * @param values the operand expressions to multiply together
+	 * @return the simplified expression or a new {@link Product}
+	 * @throws IllegalArgumentException if no operands are provided
+	 */
 	protected static Expression<?> create(Expression<?>... values) {
 		if (values.length == 0) throw new IllegalArgumentException();
 		if (values.length == 1) return values[0];

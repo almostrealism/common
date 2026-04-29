@@ -71,6 +71,7 @@ ClaudeCodeJob (io.flowtree.jobs)
 | `getPushedToolsConfig()` / `setPushedToolsConfig(String)` | `String` | `null` | JSON mapping pushed tool server names to download URLs, tool lists, and optional env vars. |
 | `getWorkstreamEnv()` / `setWorkstreamEnv(Map)` | `Map<String,String>` | `null` | Per-workstream environment variables that override global pushed-tool env vars. |
 | `getPlanningDocument()` / `setPlanningDocument(String)` | `String` | `null` | Path (relative to working directory) to a planning document the agent must read. |
+| `getDeduplicationMode()` / `setDeduplicationMode(String)` | `String` | `null` | Post-work duplicate-method scan mode. `null` disables. `DEDUP_LOCAL` runs an inline session before the commit. `DEDUP_SPAWN` posts a follow-up job to the workstream. |
 
 All `GitManagedJob` setters are also available: `setTargetBranch`, `setBaseBranch`, `setWorkingDirectory`, `setRepoUrl`, `setDefaultWorkspacePath`, `setPushToOrigin`, `setGitUserName`, `setGitUserEmail`, `setWorkstreamUrl`, `setProtectTestFiles`, and `setMaxFileSizeBytes`. These inherited setters control the git harness behavior and status event delivery. When `targetBranch` is null, git operations (staging, committing, pushing) are skipped entirely, and the job simply runs Claude Code and reports its output. When `pushToOrigin` is false, the commit is created locally but not pushed to the remote.
 
@@ -90,6 +91,8 @@ Additional timing and session detail fields are extracted internally and forward
 |---|---|---|
 | `PROMPT_SEPARATOR` | `";;PROMPT;;"` | Delimiter used to join multiple prompts into a single encoded string in the Factory. This delimiter was chosen to be unlikely to appear in natural language prompts. |
 | `DEFAULT_TOOLS` | `"Read,Edit,Write,Bash,Glob,Grep"` | The base set of tools available to every Claude Code session. These are Claude Code's built-in file and shell tools. MCP tools are appended to this base set by `McpConfigBuilder.buildAllowedTools()`. |
+| `DEDUP_LOCAL` | `"local"` | Deduplication mode: run an inline Claude Code session with the deduplication prompt before the commit. All existing session machinery (tools, budget, MCP config) is reused. The dedup edits land in the same working tree and are committed together with the original work. |
+| `DEDUP_SPAWN` | `"spawn"` | Deduplication mode: post a follow-up `ClaudeCodeJob` to the same workstream via `POST /api/submit` with `automated: true`. Fire-and-forget; requires a workstream URL to be configured. |
 
 The `DEFAULT_TOOLS` constant defines the minimum tool set that every Claude Code session receives. These six tools provide the agent with basic file system access (Read, Write, Edit, Glob, Grep) and shell command execution (Bash). Without these, the agent could not perform any useful work. Additional tools are appended by the MCP config builder, including MCP server tools (prefixed with `mcp__<serverName>__`) and any custom tools defined in the workstream configuration.
 
@@ -110,8 +113,12 @@ In addition to the configuration fields exposed via getters, `ClaudeCodeJob` mai
 | `isError` | `boolean` | Whether Claude Code flagged the session as an error. |
 | `permissionDenials` | `int` | Number of tool permission denials encountered. |
 | `deniedToolNames` | `List<String>` | Names of tools that were denied during execution. |
+| `inactivityTimeoutMillis` | `long` | Stdout silence duration after which the Claude subprocess is killed. Configuration default: 20 minutes. |
+| `maxInactivityRestarts` | `int` | Maximum number of relaunches of the Claude subprocess after inactivity-triggered kills. Configuration default: 3. |
+| `inactivityRestartAttempt` | `int` | Number of inactivity-triggered relaunches in the current run. Reset to 0 once the run completes. Forwarded to `InstructionPromptBuilder` to inject a restart warning into the relaunch prompt. |
+| `wasKilledForInactivity` | `volatile boolean` | Indicates whether the most recent attempt ended because of inactivity; consumed by the retry loop in `executeSingleRun()`. The value is taken from `ClaudeAttemptRunner.Result`, which reflects inactivity handling performed during the attempt by `ClaudeInactivityMonitor`. |
 
-These fields are extracted from the NDJSON output by `extractOutputMetrics()` and then forwarded to `ClaudeCodeJobEvent` via `populateEventDetails()`.
+NDJSON-derived execution metrics are extracted by `extractOutputMetrics()`, and the subset needed for completion reporting is forwarded to `ClaudeCodeJobEvent` via `populateEventDetails()`. The inactivity configuration fields (`inactivityTimeoutMillis`, `maxInactivityRestarts`) are execution controls rather than extracted metrics, and the retry-state fields (`inactivityRestartAttempt`, `wasKilledForInactivity`) are maintained during attempt execution.
 
 ### Collaborating Objects
 
@@ -120,6 +127,11 @@ These fields are extracted from the NDJSON output by `extractOutputMetrics()` an
 - `mcpConfigBuilder` (`McpConfigBuilder`): Constructs the `--mcp-config` JSON and `--allowedTools` string. Configured via `configureMcpBuilder()` before each execution.
 - `toolsDownloader` (`ManagedToolsDownloader`): Downloads pushed tool server files from the controller. Initialized with a reference to `mcpConfigBuilder` for config parsing.
 - `outputMapper` (`ObjectMapper`): A static Jackson mapper shared by all instances for NDJSON parsing and JSON serialization.
+
+Two stateless helpers are invoked per Claude attempt:
+
+- `ClaudeAttemptRunner` (static utility): Given a fully configured `ProcessBuilder`, starts the subprocess, attaches a `ClaudeInactivityMonitor`, reads stdout to completion, and returns a `Result(exitCode, output, killedForInactivity)`. Logs lines through the supplied `ConsoleFeatures` so messages stay attributed to the job.
+- `ClaudeInactivityMonitor` (daemon thread): Wakes every `min(60s, max(5s, inactivityTimeoutMillis / 4))` and destroys the subprocess plus its descendants when stdout has been silent for `inactivityTimeoutMillis`. Fires a `LongConsumer` callback before destroying so the caller can flag the kill (e.g., set `wasKilledForInactivity`). Exits naturally when the subprocess dies; can be stopped early by interrupting the thread.
 
 ### ClaudeCodeJobOutput
 
@@ -252,17 +264,19 @@ Each of these results in a `FAILED` status event being posted to the workstream 
 
 5. **Instruction prompt building** -- `buildInstructionPrompt()` wraps the user's prompt with operational context (Slack instructions, git instructions, merge conflict resolution, branch awareness, budget/turn limits, planning document reference, and more). See [InstructionPromptBuilder](#instructionpromptbuilder) for full details.
 
-6. **MCP tool file verification** -- `toolsDownloader.verifyMcpToolFiles(workDir)` checks that `tools/mcp/slack/server.py` and `tools/mcp/github/server.py` exist in the working directory and logs their modification times. Missing files produce warnings.
+6. **MCP tool file verification** -- `toolsDownloader.verifyMcpToolFiles(workDir)` checks that `tools/mcp/messages/server.py` and `tools/mcp/github/server.py` exist in the working directory and logs their modification times. Missing files produce warnings.
 
 7. **Command construction** -- The full `claude` command is assembled. See [Command-Line Arguments](#command-line-arguments).
 
-8. **Process execution** -- A `ProcessBuilder` runs the command. The working directory is set from the job config. `AR_WORKSTREAM_URL` is set in the process environment from the resolved workstream URL (with `0.0.0.0` replaced by `FLOWTREE_ROOT_HOST`). Stdin is redirected from `/dev/null` and stderr is merged with stdout. The process output is read line by line and logged.
+8. **Process execution with inactivity monitoring** -- `executeSingleRun()` builds the `ProcessBuilder` (working directory from job config, `AR_WORKSTREAM_URL` set from the resolved workstream URL with `0.0.0.0` replaced by `FLOWTREE_ROOT_HOST`, stdin from `/dev/null`, stderr merged with stdout) and hands it to `ClaudeAttemptRunner.runAttempt()`. The runner starts the subprocess, attaches a `ClaudeInactivityMonitor` daemon thread, and reads stdout line-by-line, updating an `AtomicLong` clock on every line so the monitor can tell whether the subprocess is still producing output. The monitor wakes every `min(60s, max(5s, inactivityTimeoutMillis / 4))` and, if stdout has been silent for at least `inactivityTimeoutMillis` (default 20 minutes), destroys the subprocess and its descendants and sets `wasKilledForInactivity`. The runner returns a `Result(exitCode, output, killedForInactivity)`.
 
-9. **Output capture and saving** -- The full output is captured in a `StringBuilder` that accumulates every line read from the process. After the process exits, the complete output is written to `claude-output/<random-key>.json` where the random key is generated by `KeyUtils.generateKey()`. The `claude-output/` directory is created in step 3 and is included in `GitManagedJob`'s default excluded patterns, so output files are never accidentally committed to the repository.
+9. **Inactivity restart loop** -- `executeSingleRun()` wraps the call to `launchClaudeAttempt()` in a `for` loop that retries up to `maxInactivityRestarts` times (default 3) when the previous attempt was killed by the inactivity monitor. Each retry rebuilds the instruction prompt with `inactivityRestartAttempt` set to the retry count, which causes `InstructionPromptBuilder` to prepend a `## !! SESSION RESTARTED -- INACTIVITY TIMEOUT !!` warning explaining the most common cause (self-matching `pgrep -f` loops, `curl` polling against invented endpoints) and instructing the agent to use MCP `get_*_status` calls instead of bash polling. Once an attempt finishes without an inactivity kill -- or once the retry budget is exhausted -- the loop exits and the last attempt's output is used.
 
-10. **Metric extraction** -- `extractOutputMetrics(output)` parses the NDJSON output to extract session ID, timing, cost, stop reason, and permission denial information. This method locates the final `type:result` object using `JsonFieldExtractor.extractLastJsonObject()`, then parses it with Jackson `ObjectMapper` to extract individual fields. See [Output Metric Extraction](#output-metric-extraction) for the complete list of extracted fields and their JSON paths.
+10. **Output capture and saving** -- The output captured by the final attempt is assigned to the `output` field, written to `claude-output/<random-key>.json` where the random key is generated by `KeyUtils.generateKey()`. The `claude-output/` directory is created in step 3 and is included in `GitManagedJob`'s default excluded patterns, so output files are never accidentally committed to the repository.
 
-11. **Output consumer callback** -- If an `outputConsumer` functional interface is registered on the job, a `ClaudeCodeJobOutput` record is constructed and delivered via `outputConsumer.accept(output)`. The consumer receives the task ID, prompt text, full output, session ID, and exit code. This callback mechanism is used by the FlowTree job dispatch system to route results back to the controller for aggregation and logging. If no consumer is registered (which is common in standalone testing), this step is silently skipped.
+11. **Metric extraction** -- `extractOutputMetrics(output)` parses the NDJSON output to extract session ID, timing, cost, stop reason, and permission denial information. This method locates the final `type:result` object using `JsonFieldExtractor.extractLastJsonObject()`, then parses it with Jackson `ObjectMapper` to extract individual fields. See [Output Metric Extraction](#output-metric-extraction) for the complete list of extracted fields and their JSON paths.
+
+12. **Output consumer callback** -- If an `outputConsumer` functional interface is registered on the job, a `ClaudeCodeJobOutput` record is constructed and delivered via `outputConsumer.accept(output)`. The consumer receives the task ID, prompt text, full output, session ID, and exit code. This callback mechanism is used by the FlowTree job dispatch system to route results back to the controller for aggregation and logging. If no consumer is registered (which is common in standalone testing), this step is silently skipped.
 
 ### Error Handling in Phase 2
 
@@ -274,7 +288,7 @@ If the Claude Code process exits with a non-zero code, this is NOT treated as a 
 
 After `doWork()` returns, `GitManagedJob.run()` handles:
 
-1. **Change validation** -- `validateChanges()` is called. `ClaudeCodeJob` overrides this to run `detect-test-hiding.sh` when test file protection is enabled. Exit code 2 means violations were found and the commit is aborted.
+1. **Change validation** -- `validateChanges()` is called. `ClaudeCodeJob` overrides this with two independent sub-steps: (a) when `protectTestFiles` is enabled, runs `detect-test-hiding.sh`; exit code 2 aborts the commit. (b) when `deduplicationMode` is set, scans new Java method declarations in the working-tree diff and either runs an inline deduplication session (`DEDUP_LOCAL`) or posts a follow-up job (`DEDUP_SPAWN`). See [Deduplication Check](#deduplication-check).
 
 2. **File discovery and staging** -- `git status --porcelain` lists all changed files. The output is parsed line by line: lines starting with `?? ` indicate untracked files, and lines starting with ` M `, `M `, `A `, `D `, etc. indicate modified, added, or deleted tracked files. Each file passes through a multi-layer guardrail pipeline: excluded pattern check (glob matching against a comprehensive exclusion list), protected test file check (files on the base branch cannot be modified when `protectTestFiles` is true), file size check (default 1MB max, configurable via `maxFileSizeBytes`), and binary detection (scanning the first 8000 bytes for null content, with a 10% threshold). Files that pass all guardrails are staged with `git add <file>`. Files that fail any guardrail are added to the `skippedFiles` list with a parenthetical reason suffix for inclusion in the completion event.
 
@@ -318,6 +332,45 @@ The script's exit code determines the action:
 
 If the script does not exist at the expected path, validation is silently skipped.
 
+### Deduplication Check
+
+The deduplication check is the second sub-step of `validateChanges()`. It runs whenever `deduplicationMode` is set to a non-null value, regardless of whether test file protection is enabled.
+
+#### Method Extraction
+
+New Java method declarations are collected from two sources:
+
+1. **Modified tracked files** — `git diff origin/<baseBranch> -- '*.java'` produces a unified diff; lines beginning with `+` (but not `+++`) are matched against `NEW_METHOD_PATTERN`:
+   ```
+   ^\+[ \t]+(?:public|private|protected)\b.*\b(\w+)[ \t]*\(
+   ```
+   The pattern requires an access modifier at the start of the line (after the `+` prefix). The captured group is the last word before `(`, which is the method name. Constructors and interface default methods are included — the dedup session decides whether they constitute genuine duplicates.
+
+2. **Untracked new files** — `git ls-files --others --exclude-standard -- '*.java'` lists entirely new Java files. Each line of these files is matched against the same pattern (with a synthetic `+ ` prefix). Every method in a new file is new by definition.
+
+Results are deduplicated (insertion-order `LinkedHashSet`) and capped at 50. If the list exceeds 50 the prompt reports the true total.
+
+#### Deduplication Prompt
+
+The prompt is aggressive by design:
+
+- States that every listed method should be assumed to be a clone until proven otherwise.
+- Notes that this is a statistical observation, not a pessimistic guess: agent sessions routinely re-implement existing functionality under new names.
+- Instructs the agent to search by keyword and logical purpose (not just by name) using `Grep`.
+- Prohibits rationalising slight differences: if the logical purpose is the same, the duplicate must be removed and its call sites redirected.
+
+#### Mode Dispatch
+
+| `deduplicationMode` | Behaviour |
+|---|---|
+| `null` | Skipped entirely. |
+| `"local"` (`DEDUP_LOCAL`) | `this.prompt` is temporarily swapped with the dedup prompt, `executeSingleRun()` is called, and the original prompt is restored in a `finally` block. The dedup session uses the same MCP config, tool allowlist, and budget as the original session. No new jobs are created; the dedup edits are staged and committed together with the original work. |
+| `"spawn"` (`DEDUP_SPAWN`) | The controller base URL and workstream ID are parsed from `workstreamUrl` (pattern: `http://host:port/api/workstreams/{id}/jobs/{jobId}`). A JSON payload with `prompt`, `workstreamId`, `description`, and `automated: true` is POSTed to `{controllerBase}/api/submit`. Fire-and-forget — errors are logged but do not affect the current commit. |
+
+#### Infinite Loop Safety
+
+`DEDUP_LOCAL` calls `executeSingleRun()` directly, which never re-invokes `validateChanges()`. The deduplication session is a terminal step: it runs once, modifies the working tree, and the commit proceeds with the combined changes. `deduplicationMode` is never copied to any nested or spawned session.
+
 ### GitManagedJob Guardrails
 
 The file staging process applies multiple layers of filtering to prevent unintended or dangerous files from being committed:
@@ -338,7 +391,13 @@ The `InstructionPromptBuilder` class extracts the prompt-assembly logic from `Cl
 
 ### Section Assembly Order
 
-All setters support chaining. The `build()` method assembles sections in this fixed order:
+All setters support chaining. The `build()` method assembles sections in this fixed order. The first three sections are restart warnings prepended above all other content when their triggering condition is set; they document for the agent why the prior attempt ended and (where applicable) what to avoid this time. They are mutually compatible -- if more than one applies, all three are emitted in order.
+
+0a. **Git Tampering Violation Warning** -- Present when `gitTamperingViolation` is set. Heading: `## !! SESSION RESTARTED -- GIT TAMPERING VIOLATION !!`. Explains that the previous session was terminated and its changes destroyed because the agent ran a forbidden git command (commit, checkout, switch, branch, merge, rebase, reset, stash). Lists the exact rules and warns that another violation will result in another forced reset.
+
+0b. **Inactivity Timeout Warning** -- Present when `inactivityRestartAttempt > 0`. Heading: `## !! SESSION RESTARTED -- INACTIVITY TIMEOUT !!`. Explains that the previous Claude subprocess was killed because it produced no output for too long, identifies the most common cause (`pgrep -f` matching its own command line, `curl` polling against invented endpoints), and instructs the agent to use the MCP `get_*_status` tools rather than bash `while`/`until`/`for` loops. Reminds the agent that prior progress is preserved in git and to consult `workstream_context` before duplicating work.
+
+0c. **Enforcement Retry Warning** -- Present when `enforcementAttempt > 0`. Heading: `## !! SESSION RESTARTED -- ATTEMPT N !!`. Used when the previous run produced no code changes and the enforcement loop is asking for another attempt. Tells the agent to investigate CI status with the test runner (using the exact CI command) and produce real production-code changes rather than re-running the prompt verbatim.
 
 1. **Opening paragraph** -- Always present. Establishes that the agent is autonomous with no TTY and no interactive session.
 
@@ -397,6 +456,8 @@ All setters support chaining. The `build()` method assembles sections in this fi
 | `setMaxTurns(int)` | `int` | `> 0` enables turn limit portion of section 13. |
 | `setTaskId(String)` | `String` | Non-null enables section 14. |
 | `setPlanningDocument(String)` | `String` | Non-null/non-empty enables section 15. |
+| `setGitTamperingViolation(String)` | `String` | Non-null/non-empty enables section 0a. |
+| `setInactivityRestartAttempt(int)` | `int` | `> 0` enables section 0b. The value is the count of prior inactivity-triggered restarts (1 = first relaunch, 2 = second, ...). |
 
 ### Relationship Between Builder and Inline Method
 
@@ -437,9 +498,9 @@ Centralized servers run on or near the controller and are accessed over HTTP. Th
 **Input format:**
 ```json
 {
-  "ar-slack": {
+  "ar-messages": {
     "url": "http://0.0.0.0:8090/mcp",
-    "tools": ["slack_send_message", "slack_get_stats"]
+    "tools": ["send_message", "get_stats"]
   },
   "ar-consultant": {
     "url": "http://0.0.0.0:8091/mcp",
@@ -454,7 +515,7 @@ Centralized servers run on or near the controller and are accessed over HTTP. Th
 ```json
 {
   "mcpServers": {
-    "ar-slack": {
+    "ar-messages": {
       "type": "http",
       "url": "http://controller-host:8090/mcp"
     }
@@ -505,19 +566,19 @@ Pushed tools are MCP server Python scripts that are downloaded from the controll
 
 Project-level MCP servers are defined in the repository's `.mcp.json` file and optionally filtered by `.claude/settings.json`. These are servers bundled with the project (e.g., `ar-test-runner`, `ar-docs`, `ar-profile-analyzer`).
 
-**Discovery:** `discoverProjectMcpServers()` reads `.mcp.json` from the working directory, parses each server's command and args, extracts the Python source file path (first arg), and cross-references with `.claude/settings.json`'s `enabledMcpjsonServers` array. Servers named `ar-github` and `ar-slack` are always skipped (handled separately). Servers that are already centralized or pushed are also skipped.
+**Discovery:** `discoverProjectMcpServers()` reads `.mcp.json` from the working directory, parses each server's command and args, extracts the Python source file path (first arg), and cross-references with `.claude/settings.json`'s `enabledMcpjsonServers` array. Servers named `ar-github` and `ar-messages` are always skipped (handled separately). Servers that are already centralized or pushed are also skipped.
 
 **Output in --mcp-config:** Emitted as stdio entries with `command: "python3"` and `args: ["<path>"]`.
 
 **Tool name discovery for --allowedTools:** For each project server, `McpToolDiscovery.discoverToolNames()` scans the Python source file to extract tool names. See [MCP Tool Discovery](#mcp-tool-discovery).
 
-#### 4. Fallback Servers (ar-github, ar-slack)
+#### 4. Fallback Servers (ar-github, ar-messages)
 
-`ar-github` and `ar-slack` receive special treatment because they have conditional inclusion logic:
+`ar-github` and `ar-messages` receive special treatment because they have conditional inclusion logic:
 
 - **ar-github**: If not present in the centralized config or pushed tools, a stdio fallback entry is added pointing to `tools/mcp/github/server.py`. Its tools (`github_pr_find`, `github_pr_review_comments`, `github_pr_conversation`, `github_pr_reply`) are always added to the allowed tools list.
 
-- **ar-slack**: If not present in the centralized config or pushed tools, a stdio fallback entry is added pointing to `tools/mcp/slack/server.py` -- but only when a workstream URL is configured. Its tool (`slack_send_message`) is added to the allowed tools list under the same condition.
+- **ar-messages**: If not present in the centralized config or pushed tools, a stdio fallback entry is added pointing to `tools/mcp/messages/server.py` -- but only when a workstream URL is configured. Its tool (`send_message`) is added to the allowed tools list under the same condition.
 
 ### buildMcpConfig() Method
 
@@ -530,7 +591,7 @@ This method takes the base tools string (e.g., `"Read,Edit,Write,Bash,Glob,Grep"
 1. Tools from centralized servers: `mcp__<serverName>__<toolName>` for each tool in each centralized server's tools list
 2. Tools from pushed tools: same format
 3. GitHub tools (unless centralized or pushed): the four `mcp__ar-github__*` tools
-4. Slack tool (unless centralized or pushed, and only when workstream URL is set): `mcp__ar-slack__slack_send_message`
+4. Slack tool (unless centralized or pushed, and only when workstream URL is set): `mcp__ar-messages__send_message`
 5. Tools from discovered project servers: for each server, `discoverToolNames()` is called on the Python source file and the resulting names are formatted as `mcp__<serverName>__<toolName>`
 
 ### parseCentralizedConfig() and parsePushedConfig()
@@ -547,7 +608,7 @@ This package-private method performs project-level MCP server discovery by readi
 
 2. **Read .claude/settings.json**: If present, extracts the `enabledMcpjsonServers` array. This array acts as a whitelist: only servers named in this array are included. If the file is absent or the array is missing, all servers from `.mcp.json` are considered enabled.
 
-3. **Filter exclusions**: Servers named `ar-github` and `ar-slack` are always excluded. Servers that appear in the centralized config or pushed tools config are also excluded (they are handled by their respective higher-priority paths).
+3. **Filter exclusions**: Servers named `ar-github` and `ar-messages` are always excluded. Servers that appear in the centralized config or pushed tools config are also excluded (they are handled by their respective higher-priority paths).
 
 4. **Return**: The remaining servers are returned as a `Map<String, String>` from server name to Python file path.
 
@@ -558,9 +619,9 @@ The four configuration sources are processed with strict deduplication to preven
 1. Centralized servers take highest priority. They appear as HTTP entries.
 2. Pushed tools take second priority. They appear as stdio entries.
 3. Project servers take third priority. They are skipped if the server name already appears in centralized or pushed configs.
-4. Fallback servers (ar-github, ar-slack) take lowest priority. They are only added if not already centralized or pushed.
+4. Fallback servers (ar-github, ar-messages) take lowest priority. They are only added if not already centralized or pushed.
 
-This means that if a server like `ar-slack` is configured as a centralized HTTP server, the stdio fallback for `ar-slack` is NOT added, and the tools for `ar-slack` come from the centralized config's `tools` array rather than from any local discovery.
+This means that if a server like `ar-messages` is configured as a centralized HTTP server, the stdio fallback for `ar-messages` is NOT added, and the tools for `ar-messages` come from the centralized config's `tools` array rather than from any local discovery.
 
 ### Environment Variable Resolution Pattern
 
@@ -594,7 +655,7 @@ This is the primary entry point. For each server defined in the pushed tools con
 
 ### verifyMcpToolFiles(Path workingDirectory)
 
-Checks for the existence of `tools/mcp/slack/server.py` and `tools/mcp/github/server.py` relative to the working directory. For each file:
+Checks for the existence of `tools/mcp/messages/server.py` and `tools/mcp/github/server.py` relative to the working directory. For each file:
 
 - If present: logs the file's age in seconds since last modification. This aids deployment diagnostics (stale tool files indicate a deployment problem).
 - If absent: logs a warning with the absolute path. Missing tool files mean the fallback stdio entries in the MCP config will fail at runtime.
@@ -607,7 +668,7 @@ A simple HTTP GET client method that returns the response body as a string. It u
 
 The controller serves pushed tool files at `GET /api/tools/<name>`. This endpoint is handled by `FlowTreeApiEndpoint.handleToolDownload()`, which reads the registered Python source file from disk and serves it as `text/plain`. Tool files are registered on the endpoint by the controller during startup.
 
-The full download URL has the form `http://0.0.0.0:<port>/api/tools/<name>`, where `<port>` is the `FlowTreeApiEndpoint` listening port (default: 7780) and `<name>` is the server name (e.g., `ar-slack`, `ar-memory`). The `0.0.0.0` placeholder is resolved to the actual controller host before the download request is made.
+The full download URL has the form `http://0.0.0.0:<port>/api/tools/<name>`, where `<port>` is the `FlowTreeApiEndpoint` listening port (default: 7780) and `<name>` is the server name (e.g., `ar-messages`, `ar-memory`). The `0.0.0.0` placeholder is resolved to the actual controller host before the download request is made.
 
 ### Pushed Tool File Layout
 
@@ -617,7 +678,7 @@ After downloading, pushed tools are stored in a flat directory structure under t
 ~/.flowtree/
   tools/
     mcp/
-      ar-slack/
+      ar-messages/
         server.py
       ar-memory/
         server.py
@@ -649,18 +710,18 @@ The `ManagedToolsDownloader` is constructed with a reference to the `McpConfigBu
 
 ### Decorator Pattern
 
-Used by: ar-slack, ar-memory, ar-consultant, ar-profile-analyzer, ar-github.
+Used by: ar-messages, ar-memory, ar-consultant, ar-profile-analyzer, ar-github.
 
 In this pattern, each tool is a Python function decorated with `@mcp.tool()`:
 
 ```python
 @mcp.tool()
-def slack_send_message(text: str) -> dict:
+def send_message(text: str) -> dict:
     """Send a message to the workstream channel."""
     ...
 
 @mcp.tool()
-def slack_get_stats(period: str = "weekly") -> dict:
+def get_stats(period: str = "weekly") -> dict:
     """Get job timing statistics."""
     ...
 ```
@@ -818,6 +879,8 @@ The first token is the fully qualified class name (used by the deserialization f
 | `wsEnv` | `workstreamEnv` | JSON then Base64 | Non-null, non-empty |
 | `planDoc` | `planningDocument` | Base64 | Non-null |
 | `protectTests` | `protectTestFiles` | Plain boolean | Always |
+| `enforceChanges` | `enforceChanges` | Plain boolean | Always |
+| `dedupMode` | `deduplicationMode` | Plain string | Non-null |
 
 Additionally, all `GitManagedJob` fields are encoded by `super.encode()`:
 
@@ -851,11 +914,13 @@ The `set(String key, String value)` method handles incoming key-value pairs duri
 - `wsEnv`: Base64-decoded to JSON, then parsed to `Map<String, String>` via `parseJsonObjectToMap()`
 - `planDoc`: Base64-decoded to `this.planningDocument`
 - `protectTests`: Parsed as boolean
+- `enforceChanges`: Parsed as boolean
+- `dedupMode`: Stored directly as `this.deduplicationMode` (plain string; `"local"` or `"spawn"`)
 - Default: delegated to `super.set(key, value)` for `GitManagedJob` fields
 
 ### Factory Serialization
 
-The Factory class mirrors the same key names in its `set(String key, String value)` method, which handles both git-shared keys (`workDir`, `repoUrl`, `defaultWsPath`, `branch`, `baseBranch`, `push`, `workstreamUrl`, `gitUserName`, `gitUserEmail`, `protectTests`) and factory-specific keys (`tools`, `maxTurns`, `maxBudget`, `centralMcp`, `pushedTools`, `wsEnv`, `planDoc`). The factory also stores `factoryTaskId` for task ID persistence.
+The Factory class mirrors the same key names in its `set(String key, String value)` method, which handles both git-shared keys (`workDir`, `repoUrl`, `defaultWsPath`, `branch`, `baseBranch`, `push`, `workstreamUrl`, `gitUserName`, `gitUserEmail`, `protectTests`) and factory-specific keys (`tools`, `maxTurns`, `maxBudget`, `centralMcp`, `pushedTools`, `wsEnv`, `planDoc`, `enforceChanges`, `dedupMode`). The factory also stores `factoryTaskId` for task ID persistence.
 
 Prompts are stored via `setPrompts(String... prompts)`, which joins them with `PROMPT_SEPARATOR` (`;;PROMPT;;`), Base64-encodes the result, and stores it under the key `prompts`. Retrieval via `getPrompts()` reverses this process.
 
@@ -881,7 +946,7 @@ When decoded:
 - `repoUrl` = `https://github.com/owner/repo`
 - `prompt` = `Fix the bug in Parser.java`
 - `tools` = `Read,Edit,Write,Bash,Glob,Grep`
-- `centralMcp` = `{"ar-slack":{"url":"http://0.0.0.0:8090/mcp","tools":["slack_send_message"]}}`
+- `centralMcp` = `{"ar-messages":{"url":"http://0.0.0.0:8090/mcp","tools":["send_message"]}}`
 
 ### Factory encode() and Prompt Storage
 
@@ -937,7 +1002,7 @@ A comma-separated string listing every tool the agent is allowed to use. Constru
 
 Example output:
 ```
-Read,Edit,Write,Bash,Glob,Grep,mcp__ar-slack__slack_send_message,mcp__ar-slack__slack_get_stats,mcp__ar-consultant__consult,mcp__ar-consultant__recall,mcp__ar-github__github_pr_find,mcp__ar-github__github_pr_review_comments,mcp__ar-github__github_pr_conversation,mcp__ar-github__github_pr_reply
+Read,Edit,Write,Bash,Glob,Grep,mcp__ar-messages__send_message,mcp__ar-messages__get_stats,mcp__ar-consultant__consult,mcp__ar-consultant__recall,mcp__ar-github__github_pr_find,mcp__ar-github__github_pr_review_comments,mcp__ar-github__github_pr_conversation,mcp__ar-github__github_pr_reply
 ```
 
 #### `--max-turns <N>`
@@ -958,7 +1023,7 @@ The `ProcessBuilder` sets these environment variables on the Claude Code process
 
 | Variable | Source | Description |
 |---|---|---|
-| `AR_WORKSTREAM_URL` | `resolveWorkstreamUrl()` | The workstream URL with `0.0.0.0` replaced by the controller's actual host. Used by MCP tools (ar-slack, ar-github) to communicate with the controller. |
+| `AR_WORKSTREAM_URL` | `resolveWorkstreamUrl()` | The workstream URL with `0.0.0.0` replaced by the controller's actual host. Used by MCP tools (ar-messages, ar-github) to communicate with the controller. |
 
 ### Process Configuration
 
@@ -1000,10 +1065,10 @@ claude -p "You are working autonomously as a coding agent...
 Fix the memory leak in CacheManager
 --- END USER REQUEST ---" \
 --output-format json \
---allowedTools Read,Edit,Write,Bash,Glob,Grep,mcp__ar-slack__slack_send_message,mcp__ar-consultant__consult,mcp__ar-consultant__recall,mcp__ar-consultant__remember,mcp__ar-consultant__branch_catchup,mcp__ar-github__github_pr_find,mcp__ar-github__github_pr_review_comments,mcp__ar-github__github_pr_conversation,mcp__ar-github__github_pr_reply \
+--allowedTools Read,Edit,Write,Bash,Glob,Grep,mcp__ar-messages__send_message,mcp__ar-consultant__consult,mcp__ar-consultant__recall,mcp__ar-consultant__remember,mcp__ar-consultant__branch_catchup,mcp__ar-github__github_pr_find,mcp__ar-github__github_pr_review_comments,mcp__ar-github__github_pr_conversation,mcp__ar-github__github_pr_reply \
 --max-turns 50 \
 --max-budget-usd 10.00 \
---mcp-config '{"mcpServers":{"ar-slack":{"type":"http","url":"http://controller:8090/mcp"},"ar-consultant":{"type":"http","url":"http://controller:8091/mcp"},"ar-github":{"command":"python3","args":["tools/mcp/github/server.py"]}}}'
+--mcp-config '{"mcpServers":{"ar-messages":{"type":"http","url":"http://controller:8090/mcp"},"ar-consultant":{"type":"http","url":"http://controller:8091/mcp"},"ar-github":{"command":"python3","args":["tools/mcp/github/server.py"]}}}'
 ```
 
 In practice, the prompt and MCP config strings are much longer, but the structure is always the same.

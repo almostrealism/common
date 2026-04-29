@@ -66,13 +66,29 @@ import org.almostrealism.hardware.Input;
  */
 public class Triangle extends AbstractSurface implements ParticleGroup, TriangleFeatures {
 
+	/** Shared instance of {@link TriangleFeatures} for constructing triangle computation producers. */
 	private static final TriangleFeatures triangleFeat = TriangleFeatures.getInstance();
 
+	/** Shared vertex data provider when this triangle is part of a mesh. */
 	private Mesh.VertexData vertexData;
-	private int ind1, ind2, ind3;
-	
+
+	/** Index of the first vertex in the vertex data provider. */
+	private int ind1;
+
+	/** Index of the second vertex in the vertex data provider. */
+	private int ind2;
+
+	/** Index of the third vertex in the vertex data provider. */
+	private int ind3;
+
 	/** First vertex of the triangle. */
-	private Vector p1, p2, p3;
+	private Vector p1;
+
+	/** Second vertex of the triangle. */
+	private Vector p2;
+
+	/** Third vertex of the triangle. */
+	private Vector p3;
 
 	/** Smooth shading flag - when true, normals are interpolated across the triangle. */
 	private boolean smooth;
@@ -279,14 +295,18 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	}
 	
 	/**
+	 * Sets whether the intersection methods will apply the transformations stored by this Triangle.
+	 *
 	 * @param use  If set to true, the intersection methods will apply the transformations stored by this
 	 *             Triangle object. Otherwise, transformation will not be used. Setting to false is useful
 	 *             if the Triangle vertices are absolute coordinates and/or if the Triangle is part of a Mesh
 	 *             and the Mesh will apply all needed transformation.
 	 */
 	public void setUseTransform(boolean use) { this.useT = use; }
-	
+
 	/**
+	 * Returns {@code true} if the intersection methods will apply the transformations stored by this Triangle.
+	 *
 	 * @return  True if the intersection methods will apply the transformations stored by this
 	 *          Triangle object, false otherwise.
 	 */
@@ -302,6 +322,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	public void setInterpolateVertexColor(boolean vcolor) { this.intcolor = vcolor; }
 	
 	/**
+	 * Returns {@code true} if color will be interpolated across the triangle based on vertex colors.
+	 *
 	 * @return  True if color will be interpolated across the triangle based on vertex colors
 	 *          and then mixed with the color of the triangle. False if the color of the triangle
 	 *          will be used all across the surface.
@@ -316,6 +338,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	public void setSmooth(boolean s) { this.smooth = s; }
 	
 	/**
+	 * Returns the smooth flag which indicates if normal vectors should be interpolated.
+	 *
 	 * @return  The smooth flag which indicates if normal vectors should be interpolated.
 	 */
 	public boolean getSmooth() { return this.smooth; }
@@ -497,6 +521,12 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		return new Constant<>(zero);
 	}
 
+	/**
+	 * Returns a string representation of this triangle, showing the three vertex positions.
+	 *
+	 * @return a string in the form "Triangle: p1 p2 p3"
+	 */
+	@Override
 	public String toString() {
 		return "Triangle: " + this.p1 + " " + this.p2 + " " + this.p3;
 	}

@@ -66,12 +66,19 @@ public class MetalProgram implements OperationInfo, Signature, Destroyable, Cons
 	 */
 	public static TimingMetric compileTime = Hardware.console.timing("mtlCompile");
 
+	/** Counter tracking how many instruction set monitoring outputs have been written. */
 	private static int monitorOutputCount;
 
+	/** Metadata describing this program's operation for identification and profiling. */
 	private final OperationMetadata metadata;
+	/** The Metal device used to compile and execute this program. */
 	private final MTLDevice device;
-	private final String func, src;
+	/** Name of the kernel function entry point within the MSL source. */
+	private final String func;
+	/** Metal Shading Language source code for this program. */
+	private final String src;
 
+	/** The compiled Metal function object used to create pipeline states. */
 	private MTLFunction function;
 
 	/**

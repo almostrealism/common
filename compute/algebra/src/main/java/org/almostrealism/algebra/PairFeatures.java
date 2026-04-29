@@ -20,6 +20,7 @@ import io.almostrealism.collect.ComplexProductExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.io.Console;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
@@ -161,7 +162,7 @@ public interface PairFeatures extends CollectionFeatures {
 						" with a collection of size " + size);
 			} else {
 				// TODO This should actually just call traverseEach if the shapes don't match, but one size is = 1
-				System.out.println("WARN: Multiplying a collection of size " + shape.getSize() +
+				Console.root().println("WARN: Multiplying a collection of size " + shape.getSize() +
 						" with a collection of size " + size + " (will broadcast)");
 			}
 		}

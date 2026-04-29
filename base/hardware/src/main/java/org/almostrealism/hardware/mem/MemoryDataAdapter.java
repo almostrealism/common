@@ -162,16 +162,29 @@ import java.util.Map;
  * @see MemoryProvider
  */
 public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
+	/** If true, per-provider memory version caching is enabled to avoid redundant transfers. */
 	public static boolean enableMemVersions = true;
+	/** If true, a finalizer is used to detect and report leaked allocations. */
 	public static boolean enableFinalizer = false;
 
+	/** Raw memory backing this data when there is no delegate. */
 	private Memory mem;
+	/** Per-provider cached copies of this memory, keyed by provider. */
 	private Map<MemoryProvider, Memory> memVersions;
 
+	/** Delegate memory data that owns the backing storage for this adapter. */
 	private MemoryData delegateMem;
+	/** Byte offset within the delegate at which this adapter's data begins. */
 	private int delegateMemOffset;
+	/** Traversal ordering applied when accessing this adapter through the delegate. */
 	private TraversalOrdering delegateOrder;
 
+	/**
+	 * Initializes backing memory if no delegate has been set.
+	 *
+	 * <p>If a delegate exists, does nothing. Otherwise allocates memory from the
+	 * default provider or heap.</p>
+	 */
 	protected void init() {
 		if (getDelegate() == null) {
 			Heap heap = getDefaultDelegate();
@@ -186,6 +199,11 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Initializes this adapter with explicitly provided backing memory.
+	 *
+	 * @param mem The pre-allocated memory to use as backing storage
+	 */
 	protected void init(Memory mem) {
 		this.mem = mem;
 	}
@@ -239,6 +257,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 			Memory mem = memVersions.get(provider);
 			mem.getProvider().setMem(mem, 0, this.mem, 0, getMemLength());
 			reassign(mem);
+			memVersions.remove(provider);
 		}
 	}
 
@@ -273,6 +292,15 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 		if (mem != null) {
 			mem.getProvider().deallocate(getMemLength(), mem);
 			mem = null;
+		}
+
+		if (memVersions != null) {
+			Map<MemoryProvider, Memory> versions = memVersions;
+			memVersions = null;
+			for (Memory cached : versions.values()) {
+				cached.getProvider().deallocate(getMemLength(), cached);
+			}
+			versions.clear();
 		}
 	}
 

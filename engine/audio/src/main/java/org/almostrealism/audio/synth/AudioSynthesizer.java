@@ -40,7 +40,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Frequency;
 import org.almostrealism.time.Temporal;
 
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.lifecycle.Setup;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -76,41 +76,99 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 		TRIANGLE
 	}
 
+	/** The set of relative frequencies used to derive oscillator frequencies from the fundamental. */
 	private final RelativeFrequencySet tones;
+
+	/** The waveform type used by all oscillators. */
 	private OscillatorType oscillatorType;
 
+	/** The oscillator cells, one per entry in the frequency set. */
 	private final List<CollectionTemporalCellAdapter> cells;
+
+	/** Summing cell that accumulates output from all oscillators. */
 	private final SummationCell output;
+
+	/** Optional biquad filter applied to the summed oscillator output. */
 	private BiquadFilterCell filter;
+
+	/** Optional ADSR envelope for modulating filter cutoff frequency over time. */
 	private ADSREnvelope filterEnvelope;
+
+	/** Depth in Hz of the filter envelope modulation applied to the base cutoff. */
 	private double filterEnvelopeAmount;
+
+	/** Base filter cutoff frequency in Hz before envelope modulation is applied. */
 	private double filterBaseCutoff;
+
+	/** The keyboard tuning system used for MIDI-note-to-frequency conversion. */
 	private KeyboardTuning tuning;
+
+	/** The synthesis model controlling per-frequency amplitude levels; null for uniform levels. */
 	private AudioSynthesisModel model;
+
+	/** Optional ADSR envelope applied to the amplitude of all oscillators. */
 	private ADSREnvelope ampEnvelope;
+
+	/** Current velocity (amplitude scaling factor) in the range 0.0–1.0. */
 	private double velocity;
 
+	/** The unmodified fundamental frequency set by {@link #setFrequency(Frequency)}, used as the reference for pitch bend calculations. */
+	private Frequency baseFrequency;
+
+	/** Creates an AudioSynthesizer with 2 sub-octaves, 5 overtones, and no synthesis model. */
 	public AudioSynthesizer() {
 		this((AudioSynthesisModel) null);
 	}
 
+	/**
+	 * Creates an AudioSynthesizer with the specified sub- and super-octave counts and no synthesis model.
+	 *
+	 * @param subCount   number of sub-octave partials
+	 * @param superCount number of overtone partials
+	 */
 	public AudioSynthesizer(int subCount, int superCount) {
 		this(null, subCount, superCount, 0);
 	}
 
+	/**
+	 * Creates an AudioSynthesizer with the given synthesis model and 2 sub-octaves and 5 overtones.
+	 *
+	 * @param model synthesis model controlling amplitude levels; null for uniform levels
+	 */
 	public AudioSynthesizer(AudioSynthesisModel model) {
 		this(model, 2, 5, 0);
 	}
 
+	/**
+	 * Creates an AudioSynthesizer with the given model and an overtone series of specified size.
+	 *
+	 * @param model          synthesis model controlling amplitude levels; null for uniform levels
+	 * @param subCount       number of sub-octave partials
+	 * @param superCount     number of overtone partials
+	 * @param inharmonicCount number of inharmonic partials
+	 */
 	public AudioSynthesizer(AudioSynthesisModel model,
 							int subCount, int superCount, int inharmonicCount) {
 		this(model, new OvertoneSeries(subCount, superCount, inharmonicCount));
 	}
 
+	/**
+	 * Creates an AudioSynthesizer with the given model and custom frequency set using SINE oscillators.
+	 *
+	 * @param model  synthesis model controlling amplitude levels; null for uniform levels
+	 * @param voices the relative frequency set defining oscillator pitches
+	 */
 	public AudioSynthesizer(AudioSynthesisModel model, RelativeFrequencySet voices) {
 		this(model, voices, OscillatorType.SINE);
 	}
 
+	/**
+	 * Primary constructor. Creates an AudioSynthesizer with full control over model, voices, and oscillator type.
+	 *
+	 * @param model          synthesis model controlling amplitude levels; null for uniform levels
+	 * @param voices         the relative frequency set defining oscillator pitches
+	 * @param oscillatorType waveform type for all oscillators
+	 */
 	public AudioSynthesizer(AudioSynthesisModel model, RelativeFrequencySet voices, OscillatorType oscillatorType) {
 		setModel(model);
 		this.tones = voices;
@@ -162,6 +220,11 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 		}
 	}
 
+	/**
+	 * Returns the summation cell that accumulates and forwards the mixed oscillator output.
+	 *
+	 * @return the output summation cell
+	 */
 	public Cell<PackedCollection> getOutput() {
 		return output;
 	}
@@ -193,7 +256,14 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 		}
 	}
 
+	/** Returns the synthesis model controlling per-frequency amplitude levels, or null for uniform levels. */
 	public AudioSynthesisModel getModel() { return model; }
+
+	/**
+	 * Sets the synthesis model.
+	 *
+	 * @param model the synthesis model, or null for uniform levels
+	 */
 	public void setModel(AudioSynthesisModel model) { this.model = model; }
 
 	/**
@@ -358,6 +428,27 @@ public class AudioSynthesizer implements Temporal, Setup, StatelessSource, Sampl
 	 * @param f the fundamental frequency
 	 */
 	public void setFrequency(Frequency f) {
+		this.baseFrequency = f;
+		applyFrequency(f);
+	}
+
+	/**
+	 * Applies pitch bend by shifting the current base frequency by the
+	 * specified number of semitones. Fractional semitones are supported.
+	 *
+	 * @param semitones pitch bend amount in semitones (e.g., 2.0 = up two semitones)
+	 */
+	public void setPitchBend(double semitones) {
+		if (baseFrequency == null) return;
+		double bentHz = baseFrequency.asHertz() * Math.pow(2.0, semitones / 12.0);
+		applyFrequency(new Frequency(bentHz));
+	}
+
+	/**
+	 * Updates all oscillators to match the given frequency according to the
+	 * {@link RelativeFrequencySet}.
+	 */
+	private void applyFrequency(Frequency f) {
 		Iterator<CollectionTemporalCellAdapter> itr = cells.iterator();
 		for (Frequency r : tones.getFrequencies(f)) {
 			if (itr.hasNext()) {

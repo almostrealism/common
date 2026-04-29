@@ -55,13 +55,18 @@ is a thin orchestration facade that:
 | `project_create_branch` | pipeline | Create branch + dispatch project-manager |
 | `project_verify_branch` | pipeline | Dispatch verify-completion workflow |
 | `project_commit_plan` | pipeline | Commit a plan document to a branch |
+| `github_pr_review_comments` | pipeline | Get unresolved review thread comments on a PR |
+
+**Planned:** Add `github_dismiss_code_scanning_alert` — dismiss GitHub Advanced Security
+code-scanning alerts by alert number (e.g., to close bot-generated scanner warnings on
+resolved issues). Requires `security_events: write` permission on the PAT.
 
 ### Tier 3: Memory
 
 | Tool | Scope | Description |
 |------|-------|-------------|
 | `memory_recall` | memory | Semantic search with optional LLM synthesis |
-| `memory_branch_context` | memory | Get all memories for a specific branch |
+| `workstream_context` | memory | Get memories, commits, and jobs for a workstream branch |
 | `memory_store` | memory | Store a memory from an external client |
 
 Memory tools resolve `repo_url` and `branch` from a `workstream_id` when not
@@ -130,11 +135,11 @@ without authentication (for trusted LAN use). A warning is logged on startup.
 
 ### Docker Compose (recommended)
 
-ar-manager is defined as a service in `tools/docker-compose.yml` alongside
+ar-manager is defined as a service in `flowtree/controller/docker-compose.yml` alongside
 ar-memory and the FlowTree controller:
 
 ```bash
-docker compose -f tools/docker-compose.yml up -d
+docker compose -f flowtree/controller/docker-compose.yml up -d
 ```
 
 Place `manager-tokens.json` in `/Users/Shared/flowtree/manager/` on the host.
@@ -142,14 +147,92 @@ Place `manager-tokens.json` in `/Users/Shared/flowtree/manager/` on the host.
 **TLS is required for public deployments.** The compose file exposes plain HTTP.
 Use Tailscale Funnel, Caddy, or nginx as a TLS-terminating reverse proxy.
 
-### Tailscale Funnel (quickest public endpoint)
+### Tailscale Funnel (recommended for public access)
+
+Tailscale Funnel gives ar-manager a stable public HTTPS URL with zero certificate
+management. This is the recommended way to expose ar-manager to Claude mobile or
+other external clients.
+
+#### Prerequisites
+
+1. **Tailscale installed and authenticated** on the host machine.
+   ```bash
+   tailscale status   # should show "100.x.x.x  <hostname>  ..."
+   ```
+
+2. **Funnel enabled** for your Tailscale account. In the Tailscale admin console
+   go to **DNS → Enable HTTPS** and then **Access controls → Enable Funnel**.
+   Funnel requires a Tailscale account on the Personal or Team plan.
+
+3. **The controller stack running** (`./flowtree/rebuild.sh` from the repo root).
+   ar-manager depends on `flowtree-controller` and `ar-memory` being up.
+
+#### Setup
+
+Run the setup script from the repo root:
 
 ```bash
-cd tools/mcp/manager
-./setup.sh
+./tools/mcp/manager/setup.sh
 ```
 
-This generates a token, builds the container, and sets up Tailscale Funnel.
+The script does the following steps:
+
+1. Creates `/Users/Shared/flowtree/manager/` and generates a bearer token into
+   `manager-tokens.json` if none exists yet.
+2. Derives your Tailscale DNS name (e.g. `my-host.taild1234.ts.net`) so it can
+   set `AR_MANAGER_ISSUER_URL` before the container starts.
+3. Builds and starts the `ar-manager` container via Docker Compose.
+4. Waits for the `/_health` endpoint to respond.
+5. Runs `tailscale funnel --bg <port>` to punch the port through to the internet.
+
+When it finishes you will see:
+
+```
+==> Funnel active. Public MCP endpoint:
+
+    https://my-host.taild1234.ts.net/
+
+    Configure this URL in Claude mobile as a remote MCP server.
+    OAuth will prompt you to enter your bearer token.
+```
+
+#### Verify the funnel
+
+```bash
+tailscale funnel status
+curl https://my-host.taild1234.ts.net/_health
+```
+
+#### Re-running after a reboot
+
+Tailscale Funnel survives reboots automatically once configured. The Docker
+container does not — run `./flowtree/rebuild.sh` (or `docker compose ... up -d`)
+to bring it back. The funnel itself does not need to be re-configured.
+
+```bash
+# Bring the stack back up after a reboot
+./flowtree/rebuild.sh
+
+# Confirm funnel is still active
+tailscale funnel status
+```
+
+#### Skip the funnel (LAN-only)
+
+```bash
+./tools/mcp/manager/setup.sh --no-funnel
+```
+
+ar-manager will be reachable at `http://localhost:8010` but not from the internet.
+
+#### Token-only (no container changes)
+
+```bash
+./tools/mcp/manager/setup.sh --token-only
+```
+
+Generates a bearer token and exits without touching Docker or Tailscale. Useful
+when adding a second client (e.g. a CI pipeline) to an already-running deployment.
 
 ### Reverse proxy examples
 

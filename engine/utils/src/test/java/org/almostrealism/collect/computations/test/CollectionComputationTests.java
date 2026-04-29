@@ -63,7 +63,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 			value.into(result).evaluate();
 		});
 
-		System.out.println(result.toArrayString());
+		log(String.valueOf(result.toArrayString()));
 		assertEquals(5.0, result.toDouble(0));
 		assertEquals(6.0, result.toDouble(1));
 		assertEquals(7.0, result.toDouble(2));
@@ -83,7 +83,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 			product.get().into(result).evaluate();
 		});
 
-		System.out.println(result.valueAt(5000, 0));
+		log(String.valueOf(result.valueAt(5000, 0)));
 		assertEquals(2 * 5000, result.valueAt(5000, 0));
 	}
 
@@ -103,7 +103,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 			product.get().into(result).evaluate();
 		});
 
-		System.out.println(result.toArrayString());
+		log(String.valueOf(result.toArrayString()));
 		assertEquals(8.0, result.toDouble(0));
 		assertEquals(18.0, result.toDouble(1));
 	}
@@ -244,8 +244,8 @@ public class CollectionComputationTests extends TestSuiteBase {
 				}
 			}
 
-			System.out.println(output.getShape());
-			System.out.println(output.toDouble(0));
+			log(String.valueOf(output.getShape()));
+			log(String.valueOf(output.toDouble(0)));
 			assertEquals(expected, output.toDouble(0));
 		});
 	}
@@ -371,12 +371,12 @@ public class CollectionComputationTests extends TestSuiteBase {
 
 		Evaluable<PackedCollection> ev = multiply(c(2), c(p(timeline))).get();
 		ev.into(destination.traverseEach()).evaluate();
-		System.out.println(Arrays.toString(destination.toArray(0, 10)));
+		log(Arrays.toString(destination.toArray(0, 10)));
 		assertEquals(6.0, destination.toDouble(2));
 		assertEquals(8.0, destination.toDouble(3));
 
 		destination = ev.evaluate();
-		System.out.println(Arrays.toString(destination.toArray(0, 10)));
+		log(Arrays.toString(destination.toArray(0, 10)));
 		assertEquals(6.0, destination.toDouble(2));
 		assertEquals(8.0, destination.toDouble(3));
 	}
@@ -390,12 +390,12 @@ public class CollectionComputationTests extends TestSuiteBase {
 
 		Evaluable<PackedCollection> ev = multiply(c(2), c(timeline.getShape(), args -> timeline)).get();
 		ev.into(destination.traverseEach()).evaluate();
-		System.out.println(Arrays.toString(destination.toArray(0, 10)));
+		log(Arrays.toString(destination.toArray(0, 10)));
 		assertEquals(6.0, destination.toDouble(2));
 		assertEquals(8.0, destination.toDouble(3));
 
 		destination = ev.evaluate();
-		System.out.println(Arrays.toString(destination.toArray(0, 10)));
+		log(Arrays.toString(destination.toArray(0, 10)));
 		assertEquals(6.0, destination.toDouble(2));
 		assertEquals(8.0, destination.toDouble(3));
 	}
@@ -427,10 +427,10 @@ public class CollectionComputationTests extends TestSuiteBase {
 				.fill(pos -> (1.0 + pos[0]) * (-0.5 + pos[1] % 2) * (0.7 + pos[2]))
 				.traverse(2);
 		value.print();
-		System.out.println("--");
+		log("--");
 
 		PackedCollection m = max(cp(value)).get().evaluate();
-		System.out.println(m.getShape());
+		log(String.valueOf(m.getShape()));
 		m.print();
 
 		Assert.assertEquals(3, m.getShape().getDimensions());
@@ -447,18 +447,18 @@ public class CollectionComputationTests extends TestSuiteBase {
 	}
 
 	// @Test(timeout = 30000)
-	public void dynamicMax() {
+	private void dynamicMax() {
 		PackedCollection value = new PackedCollection(shape(2, 3, 2))
 				.fill(pos -> (1.0 + pos[0]) * (-0.5 + pos[1] % 2) * (0.7 + pos[2]))
 				.traverse(2);
 		value.print();
-		System.out.println("--");
+		log("--");
 
 		PackedCollection output = new PackedCollection(shape(2, 3, 1)).traverse(2);
 
 //		PackedCollection m = max(new DynamicCollectionProducer(shape(2, 3, 2), args -> value, false)).get().evaluate();
 		PackedCollection m = max(new DynamicProducer<PackedCollection>(args -> value)).get().into(output).evaluate();
-		System.out.println(m.getShape());
+		log(String.valueOf(m.getShape()));
 		m.print();
 
 		Assert.assertEquals(3, m.getShape().getDimensions());
@@ -479,12 +479,12 @@ public class CollectionComputationTests extends TestSuiteBase {
 		PackedCollection series = new PackedCollection(2, 10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		series.setMem(10, 12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0);
-		System.out.println(series.traverse(1).getCountLong() + " series");
+		log(String.valueOf(series.traverse(1).getCountLong() + " series"));
 
 		Producer<PackedCollection> max = max(v(shape(-1, 10), 0));
 		PackedCollection dest = max.get().evaluate(series.traverse(1));
 
-		System.out.println(Arrays.toString(dest.toArray(0, 2)));
+		log(Arrays.toString(dest.toArray(0, 2)));
 		assertEquals(14, dest.toArray(0, 1)[0]);
 		assertEquals(16, dest.toArray(1, 1)[0]);
 	}
@@ -493,7 +493,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 	public void collectionMax() {
 		PackedCollection series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
-		System.out.println(series.traverse(0).getCountLong() + " series");
+		log(String.valueOf(series.traverse(0).getCountLong() + " series"));
 
 		Producer<PackedCollection> max = max(v(shape(10), 0));
 		PackedCollection dest = new PackedCollection(2, 1);
@@ -508,7 +508,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 
 		// If this was permitted, it should perhaps repeat the
 		// result for every position in the output
-		System.out.println(Arrays.toString(dest.toArray(0, 2)));
+		log(Arrays.toString(dest.toArray(0, 2)));
 		assertEquals(14, dest.toArray(0, 1)[0]);
 		assertEquals(14, dest.toArray(1, 1)[0]);
 	}
@@ -517,7 +517,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 	public void greaterThanMax() {
 		PackedCollection series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
-		System.out.println(series.traverse(0).getCountLong() + " series");
+		log(String.valueOf(series.traverse(0).getCountLong() + " series"));
 
 		PackedCollection dest = new PackedCollection(1);
 		CollectionProducer max = cp(series.traverse(0)).max();
@@ -529,7 +529,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 			op.get().run();
 		});
 
-		System.out.println("Max = " + dest.toDouble(0));
+		log("Max = " + dest.toDouble(0));
 		assertEquals(0.8 / 14, dest.toDouble(0));
 	}
 

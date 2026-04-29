@@ -18,9 +18,9 @@ package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.IndexSequence;
-import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.List;
@@ -29,9 +29,27 @@ import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.stream.IntStream;
 
+/**
+ * A unary arithmetic negation expression ({@code -value}).
+ *
+ * <p>Generates code of the form {@code -value}. Double negation and constant folding
+ * are applied at factory time. When {@link #enableDistributive} is true, negation is
+ * distributed across sums during simplification.</p>
+ *
+ * @param <T> the numeric type of the negated expression
+ */
 public class Minus<T extends Number> extends UnaryExpression<T> {
+	/**
+	 * When {@code true}, negation is distributed into sum operands during simplification
+	 * (e.g. {@code -(a + b)} becomes {@code (-a) + (-b)}).
+	 */
 	public static boolean enableDistributive = true;
 
+	/**
+	 * Constructs an arithmetic negation expression for the given operand.
+	 *
+	 * @param value the expression to negate
+	 */
 	protected Minus(Expression<? extends Number> value) {
 		super((Class) value.getType(), "-", value);
 	}
@@ -104,10 +122,23 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 		return minus(target.getShape(), getChildren().get(0).delta(target));
 	}
 
+	/**
+	 * Creates and post-processes an arithmetic negation expression.
+	 *
+	 * @param value the expression to negate
+	 * @return a simplified or constant-folded expression
+	 */
 	public static Expression<?> of(Expression<?> value) {
 		return Expression.process(create(value));
 	}
 
+	/**
+	 * Creates an arithmetic negation expression, folding constants and eliminating
+	 * double negation.
+	 *
+	 * @param value the expression to negate
+	 * @return the simplified expression or a new {@link Minus}
+	 */
 	protected static Expression<?> create(Expression<?> value) {
 		OptionalLong v = value.longValue();
 

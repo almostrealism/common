@@ -48,16 +48,31 @@ import java.util.function.Supplier;
  * @see SineWaveCellData
  */
 public class WavetableCell extends CollectionTemporalCellAdapter implements SamplingFeatures {
+	/** Default number of samples in the sine wavetable created by the no-arg constructor. */
 	public static final int DEFAULT_TABLE_SIZE = 2048;
 
+	/** Optional amplitude envelope applied to each output sample. */
 	private Factor<PackedCollection> env;
+
+	/** Cell state data holding oscillator parameters such as frequency and phase position. */
 	private final SineWaveCellData data;
+
+	/** The single-cycle waveform table; values should be in the range [-1, 1]. */
 	private final PackedCollection wavetable;
+
+	/** Number of samples in the wavetable. */
 	private final int tableSize;
 
+	/** Duration of a single note in seconds; controls how long playback continues before stopping. */
 	private double noteLength;
+
+	/** Duration of a single waveform cycle in seconds, derived from the playback frequency. */
 	private double waveLength;
+
+	/** Current read position within the wavetable, in the range [0, tableSize). */
 	private double phase;
+
+	/** Amplitude scaling factor applied to each output sample. */
 	private double amplitude;
 
 	/**
@@ -170,26 +185,56 @@ public class WavetableCell extends CollectionTemporalCellAdapter implements Samp
 
 	public void strike() { data.setNotePosition(0); }
 
+	/**
+	 * Sets the oscillator frequency by converting Hz to a fractional wave length in frames per cycle.
+	 *
+	 * @param hertz desired frequency in Hz
+	 */
 	public void setFreq(double hertz) {
 		this.waveLength = hertz / (double) OutputLine.sampleRate;
 	}
 
+	/**
+	 * Returns an operation that dynamically sets the oscillator frequency from a producer.
+	 *
+	 * @param hertz producer yielding the frequency in Hz
+	 * @return operation that updates the wave length in the underlying data buffer
+	 */
 	public Supplier<Runnable> setFreq(Producer<PackedCollection> hertz) {
 		return a(data.getWaveLength(), divide(hertz, c(OutputLine.sampleRate)));
 	}
 
+	/**
+	 * Sets the note length in milliseconds.
+	 *
+	 * @param msec note duration in milliseconds
+	 */
 	public void setNoteLength(int msec) {
 		this.noteLength = toFramesMilli(msec);
 	}
 
+	/**
+	 * Returns an operation that dynamically sets the note length from a producer.
+	 *
+	 * @param noteLength producer yielding the note duration in milliseconds
+	 * @return operation that updates the note length in the underlying data buffer
+	 */
 	public Supplier<Runnable> setNoteLength(Producer<PackedCollection> noteLength) {
 		return a(data.getNoteLength(), toFramesMilli(noteLength));
 	}
 
+	/** Sets the initial phase offset for the oscillator in radians. */
 	public void setPhase(double phase) { this.phase = phase; }
 
+	/** Sets the output amplitude scaling factor (0.0–1.0). */
 	public void setAmplitude(double amp) { amplitude = amp; }
 
+	/**
+	 * Returns an operation that dynamically sets the amplitude from a producer.
+	 *
+	 * @param amp producer yielding the amplitude scaling factor
+	 * @return operation that updates the amplitude in the underlying data buffer
+	 */
 	public Supplier<Runnable> setAmplitude(Producer<PackedCollection> amp) {
 		return a(data.getAmplitude(), amp);
 	}

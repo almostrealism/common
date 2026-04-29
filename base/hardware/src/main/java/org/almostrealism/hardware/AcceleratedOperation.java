@@ -37,6 +37,7 @@ import org.almostrealism.hardware.jni.NativeExecution;
 import org.almostrealism.hardware.kernel.KernelWork;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.MemoryReplacementManager;
 import org.almostrealism.hardware.metal.MTLBuffer;
@@ -594,8 +595,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			}
 
 			// Run the operator
-			long start = System.nanoTime();
 			Semaphore nextSemaphore = operator.accept(input, null);
+
+			// Register kernel semaphore with the active heap stage so
+			// that pop() waits for kernel completion before destroying memory
+			Heap.addPendingKernel(nextSemaphore);
 
 			// Postprocessing
 			if (processing) {

@@ -23,7 +23,11 @@ import io.flowtree.job.JobFactory;
 import io.flowtree.msg.Connection;
 import io.flowtree.msg.Message;
 import io.flowtree.msg.NodeProxy;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.RSSFeed;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.almostrealism.util.Chart;
 
 import javax.swing.*;
@@ -44,80 +48,319 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.function.Consumer;
 
 /**
  * A {@link Node} represents a member of the distributed network
  * which can process one {@link Job} at a time. A {@link Node} is
  * tied to a parent {@link NodeGroup} and is assigned an id that
  * is unique for that parent.
- * 
+ *
+ * <h2>Threads</h2>
+ * <p>Each Node runs two threads:</p>
+ * <ul>
+ *   <li><b>Worker thread</b> -- pulls jobs from the queue, checks
+ *       label requirements via {@link #satisfies(Map)}, and either
+ *       executes the job or puts it back in the queue for relay.</li>
+ *   <li><b>Activity thread</b> -- manages peer {@link Connection}
+ *       establishment and relays excess jobs to peers. This is the
+ *       only mechanism that moves jobs between Nodes on different
+ *       Servers.</li>
+ * </ul>
+ *
+ * <h2>Job Routing</h2>
+ * <p>{@link io.flowtree.node.NodeGroup} routes each incoming job to the most
+ * appropriate child Node via {@code routeJob()}: a Node whose labels satisfy
+ * the job's requirements is preferred; if none exists locally the job goes to
+ * the NodeGroup's built-in relay Node. A worker Node that still receives a
+ * mismatched job (e.g. via a direct peer connection) relays it to its parent
+ * NodeGroup for re-routing rather than re-queuing to itself.</p>
+ *
+ * <h2>Relay Nodes</h2>
+ * <p>A Node with the label {@code role:relay} never executes jobs.
+ * The worker thread is not started on relay Nodes (the
+ * {@link #addJob(Job)} method skips worker startup when
+ * {@code role:relay} is set). Jobs accumulate in the queue and are
+ * moved exclusively by the relay loop in the activity thread until a
+ * capable peer connection becomes available.</p>
+ *
  * @author  Michael Murray
+ * @see NodeGroup
+ * @see Connection
+ * @see <a href="../docs/node-relay.md">Node Relay and Job Routing</a>
  */
 // TODO  Implement JobQueue
-public class Node implements Runnable, ThreadFactory {
+public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
+	/** Shared {@link Random} instance used for probabilistic relay and connection decisions. */
 	public static Random random = new Random();
 
+	/** Formatter for percentage values used in status output. */
 	protected NumberFormat pFormat = NumberFormat.getPercentInstance();
-	protected NumberFormat dFormat = new DecimalFormat("#.000");
-	protected boolean verboseNews = true;
-	protected boolean verbose = false;
-	protected boolean weightPeers = false;
-	
-	protected double minSleep = 5000;
-	private double maxSleepC = 300;
-	private double activitySleepC = 1.2, activitySleepO = -0.4;
-	private double peerActivitySleepC = 0.0;
-	private final double activityC = 2.0;
-	private double minJobP = 0.4;
-	private double peerRelayC = 0.2;
-	private double parentalRelayP = 0.0;
-	private final double parentalSleepP = 0.0;
-	
-	public interface ActivityListener {
-		void iteration(Node n);
-		void startedWorking();
-		void stoppedWorking();
-		void becameIsolated();
-	}
-	
-	protected NodeGroup parent;
-	private final int id;
-	
-	private int minJobs;
-	private int maxJobs;
-	private final int maxPeers;
-	private int maxFailedJobs;
-	private double relay, connect;
-	private final Set peers;
-	protected final List<Job> jobs;
-	protected List listeners;
-	protected List failedJobs;
-	
-	private boolean stop, working;
-	private int sleep;
-	private double relaySum, connectSum;
-	private int relayDiv, connectDiv;
-	protected Chart relayGraph, connectGraph, sleepGraph;
-	
-	protected double sleepSum, totalSleepSum;
-	protected int sleepDiv, totalSleepDiv;
-	private long totalWorkTime, totalComTime;
-	private int totalJobs, totalErrJobs, totalRelay;
 
+	/** Formatter for decimal values (three decimal places) used in status output. */
+	protected NumberFormat dFormat = new DecimalFormat("#.000");
+
+	/**
+	 * When {@code true}, the RSS log entry for each status message includes the full
+	 * node status block in addition to the message headline.
+	 */
+	protected boolean verboseNews = true;
+
+	/**
+	 * When {@code true}, extra diagnostic output is written to stdout (e.g. peer
+	 * selection decisions during relay).
+	 */
+	protected boolean verbose = false;
+
+	/**
+	 * When {@code true}, peer selection for relay is weighted by the activity rating
+	 * reported by each remote node group, favouring the least-busy peer.
+	 * When {@code false}, peers are selected uniformly at random.
+	 */
+	protected boolean weightPeers = false;
+
+	/** Minimum sleep interval between activity-thread iterations, in milliseconds. */
+	protected double minSleep = 5000;
+
+	/**
+	 * Coefficient that caps the maximum sleep interval as a multiple of
+	 * {@link #minSleep}.  The effective maximum is {@code minSleep * maxSleepC}.
+	 * May be overridden by the parent {@link NodeGroup}.
+	 */
+	private double maxSleepC = 300;
+
+	/**
+	 * Coefficient ({@code activitySleepC}) and offset ({@code activitySleepO}) that
+	 * control how the activity rating of this node is translated into a sleep interval.
+	 * The next sleep value is computed as
+	 * {@code currentSleep * (activitySleepC / (activityRating + activitySleepO) - ...)}.
+	 */
+	private double activitySleepC = 1.2, activitySleepO = -0.4;
+
+	/**
+	 * Contribution of the parent NodeGroup's peer-activity ratio to the sleep
+	 * adjustment formula.  A value of {@code 0.0} disables this influence.
+	 */
+	private double peerActivitySleepC = 0.0;
+
+	/**
+	 * Scaling constant used in the activity-rating calculation:
+	 * {@code 1 + (jobs - minJobs) / (activityC * maxJobs)}.
+	 */
+	private final double activityC = 2.0;
+
+	/**
+	 * Minimum job-queue fill ratio (relative to {@link #maxJobs}) below which relay
+	 * is suppressed.  Updated by {@link #setMinimumJobP(double)}.
+	 */
+	private double minJobP = 0.4;
+
+	/**
+	 * Coefficient added to the relay probability based on the fraction of peer
+	 * connections currently in use.  Encourages relay when the node is well-connected.
+	 */
+	private double peerRelayC = 0.2;
+
+	/**
+	 * Probability (0.0–1.0) that a relay attempt routes the job to the parent
+	 * {@link NodeGroup} rather than to a random peer connection.
+	 */
+	private double parentalRelayP = 0.0;
+
+	/**
+	 * Fraction of the parent {@link NodeGroup}'s sleep time that is added to this
+	 * node's own sleep interval each iteration.  Currently fixed at {@code 0.0}.
+	 */
+	private final double parentalSleepP = 0.0;
+
+	/**
+	 * Backward-compatible alias for {@link NodeActivityListener}.
+	 * All method declarations live in the parent interface; this alias exists
+	 * solely so that pre-existing {@code implements Node.ActivityListener} and
+	 * {@code Node.ActivityListener} type references continue to compile.
+	 */
+	public interface ActivityListener extends NodeActivityListener { }
+	
+	/** The {@link NodeGroup} that owns and coordinates this node. May be {@code null} for standalone nodes (which do not execute jobs). */
+	protected NodeGroup parent;
+
+	/** Immutable identifier that is unique within the parent {@link NodeGroup}. */
+	private final int id;
+
+	/**
+	 * Minimum number of jobs that should remain in the queue before relay is
+	 * suppressed.  Below this threshold the node prefers to keep jobs locally
+	 * rather than forwarding them to peers.
+	 */
+	private int minJobs;
+
+	/**
+	 * Maximum number of jobs the queue may hold before the node aggressively
+	 * relays to peers (doubles the relay probability).
+	 */
+	private int maxJobs;
+
+	/** Maximum number of peer {@link Connection}s this node will maintain simultaneously. */
+	private final int maxPeers;
+
+	/**
+	 * Maximum number of failed job encodings to retain for retry.
+	 * A value of {@code 0} disables the failed-job retry mechanism.
+	 */
+	private int maxFailedJobs;
+
+	/**
+	 * Base relay probability ({@code relay}) and base connect probability ({@code connect})
+	 * used in the activity loop.  Both are values in [0.0, 1.0].
+	 */
+	private double relay, connect;
+
+	/** Set of active {@link Connection} objects representing peer nodes. */
+	private final Set peers;
+
+	/** Ordered queue of jobs waiting to be executed or relayed by this node. */
+	protected final List<Job> jobs;
+
+	/** List of {@link ActivityListener} objects notified on state transitions. */
+	protected List listeners;
+
+	/**
+	 * List of encoded (String) job representations that failed during execution.
+	 * Jobs are decoded and retried when the queue is empty.
+	 * {@code null} when the failed-job retry mechanism is disabled.
+	 */
+	protected List failedJobs;
+
+	/**
+	 * {@code stop} signals the activity thread to exit its loop on the next iteration.
+	 * {@code working} is {@code true} while the worker thread is executing a job.
+	 */
+	private boolean stop, working;
+
+	/** Current sleep interval (milliseconds) used between activity-thread iterations. */
+	private int sleep;
+
+	/**
+	 * Running sum of relay-probability samples ({@code relaySum}) and connect-probability
+	 * samples ({@code connectSum}) accumulated since the last status snapshot.
+	 */
+	private double relaySum, connectSum;
+
+	/**
+	 * Number of samples accumulated into {@link #relaySum} ({@code relayDiv}) and
+	 * {@link #connectSum} ({@code connectDiv}) respectively.
+	 */
+	private int relayDiv, connectDiv;
+
+	/**
+	 * Strip charts displayed in the status HTML: relay probability over time
+	 * ({@code relayGraph}), connect probability over time ({@code connectGraph}),
+	 * and sleep duration over time ({@code sleepGraph}).
+	 */
+	protected Chart relayGraph, connectGraph, sleepGraph;
+
+	/**
+	 * Running sum ({@code sleepSum}) and total sum ({@code totalSleepSum}) of sleep
+	 * intervals recorded across iterations, used for computing average sleep time.
+	 */
+	protected double sleepSum, totalSleepSum;
+
+	/**
+	 * Sample count for the current sleep window ({@code sleepDiv}) and for the
+	 * full lifetime of this node ({@code totalSleepDiv}).
+	 */
+	protected int sleepDiv, totalSleepDiv;
+
+	/** Cumulative wall-clock time in milliseconds spent executing jobs. */
+	private long totalWorkTime;
+
+	/** Cumulative wall-clock time in milliseconds spent on relay and connection activity. */
+	private long totalComTime;
+
+	/** Total number of jobs successfully completed by the worker thread. */
+	private int totalJobs;
+
+	/** Total number of jobs that threw an exception during execution. */
+	private int totalErrJobs;
+
+	/** Total number of jobs relayed to peers or to the parent NodeGroup. */
+	private int totalRelay;
+
+	/** Counter used to assign unique names to threads created by {@link #newThread(Runnable)}. */
 	private int threadCount;
+
+	/** The activity thread: manages peer connections and periodic relay decisions. */
 	private final Thread nodeThread;
+
+	/**
+	 * The worker thread: pulls jobs from the queue and executes them one at a time.
+	 * Set to {@code null} when this node has no parent (i.e. it is a standalone coordinator
+	 * that never executes jobs directly).
+	 */
 	private Thread worker;
+
+	/**
+	 * Single-thread {@link ExecutorService} provided to each {@link Job} for internal
+	 * parallelism.  Threads are named via {@link #newThread(Runnable)}.
+	 */
 	private ExecutorService pool;
+
+	/** The {@link Job} currently being executed by the worker thread, or {@code null} if idle. */
 	private Job currentJob;
-	
+
+	/** Optional Swing label used to display the most recent status message in a UI. */
 	private JLabel label;
+
+	/** The last status message produced by {@link #displayMessage(String, String)}, used to clear the UI label. */
 	private String lastMessage;
-	
+
+	/** Human-readable name for this node, used in log and status output. */
 	private String name;
-	
+
+	/** File path for the RSS log file written by {@link #writeLogFile(int)}. */
 	protected String rssfile;
+
+	/** RSS feed used for structured log output; shared with the parent {@link NodeGroup}. */
 	protected RSSFeed log;
-	
+
+	/**
+	 * Capability labels assigned to this node (e.g. {@code "platform" -> "macos"}).
+	 * Used by {@link #satisfies(Map)} to determine whether this node may execute a
+	 * given job's requirements.  Insertion order is preserved.
+	 */
+	private final Map<String, String> labels = new LinkedHashMap<>();
+
+	/**
+	 * Sets a label describing a capability of this Node.
+	 *
+	 * @param key   the label key (e.g. "platform")
+	 * @param value the label value (e.g. "macos")
+	 */
+	public void setLabel(String key, String value) {
+		labels.put(key, value);
+	}
+
+	/**
+	 * Returns an unmodifiable view of the labels assigned to this Node.
+	 *
+	 * @return the labels map
+	 */
+	public Map<String, String> getLabels() {
+		return Collections.unmodifiableMap(labels);
+	}
+
+	/**
+	 * Returns {@code true} if this node's capability labels satisfy the given
+	 * requirements.  Relay nodes (role=relay) always return {@code false}.
+	 * Delegates to {@link NodeLabelMatcher#satisfies}.
+	 *
+	 * @param requirements the required label key-value pairs
+	 * @return true if every requirement is matched by this node's labels
+	 */
+	public boolean satisfies(Map<String, String> requirements) {
+		return NodeLabelMatcher.satisfies(labels, requirements);
+	}
+
 	/**
 	 * Constructs a new Node object using the specified parent and id.
 	 * 
@@ -152,19 +395,35 @@ public class Node implements Runnable, ThreadFactory {
 				while (true) {
 					Job j = Node.this.nextJob();
 					Node.this.currentJob = j;
-					
+
 					if (j != null) {
+						// If this Node cannot satisfy the job's label
+						// requirements, relay the job to the parent
+						// NodeGroup so it can route it to a capable node.
+						// Do NOT re-queue to self: the worker thread would
+						// spin at thousands of iterations per second with
+						// only Thread.yield() as back-pressure.
+						if (!Node.this.satisfies(j.getRequiredLabels())) {
+							Node.this.displayMessage("Relaying job "
+								+ j.getTaskId()
+								+ " -- labels mismatch");
+							if (Node.this.parent != null) {
+								Node.this.parent.addJob(j);
+							}
+							continue;
+						}
+
 						long start = System.currentTimeMillis();
-						
+
 						synchronized (Node.this.listeners) {
 							Node.this.working = true;
 							Node.this.startedWorking();
 						}
-						
+
 						Node.this.working = true;
-						
+
 						boolean complete = false;
-						
+
 						try {
 							j.setExecutorService(pool);
 							j.run();
@@ -176,9 +435,7 @@ public class Node implements Runnable, ThreadFactory {
 							else
 								Node.this.displayMessage("Exception while working -- ");
 
-							e.printStackTrace();
-							
-							if (e instanceof NullPointerException) e.printStackTrace();
+							warn(e.getMessage(), e);
 							Node.this.totalErrJobs++;
 							Node.this.addFailedJob(j.encode());
 						}
@@ -209,7 +466,7 @@ public class Node implements Runnable, ThreadFactory {
 						try {
 							Thread.sleep(5000);
 						} catch (InterruptedException ie) {
-							System.out.println("Node " + Node.this.id + ": " + ie);
+							Node.this.warn("Node " + Node.this.id + ": " + ie);
 						}
 					}
 				}
@@ -246,13 +503,24 @@ public class Node implements Runnable, ThreadFactory {
 	/**
 	 * Stops the thread that manages the activity of this node.
 	 */
-	public void stop() { this.stop = true; }
+	public void stop() {
+		this.stop = true;
+		this.nodeThread.interrupt();
+	}
 	
 	/**
+	 * Returns true if the thread that manages the activity of this node is alive.
+	 *
 	 * @return  True if the thread that manages the activity of this node is alive.
 	 */
 	public boolean isAlive() { return this.nodeThread.isAlive(); }
 	
+	/**
+	 * Registers an {@link ActivityListener} to receive callbacks for iteration,
+	 * worker-start, worker-stop, and isolation events on this node.
+	 *
+	 * @param l the listener to add; must not be {@code null}
+	 */
 	public synchronized void addActivityListener(ActivityListener l) { this.listeners.add(l); }
 	
 	/**
@@ -347,26 +615,37 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
+	 * Returns the name of this node.
+	 *
 	 * @return Returns the name of this node.
 	 */
 	public String getName() { return name; }
-	
+
 	/**
+	 * Sets the name of this node.
+	 *
 	 * @param name The new name for this node.
 	 */
 	public void setName(String name) { this.name = name; }
-	
+
 	/**
+	 * Returns the unique ID number of this Node object.
+	 *
 	 * @return  The unique ID number of this Node object.
 	 */
 	public int getId() { return this.id; }
-	
+
 	/**
+	 * Returns the {@link NodeGroup} object that is the parent for this Node object.
+	 *
 	 * @return  The NodeGroup object that is the parent for this Node object.
 	 */
 	public NodeGroup getParent() { return this.parent; }
-	
+
 	/**
+	 * Returns an array of {@link Connection} objects that correspond to the peers
+	 * stored by this Node object.
+	 *
 	 * @return  An array of Connection objects that correspond to the peers
 	 *          stored by this Node object.
 	 */
@@ -375,8 +654,24 @@ public class Node implements Runnable, ThreadFactory {
 			return (Connection[])this.peers.toArray(new Connection[0]);
 		}
 	}
-	
-	
+
+	/**
+	 * Returns an internal object by name.  Supported keys are:
+	 * <ul>
+	 *   <li>{@code "jobs"}      — the job queue ({@link List}&lt;{@link Job}&gt;)</li>
+	 *   <li>{@code "failed"}    — the failed-job list ({@link List})</li>
+	 *   <li>{@code "listeners"} — the activity-listener list ({@link List})</li>
+	 *   <li>{@code "current"}   — the job currently being executed ({@link Job})</li>
+	 *   <li>{@code "parent"}    — the parent {@link NodeGroup}</li>
+	 *   <li>{@code "name"}      — the node name ({@link String})</li>
+	 *   <li>{@code "thread"}    — the activity thread ({@link Thread})</li>
+	 *   <li>{@code "worker"}    — the worker thread ({@link Thread})</li>
+	 *   <li>{@code "isWorking"} — whether the worker is active ({@link Boolean})</li>
+	 * </ul>
+	 *
+	 * @param key the name of the object to retrieve
+	 * @return the corresponding internal object, or {@code null} if the key is unknown
+	 */
 	// TODO Add jobs, failed, listeners, current, parent,
 	//      name, thread, worker, and isWorking object
 	//      values to documentation.
@@ -405,36 +700,108 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
+	 * Returns the maximum number of peers that this Node object will maintain connections for.
+	 *
 	 * @return  The maximum number of peers that this Node object will maintain connections for.
 	 */
 	public int getMaxPeers() { return this.maxPeers; }
 	
+	/**
+	 * Sets the minimum number of jobs that should remain in the queue before
+	 * relay is considered.  Jobs will not be forwarded to peers when the queue
+	 * size is at or below this threshold.
+	 *
+	 * @param min the minimum job count; must be non-negative
+	 */
 	public void setMinJobs(int min) { this.minJobs = min; }
-	
+
+	/**
+	 * Returns the minimum queue size below which relay to peers is suppressed.
+	 *
+	 * @return the minimum job count
+	 */
 	public int getMinJobs() { return this.minJobs; }
 	
 	/**
+	 * Returns the maximum number of jobs that this Node object will keep in the queue.
+	 *
 	 * @return  The maximum number of jobs that this Node object will keep in the queue.
 	 */
 	public int getMaxJobs() { return this.maxJobs; }
 	
+	/**
+	 * Sets the maximum number of jobs the queue may hold.  When the queue exceeds
+	 * this limit the relay probability is doubled to encourage off-loading jobs to
+	 * peers more aggressively.
+	 *
+	 * @param m the maximum job count; must be positive
+	 */
 	public void setMaxJobs(int m) { this.maxJobs = m; }
 
+	/**
+	 * Returns the maximum sleep-interval coefficient.  The effective maximum sleep
+	 * is {@code minSleep * maxSleepC}.  Delegates to the parent {@link NodeGroup}
+	 * when one is present so that all child nodes share the same cap.
+	 *
+	 * @return the maximum sleep coefficient
+	 */
 	public double getMaxSleepC() {
 		if (getParent() != null) return getParent().getMaxSleepC();
 		return maxSleepC;
 	}
-	
+
+	/**
+	 * Overrides the maximum sleep-interval coefficient for this node.
+	 * Has no effect when a parent {@link NodeGroup} is present, because
+	 * {@link #getMaxSleepC()} delegates to the parent in that case.
+	 *
+	 * @param msc the new maximum sleep coefficient
+	 */
 	public void setMaxSleepC(double msc) { this.maxSleepC = msc; }
-	
+
+	/**
+	 * Sets the numerator coefficient of the activity-based sleep formula.
+	 * Higher values cause the node to reduce its sleep interval more aggressively
+	 * when the job queue grows.
+	 *
+	 * @param acs the activity sleep coefficient
+	 */
 	public void setActivitySleepC(double acs) { this.activitySleepC = acs; }
-	
+
+	/**
+	 * Sets the contribution of the parent NodeGroup's peer-activity ratio to the
+	 * sleep adjustment.  A value of {@code 0.0} disables the peer-activity influence.
+	 *
+	 * @param pacs the peer-activity sleep coefficient
+	 */
 	public void setPeerActivitySleepC(double pacs) { this.peerActivitySleepC = pacs; }
-	
+
+	/**
+	 * Sets the probability that a relay attempt will route the job to the parent
+	 * {@link NodeGroup} rather than to a random peer connection.
+	 * Use values close to {@code 1.0} to strongly prefer parent relay,
+	 * and {@code 0.0} to relay exclusively to peers.
+	 *
+	 * @param parp the parental relay probability, in [0.0, 1.0]
+	 */
 	public void setParentalRelayP(double parp) { this.parentalRelayP = parp; }
-	
+
+	/**
+	 * Sets the coefficient that scales the relay probability contribution from
+	 * peer connectivity.  When set to a positive value, a node with many peer
+	 * connections will relay more frequently than a less-connected node.
+	 *
+	 * @param prc the peer relay coefficient
+	 */
 	public void setPeerRelayC(double prc) { this.peerRelayC = prc; }
-	
+
+	/**
+	 * Sets the minimum job-queue fill ratio as a fraction of {@link #maxJobs}.
+	 * Also resets the activity-sleep offset ({@code activitySleepO}) and
+	 * the {@link #minJobs} threshold to be consistent with the new ratio.
+	 *
+	 * @param mjp the minimum job proportion, in (0.0, 1.0]
+	 */
 	public void setMinimumJobP(double mjp) {
 		this.minJobP = mjp;
 		this.activitySleepO = - this.minJobP;
@@ -442,8 +809,10 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
-	 * @param mfj  The maximum number of failed jobs to store. These jobs will be
-	 *             reintialized and run again during periods of inactivity.
+	 * Sets the maximum number of failed jobs to store.
+	 * These jobs will be reinitialized and run again during periods of inactivity.
+	 *
+	 * @param mfj  The maximum number of failed jobs to store.
 	 */
 	public void setMaxFailedJobs(int mfj) {
 		this.maxFailedJobs = mfj;
@@ -453,18 +822,24 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
+	 * Sets whether peers to relay should be chosen using weighted probability.
+	 *
 	 * @param w  True if peers to relay should be chosen using weighted probability.
 	 */
 	public void setWeightPeers(boolean w) { this.weightPeers = w; }
-	
+
 	/**
+	 * Returns the connectivity rating as [peers] / [max peers].
+	 *
 	 * @return  [peers] / [max peers].
 	 */
 	public double getConnectivityRating() {
 		return ((double)this.peers.size()) / ((double)this.maxPeers);
 	}
-	
+
 	/**
+	 * Returns the activity rating as {@code 1.0 + ([jobs in queue] - [min jobs]) / [max jobs]}.
+	 *
 	 * @return  1.0 + ([jobs in queue] - [min jobs]) / [max jobs].
 	 */
 	public double getActivityRating() {
@@ -472,26 +847,36 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
+	 * Returns the number of jobs that have been completed by this node.
+	 *
 	 * @return  The number of jobs that have been completed by this node.
 	 */
 	public int getCompletedJobCount() { return this.totalJobs; }
-	
+
 	/**
+	 * Returns the time that this node has spent working in milliseconds.
+	 *
 	 * @return  The time that this node has spent working in msecs.
 	 */
 	public double getTimeWorked() { return this.totalWorkTime; }
-	
+
 	/**
+	 * Returns the time that this node has spent communicating in milliseconds.
+	 *
 	 * @return  The time that this node has spent communicating in msecs.
 	 */
 	public double getTimeCommunicated() { return this.totalComTime; }
-	
+
 	/**
+	 * Returns the {@link RSSFeed} object stored by this node for logging.
+	 *
 	 * @return  The RSSFeed object stored by this node for logging.
 	 */
 	public RSSFeed getLog() { return this.log; }
 
 	/**
+	 * Returns a named thread for parallelizing work by {@link Job}s of this {@link Node}.
+	 *
 	 * @return  A named thread for parallelizing work by {@link Job}s of this {@link Node}.
 	 */
 	@Override
@@ -500,6 +885,8 @@ public class Node implements Runnable, ThreadFactory {
 	}
 
 	/**
+	 * Returns true if this node is currently working on a job.
+	 *
 	 * @return  True if this node is currently working on a job, false otherwise.
 	 */
 	public boolean isWorking() {
@@ -512,13 +899,13 @@ public class Node implements Runnable, ThreadFactory {
 	/**
 	 * Adds the specified job to the queue stored by this node. If this node
 	 * is not currently working, this method will start the worker thread.
-	 * 
+	 *
 	 * @param j  Job to be added.
 	 * @return  The index in the queue of the job added.
 	 */
 	public int addJob(Job j) {
 		int id = -1;
-		
+
 		synchronized (this.jobs) {
 			if (j == null) {
 				this.displayMessage("Rejecting null job.");
@@ -527,16 +914,18 @@ public class Node implements Runnable, ThreadFactory {
 				this.displayMessage("Rejecting duplicate job " + j.getTaskId() + "--" + j);
 				return -1;
 			}
-			
+
 			if (this.jobs.add(j))
 				id = this.jobs.size() - 1;
 			else
 				return id;
 		}
-		
-		if (this.worker != null) synchronized (this.worker) {
-			if (!this.working &&
-					!this.worker.isAlive()) this.worker.start();
+
+		if (this.worker != null && !"relay".equals(labels.get("role"))) {
+			synchronized (this.worker) {
+				if (!this.working &&
+						!this.worker.isAlive()) this.worker.start();
+			}
 		}
 		
 		if (this.parent != null) this.parent.addCachedTask(j.getTaskString());
@@ -565,6 +954,9 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
+	 * Returns the next job in the queue stored by this Node, or a failed job if
+	 * the queue is empty and failed jobs are available.
+	 *
 	 * @return  Next job in the queue stored by this Node. If this node maintains
 	 *          a list of failed jobs and there are no jobs left in the queue, the
 	 *          last failed job will be instantiated (using Server.instantiateJobClass)
@@ -586,13 +978,35 @@ public class Node implements Runnable, ThreadFactory {
 		return null;
 	}
 
+	/**
+	 * Prepares a job for execution by wiring it to the current {@link OutputServer}.
+	 * This must be called on every job before it is handed to the worker thread or
+	 * returned to any caller.
+	 *
+	 * @param j the job to prepare; must not be {@code null}
+	 * @return the same job instance after configuration
+	 */
 	private Job prepareJob(Job j) {
 		j.setOutputConsumer(OutputServer.getCurrentServer());
 		return j;
 	}
 	
+	/**
+	 * Returns the {@link Job} currently being executed by the worker thread,
+	 * or {@code null} if the worker is idle.
+	 *
+	 * @return the active job, or {@code null}
+	 */
 	public Job getCurrentJob() { return this.currentJob; }
-	
+
+	/**
+	 * Removes all queued jobs with the specified task ID from this node's queue
+	 * and broadcasts a {@link Message#Kill} message to all peer connections,
+	 * propagating the kill signal through the network up to {@code relay} hops.
+	 *
+	 * @param task  the task ID string of the jobs to cancel
+	 * @param relay the number of additional hops to relay the kill signal
+	 */
 	public void sendKill(String task, int relay) {
 		synchronized (this.jobs) {
 			this.jobs.removeIf(o -> o.getTaskId().equals(task));
@@ -611,6 +1025,10 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
+	 * Returns a {@link Connection} object randomly selected from the peer connections
+	 * maintained by this node. If peer weighting is enabled, the selection favours
+	 * the least busy peer based on the activity rating reported by the remote node group.
+	 *
 	 * @return  A Connection object randomly selected from the peer connections
 	 *          maintained by this node. The selection will be weighted based on
 	 *          the activity rating reported by the remote node group for each
@@ -682,9 +1100,14 @@ public class Node implements Runnable, ThreadFactory {
 		if (this.sleep > max) this.sleep = (int) max;
 		
 		if (this.verbose)
-			System.out.println(this + ": Sleep = " + this.sleep);
+			log(this + ": Sleep = " + this.sleep);
 	}
 	
+	/**
+	 * Returns the current sleep interval used between activity-thread iterations.
+	 *
+	 * @return sleep duration in milliseconds
+	 */
 	public int getSleep() { return this.sleep; }
 	
 	/**
@@ -696,6 +1119,9 @@ public class Node implements Runnable, ThreadFactory {
 	public void setConnectProbability(double p) { this.connect = p; }
 	
 	/**
+	 * Returns a value between 0.0 and 1.0 corresponding to the probability that a connection
+	 * is requested during each iteration.
+	 *
 	 * @return  A value between 0.0 and 1.0 corresponding to the probability that a connection is requested
 	 *          during each iteration.
 	 */
@@ -710,12 +1136,17 @@ public class Node implements Runnable, ThreadFactory {
 	public void setRelayProbability(double p) { this.relay = p; }
 	
 	/**
+	 * Returns a value between 0.0 and 1.0 corresponding to the probability that a job is
+	 * relayed during each iteration.
+	 *
 	 * @return  A value between 0.0 and 1.0 corresponding to the probability that a job is relayed
 	 *          during each iteration.
 	 */
 	public double getRelayProbability() { return this.relay; }
 	
 	/**
+	 * Returns the {@link JobFactory} object stored by the parent of this node.
+	 *
 	 * @return  The JobFactory object stored by the parent of this node.
 	 */
 	public JobFactory getJobFactory() { return this.parent.getJobFactory(); }
@@ -731,11 +1162,11 @@ public class Node implements Runnable, ThreadFactory {
 		
 		this.lastMessage = s;
 		
-		System.out.println(s);
-		
+		log(s);
+
 		if (this.log != null) {
-			StringBuffer b = new StringBuffer();
-			
+			StringBuilder b = new StringBuilder();
+
 			b.append(RSSFeed.startHtml);
 			b.append("<h1>");
 			b.append(this);
@@ -803,14 +1234,24 @@ public class Node implements Runnable, ThreadFactory {
 		out.println(this.getStatus("<br>\n"));
 	}
 	
+	/**
+	 * Builds an HTML status report for this node, using {@code nl} as the
+	 * line-break separator between sections (e.g. {@code "<br>\n"} for HTML or
+	 * {@code "\n"} for plain text).  The report includes uptime fractions,
+	 * job counts, communication time, peer list, and mini strip-chart graphs
+	 * for relay and connect probabilities.
+	 *
+	 * @param nl the newline/separator string to use between status lines
+	 * @return the HTML status string
+	 */
 	public String getStatus(String nl) {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 		
 		buf.append("<h3>" + this + "</h3>");
 		
 		buf.append("<p>");
 		buf.append("Sleep time: ");
-		buf.append(Node.formatTime(this.sleep));
+		buf.append(NodeTimeFormatter.format(this.sleep));
 		buf.append(nl);
 		
 		if (this.isAlive())
@@ -831,7 +1272,7 @@ public class Node implements Runnable, ThreadFactory {
 			comP = this.totalComTime / up;
 		}
 		
-		buf.append("Worked for " + Node.formatTime(this.totalWorkTime));
+		buf.append("Worked for " + NodeTimeFormatter.format(this.totalWorkTime));
 		if (workP > 0.0) {
 			buf.append(" (");
 			buf.append(pFormat.format(workP));
@@ -848,7 +1289,7 @@ public class Node implements Runnable, ThreadFactory {
 			buf.append(nl);
 		}
 		
-		buf.append("Communicated for " + Node.formatTime(this.totalComTime));
+		buf.append("Communicated for " + NodeTimeFormatter.format(this.totalComTime));
 		if (comP > 0.0) {
 			buf.append(" (");
 			buf.append(pFormat.format(comP));
@@ -905,6 +1346,13 @@ public class Node implements Runnable, ThreadFactory {
 		return buf.toString();
 	}
 	
+	/**
+	 * Writes the RSS log maintained by this node to the file at {@link #rssfile},
+	 * trimming entries older than {@code ttl} items.  Does nothing if either
+	 * {@code rssfile} or {@code log} is {@code null}.
+	 *
+	 * @param ttl the maximum number of RSS items to retain in the output file
+	 */
 	public void writeLogFile(int ttl) {
 		if (this.rssfile == null || this.log == null) return;
 		
@@ -913,73 +1361,87 @@ public class Node implements Runnable, ThreadFactory {
 			
 			p.flush();
 		} catch (FileNotFoundException fnf) {
-			fnf.printStackTrace(System.out);
+			warn(fnf.getMessage(), fnf);
 		}
 	}
 	
+	/**
+	 * Performs one activity-thread iteration for the given node: adjusts its sleep
+	 * interval based on queue activity (or keeps it at {@link #minSleep} for relay
+	 * nodes), then notifies all registered {@link ActivityListener}s.
+	 * <p>
+	 * Relay nodes are exempted from the activity-based sleep adjustment because
+	 * they never execute jobs; applying the formula would cause sleep to grow
+	 * unboundedly and slow down relay throughput.
+	 * </p>
+	 *
+	 * @param n the node whose iteration is being performed; typically {@code this}
+	 */
 	public void iteration(Node n) {
-		double a = n.getActivityRating();
-		double s = n.getSleep() * (
-					(this.activitySleepC / (a + this.activitySleepO)) -
-					(this.peerActivitySleepC *
-					(Math.max(1.0 - n.getParent().getPeerActivityRatio(), 0.0)))
-					);
-		
-		n.setSleep((int) s);
-		
+		// Relay nodes should not adapt their sleep based on job
+		// activity — they never execute jobs, so the activity
+		// rating is meaningless and would cause sleep to grow
+		// unboundedly. Keep sleep at minSleep for fast relay.
+		if ("relay".equals(n.labels.get("role"))) {
+			n.setSleep((int) n.minSleep);
+		} else {
+			double a = n.getActivityRating();
+			double s = n.getSleep() * (
+						(this.activitySleepC / (a + this.activitySleepO)) -
+						(this.peerActivitySleepC *
+						(Math.max(1.0 - n.getParent().getPeerActivityRatio(), 0.0)))
+						);
+			n.setSleep((int) s);
+		}
+
 		synchronized (this.listeners) {
 			Iterator itr = this.listeners.iterator();
 			while (itr.hasNext()) ((ActivityListener)itr.next()).iteration(this);
 		}
 	}
 
-	public void startedWorking() {
+	/**
+	 * Applies {@code action} to every registered {@link ActivityListener} and
+	 * optionally to the parent {@link NodeGroup} (which also implements
+	 * {@link ActivityListener}).  Callers hold no lock before this call;
+	 * synchronization on {@link #listeners} is acquired inside.
+	 *
+	 * @param action   the notification to deliver to each listener
+	 * @param notifyParent whether to also notify the parent group
+	 */
+	private void notifyListeners(Consumer<ActivityListener> action,
+								 boolean notifyParent) {
 		synchronized (this.listeners) {
 			Iterator itr = this.listeners.iterator();
-			while (itr.hasNext()) ((ActivityListener)itr.next()).startedWorking();
-			
-			if (this.parent != null) this.parent.startedWorking();
+			while (itr.hasNext()) action.accept((ActivityListener) itr.next());
+			if (notifyParent && this.parent != null) action.accept(this.parent);
 		}
 	}
 
-	public void stoppedWorking() {
-		synchronized (this.listeners) {
-			Iterator itr = this.listeners.iterator();
-			while (itr.hasNext()) ((ActivityListener)itr.next()).stoppedWorking();
-			
-			if (this.parent != null) this.parent.stoppedWorking();
-		}
-	}
+	/** Notifies all {@link ActivityListener}s that the worker thread has started. */
+	public void startedWorking() { notifyListeners(ActivityListener::startedWorking, true); }
 
-	public void becameIsolated() {
-		synchronized (this.listeners) {
-			Iterator itr = this.listeners.iterator();
-			while (itr.hasNext()) ((ActivityListener)itr.next()).becameIsolated();
-			
-			if (this.parent != null) this.parent.becameIsolated();
-		}
-	}
+	/** Notifies all {@link ActivityListener}s that the worker thread has stopped. */
+	public void stoppedWorking() { notifyListeners(ActivityListener::stoppedWorking, true); }
+
+	/** Notifies all {@link ActivityListener}s that this node has become isolated. */
+	public void becameIsolated() { notifyListeners(ActivityListener::becameIsolated, true); }
 	
-	public static String formatTime(double msec) {
-		int min = (int) Math.floor(msec / 60000);
-		double sec = Math.floor(msec % 60000);
-		sec = sec / 1000.0;
-		
-		StringBuffer b = new StringBuffer();
-		
-		if (min > 0) {
-			b.append(min);
-			b.append(" minutes and ");
-		}
-		
-		b.append(sec);
-		b.append(" seconds (");
-		b.append(msec);
-		b.append(")");
-		
-		return b.toString();
-	}
-	
+	/**
+	 * Entry point for the activity thread.  On each iteration the thread:
+	 * <ol>
+	 *   <li>Calls {@link #iteration(Node)} to adjust sleep and notify listeners.</li>
+	 *   <li>Sleeps for the computed interval (plus a parental contribution).</li>
+	 *   <li>Probabilistically attempts to establish a new peer {@link Connection}
+	 *       via the parent {@link NodeGroup}.</li>
+	 *   <li>Probabilistically relays a job — either to a randomly selected peer
+	 *       or to the parent {@link NodeGroup}, depending on {@link #parentalRelayP}
+	 *       and peer availability.  Relay nodes always relay when jobs are present;
+	 *       worker nodes relay only when the queue exceeds {@link #minJobs}.</li>
+	 * </ol>
+	 * The loop exits when {@link #stop()} has been called.
+	 */
+	@Override
 	public void run() {
 		while (!this.stop) {
 			this.iteration(this);
@@ -990,7 +1452,8 @@ public class Node implements Runnable, ThreadFactory {
 				
 				Thread.sleep(s);
 			} catch (InterruptedException ie) {
-				System.out.println("Node " + id + ": " + ie);
+				if (this.stop) break;
+				warn("Node " + id + ": " + ie);
 			}
 			
 			long start = System.currentTimeMillis();
@@ -1007,51 +1470,74 @@ public class Node implements Runnable, ThreadFactory {
 			}
 			
 			r = 0.0;
-			
+
 			int js = this.jobs.size();
-			
-			if (js > this.minJobs)
-				r = this.relay;
-			else if (js > this.maxJobs)
-				r = this.relay * 2.0;
-			
-			r *= ((double)js) / (this.maxJobs - 1.0);
-			r += this.peerRelayC * (((double)this.peers.size()) / this.maxPeers);
-			
+			boolean isRelay = "relay".equals(labels.get("role"));
+
+			if (isRelay) {
+				// Relay nodes always relay when jobs are present
+				r = js > 0 ? 1.0 : 0.0;
+			} else {
+				if (js > this.minJobs)
+					r = this.relay;
+				else if (js > this.maxJobs)
+					r = this.relay * 2.0;
+
+				r *= ((double) js) / (this.maxJobs - 1.0);
+				r += this.peerRelayC * (((double) this.peers.size()) / this.maxPeers);
+			}
+
 			this.relaySum += r;
 			this.relayDiv++;
 
-			r: if (js > this.minJobs && Math.random() < r) {
+			// Worker nodes should only relay when currently executing a job
+			// (so they have a genuine backlog) or when the queue has more
+			// jobs than a single worker thread can immediately absorb (> 1).
+			// This prevents eager relay-back to the controller by idle workers
+			// that received a job before their worker thread had a chance to run.
+			boolean shouldRelay = isRelay ? js > 0
+					: (js > this.minJobs && (this.working || js > 1));
+			r: if (shouldRelay && Math.random() < r) {
 				Connection c;
-				
+
 				if (Math.random() < this.parentalRelayP ||
 					(c = this.getRandomPeer()) == null) {
 					if (this.parent != null) {
 						Job j = this.nextJob();
+						if (j == null) break r;
+						this.displayMessage("Relaying job " + j
+							+ " to parent NodeGroup");
 						this.parent.addJob(j);
 						break r;
+					} else {
+						this.displayMessage("No parent and no peers"
+							+ " -- cannot relay");
 					}
 				} else {
 					try {
 						Job j = this.nextJob();
-						
+
 						if (j != null) {
+							String jobId = j.getTaskId();
+							this.displayMessage("Relaying job "
+								+ (jobId != null ? jobId : j.getClass().getSimpleName())
+								+ " to peer " + c);
 							c.sendJob(j);
 							this.totalRelay++;
-							
+
 							if (totalRelay % 20 == 0)
 								this.displayMessage("Relayed 20 jobs (" + r + ").");
 							else if (totalRelay == 1)
-								this.displayMessage("Relayed a job (" + r + ").");
-							
+								this.displayMessage("Relayed first job (" + r + ").");
+
 							break r;
 						}
 					} catch (SocketException se) {
-						System.out.println("Node " + id + ": " + se.getMessage());
+						warn("Node " + id + ": " + se.getMessage());
 						this.peers.remove(c);
 						this.displayMessage("Dropped peer connection " + c);
 					} catch (IOException ioe) {
-						System.out.println("Node " + id + ": " + ioe);
+						warn("Node " + id + ": " + ioe);
 					}
 				}
 			}
@@ -1063,8 +1549,11 @@ public class Node implements Runnable, ThreadFactory {
 	}
 	
 	/**
+	 * Returns a String containing the number of peer connections and jobs queued by this network node.
+	 *
 	 * @return  A String containing the number of peer connections and jobs queued by this network node.
 	 */
+	@Override
 	public String toString() {
 		return "Network Node " + this.id + " -- " +
 				this.peers.size() + "(" + this.maxPeers + ")" + " peers  " +

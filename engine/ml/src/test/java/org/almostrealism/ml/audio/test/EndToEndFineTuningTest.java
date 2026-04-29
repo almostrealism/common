@@ -49,7 +49,6 @@ import java.util.List;
 public class EndToEndFineTuningTest extends TestSuiteBase {
 
 	private static final Path WEIGHTS_DIR = Path.of("/workspace/project/weights");
-	private static final Path BASS_LOOPS_DIR = Path.of("/workspace/project/BASS LOOPS_125");
 
 	// Model parameters (from ConditionalAudioSystem)
 	private static final int IO_CHANNELS = 64;
@@ -176,11 +175,9 @@ public class EndToEndFineTuningTest extends TestSuiteBase {
 		);
 
 		log("Checking encoder weight keys:");
-		int foundCount = 0;
 		for (String key : expectedEncoderKeys) {
 			boolean found = encoderDict.keySet().contains(key);
 			log("  " + key + ": " + (found ? "FOUND" : "MISSING"));
-			if (found) foundCount++;
 		}
 
 		// Check for expected decoder keys
@@ -197,7 +194,6 @@ public class EndToEndFineTuningTest extends TestSuiteBase {
 		for (String key : expectedDecoderKeys) {
 			boolean found = encoderDict.keySet().contains(key);
 			log("  " + key + ": " + (found ? "FOUND" : "MISSING"));
-			if (found) foundCount++;
 		}
 
 		// Log sample of actual keys for debugging

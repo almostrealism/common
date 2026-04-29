@@ -54,6 +54,9 @@ public class CLMemory extends RAM {
 	/** The memory provider that allocated this buffer. */
 	private final CLMemoryProvider provider;
 
+	/** True once {@code clReleaseMemObject} has been invoked for the underlying handle. */
+	private volatile boolean released;
+
 	/**
 	 * Creates a new CLMemory wrapping an OpenCL memory buffer.
 	 *
@@ -68,6 +71,43 @@ public class CLMemory extends RAM {
 	}
 
 	/**
+	 * Returns whether the underlying OpenCL memory object has already been released.
+	 *
+	 * @return true once {@code clReleaseMemObject} has been called for this buffer
+	 */
+	public boolean isReleased() { return released; }
+
+	/**
+	 * Atomically claims this buffer for release. Returns true to the first caller
+	 * (which is then responsible for calling {@code clReleaseMemObject}); subsequent
+	 * callers receive false and must skip the native release call.
+	 *
+	 * <p>If the native release fails, the caller should invoke {@link #unclaimReleased()}
+	 * so that a future deallocation attempt can retry. Otherwise the buffer stays
+	 * marked released but the underlying {@code cl_mem} handle and the provider's
+	 * tracking metadata leak permanently.</p>
+	 *
+	 * @return true if this caller is responsible for releasing the underlying handle
+	 */
+	public synchronized boolean tryClaimReleased() {
+		if (released) return false;
+		released = true;
+		return true;
+	}
+
+	/**
+	 * Reverses a previous successful claim of {@link #tryClaimReleased()} when the
+	 * native release call failed. Restores this buffer to an unreleased state so
+	 * that a subsequent deallocation attempt can retry.
+	 */
+	public synchronized void unclaimReleased() {
+		released = false;
+	}
+
+	@Override
+	public boolean isActive() { return !released; }
+
+	/**
 	 * Returns the underlying OpenCL memory object handle.
 	 *
 	 * @return the OpenCL memory object
@@ -79,6 +119,7 @@ public class CLMemory extends RAM {
 	 *
 	 * @return the size in bytes
 	 */
+	@Override
 	public long getSize() {
 		return size;
 	}

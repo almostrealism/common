@@ -62,6 +62,7 @@ import org.almostrealism.collect.computations.TraversableExpressionComputation;
  * @see org.almostrealism.algebra.ScalarFeatures#choice(int, TraversalPolicy, Producer, Producer)
  */
 public class Choice extends TraversableExpressionComputation {
+	/** The number of discrete choices this computation selects among. */
 	private final int choiceCount;
 
 	/**

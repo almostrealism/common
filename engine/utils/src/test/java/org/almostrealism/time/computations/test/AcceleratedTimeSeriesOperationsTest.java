@@ -17,6 +17,7 @@
 package org.almostrealism.time.computations.test;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
@@ -97,7 +98,7 @@ public class AcceleratedTimeSeriesOperationsTest extends TestSuiteBase implement
 	}
 
 	protected Supplier<Runnable> add() {
-		return series.add((io.almostrealism.relation.Producer) temporal(r(p(cursors)), c(30)));
+		return series.add((Producer) temporal(r(p(cursors)), c(30)));
 	}
 
 	protected Supplier<Runnable> assign() {
@@ -156,7 +157,7 @@ public class AcceleratedTimeSeriesOperationsTest extends TestSuiteBase implement
 	public void allOperationsTest() {
 		init();
 		IntStream.range(0, 25).forEach(this::runAllOperations);
-		System.out.println(cursors);
+		log(String.valueOf(cursors));
 	}
 
 	protected OperationList operationList(boolean enableCompilation) {

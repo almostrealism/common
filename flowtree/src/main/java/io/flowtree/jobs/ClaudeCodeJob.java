@@ -16,13 +16,14 @@
 
 package io.flowtree.jobs;
 
-import io.flowtree.job.AbstractJobFactory;
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.job.Job;
-import org.almostrealism.io.JobOutput;
 import org.almostrealism.util.KeyUtils;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -34,7 +35,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A {@link Job} implementation that executes a Claude Code prompt.
@@ -71,38 +72,143 @@ import java.util.Map;
  *
  * @author Michael Murray
  * @see GitManagedJob
+ * @see ClaudeCodeJobFactory
  */
 public class ClaudeCodeJob extends GitManagedJob {
+    /** Sentinel string used to delimit multiple prompts in the serialized wire format. */
     public static final String PROMPT_SEPARATOR = ";;PROMPT;;";
+    /** Default comma-separated list of tools permitted for Claude Code sessions. */
     public static final String DEFAULT_TOOLS = "Read,Edit,Write,Bash,Glob,Grep";
 
-    private String prompt;
-    private String description;
-    private String allowedTools;
-    private int maxTurns;
-    private double maxBudgetUsd;
-    private String centralizedMcpConfig;
-    private String pushedToolsConfig;
-    private Map<String, String> workstreamEnv;
-    private String planningDocument;
-    private String githubOrg;
-    private boolean enforceChanges;
-    private int enforcementAttempt;
+    /** Valid values for the Claude Code {@code --effort} flag (thinking level). */
+    public static final List<String> VALID_EFFORT_LEVELS =
+            List.of("low", "medium", "high", "xhigh", "max");
 
+    /** Accepted values for the Claude Code {@code --model} flag (CLI aliases + full IDs). */
+    public static final List<String> VALID_MODELS = List.of(
+            "sonnet", "opus", "haiku",
+            "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001");
+
+    /**
+     * Deduplication mode that runs an inline Claude Code session before the
+     * commit is finalised.  The session receives an aggressive prompt listing
+     * all new method names and is instructed to remove any duplicates it finds.
+     * This mode is safe to test incrementally because it executes within the
+     * existing job lifecycle and cannot spawn additional jobs.
+     */
+    public static final String DEDUP_LOCAL = "local";
+
+    /**
+     * Deduplication mode that submits a separate {@link ClaudeCodeJob} to the
+     * same workstream after the current job's commit has been pushed.
+     * Requires a workstream URL to be configured on this job.
+     */
+    public static final String DEDUP_SPAWN = "spawn";
+
+    /**
+     * Deduplication mode that disables the deduplication scan entirely.
+     * Use this to explicitly opt out when the default {@link #DEDUP_LOCAL}
+     * behaviour is not desired.
+     */
+    public static final String DEDUP_NONE = "none";
+
+    /** The prompt submitted to Claude Code for this job. */
+    private String prompt;
+    /** Short human-readable description of this job, used in status messages. */
+    private String description;
+    /** Comma-separated list of tool names that Claude Code is permitted to invoke. */
+    private String allowedTools;
+    /** Maximum number of agentic turns Claude Code may take before being stopped. */
+    private int maxTurns;
+    /** Maximum spend budget for this job in US dollars; negative disables the limit. */
+    private double maxBudgetUsd;
+    /** Model alias or full name passed via {@code --model}; {@code null} uses the CLI default. */
+    private String model;
+    /** Effort/thinking level passed via {@code --effort}; {@code null} uses the CLI default. */
+    private String effort;
+    /** HTTP base URL of the ar-manager service, or {@code null} if not configured. */
+    private String arManagerUrl;
+    /** Bearer token for authenticating against the ar-manager service. */
+    private String arManagerToken;
+    /** Optional planning document text injected into the Claude Code system prompt. */
+    private String planningDocument;
+    /** GitHub organisation name used to look up API tokens for PR creation. */
+    private String githubOrg;
+    /** Whether the job must produce at least one staged file change to succeed. */
+    private boolean enforceChanges;
+    /** Number of times enforcement has been re-attempted after an empty commit. */
+    private int enforcementAttempt;
+    /** Enforcement rule name for the current correction session; {@code null} during primary runs. */
+    private String currentActivity;
+    /** Description of a git-tampering rule violation detected during this job. */
+    private String gitTamperingViolation;
+    /** Stdout silence duration after which the Claude subprocess is killed (default 20 min). */
+    private long inactivityTimeoutMillis = TimeUnit.MINUTES.toMillis(20);
+    /** Maximum relaunches of Claude after inactivity-triggered kills (default 3). */
+    private int maxInactivityRestarts = 3;
+    /** Number of inactivity-triggered relaunches in the current run; resets to 0 after the run. */
+    private int inactivityRestartAttempt;
+    /** Set by the monitor when it kills the Claude subprocess; consumed by the retry loop. */
+    private volatile boolean wasKilledForInactivity;
+    /**
+     * Controls post-work deduplication behaviour.
+     * {@code null} (the default) disables deduplication — the factory sets
+     * this to {@link #DEDUP_LOCAL} when creating jobs.
+     * {@link #DEDUP_SPAWN} submits a follow-up job to the same workstream.
+     * {@link #DEDUP_NONE} also disables deduplication explicitly.
+     */
+    private String deduplicationMode;
+
+    /**
+     * When {@code true}, the Maven dependency protection rule is active.
+     * Any {@code <dependency>} additions, removals, or changes in {@code pom.xml}
+     * files detected against the base branch trigger a correction loop that
+     * instructs the agent to revert those changes.
+     */
+    private boolean enforceMavenDependencies;
+
+    /**
+     * When {@code true} (the default), the organizational placement rule is active.
+     * After the agent's primary work, a correction session prompts the agent to review
+     * whether new files are placed at the appropriate level of the module hierarchy.
+     */
+    private boolean enforceOrganizationalPlacement = true;
+
+    /**
+     * Additional enforcement rules registered via {@link #addEnforcementRule(EnforcementRule)}.
+     * Built-in rules (enforce-changes, deduplication, maven-dependency-protection) are
+     * instantiated from job flags in {@link #buildActiveRules()} and are not stored here.
+     */
+    private final List<EnforcementRule> customEnforcementRules = new ArrayList<>();
+
+    /** Builder used to assemble the MCP tool configuration JSON for Claude Code. */
     private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
+    /** Helper that downloads managed tool definitions referenced by the MCP config. */
     private final ManagedToolsDownloader toolsDownloader = new ManagedToolsDownloader(mcpConfigBuilder);
+    /** JSON mapper used to parse structured output from Claude Code. */
     private static final ObjectMapper outputMapper = new ObjectMapper();
 
+    /** The Claude Code session identifier assigned during execution. */
     private String sessionId;
+    /** Raw text output produced by the Claude Code process. */
     private String output;
+    /** Exit code returned by the Claude Code process. */
     private int exitCode;
+    /** Total wall-clock duration of the Claude Code session in milliseconds. */
     private long durationMs;
+    /** Time spent in API calls during the Claude Code session, in milliseconds. */
     private long durationApiMs;
+    /** Total cost of the Claude Code session in US dollars. */
     private double costUsd;
+    /** Number of agentic turns taken during the Claude Code session. */
     private int numTurns;
+    /** Session subtype / stop reason reported by Claude Code (e.g. "success"). */
     private String subtype;
+    /** Whether Claude Code flagged the session result as an error. */
     private boolean isError;
+    /** Number of tool-use permission denials recorded during the session. */
     private int permissionDenials;
+    /** Names of the tools that were denied during the session. */
     private List<String> deniedToolNames;
 
     /**
@@ -151,7 +257,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Returns a short display summary for this job suitable for Slack notifications.
+     * Returns a short display summary for this job suitable for notifications.
      *
      * <p>If a description is set, it is returned directly. Otherwise, short prompts
      * (80 characters or fewer) are returned as-is, and longer prompts are summarized
@@ -172,7 +278,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * character count.
      *
      * @param prompt the raw prompt text
-     * @return a concise summary suitable for Slack notifications
+     * @return a concise summary suitable for notifications
      */
     public static String summarizePrompt(String prompt) {
         if (prompt == null) {
@@ -184,10 +290,20 @@ public class ClaudeCodeJob extends GitManagedJob {
         return String.format("%,d character prompt", prompt.length());
     }
 
+    /**
+     * Returns the prompt submitted to Claude Code for this job.
+     *
+     * @return the prompt string
+     */
     public String getPrompt() {
         return prompt;
     }
 
+    /**
+     * Sets the prompt to submit to Claude Code for this job.
+     *
+     * @param prompt  the prompt text
+     */
     public void setPrompt(String prompt) {
         this.prompt = prompt;
     }
@@ -202,7 +318,7 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /**
      * Sets a short human-readable description for this job. When set, this
-     * description is used in Slack notifications instead of the prompt text.
+     * description is used in notifications instead of the prompt text.
      *
      * @param description a concise label (e.g., "Resolve test failures")
      */
@@ -210,85 +326,124 @@ public class ClaudeCodeJob extends GitManagedJob {
         this.description = description;
     }
 
+    /**
+     * Returns the comma-separated list of tools Claude Code is permitted to invoke.
+     *
+     * @return the allowed tools string
+     */
     public String getAllowedTools() {
         return allowedTools;
     }
 
+    /**
+     * Sets the comma-separated list of tools Claude Code is permitted to invoke.
+     *
+     * @param allowedTools  the tool names, comma-separated
+     */
     public void setAllowedTools(String allowedTools) {
         this.allowedTools = allowedTools;
     }
 
+    /**
+     * Returns the maximum number of agentic turns Claude Code may take.
+     *
+     * @return the turn limit
+     */
     public int getMaxTurns() {
         return maxTurns;
     }
 
+    /**
+     * Sets the maximum number of agentic turns Claude Code may take before being stopped.
+     *
+     * @param maxTurns  the turn limit
+     */
     public void setMaxTurns(int maxTurns) {
         this.maxTurns = maxTurns;
     }
 
+    /**
+     * Returns the maximum spend budget for this job in US dollars.
+     *
+     * @return the budget cap in USD
+     */
     public double getMaxBudgetUsd() {
         return maxBudgetUsd;
     }
 
+    /**
+     * Sets the maximum spend budget for this job in US dollars.
+     *
+     * @param maxBudgetUsd  the budget cap in USD; negative values disable the limit
+     */
     public void setMaxBudgetUsd(double maxBudgetUsd) {
         this.maxBudgetUsd = maxBudgetUsd;
     }
 
+    /** Returns the Claude Code model, or {@code null} to use the CLI default. */
+    public String getModel() { return model; }
+
     /**
-     * Returns the centralized MCP configuration JSON string.
+     * Sets the Claude Code model.  Validated against {@link #VALID_MODELS} so
+     * an unknown value fails at the caller instead of silently 404-ing the
+     * dispatched subprocess.
      *
-     * <p>When set, this JSON maps server names to their HTTP URLs and
-     * tool names. Servers in this config are connected via HTTP instead
-     * of stdio, and their tools are included in the allowed tools list.</p>
+     * @param model a value from {@link #VALID_MODELS}, or {@code null}/empty
+     * @throws IllegalArgumentException if not a recognised identifier
      */
-    public String getCentralizedMcpConfig() {
-        return centralizedMcpConfig;
+    public void setModel(String model) {
+        if (model == null || model.isEmpty()) { this.model = null; return; }
+        if (!VALID_MODELS.contains(model)) {
+            throw new IllegalArgumentException("Invalid model '" + model
+                    + "'. Must be one of " + VALID_MODELS);
+        }
+        this.model = model;
+    }
+
+    /** Returns the effort/thinking level, or {@code null} to use the CLI default. */
+    public String getEffort() { return effort; }
+
+    /**
+     * Sets the effort/thinking level. Fails loud for unknown values.
+     *
+     * @param effort one of {@link #VALID_EFFORT_LEVELS}, or {@code null}/empty
+     * @throws IllegalArgumentException if not a valid level
+     */
+    public void setEffort(String effort) {
+        if (effort == null || effort.isEmpty()) { this.effort = null; return; }
+        if (!VALID_EFFORT_LEVELS.contains(effort)) {
+            throw new IllegalArgumentException("Invalid effort level '" + effort
+                    + "'. Must be one of " + VALID_EFFORT_LEVELS);
+        }
+        this.effort = effort;
+    }
+
+    /** Returns the ar-manager HTTP URL. */
+    public String getArManagerUrl() {
+        return arManagerUrl;
     }
 
     /**
-     * Sets the centralized MCP configuration JSON string.
+     * Sets the ar-manager HTTP URL for centralized tool access.
      *
-     * @param centralizedMcpConfig JSON mapping server names to URLs and tool names
+     * @param arManagerUrl the ar-manager service URL
      */
-    public void setCentralizedMcpConfig(String centralizedMcpConfig) {
-        this.centralizedMcpConfig = centralizedMcpConfig;
+    public void setArManagerUrl(String arManagerUrl) {
+        this.arManagerUrl = arManagerUrl;
+    }
+
+    /** Returns the ar-manager auth token. */
+    public String getArManagerToken() {
+        return arManagerToken;
     }
 
     /**
-     * Returns the pushed MCP tools configuration JSON string.
+     * Sets the HMAC temporary auth token for ar-manager.
      *
-     * <p>When set, this JSON maps tool server names to their download URLs
-     * and tool names. Tools are downloaded from the controller and run
-     * locally via stdio in the agent's container.</p>
+     * @param arManagerToken the bearer token
      */
-    public String getPushedToolsConfig() {
-        return pushedToolsConfig;
-    }
-
-    /**
-     * Sets the pushed MCP tools configuration JSON string.
-     *
-     * @param pushedToolsConfig JSON mapping server names to download URLs and tool names
-     */
-    public void setPushedToolsConfig(String pushedToolsConfig) {
-        this.pushedToolsConfig = pushedToolsConfig;
-    }
-
-    /**
-     * Returns per-workstream environment variables that override the global
-     * pushed tool env in the final MCP stdio config.
-     */
-    public Map<String, String> getWorkstreamEnv() {
-        return workstreamEnv;
-    }
-
-    /**
-     * Sets per-workstream environment variables for pushed tools.
-     *
-     * @param workstreamEnv map of environment variable names to values
-     */
-    public void setWorkstreamEnv(Map<String, String> workstreamEnv) {
-        this.workstreamEnv = workstreamEnv;
+    public void setArManagerToken(String arManagerToken) {
+        this.arManagerToken = arManagerToken;
     }
 
     /**
@@ -367,6 +522,92 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
+     * Returns the deduplication mode for this job.
+     *
+     * @return {@link #DEDUP_LOCAL}, {@link #DEDUP_SPAWN}, or {@link #DEDUP_NONE}
+     */
+    public String getDeduplicationMode() {
+        return deduplicationMode;
+    }
+
+    /**
+     * Sets the deduplication mode for this job.
+     *
+     * <p>The default is {@link #DEDUP_LOCAL} (inline session before commit).
+     * Use {@link #DEDUP_SPAWN} to submit a separate agent job after committing
+     * (requires a workstream URL). Use {@link #DEDUP_NONE} to disable
+     * deduplication entirely.</p>
+     *
+     * @param deduplicationMode {@link #DEDUP_LOCAL}, {@link #DEDUP_SPAWN},
+     *                          or {@link #DEDUP_NONE}
+     */
+    public void setDeduplicationMode(String deduplicationMode) {
+        this.deduplicationMode = deduplicationMode;
+    }
+
+    /**
+     * Returns whether the Maven dependency protection rule is active for this job.
+     *
+     * <p>When active, any {@code <dependency>} additions, removals, or modifications
+     * in {@code pom.xml} files detected against the base branch trigger a correction
+     * loop that instructs the agent to revert those changes. Changes to other parts
+     * of {@code pom.xml} (plugin configuration, properties, etc.) are not affected.</p>
+     *
+     * @return {@code true} if Maven dependency changes are blocked
+     */
+    public boolean isEnforceMavenDependencies() {
+        return enforceMavenDependencies;
+    }
+
+    /**
+     * Sets whether the Maven dependency protection rule is active for this job.
+     *
+     * @param enforceMavenDependencies {@code true} to block {@code <dependency>} changes
+     */
+    public void setEnforceMavenDependencies(boolean enforceMavenDependencies) {
+        this.enforceMavenDependencies = enforceMavenDependencies;
+    }
+
+    /**
+     * Returns whether the organizational placement rule is active for this job.
+     *
+     * <p>When active, a correction session is run after the agent's primary work to
+     * verify that new files are placed at the appropriate level of the module hierarchy.
+     * If the agent moves no files after reviewing placement, the rule considers the
+     * placement correct and exits.</p>
+     *
+     * @return {@code true} if organizational placement enforcement is enabled (the default)
+     */
+    public boolean isEnforceOrganizationalPlacement() {
+        return enforceOrganizationalPlacement;
+    }
+
+    /**
+     * Sets whether the organizational placement rule is active for this job.
+     *
+     * @param enforceOrganizationalPlacement {@code false} to disable placement enforcement
+     */
+    public void setEnforceOrganizationalPlacement(boolean enforceOrganizationalPlacement) {
+        this.enforceOrganizationalPlacement = enforceOrganizationalPlacement;
+    }
+
+    /**
+     * Registers an additional enforcement rule to run after the agent completes
+     * its primary work.
+     *
+     * <p>Custom rules are evaluated after all built-in rules (enforce-changes,
+     * deduplication, maven-dependency-protection). Each rule is checked and
+     * retried independently up to its configured {@link EnforcementRule#getMaxRetries()}
+     * limit.</p>
+     *
+     * @param rule the rule to add; must not be {@code null}
+     */
+    public void addEnforcementRule(EnforcementRule rule) {
+        if (rule == null) throw new IllegalArgumentException("rule must not be null");
+        customEnforcementRules.add(rule);
+    }
+
+    /**
      * Returns the Claude Code session ID from the last execution.
      * Can be used to resume the session later.
      */
@@ -393,7 +634,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * with operational context for autonomous execution.
      *
      * <p>Sections are conditionally included based on the job's configuration:
-     * Slack instructions appear only when a workstream URL is configured,
+     * Messaging instructions appear only when a workstream URL is configured,
      * GitHub instructions only when the MCP config includes ar-github,
      * commit.txt instructions only when git management is active, and
      * budget/turn/task/workstream context is included when available.</p>
@@ -414,7 +655,10 @@ public class ClaudeCodeJob extends GitManagedJob {
                 .setMaxTurns(maxTurns)
                 .setTaskId(getTaskId())
                 .setPlanningDocument(planningDocument)
+                .setDependentRepoPaths(getDependentRepoPaths())
                 .setGitHubMcpEnabled(true)
+                .setGitTamperingViolation(gitTamperingViolation)
+                .setInactivityRestartAttempt(inactivityRestartAttempt)
                 .build();
     }
 
@@ -422,55 +666,208 @@ public class ClaudeCodeJob extends GitManagedJob {
      * Configures the MCP config builder with current job state.
      */
     private void configureMcpBuilder() {
-        mcpConfigBuilder.setCentralizedMcpConfig(centralizedMcpConfig);
-        mcpConfigBuilder.setPushedToolsConfig(pushedToolsConfig);
-        mcpConfigBuilder.setWorkstreamEnv(workstreamEnv);
-        mcpConfigBuilder.setWorkstreamUrl(getWorkstreamUrl());
-        mcpConfigBuilder.setGithubOrg(githubOrg);
+        mcpConfigBuilder.setArManagerUrl(arManagerUrl);
+        mcpConfigBuilder.setArManagerToken(arManagerToken);
+        mcpConfigBuilder.setPythonCommand(getPythonCommand());
         Path workDir = getWorkingDirectory() != null
             ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
         mcpConfigBuilder.setWorkingDirectory(workDir);
     }
 
-    /** Maximum number of enforcement retries before giving up. */
-    private static final int MAX_ENFORCEMENT_RETRIES = 5;
+    /**
+     * Default maximum number of correction attempts per enforcement rule.
+     * Used by all built-in rules and as the default for custom rules added via
+     * {@link #addEnforcementRule(EnforcementRule)}.
+     */
+    public static final int DEFAULT_MAX_RULE_RETRIES = 5;
+
+    /**
+     * Hard cap on total correction attempts across all rules in
+     * {@link #runEnforcementRules()}; bounds the otherwise-unbounded outer
+     * loop so a chronically broken agent cannot spin forever.
+     */
+    public static final int DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS = 25;
 
     @Override
     protected void doWork() {
         executeSingleRun();
 
-        // Enforcement loop: when enforceChanges is enabled and the agent
-        // produced no file changes, restart the session with an escalating
-        // counter so the agent cannot simply declare "no fix needed."
-        if (enforceChanges) {
-            while (enforcementAttempt < MAX_ENFORCEMENT_RETRIES && !hasUncommittedChanges()) {
-                enforcementAttempt++;
-                log("Enforcement loop: attempt " + enforcementAttempt
-                    + " produced no changes -- restarting (attempt "
-                    + (enforcementAttempt + 1) + ")");
-                executeSingleRun();
-            }
-
-            if (!hasUncommittedChanges()) {
-                warn("Enforcement loop: exhausted " + MAX_ENFORCEMENT_RETRIES
-                    + " retries without producing changes");
-            }
+        // Git integrity violations are handled by onGitTampering() in GitManagedJob;
+        // bail out immediately to let that path take over.
+        if (!hasAgentCommitted()) {
+            runEnforcementRules();
         }
     }
 
     /**
-     * Executes a single Claude Code session.
+     * Builds the ordered list of enforcement rules that are currently active for
+     * this job, based on the job's configuration flags.
      *
-     * <p>This method encapsulates the full lifecycle of one agent invocation:
-     * tool download, command construction, process execution, and output
-     * parsing. It is called once in normal mode and potentially multiple
-     * times when enforcement mode is active.</p>
+     * <p>Rules are evaluated in declaration order: built-in rules first, then any
+     * custom rules registered via {@link #addEnforcementRule(EnforcementRule)}.</p>
+     *
+     * @return ordered list of active enforcement rules; never {@code null}
+     */
+    private List<EnforcementRule> buildActiveRules() {
+        List<EnforcementRule> rules = new ArrayList<>();
+        if (enforceChanges) {
+            rules.add(new EnforceChangesRule());
+        }
+        if (DEDUP_LOCAL.equals(deduplicationMode)) {
+            rules.add(new DeduplicationRule());
+        }
+        if (enforceOrganizationalPlacement) {
+            rules.add(new OrganizationalPlacementRule());
+        }
+        if (enforceMavenDependencies) {
+            rules.add(new MavenDependencyProtectionRule());
+        }
+        rules.addAll(customEnforcementRules);
+        return rules;
+    }
+
+    /**
+     * Runs all active enforcement rules in sequence.
+     *
+     * <p>For each rule that detects a violation, a correction session is started
+     * and the check is repeated until the violation is resolved or the rule's
+     * maximum retry count is exhausted. Rules are independent: a failure in one
+     * rule does not prevent subsequent rules from running.</p>
+     *
+     * <p>Exits early if the agent commits during a correction session — the
+     * tampering-detection path in {@link GitManagedJob} handles that case.</p>
+     */
+    void runEnforcementRules() {
+        List<EnforcementRule> rules = buildActiveRules();
+        int totalAttempts = 0;
+        boolean anyRuleCorrectionRan;
+        do {
+            anyRuleCorrectionRan = false;
+            for (EnforcementRule rule : rules) {
+                if (!rule.isViolated(this)) {
+                    log("Enforcement rule '" + rule.getName() + "': no violation");
+                    continue;
+                }
+
+                log("Enforcement rule '" + rule.getName() + "': violation detected");
+                int attempts = 0;
+                while (attempts < rule.getMaxRetries()
+                        && rule.isViolated(this)
+                        && !hasAgentCommitted()
+                        && totalAttempts < DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
+                    attempts++;
+                    totalAttempts++;
+                    anyRuleCorrectionRan = true;
+                    log("Enforcement rule '" + rule.getName()
+                            + "': correction attempt " + attempts);
+                    String correctionPrompt = rule.buildCorrectionPrompt(this);
+                    if (correctionPrompt != null) {
+                        runCorrectionSession(correctionPrompt, rule.getName());
+                    } else {
+                        // enforce-changes is the only rule that re-runs with the existing
+                        // prompt; bumping enforcementAttempt for other rules would inflate
+                        // the user-facing escalation messaging.
+                        if ("enforce-changes".equals(rule.getName())) {
+                            enforcementAttempt++;
+                            log("Enforcement attempt: " + (enforcementAttempt + 1));
+                        }
+                        executeSingleRun();
+                    }
+                    rule.onCorrectionAttempted(this);
+                    if (hasAgentCommitted()) break;
+                }
+
+                if (!hasAgentCommitted() && rule.isViolated(this)) {
+                    if (attempts >= rule.getMaxRetries()) {
+                        warn("Enforcement rule '" + rule.getName() + "': exhausted "
+                                + rule.getMaxRetries() + " retries without resolution");
+                    } else if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
+                        warn("Enforcement rule '" + rule.getName()
+                                + "': stopped because the total enforcement attempt cap was reached");
+                    }
+                }
+                if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) break;
+            }
+        } while (totalAttempts < DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS
+                && anyRuleCorrectionRan && !hasAgentCommitted());
+
+        if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
+            warn("Enforcement aborted after " + totalAttempts + " total attempts (cap: "
+                    + DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS + ") — giving up to"
+                    + " avoid an unbounded retry loop");
+        }
+    }
+
+    /**
+     * Runs a correction session tagged with {@code activity} (the rule name)
+     * via {@code AR_AGENT_ACTIVITY} so {@code send_message} calls are labelled.
+     *
+     * @param correctionPrompt prompt for this session
+     * @param activity         rule name used as the activity tag
+     */
+    protected void runCorrectionSession(String correctionPrompt, String activity) {
+        String originalPrompt = this.prompt;
+        String previousActivity = this.currentActivity;
+        this.currentActivity = activity;
+        // Preserve commit.txt so the correction session cannot overwrite it.
+        Path commitFile = resolveWorkingPath("commit.txt");
+        String savedCommitMessage = null;
+        if (commitFile != null && Files.exists(commitFile)) {
+            try {
+                savedCommitMessage = Files.readString(commitFile, StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                warn("Could not read commit.txt before correction session: " + e.getMessage());
+            }
+        }
+
+        try {
+            this.prompt = correctionPrompt;
+            executeSingleRun();
+        } finally {
+            this.prompt = originalPrompt;
+            this.currentActivity = previousActivity;
+            if (commitFile != null) {
+                try {
+                    if (savedCommitMessage != null) {
+                        Files.writeString(commitFile, savedCommitMessage, StandardCharsets.UTF_8);
+                        log("Restored primary commit message from commit.txt");
+                    } else {
+                        Files.deleteIfExists(commitFile);
+                    }
+                } catch (IOException e) {
+                    warn("Could not restore commit.txt after correction session: " + e.getMessage());
+                }
+            }
+        }
+    }
+
+    @Override
+    protected boolean onGitTampering() {
+        String violation = getTamperingDescription();
+        warn("Agent tampered with git: " + violation
+            + " -- destroying all changes and restarting session");
+
+        // Set the violation message so buildInstructionPrompt() includes
+        // the warning in the restarted session's prompt.
+        gitTamperingViolation = violation;
+
+        // Re-run the session.  The prompt will now include a stern warning
+        // about the violation and the consequences of repeating it.
+        executeSingleRun();
+
+        // Clear the violation so it doesn't persist into further retries.
+        gitTamperingViolation = null;
+
+        return true;
+    }
+
+    /**
+     * Executes a single Claude Code session.  Internally retries the Claude
+     * subprocess up to {@link #maxInactivityRestarts} times when the inactivity
+     * monitor kills it.  Called once in normal mode and once per
+     * enforcement-rule correction when enforcement mode is active.
      */
     private void executeSingleRun() {
-        // Download pushed tools from the controller if needed
-        toolsDownloader.ensurePushedTools(pushedToolsConfig);
-
-        // Remove stale commit.txt from any previous run
         Path staleCommitFile = resolveWorkingPath("commit.txt");
         if (staleCommitFile != null && Files.exists(staleCommitFile)) {
             try {
@@ -483,9 +880,34 @@ public class ClaudeCodeJob extends GitManagedJob {
 
         File outputDir = new File("claude-output");
         if (!outputDir.exists()) outputDir.mkdir();
-
         String outputFile = "claude-output/" + KeyUtils.generateKey() + ".json";
+        output = "";
+        for (int attempt = 0; attempt <= maxInactivityRestarts; attempt++) {
+            inactivityRestartAttempt = attempt;
+            wasKilledForInactivity = false;
+            output = launchClaudeAttempt();
+            if (!wasKilledForInactivity) break;
+            if (attempt == maxInactivityRestarts) {
+                warn("Inactivity-restart limit (" + maxInactivityRestarts + ") reached -- abandoning Claude session");
+            } else {
+                log("Relaunching Claude after inactivity timeout (attempt " + (attempt + 2) + " of " + (maxInactivityRestarts + 1) + ")");
+            }
+        }
+        inactivityRestartAttempt = 0;
 
+        try (FileWriter writer = new FileWriter(outputFile)) { writer.write(output); }
+        catch (IOException e) { warn("Failed to save Claude output to " + outputFile + ": " + e.getMessage()); }
+        extractOutputMetrics(output);
+        log("Output saved to: " + outputFile);
+
+        if (getOutputConsumer() != null) {
+            getOutputConsumer().accept(new ClaudeCodeJobOutput(
+                getTaskId(), prompt, output, sessionId, exitCode));
+        }
+    }
+
+    /** Launches one Claude subprocess via {@link ClaudeAttemptRunner} and returns its captured stdout. */
+    private String launchClaudeAttempt() {
         List<String> command = new ArrayList<>();
         command.add("claude");
         command.add("-p");
@@ -503,6 +925,16 @@ public class ClaudeCodeJob extends GitManagedJob {
             command.add(String.format("%.2f", maxBudgetUsd));
         }
 
+        if (model != null) {
+            command.add("--model");
+            command.add(model);
+        }
+
+        if (effort != null) {
+            command.add("--effort");
+            command.add(effort);
+        }
+
         log("Starting: " + getTaskString());
         log("Tools: " + allowedTools);
         if (getTargetBranch() != null) {
@@ -511,79 +943,48 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (enforcementAttempt > 0) {
             log("Enforcement attempt: " + (enforcementAttempt + 1));
         }
+        if (inactivityRestartAttempt > 0) {
+            log("Inactivity restart attempt: " + (inactivityRestartAttempt + 1)
+                    + " of " + (maxInactivityRestarts + 1));
+        }
 
-        // Verify MCP tool server files exist before launching Claude Code
         Path mcpWorkDir = getWorkingDirectory() != null
             ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
         toolsDownloader.verifyMcpToolFiles(mcpWorkDir);
 
-        // MCP config (ar-github always; ar-slack when workstream URL is set)
         command.add("--mcp-config");
         command.add(mcpConfigBuilder.buildMcpConfig());
 
-        try {
-            ProcessBuilder pb = new ProcessBuilder(command);
-
-            String workDir = getWorkingDirectory();
-            if (workDir != null) {
-                pb.directory(new File(workDir));
-            }
-
-            // Set resolved workstream URL for MCP servers (ar-slack, ar-github).
-            // resolveWorkstreamUrl() replaces the 0.0.0.0 placeholder with the
-            // actual controller host from FLOWTREE_ROOT_HOST, which is required
-            // when the agent runs in a Docker container.
-            String wsUrl = resolveWorkstreamUrl();
-            if (wsUrl != null && !wsUrl.isEmpty()) {
-                pb.environment().put("AR_WORKSTREAM_URL", wsUrl);
-                log("AR_WORKSTREAM_URL: " + wsUrl);
-            }
-
-            log("Command: " + String.join(" ", command));
-            log("Working directory: " + (workDir != null ? workDir : System.getProperty("user.dir")));
-
-            pb.redirectErrorStream(true);
-            pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
-            Process process = pb.start();
-
-            long pid = process.pid();
-            log("Process started (PID: " + pid + ")");
-
-            StringBuilder outputBuilder = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    outputBuilder.append(line).append("\n");
-                    log("[ClaudeCode] " + line);
-                }
-            }
-
-            log("Process output stream closed, waiting for exit...");
-            exitCode = process.waitFor();
-            output = outputBuilder.toString();
-
-            // Save output to file
-            try (FileWriter writer = new FileWriter(outputFile)) {
-                writer.write(output);
-            }
-
-            // Extract session ID and timing metrics from JSON output
-            extractOutputMetrics(output);
-
-            log("Completed with exit code: " + exitCode);
-            log("Output saved to: " + outputFile);
-
-            if (getOutputConsumer() != null) {
-                getOutputConsumer().accept(new ClaudeCodeJobOutput(
-                    getTaskId(), prompt, output, sessionId, exitCode
-                ));
-            }
-
-        } catch (IOException | InterruptedException e) {
-            warn("Error: " + e.getMessage(), e);
-            exitCode = -1;
+        ProcessBuilder pb = new ProcessBuilder(command);
+        String workDir = getWorkingDirectory();
+        if (workDir != null) {
+            pb.directory(new File(workDir));
         }
+
+        String wsUrl = resolveWorkstreamUrl();
+        if (wsUrl != null && !wsUrl.isEmpty()) {
+            pb.environment().put("AR_WORKSTREAM_URL", wsUrl);
+            log("AR_WORKSTREAM_URL: " + wsUrl);
+        }
+
+        if (currentActivity != null && !currentActivity.isEmpty()) {
+            pb.environment().put("AR_AGENT_ACTIVITY", currentActivity);
+        } else {
+            pb.environment().remove("AR_AGENT_ACTIVITY");
+        }
+        GitOperations.augmentPath(pb);
+
+        log("Command: " + String.join(" ", command));
+        log("Working directory: " + (workDir != null ? workDir : System.getProperty("user.dir")));
+
+        pb.redirectErrorStream(true);
+        pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
+
+        ClaudeAttemptRunner.Result result = ClaudeAttemptRunner.runAttempt(
+                pb, inactivityTimeoutMillis, getTaskId(), this);
+        exitCode = result.exitCode();
+        wasKilledForInactivity = result.killedForInactivity();
+        return result.output();
     }
 
     /**
@@ -595,14 +996,15 @@ public class ClaudeCodeJob extends GitManagedJob {
      *
      * @return true if there are uncommitted changes to non-excluded files
      */
-    private boolean hasUncommittedChanges() {
+    boolean hasUncommittedChanges() {
         try {
-            ProcessBuilder pb = new ProcessBuilder("git", "status", "--porcelain");
+            ProcessBuilder pb = new ProcessBuilder(GitOperations.resolveGitCommand(), "status", "--porcelain");
             String workDir = getWorkingDirectory();
             if (workDir != null) {
                 pb.directory(new File(workDir));
             }
             pb.redirectErrorStream(true);
+            GitOperations.augmentPath(pb);
             Process process = pb.start();
             String statusOutput = new String(
                 process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
@@ -615,11 +1017,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                     if (file.contains(" -> ")) {
                         file = file.split(" -> ")[1];
                     }
-                    if (!file.isEmpty()
-                            && !file.startsWith("claude-output/")
-                            && !file.startsWith(".claude/")
-                            && !file.startsWith("target/")
-                            && !file.equals("commit.txt")) {
+                    if (!GitOperations.isExcludedPath(file)) {
                         return true;
                     }
                 }
@@ -631,12 +1029,86 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
     }
 
+    /**
+     * Checks whether the agent's changes modify {@code <dependency>} entries
+     * in any {@code pom.xml} files when compared against the base branch.
+     *
+     * <p>Detects added or removed lines containing {@code <dependency>} in
+     * the diff of {@code pom.xml} files against {@code origin/<baseBranch>}.
+     * Changes to other {@code pom.xml} content (plugin configuration, properties,
+     * etc.) are not flagged.</p>
+     *
+     * @return {@code true} if any {@code <dependency>} additions or removals
+     *         were detected
+     */
+    boolean hasMavenDependencyChanges() {
+        String workDir = getWorkingDirectory();
+        String baseBranch = getBaseBranch() != null ? getBaseBranch() : "master";
+
+        try {
+            // Use a large unified context so that opening <dependency> tags always
+            // appear in the hunk even when the changed line is deep inside a long block.
+            ProcessBuilder pb = new ProcessBuilder(
+                    GitOperations.resolveGitCommand(),
+                    "diff", "--unified=50", "origin/" + baseBranch, "--", "**/pom.xml", "pom.xml");
+            if (workDir != null) pb.directory(new File(workDir));
+            pb.redirectErrorStream(true);
+            GitOperations.augmentPath(pb);
+            Process p = pb.start();
+            String diff = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            int exitCode = p.waitFor();
+
+            if (exitCode != 0) {
+                warn("Maven dependency check: git diff exited with code " + exitCode
+                    + " — treating as violation (fail closed)");
+                return true;
+            }
+
+            // Track whether the current context is inside a <dependency> block so that
+            // modifications to child elements (e.g. <version>, <groupId>) are detected
+            // even when the <dependency> opening tag itself is not on a changed line.
+            boolean inDependencyBlock = false;
+            for (String line : diff.split("\n")) {
+                if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")) {
+                    continue;
+                }
+
+                String content = line.length() > 0 ? line.substring(1).trim() : "";
+                boolean opensBlock = content.contains("<dependency>") || content.contains("<dependency ");
+                boolean closesBlock = content.contains("</dependency>");
+
+                if (opensBlock) {
+                    inDependencyBlock = true;
+                }
+
+                if ((line.startsWith("+") || line.startsWith("-")) && (inDependencyBlock || opensBlock)) {
+                    return true;
+                }
+
+                if (closesBlock) {
+                    inDependencyBlock = false;
+                }
+            }
+        } catch (IOException e) {
+            warn("Maven dependency check: failed to diff pom.xml files: " + e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warn("Maven dependency check: failed to diff pom.xml files: " + e.getMessage());
+        }
+        return false;
+    }
+
     @Override
     protected JobCompletionEvent createEvent(Exception error) {
         if (error != null) {
             return ClaudeCodeJobEvent.failed(
                 getTaskId(), getTaskString(),
                 error.getMessage(), error
+            );
+        } else if (exitCode != 0) {
+            return ClaudeCodeJobEvent.failed(
+                getTaskId(), getTaskString(),
+                "Claude Code exited with code " + exitCode, null
             );
         } else {
             return ClaudeCodeJobEvent.success(getTaskId(), getTaskString());
@@ -653,13 +1125,34 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
     }
 
+    /** Maximum number of method names included in a single deduplication prompt. */
+    static final int MAX_DEDUP_METHODS = 50;
+
     @Override
     protected boolean validateChanges() throws Exception {
-        if (!isProtectTestFiles()) {
-            return true;
+        // Test-hiding audit (only when protect-test-files is enabled)
+        if (isProtectTestFiles() && !runTestHidingAudit()) {
+            return false;
         }
 
-        // Use the existing detect-test-hiding.sh script for diff auditing
+        // Deduplication SPAWN mode: fire-and-forget follow-up job after primary work.
+        // Note: DEDUP_LOCAL is handled inline by DeduplicationRule in the enforcement
+        // framework (runEnforcementRules), which runs in doWork() before the commit.
+        if (DEDUP_SPAWN.equals(deduplicationMode)) {
+            submitDeduplicationSpawnJob();
+        }
+
+        return true;
+    }
+
+    /**
+     * Runs the detect-test-hiding.sh audit script against the base branch.
+     *
+     * @return {@code false} if test-hiding violations were found (exit code 2),
+     *         {@code true} otherwise (including script-not-found and other errors)
+     * @throws Exception if the process cannot be started
+     */
+    private boolean runTestHidingAudit() throws Exception {
         Path auditScript = resolveWorkingPath("tools/ci/agent-protection/detect-test-hiding.sh");
         if (auditScript == null || !Files.exists(auditScript)) {
             log("detect-test-hiding.sh not found, skipping validation");
@@ -668,27 +1161,205 @@ public class ClaudeCodeJob extends GitManagedJob {
 
         String baseBranch = getBaseBranch() != null ? getBaseBranch() : "master";
         ProcessBuilder pb = new ProcessBuilder("bash", auditScript.toString(),
-            "origin/" + baseBranch);
+                "origin/" + baseBranch);
         String workDir = getWorkingDirectory();
         if (workDir != null) {
             pb.directory(new File(workDir));
         }
         pb.redirectErrorStream(true);
+        GitOperations.augmentPath(pb);
         Process p = pb.start();
-        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        String auditOutput = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         int code = p.waitFor();
 
         if (code == 2) {
-            // Exit code 2 = violations found
-            warn("Test-hiding violations detected - aborting commit:\n" + output);
+            warn("Test-hiding violations detected - aborting commit:\n" + auditOutput);
             return false;
         } else if (code != 0) {
-            warn("detect-test-hiding.sh exited with code " + code + ": " + output);
-            // Non-violation error (code 1 = bad args); don't block on script bugs
+            warn("detect-test-hiding.sh exited with code " + code + ": " + auditOutput);
         }
 
         log("Test integrity check passed");
         return true;
+    }
+
+    /**
+     * Posts a deduplication job to the same workstream via the controller API.
+     * Only called when {@link #deduplicationMode} is {@link #DEDUP_SPAWN}.
+     *
+     * <p>The {@link #DEDUP_LOCAL} mode is handled by {@link DeduplicationRule}
+     * inside the enforcement framework ({@link #runEnforcementRules()}), which
+     * runs inline before the commit is finalised.</p>
+     */
+    private void submitDeduplicationSpawnJob() {
+        List<String> newMethods = extractNewMethodNames();
+        if (newMethods.isEmpty()) {
+            log("Deduplication scan: no new Java methods detected");
+            return;
+        }
+
+        log("Deduplication scan: found " + newMethods.size() + " new method(s) -- spawning follow-up job");
+        List<String> capped = newMethods.size() > MAX_DEDUP_METHODS
+                ? newMethods.subList(0, MAX_DEDUP_METHODS) : newMethods;
+        boolean truncated = newMethods.size() > MAX_DEDUP_METHODS;
+        spawnDeduplicationJob(
+                buildDeduplicationPrompt(capped, truncated, newMethods.size()),
+                newMethods.size());
+    }
+
+    /**
+     * Posts a deduplication job to the same workstream via the controller API.
+     *
+     * <p>This is fire-and-forget: errors are logged but do not affect the
+     * outcome of the current job.  Requires a workstream URL to be configured.</p>
+     *
+     * @param dedupPrompt the deduplication prompt
+     * @param methodCount the total number of new methods detected
+     */
+    private void spawnDeduplicationJob(String dedupPrompt, int methodCount) {
+        String wsUrl = resolveWorkstreamUrl();
+        if (wsUrl == null || wsUrl.isEmpty()) {
+            warn("Deduplication mode is 'spawn' but no workstream URL is configured -- skipping");
+            return;
+        }
+
+        String controllerBase = extractControllerBaseUrl(wsUrl);
+        String workstreamId = extractWorkstreamId(wsUrl);
+        if (controllerBase == null || workstreamId == null) {
+            warn("Cannot parse workstream URL for deduplication job: " + wsUrl);
+            return;
+        }
+
+        try {
+            ObjectNode payload = outputMapper.createObjectNode();
+            payload.put("prompt", dedupPrompt);
+            payload.put("workstreamId", workstreamId);
+            payload.put("description", "Deduplication audit: " + methodCount + " new method(s)");
+            payload.put("automated", true);
+            String json = outputMapper.writeValueAsString(payload);
+
+            log("Spawning deduplication job on workstream " + workstreamId);
+            postJson(controllerBase + "/api/submit", json);
+        } catch (Exception e) {
+            warn("Failed to spawn deduplication job: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Returns new Java method names introduced since the base branch.
+     * Delegates to {@link GitOperations#extractNewMethodNames}.
+     *
+     * @return deduplicated list of new method names, order-preserving
+     */
+    List<String> extractNewMethodNames() {
+        String base = getBaseBranch() != null ? getBaseBranch() : "master";
+        return GitOperations.extractNewMethodNames(getWorkingDirectory(), base, this::warn);
+    }
+
+    /**
+     * Returns the paths of files that are new on the branch since the base branch.
+     * Delegates to {@link GitOperations#extractNewFilePaths}.
+     *
+     * @return deduplicated list of new file paths, relative to the working directory
+     */
+    List<String> extractNewFilePaths() {
+        String base = getBaseBranch() != null ? getBaseBranch() : "master";
+        return GitOperations.extractNewFilePaths(getWorkingDirectory(), base, this::warn);
+    }
+
+    /**
+     * Builds the aggressive deduplication prompt that is sent to the follow-up
+     * agent session.
+     *
+     * @param methodNames  the (possibly capped) list of new method names
+     * @param truncated    {@code true} if the list was capped due to size
+     * @param totalCount   the total number of methods found (before capping)
+     * @return the full prompt string
+     */
+    static String buildDeduplicationPrompt(List<String> methodNames,
+                                                    boolean truncated,
+                                                    int totalCount) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("DEDUPLICATION AUDIT — MANDATORY PRE-COMMIT REVIEW\n\n");
+        sb.append("A prior agent session has committed changes that introduce the ");
+        sb.append("following new methods");
+        if (truncated) {
+            sb.append(" (showing ").append(methodNames.size())
+              .append(" of ").append(totalCount).append(" total)");
+        }
+        sb.append(":\n\n");
+        for (String name : methodNames) {
+            sb.append("  - ").append(name).append("\n");
+        }
+        sb.append("\n");
+        sb.append("Your job is to determine whether any of these methods duplicate ");
+        sb.append("functionality that already exists elsewhere in the codebase. ");
+        sb.append("This is a mandatory review step — do not skip it and do not ");
+        sb.append("conclude quickly that a method is unique without actually searching.\n\n");
+        sb.append("CRITICAL ASSUMPTION: For every method in the list above, you MUST ");
+        sb.append("assume it is a clone of an existing method until you have proven ");
+        sb.append("otherwise. This is not a pessimistic assumption — it is statistically ");
+        sb.append("accurate. The majority of methods introduced by agent sessions are ");
+        sb.append("duplicates of functionality that already exists elsewhere. The agent ");
+        sb.append("re-implemented things it could not find by search. The clone may not ");
+        sb.append("be an exact copy: it may be renamed, slightly generalised, or placed ");
+        sb.append("in a different class — but it performs the same operation on the same ");
+        sb.append("data.\n\n");
+        sb.append("For each method:\n");
+        sb.append("1. Search the codebase for methods that perform the same logical ");
+        sb.append("operation. Use Grep to search by keyword, not just by name.\n");
+        sb.append("2. If a duplicate exists: remove the new method entirely and replace ");
+        sb.append("all call sites with the existing method.\n");
+        sb.append("3. Only after a thorough search may you conclude a method is ");
+        sb.append("genuinely new.\n\n");
+        sb.append("IMPORTANT — editing rules:\n");
+        sb.append("- Use the Edit tool to remove duplicate methods surgically. ");
+        sb.append("Remove only the duplicate method body and its declaration; ");
+        sb.append("preserve all other changes in the file.\n");
+        sb.append("- NEVER use git restore, git checkout --, git reset, or any ");
+        sb.append("other git command to revert a file. Those commands discard ALL ");
+        sb.append("changes in that file, not just the duplicate method, and will ");
+        sb.append("destroy work that must be preserved.\n\n");
+        sb.append("Do not rationalise keeping a duplicate because it is 'slightly ");
+        sb.append("different'. Slight differences are how duplicates hide. If the ");
+        sb.append("logical purpose is the same, merge them. The codebase already has ");
+        sb.append("too many near-identical copies of the same logic; every one you ");
+        sb.append("remove improves maintainability for every future session.");
+        return sb.toString();
+    }
+
+    /**
+     * Extracts the controller base URL (scheme + host + port) from a workstream URL.
+     *
+     * <p>Workstream URLs follow the pattern
+     * {@code http://host:port/api/workstreams/{id}/jobs/{jobId}}.
+     * This method returns everything before {@code /api/workstreams/}.</p>
+     *
+     * @param workstreamUrl the full workstream URL
+     * @return the controller base URL, or {@code null} if the URL cannot be parsed
+     */
+    static String extractControllerBaseUrl(String workstreamUrl) {
+        int idx = workstreamUrl.indexOf("/api/workstreams/");
+        if (idx < 0) return null;
+        return workstreamUrl.substring(0, idx);
+    }
+
+    /**
+     * Extracts the workstream identifier from a workstream URL.
+     *
+     * <p>Workstream URLs follow the pattern
+     * {@code http://host:port/api/workstreams/{id}/jobs/{jobId}}.
+     * This method returns the {@code {id}} segment.</p>
+     *
+     * @param workstreamUrl the full workstream URL
+     * @return the workstream ID, or {@code null} if the URL cannot be parsed
+     */
+    static String extractWorkstreamId(String workstreamUrl) {
+        int start = workstreamUrl.indexOf("/api/workstreams/");
+        if (start < 0) return null;
+        start += "/api/workstreams/".length();
+        int end = workstreamUrl.indexOf("/", start);
+        return end < 0 ? workstreamUrl.substring(start) : workstreamUrl.substring(start, end);
     }
 
     @Override
@@ -730,6 +1401,9 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /**
      * Resolves a path relative to the working directory.
+     *
+     * @param filename the path relative to the working directory
+     * @return the resolved {@link Path}
      */
     private Path resolveWorkingPath(String filename) {
         String workDir = getWorkingDirectory();
@@ -750,7 +1424,7 @@ public class ClaudeCodeJob extends GitManagedJob {
 
         // Claude Code with --output-format json emits NDJSON: one JSON object
         // per line. Locate the result object (type=result) and extract from that.
-        String resultJson = io.flowtree.JsonFieldExtractor.extractLastJsonObject(jsonOutput, "result");
+        String resultJson = JsonFieldExtractor.extractLastJsonObject(jsonOutput, "result");
         if (resultJson == null) {
             resultJson = jsonOutput;
         }
@@ -758,83 +1432,53 @@ public class ClaudeCodeJob extends GitManagedJob {
         try {
             JsonNode root = outputMapper.readTree(resultJson);
 
+            // Session ID and stop reason reflect the latest session only.
             sessionId = getTextOrNull(root, "session_id");
-
-            durationMs = root.path("duration_ms").asLong(0);
-            durationApiMs = root.path("duration_api_ms").asLong(0);
-            numTurns = root.path("num_turns").asInt(0);
-
-            costUsd = root.path("total_cost_usd").asDouble(0.0);
-            if (costUsd == 0.0) {
-                costUsd = root.path("cost_usd").asDouble(0.0);
-            }
-
             subtype = getTextOrNull(root, "subtype");
             isError = root.path("is_error").asBoolean(false);
 
-            // Count permission_denials array entries and extract denied tool names
+            // Accumulate numeric metrics across all sessions (main + enforcement
+            // correction sessions) so the final totals include every phase.
+            durationMs += root.path("duration_ms").asLong(0);
+            durationApiMs += root.path("duration_api_ms").asLong(0);
+            numTurns += root.path("num_turns").asInt(0);
+
+            double sessionCost = root.path("total_cost_usd").asDouble(0.0);
+            if (sessionCost == 0.0) {
+                sessionCost = root.path("cost_usd").asDouble(0.0);
+            }
+            costUsd += sessionCost;
+
+            // Accumulate permission denials across all sessions.
             JsonNode denials = root.get("permission_denials");
             if (denials != null && denials.isArray()) {
-                permissionDenials = denials.size();
-                deniedToolNames = new ArrayList<>();
+                permissionDenials += denials.size();
+                if (deniedToolNames == null) {
+                    deniedToolNames = new ArrayList<>();
+                }
                 for (JsonNode denial : denials) {
                     JsonNode toolNode = denial.get("tool");
                     if (toolNode != null && toolNode.isTextual()) {
                         deniedToolNames.add(toolNode.asText());
                     }
                 }
-            } else {
-                permissionDenials = 0;
             }
         } catch (Exception e) {
             warn("Failed to parse output metrics: " + e.getMessage());
         }
     }
 
+    /**
+     * Returns the text value of a JSON field, or {@code null} if the field is
+     * absent or not a text node.
+     *
+     * @param node   the parent JSON object node
+     * @param field  the field name to look up
+     * @return       the string value, or {@code null}
+     */
     private static String getTextOrNull(JsonNode node, String field) {
         JsonNode child = node.get(field);
         return (child != null && child.isTextual()) ? child.asText() : null;
-    }
-
-    /**
-     * Serializes a {@link Map} of string entries to a JSON object string
-     * using Jackson.
-     *
-     * @param map the map to serialize
-     * @return JSON object string
-     */
-    private static String mapToJsonObject(Map<String, String> map) {
-        try {
-            return outputMapper.writeValueAsString(map);
-        } catch (Exception e) {
-            return "{}";
-        }
-    }
-
-    /**
-     * Parses a JSON object string into a {@link Map} of string entries
-     * using Jackson.
-     *
-     * @param json the JSON object string
-     * @return parsed map, empty if input is null or unparseable
-     */
-    private static Map<String, String> parseJsonObjectToMap(String json) {
-        Map<String, String> result = new java.util.LinkedHashMap<>();
-        if (json == null) return result;
-        try {
-            JsonNode root = outputMapper.readTree(json);
-            java.util.Iterator<String> fieldNames = root.fieldNames();
-            while (fieldNames.hasNext()) {
-                String key = fieldNames.next();
-                JsonNode valueNode = root.get(key);
-                if (valueNode.isTextual()) {
-                    result.put(key, valueNode.asText());
-                }
-            }
-        } catch (Exception e) {
-            // Return empty map on parse failure
-        }
-        return result;
     }
 
     @Override
@@ -845,20 +1489,32 @@ public class ClaudeCodeJob extends GitManagedJob {
         sb.append("::tools:=").append(base64Encode(allowedTools));
         sb.append("::maxTurns:=").append(maxTurns);
         sb.append("::maxBudget:=").append(maxBudgetUsd);
-        if (centralizedMcpConfig != null) {
-            sb.append("::centralMcp:=").append(base64Encode(centralizedMcpConfig));
+        if (model != null) {
+            sb.append("::model:=").append(model);
         }
-        if (pushedToolsConfig != null) {
-            sb.append("::pushedTools:=").append(base64Encode(pushedToolsConfig));
+        if (effort != null) {
+            sb.append("::effort:=").append(effort);
         }
-        if (workstreamEnv != null && !workstreamEnv.isEmpty()) {
-            sb.append("::wsEnv:=").append(base64Encode(mapToJsonObject(workstreamEnv)));
+        if (arManagerUrl != null) {
+            sb.append("::arManagerUrl:=").append(base64Encode(arManagerUrl));
+        }
+        if (arManagerToken != null) {
+            sb.append("::arManagerToken:=").append(base64Encode(arManagerToken));
         }
         if (planningDocument != null) {
             sb.append("::planDoc:=").append(base64Encode(planningDocument));
         }
         sb.append("::protectTests:=").append(isProtectTestFiles());
         sb.append("::enforceChanges:=").append(enforceChanges);
+        if (deduplicationMode != null) {
+            sb.append("::dedupMode:=").append(deduplicationMode);
+        }
+        if (enforceMavenDependencies) {
+            sb.append("::enforceMavenDeps:=true");
+        }
+        if (!enforceOrganizationalPlacement) {
+            sb.append("::enforceOrgPlacement:=false");
+        }
         return sb.toString();
     }
 
@@ -877,14 +1533,17 @@ public class ClaudeCodeJob extends GitManagedJob {
             case "maxBudget":
                 this.maxBudgetUsd = Double.parseDouble(value);
                 break;
-            case "centralMcp":
-                this.centralizedMcpConfig = base64Decode(value);
+            case "model":
+                setModel(value);
                 break;
-            case "pushedTools":
-                this.pushedToolsConfig = base64Decode(value);
+            case "effort":
+                setEffort(value);
                 break;
-            case "wsEnv":
-                this.workstreamEnv = parseJsonObjectToMap(base64Decode(value));
+            case "arManagerUrl":
+                this.arManagerUrl = base64Decode(value);
+                break;
+            case "arManagerToken":
+                this.arManagerToken = base64Decode(value);
                 break;
             case "planDoc":
                 this.planningDocument = base64Decode(value);
@@ -895,6 +1554,15 @@ public class ClaudeCodeJob extends GitManagedJob {
             case "enforceChanges":
                 this.enforceChanges = Boolean.parseBoolean(value);
                 break;
+            case "dedupMode":
+                this.deduplicationMode = value;
+                break;
+            case "enforceMavenDeps":
+                this.enforceMavenDependencies = Boolean.parseBoolean(value);
+                break;
+            case "enforceOrgPlacement":
+                this.enforceOrganizationalPlacement = Boolean.parseBoolean(value);
+                break;
             default:
                 // Delegate to parent for git-related properties
                 super.set(key, value);
@@ -902,587 +1570,31 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Output record for ClaudeCodeJob results.
-     */
-    public static class ClaudeCodeJobOutput extends JobOutput {
-        private final String prompt;
-        private final String sessionId;
-        private final int exitCode;
-
-        public ClaudeCodeJobOutput(String taskId, String prompt, String output, String sessionId, int exitCode) {
-            super(taskId, "", "", output);
-            this.prompt = prompt;
-            this.sessionId = sessionId;
-            this.exitCode = exitCode;
-        }
-
-        public String getPrompt() { return prompt; }
-        public String getSessionId() { return sessionId; }
-        public int getExitCode() { return exitCode; }
-
-        @Override
-        public String toString() {
-            return "ClaudeCodeJobOutput{taskId=" + getTaskId() + ", exitCode=" + exitCode +
-                   ", sessionId=" + sessionId + "}";
-        }
-    }
-
-    /**
-     * Factory for producing {@link ClaudeCodeJob} instances from a list of prompts.
+     * Backward-compatible alias for {@link ClaudeCodeJobFactory}.
      *
-     * <p>Each prompt becomes a separate job, allowing the Flowtree system to
-     * distribute prompts across multiple nodes. When a node finishes a prompt,
-     * it becomes idle and can pick up the next job.</p>
+     * <p>New code should reference {@link ClaudeCodeJobFactory} directly.
+     * This subclass exists so that existing call sites using
+     * {@code new ClaudeCodeJob.Factory(...)} and serialized wire-format
+     * strings containing {@code ClaudeCodeJob$Factory} continue to work.</p>
      */
-    public static class Factory extends AbstractJobFactory {
-        private List<String> prompts;
-        private String description;
-        private int index;
-        private String allowedTools = DEFAULT_TOOLS;
-        private int maxTurns = 50;
-        private double maxBudgetUsd = 10.0;
-        private String centralizedMcpConfig;
-        private String pushedToolsConfig;
-        private Map<String, String> workstreamEnv;
-        private String planningDocument;
-        private String githubOrg;
-        private boolean enforceChanges;
-
+    public static class Factory extends ClaudeCodeJobFactory {
         /**
          * Default constructor for deserialization.
          */
-        public Factory() {
-            super(KeyUtils.generateKey());
-            // Persist taskId in properties so it survives wire serialization.
-            // AbstractJobFactory.encode() does NOT serialize the taskId field,
-            // so without this the deserialized factory would get a new random ID.
-            set("factoryTaskId", super.getTaskId());
-
-            // Store default for pushToOrigin so isPushToOrigin() returns true
-            // even before setPushToOrigin() is explicitly called.
-            set("push", String.valueOf(true));
-        }
-
-        @Override
-        public String getTaskId() {
-            String stored = get("factoryTaskId");
-            return stored != null ? stored : super.getTaskId();
-        }
+        public Factory() { super(); }
 
         /**
          * Creates a factory with the specified prompts.
          *
          * @param prompts the prompts to process
          */
-        public Factory(String... prompts) {
-            this();
-            if (prompts.length > 0) {
-                setPrompts(prompts);
-            }
-        }
+        public Factory(String... prompts) { super(prompts); }
 
         /**
          * Creates a factory with the specified prompts list.
-         * Use this when you have an existing list of prompts.
          *
          * @param prompts the list of prompts to process
          */
-        public Factory(List<String> prompts) {
-            this();
-            setPrompts(prompts.toArray(new String[0]));
-        }
-
-        public void setPrompts(String... prompts) {
-            String code = String.join(PROMPT_SEPARATOR, prompts);
-            set("prompts", base64Encode(code));
-        }
-
-        public List<String> getPrompts() {
-            if (prompts == null) {
-                String code = base64Decode(get("prompts"));
-                prompts = code == null ? new ArrayList<>() : new ArrayList<>(List.of(code.split(PROMPT_SEPARATOR)));
-            }
-            return prompts;
-        }
-
-        /**
-         * Returns the short description for jobs created by this factory.
-         */
-        public String getDescription() {
-            if (description == null) {
-                description = base64Decode(get("desc"));
-            }
-            return description;
-        }
-
-        /**
-         * Sets a short human-readable description for jobs created by this factory.
-         *
-         * @param description a concise label (e.g., "Resolve test failures")
-         */
-        public void setDescription(String description) {
-            this.description = description;
-            set("desc", base64Encode(description));
-        }
-
-        public String getAllowedTools() {
-            return allowedTools;
-        }
-
-        public void setAllowedTools(String allowedTools) {
-            this.allowedTools = allowedTools;
-            set("tools", allowedTools);
-        }
-
-        /**
-         * Returns the working directory for jobs created by this factory.
-         * Reads from the serialized properties map, using the same key
-         * and encoding as {@link GitManagedJob}.
-         */
-        public String getWorkingDirectory() {
-            return base64Decode(get("workDir"));
-        }
-
-        public void setWorkingDirectory(String workingDirectory) {
-            set("workDir", base64Encode(workingDirectory));
-        }
-
-        /**
-         * Returns the git repository URL for automatic checkout.
-         */
-        public String getRepoUrl() {
-            return base64Decode(get("repoUrl"));
-        }
-
-        /**
-         * Sets the git repository URL. When set, the agent will clone
-         * this repo if no working directory is specified.
-         *
-         * @param repoUrl the git clone URL
-         */
-        public void setRepoUrl(String repoUrl) {
-            set("repoUrl", base64Encode(repoUrl));
-        }
-
-        /**
-         * Returns the default workspace path for repo checkouts.
-         */
-        public String getDefaultWorkspacePath() {
-            return base64Decode(get("defaultWsPath"));
-        }
-
-        /**
-         * Sets the default workspace path for repo checkouts.
-         *
-         * @param defaultWorkspacePath the absolute path for repo checkouts
-         */
-        public void setDefaultWorkspacePath(String defaultWorkspacePath) {
-            set("defaultWsPath", base64Encode(defaultWorkspacePath));
-        }
-
-        public int getMaxTurns() {
-            return maxTurns;
-        }
-
-        public void setMaxTurns(int maxTurns) {
-            this.maxTurns = maxTurns;
-            set("maxTurns", String.valueOf(maxTurns));
-        }
-
-        public double getMaxBudgetUsd() {
-            return maxBudgetUsd;
-        }
-
-        public void setMaxBudgetUsd(double maxBudgetUsd) {
-            this.maxBudgetUsd = maxBudgetUsd;
-            set("maxBudget", String.valueOf(maxBudgetUsd));
-        }
-
-        /**
-         * Returns the target branch for git operations.
-         */
-        public String getTargetBranch() {
-            return base64Decode(get("branch"));
-        }
-
-        /**
-         * Sets the target branch for git operations.
-         * When set, each job will commit and push its changes to this branch.
-         *
-         * @param targetBranch the branch name (e.g., "feature/my-work")
-         */
-        public void setTargetBranch(String targetBranch) {
-            set("branch", base64Encode(targetBranch));
-        }
-
-        /**
-         * Returns the base branch for new branch creation.
-         */
-        public String getBaseBranch() {
-            return base64Decode(get("baseBranch"));
-        }
-
-        /**
-         * Sets the base branch used as the starting point when the target
-         * branch does not yet exist. Defaults to {@code "master"}.
-         *
-         * @param baseBranch the branch name to base new branches on
-         */
-        public void setBaseBranch(String baseBranch) {
-            set("baseBranch", base64Encode(baseBranch));
-        }
-
-        /**
-         * Returns whether to push commits to origin. Defaults to {@code true}.
-         */
-        public boolean isPushToOrigin() {
-            return Boolean.parseBoolean(get("push"));
-        }
-
-        public void setPushToOrigin(boolean pushToOrigin) {
-            set("push", String.valueOf(pushToOrigin));
-        }
-
-        /**
-         * Returns the git user name for commits.
-         */
-        public String getGitUserName() {
-            return base64Decode(get("gitUserName"));
-        }
-
-        /**
-         * Sets the git user name for commits made by jobs from this factory.
-         *
-         * @param gitUserName the name to use in git commits
-         */
-        public void setGitUserName(String gitUserName) {
-            set("gitUserName", base64Encode(gitUserName));
-        }
-
-        /**
-         * Returns the git user email for commits.
-         */
-        public String getGitUserEmail() {
-            return base64Decode(get("gitUserEmail"));
-        }
-
-        /**
-         * Sets the git user email for commits made by jobs from this factory.
-         *
-         * @param gitUserEmail the email to use in git commits
-         */
-        public void setGitUserEmail(String gitUserEmail) {
-            set("gitUserEmail", base64Encode(gitUserEmail));
-        }
-
-        /**
-         * Returns the workstream URL for jobs created by this factory.
-         */
-        public String getWorkstreamUrl() {
-            return base64Decode(get("workstreamUrl"));
-        }
-
-        /**
-         * Sets the workstream URL for jobs created by this factory.
-         * This single URL is used for both status reporting and Slack
-         * messaging (by appending {@code /messages}).
-         *
-         * @param workstreamUrl the controller URL for the workstream
-         */
-        public void setWorkstreamUrl(String workstreamUrl) {
-            set("workstreamUrl", base64Encode(workstreamUrl));
-        }
-
-        /**
-         * Returns the centralized MCP configuration JSON for jobs.
-         */
-        public String getCentralizedMcpConfig() {
-            return centralizedMcpConfig;
-        }
-
-        /**
-         * Sets the centralized MCP configuration JSON for jobs created by this factory.
-         *
-         * @param centralizedMcpConfig JSON mapping server names to HTTP URLs and tool names
-         */
-        public void setCentralizedMcpConfig(String centralizedMcpConfig) {
-            this.centralizedMcpConfig = centralizedMcpConfig;
-            set("centralMcp", base64Encode(centralizedMcpConfig));
-        }
-
-        /**
-         * Returns the pushed MCP tools configuration JSON for jobs.
-         */
-        public String getPushedToolsConfig() {
-            return pushedToolsConfig;
-        }
-
-        /**
-         * Sets the pushed MCP tools configuration JSON for jobs created by this factory.
-         *
-         * @param pushedToolsConfig JSON mapping server names to download URLs and tool names
-         */
-        public void setPushedToolsConfig(String pushedToolsConfig) {
-            this.pushedToolsConfig = pushedToolsConfig;
-            set("pushedTools", base64Encode(pushedToolsConfig));
-        }
-
-        /**
-         * Returns per-workstream environment variables for pushed tools.
-         */
-        public Map<String, String> getWorkstreamEnv() {
-            return workstreamEnv;
-        }
-
-        /**
-         * Sets per-workstream environment variables for pushed tools.
-         * These override global env vars defined on the pushed tool entry.
-         *
-         * @param workstreamEnv map of environment variable names to values
-         */
-        public void setWorkstreamEnv(Map<String, String> workstreamEnv) {
-            this.workstreamEnv = workstreamEnv;
-            set("wsEnv", base64Encode(mapToJsonObject(workstreamEnv)));
-        }
-
-        /**
-         * Returns the planning document path for jobs.
-         */
-        public String getPlanningDocument() {
-            return planningDocument;
-        }
-
-        /**
-         * Sets the planning document path for jobs created by this factory.
-         *
-         * @param planningDocument path relative to the working directory
-         */
-        public void setPlanningDocument(String planningDocument) {
-            this.planningDocument = planningDocument;
-            set("planDoc", base64Encode(planningDocument));
-        }
-
-        /**
-         * Returns the GitHub organization name for jobs.
-         */
-        public String getGithubOrg() {
-            return githubOrg;
-        }
-
-        /**
-         * Sets the GitHub organization name for org-based token selection.
-         *
-         * @param githubOrg the GitHub organization name
-         */
-        public void setGithubOrg(String githubOrg) {
-            this.githubOrg = githubOrg;
-            set("githubOrg", base64Encode(githubOrg));
-        }
-
-        /**
-         * Returns whether test file protection is enabled for jobs.
-         */
-        public boolean isProtectTestFiles() {
-            return "true".equals(get("protectTests"));
-        }
-
-        /**
-         * Sets whether to protect test files that exist on the base branch.
-         *
-         * @param protectTestFiles true to block staging of existing test/CI files
-         */
-        public void setProtectTestFiles(boolean protectTestFiles) {
-            set("protectTests", String.valueOf(protectTestFiles));
-        }
-
-        /**
-         * Returns whether enforcement mode is enabled for jobs.
-         * When enabled, jobs will loop until code changes are produced.
-         */
-        public boolean isEnforceChanges() {
-            return "true".equals(get("enforceChanges"));
-        }
-
-        /**
-         * Sets whether enforcement mode is enabled for jobs.
-         * When enabled, the agent session restarts with escalating warnings
-         * if it finishes without producing any code changes.
-         *
-         * @param enforceChanges true to require code changes for completion
-         */
-        public void setEnforceChanges(boolean enforceChanges) {
-            this.enforceChanges = enforceChanges;
-            set("enforceChanges", String.valueOf(enforceChanges));
-        }
-
-        /**
-         * Returns whether a pull request should be automatically created
-         * upon successful job completion.
-         */
-        public boolean isAutoCreatePr() {
-            return "true".equals(get("autoCreatePr"));
-        }
-
-        /**
-         * Sets whether to automatically create a GitHub pull request when
-         * the job completes successfully. The controller will create the PR
-         * using the GitHub token associated with the workstream's organization.
-         *
-         * @param autoCreatePr true to auto-create a PR on success
-         */
-        public void setAutoCreatePr(boolean autoCreatePr) {
-            set("autoCreatePr", String.valueOf(autoCreatePr));
-        }
-
-        @Override
-        public Job nextJob() {
-            List<String> p = getPrompts();
-            if (index >= p.size()) return null;
-
-            String workingDirectory = getWorkingDirectory();
-            String repoUrl = getRepoUrl();
-            String defaultWorkspacePath = getDefaultWorkspacePath();
-            String targetBranch = getTargetBranch();
-            String baseBranch = getBaseBranch();
-            String gitUserName = getGitUserName();
-            String gitUserEmail = getGitUserEmail();
-            String workstreamUrl = getWorkstreamUrl();
-
-            ClaudeCodeJob job = new ClaudeCodeJob(getTaskId(), p.get(index++));
-            job.setAllowedTools(allowedTools);
-            job.setWorkingDirectory(workingDirectory);
-            job.setMaxTurns(maxTurns);
-            job.setMaxBudgetUsd(maxBudgetUsd);
-
-            // Description for Slack notifications
-            String desc = getDescription();
-            if (desc != null) {
-                job.setDescription(desc);
-            }
-
-            // Repository URL for automatic checkout
-            if (repoUrl != null) {
-                job.setRepoUrl(repoUrl);
-            }
-            if (defaultWorkspacePath != null) {
-                job.setDefaultWorkspacePath(defaultWorkspacePath);
-            }
-
-            // Git management settings
-            if (targetBranch != null) {
-                job.setTargetBranch(targetBranch);
-                job.setPushToOrigin(isPushToOrigin());
-            }
-            if (baseBranch != null) {
-                job.setBaseBranch(baseBranch);
-            }
-            if (gitUserName != null) {
-                job.setGitUserName(gitUserName);
-            }
-            if (gitUserEmail != null) {
-                job.setGitUserEmail(gitUserEmail);
-            }
-
-            // Workstream URL (status reporting + Slack messaging)
-            if (workstreamUrl != null) {
-                job.setWorkstreamUrl(workstreamUrl);
-            }
-
-            // Centralized MCP server config
-            if (centralizedMcpConfig != null) {
-                job.setCentralizedMcpConfig(centralizedMcpConfig);
-            }
-
-            // Pushed MCP tools config
-            if (pushedToolsConfig != null) {
-                job.setPushedToolsConfig(pushedToolsConfig);
-            }
-
-            // Per-workstream env vars for pushed tools
-            if (workstreamEnv != null && !workstreamEnv.isEmpty()) {
-                job.setWorkstreamEnv(workstreamEnv);
-            }
-
-            // Planning document
-            if (planningDocument != null) {
-                job.setPlanningDocument(planningDocument);
-            }
-
-            // GitHub organization for token selection
-            if (githubOrg != null) {
-                job.setGithubOrg(githubOrg);
-            }
-
-            // Test file protection
-            job.setProtectTestFiles(isProtectTestFiles());
-
-            // Enforcement mode
-            job.setEnforceChanges(isEnforceChanges());
-
-            return job;
-        }
-
-        @Override
-        public Job createJob(String data) {
-            return null; // Not used - jobs created via nextJob()
-        }
-
-        @Override
-        public double getCompleteness() {
-            List<String> p = getPrompts();
-            return p.isEmpty() ? 1.0 : index / (double) p.size();
-        }
-
-        /**
-         * Deserializes a property from the wire format.
-         *
-         * <p>Git-related properties (workDir, repoUrl, branch, etc.) are
-         * stored directly in the {@link AbstractJobFactory} properties map
-         * and decoded on read by the corresponding getter methods.  This
-         * avoids duplicating the decode logic that also exists in
-         * {@link GitManagedJob#set(String, String)}.</p>
-         */
-        @Override
-        public void set(String key, String value) {
-            super.set(key, value);
-
-            switch (key) {
-                case "tools":
-                    this.allowedTools = value;
-                    break;
-                case "maxTurns":
-                    this.maxTurns = Integer.parseInt(value);
-                    break;
-                case "maxBudget":
-                    this.maxBudgetUsd = Double.parseDouble(value);
-                    break;
-                case "centralMcp":
-                    this.centralizedMcpConfig = base64Decode(value);
-                    break;
-                case "pushedTools":
-                    this.pushedToolsConfig = base64Decode(value);
-                    break;
-                case "wsEnv":
-                    this.workstreamEnv = parseJsonObjectToMap(base64Decode(value));
-                    break;
-                case "planDoc":
-                    this.planningDocument = base64Decode(value);
-                    break;
-                case "githubOrg":
-                    this.githubOrg = base64Decode(value);
-                    break;
-                case "enforceChanges":
-                    this.enforceChanges = Boolean.parseBoolean(value);
-                    break;
-            }
-        }
-
-        @Override
-        public String toString() {
-            return "ClaudeCodeJob.Factory[prompts=" + getPrompts().size() +
-                   ", tools=" + allowedTools +
-                   ", branch=" + getTargetBranch() +
-                   ", completeness=" + getCompleteness() + "]";
-        }
+        public Factory(List<String> prompts) { super(prompts); }
     }
 }

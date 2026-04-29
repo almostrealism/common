@@ -1,5 +1,11 @@
 # base/ — Foundation Layer
 
+## CRITICAL: NEVER Create New Maven Modules
+
+**Agents MUST NEVER create new Maven modules.** The Maven module structure is externally controlled. If a task requires a new module, **STOP and abandon the task**. Do not create new `pom.xml` files, add `<module>` entries to parent POMs, or create directory structures constituting a new module. Document the requirement in completion notes instead — the project owner handles module creation.
+
+---
+
 The foundation of the AR framework. Provides core primitives, the execution model,
 memory management, code generation, and hardware acceleration backends. Everything
 above this layer depends on it; nothing here depends on higher layers.
@@ -25,7 +31,7 @@ above this layer depends on it; nothing here depends on higher layers.
 
 ## Key Conventions
 
-- `uml` has zero external dependencies — it is the absolute foundation
+- `meta` has zero external dependencies — it is the absolute foundation
 - No circular dependencies between base modules
 - PackedCollection is NOT a Java array — never use `System.arraycopy`, `Arrays.copyOf`, or tight `setMem` loops
 - Use the Producer pattern: `cp(source).multiply(2.0).evaluate()`
@@ -35,7 +41,7 @@ above this layer depends on it; nothing here depends on higher layers.
 
 ## Modules
 
-- [uml](uml/README.md) — UML abstractions and type system foundation, no dependencies
+- [meta](meta/README.md) — Foundational interfaces for naming, identity, lifecycle, no dependencies
 - [relation](relation/README.md) — Computation relations and process optimization
 - [code](code/README.md) — Expression trees, scope management, code generation
 - [io](io/README.md) — File I/O, console logging, output features

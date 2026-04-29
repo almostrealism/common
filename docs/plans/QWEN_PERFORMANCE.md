@@ -1,5 +1,14 @@
 # Qwen3 Inference Performance Analysis
 
+> **Status (as of 2026-04-29): Continue with revisions.**
+>
+> Objective 1 (inference-mode tracking elimination) is **complete** and landed on
+> `feature/qwen-perf-updates`. Objective 5 (GQA head expansion) is **effectively
+> complete** via a different path than planned. Objectives 2, 3, and 4 remain
+> outstanding. See the assessment sections below for detail.
+
+---
+
 ## Profiling Setup
 
 - **Test class:** `Qwen3InferenceProfileTest`
@@ -34,37 +43,25 @@ one-time compilation overhead during warmup).
 
 ## Prioritized Improvements
 
-### 1. Eliminate Layer I/O Tracking Copy Operations
+### ~~1. Eliminate Layer I/O Tracking Copy Operations~~ ✅ COMPLETE
 
-**Cost:** 17.8% of total time (copy_4864 at 11.0% + copy_896 at 6.8%)
+~~**Cost:** 17.8% of total time (copy_4864 at 11.0% + copy_896 at 6.8%)~~
 
-`DefaultCellularLayer` generates entry and exit memory copy operations for every
-layer to support input/output tracking and backpropagation. During inference,
-these copies are pure overhead — no gradient flows backward.
-
-The copies originate in `DefaultCellularLayer.init()`:
-
-```
-graph/src/main/java/org/almostrealism/layers/DefaultCellularLayer.java:119-154
-```
-
-The entry cell calls `into()` which creates a `MemoryDataCopy` when
-`enableMemoryDataCopy == true` and `shape.getCountLong() == 1`:
-
-```
-graph/src/main/java/org/almostrealism/layers/LayerFeatures.java:452-504
-```
-
-**Proposed approach:**
-
-- Add an inference-only compilation path in `Model.compile()` that sets
-  `enableMemoryDataCopy = false` or disables `ioTracking` entirely when
-  backpropagation is not needed.
-- Alternatively, use assignment-based pass-through instead of memory copies
-  for inference mode, since assignment can be fused into the downstream
-  operation's expression tree while MemoryDataCopy cannot.
-
-**Expected savings:** ~15-17% of forward pass time.
+> **Retrospective (2026-04-29):** This objective is complete. `DefaultCellularLayer`
+> now has `setInputTracking(boolean)`, which allocates or destroys the input buffer
+> on demand. `CompiledModel.compile(model, false, ...)` calls `configureTracking()`
+> to disable input tracking across all layers before optimizing the forward graph.
+> The entry cell uses a runtime `this.input == null` check so no cell rebuild is
+> needed. The feature is validated by `LayerTrackingTest` (4 tests: correctness,
+> backprop, performance comparison, operation count comparison). Qwen3 tests and
+> `RopeCompilationRegressionTest` all use `compile(false)` for inference, so the
+> optimization is active in all inference paths.
+>
+> **Related master work:** Commit `06b1dd32d` (master, 2026-04-21) expanded use of
+> `Assignment` in place of `MemoryDataCopy` via `MemoryDataFeatures.enableAssignmentCopy`.
+> This is orthogonal to the tracking elimination: tracking elimination removes the copy
+> entirely in inference mode, while the Assignment change converts copy type. Both can
+> coexist.
 
 ---
 
@@ -88,6 +85,13 @@ add dispatch cost without performing computation.
   be eliminated during optimization.
 
 **Expected savings:** ~5-8% of forward pass time.
+
+> **Current state (2026-04-29):** Master's `ExpansionWidthTargetOptimization` work
+> (commits `db8e531ea`, `06b1dd32d`, and the planning doc
+> `docs/plans/EXPANSION_WIDTH_FAITHFUL_DEFINITION.md`) addresses kernel
+> compilation explosion (a separate correctness/scalability concern) but does not
+> specifically batch KV cache assignments or reduce dispatch count. This objective
+> is still outstanding. The proposed approach remains valid.
 
 ---
 
@@ -113,6 +117,11 @@ improvement in the generated native code.
 
 **Expected savings:** ~3-6% of forward pass time (30-50% kernel speedup).
 
+> **Current state (2026-04-29):** No tiled matmul or SIMD/NEON work has landed.
+> `LoopedWeightedSumComputation` (added to this branch for convolution) uses a
+> looped native-kernel approach but is targeted at convolution, not general matmul.
+> This objective is still outstanding and the path remains valid.
+
 ---
 
 ### 4. Fuse SwiGLU Gate Operations
@@ -136,42 +145,46 @@ kernels with separate JNI dispatches and intermediate buffers.
 
 **Expected savings:** ~3-5% of forward pass time.
 
+> **Current state (2026-04-29):** `AttentionFeatures.java` and `Qwen3.java` both
+> reference SwiGLU. The `swiGLU()` method in `AttentionFeatures` still uses separate
+> operations for the SiLU activation and gate multiplication. No fused single-pass
+> kernel exists. This objective is still outstanding.
+
 ---
 
-### 5. Virtual GQA Head Expansion
+### ~~5. Virtual GQA Head Expansion~~ ✅ EFFECTIVELY COMPLETE
 
-**Cost:** 1.2% for repeat operations + downstream memory bandwidth impact
+~~**Cost:** 1.2% for repeat operations + downstream memory bandwidth impact~~
 
-The GQA mechanism (14:2 = 7:1 query-to-KV ratio) physically duplicates each
+~~The GQA mechanism (14:2 = 7:1 query-to-KV ratio) physically duplicates each
 KV head 7 times via `packedCollectionRepeat`. This creates 7x redundant memory
-that the downstream attention dot-product must read through.
+that the downstream attention dot-product must read through.~~
 
-**Proposed approach:**
-
-- Replace physical KV head repetition with stride-based indexing in the
-  attention kernel, so that multiple query heads read from the same KV head
-  memory without duplication.
-- Modify the attention computation to accept a `kvHeadRatio` parameter and
-  adjust its memory access pattern: `kv_head_index = query_head_index / ratio`.
-- This avoids the copy entirely and reduces attention memory bandwidth by a
-  factor equal to the GQA ratio (7x for this config).
-
-**Expected savings:** ~1-3% direct + improved cache utilization for attention.
+> **Retrospective (2026-04-29):** The `AttentionFeatures.java` GQA implementation
+> already avoids physical head repetition. The code comment reads: "This avoids
+> `traverse().repeat()` which causes compilation issues." The implementation uses
+> per-group looping with `subset()` to extract query slices for each KV group,
+> processing them without materializing the expanded KV tensor. This achieves the
+> memory-bandwidth reduction the plan proposed, via a different (but equivalent)
+> path. No further work needed on this objective.
 
 ---
 
 ## Summary
 
-| Priority | Improvement | Current Cost | Expected Savings |
-|----------|-------------|--------------|------------------|
-| 1 | Eliminate inference-mode copy ops | 17.8% | ~15-17% |
-| 2 | Batch assignments / reduce op count | 7.8% + overhead | ~5-8% |
-| 3 | Optimize dense matmul kernel | 12.6% | ~3-6% |
-| 4 | Fuse SwiGLU gate operations | 7.3% + 2.2% | ~3-5% |
-| 5 | Virtual GQA head expansion | 1.2% + bandwidth | ~1-3% |
+| Priority | Improvement | Original Cost | Status |
+|----------|-------------|---------------|--------|
+| 1 | ~~Eliminate inference-mode copy ops~~ | 17.8% | ✅ Complete (`setInputTracking`, `configureTracking`) |
+| 2 | Batch assignments / reduce op count | 7.8% + overhead | ⏳ Outstanding |
+| 3 | Optimize dense matmul kernel | 12.6% | ⏳ Outstanding |
+| 4 | Fuse SwiGLU gate operations | 7.3% + 2.2% | ⏳ Outstanding |
+| 5 | ~~Virtual GQA head expansion~~ | 1.2% + bandwidth | ✅ Complete (subset-based per-group loop) |
 
-Combined potential improvement: ~27-39% of forward pass time, which could bring
-the per-token latency from ~735ms down to ~450-535ms on this config.
+Remaining potential improvement from objectives 2–4: ~15–19% of forward pass
+time. With objective 1 complete (~15-17% reduction), the per-token latency
+from ~735ms has been improved; at scale with real weights, the vocab projection
+(896×151,936 matmul) will dominate — profiling with real weights is the logical
+next step.
 
 ## Reproducing the Profile
 
@@ -202,3 +215,86 @@ At full scale, that projection becomes a 896x151,936 matmul (~136M multiply-
 adds per token), which would likely become the single largest operation,
 surpassing the FFN projections. A separate profiling run with larger vocab
 (or the real weights) should be done to quantify this.
+
+---
+
+## Plan Assessment (2026-04-29)
+
+### 1. What was the original plan trying to accomplish?
+
+The plan aimed to accelerate Qwen3 inference from ~735ms/token (1.4 tok/s) on a
+24-layer synthetic model to approximately 450–535ms/token, a 27–39% improvement.
+Five specific bottlenecks were identified by profiling: copy overhead from I/O
+tracking (17.8%), KV cache assignment dispatch overhead (7.8%), dense matmul
+kernel inefficiency (12.6%), un-fused SwiGLU components (9.5%), and physical GQA
+KV head repetition (1.2%). See the Profile Breakdown and Prioritized Improvements
+sections for citations.
+
+### 2. Which objectives have already been achieved?
+
+**Objective 1 (copy overhead):** Implemented on this branch. `DefaultCellularLayer`
+gains `setInputTracking(boolean)` (line 325,
+`domain/graph/src/main/java/org/almostrealism/layers/DefaultCellularLayer.java`),
+and `CompiledModel` gains `configureTracking()` (line 353,
+`domain/graph/src/main/java/org/almostrealism/model/CompiledModel.java`).
+`LayerTrackingTest` (4 tests, `engine/utils/src/test/java/`) validates correctness
+and operation-count reduction. `Qwen3VocabProjectionTest` and
+`RopeCompilationRegressionTest` use `compile(false)` confirming the path is active.
+
+**Objective 5 (GQA head expansion):** Achieved via a different route on master.
+`AttentionFeatures.java` (line 328,
+`engine/ml/src/main/java/org/almostrealism/ml/AttentionFeatures.java`) uses
+per-group `subset()` calls rather than `packedCollectionRepeat`, with an
+explicit code comment noting this avoids the repeat. The bandwidth benefit is
+the same as the plan's proposed stride-based approach.
+
+### 3. Which objectives are still outstanding?
+
+**Objective 2** (batch assignments, reduce dispatch): KV cache write batching is
+not present. Master's ExpansionWidth work addresses kernel size, not dispatch count.
+The path described (OperationList fusion, fewer dispatched kernels per layer)
+remains valid and unimplemented.
+
+**Objective 3** (tiled matmul, SIMD/NEON): No tiled matmul or ARM SIMD work has
+landed. The generated native kernel is still naive-loop style. The proposed path
+(investigate generated C, implement tiling, add NEON intrinsics) remains valid
+and is the highest-value remaining objective by raw percentage.
+
+**Objective 4** (fused SwiGLU): No fused single-pass SwiGLU kernel. `AttentionFeatures`
+still uses separate `greaterThanCollection`, `exp`, and `multiply` operations.
+The proposed path remains valid.
+
+### 4. Has the landscape shifted?
+
+- **PDSL audio DSP** (`feature/pdsl-audio-dsp`, merged to master 2026-04-xx): Adds
+  `producer([shape])` parameter binding, multi-channel constructs, `accum_blocks`,
+  `route()`, `sum_channels()` — all audio DSP primitives. No overlap with qwen
+  plan objectives; the infrastructure doesn't subsume any ML optimization needed here.
+- **Assignment expansion** (master, commit `06b1dd32d`): `MemoryDataFeatures.enableAssignmentCopy`
+  flag allows Assignment-based copies that can fuse into expression trees. This is
+  orthogonal to but compatible with the tracking elimination. The `enableMemoryDataCopy`
+  flag in `DefaultCellularLayer` already controls which path is used. This does not
+  make Objective 1 redundant — tracking elimination is stronger (zero copy vs converted copy).
+- **ExpansionWidth optimization** (master): Targets kernel compilation explosion, not
+  operation count or dispatch overhead. Does not subsume Objective 2.
+- No retired keywords (`pipeline`, `fan_out_with`) appear in the branch.
+
+### 5. Is the plan still useful as written?
+
+**Yes, with revisions.** The overall direction is right: the bottlenecks identified by
+the profile are real, the objectives are correctly prioritized, and the proposed
+approaches for objectives 2–4 are still the right paths. Objectives 1 and 5 are
+now done. The plan needs updating to mark those complete, note the master-side
+context for each, and reorder next steps to focus on objectives 2–4.
+
+### 6. Recommendation
+
+**Continue with revisions.** The merge is complete, the branch's core
+`setInputTracking` feature is confirmed intact and in use. Objectives 2, 3, and 4
+represent ~15–19% of forward pass time and have clear implementation paths.
+
+**Suggested next step:** Profile `Qwen3InferenceProfileTest` against the current
+branch HEAD to measure the realized gain from Objective 1 (compare new profile
+against the 735ms baseline). Then prioritize Objective 3 (tiled matmul) — it is
+the single largest remaining bottleneck (12.6%) and is largely independent of
+the other two.

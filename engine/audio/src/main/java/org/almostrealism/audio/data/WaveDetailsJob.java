@@ -34,13 +34,29 @@ import java.util.function.Function;
  * @see org.almostrealism.audio.AudioLibrary
  */
 public class WaveDetailsJob implements Runnable, ConsoleFeatures {
+	/** Function that computes the WaveDetails when this job is run. */
 	private final Function<WaveDetailsJob, WaveDetails> runner;
+
+	/** The audio provider whose details are to be computed. */
 	private final WaveDataProvider target;
+
+	/** When true, the result is stored persistently across application runs. */
 	private final boolean persistent;
+
+	/** Scheduling priority; higher values cause earlier execution. */
 	private double priority;
 
+	/** Future that completes with the computed WaveDetails when the job finishes. */
 	private final CompletableFuture<WaveDetails> future;
 
+	/**
+	 * Creates a WaveDetailsJob for the given provider.
+	 *
+	 * @param runner     function that performs the analysis and returns the WaveDetails
+	 * @param target     the audio provider to analyze
+	 * @param persistent whether the result should be persisted
+	 * @param priority   scheduling priority (higher = earlier)
+	 */
 	public WaveDetailsJob(Function<WaveDetailsJob, WaveDetails> runner,
 						  WaveDataProvider target, boolean persistent,
 						  double priority) {
@@ -64,8 +80,9 @@ public class WaveDetailsJob implements Runnable, ConsoleFeatures {
 		try {
 			if (getTarget() != null) {
 				log("Processing " + getTarget().getKey());
-				details = runner.apply(this);
 			}
+
+			details = runner.apply(this);
 		} catch (Exception e) {
 			warn("Failed to process " + this, e);
 		} finally {
@@ -73,6 +90,13 @@ public class WaveDetailsJob implements Runnable, ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Completes the future with the given WaveDetails result.
+	 * This method is called internally by {@link #run()} and may also be
+	 * used externally to cancel or override job results.
+	 *
+	 * @param details the computed details, or {@code null} if computation failed
+	 */
 	public void complete(WaveDetails details) {
 		future.complete(details);
 	}

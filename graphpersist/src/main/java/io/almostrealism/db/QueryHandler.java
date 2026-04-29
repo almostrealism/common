@@ -16,8 +16,19 @@
 
 package io.almostrealism.db;
 
-import java.util.Hashtable;
+import java.util.Map;
 
+/**
+ * Service interface for executing a {@link Query} against a database and returning
+ * the results as a {@link Map}.
+ */
 public interface QueryHandler {
-	Hashtable executeQuery(Query q);
+	/**
+	 * Executes the given query and returns a {@link Map} mapping key column values
+	 * to their corresponding data column values.
+	 *
+	 * @param q The query to execute
+	 * @return A map of results, keyed by the query's key column
+	 */
+	Map executeQuery(Query q);
 }

@@ -1,8 +1,8 @@
 package org.almostrealism.chem;
 
-import org.almostrealism.electrostatic.Photon;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.RGB;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.physics.BlackBody;
 import org.almostrealism.physics.PhysicalConstants;
 import org.almostrealism.texture.GraphicsConverter;
@@ -10,16 +10,41 @@ import org.almostrealism.texture.GraphicsConverter;
 import javax.swing.JPanel;
 import java.awt.Graphics;
 
-public class SpectralLineDiagram extends BlackBody {
+/**
+ * A {@link org.almostrealism.physics.BlackBody} that visualizes absorbed photon energies
+ * as a spectral line diagram.
+ * <p>
+ * Incoming photons are mapped to wavelength columns across the visible spectrum (violet
+ * to red). Each absorbed photon increments a count in the corresponding column and
+ * accumulates color into the image buffer. The diagram can optionally render to a Swing
+ * {@link JPanel} at configurable intervals.
+ * </p>
+ */
+public class SpectralLineDiagram extends BlackBody implements ConsoleFeatures {
+    /** Per-column absorption counts across the visible spectrum. */
     private long[] absorbed;
+
+    /** The 2D image buffer holding accumulated spectral color data (columns x rows). */
     private RGB[][] image;
 
+	/** When {@code true}, suppresses rendering to the Swing display panel. */
 	private boolean noDisplay;
+
+	/** Tick counter used to throttle display updates, and the sleep interval between updates. */
 	private int displayTicks, displaySleep = 1000;
+
+	/** The Swing panel used to render the spectral line diagram, lazily initialized. */
 	private JPanel display;
 
+	/** Constructs an empty diagram; fields must be initialized before use. */
 	public SpectralLineDiagram() { }
 
+	/**
+	 * Constructs a diagram with the specified number of wavelength columns and pixel height.
+	 *
+	 * @param columns  the number of spectral columns (resolution along the wavelength axis)
+	 * @param height   the number of pixel rows in the image buffer
+	 */
     public SpectralLineDiagram(int columns, int height) {
     	absorbed = new long[columns];
     	this.image = new RGB[columns][height];
@@ -74,23 +99,48 @@ public class SpectralLineDiagram extends BlackBody {
         return true;
     }
 
+	/**
+	 * Returns the accumulated spectral image buffer.
+	 * <p>
+	 * If no image data has been set, returns a 1x0 empty array.
+	 * </p>
+	 *
+	 * @return the image buffer as a 2D array of {@link RGB} values (columns x rows)
+	 */
 	public RGB[][] getImage() {
 		if (this.image == null) return new RGB[1][0];
 		return this.image;
 	}
 
+	/**
+	 * Renders the current spectral image to the given graphics context.
+	 *
+	 * @param g  the AWT {@link Graphics} context to draw into
+	 */
 	public void drawImage(Graphics g) {
-    	System.out.println("SpectralLineDiagram.drawImage");
+		log("drawImage");
 		g.drawImage(GraphicsConverter.convertToAWTImage(getImage()), 0, 0, display);
 	}
 
+	/** Enables rendering to the Swing display panel. */
 	public void enableDisplay() { this.noDisplay = false; }
+
+	/** Disables rendering to the Swing display panel. */
 	public void disableDisplay() { this.noDisplay = true; }
 
+	/**
+	 * Returns the Swing display panel, creating it lazily if it does not yet exist.
+	 * <p>
+	 * The panel's {@code paint} method delegates to {@link #drawImage(Graphics)}.
+	 * </p>
+	 *
+	 * @return the Swing panel used to display the spectral diagram
+	 */
 	public JPanel getDisplay() {
 		if (this.display != null) return this.display;
 
 		this.display = new JPanel() {
+			@Override
 			public void paint(Graphics g) {
 				SpectralLineDiagram.this.drawImage(g);
 			}

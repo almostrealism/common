@@ -25,6 +25,8 @@ package org.almostrealism.electrostatic;
  */
 public interface PotentialMap {
 	/**
+	 * Returns the potential at the specified point (usually measured in volts).
+	 *
 	 * @param p  {x, y, z} - A position in space relative to the internal coordinate
 	 *           system for this PotentialMap instance.
 	 * @return  The potential at the specified point (usually measured in volts).

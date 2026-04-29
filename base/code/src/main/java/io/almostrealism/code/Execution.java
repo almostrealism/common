@@ -18,13 +18,42 @@ package io.almostrealism.code;
 
 import io.almostrealism.concurrent.Semaphore;
 
+/**
+ * Represents a compiled, executable computation that accepts arguments and returns a semaphore.
+ *
+ * <p>An {@code Execution} is the result of compiling a {@link Computation} via an
+ * {@link InstructionSet}. It accepts an array of pre-allocated memory arguments and
+ * dispatches the computation asynchronously or synchronously, returning a {@link Semaphore}
+ * that the caller can wait on.</p>
+ *
+ * @see InstructionSet
+ * @see io.almostrealism.concurrent.Semaphore
+ */
 public interface Execution {
+	/**
+	 * Executes this computation with the given arguments, with no predecessor dependency.
+	 *
+	 * @param args the array of memory arguments to pass to the computation
+	 * @return a semaphore that completes when the execution finishes
+	 */
 	default Semaphore accept(Object[] args) {
 		return accept(args, null);
 	}
 
+	/**
+	 * Executes this computation with the given arguments, waiting for a predecessor to complete first.
+	 *
+	 * @param args the array of memory arguments to pass to the computation
+	 * @param dependsOn a semaphore from a preceding execution that must complete first, or {@code null}
+	 * @return a semaphore that completes when this execution finishes
+	 */
 	Semaphore accept(Object[] args, Semaphore dependsOn);
 
+	/**
+	 * Returns whether this execution has been destroyed and is no longer usable.
+	 *
+	 * @return {@code true} if this execution has been destroyed, {@code false} otherwise
+	 */
 	default boolean isDestroyed() {
 		return false;
 	}

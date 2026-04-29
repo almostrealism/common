@@ -44,32 +44,61 @@ import java.util.function.Supplier;
  * @see DelayNetwork
  */
 public class BasicDelayCell extends SummationCell implements CodeFeatures {
+	/** Maximum delay buffer duration in seconds; determines the size of the circular delay buffer. */
 	public static int bufferDuration = 10;
-	
+
+	/** Circular delay buffer storing audio samples for the maximum buffer duration. */
 	private final double[] buffer = new double[bufferDuration * OutputLine.sampleRate];
+
+	/** Current write position in the circular delay buffer. */
 	private int cursor;
+
+	/** Delay length in frames; the read position is (cursor + delay) % buffer.length. */
 	private int delay;
-	
+
+	/** Optional updatable notified on each cursor advancement at the updatable's resolution. */
 	private Updatable updatable;
-	
+
+	/**
+	 * Creates a BasicDelayCell with the given delay in milliseconds.
+	 *
+	 * @param delay delay time in milliseconds
+	 */
 	public BasicDelayCell(int delay) {
 		setDelay(delay);
 	}
 
+	/**
+	 * Sets the delay time in milliseconds.
+	 *
+	 * @param msec delay time in milliseconds
+	 */
 	public synchronized void setDelay(int msec) {
 		this.delay = (int) ((msec / 1000d) * OutputLine.sampleRate);
 	}
 
+	/** Returns the delay time in milliseconds. */
 	public synchronized int getDelay() { return 1000 * delay / OutputLine.sampleRate; }
 
+	/**
+	 * Sets the delay time in frames.
+	 *
+	 * @param frames delay length in frames; values less than or equal to 0 are clamped to 1
+	 */
 	public synchronized void setDelayInFrames(long frames) {
-		if (frames != delay) System.out.println("Delay frames: " + frames);
+		if (frames != delay) log("Delay frames: " + frames);
 		this.delay = (int) frames;
 		if (delay <= 0) delay = 1;
 	}
 
+	/** Returns the delay time in frames. */
 	public synchronized long getDelayInFrames() { return this.delay; }
 
+	/**
+	 * Returns the current read position within the delay cycle and the sample value at that position.
+	 *
+	 * @return a Position with the normalized position (0–1) and current sample value
+	 */
 	public synchronized Position getPosition() {
 		Position p = new Position();
 		if (delay == 0) delay = 1;
@@ -78,6 +107,11 @@ public class BasicDelayCell extends SummationCell implements CodeFeatures {
 		return p;
 	}
 	
+	/**
+	 * Sets the updatable to be notified at each tick at its configured resolution.
+	 *
+	 * @param ui the updatable listener, or null to remove the current listener
+	 */
 	public void setUpdatable(Updatable ui) { this.updatable = ui; }
 
 	@Override
@@ -107,8 +141,11 @@ public class BasicDelayCell extends SummationCell implements CodeFeatures {
 		// TODO throw new UnsupportedOperationException();
 	}
 
+	/** Holds the read position and sample value at the current cursor location in the delay buffer. */
 	public static class Position {
+		/** Normalized read position within the delay cycle, in the range [0, 1). */
 		public double pos;
+		/** Audio sample value at the current cursor position in the delay buffer. */
 		public double value;
 	}
 }

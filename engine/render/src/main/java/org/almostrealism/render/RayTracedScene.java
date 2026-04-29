@@ -20,6 +20,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Realization;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
@@ -64,9 +65,12 @@ import java.util.concurrent.TimeoutException;
  * @see Engine
  * @see RayIntersectionEngine
  */
-public class RayTracedScene implements Realization<RealizableImage, RenderParameters>, CodeFeatures, RGBFeatures {
+public class RayTracedScene implements Realization<RealizableImage, RenderParameters>, CodeFeatures, RGBFeatures, ConsoleFeatures {
+	/** The ray tracer that delegates to the rendering engine for each ray. */
 	private RayTracer tracer;
+	/** The camera that generates rays from pixel positions. */
 	private Camera camera;
+	/** The current render parameters (resolution, supersampling, viewport offsets). */
 	private RenderParameters p;
 	
 	/**
@@ -76,28 +80,70 @@ public class RayTracedScene implements Realization<RealizableImage, RenderParame
 	 */
 	public static boolean premultiplyIntensity = true;
 	
+	/** The black color constant used as a fallback when tracing produces no result. */
 	public static RGB black = new RGB(0.0, 0.0, 0.0);
 
+	/**
+	 * Constructs a {@link RayTracedScene} with the given engine and camera, using default render parameters.
+	 *
+	 * @param t The rendering engine
+	 * @param c The camera for ray generation
+	 */
 	public RayTracedScene(Engine t, Camera c) {
 		this(t, c, null);
 	}
 
+	/**
+	 * Constructs a {@link RayTracedScene} with the given engine, camera, and render parameters.
+	 *
+	 * @param t The rendering engine
+	 * @param c The camera for ray generation
+	 * @param p The render parameters; may be {@code null}
+	 */
 	public RayTracedScene(Engine t, Camera c, RenderParameters p) {
 		this(t, c, p, null);
 	}
 
+	/**
+	 * Constructs a {@link RayTracedScene} with the given engine, camera, render parameters, and optional thread pool.
+	 *
+	 * @param t    The rendering engine
+	 * @param c    The camera for ray generation
+	 * @param p    The render parameters; may be {@code null}
+	 * @param pool An optional executor service for parallel ray tracing; may be {@code null}
+	 */
 	public RayTracedScene(Engine t, Camera c, RenderParameters p, ExecutorService pool) {
 		this.tracer = pool == null ? new RayTracer(t) : new RayTracer(t, pool);
 		this.camera = c;
 		this.p = p;
 	}
 
+	/**
+	 * Convenience constructor that creates a {@link RayIntersectionEngine} from the given scene and fog parameters.
+	 *
+	 * @param scene The scene to render
+	 * @param fog   Fog parameters for atmospheric effects
+	 * @param p     The render parameters
+	 */
 	public RayTracedScene(Scene<? extends ShadableSurface> scene, FogParameters fog, RenderParameters p) {
 		this(new RayIntersectionEngine(scene, fog), scene.getCamera(), p, null);
 	}
 
+	/**
+	 * Returns the current render parameters.
+	 *
+	 * @return The render parameters, or {@code null} if not set
+	 */
 	public RenderParameters getRenderParameters() { return p; }
 
+	/**
+	 * Traces a ray for the given UV pixel position and supersampling displacement,
+	 * returning a producer for the resulting color.
+	 *
+	 * @param uv The UV pixel position as a {@link Pair}
+	 * @param sd The supersampling displacement as a {@link Pair}
+	 * @return A producer that computes the RGB color for this pixel, or black if tracing fails
+	 */
 	public Producer<PackedCollection> operate(Producer<Pair> uv, Producer<Pair> sd) {
 		Future<Producer<PackedCollection>> color = tracer.trace((Producer) camera.rayAt(uv, sd));
 
@@ -128,16 +174,31 @@ public class RayTracedScene implements Realization<RealizableImage, RenderParame
 		try {
 			return color.get();
 		} catch (InterruptedException | ExecutionException e) {
-			e.printStackTrace();
+			warn(e.getMessage(), e);
 			return null;
 		}
 	}
 
+	/**
+	 * Builds the color producer using the current render parameters.
+	 *
+	 * @return A producer that computes colors for all pixels given a pixel position
+	 */
 	public Producer<PackedCollection> getProducer() { return getProducer(getRenderParameters()); }
 
+	/**
+	 * Builds a color producer for all pixels given the specified render parameters.
+	 *
+	 * <p>Creates a pixel position input with the total number of pixels (including supersamples),
+	 * then calls {@link #operate} to build the computation graph. If the result implements
+	 * {@link DimensionAware}, dimensions are configured accordingly.</p>
+	 *
+	 * @param p The render parameters specifying resolution and supersampling
+	 * @return A producer that computes colors for all pixels
+	 */
 	public Producer<PackedCollection> getProducer(RenderParameters p) {
-		// Use shape(-1, 2) for variable-count to allow kernel size to adapt to output
-		Producer<PackedCollection> producer = operate(v(shape(-1, 2), 0), (Producer) pair(p.width, p.height));
+		int totalPixels = p.width * p.ssWidth * p.height * p.ssHeight;
+		Producer<PackedCollection> producer = operate(v(shape(totalPixels, 2), 0), (Producer) pair(p.width, p.height));
 
 		if (producer instanceof DimensionAware) {
 			((DimensionAware) producer).setDimensions(p.width, p.height, p.ssWidth, p.ssHeight);

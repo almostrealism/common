@@ -117,34 +117,71 @@ public class BufferedOutputScheduler implements CellFeatures {
 	 */
 	public static final int RECOVERY_CYCLES = 4;
 
+	/** The executor that runs the main scheduler loop on a background thread. */
 	private final Consumer<Runnable> executor;
+
+	/** The temporal runner responsible for advancing the audio processing pipeline each tick. */
 	private final TemporalRunner process;
+
+	/** The audio input line, or null if no input source is used. */
 	private final InputLine input;
+
+	/** The audio output line that receives rendered audio frames. */
 	private final OutputLine output;
+
+	/** Intermediate audio buffer shared between the input, processing, and output stages. */
 	private final AudioBuffer buffer;
 
+	/** Smooths measured cycle durations to produce stable sleep target estimates. */
 	private TimingRegularizer regularizer;
+
+	/** The compiled operation that is executed each processing cycle. */
 	private Runnable next;
 
+	/** Wall-clock time when the scheduler loop started, in milliseconds. */
 	private long start;
+
+	/** Flag set by {@link #stop()} to signal the main loop to exit after the current cycle. */
 	private boolean stopped;
+
+	/** Number of processing cycles completed since the scheduler started. */
 	private long count;
 
+	/** Buffering rate multiplier derived from {@link BufferDefaults#bufferingRate}. */
 	private final double rate;
+
+	/** Number of frames in one buffer group; used to determine when to pause. */
 	private final int groupSize;
+
+	/** Output line read position recorded at the last buffer group boundary. */
 	private int lastReadPosition;
+
+	/** Wall-clock time when the current buffer group began, in milliseconds. */
 	private long groupStart;
 
+	/** True when the scheduler is in the buffer-safety pause state between groups. */
 	private boolean paused;
+
+	/** Wall-clock time when the current buffer-safety pause began, and total paused duration. */
 	private long lastPause, totalPaused;
 
+	/** True when the scheduler cannot keep up with real-time and has entered degraded mode. */
 	private boolean degradedMode;
+
+	/** Number of consecutive above-threshold cycles accumulated toward exiting degraded mode. */
 	private int recoveryCount;
 
 	// User-initiated suspend state (separate from buffer-safety pause)
+	/** True when the scheduler has been externally suspended via {@link #suspend()}. */
 	private volatile boolean suspended;
+
+	/** Monitor object used to synchronize user-initiated suspend/unsuspend. */
 	private final Object suspendLock = new Object();
+
+	/** Wall-clock time when the current user-initiated suspension began. */
 	private long suspendTime;
+
+	/** Total duration in milliseconds spent in user-initiated suspension. */
 	private long totalSuspendedDuration;
 
 	/**
@@ -245,7 +282,6 @@ public class BufferedOutputScheduler implements CellFeatures {
 			int diff = lastReadPosition - lastRead;
 			if (diff < 0) diff = diff + output.getBufferSize();
 
-			double avg = regularizer.getAverageDuration() / 10e9;
 			double tot = (System.currentTimeMillis() - groupStart) / 1000.0;
 			double dur = groupSize / (double) output.getSampleRate();
 

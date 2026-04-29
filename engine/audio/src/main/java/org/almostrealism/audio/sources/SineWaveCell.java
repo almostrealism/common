@@ -87,6 +87,7 @@ import java.util.function.Supplier;
  */
 // TODO  Reimplement as a function of org.almostrealism.graph.TimeCell
 public class SineWaveCell extends CollectionTemporalCellAdapter implements SamplingFeatures, GeometryFeatures {
+	/** Pre-computed constant 2*PI for use in angle calculations. */
 	private static final double TWO_PI = 2 * Math.PI;
 
 	/** The envelope Factor that transforms note position into amplitude multiplier. */

@@ -6,6 +6,17 @@
  * http://www.blitter.com/~russtopia/MIDI/~jglatt/tech/wave.htm
  */
 
+package org.almostrealism.audio;
+
+import org.almostrealism.collect.PackedCollection;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintStream;
+
 /**
  * Low-level WAV audio file reader and writer.
  *
@@ -21,7 +32,6 @@
  *     long frames = wav.getNumFrames();
  *     long sampleRate = wav.getSampleRate();
  *
- *     // Read all frames as normalized doubles (-1.0 to 1.0)
  *     double[][] buffer = new double[channels][(int) frames];
  *     wav.readFrames(buffer, (int) frames);
  * }
@@ -29,116 +39,174 @@
  *
  * <h2>Writing WAV Files</h2>
  * <pre>{@code
- * int channels = 2;
- * int frames = 44100;  // 1 second at 44.1kHz
- * int bits = 24;
- * long sampleRate = 44100;
- *
  * try (WavFile wav = WavFile.newWavFile(new File("output.wav"),
- *         channels, frames, bits, sampleRate)) {
- *     double[][] buffer = new double[channels][frames];
- *     // Fill buffer with audio data...
- *     wav.writeFrames(buffer, frames);
+ *         2, 44100, 24, 44100L)) {
+ *     double[][] buffer = new double[2][44100];
+ *     wav.writeFrames(buffer, 44100);
  * }
  * }</pre>
- *
- * <h2>Extracting Channels</h2>
- * <pre>{@code
- * // Read file and extract left channel as PackedCollection
- * try (WavFile wav = WavFile.openWavFile(file)) {
- *     double[][] buffer = new double[wav.getNumChannels()][(int) wav.getNumFrames()];
- *     wav.readFrames(buffer, (int) wav.getNumFrames());
- *     PackedCollection leftChannel = WavFile.channel(buffer, 0);
- * }
- * }</pre>
- *
- * <h2>Supported Formats</h2>
- * <ul>
- *   <li>Bit depths: 2 to 64 bits per sample</li>
- *   <li>Channels: 1 to 65535</li>
- *   <li>Sample rates: Any positive value up to 4,294,967,295 Hz</li>
- *   <li>Compression: Uncompressed PCM only (compression code 1)</li>
- * </ul>
  *
  * @see WaveData
  * @see WaveOutput
  */
-package org.almostrealism.audio;
-
-import org.almostrealism.collect.PackedCollection;
-
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.PrintStream;
-
 public class WavFile implements AutoCloseable {
 
+	/**
+	 * The IO state of a WavFile instance, used for sanity checking operations.
+	 */
 	private enum ReaderState {
-		READING, WRITING, CLOSED
+		/** The file is open for reading. */
+		READING,
+		/** The file is open for writing. */
+		WRITING,
+		/** The file has been closed. */
+		CLOSED
 	}
 
+	/** Size of the internal IO buffer in bytes. */
 	private final static int BUFFER_SIZE = 4096;
 
+	/** Chunk ID for the format chunk in a WAV file. */
 	private final static int FMT_CHUNK_ID = 0x20746D66;
+	/** Chunk ID for the data chunk in a WAV file. */
 	private final static int DATA_CHUNK_ID = 0x61746164;
+	/** Chunk ID for the RIFF container chunk. */
 	private final static int RIFF_CHUNK_ID = 0x46464952;
+	/** Type ID identifying the WAVE format within the RIFF container. */
 	private final static int RIFF_TYPE_ID = 0x45564157;
 
-	private File file;                        // File that will be read from or written to
-	private ReaderState readerState;          // Specifies the IO State of the Wav File (used for snaity checking)
-	private int bytesPerSample;               // Number of bytes required to store a single sample
-	private long numFrames;                   // Number of frames within the data section
-	private OutputStream oStream;             // Output stream used for writing data
-	private FileInputStream iStream;          // Input stream used for reading data
-	private double floatScale;                // Scaling factor used for int <-> float conversion
-	private double floatOffset;               // Offset factor used for int <-> float conversion
-	private boolean wordAlignAdjust;          // Specify if an extra byte at the end of the data chunk is required for word alignment
+	/** The file that will be read from or written to. */
+	private File file;
+	/** The current IO state of the WAV file, used for sanity checking. */
+	private ReaderState readerState;
+	/** The number of bytes required to store a single sample. */
+	private int bytesPerSample;
+	/** The number of frames within the data section. */
+	private long numFrames;
+	/** The output stream used for writing data. */
+	private OutputStream oStream;
+	/** The input stream used for reading data. */
+	private FileInputStream iStream;
+	/** Scaling factor used for int-to-float conversion. */
+	private double floatScale;
+	/** Offset factor used for int-to-float conversion. */
+	private double floatOffset;
+	/** Whether an extra byte at the end of the data chunk is required for word alignment. */
+	private boolean wordAlignAdjust;
 
-	// Wav Header
-	private int numChannels;                // 2 bytes unsigned, 0x0001 (1) to 0xFFFF (65,535)
-	private long sampleRate;                // 4 bytes unsigned, 0x00000001 (1) to 0xFFFFFFFF (4,294,967,295)
-	// Although a java int is 4 bytes, it is signed, so need to use a long
-	private int blockAlign;                    // 2 bytes unsigned, 0x0001 (1) to 0xFFFF (65,535)
-	private int validBits;                    // 2 bytes unsigned, 0x0002 (2) to 0xFFFF (65,535)
+	/** Number of audio channels (2 bytes unsigned, 1 to 65535). */
+	private int numChannels;
+	/** Sample rate in Hz (4 bytes unsigned, stored as long to handle unsigned values). */
+	private long sampleRate;
+	/** Block alignment in bytes (2 bytes unsigned). */
+	private int blockAlign;
+	/** Number of valid bits per sample (2 bytes unsigned). */
+	private int validBits;
 
-	// Buffering
-	private final byte[] buffer;                    // Local buffer used for IO
-	private int bufferPointer;                // Points to the current position in local buffer
-	private int bytesRead;                    // Bytes read after last read into local buffer
-	private long frameCounter;                // Current number of frames read or written
+	/** Local buffer used for IO operations. */
+	private final byte[] buffer;
+	/** Points to the current position in the local buffer. */
+	private int bufferPointer;
+	/** Number of bytes read after the last read into the local buffer. */
+	private int bytesRead;
+	/** Current number of frames read or written. */
+	private long frameCounter;
 
-	// Cannot instantiate WavFile directly, must either use newWavFile() or openWavFile()
+	/**
+	 * Private constructor. Use {@link #newWavFile} or {@link #openWavFile} to create instances.
+	 */
 	private WavFile() {
 		buffer = new byte[BUFFER_SIZE];
 	}
 
+	/**
+	 * Returns the number of audio channels in this WAV file.
+	 *
+	 * @return the number of channels
+	 */
 	public int getNumChannels() {
 		return numChannels;
 	}
 
+	/**
+	 * Returns the total number of frames in this WAV file.
+	 *
+	 * @return the number of frames
+	 */
 	public long getNumFrames() {
 		return numFrames;
 	}
 
+	/**
+	 * Returns the duration of this WAV file in seconds.
+	 *
+	 * @return the duration in seconds
+	 */
 	public double getDuration() { return ((double) numFrames) / getSampleRate(); }
 
+	/**
+	 * Returns the number of frames remaining to be read.
+	 *
+	 * @return the number of unread frames
+	 */
 	public long getFramesRemaining() { return numFrames - frameCounter; }
 
+	/**
+	 * Returns the sample rate of this WAV file in Hz.
+	 *
+	 * @return the sample rate in Hz
+	 */
 	public long getSampleRate() { return sampleRate; }
 
+	/**
+	 * Returns the number of valid bits per sample.
+	 *
+	 * @return the valid bit depth
+	 */
 	public int getValidBits() { return validBits; }
 
+	/**
+	 * Creates a new WavFile for writing to the specified file.
+	 *
+	 * @param file        the output file
+	 * @param numChannels the number of audio channels
+	 * @param numFrames   the total number of frames to write
+	 * @param validBits   the bit depth
+	 * @param sampleRate  the sample rate in Hz
+	 * @return a new WavFile ready for writing
+	 * @throws IOException if the file cannot be opened or the parameters are invalid
+	 */
 	public static WavFile newWavFile(File file, int numChannels, long numFrames, int validBits, long sampleRate) throws IOException {
 		return newWavFile(file, new FileOutputStream(file), numChannels, numFrames, validBits, sampleRate);
 	}
 
+	/**
+	 * Creates a new WavFile for writing to the specified output stream.
+	 *
+	 * @param stream      the output stream to write to
+	 * @param numChannels the number of audio channels
+	 * @param numFrames   the total number of frames to write
+	 * @param validBits   the bit depth
+	 * @param sampleRate  the sample rate in Hz
+	 * @return a new WavFile ready for writing
+	 * @throws IOException if the parameters are invalid
+	 */
 	public static WavFile newWavFile(OutputStream stream, int numChannels, long numFrames, int validBits, long sampleRate) throws IOException {
 		return newWavFile(null, stream, numChannels, numFrames, validBits, sampleRate);
 	}
 
+	/**
+	 * Creates a new WavFile for writing to a file and/or stream.
+	 *
+	 * @param file        the output file, or null if writing to stream only
+	 * @param stream      the output stream to write to
+	 * @param numChannels the number of audio channels
+	 * @param numFrames   the total number of frames to write
+	 * @param validBits   the bit depth
+	 * @param sampleRate  the sample rate in Hz
+	 * @return a new WavFile ready for writing
+	 * @throws IOException if the parameters are invalid
+	 */
 	protected static WavFile newWavFile(File file, OutputStream stream, int numChannels, long numFrames, int validBits, long sampleRate) throws IOException {
 		WavFile wavFile = new WavFile();
 		wavFile.file = file;
@@ -229,16 +297,39 @@ public class WavFile implements AutoCloseable {
 		return wavFile;
 	}
 
+	/**
+	 * Extracts a single channel from a double[][] audio buffer as a traversed PackedCollection.
+	 *
+	 * @param data the multi-channel audio data, indexed as [channel][frame]
+	 * @param chan the channel index to extract
+	 * @return a PackedCollection containing the channel data
+	 */
 	public static PackedCollection channel(double[][] data, int chan) {
 		return channel(data, chan, 0);
 	}
 
+	/**
+	 * Extracts a single channel from a double[][] audio buffer as a traversed PackedCollection,
+	 * optionally padding with extra frames.
+	 *
+	 * @param data      the multi-channel audio data, indexed as [channel][frame]
+	 * @param chan      the channel index to extract
+	 * @param padFrames the number of zero-padded frames to append
+	 * @return a PackedCollection containing the channel data with optional padding
+	 */
 	public static PackedCollection channel(double[][] data, int chan, int padFrames) {
 		PackedCollection waveform = new PackedCollection(data[chan].length + padFrames);
 		waveform.setMem(0, data[chan]);
 		return waveform.traverse(1);
 	}
 
+	/**
+	 * Extracts a single channel from an int[][] audio buffer as a PackedCollection.
+	 *
+	 * @param data the multi-channel audio data, indexed as [channel][frame]
+	 * @param chan the channel index to extract
+	 * @return a PackedCollection containing the channel data as doubles
+	 */
 	public static PackedCollection channel(int[][] data, int chan) {
 		PackedCollection waveform = new PackedCollection(data[chan].length);
 
@@ -247,6 +338,14 @@ public class WavFile implements AutoCloseable {
 		return waveform;
 	}
 
+	/**
+	 * Extracts a single channel from an int[][] audio buffer as a scalar-traversed PackedCollection.
+	 *
+	 * @param data the multi-channel audio data, indexed as [channel][frame]
+	 * @param chan the channel index to extract
+	 * @return a scalar-traversed PackedCollection containing the channel data
+	 * @deprecated Use {@link #channel(int[][], int)} instead
+	 */
 	@Deprecated
 	public static PackedCollection channelScalar(int[][] data, int chan) {
 		PackedCollection waveform = new PackedCollection(data[chan].length).traverse(1);
@@ -385,8 +484,14 @@ public class WavFile implements AutoCloseable {
 		return wavFile;
 	}
 
-	// Get and Put little endian data from local buffer
-	// ------------------------------------------------
+	/**
+	 * Reads a little-endian value from a byte buffer.
+	 *
+	 * @param buffer   the byte array to read from
+	 * @param pos      the starting position in the buffer
+	 * @param numBytes the number of bytes to read
+	 * @return the value read as a long
+	 */
 	private static long getLE(byte[] buffer, int pos, int numBytes) {
 		numBytes--;
 		pos += numBytes;
@@ -397,6 +502,14 @@ public class WavFile implements AutoCloseable {
 		return val;
 	}
 
+	/**
+	 * Writes a little-endian value into a byte buffer.
+	 *
+	 * @param val      the value to write
+	 * @param buffer   the byte array to write into
+	 * @param pos      the starting position in the buffer
+	 * @param numBytes the number of bytes to write
+	 */
 	private static void putLE(long val, byte[] buffer, int pos, int numBytes) {
 		for (int b = 0; b < numBytes; b++) {
 			buffer[pos] = (byte) (val & 0xFF);
@@ -405,8 +518,12 @@ public class WavFile implements AutoCloseable {
 		}
 	}
 
-	// Sample Writing and Reading
-	// --------------------------
+	/**
+	 * Writes a single sample value into the output buffer, flushing when the buffer is full.
+	 *
+	 * @param val the sample value to write
+	 * @throws IOException if the output stream encounters an error
+	 */
 	private void writeSample(long val) throws IOException {
 		for (int b = 0; b < bytesPerSample; b++) {
 			if (bufferPointer == BUFFER_SIZE) {
@@ -420,6 +537,12 @@ public class WavFile implements AutoCloseable {
 		}
 	}
 
+	/**
+	 * Reads a single sample value from the input buffer, refilling from the stream as needed.
+	 *
+	 * @return the raw sample value as a long
+	 * @throws IOException if the input stream encounters an error or has insufficient data
+	 */
 	private long readSample() throws IOException {
 		long val = 0;
 
@@ -441,12 +564,27 @@ public class WavFile implements AutoCloseable {
 		return val;
 	}
 
-	// Integer
-	// -------
+	/**
+	 * Reads frames into a flat int array, interleaving channels, starting at index 0.
+	 *
+	 * @param sampleBuffer   the buffer to receive interleaved integer samples
+	 * @param numFramesToRead the number of frames to read
+	 * @return the number of frames actually read
+	 * @throws IOException if the file is not open for reading
+	 */
 	public int readFrames(int[] sampleBuffer, int numFramesToRead) throws IOException {
 		return readFrames(sampleBuffer, 0, numFramesToRead);
 	}
 
+	/**
+	 * Reads frames into a flat int array, interleaving channels, starting at the given offset.
+	 *
+	 * @param sampleBuffer    the buffer to receive interleaved integer samples
+	 * @param offset          the starting index in the buffer
+	 * @param numFramesToRead the number of frames to read
+	 * @return the number of frames actually read
+	 * @throws IOException if the file is not open for reading
+	 */
 	public int readFrames(int[] sampleBuffer, int offset, int numFramesToRead) throws IOException {
 		if (readerState != ReaderState.READING) throw new IOException("Cannot read from WavFile instance");
 
@@ -464,10 +602,27 @@ public class WavFile implements AutoCloseable {
 		return numFramesToRead;
 	}
 
+	/**
+	 * Reads frames into a channel-indexed int array, starting at frame index 0.
+	 *
+	 * @param sampleBuffer    the buffer indexed as [channel][frame]
+	 * @param numFramesToRead the number of frames to read
+	 * @return the number of frames actually read
+	 * @throws IOException if the file is not open for reading
+	 */
 	public int readFrames(int[][] sampleBuffer, int numFramesToRead) throws IOException {
 		return readFrames(sampleBuffer, 0, numFramesToRead);
 	}
 
+	/**
+	 * Reads frames into a channel-indexed int array, starting at the given frame offset.
+	 *
+	 * @param sampleBuffer    the buffer indexed as [channel][frame]
+	 * @param offset          the starting frame index in the buffer
+	 * @param numFramesToRead the number of frames to read
+	 * @return the number of frames actually read
+	 * @throws IOException if the file is not open for reading
+	 */
 	public int readFrames(int[][] sampleBuffer, int offset, int numFramesToRead) throws IOException {
 		if (readerState != ReaderState.READING) throw new IOException("Cannot read from WavFile instance");
 
@@ -483,10 +638,27 @@ public class WavFile implements AutoCloseable {
 		return numFramesToRead;
 	}
 
+	/**
+	 * Writes frames from a flat int array, interleaving channels, starting at index 0.
+	 *
+	 * @param sampleBuffer    the interleaved integer samples to write
+	 * @param numFramesToWrite the number of frames to write
+	 * @return the number of frames actually written
+	 * @throws IOException if the file is not open for writing
+	 */
 	public int writeFrames(int[] sampleBuffer, int numFramesToWrite) throws IOException {
 		return writeFrames(sampleBuffer, 0, numFramesToWrite);
 	}
 
+	/**
+	 * Writes frames from a flat int array, interleaving channels, starting at the given offset.
+	 *
+	 * @param sampleBuffer     the interleaved integer samples to write
+	 * @param offset           the starting index in the buffer
+	 * @param numFramesToWrite the number of frames to write
+	 * @return the number of frames actually written
+	 * @throws IOException if the file is not open for writing
+	 */
 	public int writeFrames(int[] sampleBuffer, int offset, int numFramesToWrite) throws IOException {
 		if (readerState != ReaderState.WRITING) throw new IOException("Cannot write to WavFile instance");
 
@@ -504,10 +676,27 @@ public class WavFile implements AutoCloseable {
 		return numFramesToWrite;
 	}
 
+	/**
+	 * Writes frames from a channel-indexed int array, starting at frame index 0.
+	 *
+	 * @param sampleBuffer     the samples indexed as [channel][frame]
+	 * @param numFramesToWrite the number of frames to write
+	 * @return the number of frames actually written
+	 * @throws IOException if the file is not open for writing
+	 */
 	public int writeFrames(int[][] sampleBuffer, int numFramesToWrite) throws IOException {
 		return writeFrames(sampleBuffer, 0, numFramesToWrite);
 	}
 
+	/**
+	 * Writes frames from a channel-indexed int array, starting at the given frame offset.
+	 *
+	 * @param sampleBuffer     the samples indexed as [channel][frame]
+	 * @param offset           the starting frame index in the buffer
+	 * @param numFramesToWrite the number of frames to write
+	 * @return the number of frames actually written
+	 * @throws IOException if the file is not open for writing
+	 */
 	public int writeFrames(int[][] sampleBuffer, int offset, int numFramesToWrite) throws IOException {
 		if (readerState != ReaderState.WRITING) throw new IOException("Cannot write to WavFile instance");
 
@@ -523,12 +712,27 @@ public class WavFile implements AutoCloseable {
 		return numFramesToWrite;
 	}
 
-	// Long
-	// ----
+	/**
+	 * Reads frames into a flat long array, interleaving channels, starting at index 0.
+	 *
+	 * @param sampleBuffer    the buffer to receive interleaved long samples
+	 * @param numFramesToRead the number of frames to read
+	 * @return the number of frames actually read
+	 * @throws IOException if the file is not open for reading
+	 */
 	public int readFrames(long[] sampleBuffer, int numFramesToRead) throws IOException {
 		return readFrames(sampleBuffer, 0, numFramesToRead);
 	}
 
+	/**
+	 * Reads frames into a flat long array, interleaving channels, starting at the given offset.
+	 *
+	 * @param sampleBuffer    the buffer to receive interleaved long samples
+	 * @param offset          the starting index in the buffer
+	 * @param numFramesToRead the number of frames to read
+	 * @return the number of frames actually read
+	 * @throws IOException if the file is not open for reading
+	 */
 	public int readFrames(long[] sampleBuffer, int offset, int numFramesToRead) throws IOException {
 		if (readerState != ReaderState.READING) throw new IOException("Cannot read from WavFile instance");
 
@@ -546,10 +750,27 @@ public class WavFile implements AutoCloseable {
 		return numFramesToRead;
 	}
 
+	/**
+	 * Reads frames into a channel-indexed long array, starting at frame index 0.
+	 *
+	 * @param sampleBuffer    the buffer indexed as [channel][frame]
+	 * @param numFramesToRead the number of frames to read
+	 * @return the number of frames actually read
+	 * @throws IOException if the file is not open for reading
+	 */
 	public int readFrames(long[][] sampleBuffer, int numFramesToRead) throws IOException {
 		return readFrames(sampleBuffer, 0, numFramesToRead);
 	}
 
+	/**
+	 * Reads frames into a channel-indexed long array, starting at the given frame offset.
+	 *
+	 * @param sampleBuffer    the buffer indexed as [channel][frame]
+	 * @param offset          the starting frame index in the buffer
+	 * @param numFramesToRead the number of frames to read
+	 * @return the number of frames actually read
+	 * @throws IOException if the file is not open for reading
+	 */
 	public int readFrames(long[][] sampleBuffer, int offset, int numFramesToRead) throws IOException {
 		if (readerState != ReaderState.READING) throw new IOException("Cannot read from WavFile instance");
 
@@ -565,10 +786,27 @@ public class WavFile implements AutoCloseable {
 		return numFramesToRead;
 	}
 
+	/**
+	 * Writes frames from a flat long array, interleaving channels, starting at index 0.
+	 *
+	 * @param sampleBuffer     the interleaved long samples to write
+	 * @param numFramesToWrite the number of frames to write
+	 * @return the number of frames actually written
+	 * @throws IOException if the file is not open for writing
+	 */
 	public int writeFrames(long[] sampleBuffer, int numFramesToWrite) throws IOException {
 		return writeFrames(sampleBuffer, 0, numFramesToWrite);
 	}
 
+	/**
+	 * Writes frames from a flat long array, interleaving channels, starting at the given offset.
+	 *
+	 * @param sampleBuffer     the interleaved long samples to write
+	 * @param offset           the starting index in the buffer
+	 * @param numFramesToWrite the number of frames to write
+	 * @return the number of frames actually written
+	 * @throws IOException if the file is not open for writing
+	 */
 	public int writeFrames(long[] sampleBuffer, int offset, int numFramesToWrite) throws IOException {
 		if (readerState != ReaderState.WRITING) throw new IOException("Cannot write to WavFile instance");
 
@@ -586,10 +824,27 @@ public class WavFile implements AutoCloseable {
 		return numFramesToWrite;
 	}
 
+	/**
+	 * Writes frames from a channel-indexed long array, starting at frame index 0.
+	 *
+	 * @param sampleBuffer     the samples indexed as [channel][frame]
+	 * @param numFramesToWrite the number of frames to write
+	 * @return the number of frames actually written
+	 * @throws IOException if the file is not open for writing
+	 */
 	public int writeFrames(long[][] sampleBuffer, int numFramesToWrite) throws IOException {
 		return writeFrames(sampleBuffer, 0, numFramesToWrite);
 	}
 
+	/**
+	 * Writes frames from a channel-indexed long array, starting at the given frame offset.
+	 *
+	 * @param sampleBuffer     the samples indexed as [channel][frame]
+	 * @param offset           the starting frame index in the buffer
+	 * @param numFramesToWrite the number of frames to write
+	 * @return the number of frames actually written
+	 * @throws IOException if the file is not open for writing
+	 */
 	public int writeFrames(long[][] sampleBuffer, int offset, int numFramesToWrite) throws IOException {
 		if (readerState != ReaderState.WRITING) throw new IOException("Cannot write to WavFile instance");
 
@@ -605,12 +860,27 @@ public class WavFile implements AutoCloseable {
 		return numFramesToWrite;
 	}
 
-	// Double
-	// ------
+	/**
+	 * Reads frames as normalized doubles [-1.0, 1.0] into a flat array, starting at index 0.
+	 *
+	 * @param sampleBuffer    the buffer to receive interleaved normalized double samples
+	 * @param numFramesToRead the number of frames to read
+	 * @return the number of frames actually read
+	 * @throws IOException if the file is not open for reading
+	 */
 	public int readFrames(double[] sampleBuffer, int numFramesToRead) throws IOException {
 		return readFrames(sampleBuffer, 0, numFramesToRead);
 	}
 
+	/**
+	 * Reads frames as normalized doubles [-1.0, 1.0] into a flat array, starting at the given offset.
+	 *
+	 * @param sampleBuffer    the buffer to receive interleaved normalized double samples
+	 * @param offset          the starting index in the buffer
+	 * @param numFramesToRead the number of frames to read
+	 * @return the number of frames actually read
+	 * @throws IOException if the file is not open for reading
+	 */
 	public int readFrames(double[] sampleBuffer, int offset, int numFramesToRead) throws IOException {
 		if (readerState != ReaderState.READING) throw new IOException("Cannot read from WavFile instance");
 
@@ -628,10 +898,28 @@ public class WavFile implements AutoCloseable {
 		return numFramesToRead;
 	}
 
+	/**
+	 * Reads frames as normalized doubles [-1.0, 1.0] into a channel-indexed array, starting at frame 0.
+	 *
+	 * @param sampleBuffer    the buffer indexed as [channel][frame]
+	 * @param numFramesToRead the number of frames to read
+	 * @return the number of frames actually read
+	 * @throws IOException if the file is not open for reading
+	 */
 	public int readFrames(double[][] sampleBuffer, int numFramesToRead) throws IOException {
 		return readFrames(sampleBuffer, 0, numFramesToRead);
 	}
 
+	/**
+	 * Reads frames as normalized doubles [-1.0, 1.0] into a channel-indexed array,
+	 * starting at the given frame offset.
+	 *
+	 * @param sampleBuffer    the buffer indexed as [channel][frame]
+	 * @param offset          the starting frame index in the buffer
+	 * @param numFramesToRead the number of frames to read
+	 * @return the number of frames actually read
+	 * @throws IOException if the file is not open for reading
+	 */
 	public int readFrames(double[][] sampleBuffer, int offset, int numFramesToRead) throws IOException {
 		if (readerState != ReaderState.READING) throw new IOException("Cannot read from WavFile instance");
 
@@ -649,10 +937,27 @@ public class WavFile implements AutoCloseable {
 		return numFramesToRead;
 	}
 
+	/**
+	 * Writes frames from a flat normalized double array, starting at index 0.
+	 *
+	 * @param sampleBuffer     the interleaved normalized double samples to write
+	 * @param numFramesToWrite the number of frames to write
+	 * @return the number of frames actually written
+	 * @throws IOException if the file is not open for writing
+	 */
 	public int writeFrames(double[] sampleBuffer, int numFramesToWrite) throws IOException {
 		return writeFrames(sampleBuffer, 0, numFramesToWrite);
 	}
 
+	/**
+	 * Writes frames from a flat normalized double array, starting at the given offset.
+	 *
+	 * @param sampleBuffer     the interleaved normalized double samples to write
+	 * @param offset           the starting index in the buffer
+	 * @param numFramesToWrite the number of frames to write
+	 * @return the number of frames actually written
+	 * @throws IOException if the file is not open for writing
+	 */
 	public int writeFrames(double[] sampleBuffer, int offset, int numFramesToWrite) throws IOException {
 		if (readerState != ReaderState.WRITING) throw new IOException("Cannot write to WavFile instance");
 
@@ -670,14 +975,38 @@ public class WavFile implements AutoCloseable {
 		return numFramesToWrite;
 	}
 
+	/**
+	 * Writes all frames from a channel-indexed normalized double array.
+	 *
+	 * @param sampleBuffer the samples indexed as [channel][frame]; all frames are written
+	 * @return the number of frames actually written
+	 * @throws IOException if the file is not open for writing
+	 */
 	public int writeFrames(double[][] sampleBuffer) throws IOException {
 		return writeFrames(sampleBuffer, sampleBuffer[0].length);
 	}
 
+	/**
+	 * Writes frames from a channel-indexed normalized double array, starting at frame index 0.
+	 *
+	 * @param sampleBuffer     the samples indexed as [channel][frame]
+	 * @param numFramesToWrite the number of frames to write
+	 * @return the number of frames actually written
+	 * @throws IOException if the file is not open for writing
+	 */
 	public int writeFrames(double[][] sampleBuffer, int numFramesToWrite) throws IOException {
 		return writeFrames(sampleBuffer, 0, numFramesToWrite);
 	}
 
+	/**
+	 * Writes frames from a channel-indexed normalized double array, starting at the given offset.
+	 *
+	 * @param sampleBuffer     the samples indexed as [channel][frame]
+	 * @param offset           the starting frame index in the buffer
+	 * @param numFramesToWrite the number of frames to write
+	 * @return the number of frames actually written
+	 * @throws IOException if the file is not open for writing
+	 */
 	public int writeFrames(double[][] sampleBuffer, int offset, int numFramesToWrite) throws IOException {
 		if (readerState != ReaderState.WRITING) throw new IOException("Cannot write to WavFile instance");
 
@@ -719,10 +1048,18 @@ public class WavFile implements AutoCloseable {
 		readerState = ReaderState.CLOSED;
 	}
 
+	/**
+	 * Prints WAV file information to standard output.
+	 */
 	public void display() {
 		display(System.out);
 	}
 
+	/**
+	 * Prints WAV file information to the specified PrintStream.
+	 *
+	 * @param out the PrintStream to write to
+	 */
 	public void display(PrintStream out) {
 		if (file != null) out.printf("File: %s\n", file);
 		out.printf("Channels: %d, Frames: %d\n", numChannels, numFrames);

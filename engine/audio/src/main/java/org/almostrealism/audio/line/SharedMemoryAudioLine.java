@@ -38,21 +38,45 @@ import org.almostrealism.io.ConsoleFeatures;
  * @see PackedCollection
  */
 public class SharedMemoryAudioLine implements AudioLine, ConsoleFeatures {
+	/** Number of elements in the control buffer; must accommodate all control indices. */
 	public static final int controlSize = 8;
+
+	/** Index into the control buffer that stores the hardware read position. */
 	public static final int READ_POSITION = 0;
+
+	/** Index into the control buffer that stores the passthrough level. */
 	public static final int PASSTHROUGH_LEVEL = 2;
 
+	/** Current write cursor position within the output buffer. */
 	private int cursor;
+
+	/** Shared-memory control buffer holding the read position and passthrough level. */
 	private PackedCollection controls;
+
+	/** Shared-memory input buffer from which audio is read. */
 	private PackedCollection input;
+
+	/** Shared-memory output buffer to which audio is written. */
 	private PackedCollection output;
 
+	/**
+	 * Creates a SharedMemoryAudioLine backed by shared-memory buffers at the given location.
+	 *
+	 * @param location shared-memory key or path prefix used to locate the control and data buffers
+	 */
 	public SharedMemoryAudioLine(String location) {
 		this(createControls(location),
 				createDestination(location, false),
 				createDestination(location, true));
 	}
 
+	/**
+	 * Creates a SharedMemoryAudioLine backed by the provided control, input, and output buffers.
+	 *
+	 * @param controls the control buffer holding read position and passthrough level
+	 * @param input    the input buffer from which audio is read
+	 * @param output   the output buffer to which audio is written
+	 */
 	public SharedMemoryAudioLine(PackedCollection controls,
 								 PackedCollection input,
 								 PackedCollection output) {
@@ -112,16 +136,36 @@ public class SharedMemoryAudioLine implements AudioLine, ConsoleFeatures {
 		output = null;
 	}
 
+	/**
+	 * Creates the shared-memory control buffer at the given location.
+	 *
+	 * @param location shared-memory key prefix
+	 * @return a PackedCollection backed by the control shared-memory segment
+	 */
 	private static PackedCollection createControls(String location) {
 		String shared = location + "_ctl";
 		return createCollection(shared, controlSize);
 	}
 
+	/**
+	 * Creates the shared-memory input or output data buffer at the given location.
+	 *
+	 * @param location shared-memory key prefix
+	 * @param output   true to create the output buffer; false to create the input buffer
+	 * @return a PackedCollection backed by the appropriate shared-memory segment
+	 */
 	private static PackedCollection createDestination(String location, boolean output) {
 		String shared = location + (output ? "_out" : "_in");
 		return createCollection(shared, BufferDefaults.defaultBufferSize);
 	}
 
+	/**
+	 * Creates a PackedCollection backed by a named shared-memory segment of the given size.
+	 *
+	 * @param file the shared-memory file name or key
+	 * @param size number of elements in the collection
+	 * @return the shared-memory-backed PackedCollection
+	 */
 	private static PackedCollection createCollection(String file, int size) {
 		ComputeContext<?> ctx = Hardware.getLocalHardware().getComputeContext();
 		return ctx.getDataContext().sharedMemory(len -> file,

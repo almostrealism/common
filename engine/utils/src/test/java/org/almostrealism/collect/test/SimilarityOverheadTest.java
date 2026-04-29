@@ -71,7 +71,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 
 		for (int i = 0; i < count; i++) {
 			for (int j = i + 1; j < count; j++) {
-				double sim = productSimilarity(
+				productSimilarity(
 						cp(tensors[i]), cp(tensors[j]), FRAMES);
 				totalComparisons++;
 			}
@@ -114,7 +114,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 				CollectionProducer computation = buildSimilarityComputation(
 						cp(tensors[i]), cp(tensors[j]));
 				long t1 = System.nanoTime();
-				PackedCollection result = computation.evaluate();
+				computation.evaluate();
 				long t2 = System.nanoTime();
 
 				computationCreationTime += (t1 - t0);
@@ -174,7 +174,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 
 		for (int i = 0; i < count; i++) {
 			for (int j = i + 1; j < count; j++) {
-				CollectionProducer computation = buildSimilarityComputation(
+				buildSimilarityComputation(
 						cp(tensors[i]), cp(tensors[j]));
 				totalCreations++;
 			}
@@ -200,14 +200,14 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		CollectionProducer cachedComputation = buildSimilarityComputation(
 				cp(tensors[0]), cp(tensors[1]));
 
-		PackedCollection warmup = cachedComputation.evaluate();
+		cachedComputation.evaluate();
 
 		long totalEvals = 0;
 		long start = System.nanoTime();
 
 		for (int i = 0; i < count; i++) {
 			for (int j = i + 1; j < count; j++) {
-				PackedCollection result = cachedComputation.evaluate();
+				cachedComputation.evaluate();
 				totalEvals++;
 			}
 		}
@@ -240,8 +240,9 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 
 				PackedCollection diff = differenceMagnitude(BINS)
 						.evaluate(a, b);
-				double similarity = diff.doubleStream().sum();
+				double magnitude = diff.doubleStream().sum();
 				totalComparisons++;
+				if (Double.isNaN(magnitude)) break;
 			}
 		}
 
@@ -346,7 +347,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 			total = total - skip - 2;
 		}
 
-		return java.util.stream.DoubleStream.of(values)
+		return DoubleStream.of(values)
 				.sorted().skip(skip).limit(total)
 				.average().orElseThrow();
 	}
@@ -790,7 +791,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		}
 
 		// Compute both approximate and exact similarities for sample pairs
-		Evaluable<PackedCollection> cosineEval = cosineSimilarityEvaluable(FRAMES, BINS);
+		cosineSimilarityEvaluable(FRAMES, BINS);
 		int sameClusterCount = 0;
 		int sameClusterHighApprox = 0;
 

@@ -62,12 +62,24 @@ import java.util.stream.IntStream;
  */
 public abstract class AudioCellChoiceAdapter extends CollectionTemporalCellAdapter implements CellFeatures {
 
+	/** The decision producer that selects which cell to route audio through. */
 	private CollectionProducer decision;
+	/** The list of temporal cell adapters representing the available processing choices. */
 	private final List<CollectionTemporalCellAdapter> cells;
+	/** Whether to execute all cells in parallel (true) or only the selected cell (false). */
 	private final boolean parallel;
 
+	/** Intermediate storage for cell outputs used during routing. */
 	private final PackedCollection storage;
 
+	/**
+	 * Creates an AudioCellChoiceAdapter with per-choice data allocation.
+	 *
+	 * @param decision the producer that selects the active cell
+	 * @param data function that creates PolymorphicAudioData for each choice index
+	 * @param choices functions that build a cell adapter from PolymorphicAudioData
+	 * @param parallel true to run all cells in parallel, false for switch-selected execution
+	 */
 	public AudioCellChoiceAdapter(CollectionProducer decision,
 								  IntFunction<PolymorphicAudioData> data,
 								  List<Function<PolymorphicAudioData, ? extends CollectionTemporalCellAdapter>> choices,
@@ -77,6 +89,13 @@ public abstract class AudioCellChoiceAdapter extends CollectionTemporalCellAdapt
 			.collect(Collectors.toList()), parallel);
 	}
 
+	/**
+	 * Creates an AudioCellChoiceAdapter with pre-built cell adapters.
+	 *
+	 * @param decision the producer that selects the active cell
+	 * @param choices the pre-built cell adapters to choose from
+	 * @param parallel true to run all cells in parallel, false for switch-selected execution
+	 */
 	public AudioCellChoiceAdapter(CollectionProducer decision,
 								  List<CollectionTemporalCellAdapter> choices,
 								  boolean parallel) {
@@ -93,19 +112,42 @@ public abstract class AudioCellChoiceAdapter extends CollectionTemporalCellAdapt
 		}
 	}
 
+	/**
+	 * Updates the decision producer used to select between processing choices.
+	 *
+	 * @param decision the new decision producer
+	 */
 	public void setDecision(CollectionProducer decision) {
 		this.decision = decision;
 	}
 
+	/**
+	 * Initializes receptors for parallel execution mode, routing each cell's
+	 * output to the corresponding storage slot.
+	 */
 	private void initParallel() {
 		getCellSet().forEach(c ->
 				c.setReceptor(a(indexes(c).mapToObj(storage::get).map(this::p).toArray(Producer[]::new))));
 	}
 
+	/**
+	 * Returns the storage slot indexes corresponding to the given cell adapter.
+	 * A cell may appear multiple times in the list, resulting in multiple indexes.
+	 *
+	 * @param c the cell adapter to find indexes for
+	 * @return stream of indexes where the cell appears in the choices list
+	 */
 	private IntStream indexes(CollectionTemporalCellAdapter c) {
 		return IntStream.range(0, cells.size()).filter(i -> cells.get(i) == c);
 	}
 
+	/**
+	 * Returns the deduplicated set of cell adapters used by this choice adapter.
+	 * If the same cell appears multiple times in the choices list, it is included
+	 * only once in the returned set.
+	 *
+	 * @return deduplicated set of cell adapters
+	 */
 	protected Set<CollectionTemporalCellAdapter> getCellSet() {
 		HashSet<CollectionTemporalCellAdapter> set = new HashSet<>();
 

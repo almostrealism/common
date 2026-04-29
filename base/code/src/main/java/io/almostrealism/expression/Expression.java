@@ -19,18 +19,18 @@ package io.almostrealism.expression;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.kernel.ArithmeticIndexSequence;
-import io.almostrealism.kernel.ArrayIndexSequence;
-import io.almostrealism.kernel.Index;
-import io.almostrealism.kernel.IndexSequence;
-import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.sequence.ArithmeticIndexSequence;
+import io.almostrealism.sequence.ArrayIndexSequence;
+import io.almostrealism.sequence.Index;
+import io.almostrealism.sequence.IndexSequence;
+import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelIndex;
-import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTree;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
-import io.almostrealism.kernel.SequenceGenerator;
+import io.almostrealism.sequence.SequenceGenerator;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.profile.ScopeTimingListener;
@@ -794,6 +794,32 @@ public abstract class Expression<T> implements
 	}
 
 	/**
+	 * Returns {@link Long Long.class} if this expression is typed as {@link Integer}
+	 * but its bounds analysis indicates values that can exceed the 32-bit signed
+	 * integer range. Otherwise returns this expression's own type.
+	 *
+	 * <p>This is useful when hoisting expressions into local variable declarations —
+	 * an expression tree may type a kernel index product as {@link Integer}, but the
+	 * actual runtime value can overflow {@code jint} for large kernel sizes.</p>
+	 *
+	 * @return {@link Long Long.class} if promotion is needed, otherwise this
+	 *         expression's own type
+	 */
+	public Class<?> promoteIfOverflows() {
+		Class<?> type = getType();
+		if (type != Integer.class) return type;
+
+		OptionalLong upper = upperBound(null);
+		OptionalLong lower = lowerBound(null);
+
+		if (upper.isEmpty() || lower.isEmpty()) return Long.class;
+		if (upper.getAsLong() > Integer.MAX_VALUE) return Long.class;
+		if (lower.getAsLong() < Integer.MIN_VALUE) return Long.class;
+
+		return type;
+	}
+
+	/**
 	 * Checks if this expression's value is a multiple of another expression's value.
 	 *
 	 * <p>This method only works for compile-time constant integer expressions.
@@ -1008,7 +1034,7 @@ public abstract class Expression<T> implements
 
 		if (getClass() == Expression.class) {
 			if (ScopeSettings.enableExpressionWarnings)
-				System.out.println("WARN: Unable to retrieve simplified expression");
+				warn("Unable to retrieve simplified expression");
 			return this;
 		}
 

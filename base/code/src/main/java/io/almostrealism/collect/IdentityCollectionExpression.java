@@ -18,7 +18,19 @@ package io.almostrealism.collect;
 
 import io.almostrealism.expression.IntegerConstant;
 
+/**
+ * A {@link DiagonalCollectionExpression} that represents the identity matrix.
+ *
+ * <p>Every diagonal element is {@code 1} and every off-diagonal element is {@code 0},
+ * corresponding to the identity transformation in the vector space described by the
+ * given shape.</p>
+ */
 public class IdentityCollectionExpression extends DiagonalCollectionExpression {
+	/**
+	 * Creates an identity collection expression with the given square shape.
+	 *
+	 * @param shape the shape of the identity matrix (must be a square matrix shape)
+	 */
 	public IdentityCollectionExpression(TraversalPolicy shape) {
 		super("identity", shape, new ConstantCollectionExpression(shape.item(), new IntegerConstant(1)));
 	}

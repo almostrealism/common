@@ -43,23 +43,53 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+/**
+ * A deprecated computation that applies a mapping function to each item of a {@link PackedCollection}.
+ * This class transforms each slice of the input collection using the provided mapper function,
+ * producing an output collection with the same traversal axis.
+ *
+ * @deprecated Use {@link TraversableExpressionComputation} or lambda-based approaches instead.
+ */
 @Deprecated
 public class PackedCollectionMap
 		extends CollectionProducerComputationBase
 		implements TraversableExpression<Double> {
+	/** When true, generates a single-element kernel instead of a multi-element kernel. */
 	public static boolean enableAtomicKernel = false;
+
+	/** When true, enables chain-rule delta computation for backpropagation through the map. */
 	public static boolean enableChainDelta = false;
 
+	/** The function applied to each item of the input collection to produce the output items. */
 	private final Function<CollectionProducerComputation, CollectionProducer> mapper;
+
+	/** The evaluated mapped expression, set during scope preparation. */
 	private TraversableExpression<Double> mapped;
+
+	/** The shape of the input collection. */
 	private final TraversalPolicy inputShape;
 
+	/** When true, the traversal axis is ignored and the full shape is used for memory length. */
 	private boolean ignoreTraversalAxis;
 
+	/**
+	 * Creates a map computation with the output shape inferred from the input collection.
+	 *
+	 * @param collection the input collection producer to map over
+	 * @param mapper the function that transforms each item of the input collection
+	 */
 	public PackedCollectionMap(Producer<?> collection, Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		this(shape(collection), collection, mapper);
 	}
 
+	/**
+	 * Creates a map computation with an explicit output shape.
+	 *
+	 * @param shape the desired output shape; must have the same traversal axis as the input
+	 * @param collection the input collection producer to map over
+	 * @param mapper the function that transforms each item of the input collection
+	 * @throws IllegalArgumentException if the input and output shapes have different traversal axes
+	 */
 	public PackedCollectionMap(TraversalPolicy shape, Producer<?> collection, Function<CollectionProducerComputation, CollectionProducer> mapper) {
 		super("map", shape, (Producer<PackedCollection>) collection);
 		this.inputShape = shape(collection);
@@ -70,10 +100,21 @@ public class PackedCollectionMap
 		}
 	}
 
+	/**
+	 * Returns whether the traversal axis is being ignored for memory length calculation.
+	 *
+	 * @return true if traversal axis is ignored
+	 */
 	public boolean isIgnoreTraversalAxis() {
 		return ignoreTraversalAxis;
 	}
 
+	/**
+	 * Sets whether the traversal axis should be ignored for memory length calculation.
+	 * When true, the full shape total size is used instead of the default traversal-based length.
+	 *
+	 * @param ignoreTraversalAxis true to ignore traversal axis
+	 */
 	public void setIgnoreTraversalAxis(boolean ignoreTraversalAxis) {
 		this.ignoreTraversalAxis = ignoreTraversalAxis;
 	}
@@ -124,14 +165,12 @@ public class PackedCollectionMap
 		CollectionVariable input = (CollectionVariable) arg;
 
 		TraversalPolicy sliceShape = inputShape.item();
-		TraversalPolicy traversalShape = new TraversalPolicy(true);
 		int traversalDimensions = inputShape.getDimensions() - sliceShape.getDimensions();
 		for (int i = 0; i < traversalDimensions; i++) {
 			sliceShape = sliceShape.prependDimension(1);
-			traversalShape = traversalShape.appendDimension(inputShape.length(i));
 		}
 
-		CollectionExpression expression = createCollectionExpression(input, sliceShape, traversalShape);
+		CollectionExpression expression = createCollectionExpression(input, sliceShape);
 		CollectionProducerComputationBase computation = new ItemComputation(sliceShape, args -> expression);
 
 		CollectionProducer mapped = mapper.apply(computation);
@@ -185,9 +224,6 @@ public class PackedCollectionMap
 		int inSize = inShape.getTotalSize();
 		int targetSize = targetShape.getTotalSize();
 
-		TraversalPolicy deltaShape = shape(inSize, targetSize);
-		TraversalPolicy overallShape = shape(outSize, targetSize);
-
 		Producer<?> stub = func(inShape, args -> null);
 
 		TraversableDeltaComputation deltaOut = TraversableDeltaComputation.create("delta", shape(outSize), shape(inSize),
@@ -207,7 +243,16 @@ public class PackedCollectionMap
 	@Override
 	public String signature() { return null; }
 
-	private CollectionExpression createCollectionExpression(CollectionVariable input, TraversalPolicy sliceShape, TraversalPolicy traversalShape) {
+	/**
+	 * Creates a collection expression that maps a variable reference through sliced access patterns.
+	 * Each output index is resolved to the appropriate element within the input collection
+	 * by computing the slice and offset based on the provided shapes.
+	 *
+	 * @param input the collection variable to read values from
+	 * @param sliceShape the shape of each individual slice within the input
+	 * @return a collection expression implementing sliced element access
+	 */
+	private CollectionExpression createCollectionExpression(CollectionVariable input, TraversalPolicy sliceShape) {
 		return DefaultCollectionExpression.create(sliceShape,
 				index -> {
 					// Determine which slice to extract
@@ -228,6 +273,13 @@ public class PackedCollectionMap
 				});
 	}
 
+	/**
+	 * Extracts the traversal policy from a collection producer.
+	 *
+	 * @param collection the collection producer to extract shape from
+	 * @return the traversal policy of the collection
+	 * @throws IllegalArgumentException if the collection does not implement {@link Shape}
+	 */
 	private static TraversalPolicy shape(Producer<?> collection) {
 		if (!(collection instanceof Shape))
 			throw new IllegalArgumentException("Map cannot be performed without a TraversalPolicy");
@@ -235,7 +287,19 @@ public class PackedCollectionMap
 		return ((Shape) collection).getShape();
 	}
 
+	/**
+	 * Internal computation representing a single mapped item during scope preparation.
+	 * This computation has a variable count and is never considered constant, ensuring
+	 * it is re-evaluated for each invocation of the map operation.
+	 */
 	private static class ItemComputation extends DefaultTraversableExpressionComputation {
+		/**
+		 * Creates an item computation with the given shape and expression.
+		 *
+		 * @param shape the shape of each item produced by this computation
+		 * @param expression the expression function used to compute each item
+		 * @param args optional input producers for the computation
+		 */
 		public ItemComputation(TraversalPolicy shape,
 							   Function<TraversableExpression[], CollectionExpression> expression,
 							   Producer<PackedCollection>... args) {

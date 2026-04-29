@@ -21,9 +21,21 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
+/**
+ * Partial implementation of {@link Resource} that provides default behaviour for
+ * URI management, input stream creation, local saving, and sending over {@link IOStreams}.
+ *
+ * <p>Subclasses must implement {@link #getData()}, {@link #load(IOStreams)},
+ * {@link #load(byte[], long, int)}, and {@link #loadFromURI()}.</p>
+ *
+ * @param <T> The type of data held by this resource; must be castable to {@code byte[]}
+ *            for the default save and send implementations
+ */
 public abstract class ResourceAdapter<T extends Object> implements Resource<T> {
+	/** The permissions for this resource, defaulting to owner read-write-execute, group read. */
 	private final Permissions permissions = new Permissions();
-	
+
+	/** The URI identifying this resource. */
 	protected String uri;
 	
 	@Override
@@ -48,7 +60,14 @@ public abstract class ResourceAdapter<T extends Object> implements Resource<T> {
 		return new ByteArrayInputStream((byte[]) getData());
 	}
 	
+	/**
+	 * Sends the resource data byte-by-byte to the given IO streams.
+	 *
+	 * @param io The IO streams to write to
+	 * @throws IOException If writing fails
+	 */
 	// TODO  This could be made faster by writing a range of bytes at a time
+	@Override
 	public synchronized void send(IOStreams io) throws IOException {
 		byte[] data = (byte[]) getData();
 		if (data == null) return;

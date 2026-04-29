@@ -25,6 +25,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.calculus.DeltaFeatures;
 import org.almostrealism.calculus.InputStub;
+import org.almostrealism.collect.CollectionComparisonFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
@@ -80,7 +81,7 @@ import java.util.function.Supplier;
  * @see TraversalPolicy
  * @see Producer
  */
-public interface AlgebraFeatures extends CollectionFeatures {
+public interface AlgebraFeatures extends CollectionComparisonFeatures {
 	/** Enable warnings when isolated producers cannot be matched (debugging) */
 	boolean enableIsolationWarnings = false;
 

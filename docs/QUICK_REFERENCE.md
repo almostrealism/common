@@ -5,7 +5,7 @@
 ## Environment (REQUIRED)
 
 ```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/   # Any writable directory
+# AR_HARDWARE_LIBS is auto-detected — do not set it manually
 # AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
 # Override options: native|opencl|metal|external
 ```
@@ -340,16 +340,20 @@ optimizer.step(parameters, gradients);
 ```
 
 ### Training Loop Pattern
+
+**ModelOptimizer owns the training loop.** Never write `for (int epoch = 0; ...)` directly.
+
 ```java
-for (int epoch = 0; epoch < epochs; epoch++) {
-    for (Batch batch : dataset) {
-        PackedCollection output = model.forward(batch.input());
-        PackedCollection loss = lossFunction.apply(output, batch.target());
-        PackedCollection gradients = model.backward(loss);
-        optimizer.step(model.parameters(), gradients);
-    }
-}
+// Configure the optimizer
+ModelOptimizer optimizer = new ModelOptimizer(model);
+optimizer.setLossProvider(new MeanSquaredError());
+optimizer.setParameterUpdate(new AdamOptimizer(learningRate));
+
+// Run training — ModelOptimizer manages the loop
+optimizer.train(dataset, epochs, batchSize);
 ```
+
+See [training-loop-examples.md](internals/training-loop-examples.md) for detailed patterns.
 
 ---
 
@@ -435,10 +439,38 @@ public class MyTest implements TestFeatures, ConsoleFeatures {
 }
 ```
 
+### Validate Code Quality Before Completing a Task
+
+Use the MCP build validator to check style and policy — never wait for CI to catch these:
+
+```
+mcp__ar-build-validator__start_validation
+```
+
+Default checks: `checkstyle`, `code_policy`, `test_timeouts`, `duplicate_code`.
+
+If the project is already compiled, skip the build step for speed:
+```
+mcp__ar-build-validator__start_validation skip_build:true
+```
+
+For checkstyle only (fastest — no build at all):
+```
+mcp__ar-build-validator__start_validation checks:["checkstyle"]
+```
+
+Poll status, then get structured violations:
+```
+mcp__ar-build-validator__get_validation_status run_id:<id>
+mcp__ar-build-validator__get_validation_violations run_id:<id>
+```
+
 ### Run Tests
-```bash
-export AR_HARDWARE_LIBS=/tmp/ar_libs/ && \
-mvn test -pl <module> -Dtest=<TestName>
+
+Use the MCP test runner — never use `mvn test` directly:
+
+```
+mcp__ar-test-runner__start_test_run module:<module> test:<TestName>
 ```
 
 ---
@@ -495,7 +527,7 @@ See [docs/internals/profiling.md](docs/internals/profiling.md) for full document
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `NoClassDefFoundError: PackedCollection` | Missing env vars | Set AR_HARDWARE_LIBS, AR_HARDWARE_DRIVER |
+| `NoClassDefFoundError: PackedCollection` | Missing native libs | AR_HARDWARE_LIBS is auto-detected; check that the default directory is writable |
 | `IllegalArgumentException` at layer creation | Layer output shape doesn't match declared shape | Ensure operator produces correct shape; add `.reshape(outputShape)` if needed |
 | `Shape mismatch` | Incompatible dimensions | Check tensor shapes before operations |
 | `OutOfMemoryError` | GPU memory exhausted | Reduce batch size, use CPU |

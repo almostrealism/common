@@ -46,7 +46,7 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		verboseLog(() -> {
 			CollectionProducer product = traverse(1, p(input)).map(v -> v.multiply(p(filter)));
 			PackedCollection output = product.get().evaluate();
-			System.out.println(output.getShape());
+			log(String.valueOf(output.getShape()));
 
 			Assert.assertEquals(8, output.getShape().length(0));
 			Assert.assertEquals(n, output.getShape().length(1));
@@ -72,10 +72,10 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		verboseLog(() -> {
 			CollectionProducer pool =
 					c(p(input)).traverse(1).max();
-			System.out.println(pool.getShape());
+			log(String.valueOf(pool.getShape()));
 
 			PackedCollection output = pool.get().evaluate().reshape(c / w, d);
-			System.out.println(output.getShape());
+			log(String.valueOf(output.getShape()));
 
 			int c2 = c / w;
 
@@ -98,11 +98,11 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		PackedCollection input = tensor(shape(1, c, d)).pack();
 
 		CollectionProducer pool = enumerate(shape(1, c, d), cp(input));
-		System.out.println(pool.getShape());
+		log(String.valueOf(pool.getShape()));
 		input.print();
 
 		PackedCollection output = pool.get().evaluate();
-		System.out.println(output.getShape());
+		log(String.valueOf(output.getShape()));
 
 		for (int copy = 0; copy < d; copy++) {
 			for (int j = 0; j < c; j++) {
@@ -127,11 +127,11 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 
 			CollectionProducer pool =
 					enumerate(shape(1, c, d), cp(input)).traverse(1).max();
-			System.out.println(pool.getShape());
+			log(String.valueOf(pool.getShape()));
 			input.print();
 
 			PackedCollection output = pool.get().evaluate().reshape(d, 1);
-			System.out.println(output.getShape());
+			log(String.valueOf(output.getShape()));
 
 			input.print();
 
@@ -162,11 +162,11 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 			CollectionProducer pool =
 //					enumerate(shape(1, c, d), cp(input)).traverse(1).max();
 					enumerate(shape(1, c, d), cp(input)).traverse(1).reduce(slice -> max(slice));
-			System.out.println(pool.getShape());
+			log(String.valueOf(pool.getShape()));
 			input.print();
 
 			PackedCollection output = pool.get().evaluate().reshape(d, 1);
-			System.out.println(output.getShape());
+			log(String.valueOf(output.getShape()));
 
 			input.print();
 
@@ -197,10 +197,10 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 			CollectionProducer pool =
 					enumerate(shape(w, d), c(p(input)))
 							.traverse(1).reduce(slice -> max(slice));
-			System.out.println(pool.getShape());
+			log(String.valueOf(pool.getShape()));
 
 			PackedCollection output = pool.get().evaluate();
-			System.out.println(output.getShape());
+			log(String.valueOf(output.getShape()));
 
 			int c2 = c / w;
 
@@ -235,10 +235,10 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 							.reduce(v ->
 									enumerate(shape(w, 1), v)
 											.traverse(1).reduce(slice -> max(slice)));
-			System.out.println(pool.getShape());
+			log(String.valueOf(pool.getShape()));
 
 			PackedCollection output = pool.get().evaluate();
-			System.out.println(output.getShape());
+			log(String.valueOf(output.getShape()));
 
 			for (int copy = 0; copy < d; copy++) {
 				for (int j = 0; j < c; j++) {
@@ -262,10 +262,10 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		verboseLog(() -> {
 			CollectionProducer repeat =
 					c(p(input)).traverse(1).repeat(2);
-			System.out.println(repeat.getShape());
+			log(String.valueOf(repeat.getShape()));
 
 			PackedCollection output = repeat.get().evaluate();
-			System.out.println(output.getShape());
+			log(String.valueOf(output.getShape()));
 
 			for (int i = 0; i < c; i++) {
 				for (int j = 0; j < d; j++) {
@@ -293,10 +293,10 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 
 		verboseLog(() -> {
 			CollectionProducer repeat = c(p(input)).repeat(2).each().multiply(p(filter));
-			System.out.println(repeat.getShape());
+			log(String.valueOf(repeat.getShape()));
 
 			PackedCollection output = repeat.get().evaluate();
-			System.out.println(output.getShape());
+			log(String.valueOf(output.getShape()));
 
 			for (int i = 0; i < d; i++) {
 				for (int j = 0; j < n; j++) {
@@ -322,10 +322,10 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		verboseLog(() -> {
 			CollectionProducer repeat =
 					c(p(input)).traverse(1).repeat(n).each().multiply(p(filter));
-			System.out.println(repeat.getShape());
+			log(String.valueOf(repeat.getShape()));
 
 			PackedCollection output = repeat.get().evaluate();
-			System.out.println(output.getShape());
+			log(String.valueOf(output.getShape()));
 
 			for (int i = 0; i < c; i++) {
 				for (int j = 0; j < n; j++) {
@@ -353,10 +353,10 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 							.reduce(v ->
 									enumerate(shape(w), v)
 											.traverse(1).reduce(slice -> max(slice)));
-			System.out.println(pool.getShape());
+			log(String.valueOf(pool.getShape()));
 
 			PackedCollection output = pool.get().evaluate();
-			System.out.println(output.getShape());
+			log(String.valueOf(output.getShape()));
 
 			for (int i = 0; i < n; i++) {
 				double expected = Math.max(input.valueAt(i, 0), input.valueAt(i, 1));
@@ -376,18 +376,18 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		PackedCollection input = tensor(shape(n, w, d)).pack();
 		input.fill(pos -> Math.random());
 
-		System.out.println(Arrays.toString(input.toArray(0, 8)));
+		log(Arrays.toString(input.toArray(0, 8)));
 
 		verboseLog(() -> {
 			CollectionProducer pool =
 					c(p(input)).traverse(1)
 							.map(shape(d, 1, w, 1),
 									v -> enumerate(shape(w, 1), v));
-			System.out.println(pool.getShape());
+			log(String.valueOf(pool.getShape()));
 
 			PackedCollection output = pool.get().evaluate();
-			System.out.println(output.getShape());
-			System.out.println(Arrays.toString(output.toArray(0, 4)));
+			log(String.valueOf(output.getShape()));
+			log(Arrays.toString(output.toArray(0, 4)));
 
 			for (int i = 0; i < n; i++) {
 				for (int j = 0; j < w; j++) {
@@ -414,10 +414,10 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		verboseLog(() -> {
 			CollectionProducer en = enumerate(shape(n, w), c(p(input)));
 
-			System.out.println(en.getShape());
+			log(String.valueOf(en.getShape()));
 
 			PackedCollection output = en.get().evaluate();
-			System.out.println(output.getShape());
+			log(String.valueOf(output.getShape()));
 
 			for (int i = 0; i < n; i++) {
 				for (int j = 0; j < d; j++) {
@@ -476,10 +476,10 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 							.reduce(v ->
 									enumerate(shape(w, 1), v)
 											.traverse(1).reduce(slice -> max(slice)));
-			System.out.println(pool.getShape());
+			log(String.valueOf(pool.getShape()));
 
 			PackedCollection output = pool.get().evaluate();
-			System.out.println(output.getShape());
+			log(String.valueOf(output.getShape()));
 
 			for (int i = 0; i < n; i++) {
 				for (int j = 0; j < d; j++) {
@@ -505,10 +505,10 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 						.enumerate(1, w)
 						.traverse(2)
 						.max();
-		System.out.println(pool.getShape());
+		log(String.valueOf(pool.getShape()));
 
 		PackedCollection output = pool.get().evaluate().reshape(4, 3);
-		System.out.println(output.getShape());
+		log(String.valueOf(output.getShape()));
 
 		int c2 = c / w;
 

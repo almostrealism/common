@@ -65,14 +65,30 @@ import java.util.Objects;
  * @see MemoryData
  */
 public class MemoryDataRef {
+	/** The underlying memory data instance tracked by this reference. */
 	private MemoryData md;
 
+	/**
+	 * Creates a reference wrapping the given memory data.
+	 *
+	 * @param md Memory data to track
+	 */
 	public MemoryDataRef(MemoryData md) {
 		this.md = md;
 	}
 
+	/**
+	 * Returns the memory data tracked by this reference.
+	 *
+	 * @return Wrapped memory data instance
+	 */
 	public MemoryData getMemoryData() { return md; }
 
+	/**
+	 * Returns the memory length of the tracked memory data.
+	 *
+	 * @return Memory length in elements
+	 */
 	public int getMemLength() {
 		return md.getMemLength();
 	}

@@ -45,6 +45,7 @@ package io.almostrealism.frames;
  * @author  Michael Murray
  */
 public class CausalFrame {
+	/** The cause predicate {@code a} and effect predicate {@code b} of this causal relation. */
 	private Predicate a, b;
 
 	/**
@@ -64,5 +65,6 @@ public class CausalFrame {
 	 *
 	 * @return a string in the format "{@code b} is because of {@code a}"
 	 */
+	@Override
 	public String toString() { return b + " is because of " + a; }
 }

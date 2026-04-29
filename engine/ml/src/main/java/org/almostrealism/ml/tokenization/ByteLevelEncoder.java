@@ -48,8 +48,10 @@ import java.util.Map;
  */
 public class ByteLevelEncoder {
 
-    // Byte to Unicode character mapping (lazy initialized)
+    /** Lazy-initialized mapping from raw byte values (0–255) to their Unicode character equivalents. */
     private static Map<Integer, Character> byteToChar = null;
+
+    /** Lazy-initialized reverse mapping from Unicode characters back to their raw byte values. */
     private static Map<Character, Integer> charToByte = null;
 
     /**

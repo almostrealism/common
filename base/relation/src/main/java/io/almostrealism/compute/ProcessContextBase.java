@@ -59,6 +59,7 @@ package io.almostrealism.compute;
  * @author Michael Murray
  */
 public class ProcessContextBase implements ProcessContext {
+	/** The application-wide default strategy applied when no per-context strategy has been set. */
 	private static ProcessOptimizationStrategy defaultOptimizationStrategy;
 
 	static {
@@ -68,7 +69,9 @@ public class ProcessContextBase implements ProcessContext {
 		);
 	}
 
+	/** The strategy used to rewrite child processes during optimization. */
 	private ProcessOptimizationStrategy optimizationStrategy;
+	/** The depth of this context in the process tree, where 0 is the root. */
 	private int depth;
 
 	/**

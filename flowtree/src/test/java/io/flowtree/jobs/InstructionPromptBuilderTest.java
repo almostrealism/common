@@ -40,24 +40,26 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 	}
 
 	@Test(timeout = 30000)
-	public void includesSlackSectionWhenUrlSet() {
+	public void includesCommunicationSectionWhenUrlSet() {
 		String result = new InstructionPromptBuilder()
 			.setPrompt("test")
 			.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1")
 			.build();
-		assertTrue("Expected Slack section when workstream URL is set",
-			result.toLowerCase().contains("slack"));
+		assertTrue("Expected Communication section when workstream URL is set",
+			result.contains("## Communication"));
+		assertTrue("Expected send_message reference",
+			result.contains("send_message"));
 	}
 
 	@Test(timeout = 30000)
-	public void excludesSlackSectionWhenNoUrl() {
+	public void excludesMessageSectionWhenNoUrl() {
 		String result = new InstructionPromptBuilder()
 			.setPrompt("test")
 			.build();
-		assertFalse("Expected no slack_send_message reference without workstream URL",
-			result.contains("slack_send_message"));
-		assertFalse("Expected no Slack Communication section without workstream URL",
-			result.contains("## Slack Communication"));
+		assertFalse("Expected no send_message reference without workstream URL",
+			result.contains("send_message"));
+		assertFalse("Expected no Communication section without workstream URL",
+			result.contains("## Communication"));
 	}
 
 	@Test(timeout = 30000)
@@ -95,8 +97,8 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			.build();
 		assertTrue("Expected Branch Awareness section when target branch is set",
 			result.contains("Branch Awareness"));
-		assertTrue("Expected branch_catchup reference",
-			result.contains("branch_catchup"));
+		assertTrue("Expected workstream_context reference",
+			result.contains("workstream_context"));
 	}
 
 	@Test(timeout = 30000)
@@ -122,5 +124,53 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("## Planning Document"));
 		assertTrue("Expected planning document path in output",
 			result.contains("docs/planning/feature-plan.md"));
+	}
+
+	@Test(timeout = 30000)
+	public void includesDependentReposSection() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.setTargetBranch("feature/work")
+			.setDependentRepoPaths(Arrays.asList(
+				"/workspace/project/repo-a",
+				"/workspace/project/repo-b"))
+			.build();
+		assertTrue("Expected Dependent Repositories section",
+			result.contains("## Dependent Repositories"));
+		assertTrue("Expected first dep repo path in output",
+			result.contains("/workspace/project/repo-a"));
+		assertTrue("Expected second dep repo path in output",
+			result.contains("/workspace/project/repo-b"));
+	}
+
+	@Test(timeout = 30000)
+	public void excludesDependentReposSectionWhenUnset() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.build();
+		assertFalse("Expected no Dependent Repositories section when paths not set",
+			result.contains("## Dependent Repositories"));
+	}
+
+	@Test(timeout = 30000)
+	public void includesInactivityRestartPreambleWhenAttemptPositive() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.setInactivityRestartAttempt(1)
+			.build();
+		assertTrue("Expected inactivity restart warning header when attempt > 0",
+			result.contains("SESSION RESTARTED -- INACTIVITY TIMEOUT"));
+		assertTrue("Expected pgrep -f cause guidance in inactivity preamble",
+			result.contains("pgrep -f"));
+	}
+
+	@Test(timeout = 30000)
+	public void excludesInactivityRestartPreambleWhenAttemptZero() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.setInactivityRestartAttempt(0)
+			.build();
+		assertFalse("Expected no inactivity restart warning when attempt == 0",
+			result.contains("SESSION RESTARTED -- INACTIVITY TIMEOUT"));
 	}
 }

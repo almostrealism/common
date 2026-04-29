@@ -31,11 +31,13 @@ import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.Arrays;
 
 /**
  * Multi-token generation test comparing Java implementation with PyTorch reference.
@@ -168,8 +170,8 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 					log("  [MATCH] Top-5 rankings match PyTorch!");
 				} else {
 					log("  [MISMATCH] Top-5 rankings differ from PyTorch");
-					log("  PyTorch top-5: " + java.util.Arrays.toString(pytorchTop5));
-					log("  Java top-5: " + java.util.Arrays.toString(top5));
+					log("  PyTorch top-5: " + Arrays.toString(pytorchTop5));
+					log("  Java top-5: " + Arrays.toString(top5));
 				}
 			}
 
@@ -193,9 +195,9 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 
 		// Summary
 		log("\n=== Generation Summary ===");
-		log("Generated tokens: " + java.util.Arrays.toString(
-				java.util.Arrays.copyOf(generatedTokens, 5)));
-		log("Expected tokens:  " + java.util.Arrays.toString(expectedTokens));
+		log("Generated tokens: " + Arrays.toString(
+				Arrays.copyOf(generatedTokens, 5)));
+		log("Expected tokens:  " + Arrays.toString(expectedTokens));
 		log(String.format("Match rate: %d/%d (%.1f%%)", matches, total, 100.0 * matches / total));
 
 		if (matches == total) {
@@ -250,7 +252,7 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 					layerWk, layerWv, layerWq, layerWo,
 					layerBk, layerBv, layerBq,
 					layerQkNormQ, layerQkNormK,
-					freqCis,
+					cp(freqCis),
 					layerRmsFfn,
 					layerW1, layerW2, layerW3,
 					p(position)));
@@ -299,7 +301,7 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 	private int[] findTopK(double[] values, int k) {
 		int[] indices = new int[k];
 		double[] topValues = new double[k];
-		java.util.Arrays.fill(topValues, Double.NEGATIVE_INFINITY);
+		Arrays.fill(topValues, Double.NEGATIVE_INFINITY);
 
 		for (int i = 0; i < values.length; i++) {
 			int pos = -1;
@@ -327,7 +329,7 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 	private int[] findTopKFromFloat(float[] values, int k) {
 		int[] indices = new int[k];
 		float[] topValues = new float[k];
-		java.util.Arrays.fill(topValues, Float.NEGATIVE_INFINITY);
+		Arrays.fill(topValues, Float.NEGATIVE_INFINITY);
 
 		for (int i = 0; i < values.length; i++) {
 			int pos = -1;

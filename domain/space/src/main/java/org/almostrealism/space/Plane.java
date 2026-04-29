@@ -49,8 +49,10 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 	/** Integer code for YZ plane. **/
 	public static final int YZ = 8;
   
+	/** The plane orientation type ({@link #XY}, {@link #XZ}, or {@link #YZ}). */
 	private int type;
 
+	/** Producer that evaluates to the outward-facing surface normal of this plane. */
 	private Producer<PackedCollection> normal;
 
 	/**
@@ -207,6 +209,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 	}
 
 	/** @see ParticleGroup#getParticleVertices() */
+	@Override
     public double[][] getParticleVertices() {
         if (this.type == Plane.XY) {
             return new double[][] {{10.0, 10.0, 0.0}, {10.0, -10.0, 0.0}, {-10.0, 10.0, 0.0}, {-10.0, -10.0, 0.0}};

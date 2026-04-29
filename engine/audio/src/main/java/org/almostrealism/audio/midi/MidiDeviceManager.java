@@ -19,6 +19,7 @@ package org.almostrealism.audio.midi;
 import javax.sound.midi.MidiDevice;
 import javax.sound.midi.MidiSystem;
 import javax.sound.midi.MidiUnavailableException;
+import javax.sound.midi.Synthesizer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -66,10 +67,19 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class MidiDeviceManager implements AutoCloseable {
 
+	/** Currently open MIDI connections keyed by device info descriptor. */
 	private final Map<MidiDevice.Info, MidiInputConnection> openConnections;
+
+	/** Listeners notified when MIDI devices are added or removed. */
 	private final List<MidiDeviceChangeListener> deviceChangeListeners;
+
+	/** Snapshot of previously observed MIDI device descriptors used for change detection. */
 	private Set<MidiDevice.Info> lastKnownDevices;
+
+	/** Timer that periodically polls for MIDI device changes. */
 	private Timer pollingTimer;
+
+	/** True after {@link #close()} has been called; prevents further operations. */
 	private boolean closed;
 
 	/**
@@ -295,7 +305,7 @@ public class MidiDeviceManager implements AutoCloseable {
 			   name.contains("java sound") ||
 			   name.contains("gervill") ||
 			   desc.contains("synthesizer") ||
-			   device instanceof javax.sound.midi.Synthesizer;
+			   device instanceof Synthesizer;
 	}
 
 	/**

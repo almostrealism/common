@@ -30,7 +30,7 @@ ar-music
 ### Package Organization
 
 ```
-org.almostrealism.audio
+org.almostrealism.music
     |
     +-- arrange/          [AudioSceneContext, ChannelSection]
     |
@@ -142,7 +142,7 @@ Configuration for a set of audio samples that can be used in patterns:
 Mixin interface for rendering pattern elements to audio buffers.
 
 ```java
-import org.almostrealism.audio.pattern.PatternFeatures;
+import org.almostrealism.music.pattern.PatternFeatures;
 
 public class MyRenderer implements PatternFeatures {
     public void renderPatterns() {
@@ -275,7 +275,7 @@ default void render(AudioSceneContext sceneContext, NoteAudioContext audioContex
 Provides audio data for notes, typically from sample files.
 
 ```java
-import org.almostrealism.audio.notes.NoteAudioProvider;
+import org.almostrealism.music.notes.NoteAudioProvider;
 
 // Supplies audio data to the pattern rendering pipeline
 // Implementations include FileNoteSource for sample playback
@@ -286,7 +286,7 @@ import org.almostrealism.audio.notes.NoteAudioProvider;
 Loads audio samples from files for use as note sources.
 
 ```java
-import org.almostrealism.audio.notes.FileNoteSource;
+import org.almostrealism.music.notes.FileNoteSource;
 
 // Load a drum sample
 FileNoteSource kickSource = new FileNoteSource("/samples/kick.wav");

@@ -40,6 +40,7 @@ import java.util.List;
  * A {@link Cone} instance represents a cone in 3d space.
  */
 public class Cone extends AbstractSurface implements CodeFeatures {
+	/** The half-angle squared parameter used in the cone quadratic equation (sin²(45°) = 0.5). */
 	private static final double nsq = 1.0 / 2.0;
 
 	/**
@@ -130,7 +131,6 @@ public class Cone extends AbstractSurface implements CodeFeatures {
 				}
 
 				double t = Double.MAX_VALUE;
-				int i = 0;
 
 				Iterator itr = inter.iterator();
 				while (itr.hasNext()) {

@@ -17,6 +17,7 @@
 package io.almostrealism.db;
 
 import io.almostrealism.db.Query.ResultHandler;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.JobOutput;
 import org.almostrealism.io.OutputHandler;
 import org.almostrealism.util.KeyValueStore;
@@ -30,34 +31,67 @@ import java.sql.Statement;
 import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
 /**
+ * JDBC-backed persistence layer for storing and querying {@link JobOutput} and
+ * binary blob data in an output table.
+ *
+ * <p>On construction, a JDBC driver is loaded and a connection established to the target
+ * database. Prepared statements for common operations (insert, select, delete, update) are
+ * compiled once and reused. Multiple {@link OutputHandler} and {@link QueryHandler} instances
+ * may be registered; each receives a copy of every store or query request.</p>
+ *
+ * <p>Column name constants (e.g., {@link #toaColumn}, {@link #dataColumn}) are used consistently
+ * across all SQL statements to avoid hard-coded string literals.</p>
+ *
  * @author  Michael Murray
  */
-public class DatabaseConnection {
+public class DatabaseConnection implements ConsoleFeatures {
+	/** The bytea type name used by PostgreSQL for binary data columns. */
 	public static final String postgresBytea = "bytea";
+	/** The bytea type name used by HSQLDB for binary data columns. */
 	public static final String hsqldbBytea = "blob"; // "binary";
+	/** The current bytea type name used in DDL statements; defaults to the PostgreSQL value. */
 	public static String bytea = "bytea";
 
+	/** Name of the user name column in the users table. */
 	public static final String usrColumn = "usr";
-	
+
+	/** Name of the time-of-arrival column. */
 	public static final String toaColumn = "toa";
+	/** Name of the binary data column. */
 	public static final String dataColumn = "data";
+	/** Name of the URI column. */
 	public static final String uriColumn = "uri";
+	/** Name of the integer index column. */
 	public static final String indexColumn = "ind";
+	/** Name of the reference count column. */
 	public static final String refColumn = "refs";
+	/** Name of the duplication count column. */
 	public static final String dupColumn = "dups";
+	/** Name of the user ID column. */
 	public static final String uidColumn = "usrid";
+	/** Name of the task ID column. */
 	public static final String tidColumn = "tid";
 
+	/** When {@code true}, logs SQL statements and query results to standard output. */
 	public static boolean verbose = false;
-	
+
+	/**
+	 * Default {@link OutputHandler} implementation that inserts a {@link JobOutput} into
+	 * the output table using the connection's pre-compiled {@code storeOutput} statement.
+	 */
 	protected class DefaultOutputHandler implements OutputHandler {
-		private final String table;
-		
-		public DefaultOutputHandler(String table) { this.table = table; }
+
+		/**
+		 * Constructs a handler that stores output in the specified table.
+		 *
+		 * @param table The name of the output table
+		 */
+		public DefaultOutputHandler(String table) { }
 
 		@Override
 		public void storeOutput(long time, int uid, JobOutput output) {
@@ -70,17 +104,24 @@ public class DatabaseConnection {
 					DatabaseConnection.this.storeOutput.executeUpdate();
 				}
 			} catch (SQLException sqle) {
-				System.out.println("DatabaseConnection.DefaultOutputHandler: SQL Error (" +
+				DatabaseConnection.this.warn("DatabaseConnection.DefaultOutputHandler: SQL Error (" +
 									sqle.getMessage() + ")");
 			}
 		}
 	}
 	
+	/**
+	 * Default {@link QueryHandler} implementation that executes a {@link Query} against
+	 * the database and returns results as a {@link Map}.
+	 *
+	 * <p>If the query has a {@link Query.ResultHandler} set, each row is delivered to it
+	 * instead of being accumulated in the hashtable.</p>
+	 */
 	protected class DefaultQueryHandler implements QueryHandler {
 		@Override
-		public Hashtable executeQuery(Query q) {
+		public Map executeQuery(Query q) {
 			if (DatabaseConnection.this.db == null) {
-				System.out.println("DBS: Not connected.");
+				DatabaseConnection.this.warn("DBS: Not connected.");
 				return null;
 			}
 			
@@ -96,7 +137,7 @@ public class DatabaseConnection {
 //				String v1 = q.getValue(1);
 				
 				s = DatabaseConnection.this.db.createStatement();
-				StringBuffer sql = new StringBuffer();
+				StringBuilder sql = new StringBuilder();
 				sql.append("SELECT ");
 				if (c0 != null) sql.append(c0);
 				if (c0 != null && c1 != null) sql.append(",");
@@ -120,10 +161,10 @@ public class DatabaseConnection {
 				r = s.executeQuery(sql.toString());
 				
 				if (DatabaseConnection.verbose)
-					System.out.println("DBS DefaultOutputHandler: Executed SQL -- " + sql);
+					DatabaseConnection.this.log("DBS DefaultOutputHandler: Executed SQL -- " + sql);
 				
-				Hashtable h = new Hashtable();
-				
+				LinkedHashMap h = new LinkedHashMap();
+
 				int i = 0;
 				
 				Object key = null;
@@ -158,32 +199,42 @@ public class DatabaseConnection {
 				}
 				
 				if (DatabaseConnection.verbose && handler == null)
-					System.out.println("DBS DefaultOutputHandler: Query returned " +
+					DatabaseConnection.this.log("DBS DefaultOutputHandler: Query returned " +
 										h.size() + " entries.");
 				
 				return h;
 			} catch (SQLException sqle) {
-				System.out.println("DatabaseConnection.DefaultQueryHandler: " + sqle);
+				DatabaseConnection.this.warn("DatabaseConnection.DefaultQueryHandler: " + sqle);
 				return null;
 			} finally {
 				try {
 					if (r != null) r.close();
 					if (s != null) s.close();
-				} catch (Exception e) { e.printStackTrace(); }
+				} catch (Exception e) { DatabaseConnection.this.warn("DatabaseConnection: Error closing resources: " + e.getMessage()); }
 			}
 		}
 	}
 	
+	/** Name of the database table holding user accounts. */
 	private final String userTable = "users";
+	/** Name of the primary output table used for all insert and query operations. */
 	private final String outputTable;
+	/** The active JDBC connection to the database. */
 	private Connection db;
+	/** Pre-compiled statements for common operations: select all, binary insert, store output,
+	 *  select user, delete by URI, delete by index, delete by TOA, update duplication, config job. */
 	private PreparedStatement selectAll, binaryInsert, storeOutput, selectUser,
 								deleteUri, deleteIndex, deleteToa, updateDup, configJob;
-	
+
+	/** Registered output handlers notified on every {@link #storeOutput} call. */
 	private final Set<OutputHandler> outputHandlers;
+	/** Registered query handlers notified on every {@link #executeQuery} call. */
 	private final Set<QueryHandler> queryHandlers;
+	/** Cumulative count of job outputs received and count since last {@link #getThroughput()} call. */
 	private int totalRecieved, currentRecieved;
+	/** Sum of job execution times for all received outputs. */
 	private long totalJobTime;
+	/** Timestamp of the last {@link #getThroughput()} call and of the first received output. */
 	private long lastChecked, firstRecieved;
 	
 	/**
@@ -227,29 +278,29 @@ public class DatabaseConnection {
 	/** Loads the JDBC driver and establishes a connection to the database. */
 	public void loadDriver(String driver, String dburi, String dbuser, String dbpasswd) {
 		try {
-			System.out.print("DBS: Loading " + driver + "... ");
+			log("DBS: Loading " + driver + "... ");
 			Class.forName(driver);
-			System.out.println("Done");
-			
-			System.out.print("DBS: Opening " + dburi + " as user " + dbuser + "... ");
+			log("Done");
+
+			log("DBS: Opening " + dburi + " as user " + dbuser + "... ");
 			this.db = DriverManager.getConnection(dburi, dbuser, dbpasswd);
-			System.out.println(" Connected");
-			
+			log(" Connected");
+
 			try {
-				System.out.println("DatabaseConnection: Creating table...");
+				log("DatabaseConnection: Creating table...");
 				this.createOutputTable();
 			} catch (SQLException sqle) {
-				System.out.println("DatabaseConnection: " + sqle.getMessage());
+				warn("DatabaseConnection: " + sqle.getMessage());
 			}
+
+			log("DBS: Preparing statements... ");
 			
-			System.out.print("DBS: Preparing statements... ");
-			
-			StringBuffer buf = new StringBuffer();
+			StringBuilder buf = new StringBuilder();
 			buf.append("SELECT * FROM ");
 			buf.append(this.outputTable);
 			this.selectAll = this.db.prepareStatement(buf.toString());
 			
-			buf = new StringBuffer();
+			buf = new StringBuilder();
 			buf.append("INSERT INTO ");
 			buf.append(this.outputTable);
 			buf.append(" (");
@@ -263,7 +314,7 @@ public class DatabaseConnection {
 			buf.append(") VALUES (?, ?, ?, ?)");
 			this.binaryInsert = this.db.prepareStatement(buf.toString());
 			
-			buf = new StringBuffer();
+			buf = new StringBuilder();
 			buf.append("INSERT INTO ");
 			buf.append(this.outputTable);
 			buf.append(" (");
@@ -277,7 +328,7 @@ public class DatabaseConnection {
 			buf.append(") VALUES (?, ?, ?, ?)");
 			this.storeOutput = this.db.prepareStatement(buf.toString());
 			
-			buf = new StringBuffer();
+			buf = new StringBuilder();
 			buf.append("DELETE FROM ");
 			buf.append(this.outputTable);
 			buf.append(" WHERE ");
@@ -285,7 +336,7 @@ public class DatabaseConnection {
 			buf.append(" = ?");
 			this.deleteToa = this.db.prepareStatement(buf.toString());
 			
-			buf = new StringBuffer();
+			buf = new StringBuilder();
 			buf.append("DELETE FROM ");
 			buf.append(this.outputTable);
 			buf.append(" WHERE ");
@@ -295,7 +346,7 @@ public class DatabaseConnection {
 			buf.append(" = ?");
 			this.deleteIndex = this.db.prepareStatement(buf.toString());
 			
-			buf = new StringBuffer();
+			buf = new StringBuilder();
 			buf.append("DELETE FROM ");
 			buf.append(this.outputTable);
 			buf.append(" WHERE ");
@@ -303,7 +354,7 @@ public class DatabaseConnection {
 			buf.append(" = ?");
 			this.deleteUri = this.db.prepareStatement(buf.toString());
 			
-			buf = new StringBuffer();
+			buf = new StringBuilder();
 			buf.append("UPDATE ");
 			buf.append(this.outputTable);
 			buf.append(" SET ");
@@ -314,7 +365,7 @@ public class DatabaseConnection {
 			buf.append(" = ?");
 			this.updateDup = this.db.prepareStatement(buf.toString());
 			
-			buf = new StringBuffer();
+			buf = new StringBuilder();
 			buf.append("SELECT ");
 			buf.append(DatabaseConnection.uriColumn);
 			buf.append(",");
@@ -329,7 +380,7 @@ public class DatabaseConnection {
 			this.configJob = this.db.prepareStatement(buf.toString());
 			
 			try {
-				buf = new StringBuffer();
+				buf = new StringBuilder();
 				buf.append("SELECT * FROM ");
 				buf.append(this.userTable);
 				buf.append(" WHERE ");
@@ -337,17 +388,22 @@ public class DatabaseConnection {
 				buf.append(" = ?");
 				this.selectUser = this.db.prepareStatement(buf.toString());
 			} catch (SQLException sqle) {
-				System.out.println("\nDatabaseConnection: " + sqle);
+				warn("DatabaseConnection: " + sqle);
 			}
-			
-			System.out.println(" Done");
+
+			log(" Done");
 		} catch (ClassNotFoundException cnf) {
-			System.out.println("\nDatabaseConnection: JDBC driver not found");
+			warn("DatabaseConnection: JDBC driver not found");
 		} catch (SQLException sqle) {
-			System.out.println("\nDatabaseConnection: " + sqle);
+			warn("DatabaseConnection: " + sqle);
 		}
 	}
 	
+	/**
+	 * Returns the name of the output table used by this connection.
+	 *
+	 * @return The output table name
+	 */
 	public String getTable() { return this.outputTable; }
 	
 	/**
@@ -378,6 +434,12 @@ public class DatabaseConnection {
 	 */
 	public boolean removeQueryHandler(QueryHandler h) { return this.queryHandlers.remove(h); }
 	
+	/**
+	 * Creates the output table in the database with the standard column schema.
+	 *
+	 * @return {@code true} if the table was created successfully
+	 * @throws SQLException If the SQL statement fails (e.g., if the table already exists)
+	 */
 	public boolean createOutputTable() throws SQLException {
 		try (Statement s = this.db.createStatement()) {
 			s.executeUpdate("CREATE TABLE " + this.outputTable +
@@ -402,6 +464,12 @@ public class DatabaseConnection {
 		return true;
 	}
 	
+	/**
+	 * Creates the user accounts table in the database.
+	 *
+	 * @return {@code true} if the table was created; currently always returns {@code false} (not yet implemented)
+	 * @throws SQLException If the SQL statement fails
+	 */
 	public boolean createUserTable() throws SQLException {
 		// TODO  Add createUserTable
 		
@@ -420,11 +488,11 @@ public class DatabaseConnection {
 	public void storeOutput() {
 		try {
 			ResultSet r;
-			
+
 			synchronized (this.selectAll) {
 				r = this.selectAll.executeQuery();
 			}
-			
+
 			while(r.next()) {
 				long time = r.getLong(toaColumn);
 				int uid = r.getInt(uidColumn);
@@ -433,15 +501,32 @@ public class DatabaseConnection {
 				this.storeOutput(time, uid, tid, output);
 			}
 		} catch (SQLException sqle) {
-			System.out.println("DatabaseConnection: " + sqle);
+			warn("DatabaseConnection: " + sqle);
 		}
 	}
 
+	/**
+	 * Iterates a hashtable of time-to-output entries and stores each one.
+	 *
+	 * @param h A hashtable mapping time-of-arrival strings to output strings
+	 * @deprecated The purpose of this method is unclear and it may be removed.
+	 */
 	// TODO  It is unclear what this is for
 	@Deprecated
 	public void storeOutput(Hashtable h) {
+		storeOutput((Map) h);
+	}
+
+	/**
+	 * Notifies all output handlers stored by this DatabaseConnection object to store
+	 * each entry in the specified map.
+	 *
+	 * @param h map of time-keyed output strings to store
+	 */
+	@Deprecated
+	public void storeOutput(Map h) {
 		Iterator itr = h.entrySet().iterator();
-		
+
 		while (itr.hasNext()) {
 			Map.Entry ent = (Map.Entry) itr.next();
 			this.storeOutput(Long.parseLong((String)ent.getKey()), -1, null,
@@ -478,6 +563,15 @@ public class DatabaseConnection {
 		outputHandlers.forEach(oh -> oh.storeOutput(time, uid, o));
 	}
 	
+	/**
+	 * Inserts a binary blob into the output table, keyed by URI and index.
+	 *
+	 * @param time  The current time in milliseconds (stored in the TOA column)
+	 * @param data  The binary data to store
+	 * @param uri   The URI key identifying this blob
+	 * @param index The integer index for this entry
+	 * @return {@code true} if the insert succeeded, {@code false} on error or if unprepared
+	 */
 	public boolean storeOutput(long time, byte[] data, String uri, int index) {
 		if (this.binaryInsert == null) return false;
 		
@@ -490,12 +584,12 @@ public class DatabaseConnection {
 				this.binaryInsert.executeUpdate();
 				
 				if (verbose)
-					System.out.println("DatabaseConnection: Executed binary insert.");
-				
+					log("DatabaseConnection: Executed binary insert.");
+
 				return true;
 			}
 		} catch (SQLException sqle) {
-			System.out.println("DatabaseConnection.DefaultOutputHandler: SQL Error (" +
+			warn("DatabaseConnection.DefaultOutputHandler: SQL Error (" +
 								sqle.getMessage() + ")");
 		}
 		
@@ -565,32 +659,38 @@ public class DatabaseConnection {
 				outputHandlers.forEach(oh -> oh.storeOutput(t, fid, o));
 			}
 		} catch (SQLException sqle) {
-			System.out.println("DatabaseConnection: " + sqle);
+			warn("DatabaseConnection: " + sqle);
 		}
 	}
-	
+
 	/**
-	 * Executes a query and returns the result in the form of a hashtable.
-	 * 
+	 * Executes a query and returns the result in the form of a map.
+	 *
 	 * @param q  A Query object defining what exactly is to be returned from the database.
-	 * @return  A Hashtable object storing key value pairs returned by the query.
+	 * @return  A map storing key value pairs returned by the query.
 	 */
-	public Hashtable executeQuery(Query q) {
+	public Map executeQuery(Query q) {
 		if (DatabaseConnection.verbose) {
-			System.out.println("DatabaseConnection: Executing " + q);
+			log("DatabaseConnection: Executing " + q);
 		}
-		
-		Hashtable result = new Hashtable();
+
+		LinkedHashMap result = new LinkedHashMap();
 		queryHandlers.stream().map(h -> h.executeQuery(q)).forEach(result::putAll);
 		return result;
 	}
 	
+	/**
+	 * Updates the duplication count for the row identified by the given time-of-arrival.
+	 *
+	 * @param toa The time-of-arrival key identifying the row to update
+	 * @param dup The new duplication count value
+	 */
 	public void updateDuplication(long toa, int dup) {
 		if (DatabaseConnection.verbose) {
-			System.out.println("DatabaseConnection (" + this.outputTable +
+			log("DatabaseConnection (" + this.outputTable +
 								"): Updating duplication to " + dup + ". ");
 		}
-		
+
 		try {
 			synchronized (this.updateDup) {
 				this.updateDup.setInt(1, dup);
@@ -598,18 +698,26 @@ public class DatabaseConnection {
 				this.updateDup.executeUpdate();
 			}
 		} catch (SQLException sqle) {
-			System.out.println("DatabaseConenction(" + this.outputTable +
+			warn("DatabaseConenction(" + this.outputTable +
 								"): Error executing update (" +
 								sqle.getMessage() + ")");
 		}
 	}
 	
+	/**
+	 * Populates a {@link KeyValueStore} with the URI, index, and binary data fields
+	 * from the row whose TOA matches the given value.
+	 *
+	 * @param j   The key-value store to populate
+	 * @param toa The time-of-arrival key identifying the row to read
+	 * @return {@code true} if a matching row was found and the store was populated
+	 */
 	public boolean configureProperties(KeyValueStore j, long toa) {
 		try {
 			synchronized (this.configJob) {
 				this.configJob.setLong(1, toa);
 				if (DatabaseConnection.verbose)
-					System.out.println("DatabaseConnection (" + this.outputTable +
+					log("DatabaseConnection (" + this.outputTable +
 										"): Executing config job SQL (" + toa + ")");
 				
 				ResultSet s = this.configJob.executeQuery();
@@ -625,47 +733,59 @@ public class DatabaseConnection {
 				}
 			}
 		} catch (SQLException sqle) {
-			System.out.println("DatabaseConenction(" + this.outputTable +
+			warn("DatabaseConenction(" + this.outputTable +
 								"): Error configuring job (" +
 								sqle.getMessage() + ")");
 			return false;
 		}
 	}
-	
+
+	/**
+	 * Deletes all rows from the output table whose URI column matches the given value.
+	 *
+	 * @param uri The URI whose rows are to be deleted
+	 */
 	public void deleteUri(String uri) {
 		try {
 			synchronized (this.deleteUri) {
 				if (DatabaseConnection.verbose)
-					System.out.println("DatabaseConnection (" + this.outputTable +
+					log("DatabaseConnection (" + this.outputTable +
 										"): Executing delete uri SQL (" + uri + ")");
-				
+
 				this.deleteUri.setString(1, uri);
 				this.deleteUri.executeUpdate();
 			}
 		} catch (SQLException sqle) {
-			System.out.println("DatabaseConnection(" + this.outputTable +
+			warn("DatabaseConnection(" + this.outputTable +
 								"): Error deleting " + uri + " (" +
 								sqle.getMessage() + ")");
 		}
 	}
 	
+	/**
+	 * Deletes the row from the output table matching the given URI and index.
+	 *
+	 * @param uri   The URI identifying the row
+	 * @param index The index identifying the row
+	 * @return {@code true} if the deletion succeeded, {@code false} on error or if unprepared
+	 */
 	public boolean deleteIndex(String uri, int index) {
 		if (this.deleteIndex == null) return false;
 		
 		try {
 			synchronized (this.deleteIndex) {
 				if (DatabaseConnection.verbose)
-					System.out.println("DatabaseConnection (" + this.outputTable +
+					log("DatabaseConnection (" + this.outputTable +
 										"): Executing delete uri SQL (" + uri + "  " +
 										index + ")");
-				
+
 				this.deleteIndex.setString(1, uri);
 				this.deleteIndex.setInt(2, index);
 				this.deleteIndex.executeUpdate();
 				return true;
 			}
 		} catch (SQLException sqle) {
-			System.out.println("DatabaseConnection(" + this.outputTable +
+			warn("DatabaseConnection(" + this.outputTable +
 								"): Error deleting " + uri + "  " + index +
 								" (" + sqle.getMessage() + ")");
 		}
@@ -673,23 +793,35 @@ public class DatabaseConnection {
 		return false;
 	}
 	
+	/**
+	 * Deletes the row from the output table whose time-of-arrival matches the given value.
+	 *
+	 * @param toa The time-of-arrival value identifying the row to delete
+	 */
 	public void deleteToa(long toa) {
 		try {
 			synchronized (this.deleteToa) {
 				if (DatabaseConnection.verbose)
-					System.out.println("DatabaseConnection (" + this.outputTable +
+					log("DatabaseConnection (" + this.outputTable +
 										"): Executing delete toa SQL (" + toa + ")");
-				
+
 				this.deleteToa.setLong(1, toa);
 				this.deleteToa.executeUpdate();
 			}
 		} catch (SQLException sqle) {
-			System.out.println("DatabaseConnection(" + this.outputTable +
+			warn("DatabaseConnection(" + this.outputTable +
 								"): Error deleting " + toa + " (" +
 								sqle.getMessage() + ")");
 		}
 	}
 	
+	/**
+	 * Escapes single-quote characters in a string by doubling them, making it safe for
+	 * embedding in a SQL string literal.
+	 *
+	 * @param s The string to escape
+	 * @return The escaped string with all {@code '} replaced by {@code ''}
+	 */
 	public static String prepareString(String s) {
 		int index = 0;
 		
@@ -701,10 +833,20 @@ public class DatabaseConnection {
 		return s;
 	}
 	
+	/**
+	 * Returns the average job execution time in milliseconds across all received outputs.
+	 *
+	 * @return Total job time divided by total outputs received
+	 */
 	public double getTotalAverageJobTime() {
 		return this.totalJobTime / ((double)this.totalRecieved);
 	}
 	
+	/**
+	 * Returns the average throughput in outputs per minute since the first output was received.
+	 *
+	 * @return Total outputs received divided by minutes elapsed since the first output
+	 */
 	public double getTotalAverageThroughput() {
 		long time = System.currentTimeMillis();
 		double d = (time - this.firstRecieved) / 60000.0;
@@ -714,8 +856,10 @@ public class DatabaseConnection {
 	}
 	
 	/**
-	 * @return  The average number of JobOutput objects handled per minute since
-	 *          the last time this method was called.
+	 * Returns the average number of {@link JobOutput} objects handled per minute since
+	 * the last time this method was called.
+	 *
+	 * @return The average throughput in outputs per minute since the last call
 	 */
 	public double getThroughput() {
 		long time = System.currentTimeMillis();

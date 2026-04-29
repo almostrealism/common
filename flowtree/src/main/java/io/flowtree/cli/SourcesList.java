@@ -27,11 +27,36 @@ import org.jboss.aesh.console.command.invocation.CommandInvocation;
 
 import java.util.List;
 
+/**
+ * An Æsh {@link Command} that lists all currently registered JDBC data sources
+ * from the application-wide {@link DatabasePools}. The command is exposed as
+ * {@code sources} in the FlowTree CLI.
+ *
+ * <p>For each data source the command prints one line containing the pool key
+ * followed by the minimum and maximum pool sizes separated by a slash, e.g.:
+ * <pre>
+ *   mydb    2/10
+ * </pre>
+ *
+ * @author  Michael Murray
+ */
 @CommandDefinition(name="sources", description = "List data sources")
 public class SourcesList implements Command {
+
+	/** Positional arguments (unused; present for Æsh framework compatibility). */
 	@Arguments
 	List<String> params;
 
+	/**
+	 * Executes the sources-list command, printing one line per registered
+	 * {@link DatabasePools} entry showing the pool key and its configured
+	 * minimum/maximum connection counts.
+	 *
+	 * @param invocation the command invocation context used for output
+	 * @return {@link CommandResult#SUCCESS} always
+	 * @throws CommandException     if the command framework encounters an error
+	 * @throws InterruptedException if the thread is interrupted during execution
+	 */
 	@Override
 	public CommandResult execute(CommandInvocation invocation) throws CommandException, InterruptedException {
 		for (String s : DatabasePools.keys()) {

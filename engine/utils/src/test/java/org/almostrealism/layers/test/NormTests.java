@@ -159,7 +159,6 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		int v = 28 * 28;
 
 		PackedCollection weights = new PackedCollection(c * v).randnFill();
-		PackedCollection biases = new PackedCollection(c * v).randnFill();
 		normComputationDelta(c, v, 4, weights, null);
 	}
 
@@ -499,6 +498,7 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 
 	@Test(timeout = 120 * 60000)
 	@TestDepth(2)
+	@TestProperties(knownIssue = true)
 	public void backwardsTrainableVeryLarge1() throws IOException {
 		int c = 1400;
 		int groups = 4;

@@ -58,6 +58,7 @@ public class RSSFeed {
 	 * Represents a single item in the RSS feed.
 	 */
 	public static class Item {
+		/** The item title, text content, and optional image URL. */
 		private String title, text, image;
 
 		/**
@@ -90,6 +91,7 @@ public class RSSFeed {
 		 *
 		 * @return the XML representation of this item
 		 */
+		@Override
 		public String toString() { return RSSFeed.generateItem(this.title, this.text, this.image, new Date()); }
 	}
 
@@ -100,9 +102,12 @@ public class RSSFeed {
 	/** CDATA section end tag. */
 	public static final String endHtml = "]]>";
 
+	/** The feed title, description, and link URL. */
 	private String title, desc, link;
+	/** The list of {@link Item} objects in this feed. */
 	private List items;
 
+	/** Formatter for RFC-2822-compliant dates used in RSS. */
 	private SimpleDateFormat format = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:ss Z");
 
 	/**
@@ -170,7 +175,7 @@ public class RSSFeed {
 	 * @return the XML string for the item
 	 */
 	public synchronized static String generateItem(String title, String text, String image, Date d) {
-		StringBuffer b = new StringBuffer();
+		StringBuilder b = new StringBuilder();
 		
 		b.append("<item><title>");
 		b.append(title);

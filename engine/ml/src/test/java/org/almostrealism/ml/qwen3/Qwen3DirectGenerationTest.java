@@ -5,7 +5,9 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
@@ -14,11 +16,13 @@ import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.Arrays;
 
 /**
  * Test that uses Qwen3.java directly (with DynamicCollectionProducer for position)
@@ -83,7 +87,7 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 		log("Model loaded successfully\n");
 
 		// Get the compiled model and embeddings
-		org.almostrealism.model.CompiledModel compiledModel = qwen3.getCompiledModel();
+		CompiledModel compiledModel = qwen3.getCompiledModel();
 		PackedCollection embeddings = qwen3.getTokenEmbeddings();
 
 		// Get the position collection from Qwen3 to update it
@@ -95,7 +99,6 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 		log("\n=== Direct Model Forward Pass Test ===\n");
 
 		int[] generatedTokens = new int[5];
-		int allMatch = 0;
 
 		for (int step = 0; step < 5; step++) {
 			int inputToken = inputSequence[step];
@@ -145,7 +148,6 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 				// Check if top prediction matches
 				if (top5[0] == pytorchTop5[0]) {
 					log("\n[MATCH] Top prediction matches PyTorch!");
-					allMatch++;
 				} else {
 					log("\n[MISMATCH] Top prediction differs from PyTorch");
 					log("  Java logit for PyTorch top token " + pytorchTop5[0] + ": " + logits[pytorchTop5[0]]);
@@ -165,9 +167,9 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 
 		// Summary
 		log("\n=== Generation Summary ===");
-		log("Input sequence:    " + java.util.Arrays.toString(inputSequence));
-		log("Generated tokens:  " + java.util.Arrays.toString(generatedTokens));
-		log("Expected tokens:   " + java.util.Arrays.toString(expectedOutputs));
+		log("Input sequence:    " + Arrays.toString(inputSequence));
+		log("Generated tokens:  " + Arrays.toString(generatedTokens));
+		log("Expected tokens:   " + Arrays.toString(expectedOutputs));
 
 		int matches = 0;
 		for (int i = 0; i < Math.min(generatedTokens.length, expectedOutputs.length); i++) {
@@ -219,7 +221,7 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 	private int[] findTopK(double[] values, int k) {
 		int[] indices = new int[k];
 		double[] topValues = new double[k];
-		java.util.Arrays.fill(topValues, Double.NEGATIVE_INFINITY);
+		Arrays.fill(topValues, Double.NEGATIVE_INFINITY);
 
 		for (int i = 0; i < values.length; i++) {
 			for (int j = 0; j < k; j++) {
@@ -240,7 +242,7 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 	private int[] findTopKFromFloat(float[] values, int k) {
 		int[] indices = new int[k];
 		float[] topValues = new float[k];
-		java.util.Arrays.fill(topValues, Float.NEGATIVE_INFINITY);
+		Arrays.fill(topValues, Float.NEGATIVE_INFINITY);
 
 		for (int i = 0; i < values.length; i++) {
 			for (int j = 0; j < k; j++) {

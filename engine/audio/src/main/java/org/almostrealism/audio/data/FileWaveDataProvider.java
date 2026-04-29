@@ -60,21 +60,44 @@ import java.util.Map;
  * @see WaveData
  */
 public class FileWaveDataProvider extends WaveDataProviderAdapter implements PathResource {
+	/** Paths of files that failed to load; these are skipped on subsequent access attempts. */
 	private static final List<String> corruptFiles = new ArrayList<>();
+
+	/** Cache mapping file paths to their MD5-based identifier strings. */
 	private static final Map<String, String> identifiers = new HashMap<>(); // TODO  Use FrequencyCache
 
+	/** Cached sample rate in Hz; lazily loaded from the WAV file header. */
 	private Integer sampleRate;
+
+	/** Cached total frame count; lazily loaded from the WAV file header. */
 	private Integer count;
+
+	/** Cached channel count; lazily loaded from the WAV file header. */
 	private Integer channels;
+
+	/** Cached duration in seconds; lazily loaded from the WAV file header. */
 	private Double duration;
+
+	/** Filesystem path to the WAV file. */
 	private String resourcePath;
 
+	/** Creates an uninitialized FileWaveDataProvider; resourcePath must be set before use. */
 	public FileWaveDataProvider() { }
 
+	/**
+	 * Creates a FileWaveDataProvider for the given file.
+	 *
+	 * @param file the WAV file to load
+	 */
 	public FileWaveDataProvider(File file) {
 		this(file.getPath());
 	}
 
+	/**
+	 * Creates a FileWaveDataProvider for the given file path.
+	 *
+	 * @param resourcePath filesystem path to the WAV file; must not be null
+	 */
 	public FileWaveDataProvider(String resourcePath) {
 		if (resourcePath == null) {
 			throw new IllegalArgumentException();
@@ -94,6 +117,11 @@ public class FileWaveDataProvider extends WaveDataProviderAdapter implements Pat
 		return resourcePath;
 	}
 
+	/**
+	 * Sets the filesystem path to the WAV file, clearing the cached key.
+	 *
+	 * @param resourcePath the new file path
+	 */
 	public void setResourcePath(String resourcePath) {
 		clearKey(resourcePath);
 		this.resourcePath = resourcePath;
@@ -178,6 +206,13 @@ public class FileWaveDataProvider extends WaveDataProviderAdapter implements Pat
 		return channels;
 	}
 
+	/**
+	 * Loads the WAV file and returns its audio data.
+	 *
+	 * @return the loaded WaveData, or null if the file is marked corrupt
+	 * @throws RuntimeException wrapping any IOException encountered during loading
+	 */
+	@Override
 	protected WaveData load() {
 		if (corruptFiles.contains(getResourcePath())) return null;
 

@@ -25,7 +25,18 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
+/**
+ * A cosine expression applied to a single operand.
+ *
+ * <p>Generates code of the form {@code cos(input)}. The upper bound is always 1 since
+ * {@code |cos(x)| <= 1}. If the operand is a constant, the value is folded at factory time.</p>
+ */
 public class Cosine extends Expression<Double> {
+	/**
+	 * Constructs a cosine expression for the given operand.
+	 *
+	 * @param input the angle operand
+	 */
 	protected Cosine(Expression<Double> input) {
 		super(Double.class, input);
 	}
@@ -34,6 +45,8 @@ public class Cosine extends Expression<Double> {
 	@Override
 	public int getComputeCost() { return 25; }
 
+	/** {@inheritDoc} Returns {@code cos(input)}. */
+	@Override
 	public String getExpression(LanguageOperations lang) {
 		return "cos(" + getChildren().get(0).getExpression(lang) + ")";
 	}
@@ -66,6 +79,12 @@ public class Cosine extends Expression<Double> {
 		return product(target.getShape(), List.of(childDelta, cofactor));
 	}
 
+	/**
+	 * Creates a cosine expression, folding constants where possible.
+	 *
+	 * @param input the angle operand
+	 * @return a constant if the input is a known constant, otherwise a {@link Cosine}
+	 */
 	public static Expression<Double> of(Expression<Double> input) {
 		OptionalDouble d = input.doubleValue();
 

@@ -27,6 +27,7 @@ import org.almostrealism.collect.PackedCollection;
  * @author  Michael Murray
  */
 public class MonochromeBody extends BlackBody {
+	/** The energy threshold (eV) at which this body emits; emission occurs when absorbed energy reaches this value. */
 	private double chrome;
 
 	@Override

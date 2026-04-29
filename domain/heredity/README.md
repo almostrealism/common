@@ -89,13 +89,13 @@ ProjectedGenome offspring = genome.variation(
 
 ```java
 import org.almostrealism.chem.Alloy;
-import org.almostrealism.chem.PeriodicTable;
+import org.almostrealism.chem.Element;
 
 // Alloy uses genes for probabilistic element selection
 List<Atomic> components = Arrays.asList(
-    PeriodicTable.Iron,
-    PeriodicTable.Carbon,
-    PeriodicTable.Nickel
+    Element.Iron,
+    Element.Carbon,
+    Element.Nickel
 );
 
 // Create gene with probabilities (70% Fe, 20% C, 10% Ni)

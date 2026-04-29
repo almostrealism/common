@@ -30,6 +30,7 @@ import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -186,46 +187,105 @@ import java.util.stream.Stream;
  * @see CollectionFeatures
  */
 public class PackedCollection extends MemoryDataAdapter
-		implements MemoryBank<PackedCollection>, Collection<PackedCollection, PackedCollection>, CollectionFeatures, Cloneable {
+		implements MemoryBank<PackedCollection>, Collection<PackedCollection, PackedCollection>, CollectionFeatures, ConsoleFeatures, Cloneable {
+	/** Shared hardware-accelerated evaluable for zeroing a single element, used by {@link #clear()}. */
 	private static final Evaluable<PackedCollection> clear;
 
 	static {
 		clear = CollectionFeatures.getInstance().zeros(new TraversalPolicy(false, false, 1)).get();
 	}
 
+	/** The traversal policy describing the shape and traversal axis of this collection. */
 	private final TraversalPolicy shape;
+
+	/** Optional factory function for creating sub-collection delegates at a given offset. */
 	private Function<DelegateSpec, PackedCollection> supply;
 
+	/**
+	 * Creates a new collection with the given dimension lengths.
+	 *
+	 * @param shape the dimension lengths defining the collection shape
+	 */
 	public PackedCollection(int... shape) {
 		this(new TraversalPolicy(shape));
 	}
 
+	/**
+	 * Creates a new collection with the given traversal policy.
+	 *
+	 * @param shape the traversal policy defining shape and traversal axis
+	 */
 	public PackedCollection(TraversalPolicy shape) {
 		this(shape, shape.getTraversalAxis(), null, 0);
 	}
 
+	/**
+	 * Creates a deep copy of the given collection, copying all data via hardware-accelerated memory copy.
+	 *
+	 * @param src the source collection to copy
+	 */
 	public PackedCollection(PackedCollection src) {
 		this(src.getShape(), src.getShape().getTraversalAxis(), src.supply);
 		new MemoryDataCopy("PackedCollection constructor", src, this).get().run();
 	}
 
+	/**
+	 * Creates a new collection with the given shape and explicit traversal axis.
+	 *
+	 * @param shape the traversal policy defining collection shape
+	 * @param traversalAxis the axis along which elements are traversed
+	 */
 	public PackedCollection(TraversalPolicy shape, int traversalAxis) {
 		this(shape, traversalAxis, null);
 	}
 
+	/**
+	 * Creates a new collection with the given shape, traversal axis, and supply function.
+	 *
+	 * @param shape the traversal policy defining collection shape
+	 * @param traversalAxis the axis along which elements are traversed
+	 * @param supply optional factory function for creating sub-collection delegates
+	 */
 	public PackedCollection(TraversalPolicy shape, int traversalAxis, Function<DelegateSpec, PackedCollection> supply) {
 		this(shape, traversalAxis, supply, null, 0);
 	}
 
+	/**
+	 * Creates a new collection with explicit shape, traversal axis, supply function, and delegate.
+	 *
+	 * @param shape the traversal policy defining collection shape
+	 * @param traversalAxis the axis along which elements are traversed
+	 * @param supply optional factory function for creating sub-collection delegates
+	 * @param delegate the backing memory data delegate, or null for owned memory
+	 * @param delegateOffset the element offset within the delegate
+	 */
 	public PackedCollection(TraversalPolicy shape, int traversalAxis, Function<DelegateSpec, PackedCollection> supply, MemoryData delegate, int delegateOffset) {
 		this(shape, traversalAxis, delegate, delegateOffset);
 		this.supply = supply;
 	}
 
+	/**
+	 * Creates a new collection backed by the given delegate at the specified offset.
+	 *
+	 * @param shape the traversal policy defining collection shape
+	 * @param traversalAxis the axis along which elements are traversed
+	 * @param delegate the backing memory data delegate, or null for owned memory
+	 * @param delegateOffset the element offset within the delegate
+	 */
 	public PackedCollection(TraversalPolicy shape, int traversalAxis, MemoryData delegate, int delegateOffset) {
 		this(shape, traversalAxis, delegate, delegateOffset, null);
 	}
 
+	/**
+	 * Creates a new collection with explicit shape, traversal axis, delegate, and traversal ordering.
+	 *
+	 * @param shape the traversal policy defining collection shape
+	 * @param traversalAxis the axis along which elements are traversed
+	 * @param delegate the backing memory data delegate, or null for owned memory
+	 * @param delegateOffset the element offset within the delegate
+	 * @param order optional traversal ordering to apply; null for default ordering
+	 * @throws IllegalArgumentException if the shape has a total size of zero
+	 */
 	public PackedCollection(TraversalPolicy shape, int traversalAxis, MemoryData delegate, int delegateOffset, TraversalOrdering order) {
 		if (shape.getTotalSizeLong() == 0) {
 			throw new IllegalArgumentException("Collection must have a non-zero size");
@@ -256,6 +316,13 @@ public class PackedCollection extends MemoryDataAdapter
 		}
 	}
 
+	/**
+	 * Returns the sub-collection at the given index with an explicit member shape.
+	 *
+	 * @param index the zero-based index of the desired member
+	 * @param memberShape the shape used to define the range of the returned sub-collection
+	 * @return a view of this collection covering the member at the given index
+	 */
 	public PackedCollection get(int index, TraversalPolicy memberShape) {
 		return range(memberShape, index * memberShape.getTotalSize());
 	}
@@ -265,6 +332,13 @@ public class PackedCollection extends MemoryDataAdapter
 		set(index, value.toArray(0, value.getMemLength()));
 	}
 
+	/**
+	 * Writes the given double values into this collection at the specified element index.
+	 *
+	 * @param index the zero-based element index (multiplied by the atomic memory length to get the byte offset)
+	 * @param values the values to write
+	 * @throws IllegalArgumentException if the values would exceed the collection bounds
+	 */
 	public void set(int index, double... values) {
 		if (index * getAtomicMemLength() + values.length > getMemLength()) {
 			throw new IllegalArgumentException("Range exceeds collection size");
@@ -288,6 +362,7 @@ public class PackedCollection extends MemoryDataAdapter
 		return shape.getInputSize();
 	}
 
+	@Override
 	public TraversalPolicy getShape() { return shape; }
 
 	@Override
@@ -312,10 +387,25 @@ public class PackedCollection extends MemoryDataAdapter
 		super.setDelegate(m, offset, order);
 	}
 
+	/**
+	 * Returns a {@link DoubleStream} over all elements of this collection.
+	 *
+	 * @return a stream of all double values in this collection
+	 */
+	@Override
 	public DoubleStream doubleStream() {
 		return doubleStream(0, getShape().getTotalSize());
 	}
 
+	/**
+	 * Returns a {@link DoubleStream} over a range of elements in this collection.
+	 * Uses a direct array read for regular (non-reordered) shapes for efficiency.
+	 *
+	 * @param offset the starting element index
+	 * @param length the number of elements to stream
+	 * @return a stream of double values in the specified range
+	 */
+	@Override
 	public DoubleStream doubleStream(int offset, int length) {
 		if (getDelegateOrdering() == null && getShape().isRegular()) {
 			return DoubleStream.of(toArray(offset, length));
@@ -324,6 +414,12 @@ public class PackedCollection extends MemoryDataAdapter
 		}
 	}
 
+	/**
+	 * Returns the single double value held by this collection.
+	 *
+	 * @return the scalar double value
+	 * @throws UnsupportedOperationException if this collection holds more than one element
+	 */
 	public double toDouble() {
 		if (getShape().getTotalSizeLong() != 1) {
 			throw new UnsupportedOperationException();
@@ -338,35 +434,73 @@ public class PackedCollection extends MemoryDataAdapter
 		return super.toDouble(getShape().inputIndex(index));
 	}
 
+	/**
+	 * Returns a stream of sub-collections by iterating over the traversal count.
+	 *
+	 * @return a stream of sub-collections, one per traversal element
+	 */
 	public Stream<PackedCollection> stream() {
 		return IntStream.range(0, getCount()).mapToObj(this::get);
 	}
 
+	/**
+	 * Returns a stream of string representations of each row of this collection.
+	 * Each string covers one atomic slice of width equal to {@link TraversalPolicy#getSize()}.
+	 *
+	 * @return a stream of string representations of each row
+	 */
 	public Stream<String> stringStream() {
 		int colWidth = getShape().getSize();
 		return IntStream.range(0, getCount()).mapToObj(r -> toArrayString(r * colWidth, colWidth));
 	}
 
+	/**
+	 * Prints each row of this collection using the provided output consumer.
+	 *
+	 * @param out the consumer to receive each row string
+	 */
 	public void print(Consumer<String> out) {
 		stringStream().forEach(out);
 	}
 
+	/**
+	 * Prints each row of this collection to standard output.
+	 */
 	public void print() {
-		print(System.out::println);
+		print(this::log);
 	}
 
+	/**
+	 * Fills all elements of this collection by cycling through the given values.
+	 *
+	 * @param value the values to cycle through; repeated if shorter than the collection
+	 * @return this collection
+	 */
 	public PackedCollection fill(double... value) {
 		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
 		setMem(0, data);
 		return this;
 	}
 
+	/**
+	 * Fills all elements of this collection using the given supplier.
+	 *
+	 * @param values the supplier invoked once per element
+	 * @return this collection
+	 */
 	public PackedCollection fill(DoubleSupplier values) {
 		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> values.getAsDouble()).toArray();
 		setMem(0, data);
 		return this;
 	}
 
+	/**
+	 * Fills this collection using the given function, which receives the multi-dimensional
+	 * position array for each element.
+	 *
+	 * @param f the function mapping a position array to a double value
+	 * @return this collection
+	 */
 	public PackedCollection fill(Function<int[], Double> f) {
 		double[] data = new double[getMemLength()];
 		getShape().stream().forEach(pos -> data[getShape().index(pos)] = f.apply(pos));
@@ -374,6 +508,12 @@ public class PackedCollection extends MemoryDataAdapter
 		return this;
 	}
 
+	/**
+	 * Replaces every element of this collection by applying the given operator to the existing value.
+	 *
+	 * @param f the operator that maps each existing value to a new value
+	 * @return this collection
+	 */
 	public PackedCollection replace(DoubleUnaryOperator f) {
 		double[] in = toArray(0, getMemLength());
 		double[] data = IntStream.range(0, getMemLength()).mapToDouble(i -> f.applyAsDouble(in[i])).toArray();
@@ -381,6 +521,12 @@ public class PackedCollection extends MemoryDataAdapter
 		return this;
 	}
 
+	/**
+	 * Fills this collection as an identity-like tensor where all positions with equal
+	 * indices along all dimensions receive 1.0 and all other positions receive 0.0.
+	 *
+	 * @return this collection
+	 */
 	public PackedCollection identityFill() {
 		return fill(pos -> {
 			for (int i = 0; i < pos.length; i++) {
@@ -393,30 +539,64 @@ public class PackedCollection extends MemoryDataAdapter
 		});
 	}
 
+	/**
+	 * Fills this collection with uniformly distributed random values in [0, 1).
+	 *
+	 * @return this collection
+	 */
 	public PackedCollection randFill() {
 		rand(getShape()).get().into(this).evaluate();
 		return this;
 	}
 
+	/**
+	 * Fills this collection with uniformly distributed random values using the given source.
+	 *
+	 * @param source the random source to use for sampling
+	 * @return this collection
+	 */
 	public PackedCollection randFill(Random source) {
 		rand(getShape(), source).get().into(this).evaluate();
 		return this;
 	}
 
+	/**
+	 * Fills this collection with normally distributed random values (mean=0, std=1).
+	 *
+	 * @return this collection
+	 */
 	public PackedCollection randnFill() {
 		randn(getShape()).get().into(this).evaluate();
 		return this;
 	}
 
+	/**
+	 * Fills this collection with normally distributed random values using the given source.
+	 *
+	 * @param source the random source to use for sampling
+	 * @return this collection
+	 */
 	public PackedCollection randnFill(Random source) {
 		randn(getShape(), source).get().into(this).evaluate();
 		return this;
 	}
 
+	/**
+	 * Applies the given consumer to each sub-collection obtained via {@link #stream()}.
+	 *
+	 * @param consumer the consumer to apply to each element
+	 */
 	public void forEach(Consumer<PackedCollection> consumer) {
 		stream().forEach(consumer);
 	}
 
+	/**
+	 * Returns the transpose of this 2D collection.
+	 * Only valid for collections with exactly 2 dimensions.
+	 *
+	 * @return a new collection with rows and columns swapped
+	 * @throws IllegalArgumentException if this collection does not have exactly 2 dimensions
+	 */
 	public PackedCollection transpose() {
 		if (getShape().getDimensions() != 2) {
 			throw new IllegalArgumentException();
@@ -434,14 +614,31 @@ public class PackedCollection extends MemoryDataAdapter
 		return result;
 	}
 
+	/**
+	 * Sets all elements of this collection to zero using a hardware-accelerated kernel.
+	 */
 	public void clear() {
 		clear.into(this.traverseEach()).evaluate();
 	}
 
+	/**
+	 * Returns a sub-collection view starting at position 0 with the given shape.
+	 *
+	 * @param shape the shape of the desired sub-collection
+	 * @return a view backed by this collection
+	 */
 	public PackedCollection range(TraversalPolicy shape) {
 		return range(shape, 0);
 	}
 
+	/**
+	 * Returns a sub-collection view with the given shape starting at the specified element offset.
+	 *
+	 * @param shape the shape of the desired sub-collection
+	 * @param start the element offset within this collection
+	 * @return a view backed by this collection
+	 * @throws IllegalArgumentException if the range exceeds the collection size
+	 */
 	public PackedCollection range(TraversalPolicy shape, int start) {
 		int required = shape.getOrder() == null ? shape.getTotalInputSize() :
 				shape.getOrder().getLength().orElse(shape.getTotalInputSize());
@@ -512,18 +709,42 @@ public class PackedCollection extends MemoryDataAdapter
 		return range(shape);
 	}
 
+	/**
+	 * Returns a single-element view at the given element position.
+	 *
+	 * @param pos the element position within this collection
+	 * @return a view covering exactly one element
+	 */
 	public PackedCollection value(int pos) {
 		return range(new TraversalPolicy(1), pos);
 	}
 
+	/**
+	 * Returns the double value at the given multi-dimensional position.
+	 *
+	 * @param pos the multi-dimensional position coordinates
+	 * @return the scalar value at that position
+	 */
 	public double valueAt(int... pos) {
 		return toDouble(getShape().extentShape().index(pos));
 	}
 
+	/**
+	 * Sets the element at the given multi-dimensional position to the specified value.
+	 *
+	 * @param value the value to store
+	 * @param pos the multi-dimensional position coordinates
+	 */
 	public void setValueAt(double value, int... pos) {
 		setMem(getShape().index(pos), value);
 	}
 
+	/**
+	 * Returns the squared Euclidean length of the elements in this collection.
+	 *
+	 * @return the sum of squares of all elements
+	 * @deprecated No hardware-accelerated implementation; use Producer-based operations instead.
+	 */
 	// TODO  Accelerated version
 	@Deprecated
 	public double lengthSq() {
@@ -534,12 +755,23 @@ public class PackedCollection extends MemoryDataAdapter
 				.sum();
 	}
 
+	/**
+	 * Returns the Euclidean length (L2 norm) of the elements in this collection.
+	 *
+	 * @return the square root of the sum of squares of all elements
+	 * @deprecated No hardware-accelerated implementation; use Producer-based operations instead.
+	 */
 	// TODO  Accelerated version
 	@Deprecated
 	public double length() {
 		return Math.sqrt(lengthSq());
 	}
 
+	/**
+	 * Returns the index of the element with the largest value in this collection.
+	 *
+	 * @return the zero-based index of the maximum element, or -1 if the collection is empty
+	 */
 	public int argmax() {
 		return IntStream.range(0, getMemLength())
 				.reduce((a, b) -> toDouble(a) > toDouble(b) ? a : b)
@@ -577,6 +809,14 @@ public class PackedCollection extends MemoryDataAdapter
 		}
 	}
 
+	/**
+	 * Returns a stream of typed memory data views, each backed by a slice of this collection.
+	 * Each element is created via the given factory function and assigned a delegate offset.
+	 *
+	 * @param <T> the type of memory data to extract into
+	 * @param factory function that creates a new instance from the atomic element count
+	 * @return a stream of typed views over atomic slices of this collection
+	 */
 	public <T extends MemoryData> Stream<T> extract(IntFunction<T> factory) {
 		AtomicInteger idx = new AtomicInteger();
 
@@ -595,14 +835,33 @@ public class PackedCollection extends MemoryDataAdapter
 		}).limit(getMemLength() / getAtomicMemLength());
 	}
 
+	/**
+	 * Returns a flat sub-collection view of the given length starting at the given element offset.
+	 *
+	 * @param offset the starting element offset within this collection
+	 * @param length the number of elements in the sub-collection
+	 * @return a one-dimensional view backed by this collection
+	 */
 	public PackedCollection delegate(int offset, int length) {
 		return new PackedCollection(new TraversalPolicy(length), 0, this, offset);
 	}
 
+	/**
+	 * Saves the contents of this collection to the given file in binary format.
+	 *
+	 * @param f the file to write to
+	 * @throws IOException if an I/O error occurs
+	 */
 	public void save(File f) throws IOException {
 		save(new FileOutputStream(f));
 	}
 
+	/**
+	 * Serializes the shape and all double values of this collection to the given output stream.
+	 *
+	 * @param out the output stream to write to
+	 * @throws IOException if an I/O error occurs
+	 */
 	public void save(OutputStream out) throws IOException {
 		try (DataOutputStream dos = new DataOutputStream(out)) {
 			getShape().store(dos);
@@ -649,27 +908,56 @@ public class PackedCollection extends MemoryDataAdapter
 		}
 	}
 
+	/**
+	 * Returns a shallow clone of this collection with all data copied to new memory.
+	 *
+	 * @return a new collection with the same shape and values
+	 */
+	@Override
 	public PackedCollection clone() {
 		PackedCollection clone = new PackedCollection(getShape(), getShape().getTraversalAxis());
 		clone.setMem(0, toArray(0, getMemLength()), 0, getMemLength());
 		return clone;
 	}
 
+	/**
+	 * Creates a one-dimensional collection from the given list of double values.
+	 *
+	 * @param values the values to pack into the collection
+	 * @return a new collection containing the given values
+	 */
 	public static PackedCollection of(List<Double> values) {
 		return of(values.stream().mapToDouble(d -> d).toArray());
 	}
 
+	/**
+	 * Creates a one-dimensional collection from the given array of double values.
+	 *
+	 * @param values the values to pack into the collection
+	 * @return a new collection containing the given values
+	 */
 	public static PackedCollection of(double... values) {
 		PackedCollection collection = factory().apply(values.length);
 		collection.setMem(0, values, 0, values.length);
 		return collection;
 	}
 
+	/**
+	 * Returns a factory that allocates collections using the default heap or standard allocation.
+	 *
+	 * @return an {@link IntFunction} that creates collections of the given size
+	 */
 	public static IntFunction<PackedCollection> factory() {
 		Heap heap = Heap.getDefault();
 		return heap == null ? PackedCollection::new : factory(heap::allocate);
 	}
 
+	/**
+	 * Returns a factory that allocates collections using the provided byte allocator.
+	 *
+	 * @param allocator the byte-level allocator used to obtain backing memory
+	 * @return an {@link IntFunction} that creates delegate-backed collections
+	 */
 	public static IntFunction<PackedCollection> factory(IntFunction<Bytes> allocator) {
 		return len -> {
 			Bytes data = allocator.apply(len);
@@ -677,6 +965,15 @@ public class PackedCollection extends MemoryDataAdapter
 		};
 	}
 
+	/**
+	 * Creates a view of the given memory data with the specified shape starting at the given element offset.
+	 *
+	 * @param data the backing memory data
+	 * @param shape the desired traversal policy for the result
+	 * @param start the element offset within the data
+	 * @return a collection backed by the given memory data
+	 * @throws IllegalArgumentException if the range exceeds the data length
+	 */
 	public static PackedCollection range(MemoryData data, TraversalPolicy shape, int start) {
 		if (start + shape.getTotalSize() > data.getMemLength()) {
 			throw new IllegalArgumentException("Range exceeds collection size");
@@ -685,6 +982,13 @@ public class PackedCollection extends MemoryDataAdapter
 		return new PackedCollection(shape, shape.getTraversalAxis(), data, start);
 	}
 
+	/**
+	 * Loads all collections serialized in the given file.
+	 *
+	 * @param src the file to load collections from
+	 * @return an iterable of the deserialized collections
+	 * @throws IOException if an I/O error occurs while reading the file
+	 */
 	public static Iterable<PackedCollection> loadCollections(File src) {
 		try {
 			return loadCollections(new FileInputStream(src));
@@ -693,6 +997,12 @@ public class PackedCollection extends MemoryDataAdapter
 		}
 	}
 
+	/**
+	 * Loads all collections serialized in the given input stream.
+	 *
+	 * @param in the input stream to read collections from
+	 * @return an iterable of the deserialized collections
+	 */
 	public static Iterable<PackedCollection> loadCollections(InputStream in) {
 		DataInputStream dis = new DataInputStream(in);
 
@@ -762,30 +1072,79 @@ public class PackedCollection extends MemoryDataAdapter
 		return new DynamicCollectionProducer(shape, args -> new PackedCollection(shape));
 	}
 
+	/**
+	 * Returns a factory that creates memory banks of collections, each with the given atomic shape
+	 * prepended by the bank length dimension.
+	 *
+	 * @param atomicShape the shape of each element in the bank
+	 * @return a factory function mapping bank length to a memory bank
+	 */
 	public static IntFunction<MemoryBank<PackedCollection>> bank(TraversalPolicy atomicShape) {
 		return len -> new PackedCollection(atomicShape.prependDimension(len));
 	}
 
+	/**
+	 * Returns a factory that creates two-dimensional memory banks (tables) with the given atomic shape.
+	 *
+	 * @param atomicShape the shape of each element (innermost dimensions)
+	 * @return a factory function mapping (width, count) to a two-dimensional memory bank
+	 */
 	public static BiFunction<Integer, Integer, MemoryBank<PackedCollection>> table(TraversalPolicy atomicShape) {
 		return (width, count) -> new PackedCollection(atomicShape.prependDimension(width).prependDimension(count));
 	}
 
+	/**
+	 * Returns a factory that creates two-dimensional memory banks with a custom delegate supply function.
+	 *
+	 * @param atomicShape the shape of each element (innermost dimensions)
+	 * @param supply the function used to create sub-collection delegates given a {@link DelegateSpec} and width
+	 * @return a factory function mapping (width, count) to a two-dimensional memory bank
+	 */
 	public static BiFunction<Integer, Integer, MemoryBank<PackedCollection>> table(TraversalPolicy atomicShape, BiFunction<DelegateSpec, Integer, PackedCollection> supply) {
 		return (width, count) -> new PackedCollection(atomicShape.prependDimension(width).prependDimension(count), 1, delegateSpec -> supply.apply(delegateSpec, width));
 	}
 
+	/**
+	 * Describes the delegate memory and offset used when constructing a sub-collection.
+	 * Passed to supply functions so they can create appropriately backed sub-collections.
+	 */
 	public static class DelegateSpec {
+		/** The backing memory data object to delegate to. */
 		private final MemoryData data;
+
+		/** The element offset within the backing memory data. */
 		private int offset;
 
+		/**
+		 * Creates a new delegate specification.
+		 *
+		 * @param data the backing memory data
+		 * @param offset the element offset within the data
+		 */
 		public DelegateSpec(MemoryData data, int offset) {
 			this.data = data;
 			setOffset(offset);
 		}
 
+		/**
+		 * Returns the backing memory data.
+		 *
+		 * @return the delegate memory data
+		 */
 		public MemoryData getDelegate() { return data; }
 
+		/**
+		 * Returns the element offset within the backing memory data.
+		 *
+		 * @return the delegate offset
+		 */
 		public int getOffset() { return offset; }
+
+		/**
+		 * Sets the element offset within the backing memory data.
+		 *
+		 * @param offset the new delegate offset
+		 */
 		public void setOffset(int offset) { this.offset = offset; }
 	}
 }

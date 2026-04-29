@@ -70,12 +70,23 @@ import org.almostrealism.geometry.RayFeatures;
  * @author Michael Murray
  */
 public class PointLight implements Light, Positioned, RayFeatures, RGBFeatures {
+	/** The intensity of this point light, used as a multiplier on the color. */
 	private double intensity;
+
+	/** The base color emitted by this point light. */
 	private RGB color;
 
+	/** The 3D position of this point light in world space. */
 	private Vector location;
 
-	private double da, db, dc;
+	/** Quadratic attenuation coefficient (multiplied by distance squared). */
+	private double da;
+
+	/** Linear attenuation coefficient (multiplied by distance). */
+	private double db;
+
+	/** Constant attenuation coefficient (no distance dependence). */
+	private double dc;
 
 	/** Constructs a PointLight object with the default intensity and color at the origin. */
 	public PointLight() {

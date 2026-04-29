@@ -19,6 +19,7 @@ package io.flowtree.msg;
 import io.flowtree.job.Job;
 import io.flowtree.job.JobFactory;
 import io.flowtree.node.Node;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.Externalizable;
 import java.io.IOException;
@@ -27,46 +28,207 @@ import java.io.ObjectOutput;
 import java.util.ArrayList;
 
 /**
- * A {@link Message} is used to send a message using a Proxy.
- * 
+ * The wire-format envelope used to exchange all typed payloads between
+ * FlowTree nodes.
+ *
+ * <p>A {@code Message} carries a {@link #getType() type code}, integer
+ * {@link #getSender() sender} and {@link #getReceiver() receiver} node IDs,
+ * and an optional {@link #getData() string payload}. It implements
+ * {@link java.io.Externalizable} so that {@link NodeProxy} can serialise it
+ * directly onto a Java object stream, or convert it to/from a compact byte
+ * array for encrypted transport.</p>
+ *
+ * <h2>Message types</h2>
+ * <p>Each type constant defines both the semantic purpose and the expected
+ * payload format:</p>
+ * <ul>
+ *   <li>{@link #Job} — encoded {@link io.flowtree.job.Job} payload produced
+ *       by {@link io.flowtree.job.Job#encode()}.</li>
+ *   <li>{@link #StringMessage} — arbitrary string payload.</li>
+ *   <li>{@link #ConnectionRequest} / {@link #ConnectionConfirmation} — used
+ *       during the two-way handshake that establishes a {@link Connection}.</li>
+ *   <li>{@link #ServerStatusQuery} / {@link #ServerStatus} — peer discovery
+ *       and status exchange; the response carries a comma-separated peer list.</li>
+ *   <li>{@link #ResourceRequest} / {@link #ResourceUri} /
+ *       {@link #DistributedResourceUri} / {@link #DistributedResourceInvalidate} —
+ *       distributed resource lookup and cache-invalidation protocol.</li>
+ *   <li>{@link #Task} — a task descriptor sent from a coordinating node to a
+ *       worker node group.</li>
+ *   <li>{@link #Kill} — instructs the receiver to cancel a running task;
+ *       payload is {@code "<taskId><ENTRY_SEPARATOR><relayCount>"}.</li>
+ *   <li>{@link #Ping} — round-trip latency probe; the receiver echoes the
+ *       payload back.</li>
+ * </ul>
+ *
+ * <h2>Local vs remote messages</h2>
+ * <p>Messages created by the local JVM (via the multi-argument constructors) are
+ * marked {@link #isLocalMessage() local}. Messages reconstructed from the wire
+ * (via the single-{@link NodeProxy} constructor or {@link #readExternal}) are
+ * marked remote. Only local messages carry a live {@link Node} reference used
+ * during connection handshakes.</p>
+ *
  * @author Michael Murray
+ * @see NodeProxy
+ * @see Connection
  */
-public class Message implements Externalizable {
+public class Message implements Externalizable, ConsoleFeatures {
+	/** Type code for a message carrying an encoded {@link io.flowtree.job.Job}. */
 	public static final int Job = 1;
+
+	/** Type code for a message carrying a plain string payload. */
 	public static final int StringMessage = 2;
+
+	/**
+	 * Type code sent by a node that wishes to open a new {@link Connection}
+	 * to a specific remote node. The receiving {@link NodeProxy} responds with
+	 * a {@link #ConnectionConfirmation} containing the remote node's ID.
+	 */
 	public static final int ConnectionRequest = 4;
+
+	/**
+	 * Type code used to acknowledge a {@link #ConnectionRequest} or to confirm
+	 * that an existing connection is still alive. When {@link #getData()} is
+	 * {@code null} the recipient must reply with a confirmation carrying
+	 * {@code "true"} as data.
+	 */
 	public static final int ConnectionConfirmation = 8;
+
+	/** Type code for a request to retrieve the remote server's status and peer list. */
 	public static final int ServerStatusQuery = 10;
+
+	/**
+	 * Type code for a server status reply. The payload begins with
+	 * {@code "peers:"} followed by a comma-separated list of peer addresses.
+	 */
 	public static final int ServerStatus = 11;
+
+	/**
+	 * Type code for a request to resolve a named resource to a URI.
+	 * The payload is the resource name; the reply is a {@link #ResourceUri} message.
+	 */
 	public static final int ResourceRequest = 12;
+
+	/**
+	 * Type code for a response to a {@link #ResourceRequest} containing the
+	 * resolved resource URI as payload.
+	 */
 	public static final int ResourceUri = 13;
+
+	/**
+	 * Type code that broadcasts a distributed resource URI so that other nodes
+	 * can cache it locally.
+	 */
 	public static final int DistributedResourceUri = 14;
+
+	/**
+	 * Type code that instructs all peers to invalidate their cached entry for
+	 * a distributed resource.
+	 */
 	public static final int DistributedResourceInvalidate = 15;
+
+	/**
+	 * Type code for a task descriptor sent from a coordinating node to a
+	 * worker node group, as distinct from a fully encoded {@link #Job}.
+	 */
 	public static final int Task = 16;
+
+	/**
+	 * Type code that instructs the receiver to cancel a running task. The
+	 * payload is {@code "<taskId><ENTRY_SEPARATOR><relayCount>"}, where
+	 * {@code relayCount} is decremented at each hop so that the kill signal
+	 * propagates a bounded number of relay steps.
+	 */
 	public static final int Kill = 32;
+
+	/**
+	 * Type code for a round-trip latency probe. The sender includes a random
+	 * string payload; a receiver with sender ID {@code -1} echoes the exact
+	 * payload back so that the original sender can measure elapsed time.
+	 */
 	public static final int Ping = 64;
-	
+
+	/**
+	 * When {@code true}, every message serialisation and deserialisation event
+	 * is printed to standard output. Intended for protocol-level debugging only.
+	 */
 	public static boolean verbose = false;
+
+	/**
+	 * When {@code true}, low-level details of encrypted byte wrappers (padding
+	 * and truncation) are printed to standard output.
+	 */
 	public static boolean dverbose = false;
+
+	/**
+	 * When {@code true}, stream locking and synchronisation events inside
+	 * {@link NodeProxy} are printed to standard output.
+	 */
 	public static boolean sverbose = false;
-	
+
+	/** Integer type code identifying the kind of payload this message carries. */
 	private transient int type;
-	private transient int sender = -1, receiver = -1;
-	
+
+	/**
+	 * Node ID of the sending node, or {@code -1} if unset.
+	 * Populated from the wire during deserialisation.
+	 */
+	private transient int sender = -1;
+
+	/**
+	 * Node ID of the intended receiving node, or {@code -1} if unset.
+	 * Set by {@link NodeProxy#writeObject} just before the message is written.
+	 */
+	private transient int receiver = -1;
+
+	/**
+	 * The {@link NodeProxy} through which this message will be (or was) transmitted.
+	 * {@code transient}: never serialised to the wire.
+	 */
 	private transient NodeProxy proxy;
+
+	/**
+	 * The local {@link Node} acting as the connection endpoint for
+	 * {@link #ConnectionRequest} messages. {@code null} for remote messages.
+	 */
 	private transient Node node;
+
+	/**
+	 * The string payload carried by this message. Interpretation depends on
+	 * {@link #type}. {@code null} is a valid value for several message types
+	 * (e.g. a {@link #ConnectionConfirmation} ping from a remote node).
+	 */
 	private transient String data;
-	
-	private transient boolean local, bypass;
-	
+
+	/**
+	 * {@code true} when this message was constructed by the local JVM;
+	 * {@code false} when it was received from the wire.
+	 */
+	private transient boolean local;
+
+	/**
+	 * When {@code true}, the message bypasses the outbound queue and is written
+	 * directly to the socket even while the queue is active.
+	 *
+	 * @see NodeProxy#flushQueue()
+	 */
+	private transient boolean bypass;
+
+	/**
+	 * No-argument constructor required by the {@link java.io.Externalizable}
+	 * contract. Must not be used directly; the assertion will fire and a stack
+	 * trace is printed to aid diagnosis.
+	 */
 	public Message() {
 		assert false : "Message constructed with no NodeProxy";
-		new Exception().printStackTrace();
+		warn("Message constructed with no NodeProxy", new Exception());
 	}
 	
 	/**
 	 * Constructs a {@link Message} that will be treated as a message
-	 * that was received from a remote node.
+	 * received from a remote node. The type, sender, receiver, and data
+	 * fields are populated later by {@link #readExternal} or {@link #setBytes}.
+	 *
+	 * @param p  The {@link NodeProxy} through which this message arrived.
 	 */
 	public Message(NodeProxy p) {
 		this.local = false;
@@ -74,22 +236,29 @@ public class Message implements Externalizable {
 	}
 	
 	/**
-	 * Constructs a new {@link Message} of the specified type.
-	 * 
-	 * @param type  Type of message.
-	 * @param id  Id of sending node.
-	 * @throws IOException  Never thrown.
+	 * Constructs a new outbound {@link Message} of the specified type without
+	 * binding it to a {@link NodeProxy}. The proxy must be supplied before
+	 * calling {@link #send}. Equivalent to {@code Message(type, id, null)}.
+	 *
+	 * @param type  Type code identifying the kind of payload (e.g. {@link #Job},
+	 *              {@link #ConnectionRequest}).
+	 * @param id    Integer ID of the local sending node.
+	 * @throws IOException  Declared for API compatibility; never thrown by this constructor.
 	 */
 	public Message(int type, int id) throws IOException {
 		this(type, id, null);
 	}
 	
 	/**
-	 * Constructs a new {@link Message} using the specified IO streams and type code.
-	 * 
-	 * @param type  Type of message.
-	 * @param id  Id of sending node.
-	 * @throws IOException  If an IOException occurs while getting IO streams.
+	 * Constructs a new outbound {@link Message} of the specified type, bound to the
+	 * given {@link NodeProxy} for transmission.
+	 *
+	 * @param type  Type code identifying the kind of payload (e.g. {@link #Job},
+	 *              {@link #ConnectionRequest}).
+	 * @param id    Integer ID of the local sending node.
+	 * @param p     The {@link NodeProxy} through which this message will be sent,
+	 *              or {@code null} if the proxy will be supplied later.
+	 * @throws IOException  Declared for API compatibility; never thrown by this constructor.
 	 */
 	public Message(int type, int id, NodeProxy p) throws IOException {
 		this.type = type;
@@ -100,6 +269,18 @@ public class Message implements Externalizable {
 		this.local = true;
 	}
 	
+	/**
+	 * Controls whether this message bypasses the outbound queue when sent.
+	 *
+	 * <p>When the {@link NodeProxy} is in queuing mode (between a disconnect and
+	 * the subsequent reconnect flush), messages are normally buffered. Setting
+	 * {@code bypass = true} causes {@link #send} to call
+	 * {@link NodeProxy#writeObject(Object, int, boolean)} with the queue disabled,
+	 * writing directly to the socket regardless of queue state. Use this only for
+	 * control-plane messages that must not be deferred.</p>
+	 *
+	 * @param bypass  {@code true} to write directly to the socket, bypassing the queue.
+	 */
 	public void setQueueBypass(boolean bypass) { this.bypass = bypass; }
 	
 	/**
@@ -124,34 +305,50 @@ public class Message implements Externalizable {
 	public void setLocalNode(Node node) { if (this.local) this.node = node; }
 	
 	/**
+	 * Returns the integer id of the node that is the sender of this message.
+	 *
 	 * @return  The integer id of the node that is the sender of this message.
 	 */
 	public int getSender() { return this.sender; }
-	
+
 	/**
 	 * Sets the integer id of the node that is the reciever of this message.
-	 * 
+	 *
 	 * @param id  Integer id to use.
 	 */
 	public void setReceiver(int id) { this.receiver = id; }
-	
+
 	/**
+	 * Returns the integer id of the node that is the receiver of this message.
+	 *
 	 * @return  The integer id of the node that is the reciever of this message.
 	 */
 	public int getReceiver() { return this.receiver; }
-	
-	/** @return  The integer type code for this message. */
-	public int getType() { return this.type; }
-	
-	/** @return  The data stored by this message. */
-	public String getData() { return this.data; }
-	
+
 	/**
+	 * Returns the integer type code for this message.
+	 *
+	 * @return  The integer type code for this message.
+	 */
+	public int getType() { return this.type; }
+
+	/**
+	 * Returns the data stored by this message.
+	 *
+	 * @return  The data stored by this message.
+	 */
+	public String getData() { return this.data; }
+
+	/**
+	 * Returns whether this message was produced by a local node.
+	 *
 	 * @return  True if this message was produced by a local node, false if it was sent by a remote node.
 	 */
 	public boolean isLocalMessage() { return this.local; }
-	
+
 	/**
+	 * Returns the {@link NodeProxy} object stored by this Message object.
+	 *
 	 * @return  The NodeProxy object stored by this Message object.
 	 */
 	public NodeProxy getNodeProxy() { return this.proxy; }
@@ -168,7 +365,7 @@ public class Message implements Externalizable {
 		
 		if (this.type == Message.Job && this.data == null) {
 			if (Message.verbose)
-				System.out.println("Message: Null job not sent.");
+				log("Message: Null job not sent.");
 			return null;
 		}
 		
@@ -181,7 +378,7 @@ public class Message implements Externalizable {
 			Message m = (Message) this.proxy.waitFor(this.sender, 10000);
 			
 			if (m != null && m.getSender() >= 0) {
-				System.out.println("Message: Constructing connection...");
+				log("Message: Constructing connection...");
 				return new Connection(this.node, this.proxy, m.getSender());
 			}
 		} else if (this.type == Message.ConnectionConfirmation && this.data == null) {
@@ -213,7 +410,7 @@ public class Message implements Externalizable {
 				return l;
 			}
 		} else if (this.type == Message.ResourceRequest) {
-			System.out.println("Message: Sending resource request to " + this.proxy + " for " + this.data);
+			log("Message: Sending resource request to " + this.proxy + " for " + this.data);
 
 			Message m = (Message) this.proxy.waitForMessage(Message.ResourceUri, null, 10000);
 			
@@ -229,8 +426,9 @@ public class Message implements Externalizable {
 	/**
 	 * @see java.io.Externalizable#writeExternal(java.io.ObjectOutput)
 	 */
+	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
-		if (Message.verbose) System.out.println("Write " + this);
+		if (Message.verbose) log("Write " + this);
 		
 		out.writeInt(this.sender);
 		out.writeInt(this.receiver);
@@ -241,6 +439,7 @@ public class Message implements Externalizable {
 	/**
 	 * @see java.io.Externalizable#readExternal(java.io.ObjectInput)
 	 */
+	@Override
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
 		this.sender = in.readInt();
 		this.receiver = in.readInt();
@@ -248,12 +447,26 @@ public class Message implements Externalizable {
 		
 		this.data = (String) in.readObject();
 		
-		if (Message.verbose) System.out.println("Read " + this);
+		if (Message.verbose) log("Read " + this);
 		
 		this.node = null;
 		this.local = false;
 	}
 	
+	/**
+	 * Populates this message from a compact byte array produced by the encrypted
+	 * transport path. The layout is:
+	 * <pre>
+	 *   b[0] — sender node ID (cast to byte)
+	 *   b[1] — receiver node ID (cast to byte)
+	 *   b[2] — message type code (cast to byte)
+	 *   b[3..] — UTF-8 encoded string payload (optional)
+	 * </pre>
+	 * This method marks the message as remote ({@link #isLocalMessage()} returns
+	 * {@code false}) and clears the node reference.
+	 *
+	 * @param b  The raw byte array read from the decrypted {@link NodeProxy.ByteWrapper}.
+	 */
 	public void setBytes(byte[] b) {
 		this.sender = b[0];
 		this.receiver = b[1];
@@ -263,12 +476,21 @@ public class Message implements Externalizable {
 			this.data = new String(b, 3, b.length - 3);
 		
 		if (Message.verbose)
-			System.out.println("Read " + b.length + " bytes " + this);
+			log("Read " + b.length + " bytes " + this);
 		
 		this.node = null;
 		this.local = false;
 	}
 	
+	/**
+	 * Serialises this message to a compact byte array for encrypted transport.
+	 * The layout mirrors {@link #setBytes}: bytes 0–2 hold sender, receiver, and
+	 * type (each truncated to a single byte), followed by the UTF-8 encoding of
+	 * the string payload, if any.
+	 *
+	 * @return  A byte array representation of this message suitable for wrapping
+	 *          in a {@link NodeProxy.ByteWrapper} before encryption.
+	 */
 	public byte[] getBytes() {
 		byte[] db = new byte[0];
 		if (this.data != null) db = this.data.getBytes();
@@ -281,11 +503,20 @@ public class Message implements Externalizable {
 		System.arraycopy(db, 0, b, 3, db.length);
 		
 		if (Message.verbose)
-			System.out.println("Write " + b.length + " bytes " + this);
+			log("Write " + b.length + " bytes " + this);
 		
 		return b;
 	}
 	
+	/**
+	 * Returns a human-readable summary of this message for logging and debugging.
+	 * The format is {@code "Message: <sender> <receiver> <typeName> <truncatedData>"},
+	 * where {@code typeName} is the symbolic name of the type code and
+	 * {@code truncatedData} is the payload trimmed to 100 characters.
+	 *
+	 * @return  A concise string representation of this message.
+	 */
+	@Override
 	public String toString() {
 		String t = null;
 		

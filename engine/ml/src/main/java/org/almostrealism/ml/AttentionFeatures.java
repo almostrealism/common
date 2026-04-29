@@ -25,6 +25,7 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.ProjectionFactory;
+import org.almostrealism.ml.midi.HeadGroupConfig;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 
@@ -298,7 +299,6 @@ public interface AttentionFeatures extends RotationFeatures {
 
 		int heads = inputShape.length(0);
 		int headSize = inputShape.length(1);
-		int dim = heads * headSize;
 
 		int seqLength = keyShape.length(0);
 		int kvHeads = keyShape.length(1);
@@ -691,7 +691,7 @@ public interface AttentionFeatures extends RotationFeatures {
 							PackedCollection rmsAttWeight,
 							PackedCollection wk, PackedCollection wv,
 							PackedCollection wq, PackedCollection wo,
-							PackedCollection freqCis,
+							CollectionProducer freqCis,
 							Producer<PackedCollection> position,
 							ComputeRequirement... requirements) {
 		return attention(heads, heads, rmsAttWeight, wk, wv, wq, wo,
@@ -732,7 +732,7 @@ public interface AttentionFeatures extends RotationFeatures {
 							PackedCollection bk, PackedCollection bv,
 							PackedCollection bq,
 							PackedCollection qkNormQ, PackedCollection qkNormK,
-							PackedCollection freqCis,
+							CollectionProducer freqCis,
 							Producer<PackedCollection> position,
 							ComputeRequirement... requirements) {
 		return attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo, bk, bv, bq,
@@ -767,16 +767,103 @@ public interface AttentionFeatures extends RotationFeatures {
 							PackedCollection bk, PackedCollection bv,
 							PackedCollection bq,
 							PackedCollection qkNormQ, PackedCollection qkNormK,
-							PackedCollection freqCis,
+							CollectionProducer freqCis,
 							Producer<PackedCollection> position,
 							double epsilon,
 							ComputeRequirement... requirements) {
+		return attentionImpl(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+				bk, bv, bq, qkNormQ, qkNormK,
+				freqCis, null, position, epsilon, requirements);
+	}
+
+	/**
+	 * Attention with per-head-group rotary embeddings (Multidimensional Relative Attention).
+	 *
+	 * <p>Unlike standard attention which applies a single RoPE uniformly to all heads,
+	 * MRA partitions heads into groups and applies per-group RoPE with different theta
+	 * values and attribute-derived position IDs. This is the key architectural novelty
+	 * of the Moonbeam MIDI Foundation Model.</p>
+	 *
+	 * <p>The flow is identical to standard attention except for the RoPE application:</p>
+	 * <ol>
+	 *   <li>Q/K projection (standard)</li>
+	 *   <li>Split Q/K into head groups along head dimension</li>
+	 *   <li>Apply per-group RoPE with the group's precomputed freqCis and position</li>
+	 *   <li>Concatenate rotated groups back</li>
+	 *   <li>Standard scaled dot-product attention (unchanged)</li>
+	 * </ol>
+	 *
+	 * @param heads total number of query attention heads
+	 * @param kvHeads number of key/value heads (for GQA)
+	 * @param rmsAttWeight pre-attention RMSNorm weights
+	 * @param wk key projection weights
+	 * @param wv value projection weights
+	 * @param wq query projection weights
+	 * @param wo output projection weights
+	 * @param headGroups per-head-group RoPE configuration (freqCis + position per group)
+	 * @param position sequential position for KV cache indexing and causal masking
+	 * @param epsilon RMSNorm epsilon
+	 * @param requirements compute requirements
+	 * @return attention block with MRA
+	 */
+	default Block attention(int heads, int kvHeads,
+							PackedCollection rmsAttWeight,
+							PackedCollection wk, PackedCollection wv,
+							PackedCollection wq, PackedCollection wo,
+							HeadGroupConfig[] headGroups,
+							Producer<PackedCollection> position,
+							double epsilon,
+							ComputeRequirement... requirements) {
+		return attentionImpl(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+				null, null, null, null, null,
+				null, headGroups, position, epsilon, requirements);
+	}
+
+	/**
+	 * Unified attention implementation supporting both standard RoPE and
+	 * Multidimensional Relative Attention (MRA).
+	 *
+	 * <p>When {@code headGroups} is non-null, MRA mode is active and per-group
+	 * {@link #mraRopeRotation} is used for Q and K. Otherwise standard
+	 * {@link RotationFeatures#ropeRotation} is applied using {@code freqCis}.
+	 * Optional bias ({@code bk}, {@code bv}, {@code bq}) and QK-Norm
+	 * ({@code qkNormQ}, {@code qkNormK}) parameters are applied only when non-null,
+	 * and are ignored in MRA mode.</p>
+	 */
+	private Block attentionImpl(int heads, int kvHeads,
+								PackedCollection rmsAttWeight,
+								PackedCollection wk, PackedCollection wv,
+								PackedCollection wq, PackedCollection wo,
+								PackedCollection bk, PackedCollection bv, PackedCollection bq,
+								PackedCollection qkNormQ, PackedCollection qkNormK,
+								CollectionProducer freqCis,
+								HeadGroupConfig[] headGroups,
+								Producer<PackedCollection> position,
+								double epsilon,
+								ComputeRequirement... requirements) {
+		boolean useMRA = headGroups != null;
+
 		int dim = rmsAttWeight.getShape().length(0);
-		int headSize = freqCis.getShape().length(1) * 2; // freqCis is (seqLen, headSize/2, 2)
-		int seqLen = freqCis.getShape().length(0);
+		int headSize = useMRA ? headGroups[0].freqCis.getShape().length(1) * 2
+							  : freqCis.getShape().length(1) * 2;
+		int seqLen = useMRA ? headGroups[0].freqCis.getShape().length(0)
+							: freqCis.getShape().length(0);
 		int kvDim = dim * kvHeads / heads;
 		int headsPerKvGroup = heads / kvHeads;
 		boolean useGQA = kvHeads != heads;
+
+		// For MRA: compute per-group head counts for keys and queries
+		int numGroups = useMRA ? headGroups.length : 0;
+		int[] kvHeadsPerGroup = null;
+		int[] queryHeadsPerGroup = null;
+		if (useMRA) {
+			kvHeadsPerGroup = new int[numGroups];
+			queryHeadsPerGroup = new int[numGroups];
+			for (int g = 0; g < numGroups; g++) {
+				kvHeadsPerGroup[g] = headGroups[g].headCount / headsPerKvGroup;
+				queryHeadsPerGroup[g] = headGroups[g].headCount;
+			}
+		}
 
 		TraversalPolicy inputShape = shape(1, dim);
 		SequentialBlock attention = new SequentialBlock(inputShape);
@@ -808,7 +895,11 @@ public interface AttentionFeatures extends RotationFeatures {
 		}
 		// Use split-half reshape for RoPE (matches PyTorch's Qwen/Llama)
 		keys.add(reshapeToSplitHalfRope(kvDim, kvHeads, headSize));
-		keys.add(ropeRotation(kvHeadShapeComplex, freqCis, position));
+		if (useMRA) {
+			keys.add(mraRopeRotation(kvHeads, headSize, kvHeadsPerGroup, headGroups, requirements));
+		} else {
+			keys.add(ropeRotation(kvHeadShapeComplex, freqCis, position));
+		}
 		// Reshape back to (kvHeads, headSize) then flatten to (kvDim)
 		keys.add(reshapeFromSplitHalfRope(kvHeads, headSize));
 		keys.add(reshape(kvHeadShape, shape(kvDim)));
@@ -850,7 +941,11 @@ public interface AttentionFeatures extends RotationFeatures {
 		}
 		// Use split-half reshape for RoPE (matches PyTorch's Qwen/Llama)
 		attention.add(reshapeToSplitHalfRope(dim, heads, headSize));
-		attention.add(ropeRotation(headShapeComplex, freqCis, position));
+		if (useMRA) {
+			attention.add(mraRopeRotation(heads, headSize, queryHeadsPerGroup, headGroups, requirements));
+		} else {
+			attention.add(ropeRotation(headShapeComplex, freqCis, position));
+		}
 		// Reshape back to (heads, headSize) for attention computation
 		attention.add(reshapeFromSplitHalfRope(heads, headSize));
 		// Expanded keys cache (seqLen, heads, headSize) - use standard non-GQA attention
@@ -1631,7 +1726,7 @@ public interface AttentionFeatures extends RotationFeatures {
 							  PackedCollection rmsAttWeight,
 							  PackedCollection wk, PackedCollection wv,
 							  PackedCollection wq, PackedCollection wo,
-							  PackedCollection freqCis,
+							  CollectionProducer freqCis,
 							  PackedCollection rmsFfnWeight,
 							  PackedCollection w1, PackedCollection w2, PackedCollection w3,
 							  Producer<PackedCollection> position,
@@ -1674,7 +1769,7 @@ public interface AttentionFeatures extends RotationFeatures {
 							  PackedCollection bk, PackedCollection bv,
 							  PackedCollection bq,
 							  PackedCollection qkNormQ, PackedCollection qkNormK,
-							  PackedCollection freqCis,
+							  CollectionProducer freqCis,
 							  PackedCollection rmsFfnWeight,
 							  PackedCollection w1, PackedCollection w2, PackedCollection w3,
 							  Producer<PackedCollection> position,
@@ -1715,7 +1810,7 @@ public interface AttentionFeatures extends RotationFeatures {
 							  PackedCollection bk, PackedCollection bv,
 							  PackedCollection bq,
 							  PackedCollection qkNormQ, PackedCollection qkNormK,
-							  PackedCollection freqCis,
+							  CollectionProducer freqCis,
 							  PackedCollection rmsFfnWeight,
 							  PackedCollection w1, PackedCollection w2, PackedCollection w3,
 							  Producer<PackedCollection> position,
@@ -1726,6 +1821,49 @@ public interface AttentionFeatures extends RotationFeatures {
 		SequentialBlock transformer = new SequentialBlock(shape(1, dim));
 		transformer.accum(attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
 				bk, bv, bq, qkNormQ, qkNormK, freqCis, position, epsilon, requirements), requirements);
+		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, epsilon, requirements), requirements);
+		return transformer;
+	}
+
+	/**
+	 * Transformer layer with Multidimensional Relative Attention (MRA).
+	 *
+	 * <p>Combines MRA attention (per-head-group RoPE) with a standard SwiGLU
+	 * feed-forward block. This is the building block for the Moonbeam MIDI
+	 * transformer.</p>
+	 *
+	 * @param heads number of query attention heads
+	 * @param kvHeads number of key/value heads (for GQA)
+	 * @param rmsAttWeight pre-attention RMSNorm weights
+	 * @param wk key projection weights
+	 * @param wv value projection weights
+	 * @param wq query projection weights
+	 * @param wo output projection weights
+	 * @param headGroups per-head-group RoPE configuration
+	 * @param rmsFfnWeight pre-FFN RMSNorm weights
+	 * @param w1 FFN gate projection weights
+	 * @param w2 FFN down projection weights
+	 * @param w3 FFN up projection weights
+	 * @param position sequential position for KV cache and causal masking
+	 * @param epsilon RMSNorm epsilon
+	 * @param requirements compute requirements
+	 * @return transformer block with MRA attention
+	 */
+	default Block transformer(int heads, int kvHeads,
+							  PackedCollection rmsAttWeight,
+							  PackedCollection wk, PackedCollection wv,
+							  PackedCollection wq, PackedCollection wo,
+							  HeadGroupConfig[] headGroups,
+							  PackedCollection rmsFfnWeight,
+							  PackedCollection w1, PackedCollection w2, PackedCollection w3,
+							  Producer<PackedCollection> position,
+							  double epsilon,
+							  ComputeRequirement... requirements) {
+		int dim = rmsAttWeight.getShape().length(0);
+
+		SequentialBlock transformer = new SequentialBlock(shape(1, dim));
+		transformer.accum(attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
+				headGroups, position, epsilon, requirements), requirements);
 		transformer.accum(feedForward(rmsFfnWeight, w1, w2, w3, epsilon, requirements), requirements);
 		return transformer;
 	}
@@ -1849,11 +1987,34 @@ public interface AttentionFeatures extends RotationFeatures {
 		return attention;
 	}
 
+	/**
+	 * Builds a scaled dot-product attention block using the same sequence length for queries and context.
+	 *
+	 * @param batchSize Batch dimension
+	 * @param seqLen    Sequence length for both queries and context
+	 * @param heads     Number of attention heads
+	 * @param dimHead   Dimension per head
+	 * @param k         Key tensor (batch, heads, seqLen, dimHead)
+	 * @param v         Value tensor (batch, heads, seqLen, dimHead)
+	 * @return Block computing softmax(Q @ K^T / sqrt(dimHead)) @ V
+	 */
 	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
 											PackedCollection k, PackedCollection v) {
 		return scaledDotProductAttention(batchSize, seqLen, seqLen, heads, dimHead, k, v, null);
 	}
 
+	/**
+	 * Builds a scaled dot-product attention block with optional attention score capture.
+	 *
+	 * @param batchSize       Batch dimension
+	 * @param seqLen          Sequence length for both queries and context
+	 * @param heads           Number of attention heads
+	 * @param dimHead         Dimension per head
+	 * @param k               Key tensor (batch, heads, seqLen, dimHead)
+	 * @param v               Value tensor (batch, heads, seqLen, dimHead)
+	 * @param attentionScores Optional receptor to receive the attention weight matrix; may be null
+	 * @return Block computing softmax(Q @ K^T / sqrt(dimHead)) @ V
+	 */
 	default Block scaledDotProductAttention(int batchSize, int seqLen, int heads, int dimHead,
 											PackedCollection k, PackedCollection v,
 											Receptor<PackedCollection> attentionScores) {

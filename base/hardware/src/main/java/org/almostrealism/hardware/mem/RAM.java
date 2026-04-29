@@ -154,9 +154,12 @@ import java.util.stream.Stream;
  * @see Bytes
  */
 public abstract class RAM implements Memory {
+	/** If true, warning messages are emitted when suspect memory operations are detected. */
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
+	/** Number of stack frames to capture at allocation time for leak tracking (0 to disable). */
 	public static int allocationTraceFrames = SystemUtils.getInt("AR_HARDWARE_ALLOCATION_TRACE_FRAMES").orElse(16);
 
+	/** Stack trace captured at allocation time, used to diagnose memory leaks; may be null if disabled. */
 	private final StackTraceElement[] allocationStackTrace;
 
 	/**

@@ -19,10 +19,10 @@ package org.almostrealism.ml;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.persistence.Asset;
-import org.almostrealism.persistence.AssetGroup;
-import org.almostrealism.persistence.AssetGroupInfo;
-import org.almostrealism.persistence.CollectionEncoder;
+import org.almostrealism.persist.assets.Asset;
+import org.almostrealism.persist.assets.AssetGroup;
+import org.almostrealism.persist.assets.AssetGroupInfo;
+import org.almostrealism.persist.assets.CollectionEncoder;
 import org.almostrealism.protobuf.Collections;
 
 import io.almostrealism.code.Precision;
@@ -48,6 +48,7 @@ import java.util.Set;
  * @author  Michael Murray
  */
 public class StateDictionary extends AssetGroup implements Destroyable, ConsoleFeatures {
+	/** The in-memory map from weight key names to their decoded {@link PackedCollection} tensors. */
 	private Map<String, PackedCollection> weights;
 
 	/**
@@ -92,13 +93,18 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 		this.weights = weights;
 	}
 
+	/**
+	 * Initializes the weight map and loads all weight tensors from the underlying assets.
+	 *
+	 * @throws IOException if any asset cannot be read or decoded
+	 */
 	protected void init() throws IOException {
 		this.weights = new HashMap<>();
 		loadWeights();
 	}
 
 	/**
-	 * Load weights from protobuf {@link org.almostrealism.persistence.Asset}s.
+	 * Load weights from protobuf {@link org.almostrealism.persist.assets.Asset}s.
 	 */
 	private void loadWeights() throws IOException {
 		int total = files()
@@ -119,7 +125,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 					}
 				}
 
-				System.out.println("Loaded " + libraryData.getCollectionsCount() +
+				log("Loaded " + libraryData.getCollectionsCount() +
 						" weight tensors from " + weightFile.getName());
 				return 1;
 			} catch (Exception e) {
@@ -128,7 +134,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 			}
 		}).sum();
 
-		System.out.println("StateDictionary loaded " + weights.size() +
+		log("StateDictionary loaded " + weights.size() +
 				" total weight tensors from " + total + " protobuf files");
 	}
 

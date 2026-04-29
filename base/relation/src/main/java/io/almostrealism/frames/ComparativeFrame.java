@@ -44,6 +44,7 @@ package io.almostrealism.frames;
  * @author  Michael Murray
  */
 public class ComparativeFrame {
+	/** The two predicates being compared, where {@code b} is considered larger than {@code a}. */
 	private Predicate a, b;
 
 	/**
@@ -63,5 +64,6 @@ public class ComparativeFrame {
 	 *
 	 * @return a string in the format "{@code b} is larger than {@code a}"
 	 */
+	@Override
 	public String toString() { return b + " is larger than " + a; }
 }

@@ -45,26 +45,37 @@ import org.almostrealism.collect.PackedCollection;
  */
 public interface SphericalAbsorber extends Absorber {
 	/**
+	 * Sets the PotentialMap instance for this spherical absorber to use.
+	 *
 	 * @param m  The PotentialMap instance for this spherical absorber to use.
 	 */
 	void setPotentialMap(PotentialMap m);
-	
+
 	/**
+	 * Returns the PotentialMap instance used by this spherical absorber.
+	 *
 	 * @return  The PotentialMap instance used by this spherical absorber.
 	 */
 	PotentialMap getPotentialMap();
-	
+
 	/**
+	 * Sets the radius of the spherical volume (usually measured in micrometers).
+	 *
 	 * @param r  The radius of the spherical volume. (Usually measured in micrometers).
 	 */
 	void setRadius(double r);
-	
+
 	/**
+	 * Returns the radius of the spherical volume (usually measured in micrometers).
+	 *
 	 * @return  The radius of the spherical volume. (Usually measured in micrometers).
 	 */
 	double getRadius();
-	
+
 	/**
+	 * Returns the displacement vector for this spherical absorber, where a unit length
+	 * vector represents a displacement equal to the radius of this spherical absorber.
+	 *
 	 * @return  {x, y, z} - The displacement vector for this spherical aborber. A unit length
 	 *          vector represents a displacement equal to the radius of this spherical absorber.
 	 */

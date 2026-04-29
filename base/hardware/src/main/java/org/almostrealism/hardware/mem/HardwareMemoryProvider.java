@@ -24,9 +24,9 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.lang.ref.ReferenceQueue;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
@@ -171,21 +171,30 @@ import java.util.stream.Stream;
  * @see MemoryProvider
  */
 public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryProvider<T>, ConsoleFeatures {
+	/** If true, deallocation is deferred to a background queue rather than happening synchronously. */
 	public static boolean queueDeallocation = false;
 
+	/** Thread-local factory for generating human-readable names for allocated memory regions. */
 	protected static ThreadLocal<IntFunction<String>> memoryName;
 
 	static {
 		memoryName = new ThreadLocal<>();
 	}
 
-	private HashMap<Long, NativeRef<T>> allocated;
+	/** Tracks all currently allocated memory blocks by their native pointer. */
+	private ConcurrentHashMap<Long, NativeRef<T>> allocated;
+	/** Priority queue of memory blocks pending deallocation, ordered by size (largest first). */
 	private PriorityBlockingQueue<NativeRef<T>> deallocationQueue;
+	/** Reference queue populated by the GC when tracked {@link RAM} objects become unreachable. */
 	private ReferenceQueue<T> referenceQueue;
+	/** True while this provider is being destroyed; suppresses further allocations and error logging. */
 	private volatile boolean destroying;
 
+	/**
+	 * Initializes allocation tracking and starts the background deallocation threads.
+	 */
 	public HardwareMemoryProvider() {
-		this.allocated = new HashMap<>();
+		this.allocated = new ConcurrentHashMap<>();
 		this.deallocationQueue = new PriorityBlockingQueue<>(100, Comparator.comparing(NativeRef<T>::getSize).reversed());
 		this.referenceQueue = new ReferenceQueue<>();
 
@@ -205,7 +214,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 				} catch (IllegalStateException e) {
 					warn(e.getMessage());
 				} catch (Exception e) {
-					e.printStackTrace();
+					warn(e.getMessage());
 				}
 			}
 		}, getClass().getSimpleName() + " Deallocation Submit Thread");
@@ -216,7 +225,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 				try {
 					deallocateNow(getDeallocationQueue().take());
 				} catch (Exception e) {
-					e.printStackTrace();
+					warn(e.getMessage());
 				}
 			}
 		}, getClass().getSimpleName() + " Deallocation Process Thread");
@@ -226,18 +235,31 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		deallocationProcess.start();
 	}
 
+	/** Returns the reference queue used to receive GC notifications for collected {@link RAM} objects. */
 	protected ReferenceQueue<T> getReferenceQueue() { return referenceQueue; }
 
+	/** Returns the deallocation queue where blocks are placed pending background release. */
 	protected PriorityBlockingQueue<NativeRef<T>> getDeallocationQueue() { return deallocationQueue; }
 
+	/**
+	 * Returns all currently allocated memory blocks, sorted by size in descending order.
+	 *
+	 * @return List of native references for all allocated blocks
+	 */
 	protected List<NativeRef<T>> getAllocated() {
 		return allocated.values().stream()
 				.sorted(Comparator.comparing(NativeRef<T>::getSize).reversed())
 				.toList();
 	}
 
+	/** Returns the number of memory blocks currently allocated and tracked by this provider. */
 	public int getAllocatedCount() { return allocated.size(); }
 
+	/**
+	 * Deallocates the given memory block immediately, or logs a warning if it cannot be found.
+	 *
+	 * @param mem The memory block to deallocate
+	 */
 	private void deallocateNow(T mem) {
 		if (allocated == null) {
 			warn("Cannot deallocate " + mem + " as the provider has been destroyed");
@@ -256,18 +278,94 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		deallocateNow(ref);
 	}
 
+	/**
+	 * Deallocates a memory block identified by its native reference.
+	 *
+	 * <p>Consults {@link KernelMemoryGuard} for diagnostic visibility: if the
+	 * guard reports the block as still referenced by an active kernel, a warning
+	 * is emitted (with allocation stack trace when available) but deallocation
+	 * proceeds regardless. Blocking or silently deferring an explicit deallocate
+	 * has been determined to be a more dangerous strategy than producing a
+	 * visible warning plus potential use-after-free — the warning at least gives
+	 * the developer the context needed to diagnose the problem.</p>
+	 *
+	 * <p>Note: for the GC-driven deallocation path, the guard's strong references
+	 * to active RAMs should normally prevent the underlying phantom reference
+	 * from being enqueued in the first place. A warning here from the GC path
+	 * would therefore indicate either a race window between reference-queue
+	 * enqueuing and guard release, or a bug in the guard's accounting.</p>
+	 *
+	 * @param ref Native reference to the memory block to deallocate
+	 */
 	private void deallocateNow(NativeRef<T> ref) {
-		deallocate(ref);
+		KernelMemoryGuard.warnIfActivelyReferenced(
+				ref.getAddress(), ref.getAllocationStackTrace(),
+				getClass().getSimpleName());
 
-		if (!destroying) {
-			allocated.remove(ref.getAddress());
+		if (!ref.tryClaimFreed()) {
+			warnDoubleFree(ref);
+			return;
+		}
+
+		boolean released = false;
+		try {
+			deallocate(ref);
+			released = true;
+		} finally {
+			if (released) {
+				if (!destroying) {
+					allocated.remove(ref.getAddress());
+				}
+			} else {
+				ref.unclaimFreed();
+			}
 		}
 	}
 
+	/**
+	 * Logs a warning that a double-free of the given reference was prevented, including
+	 * the allocation stack trace and (when available) the stack trace of the first
+	 * successful release. Skips the warning during provider destruction, where extra
+	 * deallocation attempts are routine and not bug indicators.
+	 *
+	 * @param ref The native reference whose second free was suppressed
+	 */
+	private void warnDoubleFree(NativeRef<T> ref) {
+		if (destroying || !RAM.enableWarnings) return;
+
+		warn("Skipping double deallocate of " + ref + " (address " + ref.getAddress() + ")");
+		StackTraceElement[] alloc = ref.getAllocationStackTrace();
+		if (alloc != null) {
+			warn("\tOriginally allocated at:");
+			Stream.of(alloc).forEach(stack -> warn("\t\tat " + stack));
+		}
+		StackTraceElement[] firstFree = ref.getFirstFreeStackTrace();
+		if (firstFree != null) {
+			warn("\tFirst freed at:");
+			Stream.of(firstFree).forEach(stack -> warn("\t\tat " + stack));
+		}
+		warn("\tCurrent free attempt at:");
+		Stream.of(Thread.currentThread().getStackTrace())
+				.forEach(stack -> warn("\t\tat " + stack));
+	}
+
+	/**
+	 * Creates a new {@link NativeRef} for the given memory block and registers it with the reference queue.
+	 *
+	 * @param ram The memory block to create a reference for
+	 * @return New native reference tracking the memory block's lifecycle
+	 */
 	protected NativeRef<T> nativeRef(T ram) {
 		return new NativeRef<>(ram, getReferenceQueue());
 	}
 
+	/**
+	 * Returns the native reference for the given memory block, validating that it belongs to this provider.
+	 *
+	 * @param ram Memory block to look up
+	 * @return Native reference for the memory block
+	 * @throws IllegalArgumentException if the RAM does not belong to this provider
+	 */
 	protected NativeRef<T> getNativeRef(T ram) {
 		if (ram.getProvider() != this)
 			throw new IllegalArgumentException("RAM does not belong to this provider");
@@ -275,6 +373,16 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		return allocated.get(ram.getContainerPointer());
 	}
 
+	/**
+	 * Registers the given memory block as allocated and returns it.
+	 *
+	 * <p>Creates a {@link NativeRef} and stores it in the allocation map. Warns if the block
+	 * is already tracked (duplicate allocation).</p>
+	 *
+	 * @param ram The newly allocated memory block to register
+	 * @return The same {@code ram} instance
+	 * @throws IllegalStateException if this provider is being destroyed
+	 */
 	protected T allocated(T ram) {
 		if (destroying) {
 			throw new IllegalStateException("Cannot allocate " + ram + " as the provider is being destroyed");
@@ -294,6 +402,14 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		return ram;
 	}
 
+	/**
+	 * Frees the native resources associated with the given native reference.
+	 *
+	 * <p>Concrete subclasses implement this to release backend-specific resources
+	 * (e.g., OpenCL buffers, Metal allocations, or JNI direct buffers).</p>
+	 *
+	 * @param ref Native reference identifying the memory block to free
+	 */
 	protected abstract void deallocate(NativeRef<T> ref);
 
 	@Override
@@ -308,10 +424,28 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 		}
 	}
 
+	/**
+	 * Returns the thread-local memory name factory, or null if none has been set.
+	 *
+	 * @return Current memory naming function for this thread
+	 */
 	protected IntFunction<String> getMemoryName() {
 		return memoryName.get();
 	}
 
+	/**
+	 * Executes a callable within a named memory allocation context.
+	 *
+	 * <p>Sets the thread-local memory name factory for the duration of the call, then
+	 * restores the previous value. Use this to annotate allocations with readable names
+	 * for profiling and debugging.</p>
+	 *
+	 * @param <V> Return type of the callable
+	 * @param name Function mapping allocation size to a human-readable name
+	 * @param exec Callable to execute within the named context
+	 * @return Value returned by {@code exec}
+	 * @throws RuntimeException if {@code exec} throws a checked exception
+	 */
 	public <V> V sharedMemory(IntFunction<String> name, Callable<V> exec) {
 		IntFunction<String> currentName = memoryName.get();
 		IntFunction<String> nextName = name;

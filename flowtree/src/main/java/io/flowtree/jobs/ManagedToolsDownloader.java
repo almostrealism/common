@@ -52,7 +52,7 @@ import java.util.Map;
  */
 public class ManagedToolsDownloader implements ConsoleFeatures {
 
-	private final McpConfigBuilder configBuilder;
+	/** Jackson mapper for parsing pushed tools configuration JSON. */
 	private final ObjectMapper objectMapper;
 
 	/**
@@ -63,7 +63,6 @@ public class ManagedToolsDownloader implements ConsoleFeatures {
 	 *                      and extract JSON fields
 	 */
 	public ManagedToolsDownloader(McpConfigBuilder configBuilder) {
-		this.configBuilder = configBuilder;
 		this.objectMapper = new ObjectMapper();
 	}
 
@@ -81,7 +80,7 @@ public class ManagedToolsDownloader implements ConsoleFeatures {
 	 *                          download URLs and tool names
 	 */
 	public void ensurePushedTools(String pushedToolsConfig) {
-		Map<String, List<String>> pushedTools = parsePushedServerNames(pushedToolsConfig);
+		Map<String, List<String>> pushedTools = parseAllServerNames(pushedToolsConfig);
 		if (pushedTools.isEmpty()) return;
 
 		String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
@@ -118,7 +117,7 @@ public class ManagedToolsDownloader implements ConsoleFeatures {
 	 * Verifies that MCP tool server files exist in the working directory
 	 * and logs their modification times for deployment diagnostics.
 	 *
-	 * <p>Checks for {@code tools/mcp/slack/server.py} and
+	 * <p>Checks for {@code tools/mcp/messages/server.py} and
 	 * {@code tools/mcp/github/server.py} relative to the given working
 	 * directory. For each file that exists, the age in seconds since last
 	 * modification is logged. Missing files produce a warning.</p>
@@ -127,7 +126,7 @@ public class ManagedToolsDownloader implements ConsoleFeatures {
 	 */
 	public void verifyMcpToolFiles(Path workingDirectory) {
 		String[] toolFiles = {
-			"tools/mcp/slack/server.py",
+			"tools/mcp/messages/server.py",
 			"tools/mcp/github/server.py"
 		};
 
@@ -181,8 +180,43 @@ public class ManagedToolsDownloader implements ConsoleFeatures {
 	}
 
 	/**
+	 * Parses the pushed tools config JSON to extract all server names,
+	 * including those with empty tool lists. Used by {@link #ensurePushedTools}
+	 * to ensure files are downloaded regardless of whether tool discovery
+	 * found tool names on the controller.
+	 *
+	 * @param pushedToolsConfig the pushed tools configuration JSON
+	 * @return map of server name to tool name list, empty if null or invalid
+	 */
+	private Map<String, List<String>> parseAllServerNames(String pushedToolsConfig) {
+		Map<String, List<String>> result = new LinkedHashMap<>();
+		if (pushedToolsConfig == null || pushedToolsConfig.isEmpty()) return result;
+
+		try {
+			JsonNode root = objectMapper.readTree(pushedToolsConfig);
+			Iterator<String> fieldNames = root.fieldNames();
+			while (fieldNames.hasNext()) {
+				String serverName = fieldNames.next();
+				JsonNode serverNode = root.get(serverName);
+				List<String> tools = new ArrayList<>();
+				JsonNode toolsNode = serverNode.get("tools");
+				if (toolsNode != null && toolsNode.isArray()) {
+					for (JsonNode toolNode : toolsNode) {
+						tools.add(toolNode.asText());
+					}
+				}
+				result.put(serverName, tools);
+			}
+		} catch (IOException e) {
+			warn("Failed to parse pushed tools config: " + e.getMessage());
+		}
+
+		return result;
+	}
+
+	/**
 	 * Parses the pushed tools config JSON to extract server names and
-	 * their tool lists using Jackson.
+	 * their tool lists using Jackson. Servers with empty tool lists are excluded.
 	 *
 	 * @param pushedToolsConfig the pushed tools configuration JSON
 	 * @return map of server name to tool name list, empty if null or invalid

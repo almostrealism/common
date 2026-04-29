@@ -1,14 +1,203 @@
 {
-  "enabledMcpjsonServers": ["ar-docs", "ar-test-runner", "ar-profile-analyzer", "ar-memory", "ar-consultant", "ar-jmx", "ar-slack", "ar-github"],
+  "enabledMcpjsonServers": ["ar-docs", "ar-test-runner", "ar-build-validator", "ar-profile-analyzer", "ar-memory", "ar-consultant", "ar-jmx", "ar-manager"],
   "permissions": {
     "allow": [
       "Bash(mvn:*)",
       "Bash(mvn clean compile:*)",
       "Bash(mvn install:*)",
       "Bash(mvn test:*)",
-      "Bash(export AR_HARDWARE_LIBS=/home/developer/.libs/)"
+      "Bash(export AR_HARDWARE_LIBS=/home/developer/.libs/)",
+      "mcp__ar-manager",
+      "mcp__ar-consultant"
     ],
     "deny": [],
     "ask": []
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start-tools.sh",
+            "description": "Emit paths and versions of common dev tools so the agent does not burn round-trips discovering them"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-git-commit.sh",
+            "description": "Block git commit — agents stage only, humans commit"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-mvn-test-direct.sh",
+            "description": "Block direct mvn test — must use mcp__ar-test-runner__start_test_run"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
+            "description": "Block shell writes into ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-git-log.sh",
+            "description": "Warn on `git log` — workstream narrative lives in memory_branch_context, not commit titles"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-ci-file.sh",
+            "description": "Inject .github/CLAUDE.md context when reading analysis.yaml"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-pom-read.sh",
+            "description": "Inject bidirectional dependency check when reading any pom.xml"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-pom-write.sh",
+            "description": "Block dependency/module/parent structural changes in pom.xml — dependency graph is externally controlled (non-structural edits pass through)"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-consultant-first.sh",
+            "description": "Warn if ar-consultant not called before editing computation-layer Java"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-ci-file.sh",
+            "description": "Inject .github/CLAUDE.md context when editing analysis.yaml"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/validate-ci-edit.sh",
+            "description": "Validate analysis.needs includes all coverage-* uploaders before edit"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-defensive-guard.sh",
+            "description": "Warn on added defensive-tolerance patterns (see .claude/hooks/rules/fail-loud.md)"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
+            "description": "Block edits to ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
+          }
+        ]
+      },
+      {
+        "matcher": "MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
+            "description": "Block MultiEdit in ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
+          }
+        ]
+      },
+      {
+        "matcher": "NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
+            "description": "Block NotebookEdit in ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-pom-write.sh",
+            "description": "Block dependency/module/parent structural changes in pom.xml — dependency graph is externally controlled (non-structural edits pass through)"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/enforce-consultant-first.sh",
+            "description": "Warn if ar-consultant not called before writing computation-layer Java"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/guard-ci-file.sh",
+            "description": "Inject .github/CLAUDE.md context when writing analysis.yaml"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/validate-ci-edit.sh",
+            "description": "Validate analysis.needs includes all coverage-* uploaders before write"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-defensive-guard.sh",
+            "description": "Warn on added defensive-tolerance patterns (see .claude/hooks/rules/fail-loud.md)"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
+            "description": "Block writes to ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/scan-producer-violations.sh",
+            "description": "Scan written Java for Producer pattern violations (.evaluate/.toDouble/.toFloat in computation code, for+setMem loops, System.out/err, multiple new Model())"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-assertion-free-test.sh",
+            "description": "Warn on @Test methods with no assertion (see .claude/hooks/rules/fail-loud.md)"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/scan-producer-violations.sh",
+            "description": "Scan edited Java for Producer pattern violations (.evaluate/.toDouble/.toFloat in computation code, for+setMem loops, System.out/err, multiple new Model())"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-assertion-free-test.sh",
+            "description": "Warn on @Test methods with no assertion (see .claude/hooks/rules/fail-loud.md)"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__ar-consultant__consult",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/track-consultant-call.sh",
+            "description": "Record timestamp of consultant call for enforce-consultant-first.sh"
+          }
+        ]
+      }
+    ]
   }
 }

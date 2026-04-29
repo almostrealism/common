@@ -16,6 +16,7 @@
 
 package org.almostrealism.io;
 
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -78,21 +79,34 @@ import java.util.function.UnaryOperator;
  * @see DistributionMetric
  */
 public class Console {
+	/** The global root console instance shared by the entire application. */
 	public static Console root = new Console();
+	/** Whether log output is also forwarded to {@link System#out}; controlled by {@code AR_IO_SYSOUT}. */
 	public static boolean systemOutEnabled = SystemUtils.isEnabled("AR_IO_SYSOUT").orElse(true);
 
+	/** The parent console to which log output is forwarded after local processing. */
 	private Console parent;
+	/** Consumers that receive each formatted log line as it is produced. */
 	private List<Consumer<String>> listeners = new ArrayList<>();
+	/** Transformations applied to each log line before delivery to listeners and the parent. */
 	private List<UnaryOperator<String>> filters = new ArrayList<>();
+	/** Registered providers used to deliver structured alerts externally. */
 	private List<AlertDeliveryProvider> alertDeliveryProviders = new ArrayList<>();
+	/** Optional flag string prepended to log lines to categorize output from this console. */
 	private Optional<String> flag;
 
+	/** Formatter applied to timestamps prepended to each log line. */
 	private DateTimeFormatter format;
-	private StringBuffer data = new StringBuffer();
-	private StringBuffer lastLine;
+	/** Accumulated log output, appended with each new log line. */
+	private StringBuilder data = new StringBuilder();
+	/** Buffer holding the most recently written line, used for in-place line updates. */
+	private StringBuilder lastLine;
+	/** Whether the last line should be overwritten rather than appended on the next write. */
 	private boolean resetLastLine;
 
+	/** Named metrics registered with this console, keyed by metric name. */
 	private Map<String, MetricBase> metrics = Collections.synchronizedMap(new HashMap<>());
+	/** Named sample lists registered with this console, keyed by sample name. */
 	private Map<String, List<?>> samples = Collections.synchronizedMap(new HashMap<>());
 
 	/**
@@ -117,14 +131,14 @@ public class Console {
 	 *
 	 * @param s the string to print
 	 */
-	public void print(String s) {
+	public synchronized void print(String s) {
 		String orig = s;
 		s = prep(s);
 		if (s == null) return;
-		
+
 		append(s);
 		lastLine.append(s);
-		
+
 		if (parent == null) {
 			if (systemOutEnabled) System.out.print(s);
 		} else {
@@ -138,35 +152,35 @@ public class Console {
 	 *
 	 * @param s the string to print
 	 */
-	public void println(String s) {
+	public synchronized void println(String s) {
 		String orig = s;
 		s = prep(s);
 		if (s == null) return;
 
 		append(s);
 		append("\n");
-		
+
 		lastLine.append(s);
 		resetLastLine = true;
-		
+
 		if (parent == null) {
 			if (systemOutEnabled) System.out.println(s);
 		} else {
 			parent.println(orig);
 		}
 	}
-	
+
 	/**
 	 * Prints a newline to the console.
 	 */
-	public void println() {
+	public synchronized void println() {
 		if (resetLastLine) {
-			lastLine = new StringBuffer();
+			lastLine = new StringBuilder();
 		}
-		
+
 		append("\n");
 		resetLastLine = true;
-		
+
 		if (parent == null) {
 			if (systemOutEnabled) System.out.println();
 		} else {
@@ -179,7 +193,7 @@ public class Console {
 	 *
 	 * @return the last line, without timestamp prefix
 	 */
-	public String lastLine() { return lastLine.toString(); }
+	public synchronized String lastLine() { return lastLine.toString(); }
 
 	/** Appends text to the console output and notifies all listeners. */
 	protected void append(String s) {
@@ -189,14 +203,14 @@ public class Console {
 			try {
 				listener.accept(s);
 			} catch (Exception e) {
-				e.printStackTrace();
+				throw new RuntimeException("Console listener failed", e);
 			}
 		}
 	}
 
 	/** Returns the timestamp prefix for console output lines. */
 	protected String pre() {
-		return "[" + format.format(java.time.LocalTime.now()) + "] ";
+		return "[" + format.format(LocalTime.now()) + "] ";
 	}
 
 	/** Applies output filters and manages the last-line tracking state. */
@@ -208,7 +222,7 @@ public class Console {
 		if (s == null) return s;
 
 		if (resetLastLine) {
-			lastLine = new StringBuffer();
+			lastLine = new StringBuilder();
 			s = pre() + s;
 			resetLastLine = false;
 		}

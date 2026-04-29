@@ -26,15 +26,56 @@ import org.almostrealism.ml.OnnxFeatures;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * ONNX Runtime implementation of the {@link DiffusionModel} interface for audio generation.
+ *
+ * <p>Wraps a single ONNX diffusion transformer model (DiT) that accepts a noisy audio
+ * latent {@code x}, a timestep tensor {@code t}, cross-attention conditioning from a
+ * text encoder, and a global conditioning vector, and returns a noise or velocity
+ * prediction used by the diffusion sampler.
+ *
+ * <p>All ONNX Runtime types are fully encapsulated within this class.
+ *
+ * @see DiffusionModel
+ * @see OnnxFeatures
+ */
 public class OnnxDiffusionModel implements DiffusionModel, OnnxFeatures {
+
+	/** The ONNX Runtime environment used to create the model session. */
 	private final OrtEnvironment env;
+
+	/** The ONNX session that runs the diffusion transformer model. */
 	private final OrtSession session;
 
+	/**
+	 * Creates an {@code OnnxDiffusionModel} from a shared environment, session options,
+	 * and the path to the DiT ONNX model file.
+	 *
+	 * @param env       the shared ONNX Runtime environment
+	 * @param options   session options for the model
+	 * @param modelFile path to the diffusion transformer ONNX model file
+	 * @throws OrtException if the ONNX session cannot be created
+	 */
 	public OnnxDiffusionModel(OrtEnvironment env, OrtSession.SessionOptions options, String modelFile) throws OrtException {
 		this.env = env;
 		this.session = env.createSession(modelFile, options);
 	}
 
+	/**
+	 * Runs the DiT model forward pass via ONNX Runtime.
+	 *
+	 * <p>All four inputs are converted to {@link ai.onnxruntime.OnnxTensor} objects,
+	 * the session is run, and the single output tensor is unpacked into a
+	 * {@link org.almostrealism.collect.PackedCollection}.
+	 *
+	 * @param x            current noisy audio latent
+	 * @param t            timestep tensor
+	 * @param crossAttnCond cross-attention conditioning produced by the text conditioner
+	 * @param globalCond   global conditioning vector (duration, style, etc.)
+	 * @return the model prediction (noise or velocity) as a {@link org.almostrealism.collect.PackedCollection}
+	 * @throws RuntimeException if the ONNX session fails
+	 */
+	@Override
 	public PackedCollection forward(PackedCollection x, PackedCollection t,
 									   PackedCollection crossAttnCond,
 									   PackedCollection globalCond) {
@@ -63,6 +104,11 @@ public class OnnxDiffusionModel implements DiffusionModel, OnnxFeatures {
 		}
 	}
 
+	/**
+	 * Closes the ONNX session held by this diffusion model, releasing native resources.
+	 *
+	 * @throws RuntimeException if the session cannot be closed
+	 */
 	@Override
 	public void destroy() {
 		try {

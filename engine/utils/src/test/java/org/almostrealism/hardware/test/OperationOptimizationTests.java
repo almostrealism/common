@@ -78,7 +78,7 @@ public class OperationOptimizationTests extends TestSuiteBase {
 		matrix.fill(pos -> Math.random());
 
 		Supplier<Runnable> loop = lp(a(each(p(out)), matmul(p(matrix), p(in))), 10);
-		System.out.println(Countable.count(loop));
+		log(String.valueOf(Countable.count(loop)));
 	}
 
 	@Test(timeout = 2 * 60000)
@@ -90,16 +90,15 @@ public class OperationOptimizationTests extends TestSuiteBase {
 		int dim = 64;
 		PackedCollection in = new PackedCollection(shape(dim));
 		PackedCollection matrix = new PackedCollection(shape(dim, dim));
-		PackedCollection out = new PackedCollection(shape(dim));
 
 		in.fill(pos -> Math.random());
 		matrix.fill(pos -> Math.random());
 
-		System.out.println("Running native loop...");
+		log("Running native loop...");
 		profile(lp(a(p(in), matmul(p(matrix), p(in))), itr));
-		System.out.println();
+		log("");
 
-		System.out.println("Running Java loop...");
+		log("Running Java loop...");
 		profile(loop(Process.isolated(a(p(in), matmul(p(matrix), p(in)))), itr));
 	}
 

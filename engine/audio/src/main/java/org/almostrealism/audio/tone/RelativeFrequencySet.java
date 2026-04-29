@@ -37,7 +37,18 @@ public interface RelativeFrequencySet extends Iterable<Frequency> {
 		return getFrequencies(new Frequency(1.0)).iterator();
 	}
 
+	/**
+	 * Returns the frequencies in this set, scaled relative to the given fundamental frequency.
+	 *
+	 * @param fundamental the base frequency to compute ratios against
+	 * @return an iterable of Frequency values relative to the fundamental
+	 */
 	Iterable<Frequency> getFrequencies(Frequency fundamental);
 
+	/**
+	 * Returns the number of frequency ratios in this set.
+	 *
+	 * @return the count of frequencies
+	 */
 	int count();
 }

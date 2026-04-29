@@ -66,13 +66,29 @@ import java.util.stream.Stream;
  * @see DimensionAware
  */
 public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>, DimensionAware {
+	/** The mesh data containing triangle geometry for intersection testing. */
 	private MeshData data;
+
+	/** The evaluable that generates rays for intersection testing. */
 	private Evaluable<Ray> ray;
+
+	/** Evaluable that returns the closest surface normal after intersection. */
 	private Evaluable<Vector> closestNormal;
 
+	/** Cache of intersection results from the last batch evaluation. */
 	private PackedCollection cache;
 
-	private int width = -1, height = -1, ssw = -1, ssh = -1;
+	/** Render width in pixels, or -1 if not set. */
+	private int width = -1;
+
+	/** Render height in pixels, or -1 if not set. */
+	private int height = -1;
+
+	/** Supersampling width factor, or -1 if not set. */
+	private int ssw = -1;
+
+	/** Supersampling height factor, or -1 if not set. */
+	private int ssh = -1;
 
 	/**
 	 * Constructs a new {@link CachedMeshIntersectionKernel} for the specified mesh data and ray producer.

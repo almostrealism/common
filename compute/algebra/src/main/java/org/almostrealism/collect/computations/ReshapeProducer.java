@@ -27,7 +27,7 @@ import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
@@ -137,6 +137,7 @@ public class ReshapeProducer
 	 */
 	public static boolean enableShapeDelegateIsolation = true;
 
+	/** When true, validates that traversal shapes are compatible during reshape operations. */
 	public static boolean enableTraversalShapeValidation = false;
 
 	/** Metadata describing this reshape operation for debugging and introspection. */
@@ -327,6 +328,7 @@ public class ReshapeProducer
 		return producer.isConstant();
 	}
 
+	@Override
 	public boolean isProvider() { return producer.isProvider(); }
 
 	/**
@@ -437,9 +439,14 @@ public class ReshapeProducer
 	}
 
 	@Override
+	public long getExpansionWidth() {
+		return producer instanceof Process ? ((Process<?, ?>) producer).getExpansionWidth() : 1;
+	}
+
+	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends PackedCollection>> optimize(ProcessContext ctx) {
 		if (producer instanceof Process) {
-			return generateReplacement(List.of(optimize(ctx, ((Process) producer))));
+			return CollectionProducerParallelProcess.super.optimize(ctx);
 		}
 
 		return this;
@@ -565,6 +572,7 @@ public class ReshapeProducer
 	 * CollectionProducer columnTraversal = matrix.traverse(1);
 	 * }</pre>
 	 */
+	@Override
 	public CollectionProducer traverse(int axis) {
 		if (shape == null || shape(producer).traverse(0).equals(getShape().traverse(0))) {
 			if (producer instanceof CollectionProducerComputation) {

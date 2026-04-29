@@ -102,9 +102,9 @@ import java.util.stream.IntStream;
  * </ul>
  *
  * <h2>Implementation Notes</h2>
- * <p>The {@link #getExpression(TraversableExpression...)} method uses
- * {@link ArithmeticSequenceExpression} with a fixed rate of 1, as the general rate scaling
- * can be handled through the {@link #multiply(double)} method.</p>
+ * <p>The {@link #getExpression(TraversableExpression...)} method creates an
+ * {@link ArithmeticSequenceExpression} using both the {@code initial} value and
+ * the {@code rate}, correctly generating {@code initial + rate * index} in kernel code.</p>
  *
  * @see TraversableExpressionComputation
  * @see ArithmeticSequenceExpression
@@ -223,18 +223,37 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 	public boolean isFixedCount() { return fixedCount; }
 
 	/**
+	 * Returns a signature that includes the {@code initial} and {@code rate} constants,
+	 * ensuring that arithmetic sequences with different constants produce different
+	 * compiled kernels rather than sharing a cached kernel from the instruction cache.
+	 *
+	 * <p>Without this override, the instruction cache would key only on operation type
+	 * and shape, causing two sequences with different rates (e.g., from different
+	 * {@code theta} values in RoPE frequency computation) to receive the same cached
+	 * kernel and produce incorrect results.</p>
+	 *
+	 * @return A signature string that includes the constant values, or null if the
+	 *         parent signature is null
+	 */
+	@Override
+	public String signature() {
+		String signature = super.signature();
+		if (signature == null) return null;
+		return signature + "{" + initial + "," + rate + "}";
+	}
+
+	/**
 	 * Creates the expression for generating arithmetic sequence values.
 	 *
 	 * <p>Returns an {@link ArithmeticSequenceExpression} with the configured initial value
-	 * and a rate of 1. Note that the actual rate scaling is handled through the
-	 * {@link #multiply(double)} method rather than in the expression itself.</p>
+	 * and rate, producing the sequence {@code initial + rate * index} for each kernel index.</p>
 	 *
 	 * @param args Array of {@link TraversableExpression}s (not used for sequence generation)
 	 * @return An {@link ArithmeticSequenceExpression} for kernel code generation
 	 */
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
-		return new ArithmeticSequenceExpression(getShape(), initial, 1);
+		return new ArithmeticSequenceExpression(getShape(), initial, rate);
 	}
 
 	/**
@@ -250,6 +269,7 @@ public class ArithmeticSequenceComputation extends TraversableExpressionComputat
 	 *
 	 * @return An {@link Evaluable} that computes the arithmetic sequence directly
 	 */
+	@Override
 	public Evaluable<PackedCollection> get() {
 		return args -> {
 			warn("Direct evaluation of arithmetic sequence");

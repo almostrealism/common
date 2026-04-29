@@ -304,10 +304,10 @@ public class CollectionPadTests extends TestSuiteBase {
 		PackedCollection result = new PackedCollection(shape(3, 2).traverse(1));
 		padded.get().into(result.each()).evaluate(scalars);
 
-		System.out.println("Pad batch test:");
-		System.out.println("  Batch 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [5.0, 0.0])");
-		System.out.println("  Batch 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [10.0, 0.0])");
-		System.out.println("  Batch 2: [" + result.valueAt(2, 0) + ", " + result.valueAt(2, 1) + "] (expected [15.0, 0.0])");
+		log("Pad batch test:");
+		log("  Batch 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [5.0, 0.0])");
+		log("  Batch 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [10.0, 0.0])");
+		log("  Batch 2: [" + result.valueAt(2, 0) + ", " + result.valueAt(2, 1) + "] (expected [15.0, 0.0])");
 
 		Assert.assertEquals(5.0, result.valueAt(0, 0), 0.01);
 		Assert.assertEquals(0.0, result.valueAt(0, 1), 0.01);
@@ -335,10 +335,10 @@ public class CollectionPadTests extends TestSuiteBase {
 		PackedCollection result = new PackedCollection(shape(3, 2).traverse(1));
 		concatenated.get().into(result.each()).evaluate(scalars);
 
-		System.out.println("Concat batch test:");
-		System.out.println("  Batch 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [5.0, 10.0])");
-		System.out.println("  Batch 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [10.0, 20.0])");
-		System.out.println("  Batch 2: [" + result.valueAt(2, 0) + ", " + result.valueAt(2, 1) + "] (expected [15.0, 30.0])");
+		log("Concat batch test:");
+		log("  Batch 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [5.0, 10.0])");
+		log("  Batch 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [10.0, 20.0])");
+		log("  Batch 2: [" + result.valueAt(2, 0) + ", " + result.valueAt(2, 1) + "] (expected [15.0, 30.0])");
 
 		Assert.assertEquals(5.0, result.valueAt(0, 0), 0.01);
 		Assert.assertEquals(10.0, result.valueAt(0, 1), 0.01);
@@ -364,11 +364,11 @@ public class CollectionPadTests extends TestSuiteBase {
 		PackedCollection result = new PackedCollection(shape(batchSize, 2).traverse(1));
 		concatenated.get().into(result.each()).evaluate(scalars);
 
-		System.out.println("Concat large batch test (size=" + batchSize + "):");
-		System.out.println("  Element 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [0.0, 0.0])");
-		System.out.println("  Element 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [1.0, 2.0])");
-		System.out.println("  Element 100: [" + result.valueAt(100, 0) + ", " + result.valueAt(100, 1) + "] (expected [100.0, 200.0])");
-		System.out.println("  Element 255: [" + result.valueAt(255, 0) + ", " + result.valueAt(255, 1) + "] (expected [255.0, 510.0])");
+		log("Concat large batch test (size=" + batchSize + "):");
+		log("  Element 0: [" + result.valueAt(0, 0) + ", " + result.valueAt(0, 1) + "] (expected [0.0, 0.0])");
+		log("  Element 1: [" + result.valueAt(1, 0) + ", " + result.valueAt(1, 1) + "] (expected [1.0, 2.0])");
+		log("  Element 100: [" + result.valueAt(100, 0) + ", " + result.valueAt(100, 1) + "] (expected [100.0, 200.0])");
+		log("  Element 255: [" + result.valueAt(255, 0) + ", " + result.valueAt(255, 1) + "] (expected [255.0, 510.0])");
 
 		// Check first few
 		Assert.assertEquals(0.0, result.valueAt(0, 0), 0.01);
@@ -405,11 +405,11 @@ public class CollectionPadTests extends TestSuiteBase {
 		PackedCollection result = new PackedCollection(shape(h, w, 2).traverse(2));
 		concatenated.get().into(result.each()).evaluate(scalars);
 
-		System.out.println("Concat 2D traversal test (size=" + (h * w) + "):");
-		System.out.println("  [0,0]: [" + result.valueAt(0, 0, 0) + ", " + result.valueAt(0, 0, 1) + "] (expected [0.0, 0.0])");
-		System.out.println("  [0,1]: [" + result.valueAt(0, 1, 0) + ", " + result.valueAt(0, 1, 1) + "] (expected [1.0, 2.0])");
-		System.out.println("  [8,8]: [" + result.valueAt(8, 8, 0) + ", " + result.valueAt(8, 8, 1) + "] (expected [136.0, 272.0])");
-		System.out.println("  [15,15]: [" + result.valueAt(15, 15, 0) + ", " + result.valueAt(15, 15, 1) + "] (expected [255.0, 510.0])");
+		log("Concat 2D traversal test (size=" + (h * w) + "):");
+		log("  [0,0]: [" + result.valueAt(0, 0, 0) + ", " + result.valueAt(0, 0, 1) + "] (expected [0.0, 0.0])");
+		log("  [0,1]: [" + result.valueAt(0, 1, 0) + ", " + result.valueAt(0, 1, 1) + "] (expected [1.0, 2.0])");
+		log("  [8,8]: [" + result.valueAt(8, 8, 0) + ", " + result.valueAt(8, 8, 1) + "] (expected [136.0, 272.0])");
+		log("  [15,15]: [" + result.valueAt(15, 15, 0) + ", " + result.valueAt(15, 15, 1) + "] (expected [255.0, 510.0])");
 
 		// Check corners
 		Assert.assertEquals(0.0, result.valueAt(0, 0, 0), 0.01);

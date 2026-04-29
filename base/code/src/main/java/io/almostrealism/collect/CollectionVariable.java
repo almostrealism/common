@@ -18,7 +18,7 @@ package io.almostrealism.collect;
 
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.Index;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -104,6 +104,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 *
 	 * @return the shape policy for this collection variable
 	 */
+	@Override
 	public TraversalPolicy getShape() { return shape; }
 
 	/**

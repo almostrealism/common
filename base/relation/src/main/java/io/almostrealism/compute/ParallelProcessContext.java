@@ -66,8 +66,30 @@ import java.util.Optional;
  * @author Michael Murray
  */
 public class ParallelProcessContext extends ProcessContextBase implements Countable {
+	/**
+	 * When {@code true}, {@link #getExpansionWidth()} compounds multiplicatively
+	 * during context propagation &mdash; a concat of width 2 nested inside a
+	 * ternary of width 2 yields accumulated width 4. When {@code false}, it uses
+	 * max semantics like {@link #aggregationCount}.
+	 *
+	 * <p>Initial default: {@code true} (product semantics). Stacked conditional
+	 * and aggregation producers compound along a single path in the emitted
+	 * expression, so product more accurately reflects the amplification factor.
+	 * The flag is retained as a toggle for empirical comparison.</p>
+	 */
+	public static boolean enableProductExpansionWidth = true;
+
+	/** The number of parallel work items dispatched at this level of the process tree. */
 	private long parallelism;
+	/** The number of results that are aggregated from child processes at this level. */
 	private long aggregationCount;
+	/**
+	 * The accumulated expansion width seen on the path from the root to this
+	 * point in the tree. Propagated per {@link #enableProductExpansionWidth}
+	 * (max by default, product when the toggle is on). Always &ge; 1.
+	 */
+	private long expansionWidth;
+	/** Whether the parallelism count is fixed and must not be modified by optimization. */
 	private boolean fixed;
 
 	/**
@@ -80,9 +102,26 @@ public class ParallelProcessContext extends ProcessContextBase implements Counta
 	 * @throws IllegalArgumentException if parallelism exceeds {@code Integer.MAX_VALUE}
 	 */
 	protected ParallelProcessContext(int depth, long parallelism, long aggregationCount, boolean fixed) {
+		this(depth, parallelism, aggregationCount, 1L, fixed);
+	}
+
+	/**
+	 * Constructs a parallel process context with the specified parameters
+	 * including an initial accumulated expansion width.
+	 *
+	 * @param depth            the depth in the process tree hierarchy
+	 * @param parallelism      the parallelism count at this level
+	 * @param aggregationCount the number of inputs aggregated per output
+	 * @param expansionWidth   the accumulated expansion width at this level
+	 * @param fixed            whether the parallelism is fixed at compile time
+	 * @throws IllegalArgumentException if parallelism exceeds {@code Integer.MAX_VALUE}
+	 */
+	protected ParallelProcessContext(int depth, long parallelism, long aggregationCount,
+									 long expansionWidth, boolean fixed) {
 		super(depth);
 		this.parallelism = parallelism;
 		this.aggregationCount = aggregationCount;
+		this.expansionWidth = Math.max(1L, expansionWidth);
 		this.fixed = fixed;
 
 		if (parallelism > Integer.MAX_VALUE) {
@@ -120,6 +159,24 @@ public class ParallelProcessContext extends ProcessContextBase implements Counta
 	public long getAggregationCount() { return aggregationCount; }
 
 	/**
+	 * The accumulated expansion width along the path from the root of the
+	 * process tree to the node associated with this context. Expansion width
+	 * reflects how much embedding a producer's emitted expression amplifies
+	 * the consumer's expression size per use-site &mdash; 1 for pointwise
+	 * element-wise producers, N for an N-way concat or an N-wide reduction,
+	 * and similarly for other branching or unrolling producers.
+	 *
+	 * <p>Propagation semantics are controlled by
+	 * {@link #enableProductExpansionWidth}. When that flag is {@code false}
+	 * (the default during initial rollout), the accumulator takes the
+	 * maximum expansion width seen on any ancestor; when {@code true}, it
+	 * is multiplied, so stacked branching and stacked reductions compound.</p>
+	 *
+	 * @return the accumulated expansion width at this context, always &ge; 1
+	 */
+	public long getExpansionWidth() { return expansionWidth; }
+
+	/**
 	 * Converts a {@link ProcessContext} to a {@link ParallelProcessContext}.
 	 *
 	 * <p>If the context is already a {@code ParallelProcessContext}, it is returned directly.
@@ -131,7 +188,7 @@ public class ParallelProcessContext extends ProcessContextBase implements Counta
 	 */
 	public static ParallelProcessContext of(ProcessContext ctx) {
 		return ctx instanceof ParallelProcessContext ? (ParallelProcessContext) ctx :
-				new ParallelProcessContext(ctx.getDepth(), 1, 1, true);
+				new ParallelProcessContext(ctx.getDepth(), 1, 1, 1, true);
 	}
 
 	/**
@@ -148,13 +205,17 @@ public class ParallelProcessContext extends ProcessContextBase implements Counta
 	/**
 	 * Creates a new context from a parallel process with a specified aggregation count.
 	 *
+	 * <p>The expansion width is read from the process via
+	 * {@link Process#getExpansionWidth()}.</p>
+	 *
 	 * @param depth            the depth in the process tree
 	 * @param c                the parallel process to derive context from
 	 * @param aggregationCount the aggregation count for this context
 	 * @return a new context with the specified characteristics
 	 */
 	public static ParallelProcessContext of(int depth, ParallelProcess c, long aggregationCount) {
-		return new ParallelProcessContext(depth, c.getParallelism(), aggregationCount, c.isFixedCount());
+		return new ParallelProcessContext(depth, c.getParallelism(), aggregationCount,
+				Process.expansionWidth(c), c.isFixedCount());
 	}
 
 	/**
@@ -185,6 +246,8 @@ public class ParallelProcessContext extends ProcessContextBase implements Counta
 	 * @return a new context with appropriate propagation of parent values
 	 */
 	public static ParallelProcessContext of(ProcessContext ctx, ParallelProcess c, long aggregationCount) {
+		long inheritedExpansionWidth = 1L;
+
 		if (ctx instanceof ParallelProcessContext) {
 			ParallelProcessContext pctx = (ParallelProcessContext) ctx;
 
@@ -198,10 +261,21 @@ public class ParallelProcessContext extends ProcessContextBase implements Counta
 			if (pctx.getAggregationCount() > aggregationCount) {
 				aggregationCount = pctx.getAggregationCount();
 			}
+
+			inheritedExpansionWidth = pctx.getExpansionWidth();
 		}
 
-		return ParallelProcessContext.of(
-				Optional.ofNullable(ctx)
-						.map(ProcessContext::getDepth).orElse(0) + 1, c, aggregationCount);
+		long childExpansionWidth = Process.expansionWidth(c);
+		long accumulatedExpansionWidth = enableProductExpansionWidth
+				? Math.max(1L, Math.multiplyExact(Math.max(1L, inheritedExpansionWidth),
+						Math.max(1L, childExpansionWidth)))
+				: Math.max(inheritedExpansionWidth, childExpansionWidth);
+
+		int nextDepth = Optional.ofNullable(ctx)
+				.map(ProcessContext::getDepth).orElse(0) + 1;
+
+		return new ParallelProcessContext(nextDepth,
+				c.getParallelism(), aggregationCount,
+				accumulatedExpansionWidth, c.isFixedCount());
 	}
 }

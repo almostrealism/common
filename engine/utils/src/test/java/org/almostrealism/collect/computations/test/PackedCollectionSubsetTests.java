@@ -47,14 +47,14 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 
 		PackedCollection input = t.pack();
 		TraversalPolicy inputShape = input.getShape();
-		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
+		log("PackedCollectionSubsetTests: input shape = " + inputShape);
 
 		TraversalPolicy subsetShape = shape(w, h, d);
 
 		int outIndex = 1;
 		int[] pos = subsetShape.position(outIndex);
 		int index = inputShape.index(x0 + pos[0], y0 + pos[1], z0 + pos[2]);
-		System.out.println("Position " + outIndex + " maps to " + index + " " + Arrays.toString(inputShape.position(index)));
+		log("Position " + outIndex + " maps to " + index + " " + Arrays.toString(inputShape.position(index)));
 		Assert.assertEquals(433, index);
 
 		verboseLog(() -> {
@@ -71,7 +71,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 					for (int k = 0; k < d; k++) {
 						double expected = (x0 + i + y0 + j + z0 + k);
 						double actual = subset.toDouble(subsetShape.index(i, j, k));
-						System.out.println("PackedCollectionSubsetTests: [" + i + ", " + j + ", " + k + "] " + expected + " vs " + actual);
+						log("PackedCollectionSubsetTests: [" + i + ", " + j + ", " + k + "] " + expected + " vs " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);
 					}
 				}
@@ -92,7 +92,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 
 		PackedCollection input = t.pack();
 		TraversalPolicy inputShape = input.getShape();
-		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
+		log("PackedCollectionSubsetTests: input shape = " + inputShape);
 
 		PackedCollection pc = new PackedCollection(1).traverseEach();
 		pc.set(0, x0);
@@ -107,7 +107,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 			for (int i = 0; i < w; i++) {
 				double expected = x0 + i;
 				double actual = subset.valueAt(i);
-				System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
+				log("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
 				assertEquals(expected, actual);
 			}
 		});
@@ -128,7 +128,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 
 		PackedCollection input = t.pack();
 		TraversalPolicy inputShape = input.getShape();
-		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
+		log("PackedCollectionSubsetTests: input shape = " + inputShape);
 
 		PackedCollection pc = new PackedCollection(2).traverseEach();
 		pc.set(0, x0);
@@ -146,7 +146,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 				for (int j = 0; j < h; j++) {
 					double expected = (x0 + i + y0 + j);
 					double actual = subset.valueAt(i, j);
-					System.out.println("PackedCollectionSubsetTests: [" + i + ", " + j + "] " + expected + " vs " + actual);
+					log("PackedCollectionSubsetTests: [" + i + ", " + j + "] " + expected + " vs " + actual);
 					assertEquals(expected, actual);
 				}
 			}
@@ -170,7 +170,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 
 		PackedCollection input = t.pack();
 		TraversalPolicy inputShape = input.getShape();
-		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
+		log("PackedCollectionSubsetTests: input shape = " + inputShape);
 
 		PackedCollection pc = new PackedCollection(3).traverseEach();
 		pc.set(0, x0);
@@ -191,7 +191,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 					for (int k = 0; k < d; k++) {
 						double expected = input.valueAt(x0 + i, y0 + j, z0 + k);
 						double actual = subset.valueAt(i, j, k);
-						System.out.println("PackedCollectionSubsetTests: [" + i + ", " + j + ", " + k + "] " + expected + " vs " + actual);
+						log("PackedCollectionSubsetTests: [" + i + ", " + j + ", " + k + "] " + expected + " vs " + actual);
 						assertEquals(expected, actual);
 					}
 				}
@@ -237,7 +237,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 				for (int j = 0; j < size; j++) {
 					double expected = filter.toDouble(filterShape.index(i, j)) * (x0 + i + y0 + j);
 					double actual = result.toDouble(subset.getShape().index(i, j));
-					System.out.println("PackedCollectionSubsetTests: [" + i + ", " + j + "] " + expected + " vs " + actual);
+					log("PackedCollectionSubsetTests: [" + i + ", " + j + "] " + expected + " vs " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
 				}
 			}
@@ -245,7 +245,7 @@ public class PackedCollectionSubsetTests extends TestSuiteBase {
 	}
 
 	// @Test(timeout = 30000)
-	public void subsetAssignment() {
+	private void subsetAssignment() {
 		PackedCollection originalInput = new PackedCollection(shape(10, 20));
 		originalInput.fill(pos -> Math.random());
 

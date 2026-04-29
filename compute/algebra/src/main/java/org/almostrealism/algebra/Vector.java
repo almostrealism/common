@@ -132,7 +132,10 @@ import java.util.function.Supplier;
  * @see MemoryData
  */
 public class Vector extends PackedCollection implements VectorFeatures, Cloneable {
+	/** Coordinate system constant for Cartesian (x, y, z) coordinates. */
 	public static final int CARTESIAN_COORDINATES = 0;
+
+	/** Coordinate system constant for spherical (r, theta, phi) coordinates. */
 	public static final int SPHERICAL_COORDINATES = 1;
 
 	/**
@@ -529,6 +532,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 *
 	 * @return a new double array containing [x, y, z]
 	 */
+	@Override
 	public double[] toArray() {
 		return getMem().toArray(getOffset(), 3);
 	}
@@ -538,6 +542,7 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 *
 	 * @return a string in the format "[x, y, z]" with formatted numbers
 	 */
+	@Override
 	public String describe() {
 
 		String value = "[" +
@@ -666,10 +671,27 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
+	/**
+	 * Returns a Vector view of the first 3 elements of the given collection.
+	 * The vector shares memory with the collection (no copy is made).
+	 *
+	 * @param collection the collection to view as a Vector
+	 * @return a Vector backed by the collection's memory
+	 * @throws IllegalArgumentException if the collection's last dimension is not 3
+	 */
 	public static Vector view(PackedCollection collection) {
 		return view(collection, 0);
 	}
 
+	/**
+	 * Returns a Vector view of a specific position within the given collection.
+	 * The vector shares memory with the collection (no copy is made).
+	 *
+	 * @param collection the collection containing vector data
+	 * @param pos        the zero-based index of the vector within the collection
+	 * @return a Vector backed by the collection's memory at the given position
+	 * @throws IllegalArgumentException if the collection's last dimension is not 3
+	 */
 	public static Vector view(PackedCollection collection, int pos) {
 		TraversalPolicy shape = collection.getShape();
 		if (shape.length(shape.getDimensions() - 1) != 3) {

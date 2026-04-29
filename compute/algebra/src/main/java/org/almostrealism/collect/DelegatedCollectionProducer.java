@@ -57,6 +57,7 @@ import org.almostrealism.hardware.computations.DelegatedProducer;
 public class DelegatedCollectionProducer
 						extends DelegatedProducer<PackedCollection>
 						implements CollectionProducerBase<PackedCollection, CollectionProducer> {
+	/** When true, the traversal count reported by this producer is fixed and does not change. */
 	private final boolean fixedCount;
 
 	/**

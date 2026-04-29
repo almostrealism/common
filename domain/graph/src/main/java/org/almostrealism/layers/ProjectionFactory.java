@@ -19,6 +19,8 @@ package org.almostrealism.layers;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.List;
+
 /**
  * Factory for creating projection layers (dense/linear transformations).
  *
@@ -102,7 +104,7 @@ public interface ProjectionFactory extends LayerFeatures {
 	 * @param loraLayers List to accumulate created LoRA layers (for later access to trainable params)
 	 * @return A factory that conditionally creates LoRA-wrapped layers
 	 */
-	static ProjectionFactory lora(AdapterConfig config, java.util.List<LoRALinear> loraLayers) {
+	static ProjectionFactory lora(AdapterConfig config, List<LoRALinear> loraLayers) {
 		return (shape, weights, bias, target) -> {
 			LayerFeatures lf = new LayerFeatures() {};
 			if (config != null && config.isTargeted(target)) {

@@ -141,7 +141,6 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * <p>The file format is determined by the file extension. The color data
 	 * should have shape (height x width x 3) with values in 0.0-1.0 range.</p>
 	 *
-	 * @param <T> the collection type
 	 * @param file the output file path (extension determines format)
 	 * @param values producer of the color data to save
 	 * @return a supplier that when invoked returns a runnable to perform the save
@@ -153,7 +152,6 @@ public interface RGBFeatures extends ScalarFeatures {
 	/**
 	 * Creates a runnable that saves RGB color data to an image file.
 	 *
-	 * @param <T> the collection type
 	 * @param file the output file
 	 * @param format the image format (e.g., "png", "jpg")
 	 * @param values producer of the color data to save
@@ -170,7 +168,6 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * <p>Use this when your data has shape (3 x height x width) instead of
 	 * (height x width x 3).</p>
 	 *
-	 * @param <T> the collection type
 	 * @param file the output file path (extension determines format)
 	 * @param values producer of the channels-first color data
 	 * @return a supplier that when invoked returns a runnable to perform the save
@@ -182,7 +179,6 @@ public interface RGBFeatures extends ScalarFeatures {
 	/**
 	 * Creates a runnable that saves channels-first color data to an image file.
 	 *
-	 * @param <T> the collection type
 	 * @param file the output file
 	 * @param format the image format (e.g., "png", "jpg")
 	 * @param values producer of the channels-first color data
@@ -199,7 +195,6 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * <p>The format is determined by file extension. Supported formats:
 	 * png, jpg, jpeg, bmp, gif, tiff.</p>
 	 *
-	 * @param <T> the collection type
 	 * @param file the output file path
 	 * @param channelsFirst true if data is (3 x H x W), false if (H x W x 3)
 	 * @param values producer of the image data
@@ -229,7 +224,6 @@ public interface RGBFeatures extends ScalarFeatures {
 	/**
 	 * Creates a runnable that saves image data to a file with specified format.
 	 *
-	 * @param <T> the collection type
 	 * @param file the output file
 	 * @param format the image format (e.g., "png", "jpg")
 	 * @param channelsFirst true if data is (3 x H x W), false if (H x W x 3)

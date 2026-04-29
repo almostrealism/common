@@ -16,6 +16,7 @@
 
 package org.almostrealism.audio.line;
 
+import org.almostrealism.io.Console;
 import org.almostrealism.collect.PackedCollection;
 
 import javax.sound.sampled.AudioFormat;
@@ -23,6 +24,7 @@ import javax.sound.sampled.AudioInputStream;
 import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.DataLine;
 import javax.sound.sampled.LineUnavailableException;
+import javax.sound.sampled.Mixer;
 import javax.sound.sampled.SourceDataLine;
 import javax.sound.sampled.UnsupportedAudioFileException;
 import java.io.BufferedInputStream;
@@ -50,21 +52,42 @@ import java.nio.ByteOrder;
  * @see PackedCollection
  */
 public class LineUtilities {
+	/** The most recently used AudioFormat, cached to avoid recomputing the default format. */
 	protected static AudioFormat lastFormat;
-	
+
+	/**
+	 * Returns the standard 16-bit signed PCM audio format for the specified channel count.
+	 * The frame size is computed as {@code channels * 2} (2 bytes per 16-bit sample).
+	 *
+	 * @param channels the number of audio channels
+	 * @return a 16-bit signed PCM format at the standard sample rate
+	 */
+	public static AudioFormat getDefaultFormat(int channels) {
+		int frameSize = channels * 2;
+		return new AudioFormat(AudioFormat.Encoding.PCM_SIGNED,
+				OutputLine.sampleRate, 16, channels, frameSize,
+				OutputLine.sampleRate, false);
+	}
+
 	/**
 	 * Returns a SourceDataOutputLine for the most recent format requested.
 	 */
 	public static OutputLine getLine() {
 		if (lastFormat == null) {
-			lastFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, OutputLine.sampleRate,
-					16, 2, 4,
-					OutputLine.sampleRate, false);
+			lastFormat = getDefaultFormat(2);
 		}
 
 		return getLine(lastFormat, BufferDefaults.defaultBufferSize);
 	}
 
+	/**
+	 * Returns the number of audio frames in the given sample collection.
+	 * For 1D collections, the length is the frame count directly.
+	 * For higher-dimensional collections, the second dimension is used.
+	 *
+	 * @param sample the audio data collection
+	 * @return number of audio frames
+	 */
 	public static int frameCount(PackedCollection sample) {
 		if (sample.getShape().getDimensions() == 1) {
 			return sample.getShape().length(0);
@@ -73,6 +96,12 @@ public class LineUtilities {
 		}
 	}
 
+	/**
+	 * Returns a SourceDataOutputLine for the specified format with the default buffer size.
+	 *
+	 * @param format the audio format for the line
+	 * @return an OutputLine backed by a native audio line
+	 */
 	public static OutputLine getLine(AudioFormat format) {
 		return getLine(format, 1024);
 	}
@@ -84,7 +113,7 @@ public class LineUtilities {
 		SourceDataLine line;
 		DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
 		if (!AudioSystem.isLineSupported(info)) {
-			System.out.println("Not supported");
+			Console.root().warn("Not supported");
 			return null;
 		}
 		
@@ -95,7 +124,7 @@ public class LineUtilities {
 			line.open(format, Math.max(1024, bufferFrames * 4));
 			line.start();
 		} catch (LineUnavailableException ex) {
-			System.out.println("Unavailable (" + ex.getMessage() + ")");
+			Console.root().warn("Unavailable (" + ex.getMessage() + ")");
 			return null;
 		}
 		
@@ -215,7 +244,7 @@ public class LineUtilities {
 		ByteBuffer buf = ByteBuffer.wrap(frameBytes);
 
 		if (!format.isBigEndian()) {
-			buf.order(java.nio.ByteOrder.LITTLE_ENDIAN);
+			buf.order(ByteOrder.LITTLE_ENDIAN);
 		}
 
 		int bitRate = format.getSampleSizeInBits();
@@ -281,6 +310,37 @@ public class LineUtilities {
 		return frameBytes;
 	}
 	
+	/**
+	 * Returns a SourceDataOutputLine opened on the specified mixer device.
+	 *
+	 * @param mixerInfo   the mixer device to open the line on
+	 * @param format      the audio format for the line
+	 * @param bufferFrames the buffer size in frames
+	 * @return an OutputLine backed by the specified device, or null if unavailable
+	 */
+	public static OutputLine getLine(Mixer.Info mixerInfo,
+									 AudioFormat format, int bufferFrames) {
+		DataLine.Info info = new DataLine.Info(SourceDataLine.class, format);
+		lastFormat = format;
+
+		try {
+			Mixer mixer = AudioSystem.getMixer(mixerInfo);
+			SourceDataLine line = (SourceDataLine) mixer.getLine(info);
+			line.open(format, Math.max(1024, bufferFrames * 4));
+			line.start();
+			return new SourceDataOutputLine(line, bufferFrames);
+		} catch (LineUnavailableException ex) {
+			Console.root().warn("Unavailable on " + mixerInfo.getName()
+					+ " (" + ex.getMessage() + ")");
+			return null;
+		}
+	}
+
+	/**
+	 * Returns the most recently used AudioFormat, or null if no line has been opened yet.
+	 *
+	 * @return the last AudioFormat used, or {@code null}
+	 */
 	public static AudioFormat getAudioFormat() {
 		return lastFormat;
 	}
@@ -293,9 +353,7 @@ public class LineUtilities {
 	 */
 	public static boolean isHardwareAvailable() {
 		if (lastFormat == null) {
-			lastFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, OutputLine.sampleRate,
-					16, 2, 4,
-					OutputLine.sampleRate, false);
+			lastFormat = getDefaultFormat(2);
 		}
 
 		DataLine.Info info = new DataLine.Info(SourceDataLine.class, lastFormat);
@@ -332,9 +390,7 @@ public class LineUtilities {
 	 */
 	public static OutputLine getLineOrMock(int bufferFrames) {
 		if (lastFormat == null) {
-			lastFormat = new AudioFormat(AudioFormat.Encoding.PCM_SIGNED, OutputLine.sampleRate,
-					16, 2, 4,
-					OutputLine.sampleRate, false);
+			lastFormat = getDefaultFormat(2);
 		}
 
 		OutputLine line = getLine(lastFormat, bufferFrames);

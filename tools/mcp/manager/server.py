@@ -16,22 +16,30 @@ Architecture:
 Configuration via environment variables:
     AR_CONTROLLER_URL       - FlowTree controller base URL
                               (default: http://localhost:7780)
-    AR_MANAGER_GITHUB_TOKEN - GitHub PAT for Tier 2 operations
-                              (falls back to GITHUB_TOKEN)
     AR_MANAGER_TOKEN_FILE   - Path to bearer token config file
                               (default: ~/.config/ar/manager-tokens.json)
     AR_MANAGER_TOKENS       - JSON string of token config (overrides file)
     AR_MEMORY_URL           - ar-memory HTTP server URL (auto-discovered if not set)
     MCP_TRANSPORT           - Transport: stdio (default), http, or sse
     MCP_PORT                - Port for http/sse transport (default: 8010)
+
+GitHub authentication: ar-manager never holds a GitHub token itself. Every
+GitHub API call routes through the FlowTree controller's ``/api/github/proxy``
+endpoint, which resolves the per-org PAT from ``workstreams.yaml``. The
+controller is reachable only on the private network and trusts ar-manager's
+assertion of which org to use; ar-manager enforces the security model by
+verifying the caller's ar-manager token is authorised for that org before
+forwarding the request.
 """
 
 import base64
+import binascii
 import contextvars
 import hmac
 import json
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -46,10 +54,6 @@ from urllib.request import Request, urlopen
 # ---------------------------------------------------------------------------
 
 CONTROLLER_URL = os.environ.get("AR_CONTROLLER_URL", "http://localhost:7780")
-GITHUB_TOKEN = (
-    os.environ.get("AR_MANAGER_GITHUB_TOKEN", "").strip()
-    or os.environ.get("GITHUB_TOKEN", "").strip()
-)
 TOKEN_FILE = os.environ.get(
     "AR_MANAGER_TOKEN_FILE",
     os.path.expanduser("~/.config/ar/manager-tokens.json"),
@@ -57,6 +61,20 @@ TOKEN_FILE = os.environ.get(
 
 # Rate limit: requests per minute per token/IP (configurable)
 RATE_LIMIT = int(os.environ.get("AR_MANAGER_RATE_LIMIT", "60"))
+
+def _load_shared_secret() -> str:
+    """Load the shared secret from file or environment variable."""
+    secret_file = os.environ.get("AR_MANAGER_SHARED_SECRET_FILE", "").strip()
+    if secret_file and os.path.isfile(secret_file):
+        try:
+            with open(secret_file) as f:
+                return f.read().strip()
+        except OSError as e:
+            print(f"ar-manager: WARNING: Failed to read shared secret file: {e}",
+                  file=sys.stderr)
+    return os.environ.get("AR_MANAGER_SHARED_SECRET", "").strip()
+
+SHARED_SECRET = _load_shared_secret()
 
 # Input length limits
 MAX_PROMPT_LEN = 50_000
@@ -133,10 +151,8 @@ def _get_llm():
 
 # Log startup configuration to stderr for diagnostics
 print(f"ar-manager: AR_CONTROLLER_URL={CONTROLLER_URL}", file=sys.stderr)
-print(
-    f"ar-manager: GITHUB_TOKEN={'<set>' if GITHUB_TOKEN else '<not set>'}",
-    file=sys.stderr,
-)
+print(f"ar-manager: AR_MANAGER_SHARED_SECRET={'<set>' if SHARED_SECRET else '<not set>'}",
+      file=sys.stderr)
 
 # ---------------------------------------------------------------------------
 # Bearer token authentication
@@ -176,6 +192,137 @@ def _set_scopes(scopes: list, label: str = "anonymous") -> None:
     _request_token_label.set(label)
     _thread_local.scopes = scopes
     _thread_local.token_label = label
+
+
+_request_workstream_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "_request_workstream_id", default=None
+)
+_request_job_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "_request_job_id", default=None
+)
+
+# Per-request workspace scope. A value of None (or an empty list) means the
+# caller is unscoped — it may see and act on every workstream in every Slack
+# workspace. A non-empty list of workspace IDs restricts the caller to those
+# workspaces only.
+_request_workspace_scopes: contextvars.ContextVar[Optional[list]] = contextvars.ContextVar(
+    "_request_workspace_scopes", default=None
+)
+
+
+def _get_workspace_scopes() -> Optional[list]:
+    """Return the list of workspace IDs this request is allowed to touch,
+    or None if unscoped (allowed everywhere)."""
+    ws = _request_workspace_scopes.get(None)
+    if ws is not None:
+        return ws
+    return getattr(_thread_local, "workspace_scopes", None)
+
+
+def _set_workspace_scopes(workspace_scopes: Optional[list]) -> None:
+    """Store the workspace scope list for the current request. Pass None to
+    mark the caller as unscoped (superadmin)."""
+    _request_workspace_scopes.set(workspace_scopes)
+    _thread_local.workspace_scopes = workspace_scopes
+
+
+def _is_workspace_allowed(workspace_id: Optional[str]) -> bool:
+    """Return True if the current request's workspace scope permits
+    operating on the given workspace ID.
+
+    Unscoped callers always pass. Scoped callers only pass when their
+    list contains the workspace ID. A workstream with no resolvable
+    workspace ID (single-workspace mode or unregistered) is permitted
+    only for unscoped callers, since we cannot verify its assignment.
+    """
+    scopes = _get_workspace_scopes()
+    if not scopes:
+        return True
+    if workspace_id is None or workspace_id == "":
+        return False
+    return workspace_id in scopes
+
+
+def _require_workspace(workspace_id: Optional[str]) -> None:
+    """Raise PermissionError if the current request is not scoped to the
+    given workspace. No-op for unscoped tokens."""
+    if not _is_workspace_allowed(workspace_id):
+        raise PermissionError(
+            "Token is not scoped to workspace "
+            + (workspace_id if workspace_id else "<unknown>")
+        )
+
+def _get_token_workstream_id() -> Optional[str]:
+    ws = _request_workstream_id.get(None)
+    if ws is not None:
+        return ws
+    return getattr(_thread_local, "workstream_id", None)
+
+def _get_token_job_id() -> Optional[str]:
+    jid = _request_job_id.get(None)
+    if jid is not None:
+        return jid
+    return getattr(_thread_local, "job_id", None)
+
+def _set_token_context(workstream_id: str, job_id: str) -> None:
+    _request_workstream_id.set(workstream_id)
+    _request_job_id.set(job_id)
+    _thread_local.workstream_id = workstream_id
+    _thread_local.job_id = job_id
+
+
+def _validate_temp_token(token_value: str) -> Optional[tuple[list, str, str, str]]:
+    """Validate an HMAC temporary token.
+
+    Token format: armt_tmp_{base64url(hmac)}:{base64url(payload)}
+    Payload format: {workstream_id}:{job_id}:{expiry_epoch}
+
+    Returns (scopes, label, workstream_id, job_id) or None if invalid.
+    """
+    if not SHARED_SECRET:
+        return None
+    if not token_value.startswith("armt_tmp_"):
+        return None
+
+    rest = token_value[len("armt_tmp_"):]
+    parts = rest.split(":", 1)
+    if len(parts) != 2:
+        return None
+
+    token_hmac_b64, payload_b64 = parts
+    try:
+        token_hmac = base64.urlsafe_b64decode(token_hmac_b64 + "==")
+        payload = base64.urlsafe_b64decode(payload_b64 + "==").decode("utf-8")
+    except Exception:
+        return None
+
+    # Verify HMAC
+    expected_hmac = hmac.new(
+        SHARED_SECRET.encode("utf-8"),
+        payload.encode("utf-8"),
+        "sha256"
+    ).digest()
+    if not hmac.compare_digest(token_hmac, expected_hmac):
+        return None
+
+    # Parse payload
+    payload_parts = payload.split(":")
+    if len(payload_parts) != 3:
+        return None
+
+    workstream_id, job_id, expiry_str = payload_parts
+    try:
+        expiry = int(expiry_str)
+    except ValueError:
+        return None
+
+    # Check expiry
+    if time.time() > expiry:
+        return None
+
+    scopes = ["read", "write", "memory"]
+    label = f"tmp:{workstream_id}/{job_id}"
+    return scopes, label, workstream_id, job_id
 
 
 def _require_scope(scope: str) -> None:
@@ -276,14 +423,23 @@ class BearerAuthMiddleware:
 
     def __init__(self, app, tokens: list):
         self.app = app
-        # Build a lookup: token value -> (scopes, label)
+        # Build a lookup: token value -> (scopes, label, workspace_scopes).
+        # workspace_scopes is None for unscoped (superadmin) tokens or a list
+        # of Slack workspace IDs for narrower tokens. An empty list in the
+        # config is normalised to None so callers can write either "no field"
+        # or "workspaceScopes: []" to mean unscoped.
         self.token_entries = []
         for t in tokens:
             value = t.get("value", "")
             scopes = t.get("scopes", [])
             label = t.get("label", "unlabeled")
+            ws_scopes_raw = t.get("workspaceScopes")
+            if isinstance(ws_scopes_raw, list) and ws_scopes_raw:
+                ws_scopes: Optional[list] = [str(w) for w in ws_scopes_raw]
+            else:
+                ws_scopes = None
             if value:
-                self.token_entries.append((value, scopes, label))
+                self.token_entries.append((value, scopes, label, ws_scopes))
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
@@ -302,17 +458,58 @@ class BearerAuthMiddleware:
                 # timing side-channels that reveal token existence
                 matched_scopes = None
                 matched_label = None
-                for stored_value, scopes, label in self.token_entries:
+                matched_workspace_scopes = None
+                matched = False
+                for stored_value, scopes, label, ws_scopes in self.token_entries:
                     if hmac.compare_digest(
                         token_value.encode("utf-8"),
                         stored_value.encode("utf-8"),
                     ):
                         matched_scopes = scopes
                         matched_label = label
+                        matched_workspace_scopes = ws_scopes
+                        matched = True
                         break
 
-                if matched_scopes is not None:
+                if matched:
                     _set_scopes(matched_scopes, matched_label)
+                    _set_workspace_scopes(matched_workspace_scopes)
+                    await self.app(scope, receive, send)
+                    return
+
+                # Try HMAC temporary token. Temp tokens are issued by the
+                # controller for a specific (workstream, job) pair; the
+                # token itself doesn't carry a workspace ID, so we resolve
+                # the workstream's owning workspace here and scope the
+                # request to it. In legacy (single-workspace) mode no
+                # workspace IDs exist at all — leave the scope None so
+                # behaviour matches static tokens in that deployment.
+                temp_result = _validate_temp_token(token_value)
+                if temp_result is not None:
+                    scopes, label, ws_id, job_id = temp_result
+                    workspace_id = _workspace_for_workstream(ws_id)
+                    if workspace_id is None and _is_multi_workspace_mode():
+                        # Multi-workspace deployment but the bound workstream
+                        # has no resolvable workspace — either it was removed
+                        # since the token was minted, or the config is
+                        # inconsistent. Fail closed rather than silently
+                        # granting superadmin.
+                        await send({
+                            "type": "http.response.start",
+                            "status": 401,
+                            "headers": [
+                                [b"content-type", b"application/json"],
+                                [b"www-authenticate", b'Bearer realm="ar-manager"'],
+                            ],
+                        })
+                        await send({
+                            "type": "http.response.body",
+                            "body": b'{"error":"Unauthorized: workspace for temp-token workstream could not be resolved"}',
+                        })
+                        return
+                    _set_scopes(scopes, label)
+                    _set_workspace_scopes([workspace_id] if workspace_id else None)
+                    _set_token_context(ws_id, job_id)
                     await self.app(scope, receive, send)
                     return
 
@@ -496,191 +693,202 @@ def _controller_post(path: str, payload: dict, timeout: int = 15) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# GitHub API helpers — routed through the FlowTree controller proxy
+# Workspace scope resolution
 # ---------------------------------------------------------------------------
 
-# Thread-local org context set by Tier 2 tools before calling _github_request
-_current_github_org: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
-    "_current_github_org", default=None,
-)
+# Short-lived cache of the workstream → workspace mapping. Each entry holds
+# the mapping plus its fetch timestamp. Refreshed whenever the last fetch is
+# older than WORKSPACE_CACHE_TTL seconds. Controller is local so hitting
+# /api/workstreams is cheap, but refetching on every tool invocation adds
+# avoidable latency to short read tools.
+_workspace_map_cache: dict = {"map": None, "org_map": None, "fetched": 0.0}
+_workspace_map_lock = threading.Lock()
+WORKSPACE_CACHE_TTL = 30.0
 
 
-def _github_request(method: str, path: str, payload: dict = None,
-                    timeout: int = 15) -> dict:
-    """Make a GitHub API request via the controller's proxy endpoint.
-
-    The controller resolves the GitHub token from its per-organization
-    token map (``githubOrgs`` in ``workstreams.yaml``), falling back to
-    its instance-level token and then the ``GITHUB_TOKEN`` env var.
-
-    If the controller proxy is unreachable and a local ``GITHUB_TOKEN``
-    is available, falls back to a direct API call.
-
-    Args:
-        method: HTTP method (GET, POST, PUT).
-        path: GitHub API path (e.g., ``/repos/owner/repo/...``).
-        payload: Optional dict to JSON-encode as the request body.
-        timeout: Request timeout in seconds.
-
-    Returns:
-        Parsed JSON response, or a status dict for empty responses (204).
+def _build_maps_from_workstreams(entries: list) -> tuple:
+    """Build ``(workstream_id → workspace_id, org_name → set(workspace_ids))``
+    from a workstream list. Workstreams whose ``repoUrl`` cannot be parsed
+    as a GitHub URL contribute nothing to the org map. An org may appear
+    in multiple workspaces; the org map tracks the full set so ambiguity
+    can be detected by :func:`_require_org_in_scope` rather than silently
+    resolved (either first-wins or last-wins would mis-authorise a scoped
+    token if the same org is shared across workspaces).
     """
-    org = _current_github_org.get()
-
-    # Try controller proxy first
-    result = _github_proxy_request(method, path, payload, org, timeout)
-    if result is not None:
-        return result
-
-    # Fallback to direct API call if a local token is available
-    if not GITHUB_TOKEN:
-        return {
-            "ok": False,
-            "error": (
-                "GitHub API unavailable: controller proxy unreachable "
-                "and no local GITHUB_TOKEN configured."
-            ),
-            "next_steps": [
-                "Ensure the FlowTree controller is running and reachable",
-                "Or set AR_MANAGER_GITHUB_TOKEN / GITHUB_TOKEN as fallback",
-            ],
-        }
-
-    return _github_direct_request(method, path, payload, timeout)
+    ws_map: dict = {}
+    org_map: dict = {}
+    if not isinstance(entries, list):
+        return ws_map, org_map
+    for ws in entries:
+        if not isinstance(ws, dict):
+            continue
+        wid = ws.get("workstreamId")
+        workspace_id = ws.get("slackWorkspaceId")
+        if wid:
+            ws_map[wid] = workspace_id
+        org = _extract_owner_repo(ws.get("repoUrl") or "")
+        if org and workspace_id:
+            org_map.setdefault(org[0], set()).add(workspace_id)
+    return ws_map, org_map
 
 
-def _github_proxy_request(method: str, path: str, payload: dict = None,
-                          org: str = None, timeout: int = 15) -> Optional[dict]:
-    """Route a GitHub API request through the controller's proxy.
-
-    Returns:
-        Parsed response dict, or None if the proxy is unreachable.
+def _refresh_workspace_map() -> tuple:
+    """Fetch the workstream list from the controller and return fresh
+    ``(workstream_id → workspace_id, org_name → workspace_id)`` maps.
     """
-    params = f"url={quote(path, safe='')}"
-    if org:
-        params += f"&org={quote(org, safe='')}"
-    proxy_url = CONTROLLER_URL.rstrip("/") + f"/api/github/proxy?{params}"
+    result = _controller_get("/api/workstreams")
+    entries = result if isinstance(result, list) else result.get("workstreams", [])
+    return _build_maps_from_workstreams(entries)
 
-    data = json.dumps(payload).encode("utf-8") if payload else None
-    req = Request(proxy_url, data=data, method=method)
-    req.add_header("Accept", "application/json")
-    if data:
-        req.add_header("Content-Type", "application/json")
 
-    print(f"ar-manager: {method} {path} (via controller proxy, org={org})",
-          file=sys.stderr)
-    try:
-        with urlopen(req, timeout=timeout) as resp:
-            body = resp.read().decode("utf-8")
-            if not body:
-                return {"ok": True, "status": 204}
-            wrapper = json.loads(body)
+def _get_cached_maps(workstream_id: str = "", org: str = "") -> tuple:
+    """Return ``(workstream_map, org_map)`` from the cache, refreshing if
+    the cache is older than ``WORKSPACE_CACHE_TTL`` or if an expected key
+    is missing (handles a just-registered workstream or just-added org).
 
-        # The proxy wraps responses as {"status": N, "link": "...", "body": <json>}
-        gh_status = wrapper.get("status", 0)
-        gh_body = wrapper.get("body")
+    The lock is held only around cache reads and writes; the network
+    fetch happens outside the lock so concurrent callers do not serialize
+    behind a single slow I/O. Double-checked-locking pattern.
+    """
+    now = time.monotonic()
+    with _workspace_map_lock:
+        ws_map = _workspace_map_cache.get("map")
+        org_map = _workspace_map_cache.get("org_map")
+        fetched = _workspace_map_cache.get("fetched", 0.0)
+        fresh = (ws_map is not None and org_map is not None
+                 and (now - fetched) <= WORKSPACE_CACHE_TTL)
+    needs_refresh = not fresh
+    if fresh:
+        if workstream_id and workstream_id not in ws_map:
+            needs_refresh = True
+        elif org and org not in org_map:
+            needs_refresh = True
+    if not needs_refresh:
+        return ws_map, org_map
+    new_ws_map, new_org_map = _refresh_workspace_map()
+    new_fetched = time.monotonic()
+    with _workspace_map_lock:
+        _workspace_map_cache["map"] = new_ws_map
+        _workspace_map_cache["org_map"] = new_org_map
+        _workspace_map_cache["fetched"] = new_fetched
+    return new_ws_map, new_org_map
 
-        if gh_status == 204 or gh_body is None:
-            return {"ok": True, "status": gh_status}
-        if isinstance(gh_body, dict) and 200 <= gh_status < 300:
-            return gh_body
-        if isinstance(gh_body, dict):
-            msg = gh_body.get("message", "")
-            return {"ok": False, "error": f"GitHub returned HTTP {gh_status}: {msg}"}
-        return {"ok": False, "error": f"GitHub returned HTTP {gh_status}"}
-    except (URLError, OSError, TimeoutError) as e:
-        print(f"ar-manager: controller proxy unreachable: {e}", file=sys.stderr)
+
+def _workspace_for_workstream(workstream_id: str) -> Optional[str]:
+    """Return the Slack workspace ID that owns ``workstream_id``, or None
+    if the workstream is unknown or has no workspace assignment.
+    """
+    if not workstream_id:
         return None
-    except Exception as e:
-        logging.getLogger("ar-manager").error("GitHub proxy %s %s: %s", method, path, e)
-        return None
+    ws_map, _ = _get_cached_maps(workstream_id=workstream_id)
+    return ws_map.get(workstream_id)
 
 
-def _github_direct_request(method: str, path: str, payload: dict = None,
-                           timeout: int = 15) -> dict:
-    """Direct GitHub API call using local GITHUB_TOKEN (fallback only).
-
-    Args:
-        method: HTTP method (GET, POST, PUT).
-        path: GitHub API path.
-        payload: Optional request body.
-        timeout: Request timeout in seconds.
-
-    Returns:
-        Parsed JSON response.
+def _is_multi_workspace_mode() -> bool:
+    """Return True when the controller is running in multi-workspace mode —
+    i.e., at least one registered workstream has a non-null
+    ``slackWorkspaceId``. Used by the temp-token validator to decide
+    whether a workstream whose workspace cannot be resolved should be
+    rejected (multi-workspace mode) or accepted as unscoped (legacy
+    single-workspace mode).
     """
-    url = f"https://api.github.com{path}"
-    data = json.dumps(payload).encode("utf-8") if payload else None
-    req = Request(url, data=data, method=method)
-    req.add_header("Authorization", f"Bearer {GITHUB_TOKEN}")
-    req.add_header("Accept", "application/vnd.github+json")
-    req.add_header("X-GitHub-Api-Version", "2022-11-28")
-    if data:
-        req.add_header("Content-Type", "application/json")
-
-    print(f"ar-manager: {method} {url} (direct fallback)", file=sys.stderr)
-    try:
-        with urlopen(req, timeout=timeout) as resp:
-            body = resp.read().decode("utf-8")
-            if not body:
-                return {"ok": True, "status": resp.status}
-            return json.loads(body)
-    except HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        logging.getLogger("ar-manager").error(
-            "GitHub %s %s: HTTP %d: %s", method, path, e.code, body[:500])
-        try:
-            err = json.loads(body)
-            return {"ok": False, "error": f"GitHub returned HTTP {e.code}: {err.get('message', '')}"}
-        except json.JSONDecodeError:
-            return {"ok": False, "error": f"GitHub returned HTTP {e.code}"}
-    except URLError as e:
-        return {"ok": False, "error": f"GitHub API unreachable: {e.reason}"}
-    except Exception as e:
-        logging.getLogger("ar-manager").error("GitHub %s %s: %s", method, path, e)
-        return {"ok": False, "error": "Internal error contacting GitHub API"}
+    ws_map, _ = _get_cached_maps()
+    return any(v for v in ws_map.values())
 
 
-def _set_github_org(ws: dict) -> None:
-    """Set the GitHub org context from a workstream for token routing.
-
-    Uses the explicit ``githubOrg`` field if configured, otherwise
-    extracts the org from the repository URL.
+def _workspaces_for_org(org: str) -> set:
+    """Return the set of Slack workspace IDs that declare at least one
+    workstream on the given GitHub org (i.e., a ``repoUrl`` on that org).
+    Empty when no registered workstream ties that org to any workspace.
     """
-    org = ws.get("githubOrg")
     if not org:
-        owner_repo = _extract_owner_repo(ws.get("repoUrl", ""))
-        if owner_repo:
-            org = owner_repo[0]
-    _current_github_org.set(org)
+        return set()
+    _, org_map = _get_cached_maps(org=org)
+    return set(org_map.get(org, set()))
 
 
-def _extract_owner_repo(repo_url: str) -> Optional[tuple]:
-    """Extract (owner, repo) from a GitHub URL.
+def _require_org_in_scope(org: str) -> None:
+    """Raise :class:`PermissionError` if the current request's workspace
+    scope does not permit operating on the given GitHub org.
 
-    Handles HTTPS URLs (``https://github.com/owner/repo.git``)
-    and SSH URLs (``git@github.com:owner/repo.git``).
+    Unscoped callers always pass — they're trusted to name any org the
+    controller holds a PAT for, and the controller will reject unknown
+    orgs itself.
 
-    Returns:
-        Tuple of (owner, repo) or None if parsing fails.
+    Scoped callers are accepted only when the org is unambiguously owned
+    by a single workspace in their scope. An org that:
+      - has no registered workstream anywhere → denied.
+      - appears under multiple workspaces → denied (the controller's
+        per-org PAT map is last-wins, so even if the caller is in ONE of
+        the owning workspaces, a direct-org proxy call may end up using
+        a token issued for a different workspace's workstreams).
+      - appears under one workspace that is not in the caller's scope →
+        denied.
+
+    The scoped caller's fallback in the multi-workspace case is to pass a
+    workstream_id, which disambiguates the target workspace (and therefore
+    the PAT) unambiguously.
     """
-    if not repo_url:
-        return None
-    # HTTPS
-    if "github.com/" in repo_url:
-        parts = repo_url.split("github.com/")[-1]
-        parts = parts.rstrip("/").removesuffix(".git")
-        segments = parts.split("/")
-        if len(segments) >= 2:
-            return (segments[0], segments[1])
-    # SSH
-    if "github.com:" in repo_url:
-        parts = repo_url.split("github.com:")[-1]
-        parts = parts.rstrip("/").removesuffix(".git")
-        segments = parts.split("/")
-        if len(segments) >= 2:
-            return (segments[0], segments[1])
-    return None
+    if not _get_workspace_scopes():
+        return
+    owners = _workspaces_for_org(org)
+    if not owners:
+        raise PermissionError(
+            f"Token is not scoped to any workspace containing GitHub org '{org}'. "
+            "Either pass a workstream_id that belongs to your scope, or ask "
+            "the operator to link the org to a workspace via workstreams.yaml.")
+    if len(owners) > 1:
+        raise PermissionError(
+            f"GitHub org '{org}' is registered under multiple Slack workspaces "
+            f"({sorted(owners)}). Direct-org addressing is ambiguous for scoped "
+            "tokens because the controller's per-org PAT is last-wins; pass a "
+            "workstream_id instead so the workspace (and therefore the PAT) is "
+            "uniquely determined.")
+    (only_workspace,) = owners
+    _require_workspace(only_workspace)
+
+
+def _require_workstream_in_scope(workstream_id: str) -> None:
+    """Resolve the workspace owning ``workstream_id`` and raise
+    PermissionError if the current request's token does not permit it.
+    No-op when the caller's token is unscoped.
+    """
+    if not _get_workspace_scopes():
+        return
+    ws_id = _workspace_for_workstream(workstream_id)
+    _require_workspace(ws_id)
+
+
+def _filter_workstreams_by_scope(entries: list) -> list:
+    """Return only those workstream-dict entries whose slackWorkspaceId is
+    permitted by the current request's workspace scope. Unscoped callers
+    see everything; scoped callers see only in-scope workstreams.
+    """
+    scopes = _get_workspace_scopes()
+    if not scopes:
+        return entries
+    filtered = []
+    for ws in entries:
+        if isinstance(ws, dict):
+            if ws.get("slackWorkspaceId") in scopes:
+                filtered.append(ws)
+    return filtered
+
+
+# ---------------------------------------------------------------------------
+# GitHub API helpers — delegated to github_api.py to reduce file size
+# ---------------------------------------------------------------------------
+
+import github_api  # noqa: E402
+
+# Re-export so existing call sites (pipeline tools, memory tools, tests) work unchanged.
+# configure() is called below after _find_workstream is defined.
+_github_request = github_api._github_request
+_github_graphql_request = github_api._github_graphql_request
+_set_github_org = github_api._set_github_org
+_extract_owner_repo = github_api._extract_owner_repo
+_current_github_org = github_api._current_github_org
+_resolve_github_repo = github_api._resolve_github_repo
 
 
 # ---------------------------------------------------------------------------
@@ -709,15 +917,34 @@ def _pipeline_error(workstream_id: str, missing: str) -> dict:
 def _find_workstream(workstream_id: str) -> Optional[dict]:
     """Fetch a specific workstream from the controller's list.
 
+    Enforces the current request's workspace scope as a side effect: a
+    scoped caller looking up a workstream in an out-of-scope workspace
+    receives None (the lookup appears to fail, rather than leaking
+    existence or 403'ing from every call site independently).
+
     Returns:
-        The workstream dict, or None if not found.
+        The workstream dict, or None if not found or not in scope.
     """
     result = _controller_get("/api/workstreams")
     if isinstance(result, list):
         for ws in result:
             if ws.get("workstreamId") == workstream_id:
+                if _get_workspace_scopes() and not _is_workspace_allowed(
+                        ws.get("slackWorkspaceId")):
+                    return None
                 return ws
     return None
+
+
+# Now that _find_workstream is defined, configure the GitHub API module.
+# ar-manager deliberately does not hold a GitHub token; all requests route
+# through the controller's proxy, which resolves the per-org PAT from
+# workstreams.yaml.
+github_api.configure(
+    controller_url=CONTROLLER_URL,
+    find_workstream=_find_workstream,
+    get_token_workstream_id=_get_token_workstream_id,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -751,6 +978,54 @@ def controller_health() -> dict:
 
 
 @mcp.tool()
+def controller_update_config(
+    accept_automated_jobs: str = "",
+) -> dict:
+    """Get or update the FlowTree controller's runtime configuration.
+
+    Currently supports toggling whether automated job submissions (e.g.,
+    from CI pipelines) are accepted. When automated jobs are disabled,
+    submissions with ``automated: true`` in the payload are rejected.
+    This prevents infinite loops where CI submits work to an agent which
+    then triggers CI again.
+
+    Call with no arguments to read the current setting. Provide
+    ``accept_automated_jobs`` to change it.
+
+    Args:
+        accept_automated_jobs: Set to ``true`` to accept automated job
+            submissions (the default) or ``false`` to reject them.
+            Leave empty to read the current setting.
+
+    Returns:
+        Dictionary with the current ``acceptAutomatedJobs`` setting.
+    """
+    _require_scope("write")
+    # Global controller config is superadmin-only: workspace-scoped tokens
+    # cannot flip this switch because its effect is global across workspaces.
+    if _get_workspace_scopes():
+        raise PermissionError(
+            "controller_update_config requires an unscoped (superadmin) token"
+        )
+    _audit("controller_update_config", accept_automated_jobs=accept_automated_jobs)
+
+    if accept_automated_jobs:
+        accept = accept_automated_jobs.lower() == "true"
+        result = _controller_post(
+            "/api/config/accept-automated-jobs",
+            {"accept": accept},
+        )
+    else:
+        result = _controller_get("/api/config/accept-automated-jobs")
+
+    result.setdefault("next_steps", [
+        "Use workstream_submit_task to submit a coding task",
+        "Use controller_health to check controller status",
+    ])
+    return result
+
+
+@mcp.tool()
 def workstream_list() -> dict:
     """List all registered workstreams with their configuration and capabilities.
 
@@ -762,7 +1037,8 @@ def workstream_list() -> dict:
     - repoUrl: the git repository URL
     - hasPlanningDocument: whether a plan doc is configured
     - pipelineCapable: whether Tier 2 pipeline tools will work
-    - agentCount: number of connected coding agents
+    - dependentRepos: list of additional repo URLs cloned alongside the
+      primary repo (omitted if none configured)
 
     Use this to discover workstreams and determine which tools are
     available for each one.
@@ -775,10 +1051,11 @@ def workstream_list() -> dict:
     result = _controller_get("/api/workstreams")
 
     if isinstance(result, list):
+        entries = _filter_workstreams_by_scope(result)
         return {
             "ok": True,
-            "workstreams": result,
-            "count": len(result),
+            "workstreams": entries,
+            "count": len(entries),
             "next_steps": [
                 "Use workstream_get_status with a workstreamId to see job statistics",
                 "Use workstream_submit_task to submit a coding task to an agent",
@@ -795,31 +1072,192 @@ def workstream_list() -> dict:
 
 @mcp.tool()
 def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
-    """Get job statistics for a workstream (this week and last week).
+    """Get aggregate job statistics for a workstream.
 
-    Shows job counts, total time, cost, and turns for the specified
-    workstream. Use this to monitor agent productivity and spending.
+    Shows job counts, total time, cost, and turns for this week and last week.
+    For per-job details use workstream_context.
 
     Args:
         workstream_id: The workstream identifier (from workstream_list).
-        period: Reporting period (default: "weekly").
+        period: Reporting period. The controller currently supports only
+            ``"weekly"`` — any other value is rejected up front. Defaults
+            to ``"weekly"``.
 
     Returns:
-        Dictionary with thisWeek and lastWeek stats.
+        Dictionary with thisWeek and lastWeek aggregate stats (jobCount,
+        successCount, failedCount, totalCostUsd, totalTurns, etc.).
     """
     _require_scope("read")
     err = _check_short_strings(workstream_id=workstream_id, period=period)
     if err:
         return err
+    if period != "weekly":
+        return {
+            "ok": False,
+            "error": (f"Unsupported period '{period}'. The controller "
+                      "currently supports only 'weekly'."),
+            "next_steps": [
+                "Call workstream_get_status without the period argument",
+                "Or pass period='weekly' explicitly",
+            ],
+        }
     _audit("workstream_get_status", workstream_id=workstream_id)
+    _require_workstream_in_scope(workstream_id)
     params = urlencode({"workstream": workstream_id, "period": period})
     result = _controller_get(f"/api/stats?{params}")
     result["workstream_id"] = workstream_id
+
     result.setdefault("next_steps", [
         "Use workstream_submit_task to submit a new coding task",
-        "Use workstream_list to see all workstreams",
+        "Use workstream_context to see branch memories and job history",
     ])
     return result
+
+
+@mcp.tool()
+def workstream_get_job(job_id: str) -> dict:
+    """**Operational analytics.** Look up a specific job event by its
+    job ID — the most recent status event, with cost, duration, PR URL,
+    error message, etc.
+
+    Use this when you submitted a job yourself and want to confirm it
+    succeeded or inspect its failure detail. It is not a narrative tool
+    — for the context around a job (why it was submitted, what the
+    agent reported, what other jobs ran on the same branch) call
+    ``workstream_context``.
+
+    Args:
+        job_id: The job identifier returned by workstream_submit_task.
+
+    Returns:
+        Dictionary with jobId, status, description, timestamp, and optional
+        fields such as targetBranch, commitHash, pullRequestUrl, errorMessage,
+        and costUsd.
+    """
+    _require_scope("read")
+    err = _check_short_strings(job_id=job_id)
+    if err:
+        return err
+    _audit("workstream_get_job", job_id=job_id)
+    result = _controller_get(f"/api/jobs/{job_id}")
+    # Scope check: a scoped token may only see jobs belonging to a workstream
+    # in its workspace scope. The job event does not itself carry a workspace
+    # ID, so we resolve via the workstream → workspace mapping. Unknown jobs
+    # are returned unchanged for unscoped callers and suppressed as 404 for
+    # scoped callers to avoid leaking existence.
+    if _get_workspace_scopes():
+        ws_id = result.get("workstreamId") if isinstance(result, dict) else None
+        if not ws_id or not _is_workspace_allowed(_workspace_for_workstream(ws_id)):
+            return {"ok": False, "error": "Job not found"}
+    return result
+
+
+VALID_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
+
+VALID_MODELS = (
+    "sonnet", "opus", "haiku",
+    "claude-opus-4-7",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5-20251001",
+)
+
+
+def _check_effort(effort: str) -> Optional[dict]:
+    """Return an error dict if ``effort`` is non-empty and not a recognised
+    Claude Code effort level, or ``None`` when valid (or empty).
+
+    Accepted values mirror
+    :class:`io.flowtree.jobs.ClaudeCodeJob#VALID_EFFORT_LEVELS`. This list is
+    kept in sync manually; the Java side is the source of truth and rejects
+    unknown values, but pre-validating here gives the caller a clearer error
+    and avoids issuing a doomed HTTP request.
+    """
+    if effort and effort not in VALID_EFFORT_LEVELS:
+        return {
+            "ok": False,
+            "error": f"Invalid effort '{effort}'. Must be one of: "
+                     f"{', '.join(VALID_EFFORT_LEVELS)}",
+        }
+    return None
+
+
+def _check_model(model: str) -> Optional[dict]:
+    """Return an error dict if ``model`` is non-empty and not a recognised
+    Claude Code model identifier, or ``None`` when valid (or empty).
+
+    Accepted values mirror
+    :class:`io.flowtree.jobs.ClaudeCodeJob#VALID_MODELS`.  The Java side is
+    the source of truth and rejects unknown values with a 400 response;
+    pre-validating here gives the caller a clearer error and avoids issuing
+    an HTTP request that the controller would reject.  The controller's
+    error message also flows back through ``_controller_post`` if a value
+    slips through (e.g., the Java list is updated ahead of this one).
+    """
+    if model and model not in VALID_MODELS:
+        return {
+            "ok": False,
+            "error": f"Invalid model '{model}'. Must be one of: "
+                     f"{', '.join(VALID_MODELS)}",
+        }
+    return None
+
+
+def _parse_required_labels(required_labels: str) -> dict:
+    """Parse a comma-separated key:value string into a labels dict.
+
+    Only pairs with non-empty key and non-empty value are included.
+    Pairs missing a colon or with an empty key/value are silently ignored.
+    """
+    result = {}
+    for pair in required_labels.split(","):
+        parts = pair.strip().split(":", 1)
+        if len(parts) == 2 and parts[0].strip() and parts[1].strip():
+            result[parts[0].strip()] = parts[1].strip()
+    return result
+
+
+def _parse_dependent_repos(dependent_repos: str) -> list:
+    """Parse a comma-separated list of repo URLs into a Python list.
+
+    Also accepts a JSON array string (e.g. '["url1","url2"]').
+    Empty entries are dropped. Returns an empty list if the input is empty.
+    """
+    if not dependent_repos:
+        return []
+    stripped = dependent_repos.strip()
+    if stripped.startswith("["):
+        import json as _json
+        try:
+            parsed = _json.loads(stripped)
+            if isinstance(parsed, list):
+                return [str(r).strip() for r in parsed if str(r).strip()]
+        except ValueError:
+            pass
+    return [r.strip() for r in stripped.split(",") if r.strip()]
+
+
+def _parse_activities_param(include_activities) -> str:
+    """Normalize include_activities to a comma-separated string.
+
+    Accepts a native Python list, a JSON-array string, or a plain comma-separated
+    string.  Returns a normalised comma-separated string (e.g. ``"primary"``).
+    """
+    if isinstance(include_activities, list):
+        joined = ",".join(str(v).strip() for v in include_activities if str(v).strip())
+        return joined or "primary"
+    if not include_activities:
+        return "primary"
+    stripped = include_activities.strip()
+    if stripped.startswith("["):
+        import json as _json
+        try:
+            parsed = _json.loads(stripped)
+            if isinstance(parsed, list):
+                joined = ",".join(str(v).strip() for v in parsed if str(v).strip())
+                return joined or "primary"
+        except ValueError:
+            pass
+    return stripped or "primary"
 
 
 @mcp.tool()
@@ -832,6 +1270,11 @@ def workstream_submit_task(
     max_budget_usd: float = 0.0,
     protect_test_files: bool = False,
     enforce_changes: bool = False,
+    started_after: str = "",
+    required_labels: str = "",
+    deduplication_mode: str = "",
+    model: str = "",
+    effort: str = "",
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -856,6 +1299,27 @@ def workstream_submit_task(
         max_budget_usd: Maximum cost in USD (0 = use workstream default).
         protect_test_files: If true, prevent the agent from modifying test files.
         enforce_changes: If true, require the agent to produce code changes.
+        started_after: Epoch milliseconds timestamp. If a newer job already
+            exists on the workstream, the submission is skipped and the
+            response includes ``skipped: true``. Used by CI pipelines to
+            avoid stale auto-resolve jobs colliding with explicit submissions.
+        required_labels: Comma-separated key:value pairs specifying Node
+            labels required to execute this job (e.g., "platform:macos,gpu:true").
+            Only Nodes with matching labels will execute the job.
+        deduplication_mode: Post-work deduplication behaviour. Defaults to
+            "local" (inline Claude Code session that removes duplicate methods
+            before committing — safe for iterative testing, no extra jobs
+            spawned). Use "spawn" to submit a separate follow-up job to the
+            same workstream after committing (requires workstream URL). Pass
+            "none" to disable deduplication entirely.
+        model: Claude Code model alias (e.g. ``"sonnet"``, ``"opus"``,
+            ``"haiku"``) or full identifier (e.g. ``"claude-sonnet-4-6"``)
+            for this job. Empty string falls back to the workstream default,
+            which in turn falls back to the CLI default.
+        effort: Claude Code effort/thinking level for this job. Must be one
+            of ``"low"``, ``"medium"``, ``"high"``, ``"xhigh"``, ``"max"``.
+            Empty string falls back to the workstream default, which in turn
+            falls back to the CLI default.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -866,10 +1330,19 @@ def workstream_submit_task(
         return err
     err = _check_short_strings(
         workstream_id=workstream_id, target_branch=target_branch,
-        description=description,
+        description=description, started_after=started_after,
+        deduplication_mode=deduplication_mode,
+        model=model, effort=effort,
     )
     if err:
         return err
+    err = _check_effort(effort)
+    if err:
+        return err
+    err = _check_model(model)
+    if err:
+        return err
+    _require_workstream_in_scope(workstream_id)
     _audit("workstream_submit_task", workstream_id=workstream_id,
            target_branch=target_branch, prompt_len=len(prompt))
 
@@ -888,6 +1361,18 @@ def workstream_submit_task(
         payload["protectTestFiles"] = True
     if enforce_changes:
         payload["enforceChanges"] = True
+    if started_after:
+        payload["startedAfter"] = started_after
+    if required_labels:
+        labels_dict = _parse_required_labels(required_labels)
+        if labels_dict:
+            payload["requiredLabels"] = labels_dict
+    if deduplication_mode:
+        payload["deduplicationMode"] = deduplication_mode
+    if model:
+        payload["model"] = model
+    if effort:
+        payload["effort"] = effort
 
     result = _controller_post("/api/submit", payload)
 
@@ -897,12 +1382,12 @@ def workstream_submit_task(
         result["next_steps"] = [
             f"Use workstream_get_status with workstream_id='{ws_id}' to check progress",
             "The agent will push commits to the configured branch",
-            "Use workstream_list to see agent count and branch info",
+            "Use workstream_list to see all workstreams and branch info",
         ]
     else:
         result.setdefault("next_steps", [
             "Use workstream_list to find available workstreams and their IDs",
-            "Ensure at least one agent is connected (check agentCount in workstream_list)",
+            "Ensure at least one agent is connected (check controller_health)",
         ])
 
     return result
@@ -915,6 +1400,15 @@ def workstream_register(
     repo_url: str = "",
     planning_document: str = "",
     channel_name: str = "",
+    required_labels: str = "",
+    dependent_repos: str = "",
+    slack_workspace_id: str = "",
+    plan_content: str = "",
+    plan_instructions: str = "",
+    plan_path: str = "",
+    plan_commit_message: str = "",
+    model: str = "",
+    effort: str = "",
 ) -> dict:
     """Register a new workstream for a branch/repo combination.
 
@@ -931,19 +1425,104 @@ def workstream_register(
         repo_url: Git repository URL for automatic checkout.
         planning_document: Path to a planning document for broader context.
         channel_name: Slack channel name to create (optional).
+        required_labels: Comma-separated key:value pairs specifying Node labels
+            that all jobs in this workstream must match by default
+            (e.g., "platform:macos,gpu:true"). Job-level labels always override
+            these workstream-level defaults.
+        dependent_repos: Comma-separated list of git clone URLs for additional
+            repositories that agents should clone alongside the primary repo
+            (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
+            Also accepts a JSON array string. Dependent repos follow the same
+            branch lifecycle as the primary repo (create/checkout/pull/commit/push).
+        slack_workspace_id: Slack workspace (team) ID to register this
+            workstream under. When omitted, unscoped (superadmin) tokens
+            allow the controller to derive the target workspace from the
+            GitHub org in ``repo_url``. Callers using tokens scoped to
+            specific workspaces must pass this parameter explicitly.
+        plan_content: Literal markdown content of a planning document to
+            commit directly to the new workstream's branch immediately after
+            registration. Mutually exclusive with ``plan_instructions``.
+            Attempts a direct commit via the GitHub Contents API; if the
+            commit fails (permissions, protected branch, etc.) the workstream
+            registration itself still succeeds and the response's ``plan``
+            field contains ``mode="failed"`` with ``fallback_instructions``.
+        plan_instructions: Natural-language specification of what the plan
+            document should describe. When provided, a coding job is
+            submitted to the newly-registered workstream with a prompt that
+            asks the agent to write and commit the plan document. Mutually
+            exclusive with ``plan_content``.
+        plan_path: File path for the plan document in the repo. Optional —
+            if omitted, the controller auto-generates a path under
+            ``docs/plans/``. Used by both the direct-commit and job-submit
+            paths.
+        plan_commit_message: Git commit message for the direct-commit path.
+            Ignored when ``plan_instructions`` is used. Auto-generated if
+            omitted.
+        model: Default Claude Code model alias (e.g. ``"sonnet"``,
+            ``"opus"``, ``"haiku"``) or full identifier applied to every
+            job submitted to this workstream that does not specify its own
+            model. Empty string leaves the workstream with no default,
+            falling back to the CLI default.
+        effort: Default Claude Code effort/thinking level for the
+            workstream. Must be one of ``"low"``, ``"medium"``, ``"high"``,
+            ``"xhigh"``, ``"max"``. Empty string leaves the workstream with
+            no default.
 
     Returns:
-        Dictionary with workstreamId and channel info on success.
+        Dictionary with workstreamId and channel info on success. When
+        ``plan_content`` or ``plan_instructions`` is supplied, also includes
+        a ``plan`` field with:
+        - ``mode``: ``"committed"``, ``"submitted"``, or ``"failed"``.
+        - ``path``: the plan document path (when available).
+        - ``commit_sha``: only when ``mode=="committed"``.
+        - ``job_id``: only when ``mode=="submitted"``.
+        - ``error`` and ``fallback_instructions``: only when ``mode=="failed"``.
     """
     _require_scope("write")
     err = _check_short_strings(
         default_branch=default_branch, base_branch=base_branch,
         repo_url=repo_url, planning_document=planning_document,
-        channel_name=channel_name,
+        channel_name=channel_name, slack_workspace_id=slack_workspace_id,
+        plan_path=plan_path, plan_commit_message=plan_commit_message,
+        model=model, effort=effort,
     )
     if err:
         return err
-    _audit("workstream_register", default_branch=default_branch)
+    err = _check_effort(effort)
+    if err:
+        return err
+    err = _check_model(model)
+    if err:
+        return err
+    # plan_content and plan_instructions describe two different follow-up
+    # actions; the caller must pick one. Reject ambiguous requests up front.
+    if plan_content and plan_instructions:
+        return {
+            "ok": False,
+            "error": "plan_content and plan_instructions are mutually exclusive",
+        }
+    err = _check_length(plan_content, "plan_content", MAX_CONTENT_LEN)
+    if err:
+        return err
+    err = _check_length(plan_instructions, "plan_instructions", MAX_CONTENT_LEN)
+    if err:
+        return err
+    # Scope enforcement: scoped callers must name a workspace they own.
+    # An explicit slack_workspace_id wins. Otherwise we refuse rather than
+    # rely on the controller's repoUrl-derivation path, because allowing
+    # the caller to rely on controller-side derivation would open a
+    # scope-bypass if repoUrl is omitted or spoofed.
+    if _get_workspace_scopes():
+        if slack_workspace_id:
+            _require_workspace(slack_workspace_id)
+        else:
+            raise PermissionError(
+                "Scoped tokens must pass slack_workspace_id when registering "
+                "a workstream — repoUrl-based derivation is only available "
+                "to unscoped (superadmin) tokens."
+            )
+    _audit("workstream_register", default_branch=default_branch,
+           slack_workspace_id=slack_workspace_id)
 
     payload = {"defaultBranch": default_branch}
     if base_branch:
@@ -954,6 +1533,20 @@ def workstream_register(
         payload["planningDocument"] = planning_document
     if channel_name:
         payload["channelName"] = channel_name
+    if slack_workspace_id:
+        payload["slackWorkspaceId"] = slack_workspace_id
+    if required_labels:
+        labels_map = _parse_required_labels(required_labels)
+        if labels_map:
+            payload["requiredLabels"] = labels_map
+    if dependent_repos:
+        repos_list = _parse_dependent_repos(dependent_repos)
+        if repos_list:
+            payload["dependentRepos"] = repos_list
+    if model:
+        payload["model"] = model
+    if effort:
+        payload["effort"] = effort
 
     result = _controller_post("/api/workstreams", payload)
 
@@ -961,13 +1554,39 @@ def workstream_register(
         ws_id = result.get("workstreamId", "")
         steps = [
             f"Workstream '{ws_id}' is ready",
-            "Use workstream_submit_task to send a coding task to this workstream",
         ]
         if not repo_url:
             steps.append(
                 "Consider using workstream_update_config to set repo_url "
                 "for pipeline capabilities"
             )
+
+        # Follow-up: plan_content → direct commit, plan_instructions → submit a job.
+        # Registration success is already locked in above; any failure below is
+        # surfaced in result["plan"] without rolling back the registration, so
+        # the caller can decide whether to retry or fall back.
+        if plan_content:
+            result["plan"] = _attempt_plan_commit(
+                ws_id, plan_content, plan_path, plan_commit_message)
+            if result["plan"].get("mode") == "committed":
+                steps.append(
+                    f"Plan committed at {result['plan'].get('path')}")
+            else:
+                steps.append(
+                    "Plan commit failed — see result.plan.fallback_instructions")
+        elif plan_instructions:
+            result["plan"] = _attempt_plan_writing_job(
+                ws_id, plan_instructions, plan_path)
+            if result["plan"].get("mode") == "submitted":
+                steps.append(
+                    f"Plan-writing job submitted: {result['plan'].get('job_id')}")
+            else:
+                steps.append(
+                    "Plan job submission failed — see result.plan.fallback_instructions")
+        else:
+            steps.append(
+                "Use workstream_submit_task to send a coding task to this workstream")
+
         result["next_steps"] = steps
     else:
         result.setdefault("next_steps", [
@@ -975,6 +1594,120 @@ def workstream_register(
         ])
 
     return result
+
+
+def _attempt_plan_commit(workstream_id: str, content: str, path: str,
+                         commit_message: str) -> dict:
+    """Attempt an immediate plan-document commit for a just-registered
+    workstream via the existing :func:`project_commit_plan` tool.
+
+    Wraps the call in a try-block so any failure (missing pipeline scope,
+    GitHub permission denied, branch protection, network) is reported
+    structurally via the ``mode="failed"`` shape. Registration itself
+    remains successful in the caller regardless.
+    """
+    try:
+        commit_result = project_commit_plan(
+            workstream_id=workstream_id,
+            content=content,
+            path=path or "",
+            branch="",
+            commit_message=commit_message or "",
+        )
+    except PermissionError as e:
+        return _plan_failed("insufficient_scope", str(e),
+                            "Direct plan commits require the 'pipeline' scope. "
+                            "Use workstream_submit_task with a prompt asking the "
+                            "agent to write the plan document, or ask the operator "
+                            "for a token with pipeline scope.")
+    except Exception as e:  # defensive — any unexpected error
+        return _plan_failed("internal_error", str(e),
+                            "An unexpected error occurred. The workstream is "
+                            "registered; retry via project_commit_plan or "
+                            "workstream_submit_task.")
+
+    if commit_result.get("ok"):
+        return {
+            "mode": "committed",
+            "path": commit_result.get("path"),
+            "branch": commit_result.get("branch"),
+            "commit_sha": commit_result.get("commit_sha"),
+            "repo": commit_result.get("repo"),
+        }
+
+    return _plan_failed(
+        "commit_rejected",
+        commit_result.get("error", "Unknown commit failure"),
+        "The GitHub API rejected the direct commit — most commonly this means "
+        "the token does not have 'contents:write' on this repo, the branch is "
+        "protected, or the repo_url is misconfigured. The workstream is "
+        "registered; call workstream_submit_task with a prompt asking the agent "
+        "to write and commit the plan document instead.")
+
+
+def _attempt_plan_writing_job(workstream_id: str, instructions: str,
+                              path: str) -> dict:
+    """Attempt to submit a job that writes a plan document based on natural-
+    language instructions, for a just-registered workstream.
+
+    The prompt nudges the agent toward committing the plan file at a known
+    path so downstream tools (like ``project_read_plan``) can find it
+    without additional configuration.
+    """
+    target_path = path or "docs/plans/<slug>.md (choose an appropriate filename)"
+    prompt = (
+        "Write a planning document for this workstream at the target path. "
+        "Path: " + target_path + "\n\n"
+        "The document should describe, in the style of other documents under "
+        "docs/plans/, the following intent supplied by the operator:\n\n"
+        "--- BEGIN INSTRUCTIONS ---\n"
+        + instructions +
+        "\n--- END INSTRUCTIONS ---\n\n"
+        "Write the file and leave it uncommitted — the harness will commit it "
+        "after you finish. Do not run `git commit` yourself, and do not make "
+        "any other code changes in this session."
+    )
+    try:
+        submit_result = workstream_submit_task(
+            workstream_id=workstream_id,
+            prompt=prompt,
+            description="Write planning document",
+        )
+    except PermissionError as e:
+        return _plan_failed("insufficient_scope", str(e),
+                            "Submitting a plan-writing job requires the 'write' "
+                            "scope. Ask the operator for a token with write scope.")
+    except Exception as e:  # defensive
+        return _plan_failed("internal_error", str(e),
+                            "An unexpected error occurred while submitting the "
+                            "plan-writing job. The workstream is registered; "
+                            "retry via workstream_submit_task.")
+
+    if submit_result.get("ok"):
+        return {
+            "mode": "submitted",
+            "job_id": submit_result.get("jobId"),
+            "path_hint": path or None,
+        }
+
+    return _plan_failed(
+        "submit_rejected",
+        submit_result.get("error", "Unknown submit failure"),
+        "The controller rejected the task submission — usually because no "
+        "agents are connected. The workstream is registered; retry "
+        "workstream_submit_task once an agent is available.")
+
+
+def _plan_failed(reason: str, error: str, fallback_instructions: str) -> dict:
+    """Build the structured failure payload attached to
+    :func:`workstream_register`'s ``plan`` field. Kept as a helper so the
+    two follow-up paths return the same shape."""
+    return {
+        "mode": "failed",
+        "reason": reason,
+        "error": error,
+        "fallback_instructions": fallback_instructions,
+    }
 
 
 @mcp.tool()
@@ -985,6 +1718,10 @@ def workstream_update_config(
     repo_url: str = "",
     planning_document: str = "",
     channel_name: str = "",
+    required_labels: str = "",
+    dependent_repos: str = "",
+    model: str = "",
+    effort: str = "",
 ) -> dict:
     """Update configuration for an existing workstream.
 
@@ -999,6 +1736,21 @@ def workstream_update_config(
         repo_url: Git repository URL (enables pipeline tools).
         planning_document: Path to planning document.
         channel_name: New Slack channel name.
+        required_labels: Comma-separated key:value pairs specifying Node labels
+            that all jobs in this workstream must match by default
+            (e.g., "platform:macos,gpu:true"). Job-level labels always override
+            these workstream-level defaults.
+        dependent_repos: Comma-separated list of git clone URLs for additional
+            repositories that agents should clone alongside the primary repo
+            (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
+            Also accepts a JSON array string. Dependent repos follow the same
+            branch lifecycle as the primary repo (create/checkout/pull/commit/push).
+        model: New default Claude Code model alias (e.g. ``"sonnet"``,
+            ``"opus"``, ``"haiku"``) or full identifier for the workstream.
+            Applied to jobs that do not specify their own model.
+        effort: New default Claude Code effort/thinking level for the
+            workstream. Must be one of ``"low"``, ``"medium"``, ``"high"``,
+            ``"xhigh"``, ``"max"``.
 
     Returns:
         Dictionary confirming the update.
@@ -1008,9 +1760,17 @@ def workstream_update_config(
         workstream_id=workstream_id, default_branch=default_branch,
         base_branch=base_branch, repo_url=repo_url,
         planning_document=planning_document, channel_name=channel_name,
+        model=model, effort=effort,
     )
     if err:
         return err
+    err = _check_effort(effort)
+    if err:
+        return err
+    err = _check_model(model)
+    if err:
+        return err
+    _require_workstream_in_scope(workstream_id)
     _audit("workstream_update_config", workstream_id=workstream_id)
 
     payload = {}
@@ -1024,6 +1784,18 @@ def workstream_update_config(
         payload["planningDocument"] = planning_document
     if channel_name:
         payload["channelName"] = channel_name
+    if required_labels:
+        labels_map = _parse_required_labels(required_labels)
+        if labels_map:
+            payload["requiredLabels"] = labels_map
+    if dependent_repos:
+        repos_list = _parse_dependent_repos(dependent_repos)
+        if repos_list:
+            payload["dependentRepos"] = repos_list
+    if model:
+        payload["model"] = model
+    if effort:
+        payload["effort"] = effort
 
     if not payload:
         return {
@@ -1031,7 +1803,8 @@ def workstream_update_config(
             "error": "No fields to update. Provide at least one field.",
             "next_steps": [
                 "Specify fields to update: default_branch, base_branch, "
-                "repo_url, planning_document, or channel_name",
+                "repo_url, planning_document, channel_name, required_labels, "
+                "dependent_repos, model, or effort",
             ],
         }
 
@@ -1060,7 +1833,8 @@ def workstream_update_config(
 
 @mcp.tool()
 def project_create_branch(
-    workstream_id: str,
+    workstream_id: str = "",
+    repo_url: str = "",
     plan_title: str = "",
     plan_content: str = "",
 ) -> dict:
@@ -1076,8 +1850,14 @@ def project_create_branch(
     date and plan title), so it cannot be returned immediately. Use
     workstream_list after the workflow completes to see the new workstream.
 
+    The repository is resolved in priority order:
+    1. If ``repo_url`` is provided, use it directly.
+    2. If ``workstream_id`` is provided, resolve from the workstream config.
+    3. If neither is provided, default to ``almostrealism/common`` on master.
+
     Args:
-        workstream_id: Source workstream with repo_url (from workstream_list).
+        workstream_id: Optional source workstream (from workstream_list).
+        repo_url: Optional repository URL (HTTPS or SSH). Overrides workstream.
         plan_title: Short title for the plan branch (used in branch name).
         plan_content: Optional markdown content for the initial plan document.
 
@@ -1086,7 +1866,7 @@ def project_create_branch(
     """
     _require_scope("pipeline")
     err = _check_short_strings(
-        workstream_id=workstream_id, plan_title=plan_title,
+        workstream_id=workstream_id, repo_url=repo_url, plan_title=plan_title,
     )
     if err:
         return err
@@ -1094,28 +1874,37 @@ def project_create_branch(
         err = _check_length(plan_content, "plan_content", MAX_CONTENT_LEN)
         if err:
             return err
-    _audit("project_create_branch", workstream_id=workstream_id, plan_title=plan_title)
+    _require_workstream_in_scope(workstream_id)
+    _audit("project_create_branch", workstream_id=workstream_id,
+           repo_url=repo_url, plan_title=plan_title)
 
-    ws = _find_workstream(workstream_id)
-    if ws is None:
-        return {
-            "ok": False,
-            "error": f"Workstream '{workstream_id}' not found",
-            "next_steps": ["Use workstream_list to find valid workstream IDs"],
-        }
+    # Resolve repository URL and base branch
+    effective_repo = None
+    effective_base = "master"
 
-    _set_github_org(ws)
+    if repo_url:
+        effective_repo = repo_url
+    elif workstream_id:
+        ws = _find_workstream(workstream_id)
+        if ws is None:
+            return {
+                "ok": False,
+                "error": f"Workstream '{workstream_id}' not found",
+                "next_steps": ["Use workstream_list to find valid workstream IDs"],
+            }
+        _set_github_org(ws)
+        effective_repo = ws.get("repoUrl")
+        effective_base = ws.get("baseBranch", "master")
 
-    repo_url = ws.get("repoUrl")
-    if not repo_url:
-        return _pipeline_error(workstream_id, "repo_url is not configured")
+    if not effective_repo:
+        effective_repo = "https://github.com/almostrealism/common"
 
-    owner_repo = _extract_owner_repo(repo_url)
+    owner_repo = _extract_owner_repo(effective_repo)
     if not owner_repo:
         return {
             "ok": False,
-            "error": f"Cannot parse owner/repo from: {repo_url}",
-            "next_steps": ["Use workstream_update_config to fix repo_url"],
+            "error": f"Cannot parse owner/repo from: {effective_repo}",
+            "next_steps": ["Provide a valid repo_url (HTTPS or SSH format)"],
         }
 
     owner, repo = owner_repo
@@ -1128,7 +1917,7 @@ def project_create_branch(
     result = _github_request(
         "POST",
         f"/repos/{owner}/{repo}/actions/workflows/project-manager.yaml/dispatches",
-        {"ref": ws.get("baseBranch", "master"), "inputs": inputs},
+        {"ref": effective_base, "inputs": inputs},
     )
 
     if result.get("ok") or result.get("status") == 204:
@@ -1175,6 +1964,7 @@ def project_verify_branch(
     )
     if err:
         return err
+    _require_workstream_in_scope(workstream_id)
     _audit("project_verify_branch", workstream_id=workstream_id, branch=branch)
 
     ws = _find_workstream(workstream_id)
@@ -1277,6 +2067,7 @@ def project_commit_plan(
     )
     if err:
         return err
+    _require_workstream_in_scope(workstream_id)
     _audit("project_commit_plan", workstream_id=workstream_id, path=path, branch=branch)
 
     ws = _find_workstream(workstream_id)
@@ -1341,7 +2132,7 @@ def project_commit_plan(
     # Check if file already exists (need current SHA for updates)
     existing = _github_request(
         "GET",
-        f"/repos/{owner}/{repo}/contents/{quote(path, safe='/')}?ref={quote(effective_branch, safe='')}",
+        f"/repos/{owner}/{repo}/contents/{quote(path, safe='/')}?ref={quote(effective_branch, safe='/')}",
     )
     existing_sha = existing.get("sha")
 
@@ -1390,23 +2181,21 @@ def project_read_plan(
     path: str = "",
     branch: str = "",
 ) -> dict:
-    """Read the planning document for a workstream from GitHub.
+    """Read the planning document for a workstream (delegates to github_read_file).
 
-    Fetches the file content via the GitHub Contents API, routed through
-    the FlowTree controller's proxy for authentication. Only works for
-    repositories hosted on GitHub.
-
-    If no path is provided, uses the workstream's configured
-    ``planningDocument`` path.
+    Looks up the workstream's configured ``planningDocument`` path and
+    delegates to :func:`github_read_file` to fetch its content. The
+    planning document path must be set via ``workstream_update_config``.
 
     Args:
         workstream_id: Workstream to read from (from workstream_list).
-        path: File path in the repository. Defaults to the workstream's
-            configured planningDocument.
-        branch: Branch to read from (default: workstream's defaultBranch).
+        path: Override for the planning document path. When omitted, the
+            workstream's configured ``planningDocument`` path is used.
+        branch: Branch to read from. Defaults to the workstream's
+            ``defaultBranch``.
 
     Returns:
-        Dictionary with the file content, path, and branch.
+        Dictionary with file content, path, branch, sha, and repo.
     """
     _require_scope("read")
     err = _check_short_strings(
@@ -1414,6 +2203,7 @@ def project_read_plan(
     )
     if err:
         return err
+    _require_workstream_in_scope(workstream_id)
     _audit("project_read_plan", workstream_id=workstream_id, path=path, branch=branch)
 
     ws = _find_workstream(workstream_id)
@@ -1424,29 +2214,6 @@ def project_read_plan(
             "next_steps": ["Use workstream_list to find valid workstream IDs"],
         }
 
-    _set_github_org(ws)
-
-    repo_url = ws.get("repoUrl")
-    if not repo_url:
-        return _pipeline_error(workstream_id, "repo_url is not configured")
-
-    owner_repo = _extract_owner_repo(repo_url)
-    if not owner_repo:
-        return {
-            "ok": False,
-            "error": f"Cannot parse owner/repo from: {repo_url}",
-            "next_steps": ["Use workstream_update_config to fix repo_url"],
-        }
-
-    owner, repo = owner_repo
-    effective_branch = branch or ws.get("defaultBranch", "")
-    if not effective_branch:
-        return {
-            "ok": False,
-            "error": "No branch specified and workstream has no defaultBranch",
-            "next_steps": ["Provide the branch parameter explicitly"],
-        }
-
     effective_path = path or ws.get("planningDocument", "")
     if not effective_path:
         return {
@@ -1454,45 +2221,51 @@ def project_read_plan(
             "error": "No planning document path configured for this workstream",
             "next_steps": [
                 "Provide the path parameter explicitly",
-                "Or use workstream_update_config to set planning_document",
+                "Use workstream_update_config to set planning_document",
             ],
         }
 
-    ref_param = quote(effective_branch, safe="")
-    result = _github_request(
-        "GET",
-        f"/repos/{owner}/{repo}/contents/{quote(effective_path, safe='/')}?ref={ref_param}",
+    repo_url = ws.get("repoUrl", "")
+    if not repo_url:
+        return {
+            "ok": False,
+            "error": "No repository URL configured for this workstream",
+            "next_steps": [
+                "Use workstream_update_config to set repo_url",
+            ],
+        }
+
+    effective_branch = branch or ws.get("defaultBranch", "")
+    if not effective_branch:
+        return {
+            "ok": False,
+            "error": "No branch configured for this workstream",
+            "next_steps": [
+                "Pass branch explicitly when calling project_read_plan",
+                "Use workstream_update_config to set default_branch",
+            ],
+        }
+
+    result = github_read_file(
+        path=effective_path,
+        repo_url=repo_url,
+        branch=effective_branch,
+        workstream_id=workstream_id,
     )
 
-    if result.get("ok") is False:
-        result.setdefault("next_steps", [
-            f"Verify the file exists at '{effective_path}' on branch '{effective_branch}'",
-            "Use project_commit_plan to create the planning document first",
-        ])
-        return result
-
-    content_b64 = result.get("content", "")
-    encoding = result.get("encoding", "")
-    if encoding == "base64" and content_b64:
-        try:
-            content = base64.b64decode(content_b64).decode("utf-8")
-        except Exception:
-            content = content_b64
-    else:
-        content = content_b64
-
-    return {
-        "ok": True,
-        "path": effective_path,
-        "branch": effective_branch,
-        "repo": f"{owner}/{repo}",
-        "content": content,
-        "sha": result.get("sha", ""),
-        "next_steps": [
+    if result.get("ok"):
+        # Expose branch alongside ref for backward compatibility
+        result.setdefault("branch", result.get("ref", effective_branch))
+        result["next_steps"] = [
             "Use project_commit_plan to update this document",
             "Use workstream_submit_task to send an agent to work on the plan",
-        ],
-    }
+        ]
+    else:
+        result.setdefault("next_steps", [
+            f"Verify the file exists at '{effective_path}'",
+            "Use project_commit_plan to create the planning document first",
+        ])
+    return result
 
 
 # -- Tier 3: Memory tools ---------------------------------------------------
@@ -1502,13 +2275,21 @@ def _resolve_branch_context(
     workstream_id: str = "",
     repo_url: str = "",
     branch: str = "",
+    require_branch: bool = True,
 ) -> tuple[str, str, Optional[dict]]:
     """Resolve repo_url and branch from workstream_id if needed.
+
+    Args:
+        workstream_id: Workstream to look up repo/branch from.
+        repo_url: Explicit repository URL.
+        branch: Explicit branch name.
+        require_branch: If False, only repo_url is required (branch may
+            be empty).  Defaults to True for backward compatibility.
 
     Returns:
         (repo_url, branch, error_dict_or_None)
     """
-    if repo_url and branch:
+    if repo_url and (branch or not require_branch):
         return (repo_url, branch, None)
 
     if workstream_id:
@@ -1522,14 +2303,35 @@ def _resolve_branch_context(
         repo_url = repo_url or ws.get("repoUrl", "")
         branch = branch or ws.get("defaultBranch", "")
 
-    if not repo_url or not branch:
-        return ("", "", {
-            "ok": False,
-            "error": "Either (repo_url + branch) or workstream_id is required",
-            "next_steps": [
+    if not repo_url and not require_branch:
+        # Try to resolve repo from the token's workstream context
+        token_ws_id = _get_token_workstream_id()
+        if token_ws_id:
+            ws = _find_workstream(token_ws_id)
+            if ws:
+                repo_url = repo_url or ws.get("repoUrl", "")
+                branch = branch or ws.get("defaultBranch", "")
+
+    missing = []
+    if not repo_url:
+        missing.append("repo_url")
+    if require_branch and not branch:
+        missing.append("branch")
+    if missing:
+        if require_branch:
+            next_steps = [
                 "Provide repo_url and branch directly, or",
                 "Provide workstream_id to resolve them from the workstream config",
-            ],
+            ]
+        else:
+            next_steps = [
+                "Provide repo_url directly, or",
+                "Provide workstream_id to resolve the repo URL from the workstream config",
+            ]
+        return ("", "", {
+            "ok": False,
+            "error": f"Either ({' + '.join(missing)}) or workstream_id is required",
+            "next_steps": next_steps,
         })
 
     return (repo_url, branch, None)
@@ -1544,12 +2346,16 @@ def memory_recall(
     branch: str = "",
     workstream_id: str = "",
     include_messages: bool = False,
+    scope: str = "repo",
 ) -> dict:
     """Search agent memories with optional LLM synthesis.
 
     Retrieves semantically similar memories from the ar-memory server.
     If an LLM backend is available, provides a synthesized summary.
     Can resolve repo_url/branch from workstream_id if provided.
+
+    By default, results are scoped to the current repository to avoid
+    returning unrelated memories from other projects.
 
     Args:
         query: Natural language search query.
@@ -1560,18 +2366,26 @@ def memory_recall(
         workstream_id: Optional workstream to resolve repo/branch from.
         include_messages: If true, also search the "messages" namespace
             and merge results. Defaults to false.
+        scope: Search scope — ``repo`` (default) searches the current
+            repository across all branches; ``branch`` narrows to the
+            current branch within the repo; ``all`` searches all repos.
 
     Returns:
         Dictionary with memories and optional summary.
     """
     _require_scope("memory")
+    if scope not in ("repo", "branch", "all"):
+        return {
+            "ok": False,
+            "error": f"Invalid scope '{scope}'. Must be 'repo', 'branch', or 'all'.",
+        }
     err = _check_short_strings(
         query=query, namespace=namespace, repo_url=repo_url,
         branch=branch, workstream_id=workstream_id,
     )
     if err:
         return err
-    _audit("memory_recall", query=query, namespace=namespace)
+    _audit("memory_recall", query=query, namespace=namespace, scope=scope)
 
     client = _get_memory_client()
     if client is None:
@@ -1584,15 +2398,35 @@ def memory_recall(
             ],
         }
 
-    # Resolve branch context if filtering requested
+    # Resolve context based on scope
     effective_repo = repo_url
     effective_branch = branch
-    if workstream_id and (not repo_url or not branch):
-        effective_repo, effective_branch, err = _resolve_branch_context(
-            workstream_id=workstream_id, repo_url=repo_url, branch=branch,
-        )
-        if err:
-            return err
+
+    if scope == "all" and not repo_url and not workstream_id:
+        # Explicitly requested: search everything, no filtering
+        effective_repo = ""
+        effective_branch = ""
+    elif scope == "branch":
+        # Need both repo and branch — use the strict resolver
+        if workstream_id or not (repo_url and branch):
+            effective_repo, effective_branch, err = _resolve_branch_context(
+                workstream_id=workstream_id, repo_url=repo_url, branch=branch,
+                require_branch=True,
+            )
+            if err:
+                return err
+    else:
+        # scope == "repo" (default) — need at least repo_url
+        if workstream_id or not repo_url:
+            effective_repo, effective_branch, err = _resolve_branch_context(
+                workstream_id=workstream_id, repo_url=repo_url, branch=branch,
+                require_branch=False,
+            )
+            if err:
+                return err
+        # For repo scope, don't filter by branch unless explicitly provided
+        if scope == "repo" and not branch:
+            effective_branch = ""
 
     try:
         memories = client.search(
@@ -1667,7 +2501,7 @@ def memory_recall(
         ],
         "count": len(memories),
         "next_steps": [
-            "Use memory_branch_context for a full branch history",
+            "Use workstream_context for a full branch history",
             "Use memory_store to add new memories",
         ],
     }
@@ -1679,30 +2513,79 @@ def memory_recall(
 
 
 @mcp.tool()
-def memory_branch_context(
+def workstream_context(
     workstream_id: str = "",
     repo_url: str = "",
     branch: str = "",
-    namespace: str = "default",
+    namespace: str = "",
     limit: int = 20,
     include_messages: bool = True,
+    include_commits: bool = True,
+    commit_limit: int = 30,
+    job_limit: int = 20,
+    include_activities: "list[str] | str" = "primary",
 ) -> dict:
-    """Get all memories for a specific branch.
+    """Reconstruct the narrative of a workstream — what agents have been
+    thinking about and doing on a branch. This is the primary tool for
+    orienting yourself when picking up a workstream, coordinating with
+    other agents working on the same branch, or deciding what to do next.
 
-    Returns memories ordered by creation time (newest first). Can resolve
-    repo_url/branch from workstream_id if provided.
+    Returns up to four streams:
+      - **memories**: agent-authored notes across every namespace
+        (``feedback``, ``project``, ``bugs``, ``messages``, …), sorted
+        newest-first. This is the substantive content — what was
+        reported, decided, discovered. Always present.
+      - **commits**: the commit history of the branch relative to its
+        base branch, via the GitHub Compare API. Present when
+        ``include_commits`` is true and the repo can be resolved.
+      - **jobs**: a compact timeline of job runs on this workstream
+        (timestamp, status, description, commit, PR, error). Not the
+        full operational record — just enough to situate memories in
+        time. Present (possibly as an empty list) whenever
+        ``workstream_id`` is supplied and ``job_limit > 0``; omitted
+        otherwise.
+      - **metadata**: resolved repo_url, branch, namespace. Always present.
+
+    Prefer this tool over ``workstream_get_status`` for
+    doing-real-work tasks. ``workstream_get_status`` is an operational-
+    analytics tool (platform health, cost, turn counts); this one is
+    the actual narrative.
+
+    By default (``namespace=""``), memories are returned across every
+    namespace on the branch, sorted newest-first. Supply an explicit
+    ``namespace`` to filter to one namespace instead.
 
     Args:
-        workstream_id: Workstream to resolve repo/branch from.
-        repo_url: Repository URL to match.
-        branch: Branch name to match.
-        namespace: Memory namespace to search.
-        limit: Maximum number of entries.
-        include_messages: If true (default), also include memories from the
-            "messages" namespace. Set to false to exclude Slack messages.
+        workstream_id: Workstream to resolve repo/branch/jobs from.
+        repo_url: Repository URL to match (when no workstream supplied).
+        branch: Branch name to match (when no workstream supplied).
+        namespace: Memory namespace to filter to. Defaults to empty,
+            which returns entries from every namespace.
+        limit: Maximum number of memory entries.
+        include_messages: Kept for backwards compatibility. Only takes
+            effect when ``namespace`` is explicitly set to a value other
+            than ``"messages"``. Ignored in the default all-namespace
+            mode because messages are already included.
+        include_commits: If true (default), include the commit list.
+        commit_limit: Maximum number of commits to include (default 30).
+        job_limit: Maximum number of jobs to include in the timeline
+            (default 20). Pass 0 to omit jobs entirely.
+        include_activities: Activity filter — accepts a Python list of strings,
+            a JSON-array string (``["deduplication","primary"]``), or a plain
+            comma-separated string.  Defaults to ``"primary"``, which returns
+            only messages with no activity tag (primary work) or with the
+            explicit ``activity:primary`` tag — both are treated as primary.
+            Audit-phase messages (e.g. ``activity:deduplication``) are hidden
+            by default.  Pass ``"all"`` to see every message, or a specific
+            activity name (e.g. ``"deduplication"``) to see that phase plus
+            primary/untagged messages.
 
     Returns:
-        Dictionary with branch memories.
+        Dictionary with branch memories, optionally commits, and optionally
+        a compact jobs timeline. When commits are included, the response also
+        contains ``total_commits`` (the full number of commits on the branch)
+        and ``initial_commit_sha`` (the first commit on the branch relative
+        to the base).
     """
     _require_scope("memory")
     err = _check_short_strings(
@@ -1711,7 +2594,7 @@ def memory_branch_context(
     )
     if err:
         return err
-    _audit("memory_branch_context", workstream_id=workstream_id, branch=branch)
+    _audit("workstream_context", workstream_id=workstream_id, branch=branch)
 
     effective_repo, effective_branch, err = _resolve_branch_context(
         workstream_id=workstream_id, repo_url=repo_url, branch=branch,
@@ -1729,18 +2612,26 @@ def memory_branch_context(
             ],
         }
 
+    # ``namespace=""`` (the default) means "all namespaces, newest first".
+    # The underlying client+server contract treats an empty/None namespace
+    # as a wildcard, so messages are already interleaved with every other
+    # namespace by recency — the include_messages flag becomes a no-op
+    # in that mode.
+    lookup_namespace = namespace if namespace else None
     try:
         memories = client.search_by_branch(
             repo_url=effective_repo,
             branch=effective_branch,
-            namespace=namespace,
+            namespace=lookup_namespace,
             limit=limit,
         )
     except ConnectionError as e:
         return {"ok": False, "error": f"Memory branch lookup failed: {e}"}
 
-    # Merge results from the "messages" namespace if requested
-    if include_messages and namespace != "messages":
+    # When the caller narrowed to a specific namespace and also asked for
+    # messages, merge in a second stream. Messages are capped at ``limit``
+    # and re-sorted by recency; primary memories are not displaced.
+    if namespace and include_messages and namespace != "messages":
         try:
             msg_memories = client.search_by_branch(
                 repo_url=effective_repo,
@@ -1749,16 +2640,137 @@ def memory_branch_context(
                 limit=limit,
             )
             if msg_memories:
-                memories = memories + msg_memories
-                memories.sort(
+                primary = memories[:limit]
+                combined = primary + msg_memories
+                combined.sort(
                     key=lambda m: m.get("created_at", ""),
                     reverse=True,
                 )
-                memories = memories[:limit]
+                memories = combined
         except ConnectionError:
             pass  # Non-critical: proceed without messages
 
-    return {
+    # Filter memories by activity.  Each message may carry a tag of the
+    # form ``activity:<name>`` (e.g. ``activity:deduplication``).  Memories
+    # without any such tag are considered primary work.  The
+    # ``include_activities`` parameter controls which activities are shown.
+    #
+    # Special values:
+    #   "all"     — no filtering; return every memory regardless of activity
+    #   "primary" — (default) return only primary/untagged and activity:primary
+    #   any other — return memories whose activity tag matches that value,
+    #               plus primary/untagged memories
+    #
+    # Multiple values can be comma-separated, e.g. "primary,deduplication".
+    # Also accepts a Python list or a JSON-array string via _parse_activities_param.
+    effective_include = _parse_activities_param(include_activities)
+    if effective_include != "all":
+        allowed = {v.strip() for v in effective_include.split(",") if v.strip()}
+
+        def _activity_allowed(mem: dict) -> bool:
+            tags = mem.get("tags") or []
+            activity_tags = [t[len("activity:"):] for t in tags if t.startswith("activity:")]
+            if not activity_tags or "primary" in activity_tags:
+                # No activity tag or explicit activity:primary — primary work, always included
+                return True
+            return any(a in allowed for a in activity_tags)
+
+        memories = [m for m in memories if _activity_allowed(m)]
+
+    # Fetch commit history from GitHub Compare API if requested
+    commits = None
+    commit_error = None
+    total_commits = 0
+    all_commits = []
+    if include_commits and effective_repo:
+        owner_repo = _extract_owner_repo(effective_repo)
+        if owner_repo:
+            owner, repo = owner_repo
+            # Determine the base branch from the workstream if available
+            ws = _find_workstream(workstream_id) if workstream_id else None
+            base = ws.get("baseBranch", "master") if ws else "master"
+
+            # Set GitHub org context so the proxy uses the correct per-org token
+            if ws:
+                _set_github_org(ws)
+            elif owner:
+                _current_github_org.set(owner)
+
+            try:
+                compare = _github_request(
+                    "GET",
+                    f"/repos/{owner}/{repo}/compare/{base}...{effective_branch}",
+                )
+                if compare.get("ok") is False:
+                    commit_error = compare.get("error", "GitHub API returned an error")
+                    logging.getLogger("ar-manager").warning(
+                        "Failed to fetch commits for %s...%s: %s",
+                        base, effective_branch, commit_error)
+                elif "commits" in compare:
+                    all_commits = compare.get("commits", [])
+                    total_commits = len(all_commits)
+                    # Take the most recent commits (Compare API returns
+                    # oldest-first, so slice from the end).
+                    recent = all_commits[-commit_limit:] if len(all_commits) > commit_limit else all_commits
+                    commits = []
+                    for c in recent:
+                        commit_obj = c.get("commit", {})
+                        author_obj = commit_obj.get("author", {})
+                        commits.append({
+                            "sha": c.get("sha", "")[:10],
+                            "author": author_obj.get("name", ""),
+                            "date": author_obj.get("date", ""),
+                            "message": commit_obj.get("message", "").split("\n")[0],
+                        })
+                else:
+                    commit_error = "GitHub Compare API returned no commits field"
+            except Exception as exc:
+                commit_error = str(exc)
+                logging.getLogger("ar-manager").warning(
+                    "Failed to fetch commits for %s...%s: %s",
+                    base, effective_branch, exc)
+        else:
+            commit_error = f"Could not extract owner/repo from URL: {effective_repo}"
+
+    # Compact jobs timeline: enough fields to situate memories in time and
+    # link them to the commits/PR flow, nothing more.
+    #
+    # Coerce job_limit defensively. MCP tool inputs are not runtime-type-
+    # enforced, so a caller could pass a string, a float, or a negative
+    # integer. Interpolating that directly into a URL would produce a
+    # malformed query; use a validated int and urlencode the query string.
+    try:
+        safe_job_limit = max(0, int(job_limit))
+    except (TypeError, ValueError):
+        safe_job_limit = 0
+    jobs_timeline = []
+    jobs_included = bool(workstream_id) and safe_job_limit > 0
+    if jobs_included:
+        try:
+            params = urlencode({"limit": safe_job_limit})
+            jobs_result = _controller_get(
+                f"/api/workstreams/{quote(workstream_id, safe='')}/jobs?{params}")
+            if isinstance(jobs_result, list):
+                for job in jobs_result:
+                    if not isinstance(job, dict):
+                        continue
+                    compact = {
+                        "jobId": job.get("jobId"),
+                        "timestamp": job.get("timestamp"),
+                        "status": job.get("status"),
+                        "description": job.get("description"),
+                    }
+                    if job.get("commitHash"):
+                        compact["commitHash"] = job["commitHash"][:10]
+                    if job.get("pullRequestUrl"):
+                        compact["pullRequestUrl"] = job["pullRequestUrl"]
+                    if job.get("errorMessage"):
+                        compact["errorMessage"] = job["errorMessage"]
+                    jobs_timeline.append(compact)
+        except Exception:
+            pass  # Non-critical: proceed without job history
+
+    result = {
         "ok": True,
         "repo_url": effective_repo,
         "branch": effective_branch,
@@ -1768,8 +2780,25 @@ def memory_branch_context(
         "next_steps": [
             "Use memory_recall for semantic search within these memories",
             "Use memory_store to add a new memory for this branch",
+            "Use project_read_plan to read the planning document",
         ],
     }
+    # Expose the jobs key unconditionally when the caller requested it —
+    # an empty list is a meaningful signal (no jobs on this branch yet),
+    # distinct from "the caller opted out with job_limit=0 or passed no
+    # workstream_id".
+    if jobs_included:
+        result["jobs"] = jobs_timeline
+    if commits is not None:
+        result["commits"] = commits
+        result["commit_count"] = len(commits)
+        result["total_commits"] = total_commits
+        if all_commits:
+            result["initial_commit_sha"] = all_commits[0].get("sha", "")[:10]
+    if commit_error is not None:
+        result["commit_error"] = commit_error
+
+    return result
 
 
 @mcp.tool()
@@ -1842,9 +2871,1083 @@ def memory_store(
     entry["ok"] = True
     entry["next_steps"] = [
         "Use memory_recall to search for this and other memories",
-        "Use memory_branch_context to see all memories for this branch",
+        "Use workstream_context to see all memories for this branch",
     ]
     return entry
+
+
+# ---------------------------------------------------------------------------
+# Messaging tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def send_message(
+    text: str,
+    workstream_id: str = "",
+    job_id: str = "",
+    activity: str = "",
+) -> dict:
+    """Send a message for archival and optional notification.
+
+    Messages are stored in the memory database by the controller and
+    optionally forwarded to a notification channel.  Use this tool to
+    report status updates, results, or errors back to the user who
+    initiated this task.
+
+    Args:
+        text: The message text to send.
+        workstream_id: Workstream to send the message to.  Defaults to
+            the workstream from the auth token when available.
+        job_id: Job to thread the message under.  Defaults to the job
+            from the auth token when available.
+        activity: Optional tag identifying the phase or activity this
+            message belongs to (e.g. ``"deduplication"``,
+            ``"organizational_placement"``,
+            ``"maven_dependency_protection"``).  Defaults to empty
+            (primary work).  When the environment variable
+            ``AR_AGENT_ACTIVITY`` is set and ``activity`` is not
+            supplied, the env var value is used automatically so that
+            correction-session agents do not need to pass it explicitly.
+
+    Returns:
+        Dictionary with ok=true on success or ok=false with error details.
+    """
+    _require_scope("write")
+
+    effective_ws = workstream_id or _get_token_workstream_id() or ""
+    effective_job = job_id or _get_token_job_id() or ""
+    effective_activity = (activity or os.environ.get("AR_AGENT_ACTIVITY", "")).strip()
+
+    if not effective_ws:
+        return {"ok": False, "error": "workstream_id is required (pass explicitly or use a job token)"}
+
+    if effective_activity:
+        err = _check_length(effective_activity, "activity", MAX_SHORT_STRING_LEN)
+        if err:
+            return err
+
+    _require_workstream_in_scope(effective_ws)
+    _audit("send_message", workstream_id=effective_ws, job_id=effective_job,
+           activity=effective_activity, text=text[:80])
+
+    err = _check_length(text, "text", MAX_CONTENT_LEN)
+    if err:
+        return err
+
+    # Build the controller path
+    path = f"/api/workstreams/{quote(effective_ws, safe='')}"
+    if effective_job:
+        path += f"/jobs/{quote(effective_job, safe='')}"
+    path += "/messages"
+
+    body: dict = {"text": text}
+    if effective_activity:
+        body["activity"] = effective_activity
+    return _controller_post(path, body)
+
+
+# ---------------------------------------------------------------------------
+# GitHub PR tools
+# ---------------------------------------------------------------------------
+
+
+def _find_open_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
+    """Look up the first open pull request for ``branch`` on ``owner/repo``.
+
+    Returns a dict with ``ok=True`` and ``pr`` (the raw GitHub PR object)
+    on success, ``ok=True`` with ``found=False`` when no open PR exists
+    for the branch, or an ``ok=False`` error dict when the GitHub call
+    fails or returns an unexpected payload. Centralising this lookup
+    avoids drift between tools that need to resolve a PR by branch
+    (e.g. ``github_pr_find``, ``github_request_copilot_review``,
+    ``github_pr_check_status``).
+    """
+    head = f"{owner}:{branch}"
+    pr_list = _github_request(
+        "GET",
+        f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=open",
+    )
+    if isinstance(pr_list, dict) and pr_list.get("ok") is False:
+        return pr_list
+    if not isinstance(pr_list, list):
+        return {
+            "ok": False,
+            "error": "Unexpected response listing pull requests",
+        }
+    if not pr_list:
+        return {"ok": True, "found": False, "branch": branch}
+    return {"ok": True, "found": True, "pr": pr_list[0], "branch": branch}
+
+
+@mcp.tool()
+def github_pr_find(
+    workstream_id: str = "",
+    branch: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """Find an open pull request for a branch.
+
+    Args:
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        branch: Branch to search for. Defaults to workstream's defaultBranch.
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. When set, bypasses workstream resolution — useful
+            when no workstream exists for the repo. Scoped tokens are
+            checked against this org via the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        PR details if found, or error.
+    """
+    _require_scope("read")
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, effective_branch, err = _resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo)
+    if err:
+        return err
+
+    _audit("github_pr_find", workstream_id=workstream_id, branch=effective_branch)
+
+    lookup = _find_open_pr_by_branch(owner, repo, effective_branch)
+    if not lookup.get("ok"):
+        return lookup
+    if not lookup.get("found"):
+        return {"ok": True, "found": False, "branch": effective_branch}
+    pr = lookup["pr"]
+    return {
+        "ok": True,
+        "found": True,
+        "number": pr.get("number"),
+        "title": pr.get("title"),
+        "url": pr.get("html_url"),
+        "state": pr.get("state"),
+        "branch": effective_branch,
+    }
+
+
+@mcp.tool()
+def github_pr_review_comments(
+    pr_number: int,
+    workstream_id: str = "",
+    branch: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """Get code review comments on a pull request.
+
+    Args:
+        pr_number: The PR number.
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        branch: Branch hint (used for repo resolution if needed).
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. Bypasses workstream resolution; scoped tokens are
+            checked against this org via the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        List of review comments.
+    """
+    _require_scope("read")
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, _, err = _resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo)
+    if err:
+        return err
+
+    _audit("github_pr_review_comments", pr_number=pr_number)
+
+    # Fetch unresolved review threads via GraphQL (paginated).
+    # The REST /pulls/{pr}/comments endpoint caps at 30 per page and does not
+    # expose thread-level resolution state, so we use the GraphQL API instead.
+    REVIEW_THREADS_QUERY = """
+    query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $pr) {
+          reviewThreads(first: 100, after: $cursor) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              isResolved
+              comments(first: 50) {
+                nodes {
+                  databaseId
+                  path
+                  line
+                  originalLine
+                  body
+                  author { login }
+                  createdAt
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+
+    all_comments = []
+    cursor = None
+    while True:
+        variables = {"owner": owner, "repo": repo, "pr": pr_number, "cursor": cursor}
+        result = _github_graphql_request(REVIEW_THREADS_QUERY, variables)
+
+        if isinstance(result, dict) and not result.get("ok", True) is False:
+            if "errors" in result:
+                return {"ok": False, "error": result["errors"][0].get("message", "GraphQL error")}
+        if not isinstance(result, dict) or "data" not in result:
+            return result if isinstance(result, dict) else {"ok": False, "error": "Unexpected response from GitHub GraphQL"}
+
+        pr_data = (result.get("data") or {}).get("repository", {}).get("pullRequest") or {}
+        threads_connection = pr_data.get("reviewThreads", {})
+        threads = threads_connection.get("nodes", [])
+
+        for thread in threads:
+            if thread.get("isResolved"):
+                continue
+            for c in thread.get("comments", {}).get("nodes", []):
+                all_comments.append({
+                    "id": c.get("databaseId"),
+                    "path": c.get("path"),
+                    "line": c.get("line") or c.get("originalLine"),
+                    "body": c.get("body"),
+                    "user": (c.get("author") or {}).get("login"),
+                    "created_at": c.get("createdAt"),
+                    "in_reply_to_id": None,
+                })
+
+        page_info = threads_connection.get("pageInfo", {})
+        if not page_info.get("hasNextPage"):
+            break
+        cursor = page_info.get("endCursor")
+
+    all_comments.sort(key=lambda c: c.get("created_at") or "", reverse=True)
+    top_comments = all_comments[:50]
+    return {"ok": True, "comments": top_comments, "count": len(top_comments)}
+
+
+@mcp.tool()
+def github_pr_conversation(
+    pr_number: int,
+    workstream_id: str = "",
+    branch: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """Get the conversation (issue comments) on a pull request.
+
+    Args:
+        pr_number: The PR number.
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        branch: Branch hint (used for repo resolution if needed).
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. Bypasses workstream resolution; scoped tokens are
+            checked against this org via the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        List of conversation comments.
+    """
+    _require_scope("read")
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, _, err = _resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo)
+    if err:
+        return err
+
+    _audit("github_pr_conversation", pr_number=pr_number)
+
+    result = _github_request("GET", f"/repos/{owner}/{repo}/issues/{pr_number}/comments")
+    if isinstance(result, list):
+        comments = []
+        for c in result:
+            comments.append({
+                "id": c.get("id"),
+                "body": c.get("body"),
+                "user": c.get("user", {}).get("login"),
+                "created_at": c.get("created_at"),
+            })
+        return {"ok": True, "comments": comments, "count": len(comments)}
+    return result
+
+
+@mcp.tool()
+def github_pr_reply(
+    comment_id: int,
+    body: str,
+    pr_number: int,
+    workstream_id: str = "",
+    branch: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """Reply to a pull request review comment.
+
+    Args:
+        comment_id: The ID of the review comment to reply to.
+        body: The reply text.
+        pr_number: The PR number.
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        branch: Branch hint.
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. Bypasses workstream resolution; scoped tokens are
+            checked against this org via the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        The created reply.
+    """
+    _require_scope("write")
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, _, err = _resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo)
+    if err:
+        return err
+
+    _audit("github_pr_reply", comment_id=comment_id, pr_number=pr_number)
+
+    result = _github_request(
+        "POST",
+        f"/repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies",
+        {"body": body},
+    )
+    if result.get("id"):
+        return {"ok": True, "id": result["id"]}
+    return result
+
+
+@mcp.tool()
+def github_list_open_prs(
+    workstream_id: str = "",
+    base: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """List open pull requests.
+
+    Args:
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        base: Filter by base branch (e.g., "master"). If empty, lists all open PRs.
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. Bypasses workstream resolution; scoped tokens are
+            checked against this org via the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        List of open PRs.
+    """
+    _require_scope("read")
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, _, err = _resolve_github_repo(
+        workstream_id=workstream_id, owner=org, repo=repo)
+    if err:
+        return err
+
+    _audit("github_list_open_prs", base=base)
+
+    path = f"/repos/{owner}/{repo}/pulls?state=open"
+    if base:
+        path += f"&base={quote(base, safe='/')}"
+
+    result = _github_request("GET", path)
+    if isinstance(result, list):
+        prs = []
+        for pr in result:
+            prs.append({
+                "number": pr.get("number"),
+                "title": pr.get("title"),
+                "url": pr.get("html_url"),
+                "head": pr.get("head", {}).get("ref"),
+                "base": pr.get("base", {}).get("ref"),
+                "user": pr.get("user", {}).get("login"),
+                "created_at": pr.get("created_at"),
+            })
+        return {"ok": True, "prs": prs, "count": len(prs)}
+    return result
+
+
+@mcp.tool()
+def github_create_pr(
+    title: str,
+    body: str,
+    workstream_id: str = "",
+    base: str = "",
+    head: str = "",
+    request_copilot_review: bool = False,
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """Create a pull request.
+
+    Args:
+        title: PR title.
+        body: PR description.
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        base: Base branch (default: workstream's baseBranch or "master").
+        head: Head branch (default: workstream's defaultBranch).
+        request_copilot_review: If true, automatically request a Copilot review
+            after creating the PR.
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. Bypasses workstream resolution; scoped tokens are
+            checked against this org via the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        The created PR details, including copilot_review_requested if applicable.
+    """
+    _require_scope("write")
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, default_branch, err = _resolve_github_repo(
+        workstream_id=workstream_id, owner=org, repo=repo)
+    if err:
+        return err
+
+    effective_ws = workstream_id or _get_token_workstream_id() or ""
+    ws = _find_workstream(effective_ws) if effective_ws else None
+    effective_base = base or (ws.get("baseBranch", "master") if ws else "master")
+    effective_head = head or default_branch
+
+    if not effective_head:
+        return {"ok": False, "error": "head branch is required"}
+
+    _audit("github_create_pr", title=title, base=effective_base, head=effective_head)
+
+    result = _github_request("POST", f"/repos/{owner}/{repo}/pulls", {
+        "title": title,
+        "body": body,
+        "base": effective_base,
+        "head": effective_head,
+    })
+
+    if result.get("number"):
+        pr_number = result["number"]
+        response = {
+            "ok": True,
+            "number": pr_number,
+            "url": result.get("html_url"),
+            "title": result.get("title"),
+        }
+
+        if request_copilot_review:
+            copilot_result = _request_copilot_review(owner, repo, pr_number)
+            response["copilot_review_requested"] = copilot_result.get("ok", False)
+            if not copilot_result.get("ok"):
+                response["copilot_review_error"] = copilot_result.get("error")
+
+        return response
+    return result
+
+
+def _dismiss_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
+    """Dismiss the most recent dismissible Copilot review on a pull request.
+
+    Looks for reviews from the copilot bot (login contains 'copilot') and
+    dismisses the most recent one that is in APPROVED or CHANGES_REQUESTED
+    state, which allows a fresh review to be requested.
+
+    Args:
+        owner: Repository owner.
+        repo: Repository name.
+        pr_number: Pull request number.
+
+    Returns:
+        dict with ok=True if a review was dismissed, ok=False otherwise.
+    """
+    reviews = _github_request("GET", f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews")
+    if not isinstance(reviews, list):
+        if isinstance(reviews, dict):
+            return reviews
+        return {"ok": False, "error": "Failed to list reviews"}
+
+    dismissible = [
+        r for r in reviews
+        if isinstance(r.get("user"), dict)
+        and _is_copilot_login(r.get("user", {}).get("login", ""))
+        and r.get("state") in ("APPROVED", "CHANGES_REQUESTED")
+    ]
+
+    if not dismissible:
+        return {"ok": False, "error": "No dismissible Copilot reviews found"}
+
+    most_recent = max(dismissible, key=lambda r: r.get("submitted_at", ""))
+    review_id = most_recent["id"]
+    result = _github_request(
+        "PUT",
+        f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews/{review_id}/dismissals",
+        {"message": "Dismissing prior Copilot review to allow re-review"},
+    )
+    if isinstance(result, dict) and result.get("id"):
+        return {"ok": True}
+    if isinstance(result, dict) and "ok" in result:
+        return result
+    return {"ok": False, "error": str(result)}
+
+
+COPILOT_REVIEWER_LOGIN = "copilot"
+
+
+def _is_copilot_login(login: str) -> bool:
+    """Returns True if ``login`` identifies a GitHub Copilot account.
+
+    GitHub exposes Copilot under multiple login strings depending on the
+    endpoint, empirically observed on this repo:
+
+    - ``"copilot"`` — the slug accepted by ``POST /pulls/N/requested_reviewers``
+      (see the commit message on 6a2269f79: sending
+      ``copilot-pull-request-reviewer`` returns HTTP 422).
+    - ``"copilot-pull-request-reviewer[bot]"`` — the ``user.login`` on
+      review objects returned by ``GET /pulls/N/reviews``.
+    - ``"Copilot"`` — the ``user.login`` on review-comment objects
+      returned by ``GET /pulls/N/comments``.
+
+    Matching all three with a case-insensitive substring check on
+    ``"copilot"`` is safe because it does not collide with any real user
+    or team slug that could legitimately request a review (GitHub reserves
+    the ``copilot`` name). Used by both ``_copilot_is_requested`` (request
+    verification) and ``_dismiss_copilot_review`` (review lookup) so the
+    two paths cannot disagree about what counts as Copilot.
+    """
+    if not isinstance(login, str):
+        return False
+    return COPILOT_REVIEWER_LOGIN in login.lower()
+
+
+def _copilot_is_requested(pr_response: dict) -> bool:
+    """True when the PR response's ``requested_reviewers`` array lists the
+    Copilot bot. The GitHub API accepts an empty-looking payload silently
+    (ignoring unknown fields), so we can't trust a 2xx status alone — we
+    verify the reviewer was actually added.
+
+    Delegates the login comparison to :func:`_is_copilot_login` so request
+    verification, review lookup, and dismissal all use the same rule.
+    """
+    if not isinstance(pr_response, dict):
+        return False
+    reviewers = pr_response.get("requested_reviewers") or []
+    for r in reviewers:
+        if isinstance(r, dict) and _is_copilot_login(r.get("login", "")):
+            return True
+    return False
+
+
+def _post_copilot_review_request(owner: str, repo: str, pr_number: int) -> dict:
+    """POST the Copilot reviewer request. Returns the raw response dict so
+    callers can check success via :func:`_copilot_is_requested` and handle
+    fallback/retry on actual failure."""
+    return _github_request(
+        "POST",
+        f"/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers",
+        {"reviewers": [COPILOT_REVIEWER_LOGIN]},
+    )
+
+
+def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
+    """Request a GitHub Copilot review on a pull request.
+
+    Copilot reviews are triggered by requesting a review from the 'copilot'
+    user via the standard ``requested_reviewers`` endpoint. If Copilot has
+    already reviewed the PR, the most recent dismissible review is dismissed
+    and the request is retried, making this call idempotent.
+
+    Verifies success by checking that the returned PR's
+    ``requested_reviewers`` array actually contains the bot — the GitHub
+    API silently drops unknown body fields and returns 2xx on no-op
+    requests, so a successful-looking status code alone cannot be trusted.
+
+    Args:
+        owner: Repository owner.
+        repo: Repository name.
+        pr_number: Pull request number.
+
+    Returns:
+        dict with ok=True on success or ok=False with error details.
+    """
+    result = _post_copilot_review_request(owner, repo, pr_number)
+
+    if _copilot_is_requested(result):
+        return {"ok": True}
+
+    # If the POST itself reported failure, try dismissing any existing
+    # Copilot review and retrying — Copilot rejects duplicate requests.
+    if isinstance(result, dict) and result.get("ok") is False:
+        dismiss = _dismiss_copilot_review(owner, repo, pr_number)
+        if not dismiss.get("ok"):
+            return {"ok": False,
+                    "error": f"Review request failed: {result.get('error', '')}"}
+        retry = _post_copilot_review_request(owner, repo, pr_number)
+        if _copilot_is_requested(retry):
+            return {"ok": True}
+        if isinstance(retry, dict) and "ok" in retry:
+            return retry
+        return {
+            "ok": False,
+            "error": (
+                f"Retry did not add Copilot as a reviewer. Response: {retry}"),
+        }
+
+    # POST reported 2xx but the bot is not in requested_reviewers — something
+    # silently no-op'd the request. Surface this rather than claiming success.
+    return {
+        "ok": False,
+        "error": (
+            "Copilot was not added as a reviewer. The API returned a 2xx "
+            "response but the requested_reviewers array does not include "
+            f"'{COPILOT_REVIEWER_LOGIN}'. Check that the Copilot code review "
+            "feature is enabled for this repository."),
+    }
+
+
+@mcp.tool()
+def github_request_copilot_review(
+    pr_number: int = 0,
+    workstream_id: str = "",
+    branch: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """Request a GitHub Copilot automated code review on a pull request.
+
+    Copilot reviews are triggered by requesting a review from the 'copilot'
+    user via the GitHub API.
+
+    Args:
+        pr_number: Pull request number. If omitted, the open PR for the
+            workstream/branch is looked up automatically.
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        branch: Branch hint used to find the PR when pr_number is not given.
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. Bypasses workstream resolution; scoped tokens are
+            checked against this org via the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        dict with ok=True on success or ok=False with error details.
+    """
+    _require_scope("write")
+    if org and repo:
+        _require_org_in_scope(org)
+    # Direct addressing (org+repo) supplies no branch of its own. When the
+    # caller also omits pr_number we'd fall through to a PR lookup with an
+    # empty head filter, producing a misleading "No open PR found for
+    # branch ''" error. Require an explicit branch (or pr_number) in that
+    # case before even resolving the repo.
+    if (org and repo) and not pr_number and not branch:
+        return {
+            "ok": False,
+            "error": ("branch is required when using direct org/repo addressing "
+                      "without a pr_number"),
+            "next_steps": [
+                "Pass branch=<feature-branch> so the open PR can be looked up",
+                "Or pass pr_number=<number> to address the PR directly",
+            ],
+        }
+    owner, repo, effective_branch, err = _resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo)
+    if err:
+        return err
+
+    effective_pr = pr_number
+    if not effective_pr:
+        if not effective_branch:
+            return {
+                "ok": False,
+                "error": "no branch available to locate an open PR",
+                "next_steps": [
+                    "Pass pr_number explicitly, or supply a branch / workstream_id "
+                    "with a defaultBranch so the open PR can be looked up",
+                ],
+            }
+        # Look up the open PR for the branch.
+        lookup = _find_open_pr_by_branch(owner, repo, effective_branch)
+        if not lookup.get("ok"):
+            return lookup
+        if not lookup.get("found"):
+            return {"ok": False, "error": f"No open PR found for branch '{effective_branch}'"}
+        effective_pr = lookup["pr"].get("number")
+
+    _audit("github_request_copilot_review", pr_number=effective_pr)
+
+    return _request_copilot_review(owner, repo, effective_pr)
+
+
+# ---------------------------------------------------------------------------
+# GitHub file and pipeline tools
+# ---------------------------------------------------------------------------
+
+# Size limit for github_read_file — reject files over this threshold.
+_GITHUB_READ_FILE_SIZE_LIMIT = 1_048_576  # 1 MB
+
+
+@mcp.tool()
+def github_read_file(
+    path: str,
+    workstream_id: str = "",
+    repo_url: str = "",
+    branch: str = "",
+    ref: str = "",
+) -> dict:
+    """Read any file from a GitHub repository.
+
+    Fetches file content via the GitHub Contents API, routed through the
+    FlowTree controller proxy for authentication. The repository is
+    resolved from the workstream or supplied explicitly via ``repo_url``.
+
+    Returns the file content as text. Binary files that cannot be decoded
+    as UTF-8 are rejected with a clear error. Files larger than 1 MB are
+    rejected to prevent accidental large pulls — use grep tools or read
+    specific line ranges for large files.
+
+    Args:
+        path: File path within the repository (e.g. ``docs/README.md``).
+        workstream_id: Workstream to resolve the repository from. When
+            both ``workstream_id`` and ``repo_url`` are empty, the
+            resolver falls back to local-git detection (useful when the
+            server runs against a developer checkout).
+        repo_url: Explicit GitHub repository URL (e.g.
+            ``https://github.com/owner/repo``). Overrides workstream
+            resolution when provided. Scoped tokens are checked against
+            the parsed owner via the workspace scope gate.
+        branch: Branch to read from. Defaults to the workstream's
+            ``defaultBranch`` when available, otherwise the repo's
+            default branch. Ignored when ``ref`` is provided.
+        ref: Git ref to read at (branch, tag, or commit SHA). Takes
+            precedence over ``branch`` when both are provided.
+
+    Returns:
+        Dictionary with file content, path, ref, sha, and repo.
+    """
+    _require_scope("read")
+    err = _check_short_strings(
+        path=path, workstream_id=workstream_id, branch=branch, ref=ref,
+    )
+    if err:
+        return err
+    if not path:
+        return {"ok": False, "error": "path is required"}
+
+    _audit("github_read_file", path=path, workstream_id=workstream_id,
+           branch=branch, ref=ref)
+
+    # Resolve owner/repo
+    if repo_url:
+        owner_repo = _extract_owner_repo(repo_url)
+        if not owner_repo:
+            return {"ok": False, "error": f"Cannot parse owner/repo from: {repo_url}"}
+        owner, repo = owner_repo
+        _require_org_in_scope(owner)
+        _current_github_org.set(owner)
+        effective_branch = branch
+    else:
+        owner, repo, effective_branch, err = _resolve_github_repo(
+            workstream_id=workstream_id, branch=branch,
+        )
+        if err:
+            return err
+
+    effective_ref = ref or effective_branch
+    ref_suffix = f"?ref={quote(effective_ref, safe='')}" if effective_ref else ""
+
+    result = _github_request(
+        "GET",
+        f"/repos/{owner}/{repo}/contents/{quote(path, safe='/')}{ref_suffix}",
+    )
+
+    if isinstance(result, dict) and result.get("ok") is False:
+        result.setdefault("next_steps", [
+            f"Verify the file exists at '{path}' on the specified ref/branch",
+            "Check the repo_url or workstream_id is correct",
+        ])
+        return result
+
+    # The GitHub Contents API returns a JSON array (not a dict) when the
+    # supplied path refers to a directory. Surface this explicitly rather
+    # than reporting a misleading "Unexpected response".
+    if isinstance(result, list):
+        return {
+            "ok": False,
+            "error": (
+                f"Path '{path}' refers to a directory, not a file"
+            ),
+            "repo": f"{owner}/{repo}",
+            "next_steps": [
+                "Pass a specific file path within the directory",
+                "Use git/grep tools to enumerate directory contents",
+            ],
+        }
+
+    if not isinstance(result, dict):
+        return {
+            "ok": False,
+            "error": "Unexpected response from GitHub Contents API",
+        }
+
+    # Enforce size limit before decoding
+    file_size = result.get("size", 0)
+    if file_size > _GITHUB_READ_FILE_SIZE_LIMIT:
+        return {
+            "ok": False,
+            "error": (
+                f"File '{path}' is {file_size:,} bytes, which exceeds the 1 MB "
+                "limit. Use grep tools or read specific line ranges instead."
+            ),
+            "size": file_size,
+            "repo": f"{owner}/{repo}",
+        }
+
+    # Decode content
+    content_b64 = result.get("content", "")
+    encoding = result.get("encoding", "")
+    if encoding == "base64" and content_b64:
+        # GitHub wraps base64 output in newlines; strip them before decoding.
+        try:
+            raw_bytes = base64.b64decode(content_b64.replace("\n", ""))
+        except (binascii.Error, ValueError) as exc:
+            return {
+                "ok": False,
+                "error": (
+                    f"Failed to decode base64 content for '{path}': {exc}"
+                ),
+                "repo": f"{owner}/{repo}",
+            }
+        try:
+            content = raw_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            return {
+                "ok": False,
+                "error": (
+                    f"File '{path}' appears to be binary and cannot be returned "
+                    "as text. Fetch it directly from the repository instead."
+                ),
+                "size": file_size,
+                "repo": f"{owner}/{repo}",
+            }
+    else:
+        content = content_b64
+
+    return {
+        "ok": True,
+        "path": result.get("path", path),
+        "repo": f"{owner}/{repo}",
+        "ref": effective_ref or "(default branch)",
+        "sha": result.get("sha", ""),
+        "size": file_size,
+        "content": content,
+    }
+
+
+@mcp.tool()
+def github_pr_check_status(
+    pr_number: int = 0,
+    workstream_id: str = "",
+    branch: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """Check CI pipeline status for a pull request.
+
+    Fetches the PR's current HEAD commit SHA, then retrieves workflow runs
+    and check runs for that exact commit. This answers whether the CI
+    pipeline has run for the latest commit and whether it passed.
+
+    The ``pipeline_current`` flag in the response indicates whether at
+    least one workflow run targets the PR's HEAD commit SHA — if False,
+    the run results shown are for an older commit.
+
+    Args:
+        pr_number: Pull request number. If omitted, the open PR for the
+            workstream/branch is looked up automatically.
+        workstream_id: Workstream to resolve repo from. Defaults to token
+            context.
+        branch: Branch hint used to find the PR when pr_number is not
+            given. Defaults to the workstream's defaultBranch.
+        org: GitHub org (owner) to address directly. Must be passed
+            together with ``repo``. Bypasses workstream resolution;
+            scoped tokens are checked against this org via the workspace
+            scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        Dictionary with pr_number, head_sha, pipeline_current flag,
+        overall_status, workflow_runs list, and check_runs list. Failed
+        check runs include html_url and details_url for log access.
+    """
+    _require_scope("read")
+    if org and repo:
+        _require_org_in_scope(org)
+    owner, repo, effective_branch, err = _resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo,
+    )
+    if err:
+        return err
+
+    _audit("github_pr_check_status", pr_number=pr_number,
+           workstream_id=workstream_id, branch=effective_branch)
+
+    # Resolve PR number and head SHA
+    effective_pr = pr_number
+    head_sha = ""
+    pr_branch = effective_branch
+
+    if effective_pr:
+        pr_data = _github_request("GET", f"/repos/{owner}/{repo}/pulls/{effective_pr}")
+        if isinstance(pr_data, dict) and pr_data.get("ok") is False:
+            return pr_data
+        if isinstance(pr_data, dict):
+            head_sha = pr_data.get("head", {}).get("sha", "")
+            pr_branch = pr_data.get("head", {}).get("ref", effective_branch)
+    else:
+        if not effective_branch:
+            return {
+                "ok": False,
+                "error": "pr_number or branch is required to look up the PR",
+                "next_steps": [
+                    "Pass pr_number explicitly",
+                    "Or supply workstream_id/branch so the open PR can be found",
+                ],
+            }
+        lookup = _find_open_pr_by_branch(owner, repo, effective_branch)
+        if not lookup.get("ok"):
+            return lookup
+        if not lookup.get("found"):
+            return {
+                "ok": False,
+                "error": f"No open PR found for branch '{effective_branch}'",
+                "next_steps": ["Pass pr_number explicitly if the PR is closed"],
+            }
+        pr = lookup["pr"]
+        effective_pr = pr.get("number")
+        head_sha = pr.get("head", {}).get("sha", "")
+        pr_branch = pr.get("head", {}).get("ref", effective_branch)
+
+    if not head_sha:
+        return {"ok": False, "error": "Could not determine PR head commit SHA"}
+
+    # Fetch workflow runs for the head SHA
+    runs_result = _github_request(
+        "GET",
+        f"/repos/{owner}/{repo}/actions/runs?head_sha={quote(head_sha, safe='')}",
+    )
+
+    if isinstance(runs_result, dict) and runs_result.get("ok") is False:
+        return runs_result
+
+    workflow_runs = []
+    pipeline_current = False
+
+    if isinstance(runs_result, dict):
+        for run in runs_result.get("workflow_runs", []):
+            if run.get("head_sha") == head_sha:
+                pipeline_current = True
+            workflow_runs.append({
+                "run_id": run.get("id"),
+                "name": run.get("name", ""),
+                "status": run.get("status", ""),
+                "conclusion": run.get("conclusion"),
+                "head_sha": run.get("head_sha", ""),
+                "created_at": run.get("created_at", ""),
+                "updated_at": run.get("updated_at", ""),
+                "html_url": run.get("html_url", ""),
+            })
+
+    # Fetch check runs for the head SHA
+    check_result = _github_request(
+        "GET",
+        f"/repos/{owner}/{repo}/commits/{head_sha}/check-runs",
+    )
+
+    if isinstance(check_result, dict) and check_result.get("ok") is False:
+        return {
+            "ok": False,
+            "error": "Failed to fetch check runs",
+            "check_runs_error": check_result,
+        }
+
+    check_runs = []
+    if isinstance(check_result, dict):
+        for check in check_result.get("check_runs", []):
+            # check_runs are scoped to head_sha by the URL, so any returned
+            # entry is also evidence that the pipeline targets the current
+            # commit. workflow_runs and check_runs come from independent
+            # GitHub endpoints — relying on workflow_runs alone misses cases
+            # where check_runs is populated but workflow_runs is empty.
+            pipeline_current = True
+            check_info = {
+                "id": check.get("id"),
+                "name": check.get("name", ""),
+                "status": check.get("status", ""),
+                "conclusion": check.get("conclusion"),
+                "html_url": check.get("html_url", ""),
+                "started_at": check.get("started_at"),
+                "completed_at": check.get("completed_at"),
+            }
+            if check.get("conclusion") == "failure":
+                check_info["details_url"] = check.get("details_url", "")
+            check_runs.append(check_info)
+
+    # Derive overall status
+    if not workflow_runs and not check_runs:
+        overall = "no_runs"
+    elif workflow_runs and not pipeline_current:
+        overall = "stale"
+    else:
+        # An in-progress check (status != "completed") means CI is still
+        # running even if other checks have already concluded — report
+        # "pending" rather than letting completed conclusions decide.
+        has_incomplete_checks = any(
+            r.get("status") != "completed" for r in check_runs
+        )
+        conclusions = [r["conclusion"] for r in check_runs if r.get("conclusion")]
+        if has_incomplete_checks:
+            overall = "pending"
+        elif not conclusions:
+            overall = "pending"
+        elif any(c == "failure" for c in conclusions):
+            overall = "failure"
+        elif all(c in ("success", "skipped", "neutral") for c in conclusions):
+            overall = "success"
+        else:
+            overall = "mixed"
+
+    next_steps: list = []
+    if overall == "no_runs":
+        next_steps = [
+            "No workflow runs found; the pipeline may not be configured or "
+            "hasn't triggered yet",
+        ]
+    elif overall == "stale":
+        next_steps = [
+            "The latest workflow run targets an older commit; push a new "
+            "commit or manually re-run CI to update the status",
+        ]
+    elif overall == "failure":
+        next_steps = [
+            "Review failed check runs above for error details",
+            "Use the html_url or details_url links to view full logs",
+        ]
+    elif overall == "success":
+        next_steps = ["All checks passed; the PR is ready to review or merge"]
+    elif overall == "pending":
+        next_steps = ["CI is still running; check back later"]
+
+    return {
+        "ok": True,
+        "pr_number": effective_pr,
+        "repo": f"{owner}/{repo}",
+        "head_sha": head_sha,
+        "branch": pr_branch,
+        "pipeline_current": pipeline_current,
+        "overall_status": overall,
+        "workflow_runs": workflow_runs,
+        "check_runs": check_runs,
+        "next_steps": next_steps,
+    }
 
 
 # ---------------------------------------------------------------------------

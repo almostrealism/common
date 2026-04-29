@@ -56,6 +56,7 @@ import java.util.function.Supplier;
  * @see ThreadLocal
  */
 public class ThreadLocalSuppliedValue<T> extends SuppliedValue<T> {
+	/** Per-thread value storage; entries are reclaimed when threads are garbage collected. */
 	private WeakHashMap<Thread, T> values;
 
 	/**

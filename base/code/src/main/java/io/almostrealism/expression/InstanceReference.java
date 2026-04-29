@@ -40,18 +40,39 @@ import java.util.function.BiFunction;
  */
 public class InstanceReference<T, V> extends Expression<V> implements ExpressionFeatures, ConsoleFeatures {
 
+	/**
+	 * A configurable function that renders a variable-name and position string into a
+	 * dereferencing expression (e.g. {@code name[pos]}). Defaults to array-index notation.
+	 */
 	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
 
+	/** The variable being referenced. */
 	private Variable<T, ?> var;
+
+	/** The position expression used to index into the variable, or {@code null} for a scalar reference. */
 	private Expression<?> pos;
+
+	/** An optional supplementary index expression used for multi-dimensional access. */
 	private Expression<?> index;
 
+	/**
+	 * Constructs a scalar reference to the given variable with no position expression.
+	 *
+	 * @param referent the variable to reference
+	 */
 	public InstanceReference(Variable<T, ?> referent) {
 		super((Class) referent.getType());
 		this.var = referent;
 		init();
 	}
 
+	/**
+	 * Constructs an array-element reference to the given variable at the specified position.
+	 *
+	 * @param referent the variable to reference
+	 * @param pos      the position expression for array indexing
+	 * @param index    a supplementary index expression, or {@code null}
+	 */
 	public InstanceReference(Variable<T, ?> referent, Expression<?> pos, Expression<?> index) {
 		super((Class) referent.getType(), false, pos);
 		this.var = referent;
@@ -128,6 +149,8 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 				target, e(1), e(0));
 	}
 
+	/** {@inheritDoc} Recreates the reference using the same variable but new position children. */
+	@Override
 	public InstanceReference<T, V> recreate(List<Expression<?>> children) {
 		if (children.isEmpty()) {
 			return new InstanceReference<>(var);

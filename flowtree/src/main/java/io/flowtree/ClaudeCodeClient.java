@@ -83,9 +83,13 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ClaudeCodeClient implements ConsoleFeatures {
 
+	/** Pool of remote agent connections available for job submission. */
 	private final List<AgentConnection> agents = new ArrayList<>();
+	/** Maps agent index to the {@link NodeProxy} used to relay jobs to that agent. */
 	private final ConcurrentHashMap<Integer, NodeProxy> proxyMap = new ConcurrentHashMap<>();
+	/** Local FlowTree server used to relay jobs to remote agents. */
 	private Server server;
+	/** Round-robin index of the next agent to receive a submitted job. */
 	private int nextAgent = 0;
 
 	/**
@@ -277,17 +281,36 @@ public class ClaudeCodeClient implements ConsoleFeatures {
 		return agents.size();
 	}
 
+	/**
+	 * Holds the network coordinates of a single remote Claude Code agent.
+	 */
 	private static class AgentConnection {
+		/** Hostname or IP address of the remote agent. */
 		final String host;
+		/** TCP port the remote agent is listening on. */
 		final int port;
 
+		/**
+		 * Constructs a new {@link AgentConnection}.
+		 *
+		 * @param host  hostname or IP address of the remote agent
+		 * @param port  TCP port the agent is listening on
+		 */
 		AgentConnection(String host, int port) {
 			this.host = host;
 			this.port = port;
 		}
 	}
 
-	// Command-line interface
+	/**
+	 * Command-line entry point. Parses arguments for host, port(s), prompt
+	 * text, allowed tools, max turns, and max budget; creates a
+	 * {@link ClaudeCodeClient}; and submits a single
+	 * {@link io.flowtree.jobs.ClaudeCodeJob.Factory} to the configured agents.
+	 *
+	 * @param args  command-line arguments (see {@link #printUsage()} for details)
+	 * @throws IOException if a network error occurs while connecting to an agent
+	 */
 	public static void main(String[] args) throws IOException {
 		String host = "localhost";
 		String ports = "7766";
@@ -355,27 +378,31 @@ public class ClaudeCodeClient implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Prints usage instructions for the command-line interface to
+	 * {@link System#out}.
+	 */
 	private static void printUsage() {
-		System.out.println("Usage: ClaudeCodeClient [options]");
-		System.out.println();
-		System.out.println("Options:");
-		System.out.println("  --host, -h <host>       Agent hostname (default: localhost)");
-		System.out.println("  --port, -p <port,...>   Agent port(s), comma-separated (default: 7766)");
-		System.out.println("  --prompt <text>         The prompt to execute (required)");
-		System.out.println("  --tools <list>          Allowed tools (default: Read,Edit,Write,Bash,Glob,Grep)");
-		System.out.println("  --max-turns <n>         Maximum agent turns (default: 50)");
-		System.out.println("  --max-budget <usd>      Maximum budget in USD (default: 10.0)");
-		System.out.println("  --help                  Show this help");
-		System.out.println();
-		System.out.println("Examples:");
-		System.out.println("  # Submit to single agent");
-		System.out.println("  java -cp flowtree.jar io.flowtree.ClaudeCodeClient \\");
-		System.out.println("      --host localhost --port 7766 \\");
-		System.out.println("      --prompt \"Fix the null pointer in UserService\"");
-		System.out.println();
-		System.out.println("  # Submit to multiple agents");
-		System.out.println("  java -cp flowtree.jar io.flowtree.ClaudeCodeClient \\");
-		System.out.println("      --host localhost --port 7766,7767,7768,7769 \\");
-		System.out.println("      --prompt \"Review error handling across the codebase\"");
+		Console.root().println("Usage: ClaudeCodeClient [options]");
+		Console.root().println("");
+		Console.root().println("Options:");
+		Console.root().println("  --host, -h <host>       Agent hostname (default: localhost)");
+		Console.root().println("  --port, -p <port,...>   Agent port(s), comma-separated (default: 7766)");
+		Console.root().println("  --prompt <text>         The prompt to execute (required)");
+		Console.root().println("  --tools <list>          Allowed tools (default: Read,Edit,Write,Bash,Glob,Grep)");
+		Console.root().println("  --max-turns <n>         Maximum agent turns (default: 50)");
+		Console.root().println("  --max-budget <usd>      Maximum budget in USD (default: 10.0)");
+		Console.root().println("  --help                  Show this help");
+		Console.root().println("");
+		Console.root().println("Examples:");
+		Console.root().println("  # Submit to single agent");
+		Console.root().println("  java -cp flowtree.jar io.flowtree.ClaudeCodeClient \\");
+		Console.root().println("      --host localhost --port 7766 \\");
+		Console.root().println("      --prompt \"Fix the null pointer in UserService\"");
+		Console.root().println("");
+		Console.root().println("  # Submit to multiple agents");
+		Console.root().println("  java -cp flowtree.jar io.flowtree.ClaudeCodeClient \\");
+		Console.root().println("      --host localhost --port 7766,7767,7768,7769 \\");
+		Console.root().println("      --prompt \"Review error handling across the codebase\"");
 	}
 }

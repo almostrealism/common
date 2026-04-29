@@ -22,37 +22,87 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.geometry.TransformMatrix;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Hashtable;
 import java.util.List;
-import java.util.Stack;
+import java.util.ArrayDeque;
 
 /**
+ * An L-System (Lindenmayer System) that generates fractal 3D surface arrangements
+ * by iteratively applying rewriting rules to a symbol sequence.
+ *
+ * <p>Rules map symbol objects to arrays (or {@link Statement} lambdas) that replace
+ * each symbol during each generation step.  Once the desired number of generations
+ * is reached, the symbol sequence can be interpreted as a series of movement and
+ * rotation commands that build a list of {@link AbstractSurface} objects placed
+ * in 3D space.</p>
+ *
  * @author Michael Murray
  */
-public class LSystem implements CodeFeatures {
+public class LSystem implements CodeFeatures, ConsoleFeatures {
+	/** Symbol that advances the cursor one step in the current direction and places a surface. */
 	public static final String STEP = "step";
+
+	/** Symbol that rotates the cursor forward (positive X rotation). */
 	public static final String FORWARD = "forward";
+
+	/** Symbol that rotates the cursor backward (negative X rotation). */
 	public static final String BACKWARD = "backward";
+
+	/** Symbol that rotates the cursor to the left (negative Z rotation). */
 	public static final String LEFT = "left";
+
+	/** Symbol that rotates the cursor to the right (positive Z rotation). */
 	public static final String RIGHT = "right";
+
+	/** Symbol that saves the current cursor position and direction onto a stack. */
 	public static final String PUSH = "push";
+
+	/** Symbol that restores the cursor position and direction from the stack. */
 	public static final String POP = "pop";
-	
+
+	/** Factory interface for producing the next {@link AbstractSurface} in the L-System sequence. */
 	public interface SurfaceFactory { AbstractSurface next(AbstractSurface current); }
+
+	/** Interface for dynamic rule evaluation: maps an input object to a replacement symbol array. */
 	public interface Statement { String[] evaluate(Object o); }
-	
+
+	/** The rewriting rules that map symbols to replacement sequences. */
 	private final Hashtable rules;
+
+	/** Factory that creates the {@link AbstractSurface} objects placed at each STEP. */
 	private SurfaceFactory factory;
-	private Vector left, right, forward, backward;
+
+	/** Rotation applied when the LEFT symbol is encountered. */
+	private Vector left;
+
+	/** Rotation applied when the RIGHT symbol is encountered. */
+	private Vector right;
+
+	/** Rotation applied when the FORWARD symbol is encountered. */
+	private Vector forward;
+
+	/** Rotation applied when the BACKWARD symbol is encountered. */
+	private Vector backward;
 	
+	/**
+	 * Constructs an {@link LSystem} with the given rewriting rules and a default rotation angle of 30 degrees.
+	 *
+	 * @param rules the rewriting rules mapping symbols to replacement sequences
+	 */
 	public LSystem(Hashtable rules) {
 		this.rules = rules;
 		this.setAngle(Math.toRadians(30));
 	}
 	
+	/**
+	 * Sets the rotation angle used for the LEFT, RIGHT, FORWARD, and BACKWARD directions.
+	 *
+	 * @param angle the rotation angle in radians
+	 */
 	public void setAngle(double angle) {
 		this.left = new Vector(0.0, 0.0, -angle);
 		this.right = new Vector(0.0, 0.0, angle);
@@ -60,19 +110,43 @@ public class LSystem implements CodeFeatures {
 		this.backward = new Vector(-angle, 0.0, 0.0);
 	}
 	
+	/** Sets the rotation vector applied for the LEFT symbol. */
 	public void setLeft(Vector left) { this.left = left; }
+
+	/** Sets the rotation vector applied for the RIGHT symbol. */
 	public void setRight(Vector right) { this.right = right; }
+
+	/** Sets the rotation vector applied for the FORWARD symbol. */
 	public void setForward(Vector forward) { this.forward = forward; }
+
+	/** Sets the rotation vector applied for the BACKWARD symbol. */
 	public void setBackward(Vector backward) { this.backward = backward; }
-	
+
+	/** Returns the rotation vector applied for the LEFT symbol. */
 	public Vector getLeft() { return this.left; }
+
+	/** Returns the rotation vector applied for the RIGHT symbol. */
 	public Vector getRight() { return this.right; }
+
+	/** Returns the rotation vector applied for the FORWARD symbol. */
 	public Vector getForward() { return this.forward; }
+
+	/** Returns the rotation vector applied for the BACKWARD symbol. */
 	public Vector getBackward() { return this.backward; }
-	
+
+	/** Sets the factory used to create {@link AbstractSurface} objects at each STEP. */
 	public void setSurfaceFactory(SurfaceFactory f) { this.factory = f; }
+
+	/** Returns the factory used to create {@link AbstractSurface} objects at each STEP. */
 	public SurfaceFactory getSurfaceFactory() { return this.factory; }
-	
+
+	/**
+	 * Generates the symbol sequence after the given number of rewriting iterations.
+	 *
+	 * @param init the initial symbol list
+	 * @param itr  the number of iterations to apply
+	 * @return the rewritten symbol list
+	 */
 	public List generate(List init, int itr) {
 		if (itr == 0) return init;
 		
@@ -99,13 +173,21 @@ public class LSystem implements CodeFeatures {
 		return this.generate(l, --itr);
 	}
 	
+	/**
+	 * Interprets a symbol sequence as a turtle-graphics program and builds
+	 * an array of {@link ShadableSurface} objects placed in 3D space.
+	 *
+	 * @param data the symbol sequence to interpret
+	 * @param d    the initial movement direction vector
+	 * @return the array of surfaces placed during interpretation
+	 */
 	public ShadableSurface[] generate(Object[] data, Vector d) {
 		List s = new ArrayList();
 		
 		double dl = d.length();
 		AbstractSurface base = this.factory.next(null);
 		Vector p = base.getLocation();
-		Stack pstack = new Stack(), dstack = new Stack();
+		ArrayDeque pstack = new ArrayDeque(), dstack = new ArrayDeque();
 		
 		i: for (int i = 0; i < data.length; i++) {
 			if (data[i].equals(LSystem.STEP)) {
@@ -171,15 +253,15 @@ public class LSystem implements CodeFeatures {
 				
 				continue i;
 			} else if (data[i].equals(LSystem.PUSH)) {
-				pstack.push(p.clone());
-				dstack.push(d.clone());
+				pstack.addFirst(p.clone());
+				dstack.addFirst(d.clone());
 				continue i;
 			} else if (data[i].equals(LSystem.POP)) {
-				p = (Vector) pstack.pop();
-				d = (Vector) dstack.pop();
+				p = (Vector) pstack.removeFirst();
+				d = (Vector) dstack.removeFirst();
 				continue i;
 			} else {
-				System.out.println("Encountered non-terminal: " + data[i]);
+				log("Encountered non-terminal: " + data[i]);
 				continue i;
 			}
 			
@@ -193,8 +275,14 @@ public class LSystem implements CodeFeatures {
 		return (ShadableSurface[]) s.toArray(new ShadableSurface[0]);
 	}
 	
+	/**
+	 * Returns a single-character string representation of a symbol sequence for debugging.
+	 *
+	 * @param data the symbol sequence to print
+	 * @return a compact string with one character per symbol
+	 */
 	public static String print(Object[] data) {
-		StringBuffer b = new StringBuffer();
+		StringBuilder b = new StringBuilder();
 		
 		for (int i = 0; i < data.length; i++) {
 			if (data[i].equals(LSystem.STEP)) {

@@ -93,7 +93,7 @@ public interface Genome<T> extends Plural<Chromosome<T>> {
 	 * @return a string representing the combined signatures of all chromosomes
 	 */
 	default String signature() {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 		IntStream.range(0, count()).mapToObj(this::valueAt).map(Chromosome::signature).forEach(buf::append);
 		return buf.toString();
 	}

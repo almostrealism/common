@@ -221,8 +221,7 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 							isolationFlags.stream().map(p -> p.test(c))
 									.reduce(false, (a, b) -> a | b))
 					.anyMatch(v -> v)) {
-				System.out.println("ParallelProcess: Flagged for isolation");
-			}
+		}
 		}
 
 		ProcessOptimizationStrategy strategy = context.getOptimizationStrategy();

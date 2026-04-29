@@ -85,10 +85,16 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 		CollectionProducer pdx = l(pd);
 		CollectionProducer pdy = r(pd);
 
-		CollectionProducer p = pdx.multiply(l(pos))
-								.multiply(sdx.add(c(-1.0)).pow(c(-1.0))).add(pdx.multiply(c(-0.5)));
-		CollectionProducer q = pdy.multiply(r(pos))
-								.multiply(sdy.add(c(-1.0)).pow(-1.0)).add(pdy.multiply(c(-0.5)));
+		// Map pixel position to projection plane coordinates.
+		// normX = (pos + eps) / (N - 1 + 2*eps) maps:
+		//   N>1: approximately pos/(N-1) (eps is negligible)
+		//   N=1: eps/(2*eps) = 0.5, centering the single pixel on the projection plane
+		// This avoids both division by zero and runtime conditionals.
+		double eps = 1e-10;
+		CollectionProducer p = pdx.multiply(l(pos).add(c(eps))
+								.multiply(sdx.add(c(-1.0 + 2 * eps)).pow(c(-1.0))).add(c(-0.5)));
+		CollectionProducer q = pdy.multiply(r(pos).add(c(eps))
+								.multiply(sdy.add(c(-1.0 + 2 * eps)).pow(c(-1.0))).add(c(-0.5)));
 		CollectionProducer r = c(-focalLength);
 
 		CollectionProducer x = p.multiply(c(u.getX())).add(q.multiply(c(v.getX()))).add(r.multiply(c(w.getX())));
@@ -120,6 +126,14 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 		return pqr;
 	}
 
+	/**
+	 * Computes an auxiliary vector {@code t} used for building an orthonormal basis around
+	 * the ray direction. The vector is constructed by replacing the smallest component of
+	 * {@code pqr} with 1.0, which avoids degeneracy when {@code pqr} is axis-aligned.
+	 *
+	 * @param pqr the current ray direction vector producer
+	 * @return a producer for the auxiliary vector
+	 */
 	private Producer<PackedCollection> t(CollectionProducer pqr) {
 		Producer<PackedCollection> t = lessThan(y(pqr), x(pqr)).and(lessThan(y(pqr), z(pqr)),
 								vector(x(pqr), c(1.0), z(pqr)),
@@ -128,6 +142,14 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 					vector(c(1.0), y(pqr), z(pqr)), t);
 	}
 
+	/**
+	 * Computes the normalized right-axis vector {@code u} of the camera basis as
+	 * the cross product of {@code t} and {@code w}, then normalizes the result.
+	 *
+	 * @param w the normalized view direction (negative z-axis of camera)
+	 * @param t the auxiliary vector produced by {@link #t(CollectionProducer)}
+	 * @return a producer for the normalized right-axis unit vector
+	 */
 	private CollectionProducer u(Producer<PackedCollection> w,
 								 Producer<PackedCollection> t) {
 		CollectionProducer x = y(t).multiply(z(w)).add(z(t).multiply(y(w)).multiply(c(-1.0)));
@@ -136,6 +158,14 @@ public interface ProjectionFeatures extends PairFeatures, RayFeatures {
 		return normalize(vector(x, y, z));
 	}
 
+	/**
+	 * Computes the up-axis vector {@code v} of the camera basis as
+	 * the cross product of {@code w} and {@code u}.
+	 *
+	 * @param w the normalized view direction (negative z-axis of camera)
+	 * @param u the normalized right-axis unit vector from {@link #u(Producer, Producer)}
+	 * @return a producer for the up-axis vector
+	 */
 	private CollectionProducer v(CollectionProducer w, CollectionProducer u) {
 		CollectionProducer x = y(w).multiply(z(u)).add(z(w).multiply(y(u)).multiply(c(-1.0)));
 		CollectionProducer y = z(w).multiply(x(u)).add(x(w).multiply(z(u)).multiply(c(-1.0)));

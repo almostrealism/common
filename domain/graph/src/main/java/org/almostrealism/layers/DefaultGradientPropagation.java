@@ -35,19 +35,67 @@ import java.util.Arrays;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+/**
+ * Default implementation of {@link BackPropagation} that uses automatic differentiation
+ * to compute gradients and update learnable weights.
+ *
+ * <p>Given a forward operator (a {@link Factor} that maps input to output), this class
+ * uses the operator's {@code grad} and {@code delta} methods to compute:</p>
+ * <ul>
+ *   <li>The gradient with respect to the layer input ({@code δOut/δIn}), which is
+ *       propagated upstream via the provided {@link Receptor}.</li>
+ *   <li>The gradient with respect to each weight tensor ({@code δOut/δWeight}), which
+ *       is applied to the weights via the corresponding {@link ParameterUpdate}.</li>
+ * </ul>
+ *
+ * <p>Diagnostic flags ({@link #enableDiagnosticGrad}, {@link #enableDiagnosticWeight})
+ * can be enabled to wrap operations in {@code OperationWithInfo} for profiling.</p>
+ *
+ * @see BackPropagation
+ * @see BackPropagationCell
+ * @author Michael Murray
+ */
 public class DefaultGradientPropagation implements BackPropagation, Learning, Nameable, CodeFeatures {
 
+	/** When true, logs a message when the upstream receptor is null and gradients are skipped. */
 	public static boolean verbose = false;
+
+	/**
+	 * When true, uses {@link io.almostrealism.compute.Process#optimized(Producer)} for the
+	 * input-gradient evaluable in diagnostic mode.
+	 */
 	public static boolean enableOptimizedDiagnostics = false;
+
+	/**
+	 * When true (or when the environment variable {@code AR_DIAGNOSTIC_GRADIENT} is set),
+	 * wraps the input-gradient computation in {@code OperationWithInfo} for profiling.
+	 */
 	public static boolean enableDiagnosticGrad = SystemUtils.isEnabled("AR_DIAGNOSTIC_GRADIENT").orElse(false);
+
+	/** When true, wraps each weight-gradient computation in {@code OperationWithInfo} for profiling. */
 	public static boolean enableDiagnosticWeight = false;
 
+	/** The differentiable forward operator whose gradients are computed during back-propagation. */
 	private final Factor<PackedCollection> operator;
+
+	/** One update strategy per weight tensor; must be the same length as {@link #weights}. */
 	private final ParameterUpdate<PackedCollection>[] updates;
+
+	/** The learnable weight producers whose values are updated after each backward pass. */
 	private final Producer<PackedCollection>[] weights;
 
+	/** The human-readable name used for logging and operation metadata. */
 	private String name;
 
+	/**
+	 * Creates a new gradient propagation strategy.
+	 *
+	 * @param name     a human-readable name used in logging and profiling
+	 * @param operator the differentiable forward operator
+	 * @param updates  one {@link ParameterUpdate} per weight tensor
+	 * @param weights  the weight producers whose values are adjusted during training
+	 * @throws IllegalArgumentException if {@code updates} and {@code weights} have different lengths
+	 */
 	protected DefaultGradientPropagation(String name,
 										 Factor<PackedCollection> operator,
 									     ParameterUpdate<PackedCollection>[] updates,
@@ -62,21 +110,43 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 		}
 	}
 
+	/** {@inheritDoc} */
 	@Override
 	public String getName() { return name; }
 
+	/** {@inheritDoc} */
 	@Override
 	public void setName(String name) { this.name = name; }
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Sets the same update strategy for every weight tensor managed by this propagation.</p>
+	 */
 	@Override
 	public void setParameterUpdate(ParameterUpdate<PackedCollection> update) {
 		Arrays.fill(updates, update);
 	}
 
+	/**
+	 * Sets the update strategy for a single weight tensor by index.
+	 *
+	 * @param index  the zero-based index of the weight whose update strategy is being replaced
+	 * @param update the new parameter update strategy
+	 */
 	public void setParameterUpdate(int index, ParameterUpdate<PackedCollection> update) {
 		updates[index] = update;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Computes the input gradient ({@code δOut/δIn}) and all weight gradients
+	 * ({@code δOut/δWeight_i}), applies the weight updates, and pushes the input
+	 * gradient to {@code next} (if non-null).</p>
+	 *
+	 * @throws IllegalArgumentException if any entry in the updates array is {@code null}
+	 */
 	@Override
 	public Supplier<Runnable> propagate(Producer<PackedCollection> gradient,
 										Producer<PackedCollection> input,
@@ -117,7 +187,6 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 					Evaluable<PackedCollection> inputGrad = gradient.get();
 
 					return () -> {
-						String name = getName() + " (" + outSize + "x" + inSize + ")";
 						d.into(deltaOut).evaluate();
 						inputGrad.into(gradIn).evaluate();
 						grad.into(gradOut).evaluate();
@@ -162,18 +231,48 @@ public class DefaultGradientPropagation implements BackPropagation, Learning, Na
 		return op;
 	}
 
+	/**
+	 * Creates a gradient propagation strategy from a stream of weight producers.
+	 *
+	 * @param name     a human-readable name for logging and profiling
+	 * @param operator the differentiable forward operator
+	 * @param weights  a stream of weight producers to be updated during training
+	 * @return a new {@code DefaultGradientPropagation} with no initial update strategy
+	 */
 	public static DefaultGradientPropagation create(String name,
 													Factor<PackedCollection> operator,
 												    Stream<Producer<PackedCollection>> weights) {
 		return create(name, operator, weights.toArray(Producer[]::new));
 	}
 
+	/**
+	 * Creates a gradient propagation strategy with no initial update strategy.
+	 *
+	 * <p>A {@link ParameterUpdate} must be assigned via {@link #setParameterUpdate} before
+	 * the first backward pass.</p>
+	 *
+	 * @param name     a human-readable name for logging and profiling
+	 * @param operator the differentiable forward operator
+	 * @param weights  the weight producers to be updated during training
+	 * @return a new {@code DefaultGradientPropagation}
+	 */
 	public static DefaultGradientPropagation create(String name,
 													Factor<PackedCollection> operator,
 													Producer<PackedCollection>... weights) {
 		return create(name, operator, null, weights);
 	}
 
+	/**
+	 * Creates a gradient propagation strategy with the given update strategy applied
+	 * to all weights.
+	 *
+	 * @param name     a human-readable name for logging and profiling
+	 * @param operator the differentiable forward operator
+	 * @param update   the parameter update strategy to use for all weights, or {@code null}
+	 *                 to defer assignment
+	 * @param weights  the weight producers to be updated during training
+	 * @return a new {@code DefaultGradientPropagation}
+	 */
 	public static DefaultGradientPropagation create(String name,
 													Factor<PackedCollection> operator,
 													ParameterUpdate<PackedCollection> update,

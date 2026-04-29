@@ -56,7 +56,7 @@ import java.util.List;
  * @see Shader
  * @author Michael Murray
  */
-public class LightingContext {
+public class LightingContext implements Cloneable {
 	/** Direction vector pointing toward the light source. */
 	private Producer<PackedCollection> lightDirection;
 	/** The primary light being processed. */
@@ -72,7 +72,9 @@ public class LightingContext {
 	public void setLightDirection(Producer<PackedCollection> l) { this.lightDirection = l; }
 	
 	/**
-	 * @return  A {@link Vector} {@link Producer} representing the direction toward the light (this can be expected to be unit length).
+	 * Returns a {@link Producer} representing the direction toward the light (this can be expected to be unit length).
+	 *
+	 * @return a {@link Producer} for the light direction vector
 	 */
 	public Producer<PackedCollection> getLightDirection() { return this.lightDirection; }
 	
@@ -83,7 +85,7 @@ public class LightingContext {
 	 */
 	public void setLight(Light l) { this.light = l; }
 	
-	/** @return  A Light object representing the light. */
+	/** Returns a Light object representing the light. */
 	public Light getLight() { return this.light; }
 	
 	/**
@@ -93,7 +95,7 @@ public class LightingContext {
 	 */
 	public void setOtherLights(Iterable<Light> l) { this.otherLights = l; }
 	
-	/** @return  An array of Light objects representing the other lights in the scene. */
+	/** Returns an array of Light objects representing the other lights in the scene. */
 	public Iterable<Light> getOtherLights() { return this.otherLights; }
 	
 	/**
@@ -104,5 +106,14 @@ public class LightingContext {
 		li.add(light);
 		for (Light l : otherLights) li.add(l);
 		return li;
+	}
+
+	@Override
+	public LightingContext clone() {
+		try {
+			return (LightingContext) super.clone();
+		} catch (CloneNotSupportedException e) {
+			throw new AssertionError(e);
+		}
 	}
 }

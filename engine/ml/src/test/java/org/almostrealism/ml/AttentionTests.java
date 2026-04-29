@@ -39,19 +39,11 @@ import java.util.List;
 
 public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 
-	private static final int TEST_BATCH_SIZE = 1;
-	private static final int TEST_SEQ_LEN = 4;
-	private static final int TEST_DIM = 16;
-	private static final int TEST_HEADS = 2;
-	private static final int TEST_DIM_HEAD = TEST_DIM / TEST_HEADS;
-	private static final int TEST_INV_FREQ_SIZE = TEST_DIM_HEAD / 4;
-
 	@Test(timeout = 120000)
 	public void attentionKeys() {
 		int seqLength = 128;
 		int heads = 12;
 		int headSize = 64;
-		int dim = heads * headSize;
 
 		TraversalPolicy inputShape = shape(heads, headSize);
 		TraversalPolicy keyShape = shape(seqLength, heads, headSize);
@@ -87,7 +79,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 
 				score /= Math.sqrt(headSize);
 
-				System.out.println("AttentionTests[" + t + "]: " + score + " vs " + att.valueAt(h, t));
+				log("AttentionTests[" + t + "]: " + score + " vs " + att.valueAt(h, t));
 				assertEquals(score, att.valueAt(h, t));
 			}
 		}
@@ -140,7 +132,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 					vo += att.valueAt(h, t) * values.valueAt(t, h, i);
 				}
 
-				System.out.println("AttentionTests[" + i + "]: " + vo + " vs " + out.valueAt(h * headSize + i));
+				log("AttentionTests[" + i + "]: " + vo + " vs " + out.valueAt(h * headSize + i));
 				assertEquals(vo, out.valueAt(h * headSize + i));
 			}
 		}
@@ -234,7 +226,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -301,7 +293,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test inputs and expected output
 		PackedCollection q = referenceData.get("q");
@@ -417,7 +409,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract input and expected output
 		PackedCollection referenceInput = referenceData.get("input");
@@ -426,7 +418,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		assertNotNull("Reference input not found", referenceInput);
 		assertNotNull("Expected output not found", expectedOutput);
 
-		System.out.println("Reference input total is " + referenceInput.doubleStream().map(Math::abs).sum());
+		log("Reference input total is " + referenceInput.doubleStream().map(Math::abs).sum());
 
 		// Load all weights
 		PackedCollection toQKV = referenceData.get("model.model.transformer.layers.0.self_attn.to_qkv.weight");
@@ -506,7 +498,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -614,7 +606,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -656,8 +648,6 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		Model model = new Model(shape(batchSize, seqLen, dim));
 		SequentialBlock main = model.sequential();
 
-		List<PackedCollection> states = new ArrayList<>();
-
 		// Add feed-forward block
 		main.add(gatedLinearFeedForward(
 				shape(batchSize, seqLen, dim),
@@ -696,7 +686,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -753,7 +743,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		PackedCollection w2Weight = referenceData.get("ff.w2_weight");
 		PackedCollection w2Bias = referenceData.get("ff.w2_bias");
 		PackedCollection w3Weight = referenceData.get("ff.w3_weight");
-		PackedCollection w3Bias = referenceData.get("ff.w3_bias");
+		referenceData.get("ff.w3_bias");
 
 		// Rotary embeddings
 		PackedCollection invFreq = referenceData.get("rope.inv_freq");

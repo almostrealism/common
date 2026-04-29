@@ -34,6 +34,7 @@ import java.util.Iterator;
  * @author  Michael Murray
  */
 public class SpanningTreeAbsorber implements AbsorberSet {
+	/** The spatial bound used to limit the tree traversal region during absorption checks. */
 	private double bound;
 
 	@Override

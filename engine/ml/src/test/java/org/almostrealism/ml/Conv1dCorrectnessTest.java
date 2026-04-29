@@ -27,6 +27,8 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.collect.SubsetTraversalExpression;
+import io.almostrealism.collect.SubsetTraversalIndexMapping;
 import org.almostrealism.collect.CollectionProducer;
 import org.junit.Assert;
 import org.junit.Test;
@@ -47,10 +49,8 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		int batchSize = 1;
 		int inputChannels = 1;
 		int outputChannels = 1;
-		int seqLength = 5;
 		int kernelSize = 3;
 		int stride = 1;
-		int paddedLength = seqLength; // no padding
 		int outLength = 3;
 
 		// Input: [1, 2, 3, 4, 5] with shape (1, 1, 1, 5)
@@ -73,11 +73,11 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 				.withRate(3, kernelSize, outLength);
 		TraversalPolicy groupShape = shape(1, 1, inputChannels, kernelSize);
 
-		System.out.println("=== Test WeightedSum Direct ===");
-		System.out.println("resultShape: " + resultShape);
-		System.out.println("inputPositions: " + inputPositions);
-		System.out.println("filterPositions: " + filterPositions);
-		System.out.println("groupShape: " + groupShape);
+		log("=== Test WeightedSum Direct ===");
+		log("resultShape: " + resultShape);
+		log("inputPositions: " + inputPositions);
+		log("filterPositions: " + filterPositions);
+		log("groupShape: " + groupShape);
 
 		CollectionProducer result = weightedSum("conv1dTest",
 				inputPositions, filterPositions,
@@ -88,21 +88,21 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 				.traverseEach().get();
 		PackedCollection output = (PackedCollection) eval.evaluate();
 
-		System.out.println("Output shape: " + output.getShape());
-		System.out.println("Output values:");
+		log("Output shape: " + output.getShape());
+		log("Output values:");
 		for (int i = 0; i < outLength; i++) {
-			System.out.println("  out[" + i + "] = " + output.toDouble(i));
+			log("  out[" + i + "] = " + output.toDouble(i));
 		}
 
 		// Expected: [4.0, 6.0, 8.0]
 		double[] expected = {4.0, 6.0, 8.0};
 		for (int i = 0; i < outLength; i++) {
 			double actual = output.toDouble(i);
-			System.out.println("  Expected[" + i + "] = " + expected[i] + ", Actual = " + actual);
+			log("  Expected[" + i + "] = " + expected[i] + ", Actual = " + actual);
 			Assert.assertEquals("Output position " + i, expected[i], actual, 0.001);
 		}
 
-		System.out.println("=== Test PASSED ===\n");
+		log("=== Test PASSED ===\n");
 	}
 
 	/**
@@ -142,22 +142,22 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 					  input.toDouble(3) * weights.toDouble(1) +
 					  input.toDouble(4) * weights.toDouble(2);
 
-		System.out.println("Manual computation:");
-		System.out.println("  out0 = " + out0 + " (expected 4.0)");
-		System.out.println("  out1 = " + out1 + " (expected 6.0)");
-		System.out.println("  out2 = " + out2 + " (expected 8.0)");
+		log("Manual computation:");
+		log("  out0 = " + out0 + " (expected 4.0)");
+		log("  out1 = " + out1 + " (expected 6.0)");
+		log("  out2 = " + out2 + " (expected 8.0)");
 
 		Assert.assertEquals(4.0, out0, 0.001);
 		Assert.assertEquals(6.0, out1, 0.001);
 		Assert.assertEquals(8.0, out2, 0.001);
-		System.out.println("=== Manual test PASSED ===\n");
+		log("=== Manual test PASSED ===\n");
 	}
 
 	@Test(timeout = 60000)
 	public void testSimpleConv1d() {
 		// Disable debug logging - it causes toArray() errors with parameterized expressions
-		io.almostrealism.collect.SubsetTraversalExpression.enableLogging = false;
-		io.almostrealism.collect.SubsetTraversalIndexMapping.enableLogging = false;
+		SubsetTraversalExpression.enableLogging = false;
+		SubsetTraversalIndexMapping.enableLogging = false;
 
 		int batchSize = 1;
 		int inputChannels = 1;
@@ -190,24 +190,24 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		CompiledModel compiled = model.compile();
 		PackedCollection output = compiled.forward(input);
 
-		System.out.println("=== Test Simple Conv1d ===");
-		System.out.println("Input: [1, 2, 3, 4, 5]");
-		System.out.println("Weights: [0.5, 1.0, 0.5]");
-		System.out.println("Output shape: " + output.getShape());
-		System.out.println("Output values:");
+		log("=== Test Simple Conv1d ===");
+		log("Input: [1, 2, 3, 4, 5]");
+		log("Weights: [0.5, 1.0, 0.5]");
+		log("Output shape: " + output.getShape());
+		log("Output values:");
 		for (int i = 0; i < outLength; i++) {
-			System.out.println("  out[" + i + "] = " + output.toDouble(i));
+			log("  out[" + i + "] = " + output.toDouble(i));
 		}
 
 		// Verify each output position
 		double[] expected = {4.0, 6.0, 8.0};
 		for (int i = 0; i < outLength; i++) {
 			double actual = output.toDouble(i);
-			System.out.println("  Expected[" + i + "] = " + expected[i] + ", Actual = " + actual);
+			log("  Expected[" + i + "] = " + expected[i] + ", Actual = " + actual);
 			Assert.assertEquals("Output position " + i, expected[i], actual, 0.001);
 		}
 
-		System.out.println("=== Test PASSED ===\n");
+		log("=== Test PASSED ===\n");
 	}
 
 	/**
@@ -249,11 +249,11 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 				.withRate(3, kernelSize, outLength);
 		TraversalPolicy groupShape = shape(1, 1, inputChannels, kernelSize);
 
-		System.out.println("=== Test WeightedSum With Reshape ===");
-		System.out.println("resultShape: " + resultShape);
-		System.out.println("inputPositions: " + inputPositions);
-		System.out.println("conv shape: " + conv.getShape());
-		System.out.println("filter shape: " + filter.getShape());
+		log("=== Test WeightedSum With Reshape ===");
+		log("resultShape: " + resultShape);
+		log("inputPositions: " + inputPositions);
+		log("conv shape: " + conv.getShape());
+		log("filter shape: " + filter.getShape());
 
 		CollectionProducer result = weightedSum("conv1dReshapeTest",
 				inputPositions, filterPositions,
@@ -264,21 +264,21 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 				.traverseEach().get();
 		PackedCollection output = (PackedCollection) eval.evaluate(input);
 
-		System.out.println("Output shape: " + output.getShape());
-		System.out.println("Output values:");
+		log("Output shape: " + output.getShape());
+		log("Output values:");
 		for (int i = 0; i < outLength; i++) {
-			System.out.println("  out[" + i + "] = " + output.toDouble(i));
+			log("  out[" + i + "] = " + output.toDouble(i));
 		}
 
 		// Expected: [4.0, 6.0, 8.0]
 		double[] expected = {4.0, 6.0, 8.0};
 		for (int i = 0; i < outLength; i++) {
 			double actual = output.toDouble(i);
-			System.out.println("  Expected[" + i + "] = " + expected[i] + ", Actual = " + actual);
+			log("  Expected[" + i + "] = " + expected[i] + ", Actual = " + actual);
 			Assert.assertEquals("Output position " + i, expected[i], actual, 0.001);
 		}
 
-		System.out.println("=== Test PASSED ===\n");
+		log("=== Test PASSED ===\n");
 	}
 
 	/**
@@ -319,9 +319,9 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 				.withRate(3, kernelSize, outLength);
 		TraversalPolicy groupShape = shape(1, 1, inputChannels, kernelSize);
 
-		System.out.println("=== Test WeightedSum With Reshape (NO stride rate) ===");
-		System.out.println("resultShape: " + resultShape);
-		System.out.println("inputPositions: " + inputPositions);
+		log("=== Test WeightedSum With Reshape (NO stride rate) ===");
+		log("resultShape: " + resultShape);
+		log("inputPositions: " + inputPositions);
 
 		CollectionProducer result = weightedSum("conv1dNoStrideTest",
 				inputPositions, filterPositions,
@@ -332,10 +332,10 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 				.traverseEach().get();
 		PackedCollection output = (PackedCollection) eval.evaluate(input);
 
-		System.out.println("Output shape: " + output.getShape());
-		System.out.println("Output values (BUG: all should be different but may be the same):");
+		log("Output shape: " + output.getShape());
+		log("Output values (BUG: all should be different but may be the same):");
 		for (int i = 0; i < outLength; i++) {
-			System.out.println("  out[" + i + "] = " + output.toDouble(i));
+			log("  out[" + i + "] = " + output.toDouble(i));
 		}
 
 		// Expected: [4.0, 6.0, 8.0] but bug gives [4.0, 4.0, 4.0]
@@ -348,16 +348,16 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		}
 
 		if (allSame) {
-			System.out.println("CONFIRMED: Bug reproduced - all outputs are the same!");
-			System.out.println("This proves the missing .withRate(3, stride, 1) is the cause.");
+			log("CONFIRMED: Bug reproduced - all outputs are the same!");
+			log("This proves the missing .withRate(3, stride, 1) is the cause.");
 		} else {
-			System.out.println("Bug NOT reproduced - outputs vary. Checking correctness...");
+			log("Bug NOT reproduced - outputs vary. Checking correctness...");
 			for (int i = 0; i < outLength; i++) {
 				Assert.assertEquals("Output position " + i, expected[i], output.toDouble(i), 0.001);
 			}
 		}
 
-		System.out.println("=== Test END ===\n");
+		log("=== Test END ===\n");
 	}
 
 	/**
@@ -397,25 +397,25 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		CompiledModel compiled = model.compile();
 		PackedCollection output = compiled.forward(input);
 
-		System.out.println("=== Test Position Varies Across Sequence ===");
-		System.out.println("Input: [1, 2, 3, 4, 5, 6, 7, 8]");
-		System.out.println("Weights: [1, 0, 0] (identity-like)");
-		System.out.println("Output values:");
+		log("=== Test Position Varies Across Sequence ===");
+		log("Input: [1, 2, 3, 4, 5, 6, 7, 8]");
+		log("Weights: [1, 0, 0] (identity-like)");
+		log("Output values:");
 
 		boolean allEqual = true;
 		double first = output.toDouble(0);
 		for (int i = 0; i < outLength; i++) {
 			double val = output.toDouble(i);
-			System.out.println("  out[" + i + "] = " + val);
+			log("  out[" + i + "] = " + val);
 			if (Math.abs(val - first) > 0.001) {
 				allEqual = false;
 			}
 		}
 
 		if (allEqual) {
-			System.out.println("ERROR: All outputs are identical! Position indexing is broken.");
+			log("ERROR: All outputs are identical! Position indexing is broken.");
 		} else {
-			System.out.println("OK: Outputs vary across sequence positions.");
+			log("OK: Outputs vary across sequence positions.");
 		}
 
 		// Verify outputs should be [1, 2, 3, 4, 5, 6]
@@ -426,7 +426,7 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 					expected[i], actual, 0.001);
 		}
 
-		System.out.println("=== Test PASSED ===\n");
+		log("=== Test PASSED ===\n");
 	}
 
 	/**
@@ -464,22 +464,22 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		CompiledModel compiled = model.compile();
 		PackedCollection output = compiled.forward(input);
 
-		System.out.println("=== Test Multiple Output Channels ===");
-		System.out.println("Input: [1, 2, 3, 4, 5]");
-		System.out.println("Filter 0: [1, 0, 0] (first element)");
-		System.out.println("Filter 1: [0, 0, 1] (last element)");
-		System.out.println("Output shape: " + output.getShape());
+		log("=== Test Multiple Output Channels ===");
+		log("Input: [1, 2, 3, 4, 5]");
+		log("Filter 0: [1, 0, 0] (first element)");
+		log("Filter 1: [0, 0, 1] (last element)");
+		log("Output shape: " + output.getShape());
 
 		// Output shape should be [1, 2, 3]
 		// Channel 0: [1, 2, 3] (first element of each window)
 		// Channel 1: [3, 4, 5] (last element of each window)
-		System.out.println("Channel 0 output:");
+		log("Channel 0 output:");
 		for (int i = 0; i < outLength; i++) {
-			System.out.println("  out[0," + i + "] = " + output.toDouble(i));
+			log("  out[0," + i + "] = " + output.toDouble(i));
 		}
-		System.out.println("Channel 1 output:");
+		log("Channel 1 output:");
 		for (int i = 0; i < outLength; i++) {
-			System.out.println("  out[1," + i + "] = " + output.toDouble(outLength + i));
+			log("  out[1," + i + "] = " + output.toDouble(outLength + i));
 		}
 
 		// Verify channel 0: [1, 2, 3]
@@ -492,7 +492,7 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		Assert.assertEquals("Channel 1, pos 1", 4.0, output.toDouble(4), 0.001);
 		Assert.assertEquals("Channel 1, pos 2", 5.0, output.toDouble(5), 0.001);
 
-		System.out.println("=== Test PASSED ===\n");
+		log("=== Test PASSED ===\n");
 	}
 
 	/**
@@ -528,11 +528,11 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		CompiledModel compiled = model.compile();
 		PackedCollection output = compiled.forward(input);
 
-		System.out.println("=== Test Stride 2 ===");
-		System.out.println("Input: [1, 2, 3, 4, 5, 6, 7, 8]");
-		System.out.println("Weights: [1, 0, 0]");
-		System.out.println("Stride: 2");
-		System.out.println("Output values:");
+		log("=== Test Stride 2 ===");
+		log("Input: [1, 2, 3, 4, 5, 6, 7, 8]");
+		log("Weights: [1, 0, 0]");
+		log("Stride: 2");
+		log("Output values:");
 
 		// With stride=2 and weights [1,0,0], we expect:
 		// out[0] = input[0] = 1
@@ -541,14 +541,14 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		double[] expected = {1.0, 3.0, 5.0};
 		for (int i = 0; i < outLength; i++) {
 			double val = output.toDouble(i);
-			System.out.println("  out[" + i + "] = " + val + " (expected " + expected[i] + ")");
+			log("  out[" + i + "] = " + val + " (expected " + expected[i] + ")");
 		}
 
 		for (int i = 0; i < outLength; i++) {
 			Assert.assertEquals("Position " + i, expected[i], output.toDouble(i), 0.001);
 		}
 
-		System.out.println("=== Test PASSED ===\n");
+		log("=== Test PASSED ===\n");
 	}
 
 	/**
@@ -591,12 +591,12 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		CompiledModel compiled = model.compile();
 		PackedCollection output = compiled.forward(input);
 
-		System.out.println("=== Test Multiple Input Channels ===");
-		System.out.println("Channel 0 input: [1, 2, 3, 4, 5]");
-		System.out.println("Channel 1 input: [10, 20, 30, 40, 50]");
-		System.out.println("Channel 0 filter: [1, 0, 0]");
-		System.out.println("Channel 1 filter: [0, 0, 1]");
-		System.out.println("Output values:");
+		log("=== Test Multiple Input Channels ===");
+		log("Channel 0 input: [1, 2, 3, 4, 5]");
+		log("Channel 1 input: [10, 20, 30, 40, 50]");
+		log("Channel 0 filter: [1, 0, 0]");
+		log("Channel 1 filter: [0, 0, 1]");
+		log("Output values:");
 
 		// Expected: sum across channels
 		// out[0] = ch0[0]*1 + ch1[2]*1 = 1 + 30 = 31
@@ -605,13 +605,13 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		double[] expected = {31.0, 42.0, 53.0};
 		for (int i = 0; i < outLength; i++) {
 			double val = output.toDouble(i);
-			System.out.println("  out[" + i + "] = " + val + " (expected " + expected[i] + ")");
+			log("  out[" + i + "] = " + val + " (expected " + expected[i] + ")");
 		}
 
 		for (int i = 0; i < outLength; i++) {
 			Assert.assertEquals("Position " + i, expected[i], output.toDouble(i), 0.001);
 		}
 
-		System.out.println("=== Test PASSED ===\n");
+		log("=== Test PASSED ===\n");
 	}
 }

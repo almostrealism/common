@@ -22,17 +22,50 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
+/**
+ * A {@link CachedStateCell} specialised for {@link PackedCollection} data.
+ *
+ * <p>{@code CollectionCachedStateCell} provides a concrete implementation of
+ * {@link CachedStateCell} that uses standard assignment ({@code a(1, ...)}) for
+ * copying values and resets values to zero. It is the base class for common
+ * collection-based cells such as {@link SummationCell} and {@link RunningAverageCell}.</p>
+ *
+ * @see CachedStateCell
+ * @see SummationCell
+ * @author Michael Murray
+ */
 public class CollectionCachedStateCell extends CachedStateCell<PackedCollection> implements CodeFeatures {
+	/**
+	 * Creates a new CollectionCachedStateCell with a single-element blank collection
+	 * for both the cached and output values.
+	 */
 	public CollectionCachedStateCell() {
 		super(PackedCollection.blank(1).get());
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Assigns {@code in} to {@code out} using a single-element assignment operation.</p>
+	 *
+	 * @param out the destination producer
+	 * @param in  the source producer
+	 * @return an operation that performs the assignment
+	 */
 	@Override
 	protected Supplier<Runnable> assign(Producer<PackedCollection> out,
 										Producer<PackedCollection> in) {
 		return a(1, out, in);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Resets {@code out} to zero using a single-element assignment of {@code c(0)}.</p>
+	 *
+	 * @param out the producer to reset to zero
+	 * @return an operation that performs the reset
+	 */
 	@Override
 	public Supplier<Runnable> reset(Producer<PackedCollection> out) {
 		return a(1, out, c(0));

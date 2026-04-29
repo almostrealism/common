@@ -454,6 +454,7 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	 * @return an expression representing the array length
 	 * @throws UnsupportedOperationException if this variable has been destroyed
 	 */
+	@Override
 	public Expression<Integer> length() {
 		if (destroyed) throw new UnsupportedOperationException();
 

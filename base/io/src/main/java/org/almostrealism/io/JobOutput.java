@@ -45,12 +45,15 @@ import java.io.ObjectOutput;
  * @author Michael Murray
  * @see OutputHandler
  */
-public class JobOutput implements Externalizable {
+public class JobOutput implements Externalizable, ConsoleFeatures {
 	/** Separator used in string encoding between fields. */
 	public static final String ENTRY_SEPARATOR = "::";
 
+	/** Identifier of the task that produced this output. */
 	private String taskId;
+	/** The user, password, and job output string associated with this record. */
 	private String user, passwd, output;
+	/** Unix timestamp (milliseconds) recording when this output was generated. */
 	private long time;
 
 	/**
@@ -164,8 +167,8 @@ public class JobOutput implements Externalizable {
 					break i;
 			}
 		} catch (Exception e) {
-			System.out.println("JobOutput.decode: " + e);
-			e.printStackTrace();
+			Console.root().println("JobOutput.decode: " + e);
+			Console.root().warn(e.getMessage(), e);
 		}
 		
 		return j;
@@ -202,7 +205,7 @@ public class JobOutput implements Externalizable {
 		Object o = in.readObject();
 		
 		if (o != null)
-			System.out.println("JobOutput: Received " + o + " during external read.");
+			warn("JobOutput: Received " + o + " during external read.");
 	}
 
 	@Override

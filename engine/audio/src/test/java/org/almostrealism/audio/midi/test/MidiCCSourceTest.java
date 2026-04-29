@@ -115,7 +115,7 @@ public class MidiCCSourceTest extends TestSuiteBase {
 		source.setSmoothing(0.9);  // High smoothing
 
 		source.setValue(0);
-		double initial = source.getValue();
+		source.getValue();
 
 		// Jump to max
 		source.setValue(127);

@@ -27,9 +27,10 @@ import java.lang.ref.ReferenceQueue;
  *
  * <h2>Why Cache Address and Size?</h2>
  *
- * <p>After garbage collection, the referenced {@link RAM} object is no longer accessible via
- * {@link #get()} (always returns null for phantom references). However, native memory must still
- * be freed. Caching the address and size allows deallocation without accessing the collected object:</p>
+ * <p>{@link MemoryReference} extends {@link java.lang.ref.PhantomReference}, so {@link #get()}
+ * always returns {@code null}. Native memory must still be freed after the referent is collected.
+ * Caching the address and size at construction time allows deallocation without accessing the
+ * collected object:</p>
  *
  * <pre>{@code
  * // At allocation
@@ -38,13 +39,13 @@ import java.lang.ref.ReferenceQueue;
  * // Caches: address = memory.getContainerPointer()
  * //         size = memory.getSize()
  *
- * // After GC
+ * // After GC and finalization
  * memory = null;
  * System.gc();
  *
  * // Background thread detects collection
  * NativeRef<RAM> collected = (NativeRef<RAM>) queue.remove();
- * // collected.get() returns null (object is gone)
+ * // collected.get() returns null (always, for PhantomReference)
  * // But we can still free native memory:
  * freeNative(collected.getAddress(), collected.getSize());
  * }</pre>
@@ -98,13 +99,17 @@ import java.lang.ref.ReferenceQueue;
  *
  * <h2>Phantom Reference Behavior</h2>
  *
- * <p><b>Important:</b> {@link NativeRef} is a phantom reference (via {@link MemoryReference} which
- * extends {@link java.lang.ref.WeakReference}), meaning:</p>
+ * <p>{@link NativeRef} is a phantom reference (via {@link MemoryReference} which extends
+ * {@link java.lang.ref.PhantomReference}), meaning:</p>
  * <ul>
- *   <li>{@code get()} returns {@code null} after the referent is finalized</li>
+ *   <li>{@code get()} always returns {@code null}</li>
  *   <li>Enqueued only after finalization completes</li>
  *   <li>Does not prevent or delay garbage collection</li>
  * </ul>
+ *
+ * <p>Subclasses that need additional data for post-GC cleanup should cache it in separate
+ * fields during construction. See
+ * {@link org.almostrealism.hardware.metal.MetalMemoryRef MetalMemoryRef} for an example.</p>
  *
  * @param <T> RAM type being referenced
  * @see MemoryReference
@@ -112,9 +117,17 @@ import java.lang.ref.ReferenceQueue;
  * @see RAM
  */
 public class NativeRef<T extends RAM> extends MemoryReference<T> {
+	/** Native pointer address of the tracked memory block, cached for post-GC access. */
 	private long address;
+	/** Size of the tracked memory block in bytes, cached for post-GC access. */
 	private long size;
 
+	/**
+	 * Creates a native reference for the given RAM instance and enqueues it with the given queue.
+	 *
+	 * @param ref   RAM instance to track
+	 * @param queue Reference queue that receives this reference after GC
+	 */
 	public NativeRef(T ref, ReferenceQueue<? super T> queue) {
 		super(ref, queue);
 		this.address = ref.getContainerPointer();

@@ -17,6 +17,7 @@
 package org.almostrealism.audio.filter;
 
 import io.almostrealism.lifecycle.Lifecycle;
+import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.data.AudioFilterData;
 import org.almostrealism.audio.data.PolymorphicAudioData;
@@ -61,7 +62,7 @@ import java.util.function.Supplier;
  * <h2>Lifecycle</h2>
  * <p>AudioPassFilter implements {@link Lifecycle} for state management:</p>
  * <ul>
- *   <li>{@link #setup()} - Initialize filter state</li>
+ *   <li>{@link io.almostrealism.lifecycle.Setup#setup() setup()} - Initialize filter state</li>
  *   <li>{@link #tick()} - Advance one sample (update internal state)</li>
  *   <li>{@link #reset()} - Reset filter state to initial values</li>
  * </ul>
@@ -73,21 +74,49 @@ import java.util.function.Supplier;
  * @see CellFeatures#lp(Producer, Producer)
  * @see DelayNetwork
  */
-public class AudioPassFilter implements TemporalFactor<PackedCollection>, Lifecycle, GeometryFeatures {
+public class AudioPassFilter implements TemporalFactor<PackedCollection>, Lifecycle, Setup, GeometryFeatures {
+	/** Minimum allowed cutoff frequency in Hz; inputs below this are clamped to prevent instability. */
 	public static final double MIN_FREQUENCY = 10.0;
+
+	/** Maximum allowed input sample value; inputs are clamped to [-MAX_INPUT, MAX_INPUT] before filtering. */
 	public static final double MAX_INPUT = 0.99;
 
+	/** Filter state data including biquad coefficients and sample history. */
 	private final AudioFilterData data;
+
+	/** Producer supplying the cutoff frequency in Hz; clamped to [MIN_FREQUENCY, 20000]. */
 	private Producer<PackedCollection> frequency;
+
+	/** Producer supplying the filter resonance (Q factor). */
 	private Producer<PackedCollection> resonance;
+
+	/** The audio signal producer connected to this filter's input. */
 	private Producer<PackedCollection> input;
 
+	/** True for high-pass filtering; false for low-pass. */
 	private final boolean high;
 
+	/**
+	 * Creates an AudioPassFilter with a new PolymorphicAudioData backing store.
+	 *
+	 * @param sampleRate audio sample rate in Hz
+	 * @param frequency  producer supplying the cutoff frequency in Hz
+	 * @param resonance  producer supplying the resonance (Q factor)
+	 * @param high       true for high-pass; false for low-pass
+	 */
 	public AudioPassFilter(int sampleRate, Producer<PackedCollection> frequency, Producer<PackedCollection> resonance, boolean high) {
 		this(sampleRate, new PolymorphicAudioData(), frequency, resonance, high);
 	}
 
+	/**
+	 * Creates an AudioPassFilter with an explicit filter data backing store.
+	 *
+	 * @param sampleRate audio sample rate in Hz
+	 * @param data       backing store for biquad filter state and coefficients
+	 * @param frequency  producer supplying the cutoff frequency in Hz
+	 * @param resonance  producer supplying the resonance (Q factor)
+	 * @param high       true for high-pass; false for low-pass
+	 */
 	public AudioPassFilter(int sampleRate, AudioFilterData data, Producer<PackedCollection> frequency, Producer<PackedCollection> resonance, boolean high) {
 		this.data = data;
 		this.frequency = bound(frequency, MIN_FREQUENCY, 20000);
@@ -96,25 +125,47 @@ public class AudioPassFilter implements TemporalFactor<PackedCollection>, Lifecy
 		setSampleRate(sampleRate);
 	}
 
+	/** Returns the cutoff frequency producer. */
 	public Producer<PackedCollection> getFrequency() { return frequency; }
+
+	/**
+	 * Replaces the cutoff frequency producer.
+	 *
+	 * @param frequency new frequency producer in Hz
+	 */
 	public void setFrequency(Producer<PackedCollection> frequency) {
 		this.frequency = frequency;
 	}
 
+	/** Returns the resonance (Q factor) producer. */
 	public Producer<PackedCollection> getResonance() {
 		return resonance;
 	}
+
+	/**
+	 * Replaces the resonance producer.
+	 *
+	 * @param resonance new resonance producer
+	 */
 	public void setResonance(Producer<PackedCollection> resonance) {
 		this.resonance = resonance;
 	}
 
+	/** Returns the audio sample rate in Hz. */
 	public int getSampleRate() {
 		return (int) data.sampleRate().toDouble(0);
 	}
+
+	/**
+	 * Sets the audio sample rate used in coefficient calculations.
+	 *
+	 * @param sampleRate new sample rate in Hz
+	 */
 	public void setSampleRate(int sampleRate) {
 		data.setSampleRate(sampleRate);
 	}
 
+	/** Returns true if this is a high-pass filter; false if it is a low-pass filter. */
 	public boolean isHigh() {
 		return high;
 	}
@@ -129,9 +180,36 @@ public class AudioPassFilter implements TemporalFactor<PackedCollection>, Lifecy
 		return data.getOutput();
 	}
 
+	/**
+	 * Pre-computes the biquad coefficients before the per-sample loop runs.
+	 * Without this, the compiled {@code Loop} may read zero-initialized
+	 * coefficient storage on iteration 0 (before {@link #tick()} writes it),
+	 * producing {@code y = 0 * x = 0}. Because the filter is IIR, the zero
+	 * propagates through all subsequent history reads and the output stays
+	 * zero. Calling {@code setup()} once before the compiled loop eliminates
+	 * that risk.
+	 */
+	@Override
+	public Supplier<Runnable> setup() {
+		return buildCoefficientOps();
+	}
+
 	@Override
 	public Supplier<Runnable> tick() {
 		OperationList ops = new OperationList("AudioPassFilter");
+		ops.add(buildCoefficientOps());
+		return appendFilterMath(ops);
+	}
+
+	/**
+	 * Builds the per-iteration coefficient-computation ops
+	 * ({@code c}, {@code a1}, {@code a2}, {@code a3}, {@code b1}, {@code b2})
+	 * derived from the current frequency and resonance producers. Shared
+	 * between {@link #setup()} (pre-compute before the loop) and
+	 * {@link #tick()} (re-compute each sample for dynamic cutoff tracking).
+	 */
+	private Supplier<Runnable> buildCoefficientOps() {
+		OperationList ops = new OperationList("AudioPassFilter Coefficients");
 
 		Producer<PackedCollection> sampleRate = data.getSampleRate();
 
@@ -157,8 +235,7 @@ public class AudioPassFilter implements TemporalFactor<PackedCollection>, Lifecy
 
 		if (high) {
 			// High-pass coefficients:
-			// a2 = -2 * a1
-			// a3 = a1
+			// a2 = -2 * a1, a3 = a1
 			// b1 = 2 * (c*c - 1) * a1
 			// b2 = (1 - resonance*c + c*c) * a1
 			ops.add(a(p(data.a2()), multiply(c(-2), a1Prod)));
@@ -167,8 +244,7 @@ public class AudioPassFilter implements TemporalFactor<PackedCollection>, Lifecy
 			ops.add(a(p(data.b2()), multiply(add(subtract(c(1), multiply(resonance, cProd)), cSquared), a1Prod)));
 		} else {
 			// Low-pass coefficients:
-			// a2 = 2 * a1
-			// a3 = a1
+			// a2 = 2 * a1, a3 = a1
 			// b1 = 2 * (1 - c*c) * a1
 			// b2 = (1 - resonance*c + c*c) * a1
 			ops.add(a(p(data.a2()), multiply(c(2), a1Prod)));
@@ -177,10 +253,20 @@ public class AudioPassFilter implements TemporalFactor<PackedCollection>, Lifecy
 			ops.add(a(p(data.b2()), multiply(add(subtract(c(1), multiply(resonance, cProd)), cSquared), a1Prod)));
 		}
 
+		return ops;
+	}
+
+	/**
+	 * Appends the per-sample IIR filter math to the given operation list:
+	 * input clamping, output computation
+	 * ({@code y[n] = a1*x[n] + a2*x[n-1] + a3*x[n-2] - b1*y[n-1] - b2*y[n-2]}),
+	 * and history buffer rotation. Assumes {@link #buildCoefficientOps()}
+	 * has already been added.
+	 */
+	private Supplier<Runnable> appendFilterMath(OperationList ops) {
 		// Clamp input to [-MAX_INPUT, MAX_INPUT]
 		CollectionProducer clampedInput = max(min(input, c(MAX_INPUT)), c(-MAX_INPUT));
 
-		// Get coefficient and history producers
 		Producer<PackedCollection> a1 = data.getA1();
 		Producer<PackedCollection> a2 = data.getA2();
 		Producer<PackedCollection> a3 = data.getA3();

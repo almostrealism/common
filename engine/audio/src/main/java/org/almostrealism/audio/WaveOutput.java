@@ -90,12 +90,16 @@ import java.util.stream.IntStream;
  * @see Receptor
  */
 public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
+	/** When true, logs timeline generation progress to the console. */
 	public static boolean enableVerbose = false;
 
+	/** Default number of frames in the shared timeline (230 seconds at the default sample rate). */
 	public static int defaultTimelineFrames = OutputLine.sampleRate * 230;
 
+	/** Context-specific shared timeline PackedCollection providing time values per frame. */
 	public static ContextSpecific<PackedCollection> timeline;
 
+	/** Whether this output writes in circular (wrapping) mode. */
 	private boolean circular = false;
 
 	static {
@@ -118,40 +122,97 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		timeline.init();
 	}
 
+	/** Supplier for the destination WAV file, or null for in-memory capture. */
 	private final Supplier<File> file;
+
+	/** Bit depth for WAV file encoding (typically 16 or 24). */
 	private final int bits;
+
+	/** Sample rate in Hz used when writing the WAV file. */
 	private final long sampleRate;
 
+	/** The open WAV file being written to during a write operation. */
 	private WavFile wav;
+
+	/** Channel audio data buffers, one per channel. */
 	private List<CollectionProducer> data;
+
+	/** Per-channel writer receptors that accept push data from the processing pipeline. */
 	private List<Writer> channels;
 
+	/** Creates a WaveOutput with no destination file (in-memory capture, default timeline size). */
 	public WaveOutput() { this((File) null); }
 
+	/**
+	 * Creates an in-memory WaveOutput with the specified buffer size.
+	 *
+	 * @param maxFrames maximum number of frames the buffer can hold
+	 */
 	public WaveOutput(int maxFrames) {
 		this(null, 24, maxFrames, false);
 	}
 
+	/**
+	 * Creates a mono WaveOutput targeting the specified file with 24-bit depth.
+	 *
+	 * @param f destination WAV file
+	 */
 	public WaveOutput(File f) {
 		this(f, 24);
 	}
 
+	/**
+	 * Creates a mono WaveOutput targeting the specified file.
+	 *
+	 * @param f    destination WAV file
+	 * @param bits bit depth for encoding
+	 */
 	public WaveOutput(File f, int bits) {
 		this(() -> f, bits);
 	}
 
+	/**
+	 * Creates a mono WaveOutput with a file supplier and the default timeline size.
+	 *
+	 * @param f    supplier producing the destination WAV file
+	 * @param bits bit depth for encoding
+	 */
 	public WaveOutput(Supplier<File> f, int bits) {
 		this(f, bits, -1, false);
 	}
 
+	/**
+	 * Creates a WaveOutput with a file supplier, configurable channel count, and default timeline size.
+	 *
+	 * @param f      supplier producing the destination WAV file
+	 * @param bits   bit depth for encoding
+	 * @param stereo true for stereo (2-channel) output; false for mono
+	 */
 	public WaveOutput(Supplier<File> f, int bits, boolean stereo) {
 		this(f, bits, -1, stereo);
 	}
 
+	/**
+	 * Creates a WaveOutput with configurable channel count and buffer size using the default sample rate.
+	 *
+	 * @param f         supplier producing the destination WAV file
+	 * @param bits      bit depth for encoding
+	 * @param maxFrames maximum number of frames; use -1 for the default timeline size
+	 * @param stereo    true for stereo (2-channel) output; false for mono
+	 */
 	public WaveOutput(Supplier<File> f, int bits, int maxFrames, boolean stereo) {
 		this(f, bits, OutputLine.sampleRate, maxFrames, stereo);
 	}
 
+	/**
+	 * Creates a WaveOutput with full control over channel count, buffer size, and sample rate.
+	 *
+	 * @param f          supplier producing the destination WAV file
+	 * @param bits       bit depth for encoding
+	 * @param sampleRate sample rate in Hz
+	 * @param maxFrames  maximum number of frames; use -1 for the default timeline size
+	 * @param stereo     true for stereo (2-channel) output; false for mono
+	 */
 	public WaveOutput(Supplier<File> f, int bits, long sampleRate, int maxFrames, boolean stereo) {
 		this(f, bits, new WaveData(
 				stereo ? 2 : 1,
@@ -159,14 +220,31 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 				Math.toIntExact(sampleRate)));
 	}
 
+	/**
+	 * Creates a WaveOutput backed by an existing PackedCollection (mono, default sample rate).
+	 *
+	 * @param data pre-allocated collection to use as the audio buffer
+	 */
 	public WaveOutput(PackedCollection data) {
 		this(null, 24, new WaveData(data, OutputLine.sampleRate));
 	}
 
+	/**
+	 * Creates a WaveOutput backed by a producer of audio data (mono, default sample rate).
+	 *
+	 * @param data producer that supplies the audio data
+	 */
 	public WaveOutput(Producer<PackedCollection> data) {
 		this(null, 24, OutputLine.sampleRate, List.of(data));
 	}
 
+	/**
+	 * Creates a WaveOutput backed by a WaveData object, inheriting its channel layout and sample rate.
+	 *
+	 * @param f    supplier producing the destination WAV file, or null for in-memory capture
+	 * @param bits bit depth for encoding
+	 * @param data WaveData providing the underlying channel buffers and sample rate
+	 */
 	public WaveOutput(Supplier<File> f, int bits, WaveData data) {
 		this(f, bits, data.getSampleRate(),
 				data.getChannelCount() > 1 ? List.of(
@@ -175,6 +253,14 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 				List.of(CollectionFeatures.getInstance().p(data.getChannelData(0))));
 	}
 
+	/**
+	 * Primary constructor used by all other constructors.
+	 *
+	 * @param f          supplier producing the destination WAV file, or null for in-memory capture
+	 * @param bits       bit depth for encoding
+	 * @param sampleRate sample rate in Hz
+	 * @param data       list of per-channel audio data producers
+	 */
 	public WaveOutput(Supplier<File> f, int bits, long sampleRate, List<Producer<PackedCollection>> data) {
 		this.file = f;
 		this.bits = bits;
@@ -186,16 +272,24 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		initChannelWriters();
 	}
 
+	/** Initializes per-channel Writer receptors for the current channel count. */
 	protected void initChannelWriters() {
 		this.channels = IntStream.range(0, getChannelCount())
 							.mapToObj(Writer::new)
 							.collect(Collectors.toList());
 	}
 
+	/**
+	 * Returns the write cursor for the specified channel, indicating how many frames have been written.
+	 *
+	 * @param channel channel index
+	 * @return single-element PackedCollection holding the current frame cursor value
+	 */
 	public PackedCollection getCursor(int channel) {
 		return channels.get(channel).getCursor();
 	}
 
+	/** Returns the number of channels (1 for mono, 2 for stereo). */
 	public int getChannelCount() { return data.size(); }
 
 	/**
@@ -204,26 +298,57 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	 */
 	public void setCircular(boolean circular) { this.circular = circular; }
 
+	/** Returns true if this output is in circular buffer mode. */
 	public boolean isCircular() { return circular; }
 
+	/**
+	 * Returns the number of frames written across all channels (minimum across channels).
+	 *
+	 * @return number of frames currently captured
+	 */
 	public int getFrameCount() {
 		return channels.stream()
 				.mapToInt(Writer::getFrameCount)
 				.min().orElse(0);
 	}
 
+	/**
+	 * Returns the Receptor for the specified channel, suitable for use with {@code cells.w()}.
+	 *
+	 * @param channel channel index
+	 * @return the Writer receptor for the channel
+	 */
 	public Receptor<PackedCollection> getWriter(int channel) {
 		return channels.get(channel);
 	}
 
+	/**
+	 * Returns a ReceptorCell wrapping the writer for the specified channel.
+	 *
+	 * @param channel channel index
+	 * @return ReceptorCell that routes pushed data to this output channel
+	 */
 	public ReceptorCell<PackedCollection> getWriterCell(int channel) {
 		return new ReceptorCell<>(getWriter(channel));
 	}
 
+	/**
+	 * Returns the CollectionProducer for the specified channel's audio buffer.
+	 *
+	 * @param channel channel index
+	 * @return the channel data producer, or null if the channel index is out of range
+	 */
 	public CollectionProducer getChannelData(int channel) {
 		return channel < data.size() ? data.get(channel) : null;
 	}
 
+	/**
+	 * Creates a runnable that copies captured audio from a channel into the destination collection.
+	 *
+	 * @param channel     channel index to export
+	 * @param destination target PackedCollection to receive the audio data
+	 * @return supplier of a Runnable that performs the copy when executed
+	 */
 	public Supplier<Runnable> export(int channel, PackedCollection destination) {
 		TraversalPolicy shape = shape(getChannelData(channel));
 		int len = destination.getMemLength();
@@ -234,6 +359,14 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		return new MemoryDataCopy("WaveOutput Export", d::evaluate, () -> destination, len);
 	}
 
+	/**
+	 * Creates a runnable that writes all captured audio to the destination WAV file.
+	 *
+	 * <p>The write is performed in a lazy, two-step manner: the outer supplier compiles
+	 * the evaluables, and the inner Runnable performs the actual file I/O when executed.</p>
+	 *
+	 * @return supplier of a Runnable that writes WAV data to the configured file
+	 */
 	public Supplier<Runnable> write() {
 		// TODO  Write frames in larger batches than 1
 		return () -> {
@@ -263,7 +396,7 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 
 					this.wav = WavFile.newWavFile(f, 2, frames, bits, sampleRate);
 				} catch (IOException e) {
-					e.printStackTrace();
+					warn(e.getMessage());
 					return;
 				}
 
@@ -275,14 +408,14 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 						wav.writeFrames(new double[][]
 								{{framesLeft[i]}, {framesRight[i]}}, 1);
 					} catch (IOException e) {
-						e.printStackTrace();
+						warn(e.getMessage());
 					}
 				}
 
 				try {
 					wav.close();
 				} catch (IOException e) {
-					e.printStackTrace();
+					warn(e.getMessage());
 					return;
 				}
 
@@ -292,13 +425,23 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 		};
 	}
 
+	/**
+	 * Creates a runnable that writes the captured audio for a single channel to a CSV file.
+	 *
+	 * <p>Each line in the CSV file contains a frame index and the corresponding sample value,
+	 * separated by a comma.</p>
+	 *
+	 * @param channel channel index to export
+	 * @param file    destination CSV file
+	 * @return supplier of a Runnable that writes the CSV data when executed
+	 */
 	public Supplier<Runnable> writeCsv(int channel, File file) {
 		return () -> {
 			Evaluable<PackedCollection> d = getChannelData(channel).get();
 
 			return () -> {
 				PackedCollection o = d.evaluate();
-				StringBuffer buf = new StringBuffer();
+				StringBuilder buf = new StringBuilder();
 
 				int frames = getFrameCount();
 
@@ -310,7 +453,7 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 				try (PrintWriter out = new PrintWriter(new OutputStreamWriter(new FileOutputStream(file)))) {
 					out.println(buf);
 				} catch (FileNotFoundException e) {
-					e.printStackTrace();
+					warn(e.getMessage());
 				}
 			};
 		};
@@ -337,17 +480,35 @@ public class WaveOutput implements Lifecycle, Destroyable, CodeFeatures {
 	@Override
 	public Console console() { return CellFeatures.console; }
 
+	/**
+	 * A Receptor for a single channel of a WaveOutput that appends incoming audio frames
+	 * to the channel's buffer and advances the write cursor.
+	 */
 	protected class Writer implements Receptor<PackedCollection>, Lifecycle, Destroyable {
+		/** Index of the channel this writer services. */
 		private final int channel;
+
+		/** Single-element collection holding the current write cursor (frame index). */
 		private PackedCollection cursor;
 
+		/**
+		 * Creates a Writer for the specified channel index.
+		 *
+		 * @param channel channel index into the parent WaveOutput's data list
+		 */
 		public Writer(int channel) {
 			this.channel = channel;
 			this.cursor = new PackedCollection(1);
 		}
 
+		/** Returns the write cursor collection holding the current frame index. */
 		public PackedCollection getCursor() { return cursor; }
 
+		/**
+		 * Returns the number of complete frames written to this channel.
+		 *
+		 * @return frame count (cursor value minus 1)
+		 */
 		public int getFrameCount() {
 			return (int) cursor.toDouble(0) - 1;
 		}

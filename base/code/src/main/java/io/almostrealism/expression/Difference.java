@@ -17,7 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.kernel.IndexValues;
+import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.List;
@@ -27,9 +27,26 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+/**
+ * A subtraction expression that computes the difference of two or more sub-expressions.
+ *
+ * <p>Generates code of the form {@code a - b - c}. The factory method applies
+ * constant-folding and zero-operand pruning when {@link #enableFactorySimplification} is true.</p>
+ *
+ * @param <T> the numeric result type
+ */
 public class Difference<T extends Number> extends NAryExpression<T> {
+	/**
+	 * When {@code true}, enables algebraic simplifications in the factory method,
+	 * including zero-value pruning and negation promotion.
+	 */
 	public static boolean enableFactorySimplification = true;
 
+	/**
+	 * Constructs a difference expression from the given operands.
+	 *
+	 * @param values the operands: the first is the minuend, subsequent ones are subtrahends
+	 */
 	public Difference(Expression<T>... values) {
 		super((Class<T>) type(List.of(values)), "-", values);
 	}
@@ -82,6 +99,15 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 		return Difference.of(children.toArray(new Expression[0]));
 	}
 
+	/**
+	 * Creates a difference expression, applying simplifications such as zero-pruning
+	 * and negation promotion.
+	 *
+	 * @param values the operands: the first is the minuend, subsequent ones are subtrahends
+	 * @param <T>    the numeric result type
+	 * @return a simplified expression representing the difference
+	 * @throws IllegalArgumentException if no operands are provided
+	 */
 	public static <T> Expression<T> of(Expression... values) {
 		if (values.length == 0) throw new IllegalArgumentException();
 		if (!enableFactorySimplification) return new Difference(values);

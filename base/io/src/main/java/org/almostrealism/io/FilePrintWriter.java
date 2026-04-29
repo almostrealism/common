@@ -43,7 +43,9 @@ import java.io.FileOutputStream;
  * @see PrintStreamPrintWriter
  */
 public class FilePrintWriter implements PrintWriter {
+	/** The current indentation string, grown and shrunk as tab/moreTab/lessTab are called. */
 	private StringBuffer indent;
+	/** The underlying writer directing output to the target file. */
 	private final java.io.PrintWriter out;
 
 	/**

@@ -16,5 +16,13 @@
 
 package io.almostrealism.scope;
 
+/**
+ * Marker interface for objects that represent a partial or complete fragment of generated code.
+ *
+ * <p>Implementations of this interface are treated as individual, addressable code units
+ * within a compiled scope. The interface carries no methods; its presence on a class or
+ * expression signals to the code-generation pipeline that the object may be emitted as
+ * a discrete code fragment.</p>
+ */
 public interface Fragment {
 }

@@ -39,6 +39,11 @@ import java.util.function.Consumer;
 @Deprecated
 public class DefaultEnvelopeComputation extends CollectionProducerComputationBase implements ProducerComputation<PackedCollection> {
 
+	/**
+	 * Creates a DefaultEnvelopeComputation for the given note position producer.
+	 *
+	 * @param notePosition a Producer yielding the current normalized note position (0.0 to 1.0+)
+	 */
 	public DefaultEnvelopeComputation(Producer<PackedCollection> notePosition) {
 		super(null, new TraversalPolicy(1), notePosition);
 	}

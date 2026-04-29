@@ -49,18 +49,37 @@ import java.util.Set;
  * @author  Michael Murray
  */
 public abstract class AbstractSurface extends TriangulatableGeometry implements ShadableSurface, RGBFeatures, Porous {
-	private boolean shadeFront, shadeBack;
+	/** Whether the front face of this surface should be shaded. */
+	private boolean shadeFront;
 
+	/** Whether the back face of this surface should be shaded. */
+	private boolean shadeBack;
+
+	/** The base colour of this surface (used by shaders). */
 	private RGB color;
 
-	private double rindex = 1.0, reflectP = 1.0, refractP = 0.0;
+	/** Index of refraction of this surface's material. */
+	private double rindex = 1.0;
+
+	/** Fraction of incident light that is reflected. */
+	private double reflectP = 1.0;
+
+	/** Fraction of incident light that is refracted. */
+	private double refractP = 0.0;
+
+	/** Porosity value (fraction of light that passes through without interaction). */
 	private double porosity;
 
+	/** Ordered list of textures applied to this surface. */
 	private Texture[] textures;
+
+	/** The set of shaders used to compute the surface colour. */
 	private ShaderSet shaders = new ShaderSet();
 
+	/** The parent surface group that owns this surface, or {@code null} if none. */
 	private AbstractSurface parent;
 
+	/** An optional input operator that supplies a vector value to shading computations. */
 	private Operator<Vector> in;
 	
 	/**
@@ -75,6 +94,11 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 		this.setColor(new RGB(0.0, 0.0, 0.0));
 	}
 
+	/**
+	 * Constructs an {@link AbstractSurface} with the given colour and default shading flags.
+	 *
+	 * @param color the initial surface colour
+	 */
 	public AbstractSurface(RGB color) {
 		this.setShadeFront(true);
 		this.setShadeBack(false);
@@ -84,6 +108,13 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 		this.setColor(color);
 	}
 
+	/**
+	 * Constructs an {@link AbstractSurface} with the given colour, optionally omitting the
+	 * default diffuse shader.
+	 *
+	 * @param color                  the initial surface colour
+	 * @param addDefaultDiffuseShader {@code true} to keep the default diffuse shader; {@code false} to remove it
+	 */
 	public AbstractSurface(RGB color, boolean addDefaultDiffuseShader) {
 		this(color);
 		if (!addDefaultDiffuseShader)
@@ -185,25 +216,47 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 		return m;
 	}
 	
+	/** Sets the index of refraction for this surface's material. */
 	public void setIndexOfRefraction(double n) { this.rindex = n; }
+
+	/** Returns the index of refraction for this surface's material. */
 	public double getIndexOfRefraction() { return this.rindex; }
+
+	/** Returns the index of refraction at the specified point (always returns the uniform value). */
 	public double getIndexOfRefraction(Vector p) { return this.rindex; }
-	
+
+	/** Sets the fraction of incident light that is specularly reflected. */
 	public void setReflectedPercentage(double p) { this.reflectP = p; }
+
+	/** Sets the fraction of incident light that is refracted through this surface. */
 	public void setRefractedPercentage(double p) { this.refractP = p; }
-	
+
+	/** Returns the fraction of incident light that is specularly reflected. */
 	public double getReflectedPercentage() { return this.reflectP; }
+
+	/** Returns the fraction of incident light reflected at the specified point (always uniform). */
 	public double getReflectedPercentage(Vector p) { return this.reflectP; }
+
+	/** Returns the fraction of incident light that is refracted. */
 	public double getRefractedPercentage() { return this.refractP; }
+
+	/** Returns the fraction of incident light refracted at the specified point (always uniform). */
 	public double getRefractedPercentage(Vector p) { return this.refractP; }
-	
+
+	/** Sets the porosity (fraction of light that passes through without interaction). */
 	public void setPorosity(double p) { this.porosity = p; }
 
+	/** Returns the porosity of this surface. */
 	@Override
 	public double getPorosity() { return porosity; }
 
+	/** Sets the input vector from a constant {@link Vector} value. */
 	public void setInput(Vector v) { this.in = new Constant<>(v); }
+
+	/** Sets the input operator that supplies a vector to shading computations. */
 	public void setInput(Operator<Vector> in) { this.in = in; }
+
+	/** Returns the input operator, or {@code null} if none has been set. */
 	public Operator<Vector> getInput() { return this.in; }
 
 	/**
@@ -252,29 +305,35 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	 */
 	public Set<Texture> getTextureSet() {
 		Set<Texture> textureSet = new Set<Texture>() {
-			/** @return  The number of elements stored by this set. */
+			/** Returns the number of elements stored by this set. */
+			@Override
 			public int size() { return textures.length; }
-			
-			/** @return  True if this set contains no elements, false otherwise. */
+
+			/** Returns {@code true} if this set contains no elements. */
+			@Override
 			public boolean isEmpty() {
 				return (textures.length <= 0);
 			}
-			
-			/** @return  An Iterator object using the elements stored by this set. */
+
+			/** Returns an Iterator object using the elements stored by this set. */
+			@Override
 			public Iterator<Texture> iterator() {
 				Iterator<Texture> itr = new Iterator<Texture>() {
 					int index = 0;
 
+					@Override
 					public boolean hasNext() {
 						return index < textures.length;
 					}
 
+					@Override
 					public Texture next() throws NoSuchElementException {
 						if (this.index >= textures.length)
 							throw new NoSuchElementException("No element at " + this.index);
 						return textures[this.index++];
 					}
 
+					@Override
 					public void remove() {
 						removeTexture(this.index);
 					}
@@ -284,180 +343,198 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 			}
 
 			/**
+			 * Returns an array containing all of the elements stored by this set.
+			 *
 			 * @return  An array containing all of the elements stored by this set.
 			 */
+			@Override
 			public Object[] toArray() { return textures; }
-			
+
 			/**
+			 * Returns an array containing all of the elements stored by this set.
+			 *
 			 * @return  An array containing all of the elements stored by this set.
 			 */
+			@Override
 			public Object[] toArray(Object[] o) { return this.toArray(); }
-			
+
 			/**
 			 * Adds the specified Object to this set and returns true.
-			 * 
-			 * 
+			 *
 			 * @throws IllegalArgumentException  If the specified Object is not an instance of Texture.
 			 */
+			@Override
 			public boolean add(Texture o) {
 				if (!(o instanceof Texture))
 					throw new IllegalArgumentException("Illegal argument: " + o.toString());
-				
+
 				addTexture(o);
-				
+
 				return true;
 			}
-			
+
 			/**
 			 * Adds all of the elements stored by the specified Collection object to this set.
+			 *
 			 * @return  True if the set changed as a result.
-			 * 
 			 * @throws IllegalArgumentException  If an element in the specified Collection object is not
 			 *                                   an instance of Texture. Note: Elements that have not yet been added
 			 *                                   to the set at the time this error occurs will not be added.
 			 * @throws NullPointerException  If the specified Collection object is null.
 			 */
+			@Override
 			public boolean addAll(Collection c) {
 				boolean added = false;
-				
+
 				Iterator<Texture> itr = c.iterator();
-				
+
 				while (itr.hasNext()) {
 					this.add(itr.next());
 					added = true;
 				}
-				
+
 				return added;
 			}
-			
+
 			/**
-			 * Removes all occurences specified element from this set and returns true
+			 * Removes all occurrences of the specified element from this set and returns true
 			 * if the set changed as a result.
 			 */
+			@Override
 			public boolean remove(Object o) {
 				boolean removed = false;
-				
+
 				for (int i = 0; i < textures.length; i++) {
 					if (o.equals(textures[i])) {
 						removeTexture(i--);
 						removed = true;
 					}
 				}
-				
+
 				return removed;
 			}
-			
+
 			/**
 			 * Removes all of the elements stored by the specified Collection object from this set.
+			 *
 			 * @return  True if the set changed as a result.
-			 * 
 			 * @throws NullPointerException  If the specified Collection object is null.
 			 */
+			@Override
 			public boolean removeAll(Collection c) {
 				if (c == null)
 					throw new NullPointerException();
-				
+
 				boolean removed = false;
-				
+
 				Iterator itr = c.iterator();
-				
+
 				while (itr.hasNext()) {
 					if (this.remove(itr.next()))
 						removed = true;
 				}
-				
+
 				return removed;
 			}
-			
+
 			/**
 			 * Removes all elements stored by this set that are not contained in the specified Collection object.
+			 *
 			 * @return  True if the set changed as a result.
-			 * 
 			 * @throws NullPointerException  If the specified Collection object is null.
 			 */
+			@Override
 			public boolean retainAll(Collection c) {
 				if (c == null)
 					throw new NullPointerException();
-				
+
 				boolean removed = false;
-				
+
 				Iterator itr = this.iterator();
-				
+
 				while (itr.hasNext()) {
 					if (!c.contains(itr.next())) {
 						itr.remove();
 						removed = true;
 					}
 				}
-				
+
 				return removed;
 			}
-			
+
 			/**
 			 * Removes all elements of this set.
 			 */
+			@Override
 			public void clear() { textures = new Texture[0]; }
-			
+
 			/**
+			 * Returns {@code true} if this set contains the specified Object.
+			 *
 			 * @return  True if this set contains the specified Object, false otherwise.
 			 */
+			@Override
 			public boolean contains(Object o) {
 				if (!(o instanceof Texture))
 					return false;
-				
+
 				for (int i = 0; i < textures.length; i++) {
 					if (Objects.equals(o, textures[i]))
 						return true;
 				}
-				
+
 				return false;
 			}
-			
+
 			/**
+			 * Returns {@code true} if this set contains all of the elements of the specified Collection object.
+			 *
 			 * @return  True if this set contains all of the elements of the specified Collection object.
-			 * 
 			 * @throws NullPointerException  If the specified Collection object is null.
 			 */
+			@Override
 			public boolean containsAll(Collection c) {
 				if (c == null)
 					throw new NullPointerException();
-				
+
 				Iterator itr = c.iterator();
-				
+
 				while (itr.hasNext()) {
 					if (!this.contains(itr.next()))
 						return false;
 				}
-				
+
 				return true;
 			}
-			
+
 			/**
-			 * @return  True if the specified object is also an instance of Set with elements that
-			 *          are equal to those.
+			 * Returns {@code true} if the specified object is also an instance of Set with elements that
+			 * are equal to those in this set.
 			 */
+			@Override
 			public boolean equals(Object o) {
 				if (!(o instanceof Set))
 					return false;
-				
+
 				if (((Set)o).size() != this.size())
 					return false;
 
 				return this.containsAll((Set) o);
 			}
-			
+
 			/**
-			 * @return  An integer hash code for this set by adding the hash codes for all elements
-			 *          it stores.
+			 * Returns an integer hash code for this set by adding the hash codes for all elements
+			 * it stores.
 			 */
+			@Override
 			public int hashCode() {
 				int hash = 0;
-				
+
 				Iterator itr = this.iterator();
-				
+
 				while (itr.hasNext())
 					hash += itr.next().hashCode();
-				
+
 				return hash;
 			}
 		};
@@ -477,6 +554,8 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	}
 	
 	/**
+	 * Sets the shader set to use for shading this surface.
+	 *
 	 * @param set  New ShaderSet object to use for shading.
 	 */
 	public void setShaders(ShaderSet set) { this.shaders = set; }
@@ -490,6 +569,8 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	}
 
 	/**
+	 * Sets the shader set to use for shading this surface (delegates to {@link #setShaders(ShaderSet)}).
+	 *
 	 * @param set  New ShaderSet object to use for shading.
 	 */
 	public void setShaderSet(ShaderSet set) { setShaders(set); }
@@ -547,10 +628,13 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	/** Returns the color of this {@link AbstractSurface} as an {@link RGB} object. */
 	public RGB getColor() { return this.color; }
 
+	/** Returns the colour of this surface at the given point, applying the surface transform. */
 	@Override
 	public Producer<PackedCollection> getValueAt(Producer<PackedCollection> point) { return getColorAt(point, true); }
 	
 	/**
+	 * Returns the color of this AbstractSurface at the specified point as an RGB object.
+	 *
 	 * @return  The color of this AbstractSurface at the specified point as an RGB object.
 	 */
 	public Producer<PackedCollection> getColorAt(Producer<PackedCollection> point, boolean transform) {
@@ -573,6 +657,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 		return colorAt;
 	}
 
+	/** Returns {@code null}: subclasses should override to provide tight bounding solids. */
 	@Override
 	public BoundingSolid calculateBoundingSolid() { return null; }
 }

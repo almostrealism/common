@@ -182,12 +182,17 @@ import java.util.List;
  * @see Execution
  */
 public abstract class HardwareOperator implements Execution, KernelWork, OperationInfo, Named, ConsoleFeatures {
+	/** If true, emit basic log messages on each kernel execution. */
 	public static boolean enableLog;
+	/** If true, emit detailed log messages for every kernel invocation. Controlled by {@code AR_HARDWARE_KERNEL_LOG}. */
 	public static boolean enableVerboseLog = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_LOG").orElse(false);
+	/** If true, write instruction set monitoring data for every execution. Controlled by {@code AR_INSTRUCTION_SET_MONITORING=always}. */
 	public static boolean enableInstructionSetMonitoring =
 			SystemUtils.getProperty("AR_INSTRUCTION_SET_MONITORING", "disabled").equals("always");
+	/** If true, write instruction set monitoring data for large instruction sets. Controlled by {@code AR_INSTRUCTION_SET_MONITORING=enabled}. */
 	public static boolean enableLargeInstructionSetMonitoring =
 			SystemUtils.getProperty("AR_INSTRUCTION_SET_MONITORING", "disabled").equals("enabled");
+	/** If true, write instruction set monitoring data whenever compilation or execution fails. */
 	public static boolean enableFailedInstructionSetMonitoring =
 			enableLargeInstructionSetMonitoring || enableInstructionSetMonitoring ||
 					SystemUtils.getProperty("AR_INSTRUCTION_SET_MONITORING", "disabled").equals("failed");
@@ -200,20 +205,39 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	public static String instructionSetOutputDir =
 			SystemUtils.getProperty("AR_INSTRUCTION_SET_OUTPUT_DIR", "results");
 
+	/** Metric tracking argument preparation time across all hardware operator invocations. */
 	public static TimingMetric prepareArgumentsMetric = Hardware.console.timing("prepareArguments");
+	/** Metric tracking dimension mask computation time across all hardware operator invocations. */
 	public static TimingMetric computeDimMasksMetric = Hardware.console.timing("computeDimMasks");
 
+	/** Optional listener notified after each operation completes with timing information. */
 	public static OperationTimingListener timingListener;
-	public static long cpuCompileCount, gpuCompileCount;
-	public static long cpuOpCount, gpuOpCount;
-	public static long cpuOpTime, gpuOpTime;
+	/** Total number of native kernel compilations performed on the CPU backend. */
+	public static long cpuCompileCount;
+	/** Total number of native kernel compilations performed on the GPU backend. */
+	public static long gpuCompileCount;
+	/** Total number of operations executed on the CPU backend. */
+	public static long cpuOpCount;
+	/** Total number of operations executed on the GPU backend. */
+	public static long gpuOpCount;
+	/** Cumulative CPU operation execution time in nanoseconds. */
+	public static long cpuOpTime;
+	/** Cumulative GPU operation execution time in nanoseconds. */
+	public static long gpuOpTime;
 
+	/** Counter used to assign unique identifiers to each {@link HardwareOperator} instance. */
 	protected static long idCount;
 
+	/** Number of parallel work items for the next kernel dispatch. */
 	private volatile long globalWorkSize = 1;
+	/** Global work offset applied to kernel dispatch indices. */
 	private volatile long globalWorkOffset;
+	/** Unique identifier for this operator instance, assigned sequentially at construction. */
 	private long id;
 
+	/**
+	 * Creates a hardware operator and assigns it a unique sequential identifier.
+	 */
 	public HardwareOperator() {
 		this.id = idCount++;
 	}
@@ -356,6 +380,16 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 		return data;
 	}
 
+	/**
+	 * Moves the given {@link MemoryData} to a supported memory provider if its current provider
+	 * is not supported by this operator.
+	 *
+	 * <p>If the memory is already in a supported provider, this method is a no-op.
+	 * Otherwise, the data is reallocated in the first supported provider.</p>
+	 *
+	 * @param data The memory data to potentially relocate
+	 * @throws RuntimeException if no memory providers are supported by this operator
+	 */
 	private void reassignMemory(MemoryData data) {
 		List<MemoryProvider<? extends Memory>> supported = getSupportedMemory();
 		if (supported.isEmpty())
@@ -384,7 +418,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 					int size = root.getMemLength() * provider.getNumberSize();
 
 					if (enableVerboseLog)
-						System.out.println("Hardware[" + getHardwareName() + "]: Reallocating " + size + " bytes");
+						log("Hardware[" + getHardwareName() + "]: Reallocating " + size + " bytes");
 
 					root.reallocate(supported.get(0));
 				}), false);

@@ -19,7 +19,19 @@ package io.almostrealism.expression;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * A boolean negation expression ({@code !value}).
+ *
+ * <p>Generates code of the form {@code !value}. Double negation is eliminated at
+ * factory time: if the operand is already a {@link Negation}, the inner expression
+ * is returned directly. Constant operands are also folded.</p>
+ */
 public class Negation extends UnaryExpression<Boolean> {
+	/**
+	 * Constructs a boolean negation expression for the given operand.
+	 *
+	 * @param value the boolean expression to negate
+	 */
 	protected Negation(Expression<Boolean> value) {
 		super(Boolean.class, "!", value);
 	}
@@ -44,6 +56,13 @@ public class Negation extends UnaryExpression<Boolean> {
 		return (Expression) Negation.of(children.get(0));
 	}
 
+	/**
+	 * Creates a boolean negation expression, folding constants and eliminating double
+	 * negation.
+	 *
+	 * @param value the expression to negate
+	 * @return a constant, the inner expression (if double negation), or a {@link Negation}
+	 */
 	public static Expression<?> of(Expression<?> value) {
 		Optional<Boolean> c = value.booleanValue();
 		if (c.isPresent()) {

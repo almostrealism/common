@@ -57,14 +57,181 @@ package org.almostrealism.audio.tone;
  * @see Scale
  */
 public enum WesternChromatic implements KeyPosition<WesternChromatic> {
-	A0, AS0, B0,
-	C1, CS1, D1, DS1, E1, F1, FS1, G1, GS1, A1, AS1, B1,
-	C2, CS2, D2, DS2, E2, F2, FS2, G2, GS2, A2, AS2, B2,
-	C3, CS3, D3, DS3, E3, F3, FS3, G3, GS3, A3, AS3, B3,
-	C4, CS4, D4, DS4, E4, F4, FS4, G4, GS4, A4, AS4, B4,
-	C5, CS5, D5, DS5, E5, F5, FS5, G5, GS5, A5, AS5, B5,
-	C6, CS6, D6, DS6, E6, F6, FS6, G6, GS6, A6, AS6, B6,
-	C7, CS7, D7, DS7, E7, F7, FS7, G7, GS7, A7, AS7, B7,
+	/** A in octave 0 (27.5 Hz). */
+	A0,
+	/** A-sharp/B-flat in octave 0 (29.1 Hz). */
+	AS0,
+	/** B in octave 0 (30.9 Hz). */
+	B0,
+	/** C in octave 1 (32.7 Hz). */
+	C1,
+	/** C-sharp/D-flat in octave 1. */
+	CS1,
+	/** D in octave 1. */
+	D1,
+	/** D-sharp/E-flat in octave 1. */
+	DS1,
+	/** E in octave 1. */
+	E1,
+	/** F in octave 1. */
+	F1,
+	/** F-sharp/G-flat in octave 1. */
+	FS1,
+	/** G in octave 1. */
+	G1,
+	/** G-sharp/A-flat in octave 1. */
+	GS1,
+	/** A in octave 1. */
+	A1,
+	/** A-sharp/B-flat in octave 1. */
+	AS1,
+	/** B in octave 1. */
+	B1,
+	/** C in octave 2. */
+	C2,
+	/** C-sharp/D-flat in octave 2. */
+	CS2,
+	/** D in octave 2. */
+	D2,
+	/** D-sharp/E-flat in octave 2. */
+	DS2,
+	/** E in octave 2. */
+	E2,
+	/** F in octave 2. */
+	F2,
+	/** F-sharp/G-flat in octave 2. */
+	FS2,
+	/** G in octave 2. */
+	G2,
+	/** G-sharp/A-flat in octave 2. */
+	GS2,
+	/** A in octave 2. */
+	A2,
+	/** A-sharp/B-flat in octave 2. */
+	AS2,
+	/** B in octave 2. */
+	B2,
+	/** C in octave 3. */
+	C3,
+	/** C-sharp/D-flat in octave 3. */
+	CS3,
+	/** D in octave 3. */
+	D3,
+	/** D-sharp/E-flat in octave 3. */
+	DS3,
+	/** E in octave 3. */
+	E3,
+	/** F in octave 3. */
+	F3,
+	/** F-sharp/G-flat in octave 3. */
+	FS3,
+	/** G in octave 3. */
+	G3,
+	/** G-sharp/A-flat in octave 3. */
+	GS3,
+	/** A in octave 3. */
+	A3,
+	/** A-sharp/B-flat in octave 3. */
+	AS3,
+	/** B in octave 3. */
+	B3,
+	/** Middle C (C4, 261.6 Hz). */
+	C4,
+	/** C-sharp/D-flat in octave 4. */
+	CS4,
+	/** D in octave 4. */
+	D4,
+	/** D-sharp/E-flat in octave 4. */
+	DS4,
+	/** E in octave 4. */
+	E4,
+	/** F in octave 4. */
+	F4,
+	/** F-sharp/G-flat in octave 4. */
+	FS4,
+	/** G in octave 4. */
+	G4,
+	/** G-sharp/A-flat in octave 4. */
+	GS4,
+	/** Concert pitch A (A4, 440 Hz). */
+	A4,
+	/** A-sharp/B-flat in octave 4. */
+	AS4,
+	/** B in octave 4. */
+	B4,
+	/** C in octave 5. */
+	C5,
+	/** C-sharp/D-flat in octave 5. */
+	CS5,
+	/** D in octave 5. */
+	D5,
+	/** D-sharp/E-flat in octave 5. */
+	DS5,
+	/** E in octave 5. */
+	E5,
+	/** F in octave 5. */
+	F5,
+	/** F-sharp/G-flat in octave 5. */
+	FS5,
+	/** G in octave 5. */
+	G5,
+	/** G-sharp/A-flat in octave 5. */
+	GS5,
+	/** A in octave 5. */
+	A5,
+	/** A-sharp/B-flat in octave 5. */
+	AS5,
+	/** B in octave 5. */
+	B5,
+	/** C in octave 6. */
+	C6,
+	/** C-sharp/D-flat in octave 6. */
+	CS6,
+	/** D in octave 6. */
+	D6,
+	/** D-sharp/E-flat in octave 6. */
+	DS6,
+	/** E in octave 6. */
+	E6,
+	/** F in octave 6. */
+	F6,
+	/** F-sharp/G-flat in octave 6. */
+	FS6,
+	/** G in octave 6. */
+	G6,
+	/** G-sharp/A-flat in octave 6. */
+	GS6,
+	/** A in octave 6. */
+	A6,
+	/** A-sharp/B-flat in octave 6. */
+	AS6,
+	/** B in octave 6. */
+	B6,
+	/** C in octave 7. */
+	C7,
+	/** C-sharp/D-flat in octave 7. */
+	CS7,
+	/** D in octave 7. */
+	D7,
+	/** D-sharp/E-flat in octave 7. */
+	DS7,
+	/** E in octave 7. */
+	E7,
+	/** F in octave 7. */
+	F7,
+	/** F-sharp/G-flat in octave 7. */
+	FS7,
+	/** G in octave 7. */
+	G7,
+	/** G-sharp/A-flat in octave 7. */
+	GS7,
+	/** A in octave 7. */
+	A7,
+	/** A-sharp/B-flat in octave 7. */
+	AS7,
+	/** B in octave 7. */
+	B7,
+	/** Highest note on a standard piano (C8, 4186 Hz). */
 	C8;
 
 	@Override

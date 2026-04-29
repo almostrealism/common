@@ -98,33 +98,79 @@ import java.util.Set;
  * @see org.almostrealism.layers.LowRankAdapterSupport
  */
 public class DiffusionTransformer implements DiffusionModel, DiffusionTransformerFeatures {
+	/** Default audio sample size (524288 samples, ~11.9 s at 44.1 kHz). */
 	private static final int SAMPLE_SIZE = 524288;
+
+	/** Default downsampling ratio from audio samples to latent patches. */
 	private static final int DOWNSAMPLING_RATIO = 2048;
 
+	/** Whether to collect operation profiling data during compilation. */
 	public static boolean enableProfile = false;
+
+	/** Batch size used for all model input/output shapes. */
 	public static int batchSize = 1;
 
+	/** Number of input and output audio channels (e.g., 64 for latent stereo). */
 	private final int ioChannels;
+
+	/** Transformer embedding dimension. */
 	private final int embedDim;
+
+	/** Number of transformer blocks. */
 	private final int depth;
+
+	/** Number of self-attention heads. */
 	private final int numHeads;
+
+	/** Patch size for splitting the audio sequence before embedding. */
 	private final int patchSize;
+
+	/** Dimension of cross-attention conditioning tokens (0 disables cross-attention). */
 	private final int condTokenDim;
+
+	/** Dimension of the global conditioning vector (0 disables global conditioning). */
 	private final int globalCondDim;
 
+	/** Number of patches in the audio sequence (audio length divided by patch size). */
 	private final int audioSeqLen;
+
+	/** Number of conditioning tokens in the cross-attention sequence. */
 	private final int condSeqLen;
 
+	/** Pre-trained weights accessed by key. */
 	private final StateDictionary stateDictionary;
+
+	/** Weight keys that have not been accessed; populated at construction for diagnostics. */
 	private final Set<String> unusedWeights;
+
+	/** Lazily-built transformer {@link Model}. */
 	private Model model;
 
+	/** Optional operation profile for timing compiled kernels. */
 	private OperationProfile profile;
+
+	/** Compiled inference model; may also serve as the training model when backward pass is needed. */
 	protected CompiledModel compiled;
 
+	/** Captures the transformer input state for debugging; null when capture is disabled. */
 	private PackedCollection preTransformerState, postTransformerState;
+
+	/** Per-layer attention score tensors captured during forward pass; null when capture is disabled. */
 	private Map<Integer, PackedCollection> attentionScores;
 
+	/**
+	 * Constructs a DiffusionTransformer with default sequence lengths and attention capture disabled.
+	 *
+	 * @param ioChannels          Number of input/output channels
+	 * @param embedDim            Transformer embedding dimension
+	 * @param depth               Number of transformer blocks
+	 * @param numHeads            Number of self-attention heads
+	 * @param patchSize           Patch size for the audio sequence
+	 * @param condTokenDim        Cross-attention conditioning token dimension (0 to disable)
+	 * @param globalCondDim       Global conditioning vector dimension (0 to disable)
+	 * @param diffusionObjective  Training objective, e.g. {@code "v_prediction"}
+	 * @param stateDictionary     Pre-trained weight store
+	 */
 	public DiffusionTransformer(int ioChannels, int embedDim, int depth, int numHeads,
 								int patchSize, int condTokenDim, int globalCondDim,
 								String diffusionObjective, StateDictionary stateDictionary) {
@@ -133,6 +179,20 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 				stateDictionary, false);
 	}
 
+	/**
+	 * Constructs a DiffusionTransformer with default sequence lengths.
+	 *
+	 * @param ioChannels            Number of input/output channels
+	 * @param embedDim              Transformer embedding dimension
+	 * @param depth                 Number of transformer blocks
+	 * @param numHeads              Number of self-attention heads
+	 * @param patchSize             Patch size for the audio sequence
+	 * @param condTokenDim          Cross-attention conditioning token dimension (0 to disable)
+	 * @param globalCondDim         Global conditioning vector dimension (0 to disable)
+	 * @param diffusionObjective    Training objective
+	 * @param stateDictionary       Pre-trained weight store
+	 * @param captureAttentionScores Whether to capture per-layer attention weights for debugging
+	 */
 	public DiffusionTransformer(int ioChannels, int embedDim, int depth, int numHeads,
 								int patchSize, int condTokenDim, int globalCondDim,
 								String diffusionObjective, StateDictionary stateDictionary,
@@ -143,6 +203,22 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 				stateDictionary, captureAttentionScores);
 	}
 
+	/**
+	 * Full constructor for a DiffusionTransformer with explicit sequence lengths.
+	 *
+	 * @param ioChannels            Number of input/output channels
+	 * @param embedDim              Transformer embedding dimension
+	 * @param depth                 Number of transformer blocks
+	 * @param numHeads              Number of self-attention heads
+	 * @param patchSize             Patch size for the audio sequence
+	 * @param condTokenDim          Cross-attention conditioning token dimension (0 to disable)
+	 * @param globalCondDim         Global conditioning vector dimension (0 to disable)
+	 * @param diffusionObjective    Training objective (e.g., {@code "v_prediction"})
+	 * @param audioSeqLen           Number of patches in the audio sequence
+	 * @param condSeqLen            Number of tokens in the conditioning sequence
+	 * @param stateDictionary       Pre-trained weight store
+	 * @param captureAttentionScores Whether to capture per-layer attention weights for debugging
+	 */
 	public DiffusionTransformer(int ioChannels, int embedDim, int depth, int numHeads,
 								int patchSize, int condTokenDim, int globalCondDim,
 								String diffusionObjective, int audioSeqLen, int condSeqLen,
@@ -169,6 +245,14 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		// Model is built lazily in getModel() to allow subclass fields to initialize first
 	}
 
+	/**
+	 * Constructs the full AR {@link Model} for this diffusion transformer.
+	 *
+	 * <p>This method is called lazily from {@link #getModel()} to allow subclass fields
+	 * (e.g., LoRA layers) to be initialized before model construction begins.</p>
+	 *
+	 * @return The assembled transformer model
+	 */
 	protected Model buildModel() {
 		// Create model with input shape - [batch, channels, sequence_length]
 		Model model = new Model(shape(batchSize, ioChannels, audioSeqLen));
@@ -268,6 +352,11 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		return model;
 	}
 
+	/**
+	 * Builds the timestep embedding input block that maps a scalar timestep to an embedding vector.
+	 *
+	 * @return A block that takes a scalar diffusion timestep and returns an embedding of size {@link #embedDim}
+	 */
 	protected Block timestampEmbedding() {
 		PackedCollection timestepFeaturesWeight = createWeight("model.model.timestep_features.weight", 128, 1);
 		PackedCollection timestampEmbeddingInWeight = createWeight("model.model.to_timestep_embed.0.weight", embedDim, 256);
@@ -281,6 +370,13 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 				timestampEmbeddingOutWeight, timestampEmbeddingOutBias);
 	}
 
+	/**
+	 * Builds a block that prepends a combined timestep+global conditioning token to the sequence.
+	 *
+	 * @param timestampEmbed Block producing the timestep embedding
+	 * @param globalEmbed    Block producing the global conditioning embedding
+	 * @return Block that prepends the summed conditioning token to the audio sequence
+	 */
 	protected Block prependConditioning(Block timestampEmbed, Block globalEmbed) {
 		PackedCollection timestep = new PackedCollection(timestampEmbed.getOutputShape());
 		PackedCollection globalCond = new PackedCollection(globalEmbed.getOutputShape());
@@ -295,6 +391,16 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 						concat(1, add(cp(globalCond), cp(timestep)).reshape(batchSize, 1, embedDim), c(in)));
 	}
 
+	/**
+	 * Appends the full stack of transformer blocks to the given sequential block.
+	 *
+	 * @param main          The sequential block to append layers to
+	 * @param timestepEmbed Block providing the timestep embedding input
+	 * @param condEmbed     Block providing cross-attention conditioning (may be null)
+	 * @param globalEmbed   Block providing global conditioning (may be null)
+	 * @param dim           Embedding dimension
+	 * @param seqLen        Full sequence length including any prepended conditioning tokens
+	 */
 	protected void addTransformerBlocks(SequentialBlock main,
 										Block timestepEmbed,
 										Block condEmbed,
@@ -464,10 +570,34 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 	@Override
 	public Map<Integer, PackedCollection> getAttentionActivations() { return attentionScores; }
 
+	/**
+	 * Returns the captured pre-transformer (post input-projection) state tensor.
+	 * Only populated when state capture is enabled.
+	 *
+	 * @return Pre-transformer state, or {@code null} if capture is disabled
+	 */
 	public PackedCollection getPreTransformerState() { return preTransformerState; }
+
+	/**
+	 * Returns the captured post-transformer (pre output-projection) state tensor.
+	 * Only populated when state capture is enabled.
+	 *
+	 * @return Post-transformer state, or {@code null} if capture is disabled
+	 */
 	public PackedCollection getPostTransformerState() { return postTransformerState; }
 
+	/**
+	 * Sets the pre-transformer state tensor (for use by subclasses or debugging hooks).
+	 *
+	 * @param state The state tensor to store
+	 */
 	protected void setPreTransformerState(PackedCollection state) { this.preTransformerState = state; }
+
+	/**
+	 * Sets the post-transformer state tensor (for use by subclasses or debugging hooks).
+	 *
+	 * @param state The state tensor to store
+	 */
 	protected void setPostTransformerState(PackedCollection state) { this.postTransformerState = state; }
 
 	// Protected getters for subclass access
@@ -527,10 +657,24 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		}
 	}
 
+	/**
+	 * Retrieves a weight tensor from the state dictionary with shape validation.
+	 *
+	 * @param key  Weight key in the state dictionary
+	 * @param dims Expected tensor dimensions
+	 * @return The weight tensor, wrapped in a range view matching the expected shape
+	 */
 	protected PackedCollection createWeight(String key, int... dims) {
 		return createWeight(key, shape(dims));
 	}
 
+	/**
+	 * Retrieves a weight tensor from the state dictionary with shape validation.
+	 *
+	 * @param key           Weight key in the state dictionary
+	 * @param expectedShape Expected tensor shape
+	 * @return The weight tensor, wrapped in a range view matching the expected shape
+	 */
 	protected PackedCollection createWeight(String key, TraversalPolicy expectedShape) {
 		if (stateDictionary == null) {
 			return new PackedCollection(expectedShape);
@@ -555,6 +699,11 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		return weight.range(expectedShape);
 	}
 
+	/**
+	 * Validates that all weights from the state dictionary were actually consumed during model construction.
+	 *
+	 * @throws IllegalArgumentException if any weight key was loaded but not referenced during model building
+	 */
 	protected void validateWeights() {
 		unusedWeights.stream().findFirst().ifPresent(unusedWeight -> {
 			throw new IllegalArgumentException(unusedWeight + " weights were not used by the model");

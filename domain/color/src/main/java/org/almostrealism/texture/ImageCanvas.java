@@ -19,6 +19,7 @@ package org.almostrealism.texture;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.color.RGB;
+import org.almostrealism.io.ConsoleFeatures;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -26,6 +27,7 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.PrintWriter;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
@@ -36,16 +38,28 @@ import java.io.OutputStream;
  * 
  * @author  Michael Murray
  */
-public class ImageCanvas extends JPanel {
+public class ImageCanvas extends JPanel implements ConsoleFeatures {
+  /** The width of the canvas in pixels. */
   private final int screenX;
+
+  /** The height of the canvas in pixels. */
 	private final int screenY;
-  private double xScale, yScale;
-  private double xOff, yOff;
-  
+
+  /** The horizontal scale factor applied when mapping world coordinates to screen pixels. */
+  private double xScale;
+
+  /** The vertical scale factor applied when mapping world coordinates to screen pixels. */
+  private double yScale;
+
+  /** The horizontal offset applied to world coordinates before scaling. */
+  private double xOff;
+
+  /** The vertical offset applied to world coordinates before scaling. */
+  private double yOff;
+
+  /** The 2D array of {@link RGB} pixels representing the current image state. */
   private RGB[][] image;
-  private RGB color;
-  private int next;
-  
+
   /** The integer code for an RGB list image encoding. */
   public static final int RGBListEncoding = 7;
   /** The integer code for a PIX image encoding. */
@@ -57,6 +71,12 @@ public class ImageCanvas extends JPanel {
 
   	
   
+	/**
+	 * Constructs a new {@link ImageCanvas} with the specified dimensions and default scale/offset.
+	 *
+	 * @param w the canvas width in pixels
+	 * @param h the canvas height in pixels
+	 */
 	public ImageCanvas(int w, int h) {
 		this(w, h, 1.0, 1.0, 0.0, 0.0);
 	}
@@ -73,8 +93,7 @@ public class ImageCanvas extends JPanel {
 	 */
 	public ImageCanvas(int w, int h, double xScale, double yScale, double xOff, double yOff) {
 		this.image = new RGB[w][h];
-		this.color = new RGB(0.0, 0.0, 0.0);
-		
+
 		this.screenX = w;
 		this.screenY = h;
 		this.xScale = xScale;
@@ -111,14 +130,11 @@ public class ImageCanvas extends JPanel {
 	public void plot(double x, double y, RGB c) {
 		int sx = (int)(((x + this.xOff) * this.xScale) + (this.screenX / 2.0));
 		int sy = (int)(-((y + this.yOff) * this.yScale) + (this.screenY / 2.0));
-		
-		this.next++;
-		
+
 		if (sx >= 0 && sx < this.image.length && sy >= 0 && sy < this.image[sx].length) {
 			this.image[sx][sy] = c;
-			this.color = this.image[sx][sy];
 		}
-		
+
 		this.repaint();
 	}
 	
@@ -139,7 +155,9 @@ public class ImageCanvas extends JPanel {
 	public void setImageData(RGB[][] image) { this.image = image; }
 	
 	/**
-	 * @return  The image data stored by this ImageCanvas object.
+	 * Returns the image data stored by this {@link ImageCanvas} object.
+	 *
+	 * @return the 2D array of {@link RGB} pixels representing the current image state
 	 */
 	public RGB[][] getImageData() { return this.image; }
 	
@@ -164,7 +182,7 @@ public class ImageCanvas extends JPanel {
 			ImageCanvas.encodeImageFile(new Provider<>(this.image),
 							new File(file), ImageCanvas.JPEGEncoding);
 		} catch (Exception e) {
-			e.printStackTrace();
+			warn(e.getMessage(), e);
 		}
 	}
 	
@@ -177,11 +195,27 @@ public class ImageCanvas extends JPanel {
 		g.drawImage(img, 0, 0, Color.black, this);
 	}
 
+	/**
+	 * Writes the given image to the output stream using the specified encoding.
+	 *
+	 * @param image    the 2D array of {@link RGB} pixels to encode
+	 * @param o        the output stream to write to
+	 * @param encoding the encoding format (e.g., {@link #JPEGEncoding}, {@link #PPMEncoding})
+	 * @throws IOException if writing fails
+	 */
 	public static void writeImage(RGB[][] image, OutputStream o, int encoding)
 			throws IOException {
 		writeImage(new Provider<>(image), o, encoding);
 	}
 
+	/**
+	 * Evaluates the image producer and writes the resulting image to the output stream.
+	 *
+	 * @param imageProducer an {@link Evaluable} that produces the image pixels
+	 * @param o             the output stream to write to
+	 * @param encoding      the encoding format (e.g., {@link #JPEGEncoding}, {@link #PPMEncoding})
+	 * @throws IOException if writing fails
+	 */
 	public static void writeImage(Evaluable<RGB[][]> imageProducer, OutputStream o, int encoding)
 						throws IOException {
 		RGB[][] image = imageProducer.evaluate();
@@ -201,7 +235,7 @@ public class ImageCanvas extends JPanel {
 			
 			out.flush();
 		} if (encoding == ImageCanvas.PPMEncoding) {
-			java.io.PrintWriter out = new java.io.PrintWriter(o);
+			PrintWriter out = new PrintWriter(o);
 			
 			out.println("P3");
 			

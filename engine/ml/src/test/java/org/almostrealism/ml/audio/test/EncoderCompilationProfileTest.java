@@ -150,7 +150,7 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 		profile(profile, () -> {
 			log("Compiling model (backprop=false)...");
 			long start = System.currentTimeMillis();
-			CompiledModel compiled = model.compile(false);
+			model.compile(false);
 			log("Compilation completed in " + (System.currentTimeMillis() - start) + " ms");
 		});
 
@@ -194,7 +194,7 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 
 			log("Compiling model (backprop=false)...");
 			start = System.currentTimeMillis();
-			CompiledModel compiled = model.compile(false);
+			model.compile(false);
 			log("Compilation completed in " + (System.currentTimeMillis() - start) + " ms");
 		});
 

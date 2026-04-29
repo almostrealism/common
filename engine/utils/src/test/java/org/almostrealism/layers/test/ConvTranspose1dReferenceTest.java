@@ -24,6 +24,8 @@ import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.Arrays;
+
 import java.io.DataInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -31,6 +33,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
 
 /**
  * Tests ConvTranspose1d against PyTorch reference outputs.
@@ -137,10 +140,10 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 		float[] bias = loadReference("minimal", "bias.bin");
 		float[] expected = loadReference("minimal", "expected_output.bin");
 
-		log("Input: " + java.util.Arrays.toString(input));
-		log("Weights: " + java.util.Arrays.toString(weights));
-		log("Bias: " + java.util.Arrays.toString(bias));
-		log("Expected output: " + java.util.Arrays.toString(expected));
+		log("Input: " + Arrays.toString(input));
+		log("Weights: " + Arrays.toString(weights));
+		log("Bias: " + Arrays.toString(bias));
+		log("Expected output: " + Arrays.toString(expected));
 
 		// Parameters: batch=1, in_ch=1, out_ch=1, seq=2, kernel=2, stride=2, padding=0
 		int batchSize = 1;
@@ -189,9 +192,9 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 		float[] bias = loadReference("with_padding", "bias.bin");
 		float[] expected = loadReference("with_padding", "expected_output.bin");
 
-		log("Input: " + java.util.Arrays.toString(input));
-		log("Weights: " + java.util.Arrays.toString(weights));
-		log("Expected output: " + java.util.Arrays.toString(expected));
+		log("Input: " + Arrays.toString(input));
+		log("Weights: " + Arrays.toString(weights));
+		log("Expected output: " + Arrays.toString(expected));
 
 		int batchSize = 1;
 		int inChannels = 1;
@@ -239,8 +242,8 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 		float[] bias = loadReference("multichannel_small", "bias.bin");
 		float[] expected = loadReference("multichannel_small", "expected_output.bin");
 
-		log("Input (first 10): " + java.util.Arrays.toString(java.util.Arrays.copyOf(input, Math.min(10, input.length))));
-		log("Weights (first 10): " + java.util.Arrays.toString(java.util.Arrays.copyOf(weights, Math.min(10, weights.length))));
+		log("Input (first 10): " + Arrays.toString(Arrays.copyOf(input, Math.min(10, input.length))));
+		log("Weights (first 10): " + Arrays.toString(Arrays.copyOf(weights, Math.min(10, weights.length))));
 
 		int batchSize = 1;
 		int inChannels = 2;
@@ -289,8 +292,8 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 		float[] bias = loadReference("oobleck_like", "bias.bin");
 		float[] expected = loadReference("oobleck_like", "expected_output.bin");
 
-		log("Input: " + java.util.Arrays.toString(input));
-		log("Expected output: " + java.util.Arrays.toString(expected));
+		log("Input: " + Arrays.toString(input));
+		log("Expected output: " + Arrays.toString(expected));
 
 		int batchSize = 1;
 		int inChannels = 4;
@@ -340,9 +343,9 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 		float[] bias = loadReference("stride16_tiny", "bias.bin");
 		float[] expected = loadReference("stride16_tiny", "expected_output.bin");
 
-		log("Input: " + java.util.Arrays.toString(input));
-		log("Weights (first 16): " + java.util.Arrays.toString(java.util.Arrays.copyOf(weights, 16)));
-		log("Expected output (first 16): " + java.util.Arrays.toString(java.util.Arrays.copyOf(expected, 16)));
+		log("Input: " + Arrays.toString(input));
+		log("Weights (first 16): " + Arrays.toString(Arrays.copyOf(weights, 16)));
+		log("Expected output (first 16): " + Arrays.toString(Arrays.copyOf(expected, 16)));
 
 		int batchSize = 1;
 		int inChannels = 2;

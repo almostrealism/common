@@ -43,7 +43,9 @@ import org.almostrealism.io.ConsoleFeatures;
  * @see MTLCommandQueue
  */
 public abstract class MTLObject implements ConsoleFeatures {
+	/** Native Metal object pointer (e.g., {@code id<MTLDevice>}, {@code id<MTLBuffer>}). */
 	private long nativePointer;
+	/** True once {@link #release()} has been called; prevents further native operations. */
 	private boolean released;
 
 	/**

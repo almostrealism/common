@@ -2,7 +2,7 @@
 # Install with: pip install -r tools/mcp/requirements.txt
 #
 # Covers: ar-consultant, ar-memory, ar-test-runner, ar-jmx,
-#          ar-profile-analyzer, ar-github, ar-slack
+#          ar-profile-analyzer, ar-github, ar-messages
 
 # Core MCP framework (all servers)
 mcp>=1.0.0

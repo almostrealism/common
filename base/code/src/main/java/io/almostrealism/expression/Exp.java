@@ -24,7 +24,19 @@ import io.almostrealism.lang.LanguageOperations;
 import java.util.List;
 import java.util.OptionalLong;
 
+/**
+ * An exponential expression that computes {@code e^x} for a single operand.
+ *
+ * <p>Generates code of the form {@code exp(input)}. The derivative of {@code exp(x)}
+ * is {@code exp(x)} itself, so the delta pass returns a product of the operand's delta
+ * and this expression.</p>
+ */
 public class Exp extends Expression<Double> {
+	/**
+	 * Constructs an exponential expression for the given operand.
+	 *
+	 * @param input the exponent operand
+	 */
 	protected Exp(Expression<Double> input) {
 		super(Double.class, input);
 	}
@@ -51,6 +63,8 @@ public class Exp extends Expression<Double> {
 		return OptionalLong.empty();
 	}
 
+	/** {@inheritDoc} Evaluates to {@code e^children[0]}. */
+	@Override
 	public Number evaluate(Number... children) {
 		return Math.exp(children[0].doubleValue());
 	}
@@ -71,6 +85,13 @@ public class Exp extends Expression<Double> {
 		return product(target.getShape(), List.of(delta, exp));
 	}
 
+	/**
+	 * Creates an exponential expression for the given operand.
+	 *
+	 * @param input the exponent operand
+	 * @param <T>   the result type (always {@link Double})
+	 * @return a new {@link Exp} expression
+	 */
 	public static <T> Expression<T> of(Expression input) {
 		return (Expression<T>) new Exp(input);
 	}

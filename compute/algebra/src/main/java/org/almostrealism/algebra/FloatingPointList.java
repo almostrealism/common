@@ -44,9 +44,13 @@ package org.almostrealism.algebra;
  * @author  Michael Murray
  */
 public class FloatingPointList {
+	/** Initial capacity of the internal array before any resizing. */
 	private static final int DEFAULT_SIZE = 10;
 
+	/** The internal storage array; may have extra capacity beyond {@link #numElements}. */
 	private double[] data = new double[DEFAULT_SIZE];
+
+	/** The number of elements currently stored in this list. */
 	private int numElements;
 
 	/**

@@ -79,6 +79,10 @@ public interface TestSettings {
 	 */
 	boolean skipKnownIssues = TestUtils.getSkipKnownIssues();
 
+	/**
+	 * Number of training epochs to run during model training tests.
+	 * Controlled by the {@code AR_TRAINING_EPOCHS} environment variable; defaults to 2.
+	 */
 	int trainingEpochs = SystemUtils.getInt("AR_TRAINING_EPOCHS").orElse(2);
 
 	/**

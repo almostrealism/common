@@ -4,6 +4,8 @@ import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.Arrays;
+
 /**
  * Demo to see actual generation output from Qwen3 with the fixed tokenizer.
  */
@@ -14,9 +16,9 @@ public class Qwen3GenerationDemo extends TestSuiteBase {
 
     @Test(timeout = 300000)
     public void testGeneration() throws Exception {
-        System.out.println("\n" + "=".repeat(70));
-        System.out.println("QWEN3 GENERATION TEST WITH FIXED TOKENIZER");
-        System.out.println("=".repeat(70) + "\n");
+        log("\n" + "=".repeat(70));
+        log("QWEN3 GENERATION TEST WITH FIXED TOKENIZER");
+        log("=".repeat(70) + "\n");
 
         // Load model
         Qwen3Config config = new Qwen3Config(
@@ -27,7 +29,7 @@ public class Qwen3GenerationDemo extends TestSuiteBase {
         Qwen3Tokenizer tokenizer = new Qwen3Tokenizer(TOKENIZER_PATH);
         Qwen3 model = new Qwen3(config, stateDict, tokenizer);
 
-        System.out.println("[Model loaded successfully]\n");
+        log("[Model loaded successfully]\n");
 
         // Test different prompts
         String[] prompts = {
@@ -37,34 +39,34 @@ public class Qwen3GenerationDemo extends TestSuiteBase {
         };
 
         for (String prompt : prompts) {
-            System.out.println("-".repeat(70));
-            System.out.println("PROMPT: \"" + prompt + "\"");
-            System.out.println("-".repeat(70));
+            log("-".repeat(70));
+            log("PROMPT: \"" + prompt + "\"");
+            log("-".repeat(70));
 
             // Show tokenization
             int[] tokens = tokenizer.encode(prompt, false, false);
-            System.out.println("Tokens: " + java.util.Arrays.toString(tokens));
-            System.out.println("\nGENERATED OUTPUT:");
-            System.out.println(">>> ");
+            log("Tokens: " + Arrays.toString(tokens));
+            log("\nGENERATED OUTPUT:");
+            log(">>> ");
 
             model.setTemperature(0.8);
 
             StringBuilder output = new StringBuilder();
             model.run(30, prompt, token -> {
-                System.out.print(token);
-                System.out.flush();
+                log(String.valueOf(token));
+
                 output.append(token);
             });
 
-            System.out.println("\n");
-            System.out.println("FULL OUTPUT: " + output.toString());
-            System.out.println();
+            log("\n");
+            log("FULL OUTPUT: " + output.toString());
+            log("");
         }
 
         stateDict.destroy();
 
-        System.out.println("=".repeat(70));
-        System.out.println("TEST COMPLETE");
-        System.out.println("=".repeat(70) + "\n");
+        log("=".repeat(70));
+        log("TEST COMPLETE");
+        log("=".repeat(70) + "\n");
     }
 }

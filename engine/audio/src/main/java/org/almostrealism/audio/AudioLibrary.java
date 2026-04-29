@@ -16,15 +16,19 @@
 
 package org.almostrealism.audio;
 
+import io.almostrealism.util.FrequencyCache;
+import org.almostrealism.audio.data.DynamicWaveDataProvider;
 import org.almostrealism.audio.data.FileWaveDataProvider;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.audio.data.FileWaveDataProviderTree;
 import org.almostrealism.audio.data.WaveDataProvider;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsFactory;
+import org.almostrealism.audio.data.WaveDetailsStore;
 import org.almostrealism.audio.data.WaveDetailsJob;
 import org.almostrealism.audio.similarity.AudioSimilarityGraph;
 import org.almostrealism.audio.similarity.IncrementalSimilarityComputation;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.audio.similarity.PrototypeIndexData;
 import org.almostrealism.concurrent.SuspendableThreadPoolExecutor;
 import org.almostrealism.io.ConsoleFeatures;
@@ -33,9 +37,10 @@ import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -50,6 +55,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.DoubleConsumer;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -82,7 +88,8 @@ import java.util.stream.Stream;
  * <h2>Internal Data Structures</h2>
  * <ul>
  *   <li><b>identifiers</b> map: key (file path) to identifier (MD5 hash)</li>
- *   <li><b>info</b> map: identifier to {@link WaveDetails}</li>
+ *   <li><b>detailsCache</b>: frequency-biased cache of identifier to {@link WaveDetails}</li>
+ *   <li><b>completeIdentifiers</b>: set of identifiers known to have complete data</li>
  * </ul>
  *
  * <h2>Resolving Identifier to File Path</h2>
@@ -113,7 +120,7 @@ import java.util.stream.Stream;
  * // Start background analysis
  * library.refresh().thenRun(() -> {
  *     // Analysis complete
- *     library.getAllDetails().forEach(d -> {
+ *     library.allDetails().forEach(d -> {
  *         // Get the file path for this sample
  *         WaveDataProvider provider = library.find(d.getIdentifier());
  *         String filePath = provider != null ? provider.getKey() : "unknown";
@@ -122,7 +129,7 @@ import java.util.stream.Stream;
  * });
  *
  * // Get details for a specific file
- * WaveDetails details = library.getDetailsAwait(new FileWaveDataProvider("/path/to/file.wav"));
+ * WaveDetails details = library.getDetailsForFileAwait("/path/to/file.wav", false);
  * }</pre>
  *
  * <h2>Priority Levels</h2>
@@ -137,9 +144,15 @@ import java.util.stream.Stream;
  * @see FileWaveDataProviderTree
  */
 public class AudioLibrary implements ConsoleFeatures {
+	/** Priority level for background processing tasks. */
 	public static double BACKGROUND_PRIORITY = 0.0;
+	/** Default priority level for standard analysis jobs. */
 	public static double DEFAULT_PRIORITY = 0.5;
+	/** High priority level for urgent or user-triggered jobs. */
 	public static double HIGH_PRIORITY = 1.0;
+
+	/** Default maximum number of {@link WaveDetails} held in the in-memory cache. */
+	public static int DEFAULT_DETAIL_CACHE_CAPACITY = 1000;
 
 	/** The file tree providing access to audio files in the library directory. */
 	private final FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> root;
@@ -155,19 +168,55 @@ public class AudioLibrary implements ConsoleFeatures {
 	private final Map<String, String> identifiers;
 
 	/**
-	 * Maps content identifier (MD5 hash) to {@link WaveDetails}.
-	 * <p>This is the primary storage for analyzed audio metadata. The identifier
-	 * is used as the key because it represents the actual content, allowing
-	 * deduplication when the same file exists at multiple paths.</p>
+	 * Frequency-biased cache of {@link WaveDetails} keyed by content identifier.
+	 * Only a bounded number of entries are held in memory; evicted entries can
+	 * be reloaded from protobuf via the {@link #detailsLoader}.
 	 */
-	private final Map<String, WaveDetails> info;
+	private final FrequencyCache<String, WaveDetails> detailsCache;
 
+	/**
+	 * Set of content identifiers whose {@link WaveDetails} are known to have
+	 * both freqData and featureData populated. This set is the authoritative
+	 * record of completeness and is checked by {@link #refresh()} to avoid
+	 * loading evicted entries from disk just to check their status.
+	 */
+	private final Set<String> completeIdentifiers;
+
+	/**
+	 * Set of content identifiers known to be persistent. Tracked separately
+	 * so that {@link #cleanup(Predicate)} can check persistence without loading
+	 * evicted entries from disk.
+	 */
+	private final Set<String> persistentIdentifiers;
+
+	/** Factory for computing WaveDetails for each audio file. */
 	private final WaveDetailsFactory factory;
+	/** Queue of pending analysis jobs, ordered by priority. */
 	private final PriorityBlockingQueue<WaveDetailsJob> queue;
+	/** Total number of jobs submitted since the last reset. */
 	private int totalJobs;
 
+	/**
+	 * Optional external store for persisting and retrieving {@link WaveDetails}.
+	 * When set, this store replaces the in-memory {@link #detailsCache} and
+	 * {@link #detailsLoader} as the primary storage mechanism.
+	 */
+	private final WaveDetailsStore store;
+
+	/**
+	 * Optional loader for restoring evicted {@link WaveDetails} from disk.
+	 * When a requested identifier is not in the cache, this function is
+	 * called to reload it from protobuf storage.
+	 *
+	 * @deprecated Use {@link WaveDetailsStore} via the store-backed constructor instead.
+	 */
+	private Function<String, WaveDetails> detailsLoader;
+
+	/** Listener notified with progress [0.0, 1.0] as analysis jobs complete. */
 	private DoubleConsumer progressListener;
+	/** Listener notified when an analysis job throws an exception. */
 	private Consumer<Exception> errorListener;
+	/** Thread pool for running analysis jobs in the background. */
 	private SuspendableThreadPoolExecutor executor;
 
 	/**
@@ -182,22 +231,61 @@ public class AudioLibrary implements ConsoleFeatures {
 	/** Persisted prototype index loaded from protobuf at startup. */
 	private volatile PrototypeIndexData prototypeIndex;
 
+	/**
+	 * Creates an AudioLibrary rooted at the given directory.
+	 *
+	 * @param root       the directory containing audio files
+	 * @param sampleRate the target sample rate for analysis
+	 */
 	public AudioLibrary(File root, int sampleRate) {
 		this(new FileWaveDataProviderNode(root), sampleRate);
 	}
 
+	/**
+	 * Creates an AudioLibrary from a file provider tree without a details store.
+	 *
+	 * @param root       the file provider tree providing access to audio files
+	 * @param sampleRate the target sample rate for analysis
+	 */
 	public AudioLibrary(FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> root, int sampleRate) {
+		this(root, sampleRate, null);
+	}
+
+	/**
+	 * Creates an {@link AudioLibrary} backed by a {@link WaveDetailsStore}.
+	 *
+	 * <p>When a store is provided, it replaces the in-memory
+	 * {@link FrequencyCache} and details loader as the primary storage
+	 * and retrieval mechanism. The store handles caching, persistence,
+	 * and optional HNSW-based nearest neighbor search.</p>
+	 *
+	 * @param root       the file tree for audio files
+	 * @param sampleRate target sample rate
+	 * @param store      optional backing store, or {@code null} for legacy in-memory mode
+	 */
+	public AudioLibrary(FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> root,
+						int sampleRate, WaveDetailsStore store) {
 		this.root = root;
 		this.sampleRate = sampleRate;
+		this.store = store;
 		this.identifiers = new HashMap<>();
-		this.info = new HashMap<>();
+		this.detailsCache = new FrequencyCache<>(DEFAULT_DETAIL_CACHE_CAPACITY, 0.4);
+		this.completeIdentifiers = new HashSet<>();
+		this.persistentIdentifiers = new HashSet<>();
 		this.factory = new WaveDetailsFactory(sampleRate);
 		this.queue = new PriorityBlockingQueue<>(100,
 				Comparator.comparing(WaveDetailsJob::getPriority).reversed());
 
+		if (store != null) {
+			completeIdentifiers.addAll(store.allIdentifiers());
+		}
+
 		start();
 	}
 
+	/**
+	 * Starts the background analysis executor if it is not already running.
+	 */
 	public void start() {
 		if (executor != null) return;
 
@@ -206,16 +294,28 @@ public class AudioLibrary implements ConsoleFeatures {
 		executor.setPriority(job -> ((WaveDetailsJob) job).getPriority());
 	}
 
+	/**
+	 * Returns true if background analysis is paused (priority threshold at HIGH_PRIORITY or higher).
+	 *
+	 * @return true if paused
+	 */
 	public boolean isPaused() {
 		return executor == null || executor.getPriorityThreshold() >= HIGH_PRIORITY;
 	}
 
+	/**
+	 * Pauses background analysis by setting the priority threshold to HIGH_PRIORITY,
+	 * which blocks all standard and background jobs.
+	 */
 	public void pause() {
 		if (executor != null) {
 			executor.setPriorityThreshold(HIGH_PRIORITY);
 		}
 	}
 
+	/**
+	 * Resumes all suspended background analysis tasks.
+	 */
 	public void resume() {
 		executor.resumeAllTasks();
 	}
@@ -255,33 +355,129 @@ public class AudioLibrary implements ConsoleFeatures {
 		this.prototypeIndex = prototypeIndex;
 	}
 
+	/**
+	 * Returns the file provider tree that this library is rooted in.
+	 *
+	 * @return the file provider tree
+	 */
 	public FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> getRoot() {
 		return root;
 	}
 
+	/**
+	 * Returns the target sample rate for audio analysis.
+	 *
+	 * @return the sample rate in Hz
+	 */
 	public int getSampleRate() { return sampleRate; }
 
+	/**
+	 * Returns the progress listener, or null if none is set.
+	 *
+	 * @return the progress listener
+	 */
 	public DoubleConsumer getProgressListener() { return progressListener; }
+
+	/**
+	 * Sets a listener that receives progress updates [0.0, 1.0] as analysis completes.
+	 *
+	 * @param progressListener the progress listener, or null to remove
+	 */
 	public void setProgressListener(DoubleConsumer progressListener) {
 		this.progressListener = progressListener;
 	}
 
+	/**
+	 * Returns the error listener, or null if none is set.
+	 *
+	 * @return the error listener
+	 */
 	public Consumer<Exception> getErrorListener() { return errorListener; }
+
+	/**
+	 * Sets a listener that receives exceptions thrown by analysis jobs.
+	 *
+	 * @param errorListener the error listener, or null to remove
+	 */
 	public void setErrorListener(Consumer<Exception> errorListener) {
 		this.errorListener = errorListener;
 	}
 
+	/**
+	 * Returns the WaveDetailsFactory used to compute audio analysis for each file.
+	 *
+	 * @return the WaveDetailsFactory
+	 */
 	public WaveDetailsFactory getWaveDetailsFactory() { return factory; }
+
+	/**
+	 * Sets the loader function used to restore evicted {@link WaveDetails}
+	 * from protobuf storage on disk.
+	 *
+	 * @param detailsLoader function that loads a WaveDetails by identifier, or null to disable
+	 */
+	public void setDetailsLoader(Function<String, WaveDetails> detailsLoader) {
+		this.detailsLoader = detailsLoader;
+	}
+
+	/**
+	 * Returns the set of all known content identifiers that have complete data.
+	 *
+	 * @return an unmodifiable view of all complete identifiers
+	 */
+	public Set<String> getAllIdentifiers() {
+		return Collections.unmodifiableSet(completeIdentifiers);
+	}
+
+	/**
+	 * Returns the set of all identifiers known to be persistent.
+	 *
+	 * @return an unmodifiable view of the persistent identifiers
+	 */
+	public Set<String> getPersistentIdentifiers() {
+		return Collections.unmodifiableSet(persistentIdentifiers);
+	}
 
 	public int getTotalJobs() { return totalJobs; }
 	public int getPendingJobs() { return queue.size(); }
 
+	/**
+	 * Returns a stream of all {@link WaveDetails} whose identifiers are known
+	 * to be complete. Entries evicted from the cache are reloaded via the
+	 * {@link #detailsLoader} if one is configured; unresolvable entries are
+	 * silently skipped.
+	 *
+	 * @return a stream of all complete WaveDetails in this library
+	 */
 	public Stream<WaveDetails> allDetails() {
-		return new ArrayList<>(info.keySet()).stream().map(info::get).filter(Objects::nonNull);
+		return new ArrayList<>(completeIdentifiers).stream()
+				.map(this::resolveDetails)
+				.filter(Objects::nonNull);
 	}
 
-	public Collection<WaveDetails> getAllDetails() {
-		return allDetails().toList();
+	/**
+	 * Retrieves a {@link WaveDetails} by identifier. When a
+	 * {@link WaveDetailsStore} is configured, it is the primary source.
+	 * Otherwise, checks the in-memory cache and falls back to the
+	 * {@link #detailsLoader} if set.
+	 */
+	private WaveDetails resolveDetails(String identifier) {
+		if (store != null) {
+			return store.get(identifier);
+		}
+
+		WaveDetails cached = detailsCache.get(identifier);
+		if (cached != null) return cached;
+
+		if (detailsLoader != null) {
+			WaveDetails loaded = detailsLoader.apply(identifier);
+			if (loaded != null) {
+				detailsCache.put(identifier, loaded);
+				return loaded;
+			}
+		}
+
+		return null;
 	}
 
 	/**
@@ -308,7 +504,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	 *
 	 * <h3>Example (ensuring similarities are computed first)</h3>
 	 * <pre>{@code
-	 * library.getAllDetails().forEach(library::computeSimilarities);
+	 * library.allDetails().forEach(library::computeSimilarities);
 	 * AudioSimilarityGraph graph = library.toSimilarityGraph();
 	 * }</pre>
 	 *
@@ -317,7 +513,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * @see #computeSimilarities(WaveDetails)
 	 */
 	public AudioSimilarityGraph toSimilarityGraph() {
-		return new AudioSimilarityGraph(getAllDetails());
+		return new AudioSimilarityGraph(allDetails().toList());
 	}
 
 	/**
@@ -331,7 +527,9 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * @return the WaveDetails for this identifier, or null if not found
 	 * @see #find(String)
 	 */
-	public WaveDetails get(String identifier) { return info.get(identifier); }
+	public WaveDetails get(String identifier) {
+		return resolveDetails(identifier);
+	}
 
 	/**
 	 * Finds the {@link WaveDataProvider} for the given content identifier by
@@ -387,50 +585,95 @@ public class AudioLibrary implements ConsoleFeatures {
 			throw new IllegalArgumentException();
 		}
 
-		info.put(details.getIdentifier(), details);
+		if (store != null) {
+			store.put(details.getIdentifier(), details);
+		} else {
+			detailsCache.put(details.getIdentifier(), details);
+		}
+
+		if (isComplete(details)) {
+			completeIdentifiers.add(details.getIdentifier());
+		}
+
+		if (details.isPersistent()) {
+			persistentIdentifiers.add(details.getIdentifier());
+		}
 	}
 
-	public Optional<WaveDetails> getDetailsNow(String key) {
-		return getDetailsNow(new FileWaveDataProvider(key));
+	// ── Identifier-based retrieval (primary API) ─────────────────────
+
+	/**
+	 * Returns the current {@link WaveDetails} for the given identifier without
+	 * blocking, submitting a computation job if the entry is not yet complete.
+	 *
+	 * @param identifier the content identifier
+	 * @return the details if already computed, or empty if still pending
+	 */
+	public Optional<WaveDetails> getDetailsNow(String identifier) {
+		if (completeIdentifiers.contains(identifier)) {
+			return Optional.ofNullable(resolveDetails(identifier));
+		}
+
+		WaveDataProvider provider = resolveProvider(identifier);
+		if (provider == null) return Optional.empty();
+		return Optional.ofNullable(getDetails(provider, false, DEFAULT_PRIORITY).getNow(null));
 	}
 
-	public Optional<WaveDetails> getDetailsNow(String key, boolean persistent) {
-		return getDetailsNow(new FileWaveDataProvider(key), persistent);
+	/**
+	 * Blocks until the {@link WaveDetails} for the given identifier are fully
+	 * computed (including feature data), or the timeout expires.
+	 *
+	 * @param identifier the content identifier
+	 * @param timeout    maximum seconds to wait
+	 * @return the completed WaveDetails, or null if interrupted
+	 */
+	public WaveDetails getDetailsAwait(String identifier, long timeout) {
+		if (completeIdentifiers.contains(identifier)) {
+			WaveDetails existing = resolveDetails(identifier);
+			if (existing != null) return existing;
+		}
+
+		WaveDataProvider provider = resolveProvider(identifier);
+		if (provider == null) return null;
+		return getDetailsAwait(provider, timeout);
 	}
 
-	public Optional<WaveDetails> getDetailsNow(WaveDataProvider provider) {
-		return getDetailsNow(provider, false);
-	}
-
-	public Optional<WaveDetails> getDetailsNow(WaveDataProvider provider, boolean persistent) {
-		return Optional.ofNullable(getDetails(provider, persistent, DEFAULT_PRIORITY).getNow(null));
-	}
-
-	public WaveDetails getDetailsAwait(String key, boolean persistent) {
-		return getDetailsAwait(new FileWaveDataProvider(key), persistent);
-	}
-
-	public WaveDetails getDetailsAwait(WaveDataProvider provider) {
-		return getDetailsAwait(provider, false);
-	}
-
-	public WaveDetails getDetailsAwait(WaveDataProvider provider, long timeout) {
-		return getDetailsAwait(provider, false, OptionalLong.of(timeout));
-	}
-
-	public WaveDetails getDetailsAwait(WaveDataProvider provider, boolean persistent) {
-		return getDetailsAwait(provider, persistent, OptionalLong.empty());
-	}
-
-	public WaveDetails getDetailsAwait(WaveDataProvider provider, boolean persistent, OptionalLong timeout) {
-		try {
-			CompletableFuture<WaveDetails> future = getDetails(provider, persistent, HIGH_PRIORITY);
-
-			if (timeout.isPresent()) {
-				return future.get(timeout.getAsLong(), TimeUnit.SECONDS);
-			} else {
-				return future.get();
+	/**
+	 * Asynchronously computes {@link WaveDetails} for the given identifier and
+	 * delivers the result to the consumer.
+	 *
+	 * @param identifier the content identifier
+	 * @param consumer   callback for the completed details
+	 * @param priority   true for high priority, false for background
+	 */
+	public void getDetails(String identifier, Consumer<WaveDetails> consumer, boolean priority) {
+		if (completeIdentifiers.contains(identifier)) {
+			WaveDetails existing = resolveDetails(identifier);
+			if (existing != null) {
+				consumer.accept(existing);
+				return;
 			}
+		}
+
+		WaveDataProvider provider = resolveProvider(identifier);
+		if (provider == null) return;
+		getDetails(provider, false, priority ? HIGH_PRIORITY : DEFAULT_PRIORITY).thenAccept(consumer);
+	}
+
+	// ── Provider-based retrieval ──────────────────────────────────────
+
+	/**
+	 * Blocks until the {@link WaveDetails} for the given provider are fully
+	 * computed, or the timeout expires.
+	 *
+	 * @param provider the data provider
+	 * @param timeout  maximum seconds to wait
+	 * @return the completed WaveDetails, or null if interrupted
+	 */
+	public WaveDetails getDetailsAwait(WaveDataProvider provider, long timeout) {
+		try {
+			return getDetails(provider, false, HIGH_PRIORITY)
+					.get(timeout, TimeUnit.SECONDS);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			return null;
@@ -439,12 +682,97 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
-	public void getDetails(String file, Consumer<WaveDetails> consumer, boolean priority) {
-		getDetails(new FileWaveDataProvider(file), consumer, priority);
+	// ── File-path convenience delegates ───────────────────────────────
+
+	/**
+	 * Returns current details for the given file path without blocking.
+	 *
+	 * @param filePath the filesystem path to the audio file
+	 * @return the details if already computed, or empty if still pending
+	 */
+	public Optional<WaveDetails> getDetailsForFileNow(String filePath) {
+		return getDetailsNow(new FileWaveDataProvider(filePath).getIdentifier());
 	}
 
-	public void getDetails(WaveDataProvider provider, Consumer<WaveDetails> consumer, boolean priority) {
-		getDetails(provider, false, priority ? HIGH_PRIORITY : DEFAULT_PRIORITY).thenAccept(consumer);
+	/**
+	 * Returns current details for the given file path without blocking,
+	 * marking the entry as persistent if requested.
+	 *
+	 * @param filePath   the filesystem path to the audio file
+	 * @param persistent whether to mark the entry as persistent
+	 * @return the details if already computed, or empty if still pending
+	 */
+	public Optional<WaveDetails> getDetailsForFileNow(String filePath, boolean persistent) {
+		FileWaveDataProvider provider = new FileWaveDataProvider(filePath);
+		return Optional.ofNullable(
+				getDetails(provider, persistent, DEFAULT_PRIORITY).getNow(null));
+	}
+
+	/**
+	 * Blocks until details for the given file path are fully computed.
+	 *
+	 * @param filePath   the filesystem path to the audio file
+	 * @param persistent whether to mark the entry as persistent
+	 * @return the completed WaveDetails
+	 */
+	public WaveDetails getDetailsForFileAwait(String filePath, boolean persistent) {
+		try {
+			return getDetails(new FileWaveDataProvider(filePath), persistent, HIGH_PRIORITY).get();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return null;
+		} catch (ExecutionException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	/**
+	 * Asynchronously computes details for the given file path and delivers
+	 * the result to the consumer.
+	 *
+	 * @param filePath the filesystem path to the audio file
+	 * @param consumer callback for the completed details
+	 * @param priority true for high priority, false for background
+	 */
+	public void getDetailsForFile(String filePath, Consumer<WaveDetails> consumer, boolean priority) {
+		getDetails(new FileWaveDataProvider(filePath), false,
+				priority ? HIGH_PRIORITY : DEFAULT_PRIORITY).thenAccept(consumer);
+	}
+
+	// ── Internal core ─────────────────────────────────────────────────
+
+	/**
+	 * Resolves a {@link WaveDataProvider} for the given identifier.
+	 *
+	 * <p>Checks the file tree first (for file-backed samples), then falls
+	 * back to cached {@link WaveDetails}. For cached entries, a provider is
+	 * created if the entry has either raw audio data or frequency data —
+	 * the latter is sufficient because {@link WaveDetailsFactory#forExisting}
+	 * can synthesize audio from frequency magnitudes transparently.</p>
+	 *
+	 * @param identifier the content identifier
+	 * @return a provider, or null if no data is available for this identifier
+	 */
+	protected WaveDataProvider resolveProvider(String identifier) {
+		WaveDataProvider provider = find(identifier);
+		if (provider != null) return provider;
+
+		WaveDetails existing = resolveDetails(identifier);
+		if (existing == null) return null;
+
+		if (existing.getData() != null) {
+			return new DynamicWaveDataProvider(identifier, existing.getWaveData());
+		}
+
+		// Entry has frequency data but no audio waveform (e.g., a drawing).
+		// WaveDetailsFactory.forExisting() will synthesize audio from the
+		// frequency data, so we just need a provider that carries the
+		// identifier through the job system.
+		if (existing.getFreqData() != null) {
+			return new DynamicWaveDataProvider(identifier, existing.getSampleRate());
+		}
+
+		return null;
 	}
 
 	/**
@@ -458,14 +786,20 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * @return  {@link CompletableFuture} with the {@link WaveDetails} for the given provider.
 	 */
 	protected CompletableFuture<WaveDetails> getDetails(WaveDataProvider provider, boolean persistent, double priority) {
-		WaveDetails existing = info.get(provider.getIdentifier());
+		String id = provider.getIdentifier();
 
-		if (!isComplete(existing)) {
+		if (!completeIdentifiers.contains(id)) {
 			return submitJob(provider, persistent, priority).getFuture();
-		} else {
+		}
+
+		WaveDetails existing = resolveDetails(id);
+		if (existing != null) {
 			existing.setPersistent(persistent || existing.isPersistent());
+			if (existing.isPersistent()) persistentIdentifiers.add(id);
 			return CompletableFuture.completedFuture(existing);
 		}
+
+		return submitJob(provider, persistent, priority).getFuture();
 	}
 
 	/**
@@ -481,13 +815,38 @@ public class AudioLibrary implements ConsoleFeatures {
 		try {
 			String id = provider.getIdentifier();
 
-			WaveDetails details = info.computeIfAbsent(id, k -> computeDetails(provider, null, persistent));
+			WaveDetails details;
+
+			if (store != null) {
+				details = store.get(id);
+			} else {
+				details = detailsCache.get(id);
+			}
+
+			if (details == null) {
+				details = computeDetails(provider, null, persistent);
+				if (store != null) {
+					storeWithEmbedding(id, details);
+				} else {
+					detailsCache.put(id, details);
+				}
+			}
+
 			if (getWaveDetailsFactory().getFeatureProvider() != null && details.getFeatureData() == null) {
 				details = computeDetails(provider, details, persistent);
-				info.put(id, details);
+				if (store != null) {
+					storeWithEmbedding(id, details);
+				} else {
+					detailsCache.put(id, details);
+				}
+			}
+
+			if (isComplete(details)) {
+				completeIdentifiers.add(id);
 			}
 
 			details.setPersistent(persistent || details.isPersistent());
+			if (details.isPersistent()) persistentIdentifiers.add(id);
 			return details;
 		} catch (Exception e) {
 			warn("Failed to create WaveDetails for " +
@@ -495,7 +854,7 @@ public class AudioLibrary implements ConsoleFeatures {
 					Optional.ofNullable(e.getMessage()).orElse(e.getClass().getSimpleName()) + ")");
 			if (!(e.getCause() instanceof IOException) || !(provider instanceof FileWaveDataProvider)) {
 				if (getErrorListener() == null) {
-					e.printStackTrace();
+					warn(e.getMessage(), e);
 				} else {
 					getErrorListener().accept(e);
 				}
@@ -505,31 +864,127 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Returns true if the given WaveDetails has both frequency data and feature data populated.
+	 *
+	 * @param details the WaveDetails to check
+	 * @return true if complete (both freqData and featureData are non-null)
+	 */
 	public boolean isComplete(WaveDetails details) {
 		return details != null &&
 				details.getFreqData() != null &&
 				details.getFeatureData() != null;
 	}
 
+	/**
+	 * Returns the backing {@link WaveDetailsStore}, or {@code null} if this
+	 * library uses the legacy in-memory cache.
+	 *
+	 * @return the backing store, or {@code null}
+	 */
+	public WaveDetailsStore getStore() {
+		return store;
+	}
+
+	/**
+	 * Stores details with a mean-pooled embedding vector computed from
+	 * the feature data. The embedding enables HNSW-based nearest neighbor
+	 * search in the backing store.
+	 */
+	private void storeWithEmbedding(String id, WaveDetails details) {
+		PackedCollection embedding = computeEmbeddingVector(details);
+		if (embedding != null) {
+			store.put(id, details, embedding);
+		} else {
+			store.put(id, details);
+		}
+	}
+
+	/**
+	 * Computes a mean-pooled embedding vector from the feature data of
+	 * the given {@link WaveDetails}. Returns {@code null} if the details
+	 * have no feature data.
+	 *
+	 * @param details the details to compute an embedding for
+	 * @return the embedding vector, or {@code null}
+	 */
+	public static PackedCollection computeEmbeddingVector(WaveDetails details) {
+		if (details == null || details.getFeatureData() == null) return null;
+
+		PackedCollection featureData = details.getFeatureData();
+		int frames = featureData.getShape().length(0);
+		int bins = featureData.getShape().length(1);
+		if (frames == 0 || bins == 0) return null;
+
+		double[] raw = featureData.doubleStream().toArray();
+		double[] embedding = new double[bins];
+
+		for (int f = 0; f < frames; f++) {
+			for (int b = 0; b < bins; b++) {
+				int idx = f * bins + b;
+				if (idx < raw.length) {
+					embedding[b] += raw[idx];
+				}
+			}
+		}
+
+		double invFrames = 1.0 / frames;
+		PackedCollection result = new PackedCollection(bins);
+		for (int b = 0; b < bins; b++) {
+			result.setMem(b, embedding[b] * invFrames);
+		}
+		return result;
+	}
+
+	/**
+	 * Computes and returns similarity scores for the audio file at the given key.
+	 *
+	 * @param key the file path or identifier key
+	 * @return a map from other sample identifiers to similarity scores
+	 */
 	public Map<String, Double> getSimilarities(String key) {
 		return getSimilarities(new FileWaveDataProvider(key));
 	}
 
+	/**
+	 * Computes and returns similarity scores for the given WaveDetails.
+	 *
+	 * @param details the WaveDetails to compute similarities for
+	 * @return a map from other sample identifiers to similarity scores
+	 */
 	public Map<String, Double> getSimilarities(WaveDetails details) {
 		return computeSimilarities(details).getSimilarities();
 	}
 
+	/**
+	 * Computes and returns similarity scores for the audio provided by the given provider.
+	 *
+	 * @param provider the audio data provider to compute similarities for
+	 * @return a map from other sample identifiers to similarity scores
+	 */
 	public Map<String, Double> getSimilarities(WaveDataProvider provider) {
-		return computeSimilarities(getDetailsAwait(provider, false)).getSimilarities();
+		return computeSimilarities(getDetailsAwait(provider.getIdentifier(), 600)).getSimilarities();
 	}
 
+	/**
+	 * Clears all computed similarity data from cached {@link WaveDetails} entries.
+	 *
+	 * <p>Only entries currently in the in-memory cache are affected. Entries
+	 * that have been evicted to disk retain their similarity data until they
+	 * are reloaded and explicitly cleared.</p>
+	 */
 	public void resetSimilarities() {
-		getAllDetails().forEach(d -> d.getSimilarities().clear());
-		// log("Similarities reset");
+		detailsCache.forEach((key, d) -> d.getSimilarities().clear());
 	}
 
+	/**
+	 * Processes a WaveDetailsJob by computing details for the job's target provider.
+	 *
+	 * @param job the job to process
+	 * @return the computed WaveDetails, or null if the job target is null or computation fails
+	 */
 	protected WaveDetails processJob(WaveDetailsJob job) {
-		if (job == null) return null;
+		if (job == null || job.getTarget() == null) return null;
 
 		try {
 			return computeDetails(job.getTarget(), job.isPersistent());
@@ -538,10 +993,117 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Populates similarity scores for the given {@link WaveDetails},
+	 * reporting progress afterward.
+	 *
+	 * @param details the details whose similarity map should be populated
+	 * @return the updated WaveDetails
+	 */
+	protected WaveDetails populateSimilarities(WaveDetails details) {
+		try {
+			return computeSimilarities(details);
+		} finally {
+			reportProgress();
+		}
+	}
+
+	/**
+	 * Submits similarity computation jobs for all complete entries in
+	 * this library. Each entry becomes a {@link WaveDetailsJob} whose
+	 * runner closure captures the {@link WaveDetails} to process and
+	 * calls {@link #populateSimilarities(WaveDetails)}.
+	 *
+	 * <p>Progress is reported via the optional {@code statusCallback}
+	 * and the library's progress listener. The returned future completes
+	 * when all similarity jobs have finished.</p>
+	 *
+	 * @param statusCallback optional callback for progress messages (may be null)
+	 * @return a future that completes when all similarity jobs are done
+	 */
+	public CompletableFuture<Void> submitSimilarityJobs(Consumer<String> statusCallback) {
+		List<String> ids = new ArrayList<>(completeIdentifiers);
+		int total = ids.size();
+
+		for (int i = 0; i < ids.size(); i++) {
+			WaveDetails details = resolveDetails(ids.get(i));
+			if (details == null) continue;
+
+			int index = i;
+			WaveDetailsJob job = new WaveDetailsJob(j -> {
+				populateSimilarities(details);
+				if ((index + 1) % 50 == 0 || index + 1 == total) {
+					String msg = "Computing similarities... " + (index + 1) + "/" + total;
+					if (statusCallback != null) statusCallback.accept(msg);
+				}
+				return details;
+			}, null, false, DEFAULT_PRIORITY);
+			submitJob(job);
+		}
+
+		CompletableFuture<Void> future = new CompletableFuture<>();
+		WaveDetailsJob sentinel = new WaveDetailsJob(
+				j -> null, null, false, -1.0);
+		sentinel.getFuture().thenRun(() -> future.complete(null));
+		submitJob(sentinel);
+
+		return future;
+	}
+
+	/**
+	 * Submits a migration job that stores an already-computed {@link WaveDetails}
+	 * into the backing store, computes its embedding vector for HNSW search,
+	 * and tracks completion through the standard progress system.
+	 *
+	 * <p>This is used by the legacy-to-new-format migration path. The runner
+	 * calls {@link #include(WaveDetails)} (which writes through to the store)
+	 * and then releases the in-memory reference so the migrated record does
+	 * not accumulate on the heap.</p>
+	 *
+	 * @param details  the pre-computed WaveDetails to migrate
+	 * @param priority the job priority (typically {@link #BACKGROUND_PRIORITY})
+	 * @return the submitted job
+	 */
+	public WaveDetailsJob submitMigrationJob(WaveDetails details, double priority) {
+		final WaveDetails[] holder = { details };
+
+		WaveDetailsJob job = new WaveDetailsJob(j -> {
+			WaveDetails d = holder[0];
+			if (d == null) return null;
+
+			if (store != null) {
+				PackedCollection embedding = computeEmbeddingVector(d);
+				if (embedding != null) {
+					store.put(d.getIdentifier(), d, embedding);
+				} else {
+					store.put(d.getIdentifier(), d);
+				}
+				// Skip include(d) when store != null: include() would re-write
+				// the id to the store without an embedding, removing it from the
+				// HNSW index (ProtobufDiskStore behaviour).
+			} else {
+				include(d);
+			}
+			holder[0] = null;
+			return d;
+		}, null, true, priority);
+
+		return submitJob(job);
+	}
+
+	/**
+	 * Creates and submits a WaveDetailsJob for the given provider.
+	 */
 	protected WaveDetailsJob submitJob(WaveDataProvider provider, boolean persistent, double priority) {
 		return submitJob(new WaveDetailsJob(this::processJob, provider, persistent, priority));
 	}
 
+	/**
+	 * Submits a WaveDetailsJob to the analysis executor.
+	 *
+	 * @param job the job to submit
+	 * @return the submitted job
+	 */
 	protected WaveDetailsJob submitJob(WaveDetailsJob job) {
 		if (job.getTarget() != null) {
 			identifiers.computeIfAbsent(job.getTarget().getKey(), k -> job.getTarget().getIdentifier());
@@ -552,6 +1114,11 @@ public class AudioLibrary implements ConsoleFeatures {
 		return job;
 	}
 
+	/**
+	 * Returns the current analysis progress as a value between 0.0 (no work done) and 1.0 (complete).
+	 *
+	 * @return the progress fraction
+	 */
 	public double getProgress() {
 		int totalJobs = getTotalJobs();
 		int queueSize = getPendingJobs();
@@ -569,13 +1136,24 @@ public class AudioLibrary implements ConsoleFeatures {
 		return progress;
 	}
 
+	/**
+	 * Notifies the progress listener with the current analysis progress.
+	 */
 	protected void reportProgress() {
 		if (progressListener == null) return;
 		progressListener.accept(getProgress());
 	}
 
+	/**
+	 * Stops the background analysis executor with a default 5-second timeout.
+	 */
 	public void stop() { stop(5); }
 
+	/**
+	 * Stops the background analysis executor, waiting up to the given number of seconds.
+	 *
+	 * @param timeout the maximum number of seconds to wait for shutdown
+	 */
 	public void stop(int timeout) {
 		try {
 			queue.clear();
@@ -589,9 +1167,20 @@ public class AudioLibrary implements ConsoleFeatures {
 			Thread.currentThread().interrupt();
 		} finally {
 			executor = null;
+			if (store != null) {
+				store.flush();
+			}
 		}
 	}
 
+	/**
+	 * Computes WaveDetails for the given provider, optionally updating an existing instance.
+	 *
+	 * @param provider   the audio data provider to analyze
+	 * @param existing   an existing WaveDetails to update, or null to create a new one
+	 * @param persistent if true, marks the resulting details as persistent
+	 * @return the computed WaveDetails
+	 */
 	protected WaveDetails computeDetails(WaveDataProvider provider, WaveDetails existing, boolean persistent) {
 		WaveDetails details = factory.forProvider(provider, existing);
 		details.setPersistent((existing != null && existing.isPersistent()) || persistent);
@@ -617,7 +1206,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * <h3>Typical usage before prototype discovery</h3>
 	 * <pre>{@code
 	 * // Ensure all pairwise similarities exist before graph construction
-	 * library.getAllDetails().forEach(library::computeSimilarities);
+	 * library.allDetails().forEach(library::computeSimilarities);
 	 * AudioSimilarityGraph graph = library.toSimilarityGraph();
 	 * }</pre>
 	 *
@@ -629,25 +1218,40 @@ public class AudioLibrary implements ConsoleFeatures {
 		if (details == null) return null;
 
 		try {
-			List<WaveDetails> targets = allDetails()
-					.filter(d -> !Objects.equals(d.getIdentifier(), details.getIdentifier()))
-					.filter(d -> !details.getSimilarities().containsKey(d.getIdentifier()))
-					.collect(Collectors.toList());
+			List<String> targetIds = new ArrayList<>(completeIdentifiers);
+			targetIds.remove(details.getIdentifier());
 
-			double[] similarities = factory.batchSimilarity(details, targets);
+			int batchSize = WaveDetailsFactory.SIMILARITY_BATCH_SIZE;
 
-			for (int i = 0; i < targets.size(); i++) {
-				WaveDetails target = targets.get(i);
-				double similarity = similarities[i];
+			for (int start = 0; start < targetIds.size(); start += batchSize) {
+				int end = Math.min(start + batchSize, targetIds.size());
 
-				if (Math.abs(similarity - 1.0) < 1e-5) {
-					warn("Identical features for distinct files");
+				List<WaveDetails> batch = new ArrayList<>(end - start);
+				for (int i = start; i < end; i++) {
+					String id = targetIds.get(i);
+					if (details.getSimilarities().containsKey(id)) continue;
+
+					WaveDetails target = resolveDetails(id);
+					if (target != null) batch.add(target);
 				}
 
-				details.getSimilarities().put(target.getIdentifier(), similarity);
+				if (batch.isEmpty()) continue;
 
-				if (details.getIdentifier() != null)
-					target.getSimilarities().put(details.getIdentifier(), similarity);
+				double[] similarities = factory.batchSimilarity(details, batch);
+
+				for (int i = 0; i < batch.size(); i++) {
+					WaveDetails target = batch.get(i);
+					double similarity = similarities[i];
+
+					if (Math.abs(similarity - 1.0) < 1e-5) {
+						warn("Identical features for distinct files");
+					}
+
+					details.getSimilarities().put(target.getIdentifier(), similarity);
+
+					if (details.getIdentifier() != null)
+						target.getSimilarities().put(details.getIdentifier(), similarity);
+				}
 			}
 		} catch (Exception e) {
 			log("Failed to load similarities for " + details.getIdentifier() +
@@ -676,12 +1280,22 @@ public class AudioLibrary implements ConsoleFeatures {
 	 */
 	public IncrementalSimilarityComputation.Result computeAllSimilaritiesIncremental(
 			double approximateThreshold) {
-		List<WaveDetails> all = new ArrayList<>(getAllDetails());
+		List<WaveDetails> all = allDetails().toList();
 		IncrementalSimilarityComputation computation =
 				new IncrementalSimilarityComputation(factory, all, approximateThreshold);
 		return computation.compute();
 	}
 
+	/**
+	 * Scans the file tree for audio files that have not yet been analyzed and submits
+	 * background jobs to compute their WaveDetails.
+	 *
+	 * <p>Returns a CompletableFuture that completes when all queued analysis jobs
+	 * have finished. Callers should use {@link #awaitRefresh()} to wait for the
+	 * result before depending on stable similarity data.</p>
+	 *
+	 * @return a CompletableFuture that completes when the refresh is done
+	 */
 	public CompletableFuture<Void> refresh() {
 		try {
 			CompletableFuture<Void> future = new CompletableFuture<>();
@@ -693,7 +1307,7 @@ public class AudioLibrary implements ConsoleFeatures {
 				boolean skipped = true;
 
 				try {
-					if (provider == null || isComplete(info.get(provider.getIdentifier())))
+					if (provider == null || completeIdentifiers.contains(provider.getIdentifier()))
 						return;
 
 					// Similarities may no longer be valid if the library is being updated
@@ -717,6 +1331,20 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Removes non-persistent entries that are no longer associated with active
+	 * audio files in the library directory.
+	 *
+	 * <p>An entry is removed if all of the following are true:</p>
+	 * <ul>
+	 *   <li>It is not persistent (or has been evicted and cannot be resolved)</li>
+	 *   <li>Its identifier does not match any current file in the library tree</li>
+	 *   <li>The optional {@code preserve} predicate does not protect it</li>
+	 * </ul>
+	 *
+	 * @param preserve optional predicate that returns {@code true} for identifiers
+	 *                 that should be kept regardless of file association; may be null
+	 */
 	public void cleanup(Predicate<String> preserve) {
 		// Identify current library files
 		Set<String> activeIds = root.children()
@@ -724,16 +1352,20 @@ public class AudioLibrary implements ConsoleFeatures {
 				.map(WaveDataProvider::getIdentifier).filter(Objects::nonNull)
 				.collect(Collectors.toSet());
 
-		// Exclude persistent info and those associated with active files
-		// or otherwise explicitly preserved
-		List<String> keys = info.entrySet().stream()
-				.filter(e -> !e.getValue().isPersistent())
-				.filter(e -> !activeIds.contains(e.getKey()))
-				.filter(e -> preserve == null || !preserve.test(e.getKey()))
-				.map(Map.Entry::getKey).toList();
+		// Exclude persistent entries and those associated with active files
+		// or otherwise explicitly preserved. Uses the persistentIdentifiers set
+		// to avoid loading evicted entries from disk just to check persistence.
+		List<String> toRemove = new ArrayList<>(completeIdentifiers).stream()
+				.filter(id -> !persistentIdentifiers.contains(id))
+				.filter(id -> !activeIds.contains(id))
+				.filter(id -> preserve == null || !preserve.test(id))
+				.toList();
 
 		// Remove everything else
-		keys.forEach(info::remove);
+		toRemove.forEach(id -> {
+			completeIdentifiers.remove(id);
+			detailsCache.evict(id);
+		});
 	}
 
 	/**
@@ -756,7 +1388,7 @@ public class AudioLibrary implements ConsoleFeatures {
 			return true;
 		}
 
-		Set<String> currentIds = info.keySet();
+		Set<String> currentIds = completeIdentifiers;
 		int totalIndexed = 0;
 		int missingMembers = 0;
 
@@ -780,7 +1412,7 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 
 		// More than 5% new samples added beyond what's indexed
-		int currentSize = info.size();
+		int currentSize = completeIdentifiers.size();
 		if (totalIndexed > 0 && currentSize > totalIndexed * 1.05) {
 			return true;
 		}

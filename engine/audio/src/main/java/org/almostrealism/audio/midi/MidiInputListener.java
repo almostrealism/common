@@ -116,30 +116,55 @@ public interface MidiInputListener {
 	 * Common MIDI CC numbers.
 	 */
 	interface CC {
+		/** Modulation wheel (CC 1). */
 		int MODULATION = 1;
+		/** Breath controller (CC 2). */
 		int BREATH = 2;
+		/** Foot pedal (CC 4). */
 		int FOOT = 4;
+		/** Portamento time (CC 5). */
 		int PORTAMENTO_TIME = 5;
+		/** Channel volume (CC 7). */
 		int VOLUME = 7;
+		/** Balance (CC 8). */
 		int BALANCE = 8;
+		/** Stereo pan position (CC 10). */
 		int PAN = 10;
+		/** Expression controller (CC 11). */
 		int EXPRESSION = 11;
+		/** Sustain pedal (CC 64). */
 		int SUSTAIN = 64;
+		/** Portamento on/off (CC 65). */
 		int PORTAMENTO = 65;
+		/** Sostenuto pedal (CC 66). */
 		int SOSTENUTO = 66;
+		/** Soft pedal (CC 67). */
 		int SOFT_PEDAL = 67;
+		/** Legato footswitch (CC 68). */
 		int LEGATO = 68;
+		/** Hold 2 footswitch (CC 69). */
 		int HOLD_2 = 69;
+		/** Filter resonance / timbre (CC 71). */
 		int RESONANCE = 71;
+		/** Envelope release time (CC 72). */
 		int RELEASE_TIME = 72;
+		/** Envelope attack time (CC 73). */
 		int ATTACK_TIME = 73;
+		/** Filter cutoff frequency (CC 74). */
 		int CUTOFF = 74;
+		/** Envelope decay time (CC 75). */
 		int DECAY_TIME = 75;
+		/** LFO vibrato rate (CC 76). */
 		int VIBRATO_RATE = 76;
+		/** LFO vibrato depth (CC 77). */
 		int VIBRATO_DEPTH = 77;
+		/** LFO vibrato delay (CC 78). */
 		int VIBRATO_DELAY = 78;
+		/** All sound off (CC 120). */
 		int ALL_SOUND_OFF = 120;
+		/** Reset all controllers to default (CC 121). */
 		int RESET_CONTROLLERS = 121;
+		/** All notes off (CC 123). */
 		int ALL_NOTES_OFF = 123;
 	}
 }

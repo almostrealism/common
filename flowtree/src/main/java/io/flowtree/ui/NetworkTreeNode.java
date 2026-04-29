@@ -21,6 +21,7 @@ import io.flowtree.node.Node;
 import io.flowtree.node.NodeGroup;
 
 import javax.swing.tree.MutableTreeNode;
+import javax.swing.tree.TreeNode;
 import java.util.Enumeration;
 
 
@@ -30,9 +31,10 @@ import java.util.Enumeration;
  * 
  * @author Mike Murray
  */
-public class NetworkTreeNode implements javax.swing.tree.MutableTreeNode {
-	private String label;
+public class NetworkTreeNode implements MutableTreeNode {
+	/** The FlowTree {@link Node} that this tree node represents. */
 	private Node node;
+	/** Parent tree node, or {@code null} if this is the root. */
 	private NetworkTreeNode parent;
 	
 	/**
@@ -41,7 +43,7 @@ public class NetworkTreeNode implements javax.swing.tree.MutableTreeNode {
 	 * 
 	 * @param label  String label to use.
 	 */
-	public NetworkTreeNode(String label) { this.label = label; }
+	public NetworkTreeNode(String label) { }
 	
 	/**
 	 * Constructs a new NetworkTreeNode object that will display the info from the specified
@@ -57,7 +59,8 @@ public class NetworkTreeNode implements javax.swing.tree.MutableTreeNode {
 	/**
 	 * @see javax.swing.tree.TreeNode#getChildAt(int)
 	 */
-	public javax.swing.tree.TreeNode getChildAt(int index) {
+	@Override
+	public TreeNode getChildAt(int index) {
 		if (this.node == null) {
 			return null;
 		} else if (this.node instanceof NodeGroup) {
@@ -70,6 +73,7 @@ public class NetworkTreeNode implements javax.swing.tree.MutableTreeNode {
 	/**
 	 * @see javax.swing.tree.TreeNode#getChildCount()
 	 */
+	@Override
 	public int getChildCount() {
 		if (this.node == null)
 			return 0;
@@ -82,27 +86,32 @@ public class NetworkTreeNode implements javax.swing.tree.MutableTreeNode {
 	/**
 	 * @see javax.swing.tree.TreeNode#getParent()
 	 */
-	public javax.swing.tree.TreeNode getParent() { return this.parent; }
+	@Override
+	public TreeNode getParent() { return this.parent; }
 
 	/**
 	 * @see javax.swing.tree.TreeNode#getIndex(javax.swing.tree.TreeNode)
 	 * @return  -1
 	 */
-	public int getIndex(javax.swing.tree.TreeNode node) { return -1; }
+	@Override
+	public int getIndex(TreeNode node) { return -1; }
 
 	/**
 	 * @see javax.swing.tree.TreeNode#getAllowsChildren()
 	 */
+	@Override
 	public boolean getAllowsChildren() { return (this.node != null); }
 
 	/**
 	 * @see javax.swing.tree.TreeNode#isLeaf()
 	 */
+	@Override
 	public boolean isLeaf() { return (this.node == null); }
 
 	/**
 	 * @see javax.swing.tree.TreeNode#children()
 	 */
+	@Override
 	public Enumeration children() {
 		final NetworkTreeNode[] c;
 		
@@ -119,7 +128,9 @@ public class NetworkTreeNode implements javax.swing.tree.MutableTreeNode {
 		Enumeration en = new Enumeration() {
 			int i = 0;
 			
+			@Override
 			public boolean hasMoreElements() { return (i < c.length); }
+			@Override
 			public Object nextElement() { return c[i++]; }
 		};
 		
@@ -129,30 +140,36 @@ public class NetworkTreeNode implements javax.swing.tree.MutableTreeNode {
 	/**
 	 * Does nothing.
 	 */
+	@Override
 	public void insert(MutableTreeNode node, int index) { }
 	
 	/**
 	 * Does nothing.
 	 */
+	@Override
 	public void remove(int index) { }
 	
 	/**
 	 * Does nothing.
 	 */
+	@Override
 	public void remove(MutableTreeNode node) { }
 	
 	/**
 	 * Does nothing.
 	 */
+	@Override
 	public void setUserObject(Object o) { }
 	
 	/**
 	 * Does nothing.
 	 */
+	@Override
 	public void removeFromParent() { }
 	
 	/**
 	 * Does nothing.
 	 */
+	@Override
 	public void setParent(MutableTreeNode node) { }
 }

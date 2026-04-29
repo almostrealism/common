@@ -17,13 +17,10 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.html.Div;
-import io.almostrealism.html.HTMLContent;
-import io.almostrealism.html.HTMLString;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
 
-import java.util.LinkedList;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -33,22 +30,22 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 /**
- * An arbitrary-dimension tensor implemented as a recursive {@link LinkedList} structure.
+ * An arbitrary-dimension tensor implemented as a recursive {@link ArrayList} structure.
  *
  * <p>
  * {@link Tensor} provides a flexible, dynamically-growable multi-dimensional array structure
  * that can store any type of object. Unlike {@link PackedCollection}-based types which have
- * fixed dimensions and store primitive values, Tensor uses nested LinkedLists to support
+ * fixed dimensions and store primitive values, Tensor uses nested ArrayLists to support
  * arbitrary dimensions and generic object storage.
  * </p>
  *
  * <h2>Structure</h2>
  * <p>
- * The tensor is implemented as a tree of {@link LinkedList}s:
+ * The tensor is implemented as a tree of {@link ArrayList}s:
  * </p>
  * <ul>
  *   <li>Leaf nodes contain {@link Leaf} wrappers around actual values</li>
- *   <li>Non-leaf nodes contain {@link LinkedList}s representing lower dimensions</li>
+ *   <li>Non-leaf nodes contain {@link ArrayList}s representing lower dimensions</li>
  *   <li>Dimensions grow dynamically as needed when elements are inserted</li>
  * </ul>
  *
@@ -112,13 +109,14 @@ import java.util.stream.IntStream;
  * @see PackedCollection
  * @see TraversalPolicy
  */
-public class Tensor<T> implements HTMLContent {
-	private final LinkedList top;
+public class Tensor<T> {
+	/** The root list used to hold the first dimension of the tensor's sparse data tree. */
+	private final ArrayList top;
 
 	/**
 	 * Constructs a new empty {@link Tensor}.
 	 */
-	public Tensor() { top = new LinkedList(); }
+	public Tensor() { top = new ArrayList(); }
 
 	/**
 	 * Inserts an element at the specified multi-dimensional location.
@@ -129,8 +127,8 @@ public class Tensor<T> implements HTMLContent {
 	 * @param loc  the multi-dimensional index where the element should be inserted
 	 */
 	public synchronized void insert(T o, int... loc) {
-		LinkedList l = top;
-		
+		ArrayList l = top;
+
 		for (int i = 0; i < loc.length - 1; i++) {
 			assert l != null;
 			l = get(l, loc[i], true);
@@ -155,15 +153,15 @@ public class Tensor<T> implements HTMLContent {
 	 * @return the element at the specified location, or null if no element exists there
 	 */
 	public T get(int... loc) {
-		LinkedList l = top;
-		
+		ArrayList l = top;
+
 		for (int i = 0; i < loc.length - 1; i++) {
 			l = get(l, loc[i], false);
 			if (l == null) return null;
 		}
-		
+
 		Object o = l.size() <= loc[loc.length - 1] ? null : l.get(loc[loc.length - 1]);
-		if (o instanceof LinkedList) return null;
+		if (o instanceof ArrayList) return null;
 		if (o == null) return null;
 		return ((Leaf<T>) o).get();
 	}
@@ -176,7 +174,7 @@ public class Tensor<T> implements HTMLContent {
 	 * @return the length at the specified location, or 0 if the location doesn't exist
 	 */
 	public int length(int... loc) {
-		LinkedList l = top;
+		ArrayList l = top;
 
 		for (int j : loc) {
 			l = get(l, j, false);
@@ -224,8 +222,8 @@ public class Tensor<T> implements HTMLContent {
 		int size = 0;
 
 		for (T o : l) {
-			if (o instanceof LinkedList) {
-				size += totalSize((LinkedList) o);
+			if (o instanceof ArrayList) {
+				size += totalSize((ArrayList) o);
 			} else {
 				size++;
 			}
@@ -296,11 +294,11 @@ public class Tensor<T> implements HTMLContent {
 	 * @param max          the maximum sizes for each dimension
 	 * @param indexInMax   the current dimension being processed
 	 */
-	private void trim(LinkedList l, int[] max, int indexInMax) {
-		while (l.size() > max[indexInMax]) l.removeLast();
+	private void trim(ArrayList l, int[] max, int indexInMax) {
+		while (l.size() > max[indexInMax]) l.remove(l.size() - 1);
 
 		if (indexInMax < max.length - 1) {
-			l.forEach(v -> trim((LinkedList) v, max, indexInMax + 1));
+			l.forEach(v -> trim((ArrayList) v, max, indexInMax + 1));
 		}
 	}
 
@@ -329,45 +327,37 @@ public class Tensor<T> implements HTMLContent {
 	 *
 	 * @return an HTML string representation of this tensor
 	 */
-	@Override
+	/** Returns an HTML table representation of this tensor. */
 	public String toHTML() {
-		Div d = new Div();
-		d.addStyleClass("tensor-table");
+		StringBuilder buf = new StringBuilder();
+		buf.append("<div class=\"tensor-table\">");
 
 		for (int i = 0; ; i++) {
 			if (get(i, 0) == null) break;
 
-			Div row = new Div();
-			row.addStyleClass("tensor-row");
+			buf.append("<div class=\"tensor-row\">");
 
 			for (int j = 0; ; j++) {
 				T o = get(i, j);
 				if (o == null) break;
 
-				if (o instanceof HTMLContent) {
-					row.add((HTMLContent) o);
-				} else if (o instanceof String) {
-					Div cell = new Div();
-					cell.addStyleClass("tensor-cell");
-					cell.add(new HTMLString((String) o));
-					row.add(cell);
+				String cellValue;
+				if (o instanceof String) {
+					cellValue = (String) o;
 				} else if (o instanceof PackedCollection) {
-					Div cell = new Div();
-					cell.addStyleClass("tensor-cell");
-					cell.add(new HTMLString(String.valueOf(((PackedCollection) o).toDouble(0))));
-					row.add(cell);
+					cellValue = String.valueOf(((PackedCollection) o).toDouble(0));
 				} else {
-					Div cell = new Div();
-					cell.addStyleClass("tensor-cell");
-					cell.add(new HTMLString(o.getClass().getSimpleName()));
-					row.add(cell);
+					cellValue = o.getClass().getSimpleName();
 				}
+
+				buf.append("<div class=\"tensor-cell\">").append(cellValue).append("</div>");
 			}
 
-			d.add(row);
+			buf.append("</div>");
 		}
-		
-		return d.toHTML();
+
+		buf.append("</div>");
+		return buf.toString();
 	}
 
 	/**
@@ -416,7 +406,7 @@ public class Tensor<T> implements HTMLContent {
 
 	/**
 	 * Returns a string representation of this {@link Tensor}.
-	 * Delegates to the underlying LinkedList structure's toString method.
+	 * Delegates to the underlying ArrayList structure's toString method.
 	 *
 	 * @return a string representation of the tensor structure
 	 */
@@ -433,6 +423,7 @@ public class Tensor<T> implements HTMLContent {
 	 * @param <T>  the type of value stored in this leaf
 	 */
 	private static class Leaf<T> implements Future<T> {
+		/** The value stored at this leaf node. */
 		private final T o;
 
 		/**
@@ -498,35 +489,31 @@ public class Tensor<T> implements HTMLContent {
 	}
 
 	/**
-	 * Retrieves a LinkedList at the specified index within a parent list.
+	 * Retrieves an ArrayList at the specified index within a parent list.
 	 * Can optionally create missing intermediate lists.
 	 *
 	 * @param l       the parent list
 	 * @param i       the index to retrieve
 	 * @param create  if true, creates missing lists; if false, returns null for missing entries
-	 * @return the LinkedList at index i, or null if it doesn't exist and create is false
+	 * @return the ArrayList at index i, or null if it doesn't exist and create is false
 	 */
-	private static LinkedList get(LinkedList l, int i, boolean create) {
+	private static ArrayList get(ArrayList l, int i, boolean create) {
 		if (l.size() <= i) {
 			if (create) {
 				for (int j = l.size(); j <= i; j++) {
-					l.add(new LinkedList());
+					l.add(new ArrayList());
 				}
 			} else {
 				return null;
 			}
 		}
-		
+
 		Object o = l.get(i);
-		
+
 		if (o instanceof Leaf) {
-//			LinkedList newList = new LinkedList();
-//			newList.set(0, o);
-//			l.set(i, newList);
-//			return newList;
 			return null;
 		}
-		
-		return (LinkedList) o;
+
+		return (ArrayList) o;
 	}
 }

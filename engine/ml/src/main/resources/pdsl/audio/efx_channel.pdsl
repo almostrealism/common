@@ -1,0 +1,149 @@
+// EFX Channel — feedforward audio effects processing defined in PDSL
+//
+// This file defines the per-channel wet signal processing chain from EfxManager,
+// expressed declaratively so the framework can analyze, partition, and optimize
+// the computation graph.
+//
+// Signal flow (feedforward portion):
+//
+//   input audio
+//     └─ fir(filter_coeffs)        // FIR high-pass or low-pass filter (40 taps)
+//     └─ scale(wet_level)          // wet output level [0, 1]
+//     └─ output (wet path)
+//
+// The dry path, delay feedback loop, and wet/dry summing are handled at the Java
+// Cell model level. PDSL covers only the feedforward (stateless) portion.
+//
+// Reference: EfxManager.applyFilter() and EfxManager.apply()
+
+// ---------------------------------------------------------------------------
+// Core wet processing chain
+//
+// Applies a pre-computed FIR filter then scales by wet_level.
+// The caller is responsible for computing filter_coeffs (HP or LP) via Java
+// or via the lowpass()/highpass() primitives in efx_lowpass_wet / efx_highpass_wet.
+//
+// Parameters:
+//   filter_coeffs  Pre-computed FIR coefficients (filterOrder+1 elements)
+//   wet_level      Wet output level, typically in [0, maxWet] (default maxWet=0.5)
+// ---------------------------------------------------------------------------
+layer efx_wet_chain(filter_coeffs: weight, wet_level: scalar) {
+    fir(filter_coeffs)
+    scale(wet_level)
+}
+
+// ---------------------------------------------------------------------------
+// Low-pass filtered wet channel
+//
+// Computes LP FIR coefficients from cutoff/sampleRate/filterOrder, applies the
+// filter, then scales by wet_level. Equivalent to:
+//   fir(lowPassCoefficients(cutoff, sampleRate, filterOrder)) → scale(wet_level)
+//
+// Parameters:
+//   signal_size    Number of samples in the audio buffer (used for shape inference)
+//   cutoff         Low-pass cutoff frequency in Hz (e.g., 8000.0)
+//   sample_rate    Audio sample rate in Hz (e.g., 44100)
+//   filter_order   FIR filter order; higher = sharper rolloff (e.g., 40)
+//   wet_level      Wet output level [0, 1]
+// ---------------------------------------------------------------------------
+layer efx_lowpass_wet(signal_size: int, cutoff: scalar, sample_rate: scalar,
+                      filter_order: scalar, wet_level: scalar) -> [1, signal_size] {
+    lowpass(cutoff, sample_rate, filter_order)
+    scale(wet_level)
+}
+
+// ---------------------------------------------------------------------------
+// High-pass filtered wet channel
+//
+// Computes HP FIR coefficients (spectral inversion of low-pass), applies the
+// filter, then scales by wet_level. Equivalent to:
+//   fir(highPassCoefficients(cutoff, sampleRate, filterOrder)) → scale(wet_level)
+//
+// Parameters:
+//   signal_size    Number of samples in the audio buffer (used for shape inference)
+//   cutoff         High-pass cutoff frequency in Hz (e.g., 200.0)
+//   sample_rate    Audio sample rate in Hz (e.g., 44100)
+//   filter_order   FIR filter order; higher = sharper rolloff (e.g., 40)
+//   wet_level      Wet output level [0, 1]
+// ---------------------------------------------------------------------------
+layer efx_highpass_wet(signal_size: int, cutoff: scalar, sample_rate: scalar,
+                       filter_order: scalar, wet_level: scalar) -> [1, signal_size] {
+    highpass(cutoff, sample_rate, filter_order)
+    scale(wet_level)
+}
+
+// ---------------------------------------------------------------------------
+// Dry path level scaling
+//
+// Scales the dry (unfiltered) signal by dry_level.  Combined with an
+// efx_wet_chain output at the Cell level, this produces the wet/dry mix:
+//
+//   wet_output = efx_wet_chain(input)
+//   dry_output = efx_dry_path(input)
+//   mix = wet_output + dry_output   (summed in Java via CellList.sum())
+//
+// Parameters:
+//   filter_coeffs  Placeholder weight so the input shape can be inferred from
+//                  the same coefficient array used by the wet chain.
+//   dry_level      Dry output level [0, 1]
+// ---------------------------------------------------------------------------
+layer efx_dry_path(filter_coeffs: weight, dry_level: scalar) {
+    scale(dry_level)
+}
+
+// ---------------------------------------------------------------------------
+// Delay line state block
+//
+// Holds the mutable circular buffer and write-head used by the efx_delay layer.
+// Both fields are caller-supplied PackedCollections that persist between calls.
+//
+// Parameters (all caller-supplied PackedCollections):
+//   buffer   Circular delay-line buffer (at least delay_samples + 1 elements long)
+//   head     1-element write-position counter (zero-initialised)
+// ---------------------------------------------------------------------------
+state efx_delay_state {
+    buffer: weight
+    head: weight
+}
+
+// ---------------------------------------------------------------------------
+// Stateful integer-sample delay line
+//
+// Uses the efx_delay_state block (buffer, head) that is automatically populated
+// into the layer environment when the block is built.  Each forward pass reads
+// delay_samples behind the current write head and then advances the write head,
+// so delay state is continuous across successive CompiledModel.forward() calls.
+//
+// Parameters:
+//   signal_size    Number of samples per audio frame (used for shape inference)
+//   delay_samples  Integer delay in samples (must be less than buffer length)
+// ---------------------------------------------------------------------------
+layer efx_delay(signal_size: int, delay_samples: int) -> [1, signal_size] {
+    delay(delay_samples, buffer, head)
+}
+
+// ---------------------------------------------------------------------------
+// Wet/dry mix via accum_blocks + identity
+//
+// Demonstrates that mix = accum_blocks(dry_path, wet_path) using existing
+// Block composition — no separate mix primitive is needed.
+//
+// Signal flow:
+//   input ─┬─── identity() ─────────────────────────────────┐
+//           └─── delay(delay_samples, buffer, head) ─── scale(wet_level) ─┘
+//                                                                           ↓ sum
+//                                                                       output
+//
+// Parameters:
+//   signal_size    Number of samples per audio frame (for shape inference)
+//   delay_samples  Integer delay in samples (must be < buffer length)
+//   wet_level      Wet output level, e.g. 0.5 for -6 dB wet/dry mix
+//
+// Requires efx_delay_state block populated with buffer and head.
+// ---------------------------------------------------------------------------
+layer efx_wet_dry_mix(signal_size: int, delay_samples: int, wet_level: scalar) -> [1, signal_size] {
+    accum_blocks(
+        { identity() },
+        { delay(delay_samples, buffer, head); scale(wet_level) }
+    )
+}

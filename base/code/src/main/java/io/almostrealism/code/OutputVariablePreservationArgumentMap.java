@@ -21,6 +21,20 @@ import io.almostrealism.scope.Variable;
 
 import java.util.function.Supplier;
 
+/**
+ * An {@link ArgumentMap} that reuses the output variable of a {@link Computation} as the argument
+ * variable for that computation, avoiding unnecessary memory copies.
+ *
+ * <p>When a computation exposes an output variable via {@link Computation#getOutputVariable()},
+ * this map returns that variable directly instead of creating a new one. This is the standard
+ * argument map used when one computation's output feeds directly into another's input.</p>
+ *
+ * @param <S> the supplier type (the input side)
+ * @param <A> the array element type
+ *
+ * @see SupplierArgumentMap
+ * @see Computation#getOutputVariable()
+ */
 public class OutputVariablePreservationArgumentMap<S, A> extends SupplierArgumentMap<S, A> {
 	/**
 	 * If the provided key is a {@link Computation}, reuse the {@link Variable} it

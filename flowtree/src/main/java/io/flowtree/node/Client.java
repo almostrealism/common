@@ -22,6 +22,8 @@ import io.flowtree.Server;
 import io.flowtree.fs.OutputServer;
 import io.flowtree.fs.ResourceDistributionTask;
 import io.flowtree.ui.LoginDialog;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import javax.swing.*;
 import java.io.IOException;
@@ -42,14 +44,23 @@ import java.util.Properties;
  * 
  * @author  Michael Murray
  */
-public class Client {
+public class Client implements ConsoleFeatures {
+	/** The singleton {@link Client} instance set by {@link #main(String[])} or {@link #setCurrentClient(Client)}. */
 	private static Client client;
-	
+
+	/** Username used when sending job output to the output server. */
 	private final String user;
+
+	/** Password used when sending job output to the output server. */
 	private final String passwd;
+
+	/** Hostname of the output server that receives query results and job output. */
 	private String outputHost;
+
+	/** Port number of the output server that receives query results and job output. */
 	private int outputPort;
-	
+
+	/** The underlying {@link Server} instance managed by this client. */
 	private final Server server;
 	
 	/**
@@ -65,22 +76,21 @@ public class Client {
 			InputStream in = (new URL(args[0])).openStream();
 			p.load(in);            
 		} catch (MalformedURLException e) {
-			System.out.println("Client: Malformed properties URL");
+			Console.root().println("Client: Malformed properties URL");
 			System.exit(1);
 		} catch (IOException e) {
-			System.out.println("Client: IO error loading properties");
+			Console.root().println("Client: IO error loading properties");
 			System.exit(2);
 		}
-		
-		String user, passwd;
 		
 //		if (args.length >= 3) {
 //			user = args[1];
 //			passwd = args[2];
 //		} else {
 			final LoginDialog l = new LoginDialog();
-			
+
 			Runnable r = new Runnable() {
+				@Override
 				public void run() {
 					String user = l.getUser();
 					String passwd = l.getPassword();
@@ -88,7 +98,7 @@ public class Client {
 					try {
 						Client.client = new Client(p, user, passwd, null);
 					} catch (IOException e) {
-						System.out.println("Client: " + e);
+						Console.root().println("Client: " + e);
 					}
 				}
 			};
@@ -118,26 +128,70 @@ public class Client {
 		this.setStatusLabel(status);
 
 		try {
-			OutputServer s = new OutputServer(p, server);
-			System.out.println("DB Server created");
+			new OutputServer(p, server);
+			log("DB Server created");
 		} catch (IOException ioe) {
-			System.out.println("IO error starting DBS: " + ioe.getMessage());
+			warn("IO error starting DBS: " + ioe.getMessage());
 		}
 
 		this.server.start();
 	}
 	
+	/**
+	 * Returns the username associated with this client.
+	 *
+	 * @return  The username string.
+	 */
 	public String getUser() { return this.user; }
-	
+
+	/**
+	 * Returns the password associated with this client.
+	 *
+	 * @return  The password string.
+	 */
 	public String getPassword() { return this.passwd; }
-	
+
+	/**
+	 * Sets the hostname of the output server used for query submission.
+	 *
+	 * @param host  Output server hostname.
+	 */
 	public void setOutputHost(String host) { this.outputHost = host; }
+
+	/**
+	 * Sets the port number of the output server used for query submission.
+	 *
+	 * @param port  Output server port number.
+	 */
 	public void setOutputPort(int port) { this.outputPort = port; }
+
+	/**
+	 * Returns the hostname of the output server used for query submission.
+	 *
+	 * @return  Output server hostname.
+	 */
 	public String getOutputHost() { return this.outputHost; }
+
+	/**
+	 * Returns the port number of the output server used for query submission.
+	 *
+	 * @return  Output server port number.
+	 */
 	public int getOutputPort() { return this.outputPort; }
-	
+
+	/**
+	 * Sets the Swing label that the underlying {@link Server} will use to display
+	 * its current status message.
+	 *
+	 * @param label  The {@link JLabel} to update, or {@code null} to disable GUI status.
+	 */
 	public void setStatusLabel(JLabel label) { if (this.server != null) this.server.setStatusLabel(label); }
-	
+
+	/**
+	 * Returns the {@link Server} instance managed by this client.
+	 *
+	 * @return  The underlying {@link Server}.
+	 */
 	public Server getServer() { return this.server; }
 	
 	/**
@@ -213,13 +267,13 @@ public class Client {
 			Hashtable h = (Hashtable) in.readObject();
 			return h;
 		} catch (ClassNotFoundException cnf) {
-			System.out.println("Client: " + cnf);
+			warn(String.valueOf(cnf));
 			return null;
 		} catch (UnknownHostException uh) {
-			System.out.println("Client: Output host " + this.outputHost + ":"+ this.outputPort + ") not found.");
+			warn("Output host " + this.outputHost + ":" + this.outputPort + ") not found.");
 			return null;
 		} catch (IOException ioe) {
-			System.out.println("Client: " + ioe);
+			warn(String.valueOf(ioe));
 			return null;
 		}
 	}
@@ -232,8 +286,10 @@ public class Client {
 	public static void setCurrentClient(Client client) { Client.client = client; }
 	
 	/**
-	 * @return  The {@link Client} started by the {@link Client#main(String[])} method,
-	 *          or otherwise assigned using {@link #setCurrentClient(Client)}.
+	 * Returns the {@link Client} started by the {@link Client#main(String[])} method,
+	 * or otherwise assigned using {@link #setCurrentClient(Client)}.
+	 *
+	 * @return the current client instance
 	 */
 	public static Client getCurrentClient() { return Client.client; }
 }

@@ -1,0 +1,31 @@
+// SkyTNT LM Head and Final Norm layers
+//
+// skytnt_norm: final RMSNorm applied to net (main transformer) output.
+// skytnt_lm_head: final RMSNorm + linear projection to vocabulary logits,
+//                 applied to net_token (token transformer) output.
+//
+// The lm_head.weight is a no-bias linear layer [3406, 1024] shared between
+// both transformers in the SkyTNT architecture.
+
+// ----- Final RMSNorm only -----
+// Used for the main transformer (net) output before passing to net_token.
+
+layer skytnt_norm(
+    norm_weights: weight,
+    epsilon: float
+) -> [1, dim] {
+    rmsnorm(norm_weights, epsilon)
+}
+
+// ----- Final norm + vocabulary projection -----
+// Used for the token transformer (net_token) output to produce vocabulary logits.
+// Output shape: [1, vocab_size] where vocab_size = 3406.
+
+layer skytnt_lm_head(
+    norm_weights: weight,
+    lm_head_weight: weight,
+    epsilon: float
+) -> [1, vocab_size] {
+    rmsnorm(norm_weights, epsilon)
+    dense(lm_head_weight)
+}

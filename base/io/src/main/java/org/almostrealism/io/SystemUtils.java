@@ -68,6 +68,7 @@ import java.util.OptionalInt;
  * @see Console
  */
 public class SystemUtils {
+	/** Utility class — not instantiable. */
 	private SystemUtils() { }
 
 	/**
@@ -346,7 +347,7 @@ public class SystemUtils {
 
 			return destFile;
 		} catch (Exception e) {
-			e.printStackTrace();
+			Console.root().warn(e.getMessage(), e);
 			return null;
 		}
 	}
@@ -371,7 +372,7 @@ public class SystemUtils {
 
 			return Signature.hex(md.digest());
 		} catch (Exception e) {
-			e.printStackTrace();
+			Console.root().warn(e.getMessage(), e);
 			return null;
 		}
 	}

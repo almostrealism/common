@@ -60,7 +60,7 @@ import java.util.stream.IntStream;
  * <h2>Core Capabilities</h2>
  *
  * <h3>Instruction Caching and Reuse</h3>
- * <p>The {@link #instruct(String, Function, Producer[])} method enables caching of compiled
+ * <p>The {@code instruct(String, Function, Producer[])} method enables caching of compiled
  * operations. When the same operation is invoked multiple times, the framework can reuse
  * previously compiled kernels, significantly reducing overhead:</p>
  * <pre>{@code
@@ -83,7 +83,7 @@ import java.util.stream.IntStream;
  * </ul>
  *
  * <h3>Producer Delegation</h3>
- * <p>The {@link #delegate(Producer, Producer)} method creates delegated producers that can
+ * <p>The {@code delegate(Producer, Producer)} method creates delegated producers that can
  * be substituted at execution time. This enables optimization techniques like:
  * <ul>
  *   <li><strong>Constant Propagation:</strong> Replacing computed values with constants</li>
@@ -198,7 +198,7 @@ import java.util.stream.IntStream;
  * <h2>Performance Considerations</h2>
  *
  * <ul>
- *   <li><strong>Instruction Caching:</strong> Use {@link #instruct} for operations that repeat
+ *   <li><strong>Instruction Caching:</strong> Use {@code instruct} for operations that repeat
  *       with different data - saves kernel compilation time</li>
  *   <li><strong>Loop Optimization:</strong> {@link #loop} is much more efficient than Java
  *       loops when the computation can be kernelized</li>
@@ -219,8 +219,19 @@ import java.util.stream.IntStream;
  * @see DefaultComputer
  */
 public interface HardwareFeatures extends MemoryDataFeatures, ConsoleFeatures {
+	/** True if hardware output monitoring is enabled via the {@code AR_HARDWARE_OUTPUT_MONITORING} environment variable. */
 	boolean outputMonitoring = SystemUtils.isEnabled("AR_HARDWARE_OUTPUT_MONITORING").orElse(false);
 
+	/**
+	 * Creates a looping operation that executes the given computation the specified number of times.
+	 *
+	 * <p>If the computation is a non-compilable {@link OperationList}, wraps it in a Java-level
+	 * loop. Otherwise creates a compiled {@link Loop}.</p>
+	 *
+	 * @param c          The computation to execute repeatedly
+	 * @param iterations Number of times to execute the computation
+	 * @return A supplier that produces the looping runnable
+	 */
 	default Supplier<Runnable> loop(Computation<Void> c, int iterations) {
 		if (c instanceof OperationList && !((OperationList) c).isComputation()) {
 			return () -> {
@@ -268,6 +279,11 @@ public interface HardwareFeatures extends MemoryDataFeatures, ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Returns a default {@link HardwareFeatures} instance with no additional state.
+	 *
+	 * @return Anonymous implementation of {@link HardwareFeatures}
+	 */
 	static HardwareFeatures getInstance() {
 		return new HardwareFeatures() { };
 	}
