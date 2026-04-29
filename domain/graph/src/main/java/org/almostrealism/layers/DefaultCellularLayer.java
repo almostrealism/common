@@ -96,6 +96,8 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	/** Optional compute requirements to apply to operations in this layer. */
 	private List<ComputeRequirement> requirements;
 
+	private boolean inputTrackingEnabled;
+
 	/** The recorded forward-pass input (when input tracking is enabled). */
 	private PackedCollection input;
 
@@ -224,6 +226,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 			return;
 		}
 
+		this.inputTrackingEnabled = inputTracking;
 		this.input = inputTracking ? new PackedCollection(inputShape) : null;
 		this.output = outputTracking ? new PackedCollection(outputShape) : null;
 
@@ -248,6 +251,44 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 		this.exit = Cell.of((in, next) -> output(in, p(output)));
 		this.forward.setReceptor(exit);
+	}
+
+	/**
+	 * Reconfigures whether this layer tracks (copies) its input during the forward pass.
+	 * When {@code inputTracking} is {@code true}, the entry cell copies input data into
+	 * a dedicated buffer before forwarding, enabling backpropagation to access the original
+	 * input. When {@code false}, the entry cell passes input through without copying,
+	 * eliminating overhead for inference-only execution.
+	 *
+	 * <p>The entry cell uses a runtime check on {@code this.input} to decide whether to
+	 * copy or pass through. This method updates the {@code input} field so the existing
+	 * entry cell automatically uses the correct path on the next forward pass. No cell
+	 * rebuild is needed.</p>
+	 *
+	 * <p>Must be called before the computation graph is optimized (i.e., before
+	 * {@code Process.optimize()} or {@code OperationList.flatten().optimize()}).
+	 * Calling it after optimization has undefined behavior.</p>
+	 *
+	 * @param inputTracking whether to enable input tracking for this layer
+	 * @throws IllegalStateException if the layer has not been initialized via {@link #init}
+	 */
+	public void setInputTracking(boolean inputTracking) {
+		if (this.output == null) {
+			throw new IllegalStateException("Layer has not been initialized");
+		}
+
+		if (this.inputTrackingEnabled == inputTracking) {
+			return;
+		}
+
+		this.inputTrackingEnabled = inputTracking;
+
+		if (inputTracking && this.input == null) {
+			this.input = new PackedCollection(this.inputShape);
+		} else if (!inputTracking && this.input != null) {
+			this.input.destroy();
+			this.input = null;
+		}
 	}
 
 	/**

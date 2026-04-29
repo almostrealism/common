@@ -28,8 +28,10 @@ import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 
 import java.util.ArrayList;
@@ -293,6 +295,17 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 			gradOut = null;
 		}
 
+		if (!backprop) {
+			configureTracking(model.getBlocks(), false);
+			model.getInputs().forEach(input -> {
+				if (input instanceof SequentialBlock) {
+					configureTracking(((SequentialBlock) input).getBlocks(), false);
+				} else if (input instanceof DefaultCellularLayer) {
+					((DefaultCellularLayer) input).setInputTracking(false);
+				}
+			});
+		}
+
 		List<Cell<PackedCollection>> cells = model.forward();
 		OperationList forward = new OperationList("CompiledModel Forward");
 		for (int i = cells.size() - 1; i >= 0; i--) {
@@ -322,6 +335,31 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 				q == null ? null : q.get());
 		compiled.reset();
 		return compiled;
+	}
+
+	/**
+	 * Recursively walks a list of blocks and configures input tracking on all
+	 * {@link DefaultCellularLayer} instances found. This handles nested block
+	 * structures ({@link SequentialBlock}, {@link BranchBlock}) by recursing
+	 * into their children.
+	 *
+	 * @param blocks the blocks to configure
+	 * @param inputTracking whether to enable input tracking
+	 */
+	private static void configureTracking(List<Block> blocks, boolean inputTracking) {
+		for (Block block : blocks) {
+			if (block instanceof DefaultCellularLayer) {
+				((DefaultCellularLayer) block).setInputTracking(inputTracking);
+			} else if (block instanceof SequentialBlock) {
+				configureTracking(((SequentialBlock) block).getBlocks(), inputTracking);
+			} else if (block instanceof BranchBlock) {
+				for (CellularPropagation<PackedCollection> child : ((BranchBlock) block).getChildren()) {
+					if (child instanceof Block) {
+						configureTracking(List.of((Block) child), inputTracking);
+					}
+				}
+			}
+		}
 	}
 
 	/**
