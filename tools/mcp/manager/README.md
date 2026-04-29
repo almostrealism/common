@@ -42,11 +42,14 @@ is a thin orchestration facade that:
 | Tool | Scope | Description |
 |------|-------|-------------|
 | `controller_health` | read | Check controller liveness |
+| `controller_update_config` | write | Update controller-wide config |
 | `workstream_list` | read | List all workstreams with capabilities |
 | `workstream_get_status` | read | Job stats for a workstream |
-| `workstream_submit_task` | write | Submit a coding task prompt |
+| `workstream_get_job` | read | Fetch a specific job by id |
+| `workstream_submit_task` | submit | Submit a coding task prompt |
 | `workstream_register` | write | Register a new workstream |
 | `workstream_update_config` | write | Update workstream settings |
+| `send_message` | write | Send a Slack message |
 
 ### Tier 2: Pipeline-capable workstreams only
 
@@ -55,19 +58,33 @@ is a thin orchestration facade that:
 | `project_create_branch` | pipeline | Create branch + dispatch project-manager |
 | `project_verify_branch` | pipeline | Dispatch verify-completion workflow |
 | `project_commit_plan` | pipeline | Commit a plan document to a branch |
-| `github_pr_review_comments` | pipeline | Get unresolved review thread comments on a PR |
 
 **Planned:** Add `github_dismiss_code_scanning_alert` — dismiss GitHub Advanced Security
 code-scanning alerts by alert number (e.g., to close bot-generated scanner warnings on
 resolved issues). Requires `security_events: write` permission on the PAT.
 
-### Tier 3: Memory
+### Tier 3: GitHub
 
 | Tool | Scope | Description |
 |------|-------|-------------|
-| `memory_recall` | memory | Semantic search with optional LLM synthesis |
-| `workstream_context` | memory | Get memories, commits, and jobs for a workstream branch |
-| `memory_store` | memory | Store a memory from an external client |
+| `github_pr_find` | github | Find a PR by branch/number |
+| `github_pr_review_comments` | github | Get unresolved review thread comments on a PR |
+| `github_pr_conversation` | github | Get the issue-style conversation comments on a PR |
+| `github_pr_reply` | github | Reply to a PR review thread |
+| `github_pr_check_status` | github | Get CI/check status for a PR head commit |
+| `github_list_open_prs` | github | List open PRs for a repo |
+| `github_create_pr` | github | Create a pull request |
+| `github_request_copilot_review` | github | Request a Copilot automated review on a PR |
+| `github_read_file` | github | Read a file from a GitHub repo at a branch/ref |
+| `project_read_plan` | github | Read the planning document for a workstream |
+
+### Tier 4: Memory
+
+| Tool | Scope | Description |
+|------|-------|-------------|
+| `memory_recall` | memory-read | Semantic search with optional LLM synthesis |
+| `workstream_context` | memory-read | Get memories, commits, and jobs for a workstream branch |
+| `memory_store` | memory-write | Store a memory from an external client |
 
 Memory tools resolve `repo_url` and `branch` from a `workstream_id` when not
 provided directly. LLM synthesis (via llama.cpp) is attempted for `memory_recall`
@@ -96,26 +113,35 @@ summaries when a backend is available.
   "tokens": [
     {
       "value": "armt_...",
-      "scopes": ["read", "write", "pipeline", "memory"],
+      "scopes": ["read", "write", "submit", "pipeline", "github", "memory-read", "memory-write"],
       "label": "Claude mobile"
     },
     {
       "value": "armt_...",
-      "scopes": ["read", "memory"],
-      "label": "Monitoring dashboard"
+      "scopes": ["read", "memory-read"],
+      "label": "Monitoring dashboard",
+      "workspaceScopes": ["T0123ABC"]
     }
   ]
 }
 ```
 
 Generate a token with `tools/mcp/manager/generate-token.sh`. Default scopes
-are `read`, `write`, `pipeline`, `memory`.
+are `read`, `write`, `submit`, `pipeline`, `github`, `memory-read`, and
+`memory-write`. The optional `workspaceScopes` field restricts a token to
+specific Slack workspace IDs; omit it (or pass an empty list) for an
+unscoped/superadmin token.
 
 **Scopes:**
-- `read` -- list workstreams, get stats, health check
-- `write` -- submit tasks, register/update workstreams
-- `pipeline` -- trigger GitHub workflows, commit plan files
-- `memory` -- recall, store, and browse agent memories
+- `read` -- list workstreams, get stats, get jobs, health check
+- `write` -- register/update workstreams, update controller config, send messages
+- `submit` -- submit a coding task prompt to a workstream
+- `pipeline` -- trigger GitHub workflows (create branch / verify), commit plan files
+- `github` -- read PR conversations and review comments, list/create PRs, reply
+  on review threads, request Copilot review, read repository files, read planning
+  documents
+- `memory-read` -- recall memories, fetch workstream branch context
+- `memory-write` -- store new memories from an external client
 
 ### Security
 

@@ -320,7 +320,7 @@ def _validate_temp_token(token_value: str) -> Optional[tuple[list, str, str, str
     if time.time() > expiry:
         return None
 
-    scopes = ["read", "write", "memory"]
+    scopes = ["read", "write", "submit", "github", "memory-read", "memory-write"]
     label = f"tmp:{workstream_id}/{job_id}"
     return scopes, label, workstream_id, job_id
 
@@ -1324,7 +1324,7 @@ def workstream_submit_task(
     Returns:
         Dictionary with job_id and workstream_id on success.
     """
-    _require_scope("write")
+    _require_scope("submit")
     err = _check_length(prompt, "prompt", MAX_PROMPT_LEN)
     if err:
         return err
@@ -2197,7 +2197,7 @@ def project_read_plan(
     Returns:
         Dictionary with file content, path, branch, sha, and repo.
     """
-    _require_scope("read")
+    _require_scope("github")
     err = _check_short_strings(
         workstream_id=workstream_id, path=path, branch=branch,
     )
@@ -2373,7 +2373,7 @@ def memory_recall(
     Returns:
         Dictionary with memories and optional summary.
     """
-    _require_scope("memory")
+    _require_scope("memory-read")
     if scope not in ("repo", "branch", "all"):
         return {
             "ok": False,
@@ -2587,7 +2587,7 @@ def workstream_context(
         and ``initial_commit_sha`` (the first commit on the branch relative
         to the base).
     """
-    _require_scope("memory")
+    _require_scope("memory-read")
     err = _check_short_strings(
         workstream_id=workstream_id, repo_url=repo_url,
         branch=branch, namespace=namespace,
@@ -2828,7 +2828,7 @@ def memory_store(
     Returns:
         Dictionary with the created entry.
     """
-    _require_scope("memory")
+    _require_scope("memory-write")
     err = _check_length(content, "content", MAX_PROMPT_LEN)
     if err:
         return err
@@ -3001,7 +3001,7 @@ def github_pr_find(
     Returns:
         PR details if found, or error.
     """
-    _require_scope("read")
+    _require_scope("github")
     if org and repo:
         _require_org_in_scope(org)
     owner, repo, effective_branch, err = _resolve_github_repo(
@@ -3050,7 +3050,7 @@ def github_pr_review_comments(
     Returns:
         List of review comments.
     """
-    _require_scope("read")
+    _require_scope("github")
     if org and repo:
         _require_org_in_scope(org)
     owner, repo, _, err = _resolve_github_repo(
@@ -3151,7 +3151,7 @@ def github_pr_conversation(
     Returns:
         List of conversation comments.
     """
-    _require_scope("read")
+    _require_scope("github")
     if org and repo:
         _require_org_in_scope(org)
     owner, repo, _, err = _resolve_github_repo(
@@ -3201,7 +3201,7 @@ def github_pr_reply(
     Returns:
         The created reply.
     """
-    _require_scope("write")
+    _require_scope("github")
     if org and repo:
         _require_org_in_scope(org)
     owner, repo, _, err = _resolve_github_repo(
@@ -3241,7 +3241,7 @@ def github_list_open_prs(
     Returns:
         List of open PRs.
     """
-    _require_scope("read")
+    _require_scope("github")
     if org and repo:
         _require_org_in_scope(org)
     owner, repo, _, err = _resolve_github_repo(
@@ -3301,7 +3301,7 @@ def github_create_pr(
     Returns:
         The created PR details, including copilot_review_requested if applicable.
     """
-    _require_scope("write")
+    _require_scope("github")
     if org and repo:
         _require_org_in_scope(org)
     owner, repo, default_branch, err = _resolve_github_repo(
@@ -3530,7 +3530,7 @@ def github_request_copilot_review(
     Returns:
         dict with ok=True on success or ok=False with error details.
     """
-    _require_scope("write")
+    _require_scope("github")
     if org and repo:
         _require_org_in_scope(org)
     # Direct addressing (org+repo) supplies no branch of its own. When the
@@ -3623,7 +3623,7 @@ def github_read_file(
     Returns:
         Dictionary with file content, path, ref, sha, and repo.
     """
-    _require_scope("read")
+    _require_scope("github")
     err = _check_short_strings(
         path=path, workstream_id=workstream_id, branch=branch, ref=ref,
     )
@@ -3778,7 +3778,7 @@ def github_pr_check_status(
         overall_status, workflow_runs list, and check_runs list. Failed
         check runs include html_url and details_url for log access.
     """
-    _require_scope("read")
+    _require_scope("github")
     if org and repo:
         _require_org_in_scope(org)
     owner, repo, effective_branch, err = _resolve_github_repo(

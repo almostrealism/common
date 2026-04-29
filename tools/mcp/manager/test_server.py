@@ -25,7 +25,18 @@ with patch.dict(os.environ, {"AR_CONTROLLER_URL": "http://test:7780"}):
 
 def _grant_all_scopes():
     """Grant all scopes for the current request context."""
-    server._set_scopes(["read", "write", "pipeline", "memory"], label="test")
+    server._set_scopes(
+        [
+            "read",
+            "write",
+            "submit",
+            "pipeline",
+            "github",
+            "memory-read",
+            "memory-write",
+        ],
+        label="test",
+    )
 
 
 def _grant_scopes(*scopes):
@@ -310,8 +321,8 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         # Without "ok" key, result.get("ok") is None/falsy, so error next_steps added
         self.assertIn("next_steps", result)
 
-    def test_requires_write_scope(self):
-        _grant_scopes("read")
+    def test_requires_submit_scope(self):
+        _grant_scopes("read", "write")
         with self.assertRaises(PermissionError):
             server.workstream_submit_task(prompt="Task")
 
@@ -763,8 +774,8 @@ class TestProjectReadPlan(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("not found", result["error"])
 
-    def test_requires_read_scope(self):
-        _grant_scopes("write")
+    def test_requires_github_scope(self):
+        _grant_scopes("read", "write")
         with self.assertRaises(PermissionError):
             server.project_read_plan(workstream_id="ws-test")
 
@@ -828,8 +839,8 @@ class TestMemoryRecall(unittest.TestCase):
         second_call = client.search.call_args_list[1]
         self.assertEqual(second_call[1]["namespace"], "messages")
 
-    def test_requires_memory_scope(self):
-        _grant_scopes("read", "write")
+    def test_requires_memory_read_scope(self):
+        _grant_scopes("read", "write", "memory-write")
         with self.assertRaises(PermissionError):
             server.memory_recall(query="test")
 
@@ -1651,8 +1662,8 @@ class TestGithubReadFile(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("path is required", result["error"])
 
-    def test_requires_read_scope(self):
-        _grant_scopes("write")
+    def test_requires_github_scope(self):
+        _grant_scopes("read", "write")
         with self.assertRaises(PermissionError):
             server.github_read_file(path="README.md")
 
@@ -1811,8 +1822,8 @@ class TestGithubPrCheckStatus(unittest.TestCase):
         result = server.github_pr_check_status(pr_number=1)
         self.assertFalse(result["ok"])
 
-    def test_requires_read_scope(self):
-        _grant_scopes("write")
+    def test_requires_github_scope(self):
+        _grant_scopes("read", "write")
         with self.assertRaises(PermissionError):
             server.github_pr_check_status(pr_number=1)
 
@@ -2035,8 +2046,8 @@ class TestGithubPrReviewComments(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("no repo", result["error"])
 
-    def test_requires_read_scope(self):
-        _grant_scopes("write")
+    def test_requires_github_scope(self):
+        _grant_scopes("read", "write")
         with self.assertRaises(PermissionError):
             server.github_pr_review_comments(pr_number=1)
 
@@ -2099,8 +2110,8 @@ class TestGithubRequestCopilotReview(unittest.TestCase):
         result = server.github_request_copilot_review(pr_number=1)
         self.assertFalse(result["ok"])
 
-    def test_requires_write_scope(self):
-        _grant_scopes("read")
+    def test_requires_github_scope(self):
+        _grant_scopes("read", "write")
         with self.assertRaises(PermissionError):
             server.github_request_copilot_review(pr_number=1)
 
