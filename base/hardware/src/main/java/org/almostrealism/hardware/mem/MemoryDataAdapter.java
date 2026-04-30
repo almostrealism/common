@@ -257,6 +257,7 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 			Memory mem = memVersions.get(provider);
 			mem.getProvider().setMem(mem, 0, this.mem, 0, getMemLength());
 			reassign(mem);
+			memVersions.remove(provider);
 		}
 	}
 
@@ -291,6 +292,15 @@ public abstract class MemoryDataAdapter implements MemoryData, ConsoleFeatures {
 		if (mem != null) {
 			mem.getProvider().deallocate(getMemLength(), mem);
 			mem = null;
+		}
+
+		if (memVersions != null) {
+			Map<MemoryProvider, Memory> versions = memVersions;
+			memVersions = null;
+			for (Memory cached : versions.values()) {
+				cached.getProvider().deallocate(getMemLength(), cached);
+			}
+			versions.clear();
 		}
 	}
 

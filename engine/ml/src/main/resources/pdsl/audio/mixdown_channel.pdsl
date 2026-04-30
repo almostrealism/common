@@ -23,13 +23,18 @@
 //     that routes delay sends between channels via mself().
 //   - Reverb path: uses DelayNetwork (Java-level cell composition). No PDSL
 //     equivalent for multi-tap feedback networks exists yet.
-//   - Automation envelopes: AutomationManager.getAggregatedValue() produces
-//     time-varying Producer values computed in Java. In PDSL these are expressed
-//     as scalar parameters — the caller computes and passes the current value.
 //   - IIR vs FIR: MixdownManager uses IIR biquad (AudioPassFilter from
 //     CellFeatures.hp()/lp()). This PDSL uses FIR approximation via
 //     highpass()/lowpass() (MultiOrderFilter). Audible differences may occur
 //     near the cutoff. See docs/plans/PDSL_AUDIO_DSP.md Part 9 (Risk 1).
+//
+// Note on producer-valued arguments: the layers below use literal scalars for
+// hp_cutoff, volume, lp_cutoff, wet_level, and delay_samples for simplicity.
+// PDSL now supports producer-valued arguments (the producer([shape]) form) on
+// every audio primitive used here, so any of these scalars can be promoted to
+// producer([1]) without changing the layer body — see mixdown_manager.pdsl for
+// the producer-valued forms used by MixdownManager's automation- and gene-driven
+// paths. This file is the simpler literal-only reference.
 //
 // Reference: MixdownManager.createCells() and MixdownManager.createEfx()
 

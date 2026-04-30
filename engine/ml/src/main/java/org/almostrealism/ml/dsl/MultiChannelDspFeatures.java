@@ -26,7 +26,6 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
-import org.almostrealism.model.SequentialBlock;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -93,30 +92,41 @@ public interface MultiChannelDspFeatures extends CollectionFeatures {
 	}
 
 	/**
-	 * Builds a cross-channel routing block using a transmission matrix.
+	 * Builds a cross-channel routing block using a (possibly rectangular) transmission matrix.
 	 *
-	 * <p>For each output channel {@code i}: {@code out[i] = sum_j(matrix[i,j] * in[j])}.
-	 * Matrix elements are read via {@code subset} producers so the matrix can be
-	 * genome-driven (updated between forward passes without recompilation).</p>
+	 * <p>The matrix has shape {@code [inputChannels, outputChannels]}. The contraction is
+	 * {@code out[m, t] = sum_n(matrix[n, m] * in[n, t])} where {@code n} ranges over input
+	 * channels and {@code m} over output channels. Matrix elements are read via
+	 * {@code subset} producers so the matrix can be genome-driven (updated between
+	 * forward passes without recompilation).</p>
 	 *
-	 * @param matrix     routing matrix ({@link PackedCollection} of shape {@code [channels, channels]})
-	 * @param channels   number of channels
-	 * @param signalSize samples per channel
-	 * @return a Block with shape {@code [channels, signalSize] → [channels, signalSize]}
+	 * <p>When {@code inputChannels == outputChannels} this is the square cross-channel
+	 * feedback case. When they differ, it implements the {@code N efx → M delay layers}
+	 * fan-routing pattern from {@code MixdownManager.createEfx()} line 660-664
+	 * ({@code efx.m(fi(), delays, transmissionGene)}).</p>
+	 *
+	 * @param matrix          routing matrix ({@link PackedCollection} of shape
+	 *                        {@code [inputChannels, outputChannels]})
+	 * @param inputChannels   number of input channels (matches matrix axis 0)
+	 * @param outputChannels  number of output channels (matches matrix axis 1)
+	 * @param signalSize      samples per channel
+	 * @return a Block with shape {@code [inputChannels, signalSize] → [outputChannels, signalSize]}
 	 */
-	default Block routeBlock(PackedCollection matrix, int channels, int signalSize) {
-		TraversalPolicy multiShape = shape(channels, signalSize);
+	default Block routeBlock(PackedCollection matrix, int inputChannels,
+							 int outputChannels, int signalSize) {
+		TraversalPolicy inShape = shape(inputChannels, signalSize);
+		TraversalPolicy outShape = shape(outputChannels, signalSize);
 		TraversalPolicy sigShape = shape(1, signalSize);
 		TraversalPolicy elemShape = shape(1, 1);
 		Cell<PackedCollection> forward = Cell.of(
 				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
 						Supplier<Runnable>>) (in, next) -> {
 					CollectionProducer allOuts = null;
-					for (int i = 0; i < channels; i++) {
+					for (int m = 0; m < outputChannels; m++) {
 						CollectionProducer channelOut = null;
-						for (int j = 0; j < channels; j++) {
-							CollectionProducer matElem = subset(elemShape, cp(matrix), i * channels + j);
-							CollectionProducer inCh = subset(sigShape, c(in), j * signalSize);
+						for (int n = 0; n < inputChannels; n++) {
+							CollectionProducer matElem = subset(elemShape, cp(matrix), n, m);
+							CollectionProducer inCh = subset(sigShape, c(in), n, 0);
 							CollectionProducer contribution = matElem.multiply(inCh);
 							channelOut = channelOut == null ? contribution : channelOut.add(contribution);
 						}
@@ -130,7 +140,7 @@ public interface MultiChannelDspFeatures extends CollectionFeatures {
 		Cell<PackedCollection> backward = Cell.of(
 				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
 						Supplier<Runnable>>) (in, next) -> new OperationList("route-backward"));
-		return new DefaultBlock(multiShape, multiShape, forward, backward);
+		return new DefaultBlock(inShape, outShape, forward, backward);
 	}
 
 	/**

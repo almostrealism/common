@@ -17,6 +17,7 @@
 package io.flowtree.jobs;
 
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -69,6 +70,42 @@ public class ClaudeCodeJobModelConfigTest extends TestSuiteBase {
         job.setModel("sonnet");
         job.setModel(null);
         assertNull(job.getModel());
+    }
+
+    @Test(timeout = 30000)
+    public void setModelAcceptsAllValidIdentifiers() {
+        ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+        for (String id : ClaudeCodeJob.VALID_MODELS) {
+            job.setModel(id);
+            assertEquals(id, job.getModel());
+        }
+    }
+
+    @Test(timeout = 30000, expected = IllegalArgumentException.class)
+    public void setModelRejectsMissingClaudePrefix() {
+        // Reproduces the wire-up bug that produced an unbounded enforcement
+        // loop: "sonnet-4-6" is not a real CLI model, the resulting --model
+        // flag triggered a 404, and the zero-output session looked like
+        // "agent produced no changes" to enforce-changes.
+        ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+        job.setModel("sonnet-4-6");
+    }
+
+    @Test(timeout = 30000, expected = IllegalArgumentException.class)
+    public void setModelRejectsCompletelyUnknownIdentifier() {
+        ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+        job.setModel("gpt-5");
+    }
+
+    @Test(timeout = 30000)
+    public void factorySetModelRejectsInvalidIdentifier() {
+        ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+        try {
+            factory.setModel("sonnet-4-6");
+            Assert.fail("Expected IllegalArgumentException");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("sonnet-4-6"));
+        }
     }
 
     // ── effort field ──────────────────────────────────────────────────────────

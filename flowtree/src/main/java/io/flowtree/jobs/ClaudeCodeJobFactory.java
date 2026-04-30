@@ -322,15 +322,27 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
 
     /**
      * Sets the Claude Code model for jobs created by this factory.  Passed to
-     * each created job via {@link ClaudeCodeJob#setModel(String)}.
+     * each created job via {@link ClaudeCodeJob#setModel(String)}.  The value
+     * is validated immediately against {@link ClaudeCodeJob#VALID_MODELS} so
+     * misconfiguration fails at the caller rather than silently at dispatch.
      *
-     * @param model a model alias (e.g. {@code "sonnet"}, {@code "opus"}) or
-     *              full identifier, or {@code null}/empty to use the CLI default
+     * @param model a value from {@link ClaudeCodeJob#VALID_MODELS}, or
+     *              {@code null}/empty to use the CLI default
+     * @throws IllegalArgumentException if {@code model} is non-empty and
+     *                                  not a recognised identifier
      */
     public void setModel(String model) {
-        String normalised = (model == null || model.isEmpty()) ? null : model;
-        this.model = normalised;
-        set("model", normalised);
+        if (model == null || model.isEmpty()) {
+            this.model = null;
+            set("model", null);
+            return;
+        }
+        if (!ClaudeCodeJob.VALID_MODELS.contains(model)) {
+            throw new IllegalArgumentException("Invalid model '" + model
+                    + "'. Must be one of " + ClaudeCodeJob.VALID_MODELS);
+        }
+        this.model = model;
+        set("model", model);
     }
 
     /**

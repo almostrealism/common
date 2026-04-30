@@ -51,6 +51,7 @@ public class PdslLexer {
 		KEYWORDS.put("concat_blocks", PdslToken.Type.CONCAT_BLOCKS);
 		KEYWORDS.put("weight", PdslToken.Type.WEIGHT);
 		KEYWORDS.put("scalar", PdslToken.Type.SCALAR);
+		KEYWORDS.put("producer", PdslToken.Type.PRODUCER);
 		KEYWORDS.put("int", PdslToken.Type.INT_TYPE);
 		KEYWORDS.put("float", PdslToken.Type.FLOAT_TYPE);
 		KEYWORDS.put("bool", PdslToken.Type.BOOL_TYPE);

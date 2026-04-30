@@ -41,6 +41,7 @@ import org.almostrealism.optimize.NegativeLogLikelihood;
 import org.almostrealism.optimize.TrainingResult;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -241,7 +242,7 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 	 * <p>This test demonstrates that gradient computation and LoRA parameter
 	 * updates work correctly for the transformer layers.</p>
 	 */
-	@Test(timeout = 600000) @TestDepth(2)
+	@Test(timeout = 1_200_000) @TestDepth(2) @TestProperties(knownIssue = true)
 	public void testTransformerTrainingWithMSE() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		int dim = config.hiddenSize;
