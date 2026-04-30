@@ -20,6 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.heredity.Chromosome;
@@ -234,84 +235,75 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	}
 
 	/**
-	 * Builds a static {@code [channels, fir_taps]} per-channel low-pass FIR
-	 * coefficient bank for the PDSL {@code wet_filter_coeffs} parameter. Each
-	 * channel's row is computed from the wet-filter chromosome's low-pass
-	 * frequency (gene slot 1) at gene-evaluation time.
+	 * Builds a {@code [channels, fir_taps]} producer-form per-channel low-pass
+	 * FIR coefficient bank for the PDSL {@code wet_filter_coeffs} parameter.
+	 * Each channel's coefficient row is computed via
+	 * {@link org.almostrealism.time.TemporalFeatures#lowPassCoefficients(Producer, int, int)}
+	 * driven by the wet-filter chromosome's low-pass frequency producer
+	 * (gene factor 1, scaled to Hz and clamped to a valid Nyquist range).
+	 * The N per-channel producers are concatenated and reshaped to a single
+	 * {@code [channels, fir_taps]} producer.
 	 *
 	 * <p>The Java path's wet filter is an {@link org.almostrealism.audio.filter.AudioPassFilter}
 	 * IIR chain (see {@link FixedFilterChromosome.FixedFilterGene#valueAt}); the
-	 * PDSL {@code fir} primitive consumes static FIR coefficients. This is the
+	 * PDSL {@code fir} primitive consumes FIR coefficients. This is the
 	 * structural mismatch the planning document calls out — the test in
 	 * {@code MixdownManagerPdslVerificationTest} compares the two with that
 	 * caveat documented.</p>
 	 *
 	 * @param manager the mixdown manager whose wet-filter chromosome is sampled
 	 * @param config  structural configuration
-	 * @return shape-{@code [channels, fir_taps]} coefficient slot
+	 * @return shape-{@code [channels, fir_taps]} coefficient producer
 	 */
-	private static PackedCollection wetFilterCoefficients(MixdownManager manager, Config config) {
+	private static Producer<PackedCollection> wetFilterCoefficients(MixdownManager manager, Config config) {
 		final int firTaps = config.filterOrder + 1;
-		double[] flat = new double[config.channels * firTaps];
-		FixedFilterChromosome wetFilter = manager.getWetFilter();
+		Chromosome<PackedCollection> wetFilter = manager.getWetFilter();
+		Producer<PackedCollection>[] perChannel = new Producer[config.channels];
 		for (int ch = 0; ch < config.channels; ch++) {
-			double lpUnit = evaluateGeneFactor(wetFilter, ch, 1);
-			double lpHz = Math.max(20.0, Math.min(lpUnit * 20000.0,
-					0.49 * config.sampleRate));
-			double[] coeffs = ADAPTER.referenceLowPassCoefficients(
-					lpHz, config.sampleRate, config.filterOrder);
-			System.arraycopy(coeffs, 0, flat, ch * firTaps, firTaps);
+			Producer<PackedCollection> lpUnit = wetFilter.valueAt(ch).valueAt(1)
+					.getResultant(ADAPTER.c(1.0));
+			Producer<PackedCollection> lpHz = ADAPTER.multiply(lpUnit, ADAPTER.c(20000.0));
+			Producer<PackedCollection> lpHzClamped = ADAPTER.max(ADAPTER.c(20.0),
+					ADAPTER.min(lpHz, ADAPTER.c(0.49 * config.sampleRate)));
+			perChannel[ch] = ADAPTER.lowPassCoefficients(
+					lpHzClamped, config.sampleRate, config.filterOrder);
 		}
-		PackedCollection coeffs = new PackedCollection(new TraversalPolicy(config.channels, firTaps));
-		coeffs.setMem(flat);
-		return coeffs;
+		CollectionProducer concatenated = ADAPTER.concat(perChannel);
+		return concatenated.reshape(new TraversalPolicy(config.channels, firTaps));
 	}
 
 	/**
-	 * Builds a static {@code [channels, channels]} cross-channel transmission
-	 * matrix slot from the wet-bus transmission chromosome. Mirrors the
+	 * Builds a {@code [channels, channels]} cross-channel transmission matrix
+	 * producer from the wet-bus transmission chromosome. Mirrors the
 	 * {@code mself(fi(), transmission, ...)} call at
-	 * {@link MixdownManager#createEfx} line 677 by sampling each gene-pair value
-	 * directly. The slot can be mutated between renders to update routing
-	 * without rebuilding the PDSL layer (the producer-shape substrate re-reads
-	 * the slot on every forward pass).
+	 * {@link MixdownManager#createEfx} line 677 by composing each gene-pair's
+	 * resultant producer into a single {@code [channels, channels]} producer
+	 * via {@code concat} and {@code reshape}. The PDSL substrate re-evaluates
+	 * the producer on every forward pass, so chromosome-state changes flow
+	 * through the routing matrix without rebuilding the layer. Cells beyond
+	 * the chromosome's extent are zero.
 	 *
 	 * @param manager the mixdown manager whose transmission chromosome is sampled
 	 * @param config  structural configuration
-	 * @return shape-{@code [channels, channels]} routing matrix slot
+	 * @return shape-{@code [channels, channels]} routing matrix producer
 	 */
-	private static PackedCollection transmissionMatrix(MixdownManager manager, Config config) {
-		double[] data = new double[config.channels * config.channels];
+	private static Producer<PackedCollection> transmissionMatrix(MixdownManager manager, Config config) {
 		Chromosome<PackedCollection> chrom = manager.getTransmission();
 		int rows = Math.min(chrom.length(), config.channels);
-		for (int n = 0; n < rows; n++) {
-			int cols = Math.min(chrom.valueAt(n).length(), config.channels);
-			for (int m = 0; m < cols; m++) {
-				data[n * config.channels + m] = evaluateGeneFactor(chrom, n, m);
+		Producer<PackedCollection>[] cells = new Producer[config.channels * config.channels];
+		for (int n = 0; n < config.channels; n++) {
+			int cols = (n < rows) ? Math.min(chrom.valueAt(n).length(), config.channels) : 0;
+			for (int m = 0; m < config.channels; m++) {
+				if (m < cols) {
+					cells[n * config.channels + m] = chrom.valueAt(n).valueAt(m)
+							.getResultant(ADAPTER.c(1.0));
+				} else {
+					cells[n * config.channels + m] = ADAPTER.c(0.0);
+				}
 			}
 		}
-		PackedCollection matrix = new PackedCollection(
-				new TraversalPolicy(config.channels, config.channels));
-		matrix.setMem(data);
-		return matrix;
-	}
-
-	/**
-	 * Evaluates a chromosome gene-factor's resultant at unit input, returning
-	 * the resulting scalar. This is the boundary point where the genome's
-	 * compiled producer is collapsed into a static {@code double} for use in
-	 * coefficient/matrix slots — every other parameter retains its
-	 * Producer form.
-	 *
-	 * @param chromosome the chromosome whose gene-factor is evaluated
-	 * @param gene       gene index within the chromosome
-	 * @param factor     factor index within the gene
-	 * @return the scalar value of {@code chromosome.valueAt(gene).valueAt(factor).getResultant(c(1.0))}
-	 */
-	private static double evaluateGeneFactor(Chromosome<PackedCollection> chromosome,
-											 int gene, int factor) {
-		return chromosome.valueAt(gene).valueAt(factor)
-				.getResultant(ADAPTER.c(1.0)).get().evaluate().toDouble(0);
+		CollectionProducer concatenated = ADAPTER.concat(cells);
+		return concatenated.reshape(new TraversalPolicy(config.channels, config.channels));
 	}
 
 	/**
