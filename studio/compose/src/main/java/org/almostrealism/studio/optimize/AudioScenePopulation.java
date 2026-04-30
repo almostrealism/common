@@ -52,6 +52,27 @@ import java.util.stream.Collectors;
  * JSON using {@link #store(OutputStream)} and {@link #read(InputStream)}.</p>
  */
 public class AudioScenePopulation implements Population<PackedCollection, TemporalCellular>, Destroyable, CodeFeatures {
+	/**
+	 * When {@code true}, an explicit {@link System#gc()} request is made at the
+	 * start of {@link #enableGenome(int)}. Defaults to {@code true}.
+	 *
+	 * <p>Long-lived drivers that evaluate many genomes back-to-back (the optimizer's
+	 * health loop and the {@link #generate(int, int, java.util.function.Supplier,
+	 * java.util.function.Consumer) generate} loop used for previews) accumulate
+	 * heap state across renders that {@link AudioScene#destroy()} alone does not
+	 * collect — see {@code docs/plans/AUDIO_SCENE_BENCHMARK_INVESTIGATION.md}.
+	 * Without this hint, eventually a major GC fires <em>during</em> a render and
+	 * inflates per-tick latency 5×–10×; the GC hint at the per-genome boundary
+	 * forces that work into an idle moment instead.</p>
+	 *
+	 * <p>The hint is placed on {@link #enableGenome(int)} rather than
+	 * {@link #disableGenome()} because the latter is also used during
+	 * {@link #init(Genome, MultiChannelAudioOutput, List, int)} and
+	 * {@link #validateGenome(Genome) validation}; firing GC there would interrupt
+	 * setup paths that have nothing to clean up yet.</p>
+	 */
+	public static boolean gcBeforeGenome = true;
+
 
 	/** The audio scene whose parameters are governed by the genomes in this population. */
 	private final AudioScene<?> scene;
@@ -157,6 +178,9 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 
 	@Override
 	public TemporalCellular enableGenome(int index) {
+		if (gcBeforeGenome) {
+			System.gc();
+		}
 		enableGenome(getGenomes().get(index));
 		temporal.reset();
 		return temporal;
