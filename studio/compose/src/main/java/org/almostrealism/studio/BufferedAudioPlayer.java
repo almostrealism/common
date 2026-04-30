@@ -456,14 +456,29 @@ public class BufferedAudioPlayer implements AudioPlayer, CellFeatures {
 	 * Sets the loop duration for the specified channel. When the unified clock is enabled,
 	 * the master clock reset point is updated accordingly.
 	 *
+	 * <p>In the per-channel-clock path, when the loop duration changes from
+	 * one positive value to a different positive value, the channel's
+	 * looping frame counter is re-derived from its total frame counter so
+	 * that the channel stays aligned to the global frame grid rather than
+	 * carrying over a wrap state computed against the previous loop
+	 * duration. Without this rephase, mutating the loop length mid-playback
+	 * would phase-detach the channel from the rest of the mixer.</p>
+	 *
 	 * @param c        the zero-based channel index
 	 * @param duration the loop duration in seconds
 	 */
 	protected void setLoopDuration(int c, double duration) {
+		double previous = loopDuration[c].toDouble(0);
+
 		loopDuration[c].setMem(duration);
 
 		if (enableUnifiedClock) {
 			clock.setReset(0, (int) (duration * sampleRate));
+		} else if (previous > 0 && duration > 0 && previous != duration) {
+			TimeCell channelClock = mixer.getSample(c).getClock();
+			if (channelClock != null) {
+				channelClock.rephaseLeft(duration * sampleRate);
+			}
 		}
 	}
 
