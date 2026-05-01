@@ -34,6 +34,7 @@ import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.health.HealthComputationAdapter;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
+import org.almostrealism.studio.health.StableDurationHealthComputation;
 
 import java.io.File;
 import java.io.IOException;
@@ -120,6 +121,15 @@ public class AudioSceneBenchmark {
 	/** Property name for the per-tick timeline CSV directory. */
 	public static final String TIMELINE_DIR_PROPERTY = "AR_BENCHMARK_TIMELINE_DIR";
 
+	/**
+	 * Property name for the comma-separated list of buffer sizes to sweep. Each value is
+	 * the number of audio frames advanced per call to {@code temporal.tick().get().run()};
+	 * the per-section result row reports the buffer size used so {@code ratio} can be
+	 * plotted against it. Defaults to {@link AudioScene#DEFAULT_REALTIME_BUFFER_SIZE} if
+	 * unset (single-element sweep).
+	 */
+	public static final String BUFFER_SIZES_PROPERTY = "AR_BENCHMARK_BUFFER_SIZES";
+
 	/** Property name for the toggle that disables {@link OperationProfileNode} XML capture. */
 	public static final String DISABLE_PROFILE_PROPERTY = "AR_BENCHMARK_DISABLE_PROFILE";
 
@@ -160,8 +170,13 @@ public class AudioSceneBenchmark {
 	/** Default per-tick timeline directory used when {@link #TIMELINE_DIR_PROPERTY} is unset. */
 	public static final String DEFAULT_TIMELINE_DIR = "results/timelines";
 
-	/** PCM buffer size used for both render paths. Mirrors {@link AudioScene#DEFAULT_REALTIME_BUFFER_SIZE}. */
-	public static final int BUFFER_SIZE = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
+	/**
+	 * Default PCM buffer size used when {@link #BUFFER_SIZES_PROPERTY} is unset. Mirrors
+	 * {@link AudioScene#DEFAULT_REALTIME_BUFFER_SIZE}; the active buffer size for each
+	 * benchmark section is supplied as a parameter to the {@code run*} methods so the
+	 * sweep can compare how render-time/audio-time ratio varies with buffer size.
+	 */
+	public static final int DEFAULT_BUFFER_SIZE = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
 
 	/**
 	 * Aggregated timing data for one section's tick loop.
@@ -277,6 +292,9 @@ public class AudioSceneBenchmark {
 		/** Total audio frames rendered. */
 		private final int frames;
 
+		/** Number of audio frames advanced per call to {@code temporal.tick().get().run()}. */
+		private final int bufferSize;
+
 		/** Wall-clock milliseconds spent inside {@code setup.run()}. */
 		private final long setupMs;
 
@@ -313,6 +331,7 @@ public class AudioSceneBenchmark {
 		 * @param featureLevel   feature level applied
 		 * @param audioSeconds   equivalent audio duration in seconds
 		 * @param frames         total frames rendered
+		 * @param bufferSize     audio frames advanced per tick
 		 * @param setupMs        wall-clock milliseconds spent in setup
 		 * @param tickStats      per-tick distribution statistics
 		 * @param sectionMs      wall-clock milliseconds for build+render+teardown
@@ -323,15 +342,16 @@ public class AudioSceneBenchmark {
 		 * @param warmup          {@code true} when this is the first repetition
 		 */
 		public BenchmarkResult(String mode, int measures, String channels, int featureLevel,
-							   double audioSeconds, int frames, long setupMs, TickStats tickStats,
-							   long sectionMs, String profileXmlPath, String timelineCsvPath,
-							   String wavPath, int repeat, boolean warmup) {
+							   double audioSeconds, int frames, int bufferSize, long setupMs,
+							   TickStats tickStats, long sectionMs, String profileXmlPath,
+							   String timelineCsvPath, String wavPath, int repeat, boolean warmup) {
 			this.mode = mode;
 			this.measures = measures;
 			this.channels = channels;
 			this.featureLevel = featureLevel;
 			this.audioSeconds = audioSeconds;
 			this.frames = frames;
+			this.bufferSize = bufferSize;
 			this.setupMs = setupMs;
 			this.tickStats = tickStats;
 			this.renderMs = setupMs + tickStats.getTotalMs();
@@ -360,6 +380,9 @@ public class AudioSceneBenchmark {
 
 		/** Returns the total frames rendered. */
 		public int getFrames() { return frames; }
+
+		/** Returns the buffer size used (frames advanced per tick). */
+		public int getBufferSize() { return bufferSize; }
 
 		/** Returns wall-clock milliseconds spent in {@code setup.run()}. */
 		public long getSetupMs() { return setupMs; }
@@ -429,6 +452,8 @@ public class AudioSceneBenchmark {
 		WaveData.init();
 
 		int[] measures = parseDurations(SystemUtils.getProperty(DURATIONS_PROPERTY, DEFAULT_DURATIONS));
+		int[] bufferSizes = parseDurations(SystemUtils.getProperty(BUFFER_SIZES_PROPERTY,
+				String.valueOf(DEFAULT_BUFFER_SIZE)));
 		int channel = SystemUtils.getInt(CHANNEL_PROPERTY).orElse(0);
 		String multiChannelsSpec = SystemUtils.getProperty(MULTI_CHANNELS_PROPERTY, "all");
 		boolean runMulti = !"false".equalsIgnoreCase(SystemUtils.getProperty(RUN_MULTI_PROPERTY, "true"));
@@ -453,7 +478,8 @@ public class AudioSceneBenchmark {
 		ensureTimelineCapacity(measures);
 
 		Console.root().println("AudioSceneBenchmark starting (durations="
-				+ Arrays.toString(measures) + ", channel=" + channel
+				+ Arrays.toString(measures) + ", bufferSizes=" + Arrays.toString(bufferSizes)
+				+ ", channel=" + channel
 				+ ", multiChannels=" + multiChannelsSpec
 				+ ", runMulti=" + runMulti + ", runSingle=" + runSingle
 				+ ", repeats=" + repeats + ", featureLevel=" + featureLevel
@@ -461,33 +487,55 @@ public class AudioSceneBenchmark {
 				+ ", timelineDir=" + timelineDir
 				+ ", disableProfile=" + disableProfile + ")");
 
+		// Generate the genome pool once at startup and reuse it across every
+		// (mode, bufferSize, totalMeasures) combination. Without this, each call
+		// to the run methods would generate a fresh random genome, so buffer-size
+		// comparisons would be confounded with genome-driven variance (note density,
+		// active filter counts, sample selection, etc).
+		List<Genome<PackedCollection>> genomePool = buildGenomePool(measures[0], repeats);
+		Console.root().println("Generated genome pool of size " + genomePool.size()
+				+ " (reused across all buffer-size iterations)");
+
 		List<BenchmarkResult> results = new ArrayList<>();
 
 		try {
-			for (int totalMeasures : measures) {
-				if (runMulti) {
-					List<Integer> channelList = resolveMultiChannels(multiChannelsSpec, totalMeasures);
-					if (reuseScene) {
-						results.addAll(runReuseSceneMulti(totalMeasures, channelList,
-								featureLevel, profileDir, timelineDir, disableProfile,
-								repeats, markerDir, clearAudioCache, interRepeatPauseMs));
-					} else {
-						for (int r = 0; r < repeats; r++) {
-							results.add(runMultiChannel(totalMeasures, channelList, featureLevel,
-									profileDir, timelineDir, disableProfile, r, r == 0));
-							if (clearAudioCache) NoteAudioProvider.clearCache();
-							pauseForExternalSnapshot(markerDir, "multi", totalMeasures, r,
-									interRepeatPauseMs);
+			for (int bufferSize : bufferSizes) {
+				// Keep StableDurationHealthComputation in sync with the buffer size used
+				// for the population's temporal pipeline. The optimizer reads
+				// SDHC.getBatchSize() and uses it as the buffer size for population.init,
+				// so any future code path that constructs an SDHC during a sweep iteration
+				// will pick up this value. The benchmark itself bypasses SDHC, but mirroring
+				// the value here keeps both paths consistent if the benchmark is later
+				// extended to drive the health loop.
+				StableDurationHealthComputation.defaultBatchSize = bufferSize;
+
+				for (int totalMeasures : measures) {
+					if (runMulti) {
+						List<Integer> channelList = resolveMultiChannels(multiChannelsSpec, totalMeasures);
+						if (reuseScene) {
+							results.addAll(runReuseSceneMulti(totalMeasures, channelList,
+									featureLevel, bufferSize, genomePool, profileDir, timelineDir,
+									disableProfile, repeats, markerDir, clearAudioCache, interRepeatPauseMs));
+						} else {
+							for (int r = 0; r < repeats; r++) {
+								results.add(runMultiChannel(totalMeasures, channelList, featureLevel,
+										bufferSize, genomePool.get(r), profileDir, timelineDir,
+										disableProfile, r, r == 0));
+								if (clearAudioCache) NoteAudioProvider.clearCache();
+								pauseForExternalSnapshot(markerDir, "multi-b" + bufferSize,
+										totalMeasures, r, interRepeatPauseMs);
+							}
 						}
 					}
-				}
-				if (runSingle) {
-					for (int r = 0; r < repeats; r++) {
-						results.add(runSingleChannel(totalMeasures, channel, featureLevel,
-								profileDir, timelineDir, disableProfile, r, r == 0));
-						if (clearAudioCache) NoteAudioProvider.clearCache();
-						pauseForExternalSnapshot(markerDir, "single", totalMeasures, r,
-								interRepeatPauseMs);
+					if (runSingle) {
+						for (int r = 0; r < repeats; r++) {
+							results.add(runSingleChannel(totalMeasures, channel, featureLevel,
+									bufferSize, genomePool.get(r), profileDir, timelineDir,
+									disableProfile, r, r == 0));
+							if (clearAudioCache) NoteAudioProvider.clearCache();
+							pauseForExternalSnapshot(markerDir, "single-b" + bufferSize,
+									totalMeasures, r, interRepeatPauseMs);
+						}
 					}
 				}
 			}
@@ -521,6 +569,9 @@ public class AudioSceneBenchmark {
 	 * @param totalMeasures   number of measures to render
 	 * @param channels        pattern channel indices to include in the render
 	 * @param featureLevel    feature level applied (recorded in the result row)
+	 * @param bufferSize      audio frames advanced per tick of the realtime runner
+	 * @param genome          genome to apply to the scene; reused across buffer-size iterations
+	 *                        so buffer size is the only variable in the comparison
 	 * @param profileDir      directory where the profile XML will be written
 	 * @param timelineDir     directory where the per-tick timeline CSV will be written
 	 * @param disableProfile  when {@code true}, skips {@link OperationProfileNode} capture
@@ -529,13 +580,15 @@ public class AudioSceneBenchmark {
 	 * @return the benchmark result
 	 */
 	public static BenchmarkResult runMultiChannel(int totalMeasures, List<Integer> channels,
-												  int featureLevel, String profileDir,
-												  String timelineDir, boolean disableProfile,
-												  int repeat, boolean warmup) {
+												  int featureLevel, int bufferSize,
+												  Genome<PackedCollection> genome,
+												  String profileDir, String timelineDir,
+												  boolean disableProfile, int repeat, boolean warmup) {
 		long sectionStart = System.currentTimeMillis();
 
 		String channelsLabel = channels.stream().map(String::valueOf).collect(Collectors.joining(","));
-		String tag = "multi-c" + channelsLabel.replace(",", "_") + "-" + totalMeasures + "m-r" + repeat;
+		String tag = "multi-c" + channelsLabel.replace(",", "_") + "-" + totalMeasures
+				+ "m-b" + bufferSize + "-r" + repeat;
 		String wavPath = "results/benchmark-" + tag + ".wav";
 		String profileXmlPath = disableProfile ? null : profileDir + "/benchmark-" + tag + ".xml";
 		String timelineCsvPath = timelineDir + "/benchmark-" + tag + ".csv";
@@ -548,14 +601,13 @@ public class AudioSceneBenchmark {
 
 			double audioSeconds = scene.getContext().getTimeForDuration().applyAsDouble(totalMeasures);
 			int frames = scene.getContext().getFrameForPosition().applyAsInt(totalMeasures);
-			int bufferCount = (frames + BUFFER_SIZE - 1) / BUFFER_SIZE;
+			int bufferCount = (frames + bufferSize - 1) / bufferSize;
 
-			Genome<PackedCollection> genome = scene.getGenome().random();
 			pop = new AudioScenePopulation(scene, List.of(genome));
 
 			File outFile = new File(wavPath);
 			WaveOutput out = new WaveOutput(() -> outFile, 24, true);
-			pop.init(genome, new MultiChannelAudioOutput(out), channels, BUFFER_SIZE);
+			pop.init(genome, new MultiChannelAudioOutput(out), channels, bufferSize);
 
 			TemporalCellular cells = pop.enableGenome(0);
 			Runnable setup = cells.setup().get();
@@ -584,7 +636,7 @@ public class AudioSceneBenchmark {
 				if (profile != null) saveProfile(profile, profileXmlPath);
 				long sectionMs = System.currentTimeMillis() - sectionStart;
 				BenchmarkResult result = new BenchmarkResult("multi", totalMeasures, channelsLabel,
-						featureLevel, audioSeconds, frames, setupMs, tickStats, sectionMs,
+						featureLevel, audioSeconds, frames, bufferSize, setupMs, tickStats, sectionMs,
 						profileXmlPath, timelineCsvPath, wavPath, repeat, warmup);
 				Console.root().println(formatResultLine(result));
 				return result;
@@ -609,6 +661,10 @@ public class AudioSceneBenchmark {
 	 * @param totalMeasures   number of measures to render
 	 * @param channels        pattern channel indices to include in the render
 	 * @param featureLevel    feature level applied (recorded in the result row)
+	 * @param bufferSize      audio frames advanced per tick of the realtime runner
+	 * @param genomes         pre-generated genomes to evaluate (size must equal {@code repeats});
+	 *                        reused across buffer-size iterations so buffer size is the only
+	 *                        variable in the comparison
 	 * @param profileDir      directory where the profile XML will be written
 	 * @param timelineDir     directory where the per-tick timeline CSV will be written
 	 * @param disableProfile  when {@code true}, skips {@link OperationProfileNode} capture
@@ -619,10 +675,12 @@ public class AudioSceneBenchmark {
 	 * @return one {@link BenchmarkResult} per repetition
 	 */
 	public static List<BenchmarkResult> runReuseSceneMulti(int totalMeasures, List<Integer> channels,
-														   int featureLevel, String profileDir,
-														   String timelineDir, boolean disableProfile,
-														   int repeats, Path markerDir,
-														   boolean clearAudioCache, long interRepeatPauseMs) {
+														   int featureLevel, int bufferSize,
+														   List<Genome<PackedCollection>> genomes,
+														   String profileDir, String timelineDir,
+														   boolean disableProfile, int repeats,
+														   Path markerDir, boolean clearAudioCache,
+														   long interRepeatPauseMs) {
 		List<BenchmarkResult> results = new ArrayList<>();
 		String channelsLabel = channels.stream().map(String::valueOf).collect(Collectors.joining(","));
 
@@ -633,21 +691,21 @@ public class AudioSceneBenchmark {
 
 			double audioSeconds = scene.getContext().getTimeForDuration().applyAsDouble(totalMeasures);
 			int frames = scene.getContext().getFrameForPosition().applyAsInt(totalMeasures);
-			int bufferCount = (frames + BUFFER_SIZE - 1) / BUFFER_SIZE;
+			int bufferCount = (frames + bufferSize - 1) / bufferSize;
 
-			List<Genome<PackedCollection>> genomes = new ArrayList<>();
-			for (int r = 0; r < repeats; r++) genomes.add(scene.getGenome().random());
 			pop = new AudioScenePopulation(scene, genomes);
 
 			String wavPath0 = "results/benchmark-multi-c"
-					+ channelsLabel.replace(",", "_") + "-" + totalMeasures + "m-reuse-r0.wav";
+					+ channelsLabel.replace(",", "_") + "-" + totalMeasures
+					+ "m-b" + bufferSize + "-reuse-r0.wav";
 			File outFile = new File(wavPath0);
 			WaveOutput out = new WaveOutput(() -> outFile, 24, true);
-			pop.init(genomes.get(0), new MultiChannelAudioOutput(out), channels, BUFFER_SIZE);
+			pop.init(genomes.get(0), new MultiChannelAudioOutput(out), channels, bufferSize);
 
 			for (int r = 0; r < repeats; r++) {
 				long sectionStart = System.currentTimeMillis();
-				String tag = "multi-c" + channelsLabel.replace(",", "_") + "-" + totalMeasures + "m-reuse-r" + r;
+				String tag = "multi-c" + channelsLabel.replace(",", "_") + "-" + totalMeasures
+						+ "m-b" + bufferSize + "-reuse-r" + r;
 				String profileXmlPath = disableProfile ? null : profileDir + "/benchmark-" + tag + ".xml";
 				String timelineCsvPath = timelineDir + "/benchmark-" + tag + ".csv";
 				String wavPath = "results/benchmark-" + tag + ".wav";
@@ -679,7 +737,7 @@ public class AudioSceneBenchmark {
 					if (profile != null) saveProfile(profile, profileXmlPath);
 					long sectionMs = System.currentTimeMillis() - sectionStart;
 					BenchmarkResult result = new BenchmarkResult("multi-reuse", totalMeasures, channelsLabel,
-							featureLevel, audioSeconds, frames, setupMs, tickStats, sectionMs,
+							featureLevel, audioSeconds, frames, bufferSize, setupMs, tickStats, sectionMs,
 							profileXmlPath, timelineCsvPath, wavPath, r, r == 0);
 					Console.root().println(formatResultLine(result));
 					results.add(result);
@@ -706,6 +764,9 @@ public class AudioSceneBenchmark {
 	 * @param totalMeasures   number of measures to render
 	 * @param channel         pattern channel index to render
 	 * @param featureLevel    feature level applied (recorded in the result row)
+	 * @param bufferSize      audio frames advanced per tick of the realtime runner
+	 * @param genome          genome to apply to the scene; reused across buffer-size iterations
+	 *                        so buffer size is the only variable in the comparison
 	 * @param profileDir      directory where the profile XML will be written
 	 * @param timelineDir     directory where the per-tick timeline CSV will be written
 	 * @param disableProfile  when {@code true}, skips {@link OperationProfileNode} capture
@@ -714,11 +775,12 @@ public class AudioSceneBenchmark {
 	 * @return the benchmark result
 	 */
 	public static BenchmarkResult runSingleChannel(int totalMeasures, int channel, int featureLevel,
+													int bufferSize, Genome<PackedCollection> genome,
 													String profileDir, String timelineDir,
 													boolean disableProfile, int repeat, boolean warmup) {
 		long sectionStart = System.currentTimeMillis();
 
-		String tag = "single-c" + channel + "-" + totalMeasures + "m-r" + repeat;
+		String tag = "single-c" + channel + "-" + totalMeasures + "m-b" + bufferSize + "-r" + repeat;
 		String wavPath = "results/benchmark-" + tag + ".wav";
 		String profileXmlPath = disableProfile ? null : profileDir + "/benchmark-" + tag + ".xml";
 		String timelineCsvPath = timelineDir + "/benchmark-" + tag + ".csv";
@@ -732,14 +794,13 @@ public class AudioSceneBenchmark {
 			ChannelInfo info = new ChannelInfo(channel);
 			double audioSeconds = scene.getContext(List.of(info)).getTimeForDuration().applyAsDouble(totalMeasures);
 			int frames = scene.getContext(List.of(info)).getFrameForPosition().applyAsInt(totalMeasures);
-			int bufferCount = (frames + BUFFER_SIZE - 1) / BUFFER_SIZE;
+			int bufferCount = (frames + bufferSize - 1) / bufferSize;
 
-			Genome<PackedCollection> genome = scene.getGenome().random();
 			pop = new AudioScenePopulation(scene, List.of(genome));
 
 			File outFile = new File(wavPath);
 			WaveOutput out = new WaveOutput(() -> outFile, 24, true);
-			pop.init(genome, new MultiChannelAudioOutput(out), List.of(channel), BUFFER_SIZE);
+			pop.init(genome, new MultiChannelAudioOutput(out), List.of(channel), bufferSize);
 
 			TemporalCellular cells = pop.enableGenome(0);
 			Runnable setup = cells.setup().get();
@@ -768,7 +829,7 @@ public class AudioSceneBenchmark {
 				if (profile != null) saveProfile(profile, profileXmlPath);
 				long sectionMs = System.currentTimeMillis() - sectionStart;
 				BenchmarkResult result = new BenchmarkResult("single", totalMeasures,
-						String.valueOf(channel), featureLevel, audioSeconds, frames, setupMs,
+						String.valueOf(channel), featureLevel, audioSeconds, frames, bufferSize, setupMs,
 						tickStats, sectionMs, profileXmlPath, timelineCsvPath, wavPath, repeat, warmup);
 				Console.root().println(formatResultLine(result));
 				return result;
@@ -840,6 +901,32 @@ public class AudioSceneBenchmark {
 		int[] out = new int[values.size()];
 		for (int i = 0; i < out.length; i++) out[i] = values.get(i);
 		return out;
+	}
+
+	/**
+	 * Builds a fixed pool of random genomes from a probe scene. The same pool is reused for
+	 * every (mode, bufferSize, totalMeasures) combination so that buffer-size comparisons
+	 * isolate the buffer-size effect from the variance introduced by different genomes
+	 * (note density, active filter counts, sample selection). Genomes generated here are
+	 * structurally compatible with any other scene constructed by {@link AudioSceneOptimizer#createScene}
+	 * since chromosome layout depends only on feature level (held constant for a sweep).
+	 *
+	 * @param probeMeasures total-measures value used to materialize the probe scene; any value
+	 *                      from {@link #DURATIONS_PROPERTY} works since genome structure is
+	 *                      independent of duration
+	 * @param size          number of genomes to generate (typically equals {@code repeats})
+	 * @return an immutable list of {@code size} genomes
+	 */
+	private static List<Genome<PackedCollection>> buildGenomePool(int probeMeasures, int size) {
+		AudioScene<?> probe = AudioSceneOptimizer.createScene();
+		try {
+			probe.setTotalMeasures(probeMeasures);
+			List<Genome<PackedCollection>> genomes = new ArrayList<>(size);
+			for (int i = 0; i < size; i++) genomes.add(probe.getGenome().random());
+			return Collections.unmodifiableList(genomes);
+		} finally {
+			probe.destroy();
+		}
 	}
 
 	/**
@@ -921,11 +1008,11 @@ public class AudioSceneBenchmark {
 	private static String formatResultLine(BenchmarkResult r) {
 		TickStats t = r.getTickStats();
 		return String.format(
-				"[bench] mode=%s ch=%s fl=%d measures=%d audio=%.3fs setup=%dms tick_total=%dms "
-						+ "render=%dms section=%dms ratio=%.3f tick(p50=%d p95=%d max=%d "
+				"[bench] mode=%s ch=%s fl=%d measures=%d buf=%d ticks=%d audio=%.3fs setup=%dms "
+						+ "tick_total=%dms render=%dms section=%dms ratio=%.3f tick(p50=%d p95=%d max=%d "
 						+ "first10=%d last10=%d) repeat=%d%s",
-				r.mode, r.channels, r.featureLevel, r.measures, r.audioSeconds,
-				r.setupMs, t.getTotalMs(), r.renderMs, r.sectionMs, r.getRatio(),
+				r.mode, r.channels, r.featureLevel, r.measures, r.bufferSize, t.getCount(),
+				r.audioSeconds, r.setupMs, t.getTotalMs(), r.renderMs, r.sectionMs, r.getRatio(),
 				t.getP50Ms(), t.getP95Ms(), t.getMaxMs(),
 				t.getFirstDecileMs(), t.getLastDecileMs(),
 				r.repeat, r.warmup ? " (warmup)" : "");
@@ -945,15 +1032,16 @@ public class AudioSceneBenchmark {
 		if (parent != null && !parent.exists()) parent.mkdirs();
 
 		try (PrintWriter w = new PrintWriter(f, "UTF-8")) {
-			w.println("mode,measures,channels,feature_level,audio_seconds,frames,"
+			w.println("mode,measures,channels,feature_level,buffer_size,audio_seconds,frames,"
 					+ "setup_ms,tick_total_ms,render_ms,section_ms,"
 					+ "tick_count,tick_min_ms,tick_p50_ms,tick_p95_ms,tick_max_ms,"
 					+ "tick_first_decile_ms,tick_last_decile_ms,"
 					+ "ratio,setup_ratio,tick_ratio,profile_xml,timeline_csv,wav_path,repeat,warmup");
 			for (BenchmarkResult r : results) {
 				TickStats t = r.getTickStats();
-				w.printf("%s,%d,\"%s\",%d,%.6f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.6f,%.6f,%.6f,%s,%s,%s,%d,%s%n",
-						r.mode, r.measures, r.channels, r.featureLevel, r.audioSeconds, r.frames,
+				w.printf("%s,%d,\"%s\",%d,%d,%.6f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.6f,%.6f,%.6f,%s,%s,%s,%d,%s%n",
+						r.mode, r.measures, r.channels, r.featureLevel, r.bufferSize,
+						r.audioSeconds, r.frames,
 						r.setupMs, t.getTotalMs(), r.renderMs, r.sectionMs,
 						t.getCount(), t.getMinMs(), t.getP50Ms(), t.getP95Ms(), t.getMaxMs(),
 						t.getFirstDecileMs(), t.getLastDecileMs(),
@@ -980,16 +1068,17 @@ public class AudioSceneBenchmark {
 	private static void printSummary(List<BenchmarkResult> results, long totalMs) {
 		Console.root().println("=== AudioSceneBenchmark Summary ===");
 		Console.root().println(String.format(
-				"%-7s %-9s %-7s %-6s %-13s %-10s %-9s %-11s %-10s %-12s %-7s %-9s %-9s",
-				"mode", "measures", "ch", "fl", "audio_s", "frames",
+				"%-12s %-9s %-7s %-6s %-7s %-7s %-13s %-10s %-9s %-11s %-10s %-12s %-7s %-9s %-9s",
+				"mode", "measures", "ch", "fl", "buf", "ticks", "audio_s", "frames",
 				"setup_ms", "tick_total", "render_ms", "section_ms", "ratio",
 				"first10ms", "last10ms"));
 
 		for (BenchmarkResult r : results) {
 			TickStats t = r.getTickStats();
 			Console.root().println(String.format(
-					"%-7s %-9d %-7s %-6d %-13.3f %-10d %-9d %-11d %-10d %-12d %-7.3f %-9d %-9d%s",
+					"%-12s %-9d %-7s %-6d %-7d %-7d %-13.3f %-10d %-9d %-11d %-10d %-12d %-7.3f %-9d %-9d%s",
 					r.mode, r.measures, r.channels, r.featureLevel,
+					r.bufferSize, t.getCount(),
 					r.audioSeconds, r.frames, r.setupMs, t.getTotalMs(),
 					r.renderMs, r.sectionMs, r.getRatio(),
 					t.getFirstDecileMs(), t.getLastDecileMs(),
