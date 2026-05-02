@@ -583,4 +583,37 @@ public interface AudioDspInterpreterFeatures
 		}
 		return fanOutBlock(toInt(args.get(0)), signalSize);
 	}
+
+	/**
+	 * Validates and delegates to {@link MultiChannelDspFeatures#delayNetworkBlock}.
+	 *
+	 * <p>The PDSL surface is:</p>
+	 * <pre>
+	 *   delay_network(delay_samples, feedback_matrix, buffer, heads)
+	 * </pre>
+	 *
+	 * <p>{@code delay_samples} accepts shape {@code [channels]} as either a
+	 * {@link PackedCollection} or a {@link Producer}; {@code feedback_matrix}
+	 * accepts shape {@code [channels, channels]} likewise. {@code buffer} and
+	 * {@code heads} are caller-owned {@link PackedCollection} state slots.</p>
+	 *
+	 * @param args       four arguments: per-line delays, feedback matrix, buffer, heads
+	 * @param channels   number of delay lines (from PDSL environment)
+	 * @param signalSize samples per channel (from PDSL environment)
+	 * @return the closed-loop delay-network {@link Block}
+	 */
+	default Block callDelayNetwork(List<Object> args, int channels, int signalSize) {
+		if (args.size() != 4) {
+			throw new PdslParseException(
+					"delay_network() expects 4 arguments (delay_samples, feedback_matrix, "
+							+ "buffer, heads), got " + args.size());
+		}
+		CollectionProducer delays = bindProducerArg(args.get(0), shape(channels),
+				"delay_network() delay_samples");
+		CollectionProducer feedback = bindProducerArg(args.get(1), shape(channels, channels),
+				"delay_network() feedback_matrix");
+		PackedCollection buffer = (PackedCollection) args.get(2);
+		PackedCollection heads = (PackedCollection) args.get(3);
+		return delayNetworkBlock(delays, feedback, buffer, heads, channels, signalSize);
+	}
 }

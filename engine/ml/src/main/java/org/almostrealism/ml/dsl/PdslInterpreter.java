@@ -706,6 +706,11 @@ public class PdslInterpreter {
 			return FEATURES.callFanOut(args,
 					AudioDspInterpreterFeatures.toInt(env.get("signal_size")));
 		}
+		if ("delay_network".equals(name)) {
+			return FEATURES.callDelayNetwork(args,
+					AudioDspInterpreterFeatures.toInt(env.get("channels")),
+					AudioDspInterpreterFeatures.toInt(env.get("signal_size")));
+		}
 
 		// Try built-in functions first
 		Object builtinResult = tryCallBuiltin(name, args);

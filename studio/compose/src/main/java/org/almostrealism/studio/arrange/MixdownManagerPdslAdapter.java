@@ -86,9 +86,11 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		public final double wetLevel;
 		/** Static delay length in samples (PDSL {@code delay_samples} producer; rendered as a constant). */
 		public final int delaySamples;
+		/** Master-bus headroom multiplier mirroring {@link MixdownManager#masterBusGain}. */
+		public final double masterBusGain;
 
 		/**
-		 * Creates a configuration record.
+		 * Creates a configuration record using the project default master-bus gain.
 		 *
 		 * @param channels     audio channel count
 		 * @param signalSize   samples per pass
@@ -99,12 +101,34 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		 */
 		public Config(int channels, int signalSize, int sampleRate, int filterOrder,
 					  double wetLevel, int delaySamples) {
+			this(channels, signalSize, sampleRate, filterOrder, wetLevel, delaySamples,
+					MixdownManager.masterBusGain);
+		}
+
+		/**
+		 * Creates a configuration record with an explicit master-bus gain. The PDSL
+		 * {@code mixdown_master} layer applies {@code scale(master_gain)} followed by
+		 * {@code tanh_act()} as its master shaping stage, mirroring
+		 * {@code MixdownManager.createEfx()} lines 770-782.
+		 *
+		 * @param channels      audio channel count
+		 * @param signalSize    samples per pass
+		 * @param sampleRate    audio sample rate (Hz)
+		 * @param filterOrder   FIR filter order
+		 * @param wetLevel      wet-send scalar level
+		 * @param delaySamples  static integer delay length in samples
+		 * @param masterBusGain master-bus headroom multiplier (use {@code 1.0} to disable
+		 *                      the gain stage; the saturation stage still bounds peaks)
+		 */
+		public Config(int channels, int signalSize, int sampleRate, int filterOrder,
+					  double wetLevel, int delaySamples, double masterBusGain) {
 			this.channels = channels;
 			this.signalSize = signalSize;
 			this.sampleRate = sampleRate;
 			this.filterOrder = filterOrder;
 			this.wetLevel = wetLevel;
 			this.delaySamples = delaySamples;
+			this.masterBusGain = masterBusGain;
 		}
 	}
 
@@ -171,6 +195,16 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// re-reads the slot every forward pass, so mutating it between renders
 		// updates the routing without rebuilding the layer.
 		args.put("transmission", transmissionMatrix(manager, config));
+
+		// master_gain: producer([1])
+		// Mirrors MixdownManager.createEfx() line 770-781:
+		//   if (masterBusGain != 1.0) main = main.map(... bound(in*gain, -1, 1) ...)
+		// Sourced from Config.masterBusGain (defaults to MixdownManager.masterBusGain).
+		// The PDSL master path also applies tanh_act() after this scale to bound the
+		// output, replacing the Java path's hard clip with a soft saturator. The two
+		// stages together replicate the master shaping the original Java pipeline
+		// applies just before the output receptor.
+		args.put("master_gain", config.masterBusGain);
 
 		// buffers, heads — fresh state slots, sized to match the PDSL subscript
 		// convention (buffers indexed by channel via 'buffers[channel]' carves

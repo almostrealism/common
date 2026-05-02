@@ -159,6 +159,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 
 		File javaWav = new File(outputDir, "mixdown_manager_java_path.wav");
 		File pdslWav = new File(outputDir, "mixdown_manager_pdsl_path.wav");
+		File diffWav = new File(outputDir, "mixdown_manager_diff.wav");
 
 		double[] javaSamples = renderJavaPath(mixdown, automation, time, javaWav);
 		double[] pdslSamples = renderPdslPath(mixdown, pdslWav);
@@ -175,23 +176,64 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 				pdslSamples.length, pdslEnergy,
 				Math.sqrt(pdslEnergy / pdslSamples.length), peakOf(pdslSamples)));
 
+		// Sample-by-sample difference WAV — the audible answer to whether the two
+		// paths produce acoustically equivalent output. Scaled by max(|diff|) so
+		// even subtle deviations are audible; the scale factor is logged.
+		writeDiffWav(javaSamples, pdslSamples, diffWav);
+
 		Assert.assertTrue("Java path WAV must be non-empty", javaWav.length() > 0);
 		Assert.assertTrue("PDSL path WAV must be non-empty", pdslWav.length() > 0);
+		Assert.assertTrue("Diff path WAV must be non-empty", diffWav.length() > 0);
 		Assert.assertTrue("Java path must produce non-silent audio (energy=" + javaEnergy + ")",
 				javaEnergy > 1e-9);
 		Assert.assertTrue("PDSL path must produce non-silent audio (energy=" + pdslEnergy + ")",
 				pdslEnergy > 1e-9);
 
-		// Honest divergence reporting: log per-pass energy ratio. We do NOT assert
-		// a tight tolerance — the FIR/IIR mismatch on the wet filter and the
-		// per-channel-vs-shared HP cutoff make exact equivalence structurally
-		// impossible. A path that produces audio in the same dynamic range is
-		// the success criterion.
 		double ratio = javaEnergy <= 0 ? 0.0 : pdslEnergy / javaEnergy;
 		log(String.format("Energy ratio PDSL/Java = %.4f (1.0 == match)", ratio));
+
+		// The PDSL master stage now applies scale(master_gain) + tanh_act() to
+		// match the Java master-bus stage (masterBusGain * bound(., -1, 1)) at
+		// MixdownManager.java:770-782. The remaining structural mismatches — IIR
+		// vs FIR wet filter and per-channel vs shared HP cutoff — produce a
+		// sub-octave (≤ ~6×) energy gap that cannot be closed without changing
+		// either path. This bound is tight enough to catch a regression that
+		// re-removes the master-bus stage (which produced ratios ~24×) while
+		// honest about the residual structural drift; see PDSL_AUDIO_DSP.md
+		// Section 8 ("What Is Complete" → real-audio verification).
 		Assert.assertTrue(
-				"PDSL energy must be within 100x of Java energy (ratio=" + ratio + ")",
-				ratio > 0.01 && ratio < 100.0);
+				"PDSL/Java energy ratio out of range — expected within 1/6× to 6× "
+						+ "of Java energy after master shaping (ratio=" + ratio + ")",
+				ratio > 1.0 / 6.0 && ratio < 6.0);
+	}
+
+	/**
+	 * Writes a WAV file containing the sample-by-sample difference between the Java and
+	 * PDSL paths, normalised so the loudest absolute value sits at ±0.95 (so the diff
+	 * is audible even when the absolute deviation is small). The applied scale factor
+	 * is logged.
+	 *
+	 * @param javaSamples mono Java-path output
+	 * @param pdslSamples mono PDSL-path output
+	 * @param outputFile  destination WAV
+	 */
+	private void writeDiffWav(double[] javaSamples, double[] pdslSamples, File outputFile)
+			throws IOException {
+		int n = Math.min(javaSamples.length, pdslSamples.length);
+		double[] diff = new double[n];
+		double peak = 0.0;
+		for (int i = 0; i < n; i++) {
+			diff[i] = pdslSamples[i] - javaSamples[i];
+			double a = Math.abs(diff[i]);
+			if (a > peak) peak = a;
+		}
+		double scale = peak > 0.0 ? 0.95 / peak : 1.0;
+		float[] floatSamples = new float[n];
+		for (int i = 0; i < n; i++) {
+			floatSamples[i] = (float) Math.max(-1.0, Math.min(1.0, diff[i] * scale));
+		}
+		log(String.format("Diff WAV peak=%.6f, scale-to-fullscale=%.6f", peak, scale));
+		PdslAudioDemoTest.writeDemoWav(outputFile, floatSamples, SAMPLE_RATE);
 	}
 
 	/**
