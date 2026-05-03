@@ -243,7 +243,12 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
     # ------------------------------------------------------------------
 
     async def list_tasks(request: Request) -> JSONResponse:
-        """GET /v1/tasks"""
+        """GET /v1/tasks
+
+        Accepts an optional ``fields`` query parameter:
+        - ``full`` (default) — returns all fields including description.
+        - ``headlines`` — omits description; use when scanning large backlogs.
+        """
         auth_err = await _check_auth(request)
         if auth_err:
             return auth_err
@@ -262,6 +267,12 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
                 {"ok": False, "error": f"status must be one of: {sorted(_VALID_STATUSES)}"},
                 status_code=400,
             )
+        fields = qp.get("fields", "full")
+        if fields not in ("full", "headlines"):
+            return JSONResponse(
+                {"ok": False, "error": "fields must be 'full' or 'headlines'"},
+                status_code=400,
+            )
         result = store.list_tasks(
             project_id=qp.get("project_id") or None,
             release_id=qp.get("release_id") or None,
@@ -271,6 +282,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             offset=offset,
             sort=qp.get("sort", "created_at"),
             order=qp.get("order", "desc"),
+            headlines_only=(fields == "headlines"),
         )
         return JSONResponse({"ok": True, **result})
 
@@ -394,7 +406,12 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
     # ------------------------------------------------------------------
 
     async def search_tasks(request: Request) -> JSONResponse:
-        """GET /v1/search/tasks"""
+        """GET /v1/search/tasks
+
+        Accepts an optional ``fields`` query parameter:
+        - ``full`` (default) — returns all fields including description.
+        - ``headlines`` — omits description; use when scanning large backlogs.
+        """
         auth_err = await _check_auth(request)
         if auth_err:
             return auth_err
@@ -412,14 +429,37 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
                 {"ok": False, "error": "limit and offset must be integers"},
                 status_code=400,
             )
+        fields = qp.get("fields", "full")
+        if fields not in ("full", "headlines"):
+            return JSONResponse(
+                {"ok": False, "error": "fields must be 'full' or 'headlines'"},
+                status_code=400,
+            )
         result = store.search_tasks(
             query=query,
             project_id=qp.get("project_id") or None,
             status=qp.get("status") or None,
             limit=limit,
             offset=offset,
+            headlines_only=(fields == "headlines"),
         )
         return JSONResponse({"ok": True, **result})
+
+    # ------------------------------------------------------------------
+    # Project summary
+    # ------------------------------------------------------------------
+
+    async def project_summary(request: Request) -> JSONResponse:
+        """GET /v1/projects/{id}/summary"""
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        summary = store.project_summary(request.path_params["id"])
+        if summary is None:
+            return JSONResponse(
+                {"ok": False, "error": "Project not found"}, status_code=404
+            )
+        return JSONResponse({"ok": True, "summary": summary})
 
     # ------------------------------------------------------------------
     # Bulk import
@@ -515,6 +555,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Route("/v1/projects/{id}", get_project, methods=["GET"]),
         Route("/v1/projects/{id}", update_project, methods=["PUT"]),
         Route("/v1/projects/{id}", delete_project, methods=["DELETE"]),
+        Route("/v1/projects/{id}/summary", project_summary, methods=["GET"]),
         Route("/v1/projects/{id}/tasks", project_tasks, methods=["GET"]),
         Route("/v1/releases", list_releases, methods=["GET"]),
         Route("/v1/releases", create_release, methods=["POST"]),

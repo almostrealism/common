@@ -330,6 +330,169 @@ class TestSearch(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
 
 
+class TestHeadlines(unittest.TestCase):
+    """Tests for the fields=headlines projection on list and search."""
+
+    def setUp(self):
+        self.client, self.store, self.db_path = _make_client()
+        self.client.post(
+            "/v1/tasks",
+            json={"title": "First task", "description": "Long description here"},
+        )
+        self.client.post(
+            "/v1/tasks",
+            json={"title": "Second task", "description": "Another long description"},
+        )
+
+    def tearDown(self):
+        os.unlink(self.db_path)
+
+    def test_list_full_includes_description(self):
+        resp = self.client.get("/v1/tasks?fields=full")
+        self.assertEqual(resp.status_code, 200)
+        task = resp.json()["tasks"][0]
+        self.assertIn("description", task)
+
+    def test_list_headlines_omits_description(self):
+        resp = self.client.get("/v1/tasks?fields=headlines")
+        self.assertEqual(resp.status_code, 200)
+        tasks = resp.json()["tasks"]
+        self.assertEqual(len(tasks), 2)
+        for task in tasks:
+            self.assertNotIn("description", task)
+            self.assertIn("id", task)
+            self.assertIn("title", task)
+            self.assertIn("priority", task)
+            self.assertIn("status", task)
+            self.assertIn("created_at", task)
+
+    def test_list_default_is_full(self):
+        resp = self.client.get("/v1/tasks")
+        task = resp.json()["tasks"][0]
+        self.assertIn("description", task)
+
+    def test_list_invalid_fields_rejected(self):
+        resp = self.client.get("/v1/tasks?fields=invalid")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_search_headlines_omits_description(self):
+        resp = self.client.get("/v1/search/tasks?q=task&fields=headlines")
+        self.assertEqual(resp.status_code, 200)
+        tasks = resp.json()["tasks"]
+        self.assertGreater(len(tasks), 0)
+        for task in tasks:
+            self.assertNotIn("description", task)
+            self.assertIn("title", task)
+
+    def test_search_full_includes_description(self):
+        resp = self.client.get("/v1/search/tasks?q=task&fields=full")
+        self.assertEqual(resp.status_code, 200)
+        tasks = resp.json()["tasks"]
+        self.assertGreater(len(tasks), 0)
+        for task in tasks:
+            self.assertIn("description", task)
+
+    def test_search_invalid_fields_rejected(self):
+        resp = self.client.get("/v1/search/tasks?q=task&fields=invalid")
+        self.assertEqual(resp.status_code, 400)
+
+
+class TestProjectSummary(unittest.TestCase):
+    """Tests for GET /v1/projects/{id}/summary."""
+
+    def setUp(self):
+        self.client, self.store, self.db_path = _make_client()
+        proj_resp = self.client.post("/v1/projects", json={"name": "Rings"})
+        self.project_id = proj_resp.json()["project"]["id"]
+        rel_resp = self.client.post(
+            "/v1/releases", json={"name": "0.38", "project_id": self.project_id}
+        )
+        self.release_id = rel_resp.json()["release"]["id"]
+
+    def tearDown(self):
+        os.unlink(self.db_path)
+
+    def test_summary_empty_project(self):
+        resp = self.client.get(f"/v1/projects/{self.project_id}/summary")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertTrue(body["ok"])
+        s = body["summary"]
+        self.assertEqual(s["total_tasks"], 0)
+        self.assertEqual(s["by_status"], {})
+        self.assertEqual(s["by_priority"], {})
+
+    def test_summary_counts_tasks(self):
+        self.client.post(
+            "/v1/tasks",
+            json={"title": "Open", "project_id": self.project_id, "priority": 1},
+        )
+        self.client.post(
+            "/v1/tasks",
+            json={
+                "title": "Closed",
+                "project_id": self.project_id,
+                "status": "closed",
+                "release_id": self.release_id,
+            },
+        )
+        resp = self.client.get(f"/v1/projects/{self.project_id}/summary")
+        s = resp.json()["summary"]
+        self.assertEqual(s["total_tasks"], 2)
+        self.assertEqual(s["by_status"]["open"], 1)
+        self.assertEqual(s["by_status"]["closed"], 1)
+        self.assertEqual(s["by_priority"]["1"], 1)
+        self.assertEqual(s["by_priority"]["0"], 1)
+
+    def test_summary_by_release(self):
+        self.client.post(
+            "/v1/tasks",
+            json={
+                "title": "In release",
+                "project_id": self.project_id,
+                "release_id": self.release_id,
+            },
+        )
+        self.client.post(
+            "/v1/tasks",
+            json={"title": "No release", "project_id": self.project_id},
+        )
+        resp = self.client.get(f"/v1/projects/{self.project_id}/summary")
+        s = resp.json()["summary"]
+        by_release = {(r["release_id"], r["release_name"]): r for r in s["by_release"]}
+        self.assertIn((self.release_id, "0.38"), by_release)
+        self.assertEqual(by_release[(self.release_id, "0.38")]["task_count"], 1)
+        # Entry for tasks with no release
+        self.assertIn((None, None), by_release)
+        self.assertEqual(by_release[(None, None)]["task_count"], 1)
+
+    def test_summary_by_workstream(self):
+        self.client.post(
+            "/v1/tasks",
+            json={
+                "title": "With ws",
+                "project_id": self.project_id,
+                "workstream_id": "ws-abc",
+            },
+        )
+        self.client.post(
+            "/v1/tasks",
+            json={"title": "No ws", "project_id": self.project_id},
+        )
+        resp = self.client.get(f"/v1/projects/{self.project_id}/summary")
+        s = resp.json()["summary"]
+        by_ws = {e["workstream_id"]: e for e in s["by_workstream"]}
+        self.assertIn("ws-abc", by_ws)
+        self.assertEqual(by_ws["ws-abc"]["task_count"], 1)
+        self.assertEqual(by_ws["ws-abc"]["open_count"], 1)
+        self.assertIn(None, by_ws)
+        self.assertEqual(by_ws[None]["task_count"], 1)
+
+    def test_summary_nonexistent_project_returns_404(self):
+        resp = self.client.get("/v1/projects/does-not-exist/summary")
+        self.assertEqual(resp.status_code, 404)
+
+
 class TestBulkImport(unittest.TestCase):
 
     def setUp(self):

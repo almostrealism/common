@@ -4254,6 +4254,10 @@ def tracker_create_task(
 def tracker_get_task(task_id: str) -> dict:
     """Get a single tracker task by ID.
 
+    The full task record is returned. Workspace scoping is enforced:
+    if the task is linked to a workstream outside the caller's scope,
+    a 404 is returned, mirroring the behaviour of tracker_list_tasks.
+
     Args:
         task_id: UUID of the task to retrieve.
 
@@ -4262,7 +4266,13 @@ def tracker_get_task(task_id: str) -> dict:
     """
     _require_scope("read")
     _audit("tracker_get_task", task_id=task_id)
-    return _tracker_get(f"/v1/tasks/{task_id}")
+    result = _tracker_get(f"/v1/tasks/{task_id}")
+    if not result.get("ok"):
+        return result
+    ws = (result.get("task") or {}).get("workstream_id", "")
+    if ws:
+        _require_workstream_in_scope(ws)
+    return result
 
 
 @mcp.tool()
@@ -4275,8 +4285,16 @@ def tracker_list_tasks(
     order: str = "",
     limit: int = 50,
     offset: int = 0,
+    fields: str = "full",
 ) -> dict:
     """List tracker tasks with optional filtering.
+
+    When scanning a large backlog (200+ tasks), pass fields="headlines" to
+    receive only the compact task projection (id, title, priority, status,
+    project_id, release_id, workstream_id, created_at, updated_at) without
+    the description field. This is significantly cheaper for callers that
+    only need to triage or count tasks. Use tracker_get_task to fetch the
+    full record for a specific task by ID.
 
     Args:
         project_id: Filter to tasks in this project (UUID).
@@ -4291,6 +4309,8 @@ def tracker_list_tasks(
             the default.
         limit: Maximum number of tasks to return. Defaults to 50, max 200.
         offset: Pagination offset. Defaults to 0.
+        fields: Projection mode. "full" (default) returns all fields
+            including description. "headlines" omits description.
 
     Returns:
         dict with ok=True, a list of tasks, and pagination info
@@ -4318,6 +4338,8 @@ def tracker_list_tasks(
         params.append(f"limit={limit}")
     if offset:
         params.append(f"offset={offset}")
+    if fields and fields != "full":
+        params.append(f"fields={fields}")
     qs = ("?" + "&".join(params)) if params else ""
     return _tracker_get(f"/v1/tasks{qs}")
 
@@ -4417,11 +4439,16 @@ def tracker_search_tasks(
     status: str = "",
     limit: int = 20,
     offset: int = 0,
+    fields: str = "full",
 ) -> dict:
     """Full-text search over tracker task titles and descriptions.
 
     Uses SQLite FTS5 for efficient full-text search. Supports
     phrase queries ("exact phrase"), NOT, AND, OR operators.
+
+    Pass fields="headlines" to receive a compact projection (no description)
+    when scanning many search results. Use tracker_get_task to retrieve the
+    full record for any result by ID.
 
     Args:
         query: Search string. Supports FTS5 query syntax.
@@ -4429,6 +4456,8 @@ def tracker_search_tasks(
         status: Optional status filter: "open" or "closed".
         limit: Maximum results to return. Defaults to 20, max 100.
         offset: Pagination offset. Defaults to 0.
+        fields: Projection mode. "full" (default) returns all fields
+            including description. "headlines" omits description.
 
     Returns:
         dict with ok=True, a list of matching tasks, and pagination info.
@@ -4444,7 +4473,63 @@ def tracker_search_tasks(
         params.append(f"limit={limit}")
     if offset:
         params.append(f"offset={offset}")
+    if fields and fields != "full":
+        params.append(f"fields={fields}")
     return _tracker_get("/v1/search/tasks?" + "&".join(params))
+
+
+@mcp.tool()
+def tracker_project_summary(project_id: str) -> dict:
+    """Return aggregate task counts for a tracker project in one call.
+
+    Use this to answer "what's the shape of project X?" without fetching
+    all task rows. Returns counts grouped by status, priority, release, and
+    workstream. This is cheaper than calling tracker_list_tasks when you
+    only need summary metrics.
+
+    Workspace scoping: the by_workstream breakdown is filtered to only
+    include workstreams accessible to the caller's token. Workstreams
+    outside scope are silently omitted (they are not counted in the
+    totals either, so by_workstream counts may not sum to total_tasks
+    when the caller is scoped).
+
+    Args:
+        project_id: UUID of the project to summarise.
+
+    Returns:
+        dict with ok=True and a summary containing:
+        - total_tasks: total task count for the project.
+        - by_status: {"open": N, "closed": N} (only keys with count > 0).
+        - by_priority: {-2: N, ..., 2: N} (only keys with count > 0).
+        - by_release: list of {release_id, release_name, task_count,
+          open_count} for each release in the project, plus one entry
+          with release_id=null for tasks with no release.
+        - by_workstream: list of {workstream_id, task_count, open_count}
+          for each workstream linked to this project, plus one entry with
+          workstream_id=null for tasks with no workstream.
+    """
+    _require_scope("read")
+    _audit("tracker_project_summary", project_id=project_id)
+    result = _tracker_get(f"/v1/projects/{project_id}/summary")
+    if not result.get("ok"):
+        return result
+    # Filter by_workstream to only include in-scope workstreams.
+    summary = result.get("summary") or {}
+    by_ws = summary.get("by_workstream") or []
+    filtered_ws = []
+    for entry in by_ws:
+        ws_id = entry.get("workstream_id")
+        if ws_id is None:
+            # Tasks with no workstream are always included.
+            filtered_ws.append(entry)
+            continue
+        try:
+            _require_workstream_in_scope(ws_id)
+            filtered_ws.append(entry)
+        except PermissionError:
+            pass
+    summary["by_workstream"] = filtered_ws
+    return result
 
 
 # ---------------------------------------------------------------------------

@@ -211,14 +211,37 @@ class TrackerStore:
         offset: int = 0,
         sort: str = "created_at",
         order: str = "desc",
+        headlines_only: bool = False,
     ) -> dict:
         """List tasks with optional filtering and pagination.
 
-        Returns a dict with 'tasks', 'total', 'limit', and 'offset'.
+        Args:
+            project_id: Filter to tasks in this project.
+            release_id: Filter to tasks in this release.
+            workstream_id: Filter to tasks linked to this workstream.
+            status: Filter by status.
+            limit: Maximum rows to return (capped at 200).
+            offset: Pagination offset.
+            sort: Sort column (created_at, updated_at, priority).
+            order: Sort direction (asc, desc).
+            headlines_only: When True, omit the description field from
+                each returned task. Use when scanning large backlogs.
+
+        Returns:
+            dict with 'tasks', 'total', 'limit', and 'offset'.
         """
         limit = min(limit, 200)
         sort_col = sort if sort in ("created_at", "updated_at", "priority") else "created_at"
         order_dir = "DESC" if order.lower() == "desc" else "ASC"
+
+        columns = (
+            "id, title, status, priority, project_id, release_id, "
+            "workstream_id, created_at, updated_at"
+            if headlines_only
+            else
+            "id, title, description, status, priority, project_id, "
+            "release_id, workstream_id, created_at, updated_at"
+        )
 
         conditions = []
         params: list = []
@@ -242,10 +265,8 @@ class TrackerStore:
         ).fetchone()[0]
 
         rows = self._conn.execute(
-            f"SELECT id, title, description, status, priority, project_id, "
-            f"release_id, workstream_id, created_at, updated_at "
-            f"FROM tasks {where} ORDER BY {sort_col} {order_dir} "
-            f"LIMIT ? OFFSET ?",
+            f"SELECT {columns} FROM tasks {where} "
+            f"ORDER BY {sort_col} {order_dir} LIMIT ? OFFSET ?",
             params + [limit, offset],
         ).fetchall()
 
@@ -313,10 +334,21 @@ class TrackerStore:
         status: Optional[str] = None,
         limit: int = 20,
         offset: int = 0,
+        headlines_only: bool = False,
     ) -> dict:
         """Full-text search over task titles and descriptions.
 
-        Returns a dict with 'tasks', 'total', 'query', 'limit', and 'offset'.
+        Args:
+            query: FTS5 query string.
+            project_id: Restrict search to this project.
+            status: Restrict search to this status.
+            limit: Maximum rows to return (capped at 100).
+            offset: Pagination offset.
+            headlines_only: When True, omit the description field from
+                each returned task. Use when scanning large backlogs.
+
+        Returns:
+            dict with 'tasks', 'total', 'query', 'limit', and 'offset'.
         """
         limit = min(limit, 100)
         conditions = ["tasks.rowid IN (SELECT rowid FROM tasks_fts WHERE tasks_fts MATCH ?)"]
@@ -331,16 +363,26 @@ class TrackerStore:
 
         where = "WHERE " + " AND ".join(conditions)
 
+        if headlines_only:
+            select_cols = (
+                "tasks.id, tasks.title, tasks.status, tasks.priority, "
+                "tasks.project_id, tasks.release_id, "
+                "tasks.workstream_id, tasks.created_at, tasks.updated_at"
+            )
+        else:
+            select_cols = (
+                "tasks.id, tasks.title, tasks.description, tasks.status, "
+                "tasks.priority, tasks.project_id, tasks.release_id, "
+                "tasks.workstream_id, tasks.created_at, tasks.updated_at"
+            )
+
         try:
             total = self._conn.execute(
                 f"SELECT COUNT(*) FROM tasks {where}", params
             ).fetchone()[0]
 
             rows = self._conn.execute(
-                f"SELECT tasks.id, tasks.title, tasks.description, tasks.status, "
-                f"tasks.priority, tasks.project_id, tasks.release_id, "
-                f"tasks.workstream_id, tasks.created_at, tasks.updated_at "
-                f"FROM tasks {where} LIMIT ? OFFSET ?",
+                f"SELECT {select_cols} FROM tasks {where} LIMIT ? OFFSET ?",
                 params + [limit, offset],
             ).fetchall()
         except sqlite3.OperationalError:
@@ -352,6 +394,105 @@ class TrackerStore:
             "query": query,
             "limit": limit,
             "offset": offset,
+        }
+
+    def project_summary(self, project_id: str) -> Optional[dict]:
+        """Return aggregate task counts for a project.
+
+        Args:
+            project_id: UUID of the project to summarise.
+
+        Returns:
+            dict with total_tasks, by_status, by_priority, by_release, and
+            by_workstream, or None if the project does not exist.
+        """
+        if not self.get_project(project_id):
+            return None
+
+        total = self._conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE project_id = ?", (project_id,)
+        ).fetchone()[0]
+
+        status_rows = self._conn.execute(
+            "SELECT status, COUNT(*) FROM tasks WHERE project_id = ? GROUP BY status",
+            (project_id,),
+        ).fetchall()
+        by_status = {row[0]: row[1] for row in status_rows}
+
+        priority_rows = self._conn.execute(
+            "SELECT priority, COUNT(*) FROM tasks WHERE project_id = ? GROUP BY priority",
+            (project_id,),
+        ).fetchall()
+        # Priority keys are integers in storage but JSON object keys must be strings.
+        # Use string representation so the shape survives JSON round-trips.
+        by_priority = {str(row[0]): row[1] for row in priority_rows}
+
+        release_rows = self._conn.execute(
+            "SELECT r.id, r.name, "
+            "COUNT(t.id) AS task_count, "
+            "COALESCE(SUM(CASE WHEN t.status = 'open' THEN 1 ELSE 0 END), 0) AS open_count "
+            "FROM releases r "
+            "LEFT JOIN tasks t ON t.release_id = r.id AND t.project_id = ? "
+            "WHERE r.project_id = ? "
+            "GROUP BY r.id, r.name",
+            (project_id, project_id),
+        ).fetchall()
+        by_release = [
+            {
+                "release_id": row[0],
+                "release_name": row[1],
+                "task_count": row[2],
+                "open_count": row[3],
+            }
+            for row in release_rows
+        ]
+        no_release_row = self._conn.execute(
+            "SELECT COUNT(*) AS task_count, "
+            "COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) AS open_count "
+            "FROM tasks WHERE project_id = ? AND release_id IS NULL",
+            (project_id,),
+        ).fetchone()
+        by_release.append({
+            "release_id": None,
+            "release_name": None,
+            "task_count": no_release_row[0],
+            "open_count": no_release_row[1],
+        })
+
+        ws_rows = self._conn.execute(
+            "SELECT workstream_id, COUNT(*) AS task_count, "
+            "COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) AS open_count "
+            "FROM tasks WHERE project_id = ? AND workstream_id IS NOT NULL "
+            "GROUP BY workstream_id",
+            (project_id,),
+        ).fetchall()
+        by_workstream = [
+            {
+                "workstream_id": row[0],
+                "task_count": row[1],
+                "open_count": row[2],
+            }
+            for row in ws_rows
+        ]
+        no_ws_row = self._conn.execute(
+            "SELECT COUNT(*) AS task_count, "
+            "COALESCE(SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END), 0) AS open_count "
+            "FROM tasks WHERE project_id = ? AND workstream_id IS NULL",
+            (project_id,),
+        ).fetchone()
+        by_workstream.append({
+            "workstream_id": None,
+            "task_count": no_ws_row[0],
+            "open_count": no_ws_row[1],
+        })
+
+        return {
+            "project_id": project_id,
+            "total_tasks": total,
+            "by_status": by_status,
+            "by_priority": by_priority,
+            "by_release": by_release,
+            "by_workstream": by_workstream,
         }
 
     # ------------------------------------------------------------------

@@ -320,7 +320,8 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"tracker_list_tasks",
 			"tracker_update_task",
 			"tracker_delete_task",
-			"tracker_search_tasks"
+			"tracker_search_tasks",
+			"tracker_project_summary"
 		));
 
 		List<String> discovered = McpToolDiscovery.discoverToolNames(serverFile);
@@ -456,6 +457,18 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			trackerListParams.contains("sort"));
 		assertTrue("tracker_list_tasks must declare order in signature",
 			trackerListParams.contains("order"));
+		assertTrue("tracker_list_tasks must declare fields in signature",
+			trackerListParams.contains("fields"));
+
+		List<String> trackerSearchParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_search_tasks");
+		assertTrue("tracker_search_tasks must declare fields in signature",
+			trackerSearchParams.contains("fields"));
+
+		List<String> trackerSummaryParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_project_summary");
+		assertTrue("tracker_project_summary must declare project_id in signature",
+			trackerSummaryParams.contains("project_id"));
 	}
 
 	@Test(timeout = 30000)

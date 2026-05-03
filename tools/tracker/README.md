@@ -64,7 +64,7 @@ export AR_TRACKER_AUTH_TOKEN=<your-token>
 
 ## MCP Tools
 
-ar-manager exposes 14 MCP tools for the tracker. All follow the `tracker_*` naming
+ar-manager exposes 17 MCP tools for the tracker. All follow the `tracker_*` naming
 convention and mirror the REST API:
 
 | Tool | Scope | Description |
@@ -78,18 +78,77 @@ convention and mirror the REST API:
 | `tracker_update_release` | write | Update a release |
 | `tracker_delete_release` | write | Delete a release (tasks kept, FK set to NULL) |
 | `tracker_create_task` | write | Create a task |
-| `tracker_get_task` | read | Fetch a single task |
-| `tracker_list_tasks` | read | List tasks with filtering and pagination |
+| `tracker_get_task` | read | Fetch one task by ID (full record, workspace-scoped) |
+| `tracker_list_tasks` | read | List tasks with filtering, pagination, and optional headlines projection |
 | `tracker_update_task` | write | Update a task's fields |
 | `tracker_delete_task` | write | Permanently delete a task |
-| `tracker_search_tasks` | read | Full-text search over titles and descriptions |
+| `tracker_search_tasks` | read | Full-text search; supports headlines projection |
+| `tracker_project_summary` | read | Aggregate task counts for a project (no row fetch) |
+
+### Context-efficiency: fetching a single task
+
+When you already know the task ID, use `tracker_get_task` instead of
+listing and filtering:
+
+```
+tracker_get_task(task_id="<uuid>")
+# → {"ok": true, "task": {...all fields...}}
+```
+
+### Context-efficiency: headlines projection
+
+When scanning a large backlog, pass `fields="headlines"` to `tracker_list_tasks`
+or `tracker_search_tasks`. This omits the (potentially large) description field
+and returns only: `id`, `title`, `priority`, `status`, `project_id`,
+`release_id`, `workstream_id`, `created_at`, `updated_at`.
+
+```
+tracker_list_tasks(project_id="<uuid>", fields="headlines", limit=200)
+tracker_search_tasks(query="auth", fields="headlines")
+```
+
+Use `tracker_get_task` to fetch the full record for any task of interest.
+
+### Context-efficiency: project summary
+
+To answer "what's the shape of project X?" without fetching all rows, use
+`tracker_project_summary`:
+
+```
+tracker_project_summary(project_id="<uuid>")
+# → {
+#     "ok": true,
+#     "summary": {
+#       "project_id": "<uuid>",
+#       "total_tasks": 214,
+#       "by_status": {"open": 130, "closed": 84},
+#       "by_priority": {-2: 3, -1: 20, 0: 120, 1: 55, 2: 16},
+#       "by_release": [
+#         {"release_id": "<uuid>", "release_name": "0.39",
+#          "task_count": 42, "open_count": 28},
+#         ...
+#         {"release_id": null, "release_name": null,
+#          "task_count": 10, "open_count": 7}
+#       ],
+#       "by_workstream": [
+#         {"workstream_id": "ws-abc", "task_count": 30, "open_count": 20},
+#         {"workstream_id": null, "task_count": 100, "open_count": 60}
+#       ]
+#     }
+#   }
+```
+
+The `by_workstream` breakdown is filtered to only include workstreams accessible
+to the caller's token. The `by_release` list always includes a `null` entry for
+tasks not assigned to any release.
 
 ### Workspace scoping
 
 Tasks that have a `workstream_id` are subject to workspace scope enforcement.
 Scoped tokens may only create, update, or delete tasks attached to workstreams
 within their scope. Read operations (`tracker_list_tasks` with a `workstream_id`
-filter) are also scope-checked.
+filter, and `tracker_get_task` for tasks linked to a scoped workstream) are also
+scope-checked.
 
 Projects and releases are globally visible — no scope restriction.
 
@@ -107,6 +166,7 @@ POST   /v1/projects                     Create a project
 GET    /v1/projects/{id}                Get a project
 PUT    /v1/projects/{id}                Update a project
 DELETE /v1/projects/{id}                Delete a project
+GET    /v1/projects/{id}/summary        Aggregate task counts for a project
 
 GET    /v1/releases                     List releases (?project_id=)
 POST   /v1/releases                     Create a release
@@ -114,7 +174,7 @@ GET    /v1/releases/{id}                Get a release
 PUT    /v1/releases/{id}                Update a release
 DELETE /v1/releases/{id}                Delete a release
 
-GET    /v1/tasks                        List tasks (filter + paginate)
+GET    /v1/tasks                        List tasks (filter + paginate; ?fields=headlines)
 POST   /v1/tasks                        Create a task
 GET    /v1/tasks/{id}                   Get a task
 PUT    /v1/tasks/{id}                   Update a task
@@ -124,7 +184,7 @@ GET    /v1/projects/{id}/tasks          Tasks for a project
 GET    /v1/releases/{id}/tasks          Tasks for a release
 GET    /v1/workstreams/{id}/tasks       Tasks for a workstream
 
-GET    /v1/search/tasks?q=...           Full-text search
+GET    /v1/search/tasks?q=...           Full-text search (?fields=headlines)
 POST   /v1/import                       Bulk import (idempotent upsert)
 ```
 

@@ -1905,6 +1905,7 @@ class TestToolRegistration(unittest.TestCase):
             "tracker_update_task",
             "tracker_delete_task",
             "tracker_search_tasks",
+            "tracker_project_summary",
         }
         registered = set(tools.keys())
         missing = expected - registered
@@ -3054,6 +3055,110 @@ class TestTrackerTools(unittest.TestCase):
         self.assertIn("/v1/search/tasks", called)
         self.assertIn("oauth", called)
 
+    @patch.object(server, "_tracker_get")
+    def test_tracker_get_task_workspace_scoping(self, mock_get):
+        """tracker_get_task must enforce workstream scope after fetching the task."""
+        # The task is linked to a workstream outside the caller's scope.
+        mock_get.return_value = {
+            "ok": True,
+            "task": {"id": "t1", "title": "T", "workstream_id": "ws-other"},
+        }
+        server._set_scopes(["read"], label="test")
+        # Simulate the workstream being outside scope by patching the check.
+        with patch.object(server, "_require_workstream_in_scope",
+                          side_effect=PermissionError("out of scope")) as mock_check:
+            with self.assertRaises(PermissionError):
+                server.tracker_get_task("t1")
+            mock_check.assert_called_once_with("ws-other")
+
+    @patch.object(server, "_tracker_get")
+    def test_tracker_get_task_no_workstream_no_scope_check(self, mock_get):
+        """tracker_get_task must not call scope check when task has no workstream."""
+        mock_get.return_value = {
+            "ok": True,
+            "task": {"id": "t1", "title": "T", "workstream_id": None},
+        }
+        with patch.object(server, "_require_workstream_in_scope") as mock_check:
+            result = server.tracker_get_task("t1")
+            mock_check.assert_not_called()
+        self.assertTrue(result["ok"])
+
+    @patch.object(server, "_tracker_get")
+    def test_tracker_list_tasks_headlines(self, mock_get):
+        """tracker_list_tasks must pass fields=headlines to the API."""
+        mock_get.return_value = {"ok": True, "tasks": [], "total": 0}
+        server.tracker_list_tasks(fields="headlines")
+        called = mock_get.call_args[0][0]
+        self.assertIn("fields=headlines", called)
+
+    @patch.object(server, "_tracker_get")
+    def test_tracker_list_tasks_full_omits_fields_param(self, mock_get):
+        """tracker_list_tasks must not append fields=full to the URL (it's the default)."""
+        mock_get.return_value = {"ok": True, "tasks": [], "total": 0}
+        server.tracker_list_tasks(fields="full")
+        called = mock_get.call_args[0][0]
+        self.assertNotIn("fields=", called)
+
+    @patch.object(server, "_tracker_get")
+    def test_tracker_search_tasks_headlines(self, mock_get):
+        """tracker_search_tasks must pass fields=headlines to the API."""
+        mock_get.return_value = {"ok": True, "tasks": [], "total": 0, "query": "q"}
+        server.tracker_search_tasks("q", fields="headlines")
+        called = mock_get.call_args[0][0]
+        self.assertIn("fields=headlines", called)
+
+    @patch.object(server, "_tracker_get")
+    def test_tracker_project_summary(self, mock_get):
+        """tracker_project_summary fetches the summary endpoint and returns it."""
+        mock_get.return_value = {
+            "ok": True,
+            "summary": {
+                "project_id": "p1",
+                "total_tasks": 5,
+                "by_status": {"open": 3, "closed": 2},
+                "by_priority": {0: 5},
+                "by_release": [],
+                "by_workstream": [{"workstream_id": None, "task_count": 5, "open_count": 3}],
+            },
+        }
+        result = server.tracker_project_summary("p1")
+        mock_get.assert_called_once_with("/v1/projects/p1/summary")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["summary"]["total_tasks"], 5)
+
+    @patch.object(server, "_tracker_get")
+    def test_tracker_project_summary_filters_workstreams_by_scope(self, mock_get):
+        """by_workstream entries outside caller scope must be silently dropped."""
+        mock_get.return_value = {
+            "ok": True,
+            "summary": {
+                "project_id": "p1",
+                "total_tasks": 2,
+                "by_status": {"open": 2},
+                "by_priority": {},
+                "by_release": [],
+                "by_workstream": [
+                    {"workstream_id": "ws-good", "task_count": 1, "open_count": 1},
+                    {"workstream_id": "ws-bad", "task_count": 1, "open_count": 0},
+                    {"workstream_id": None, "task_count": 0, "open_count": 0},
+                ],
+            },
+        }
+
+        def _scope_check(ws_id):
+            if ws_id == "ws-bad":
+                raise PermissionError("out of scope")
+
+        with patch.object(server, "_require_workstream_in_scope",
+                          side_effect=_scope_check):
+            result = server.tracker_project_summary("p1")
+
+        by_ws = result["summary"]["by_workstream"]
+        ws_ids = [e["workstream_id"] for e in by_ws]
+        self.assertIn("ws-good", ws_ids)
+        self.assertNotIn("ws-bad", ws_ids)
+        self.assertIn(None, ws_ids)
+
     def test_tracker_tools_require_read_scope(self):
         _grant_scopes("write")
         with self.assertRaises(PermissionError):
@@ -3064,6 +3169,8 @@ class TestTrackerTools(unittest.TestCase):
             server.tracker_list_tasks()
         with self.assertRaises(PermissionError):
             server.tracker_search_tasks("q")
+        with self.assertRaises(PermissionError):
+            server.tracker_project_summary("p1")
 
     def test_tracker_tools_require_write_scope(self):
         _grant_scopes("read")
