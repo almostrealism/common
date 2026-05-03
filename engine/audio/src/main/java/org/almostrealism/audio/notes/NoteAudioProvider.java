@@ -91,6 +91,29 @@ public class NoteAudioProvider implements NoteAudio, Validity, Comparable<NoteAu
 		});
 	}
 
+	/**
+	 * Drops every entry from the static resampled-audio cache, releasing the
+	 * strong references to every {@link io.almostrealism.code.CachedValue} and
+	 * the source {@link io.almostrealism.relation.Evaluable} instances they
+	 * captured.
+	 *
+	 * <p>The {@code maxCachedEntries} eviction strategy attached to the cache
+	 * only marks evicted entries unavailable; the underlying access-time
+	 * {@code HashMap} retains them, which transitively keeps every
+	 * {@link NoteAudioProvider} that has ever cached audio alive for the
+	 * remainder of the JVM lifetime. Long-running drivers that build many
+	 * scenes back-to-back (e.g. {@code AudioSceneOptimizer}) should call this
+	 * after disposing a scene to allow that retained graph to be collected.</p>
+	 *
+	 * <p>This drops references only and does not actively destroy the cached
+	 * {@link org.almostrealism.collect.PackedCollection} instances. Doing so
+	 * would cascade into still-live state shared via delegate chains. Native
+	 * memory is released by ordinary GC + finalizer paths.</p>
+	 */
+	public static void clearCache() {
+		audioCache.dropAll();
+	}
+
 	/** Source of raw audio data; may be a file, memory buffer, or any other provider. */
 	private WaveDataProvider provider;
 

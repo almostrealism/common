@@ -168,6 +168,12 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 			),
 			"EditableSpatialWaveDetails.java", Set.of(
 					"applyValues"               // Spatial visualization edit application
+			),
+			"BufferedAudioPlayer.java", Set.of(
+					"setLoopDuration"           // Single-scalar previous-value read on a 1-element
+					                            // PackedCollection at a control-plane boundary, used
+					                            // to detect a change in loop length and rephase the
+					                            // per-channel clock; not a hot-loop GPU concern.
 			)
 	);
 
