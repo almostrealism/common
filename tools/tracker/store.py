@@ -127,16 +127,20 @@ class TrackerStore:
     def update_release(
         self,
         release_id: str,
-        name: Optional[str] = None,
-        project_id: Optional[str] = None,
+        name: object = UNSET,
+        project_id: object = UNSET,
     ) -> Optional[dict]:
-        """Update a release's fields. Only supplied fields are changed."""
+        """Update a release's fields. Only supplied fields are changed.
+
+        Pass UNSET (the default) to leave a field unchanged.
+        Pass None to clear project_id.
+        """
         updates = []
         params: list = []
-        if name is not None:
+        if not isinstance(name, _Unset):
             updates.append("name = ?")
             params.append(name)
-        if project_id is not None:
+        if not isinstance(project_id, _Unset):
             updates.append("project_id = ?")
             params.append(project_id)
         if not updates:
@@ -210,6 +214,7 @@ class TrackerStore:
 
         Returns a dict with 'tasks', 'total', 'limit', and 'offset'.
         """
+        limit = min(limit, 200)
         sort_col = sort if sort in ("created_at", "updated_at") else "created_at"
         order_dir = "DESC" if order.lower() == "desc" else "ASC"
 
@@ -239,7 +244,7 @@ class TrackerStore:
             f"workstream_id, created_at, updated_at "
             f"FROM tasks {where} ORDER BY {sort_col} {order_dir} "
             f"LIMIT ? OFFSET ?",
-            params + [min(limit, 200), offset],
+            params + [limit, offset],
         ).fetchall()
 
         return {
@@ -357,8 +362,10 @@ class TrackerStore:
         created = {"projects": 0, "releases": 0, "tasks": 0}
         updated = {"projects": 0, "releases": 0, "tasks": 0}
 
-        for p in projects:
-            existing = self.get_project(p["id"]) if p.get("id") else None
+        for idx, p in enumerate(projects):
+            if not p.get("id") or not p.get("name"):
+                return {"error": f"projects[{idx}] must have 'id' and 'name'"}
+            existing = self.get_project(p["id"])
             if existing:
                 self._conn.execute(
                     "UPDATE projects SET name = ? WHERE id = ?",
@@ -372,8 +379,10 @@ class TrackerStore:
                 )
                 created["projects"] += 1
 
-        for r in releases:
-            existing = self.get_release(r["id"]) if r.get("id") else None
+        for idx, r in enumerate(releases):
+            if not r.get("id") or not r.get("name"):
+                return {"error": f"releases[{idx}] must have 'id' and 'name'"}
+            existing = self.get_release(r["id"])
             if existing:
                 self._conn.execute(
                     "UPDATE releases SET name = ?, project_id = ? WHERE id = ?",
@@ -389,8 +398,10 @@ class TrackerStore:
                 )
                 created["releases"] += 1
 
-        for t in tasks:
-            existing = self.get_task(t["id"]) if t.get("id") else None
+        for idx, t in enumerate(tasks):
+            if not t.get("id"):
+                return {"error": f"tasks[{idx}] must have 'id'"}
+            existing = self.get_task(t["id"])
             now = _now()
             if existing:
                 self._conn.execute(

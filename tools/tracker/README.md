@@ -208,7 +208,7 @@ creating duplicates.
 ```bash
 # Tracker service tests
 cd tools/tracker/tests
-pip install starlette uvicorn httpx
+pip install starlette uvicorn httpx pytest
 python -m pytest . -v
 
 # ar-manager MCP tool tests (includes tracker tools)

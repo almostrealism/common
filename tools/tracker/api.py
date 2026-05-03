@@ -60,7 +60,6 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         """GET /api/health"""
         return JSONResponse({
             "ok": True,
-            "db_path": store._db_path,
             "counts": store.counts(),
         })
 
@@ -183,8 +182,8 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         body, err = await _json_body(request)
         if err:
             return err
-        name = (body.get("name") or "").strip() or None
-        project_id = body.get("project_id") or None
+        name = (body["name"].strip() if body.get("name") else UNSET) if "name" in body else UNSET
+        project_id = body["project_id"] if "project_id" in body else UNSET
         release = store.update_release(request.path_params["id"], name, project_id)
         if not release:
             return JSONResponse(
@@ -304,6 +303,11 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
                 status_code=400,
             )
 
+        if "title" in body and not (body.get("title") or "").strip():
+            return JSONResponse(
+                {"ok": False, "error": "title cannot be empty"}, status_code=400
+            )
+
         def _field(key: str, coerce=None):
             """Return UNSET if key absent from body, else body value (possibly None)."""
             if key not in body:
@@ -315,7 +319,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
 
         task = store.update_task(
             task_id=task_id,
-            title=_field("title", coerce=lambda v: v or None),
+            title=_field("title", coerce=lambda v: v.strip()),
             description=_field("description"),
             status=status if status is not None else UNSET,
             project_id=_field("project_id"),
@@ -384,6 +388,8 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         releases = body.get("releases") or []
         tasks = body.get("tasks") or []
         result = store.bulk_import(projects, releases, tasks)
+        if "error" in result:
+            return JSONResponse({"ok": False, "error": result["error"]}, status_code=400)
         return JSONResponse({"ok": True, **result})
 
     # ------------------------------------------------------------------

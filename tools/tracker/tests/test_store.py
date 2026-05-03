@@ -140,9 +140,8 @@ class TestTasks(unittest.TestCase):
     def test_update_clear_project(self):
         t = self.store.create_task("Task", project_id=self.project["id"])
         updated = self.store.update_task(t["id"], project_id=None)
-        # Passing None to update_task means "don't change it" per the update logic;
-        # to clear, the API layer passes the actual None value.
-        self.assertIsNotNone(updated)
+        # Passing None clears the optional FK field; UNSET leaves it unchanged.
+        self.assertIsNone(updated["project_id"])
 
     def test_delete(self):
         t = self.store.create_task("To delete")
