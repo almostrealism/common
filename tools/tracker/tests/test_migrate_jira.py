@@ -198,6 +198,30 @@ class TestMigrate(unittest.TestCase):
         )
         os.unlink(csv_path)
 
+    def test_default_project_name_used_when_csv_lacks_column(self):
+        rows = [
+            {
+                "Issue Key": "PROJ-3",
+                "Summary": "No project col",
+                "Description": "",
+                "Fix Version/s": "",
+                "Status": "Open",
+                "Priority": "",
+                "Created": "",
+                "Updated": "",
+            }
+        ]
+        csv_path = self._make_csv(rows)
+        migrate(
+            csv_path=csv_path,
+            tracker_url="http://localhost:8030",
+            token=None,
+            dry_run=True,
+            workstream_map=None,
+            default_project_name="Common",
+        )
+        os.unlink(csv_path)
+
     def test_workstream_map_resolves_prefix(self):
         rows = [
             {

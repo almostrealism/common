@@ -9,8 +9,13 @@ Usage:
         --csv jira_export.csv \\
         --tracker-url http://localhost:8030 \\
         --tracker-token <token> \\
+        [--project-name "My Project"] \\
         [--dry-run] \\
         [--workstream-map workstreams.json]
+
+If --project-name is supplied, it is used for every row that does not
+have a value in the CSV's "Project Name" column. Rows that already have
+a Project Name are left alone.
 
 Workstream map JSON format:
     {"PROJ-prefix": "ws-abc123", "summary-keyword": "ws-def456"}
@@ -194,6 +199,7 @@ def migrate(
     token: Optional[str],
     dry_run: bool,
     workstream_map: Optional[dict],
+    default_project_name: Optional[str] = None,
 ) -> None:
     """Run the Jira → tracker migration.
 
@@ -203,6 +209,9 @@ def migrate(
         token: Bearer auth token (None for open APIs).
         dry_run: If True, print what would happen without making requests.
         workstream_map: Optional mapping of Jira prefixes/keywords → workstream IDs.
+        default_project_name: Optional project name used for rows that do
+            not have a value in the CSV's "Project Name" column. Per-row
+            values from the CSV always take precedence.
     """
     print(f"Reading {csv_path} …", file=sys.stderr)
     rows = _read_csv(csv_path)
@@ -241,6 +250,8 @@ def migrate(
             continue
 
         project_name = (row.get("Project Name") or row.get("Project name") or "").strip()
+        if not project_name and default_project_name:
+            project_name = default_project_name
         project_id = None
         if project_name:
             project_id = _resolve_or_create_project(
@@ -364,6 +375,14 @@ def main() -> None:
         "--workstream-map",
         help="JSON file mapping Jira issue prefixes/keywords to workstream IDs",
     )
+    parser.add_argument(
+        "--project-name",
+        default="",
+        help=(
+            "Default project name for rows lacking a 'Project Name' column. "
+            "Per-row CSV values always take precedence."
+        ),
+    )
     args = parser.parse_args()
 
     workstream_map = None
@@ -381,6 +400,7 @@ def main() -> None:
         token=args.tracker_token.strip() or None,
         dry_run=args.dry_run,
         workstream_map=workstream_map,
+        default_project_name=args.project_name.strip() or None,
     )
 
 

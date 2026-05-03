@@ -192,6 +192,19 @@ python tools/tracker/migrate_jira.py \
     --dry-run
 ```
 
+**CSV without a Project Name column**:
+
+```bash
+python tools/tracker/migrate_jira.py \
+    --csv rings_export.csv \
+    --tracker-url http://localhost:8030 \
+    --tracker-token <token> \
+    --project-name "Rings"
+```
+
+`--project-name` fills in a default for rows that lack a `Project Name`
+value in the CSV. Per-row CSV values always take precedence.
+
 **With workstream mapping**:
 
 ```bash
