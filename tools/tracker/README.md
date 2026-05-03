@@ -150,6 +150,7 @@ The script reads these columns (all others are silently ignored):
 | `Project Name` | `project.name` |
 | `Fix Version/s` | `release.name` (first value used; comma-separated) |
 | `Status` | `task.status` (see mapping below) |
+| `Priority` | `task.priority` (see mapping below) |
 | `Created` | `task.created_at` |
 | `Updated` | `task.updated_at` |
 
@@ -159,6 +160,19 @@ The script reads these columns (all others are silently ignored):
 |-------------|----------------|
 | Open, To Do, In Progress, In Review, Blocked, Reopened | `open` |
 | Done, Closed, Resolved, Won't Do, Cancelled | `closed` |
+
+### Jira priority mapping
+
+`task.priority` is a signed integer in the closed range `[-2, 2]`, defaulting
+to `0` (Medium). Unknown or empty priorities map to `0`.
+
+| Jira priority | Tracker priority | Label   |
+|---------------|------------------|---------|
+| Highest, Blocker, Critical | `2`  | Highest |
+| High, Major   | `1`              | High    |
+| Medium        | `0`              | Medium  |
+| Low, Minor    | `-1`             | Low     |
+| Lowest, Trivial | `-2`           | Lowest  |
 
 ### Run the migration
 

@@ -169,6 +169,7 @@ class TrackerStore:
         title: str,
         description: Optional[str] = None,
         status: str = "open",
+        priority: int = 0,
         project_id: Optional[str] = None,
         release_id: Optional[str] = None,
         workstream_id: Optional[str] = None,
@@ -180,10 +181,10 @@ class TrackerStore:
         now = created_at or _now()
         self._conn.execute(
             "INSERT INTO tasks "
-            "(id, title, description, status, project_id, release_id, "
-            " workstream_id, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (task_id, title, description, status,
+            "(id, title, description, status, priority, project_id, "
+            " release_id, workstream_id, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (task_id, title, description, status, int(priority),
              project_id or None, release_id or None,
              workstream_id or None, now, now),
         )
@@ -193,8 +194,9 @@ class TrackerStore:
     def get_task(self, task_id: str) -> Optional[dict]:
         """Return a task by ID, or None if not found."""
         row = self._conn.execute(
-            "SELECT id, title, description, status, project_id, release_id, "
-            "workstream_id, created_at, updated_at FROM tasks WHERE id = ?",
+            "SELECT id, title, description, status, priority, project_id, "
+            "release_id, workstream_id, created_at, updated_at "
+            "FROM tasks WHERE id = ?",
             (task_id,),
         ).fetchone()
         return dict(row) if row else None
@@ -215,7 +217,7 @@ class TrackerStore:
         Returns a dict with 'tasks', 'total', 'limit', and 'offset'.
         """
         limit = min(limit, 200)
-        sort_col = sort if sort in ("created_at", "updated_at") else "created_at"
+        sort_col = sort if sort in ("created_at", "updated_at", "priority") else "created_at"
         order_dir = "DESC" if order.lower() == "desc" else "ASC"
 
         conditions = []
@@ -240,8 +242,8 @@ class TrackerStore:
         ).fetchone()[0]
 
         rows = self._conn.execute(
-            f"SELECT id, title, description, status, project_id, release_id, "
-            f"workstream_id, created_at, updated_at "
+            f"SELECT id, title, description, status, priority, project_id, "
+            f"release_id, workstream_id, created_at, updated_at "
             f"FROM tasks {where} ORDER BY {sort_col} {order_dir} "
             f"LIMIT ? OFFSET ?",
             params + [limit, offset],
@@ -260,6 +262,7 @@ class TrackerStore:
         title: object = UNSET,
         description: object = UNSET,
         status: object = UNSET,
+        priority: object = UNSET,
         project_id: object = UNSET,
         release_id: object = UNSET,
         workstream_id: object = UNSET,
@@ -267,7 +270,8 @@ class TrackerStore:
         """Update a task's fields.
 
         Pass UNSET (the default) to leave a field unchanged.
-        Pass None to clear an optional FK field.
+        Pass None to clear an optional FK field. The priority field
+        cannot be cleared — it always has an integer value in [-2, 2].
         """
         updates = ["updated_at = ?"]
         params: list = [_now()]
@@ -276,13 +280,14 @@ class TrackerStore:
             ("title", title),
             ("description", description),
             ("status", status),
+            ("priority", priority),
             ("project_id", project_id),
             ("release_id", release_id),
             ("workstream_id", workstream_id),
         ]:
             if not isinstance(val, _Unset):
                 updates.append(f"{field} = ?")
-                params.append(val)
+                params.append(int(val) if field == "priority" else val)
 
         params.append(task_id)
         self._conn.execute(
@@ -333,8 +338,8 @@ class TrackerStore:
 
             rows = self._conn.execute(
                 f"SELECT tasks.id, tasks.title, tasks.description, tasks.status, "
-                f"tasks.project_id, tasks.release_id, tasks.workstream_id, "
-                f"tasks.created_at, tasks.updated_at "
+                f"tasks.priority, tasks.project_id, tasks.release_id, "
+                f"tasks.workstream_id, tasks.created_at, tasks.updated_at "
                 f"FROM tasks {where} LIMIT ? OFFSET ?",
                 params + [limit, offset],
             ).fetchall()
@@ -401,16 +406,22 @@ class TrackerStore:
         for idx, t in enumerate(tasks):
             if not t.get("id"):
                 return {"error": f"tasks[{idx}] must have 'id'"}
+            priority = t.get("priority", 0)
+            if not isinstance(priority, int) or priority < -2 or priority > 2:
+                return {
+                    "error": f"tasks[{idx}].priority must be an integer in [-2, 2]"
+                }
             existing = self.get_task(t["id"])
             now = _now()
             if existing:
                 self._conn.execute(
                     "UPDATE tasks SET title = ?, description = ?, status = ?, "
-                    "project_id = ?, release_id = ?, workstream_id = ?, "
-                    "updated_at = ? WHERE id = ?",
+                    "priority = ?, project_id = ?, release_id = ?, "
+                    "workstream_id = ?, updated_at = ? WHERE id = ?",
                     (t.get("title", existing["title"]),
                      t.get("description", existing["description"]),
                      t.get("status", existing["status"]),
+                     t.get("priority", existing["priority"]),
                      t.get("project_id", existing["project_id"]),
                      t.get("release_id", existing["release_id"]),
                      t.get("workstream_id", existing["workstream_id"]),
@@ -420,11 +431,11 @@ class TrackerStore:
             else:
                 self._conn.execute(
                     "INSERT OR IGNORE INTO tasks "
-                    "(id, title, description, status, project_id, release_id, "
-                    " workstream_id, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "(id, title, description, status, priority, project_id, "
+                    " release_id, workstream_id, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (t["id"], t.get("title", ""), t.get("description"),
-                     t.get("status", "open"),
+                     t.get("status", "open"), priority,
                      t.get("project_id"), t.get("release_id"),
                      t.get("workstream_id"),
                      t.get("created_at") or now, t.get("updated_at") or now),

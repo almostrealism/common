@@ -45,6 +45,24 @@ STATUS_MAP = {
     "Cancelled": "closed",
 }
 
+# Jira priority → tracker priority (signed integer in [-2, 2]).
+# Modern Jira uses Highest..Lowest; older instances use Blocker..Trivial.
+PRIORITY_MAP = {
+    # Modern Jira labels
+    "Highest":  2,
+    "High":     1,
+    "Medium":   0,
+    "Low":     -1,
+    "Lowest":  -2,
+    # Legacy / pre-rename Jira labels
+    "Blocker":  2,
+    "Critical": 2,
+    "Major":    1,
+    "Minor":   -1,
+    "Trivial": -2,
+}
+DEFAULT_PRIORITY = 0  # Medium
+
 # UUID namespace for deterministic IDs derived from Jira issue keys
 _JIRA_NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")  # UUID namespace DNS
 
@@ -213,6 +231,7 @@ def migrate(
     task_batch: list = []
     skipped = 0
     workstream_warnings: list = []
+    unknown_priorities: set = set()
 
     for row in rows:
         issue_key = row.get("Issue Key") or row.get("Issue key") or ""
@@ -245,6 +264,18 @@ def migrate(
                 file=sys.stderr,
             )
 
+        jira_priority = (row.get("Priority") or "").strip()
+        tracker_priority = PRIORITY_MAP.get(jira_priority, DEFAULT_PRIORITY)
+        if jira_priority and jira_priority not in PRIORITY_MAP:
+            if jira_priority not in unknown_priorities:
+                unknown_priorities.add(jira_priority)
+                print(
+                    f"  WARNING: Unknown Jira priority '{jira_priority}' "
+                    f"(first seen on {issue_key}), defaulting to 0 (Medium). "
+                    f"Same warning is suppressed for further occurrences.",
+                    file=sys.stderr,
+                )
+
         workstream_id = None
         if workstream_map:
             for prefix_or_key, ws_id in workstream_map.items():
@@ -262,6 +293,7 @@ def migrate(
             "title": summary[:500],
             "description": row.get("Description") or None,
             "status": tracker_status,
+            "priority": tracker_priority,
             "project_id": project_id,
             "release_id": release_id,
             "workstream_id": workstream_id,

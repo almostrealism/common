@@ -2942,6 +2942,7 @@ class TestTrackerTools(unittest.TestCase):
         self.assertEqual(args[0][0], "/v1/tasks")
         self.assertEqual(args[0][1]["title"], "Fix bug")
         self.assertEqual(args[0][1]["status"], "open")
+        self.assertEqual(args[0][1]["priority"], 0)
 
     @patch.object(server, "_tracker_post")
     def test_tracker_create_task_full(self, mock_post):
@@ -2953,11 +2954,13 @@ class TestTrackerTools(unittest.TestCase):
             release_id="r1",
             workstream_id="",
             status="closed",
+            priority=2,
         )
         payload = mock_post.call_args[0][1]
         self.assertEqual(payload["description"], "Details")
         self.assertEqual(payload["project_id"], "p1")
         self.assertEqual(payload["status"], "closed")
+        self.assertEqual(payload["priority"], 2)
 
     @patch.object(server, "_tracker_get")
     def test_tracker_get_task(self, mock_get):
@@ -2998,6 +3001,41 @@ class TestTrackerTools(unittest.TestCase):
         server.tracker_update_task("t1", release_id="null")
         payload = mock_put.call_args[0][1]
         self.assertIsNone(payload["release_id"])
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    def test_tracker_update_task_priority_sentinel_omitted(self, mock_get, mock_put):
+        mock_get.return_value = {"ok": True, "task": {"id": "t1", "workstream_id": ""}}
+        mock_put.return_value = {"ok": True, "task": {"id": "t1"}}
+        server.tracker_update_task("t1", status="closed")
+        payload = mock_put.call_args[0][1]
+        self.assertNotIn("priority", payload)
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    def test_tracker_update_task_sets_priority(self, mock_get, mock_put):
+        mock_get.return_value = {"ok": True, "task": {"id": "t1", "workstream_id": ""}}
+        mock_put.return_value = {"ok": True, "task": {"id": "t1"}}
+        server.tracker_update_task("t1", priority=-2)
+        payload = mock_put.call_args[0][1]
+        self.assertEqual(payload["priority"], -2)
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    def test_tracker_update_task_priority_zero_is_a_real_value(self, mock_get, mock_put):
+        mock_get.return_value = {"ok": True, "task": {"id": "t1", "workstream_id": ""}}
+        mock_put.return_value = {"ok": True, "task": {"id": "t1"}}
+        server.tracker_update_task("t1", priority=0)
+        payload = mock_put.call_args[0][1]
+        self.assertEqual(payload["priority"], 0)
+
+    @patch.object(server, "_tracker_get")
+    def test_tracker_list_tasks_with_sort_priority(self, mock_get):
+        mock_get.return_value = {"ok": True, "tasks": [], "total": 0}
+        server.tracker_list_tasks(sort="priority", order="desc")
+        called = mock_get.call_args[0][0]
+        self.assertIn("sort=priority", called)
+        self.assertIn("order=desc", called)
 
     @patch.object(server, "_tracker_delete")
     @patch.object(server, "_tracker_get")

@@ -102,6 +102,7 @@ class TestTasks(unittest.TestCase):
         fetched = self.store.get_task(t["id"])
         self.assertEqual(fetched["title"], "Add OAuth")
         self.assertEqual(fetched["status"], "open")
+        self.assertEqual(fetched["priority"], 0)
 
     def test_create_with_all_fields(self):
         release = self.store.create_release("0.38", self.project["id"])
@@ -109,14 +110,38 @@ class TestTasks(unittest.TestCase):
             title="Full task",
             description="Some description",
             status="closed",
+            priority=2,
             project_id=self.project["id"],
             release_id=release["id"],
             workstream_id="ws-abc",
         )
         self.assertEqual(t["description"], "Some description")
         self.assertEqual(t["status"], "closed")
+        self.assertEqual(t["priority"], 2)
         self.assertEqual(t["project_id"], self.project["id"])
         self.assertEqual(t["workstream_id"], "ws-abc")
+
+    def test_priority_default_is_zero(self):
+        t = self.store.create_task("No priority specified")
+        self.assertEqual(t["priority"], 0)
+
+    def test_update_priority(self):
+        t = self.store.create_task("Task")
+        updated = self.store.update_task(t["id"], priority=-2)
+        self.assertEqual(updated["priority"], -2)
+
+    def test_priority_check_constraint(self):
+        import sqlite3
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.store.create_task("Bad priority", priority=99)
+
+    def test_list_sorted_by_priority(self):
+        self.store.create_task("Lowest", priority=-2)
+        self.store.create_task("Highest", priority=2)
+        self.store.create_task("Medium", priority=0)
+        result = self.store.list_tasks(sort="priority", order="desc")
+        titles = [t["title"] for t in result["tasks"]]
+        self.assertEqual(titles, ["Highest", "Medium", "Lowest"])
 
     def test_list_filter_by_status(self):
         self.store.create_task("Open task", status="open")
@@ -187,6 +212,26 @@ class TestBulkImport(unittest.TestCase):
         result2 = self.store.bulk_import(**payload)
         self.assertEqual(result2["created"]["projects"], 0)
         self.assertEqual(result2["updated"]["projects"], 1)
+
+    def test_import_carries_priority(self):
+        import uuid
+        task_id = str(uuid.uuid4())
+        result = self.store.bulk_import(
+            projects=[],
+            releases=[],
+            tasks=[{"id": task_id, "title": "Important", "priority": 2}],
+        )
+        self.assertEqual(result["created"]["tasks"], 1)
+        self.assertEqual(self.store.get_task(task_id)["priority"], 2)
+
+    def test_import_rejects_priority_out_of_range(self):
+        import uuid
+        result = self.store.bulk_import(
+            projects=[],
+            releases=[],
+            tasks=[{"id": str(uuid.uuid4()), "title": "Bad", "priority": 5}],
+        )
+        self.assertIn("error", result)
 
 
 if __name__ == "__main__":

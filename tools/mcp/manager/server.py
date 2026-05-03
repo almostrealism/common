@@ -4215,6 +4215,7 @@ def tracker_create_task(
     release_id: str = "",
     workstream_id: str = "",
     status: str = "open",
+    priority: int = 0,
 ) -> dict:
     """Create a new tracker task.
 
@@ -4227,6 +4228,8 @@ def tracker_create_task(
         workstream_id: Optional FlowTree workstream ID to link this task
             to an active coding workstream.
         status: Task status. Either "open" (default) or "closed".
+        priority: Signed integer in the range [-2, 2]. Defaults to 0.
+            -2 = Lowest, -1 = Low, 0 = Medium, 1 = High, 2 = Highest.
 
     Returns:
         dict with ok=True and the created task record.
@@ -4235,7 +4238,7 @@ def tracker_create_task(
     if workstream_id:
         _require_workstream_in_scope(workstream_id)
     _audit("tracker_create_task", project_id=project_id, workstream_id=workstream_id)
-    payload: dict = {"title": title, "status": status}
+    payload: dict = {"title": title, "status": status, "priority": priority}
     if description:
         payload["description"] = description
     if project_id:
@@ -4268,6 +4271,8 @@ def tracker_list_tasks(
     release_id: str = "",
     workstream_id: str = "",
     status: str = "",
+    sort: str = "",
+    order: str = "",
     limit: int = 50,
     offset: int = 0,
 ) -> dict:
@@ -4280,6 +4285,10 @@ def tracker_list_tasks(
             Enforces workspace scope — scoped tokens may only query
             workstreams within their scope.
         status: Filter by status: "open" or "closed". Omit for all.
+        sort: Sort column: "created_at" (default), "updated_at", or
+            "priority". Pass "" to use the default.
+        order: Sort order: "desc" (default) or "asc". Pass "" to use
+            the default.
         limit: Maximum number of tasks to return. Defaults to 50, max 200.
         offset: Pagination offset. Defaults to 0.
 
@@ -4301,6 +4310,10 @@ def tracker_list_tasks(
         params.append(f"workstream_id={workstream_id}")
     if status:
         params.append(f"status={status}")
+    if sort:
+        params.append(f"sort={sort}")
+    if order:
+        params.append(f"order={order}")
     if limit != 50:
         params.append(f"limit={limit}")
     if offset:
@@ -4315,6 +4328,7 @@ def tracker_update_task(
     title: str = "",
     description: str = "",
     status: str = "",
+    priority: int = -999,
     project_id: str = "",
     release_id: str = "",
     workstream_id: str = "",
@@ -4332,6 +4346,10 @@ def tracker_update_task(
         title: New title. Omit to leave unchanged.
         description: New description. Omit to leave unchanged.
         status: New status: "open" or "closed". Omit to leave unchanged.
+        priority: New priority in the range [-2, 2]. Defaults to the
+            sentinel value -999 meaning "leave unchanged" (zero is a
+            valid priority — Medium — and cannot be used as the
+            sentinel).
         project_id: New project UUID. Omit to leave unchanged. Pass
             "null" to clear.
         release_id: New release UUID. Omit to leave unchanged. Pass
@@ -4359,6 +4377,8 @@ def tracker_update_task(
         payload["description"] = description
     if status:
         payload["status"] = status
+    if priority != -999:
+        payload["priority"] = priority
     for field, val in [("project_id", project_id),
                        ("release_id", release_id),
                        ("workstream_id", workstream_id)]:

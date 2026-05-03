@@ -439,6 +439,23 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			prCheckParams.contains("workstream_id"));
 		assertTrue("github_pr_check_status must declare branch in signature",
 			prCheckParams.contains("branch"));
+
+		List<String> trackerCreateParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_create_task");
+		assertTrue("tracker_create_task must declare priority in signature",
+			trackerCreateParams.contains("priority"));
+
+		List<String> trackerUpdateParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_update_task");
+		assertTrue("tracker_update_task must declare priority in signature",
+			trackerUpdateParams.contains("priority"));
+
+		List<String> trackerListParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_list_tasks");
+		assertTrue("tracker_list_tasks must declare sort in signature",
+			trackerListParams.contains("sort"));
+		assertTrue("tracker_list_tasks must declare order in signature",
+			trackerListParams.contains("order"));
 	}
 
 	@Test(timeout = 30000)

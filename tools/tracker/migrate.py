@@ -69,6 +69,18 @@ END;
 """
 
 
+# v2: add a signed integer priority column to tasks.
+# Range -2..2 (Lowest..Highest), default 0 (Medium). The CHECK constraint
+# is enforced at the database level so corrupt values cannot be written
+# even if API validation is bypassed.
+_SCHEMA_V2 = """
+ALTER TABLE tasks ADD COLUMN priority INTEGER NOT NULL DEFAULT 0
+    CHECK (priority BETWEEN -2 AND 2);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
+"""
+
+
 def run_migrations(conn: sqlite3.Connection) -> None:
     """Apply all pending schema migrations to the database connection.
 
@@ -85,6 +97,12 @@ def run_migrations(conn: sqlite3.Connection) -> None:
         if _get_version(conn) == 0:
             conn.execute("DELETE FROM schema_version")
             conn.execute("INSERT INTO schema_version VALUES (1)")
+        conn.commit()
+        version = 1
+
+    if version < 2:
+        conn.executescript(_SCHEMA_V2)
+        conn.execute("UPDATE schema_version SET version = 2")
         conn.commit()
 
 

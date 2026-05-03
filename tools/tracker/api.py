@@ -20,6 +20,41 @@ log = logging.getLogger(__name__)
 # Allowed status values
 _VALID_STATUSES = {"open", "closed"}
 
+# Priority is a signed integer; database CHECK constraint mirrors this range.
+_MIN_PRIORITY = -2
+_MAX_PRIORITY = 2
+
+
+def _validate_priority(value: object) -> tuple:
+    """Coerce and range-check a priority value from a request body.
+
+    Args:
+        value: Raw value from the JSON body (int, str, or None).
+
+    Returns:
+        A (priority_int, error_response) tuple. On success ``error_response``
+        is None. On failure ``priority_int`` is None and ``error_response``
+        is a 400 JSONResponse ready to return.
+    """
+    if isinstance(value, bool):
+        return None, JSONResponse(
+            {"ok": False, "error": "priority must be an integer in [-2, 2]"},
+            status_code=400,
+        )
+    try:
+        priority = int(value)
+    except (TypeError, ValueError):
+        return None, JSONResponse(
+            {"ok": False, "error": "priority must be an integer in [-2, 2]"},
+            status_code=400,
+        )
+    if priority < _MIN_PRIORITY or priority > _MAX_PRIORITY:
+        return None, JSONResponse(
+            {"ok": False, "error": "priority must be an integer in [-2, 2]"},
+            status_code=400,
+        )
+    return priority, None
+
 
 def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
     """Create the Starlette application for ar-tracker.
@@ -258,10 +293,16 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
                 {"ok": False, "error": f"status must be one of: {sorted(_VALID_STATUSES)}"},
                 status_code=400,
             )
+        priority = 0
+        if "priority" in body:
+            priority, err_resp = _validate_priority(body["priority"])
+            if err_resp:
+                return err_resp
         task = store.create_task(
             title=title,
             description=body.get("description") or None,
             status=status,
+            priority=priority,
             project_id=body.get("project_id") or None,
             release_id=body.get("release_id") or None,
             workstream_id=body.get("workstream_id") or None,
@@ -308,6 +349,13 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
                 {"ok": False, "error": "title cannot be empty"}, status_code=400
             )
 
+        priority_field: object = UNSET
+        if "priority" in body:
+            priority_value, err_resp = _validate_priority(body["priority"])
+            if err_resp:
+                return err_resp
+            priority_field = priority_value
+
         def _field(key: str, coerce=None):
             """Return UNSET if key absent from body, else body value (possibly None)."""
             if key not in body:
@@ -322,6 +370,7 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             title=_field("title", coerce=lambda v: v.strip()),
             description=_field("description"),
             status=status if status is not None else UNSET,
+            priority=priority_field,
             project_id=_field("project_id"),
             release_id=_field("release_id"),
             workstream_id=_field("workstream_id"),

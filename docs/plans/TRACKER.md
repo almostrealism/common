@@ -65,6 +65,9 @@ CREATE TABLE tasks (
     title           TEXT NOT NULL,
     description     TEXT,               -- Markdown; may be NULL
     status          TEXT NOT NULL DEFAULT 'open', -- 'open' | 'closed'
+    priority        INTEGER NOT NULL DEFAULT 0
+                    CHECK (priority BETWEEN -2 AND 2),
+                    -- -2=Lowest, -1=Low, 0=Medium (default), 1=High, 2=Highest
     project_id      TEXT REFERENCES projects(id) ON DELETE SET NULL,
     release_id      TEXT REFERENCES releases(id) ON DELETE SET NULL,
     workstream_id   TEXT,               -- FlowTree workstream ID; no FK (external)
@@ -77,6 +80,7 @@ CREATE INDEX idx_tasks_project    ON tasks(project_id);
 CREATE INDEX idx_tasks_release    ON tasks(release_id);
 CREATE INDEX idx_tasks_workstream ON tasks(workstream_id);
 CREATE INDEX idx_tasks_status     ON tasks(status);
+CREATE INDEX idx_tasks_priority   ON tasks(priority);
 
 -- Full-text search via SQLite FTS5
 -- content= declares an external content table (tasks), reducing index size.
@@ -119,6 +123,12 @@ END;
   layer. See Open Questions §6.1.
 - `releases.project_id` is optional: a release can span projects, or a project can have
   no releases yet.
+- `priority` is a signed integer in the closed range `[-2, 2]`, defaulting to `0`
+  (Medium). The values are deliberately symmetric around zero so callers and queries
+  can sort numerically and filter by sign without a lookup table. The mapping to
+  human-readable labels is fixed: `-2` Lowest, `-1` Low, `0` Medium, `1` High,
+  `2` Highest. The `CHECK` constraint is enforced at the database level so corrupt
+  values cannot be written even if API validation is bypassed. See §6.5.
 
 ### 1.3 Migration
 
@@ -131,8 +141,13 @@ CREATE TABLE schema_version (version INTEGER NOT NULL);
 INSERT INTO schema_version VALUES (1);
 ```
 
-Each new schema file (e.g., `002_add_priority.sql`) reads the current version, applies
-the migration, and increments it.
+Each new schema file reads the current version, applies the migration, and increments
+it. The currently-defined migrations are:
+
+- **v1** — initial schema (projects, releases, tasks, FTS5 index, sync triggers).
+- **v2** — adds the `priority` column to `tasks` (signed integer, range `[-2, 2]`,
+  default `0`) and the `idx_tasks_priority` lookup index. Existing rows backfill to
+  `0` (Medium) automatically via the column default.
 
 ---
 
@@ -227,9 +242,13 @@ POST   /v1/import                       Bulk import projects, releases, tasks
   "project_id": "uuid",
   "release_id": "uuid",
   "workstream_id": "ws-abc123",
-  "status": "open"
+  "status": "open",
+  "priority": 1
 }
 ```
+
+`priority` is optional and defaults to `0`. The API rejects requests with
+`priority` outside the closed range `[-2, 2]` with HTTP 400.
 
 **Task response**:
 ```json
@@ -240,6 +259,7 @@ POST   /v1/import                       Bulk import projects, releases, tasks
     "title": "Add OAuth support",
     "description": "## Background\n\nWe need...",
     "status": "open",
+    "priority": 1,
     "project_id": "uuid",
     "release_id": "uuid",
     "workstream_id": "ws-abc123",
@@ -257,8 +277,11 @@ Query params:
 - `status` — filter by status (`open`, `closed`)
 - `limit` — page size (default 50, max 200)
 - `offset` — for pagination
-- `sort` — `created_at` (default) or `updated_at`
+- `sort` — `created_at` (default), `updated_at`, or `priority`
 - `order` — `desc` (default) or `asc`
+
+Sorting by `priority` returns Highest (`2`) first when `order=desc` and Lowest
+(`-2`) first when `order=asc`.
 
 Response:
 ```json
@@ -697,6 +720,7 @@ def tracker_create_task(
     release_id: str = "",
     workstream_id: str = "",
     status: str = "open",
+    priority: int = 0,
 ) -> dict:
     """Create a new tracker task.
 
@@ -709,6 +733,8 @@ def tracker_create_task(
         workstream_id: Optional FlowTree workstream ID to link this task
             to an active coding workstream.
         status: Task status. Either "open" (default) or "closed".
+        priority: Signed integer in the range [-2, 2]. Defaults to 0.
+            -2 = Lowest, -1 = Low, 0 = Medium, 1 = High, 2 = Highest.
 
     Returns:
         Dictionary with ok=True and the created task record.
@@ -718,7 +744,7 @@ def tracker_create_task(
         _require_workstream_in_scope(workstream_id)
     _audit("tracker_create_task", project_id=project_id,
            workstream_id=workstream_id)
-    payload: dict = {"title": title, "status": status}
+    payload: dict = {"title": title, "status": status, "priority": priority}
     if description:
         payload["description"] = description
     if project_id:
@@ -751,6 +777,8 @@ def tracker_list_tasks(
     release_id: str = "",
     workstream_id: str = "",
     status: str = "",
+    sort: str = "",
+    order: str = "",
     limit: int = 50,
     offset: int = 0,
 ) -> dict:
@@ -763,6 +791,10 @@ def tracker_list_tasks(
             Enforces workspace scope — scoped tokens may only query
             workstreams within their scope.
         status: Filter by status: "open" or "closed". Omit for all.
+        sort: Sort column: "created_at" (default), "updated_at", or
+            "priority". Pass "" to use the default.
+        order: Sort order: "desc" (default) or "asc". Pass "" to use
+            the default.
         limit: Maximum number of tasks to return. Defaults to 50,
             maximum 200.
         offset: Pagination offset. Defaults to 0.
@@ -785,6 +817,10 @@ def tracker_list_tasks(
         params.append(f"workstream_id={workstream_id}")
     if status:
         params.append(f"status={status}")
+    if sort:
+        params.append(f"sort={sort}")
+    if order:
+        params.append(f"order={order}")
     if limit != 50:
         params.append(f"limit={limit}")
     if offset:
@@ -799,6 +835,7 @@ def tracker_update_task(
     title: str = "",
     description: str = "",
     status: str = "",
+    priority: int = -999,
     project_id: str = "",
     release_id: str = "",
     workstream_id: str = "",
@@ -816,6 +853,10 @@ def tracker_update_task(
         title: New title. Omit to leave unchanged.
         description: New description. Omit to leave unchanged.
         status: New status: "open" or "closed". Omit to leave unchanged.
+        priority: New priority in the range [-2, 2]. Defaults to the
+            sentinel value -999, which means "leave unchanged" (since
+            zero is a valid priority — Medium — it cannot be used as
+            the sentinel).
         project_id: New project UUID. Omit to leave unchanged. Pass
             "null" to clear.
         release_id: New release UUID. Omit to leave unchanged. Pass
@@ -844,6 +885,8 @@ def tracker_update_task(
         payload["description"] = description
     if status:
         payload["status"] = status
+    if priority != -999:
+        payload["priority"] = priority
     # Handle "null" sentinel to clear optional FK fields
     for field, val in [("project_id", project_id),
                        ("release_id", release_id),
@@ -946,11 +989,11 @@ or the equivalent) includes these columns. We only use the ones marked **keep**:
 | Project Name        | keep        | project.name        |
 | Fix Version/s       | keep        | release.name        |
 | Status              | keep        | task.status (see mapping below) |
+| Priority            | keep        | task.priority (see mapping below) |
 | Created             | keep        | task.created_at     |
 | Updated             | keep        | task.updated_at     |
 | Assignee            | **drop**    | —                   |
 | Reporter            | **drop**    | —                   |
-| Priority            | **drop**    | —                   |
 | Labels              | **drop**    | —                   |
 | Components          | **drop**    | —                   |
 | Sprint              | **drop**    | —                   |
@@ -977,6 +1020,28 @@ STATUS_MAP = {
     "Cancelled": "closed",
 }
 ```
+
+**Priority mapping** (Jira → tracker integer in `[-2, 2]`):
+```python
+PRIORITY_MAP = {
+    # Modern Jira (Highest..Lowest)
+    "Highest":  2,
+    "High":     1,
+    "Medium":   0,
+    "Low":     -1,
+    "Lowest":  -2,
+    # Legacy / pre-rename Jira priorities (Blocker..Trivial)
+    "Blocker":  2,
+    "Critical": 2,
+    "Major":    1,
+    "Minor":   -1,
+    "Trivial": -2,
+}
+```
+
+Unknown or empty priority values default to `0` (Medium). The script logs a
+warning the first time an unknown priority is encountered for a given run so
+the operator can decide whether to extend the mapping table.
 
 **Description handling**: Jira wiki markup is not converted to Markdown. The raw text is
 imported as-is. Visual fidelity of historical descriptions is a non-goal; the text is
@@ -1037,7 +1102,6 @@ simplifying, not archiving:
 - **Attachments**: Files attached to Jira issues are not migrated.
 - **Sprint / Story Points / Epic hierarchy**: Not part of our model.
 - **Labels / Components**: Not part of our model.
-- **Priority**: Deferred (see Open Questions §6.5).
 - **Issue history / audit log**: Not preserved.
 - **Watchers / Votes / Issue links**: Not preserved.
 
@@ -1094,12 +1158,28 @@ SQLite is recommended (see §1.2). Revisit if:
 
 For the foreseeable workload (human + agents using MCP tools), SQLite is sufficient.
 
-### 6.5 Task Priority / Ordering
+### 6.5 Task Priority / Ordering — RESOLVED
 
-Not included in this design. If added:
-- A numeric `priority` field (`1`–`5`) is simplest.
-- An orderable linked-list (Jira-style manual drag-to-reorder) is significantly more
-  complex.
+A signed integer `priority` field has been added to `tasks` (see §1.2). The chosen
+representation is:
+
+| Value | Label   |
+|-------|---------|
+|  `2`  | Highest |
+|  `1`  | High    |
+|  `0`  | Medium (default) |
+| `-1`  | Low     |
+| `-2`  | Lowest  |
+
+Rationale:
+- Symmetric around zero so the default ("nothing was specified") is the natural
+  middle, and sign-based queries (`priority > 0`, `priority < 0`) work without a
+  lookup table.
+- A small fixed range (5 distinct values) is enforced by a SQL `CHECK` constraint
+  so corrupt values cannot enter the database.
+- Sortable with native SQL `ORDER BY priority DESC` to surface the most important
+  work first.
+- Manual drag-to-reorder (Jira-style linked list) remains explicitly out of scope.
 
 **Recommendation**: Punt entirely for now. Decide when someone actually needs it.
 
@@ -1152,7 +1232,6 @@ Deliverables:
 ### Future / Nice-to-Haves
 
 These are explicitly deferred and should not influence Phase 1–3 scope:
-- Task priority / ordering
 - Task dependencies
 - Markdown rendering preview
 - Webhook notifications when tasks change

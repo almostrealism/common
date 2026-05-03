@@ -10,7 +10,15 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from migrate_jira import _jira_id_to_uuid, _parse_date, _read_csv, STATUS_MAP, migrate
+from migrate_jira import (
+    _jira_id_to_uuid,
+    _parse_date,
+    _read_csv,
+    DEFAULT_PRIORITY,
+    PRIORITY_MAP,
+    STATUS_MAP,
+    migrate,
+)
 
 
 def _write_csv(rows, path):
@@ -65,6 +73,33 @@ class TestStatusMap(unittest.TestCase):
         self.assertEqual(STATUS_MAP["Cancelled"], "closed")
 
 
+class TestPriorityMap(unittest.TestCase):
+
+    def test_modern_jira_labels(self):
+        self.assertEqual(PRIORITY_MAP["Highest"], 2)
+        self.assertEqual(PRIORITY_MAP["High"], 1)
+        self.assertEqual(PRIORITY_MAP["Medium"], 0)
+        self.assertEqual(PRIORITY_MAP["Low"], -1)
+        self.assertEqual(PRIORITY_MAP["Lowest"], -2)
+
+    def test_legacy_jira_labels(self):
+        self.assertEqual(PRIORITY_MAP["Blocker"], 2)
+        self.assertEqual(PRIORITY_MAP["Critical"], 2)
+        self.assertEqual(PRIORITY_MAP["Major"], 1)
+        self.assertEqual(PRIORITY_MAP["Minor"], -1)
+        self.assertEqual(PRIORITY_MAP["Trivial"], -2)
+
+    def test_default_is_medium(self):
+        self.assertEqual(DEFAULT_PRIORITY, 0)
+
+    def test_all_values_are_in_range(self):
+        for label, value in PRIORITY_MAP.items():
+            self.assertTrue(
+                -2 <= value <= 2,
+                f"{label} maps to {value}, outside [-2, 2]",
+            )
+
+
 class TestReadCsv(unittest.TestCase):
 
     def test_reads_utf8(self):
@@ -101,6 +136,31 @@ class TestMigrate(unittest.TestCase):
                 "Project Name": "Rings",
                 "Fix Version/s": "0.38",
                 "Status": "Done",
+                "Priority": "High",
+                "Created": "",
+                "Updated": "",
+            }
+        ]
+        csv_path = self._make_csv(rows)
+        migrate(
+            csv_path=csv_path,
+            tracker_url="http://localhost:8030",
+            token=None,
+            dry_run=True,
+            workstream_map=None,
+        )
+        os.unlink(csv_path)
+
+    def test_dry_run_unknown_priority_does_not_crash(self):
+        rows = [
+            {
+                "Issue Key": "PROJ-2",
+                "Summary": "Weird priority",
+                "Description": "",
+                "Project Name": "Rings",
+                "Fix Version/s": "",
+                "Status": "Open",
+                "Priority": "Showstopper",
                 "Created": "",
                 "Updated": "",
             }

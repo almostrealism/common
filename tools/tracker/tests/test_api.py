@@ -183,6 +183,7 @@ class TestTasks(unittest.TestCase):
         self.assertEqual(resp2.status_code, 200)
         self.assertEqual(resp2.json()["task"]["title"], "Add OAuth")
         self.assertEqual(resp2.json()["task"]["status"], "open")
+        self.assertEqual(resp2.json()["task"]["priority"], 0)
 
     def test_create_requires_title(self):
         resp = self.client.post("/v1/tasks", json={})
@@ -193,6 +194,46 @@ class TestTasks(unittest.TestCase):
             "/v1/tasks", json={"title": "t", "status": "invalid"}
         )
         self.assertEqual(resp.status_code, 400)
+
+    def test_create_with_priority(self):
+        resp = self.client.post(
+            "/v1/tasks", json={"title": "Important", "priority": 2}
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.json()["task"]["priority"], 2)
+
+    def test_create_priority_out_of_range_rejected(self):
+        resp = self.client.post(
+            "/v1/tasks", json={"title": "Bad", "priority": 99}
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_create_priority_non_integer_rejected(self):
+        resp = self.client.post(
+            "/v1/tasks", json={"title": "Bad", "priority": "high"}
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_update_priority(self):
+        create_resp = self.client.post("/v1/tasks", json={"title": "T"})
+        task_id = create_resp.json()["task"]["id"]
+        resp = self.client.put(f"/v1/tasks/{task_id}", json={"priority": -2})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["task"]["priority"], -2)
+
+    def test_update_priority_out_of_range_rejected(self):
+        create_resp = self.client.post("/v1/tasks", json={"title": "T"})
+        task_id = create_resp.json()["task"]["id"]
+        resp = self.client.put(f"/v1/tasks/{task_id}", json={"priority": 5})
+        self.assertEqual(resp.status_code, 400)
+
+    def test_list_sort_by_priority(self):
+        self.client.post("/v1/tasks", json={"title": "Lo", "priority": -2})
+        self.client.post("/v1/tasks", json={"title": "Hi", "priority": 2})
+        resp = self.client.get("/v1/tasks?sort=priority&order=desc")
+        titles = [t["title"] for t in resp.json()["tasks"]]
+        self.assertEqual(titles[0], "Hi")
+        self.assertEqual(titles[-1], "Lo")
 
     def test_list_tasks_filtered_by_status(self):
         self.client.post("/v1/tasks", json={"title": "Open task", "status": "open"})
