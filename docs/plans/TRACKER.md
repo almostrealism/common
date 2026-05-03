@@ -5,7 +5,7 @@
 Replace Jira for internal work organization with a minimal, self-hosted ticket-tracking
 service. The system is intentionally simple — it captures tasks, groups them by project
 and release, and ties them back to the existing FlowTree workstream model. No assignees,
-no sprints, no comments threads, no time-tracking. Just enough structure to organize work
+no sprints, no comment threads, no time-tracking. Just enough structure to organize work
 before it becomes code.
 
 The deployment mirrors the existing `ar-memory` service: a Python REST API running in
@@ -79,7 +79,8 @@ CREATE INDEX idx_tasks_workstream ON tasks(workstream_id);
 CREATE INDEX idx_tasks_status     ON tasks(status);
 
 -- Full-text search via SQLite FTS5
--- content= keeps FTS in sync with the tasks table automatically
+-- content= declares an external content table (tasks), reducing index size.
+-- Synchronization is NOT automatic; the triggers below are required.
 CREATE VIRTUAL TABLE tasks_fts USING fts5(
     title,
     description,
@@ -281,8 +282,10 @@ Uses SQLite FTS5 `MATCH` query. Returns same shape as list endpoint plus a `quer
   "tasks": [{"id": "uuid", "title": "...", "project_id": "uuid", ...}]
 }
 ```
-The import is idempotent: existing IDs are upserted (UPDATE OR REPLACE). Returns a
-summary of created/updated counts per entity type.
+The import is idempotent: existing IDs are upserted using
+`INSERT OR REPLACE INTO` (for simple rows) or
+`INSERT INTO ... ON CONFLICT(id) DO UPDATE SET ...` (to preserve created_at).
+Returns a summary of created/updated counts per entity type.
 
 ### 2.5 Health Endpoint
 
@@ -290,7 +293,7 @@ summary of created/updated counts per entity type.
 GET /api/health →
 {
   "ok": true,
-  "version": "1.0.0",
+  "version": "<service-version>",
   "db_path": "/data/tracker.db",
   "counts": {
     "projects": 5,

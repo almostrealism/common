@@ -3951,6 +3951,483 @@ def github_pr_check_status(
 
 
 # ---------------------------------------------------------------------------
+# Tracker HTTP helpers
+# ---------------------------------------------------------------------------
+
+TRACKER_URL = os.environ.get("AR_TRACKER_URL", "http://ar-tracker:8030")
+_TRACKER_AUTH_TOKEN = os.environ.get("AR_TRACKER_AUTH_TOKEN", "")
+
+
+def _tracker_headers() -> dict:
+    h = {"Accept": "application/json"}
+    if _TRACKER_AUTH_TOKEN:
+        h["Authorization"] = f"Bearer {_TRACKER_AUTH_TOKEN}"
+    return h
+
+
+def _tracker_get(path: str, timeout: int = 10) -> dict:
+    """GET a JSON resource from the ar-tracker service."""
+    url = TRACKER_URL.rstrip("/") + path
+    req = Request(url, headers=_tracker_headers())
+    print(f"ar-manager: TRACKER GET {url}", file=sys.stderr)
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            return json.loads(body) if body else {}
+    except HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError:
+            return {"ok": False, "error": f"Tracker returned HTTP {e.code}"}
+    except URLError as e:
+        return {"ok": False, "error": f"Tracker unreachable: {e.reason}"}
+    except Exception as e:
+        logging.getLogger("ar-manager").error("Tracker GET %s: %s", path, e)
+        return {"ok": False, "error": "Internal error contacting tracker"}
+
+
+def _tracker_post(path: str, payload: dict, timeout: int = 15) -> dict:
+    """POST a JSON payload to the ar-tracker service."""
+    url = TRACKER_URL.rstrip("/") + path
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    h = _tracker_headers()
+    h["Content-Type"] = "application/json; charset=utf-8"
+    req = Request(url, data=data, headers=h)
+    print(f"ar-manager: TRACKER POST {url}", file=sys.stderr)
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            return json.loads(body) if body else {"ok": True}
+    except HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError:
+            return {"ok": False, "error": f"Tracker returned HTTP {e.code}"}
+    except URLError as e:
+        return {"ok": False, "error": f"Tracker unreachable: {e.reason}"}
+    except Exception as e:
+        logging.getLogger("ar-manager").error("Tracker POST %s: %s", path, e)
+        return {"ok": False, "error": "Internal error contacting tracker"}
+
+
+def _tracker_put(path: str, payload: dict, timeout: int = 15) -> dict:
+    """PUT a JSON payload to the ar-tracker service."""
+    url = TRACKER_URL.rstrip("/") + path
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    h = _tracker_headers()
+    h["Content-Type"] = "application/json; charset=utf-8"
+    req = Request(url, data=data, headers=h, method="PUT")
+    print(f"ar-manager: TRACKER PUT {url}", file=sys.stderr)
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            return json.loads(body) if body else {"ok": True}
+    except HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError:
+            return {"ok": False, "error": f"Tracker returned HTTP {e.code}"}
+    except URLError as e:
+        return {"ok": False, "error": f"Tracker unreachable: {e.reason}"}
+    except Exception as e:
+        logging.getLogger("ar-manager").error("Tracker PUT %s: %s", path, e)
+        return {"ok": False, "error": "Internal error contacting tracker"}
+
+
+def _tracker_delete(path: str, timeout: int = 10) -> dict:
+    """DELETE a resource from the ar-tracker service."""
+    url = TRACKER_URL.rstrip("/") + path
+    req = Request(url, headers=_tracker_headers(), method="DELETE")
+    print(f"ar-manager: TRACKER DELETE {url}", file=sys.stderr)
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            return json.loads(body) if body else {"ok": True}
+    except HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError:
+            return {"ok": False, "error": f"Tracker returned HTTP {e.code}"}
+    except URLError as e:
+        return {"ok": False, "error": f"Tracker unreachable: {e.reason}"}
+    except Exception as e:
+        logging.getLogger("ar-manager").error("Tracker DELETE %s: %s", path, e)
+        return {"ok": False, "error": "Internal error contacting tracker"}
+
+
+# -- Tracker tools -----------------------------------------------------------
+
+@mcp.tool()
+def tracker_list_projects() -> dict:
+    """List all tracker projects.
+
+    Returns all projects with their IDs and names. Projects are globally
+    visible — no workspace scope restriction.
+
+    Returns:
+        dict with ok=True and a list of projects.
+    """
+    _require_scope("read")
+    _audit("tracker_list_projects")
+    return _tracker_get("/v1/projects")
+
+
+@mcp.tool()
+def tracker_create_project(name: str) -> dict:
+    """Create a new tracker project.
+
+    Args:
+        name: Human-readable project name (e.g., "Rings").
+
+    Returns:
+        dict with ok=True and the created project record.
+    """
+    _require_scope("write")
+    _audit("tracker_create_project", name=name)
+    return _tracker_post("/v1/projects", {"name": name})
+
+
+@mcp.tool()
+def tracker_update_project(project_id: str, name: str) -> dict:
+    """Update an existing tracker project.
+
+    Args:
+        project_id: UUID of the project to update.
+        name: New name for the project.
+
+    Returns:
+        dict with ok=True and the updated project record.
+    """
+    _require_scope("write")
+    _audit("tracker_update_project", project_id=project_id)
+    return _tracker_put(f"/v1/projects/{project_id}", {"name": name})
+
+
+@mcp.tool()
+def tracker_delete_project(project_id: str) -> dict:
+    """Delete a tracker project.
+
+    Deleting a project sets project_id to NULL on any associated tasks
+    and releases (ON DELETE SET NULL). Tasks are not deleted.
+
+    Args:
+        project_id: UUID of the project to delete.
+
+    Returns:
+        dict with ok=True on success.
+    """
+    _require_scope("write")
+    _audit("tracker_delete_project", project_id=project_id)
+    return _tracker_delete(f"/v1/projects/{project_id}")
+
+
+@mcp.tool()
+def tracker_list_releases(project_id: str = "") -> dict:
+    """List tracker releases, optionally filtered by project.
+
+    Args:
+        project_id: Optional UUID to filter releases to a specific project.
+            Omit to list all releases.
+
+    Returns:
+        dict with ok=True and a list of releases.
+    """
+    _require_scope("read")
+    _audit("tracker_list_releases", project_id=project_id)
+    path = "/v1/releases"
+    if project_id:
+        path += f"?project_id={project_id}"
+    return _tracker_get(path)
+
+
+@mcp.tool()
+def tracker_create_release(name: str, project_id: str = "") -> dict:
+    """Create a new tracker release.
+
+    Args:
+        name: Release name (e.g., "Rings 0.38").
+        project_id: Optional UUID of the associated project.
+
+    Returns:
+        dict with ok=True and the created release record.
+    """
+    _require_scope("write")
+    _audit("tracker_create_release", name=name, project_id=project_id)
+    payload: dict = {"name": name}
+    if project_id:
+        payload["project_id"] = project_id
+    return _tracker_post("/v1/releases", payload)
+
+
+@mcp.tool()
+def tracker_update_release(
+    release_id: str,
+    name: str = "",
+    project_id: str = "",
+) -> dict:
+    """Update an existing tracker release.
+
+    Args:
+        release_id: UUID of the release to update.
+        name: New name for the release. Omit to leave unchanged.
+        project_id: New project association UUID. Omit to leave unchanged.
+
+    Returns:
+        dict with ok=True and the updated release record.
+    """
+    _require_scope("write")
+    _audit("tracker_update_release", release_id=release_id)
+    payload: dict = {}
+    if name:
+        payload["name"] = name
+    if project_id:
+        payload["project_id"] = project_id
+    return _tracker_put(f"/v1/releases/{release_id}", payload)
+
+
+@mcp.tool()
+def tracker_delete_release(release_id: str) -> dict:
+    """Delete a tracker release.
+
+    Deleting a release sets release_id to NULL on any associated tasks
+    (ON DELETE SET NULL). Tasks are not deleted.
+
+    Args:
+        release_id: UUID of the release to delete.
+
+    Returns:
+        dict with ok=True on success.
+    """
+    _require_scope("write")
+    _audit("tracker_delete_release", release_id=release_id)
+    return _tracker_delete(f"/v1/releases/{release_id}")
+
+
+@mcp.tool()
+def tracker_create_task(
+    title: str,
+    description: str = "",
+    project_id: str = "",
+    release_id: str = "",
+    workstream_id: str = "",
+    status: str = "open",
+) -> dict:
+    """Create a new tracker task.
+
+    Args:
+        title: Short, descriptive task title.
+        description: Optional longer description. Markdown supported.
+        project_id: UUID of the project this task belongs to. Strongly
+            recommended — tasks without a project are harder to organize.
+        release_id: Optional UUID of the target release.
+        workstream_id: Optional FlowTree workstream ID to link this task
+            to an active coding workstream.
+        status: Task status. Either "open" (default) or "closed".
+
+    Returns:
+        dict with ok=True and the created task record.
+    """
+    _require_scope("write")
+    if workstream_id:
+        _require_workstream_in_scope(workstream_id)
+    _audit("tracker_create_task", project_id=project_id, workstream_id=workstream_id)
+    payload: dict = {"title": title, "status": status}
+    if description:
+        payload["description"] = description
+    if project_id:
+        payload["project_id"] = project_id
+    if release_id:
+        payload["release_id"] = release_id
+    if workstream_id:
+        payload["workstream_id"] = workstream_id
+    return _tracker_post("/v1/tasks", payload)
+
+
+@mcp.tool()
+def tracker_get_task(task_id: str) -> dict:
+    """Get a single tracker task by ID.
+
+    Args:
+        task_id: UUID of the task to retrieve.
+
+    Returns:
+        dict with ok=True and the task record.
+    """
+    _require_scope("read")
+    _audit("tracker_get_task", task_id=task_id)
+    return _tracker_get(f"/v1/tasks/{task_id}")
+
+
+@mcp.tool()
+def tracker_list_tasks(
+    project_id: str = "",
+    release_id: str = "",
+    workstream_id: str = "",
+    status: str = "",
+    limit: int = 50,
+    offset: int = 0,
+) -> dict:
+    """List tracker tasks with optional filtering.
+
+    Args:
+        project_id: Filter to tasks in this project (UUID).
+        release_id: Filter to tasks in this release (UUID).
+        workstream_id: Filter to tasks linked to this workstream ID.
+            Enforces workspace scope — scoped tokens may only query
+            workstreams within their scope.
+        status: Filter by status: "open" or "closed". Omit for all.
+        limit: Maximum number of tasks to return. Defaults to 50, max 200.
+        offset: Pagination offset. Defaults to 0.
+
+    Returns:
+        dict with ok=True, a list of tasks, and pagination info
+        (total, limit, offset).
+    """
+    _require_scope("read")
+    if workstream_id:
+        _require_workstream_in_scope(workstream_id)
+    _audit("tracker_list_tasks", project_id=project_id,
+           release_id=release_id, workstream_id=workstream_id)
+    params = []
+    if project_id:
+        params.append(f"project_id={project_id}")
+    if release_id:
+        params.append(f"release_id={release_id}")
+    if workstream_id:
+        params.append(f"workstream_id={workstream_id}")
+    if status:
+        params.append(f"status={status}")
+    if limit != 50:
+        params.append(f"limit={limit}")
+    if offset:
+        params.append(f"offset={offset}")
+    qs = ("?" + "&".join(params)) if params else ""
+    return _tracker_get(f"/v1/tasks{qs}")
+
+
+@mcp.tool()
+def tracker_update_task(
+    task_id: str,
+    title: str = "",
+    description: str = "",
+    status: str = "",
+    project_id: str = "",
+    release_id: str = "",
+    workstream_id: str = "",
+) -> dict:
+    """Update an existing tracker task.
+
+    Only fields with non-empty values are updated. Pass an empty string
+    to leave a field unchanged.
+
+    To clear an optional field (e.g., remove the release association),
+    pass the literal string "null" for that parameter.
+
+    Args:
+        task_id: UUID of the task to update.
+        title: New title. Omit to leave unchanged.
+        description: New description. Omit to leave unchanged.
+        status: New status: "open" or "closed". Omit to leave unchanged.
+        project_id: New project UUID. Omit to leave unchanged. Pass
+            "null" to clear.
+        release_id: New release UUID. Omit to leave unchanged. Pass
+            "null" to clear.
+        workstream_id: New workstream ID. Omit to leave unchanged. Pass
+            "null" to clear.
+
+    Returns:
+        dict with ok=True and the updated task record.
+    """
+    _require_scope("write")
+    current = _tracker_get(f"/v1/tasks/{task_id}")
+    if not current.get("ok"):
+        return current
+    current_ws = (current.get("task") or {}).get("workstream_id", "")
+    if current_ws:
+        _require_workstream_in_scope(current_ws)
+    if workstream_id and workstream_id != "null":
+        _require_workstream_in_scope(workstream_id)
+    _audit("tracker_update_task", task_id=task_id)
+    payload: dict = {}
+    if title:
+        payload["title"] = title
+    if description:
+        payload["description"] = description
+    if status:
+        payload["status"] = status
+    for field, val in [("project_id", project_id),
+                       ("release_id", release_id),
+                       ("workstream_id", workstream_id)]:
+        if val == "null":
+            payload[field] = None
+        elif val:
+            payload[field] = val
+    return _tracker_put(f"/v1/tasks/{task_id}", payload)
+
+
+@mcp.tool()
+def tracker_delete_task(task_id: str) -> dict:
+    """Delete a tracker task permanently.
+
+    Args:
+        task_id: UUID of the task to delete.
+
+    Returns:
+        dict with ok=True on success.
+    """
+    _require_scope("write")
+    current = _tracker_get(f"/v1/tasks/{task_id}")
+    if not current.get("ok"):
+        return current
+    ws = (current.get("task") or {}).get("workstream_id", "")
+    if ws:
+        _require_workstream_in_scope(ws)
+    _audit("tracker_delete_task", task_id=task_id)
+    return _tracker_delete(f"/v1/tasks/{task_id}")
+
+
+@mcp.tool()
+def tracker_search_tasks(
+    query: str,
+    project_id: str = "",
+    status: str = "",
+    limit: int = 20,
+    offset: int = 0,
+) -> dict:
+    """Full-text search over tracker task titles and descriptions.
+
+    Uses SQLite FTS5 for efficient full-text search. Supports
+    phrase queries ("exact phrase"), NOT, AND, OR operators.
+
+    Args:
+        query: Search string. Supports FTS5 query syntax.
+        project_id: Optional UUID to restrict search to one project.
+        status: Optional status filter: "open" or "closed".
+        limit: Maximum results to return. Defaults to 20, max 100.
+        offset: Pagination offset. Defaults to 0.
+
+    Returns:
+        dict with ok=True, a list of matching tasks, and pagination info.
+    """
+    _require_scope("read")
+    _audit("tracker_search_tasks", query=query, project_id=project_id)
+    params = [f"q={quote(query)}"]
+    if project_id:
+        params.append(f"project_id={project_id}")
+    if status:
+        params.append(f"status={status}")
+    if limit != 20:
+        params.append(f"limit={limit}")
+    if offset:
+        params.append(f"offset={offset}")
+    return _tracker_get("/v1/search/tasks?" + "&".join(params))
+
+
+# ---------------------------------------------------------------------------
 # Server startup
 # ---------------------------------------------------------------------------
 

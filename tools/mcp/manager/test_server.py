@@ -1891,6 +1891,20 @@ class TestToolRegistration(unittest.TestCase):
             "github_request_copilot_review",
             "github_read_file",
             "github_pr_check_status",
+            "tracker_list_projects",
+            "tracker_create_project",
+            "tracker_update_project",
+            "tracker_delete_project",
+            "tracker_list_releases",
+            "tracker_create_release",
+            "tracker_update_release",
+            "tracker_delete_release",
+            "tracker_create_task",
+            "tracker_get_task",
+            "tracker_list_tasks",
+            "tracker_update_task",
+            "tracker_delete_task",
+            "tracker_search_tasks",
         }
         registered = set(tools.keys())
         missing = expected - registered
@@ -2842,6 +2856,189 @@ class TestGithubToolsDirectAddressing(unittest.TestCase):
             server.github_pr_find(org="Plytrix", repo="plytrix-platform",
                                   branch="feature/x")
         mock_gh.assert_not_called()
+
+
+# -----------------------------------------------------------------------
+# Tracker MCP tools
+# -----------------------------------------------------------------------
+
+
+class TestTrackerTools(unittest.TestCase):
+    """Tests for tracker_* MCP tools in ar-manager server.py.
+
+    All tracker HTTP calls are mocked so no running ar-tracker service
+    is required.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    @patch.object(server, "_tracker_get")
+    def test_tracker_list_projects(self, mock_get):
+        mock_get.return_value = {"ok": True, "projects": [{"id": "p1", "name": "Rings"}]}
+        result = server.tracker_list_projects()
+        self.assertTrue(result["ok"])
+        mock_get.assert_called_once_with("/v1/projects")
+
+    @patch.object(server, "_tracker_post")
+    def test_tracker_create_project(self, mock_post):
+        mock_post.return_value = {"ok": True, "project": {"id": "p1", "name": "Rings"}}
+        result = server.tracker_create_project("Rings")
+        self.assertTrue(result["ok"])
+        mock_post.assert_called_once_with("/v1/projects", {"name": "Rings"})
+
+    @patch.object(server, "_tracker_put")
+    def test_tracker_update_project(self, mock_put):
+        mock_put.return_value = {"ok": True, "project": {"id": "p1", "name": "New"}}
+        result = server.tracker_update_project("p1", "New")
+        self.assertTrue(result["ok"])
+        mock_put.assert_called_once_with("/v1/projects/p1", {"name": "New"})
+
+    @patch.object(server, "_tracker_delete")
+    def test_tracker_delete_project(self, mock_del):
+        mock_del.return_value = {"ok": True}
+        result = server.tracker_delete_project("p1")
+        self.assertTrue(result["ok"])
+        mock_del.assert_called_once_with("/v1/projects/p1")
+
+    @patch.object(server, "_tracker_get")
+    def test_tracker_list_releases_no_filter(self, mock_get):
+        mock_get.return_value = {"ok": True, "releases": []}
+        server.tracker_list_releases()
+        mock_get.assert_called_once_with("/v1/releases")
+
+    @patch.object(server, "_tracker_get")
+    def test_tracker_list_releases_with_project(self, mock_get):
+        mock_get.return_value = {"ok": True, "releases": []}
+        server.tracker_list_releases(project_id="p1")
+        mock_get.assert_called_once_with("/v1/releases?project_id=p1")
+
+    @patch.object(server, "_tracker_post")
+    def test_tracker_create_release_with_project(self, mock_post):
+        mock_post.return_value = {"ok": True, "release": {"id": "r1"}}
+        server.tracker_create_release("0.38", project_id="p1")
+        mock_post.assert_called_once_with(
+            "/v1/releases", {"name": "0.38", "project_id": "p1"}
+        )
+
+    @patch.object(server, "_tracker_put")
+    def test_tracker_update_release_name_only(self, mock_put):
+        mock_put.return_value = {"ok": True, "release": {"id": "r1"}}
+        server.tracker_update_release("r1", name="0.39")
+        mock_put.assert_called_once_with("/v1/releases/r1", {"name": "0.39"})
+
+    @patch.object(server, "_tracker_delete")
+    def test_tracker_delete_release(self, mock_del):
+        mock_del.return_value = {"ok": True}
+        server.tracker_delete_release("r1")
+        mock_del.assert_called_once_with("/v1/releases/r1")
+
+    @patch.object(server, "_tracker_post")
+    def test_tracker_create_task_minimal(self, mock_post):
+        mock_post.return_value = {"ok": True, "task": {"id": "t1", "title": "Fix bug"}}
+        result = server.tracker_create_task("Fix bug")
+        self.assertTrue(result["ok"])
+        args = mock_post.call_args
+        self.assertEqual(args[0][0], "/v1/tasks")
+        self.assertEqual(args[0][1]["title"], "Fix bug")
+        self.assertEqual(args[0][1]["status"], "open")
+
+    @patch.object(server, "_tracker_post")
+    def test_tracker_create_task_full(self, mock_post):
+        mock_post.return_value = {"ok": True, "task": {"id": "t1"}}
+        server.tracker_create_task(
+            "Add OAuth",
+            description="Details",
+            project_id="p1",
+            release_id="r1",
+            workstream_id="",
+            status="closed",
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["description"], "Details")
+        self.assertEqual(payload["project_id"], "p1")
+        self.assertEqual(payload["status"], "closed")
+
+    @patch.object(server, "_tracker_get")
+    def test_tracker_get_task(self, mock_get):
+        mock_get.return_value = {"ok": True, "task": {"id": "t1", "title": "T"}}
+        result = server.tracker_get_task("t1")
+        self.assertTrue(result["ok"])
+        mock_get.assert_called_once_with("/v1/tasks/t1")
+
+    @patch.object(server, "_tracker_get")
+    def test_tracker_list_tasks_no_filters(self, mock_get):
+        mock_get.return_value = {"ok": True, "tasks": [], "total": 0}
+        server.tracker_list_tasks()
+        mock_get.assert_called_once_with("/v1/tasks")
+
+    @patch.object(server, "_tracker_get")
+    def test_tracker_list_tasks_with_status(self, mock_get):
+        mock_get.return_value = {"ok": True, "tasks": [], "total": 0}
+        server.tracker_list_tasks(status="open", project_id="p1")
+        called = mock_get.call_args[0][0]
+        self.assertIn("status=open", called)
+        self.assertIn("project_id=p1", called)
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    def test_tracker_update_task_closes_it(self, mock_get, mock_put):
+        mock_get.return_value = {"ok": True, "task": {"id": "t1", "workstream_id": ""}}
+        mock_put.return_value = {"ok": True, "task": {"id": "t1", "status": "closed"}}
+        result = server.tracker_update_task("t1", status="closed")
+        self.assertTrue(result["ok"])
+        payload = mock_put.call_args[0][1]
+        self.assertEqual(payload["status"], "closed")
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    def test_tracker_update_task_null_release(self, mock_get, mock_put):
+        mock_get.return_value = {"ok": True, "task": {"id": "t1", "workstream_id": ""}}
+        mock_put.return_value = {"ok": True, "task": {"id": "t1"}}
+        server.tracker_update_task("t1", release_id="null")
+        payload = mock_put.call_args[0][1]
+        self.assertIsNone(payload["release_id"])
+
+    @patch.object(server, "_tracker_delete")
+    @patch.object(server, "_tracker_get")
+    def test_tracker_delete_task(self, mock_get, mock_del):
+        mock_get.return_value = {"ok": True, "task": {"id": "t1", "workstream_id": ""}}
+        mock_del.return_value = {"ok": True}
+        result = server.tracker_delete_task("t1")
+        self.assertTrue(result["ok"])
+        mock_del.assert_called_once_with("/v1/tasks/t1")
+
+    @patch.object(server, "_tracker_get")
+    def test_tracker_search_tasks(self, mock_get):
+        mock_get.return_value = {"ok": True, "tasks": [], "total": 0, "query": "oauth"}
+        server.tracker_search_tasks("oauth")
+        called = mock_get.call_args[0][0]
+        self.assertIn("/v1/search/tasks", called)
+        self.assertIn("oauth", called)
+
+    def test_tracker_tools_require_read_scope(self):
+        _grant_scopes("write")
+        with self.assertRaises(PermissionError):
+            server.tracker_list_projects()
+        with self.assertRaises(PermissionError):
+            server.tracker_get_task("t1")
+        with self.assertRaises(PermissionError):
+            server.tracker_list_tasks()
+        with self.assertRaises(PermissionError):
+            server.tracker_search_tasks("q")
+
+    def test_tracker_tools_require_write_scope(self):
+        _grant_scopes("read")
+        with self.assertRaises(PermissionError):
+            server.tracker_create_project("P")
+        with self.assertRaises(PermissionError):
+            server.tracker_update_project("p1", "New")
+        with self.assertRaises(PermissionError):
+            server.tracker_delete_project("p1")
+        with self.assertRaises(PermissionError):
+            server.tracker_create_release("r")
+        with self.assertRaises(PermissionError):
+            server.tracker_create_task("t")
 
 
 if __name__ == "__main__":

@@ -306,7 +306,21 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"github_create_pr",
 			"github_request_copilot_review",
 			"github_read_file",
-			"github_pr_check_status"
+			"github_pr_check_status",
+			"tracker_list_projects",
+			"tracker_create_project",
+			"tracker_update_project",
+			"tracker_delete_project",
+			"tracker_list_releases",
+			"tracker_create_release",
+			"tracker_update_release",
+			"tracker_delete_release",
+			"tracker_create_task",
+			"tracker_get_task",
+			"tracker_list_tasks",
+			"tracker_update_task",
+			"tracker_delete_task",
+			"tracker_search_tasks"
 		));
 
 		List<String> discovered = McpToolDiscovery.discoverToolNames(serverFile);
