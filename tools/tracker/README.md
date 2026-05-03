@@ -156,10 +156,14 @@ The script reads these columns (all others are silently ignored):
 
 ### Jira status mapping
 
+The tracker is intentionally binary: `open` or `closed`. Active and queued
+work maps to `open`; terminal states map to `closed`. Unknown statuses fall
+back to `open` with a one-shot warning per distinct value.
+
 | Jira status | Tracker status |
 |-------------|----------------|
-| Open, To Do, In Progress, In Review, Blocked, Reopened | `open` |
-| Done, Closed, Resolved, Won't Do, Cancelled | `closed` |
+| Open, To Do, Backlog, Selected for Development, Ready, Ready for Development, Ready for Review, In Progress, In Review, In Test, In QA, Testing, QA, Verified, Acceptance, In Acceptance Testing, Awaiting Approval, Approved, Pending, Waiting, Blocked, On Hold, Reopened | `open` |
+| Done, Closed, Resolved, Released, Deployed, Won't Do, Won't Fix, Cancelled, Duplicate, Invalid, Rejected | `closed` |
 
 ### Jira priority mapping
 

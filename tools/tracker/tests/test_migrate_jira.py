@@ -72,6 +72,14 @@ class TestStatusMap(unittest.TestCase):
     def test_cancelled_maps_to_closed(self):
         self.assertEqual(STATUS_MAP["Cancelled"], "closed")
 
+    def test_backlog_maps_to_open(self):
+        self.assertEqual(STATUS_MAP["Backlog"], "open")
+
+    def test_terminal_aliases_map_to_closed(self):
+        for label in ("Won't Fix", "Duplicate", "Invalid", "Rejected",
+                      "Released", "Deployed"):
+            self.assertEqual(STATUS_MAP[label], "closed", label)
+
 
 class TestPriorityMap(unittest.TestCase):
 

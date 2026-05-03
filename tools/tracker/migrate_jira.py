@@ -36,18 +36,46 @@ from urllib.request import Request, urlopen
 
 
 # Jira status → tracker status
+# The tracker is intentionally binary (open / closed). Anything that
+# represents active or queued work maps to "open"; anything terminal
+# maps to "closed". Unknown statuses fall back to "open" with a warning.
 STATUS_MAP = {
-    "Open": "open",
-    "To Do": "open",
-    "In Progress": "open",
-    "In Review": "open",
-    "Blocked": "open",
-    "Reopened": "open",
-    "Done": "closed",
-    "Closed": "closed",
-    "Resolved": "closed",
-    "Won't Do": "closed",
+    # Active / queued work
+    "Open":                     "open",
+    "To Do":                    "open",
+    "Backlog":                  "open",
+    "Selected for Development": "open",
+    "Ready":                    "open",
+    "Ready for Development":    "open",
+    "Ready for Review":         "open",
+    "In Progress":              "open",
+    "In Review":                "open",
+    "In Test":                  "open",
+    "In QA":                    "open",
+    "Testing":                  "open",
+    "QA":                       "open",
+    "Verified":                 "open",
+    "Acceptance":               "open",
+    "In Acceptance Testing":    "open",
+    "Awaiting Approval":        "open",
+    "Approved":                 "open",
+    "Pending":                  "open",
+    "Waiting":                  "open",
+    "Blocked":                  "open",
+    "On Hold":                  "open",
+    "Reopened":                 "open",
+    # Terminal / resolved
+    "Done":      "closed",
+    "Closed":    "closed",
+    "Resolved":  "closed",
+    "Released":  "closed",
+    "Deployed":  "closed",
+    "Won't Do":  "closed",
+    "Won't Fix": "closed",
     "Cancelled": "closed",
+    "Duplicate": "closed",
+    "Invalid":   "closed",
+    "Rejected":  "closed",
 }
 
 # Jira priority → tracker priority (signed integer in [-2, 2]).
@@ -241,6 +269,7 @@ def migrate(
     skipped = 0
     workstream_warnings: list = []
     unknown_priorities: set = set()
+    unknown_statuses: set = set()
 
     for row in rows:
         issue_key = row.get("Issue Key") or row.get("Issue key") or ""
@@ -269,11 +298,14 @@ def migrate(
         jira_status = (row.get("Status") or "").strip()
         tracker_status = STATUS_MAP.get(jira_status, "open")
         if jira_status and jira_status not in STATUS_MAP:
-            print(
-                f"  WARNING: Unknown Jira status '{jira_status}' for {issue_key}, "
-                f"defaulting to 'open'",
-                file=sys.stderr,
-            )
+            if jira_status not in unknown_statuses:
+                unknown_statuses.add(jira_status)
+                print(
+                    f"  WARNING: Unknown Jira status '{jira_status}' "
+                    f"(first seen on {issue_key}), defaulting to 'open'. "
+                    f"Same warning is suppressed for further occurrences.",
+                    file=sys.stderr,
+                )
 
         jira_priority = (row.get("Priority") or "").strip()
         tracker_priority = PRIORITY_MAP.get(jira_priority, DEFAULT_PRIORITY)
