@@ -10,12 +10,18 @@ Usage:
         --tracker-url http://localhost:8030 \\
         --tracker-token <token> \\
         [--project-name "My Project"] \\
+        [--issue-type Story[,Task,Bug]] \\
         [--dry-run] \\
         [--workstream-map workstreams.json]
 
 If --project-name is supplied, it is used for every row that does not
 have a value in the CSV's "Project Name" column. Rows that already have
 a Project Name are left alone.
+
+If --issue-type is supplied, only rows whose "Issue Type" column matches
+one of the given (comma-separated, case-insensitive) values are imported;
+all others are skipped. Use this to drop Epics, Sub-tasks, or other
+container issues that don't make sense as standalone tracker tasks.
 
 Workstream map JSON format:
     {"PROJ-prefix": "ws-abc123", "summary-keyword": "ws-def456"}
@@ -228,6 +234,7 @@ def migrate(
     dry_run: bool,
     workstream_map: Optional[dict],
     default_project_name: Optional[str] = None,
+    issue_types: Optional[set] = None,
 ) -> None:
     """Run the Jira → tracker migration.
 
@@ -240,6 +247,9 @@ def migrate(
         default_project_name: Optional project name used for rows that do
             not have a value in the CSV's "Project Name" column. Per-row
             values from the CSV always take precedence.
+        issue_types: Optional set of accepted Jira "Issue Type" values
+            (case-insensitive). Rows with an Issue Type outside this set
+            are skipped. None means accept everything.
     """
     print(f"Reading {csv_path} …", file=sys.stderr)
     rows = _read_csv(csv_path)
@@ -267,9 +277,14 @@ def migrate(
     # Batch tasks for bulk import.
     task_batch: list = []
     skipped = 0
+    skipped_by_issue_type: dict = {}
     workstream_warnings: list = []
     unknown_priorities: set = set()
     unknown_statuses: set = set()
+    accepted_types_lower = (
+        {t.strip().lower() for t in issue_types if t and t.strip()}
+        if issue_types else None
+    )
 
     for row in rows:
         issue_key = row.get("Issue Key") or row.get("Issue key") or ""
@@ -277,6 +292,19 @@ def migrate(
         if not issue_key or not summary:
             skipped += 1
             continue
+
+        if accepted_types_lower is not None:
+            row_type = (
+                row.get("Issue Type")
+                or row.get("Issue type")
+                or row.get("issuetype")
+                or ""
+            ).strip()
+            if row_type.lower() not in accepted_types_lower:
+                skipped_by_issue_type[row_type or "(blank)"] = (
+                    skipped_by_issue_type.get(row_type or "(blank)", 0) + 1
+                )
+                continue
 
         project_name = (row.get("Project Name") or row.get("Project name") or "").strip()
         if not project_name and default_project_name:
@@ -382,6 +410,16 @@ def migrate(
     print(f"  Releases created/resolved: {len(existing_releases)}", file=sys.stderr)
     print(f"  Tasks imported: {total_imported}", file=sys.stderr)
     print(f"  Skipped rows (no key/summary): {skipped}", file=sys.stderr)
+    if skipped_by_issue_type:
+        total_filtered = sum(skipped_by_issue_type.values())
+        breakdown = ", ".join(
+            f"{t}={n}" for t, n in sorted(skipped_by_issue_type.items())
+        )
+        print(
+            f"  Skipped rows (filtered by --issue-type): "
+            f"{total_filtered} ({breakdown})",
+            file=sys.stderr,
+        )
 
 
 def main() -> None:
@@ -415,6 +453,15 @@ def main() -> None:
             "Per-row CSV values always take precedence."
         ),
     )
+    parser.add_argument(
+        "--issue-type",
+        default="",
+        help=(
+            "Comma-separated list of Jira 'Issue Type' values to import "
+            "(case-insensitive). Rows of any other type are skipped. "
+            "Example: --issue-type Story,Task,Bug. Omit to import every row."
+        ),
+    )
     args = parser.parse_args()
 
     workstream_map = None
@@ -426,6 +473,11 @@ def main() -> None:
             print(f"ERROR: Cannot read workstream map: {e}", file=sys.stderr)
             sys.exit(1)
 
+    issue_types = (
+        {t.strip() for t in args.issue_type.split(",") if t.strip()}
+        if args.issue_type.strip() else None
+    )
+
     migrate(
         csv_path=args.csv,
         tracker_url=args.tracker_url.rstrip("/"),
@@ -433,6 +485,7 @@ def main() -> None:
         dry_run=args.dry_run,
         workstream_map=workstream_map,
         default_project_name=args.project_name.strip() or None,
+        issue_types=issue_types,
     )
 
 

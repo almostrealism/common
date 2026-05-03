@@ -209,6 +209,20 @@ python tools/tracker/migrate_jira.py \
 `--project-name` fills in a default for rows that lack a `Project Name`
 value in the CSV. Per-row CSV values always take precedence.
 
+**Filtering out Epics, Sub-tasks, and other container issue types**:
+
+```bash
+python tools/tracker/migrate_jira.py \
+    --csv jira_export.csv \
+    --tracker-url http://localhost:8030 \
+    --tracker-token <token> \
+    --issue-type Story
+```
+
+`--issue-type` accepts one or a comma-separated list of Jira `Issue Type`
+values (case-insensitive). Rows with any other type are skipped. Omit the
+flag to import every row regardless of type.
+
 **With workstream mapping**:
 
 ```bash

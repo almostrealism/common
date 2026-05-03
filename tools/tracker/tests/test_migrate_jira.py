@@ -206,6 +206,70 @@ class TestMigrate(unittest.TestCase):
         )
         os.unlink(csv_path)
 
+    def test_issue_type_filter_keeps_only_accepted(self):
+        rows = [
+            {
+                "Issue Key": "AR-1",
+                "Summary": "A story",
+                "Description": "",
+                "Project Name": "Common",
+                "Fix Version/s": "",
+                "Status": "Open",
+                "Priority": "",
+                "Issue Type": "Story",
+                "Created": "",
+                "Updated": "",
+            },
+            {
+                "Issue Key": "AR-2",
+                "Summary": "An epic parent",
+                "Description": "",
+                "Project Name": "Common",
+                "Fix Version/s": "",
+                "Status": "Open",
+                "Priority": "",
+                "Issue Type": "Epic",
+                "Created": "",
+                "Updated": "",
+            },
+        ]
+        csv_path = self._make_csv(rows)
+        migrate(
+            csv_path=csv_path,
+            tracker_url="http://localhost:8030",
+            token=None,
+            dry_run=True,
+            workstream_map=None,
+            issue_types={"Story"},
+        )
+        os.unlink(csv_path)
+
+    def test_issue_type_filter_is_case_insensitive(self):
+        rows = [
+            {
+                "Issue Key": "AR-3",
+                "Summary": "Lowercase story type",
+                "Description": "",
+                "Project Name": "Common",
+                "Fix Version/s": "",
+                "Status": "Open",
+                "Priority": "",
+                "Issue Type": "story",
+                "Created": "",
+                "Updated": "",
+            }
+        ]
+        csv_path = self._make_csv(rows)
+        migrate(
+            csv_path=csv_path,
+            tracker_url="http://localhost:8030",
+            token=None,
+            dry_run=True,
+            workstream_map=None,
+            issue_types={"Story"},
+        )
+        os.unlink(csv_path)
+
     def test_default_project_name_used_when_csv_lacks_column(self):
         rows = [
             {
