@@ -60,10 +60,9 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	 * health loop and the {@link #generate(int, int, java.util.function.Supplier,
 	 * java.util.function.Consumer) generate} loop used for previews) accumulate
 	 * heap state across renders that {@link AudioScene#destroy()} alone does not
-	 * collect — see {@code docs/plans/AUDIO_SCENE_BENCHMARK_INVESTIGATION.md}.
-	 * Without this hint, eventually a major GC fires <em>during</em> a render and
-	 * inflates per-tick latency 5×–10×; the GC hint at the per-genome boundary
-	 * forces that work into an idle moment instead.</p>
+	 * collect. Without this hint, eventually a major GC fires <em>during</em> a
+	 * render and inflates per-tick latency 5×–10×; the GC hint at the per-genome
+	 * boundary forces that work into an idle moment instead.</p>
 	 *
 	 * <p>The hint is placed on {@link #enableGenome(int)} rather than
 	 * {@link #disableGenome()} because the latter is also used during
