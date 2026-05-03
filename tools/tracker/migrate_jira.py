@@ -315,7 +315,19 @@ def migrate(
                 project_name, existing_projects, tracker_url, token, dry_run
             )
 
-        fix_versions_raw = row.get("Fix Version/s") or row.get("Fix Versions") or ""
+        # Jira's Fix Version column appears under a few different headings
+        # depending on the export format and Jira version: "Fix Version/s"
+        # (classic all-fields), "Fix Versions" / "Fix versions" (newer Cloud),
+        # "Fix Version" (singular), and "fixVersions" (REST-derived exports).
+        fix_versions_raw = (
+            row.get("Fix Version/s")
+            or row.get("Fix Versions")
+            or row.get("Fix versions")
+            or row.get("Fix Version")
+            or row.get("Fix version")
+            or row.get("fixVersions")
+            or ""
+        )
         release_id = None
         for version_name in [v.strip() for v in fix_versions_raw.split(",") if v.strip()]:
             release_id = _resolve_or_create_release(

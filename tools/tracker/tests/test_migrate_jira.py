@@ -270,6 +270,57 @@ class TestMigrate(unittest.TestCase):
         )
         os.unlink(csv_path)
 
+    def test_lowercase_fix_versions_column_is_recognized(self):
+        """Newer Jira exports use 'Fix versions' (lowercase v, no slash).
+
+        Regression: earlier the script only looked for 'Fix Version/s' and
+        'Fix Versions', so this header was silently dropped and no releases
+        were created.
+        """
+        rows = [
+            {
+                "Issue key": "RINGS-350",
+                "Summary": "Realtime pattern generation",
+                "Description": "...",
+                "Project Name": "Rings",
+                "Fix versions": "Rings 0.38",
+                "Status": "In Progress",
+                "Priority": "High",
+                "Issue Type": "Story",
+                "Created": "",
+                "Updated": "",
+            }
+        ]
+        csv_path = self._make_csv(rows)
+        captured: list = []
+        original = sys.modules["migrate_jira"]._post_json
+
+        def _capture(url, payload, token, dry_run):
+            captured.append((url, payload))
+            return original(url, payload, token, dry_run)
+
+        sys.modules["migrate_jira"]._post_json = _capture
+        try:
+            migrate(
+                csv_path=csv_path,
+                tracker_url="http://localhost:8030",
+                token=None,
+                dry_run=True,
+                workstream_map=None,
+            )
+        finally:
+            sys.modules["migrate_jira"]._post_json = original
+            os.unlink(csv_path)
+
+        release_calls = [
+            (u, p) for u, p in captured if u.endswith("/v1/releases")
+        ]
+        self.assertEqual(
+            len(release_calls), 1,
+            f"expected one release POST, got {release_calls}",
+        )
+        self.assertEqual(release_calls[0][1]["name"], "Rings 0.38")
+
     def test_default_project_name_used_when_csv_lacks_column(self):
         rows = [
             {
