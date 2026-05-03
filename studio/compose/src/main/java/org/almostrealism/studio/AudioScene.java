@@ -179,7 +179,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	public static final int DEFAULT_SOURCE_COUNT = 6;
 
 	/** Default PCM buffer size in frames for real-time rendering. */
-	public static final int DEFAULT_REALTIME_BUFFER_SIZE = 1024;
+	public static final int DEFAULT_REALTIME_BUFFER_SIZE = 4096;
 
 	/** Default number of delay echo layers per scene. */
 	public static final int DEFAULT_DELAY_LAYERS = 3;

@@ -245,6 +245,27 @@ public class TimeCell implements Cell<PackedCollection>, Temporal, Destroyable, 
 	}
 
 	/**
+	 * Re-derives the looping frame counter from the total frame counter
+	 * using the supplied loop duration in frames. This is intended to be
+	 * called after the loop duration changes mid-playback, so that the
+	 * channel rephases to the global frame grid rather than carrying a
+	 * wrap state computed against the previous loop duration.
+	 *
+	 * <p>The total counter (the non-wrapping right value) is left
+	 * untouched; only the looping left counter is rewritten to
+	 * {@code right mod loopDurationFrames}. Has no effect when
+	 * {@code loopDurationFrames} is non-positive.</p>
+	 *
+	 * @param loopDurationFrames the new loop duration in frames
+	 */
+	public void rephaseLeft(double loopDurationFrames) {
+		if (loopDurationFrames <= 0) return;
+		double right = time.toDouble(1);
+		double newLeft = right - Math.floor(right / loopDurationFrames) * loopDurationFrames;
+		time.setMem(0, newLeft);
+	}
+
+	/**
 	 * Gets the current frame position (the looping counter).
 	 *
 	 * @return the current frame number

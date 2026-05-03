@@ -64,6 +64,18 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 	/** Optional profile node used to collect kernel execution statistics. */
 	public static OperationProfile profile;
 
+	/**
+	 * Default number of audio frames advanced per evaluation loop iteration. Applied to
+	 * every newly-constructed {@link StableDurationHealthComputation} unless overridden
+	 * via {@link #setBatchSize(int)}. Defaults to {@code OutputLine.sampleRate / 2}; can
+	 * be overridden at JVM start via the {@code AR_HEALTH_BATCH_SIZE} system property
+	 * so benchmarks and tests can drive both the health loop and the population's
+	 * temporal buffer through the same value (the optimizer reads {@link #getBatchSize()}
+	 * and uses it as the buffer size for {@code AudioScenePopulation.init}).
+	 */
+	public static int defaultBatchSize =
+			Integer.getInteger("AR_HEALTH_BATCH_SIZE", OutputLine.sampleRate / 2);
+
 	/** Cumulative total audio frames generated across all evaluations. */
 	private static long totalGeneratedFrames;
 
@@ -124,7 +136,7 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 	public StableDurationHealthComputation(int channels, boolean stereo) {
 		super(channels, stereo, 6);
 		addSilenceListener(() -> encounteredSilence = true);
-		setBatchSize(OutputLine.sampleRate / 2);
+		setBatchSize(defaultBatchSize);
 	}
 
 	/**
