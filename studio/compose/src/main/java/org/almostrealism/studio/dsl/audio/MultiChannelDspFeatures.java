@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.ml.dsl;
+package org.almostrealism.studio.dsl.audio;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
@@ -36,9 +36,10 @@ import java.util.function.Supplier;
 /**
  * Default methods for building multi-channel DSP {@link Block} computation graphs.
  *
- * <p>Implements the core block factories used by {@link PdslInterpreter} to compile
- * {@code for each channel}, {@code route()}, {@code sum_channels()}, and {@code fan_out()}
- * PDSL constructs into {@link DefaultBlock} instances backed by {@link Cell} computation graphs.</p>
+ * <p>Implements the core block factories used by the PDSL audio integration in
+ * {@link AudioDspPrimitives} to compile {@code for each channel}, {@code route()},
+ * {@code sum_channels()}, and {@code fan_out()} PDSL constructs into
+ * {@link DefaultBlock} instances backed by {@link Cell} computation graphs.</p>
  *
  * <p>All methods follow the AlmostRealism producer pattern: no Java-side arithmetic,
  * all computation expressed as {@link CollectionProducer} compositions.</p>
@@ -105,31 +106,10 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 	 * fan-routing pattern from {@code MixdownManager.createEfx()} line 660-664
 	 * ({@code efx.m(fi(), delays, transmissionGene)}).</p>
 	 *
-	 * @param matrix          routing matrix ({@link PackedCollection} of shape
+	 * @param matrix          routing matrix producer (shape
 	 *                        {@code [inputChannels, outputChannels]})
 	 * @param inputChannels   number of input channels (matches matrix axis 0)
 	 * @param outputChannels  number of output channels (matches matrix axis 1)
-	 * @param signalSize      samples per channel
-	 * @return a Block with shape {@code [inputChannels, signalSize] → [outputChannels, signalSize]}
-	 */
-	default Block routeBlock(PackedCollection matrix, int inputChannels,
-							 int outputChannels, int signalSize) {
-		return routeBlock(cp(matrix), inputChannels, outputChannels, signalSize);
-	}
-
-	/**
-	 * Builds a cross-channel routing block where the transmission matrix is supplied
-	 * as a {@link CollectionProducer} of shape
-	 * {@code [inputChannels, outputChannels]}. Use this overload to drive the matrix
-	 * from a render-time mutable slot or a clock-driven envelope without rebuilding
-	 * the routing block. The kernel mathematics is identical to the
-	 * {@link #routeBlock(PackedCollection, int, int, int)} overload — only the
-	 * matrix-element source differs.
-	 *
-	 * @param matrix          routing matrix producer (shape
-	 *                        {@code [inputChannels, outputChannels]})
-	 * @param inputChannels   number of input channels
-	 * @param outputChannels  number of output channels
 	 * @param signalSize      samples per channel
 	 * @return a Block with shape {@code [inputChannels, signalSize] → [outputChannels, signalSize]}
 	 */
@@ -195,43 +175,16 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 	 * Builds a closed-loop multi-tap feedback delay-network block.
 	 *
 	 * <p>This is the PDSL/Block-side equivalent of
-	 * {@link org.almostrealism.audio.filter.DelayNetwork}: {@code channels} parallel
+	 * {@code org.almostrealism.audio.filter.DelayNetwork}: {@code channels} parallel
 	 * delay lines whose outputs are mixed back to inputs through a {@code [channels,
-	 * channels]} feedback matrix. The math the kernel implements per forward pass:</p>
+	 * channels]} feedback matrix.</p>
 	 *
-	 * <pre>
-	 *   y[n, t]            = buffer[n, (head[n] + t - delay_samples[n]) mod bufSize]
-	 *   input_with_fb[n,t] = input[n, t] + sum_m(feedback_matrix[n, m] * y[m, t])
-	 *   buffer[n, head[n] + t mod bufSize] = input_with_fb[n, t]
-	 *   head[n]            = (head[n] + signalSize) mod bufSize     (post-pass)
-	 *   output[n, t]       = y[n, t]
-	 * </pre>
-	 *
-	 * <p>The closed-loop feedback (output of every line feeds the input of every line)
-	 * is the structural reason this primitive exists — composing it from
-	 * {@code for each channel { delay(...) }} + {@code route(...)} would require
-	 * manual loop-carry plumbing in the PDSL file.</p>
-	 *
-	 * <p>Like {@link AudioDspInterpreterFeatures#callDelay}, the per-channel buffer
-	 * size {@code bufSize = buffer.shape().getTotalSize() / channels} must equal
-	 * {@code signalSize}: each forward pass overwrites the per-channel buffer slice
-	 * in full. The realised delay therefore spans a one-pass boundary — the first
-	 * pass produces silence and subsequent passes read from the previous pass's
-	 * write-back. This matches the existing delay primitive's semantics; callers
-	 * who need delays longer than {@code signalSize} samples should either increase
-	 * {@code signalSize} or compose multiple delay-network passes upstream.</p>
-	 *
-	 * @param delaySamples    per-channel delay length producer (shape {@code [channels]});
-	 *                        each entry must be positive and less than {@code signalSize}
+	 * @param delaySamples    per-channel delay length producer (shape {@code [channels]})
 	 * @param feedbackMatrix  feedback mixing matrix producer (shape
-	 *                        {@code [channels, channels]}); entry {@code [n, m]} is the
-	 *                        weight from line {@code m}'s delayed output into line
-	 *                        {@code n}'s input
+	 *                        {@code [channels, channels]})
 	 * @param buffer          per-line ring buffers (total size
-	 *                        {@code channels * signalSize}), zero-initialised; mutated
-	 *                        in place between forward passes
-	 * @param heads           per-line write head positions (size {@code channels}),
-	 *                        zero-initialised; advanced by {@code signalSize} per pass
+	 *                        {@code channels * signalSize})
+	 * @param heads           per-line write head positions (size {@code channels})
 	 * @param channels        number of delay lines
 	 * @param signalSize      samples per channel per forward pass
 	 * @return a Block with shape {@code [channels, signalSize] → [channels, signalSize]}
@@ -276,10 +229,6 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 										.subtract(delayN)
 										.add(c(bufSize)),
 								c(bufSize)).add(c(n * bufSize));
-						// Use the explicit-output-shape form of c(...) so the gather's
-						// shape is the per-channel signal shape rather than the flat
-						// buffer's shape (which would have total size channels*signalSize
-						// and could not be reshaped to [1, signalSize]).
 						CollectionProducer yN = c(sigShape, cp(buffer), readPositions);
 						yAll = yAll == null ? yN : (CollectionProducer) concat(yAll, yN);
 					}
@@ -315,6 +264,21 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 
 	/**
 	 * Builds a fan-out block that replicates a single-channel signal to {@code n} channels.
+	 *
+	 * <p><b>Relationship to {@code CollectionProducer.repeat}.</b> This is the
+	 * Block-level wrapper for the producer-level
+	 * {@link CollectionProducer#repeat(int) repeat} broadcast (defined in
+	 * {@code CollectionFeatures.repeat}). There is no {@code Block.repeat} operation
+	 * in the codebase — {@code repeat} is a producer-graph operation, while
+	 * {@code fan_out} is a Block-graph operation that establishes the channel-axis
+	 * semantics consumed by downstream multi-channel constructs (
+	 * {@code for each channel}, {@code route}, {@code sum_channels}). The two
+	 * operations are <em>not</em> duplicates: they live at different abstraction
+	 * layers (producer vs. Block) and have different consumers. The kernel math is
+	 * identical — concatenating {@code n} copies of {@code in} along the channel
+	 * axis — so this block factory could in principle delegate the math to
+	 * {@code repeat}, but the Block wrapping (input/output shapes, cell, receptor
+	 * plumbing) is the only structural reason this primitive exists.</p>
 	 *
 	 * @param n          number of output channels
 	 * @param signalSize samples per channel

@@ -19,6 +19,7 @@ package org.almostrealism.studio.ml.test;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
 import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
@@ -108,7 +109,7 @@ public class DelayFeedbackBankPdslTest extends TestSuiteBase implements FirFilte
 			}
 		}
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/delay_feedback_bank.pdsl");
 
 		Map<String, Object> args = new HashMap<>();

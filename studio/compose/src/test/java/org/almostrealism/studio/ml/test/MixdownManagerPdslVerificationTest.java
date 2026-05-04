@@ -28,6 +28,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
 import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Block;
@@ -298,7 +299,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 				WET_LEVEL, PDSL_DELAY_SAMPLES);
 		Map<String, Object> args = MixdownManagerPdslAdapter.buildArgsMap(mixdown, config);
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_manager.pdsl");
 
 		TraversalPolicy inputShape = new TraversalPolicy(CHANNELS, PDSL_SIGNAL_SIZE);

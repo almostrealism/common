@@ -28,6 +28,11 @@ import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.time.TemporalFeatures;
 
+import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toDouble;
+import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toInt;
+
+import java.util.Objects;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -56,19 +61,13 @@ import java.util.function.Function;
  *   <li>{@code attention(...)}, {@code transformer(...)},
  *       {@code feed_forward(...)}</li>
  *   <li>{@code embedding(table)}</li>
- *   <li>{@code fir(coefficients)} - FIR filter (convolution with a coefficient array)</li>
- *   <li>{@code scale(factor)} - multiply each element by a scalar factor</li>
- *   <li>{@code lowpass(cutoff, sampleRate, filterOrder)} - low-pass FIR filter</li>
- *   <li>{@code highpass(cutoff, sampleRate, filterOrder)} - high-pass FIR filter</li>
- *   <li>{@code biquad(b0,b1,b2,a1,a2,history)} - stateful biquad IIR filter;
- *       {@code history} (4-element {@link PackedCollection}) is updated after each forward pass</li>
- *   <li>{@code delay(delaySamples,buffer,head)} - stateful integer-sample delay line;
- *       {@code buffer} and {@code head} are updated after each forward pass</li>
- *   <li>{@code lfo(freqHz,sampleRate,phase)} - stateful sinusoidal LFO;
- *       {@code phase} (1-element {@link PackedCollection}) is advanced after each forward pass</li>
- *   <li>{@code identity()} - pass-through block; useful as the dry-path arm of
- *       {@code accum_blocks({ identity() }, { wet_chain; scale(level) })}</li>
  * </ul>
+ *
+ * <p>Domain-specific primitives (audio DSP, multi-channel routing, etc.) are not
+ * defined in this class. They are contributed by higher-level modules via
+ * {@link #registerPrimitive(String, PdslPrimitive)} so that the interpreter core
+ * stays free of any domain-specific dispatch. See
+ * {@code org.almostrealism.studio.dsl.audio.AudioDspPrimitives} for the audio set.</p>
  *
  * <p>Composition constructs:
  * <ul>
@@ -87,11 +86,15 @@ public class PdslInterpreter {
 	private static final Features FEATURES = new Features();
 
 	/**
-	 * Registry of primitive names to their argument-list dispatchers. Populated at
-	 * construction time from {@link AudioDspInterpreterFeatures#registerAudioPrimitives}
-	 * so that adding a new audio primitive does not require editing this class.
+	 * Registry of domain primitives contributed by higher-level modules via
+	 * {@link #registerPrimitive(String, PdslPrimitive)}. The interpreter consults
+	 * this map first when dispatching a function call so domain primitives can
+	 * shadow built-in names if needed.
 	 */
-	private final Map<String, Function<List<Object>, Object>> primitiveDispatch;
+	private final Map<String, PdslPrimitive> registeredPrimitives;
+
+	/** Builds the multi-channel block backing the {@code for each channel} statement. */
+	private PdslMultiChannelDispatcher multiChannelDispatcher;
 
 	/** Layer definitions keyed by name, built from the parsed program. */
 	private final Map<String, PdslNode.LayerDef> layerDefs;
@@ -119,8 +122,7 @@ public class PdslInterpreter {
 		this.modelDefs = new HashMap<>();
 		this.dataDefs = new LinkedHashMap<>();
 		this.stateDefs = new LinkedHashMap<>();
-		this.primitiveDispatch = new HashMap<>();
-		FEATURES.registerAudioPrimitives(primitiveDispatch);
+		this.registeredPrimitives = new HashMap<>();
 		for (PdslNode.Definition def : program.getDefinitions()) {
 			if (def instanceof PdslNode.LayerDef) {
 				layerDefs.put(def.getName(), (PdslNode.LayerDef) def);
@@ -151,6 +153,79 @@ public class PdslInterpreter {
 
 	/** Returns the names of all state block definitions. */
 	public Set<String> getStateDefNames() { return stateDefs.keySet(); }
+
+	/**
+	 * Register a domain-specific primitive. The interpreter consults the registry
+	 * before any built-in dispatch so a registered primitive shadows any built-in
+	 * of the same name.
+	 *
+	 * @param name      the function name as it appears in PDSL source
+	 * @param primitive the dispatcher for this primitive
+	 */
+	public void registerPrimitive(String name, PdslPrimitive primitive) {
+		registeredPrimitives.put(Objects.requireNonNull(name, "name"),
+				Objects.requireNonNull(primitive, "primitive"));
+	}
+
+	/**
+	 * Set the dispatcher used to interpret the {@code for each channel} statement.
+	 *
+	 * @param dispatcher the multi-channel dispatcher; may be {@code null} to detach
+	 */
+	public void setMultiChannelDispatcher(PdslMultiChannelDispatcher dispatcher) {
+		this.multiChannelDispatcher = dispatcher;
+	}
+
+	/**
+	 * Normalises a heterogeneous PDSL argument value into a
+	 * {@link CollectionProducer}{@code <PackedCollection>} of the requested shape.
+	 * This is the single conversion point shared by parameter binding and primitive
+	 * dispatch — {@link PdslPrimitiveContext#toProducer toProducer} delegates here.
+	 *
+	 * @param value         the raw argument value
+	 * @param expectedShape the required shape
+	 * @param contextName   prefix used in error messages
+	 * @return a {@link CollectionProducer} of the declared shape
+	 * @throws PdslParseException if the value is unsupported or the shape mismatches
+	 */
+	static CollectionProducer normalizeToProducer(
+			Object value, TraversalPolicy expectedShape, String contextName) {
+		if (value instanceof Number) {
+			if (expectedShape != null && expectedShape.getTotalSize() != 1) {
+				throw new PdslParseException(contextName + " expects shape "
+						+ expectedShape + " but a Number literal can only be supplied for shape [1]");
+			}
+			return FEATURES.c(((Number) value).doubleValue());
+		}
+		if (value instanceof PackedCollection) {
+			PackedCollection coll = (PackedCollection) value;
+			if (expectedShape != null
+					&& coll.getShape().getTotalSize() != expectedShape.getTotalSize()) {
+				throw new PdslParseException(contextName + " expects shape "
+						+ expectedShape + " but PackedCollection has shape " + coll.getShape());
+			}
+			CollectionProducer result = FEATURES.cp(coll);
+			if (expectedShape != null && !coll.getShape().equals(expectedShape)) {
+				result = result.reshape(expectedShape);
+			}
+			return result;
+		}
+		if (value instanceof Producer) {
+			Producer<PackedCollection> producer = (Producer<PackedCollection>) value;
+			TraversalPolicy actual = FEATURES.shape(producer);
+			if (expectedShape != null && actual.getTotalSize() != expectedShape.getTotalSize()) {
+				throw new PdslParseException(contextName + " expects shape "
+						+ expectedShape + " but Producer has shape " + actual);
+			}
+			CollectionProducer result = FEATURES.c(producer);
+			if (expectedShape != null && !actual.equals(expectedShape)) {
+				result = result.reshape(expectedShape);
+			}
+			return result;
+		}
+		throw new PdslParseException(contextName + " expects Number, PackedCollection, or Producer; got "
+				+ (value == null ? "null" : value.getClass().getSimpleName()));
+	}
 
 	/**
 	 * Build a {@link Block} from a named layer definition.
@@ -188,9 +263,8 @@ public class PdslInterpreter {
 	 * Binds a {@code producer([shape])} parameter to a {@link Producer} of
 	 * {@link PackedCollection}. The actual conversion (Number, PackedCollection, or
 	 * Producer with shape validation) is delegated to
-	 * {@link AudioDspInterpreterFeatures#bindProducerArg(Object, TraversalPolicy, String)}
-	 * so that parameter binding and per-primitive scalar acceptance share one
-	 * definition.
+	 * {@link #normalizeToProducer(Object, TraversalPolicy, String)} so that parameter
+	 * binding and primitive-argument normalisation share one definition.
 	 *
 	 * @param param the parameter declaration (with declared shape)
 	 * @param value the caller-supplied value from the args map
@@ -204,7 +278,7 @@ public class PdslInterpreter {
 							+ "' declared as producer must have a shape, e.g. producer([1])");
 		}
 		TraversalPolicy declaredShape = evaluateShape((PdslNode.ShapeLiteral) param.getShape(), env);
-		return FEATURES.bindProducerArg(value, declaredShape,
+		return normalizeToProducer(value, declaredShape,
 				"Parameter '" + param.getName() + "'");
 	}
 
@@ -683,36 +757,14 @@ public class PdslInterpreter {
 			args.add(evaluateExpression(argExpr, env));
 		}
 
-		if ("route".equals(name)) {
-			int inputChannels = AudioDspInterpreterFeatures.toInt(env.get("channels"));
-			int signalSize = AudioDspInterpreterFeatures.toInt(env.get("signal_size"));
-			Block routeBlock = FEATURES.callRoute(args, inputChannels, signalSize);
-			// route() may produce a different output channel count than its input
-			// (rectangular routing). Update the environment's "channels" binding so
-			// downstream `for each channel`, `sum_channels()`, subscript, etc. operate
-			// on the new channel count.
-			int outputChannels = routeBlock.getOutputShape().length(0);
-			if (outputChannels != inputChannels) {
-				env.set("channels", outputChannels);
-			}
-			return routeBlock;
-		}
-		if ("sum_channels".equals(name)) {
-			return FEATURES.callSumChannels(args,
-					AudioDspInterpreterFeatures.toInt(env.get("channels")),
-					AudioDspInterpreterFeatures.toInt(env.get("signal_size")));
-		}
-		if ("fan_out".equals(name)) {
-			return FEATURES.callFanOut(args,
-					AudioDspInterpreterFeatures.toInt(env.get("signal_size")));
-		}
-		if ("delay_network".equals(name)) {
-			return FEATURES.callDelayNetwork(args,
-					AudioDspInterpreterFeatures.toInt(env.get("channels")),
-					AudioDspInterpreterFeatures.toInt(env.get("signal_size")));
+		// Domain primitives (audio DSP, multi-channel routing, etc.) are looked up
+		// before built-ins so registered primitives may shadow built-in names.
+		PdslPrimitive registered = registeredPrimitives.get(name);
+		if (registered != null) {
+			return registered.dispatch(args, new EnvContext(env));
 		}
 
-		// Try built-in functions first
+		// Try built-in functions
 		Object builtinResult = tryCallBuiltin(name, args);
 		if (builtinResult != null) return builtinResult;
 
@@ -810,8 +862,6 @@ public class PdslInterpreter {
 	 * @return The result of the built-in, or {@code null} if the name is not a built-in
 	 */
 	private Object tryCallBuiltin(String name, List<Object> args) {
-		Function<List<Object>, Object> dispatch = primitiveDispatch.get(name);
-		if (dispatch != null) return dispatch.apply(args);
 		switch (name) {
 			case "dense": return callDense(args);
 			case "rmsnorm": return callRmsnorm(args);
@@ -1131,14 +1181,20 @@ public class PdslInterpreter {
 	// ---- Multi-channel statement-level dispatch ----
 	//
 	// `for each channel { ... }` is a language-level statement (a PdslNode.Statement)
-	// rather than a primitive call. It uses interpretBody to recurse into the
-	// per-channel sub-block, so it stays here next to interpretBranch / interpretAccum
-	// rather than in AudioDspInterpreterFeatures (which only owns Block-returning
-	// expression-level primitives).
+	// rather than a primitive call. The body of the per-channel sub-block is
+	// interpreted here (it requires interpretBody recursion, which is private to the
+	// interpreter), but the multi-channel block factory is delegated through
+	// {@link PdslMultiChannelDispatcher} so the interpreter does not have to know
+	// about audio-domain block construction.
 
 	/** Interprets {@code for each channel} by building per-channel sub-blocks and wrapping them. */
 	private void interpretForEachChannel(PdslNode.ForEachChannelStatement stmt,
 										  SequentialBlock block, Environment env) {
+		if (multiChannelDispatcher == null) {
+			throw new PdslParseException(
+					"`for each channel` requires a PdslMultiChannelDispatcher to be registered "
+							+ "via PdslInterpreter.setMultiChannelDispatcher(...)");
+		}
 		int channels = toInt(env.get("channels"));
 		TraversalPolicy currentShape = block.getOutputShape();
 		int signalSize = currentShape.getDimensions() >= 2
@@ -1153,7 +1209,7 @@ public class PdslInterpreter {
 			interpretBody(stmt.getBody(), channelBlock, channelEnv);
 			channelBlocks.add(channelBlock);
 		}
-		block.add(FEATURES.perChannelBlock(channelBlocks, channels, signalSize));
+		block.add(multiChannelDispatcher.perChannel(channelBlocks, channels, signalSize));
 	}
 
 	// ---- User-defined layer calls ----
@@ -1304,31 +1360,6 @@ public class PdslInterpreter {
 
 	// ---- Type conversion helpers ----
 
-	/**
-	 * Converts a numeric object to an {@code int}.
-	 *
-	 * @param value Number value (Integer, Double, or other Number)
-	 * @return Integer value
-	 */
-	private static int toInt(Object value) {
-		if (value instanceof Integer) return (Integer) value;
-		if (value instanceof Double) return ((Double) value).intValue();
-		if (value instanceof Number) return ((Number) value).intValue();
-		throw new PdslParseException("Expected int but got " + value);
-	}
-
-	/**
-	 * Converts a numeric object to a {@code double}.
-	 *
-	 * @param value Number value (Double, Integer, or other Number)
-	 * @return Double value
-	 */
-	private static double toDouble(Object value) {
-		if (value instanceof Double) return (Double) value;
-		if (value instanceof Integer) return (Integer) value;
-		if (value instanceof Number) return ((Number) value).doubleValue();
-		throw new PdslParseException("Expected number but got " + value);
-	}
 
 	/**
 	 * Converts an object to a {@link Producer} of {@link PackedCollection}, wrapping
@@ -1385,6 +1416,51 @@ public class PdslInterpreter {
 
 	/** Mixin type providing access to all framework feature default methods. */
 	private static class Features implements AttentionFeatures, RotationFeatures,
-			TemporalFeatures, AudioDspInterpreterFeatures {
+			TemporalFeatures {
+	}
+
+	/**
+	 * Adapter from a PDSL {@link Environment} to {@link PdslPrimitiveContext}, created
+	 * once per primitive call. Reads {@code channels} and {@code signal_size} from the
+	 * environment on demand and routes argument normalisation through
+	 * {@link #normalizeToProducer(Object, TraversalPolicy, String)}.
+	 */
+	private static class EnvContext implements PdslPrimitiveContext {
+		/** The interpreter's environment from the layer being built. */
+		private final Environment env;
+
+		EnvContext(Environment env) { this.env = env; }
+
+		@Override
+		public int channels() {
+			Object value = env.get("channels");
+			if (value == null) {
+				throw new PdslParseException(
+						"Primitive requires `channels` to be defined in the PDSL environment");
+			}
+			return toInt(value);
+		}
+
+		@Override
+		public int signalSize() {
+			Object value = env.get("signal_size");
+			if (value == null) {
+				throw new PdslParseException(
+						"Primitive requires `signal_size` to be defined in the PDSL environment");
+			}
+			return toInt(value);
+		}
+
+		@Override
+		public void setChannels(int channels) {
+			env.set("channels", channels);
+		}
+
+		@Override
+		public CollectionProducer toProducer(Object value,
+															  TraversalPolicy expectedShape,
+															  String contextName) {
+			return normalizeToProducer(value, expectedShape, contextName);
+		}
 	}
 }

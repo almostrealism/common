@@ -14,15 +14,20 @@
  * limitations under the License.
  */
 
-package org.almostrealism.ml.dsl;
+package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.ml.dsl.PdslInterpreter;
+import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.ml.dsl.PdslNode;
+import org.almostrealism.ml.dsl.PdslParseException;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
 import org.almostrealism.util.FirFilterTestFeatures;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
@@ -76,12 +81,12 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	 */
 	@Test(timeout = 30000)
 	public void testEfxChannelPdslParsesCorrectly() {
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
 
 		Assert.assertNotNull("Program should not be null", program);
 
-		PdslInterpreter interpreter = new PdslInterpreter(program);
+		PdslInterpreter interpreter = new PdslInterpreter(program); AudioDspPrimitives.registerWith(interpreter);
 		Assert.assertTrue("Should define 'efx_wet_chain' layer",
 				interpreter.getLayerNames().contains("efx_wet_chain"));
 		Assert.assertTrue("Should define 'efx_lowpass_wet' layer",
@@ -104,7 +109,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PackedCollection filterCoeffs = new PackedCollection(FILTER_ORDER + 1);
 		filterCoeffs.setMem(coeffs);
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
@@ -128,7 +133,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	public void testEfxLowpassWetBlockBuilds() {
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
@@ -152,7 +157,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	public void testEfxHighpassWetBlockBuilds() {
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
@@ -175,10 +180,10 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	 */
 	@Test(timeout = 30000)
 	public void testAudioPrimitivesParseAndBuild() {
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_audio_primitives.pdsl");
 
-		PdslInterpreter interpreter = new PdslInterpreter(program);
+		PdslInterpreter interpreter = new PdslInterpreter(program); AudioDspPrimitives.registerWith(interpreter);
 		Assert.assertTrue("Should define 'fir_filter' layer",
 				interpreter.getLayerNames().contains("fir_filter"));
 		Assert.assertTrue("Should define 'scale_layer' layer",
@@ -249,7 +254,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PackedCollection filterCoeffs = new PackedCollection(FILTER_ORDER + 1);
 		filterCoeffs.setMem(coeffs);
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
@@ -290,7 +295,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PackedCollection signal = createSignal(SIGNAL_SIZE,
 				i -> Math.sin(2.0 * Math.PI * i / 4.0));
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
@@ -338,9 +343,9 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	 */
 	@Test(timeout = 30000)
 	public void testStateBlockParsesCorrectly() {
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_state_primitives.pdsl");
-		PdslInterpreter interpreter = new PdslInterpreter(program);
+		PdslInterpreter interpreter = new PdslInterpreter(program); AudioDspPrimitives.registerWith(interpreter);
 		Assert.assertTrue("Should define 'biquad_state' state block",
 				interpreter.getStateDefNames().contains("biquad_state"));
 		Assert.assertTrue("Should define 'biquad_layer' layer",
@@ -356,7 +361,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PackedCollection history = new PackedCollection(4);
 		history.setMem(new double[]{0.0, 0.0, 0.0, 0.0});
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_state_primitives.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
@@ -386,7 +391,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		history.setMem(new double[]{0.0, 0.0, 0.0, 0.0});
 
 		// One-sample delay: y[n] = x[n-1]
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_state_primitives.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
@@ -439,7 +444,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PackedCollection head = new PackedCollection(1);
 		head.setMem(new double[]{0.0});
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
@@ -489,7 +494,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PackedCollection phase = new PackedCollection(1);
 		phase.setMem(new double[]{0.0});
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_state_primitives.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
@@ -549,7 +554,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	public void testScaleProducerLiteralConstantFolding() {
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_scale.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
@@ -588,7 +593,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PackedCollection volumeSlot = new PackedCollection(1);
 		volumeSlot.setMem(0, 0.25);
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_scale.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
@@ -641,7 +646,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		// kernel and re-evaluated when the underlying slot changes.
 		Producer<PackedCollection> volumeProducer = cp(counter).multiply(c(0.5));
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_scale.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
@@ -687,7 +692,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	public void testScaleProducerShapeMismatchRejected() {
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_scale.pdsl");
 
 		// Wrong shape: 4 elements, but declared as producer([1]).
@@ -724,7 +729,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		final int channels = 4;
 		TraversalPolicy inputShape = new TraversalPolicy(channels, SIGNAL_SIZE);
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_shapes.pdsl");
 
 		// Identity matrix - each output channel passes its input unchanged.
@@ -791,7 +796,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		final int firTaps = FILTER_ORDER + 1;
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_shapes.pdsl");
 
 		// First coefficient set: low-pass.
@@ -845,7 +850,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		final int channels = 4;
 		TraversalPolicy inputShape = new TraversalPolicy(channels, SIGNAL_SIZE);
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_shapes.pdsl");
 
 		// Wrong size: only 9 elements, but declared as producer([4, 4]) (16 elements).
