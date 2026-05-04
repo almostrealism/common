@@ -30,6 +30,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.algorithm.GraphFeatures;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -75,6 +76,18 @@ import java.util.function.Consumer;
  * @see GraphFeatures
  */
 public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
+
+	/**
+	 * Toggles verbose diagnostic logging of HNSW graph construction and
+	 * Louvain community size distribution. Disabled by default to keep
+	 * normal-run logs quiet; re-enable for prototype-quality investigations
+	 * by setting {@code AR_PROTOTYPE_DIAGNOSTICS=enabled} as either a system
+	 * property or environment variable. See
+	 * {@code docs/plans/PROTOTYPE_DISCOVERY_QUALITY.md} for what the output
+	 * is useful for.
+	 */
+	private static final boolean DIAGNOSTICS_ENABLED =
+			SystemUtils.isEnabled("AR_PROTOTYPE_DIAGNOSTICS").orElse(false);
 
 	/** Default audio sample rate used when loading audio files for analysis. */
 	private static final int DEFAULT_SAMPLE_RATE = 44100;
@@ -436,6 +449,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 
 		WaveDetailsStore store = library.getStore();
 		if (store != null) {
+			backfillEmbeddingsIfNeeded(library, store, totalDetails, statusCallback);
 			report(statusCallback, "Building sparse K-NN graph via HNSW...");
 			log("Building sparse K-NN graph (K=" + DEFAULT_K_NEIGHBORS
 					+ ") for " + totalDetails + " samples...");
@@ -471,6 +485,84 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 	}
 
 	/**
+	 * Threshold below which the HNSW index is considered under-populated
+	 * relative to the library size and a backfill pass is triggered.
+	 * Expressed as a fraction of the library size.
+	 */
+	private static final double HNSW_BACKFILL_TRIGGER_RATIO = 0.9;
+
+	/**
+	 * Inserts HNSW vector entries for any sample whose record has feature
+	 * data but is missing from the index. This recovers from the historical
+	 * code paths that wrote records to the disk store via the no-vector
+	 * {@code put} (e.g. {@link AudioLibrary#include(WaveDetails)} or the
+	 * legacy migration path with un-featured records), which left the
+	 * vector index empty even though feature data was later computed.
+	 *
+	 * <p>This runs on the same background thread that drives the rest of
+	 * {@code doDiscoverPrototypes} (the Prototypes tab's executor) and
+	 * reports progress through {@code statusCallback}. It only touches
+	 * the HNSW index, not the on-disk record bytes, so it is cheap per
+	 * record. It is also a no-op once the index is populated, so the
+	 * cost is amortized to the first Prototypes click after the gap is
+	 * introduced.</p>
+	 *
+	 * @param library        the audio library
+	 * @param store          the backing store (must have HNSW capability)
+	 * @param totalDetails   the number of complete library identifiers
+	 * @param statusCallback optional progress callback
+	 */
+	private void backfillEmbeddingsIfNeeded(AudioLibrary library,
+											 WaveDetailsStore store,
+											 int totalDetails,
+											 Consumer<String> statusCallback) {
+		int indexed = store.indexedEmbeddingCount();
+		if (indexed >= (int) (totalDetails * HNSW_BACKFILL_TRIGGER_RATIO)) {
+			return;
+		}
+
+		log("HNSW index has " + indexed + " entries for "
+				+ totalDetails + " samples; backfilling missing vectors...");
+		report(statusCallback, "Indexing samples for similarity search...");
+
+		List<WaveDetails> allDetails = library.allDetails().toList();
+		int inserted = 0;
+		int skippedNoEmbedding = 0;
+		int skippedAlreadyIndexed = 0;
+		int processed = 0;
+
+		for (WaveDetails details : allDetails) {
+			processed++;
+
+			String id = details.getIdentifier();
+			if (id == null) continue;
+
+			if (store.hasEmbedding(id)) {
+				skippedAlreadyIndexed++;
+				continue;
+			}
+
+			PackedCollection embedding = AudioLibrary.computeEmbeddingVector(details);
+			if (embedding == null) {
+				skippedNoEmbedding++;
+				continue;
+			}
+
+			store.insertEmbedding(id, embedding);
+			inserted++;
+
+			if (processed % 100 == 0 || processed == allDetails.size()) {
+				report(statusCallback, "Indexing samples... "
+						+ processed + "/" + allDetails.size());
+			}
+		}
+
+		log("HNSW backfill complete: inserted=" + inserted
+				+ ", already-indexed=" + skippedAlreadyIndexed
+				+ ", no-features=" + skippedNoEmbedding);
+	}
+
+	/**
 	 * Builds a sparse similarity graph using HNSW nearest neighbor search.
 	 *
 	 * <p>For each sample, its mean-pooled embedding vector is computed and
@@ -493,19 +585,51 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		int total = allDetails.size();
 		int processed = 0;
 
+		int samplesNoEmbedding = 0;
+		int samplesEmptyHnswResult = 0;
+		int samplesNoPositiveEdges = 0;
+		long totalNeighborsStored = 0;
+		long edgesPositive = 0;
+		long edgesNonPositive = 0;
+		double simMin = Double.POSITIVE_INFINITY;
+		double simMax = Double.NEGATIVE_INFINITY;
+		double simSum = 0.0;
+
 		for (WaveDetails details : allDetails) {
 			PackedCollection embedding = AudioLibrary.computeEmbeddingVector(details);
-			if (embedding == null) continue;
+			if (embedding == null) {
+				if (DIAGNOSTICS_ENABLED) samplesNoEmbedding++;
+				continue;
+			}
 
 			List<WaveDetailsStore.NeighborResult> neighbors =
 					store.searchNeighbors(embedding, k);
 
 			details.getSimilarities().clear();
+			int neighborCount = 0;
+			int positiveCount = 0;
 			for (WaveDetailsStore.NeighborResult neighbor : neighbors) {
 				if (!neighbor.identifier().equals(details.getIdentifier())) {
-					details.getSimilarities().put(
-							neighbor.identifier(), (double) neighbor.similarity());
+					double sim = (double) neighbor.similarity();
+					details.getSimilarities().put(neighbor.identifier(), sim);
+					if (DIAGNOSTICS_ENABLED) {
+						neighborCount++;
+						if (sim > 0) {
+							positiveCount++;
+							edgesPositive++;
+						} else {
+							edgesNonPositive++;
+						}
+						if (sim < simMin) simMin = sim;
+						if (sim > simMax) simMax = sim;
+						simSum += sim;
+					}
 				}
+			}
+			if (DIAGNOSTICS_ENABLED) {
+				totalNeighborsStored += neighborCount;
+				if (neighborCount == 0) samplesEmptyHnswResult++;
+				if (positiveCount == 0) samplesNoPositiveEdges++;
 			}
 
 			processed++;
@@ -515,8 +639,36 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 			}
 		}
 
+		AudioSimilarityGraph graph = new AudioSimilarityGraph(allDetails);
 		log("Sparse graph: " + total + " nodes, K=" + k);
-		return new AudioSimilarityGraph(allDetails);
+
+		if (DIAGNOSTICS_ENABLED) {
+			long edgesSurvivingThreshold = 0;
+			int isolatedNodesInGraph = 0;
+			for (int i = 0; i < graph.countNodes(); i++) {
+				int deg = graph.neighborIndices(i).size();
+				edgesSurvivingThreshold += deg;
+				if (deg == 0) isolatedNodesInGraph++;
+			}
+
+			log("HNSW diagnostics:");
+			log("  store size: " + store.size());
+			log("  samples skipped (no embedding/feature data): " + samplesNoEmbedding);
+			log("  samples whose HNSW search returned 0 neighbors (excl. self): " + samplesEmptyHnswResult);
+			log("  samples with no positive-similarity edges: " + samplesNoPositiveEdges);
+			log("  total directed neighbors stored: " + totalNeighborsStored);
+			log("  edges with similarity > 0: " + edgesPositive);
+			log("  edges with similarity <= 0: " + edgesNonPositive);
+			if (totalNeighborsStored > 0) {
+				log(String.format("  similarity min=%.4f max=%.4f mean=%.4f",
+						simMin, simMax, simSum / totalNeighborsStored));
+			}
+			log("  edges surviving graph threshold (" + graph.getThreshold()
+					+ "): " + edgesSurvivingThreshold);
+			log("  isolated nodes in graph: " + isolatedNodesInGraph + " / " + graph.countNodes());
+		}
+
+		return graph;
 	}
 
 	/**
@@ -577,8 +729,75 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		prototypes.sort(Comparator.comparingInt(
 				(PrototypeResult p) -> p.communitySize()).reversed());
 
+		if (DIAGNOSTICS_ENABLED) {
+			logCommunitySizeDistribution(prototypes);
+		}
+
 		int count = Math.min(prototypes.size(), maxPrototypes);
 		return List.copyOf(prototypes.subList(0, count));
+	}
+
+	/**
+	 * Logs the size distribution of all discovered communities, so a
+	 * caller looking at the top-N selection can tell whether the
+	 * distribution is heavily skewed (a few very large communities and a
+	 * long tail of small ones) or relatively flat (many communities of
+	 * similar size). The full sorted list is printed for small counts;
+	 * for larger counts the head, a summary of the middle, and the tail
+	 * are printed to keep log volume bounded.
+	 */
+	private void logCommunitySizeDistribution(List<PrototypeResult> prototypes) {
+		int n = prototypes.size();
+		if (n == 0) {
+			log("Community size distribution: (no communities)");
+			return;
+		}
+
+		int largest = prototypes.get(0).communitySize();
+		int smallest = prototypes.get(n - 1).communitySize();
+		long totalMembers = 0;
+		for (PrototypeResult p : prototypes) {
+			totalMembers += p.communitySize();
+		}
+		double mean = (double) totalMembers / n;
+
+		log("Community size distribution: " + n + " communities, "
+				+ totalMembers + " total members, "
+				+ "largest=" + largest + ", smallest=" + smallest
+				+ String.format(", mean=%.1f", mean));
+
+		int sampleHead = Math.min(20, n);
+		StringBuilder head = new StringBuilder("  sizes (largest first, first ");
+		head.append(sampleHead).append("): ");
+		for (int i = 0; i < sampleHead; i++) {
+			if (i > 0) head.append(", ");
+			head.append(prototypes.get(i).communitySize());
+		}
+		log(head.toString());
+
+		if (n > sampleHead) {
+			int singletons = 0;
+			int twoOrThree = 0;
+			int small = 0; // 4..10
+			int medium = 0; // 11..50
+			int large = 0; // 51..200
+			int huge = 0; // > 200
+			for (PrototypeResult p : prototypes) {
+				int s = p.communitySize();
+				if (s == 1) singletons++;
+				else if (s <= 3) twoOrThree++;
+				else if (s <= 10) small++;
+				else if (s <= 50) medium++;
+				else if (s <= 200) large++;
+				else huge++;
+			}
+			log("  size buckets: huge(>200)=" + huge
+					+ ", large(51-200)=" + large
+					+ ", medium(11-50)=" + medium
+					+ ", small(4-10)=" + small
+					+ ", 2-3=" + twoOrThree
+					+ ", singletons=" + singletons);
+		}
 	}
 
 	/**
