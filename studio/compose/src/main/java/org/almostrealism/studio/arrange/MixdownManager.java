@@ -293,6 +293,42 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	/** Returns the automation manager that drives time-varying parameter curves. */
 	public AutomationManager getAutomationManager() { return automation; }
 
+	/** Returns the time cell used for clock-driven effects (package-private — exposed for the PDSL adapter). */
+	TimeCell getClock() { return clock; }
+
+	/** Returns the configured audio sample rate (package-private — exposed for the PDSL adapter). */
+	int getSampleRate() { return sampleRate; }
+
+	/** Returns the per-channel volume chromosome (package-private — exposed for the PDSL adapter). */
+	Chromosome<PackedCollection> getVolumeSimple() { return volumeSimple; }
+
+	/** Returns the per-channel main-filter-up (HP) chromosome (package-private — exposed for the PDSL adapter). */
+	Chromosome<PackedCollection> getMainFilterUpSimple() { return mainFilterUpSimple; }
+
+	/** Returns the per-channel master-filter-down (LP) chromosome (package-private — exposed for the PDSL adapter). */
+	Chromosome<PackedCollection> getMainFilterDownSimple() { return mainFilterDownSimple; }
+
+	/** Returns the cross-channel transmission chromosome (package-private — exposed for the PDSL adapter). */
+	Chromosome<PackedCollection> getTransmission() { return transmission; }
+
+	/** Returns the wet-bus FixedFilterChromosome (package-private — exposed for the PDSL adapter). */
+	FixedFilterChromosome getWetFilter() { return wetFilter; }
+
+	/** Returns the wet-out chromosome (package-private — exposed for the PDSL adapter). */
+	Chromosome<PackedCollection> getWetOut() { return wetOut; }
+
+	/** Returns the delay chromosome (package-private — exposed for the PDSL adapter). */
+	Chromosome<PackedCollection> getDelay() { return delay; }
+
+	/** Returns the volume adjustment scale slot (package-private — exposed for the PDSL adapter). */
+	PackedCollection getVolumeAdjustmentScale() { return volumeAdjustmentScale; }
+
+	/** Returns the main-filter-up adjustment scale slot (package-private — exposed for the PDSL adapter). */
+	PackedCollection getMainFilterUpAdjustmentScale() { return mainFilterUpAdjustmentScale; }
+
+	/** Returns the main-filter-down adjustment scale slot (package-private — exposed for the PDSL adapter). */
+	PackedCollection getMainFilterDownAdjustmentScale() { return mainFilterDownAdjustmentScale; }
+
 	/**
 	 * Sets the global volume adjustment scale factor.
 	 *

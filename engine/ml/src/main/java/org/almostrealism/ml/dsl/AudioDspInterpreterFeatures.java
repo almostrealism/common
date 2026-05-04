@@ -111,7 +111,11 @@ public interface AudioDspInterpreterFeatures
 				throw new PdslParseException(contextName + " expects shape "
 						+ expectedShape + " but PackedCollection has shape " + coll.getShape());
 			}
-			return cp(coll);
+			CollectionProducer result = cp(coll);
+			if (!coll.getShape().equals(expectedShape)) {
+				result = result.reshape(expectedShape);
+			}
+			return result;
 		}
 		if (arg instanceof Producer) {
 			Producer<PackedCollection> producer = (Producer<PackedCollection>) arg;
@@ -120,7 +124,11 @@ public interface AudioDspInterpreterFeatures
 				throw new PdslParseException(contextName + " expects shape "
 						+ expectedShape + " but Producer has shape " + actual);
 			}
-			return c(producer);
+			CollectionProducer result = c(producer);
+			if (!actual.equals(expectedShape)) {
+				result = result.reshape(expectedShape);
+			}
+			return result;
 		}
 		throw new PdslParseException(contextName + " expects Number, PackedCollection, or Producer; got "
 				+ (arg == null ? "null" : arg.getClass().getSimpleName()));
@@ -164,16 +172,33 @@ public interface AudioDspInterpreterFeatures
 	 * Builds a FIR (Finite Impulse Response) filter block that convolves the input signal
 	 * with the provided coefficient array.
 	 *
-	 * @param args one weight argument: the FIR coefficient array ({@code filterOrder+1} elements)
+	 * <p>The coefficient argument may be supplied as either a {@link PackedCollection}
+	 * (legacy {@code weight} binding — the kernel reads its slot via {@code cp(coll)}) or
+	 * a {@link CollectionProducer} (already produced by the producer-typed parameter
+	 * binding) or a raw {@link Producer}{@code <PackedCollection>}. The kernel
+	 * convolution is the same in every case; only the binding form differs.</p>
+	 *
+	 * @param args one argument: the FIR coefficient array ({@code filterOrder+1} elements)
+	 *             as a {@link PackedCollection}, {@link CollectionProducer}, or
+	 *             {@link Producer}{@code <PackedCollection>}
 	 * @return a factory that creates a FIR filter block for any input shape
 	 */
 	default Object callFir(List<Object> args) {
-		if (args.size() == 1 && args.get(0) instanceof PackedCollection) {
-			PackedCollection coefficients = (PackedCollection) args.get(0);
-			return firFilterBlock("fir", cp(coefficients));
+		if (args.size() == 1) {
+			Object arg = args.get(0);
+			if (arg instanceof PackedCollection) {
+				PackedCollection coefficients = (PackedCollection) arg;
+				return firFilterBlock("fir", cp(coefficients));
+			}
+			if (arg instanceof CollectionProducer) {
+				return firFilterBlock("fir", (CollectionProducer) arg);
+			}
+			if (arg instanceof Producer) {
+				return firFilterBlock("fir", c((Producer<PackedCollection>) arg));
+			}
 		}
 		throw new PdslParseException(
-				"fir() expects 1 weight argument (coefficients), got " + args.size());
+				"fir() expects 1 coefficients argument (PackedCollection or Producer), got " + args.size());
 	}
 
 	/**
@@ -480,12 +505,37 @@ public interface AudioDspInterpreterFeatures
 	 *                            axis does not match {@code inputChannels}
 	 */
 	default Block callRoute(List<Object> args, int inputChannels, int signalSize) {
-		if (args.size() != 1 || !(args.get(0) instanceof PackedCollection)) {
+		if (args.size() != 1) {
 			throw new PdslParseException(
-					"route() expects 1 weight argument (transmission matrix), got " + args.size());
+					"route() expects 1 transmission matrix argument, got " + args.size());
 		}
-		PackedCollection matrix = (PackedCollection) args.get(0);
-		TraversalPolicy ms = matrix.getShape();
+		Object arg = args.get(0);
+		if (arg instanceof PackedCollection) {
+			PackedCollection matrix = (PackedCollection) arg;
+			TraversalPolicy ms = matrix.getShape();
+			validateRouteMatrixShape(ms, inputChannels);
+			return routeBlock(matrix, inputChannels, ms.length(1), signalSize);
+		}
+		if (arg instanceof CollectionProducer) {
+			CollectionProducer matrixProducer = (CollectionProducer) arg;
+			TraversalPolicy ms = shape(matrixProducer);
+			validateRouteMatrixShape(ms, inputChannels);
+			return routeBlock(matrixProducer, inputChannels, ms.length(1), signalSize);
+		}
+		throw new PdslParseException(
+				"route() expects a PackedCollection or producer transmission matrix; got "
+						+ (arg == null ? "null" : arg.getClass().getSimpleName()));
+	}
+
+	/**
+	 * Validates that a {@code route()} transmission shape is 2D, has positive dimensions,
+	 * and matches the upstream channel count on its first axis.
+	 *
+	 * @param ms             the shape under test
+	 * @param inputChannels  the upstream channel count from the PDSL environment
+	 * @throws PdslParseException if any constraint fails
+	 */
+	default void validateRouteMatrixShape(TraversalPolicy ms, int inputChannels) {
 		if (ms.getDimensions() != 2) {
 			throw new PdslParseException(
 					"route() matrix must be 2D, got shape with "
@@ -503,7 +553,6 @@ public interface AudioDspInterpreterFeatures
 					"route() matrix's first axis (" + matIn
 							+ ") must match upstream channel count (" + inputChannels + ")");
 		}
-		return routeBlock(matrix, inputChannels, matOut, signalSize);
 	}
 
 	/**
@@ -533,5 +582,38 @@ public interface AudioDspInterpreterFeatures
 			throw new PdslParseException("fan_out() expects 1 argument (n channels), got " + args.size());
 		}
 		return fanOutBlock(toInt(args.get(0)), signalSize);
+	}
+
+	/**
+	 * Validates and delegates to {@link MultiChannelDspFeatures#delayNetworkBlock}.
+	 *
+	 * <p>The PDSL surface is:</p>
+	 * <pre>
+	 *   delay_network(delay_samples, feedback_matrix, buffer, heads)
+	 * </pre>
+	 *
+	 * <p>{@code delay_samples} accepts shape {@code [channels]} as either a
+	 * {@link PackedCollection} or a {@link Producer}; {@code feedback_matrix}
+	 * accepts shape {@code [channels, channels]} likewise. {@code buffer} and
+	 * {@code heads} are caller-owned {@link PackedCollection} state slots.</p>
+	 *
+	 * @param args       four arguments: per-line delays, feedback matrix, buffer, heads
+	 * @param channels   number of delay lines (from PDSL environment)
+	 * @param signalSize samples per channel (from PDSL environment)
+	 * @return the closed-loop delay-network {@link Block}
+	 */
+	default Block callDelayNetwork(List<Object> args, int channels, int signalSize) {
+		if (args.size() != 4) {
+			throw new PdslParseException(
+					"delay_network() expects 4 arguments (delay_samples, feedback_matrix, "
+							+ "buffer, heads), got " + args.size());
+		}
+		CollectionProducer delays = bindProducerArg(args.get(0), shape(channels),
+				"delay_network() delay_samples");
+		CollectionProducer feedback = bindProducerArg(args.get(1), shape(channels, channels),
+				"delay_network() feedback_matrix");
+		PackedCollection buffer = (PackedCollection) args.get(2);
+		PackedCollection heads = (PackedCollection) args.get(3);
+		return delayNetworkBlock(delays, feedback, buffer, heads, channels, signalSize);
 	}
 }

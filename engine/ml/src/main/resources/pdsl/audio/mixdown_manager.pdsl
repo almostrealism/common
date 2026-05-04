@@ -58,6 +58,20 @@ state mixdown_efx_state {
 }
 
 // ---------------------------------------------------------------------------
+// Per-line delay state for the reverb bus
+//
+// The closed-loop multi-tap reverb structure (delay_network) requires its
+// own per-line buffers and heads, sized [taps * signal_size] and [taps]
+// respectively. These are independent of mixdown_efx_state's slots so the
+// reverb path can be exercised in isolation by tests like
+// testMixdownManagerReverbPath.
+// ---------------------------------------------------------------------------
+state mixdown_reverb_state {
+    reverb_buffers: weight
+    reverb_heads: weight
+}
+
+// ---------------------------------------------------------------------------
 // Main bus — multi-channel per-channel HP + volume, then sum to mono
 //
 // Renders rows 4, 5, and 14 of Section 10.1:
@@ -117,9 +131,13 @@ layer mixdown_main_bus(channels: int, signal_size: int,
 // Parameters:
 //   channels           Number of input (= delay) channels
 //   signal_size        Samples per channel per forward pass
-//   wet_filter_coeffs  Per-channel FIR coefficients, size = channels * (filter_order+1).
-//                      Subscripted as `wet_filter_coeffs[channel]` inside the
-//                      per-channel body to get one channel's coefficients.
+//   fir_taps           Number of FIR coefficients per channel (filter_order+1)
+//   wet_filter_coeffs  Per-channel FIR coefficients, shape [channels, fir_taps].
+//                      producer([channels, fir_taps]) — accepts a PackedCollection
+//                      slot (mutated between renders) or a Producer expression
+//                      (e.g. a clock-driven coefficient envelope). Subscripted as
+//                      `wet_filter_coeffs[channel]` inside the per-channel body to
+//                      get one channel's coefficient row.
 //   wet_level          Wet send level (fixed scalar)
 //   delay_samples      Delay length in samples (must be < signal_size).
 //                      producer([1]) — accepts a Number literal (folded as a
@@ -128,6 +146,10 @@ layer mixdown_main_bus(channels: int, signal_size: int,
 //                      AdjustableDelayCell rendition at
 //                      MixdownManager.createEfx() line 654-658).
 //   transmission       Cross-channel routing matrix, shape [channels, channels].
+//                      producer([channels, channels]) — accepts a PackedCollection
+//                      slot (the genome-driven `transmission` chromosome at
+//                      MixdownManager.java:258-260,677), or a Producer expression
+//                      driving the matrix from the audio clock.
 //                      Indexed as transmission[input_channel, output_channel]:
 //                      output channel m gets sum over input channels n of
 //                      transmission[n, m] * input[n]. Zeroing column m silences
@@ -138,9 +160,10 @@ layer mixdown_main_bus(channels: int, signal_size: int,
 //   buffers  PackedCollection of size channels * signal_size (zero-initialised)
 //   heads    PackedCollection of size channels (zero-initialised)
 // ---------------------------------------------------------------------------
-layer mixdown_efx_bus(channels: int, signal_size: int,
-                      wet_filter_coeffs: weight, wet_level: scalar,
-                      delay_samples: producer([1]), transmission: weight) -> [1, signal_size] {
+layer mixdown_efx_bus(channels: int, signal_size: int, fir_taps: int,
+                      wet_filter_coeffs: producer([channels, fir_taps]), wet_level: scalar,
+                      delay_samples: producer([1]),
+                      transmission: producer([channels, channels])) -> [1, signal_size] {
     for each channel {
         fir(wet_filter_coeffs[channel])
         scale(wet_level)
@@ -278,11 +301,21 @@ layer mixdown_hetero_branch(signal_size: int,
 //         { mixdown_efx_bus  body: for each channel { fir; scale; delay }; route; sum_channels }
 //       )
 //     → lowpass(lp_cutoff, sample_rate, filter_order)
+//     → scale(master_gain)            // master headroom (Java: masterBusGain)
+//     → tanh_act()                    // bounded saturation (Java: bound(., -1, 1))
 //     → [1, signal_size]
 //
 // Both arms of accum_blocks read the same [channels, signal_size] input and
 // each produces [1, signal_size]; accum sums them into a single mono bus,
-// which the master LP then rolls off.
+// which the master LP then rolls off. The master-gain stage and the bounded-
+// saturation stage replicate the master-bus shaping at MixdownManager.java
+// lines 770-782, where the Java path multiplies by `masterBusGain` and
+// applies `bound(., -1, 1)`. PDSL has no hard-clip primitive; tanh_act() is
+// the closest existing bounded-saturation primitive — its energy footprint
+// matches the Java hard clip within numerical drift for the typical
+// post-gain dynamic range, so the verification test in
+// MixdownManagerPdslVerificationTest can compare the two paths directly
+// (see PDSL_AUDIO_DSP.md Section 8 / Section 12 for the discussion).
 //
 // Input shape:  [channels, signal_size]
 // Output shape: [1, signal_size]
@@ -292,15 +325,24 @@ layer mixdown_hetero_branch(signal_size: int,
 //                  same forms as hp_cutoff. The producer-driven form mirrors
 //                  the master filter-down automation at
 //                  MixdownManager.createEfx() line 707-714.
+//   master_gain    Master headroom multiplier. producer([1]) — accepts a
+//                  Number literal (folded as a constant), a 1-element
+//                  PackedCollection slot, or a Producer expression. Mirrors
+//                  MixdownManager.masterBusGain (default 0.5) at line
+//                  770-781. Setting it to 1.0 disables the gain stage but
+//                  the saturation stage still bounds runaway peaks; the
+//                  Java path skips both if masterBusGain == 1.0.
 //
 // Requires mixdown_efx_state populated as in mixdown_efx_bus.
 // ---------------------------------------------------------------------------
-layer mixdown_master(channels: int, signal_size: int,
+layer mixdown_master(channels: int, signal_size: int, fir_taps: int,
                      hp_cutoff: producer([1]), volume: producer([1]),
                      lp_cutoff: producer([1]),
                      sample_rate: scalar, filter_order: scalar,
-                     wet_filter_coeffs: weight, wet_level: scalar,
-                     delay_samples: producer([1]), transmission: weight) -> [1, signal_size] {
+                     wet_filter_coeffs: producer([channels, fir_taps]), wet_level: scalar,
+                     delay_samples: producer([1]),
+                     transmission: producer([channels, channels]),
+                     master_gain: producer([1])) -> [1, signal_size] {
     accum_blocks(
         {
             for each channel {
@@ -320,4 +362,66 @@ layer mixdown_master(channels: int, signal_size: int,
         }
     )
     lowpass(lp_cutoff, sample_rate, filter_order)
+    scale(master_gain)
+    tanh_act()
+}
+
+// ---------------------------------------------------------------------------
+// Reverb bus — closed-loop multi-tap feedback delay network
+//
+// Renders rows 9, 24, 25 of Section 10.1 / 10.2 — the reverb path that
+// MixdownManager.createCells() / createEfx() builds with
+// `reverb.sum().map(DelayNetwork)`. The Java DelayNetwork has `channels`
+// parallel delay lines mixed by a Householder feedback matrix; this PDSL
+// rendition has the same closed-loop structure via the `delay_network`
+// primitive.
+//
+// Signal flow (mono source -> reverb tail):
+//   [1, signal_size] (mono summed reverb input)
+//     -> fan_out(channels)        [channels, signal_size] copies
+//     -> delay_network(            multi-tap closed-loop reverb
+//          delay_samples,          per-tap delay length producer, [channels]
+//          feedback_matrix,        [channels, channels] mixing matrix
+//          reverb_buffers,         per-tap ring buffer state
+//          reverb_heads)           per-tap write head state
+//     -> sum_channels()            collapse N taps back to mono
+//   -> [1, signal_size]
+//
+// `delay_network`'s output is the read-out (delayed) signal of every tap;
+// summing across taps gives the mono reverb tail. The feedback matrix's
+// off-diagonal entries spread each tap's energy into the others on the
+// next cycle, producing the diffusion that distinguishes a reverb from a
+// stack of independent delay lines.
+//
+// Input shape:  [1, signal_size]   (mono pre-sum of reverb-channel sources)
+// Output shape: [1, signal_size]   (mono reverb tail)
+//
+// Parameters:
+//   channels         Number of delay lines (taps) in the reverb network
+//   signal_size      Samples per pass
+//   delay_samples    Per-tap delay length, shape [channels]. producer([channels]).
+//                    Each entry must be a positive integer < signal_size.
+//                    Caller typically supplies an irregular tap pattern (e.g.
+//                    primes scaled to the configured tail length) for natural
+//                    diffusion; uniform taps produce a metallic comb.
+//   feedback_matrix  Cross-tap feedback weights, shape [channels, channels].
+//                    producer([channels, channels]). The matrix's row n
+//                    weights tap n's input by the previous outputs of every
+//                    other tap. Spectral radius < 1 is required for a stable
+//                    decaying tail; a Householder reflection scaled by 1/N
+//                    (the construction Java DelayNetwork uses) is the
+//                    canonical safe default.
+//
+// Requires mixdown_reverb_state populated with:
+//   reverb_buffers   PackedCollection of size channels * signal_size (zero-init)
+//   reverb_heads     PackedCollection of size channels (zero-init)
+// ---------------------------------------------------------------------------
+layer mixdown_reverb_bus(channels: int, signal_size: int,
+                         delay_samples: producer([channels]),
+                         feedback_matrix: producer([channels, channels]))
+                      -> [1, signal_size] {
+    fan_out(channels)
+    delay_network(delay_samples, feedback_matrix,
+                  reverb_buffers, reverb_heads)
+    sum_channels()
 }

@@ -32,6 +32,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -88,6 +89,23 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 	/** Integer delay per channel in samples (quarter-buffer offset). */
 	private static final int DELAY_SAMPLES = 64;
+
+	/** Number of forward passes used by {@code testMixdownManagerReverbPath}. */
+	private static final int REVERB_PASSES = 5;
+
+	/** Per-line buffer / signal size for {@code testMixdownManagerReverbPath}. */
+	private static final int REVERB_SIGNAL_SIZE = 1024;
+
+	/** Number of delay taps in {@code mixdown_reverb_bus}. */
+	private static final int REVERB_TAPS = 4;
+
+	/**
+	 * Per-tap delay lengths (in samples) used by {@code testMixdownManagerReverbPath}.
+	 * Irregular primes scaled so each is comfortably less than {@link #REVERB_SIGNAL_SIZE},
+	 * matching the irregular-tap pattern Java DelayNetwork produces from random
+	 * Householder reflections.
+	 */
+	private static final int[] REVERB_DELAY_SAMPLES = {103, 211, 401, 619};
 
 	/**
 	 * Number of forward passes used by the producer-args automation tests.
@@ -811,21 +829,123 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	}
 
 	/**
-	 * When Capability E ({@code delay_network}) lands AND Capability A
-	 * (automation) lands, verify that the PDSL reverb bus can be expressed —
-	 * equivalent to {@code reverb.sum().map(DelayNetwork)} at
-	 * {@code MixdownManager.createEfx()} lines 672-683 (Section 10 rows 9, 24, 25).
+	 * Exercises the {@code mixdown_reverb_bus} layer in {@code mixdown_manager.pdsl}
+	 * by feeding a unit impulse and verifying the closed-loop {@code delay_network}
+	 * primitive produces the expected pattern of decaying echoes.
+	 *
+	 * <p>Renders the impulse response across {@link #REVERB_PASSES} forward passes:
+	 * pass 1 carries an impulse at sample 0 of channel 0; passes 2..N feed silence.
+	 * The reverb buffer captures the impulse during pass 1; pass 2 reads delayed
+	 * copies at {@code delay_samples[n]} for each tap {@code n} (the closed-loop
+	 * read-then-write semantics of {@code delay_network} guarantee these echoes
+	 * appear before the buffer is overwritten); passes 3+ accumulate the
+	 * cross-coupled feedback into the reverb tail.</p>
+	 *
+	 * <p>The test verifies (1) pass 1 produces silence (buffer was zero-initialised
+	 * before any input arrived), (2) pass 2 has non-zero energy concentrated at
+	 * the configured delay positions (the direct echoes), (3) total energy across
+	 * all passes is non-zero, and (4) energy decays from pass 2 onwards (the
+	 * feedback matrix's spectral radius &lt; 1 must produce a contraction). A
+	 * stitched WAV file is written so the reverb tail is audible.</p>
+	 *
+	 * <p>Targets Section 10 rows 9, 24, 25 (MixdownManager.java:546-561, 672-683).
+	 * Capability A (per-channel automation for the reverb wet factor) is
+	 * orthogonal to {@code delay_network}'s structural correctness and is
+	 * exercised by {@code testMixdownManagerAutomatedVolume} elsewhere in this
+	 * class; this test focuses on the multi-tap feedback structure itself.</p>
 	 */
-	@Test(timeout = 60000)
-	@Ignore("PDSL-blocked-by-DelayNetwork: no PDSL primitive equivalent to "
-			+ "org.almostrealism.audio.filter.DelayNetwork (multi-tap feedback "
-			+ "reverb). Also needs Capability A for the per-channel reverb wet factor. "
-			+ "See PDSL_AUDIO_DSP.md Section 11.5 (Capability E — delay_network(...))."
-			+ " Targets Section 10 rows 9, 24, 25 (MixdownManager.java:546-561, 672-683).")
-	public void testMixdownManagerReverbPath() {
-		throw new AssertionError(
-				"Placeholder: when delay_network(...) lands, build a reverb bus and "
-						+ "compare against the Java DelayNetwork reference.");
+	@Test(timeout = 120000)
+	@TestDepth(2)
+	public void testMixdownManagerReverbPath() throws IOException {
+		File outputDir = new File("results/pdsl-audio-dsp");
+		outputDir.mkdirs();
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_manager.pdsl");
+		TraversalPolicy inputShape = new TraversalPolicy(1, REVERB_SIGNAL_SIZE);
+
+		Map<String, Object> args = reverbBusArgs();
+		Block block = loader.buildLayer(program, "mixdown_reverb_bus", inputShape, args);
+		Assert.assertNotNull("mixdown_reverb_bus Block must not be null", block);
+
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		double[] passEnergies = new double[REVERB_PASSES];
+		float[] tail = new float[REVERB_PASSES * REVERB_SIGNAL_SIZE];
+		double[] pass2Output = null;
+
+		for (int pass = 0; pass < REVERB_PASSES; pass++) {
+			PackedCollection input = new PackedCollection(inputShape);
+			double[] inData = new double[REVERB_SIGNAL_SIZE];
+			if (pass == 0) inData[0] = 1.0;       // impulse
+			input.setMem(inData);
+
+			double[] passOut = compiled.forward(input).toArray(0, REVERB_SIGNAL_SIZE);
+			if (pass == 1) {
+				pass2Output = passOut.clone();
+			}
+
+			double e = 0.0;
+			for (int i = 0; i < REVERB_SIGNAL_SIZE; i++) {
+				e += passOut[i] * passOut[i];
+				tail[pass * REVERB_SIGNAL_SIZE + i] = (float) Math.max(-1.0,
+						Math.min(1.0, passOut[i]));
+			}
+			passEnergies[pass] = e;
+		}
+
+		File wav = new File(outputDir, "pdsl_reverb_impulse.wav");
+		PdslAudioDemoTest.writeDemoWav(wav, tail, SAMPLE_RATE);
+		Assert.assertTrue("Reverb impulse WAV must be non-empty", wav.length() > 0);
+
+		log(String.format("Reverb pass energies: %s",
+				Arrays.toString(passEnergies)));
+
+		// (1) Pass 1 must be silence — the closed-loop reads happen before the
+		// write, so a freshly zero-initialised buffer produces zero output.
+		Assert.assertEquals("Pass 1 must be silence (zero-initialised buffer)",
+				0.0, passEnergies[0], 1e-12);
+
+		// (2) Pass 2 must have non-zero energy concentrated at the configured
+		// delay positions. Each tap n produces a sample-magnitude-1 echo at
+		// t == delay_samples[n]; sum_channels collapses these so total energy
+		// over pass 2 must equal at least the sum of individual echo energies
+		// (1.0 per tap, minus any near-coincident overlap; we assert > 0.5
+		// to leave headroom for sub-sample drift the kernel doesn't actually
+		// have but tolerance gives anyway).
+		Assert.assertTrue(
+				"Pass 2 must have non-zero energy from delay_network echoes (energy="
+						+ passEnergies[1] + ")", passEnergies[1] > 0.5);
+
+		// (3) Energy at the configured delay sample positions must dominate
+		// energy at other positions in pass 2 — the impulse propagates through
+		// each tap exactly once before any feedback contribution.
+		for (int n = 0; n < REVERB_TAPS; n++) {
+			int t = REVERB_DELAY_SAMPLES[n];
+			Assert.assertTrue(
+					"Pass 2 sample at tap " + n + " delay (" + t
+							+ ") must carry impulse echo, got " + pass2Output[t],
+					Math.abs(pass2Output[t]) > 0.5);
+		}
+
+		// (4) Energy must decay from pass 2 onwards — feedback matrix has
+		// spectral radius < 1, so the closed loop is a contraction.
+		for (int p = 3; p < REVERB_PASSES; p++) {
+			Assert.assertTrue(
+					"Reverb tail must decay (pass " + p + " energy "
+							+ passEnergies[p] + " >= pass 2 energy "
+							+ passEnergies[1] + ")",
+					passEnergies[p] < passEnergies[1]);
+		}
+
+		// (5) Total energy across passes must be non-zero — the reverb tail
+		// produces audible audio.
+		double totalEnergy = 0.0;
+		for (double e : passEnergies) totalEnergy += e;
+		Assert.assertTrue("Total reverb energy must be non-zero (totalEnergy="
+				+ totalEnergy + ")", totalEnergy > 0.5);
 	}
 
 	// ==== Helpers ====
@@ -913,6 +1033,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		Map<String, Object> args = new HashMap<>();
 		args.put("channels", CHANNELS);
 		args.put("signal_size", SIGNAL_SIZE);
+		args.put("fir_taps", FILTER_ORDER + 1);
 		args.put("wet_level", WET_LEVEL);
 		args.put("delay_samples", DELAY_SAMPLES);
 		args.put("wet_filter_coeffs", perChannelWetCoeffs());
@@ -928,11 +1049,53 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		return args;
 	}
 
+	/**
+	 * Argument map for {@code mixdown_reverb_bus}. Builds per-tap delay
+	 * lengths from {@link #REVERB_DELAY_SAMPLES} and a stable feedback matrix
+	 * with diagonal weight 0.4 and off-diagonal weight 0.1 (row-sum 0.7,
+	 * spectral radius &lt; 1 so the closed loop is a contraction).
+	 */
+	private Map<String, Object> reverbBusArgs() {
+		Map<String, Object> args = new HashMap<>();
+		args.put("channels", REVERB_TAPS);
+		args.put("signal_size", REVERB_SIGNAL_SIZE);
+
+		double[] delaysData = new double[REVERB_TAPS];
+		for (int i = 0; i < REVERB_TAPS; i++) delaysData[i] = REVERB_DELAY_SAMPLES[i];
+		PackedCollection delaySamples = new PackedCollection(REVERB_TAPS);
+		delaySamples.setMem(delaysData);
+		args.put("delay_samples", delaySamples);
+
+		double diag = 0.4;
+		double off = 0.1;
+		double[] matrixData = new double[REVERB_TAPS * REVERB_TAPS];
+		for (int n = 0; n < REVERB_TAPS; n++) {
+			for (int m = 0; m < REVERB_TAPS; m++) {
+				matrixData[n * REVERB_TAPS + m] = (n == m) ? diag : off;
+			}
+		}
+		PackedCollection feedback = new PackedCollection(
+				new TraversalPolicy(REVERB_TAPS, REVERB_TAPS));
+		feedback.setMem(matrixData);
+		args.put("feedback_matrix", feedback);
+
+		PackedCollection reverbBuffers = new PackedCollection(
+				REVERB_TAPS * REVERB_SIGNAL_SIZE);
+		reverbBuffers.setMem(new double[REVERB_TAPS * REVERB_SIGNAL_SIZE]);
+		PackedCollection reverbHeads = new PackedCollection(REVERB_TAPS);
+		reverbHeads.setMem(new double[REVERB_TAPS]);
+		args.put("reverb_buffers", reverbBuffers);
+		args.put("reverb_heads", reverbHeads);
+
+		return args;
+	}
+
 	/** Argument map for {@code mixdown_master} — union of main bus and efx bus. */
 	private Map<String, Object> masterArgs() {
 		Map<String, Object> args = new HashMap<>();
 		args.put("channels", CHANNELS);
 		args.put("signal_size", SIGNAL_SIZE);
+		args.put("fir_taps", FILTER_ORDER + 1);
 		args.put("hp_cutoff", HP_CUTOFF);
 		args.put("volume", VOLUME);
 		args.put("lp_cutoff", LP_CUTOFF);
@@ -948,6 +1111,12 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 		heads.setMem(new double[CHANNELS]);
 		args.put("buffers", buffers);
 		args.put("heads", heads);
+		// Master-bus gain stage — the PDSL `mixdown_master` ends with
+		// `scale(master_gain); tanh_act()` mirroring MixdownManager's master shaping.
+		// The fixed-parameter tests pass 1.0 so the kernel's gain stage is a no-op
+		// (the saturation stage still bounds peaks; for tone-level inputs all values
+		// stay in tanh's linear regime).
+		args.put("master_gain", 1.0);
 		return args;
 	}
 

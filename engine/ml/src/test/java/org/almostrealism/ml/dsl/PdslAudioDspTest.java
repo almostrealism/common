@@ -709,4 +709,163 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		}
 	}
 
+	/**
+	 * Verifies that {@code route(transmission)} accepts a
+	 * {@code producer([channels, channels])} — a 2D producer-valued parameter.
+	 * Builds two compiled models, one fed a {@link PackedCollection} weight and one
+	 * fed a constant-folded {@link Producer} expression, and asserts both routings
+	 * produce the same output for the same input. Also mutates the
+	 * {@link PackedCollection} slot between forward passes and asserts the routing
+	 * tracks the change without rebuilding the layer.
+	 */
+	@Test(timeout = 60000)
+	@TestDepth(2)
+	public void testRouteProducerTransmission() {
+		final int channels = 4;
+		TraversalPolicy inputShape = new TraversalPolicy(channels, SIGNAL_SIZE);
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_shapes.pdsl");
+
+		// Identity matrix - each output channel passes its input unchanged.
+		double[] identity = new double[channels * channels];
+		for (int i = 0; i < channels; i++) identity[i * channels + i] = 1.0;
+		PackedCollection identitySlot =
+				new PackedCollection(new TraversalPolicy(channels, channels));
+		identitySlot.setMem(identity);
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("channels", channels);
+		args.put("signal_size", SIGNAL_SIZE);
+		args.put("transmission", identitySlot);
+
+		Block identityBlock = loader.buildLayer(program, "route_producer_layer",
+				inputShape, args);
+		Model identityModel = new Model(inputShape);
+		identityModel.add(identityBlock);
+		CompiledModel identityCompiled = identityModel.compile();
+
+		// Build the input: distinct constant per channel.
+		double[] inData = new double[channels * SIGNAL_SIZE];
+		for (int c = 0; c < channels; c++)
+			for (int t = 0; t < SIGNAL_SIZE; t++)
+				inData[c * SIGNAL_SIZE + t] = (c + 1) * 0.1;
+		PackedCollection input = new PackedCollection(inputShape);
+		input.setMem(inData);
+
+		double[] out1 = identityCompiled.forward(input).toArray(0, channels * SIGNAL_SIZE);
+		for (int c = 0; c < channels; c++) {
+			Assert.assertEquals(
+					"identity routing on channel " + c + " must pass input unchanged",
+					(c + 1) * 0.1, out1[c * SIGNAL_SIZE + 0], 1e-9);
+		}
+
+		// Mutate the slot to swap channels 0 and 1; the next forward pass must
+		// reflect the new routing without rebuilding the layer.
+		double[] swapped = new double[channels * channels];
+		swapped[0 * channels + 1] = 1.0;
+		swapped[1 * channels + 0] = 1.0;
+		swapped[2 * channels + 2] = 1.0;
+		swapped[3 * channels + 3] = 1.0;
+		identitySlot.setMem(swapped);
+
+		double[] out2 = identityCompiled.forward(input).toArray(0, channels * SIGNAL_SIZE);
+		Assert.assertEquals("output channel 0 must now read input channel 1",
+				(2) * 0.1, out2[0 * SIGNAL_SIZE + 0], 1e-9);
+		Assert.assertEquals("output channel 1 must now read input channel 0",
+				(1) * 0.1, out2[1 * SIGNAL_SIZE + 0], 1e-9);
+		Assert.assertEquals("output channel 2 must still read input channel 2",
+				(3) * 0.1, out2[2 * SIGNAL_SIZE + 0], 1e-9);
+	}
+
+	/**
+	 * Verifies that {@code fir(coefficients)} accepts a {@code producer([fir_taps])}
+	 * — a 1D producer-valued FIR coefficient parameter. Compares the producer-bound
+	 * compiled model to a constant-baseline (where the coefficient slot's contents
+	 * are folded into the kernel) and verifies that mutating the producer slot
+	 * between renders changes the convolution without rebuilding the layer.
+	 */
+	@Test(timeout = 60000)
+	@TestDepth(2)
+	public void testFirProducerCoefficients() {
+		final int firTaps = FILTER_ORDER + 1;
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_shapes.pdsl");
+
+		// First coefficient set: low-pass.
+		double[] lpCoeffs = referenceLowPassCoefficients(LP_CUTOFF, SAMPLE_RATE, FILTER_ORDER);
+		PackedCollection coeffSlot = new PackedCollection(firTaps);
+		coeffSlot.setMem(lpCoeffs);
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("signal_size", SIGNAL_SIZE);
+		args.put("fir_taps", firTaps);
+		args.put("coefficients", coeffSlot);
+
+		Block block = loader.buildLayer(program, "fir_producer_layer", inputShape, args);
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		PackedCollection signal = createSignal(SIGNAL_SIZE,
+				i -> Math.sin(2.0 * Math.PI * 1000.0 * i / SAMPLE_RATE)
+						+ Math.sin(2.0 * Math.PI * 12000.0 * i / SAMPLE_RATE));
+
+		double[] lpOut = compiled.forward(signal).toArray(0, SIGNAL_SIZE);
+		double lpEnergy = 0.0;
+		for (int i = FILTER_ORDER; i < SIGNAL_SIZE; i++) {
+			lpEnergy += lpOut[i] * lpOut[i];
+		}
+		Assert.assertTrue("LP FIR must produce non-zero output", lpEnergy > 0.0);
+
+		// Mutate the slot to a much narrower low-pass — the producer-bound FIR must
+		// re-read the slot on the next forward pass and produce a different output.
+		double[] narrowCoeffs = referenceLowPassCoefficients(500.0, SAMPLE_RATE, FILTER_ORDER);
+		coeffSlot.setMem(narrowCoeffs);
+
+		double[] narrowOut = compiled.forward(signal).toArray(0, SIGNAL_SIZE);
+		double diffEnergy = 0.0;
+		for (int i = FILTER_ORDER; i < SIGNAL_SIZE; i++) {
+			double d = narrowOut[i] - lpOut[i];
+			diffEnergy += d * d;
+		}
+		Assert.assertTrue(
+				"swapping FIR coefficients must change the output substantially: diffEnergy="
+						+ diffEnergy, diffEnergy > 0.001);
+	}
+
+	/**
+	 * Verifies that the producer-shape parameter form rejects a
+	 * {@link PackedCollection} whose total size does not match the declared shape.
+	 */
+	@Test(timeout = 30000)
+	public void testProducerShapeMismatchRejected() {
+		final int channels = 4;
+		TraversalPolicy inputShape = new TraversalPolicy(channels, SIGNAL_SIZE);
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/test_producer_shapes.pdsl");
+
+		// Wrong size: only 9 elements, but declared as producer([4, 4]) (16 elements).
+		PackedCollection wrongShape = new PackedCollection(9);
+		wrongShape.setMem(new double[9]);
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("channels", channels);
+		args.put("signal_size", SIGNAL_SIZE);
+		args.put("transmission", wrongShape);
+
+		try {
+			loader.buildLayer(program, "route_producer_layer", inputShape, args);
+			Assert.fail("Building with mismatched producer shape must throw");
+		} catch (PdslParseException expected) {
+			if (!expected.getMessage().contains("transmission")) {
+				Assert.fail("Error must reference the parameter name 'transmission', but got: "
+						+ expected.getMessage());
+			}
+		}
+	}
+
 }

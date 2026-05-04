@@ -1,0 +1,26 @@
+// Test fixtures exercising producer-valued parameters at non-scalar shapes.
+//
+// `transmission: producer([channels, channels])` declares a parameter bound to a
+// Producer<PackedCollection> of shape [channels, channels]. The interpreter accepts
+// either a PackedCollection of that total size (legacy weight binding) or a
+// Producer expression. The kernel reads matrix elements through subset(...) and the
+// route() block consumes them per output channel.
+//
+// `coefficients: producer([fir_taps])` declares a 1-D producer of FIR coefficients.
+// The interpreter accepts the same forms; the kernel convolves the input with the
+// coefficient producer.
+
+// Producer-valued square transmission. Shape [channels, channels].
+layer route_producer_layer(channels: int, signal_size: int,
+                           transmission: producer([channels, channels])) {
+    route(transmission)
+}
+
+// Producer-valued FIR coefficients. Shape [fir_taps]. The fir() primitive
+// reads through the coefficient producer at every kernel evaluation, so a
+// mutable PackedCollection slot or a clock-driven coefficient envelope flows
+// into the convolution without rebuilding the layer.
+layer fir_producer_layer(signal_size: int, fir_taps: int,
+                         coefficients: producer([fir_taps])) -> [1, signal_size] {
+    fir(coefficients)
+}
