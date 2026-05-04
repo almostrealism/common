@@ -181,12 +181,11 @@ public class HnswIndex {
 
 		Node existing = nodes.get(id);
 		if (existing != null) {
-			if (existing.deleted) {
-				activeCount++;
+			if (!existing.deleted) {
+				existing.cachedData = normalizedData;
+				return;
 			}
-			existing.cachedData = normalizedData;
-			existing.deleted = false;
-			return;
+			hardRemove(id);
 		}
 
 		int level = randomLevel();
@@ -299,6 +298,32 @@ public class HnswIndex {
 		if (node != null && !node.deleted) {
 			node.deleted = true;
 			activeCount--;
+		}
+	}
+
+	/**
+	 * Fully removes a node from the graph, including its entry in the
+	 * {@code nodes} map. If the node was the current entry point, scans
+	 * for a new highest-level non-deleted node to take its place.
+	 * Dangling references in other nodes' adjacency lists are tolerated
+	 * by {@link #searchLayer} via its null-neighbor check.
+	 */
+	private void hardRemove(String id) {
+		Node removed = nodes.remove(id);
+		if (removed == null) return;
+		if (!removed.deleted) {
+			activeCount--;
+		}
+		if (id.equals(entryPointId)) {
+			entryPointId = null;
+			maxLevel = -1;
+			for (Node candidate : nodes.values()) {
+				if (candidate.deleted) continue;
+				if (candidate.level > maxLevel) {
+					maxLevel = candidate.level;
+					entryPointId = candidate.id;
+				}
+			}
 		}
 	}
 

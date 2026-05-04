@@ -213,6 +213,44 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		hnswIndex.insert(id, vector);
 	}
 
+	/**
+	 * Insert (or replace) a vector entry in the HNSW index for the given
+	 * identifier without rewriting the underlying record. Intended for
+	 * backfill scenarios where the record is already persisted but its
+	 * vector is missing from the index.
+	 *
+	 * @param id     the record identifier
+	 * @param vector the embedding vector to index
+	 */
+	public void insertEmbedding(String id, PackedCollection vector) {
+		ensureHnswIndex(vector.getMemLength());
+		if (hnswIndex.contains(id)) {
+			hnswIndex.remove(id);
+		}
+		hnswIndex.insert(id, vector);
+	}
+
+	/**
+	 * Check whether the HNSW index has a non-deleted entry for the given
+	 * identifier.
+	 *
+	 * @param id the record identifier
+	 * @return {@code true} if a vector entry is indexed for this identifier
+	 */
+	public boolean hasIndexedEmbedding(String id) {
+		return hnswIndex != null && hnswIndex.contains(id);
+	}
+
+	/**
+	 * Returns the number of indexed (non-deleted) vectors in the HNSW
+	 * index, or {@code 0} if the index has not been initialized.
+	 *
+	 * @return the number of indexed embeddings
+	 */
+	public int indexedEmbeddingCount() {
+		return hnswIndex == null ? 0 : hnswIndex.size();
+	}
+
 	@Override
 	public List<SearchResult<T>> search(PackedCollection queryVector, int topK) {
 		if (hnswIndex == null || hnswIndex.size() == 0) {
