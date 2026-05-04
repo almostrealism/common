@@ -79,6 +79,32 @@ services:
         max-file: "3"
     restart: unless-stopped
 
+  ar-tracker:
+    build:
+      context: ../../tools/tracker
+      dockerfile: Dockerfile
+    ports:
+      - "${AR_TRACKER_PORT:-8030}:8030"
+    volumes:
+      - /Users/Shared/flowtree/tracker:/data
+    environment:
+      - AR_TRACKER_DATA_DIR=/data
+      - AR_TRACKER_PORT=8030
+      - AR_TRACKER_AUTH_TOKEN=${AR_TRACKER_AUTH_TOKEN:-}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8030/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+
   ar-manager:
     build:
       context: ../../tools/mcp
@@ -96,10 +122,14 @@ services:
       - AR_MANAGER_SHARED_SECRET_FILE=/secrets/shared-secret
       - AR_CONSULTANT_BACKEND=${AR_CONSULTANT_BACKEND:-llamacpp}
       - AR_CONSULTANT_LLAMA_URL=${AR_CONSULTANT_LLAMA_URL:-}
+      - AR_TRACKER_URL=http://ar-tracker:8030
+      - AR_TRACKER_AUTH_TOKEN=${AR_TRACKER_AUTH_TOKEN:-}
     depends_on:
       flowtree-controller:
         condition: service_started
       ar-memory:
+        condition: service_healthy
+      ar-tracker:
         condition: service_healthy
     logging:
       driver: json-file
