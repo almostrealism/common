@@ -141,6 +141,21 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore {
 	}
 
 	@Override
+	public boolean hasEmbedding(String identifier) {
+		return diskStore.hasIndexedEmbedding(identifier);
+	}
+
+	@Override
+	public void insertEmbedding(String identifier, PackedCollection embeddingVector) {
+		diskStore.insertEmbedding(identifier, embeddingVector);
+	}
+
+	@Override
+	public int indexedEmbeddingCount() {
+		return diskStore.indexedEmbeddingCount();
+	}
+
+	@Override
 	public void flush() {
 		diskStore.flush();
 	}
