@@ -22,6 +22,7 @@ class TestProjects(unittest.TestCase):
         self.store, self.db_path = _make_store()
 
     def tearDown(self):
+        self.store.close()
         os.unlink(self.db_path)
 
     def test_create_and_get(self):
@@ -64,6 +65,7 @@ class TestReleases(unittest.TestCase):
         self.project = self.store.create_project("Rings")
 
     def tearDown(self):
+        self.store.close()
         os.unlink(self.db_path)
 
     def test_create_with_project(self):
@@ -95,6 +97,7 @@ class TestTasks(unittest.TestCase):
         self.project = self.store.create_project("Rings")
 
     def tearDown(self):
+        self.store.close()
         os.unlink(self.db_path)
 
     def test_create_and_get(self):
@@ -194,6 +197,7 @@ class TestBulkImport(unittest.TestCase):
         self.store, self.db_path = _make_store()
 
     def tearDown(self):
+        self.store.close()
         os.unlink(self.db_path)
 
     def test_import_and_idempotency(self):

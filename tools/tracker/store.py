@@ -5,6 +5,7 @@ plus full-text search via SQLite FTS5.
 """
 
 import sqlite3
+import threading
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -33,9 +34,18 @@ class TrackerStore:
 
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
+        self._lock = threading.Lock()
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         run_migrations(self._conn)
+
+    def close(self) -> None:
+        """Close the underlying SQLite connection.
+
+        Call this in test tearDown (before os.unlink) and in any context
+        where the store will not be used again.
+        """
+        self._conn.close()
 
     # ------------------------------------------------------------------
     # Projects
@@ -511,38 +521,45 @@ class TrackerStore:
         for idx, p in enumerate(projects):
             if not p.get("id") or not p.get("name"):
                 return {"error": f"projects[{idx}] must have 'id' and 'name'"}
-            existing = self.get_project(p["id"])
-            if existing:
-                self._conn.execute(
+            with self._lock:
+                cur = self._conn.execute(
                     "UPDATE projects SET name = ? WHERE id = ?",
                     (p["name"], p["id"]),
                 )
-                updated["projects"] += 1
-            else:
-                self._conn.execute(
-                    "INSERT OR IGNORE INTO projects (id, name, created_at) VALUES (?, ?, ?)",
-                    (p["id"], p["name"], p.get("created_at") or _now()),
-                )
-                created["projects"] += 1
+                if cur.rowcount > 0:
+                    updated["projects"] += 1
+                else:
+                    cur2 = self._conn.execute(
+                        "INSERT OR IGNORE INTO projects (id, name, created_at) "
+                        "VALUES (?, ?, ?)",
+                        (p["id"], p["name"], p.get("created_at") or _now()),
+                    )
+                    if cur2.rowcount > 0:
+                        created["projects"] += 1
+                    else:
+                        updated["projects"] += 1
 
         for idx, r in enumerate(releases):
             if not r.get("id") or not r.get("name"):
                 return {"error": f"releases[{idx}] must have 'id' and 'name'"}
-            existing = self.get_release(r["id"])
-            if existing:
-                self._conn.execute(
+            with self._lock:
+                cur = self._conn.execute(
                     "UPDATE releases SET name = ?, project_id = ? WHERE id = ?",
                     (r["name"], r.get("project_id"), r["id"]),
                 )
-                updated["releases"] += 1
-            else:
-                self._conn.execute(
-                    "INSERT OR IGNORE INTO releases (id, name, project_id, created_at) "
-                    "VALUES (?, ?, ?, ?)",
-                    (r["id"], r["name"], r.get("project_id"),
-                     r.get("created_at") or _now()),
-                )
-                created["releases"] += 1
+                if cur.rowcount > 0:
+                    updated["releases"] += 1
+                else:
+                    cur2 = self._conn.execute(
+                        "INSERT OR IGNORE INTO releases "
+                        "(id, name, project_id, created_at) VALUES (?, ?, ?, ?)",
+                        (r["id"], r["name"], r.get("project_id"),
+                         r.get("created_at") or _now()),
+                    )
+                    if cur2.rowcount > 0:
+                        created["releases"] += 1
+                    else:
+                        updated["releases"] += 1
 
         for idx, t in enumerate(tasks):
             if not t.get("id"):
@@ -552,36 +569,40 @@ class TrackerStore:
                 return {
                     "error": f"tasks[{idx}].priority must be an integer in [-2, 2]"
                 }
-            existing = self.get_task(t["id"])
             now = _now()
-            if existing:
-                self._conn.execute(
-                    "UPDATE tasks SET title = ?, description = ?, status = ?, "
-                    "priority = ?, project_id = ?, release_id = ?, "
-                    "workstream_id = ?, updated_at = ? WHERE id = ?",
-                    (t.get("title", existing["title"]),
-                     t.get("description", existing["description"]),
-                     t.get("status", existing["status"]),
-                     t.get("priority", existing["priority"]),
-                     t.get("project_id", existing["project_id"]),
-                     t.get("release_id", existing["release_id"]),
-                     t.get("workstream_id", existing["workstream_id"]),
-                     now, t["id"]),
-                )
-                updated["tasks"] += 1
-            else:
-                self._conn.execute(
-                    "INSERT OR IGNORE INTO tasks "
-                    "(id, title, description, status, priority, project_id, "
-                    " release_id, workstream_id, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (t["id"], t.get("title", ""), t.get("description"),
-                     t.get("status", "open"), priority,
-                     t.get("project_id"), t.get("release_id"),
-                     t.get("workstream_id"),
-                     t.get("created_at") or now, t.get("updated_at") or now),
-                )
-                created["tasks"] += 1
+            with self._lock:
+                existing = self.get_task(t["id"])
+                if existing:
+                    self._conn.execute(
+                        "UPDATE tasks SET title = ?, description = ?, status = ?, "
+                        "priority = ?, project_id = ?, release_id = ?, "
+                        "workstream_id = ?, updated_at = ? WHERE id = ?",
+                        (t.get("title", existing["title"]),
+                         t.get("description", existing["description"]),
+                         t.get("status", existing["status"]),
+                         t.get("priority", existing["priority"]),
+                         t.get("project_id", existing["project_id"]),
+                         t.get("release_id", existing["release_id"]),
+                         t.get("workstream_id", existing["workstream_id"]),
+                         now, t["id"]),
+                    )
+                    updated["tasks"] += 1
+                else:
+                    cur = self._conn.execute(
+                        "INSERT OR IGNORE INTO tasks "
+                        "(id, title, description, status, priority, project_id, "
+                        " release_id, workstream_id, created_at, updated_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (t["id"], t.get("title", ""), t.get("description"),
+                         t.get("status", "open"), priority,
+                         t.get("project_id"), t.get("release_id"),
+                         t.get("workstream_id"),
+                         t.get("created_at") or now, t.get("updated_at") or now),
+                    )
+                    if cur.rowcount > 0:
+                        created["tasks"] += 1
+                    else:
+                        updated["tasks"] += 1
 
         self._conn.commit()
         return {"created": created, "updated": updated}

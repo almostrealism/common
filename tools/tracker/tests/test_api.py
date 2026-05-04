@@ -15,7 +15,7 @@ from api import create_http_app
 
 
 def _make_client(auth_token=None):
-    """Create a TestClient backed by an in-memory database."""
+    """Create a TestClient backed by a temporary on-disk SQLite database."""
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
     tmp.close()
     store = TrackerStore(tmp.name)
@@ -26,39 +26,44 @@ def _make_client(auth_token=None):
 class TestHealth(unittest.TestCase):
 
     def test_health_returns_ok(self):
-        client, _, path = _make_client()
+        client, store, path = _make_client()
         resp = client.get("/api/health")
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertTrue(body["ok"])
         self.assertIn("counts", body)
+        store.close()
         os.unlink(path)
 
 
 class TestAuth(unittest.TestCase):
 
     def test_no_auth_required_when_token_not_set(self):
-        client, _, path = _make_client(auth_token=None)
+        client, store, path = _make_client(auth_token=None)
         resp = client.get("/v1/projects")
         self.assertEqual(resp.status_code, 200)
+        store.close()
         os.unlink(path)
 
     def test_auth_required_when_token_set(self):
-        client, _, path = _make_client(auth_token="secret")
+        client, store, path = _make_client(auth_token="secret")
         resp = client.get("/v1/projects")
         self.assertEqual(resp.status_code, 401)
+        store.close()
         os.unlink(path)
 
     def test_valid_token_grants_access(self):
-        client, _, path = _make_client(auth_token="secret")
+        client, store, path = _make_client(auth_token="secret")
         resp = client.get("/v1/projects", headers={"Authorization": "Bearer secret"})
         self.assertEqual(resp.status_code, 200)
+        store.close()
         os.unlink(path)
 
     def test_wrong_token_rejected(self):
-        client, _, path = _make_client(auth_token="secret")
+        client, store, path = _make_client(auth_token="secret")
         resp = client.get("/v1/projects", headers={"Authorization": "Bearer wrong"})
         self.assertEqual(resp.status_code, 401)
+        store.close()
         os.unlink(path)
 
 
@@ -68,6 +73,7 @@ class TestProjects(unittest.TestCase):
         self.client, self.store, self.db_path = _make_client()
 
     def tearDown(self):
+        self.store.close()
         os.unlink(self.db_path)
 
     def test_list_empty(self):
@@ -122,6 +128,7 @@ class TestReleases(unittest.TestCase):
         self.project_id = proj_resp.json()["project"]["id"]
 
     def tearDown(self):
+        self.store.close()
         os.unlink(self.db_path)
 
     def test_create_release_with_project(self):
@@ -169,6 +176,7 @@ class TestTasks(unittest.TestCase):
         self.project_id = proj_resp.json()["project"]["id"]
 
     def tearDown(self):
+        self.store.close()
         os.unlink(self.db_path)
 
     def test_create_and_get_task(self):
@@ -316,6 +324,7 @@ class TestSearch(unittest.TestCase):
         )
 
     def tearDown(self):
+        self.store.close()
         os.unlink(self.db_path)
 
     def test_search_by_title(self):
@@ -345,6 +354,7 @@ class TestHeadlines(unittest.TestCase):
         )
 
     def tearDown(self):
+        self.store.close()
         os.unlink(self.db_path)
 
     def test_list_full_includes_description(self):
@@ -410,6 +420,7 @@ class TestProjectSummary(unittest.TestCase):
         self.release_id = rel_resp.json()["release"]["id"]
 
     def tearDown(self):
+        self.store.close()
         os.unlink(self.db_path)
 
     def test_summary_empty_project(self):
@@ -499,6 +510,7 @@ class TestBulkImport(unittest.TestCase):
         self.client, self.store, self.db_path = _make_client()
 
     def tearDown(self):
+        self.store.close()
         os.unlink(self.db_path)
 
     def test_bulk_import_creates_records(self):

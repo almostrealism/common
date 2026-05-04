@@ -217,8 +217,32 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         body, err = await _json_body(request)
         if err:
             return err
-        name = (body["name"].strip() if body.get("name") else UNSET) if "name" in body else UNSET
-        project_id = body["project_id"] if "project_id" in body else UNSET
+        # Validate name: if provided it must be non-empty after stripping.
+        if "name" in body:
+            name_raw = body["name"]
+            if not isinstance(name_raw, str) or not name_raw.strip():
+                return JSONResponse(
+                    {"ok": False, "error": "name cannot be empty"}, status_code=400
+                )
+            name = name_raw.strip()
+        else:
+            name = UNSET
+        # project_id: absent → leave unchanged; null → clear; non-empty string → set.
+        # An explicitly provided empty string is rejected to avoid FK IntegrityError.
+        if "project_id" in body:
+            pid_raw = body["project_id"]
+            if pid_raw is None:
+                project_id = None
+            elif isinstance(pid_raw, str) and pid_raw.strip():
+                project_id = pid_raw
+            else:
+                return JSONResponse(
+                    {"ok": False,
+                     "error": "project_id must be a non-empty UUID string or null"},
+                    status_code=400,
+                )
+        else:
+            project_id = UNSET
         release = store.update_release(request.path_params["id"], name, project_id)
         if not release:
             return JSONResponse(
@@ -259,6 +283,11 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         except ValueError:
             return JSONResponse(
                 {"ok": False, "error": "limit and offset must be integers"},
+                status_code=400,
+            )
+        if limit < 0 or offset < 0:
+            return JSONResponse(
+                {"ok": False, "error": "limit and offset must be non-negative"},
                 status_code=400,
             )
         status = qp.get("status")
@@ -427,6 +456,11 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         except ValueError:
             return JSONResponse(
                 {"ok": False, "error": "limit and offset must be integers"},
+                status_code=400,
+            )
+        if limit < 0 or offset < 0:
+            return JSONResponse(
+                {"ok": False, "error": "limit and offset must be non-negative"},
                 status_code=400,
             )
         fields = qp.get("fields", "full")

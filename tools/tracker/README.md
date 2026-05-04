@@ -122,7 +122,7 @@ tracker_project_summary(project_id="<uuid>")
 #       "project_id": "<uuid>",
 #       "total_tasks": 214,
 #       "by_status": {"open": 130, "closed": 84},
-#       "by_priority": {-2: 3, -1: 20, 0: 120, 1: 55, 2: 16},
+#       "by_priority": {"-2": 3, "-1": 20, "0": 120, "1": 55, "2": 16},
 #       "by_release": [
 #         {"release_id": "<uuid>", "release_name": "0.39",
 #          "task_count": 42, "open_count": 28},
@@ -144,11 +144,19 @@ tasks not assigned to any release.
 
 ### Workspace scoping
 
-Tasks that have a `workstream_id` are subject to workspace scope enforcement.
-Scoped tokens may only create, update, or delete tasks attached to workstreams
-within their scope. Read operations (`tracker_list_tasks` with a `workstream_id`
-filter, and `tracker_get_task` for tasks linked to a scoped workstream) are also
-scope-checked.
+Workspace scope enforcement is handled by **ar-manager's MCP layer**, not by
+the ar-tracker REST API itself. The tracker service accepts a single shared
+bearer token (`AR_TRACKER_AUTH_TOKEN`) and has no concept of per-workstream
+permissions.
+
+The `tracker_*` MCP tools in ar-manager enforce scope at the MCP layer before
+forwarding requests to the tracker service:
+- **Write operations** (`tracker_create_task`, `tracker_update_task`,
+  `tracker_delete_task`): scoped tokens may only create, update, or delete
+  tasks attached to workstreams within their scope.
+- **Read operations** (`tracker_list_tasks` with a `workstream_id` filter,
+  `tracker_get_task` for tasks linked to a scoped workstream): scope is
+  checked before the GET request is forwarded.
 
 Projects and releases are globally visible — no scope restriction.
 

@@ -4140,7 +4140,7 @@ def tracker_list_releases(project_id: str = "") -> dict:
     _audit("tracker_list_releases", project_id=project_id)
     path = "/v1/releases"
     if project_id:
-        path += f"?project_id={project_id}"
+        path += "?" + urlencode({"project_id": project_id})
     return _tracker_get(path)
 
 
@@ -4171,10 +4171,17 @@ def tracker_update_release(
 ) -> dict:
     """Update an existing tracker release.
 
+    Only fields with non-empty values are updated. Pass an empty string
+    to leave a field unchanged.
+
+    To clear the project association, pass the literal string "null" for
+    project_id. This sends JSON null to the tracker, which clears the FK.
+
     Args:
         release_id: UUID of the release to update.
         name: New name for the release. Omit to leave unchanged.
-        project_id: New project association UUID. Omit to leave unchanged.
+        project_id: New project UUID. Omit to leave unchanged. Pass
+            "null" to clear the project association.
 
     Returns:
         dict with ok=True and the updated release record.
@@ -4184,7 +4191,9 @@ def tracker_update_release(
     payload: dict = {}
     if name:
         payload["name"] = name
-    if project_id:
+    if project_id == "null":
+        payload["project_id"] = None
+    elif project_id:
         payload["project_id"] = project_id
     return _tracker_put(f"/v1/releases/{release_id}", payload)
 
@@ -4256,7 +4265,7 @@ def tracker_get_task(task_id: str) -> dict:
 
     The full task record is returned. Workspace scoping is enforced:
     if the task is linked to a workstream outside the caller's scope,
-    a 404 is returned, mirroring the behaviour of tracker_list_tasks.
+    a PermissionError is raised (same behaviour as other scoped reads).
 
     Args:
         task_id: UUID of the task to retrieve.
@@ -4321,26 +4330,26 @@ def tracker_list_tasks(
         _require_workstream_in_scope(workstream_id)
     _audit("tracker_list_tasks", project_id=project_id,
            release_id=release_id, workstream_id=workstream_id)
-    params = []
+    raw: dict = {}
     if project_id:
-        params.append(f"project_id={project_id}")
+        raw["project_id"] = project_id
     if release_id:
-        params.append(f"release_id={release_id}")
+        raw["release_id"] = release_id
     if workstream_id:
-        params.append(f"workstream_id={workstream_id}")
+        raw["workstream_id"] = workstream_id
     if status:
-        params.append(f"status={status}")
+        raw["status"] = status
     if sort:
-        params.append(f"sort={sort}")
+        raw["sort"] = sort
     if order:
-        params.append(f"order={order}")
+        raw["order"] = order
     if limit != 50:
-        params.append(f"limit={limit}")
+        raw["limit"] = limit
     if offset:
-        params.append(f"offset={offset}")
+        raw["offset"] = offset
     if fields and fields != "full":
-        params.append(f"fields={fields}")
-    qs = ("?" + "&".join(params)) if params else ""
+        raw["fields"] = fields
+    qs = ("?" + urlencode(raw)) if raw else ""
     return _tracker_get(f"/v1/tasks{qs}")
 
 
@@ -4464,18 +4473,18 @@ def tracker_search_tasks(
     """
     _require_scope("read")
     _audit("tracker_search_tasks", query=query, project_id=project_id)
-    params = [f"q={quote(query)}"]
+    raw: dict = {"q": query}
     if project_id:
-        params.append(f"project_id={project_id}")
+        raw["project_id"] = project_id
     if status:
-        params.append(f"status={status}")
+        raw["status"] = status
     if limit != 20:
-        params.append(f"limit={limit}")
+        raw["limit"] = limit
     if offset:
-        params.append(f"offset={offset}")
+        raw["offset"] = offset
     if fields and fields != "full":
-        params.append(f"fields={fields}")
-    return _tracker_get("/v1/search/tasks?" + "&".join(params))
+        raw["fields"] = fields
+    return _tracker_get("/v1/search/tasks?" + urlencode(raw))
 
 
 @mcp.tool()
@@ -4489,9 +4498,10 @@ def tracker_project_summary(project_id: str) -> dict:
 
     Workspace scoping: the by_workstream breakdown is filtered to only
     include workstreams accessible to the caller's token. Workstreams
-    outside scope are silently omitted (they are not counted in the
-    totals either, so by_workstream counts may not sum to total_tasks
-    when the caller is scoped).
+    outside scope are silently omitted from by_workstream. Note that
+    total_tasks and other aggregates (by_status, by_priority, by_release)
+    are computed over all tasks in the project regardless of scope, so
+    by_workstream task counts may not sum to total_tasks for scoped callers.
 
     Args:
         project_id: UUID of the project to summarise.
