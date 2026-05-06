@@ -306,7 +306,22 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"github_create_pr",
 			"github_request_copilot_review",
 			"github_read_file",
-			"github_pr_check_status"
+			"github_pr_check_status",
+			"tracker_list_projects",
+			"tracker_create_project",
+			"tracker_update_project",
+			"tracker_delete_project",
+			"tracker_list_releases",
+			"tracker_create_release",
+			"tracker_update_release",
+			"tracker_delete_release",
+			"tracker_create_task",
+			"tracker_get_task",
+			"tracker_list_tasks",
+			"tracker_update_task",
+			"tracker_delete_task",
+			"tracker_search_tasks",
+			"tracker_project_summary"
 		));
 
 		List<String> discovered = McpToolDiscovery.discoverToolNames(serverFile);
@@ -425,6 +440,35 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			prCheckParams.contains("workstream_id"));
 		assertTrue("github_pr_check_status must declare branch in signature",
 			prCheckParams.contains("branch"));
+
+		List<String> trackerCreateParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_create_task");
+		assertTrue("tracker_create_task must declare priority in signature",
+			trackerCreateParams.contains("priority"));
+
+		List<String> trackerUpdateParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_update_task");
+		assertTrue("tracker_update_task must declare priority in signature",
+			trackerUpdateParams.contains("priority"));
+
+		List<String> trackerListParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_list_tasks");
+		assertTrue("tracker_list_tasks must declare sort in signature",
+			trackerListParams.contains("sort"));
+		assertTrue("tracker_list_tasks must declare order in signature",
+			trackerListParams.contains("order"));
+		assertTrue("tracker_list_tasks must declare fields in signature",
+			trackerListParams.contains("fields"));
+
+		List<String> trackerSearchParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_search_tasks");
+		assertTrue("tracker_search_tasks must declare fields in signature",
+			trackerSearchParams.contains("fields"));
+
+		List<String> trackerSummaryParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_project_summary");
+		assertTrue("tracker_project_summary must declare project_id in signature",
+			trackerSummaryParams.contains("project_id"));
 	}
 
 	@Test(timeout = 30000)
