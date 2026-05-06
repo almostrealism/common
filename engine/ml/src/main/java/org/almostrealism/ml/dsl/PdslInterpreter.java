@@ -978,6 +978,20 @@ public class PdslInterpreter {
 	 * Builds a block factory that collapses a {@code [C, S]} input to {@code [1, S]}
 	 * by element-wise summation along axis 0.
 	 *
+	 * <p>This is the <em>within-tensor</em> channel-axis reduction: it operates on a
+	 * single upstream block whose output already has shape {@code [C, S]} and reduces
+	 * along axis 0 (the channel axis) to produce a {@code [1, S]} output. No new
+	 * branches are introduced — the reduction axis is internal to the single source's
+	 * output tensor.</p>
+	 *
+	 * <p>For summation <em>across multiple {@link org.almostrealism.model.Block} sources</em>
+	 * — i.e. running N independent sub-blocks against the same input and summing their
+	 * separate outputs — see
+	 * {@link org.almostrealism.layers.LayerRoutingFeatures#accumBlocks(io.almostrealism.collect.TraversalPolicy, java.util.List, io.almostrealism.compute.ComputeRequirement...)
+	 * accumBlocks}. The two operations both produce element-wise sums but along
+	 * different conceptual axes (within a tensor vs. across sibling blocks) and are
+	 * not substitutable.</p>
+	 *
 	 * @param args must be empty
 	 * @return a factory that creates the sum-channels layer for any 2-D input shape
 	 */

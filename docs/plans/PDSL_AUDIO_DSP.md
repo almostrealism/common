@@ -400,6 +400,32 @@ domain-agnostic axis-0 reduction supplied by the PDSL interpreter core, not by
 sum_channels()    // [channels, signal_size] → [1, signal_size]
 ```
 
+**`sum_channels()` vs `accum_blocks` — orthogonal reductions, not duplicates.**
+Both operations produce element-wise sums, but they sum over different things and
+are not substitutable:
+
+- `accum_blocks(a, b, c, ...)` (Section 12.4, implemented as
+  `LayerRoutingFeatures#accumBlocks`) is summation **across multiple sibling
+  `Block` sources**. Every sub-block receives the same upstream input
+  independently, and the layer output is the element-wise sum of the per-block
+  outputs. The "axis" being reduced is the implicit branch axis introduced by
+  enumerating the sub-blocks; no axis of any individual sub-block's output
+  tensor is collapsed.
+- `sum_channels()` (this construct, implemented as
+  `PdslInterpreter#callSumChannels`) is the **within-tensor** channel-axis
+  reduction. It operates on the output of a *single* upstream block whose
+  shape is already `[C, S]` and reduces along axis 0 to yield `[1, S]`. The
+  reduction axis is internal to one tensor.
+
+Both operations are legitimate; they cover different shapes of multi-source
+parallelism. A heterogeneous-branching pipeline that emitted a multi-channel
+tensor per branch would need both — `accum_blocks` to combine the branches
+followed by `sum_channels()` to collapse the channel axis of each branch's
+output — but in practice the canonical PDSL pattern keeps the two roles
+separate: `repeat(N) ... for each channel ... sum_channels()` for within-tensor
+fan-out/collapse, and `accum_blocks(...)` for heterogeneous branching at the
+block level.
+
 **Complete example — `delay_feedback_bank`:**
 
 ```pdsl
