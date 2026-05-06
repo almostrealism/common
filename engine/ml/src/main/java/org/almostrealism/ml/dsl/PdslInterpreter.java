@@ -57,6 +57,12 @@ import java.util.function.Function;
  *   <li>{@code slice(offset, size)} - extract a 1-D sub-range</li>
  *   <li>{@code lerp(hidden_size)} - linear interpolation from [from|weight|to] input</li>
  *   <li>{@code reshape(shape)}</li>
+ *   <li>{@code identity()} - pass-through block, forward and backward unchanged</li>
+ *   <li>{@code scale(factor)} - element-wise multiply by a scalar producer</li>
+ *   <li>{@code repeat(n)} - replicate the input along axis 0 to produce {@code n}
+ *       times as many leading rows (equivalent to {@code CollectionProducer.repeat(0, n)})</li>
+ *   <li>{@code sum_channels()} - collapse a {@code [C, S]} tensor to {@code [1, S]}
+ *       by summing along axis 0</li>
  *   <li>{@code rope_rotation(shape, freq_cis, position)}</li>
  *   <li>{@code attention(...)}, {@code transformer(...)},
  *       {@code feed_forward(...)}</li>
@@ -89,9 +95,12 @@ public class PdslInterpreter {
 	 * Registry of domain primitives contributed by higher-level modules via
 	 * {@link #registerPrimitive(String, PdslPrimitive)}. The interpreter consults
 	 * this map first when dispatching a function call so domain primitives can
-	 * shadow built-in names if needed.
+	 * shadow built-in names if needed. The registry is heterogeneous — each
+	 * primitive declares its own result type via the {@code T} parameter on
+	 * {@link PdslPrimitive} — so the map values are typed as
+	 * {@code PdslPrimitive<?>}.
 	 */
-	private final Map<String, PdslPrimitive> registeredPrimitives;
+	private final Map<String, PdslPrimitive<?>> registeredPrimitives;
 
 	/** Builds the multi-channel block backing the {@code for each channel} statement. */
 	private PdslMultiChannelDispatcher multiChannelDispatcher;
@@ -162,7 +171,7 @@ public class PdslInterpreter {
 	 * @param name      the function name as it appears in PDSL source
 	 * @param primitive the dispatcher for this primitive
 	 */
-	public void registerPrimitive(String name, PdslPrimitive primitive) {
+	public <T> void registerPrimitive(String name, PdslPrimitive<T> primitive) {
 		registeredPrimitives.put(Objects.requireNonNull(name, "name"),
 				Objects.requireNonNull(primitive, "primitive"));
 	}
@@ -759,7 +768,7 @@ public class PdslInterpreter {
 
 		// Domain primitives (audio DSP, multi-channel routing, etc.) are looked up
 		// before built-ins so registered primitives may shadow built-in names.
-		PdslPrimitive registered = registeredPrimitives.get(name);
+		PdslPrimitive<?> registered = registeredPrimitives.get(name);
 		if (registered != null) {
 			return registered.dispatch(args, new EnvContext(env));
 		}
@@ -874,6 +883,10 @@ public class PdslInterpreter {
 			case "slice": return callSlice(args);
 			case "lerp": return callLerp(args);
 			case "reshape": return callReshape(args);
+			case "identity": return callIdentity(args);
+			case "scale": return callScale(args);
+			case "repeat": return callRepeat(args);
+			case "sum_channels": return callSumChannels(args);
 			case "rope_rotation": return callRopeRotation(args);
 			case "attention": return callAttention(args);
 			case "transformer": return callTransformer(args);
@@ -882,6 +895,113 @@ public class PdslInterpreter {
 			case "range": return callRange(args);
 			default: return null;
 		}
+	}
+
+	/**
+	 * Builds a pass-through (identity) block factory.
+	 *
+	 * @param args must be empty
+	 * @return a factory that creates a
+	 *         {@link org.almostrealism.layers.LayerFeatures#passThrough(TraversalPolicy)
+	 *         pass-through} block for any input shape
+	 */
+	private Object callIdentity(List<Object> args) {
+		if (!args.isEmpty()) {
+			throw new PdslParseException(
+					"identity() expects no arguments, got " + args.size());
+		}
+		return (Function<TraversalPolicy, Block>) FEATURES::passThrough;
+	}
+
+	/**
+	 * Builds a scalar-scaling block factory that multiplies every element of the input
+	 * by a factor. The factor argument is normalised to a shape-{@code [1]}
+	 * producer so a numeric literal, a {@link PackedCollection}, or a
+	 * {@link Producer} are all accepted uniformly.
+	 *
+	 * @param args one argument: the multiplicative factor
+	 * @return a factory that creates the scale layer for any input shape
+	 */
+	private Object callScale(List<Object> args) {
+		if (args.size() != 1) {
+			throw new PdslParseException(
+					"scale() expects 1 argument (factor), got " + args.size());
+		}
+		CollectionProducer factor = normalizeToProducer(args.get(0),
+				FEATURES.shape(1), "scale() factor");
+		return (Function<TraversalPolicy, Block>) (inputShape ->
+				FEATURES.layer("scale", inputShape, inputShape,
+						input -> FEATURES.multiply(FEATURES.c(input).each(), factor)));
+	}
+
+	/**
+	 * Builds a block factory that replicates the input along axis 0.
+	 *
+	 * <p>Given a {@code [C, S]} input, the result has shape {@code [C * n, S]}.
+	 * In the typical multi-channel use ({@code C == 1}) this turns a mono signal
+	 * into an {@code n}-channel parallel fan-out. The kernel is a sequence of
+	 * {@code n} concat operations on the input — equivalent to
+	 * {@link org.almostrealism.collect.CollectionProducer#repeat(int, int)
+	 * CollectionProducer.repeat(0, n)} but built explicitly so the resulting
+	 * graph matches the existing per-channel layout.</p>
+	 *
+	 * @param args one argument: the integer repetition count {@code n}
+	 * @return a factory that creates the repeat layer for any 2-D input shape
+	 */
+	private Object callRepeat(List<Object> args) {
+		if (args.size() != 1) {
+			throw new PdslParseException(
+					"repeat() expects 1 argument (n), got " + args.size());
+		}
+		int n = toInt(args.get(0));
+		return (Function<TraversalPolicy, Block>) (inputShape -> {
+			if (inputShape.getDimensions() != 2) {
+				throw new PdslParseException(
+						"repeat() expects a 2-D [C, S] input shape, got " + inputShape);
+			}
+			int channels = inputShape.length(0);
+			int signalSize = inputShape.length(1);
+			TraversalPolicy singleShape = FEATURES.shape(channels, signalSize);
+			TraversalPolicy outputShape = FEATURES.shape(channels * n, signalSize);
+			return FEATURES.layer("repeat", inputShape, outputShape, input -> {
+				CollectionProducer combined = FEATURES.c(input).reshape(singleShape);
+				for (int i = 1; i < n; i++) {
+					combined = (CollectionProducer)
+							FEATURES.concat(combined, FEATURES.c(input).reshape(singleShape));
+				}
+				return combined;
+			});
+		});
+	}
+
+	/**
+	 * Builds a block factory that collapses a {@code [C, S]} input to {@code [1, S]}
+	 * by element-wise summation along axis 0.
+	 *
+	 * @param args must be empty
+	 * @return a factory that creates the sum-channels layer for any 2-D input shape
+	 */
+	private Object callSumChannels(List<Object> args) {
+		if (!args.isEmpty()) {
+			throw new PdslParseException(
+					"sum_channels() expects no arguments, got " + args.size());
+		}
+		return (Function<TraversalPolicy, Block>) (inputShape -> {
+			if (inputShape.getDimensions() != 2) {
+				throw new PdslParseException(
+						"sum_channels() expects a 2-D [C, S] input shape, got " + inputShape);
+			}
+			int channels = inputShape.length(0);
+			int signalSize = inputShape.length(1);
+			TraversalPolicy singleShape = FEATURES.shape(1, signalSize);
+			return FEATURES.layer("sum_channels", inputShape, singleShape, input -> {
+				CollectionProducer sum = FEATURES.subset(singleShape, FEATURES.c(input), 0);
+				for (int i = 1; i < channels; i++) {
+					sum = sum.add(FEATURES.subset(singleShape, FEATURES.c(input), i * signalSize));
+				}
+				return sum;
+			});
+		});
 	}
 
 	/**

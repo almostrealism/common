@@ -3,7 +3,7 @@
 PDSL declaratively describes the multi-channel DSP pipeline that backs `MixdownManager`,
 `EfxManager`, and `AutomationManager`. A `layer` body composes FIR primitives
 (`fir`, `scale`, `lowpass`, `highpass`), stateful primitives (`biquad`, `delay`, `lfo`),
-and multi-channel constructs (`channels: N`, `for each channel { }`, `fan_out(N)`,
+and multi-channel constructs (`channels: N`, `for each channel { }`, `repeat(N)`,
 `route(matrix)`, `sum_channels()`) into a `Block` that the framework compiles into a
 `Model`. Existing PDSL files (`efx_channel.pdsl`, `mixdown_channel.pdsl`,
 `delay_feedback_bank.pdsl`, `mixdown_manager.pdsl`) cover the structural rendition of
@@ -21,7 +21,7 @@ The AudioScene pipeline — `MixdownManager`, `EfxManager`, `AutomationManager` 
 
 If the same pipeline were defined **declaratively in PDSL**, the framework would have a structured description of the graph it could analyze, partition, and recompile. Per-channel kernel splitting, copy elimination, and silent channel skipping — the three main goals of the AudioScene redesign — all become tractable problems in a declarative graph model.
 
-The chosen approach extends the existing `layer` keyword with multi-channel DSP constructs: `channels: N` header parameter, `for each channel { }` body construct, `fan_out(N)`, `route(matrix)`, and `sum_channels()`. A `layer` compiles to a `Block` — a static computation graph — and a sequence of PDSL layers compiles to a `Model` via `SequentialBlock`. This approach reuses the full existing PDSL infrastructure without a new compilation target.
+The chosen approach extends the existing `layer` keyword with multi-channel DSP constructs: `channels: N` header parameter, `for each channel { }` body construct, `repeat(N)`, `route(matrix)`, and `sum_channels()`. A `layer` compiles to a `Block` — a static computation graph — and a sequence of PDSL layers compiles to a `Model` via `SequentialBlock`. This approach reuses the full existing PDSL infrastructure without a new compilation target.
 
 Cross-channel routing (`route`), collapse (`sum_channels`), and per-channel iteration (`for each channel`) cover the core multi-channel vocabulary used by `MixdownManager`. The `delay_feedback_bank.pdsl` layer (see Appendix A) demonstrates all four constructs working together end-to-end.
 
@@ -350,13 +350,15 @@ layer delay_feedback_bank(channels: int, signal_size: int, ...) -> [1, signal_si
 }
 ```
 
-**Construct 2: `fan_out(N)` — Replicate 1 channel to N**
+**Construct 2: `repeat(N)` — Replicate 1 channel to N**
 
 Takes a `[1, signal_size]` input and produces `[N, signal_size]` by concatenating N copies.
-Compiles to `MultiChannelDspFeatures.fanOutBlock(n, signalSize)`.
+This is a domain-agnostic axis-0 replication kernel and is supplied by the PDSL interpreter
+core (it is not registered by `AudioDspPrimitives`); it is the Block-level wrapper for the
+producer-level `CollectionProducer.repeat(0, n)`.
 
 ```pdsl
-fan_out(channels)    // [1, signal_size] → [channels, signal_size]
+repeat(channels)    // [1, signal_size] → [channels, signal_size]
 ```
 
 **Construct 3: `for each channel { }` — Per-channel application**
@@ -390,8 +392,9 @@ route(transmission)    // [channels, signal_size] → [channels, signal_size]
 
 **Construct 5: `sum_channels()` — Collapse N channels to 1**
 
-Element-wise addition over all channel slices. Compiles to
-`MultiChannelDspFeatures.sumChannelsBlock(channels, signalSize)`.
+Element-wise addition over all channel slices. Like `repeat`, `sum_channels()` is a
+domain-agnostic axis-0 reduction supplied by the PDSL interpreter core, not by
+`AudioDspPrimitives`.
 
 ```pdsl
 sum_channels()    // [channels, signal_size] → [1, signal_size]
@@ -402,7 +405,7 @@ sum_channels()    // [channels, signal_size] → [1, signal_size]
 ```pdsl
 layer delay_feedback_bank(channels: int, signal_size: int, delay_samples: int,
                           transmission: weight) -> [1, signal_size] {
-    fan_out(channels)
+    repeat(channels)
     for each channel {
         delay(delay_samples, buffers[channel], heads[channel])
     }
@@ -411,22 +414,22 @@ layer delay_feedback_bank(channels: int, signal_size: int, delay_samples: int,
 }
 ```
 
-Signal flow: `[1, S]` → fan_out → `[N, S]` → per-channel delay → `[N, S]` → route → `[N, S]` → sum → `[1, S]`.
+Signal flow: `[1, S]` → repeat → `[N, S]` → per-channel delay → `[N, S]` → route → `[N, S]` → sum → `[1, S]`.
 
 ### 6D: Why This Matters for ML Too
 
 The multi-channel constructs are not audio-specific. Three ML use cases benefit directly:
 
 **Multi-head attention decomposition** — today `attention(q_proj, k_proj, ...)` is a black box.
-With `fan_out(num_heads)` + `for each channel` the per-head computation becomes visible and
+With `repeat(num_heads)` + `for each channel` the per-head computation becomes visible and
 customizable without writing a new Java primitive.
 
-**Mixture-of-experts** — `fan_out(num_experts)` + `for each channel { dense(expert_w1[ch])... }`
+**Mixture-of-experts** — `repeat(num_experts)` + `for each channel { dense(expert_w1[ch])... }`
 + `route(gate_scores)` + `sum_channels()` replaces O(N) explicit `concat_blocks` branches.
 The `route(gate_scores)` is the MoE routing — the same mechanism as `mself(transmission)` in
 the audio delay bank.
 
-**Parallel residual streams** — `fan_out(num_streams)` + `for each channel` + `sum_channels()`
+**Parallel residual streams** — `repeat(num_streams)` + `for each channel` + `sum_channels()`
 makes stream count a parameter rather than hardcoding via `accum_blocks`.
 
 These are gaps in the expressiveness of the PDSL language itself, relevant to any domain
@@ -519,7 +522,7 @@ cells.addRequirement(temporal);
   operations, no `setMem()`/`toDouble()`.
 - **`mixdown_channel.pdsl`** — expresses `MixdownManager`'s main path (HP → scale → LP)
   and full per-channel path (with wet/delay) as PDSL layers.
-- **Multi-channel constructs** — `fan_out(N)`, `for each channel { }`, `route(matrix)`,
+- **Multi-channel constructs** — `repeat(N)`, `for each channel { }`, `route(matrix)`,
   `sum_channels()` implemented in `PdslInterpreter`, `PdslParser`, `PdslNode`, and
   `MultiChannelDspFeatures`. Subscript syntax `expr[index]` for per-channel state slicing.
 - **`delay_feedback_bank.pdsl`** — exercises all four multi-channel constructs end-to-end:
@@ -1258,7 +1261,7 @@ both divergences stand.
 | `pdsl/midi/skytnt_block.pdsl` | LLaMA-style transformer block (attention + SwiGLU FFN) |
 | `pdsl/audio/efx_channel.pdsl` | EFX channel layers: `efx_wet_chain`, `efx_lowpass_wet`, `efx_highpass_wet`, `efx_dry_path`, `efx_delay`, `efx_wet_dry_mix` |
 | `pdsl/audio/mixdown_channel.pdsl` | Mixdown layers: `mixdown_main` (HP→scale→LP), `mixdown_channel` (full with wet/delay) |
-| `pdsl/audio/delay_feedback_bank.pdsl` | Multi-channel delay bank: `delay_feedback_bank` (fan_out → per-channel delay → route → sum_channels) |
+| `pdsl/audio/delay_feedback_bank.pdsl` | Multi-channel delay bank: `delay_feedback_bank` (repeat → per-channel delay → route → sum_channels) |
 | `pdsl/audio/mixdown_manager.pdsl` | Top-level mixdown: `mixdown_main_bus`, `mixdown_efx_bus`, `mixdown_master` |
 
 All PDSL files live in `engine/ml/src/main/resources/pdsl/` and its subdirectories.

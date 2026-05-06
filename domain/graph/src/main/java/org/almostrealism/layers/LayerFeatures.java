@@ -523,6 +523,28 @@ public interface LayerFeatures extends MatrixFeatures, ActivationFeatures, Conso
 	}
 
 	/**
+	 * Creates a pass-through block whose forward and backward cells both forward
+	 * their input unchanged.
+	 *
+	 * <p>The backward pass is a true gradient pass-through (gradient of the identity
+	 * function is the identity function), not a no-op — gradients flow through
+	 * pass-through blocks unchanged.</p>
+	 *
+	 * <p>The name {@code passThrough} avoids clashing with
+	 * {@link org.almostrealism.algebra.MatrixFeatures#identity(TraversalPolicy)
+	 * MatrixFeatures.identity(TraversalPolicy)}, which returns an identity matrix
+	 * (a {@link CollectionProducer}) rather than a pass-through {@link Block}.</p>
+	 *
+	 * @param shape the input (and output) shape of the pass-through
+	 * @return a {@link Block} whose forward and backward cells both push their input downstream
+	 */
+	default Block passThrough(TraversalPolicy shape) {
+		return new DefaultBlock(shape, shape,
+				Cell.of((in, next) -> next.push(in)),
+				Cell.of((in, next) -> next.push(in)));
+	}
+
+	/**
 	 * Creates a reshape block that reinterprets data with a new shape.
 	 *
 	 * @param inputShape  the original shape

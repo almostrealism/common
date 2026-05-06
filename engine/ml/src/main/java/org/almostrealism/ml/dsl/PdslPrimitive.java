@@ -40,13 +40,18 @@ import io.almostrealism.collect.TraversalPolicy;
  * normalisation rather than reimplementing the dispatch — the registry boundary is
  * the only place where non-Producer arguments are permitted.</p>
  *
- * <p>The result may be a {@link Block} for primitives that produce a fixed-shape
- * block, a {@link Function}{@code <TraversalPolicy, Block>} factory for primitives
- * whose output shape depends on their input shape, or any other value the caller
- * expects (e.g. a numeric literal).</p>
+ * <p>The type parameter {@code T} declares what the primitive produces. The
+ * interpreter core consumes results uniformly via {@link Object} (so the registry
+ * stays heterogeneous), but each primitive is itself typed so the implementor and
+ * any direct caller see the concrete result type. Most primitives produce a
+ * {@link Block} or a {@link Function}{@code <TraversalPolicy, Block>} factory; some
+ * produce other types (e.g. a numeric literal or {@link TraversalPolicy}).</p>
+ *
+ * @param <T> the result type produced by this primitive's
+ *            {@link #dispatch dispatch} method
  */
 @FunctionalInterface
-public interface PdslPrimitive {
+public interface PdslPrimitive<T> {
 
 	/**
 	 * Build the result of a single primitive call.
@@ -55,5 +60,5 @@ public interface PdslPrimitive {
 	 * @param ctx  the per-call context (channels, signal size, normalisation)
 	 * @return the result the interpreter appends to the surrounding block
 	 */
-	Object dispatch(List<Object> args, PdslPrimitiveContext ctx);
+	T dispatch(List<Object> args, PdslPrimitiveContext ctx);
 }

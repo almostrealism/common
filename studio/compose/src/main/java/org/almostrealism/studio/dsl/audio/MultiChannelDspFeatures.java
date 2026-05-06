@@ -36,10 +36,13 @@ import java.util.function.Supplier;
 /**
  * Default methods for building multi-channel DSP {@link Block} computation graphs.
  *
- * <p>Implements the core block factories used by the PDSL audio integration in
+ * <p>Implements the audio-domain block factories used by the PDSL audio integration in
  * {@link AudioDspPrimitives} to compile {@code for each channel}, {@code route()},
- * {@code sum_channels()}, and {@code fan_out()} PDSL constructs into
- * {@link DefaultBlock} instances backed by {@link Cell} computation graphs.</p>
+ * and {@code delay_network()} PDSL constructs into {@link DefaultBlock} instances
+ * backed by {@link Cell} computation graphs. Domain-agnostic primitives such as
+ * {@code repeat} (axis-0 replication, formerly {@code fan_out}) and
+ * {@code sum_channels} (axis-0 summation) are kernel-level tensor operations and
+ * are supplied by the PDSL interpreter core, not by this audio-side mixin.</p>
  *
  * <p>All methods follow the AlmostRealism producer pattern: no Java-side arithmetic,
  * all computation expressed as {@link CollectionProducer} compositions.</p>
@@ -145,33 +148,6 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 	}
 
 	/**
-	 * Builds a block that collapses {@code channels} channels to 1 by element-wise addition.
-	 *
-	 * @param channels   number of input channels
-	 * @param signalSize samples per channel
-	 * @return a Block with shape {@code [channels, signalSize] → [1, signalSize]}
-	 */
-	default Block sumChannelsBlock(int channels, int signalSize) {
-		TraversalPolicy multiShape = shape(channels, signalSize);
-		TraversalPolicy singleShape = shape(1, signalSize);
-		Cell<PackedCollection> forward = Cell.of(
-				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-						Supplier<Runnable>>) (in, next) -> {
-					CollectionProducer sum = subset(singleShape, c(in), 0);
-					for (int i = 1; i < channels; i++) {
-						sum = sum.add(subset(singleShape, c(in), i * signalSize));
-					}
-					OperationList ops = new OperationList("sum_channels");
-					ops.add(next.push(sum));
-					return ops;
-				});
-		Cell<PackedCollection> backward = Cell.of(
-				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-						Supplier<Runnable>>) (in, next) -> new OperationList("sum_channels-backward"));
-		return new DefaultBlock(multiShape, singleShape, forward, backward);
-	}
-
-	/**
 	 * Builds a closed-loop multi-tap feedback delay-network block.
 	 *
 	 * <p>This is the PDSL/Block-side equivalent of
@@ -191,10 +167,10 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 	 */
 	default Block delayNetworkBlock(CollectionProducer delaySamples,
 									CollectionProducer feedbackMatrix,
-									PackedCollection buffer,
-									PackedCollection heads,
+									CollectionProducer buffer,
+									CollectionProducer heads,
 									int channels, int signalSize) {
-		int totalBuf = buffer.getShape().getTotalSize();
+		int totalBuf = shape(buffer).getTotalSize();
 		int bufSize = totalBuf / channels;
 		if (totalBuf != channels * bufSize) {
 			throw new IllegalArgumentException(
@@ -206,9 +182,9 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 					"delay_network requires per-channel buffer size (" + bufSize
 							+ ") to equal signal_size (" + signalSize + ")");
 		}
-		if (heads.getShape().getTotalSize() != channels) {
+		if (shape(heads).getTotalSize() != channels) {
 			throw new IllegalArgumentException(
-					"delay_network heads collection size " + heads.getShape().getTotalSize()
+					"delay_network heads collection size " + shape(heads).getTotalSize()
 							+ " must equal channels=" + channels);
 		}
 		TraversalPolicy multiShape = shape(channels, signalSize);
@@ -216,7 +192,7 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 		TraversalPolicy oneShape = shape(1);
 		TraversalPolicy elemShape = shape(1, 1);
 		CollectionProducer delays1D = delaySamples.reshape(shape(channels));
-		CollectionProducer heads1D = cp(heads).reshape(shape(channels));
+		CollectionProducer heads1D = heads.reshape(shape(channels));
 		Cell<PackedCollection> forward = Cell.of(
 				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
 						Supplier<Runnable>>) (in, next) -> {
@@ -229,7 +205,7 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 										.subtract(delayN)
 										.add(c(bufSize)),
 								c(bufSize)).add(c(n * bufSize));
-						CollectionProducer yN = c(sigShape, cp(buffer), readPositions);
+						CollectionProducer yN = c(sigShape, buffer, readPositions);
 						yAll = yAll == null ? yN : (CollectionProducer) concat(yAll, yN);
 					}
 					CollectionProducer fbAll = null;
@@ -251,9 +227,9 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 					OperationList ops = new OperationList("delay_network");
 					ops.add(next.push(yAll));
 					ops.add(into("delay-network-buffer-write", newBuffer,
-							cp(buffer), false));
+							buffer, false));
 					ops.add(into("delay-network-head-write", newHeads,
-							cp(heads), false));
+							heads, false));
 					return ops;
 				});
 		Cell<PackedCollection> backward = Cell.of(
@@ -262,45 +238,4 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 		return new DefaultBlock(multiShape, multiShape, forward, backward);
 	}
 
-	/**
-	 * Builds a fan-out block that replicates a single-channel signal to {@code n} channels.
-	 *
-	 * <p><b>Relationship to {@code CollectionProducer.repeat}.</b> This is the
-	 * Block-level wrapper for the producer-level
-	 * {@link CollectionProducer#repeat(int) repeat} broadcast (defined in
-	 * {@code CollectionFeatures.repeat}). There is no {@code Block.repeat} operation
-	 * in the codebase — {@code repeat} is a producer-graph operation, while
-	 * {@code fan_out} is a Block-graph operation that establishes the channel-axis
-	 * semantics consumed by downstream multi-channel constructs (
-	 * {@code for each channel}, {@code route}, {@code sum_channels}). The two
-	 * operations are <em>not</em> duplicates: they live at different abstraction
-	 * layers (producer vs. Block) and have different consumers. The kernel math is
-	 * identical — concatenating {@code n} copies of {@code in} along the channel
-	 * axis — so this block factory could in principle delegate the math to
-	 * {@code repeat}, but the Block wrapping (input/output shapes, cell, receptor
-	 * plumbing) is the only structural reason this primitive exists.</p>
-	 *
-	 * @param n          number of output channels
-	 * @param signalSize samples per channel
-	 * @return a Block with shape {@code [1, signalSize] → [n, signalSize]}
-	 */
-	default Block fanOutBlock(int n, int signalSize) {
-		TraversalPolicy singleShape = shape(1, signalSize);
-		TraversalPolicy multiShape = shape(n, signalSize);
-		Cell<PackedCollection> forward = Cell.of(
-				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-						Supplier<Runnable>>) (in, next) -> {
-					CollectionProducer combined = c(in).reshape(singleShape);
-					for (int i = 1; i < n; i++) {
-						combined = (CollectionProducer) concat(combined, c(in).reshape(singleShape));
-					}
-					OperationList ops = new OperationList("fan_out");
-					ops.add(next.push(combined));
-					return ops;
-				});
-		Cell<PackedCollection> backward = Cell.of(
-				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
-						Supplier<Runnable>>) (in, next) -> new OperationList("fan_out-backward"));
-		return new DefaultBlock(singleShape, multiShape, forward, backward);
-	}
 }

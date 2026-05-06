@@ -378,7 +378,7 @@ layer mixdown_master(channels: int, signal_size: int, fir_taps: int,
 //
 // Signal flow (mono source -> reverb tail):
 //   [1, signal_size] (mono summed reverb input)
-//     -> fan_out(channels)        [channels, signal_size] copies
+//     -> repeat(channels)         [channels, signal_size] copies
 //     -> delay_network(            multi-tap closed-loop reverb
 //          delay_samples,          per-tap delay length producer, [channels]
 //          feedback_matrix,        [channels, channels] mixing matrix
@@ -420,7 +420,7 @@ layer mixdown_reverb_bus(channels: int, signal_size: int,
                          delay_samples: producer([channels]),
                          feedback_matrix: producer([channels, channels]))
                       -> [1, signal_size] {
-    fan_out(channels)
+    repeat(channels)
     delay_network(delay_samples, feedback_matrix,
                   reverb_buffers, reverb_heads)
     sum_channels()
