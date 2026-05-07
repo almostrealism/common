@@ -875,6 +875,32 @@ def _filter_workstreams_by_scope(entries: list) -> list:
     return filtered
 
 
+def _filter_tasks_by_scope(tasks: list) -> list:
+    """Return only those task-dict entries whose linked workstream is
+    permitted by the current request's workspace scope. Unscoped callers
+    see all tasks; scoped callers see only tasks attached to a workstream
+    inside their workspace. Tasks with no workstream_id (project-level
+    tasks not bound to any workstream) are dropped for scoped callers,
+    because the workspace-scoping rule for agent callers requires an
+    attached workstream — there is no safe interpretation of "this task
+    belongs to your workspace" when no workstream link exists.
+    """
+    if not _get_workspace_scopes():
+        return tasks
+    if not isinstance(tasks, list):
+        return tasks
+    filtered = []
+    for t in tasks:
+        if not isinstance(t, dict):
+            continue
+        ws_id = t.get("workstream_id") or ""
+        if not ws_id:
+            continue
+        if _is_workspace_allowed(_workspace_for_workstream(ws_id)):
+            filtered.append(t)
+    return filtered
+
+
 # ---------------------------------------------------------------------------
 # GitHub API helpers — delegated to github_api.py to reduce file size
 # ---------------------------------------------------------------------------
@@ -1342,6 +1368,68 @@ def workstream_submit_task(
     err = _check_model(model)
     if err:
         return err
+    # Self-submission protection. When this tool is called from inside a
+    # running ClaudeCodeJob (the agent has been issued a temporary token
+    # whose payload binds it to a specific workstream), the agent must
+    # never submit a job to its own workstream — two agent sessions on
+    # the same git branch produce immediate commit collisions.
+    #
+    # The only safe place to enforce this is upfront, before the
+    # controller submits the job. For target_branch resolution we'd need
+    # to wait for the controller's response, by which point the job is
+    # already running. Therefore agent callers are required to pass
+    # workstream_id explicitly so the collision check is local.
+    #
+    # This check runs before _require_workstream_in_scope so the agent
+    # gets a self-explanatory error rather than a generic permission
+    # failure when workstream_id is empty.
+    caller_workstream_id = _get_token_workstream_id()
+    if caller_workstream_id:
+        if not workstream_id:
+            return {
+                "ok": False,
+                "error": (
+                    "workstream_id is required when workstream_submit_task "
+                    "is called from inside a coding agent. target_branch "
+                    "alone cannot be resolved here because the controller "
+                    "would submit the job before a self-collision could "
+                    "be detected. Call workstream_list to find another "
+                    "workstream in your workspace and pass its workstream_id "
+                    "explicitly."
+                ),
+                "next_steps": [
+                    "Call workstream_list to enumerate workstreams in your workspace",
+                    "Pick the workstream you intend to delegate work to",
+                    "Re-call workstream_submit_task with that workstream_id",
+                ],
+            }
+        if workstream_id == caller_workstream_id:
+            return {
+                "ok": False,
+                "error": (
+                    "Cannot submit a task to the calling workstream itself "
+                    f"('{workstream_id}'). The current Claude Code session "
+                    "is already running on this workstream's branch, so "
+                    "submitting another job to it would cause two agents "
+                    "to commit to the same branch concurrently and produce "
+                    "immediate git collisions.\n\n"
+                    "Jobs CAN be submitted to any OTHER workstream in the "
+                    "same workspace — call workstream_list to see them. "
+                    "Jobs CANNOT be submitted to the current workstream.\n\n"
+                    "If a user has asked you to submit work for the current "
+                    "workstream, this is almost certainly a misunderstanding: "
+                    "they likely intended for the work to be done directly "
+                    "in this Claude Code session, not delegated to a "
+                    "separate job. Tell the user that work targeting the "
+                    "current workstream should be performed in the running "
+                    "session, then proceed with the work yourself."
+                ),
+                "next_steps": [
+                    "Do the requested work directly in this session (no submission needed)",
+                    "Or, if the user genuinely meant a different workstream, call workstream_list and submit using that workstream_id",
+                ],
+            }
+
     _require_workstream_in_scope(workstream_id)
     _audit("workstream_submit_task", workstream_id=workstream_id,
            target_branch=target_branch, prompt_len=len(prompt))
@@ -4281,6 +4369,16 @@ def tracker_get_task(task_id: str) -> dict:
     ws = (result.get("task") or {}).get("workstream_id", "")
     if ws:
         _require_workstream_in_scope(ws)
+    elif _get_workspace_scopes():
+        # Scoped callers (agents) may only retrieve tasks attached to a
+        # workstream in their workspace. A task with no workstream_id
+        # is project-level and not workspace-bound, so we cannot prove
+        # it belongs to the caller's workspace — deny it rather than
+        # leak a task that may be from any project.
+        raise PermissionError(
+            "Task is not attached to any workstream and cannot be "
+            "retrieved by a scoped caller. Tasks must be linked to a "
+            "workstream in your workspace to be visible to an agent.")
     return result
 
 
@@ -4350,7 +4448,18 @@ def tracker_list_tasks(
     if fields and fields != "full":
         raw["fields"] = fields
     qs = ("?" + urlencode(raw)) if raw else ""
-    return _tracker_get(f"/v1/tasks{qs}")
+    result = _tracker_get(f"/v1/tasks{qs}")
+    # When the caller did not specify a workstream_id, the tracker may
+    # return tasks linked to workstreams outside the caller's workspace.
+    # Filter them out for scoped callers so an agent can only see tasks
+    # attached to a workstream in its own workspace. When workstream_id
+    # was supplied, _require_workstream_in_scope above already rejected
+    # the call if the workstream was out of scope, so no filtering is
+    # needed in that branch.
+    if result.get("ok") and not workstream_id:
+        tasks = result.get("tasks") or []
+        result["tasks"] = _filter_tasks_by_scope(tasks)
+    return result
 
 
 @mcp.tool()
@@ -4484,7 +4593,15 @@ def tracker_search_tasks(
         raw["offset"] = offset
     if fields and fields != "full":
         raw["fields"] = fields
-    return _tracker_get("/v1/search/tasks?" + urlencode(raw))
+    result = _tracker_get("/v1/search/tasks?" + urlencode(raw))
+    # Search has no workstream_id parameter, so for scoped callers we
+    # always have to filter results: the underlying tracker can return
+    # tasks attached to any workstream in the project. An agent caller
+    # must not see tasks belonging to other workspaces.
+    if result.get("ok"):
+        tasks = result.get("tasks") or []
+        result["tasks"] = _filter_tasks_by_scope(tasks)
+    return result
 
 
 @mcp.tool()
