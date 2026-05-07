@@ -53,12 +53,19 @@ public class McpConfigBuilder implements ConsoleFeatures {
     /**
      * ar-manager tools that are always included for agent jobs.
      *
-     * <p>Tracker tools are read-only for agents: workspace scope on the
-     * server filters tasks to those attached to a workstream in the
-     * agent's workspace. Mutation tools (tracker_create_task,
-     * tracker_update_task, tracker_delete_task, tracker_*_project,
-     * tracker_*_release) are deliberately excluded so agents cannot
-     * alter the shared task tracker.</p>
+     * <p>Tracker tools are read-only for agents. Task endpoints
+     * ({@code tracker_get_task}, {@code tracker_list_tasks}, and
+     * {@code tracker_search_tasks}) are workspace-scoped on the server
+     * and only expose tasks attached to a workstream in the agent's
+     * workspace. Other included tracker read endpoints
+     * ({@code tracker_project_summary}, {@code tracker_list_projects},
+     * and {@code tracker_list_releases}) remain available for shared
+     * project and release visibility and are not documented here as
+     * strictly workspace-filtered. Mutation tools
+     * ({@code tracker_create_task}, {@code tracker_update_task},
+     * {@code tracker_delete_task}, {@code tracker_*_project}, and
+     * {@code tracker_*_release}) are deliberately excluded so agents
+     * cannot alter the shared task tracker.</p>
      *
      * <p>{@code workstream_submit_task} is included so agents can
      * delegate work to other workstreams in the same workspace. The
