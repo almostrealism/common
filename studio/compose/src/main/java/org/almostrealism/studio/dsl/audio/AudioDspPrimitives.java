@@ -27,6 +27,7 @@ import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.ml.dsl.PdslInterpreter;
 import org.almostrealism.ml.dsl.PdslParseException;
 import org.almostrealism.ml.dsl.PdslPrimitiveContext;
+import static org.almostrealism.ml.dsl.PdslPrimitiveContext.toDouble;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
 import org.almostrealism.model.ForwardOnlyBlock;
@@ -240,7 +241,7 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 					"lfo() expects 3 arguments (freqHz, sampleRate, phase), got " + args.size());
 		}
 		CollectionProducer freq = ctx.toProducer(args.get(0), shape(1), "lfo() freqHz");
-		double sampleRate = PdslPrimitiveContext.toDouble(args.get(1));
+		double sampleRate = toDouble(args.get(1));
 		CollectionProducer phase = ctx.toProducer(args.get(2), shape(1), "lfo() phase");
 		CollectionProducer phaseIncrement = freq.multiply(c(2.0 * Math.PI / sampleRate));
 		return shape -> {

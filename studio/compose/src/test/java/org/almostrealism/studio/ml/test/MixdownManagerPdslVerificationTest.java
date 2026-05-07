@@ -346,13 +346,4 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		return samples;
 	}
 
-	/** Returns the peak absolute value of a signal. */
-	private double peakOf(double[] samples) {
-		double peak = 0.0;
-		for (double v : samples) {
-			double a = Math.abs(v);
-			if (a > peak) peak = a;
-		}
-		return peak;
-	}
 }

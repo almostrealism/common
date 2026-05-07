@@ -90,7 +90,8 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 	 * @param pos         the offset position within the padded output
 	 * @return a block whose forward cell pads to {@code paddedShape} and backward subsets back
 	 */
-	Block pad(TraversalPolicy inputShape, TraversalPolicy paddedShape, int... pos);
+	Block pad(TraversalPolicy inputShape, TraversalPolicy paddedShape,
+			  int... pos);
 
 	/**
 	 * Returns a setup operation that initializes the given weight collection with random
@@ -102,7 +103,8 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 	 * @param scale   the scalar multiplier applied to each sampled normal value
 	 * @return a {@link Supplier} of the initialization {@link Runnable}
 	 */
-	Supplier<Runnable> randnInit(PackedCollection weights, double scale);
+	Supplier<Runnable> randnInit(PackedCollection weights,
+								 double scale);
 
 	/**
 	 * Creates a 1D convolution block with kernel size 1 (pointwise convolution).
