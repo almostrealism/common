@@ -4606,7 +4606,15 @@ def tracker_search_tasks(
     # must not see tasks belonging to other workspaces.
     if result.get("ok"):
         tasks = result.get("tasks") or []
-        result["tasks"] = _filter_tasks_by_scope(tasks)
+        filtered_tasks = _filter_tasks_by_scope(tasks)
+        filtered_total = len(filtered_tasks)
+        result["tasks"] = filtered_tasks
+        if "total" in result:
+            result["unfiltered_total"] = result["total"]
+        result["filtered_total"] = filtered_total
+        result["total"] = filtered_total
+        if "count" in result:
+            result["count"] = filtered_total
     return result
 
 
