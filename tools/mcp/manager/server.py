@@ -4460,7 +4460,11 @@ def tracker_list_tasks(
     # needed in that branch.
     if result.get("ok") and not workstream_id:
         tasks = result.get("tasks") or []
-        result["tasks"] = _filter_tasks_by_scope(tasks)
+        filtered_tasks = _filter_tasks_by_scope(tasks)
+        result["tasks"] = filtered_tasks
+        result["total"] = len(filtered_tasks)
+        if "count" in result:
+            result["count"] = len(filtered_tasks)
     return result
 
 
