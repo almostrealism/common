@@ -361,6 +361,108 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertIn("sonnet-4-6", result["error"])
 
 
+class TestWorkstreamSubmitSelfCollision(unittest.TestCase):
+    """workstream_submit_task must not let an agent submit work to its
+    own workstream — concurrent commits on the same branch break the
+    git lifecycle the controller relies on. The token-bound caller
+    workstream comes from the temp token's payload (set during auth).
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+        server._set_workspace_scopes(["TAAA"])
+        server._set_token_context(workstream_id="ws-self", job_id="job-self")
+        server._workspace_map_cache["map"] = None
+        server._workspace_map_cache["fetched"] = 0.0
+
+    def tearDown(self):
+        server._set_token_context(workstream_id=None, job_id=None)
+        server._request_workspace_scopes.set(None)
+        if hasattr(server._thread_local, "workspace_scopes"):
+            del server._thread_local.workspace_scopes
+        server._workspace_map_cache["map"] = None
+        server._workspace_map_cache["fetched"] = 0.0
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
+    def test_rejects_submission_to_calling_workstream(self, mock_post, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "ws-self", "slackWorkspaceId": "TAAA"},
+            {"workstreamId": "ws-other", "slackWorkspaceId": "TAAA"},
+        ]
+        result = server.workstream_submit_task(
+            prompt="Do something", workstream_id="ws-self")
+        self.assertFalse(result["ok"])
+        self.assertIn("calling workstream itself", result["error"])
+        self.assertIn("ws-self", result["error"])
+        self.assertIn("git collisions", result["error"])
+        # Error should explain the user-confusion case clearly.
+        self.assertIn("misunderstanding", result["error"])
+        self.assertIn("directly", result["error"])
+        # Must point at workstream_list as the discovery path.
+        self.assertIn("workstream_list", result["error"])
+        self.assertIn("next_steps", result)
+        # Controller must NOT have been called.
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
+    def test_rejects_missing_workstream_id_for_agent(self, mock_post, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "ws-self", "slackWorkspaceId": "TAAA"},
+        ]
+        result = server.workstream_submit_task(
+            prompt="Task", target_branch="feature/somewhere")
+        self.assertFalse(result["ok"])
+        self.assertIn("workstream_id is required", result["error"])
+        self.assertIn("workstream_list", result["error"])
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
+    def test_allows_submission_to_other_workstream_in_workspace(self, mock_post, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "ws-self", "slackWorkspaceId": "TAAA"},
+            {"workstreamId": "ws-other", "slackWorkspaceId": "TAAA"},
+        ]
+        mock_post.return_value = {
+            "ok": True, "jobId": "job-1", "workstreamId": "ws-other"}
+        result = server.workstream_submit_task(
+            prompt="Delegated task", workstream_id="ws-other")
+        self.assertTrue(result["ok"])
+        mock_post.assert_called_once()
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["workstreamId"], "ws-other")
+
+    @patch.object(server, "_controller_get")
+    def test_rejects_submission_to_workstream_in_other_workspace(self, mock_get):
+        mock_get.return_value = [
+            {"workstreamId": "ws-self", "slackWorkspaceId": "TAAA"},
+            {"workstreamId": "ws-foreign", "slackWorkspaceId": "TBBB"},
+        ]
+        with self.assertRaises(PermissionError):
+            server.workstream_submit_task(
+                prompt="Task", workstream_id="ws-foreign")
+
+
+class TestWorkstreamSubmitUnscopedCallerUnaffected(unittest.TestCase):
+    """Unscoped operator callers (no workstream-bound token) must retain
+    the prior behaviour: no self-collision check, target_branch alone is
+    accepted, the controller resolves the workstream.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()  # no workspace scopes, no token context
+
+    @patch.object(server, "_controller_post")
+    def test_unscoped_target_branch_only(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "job-x"}
+        result = server.workstream_submit_task(
+            prompt="Task", target_branch="feature/x")
+        self.assertTrue(result["ok"])
+        mock_post.assert_called_once()
+
+
 class TestWorkstreamRegister(unittest.TestCase):
 
     @patch.object(server, "_controller_post")
@@ -3184,6 +3286,96 @@ class TestTrackerTools(unittest.TestCase):
             server.tracker_create_release("r")
         with self.assertRaises(PermissionError):
             server.tracker_create_task("t")
+
+
+class TestTrackerScopedFiltering(unittest.TestCase):
+    """Scoped callers (agents) must only see tasks attached to a
+    workstream in their workspace. tracker_list_tasks (without an
+    explicit workstream_id filter) and tracker_search_tasks have to
+    post-filter results, since the underlying tracker has no notion of
+    workspace and would otherwise return tasks from other workspaces.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+        _set_workspaces("TAAA")
+        _reset_workspace_cache()
+
+    def tearDown(self):
+        _clear_workspaces()
+        _reset_workspace_cache()
+
+    def _seed_workstream_map(self, mock_controller_get):
+        mock_controller_get.return_value = [
+            {"workstreamId": "ws-good", "slackWorkspaceId": "TAAA"},
+            {"workstreamId": "ws-bad", "slackWorkspaceId": "TBBB"},
+        ]
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_tracker_get")
+    def test_list_tasks_filters_when_workstream_id_omitted(
+            self, mock_tracker, mock_controller):
+        self._seed_workstream_map(mock_controller)
+        mock_tracker.return_value = {
+            "ok": True,
+            "tasks": [
+                {"id": "t1", "workstream_id": "ws-good"},
+                {"id": "t2", "workstream_id": "ws-bad"},
+                {"id": "t3", "workstream_id": None},
+            ],
+        }
+        result = server.tracker_list_tasks()
+        self.assertTrue(result["ok"])
+        ids = [t["id"] for t in result["tasks"]]
+        self.assertEqual(["t1"], ids)
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_tracker_get")
+    def test_list_tasks_does_not_filter_when_workstream_id_specified(
+            self, mock_tracker, mock_controller):
+        # When the caller passes workstream_id, _require_workstream_in_scope
+        # already gates the call. We must not double-filter the results
+        # (which would be wasteful and could mask tracker bugs).
+        self._seed_workstream_map(mock_controller)
+        mock_tracker.return_value = {
+            "ok": True,
+            "tasks": [
+                {"id": "t1", "workstream_id": "ws-good"},
+                {"id": "t2", "workstream_id": "ws-good"},
+            ],
+        }
+        result = server.tracker_list_tasks(workstream_id="ws-good")
+        self.assertEqual(["t1", "t2"], [t["id"] for t in result["tasks"]])
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_tracker_get")
+    def test_search_tasks_filters_results(
+            self, mock_tracker, mock_controller):
+        self._seed_workstream_map(mock_controller)
+        mock_tracker.return_value = {
+            "ok": True,
+            "tasks": [
+                {"id": "t1", "workstream_id": "ws-good"},
+                {"id": "t2", "workstream_id": "ws-bad"},
+                {"id": "t3", "workstream_id": None},
+            ],
+        }
+        result = server.tracker_search_tasks("oauth")
+        self.assertTrue(result["ok"])
+        ids = [t["id"] for t in result["tasks"]]
+        self.assertEqual(["t1"], ids)
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_tracker_get")
+    def test_get_task_denies_unattached_for_scoped_caller(
+            self, mock_tracker, mock_controller):
+        self._seed_workstream_map(mock_controller)
+        mock_tracker.return_value = {
+            "ok": True,
+            "task": {"id": "t1", "workstream_id": None},
+        }
+        with self.assertRaises(PermissionError):
+            server.tracker_get_task("t1")
 
 
 if __name__ == "__main__":
