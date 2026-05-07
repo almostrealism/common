@@ -883,12 +883,14 @@ def _filter_tasks_by_scope(tasks: list) -> list:
     tasks not bound to any workstream) are dropped for scoped callers,
     because the workspace-scoping rule for agent callers requires an
     attached workstream — there is no safe interpretation of "this task
-    belongs to your workspace" when no workstream link exists.
+    belongs to your workspace" when no workstream link exists. Malformed
+    non-list task payloads are rejected for scoped callers by returning
+    an empty list.
     """
     if not _get_workspace_scopes():
         return tasks
     if not isinstance(tasks, list):
-        return tasks
+        return []
     filtered = []
     for t in tasks:
         if not isinstance(t, dict):
