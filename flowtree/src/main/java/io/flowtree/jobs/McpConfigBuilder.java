@@ -50,19 +50,49 @@ import java.util.Map;
  */
 public class McpConfigBuilder implements ConsoleFeatures {
 
-    /** ar-manager tools that are always included for agent jobs. */
+    /**
+     * ar-manager tools that are always included for agent jobs.
+     *
+     * <p>Tracker tools are read-only for agents. Task endpoints
+     * ({@code tracker_get_task}, {@code tracker_list_tasks}, and
+     * {@code tracker_search_tasks}) are workspace-scoped on the server
+     * and only expose tasks attached to a workstream in the agent's
+     * workspace. Other included tracker read endpoints
+     * ({@code tracker_project_summary}, {@code tracker_list_projects},
+     * and {@code tracker_list_releases}) remain available for shared
+     * project and release visibility and are not documented here as
+     * strictly workspace-filtered. Mutation tools
+     * ({@code tracker_create_task}, {@code tracker_update_task},
+     * {@code tracker_delete_task}, {@code tracker_*_project}, and
+     * {@code tracker_*_release}) are deliberately excluded so agents
+     * cannot alter the shared task tracker.</p>
+     *
+     * <p>{@code workstream_submit_task} is included so agents can
+     * delegate work to other workstreams in the same workspace. The
+     * server rejects self-submission (a job targeting the agent's own
+     * workstream) with an explanatory error, since that would cause
+     * two agents to commit to the same git branch concurrently.</p>
+     */
     private static final String AR_MANAGER_TOOLS =
         "mcp__ar-manager__send_message," +
         "mcp__ar-manager__memory_recall," +
         "mcp__ar-manager__memory_store," +
         "mcp__ar-manager__workstream_context," +
+        "mcp__ar-manager__workstream_list," +
+        "mcp__ar-manager__workstream_get_status," +
+        "mcp__ar-manager__workstream_submit_task," +
         "mcp__ar-manager__github_pr_find," +
         "mcp__ar-manager__github_pr_review_comments," +
         "mcp__ar-manager__github_pr_conversation," +
         "mcp__ar-manager__github_pr_reply," +
         "mcp__ar-manager__github_list_open_prs," +
         "mcp__ar-manager__github_create_pr," +
-        "mcp__ar-manager__workstream_get_status," +
+        "mcp__ar-manager__tracker_get_task," +
+        "mcp__ar-manager__tracker_list_tasks," +
+        "mcp__ar-manager__tracker_search_tasks," +
+        "mcp__ar-manager__tracker_project_summary," +
+        "mcp__ar-manager__tracker_list_projects," +
+        "mcp__ar-manager__tracker_list_releases," +
         "mcp__ar-manager__controller_health";
 
     /** Shared Jackson mapper for serializing the MCP config JSON. */
