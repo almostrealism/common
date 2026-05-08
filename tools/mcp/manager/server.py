@@ -474,6 +474,18 @@ class BearerAuthMiddleware:
                 if matched:
                     _set_scopes(matched_scopes, matched_label)
                     _set_workspace_scopes(matched_workspace_scopes)
+                    # Static tokens are not bound to a specific workstream
+                    # or job. We MUST clear any token context that might
+                    # still be present on this thread from a previous
+                    # HMAC-temp-token request handled here — otherwise
+                    # _get_token_workstream_id() would fall back to that
+                    # stale thread-local value and incorrectly identify
+                    # this caller as an in-cluster agent on that
+                    # workstream's branch. (Static-token callers, e.g.
+                    # Claude.ai web chat or third-party API users, have
+                    # no association with any workstream's checkout and
+                    # cannot collide with one.)
+                    _set_token_context("", "")
                     await self.app(scope, receive, send)
                     return
 
