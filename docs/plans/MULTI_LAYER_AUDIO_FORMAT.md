@@ -150,10 +150,10 @@ content-addressed reference in either case.
 
 | # | Scenario                                                                  | What the format records                                        |
 |---|---------------------------------------------------------------------------|-----------------------------------------------------------------|
-| A | Stereo dry → matching stereo echo → matching stereo reverb                | Three layers; relationship: echo derives-from dry, reverb derives-from echo. Each derived layer has `lineage.kind = TRANSFORM` and a `transform_kind` of `ECHO` or `REVERB`. |
+| A | Stereo dry → matching stereo echo → matching stereo reverb                | Three layers; relationship: echo derives-from dry, reverb derives-from echo. Each derived layer has a `transform` whose `transform_kind` is `ECHO` or `REVERB`. |
 | B | Mono close mics on each drum + stereo room mic                            | One group with N+1 layers. Close-mic layers carry `device_type = INSTRUMENT_MIC`; the room layer carries `device_type = ROOM_MIC`. Per-instrument labelling (kick / snare / …) is deferred — see §10. |
-| C | Mono synth + matching stereo FX                                           | Two layers; FX has `derived_from` referencing synth and `lineage.transform_kind = FX_BUS`; synth's `lineage.kind = SYNTHESIS`. Synth-genome / FX-chain parameters are not yet stored — that arrives when the second producer's state is wired up. |
-| D | AU-captured sample + AU parameter snapshot at capture time                | One layer; `lineage.kind = AUDIO_UNIT`; `au_state` carries `AudioUnitParameterState` (component description, parameter map, optional preset blob, midi context). |
+| C | Mono synth + matching stereo FX                                           | Two layers; FX has `derived_from` referencing synth and `transform.transform_kind = FX_BUS`. Synth-genome / FX-chain parameters are not yet stored — that arrives when the second producer's state is wired up. |
+| D | AU-captured sample + AU parameter snapshot at capture time                | Two layers. Layer 1 is a `MidiPattern` carrying the note-on / note-off events sent to the AU (no `transform`, no `derived_from`, no `au_state`). Layer 2 is the audio rendering (`WaveDetailData`) with `derived_from = [Layer 1]` and `au_state` carrying `AudioUnitParameterState` (component description, parameter map, optional preset blob); `transform` is unset — the MIDI source plus populated `au_state` together signal that this layer is an AU rendering. |
 
 The format must compose. *"The mono synth from C with the same FX from C, but
 re-rendered through the AU plugin from D"* is expressible as a group with the C
@@ -236,43 +236,55 @@ message AudioLayerGroup {
 
 // ---- 5.2 Layer ----------------------------------------------------------
 
-// A single audio stream. The audio payload is the embedded WaveDetailData
-// `buffer`; its `data` field may be inline or omitted, and either way the
-// buffer's `identifier` (existing MD5 of file bytes) is the content-
-// addressed reference the library uses to resolve missing-buffer cases.
+// A layer carries either an audio rendering or a MIDI pattern via the
+// `content` oneof. For audio layers the payload is a WaveDetailData; its
+// `data` field may be inline or omitted, and either way the buffer's
+// `identifier` (existing MD5 of file bytes) is the content-addressed
+// reference the library uses to resolve missing-audio cases. For MIDI
+// layers the payload is a MidiPattern (raw SMF bytes by default; see §5.7).
+// An unset `content` oneof is permitted for metadata-only placeholders.
 //
-// A typical AU-capture writer needs only `layer_id` and `buffer`; everything
-// else is optional metadata that further layers (transforms, derived layers,
-// multi-mic captures) populate as needed.
+// A typical AU-capture writer emits two layers per take: a MidiPattern
+// layer for the note events sent to the plugin and an audio layer for
+// the rendering. Other metadata (transforms, derived layers, multi-mic
+// captures) is optional.
 message AudioLayer {
   // Per-layer identifier.
   string layer_id = 1;
 
-  // Audio payload. Re-uses the existing per-buffer message so that all of
-  // freq_data, feature_data, similarities, identifier, etc. continue to be
-  // available unmodified. `buffer.data` may be omitted; the library
-  // resolves audio bytes by `buffer.identifier`.
-  optional WaveDetailData buffer = 2;
+  // Layer payload. A layer is either an audio rendering or a MIDI pattern.
+  oneof content {
+    // Audio payload. Re-uses the existing per-buffer message so that all
+    // of freq_data, feature_data, similarities, identifier, etc. continue
+    // to be available unmodified. `audio.data` may be omitted; the library
+    // resolves audio bytes by `audio.identifier`.
+    WaveDetailData audio = 2;
 
-  // What produced this layer. See §6.2.
-  optional ProductionLineage lineage = 3;
+    // MIDI payload. See §5.7.
+    MidiPattern midi = 3;
+  }
+
+  // Transform that produced this layer from its parents, when the layer
+  // is a derivation of other layers. Source layers leave this unset.
+  // See §6.2.
+  optional TransformInfo transform = 4;
 
   // Layers this layer was directly derived from (zero or more). For the
   // "dry → echo → reverb" chain, the echo layer's derived_from is [dry],
   // and the reverb layer's derived_from is [echo]. The transform that
-  // produced this layer from the parents is on `lineage`.
-  repeated LayerRef derived_from = 4;
+  // produced this layer from the parents is on `transform`.
+  repeated LayerRef derived_from = 5;
 
   // Capture device class, when the layer is a microphone capture.
-  optional DeviceType device_type = 5;
+  optional DeviceType device_type = 6;
 
   // AU parameter snapshot at the moment this layer was produced. Populated
-  // when `lineage.kind == AUDIO_UNIT`. State for other producer kinds
-  // (synthesis, model generation, FX chains) is deferred — see §6.3 and §10.
-  optional AudioUnitParameterState au_state = 6;
+  // for AU-rendered audio layers. State for non-AU producers (synthesis,
+  // model generation, FX chains) is deferred — see §6.3 and §10.
+  optional AudioUnitParameterState au_state = 7;
 
   // Unix epoch milliseconds at which this layer was produced.
-  optional int64 created_at_millis = 7;
+  optional int64 created_at_millis = 8;
 }
 
 // ---- 5.3 Layer references ----------------------------------------------
@@ -303,23 +315,15 @@ enum DeviceType {
   ROOM_MIC           = 3;
 }
 
-// ---- 5.5 Production lineage --------------------------------------------
+// ---- 5.5 Transform info ------------------------------------------------
 
-message ProductionLineage {
-  enum ProducerKind {
-    PRODUCER_UNSPECIFIED  = 0;
-    MICROPHONE_RECORDING  = 1;   // captured from a physical mic input
-    AUDIO_UNIT            = 2;   // captured from an AU rendering
-    SYNTHESIS             = 3;   // emitted by a software synthesizer
-    MODEL_GENERATION      = 4;   // emitted by an ML model (Oobleck, etc.)
-    TRANSFORM             = 5;   // produced by transforming another layer
-    EXTERNAL_FILE         = 6;   // imported from a user-supplied file
-  }
-
-  ProducerKind kind = 1;
-
-  // For TRANSFORM kind, what transform was applied. Catalog of well-known
-  // transforms; freeform name in `transform_name` covers anything else.
+// What transform produced this layer from its parent layers, when the
+// layer is a derivation. Source layers (microphone captures, MIDI sources,
+// AU renderings, etc.) leave this unset; the device, payload type, and
+// `au_state` together identify the producer.
+message TransformInfo {
+  // Catalog of well-known transforms; freeform name in `transform_name`
+  // covers anything else.
   enum TransformKind {
     TRANSFORM_UNSPECIFIED = 0;
     ECHO       = 1;
@@ -332,13 +336,15 @@ message ProductionLineage {
     FX_BUS     = 8;   // catch-all "ran through an effects chain"
     SUM        = 9;   // mix of multiple parents
   }
-  optional TransformKind transform_kind = 2;
-  optional string        transform_name = 3;
+  optional TransformKind transform_kind = 1;
+  optional string        transform_name = 2;
 }
 
 // ---- 5.6 AU parameter state --------------------------------------------
 
-// AU parameter snapshot. Aligned with the Rings 0.39 AU storage proposal.
+// AU parameter snapshot — a description of *what the AU plugin's settings
+// were* at render time. The MIDI events that triggered the rendering live
+// on a sibling MidiPattern layer (see §5.7 and §6.X), not here.
 message AudioUnitParameterState {
   string component_description = 1;     // e.g. "aumu,Alch,Appl,0001"
   optional string display_name      = 2;
@@ -350,11 +356,24 @@ message AudioUnitParameterState {
 
   // AUAudioUnit.fullState binary plist. Optional because it can be MB-size.
   optional bytes preset_data = 5;
+}
 
-  // MIDI context at capture (note-on event).
-  optional int32 midi_note     = 6;
-  optional int32 midi_velocity = 7;
-  optional int32 midi_channel  = 8;
+// ---- 5.7 MIDI pattern --------------------------------------------------
+
+// MIDI payload for a layer whose `content` oneof selects `midi`. The
+// representation is intentionally a thin envelope around well-defined MIDI
+// bytes — duration, tempo, time signature and ticks-per-quarter are all
+// carried by the SMF format itself, so they are not re-stored as protobuf
+// fields. Richer structure (structured event lists, etc.) is deferred
+// until a consumer needs it (see §10).
+message MidiPattern {
+  // Raw MIDI byte stream. Standard MIDI File (SMF) format unless `format`
+  // says otherwise.
+  bytes data = 1;
+
+  // Container format identifier. Defaults to "smf" when absent. Other
+  // values reserved for future use (e.g. "raw_events").
+  optional string format = 2;
 }
 ```
 
@@ -392,47 +411,44 @@ derives from A. The wire format cannot enforce acyclicity, so the writer-side
 helper validates and the reader is defensive (cycles surface as malformed
 records, not infinite traversal).
 
-### 6.2 Production lineage — typed kinds plus a small transform catalog
+### 6.2 Transform tracking — a small named-transform catalog
 
-`ProductionLineage` carries a `ProducerKind` enum (six values: microphone,
-AU, synthesis, model generation, transform, external file), and for TRANSFORM
-a `TransformKind` enum with a freeform `transform_name` fallback.
+`TransformInfo` carries a `TransformKind` enum (the catalog of well-known
+transforms — ECHO, REVERB, EQ, COMPRESS, GAIN, PITCH, TIME, FX_BUS, SUM)
+with a freeform `transform_name` fallback. Source layers — microphone
+captures, MIDI sources, AU renderings, external-file imports — leave
+`transform` unset; the combination of `device_type`, the `content` payload
+type, `au_state`, and `derived_from` is sufficient to identify what
+produced the layer.
+
+Notably, no `RENDER` / `MIDI_TO_AUDIO` value is introduced for AU
+rendering: an audio layer with `derived_from` referencing a `MidiPattern`
+source and a populated `au_state` already conveys that meaning, and
+adding an enum value would duplicate the signal (see §10).
 
 Richer producer-specific tracking — model versions, genome embed vectors,
 specific AU plugin instance ids, transform-pipeline configurations — is
-intentionally deferred. When a consumer actually needs one of these fields, it
-is added as a dedicated typed field at that point, not pre-emptively. Adding
-fields to `ProductionLineage` is purely additive and does not break existing
-data.
+intentionally deferred. When a consumer actually needs one of these fields,
+it is added as a dedicated typed field at that point, not pre-emptively.
+Adding fields to `TransformInfo` is purely additive and does not break
+existing data.
 
-### 6.3 Tool-specific parameter state — a single direct AU field, no wrapper
+### 6.3 AU parameter state — a single direct field
 
-The first downstream consumer (Rings 0.39) needs to store AU parameter
-snapshots and nothing else. The earlier draft of this study introduced a
-`ToolState` `oneof` wrapper anticipating multiple producer-state types
-(synthesis genome, model latent, FX chain). With the non-AU producers' state
-deferred, that wrapper has only one occupied slot, which means it is pure
-overhead.
-
-**Decision: place `AudioUnitParameterState au_state` directly on
-`AudioLayer`.** When a second producer's state actually needs to be stored,
-that is the moment to introduce the `oneof` wrapper to hold both the existing
-AU state and the new payload — a small refactor, not a breaking change,
-because adding a `oneof` and migrating an existing field into it is supported
-by proto3 evolution rules (the existing field number can be moved into the
-`oneof`).
-
-The chosen approach is also consistent with the `OpaquePayload` /
-`google.protobuf.Any` rejection in the original draft: the project has no
-existing protobuf practice for typed-bytes payloads, and the simplest expression
-of the only known case is a single typed field.
+`AudioUnitParameterState` is placed directly on `AudioLayer.au_state` (a
+single optional field, not wrapped). State for non-AU producers (synthesis
+genomes, model latents, FX-chain parameters) is deferred — see §10. When
+a second producer's state actually needs to be stored, the field is
+migrated into a `oneof` wrapper at that point: a small refactor under
+proto3 evolution rules, not a breaking change.
 
 ### 6.4 Single payload mode for layer audio
 
-A layer's audio is its `WaveDetailData buffer`. The buffer's `data` field may
-be populated inline or omitted. Either way the buffer's `identifier` (existing
-lowercase MD5 hex of the file's bytes) is the content-addressed reference
-that `AudioLibrary.find` and the resolver layer use to locate the bytes.
+An audio layer's payload is its `audio` (WaveDetailData) field within the
+`content` oneof. The buffer's `data` field may be populated inline or
+omitted. Either way the buffer's `identifier` (existing lowercase MD5 hex
+of the file's bytes) is the content-addressed reference that
+`AudioLibrary.find` and the resolver layer use to locate the bytes.
 
 There is **no parallel `AudioReference` message**. The earlier draft proposed
 one because the multi-layer schema appeared to need a content-addressed handle
@@ -441,11 +457,29 @@ already that handle, and adding a parallel mechanism would introduce two ways
 to do the same thing.
 
 When a referenced layer's bytes cannot be resolved, the loader returns the
-`AudioLayer` with `buffer` populated (metadata, identifier, channel count,
-etc.) but `buffer.data` absent. No exception. Callers that need audio for
-playback check `buffer.hasData() || canResolve(buffer.identifier)`. Callers
-that only need metadata (lineage inspection, recipe browsing) ignore the
+`AudioLayer` with `audio` populated (metadata, identifier, channel count,
+etc.) but `audio.data` absent. No exception. Callers that need audio for
+playback check `audio.hasData() || canResolve(audio.identifier)`. Callers
+that only need metadata (transform inspection, recipe browsing) ignore the
 absence.
+
+### 6.X Audio and MIDI as mutually exclusive content
+
+`AudioLayer.content` is a `oneof` of `WaveDetailData audio` and
+`MidiPattern midi`. A layer is either an audio rendering or a MIDI pattern
+— never both, and the schema enforces that directly. An unset oneof is
+permitted for metadata-only placeholders.
+
+MIDI is in scope from day one because the first downstream consumer
+(Rings 0.39 AU recording) inherently produces *both* a MIDI input and an
+audio output: the AU plugin is driven by note events, and the rendered
+audio is what gets stored. A previous shape buried the MIDI events inside
+`AudioUnitParameterState` as `midi_note` / `midi_velocity` / `midi_channel`
+fields, which was a category error — those events are the *input* to the
+AU, not part of its parameter snapshot. Promoting MIDI to its own first-
+class layer payload makes the AU-render relationship "audio derived from
+MIDI source, with `au_state` describing the plugin" expressible without
+adding new enum values or wrapping types (see §6.2 and §7 use case D).
 
 ### 6.5 No pair-of-layers stereo encoding
 
