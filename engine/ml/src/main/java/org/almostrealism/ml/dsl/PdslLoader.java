@@ -30,6 +30,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Public API for loading Producer DSL (.pdsl) files and constructing
@@ -55,6 +56,53 @@ import java.util.Map;
  * }</pre>
  */
 public class PdslLoader {
+
+	/**
+	 * Hook applied to every freshly-constructed {@link PdslInterpreter}. Domain modules
+	 * supply registration code here (for example
+	 * {@code AudioDspPrimitives::registerWith}) so that the interpreter is configured
+	 * with the appropriate primitives before any layer or model is built. Defaults to
+	 * a no-op for callers that only use the built-in ML primitives.
+	 */
+	private final Consumer<PdslInterpreter> primitiveRegistrar;
+
+	/**
+	 * Default constructor — produces a loader that uses only built-in ML primitives.
+	 * Use {@link #PdslLoader(Consumer)} to register domain primitives such as the
+	 * audio DSP set.
+	 */
+	public PdslLoader() {
+		this(interpreter -> {});
+	}
+
+	/**
+	 * Construct a loader that applies {@code primitiveRegistrar} to every interpreter
+	 * it creates. Typical usage:
+	 * <pre>{@code
+	 * PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
+	 * }</pre>
+	 *
+	 * @param primitiveRegistrar consumer invoked once per interpreter; must not be null
+	 */
+	public PdslLoader(Consumer<PdslInterpreter> primitiveRegistrar) {
+		this.primitiveRegistrar = primitiveRegistrar == null
+				? interpreter -> {}
+				: primitiveRegistrar;
+	}
+
+	/**
+	 * Builds a fresh interpreter for {@code program} and applies the configured
+	 * {@link #primitiveRegistrar} so domain primitives are available before any
+	 * layer or model construction begins.
+	 *
+	 * @param program the parsed program
+	 * @return a configured interpreter
+	 */
+	private PdslInterpreter newInterpreter(PdslNode.Program program) {
+		PdslInterpreter interpreter = new PdslInterpreter(program);
+		primitiveRegistrar.accept(interpreter);
+		return interpreter;
+	}
 
 	/**
 	 * Parse PDSL source text into an AST.
@@ -92,7 +140,7 @@ public class PdslLoader {
 	 */
 	public Block buildLayer(PdslNode.Program program, String layerName,
 							TraversalPolicy inputShape, Map<String, Object> args) {
-		PdslInterpreter interpreter = new PdslInterpreter(program);
+		PdslInterpreter interpreter = newInterpreter(program);
 		return interpreter.buildLayer(layerName, inputShape, args);
 	}
 
@@ -107,7 +155,7 @@ public class PdslLoader {
 	 */
 	public Model buildModel(PdslNode.Program program, String modelName,
 							TraversalPolicy inputShape, Map<String, Object> args) {
-		PdslInterpreter interpreter = new PdslInterpreter(program);
+		PdslInterpreter interpreter = newInterpreter(program);
 		return interpreter.buildModel(modelName, inputShape, args);
 	}
 
@@ -131,7 +179,7 @@ public class PdslLoader {
 							TraversalPolicy inputShape,
 							StateDictionary stateDict,
 							Map<String, Object> extraArgs) {
-		PdslInterpreter interpreter = new PdslInterpreter(program);
+		PdslInterpreter interpreter = newInterpreter(program);
 
 		// Merge state dict weights into args
 		Map<String, Object> args = new HashMap<>(extraArgs);
@@ -170,7 +218,7 @@ public class PdslLoader {
 	 */
 	public Map<String, Object> evaluateConfig(PdslNode.Program program,
 											  String configName) {
-		PdslInterpreter interpreter = new PdslInterpreter(program);
+		PdslInterpreter interpreter = newInterpreter(program);
 		return interpreter.evaluateConfig(configName);
 	}
 
@@ -190,7 +238,7 @@ public class PdslLoader {
 	public Map<String, Object> evaluateDataDef(PdslNode.Program program,
 											   String dataName,
 											   Map<String, Object> args) {
-		PdslInterpreter interpreter = new PdslInterpreter(program);
+		PdslInterpreter interpreter = newInterpreter(program);
 		return interpreter.evaluateDataDef(dataName, args);
 	}
 }

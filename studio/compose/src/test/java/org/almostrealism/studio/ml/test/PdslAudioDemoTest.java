@@ -20,6 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.audio.WavFile;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
 import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
@@ -91,7 +92,7 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		int numPasses = totalSamples / SIGNAL_SIZE;
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
 
 		// ---- Demo 1: PDSL low-pass FIR filter ----
@@ -208,7 +209,7 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 		PackedCollection mixHead = new PackedCollection(1);
 		mixHead.setMem(new double[]{0.0});
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
 
 		Map<String, Object> mixArgs = new HashMap<>();
