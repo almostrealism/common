@@ -19,6 +19,7 @@ package org.almostrealism.studio.ml.test;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
 import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
@@ -38,7 +39,7 @@ import java.util.Map;
  * Validates the {@code delay_feedback_bank} PDSL layer and generates a WAV proof file.
  *
  * <p>The {@code delay_feedback_bank} layer exercises the multi-channel DSP constructs
- * added in Deliverable 2: {@code fan_out(N)}, {@code for each channel { ... }},
+ * added in Deliverable 2: {@code repeat(N)}, {@code for each channel { ... }},
  * {@code route(matrix)}, and {@code sum_channels()}. A mono 440 Hz sine wave is
  * fanned out to three parallel delay lines, mixed via a cross-channel routing matrix,
  * then summed back to mono. The WAV output at
@@ -108,7 +109,7 @@ public class DelayFeedbackBankPdslTest extends TestSuiteBase implements FirFilte
 			}
 		}
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/delay_feedback_bank.pdsl");
 
 		Map<String, Object> args = new HashMap<>();

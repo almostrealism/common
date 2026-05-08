@@ -14,13 +14,16 @@
  * limitations under the License.
  */
 
-package org.almostrealism.ml.dsl;
+package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
 import org.almostrealism.time.Temporal;
 import org.almostrealism.util.FirFilterTestFeatures;
 import org.almostrealism.util.TestDepth;
@@ -82,7 +85,7 @@ public class PdslLayerCellListIntegrationTest extends TestSuiteBase
 		PackedCollection head = new PackedCollection(1);
 		head.setMem(new double[]{0.0});
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
@@ -146,7 +149,7 @@ public class PdslLayerCellListIntegrationTest extends TestSuiteBase
 		PackedCollection filterCoeffs = new PackedCollection(FILTER_ORDER + 1);
 		filterCoeffs.setMem(new double[FILTER_ORDER + 1]);
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
 
 		Map<String, Object> args = new HashMap<>();
