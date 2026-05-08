@@ -35,11 +35,14 @@ import org.almostrealism.util.SignalWireDeliveryProvider;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 import java.io.File;
 import java.io.IOException;
@@ -169,6 +172,15 @@ public class FlowTreeController implements ConsoleFeatures {
 
     /** True when tokens are absent and the controller runs without a live Slack connection. */
     private boolean simulationMode = false;
+
+    /**
+     * In-memory secrets index built from the loaded config.
+     * Keyed by workspace ID → (secret name → entry). Populated by
+     * {@link #buildSecretsCache(WorkstreamConfig)} during config load and
+     * passed to the API endpoint via {@link FlowTreeApiEndpoint#setSecretsCache}.
+     */
+    private Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> secretsCache =
+            new HashMap<>();
 
     /**
      * Creates a new controller, resolving tokens from the default
@@ -320,6 +332,9 @@ public class FlowTreeController implements ConsoleFeatures {
         } else {
             log("ar-manager URL: " + arManagerUrl + " (WARNING: no shared secret — agents will not have ar-manager access)");
         }
+
+        // Build the in-memory secrets index and check file permissions
+        buildSecretsCache(config);
     }
 
     /**
@@ -363,6 +378,74 @@ public class FlowTreeController implements ConsoleFeatures {
         }
 
         log("All GitHub tokens validated successfully");
+    }
+
+    /**
+     * Builds the in-memory secrets index from the loaded workstream config.
+     *
+     * <p>Iterates all {@code slackWorkspaces} entries and indexes their declared
+     * {@link WorkstreamConfig.WorkspaceSecretEntry} instances by workspace ID and name.
+     * Also logs a warning for any declared secrets file that is readable by group or
+     * world (permissions wider than {@code 0600}).</p>
+     *
+     * @param config the loaded workstream configuration
+     */
+    private void buildSecretsCache(WorkstreamConfig config) {
+        Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> cache = new HashMap<>();
+        if (config.getSlackWorkspaces() == null) {
+            this.secretsCache = cache;
+            return;
+        }
+        for (WorkstreamConfig.SlackWorkspaceEntry wsEntry : config.getSlackWorkspaces()) {
+            if (wsEntry.getSecrets() == null || wsEntry.getSecrets().isEmpty()) continue;
+            String workspaceId = wsEntry.getWorkspaceId();
+            Map<String, WorkstreamConfig.WorkspaceSecretEntry> byName = new HashMap<>();
+            for (WorkstreamConfig.WorkspaceSecretEntry entry : wsEntry.getSecrets()) {
+                if (entry.getName() == null || entry.getFile() == null) continue;
+                byName.put(entry.getName(), entry);
+                checkSecretFilePermissions(entry, workspaceId);
+            }
+            if (workspaceId != null) {
+                cache.put(workspaceId, byName);
+            }
+        }
+        int count = cache.values().stream().mapToInt(Map::size).sum();
+        log("Loaded " + count + " secret(s) across " + cache.size() + " workspace(s)");
+        this.secretsCache = cache;
+    }
+
+    /**
+     * Checks that a declared secrets file exists and is not group- or world-readable.
+     * Logs a warning when the file has permissions wider than {@code 0600}.
+     *
+     * @param entry       the secret config entry
+     * @param workspaceId workspace owning this secret (for log context only)
+     */
+    private void checkSecretFilePermissions(
+            WorkstreamConfig.WorkspaceSecretEntry entry, String workspaceId) {
+        Path filePath = Path.of(entry.getFile());
+        if (!Files.exists(filePath)) {
+            warn("Secret file not found: " + entry.getFile()
+                    + " (secret=" + entry.getName() + " workspace=" + workspaceId + ")");
+            return;
+        }
+        try {
+            Set<PosixFilePermission> perms = Files.getPosixFilePermissions(filePath);
+            boolean tooPermissive = perms.contains(PosixFilePermission.GROUP_READ)
+                    || perms.contains(PosixFilePermission.GROUP_WRITE)
+                    || perms.contains(PosixFilePermission.OTHERS_READ)
+                    || perms.contains(PosixFilePermission.OTHERS_WRITE);
+            if (tooPermissive) {
+                warn("Secret file has unsafe permissions (expected 0600): "
+                        + entry.getFile()
+                        + " (secret=" + entry.getName() + " workspace=" + workspaceId + ")");
+            }
+        } catch (UnsupportedOperationException ignored) {
+            // Non-POSIX filesystem — skip permission check
+        } catch (IOException e) {
+            warn("Could not check permissions for secret file " + entry.getFile()
+                    + ": " + e.getMessage());
+        }
     }
 
     /**
@@ -1083,6 +1166,13 @@ public class FlowTreeController implements ConsoleFeatures {
             }
             apiEndpoint.setArManagerUrl(arManagerUrl);
             log("AR Manager URL: " + arManagerUrl);
+
+            // Pass shared secret and secrets index for /api/secrets/* endpoints
+            String apiSharedSecret = loadSharedSecret();
+            if (apiSharedSecret != null && !apiSharedSecret.isEmpty()) {
+                apiEndpoint.setSharedSecret(apiSharedSecret);
+            }
+            apiEndpoint.setSecretsCache(secretsCache);
 
             apiEndpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
             int listeningPort = apiEndpoint.getListeningPort();

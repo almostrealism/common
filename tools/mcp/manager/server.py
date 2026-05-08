@@ -622,18 +622,22 @@ class HealthMiddleware:
 # Controller HTTP helpers
 # ---------------------------------------------------------------------------
 
-def _controller_get(path: str, timeout: int = 10) -> dict:
+def _controller_get(path: str, timeout: int = 10, auth_token: str = None) -> dict:
     """GET a JSON resource from the FlowTree controller.
 
     Args:
         path: URL path (e.g., ``/api/health``).
         timeout: Request timeout in seconds.
+        auth_token: Optional Bearer token for the Authorization header.
 
     Returns:
         Parsed JSON response as a dict.
     """
     url = CONTROLLER_URL.rstrip("/") + path
-    req = Request(url, headers={"Accept": "application/json"})
+    headers = {"Accept": "application/json"}
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+    req = Request(url, headers=headers)
     print(f"ar-manager: GET {url}", file=sys.stderr)
     try:
         with urlopen(req, timeout=timeout) as resp:
@@ -4671,6 +4675,151 @@ def tracker_project_summary(project_id: str) -> dict:
             pass
     summary["by_workstream"] = filtered_ws
     return result
+
+
+# ---------------------------------------------------------------------------
+# Workspace secrets tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def workspace_secret_list_names(
+    workstream_id: str,
+) -> dict:
+    """List the names of secrets accessible to the calling workstream's workspace.
+
+    Returns only names — no payload values. Useful for an agent to discover
+    what secrets are available before calling workspace_secret_render_file.
+
+    Args:
+        workstream_id: The workstream whose workspace's secrets to list.
+
+    Returns:
+        dict with ok=True and names list, or ok=False with error.
+    """
+    _require_scope("read")
+    _require_workstream_in_scope(workstream_id)
+    _audit("workspace_secret_list_names", workstream_id=workstream_id)
+
+    if not SHARED_SECRET:
+        return {"ok": False, "error": "Shared secret not configured on ar-manager"}
+
+    path = f"/api/secrets?workstream_id={quote(workstream_id, safe='')}"
+    resp = _controller_get(path, auth_token=SHARED_SECRET)
+    if resp.get("ok") is False:
+        return {"ok": False, "error": resp.get("error", "controller error")}
+    return {"ok": True, "names": resp.get("names", [])}
+
+
+@mcp.tool()
+def workspace_secret_render_file(
+    workstream_id: str,
+    secret_name: str,
+    template: str,
+    output_path: str,
+    mode: str = "0600",
+) -> dict:
+    """Fetch a workspace secret and render it into a file using a template.
+
+    The agent supplies a template with {{key}} placeholders. The secret
+    payload is fetched from the controller (the agent never sees the raw
+    values), all placeholders are substituted, and the result is written
+    to output_path with the specified permissions. The rendered content is
+    never returned to the agent.
+
+    Template placeholders use {{key}} syntax (double curly braces). Every
+    {{key}} in the template must exist in the secret payload — unresolved
+    placeholders cause an error and no file is written. Extra keys in the
+    payload that are not referenced in the template are silently ignored.
+
+    Example usage for AWS credentials:
+
+        template = \"\"\"[default]
+    aws_access_key_id = {{access_key_id}}
+    aws_secret_access_key = {{secret_access_key}}
+    region = {{region}}
+    \"\"\"
+        workspace_secret_render_file(
+            workstream_id="ws-abc",
+            secret_name="aws-prod",
+            template=template,
+            output_path="~/.aws/credentials",
+        )
+
+    After this call the agent can run AWS CLI commands without ever having
+    seen the credential values.
+
+    Args:
+        workstream_id: The workstream whose workspace owns the secret.
+        secret_name: Name of the secret to fetch.
+        template: Template string with {{key}} placeholders.
+        output_path: Destination file path (~ is expanded).
+        mode: Octal file permissions string, e.g. "0600" (default).
+
+    Returns:
+        dict with ok=True and output_path on success, or ok=False with
+        error. The rendered content is never included in the response.
+    """
+    _require_scope("read")
+    _require_workstream_in_scope(workstream_id)
+    # Deliberately omit template from audit log — it may contain partial secrets
+    # or structural hints. Log only identifying metadata.
+    _audit(
+        "workspace_secret_render_file",
+        workstream_id=workstream_id,
+        secret_name=secret_name,
+        output_path=output_path,
+        mode=mode,
+    )
+
+    if not SHARED_SECRET:
+        return {"ok": False, "error": "Shared secret not configured on ar-manager"}
+
+    # Fetch secret payload from controller
+    path = (f"/api/secrets/{quote(secret_name, safe='')}"
+            f"?workstream_id={quote(workstream_id, safe='')}")
+    resp = _controller_get(path, auth_token=SHARED_SECRET)
+    if resp.get("ok") is False:
+        return {"ok": False, "error": resp.get("error", "controller error")}
+
+    payload = resp.get("payload", {})
+
+    # Strict placeholder resolution — every {{key}} must be present in payload
+    placeholders = re.findall(r"\{\{(\w+)\}\}", template)
+    missing = [p for p in placeholders if p not in payload]
+    if missing:
+        return {
+            "ok": False,
+            "error": (
+                f"Template references unknown keys: {missing}. "
+                f"Available keys: {sorted(payload.keys())}"
+            ),
+        }
+
+    rendered = template
+    for key in placeholders:
+        rendered = rendered.replace(f"{{{{{key}}}}}", payload[key])
+
+    # Write file atomically — never log rendered content
+    expanded = os.path.expanduser(output_path)
+    parent = os.path.dirname(expanded)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    file_mode = int(mode, 8)
+    fd = os.open(expanded, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, file_mode)
+    try:
+        os.write(fd, rendered.encode("utf-8"))
+    finally:
+        os.close(fd)
+    # Explicitly set permissions (os.open mode may be masked by umask)
+    os.chmod(expanded, file_mode)
+
+    audit_log.info(
+        "tool=workspace_secret_render_file secret_name=%s workstream_id=%s "
+        "output_path=%s result=OK",
+        secret_name, workstream_id, expanded,
+    )
+    return {"ok": True, "output_path": expanded}
 
 
 # ---------------------------------------------------------------------------

@@ -25,6 +25,9 @@ import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -34,6 +37,8 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermission;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -44,6 +49,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -150,6 +156,20 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /** Handles all {@code /api/github/proxy} requests and GitHub PR creation. */
     private final GitHubProxyHandler githubProxyHandler;
+
+    /**
+     * Shared secret used to validate HMAC temporary tokens issued by the controller.
+     * When set, the secrets endpoint validates inbound workstream tokens.
+     * Also used as the admin token for management endpoints when no separate admin token is configured.
+     */
+    private String sharedSecret;
+
+    /**
+     * In-memory secrets index, keyed by workspace ID then secret name.
+     * Populated by {@link FlowTreeController#loadConfig(File)} and passed in via
+     * {@link #setSecretsCache(Map)}.
+     */
+    private Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> secretsCache = new HashMap<>();
 
     /** Handles all {@code /api/stats} requests. */
     private StatsQueryHandler statsQueryHandler;
@@ -293,6 +313,28 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
+     * Sets the shared secret used to validate HMAC temporary tokens.
+     *
+     * <p>When set, the secrets retrieve endpoint validates inbound workstream HMAC
+     * tokens. The secret also serves as the admin token for management endpoints.</p>
+     *
+     * @param sharedSecret the shared secret string
+     */
+    public void setSharedSecret(String sharedSecret) {
+        this.sharedSecret = sharedSecret;
+    }
+
+    /**
+     * Sets the in-memory secrets index used by the {@code /api/secrets/*} endpoints.
+     *
+     * @param cache workspace-ID → (secret-name → entry) map
+     */
+    public void setSecretsCache(
+            Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> cache) {
+        this.secretsCache = cache != null ? cache : new HashMap<>();
+    }
+
+    /**
      * Returns whether automated job submissions are currently accepted.
      *
      * @return {@code true} if automated jobs are accepted, {@code false} otherwise
@@ -404,6 +446,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (Method.GET.equals(method) && uri.startsWith("/api/tools/")) {
             String toolName = uri.substring("/api/tools/".length());
             return handleToolDownload(toolName);
+        }
+
+        if (uri.startsWith("/api/secrets") && (Method.GET.equals(method)
+                || Method.PUT.equals(method) || Method.DELETE.equals(method))) {
+            return handleSecretsRequest(session, method, uri);
         }
 
         return newFixedLengthResponse(Response.Status.NOT_FOUND,
@@ -1566,6 +1613,400 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     private Response handleGitHubProxy(IHTTPSession session, Method method) {
         return githubProxyHandler.handle(session, method, this::readBody, this::errorResponse);
+    }
+
+    /**
+     * Validates a Bearer token from an HTTP session as an HMAC temporary token.
+     *
+     * <p>Returns the workstream ID embedded in the token on success, or
+     * {@code null} when the token is absent, malformed, expired, or has an
+     * invalid signature. Does not check workstream-ID equality — callers must
+     * verify that themselves.</p>
+     *
+     * @param session the incoming HTTP session
+     * @return the workstream ID from the token payload, or {@code null}
+     */
+    private String extractWorkstreamIdFromTempToken(IHTTPSession session) {
+        if (sharedSecret == null || sharedSecret.isEmpty()) {
+            return null;
+        }
+        String auth = session.getHeaders().get("authorization");
+        if (auth == null || !auth.startsWith("Bearer ")) {
+            return null;
+        }
+        String token = auth.substring(7).trim();
+        if (!token.startsWith("armt_tmp_")) {
+            return null;
+        }
+        String rest = token.substring("armt_tmp_".length());
+        int colonIdx = rest.indexOf(':');
+        if (colonIdx < 0) {
+            return null;
+        }
+        String hmacB64 = rest.substring(0, colonIdx);
+        String payloadB64 = rest.substring(colonIdx + 1);
+        byte[] payloadBytes;
+        byte[] tokenHmac;
+        try {
+            payloadBytes = Base64.getUrlDecoder().decode(padBase64(payloadB64));
+            tokenHmac = Base64.getUrlDecoder().decode(padBase64(hmacB64));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+        String payload = new String(payloadBytes, StandardCharsets.UTF_8);
+
+        // Verify HMAC
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(
+                    sharedSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] expected = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
+            if (!java.security.MessageDigest.isEqual(tokenHmac, expected)) {
+                return null;
+            }
+        } catch (Exception e) {
+            return null;
+        }
+
+        // Parse payload: {workstreamId}:{jobId}:{expiry}
+        String[] parts = payload.split(":", 3);
+        if (parts.length != 3) {
+            return null;
+        }
+        long expiry;
+        try {
+            expiry = Long.parseLong(parts[2]);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        if (System.currentTimeMillis() / 1000 > expiry) {
+            return null; // expired
+        }
+        return parts[0]; // workstream ID
+    }
+
+    /**
+     * Pads a Base64URL-encoded string to a multiple of 4 characters for standard decoding.
+     */
+    private static String padBase64(String s) {
+        int pad = (4 - s.length() % 4) % 4;
+        return s + "=".repeat(pad);
+    }
+
+    /**
+     * Validates a Bearer token as the admin shared secret.
+     *
+     * @param session the incoming HTTP session
+     * @return {@code true} when the token matches the shared secret
+     */
+    private boolean isAdminToken(IHTTPSession session) {
+        if (sharedSecret == null || sharedSecret.isEmpty()) {
+            // No secret configured — accept any request (open deployment)
+            return true;
+        }
+        String auth = session.getHeaders().get("authorization");
+        if (auth == null || !auth.startsWith("Bearer ")) {
+            return false;
+        }
+        String token = auth.substring(7).trim();
+        // Timing-safe comparison
+        return java.security.MessageDigest.isEqual(
+                token.getBytes(StandardCharsets.UTF_8),
+                sharedSecret.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Handles all {@code /api/secrets} and {@code /api/secrets/{name}} requests.
+     *
+     * <p>Routes:</p>
+     * <ul>
+     *   <li>{@code GET /api/secrets?workstream_id=...} — list secret names (workstream token)</li>
+     *   <li>{@code GET /api/secrets/{name}?workstream_id=...} — retrieve payload (workstream token)</li>
+     *   <li>{@code GET /api/secrets?workspace_id=...} — list names (admin token)</li>
+     *   <li>{@code PUT /api/secrets/{name}?workspace_id=...} — create/update (admin token)</li>
+     *   <li>{@code DELETE /api/secrets/{name}?workspace_id=...} — delete (admin token)</li>
+     * </ul>
+     *
+     * @param session the HTTP session
+     * @param method  the HTTP method
+     * @param uri     the request URI
+     * @return a JSON response
+     */
+    private Response handleSecretsRequest(IHTTPSession session, Method method, String uri) {
+        // Strip the /api/secrets prefix and optional /name suffix
+        String afterPrefix = uri.substring("/api/secrets".length()); // "" or "/{name}"
+        String secretName = null;
+        if (afterPrefix.startsWith("/") && afterPrefix.length() > 1) {
+            secretName = afterPrefix.substring(1);
+        }
+
+        Map<String, List<String>> params = session.getParameters();
+        String workstreamId = getFirstParam(params, "workstream_id");
+        String workspaceId = getFirstParam(params, "workspace_id");
+
+        // Workstream-token routes: retrieve or list-by-workstream
+        if (workstreamId != null && !workstreamId.isEmpty()) {
+            String tokenWorkstreamId = extractWorkstreamIdFromTempToken(session);
+            if (tokenWorkstreamId == null) {
+                log("SECRET_RETRIEVE secret=" + secretName
+                        + " workstream_id=" + workstreamId + " result=AUTH_FAILED");
+                return secretForbidden("Invalid or expired workstream token");
+            }
+            if (!tokenWorkstreamId.equals(workstreamId)) {
+                log("SECRET_RETRIEVE secret=" + secretName
+                        + " workstream_id=" + workstreamId + " result=WORKSTREAM_MISMATCH");
+                return secretForbidden("Token workstream does not match request workstream");
+            }
+
+            // Resolve workspace from workstream
+            SlackNotifier notifier = notifiers.notifierFor(workstreamId);
+            Workstream workstream = notifier != null ? notifier.getWorkstream(workstreamId) : null;
+            if (workstream == null) {
+                log("SECRET_RETRIEVE secret=" + secretName
+                        + " workstream_id=" + workstreamId + " result=UNKNOWN_WORKSTREAM");
+                return secretForbidden("Unknown workstream: " + workstreamId);
+            }
+            String resolvedWorkspaceId = workstream.getSlackWorkspaceId();
+
+            if (Method.GET.equals(method) && secretName == null) {
+                // List names for workstream's workspace
+                return handleListSecretNames(resolvedWorkspaceId);
+            }
+
+            if (Method.GET.equals(method) && secretName != null) {
+                // Retrieve secret payload
+                log("SECRET_RETRIEVE secret=" + secretName
+                        + " workstream_id=" + workstreamId
+                        + " workspace_id=" + resolvedWorkspaceId + " result=OK");
+                return handleRetrieveSecret(secretName, resolvedWorkspaceId, workstreamId);
+            }
+        }
+
+        // Admin-token routes: create/update/delete/list-by-workspace
+        if (!isAdminToken(session)) {
+            return secretForbidden("Admin token required");
+        }
+
+        if (Method.GET.equals(method) && workspaceId != null && secretName == null) {
+            return handleListSecretNames(workspaceId);
+        }
+
+        if (Method.PUT.equals(method) && secretName != null && workspaceId != null) {
+            return handleCreateOrUpdateSecret(session, secretName, workspaceId);
+        }
+
+        if (Method.DELETE.equals(method) && secretName != null && workspaceId != null) {
+            return handleDeleteSecret(secretName, workspaceId);
+        }
+
+        return newFixedLengthResponse(Response.Status.BAD_REQUEST,
+                "application/json", "{\"ok\":false,\"error\":\"Invalid request\"}");
+    }
+
+    /**
+     * Returns a list of secret names for the given workspace.
+     *
+     * @param workspaceId the Slack workspace ID
+     * @return JSON response with {@code {"names":[...]}}
+     */
+    private Response handleListSecretNames(String workspaceId) {
+        Map<String, WorkstreamConfig.WorkspaceSecretEntry> wsSecrets =
+                secretsCache.getOrDefault(workspaceId, new HashMap<>());
+        StringBuilder json = new StringBuilder("{\"names\":[");
+        boolean first = true;
+        for (String name : wsSecrets.keySet()) {
+            if (!first) json.append(",");
+            first = false;
+            json.append("\"").append(escapeJson(name)).append("\"");
+        }
+        json.append("]}");
+        return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString());
+    }
+
+    /**
+     * Retrieves the payload of a single secret and returns it as JSON.
+     *
+     * @param secretName  the secret name
+     * @param workspaceId the owning workspace ID
+     * @param workstreamId the requesting workstream ID (for audit log only)
+     * @return JSON response with the payload map, or error
+     */
+    private Response handleRetrieveSecret(String secretName, String workspaceId, String workstreamId) {
+        Map<String, WorkstreamConfig.WorkspaceSecretEntry> wsSecrets = secretsCache.get(workspaceId);
+        if (wsSecrets == null || !wsSecrets.containsKey(secretName)) {
+            log("SECRET_RETRIEVE secret=" + secretName
+                    + " workstream_id=" + workstreamId
+                    + " workspace_id=" + workspaceId + " result=NOT_FOUND");
+            return newFixedLengthResponse(Response.Status.NOT_FOUND,
+                    "application/json",
+                    "{\"ok\":false,\"error\":\"Secret not found: " + escapeJson(secretName) + "\"}");
+        }
+
+        WorkstreamConfig.WorkspaceSecretEntry entry = wsSecrets.get(secretName);
+        Map<String, String> payload;
+        try {
+            payload = readSecretPayload(entry.getFile());
+        } catch (IOException e) {
+            warn("Failed to read secret file for " + secretName + ": " + e.getMessage());
+            log("SECRET_RETRIEVE secret=" + secretName
+                    + " workstream_id=" + workstreamId
+                    + " workspace_id=" + workspaceId + " result=FILE_ERROR");
+            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
+                    "application/json", "{\"ok\":false,\"error\":\"Failed to read secret\"}");
+        }
+
+        // Build response — never log payload values
+        StringBuilder json = new StringBuilder();
+        json.append("{\"name\":\"").append(escapeJson(secretName)).append("\"");
+        json.append(",\"workspace_id\":\"").append(escapeJson(workspaceId)).append("\"");
+        json.append(",\"payload\":{");
+        boolean first = true;
+        for (Map.Entry<String, String> kv : payload.entrySet()) {
+            if (!first) json.append(",");
+            first = false;
+            json.append("\"").append(escapeJson(kv.getKey())).append("\"");
+            json.append(":\"").append(escapeJson(kv.getValue())).append("\"");
+        }
+        json.append("}}");
+        return newFixedLengthResponse(Response.Status.OK, "application/json", json.toString());
+    }
+
+    /**
+     * Creates or fully replaces a secret payload, writing it atomically to the
+     * declared file path with {@code 0600} permissions.
+     *
+     * @param session     the HTTP session carrying the JSON payload body
+     * @param secretName  the secret name
+     * @param workspaceId the owning workspace ID
+     * @return JSON response
+     */
+    private Response handleCreateOrUpdateSecret(IHTTPSession session,
+                                                 String secretName, String workspaceId) {
+        String body = readBody(session);
+        if (body == null || body.isBlank()) {
+            return errorResponse("Missing request body");
+        }
+        Map<String, String> payload;
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            payload = mapper.readValue(body,
+                    new TypeReference<Map<String, String>>() { });
+        } catch (Exception e) {
+            return errorResponse("Invalid JSON payload: " + e.getMessage());
+        }
+
+        // Resolve the declared file path
+        Map<String, WorkstreamConfig.WorkspaceSecretEntry> wsSecrets =
+                secretsCache.get(workspaceId);
+        if (wsSecrets == null || !wsSecrets.containsKey(secretName)) {
+            return newFixedLengthResponse(Response.Status.NOT_FOUND,
+                    "application/json",
+                    "{\"ok\":false,\"error\":\"Secret not declared in config: "
+                            + escapeJson(secretName) + "\"}");
+        }
+        WorkstreamConfig.WorkspaceSecretEntry entry = wsSecrets.get(secretName);
+        try {
+            writeSecretPayload(entry.getFile(), payload);
+        } catch (IOException e) {
+            warn("Failed to write secret " + secretName + ": " + e.getMessage());
+            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
+                    "application/json", "{\"ok\":false,\"error\":\"Failed to write secret\"}");
+        }
+        log("Secret updated: name=" + secretName + " workspace=" + workspaceId);
+        return newFixedLengthResponse(Response.Status.OK,
+                "application/json", "{\"ok\":true,\"name\":\"" + escapeJson(secretName) + "\"}");
+    }
+
+    /**
+     * Deletes a secret file from disk.
+     *
+     * @param secretName  the secret name
+     * @param workspaceId the owning workspace ID
+     * @return JSON response
+     */
+    private Response handleDeleteSecret(String secretName, String workspaceId) {
+        Map<String, WorkstreamConfig.WorkspaceSecretEntry> wsSecrets =
+                secretsCache.get(workspaceId);
+        if (wsSecrets == null || !wsSecrets.containsKey(secretName)) {
+            return newFixedLengthResponse(Response.Status.NOT_FOUND,
+                    "application/json",
+                    "{\"ok\":false,\"error\":\"Secret not found: " + escapeJson(secretName) + "\"}");
+        }
+        WorkstreamConfig.WorkspaceSecretEntry entry = wsSecrets.get(secretName);
+        try {
+            Files.deleteIfExists(Path.of(entry.getFile()));
+        } catch (IOException e) {
+            warn("Failed to delete secret file for " + secretName + ": " + e.getMessage());
+            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
+                    "application/json", "{\"ok\":false,\"error\":\"Failed to delete secret\"}");
+        }
+        // Remove from in-memory cache
+        wsSecrets.remove(secretName);
+        log("Secret deleted: name=" + secretName + " workspace=" + workspaceId);
+        return newFixedLengthResponse(Response.Status.OK,
+                "application/json", "{\"ok\":true}");
+    }
+
+    /**
+     * Reads a secret payload from a JSON file on disk.
+     *
+     * @param filePath absolute path to the JSON file
+     * @return parsed key-value payload map
+     * @throws IOException if the file cannot be read or is not valid JSON
+     */
+    private static Map<String, String> readSecretPayload(String filePath) throws IOException {
+        ObjectMapper mapper = new ObjectMapper();
+        return mapper.readValue(new java.io.File(filePath),
+                new TypeReference<Map<String, String>>() { });
+    }
+
+    /**
+     * Writes a secret payload to a JSON file atomically.
+     *
+     * <p>Writes to a sibling temporary file, then uses an atomic move. Sets file
+     * permissions to {@code 0600} after write to restrict access to the owner.</p>
+     *
+     * @param filePath absolute path to the target file
+     * @param payload  the key-value map to serialise as JSON
+     * @throws IOException if the file cannot be written
+     */
+    private static void writeSecretPayload(String filePath,
+                                            Map<String, String> payload) throws IOException {
+        Path target = Path.of(filePath);
+        Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
+        ObjectMapper mapper = new ObjectMapper();
+        String json = mapper.writeValueAsString(payload);
+        Files.writeString(tmp, json, StandardCharsets.UTF_8);
+        try {
+            Files.setPosixFilePermissions(tmp, Set.of(
+                    PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+        } catch (UnsupportedOperationException ignored) {
+            // Non-POSIX filesystem; permissions will be set after move
+        }
+        Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING);
+        try {
+            Files.setPosixFilePermissions(target, Set.of(
+                    PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+        } catch (UnsupportedOperationException ignored) {
+            // Non-POSIX filesystem
+        }
+    }
+
+    /**
+     * Returns a 403 Forbidden response with the given error message.
+     */
+    private Response secretForbidden(String message) {
+        String json = "{\"ok\":false,\"error\":\"" + escapeJson(message) + "\"}";
+        return newFixedLengthResponse(Response.Status.FORBIDDEN, "application/json", json);
+    }
+
+    /**
+     * Returns the first value for a query parameter, or {@code null} if absent.
+     */
+    private static String getFirstParam(Map<String, List<String>> params, String key) {
+        List<String> values = params.get(key);
+        return (values != null && !values.isEmpty()) ? values.get(0) : null;
     }
 
     /**
