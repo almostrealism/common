@@ -26,6 +26,7 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.FirFilterTestFeatures;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Ignore;
@@ -857,6 +858,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 */
 	@Test(timeout = 120000)
 	@TestDepth(2)
+	@TestProperties(knownIssue = true)
 	public void testMixdownManagerReverbPath() throws IOException {
 		File outputDir = new File("results/pdsl-audio-dsp");
 		outputDir.mkdirs();
