@@ -306,15 +306,16 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 	}
 
 	// =====================================================================
-	// Test 7 — multiple taps in one channel
+	// Test 7 — multiple taps via channels
 	// =====================================================================
 	/**
-	 * Single channel, signalSize=8, bufSize=16, tap_delays must be
-	 * length=channels=1 — so this test really exercises ONE tap per
-	 * delay-network channel, but uses three differently-delayed *channels*
-	 * to mimic the multi-tap pattern from the integration test. The
-	 * delay-network primitive itself is one-tap-per-channel; multi-tap is
-	 * achieved by adding more channels with the same input.
+	 * Three channels, signalSize=8, bufSize=8, tap_delays={1, 3, 5},
+	 * feedback=0. The delay-network primitive is one-tap-per-channel, so
+	 * multi-tap behaviour is mimicked by stacking three differently-delayed
+	 * channels with the same input. Verifies that under the kernel's
+	 * silence→impulse→silence access pattern (mirroring test05) every tap
+	 * surfaces its impulse at output position {@code i == delay_c} on the
+	 * read pass.
 	 */
 	@Test(timeout = 60000)
 	public void test07MultipleTapsViaChannels() {
@@ -327,18 +328,27 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		Harness h = build(channels, signalSize, bufSize, tapDelays, noFeedback);
 		double[] impulse = new double[signalSize];
 		impulse[0] = 1.0;
-		h.forward(impulse);             // pass 1: write impulse to all 3 channels
-		double[] pass2 = h.forwardMulti(new double[channels * signalSize]);
+		// Pass 1: silence warmup. Under the kernel's bufSize == signalSize
+		// constraint each forward() pass overwrites the entire ring buffer
+		// (since the channels*signalSize-shaped newBuffer covers every slot).
+		// A zero-feedback impulse fed on pass 1 would therefore be erased by
+		// the silent input on pass 2 before pass 3 could observe it. The
+		// silence→impulse→silence pattern (mirroring test05) sidesteps that:
+		// pass 2 writes the impulse, pass 3 reads it back from the still-current
+		// buffer at the tap's delay offset.
+		h.forwardMulti(new double[channels * signalSize]);
+		// Pass 2: write impulse to all 3 channels. The kernel reads BEFORE
+		// it writes, so pass 2's output reads the all-zero buffer left by
+		// pass 1 — pass 2 is silent for every (channel, sample) pair.
+		double[] pass2 = h.forward(impulse);
 
-		// After pass 1, head=signalSize=8 for every channel. Pass 2's read
-		// for channel c, sample i: buffer[(head + i - delay_c) mod bufSize
-		// + c*bufSize] = buffer[(8 + i - delay_c) mod 16 + c*bufSize].
-		// Channel 0 (delay 1): impulse appears at i where (8+i-1)%16==0 →
-		// i = -7 mod 16 = 9 → not in [0..7], so pass 2 does NOT see it.
-		// Channel 1 (delay 3): i where (8+i-3)%16==0 → i = -5 mod 16 = 11 → out.
-		// Channel 2 (delay 5): i where (8+i-5)%16==0 → i = -3 mod 16 = 13 → out.
-		// So pass 2 must be all zero (impulses haven't completed their
-		// round-trip yet with bufSize=16 and head only at 8).
+		// After pass 2, buffer[c*bufSize + 0] == 1 for every channel c (the
+		// impulse landed at slot 0 of each per-channel region). Pass 3 reads
+		// at buffer[(head + i - delay_c + bufSize) mod bufSize + c*bufSize]
+		// with head == 0; for a tap of delay d the impulse lives at output
+		// position i where (i - d) mod bufSize == 0 → i == d. Pass 2 sees
+		// only what was in the buffer beforehand (still zero), so the
+		// per-(channel, sample) silence assertion below holds.
 		for (int c = 0; c < channels; c++) {
 			for (int i = 0; i < signalSize; i++) {
 				Assert.assertEquals(
@@ -349,11 +359,10 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 			}
 		}
 
-		// Pass 3: head=16 mod 16=0. Read[c, i] = buffer[(0 + i - delay_c
-		// + bufSize) mod bufSize + c*bufSize] = buffer[(i - delay_c + 16)
-		// mod 16 + c*bufSize]. Impulse at output i where buffer
-		// position == 0 → i == delay_c. So channel 0 sees impulse at i=1,
-		// channel 1 at i=3, channel 2 at i=5.
+		// Pass 3: silence input. With pass 2's impulse at buffer[c*bufSize + 0]
+		// and head still 0, the read formula gives output position i == delay_c
+		// for each channel. So channel 0 sees the impulse at i=1, channel 1
+		// at i=3, channel 2 at i=5.
 		double[] pass3 = h.forwardMulti(new double[channels * signalSize]);
 		Assert.assertEquals("ch0 i=1 must be impulse",
 				1.0, pass3[0 * signalSize + 1], EPS);
@@ -367,11 +376,13 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 	// Test 8 — two channels with no cross-talk
 	// =====================================================================
 	/**
-	 * Two channels, signalSize=4, bufSize=8, tap_delays=[1, 1], feedback
-	 * matrix all zero. Feed an impulse to channel 0 only. Channel 1
-	 * receives silence on every pass. Channel 1's output must be
-	 * identically zero — verifies per-channel buffer independence (no
-	 * cross-talk through buffer indexing).
+	 * Two channels, signalSize=4, bufSize=4, tap_delays=[1, 1], feedback
+	 * matrix all zero. Feed an impulse to channel 0 only on pass 2 (after
+	 * a silent warmup pass — see the test 7 docstring for why the warmup
+	 * is needed under {@code bufSize == signalSize}). Channel 1 receives
+	 * silence on every pass. Channel 1's output must be identically zero
+	 * — verifies per-channel buffer independence (no cross-talk through
+	 * buffer indexing).
 	 */
 	@Test(timeout = 60000)
 	public void test08TwoChannelsNoCrossTalk() {
@@ -384,8 +395,23 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		// Per-channel input flat layout: [ch0 sigSize samples][ch1 sigSize samples].
 		double[] input = new double[channels * signalSize];
 		input[0] = 1.0;  // impulse on channel 0 sample 0
-		h.forwardMulti(input);
-		double[] pass2 = h.forwardMulti(new double[channels * signalSize]);
+		// Pass 1: silence warmup. The bufSize == signalSize constraint causes
+		// each forward() pass to overwrite the entire ring buffer, so an
+		// impulse fed on pass 1 with zero feedback would be erased by pass 2's
+		// silence before pass 3 could observe it. The silence→impulse→silence
+		// pattern (mirroring test05) sidesteps that: pass 2 writes the
+		// impulse, pass 3 reads it via the delay tap.
+		h.forwardMulti(new double[channels * signalSize]);
+		// Pass 2: impulse on channel 0 only. Read happens before write so
+		// the output reads the still-zero pass-1 buffer — both channels
+		// silent on pass 2 (so the per-channel-1 silence assertion holds
+		// here too, not just the no-cross-talk one).
+		double[] pass2 = h.forwardMulti(input);
+		// Pass 3: silence. Reads pass 2's impulse from channel 0's
+		// per-channel buffer at delay offset 1 → output[ch0, i=1] == 1.
+		// Channel 1's per-channel buffer is still zero (cross-talk would
+		// be the only mechanism for it to gain energy), so output[ch1] is
+		// identically zero.
 		double[] pass3 = h.forwardMulti(new double[channels * signalSize]);
 
 		// Channel 1 must be silent on all passes.
@@ -400,8 +426,9 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 					0.0, pass3[signalSize + i], EPS);
 		}
 
-		// Channel 0 must carry the impulse on pass 3 (delay=1 + bufSize=8
-		// wrap takes 2 passes). pass3 ch0 sample 1 reads buffer[head=0 + 1 - 1] = buffer[0] = 1.
+		// Channel 0 must carry the impulse on pass 3. Pass 3 reads
+		// buffer[head=0 + 1 - 1 mod bufSize + 0*bufSize] = buffer[0],
+		// which holds pass 2's impulse — so output[ch0, 1] == 1.
 		Assert.assertEquals(
 				"pass 3 channel 0 sample 1 must carry the impulse; got "
 						+ pass3[1],
