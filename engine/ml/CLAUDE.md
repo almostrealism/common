@@ -96,6 +96,17 @@ mcp__ar-test-runner__get_run_failures  run_id: "<id>"
 
 See [../CLAUDE.md](../CLAUDE.md) for full MCP test runner documentation.
 
+## CRITICAL: Run Targeted ML Tests Before Declaring Done
+
+Before declaring any ML code change complete, run the tests that directly exercise
+what you changed. Do NOT run the full ML suite — it requires real weights and takes hours.
+
+- For a changed class `FooAttention.java`, run `mcp__ar-test-runner__start_test_run module:"ml" test_classes:["FooAttentionTest"]`
+- For Python changes in `tools/mcp/`, run `python -m pytest tools/mcp/manager/test_server.py`
+- For changes to shared attention/layer methods, run all tests in the same package
+
+See [../CLAUDE.md](../CLAUDE.md) for the full test verification rule and heuristics.
+
 ---
 
 ## CRITICAL: TEST CLASS REQUIREMENTS

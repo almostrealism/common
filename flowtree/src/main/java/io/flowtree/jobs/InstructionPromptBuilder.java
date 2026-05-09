@@ -363,6 +363,7 @@ public class InstructionPromptBuilder {
      *   <li>Branch Context (always)</li>
      *   <li>Working directory and branch info</li>
      *   <li>Branch Awareness and Continuity (when target branch is set)</li>
+     *   <li>Test Verification Reminder (always)</li>
      *   <li>Budget and turn limits (when applicable)</li>
      *   <li>Task ID and Workstream URL info</li>
      *   <li>Planning Document (when set)</li>
@@ -675,6 +676,30 @@ public class InstructionPromptBuilder {
             sb.append("on the branch from prior sessions), investigate whether it's a ");
             sb.append("real bug that needs fixing vs. an environment/configuration issue.\n\n");
         }
+
+        // Test verification reminder -- always included for coding tasks
+        sb.append("## CRITICAL: Run Targeted Tests Before Declaring Work Complete\n");
+        sb.append("The full project test suite takes hours — do NOT run it. For every code ");
+        sb.append("file you modify or create, identify the tests that directly exercise it ");
+        sb.append("and run THOSE before declaring done.\n\n");
+        sb.append("Concrete heuristic:\n");
+        sb.append("1. For each modified Java file `Foo.java`, look for `FooTest.java`, ");
+        sb.append("`FooTests.java`, or `FooIT.java` in the same module's `src/test/java` ");
+        sb.append("and run them.\n");
+        sb.append("2. Look for any tests in the same package that import the file you ");
+        sb.append("changed and run those too.\n");
+        sb.append("3. If you split or moved classes, the original tests still apply to the ");
+        sb.append("split pieces — find them and run them.\n");
+        sb.append("4. For Python changes in `tools/`, run the corresponding pytest module ");
+        sb.append("(e.g., `python -m pytest tools/mcp/manager/test_server.py`).\n");
+        sb.append("5. Use `mcp__ar-test-runner__start_test_run` with `test_classes` to run ");
+        sb.append("a specific class quickly. Use the full module run only when you've ");
+        sb.append("touched many files in one module.\n\n");
+        sb.append("Do NOT use `-DskipTests` to declare a refactor or bug fix complete. ");
+        sb.append("`-DskipTests` is only for the initial compile-check pass. ");
+        sb.append("You MUST run the relevant tests before declaring work complete.\n\n");
+        sb.append("If a test fails, fix the underlying cause. Do NOT add `@Disabled`, ");
+        sb.append("comment out assertions, or weaken tests to make them green.\n\n");
 
         // Budget and turn limits
         if (maxBudgetUsd > 0 || maxTurns > 0) {

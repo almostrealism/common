@@ -384,6 +384,8 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			submitParams.contains("model"));
 		assertTrue("workstream_submit_task must declare effort in signature",
 			submitParams.contains("effort"));
+		assertTrue("workstream_submit_task must declare post_completion_command in signature",
+			submitParams.contains("post_completion_command"));
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
