@@ -224,8 +224,8 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     /**
      * Exclusive OS-level lock on {@code <parent>/.flowtree-locks/<repoName>.lock},
      * placed outside the git working tree so {@code git stash --include-untracked}
-     * cannot unlink it mid-job (see {@code FLOWTREE_COLLISIONS.md}). Prevents
-     * concurrent {@link GitManagedJob} instances on the same working directory.
+     * cannot unlink it mid-job. Prevents concurrent {@link GitManagedJob}
+     * instances on the same working directory.
      */
     private FileLock workspaceLock;
 
@@ -456,7 +456,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * placed outside the git working tree so {@code git stash
      * --include-untracked} cannot unlink it mid-job — POSIX advisory locks
      * ({@link FileLock}) are per-inode, and unlink-recreate breaks them
-     * silently (see {@code FLOWTREE_COLLISIONS.md}). On shared filesystems
+     * silently. On shared filesystems
      * the lock serialises sibling containers targeting the same repository.
      * Blocks until available; failures are logged but do not abort the job.
      *

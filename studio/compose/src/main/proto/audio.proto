@@ -73,9 +73,8 @@ message SynthesizerModelData {
 }
 
 // =========================================================================
-// Multi-layer audio extensions (Common 0.74)
+// Multi-layer audio extensions.
 // All additions are optional; existing serialised data remains parseable.
-// See docs/plans/MULTI_LAYER_AUDIO_FORMAT.md for the design rationale.
 // =========================================================================
 
 // AudioLayerGroup is a peer of WaveRecording carrying layer relationships,

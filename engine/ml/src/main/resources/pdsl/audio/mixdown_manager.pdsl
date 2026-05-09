@@ -14,9 +14,6 @@
 // MixdownManager.createCells() / createEfx() do via
 // AutomationManager.getAggregatedValue(...).
 //
-// See docs/plans/PDSL_AUDIO_DSP.md Section 10 for the per-parameter
-// decomposition and Section 11 for the producer-valued argument design.
-//
 // Signal flow:
 //
 //   [channels, signal_size] dry input
@@ -314,8 +311,7 @@ layer mixdown_hetero_branch(signal_size: int,
 // the closest existing bounded-saturation primitive — its energy footprint
 // matches the Java hard clip within numerical drift for the typical
 // post-gain dynamic range, so the verification test in
-// MixdownManagerPdslVerificationTest can compare the two paths directly
-// (see PDSL_AUDIO_DSP.md Section 8 / Section 12 for the discussion).
+// MixdownManagerPdslVerificationTest can compare the two paths directly.
 //
 // Input shape:  [channels, signal_size]
 // Output shape: [1, signal_size]

@@ -36,8 +36,7 @@ import java.util.Set;
  * Codec utilities for the multi-layer audio format
  * ({@link Audio.AudioLayerGroup} / {@link Audio.AudioLayer} / {@link Audio.LayerRef}).
  *
- * <p>The format is described in {@code docs/plans/MULTI_LAYER_AUDIO_FORMAT.md}.
- * An {@link Audio.AudioLayerGroup} is a peer of {@link Audio.WaveRecording} added
+ * <p>An {@link Audio.AudioLayerGroup} is a peer of {@link Audio.WaveRecording} added
  * at {@link Audio.AudioLibraryData} field 5; existing serialised data remains
  * readable. This class provides helpers for:</p>
  *

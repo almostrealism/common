@@ -41,11 +41,9 @@ import java.util.Optional;
  * ({@link Audio.AudioLayerGroup}, {@link Audio.AudioLayer},
  * {@link Audio.MidiPattern}, {@link Audio.LayerRef},
  * {@link Audio.TransformInfo}, {@link Audio.AudioUnitParameterState},
- * {@link Audio.DeviceType}). The schema is described in
- * {@code docs/plans/MULTI_LAYER_AUDIO_FORMAT.md}.
+ * {@link Audio.DeviceType}).
  *
- * <p>The 12 test methods below cover, in the order listed in the
- * implementation plan:</p>
+ * <p>The 12 test methods below cover:</p>
  * <ol>
  *   <li>Round-trip of each individual layer shape (audio / MIDI / metadata).</li>
  *   <li>Round-trip of an {@link Audio.AudioLayerGroup} with a

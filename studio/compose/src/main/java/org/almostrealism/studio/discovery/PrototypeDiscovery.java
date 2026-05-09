@@ -82,9 +82,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 	 * Louvain community size distribution. Disabled by default to keep
 	 * normal-run logs quiet; re-enable for prototype-quality investigations
 	 * by setting {@code AR_PROTOTYPE_DIAGNOSTICS=enabled} as either a system
-	 * property or environment variable. See
-	 * {@code docs/plans/PROTOTYPE_DISCOVERY_QUALITY.md} for what the output
-	 * is useful for.
+	 * property or environment variable.
 	 */
 	private static final boolean DIAGNOSTICS_ENABLED =
 			SystemUtils.isEnabled("AR_PROTOTYPE_DIAGNOSTICS").orElse(false);

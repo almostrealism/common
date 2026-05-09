@@ -26,7 +26,7 @@
 //   - IIR vs FIR: MixdownManager uses IIR biquad (AudioPassFilter from
 //     CellFeatures.hp()/lp()). This PDSL uses FIR approximation via
 //     highpass()/lowpass() (MultiOrderFilter). Audible differences may occur
-//     near the cutoff. See docs/plans/PDSL_AUDIO_DSP.md Part 9 (Risk 1).
+//     near the cutoff.
 //
 // Note on producer-valued arguments: the layers below use literal scalars for
 // hp_cutoff, volume, lp_cutoff, wet_level, and delay_samples for simplicity.
