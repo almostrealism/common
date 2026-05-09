@@ -111,11 +111,11 @@ public class SecretsEndpointTest extends TestSuiteBase {
 
         // Workstream registered on notifier for workspace-A
         SlackNotifier notifier = new SlackNotifier(null);
-        Workstream workstreamA = new Workstream(WORKSTREAM_A, "#test-channel");
+        Workstream workstreamA = new Workstream(WORKSTREAM_A, "C_TEST_A", "#test-channel");
         workstreamA.setSlackWorkspaceId(WORKSPACE_A);
         notifier.registerWorkstream(workstreamA);
 
-        Workstream workstreamB = new Workstream(WORKSTREAM_B, "#test-channel-b");
+        Workstream workstreamB = new Workstream(WORKSTREAM_B, "C_TEST_B", "#test-channel-b");
         workstreamB.setSlackWorkspaceId(WORKSPACE_B);
         notifier.registerWorkstream(workstreamB);
 
@@ -271,7 +271,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         // Re-create the endpoint with the extended cache
         endpoint.stop();
         SlackNotifier notifier = new SlackNotifier(null);
-        Workstream ws = new Workstream(WORKSTREAM_A, "#test");
+        Workstream ws = new Workstream(WORKSTREAM_A, "C_TEST_A", "#test");
         ws.setSlackWorkspaceId(WORKSPACE_A);
         notifier.registerWorkstream(ws);
 
