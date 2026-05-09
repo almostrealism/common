@@ -3529,67 +3529,187 @@ def _is_copilot_login(login: str) -> bool:
     GitHub exposes Copilot under multiple login strings depending on the
     endpoint, empirically observed on this repo:
 
-    - ``"copilot"`` — the slug accepted by ``POST /pulls/N/requested_reviewers``
-      (see the commit message on 6a2269f79: sending
-      ``copilot-pull-request-reviewer`` returns HTTP 422).
+    - ``"copilot-pull-request-reviewer"`` — the bot login returned by the
+      GraphQL ``suggestedActors`` query and used by the
+      ``requestReviews`` mutation.
     - ``"copilot-pull-request-reviewer[bot]"`` — the ``user.login`` on
       review objects returned by ``GET /pulls/N/reviews``.
     - ``"Copilot"`` — the ``user.login`` on review-comment objects
       returned by ``GET /pulls/N/comments``.
 
-    Matching all three with a case-insensitive substring check on
+    Matching all forms with a case-insensitive substring check on
     ``"copilot"`` is safe because it does not collide with any real user
     or team slug that could legitimately request a review (GitHub reserves
-    the ``copilot`` name). Used by both ``_copilot_is_requested`` (request
-    verification) and ``_dismiss_copilot_review`` (review lookup) so the
-    two paths cannot disagree about what counts as Copilot.
+    the ``copilot`` name).
     """
     if not isinstance(login, str):
         return False
     return COPILOT_REVIEWER_LOGIN in login.lower()
 
 
-def _copilot_is_requested(pr_response: dict) -> bool:
-    """True when the PR response's ``requested_reviewers`` array lists the
-    Copilot bot. The GitHub API accepts an empty-looking payload silently
-    (ignoring unknown fields), so we can't trust a 2xx status alone — we
-    verify the reviewer was actually added.
+# GraphQL query used to discover the PR node ID and the Copilot bot's ID
+# in a single round-trip. ``suggestedActors`` with ``CAN_BE_ASSIGNED``
+# returns Copilot when the repository has Copilot code review enabled.
+_COPILOT_LOOKUP_QUERY = """
+query CopilotLookup($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) { id }
+    suggestedActors(first: 100, capabilities: [CAN_BE_ASSIGNED]) {
+      nodes {
+        __typename
+        login
+        ... on Bot { id }
+        ... on User { id }
+      }
+    }
+  }
+}
+"""
 
-    Delegates the login comparison to :func:`_is_copilot_login` so request
-    verification, review lookup, and dismissal all use the same rule.
+
+# GraphQL mutation that requests a review from the given user/bot IDs.
+# ``union: true`` adds the reviewers to the existing set rather than
+# replacing it. The response inlines the post-mutation reviewRequests
+# so we can verify the bot was actually added without a follow-up read.
+_REQUEST_REVIEWS_MUTATION = """
+mutation RequestCopilotReview($pullRequestId: ID!, $userIds: [ID!]!) {
+  requestReviews(input: {pullRequestId: $pullRequestId, userIds: $userIds, union: true}) {
+    pullRequest {
+      reviewRequests(first: 100) {
+        nodes {
+          requestedReviewer {
+            __typename
+            ... on Bot { login }
+            ... on User { login }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+
+def _graphql_error_message(result: dict) -> str:
+    """Return the first GraphQL error message from a response, or ''."""
+    errors = result.get("errors") if isinstance(result, dict) else None
+    if isinstance(errors, list) and errors:
+        first = errors[0] or {}
+        if isinstance(first, dict):
+            return first.get("message", "") or ""
+    return ""
+
+
+def _is_already_reviewed_error(message: str) -> bool:
+    """Detect the GraphQL error GitHub returns when Copilot has already
+    reviewed the PR and a fresh review must be requested by dismissing
+    the prior one first.
     """
-    if not isinstance(pr_response, dict):
+    if not isinstance(message, str) or not message:
         return False
-    reviewers = pr_response.get("requested_reviewers") or []
-    for r in reviewers:
-        if isinstance(r, dict) and _is_copilot_login(r.get("login", "")):
+    lowered = message.lower()
+    return (
+        "already" in lowered
+        or "cannot be requested" in lowered
+        or "duplicate" in lowered
+    )
+
+
+def _lookup_copilot_review_targets(owner: str, repo: str,
+                                   pr_number: int) -> dict:
+    """Discover the PR's GraphQL node ID and Copilot's bot ID.
+
+    Returns a dict with ``ok=True`` and ``pr_id``/``bot_id`` keys on
+    success. Returns an ``ok=False`` dict on transport errors, on a
+    missing PR, or when Copilot is not in the suggested-actors list
+    (which means Copilot code review is not enabled for the repo).
+    """
+    variables = {"owner": owner, "name": repo, "number": pr_number}
+    result = _github_graphql_request(_COPILOT_LOOKUP_QUERY, variables)
+
+    if isinstance(result, dict) and result.get("ok") is False:
+        return result
+    if not isinstance(result, dict) or "data" not in result:
+        message = _graphql_error_message(result) if isinstance(result, dict) else ""
+        return {"ok": False,
+                "error": message or "Unexpected response from GitHub GraphQL"}
+    if "errors" in result:
+        return {"ok": False,
+                "error": f"GraphQL error: {_graphql_error_message(result)}"}
+
+    repo_data = (result.get("data") or {}).get("repository") or {}
+    pr = repo_data.get("pullRequest") or {}
+    pr_id = pr.get("id")
+    if not pr_id:
+        return {"ok": False, "error": f"PR #{pr_number} not found"}
+
+    actors = ((repo_data.get("suggestedActors") or {}).get("nodes") or [])
+    bot_id = None
+    for actor in actors:
+        if not isinstance(actor, dict):
+            continue
+        if actor.get("__typename") != "Bot":
+            continue
+        if _is_copilot_login(actor.get("login", "")):
+            bot_id = actor.get("id")
+            break
+
+    if not bot_id:
+        return {"ok": False, "error": (
+            "Copilot is not available as a reviewer for this repository. "
+            "Enable Copilot code review in the repository settings.")}
+
+    return {"ok": True, "pr_id": pr_id, "bot_id": bot_id}
+
+
+def _request_reviews_via_graphql(pr_id: str, user_ids: list) -> dict:
+    """Run the ``requestReviews`` mutation and return the raw response."""
+    variables = {"pullRequestId": pr_id, "userIds": user_ids}
+    return _github_graphql_request(_REQUEST_REVIEWS_MUTATION, variables)
+
+
+def _copilot_in_review_requests(graphql_response: dict) -> bool:
+    """True when a ``requestReviews`` mutation response shows the
+    Copilot bot in the resulting ``reviewRequests`` connection.
+
+    The GraphQL mutation can return a partial response (no ``errors``,
+    but the reviewer was not actually added) under conditions like a
+    repo-level Copilot toggle being off, so we never trust the absence
+    of errors alone — we verify the bot appears in the post-mutation
+    reviewer list.
+    """
+    if not isinstance(graphql_response, dict):
+        return False
+    pr = (((graphql_response.get("data") or {}).get("requestReviews") or {})
+          .get("pullRequest") or {})
+    nodes = (pr.get("reviewRequests") or {}).get("nodes") or []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        reviewer = node.get("requestedReviewer") or {}
+        if isinstance(reviewer, dict) and _is_copilot_login(reviewer.get("login", "")):
             return True
     return False
-
-
-def _post_copilot_review_request(owner: str, repo: str, pr_number: int) -> dict:
-    """POST the Copilot reviewer request. Returns the raw response dict so
-    callers can check success via :func:`_copilot_is_requested` and handle
-    fallback/retry on actual failure."""
-    return _github_request(
-        "POST",
-        f"/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers",
-        {"reviewers": [COPILOT_REVIEWER_LOGIN]},
-    )
 
 
 def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     """Request a GitHub Copilot review on a pull request.
 
-    Copilot reviews are triggered by requesting a review from the 'copilot'
-    user via the standard ``requested_reviewers`` endpoint. If Copilot has
-    already reviewed the PR, the most recent dismissible review is dismissed
-    and the request is retried, making this call idempotent.
+    Uses the GraphQL ``requestReviews`` mutation — the same path the
+    GitHub UI uses. The REST ``POST /pulls/N/requested_reviewers``
+    endpoint silently no-ops when given the slug ``copilot``: it returns
+    2xx but does not actually add Copilot to ``requested_reviewers``,
+    because Copilot is a Bot account and must be referenced by its
+    GraphQL node ID rather than a string login. The GraphQL mutation
+    accepts the bot's ID directly and reports the post-mutation
+    reviewer list, eliminating the silent-no-op failure mode.
 
-    Verifies success by checking that the returned PR's
-    ``requested_reviewers`` array actually contains the bot — the GitHub
-    API silently drops unknown body fields and returns 2xx on no-op
-    requests, so a successful-looking status code alone cannot be trusted.
+    If Copilot has already reviewed the PR, the prior review is
+    dismissed and the request is retried, making this call idempotent.
+
+    Verifies success by checking that the bot appears in the
+    post-mutation ``reviewRequests`` connection — never trusts a
+    success-looking status code alone.
 
     Args:
         owner: Repository owner.
@@ -3599,38 +3719,53 @@ def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     Returns:
         dict with ok=True on success or ok=False with error details.
     """
-    result = _post_copilot_review_request(owner, repo, pr_number)
+    lookup = _lookup_copilot_review_targets(owner, repo, pr_number)
+    if not lookup.get("ok"):
+        return lookup
 
-    if _copilot_is_requested(result):
+    pr_id = lookup["pr_id"]
+    bot_id = lookup["bot_id"]
+
+    result = _request_reviews_via_graphql(pr_id, [bot_id])
+
+    if _copilot_in_review_requests(result):
         return {"ok": True}
 
-    # If the POST itself reported failure, try dismissing any existing
-    # Copilot review and retrying — Copilot rejects duplicate requests.
-    if isinstance(result, dict) and result.get("ok") is False:
+    error_message = _graphql_error_message(result) if isinstance(result, dict) else ""
+
+    # If the mutation reported "already reviewed" (or equivalent),
+    # dismiss the prior Copilot review and retry once.
+    if _is_already_reviewed_error(error_message):
         dismiss = _dismiss_copilot_review(owner, repo, pr_number)
         if not dismiss.get("ok"):
             return {"ok": False,
-                    "error": f"Review request failed: {result.get('error', '')}"}
-        retry = _post_copilot_review_request(owner, repo, pr_number)
-        if _copilot_is_requested(retry):
+                    "error": f"Review request failed: {error_message}"}
+        retry = _request_reviews_via_graphql(pr_id, [bot_id])
+        if _copilot_in_review_requests(retry):
             return {"ok": True}
-        if isinstance(retry, dict) and "ok" in retry:
-            return retry
-        return {
-            "ok": False,
-            "error": (
-                f"Retry did not add Copilot as a reviewer. Response: {retry}"),
-        }
+        retry_error = _graphql_error_message(retry) if isinstance(retry, dict) else ""
+        if retry_error:
+            return {"ok": False,
+                    "error": f"Retry did not add Copilot: {retry_error}"}
+        return {"ok": False,
+                "error": f"Retry did not add Copilot as a reviewer. Response: {retry}"}
 
-    # POST reported 2xx but the bot is not in requested_reviewers — something
-    # silently no-op'd the request. Surface this rather than claiming success.
+    if error_message:
+        return {"ok": False, "error": f"GraphQL error: {error_message}"}
+
+    if isinstance(result, dict) and result.get("ok") is False:
+        return result
+
+    # Mutation returned a 2xx-like shape with no errors, but the bot is
+    # not present in reviewRequests — the request silently no-op'd.
+    # Surface this rather than claiming success.
     return {
         "ok": False,
         "error": (
-            "Copilot was not added as a reviewer. The API returned a 2xx "
-            "response but the requested_reviewers array does not include "
-            f"'{COPILOT_REVIEWER_LOGIN}'. Check that the Copilot code review "
-            "feature is enabled for this repository."),
+            "Copilot was not added as a reviewer. The GraphQL mutation "
+            "returned no errors but the post-mutation reviewRequests does "
+            "not include the Copilot bot. Check that Copilot code review "
+            "is enabled for this repository."),
     }
 
 
@@ -3644,8 +3779,10 @@ def github_request_copilot_review(
 ) -> dict:
     """Request a GitHub Copilot automated code review on a pull request.
 
-    Copilot reviews are triggered by requesting a review from the 'copilot'
-    user via the GitHub API.
+    Uses the GraphQL ``requestReviews`` mutation — the same path the
+    GitHub UI uses. Copilot is a GitHub Bot account that must be
+    referenced by its GraphQL node ID; the REST ``requested_reviewers``
+    endpoint silently no-ops when given the slug ``copilot``.
 
     Args:
         pr_number: Pull request number. If omitted, the open PR for the
