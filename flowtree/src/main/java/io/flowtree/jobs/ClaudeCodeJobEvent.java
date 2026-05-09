@@ -95,6 +95,24 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
         return event;
     }
 
+    /**
+     * Creates a {@link Status#DEGRADED} event for a Claude Code job whose
+     * process exited cleanly but which left started work unfinished — most
+     * commonly an ar-test-runner run that the agent never polled to a
+     * terminal status before ending its turn.
+     *
+     * @param jobId        the job identifier
+     * @param description  human-readable description of the job
+     * @param errorMessage diagnostic detail describing what was abandoned
+     * @return a new event with {@link Status#DEGRADED} status and detail
+     */
+    public static ClaudeCodeJobEvent degraded(String jobId, String description,
+                                              String errorMessage) {
+        ClaudeCodeJobEvent event = new ClaudeCodeJobEvent(jobId, Status.DEGRADED, description);
+        event.setErrorMessage(errorMessage);
+        return event;
+    }
+
     // ==================== Builder-pattern setters ====================
 
     /**

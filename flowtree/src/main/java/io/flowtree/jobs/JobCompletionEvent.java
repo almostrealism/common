@@ -54,7 +54,15 @@ public class JobCompletionEvent {
         /** Job failed with an error */
         FAILED,
         /** Job was cancelled before completion */
-        CANCELLED
+        CANCELLED,
+        /**
+         * Job exited cleanly but the agent abandoned work it had started —
+         * for example, by invoking the test runner and ending its turn while
+         * the run was still in progress. Distinguished from SUCCESS so the
+         * developer can tell that the agent's session is incomplete and from
+         * FAILED so the agent's clean exit is not conflated with a crash.
+         */
+        DEGRADED
     }
 
     /** Unique identifier for the job that produced this event. */
@@ -123,6 +131,24 @@ public class JobCompletionEvent {
         JobCompletionEvent event = new JobCompletionEvent(jobId, Status.FAILED, description);
         event.errorMessage = errorMessage;
         event.exception = exception;
+        return event;
+    }
+
+    /**
+     * Creates a {@link Status#DEGRADED} event for a job whose process
+     * exited cleanly but which left work in an incomplete state — most
+     * commonly, a test run started via the ar-test-runner MCP that the
+     * agent never polled to completion.
+     *
+     * @param jobId        the job identifier
+     * @param description  human-readable description of the job
+     * @param errorMessage diagnostic detail describing what was abandoned
+     * @return a new event with {@link Status#DEGRADED} status
+     */
+    public static JobCompletionEvent degraded(String jobId, String description,
+                                              String errorMessage) {
+        JobCompletionEvent event = new JobCompletionEvent(jobId, Status.DEGRADED, description);
+        event.errorMessage = errorMessage;
         return event;
     }
 

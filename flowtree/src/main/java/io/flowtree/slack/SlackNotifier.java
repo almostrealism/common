@@ -950,6 +950,15 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 appendSessionMetrics(sb, event);
                 break;
 
+            case DEGRADED:
+                sb.append(":warning: *Work degraded* - agent abandoned in-flight work\n");
+                if (event.getErrorMessage() != null) {
+                    sb.append("   Detail: ").append(truncate(event.getErrorMessage(), 200)).append("\n");
+                }
+                sb.append("   Job ID: `").append(event.getJobId()).append("`\n");
+                appendSessionMetrics(sb, event);
+                break;
+
             default:
                 sb.append(":grey_question: Job status: ").append(event.getStatus());
         }

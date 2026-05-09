@@ -26,6 +26,8 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.Arrays;
+
 /**
  * Focused behavioural tests for
  * {@link MultiChannelDspFeatures#delayNetworkBlock} that each isolate one
@@ -127,8 +129,6 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		return new Harness(compiled, buffer, heads, channels, signalSize, bufSize);
 	}
 
-	private static double[] zeros(int n) { return new double[n]; }
-
 	private static double[] zeroFeedback(int channels) {
 		return new double[channels * channels];
 	}
@@ -151,7 +151,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		double[] state = h.readBuffer();
 		Assert.assertEquals(
 				"impulse must land at the buffer slot the kernel writes for sample 0; "
-						+ "buffer state=" + arrToString(state),
+						+ "buffer state=" + Arrays.toString(state),
 				1.0, state[0], EPS);
 	}
 
@@ -218,7 +218,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		boolean foundImpulse1 = false;
 		for (double v : afterPass1) if (Math.abs(v - 1.0) < EPS) { foundImpulse1 = true; break; }
 		Assert.assertTrue("after pass 1 buffer must hold the impulse somewhere; state="
-				+ arrToString(afterPass1), foundImpulse1);
+				+ Arrays.toString(afterPass1), foundImpulse1);
 
 		h.forward(new double[]{0.0, 0.0, 0.0, 0.0});
 		double[] afterPass2 = h.readBuffer();
@@ -226,7 +226,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		for (double v : afterPass2) if (Math.abs(v - 1.0) < EPS) { foundImpulse2 = true; break; }
 		Assert.assertTrue(
 				"after pass 2 buffer must STILL hold the impulse; state="
-						+ arrToString(afterPass2),
+						+ Arrays.toString(afterPass2),
 				foundImpulse2);
 	}
 
@@ -261,8 +261,8 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		// head_pass3 = 8 mod 8 = 0, so output[1] reads buffer[0] = impulse value.
 		Assert.assertEquals(
 				"pass 3 sample 1 must carry the impulse echo (delay=1, two passes "
-						+ "wrap); got pass2=" + arrToString(pass2)
-						+ ", pass3=" + arrToString(pass3),
+						+ "wrap); got pass2=" + Arrays.toString(pass2)
+						+ ", pass3=" + Arrays.toString(pass3),
 				1.0, pass3[1], EPS);
 	}
 
@@ -284,7 +284,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 
 		Assert.assertEquals(
 				"pass 2 output[0] must equal the impulse (delay==signalSize); "
-						+ "pass2=" + arrToString(pass2),
+						+ "pass2=" + Arrays.toString(pass2),
 				1.0, pass2[0], EPS);
 	}
 
@@ -413,7 +413,7 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 
 		Assert.assertEquals(
 				"after wrap, pass 3 sample 1 must read the impulse from buffer[0]; "
-						+ "pass3=" + arrToString(pass3),
+						+ "pass3=" + Arrays.toString(pass3),
 				1.0, pass3[1], EPS);
 	}
 
@@ -462,17 +462,5 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 				"at least one pass must observe a non-zero feedback echo; "
 						+ "max-observed=" + anyNonZeroEcho,
 				anyNonZeroEcho > EPS);
-	}
-
-	// ---------------------------------------------------------------------
-	// Helpers
-	// ---------------------------------------------------------------------
-	private static String arrToString(double[] a) {
-		StringBuilder sb = new StringBuilder("[");
-		for (int i = 0; i < a.length; i++) {
-			if (i > 0) sb.append(", ");
-			sb.append(String.format("%.3f", a[i]));
-		}
-		return sb.append("]").toString();
 	}
 }
