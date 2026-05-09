@@ -3620,7 +3620,8 @@ class TestWorkspaceSecretRenderFile(unittest.TestCase):
             self.assertEqual(result["output_path"], output)
             # File must exist and contain rendered values
             self.assertTrue(os.path.exists(output))
-            content = open(output).read()
+            with open(output) as fh:
+                content = fh.read()
             self.assertIn("AKIATEST", content)
             self.assertIn("SECRET123", content)
             # File must not be in the returned dict's values

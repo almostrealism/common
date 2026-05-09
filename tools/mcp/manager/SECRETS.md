@@ -3,9 +3,11 @@
 Workspace secrets let agents read credential files from the FlowTree controller
 host without those credentials ever appearing in agent output, prompts, PR
 descriptions, or logs.  The agent requests that a secret be **rendered into a
-file** at a path it supplies.  The controller reads the JSON payload from disk
-and writes the rendered file; the agent receives only a success/failure
-acknowledgement — never the credential values themselves.
+file** at a path it supplies.  The controller stores and serves the JSON
+payload; the ar-manager MCP server fetches that payload, substitutes it into
+the supplied template, and writes the rendered file on the host where
+ar-manager (and the agent) is running.  The agent receives only a
+success/failure acknowledgement — never the credential values themselves.
 
 ---
 
@@ -142,9 +144,10 @@ workspace_secret_render_file(
 ```
 
 **Strict placeholder matching**: every `{{key}}` in the template must exist as
-a key in the JSON payload, and every key in the payload must have at least one
-`{{key}}` reference in the template.  Unused keys and missing keys both cause
-an error — this prevents silent misconfiguration.
+a key in the JSON payload — a missing payload key causes an error and no file
+is written.  Extra keys present in the payload but not referenced by the
+template are silently ignored, so a single secret can carry more keys than any
+one template needs.
 
 ---
 
@@ -207,9 +210,11 @@ workspace_secret_render_file(
 
 ## Security properties
 
-- **Payloads stay on the controller host**: `workspace_secret_render_file` writes
-  the rendered file on the host where the FlowTree controller runs.  The agent
-  on that host can use the file without the values ever crossing the MCP channel.
+- **Payloads stay on the agent host**: `workspace_secret_render_file` writes
+  the rendered file on the host where the ar-manager MCP server runs (which
+  is also where the calling agent runs).  The values are fetched from the
+  controller over an authenticated channel and substituted into the template
+  inside ar-manager — they never cross the MCP channel back to the agent.
 - **Audit log**: every retrieve call logs `secret_access` with the secret name,
   workstream ID, job ID, and workspace ID — but never the payload values.
 - **Scope enforcement**: agents must hold a `read`-or-higher scope token and the

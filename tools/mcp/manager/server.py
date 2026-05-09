@@ -41,6 +41,7 @@ import logging
 import os
 import re
 import sys
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -323,6 +324,33 @@ def _validate_temp_token(token_value: str) -> Optional[tuple[list, str, str, str
     scopes = ["read", "write", "submit", "github", "memory-read", "memory-write"]
     label = f"tmp:{workstream_id}/{job_id}"
     return scopes, label, workstream_id, job_id
+
+
+def _mint_temp_token(workstream_id: str, job_id: str = "ar-manager",
+                     ttl_seconds: int = 60) -> Optional[str]:
+    """Mint an HMAC temporary token for an internal call to the controller.
+
+    The controller's workstream-scoped endpoints (e.g.
+    ``/api/secrets/{name}?workstream_id=...``) require a Bearer token in the
+    ``armt_tmp_`` family rather than the raw shared secret. ar-manager already
+    holds ``SHARED_SECRET`` (it uses it to validate inbound tokens), so it can
+    sign a short-lived temp token for the workstream and pass it through.
+
+    Returns ``None`` when ``SHARED_SECRET`` is unset.
+    """
+    if not SHARED_SECRET:
+        return None
+    expiry = int(time.time()) + ttl_seconds
+    payload = f"{workstream_id}:{job_id}:{expiry}"
+    digest = hmac.new(
+        SHARED_SECRET.encode("utf-8"),
+        payload.encode("utf-8"),
+        "sha256",
+    ).digest()
+    hmac_b64 = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    payload_b64 = base64.urlsafe_b64encode(
+        payload.encode("utf-8")).rstrip(b"=").decode("ascii")
+    return f"armt_tmp_{hmac_b64}:{payload_b64}"
 
 
 def _require_scope(scope: str) -> None:
@@ -4716,8 +4744,15 @@ def workspace_secret_list_names(
     if not SHARED_SECRET:
         return {"ok": False, "error": "Shared secret not configured on ar-manager"}
 
+    # The controller's workstream-scoped endpoints require a Bearer token in
+    # the armt_tmp_ family. SHARED_SECRET (admin) is rejected here, so mint a
+    # short-lived workstream token using the same shared secret.
+    temp_token = _mint_temp_token(workstream_id)
+    if temp_token is None:
+        return {"ok": False, "error": "Unable to mint workstream token"}
+
     path = f"/api/secrets?workstream_id={quote(workstream_id, safe='')}"
-    resp = _controller_get(path, auth_token=SHARED_SECRET)
+    resp = _controller_get(path, auth_token=temp_token)
     if resp.get("ok") is False:
         return {"ok": False, "error": resp.get("error", "controller error")}
     return {"ok": True, "names": resp.get("names", [])}
@@ -4787,10 +4822,37 @@ def workspace_secret_render_file(
     if not SHARED_SECRET:
         return {"ok": False, "error": "Shared secret not configured on ar-manager"}
 
+    # Validate mode before doing any I/O. int(s, 8) accepts negative numbers
+    # and silently parses values outside the POSIX permission range, so check
+    # the string shape and the resulting value explicitly.
+    if not isinstance(mode, str) or not mode:
+        return {"ok": False, "error": "mode must be a non-empty octal string"}
+    mode_str = mode[1:] if mode.startswith("0") and len(mode) > 1 else mode
+    if not mode_str or any(c not in "01234567" for c in mode_str):
+        return {
+            "ok": False,
+            "error": f"mode must be octal digits 0-7 (got {mode!r})",
+        }
+    try:
+        file_mode = int(mode, 8)
+    except ValueError:
+        return {"ok": False, "error": f"Invalid octal mode: {mode!r}"}
+    if file_mode < 0 or file_mode > 0o777:
+        return {
+            "ok": False,
+            "error": f"mode out of range — must be 0-0777 (got {mode!r})",
+        }
+
+    # The controller's retrieve endpoint requires a workstream-scoped temp
+    # token; the admin shared secret is rejected. Mint a short-lived token.
+    temp_token = _mint_temp_token(workstream_id)
+    if temp_token is None:
+        return {"ok": False, "error": "Unable to mint workstream token"}
+
     # Fetch secret payload from controller
     path = (f"/api/secrets/{quote(secret_name, safe='')}"
             f"?workstream_id={quote(workstream_id, safe='')}")
-    resp = _controller_get(path, auth_token=SHARED_SECRET)
+    resp = _controller_get(path, auth_token=temp_token)
     if resp.get("ok") is False:
         return {"ok": False, "error": resp.get("error", "controller error")}
 
@@ -4812,19 +4874,34 @@ def workspace_secret_render_file(
     for key in placeholders:
         rendered = rendered.replace(f"{{{{{key}}}}}", payload[key])
 
-    # Write file atomically — never log rendered content
+    # Atomic write: write the rendered content to a sibling temp file, fsync
+    # it, set its permissions, then os.replace() onto the destination. This
+    # avoids leaving a partial / empty credentials file on failure and avoids
+    # races where another reader could see the file mid-write.
     expanded = os.path.expanduser(output_path)
-    parent = os.path.dirname(expanded)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-    file_mode = int(mode, 8)
-    fd = os.open(expanded, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, file_mode)
+    parent = os.path.dirname(expanded) or "."
+    os.makedirs(parent, exist_ok=True)
+    rendered_bytes = rendered.encode("utf-8")
+    tmp_fd, tmp_path = tempfile.mkstemp(
+        prefix=os.path.basename(expanded) + ".",
+        suffix=".tmp",
+        dir=parent,
+    )
     try:
-        os.write(fd, rendered.encode("utf-8"))
-    finally:
-        os.close(fd)
-    # Explicitly set permissions (os.open mode may be masked by umask)
-    os.chmod(expanded, file_mode)
+        with os.fdopen(tmp_fd, "wb") as tmp_fh:
+            tmp_fh.write(rendered_bytes)
+            tmp_fh.flush()
+            os.fsync(tmp_fh.fileno())
+        os.chmod(tmp_path, file_mode)
+        os.replace(tmp_path, expanded)
+    except Exception:
+        # Clean up the orphan temp file on failure; never let it linger with
+        # rendered secret content on disk.
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
 
     audit_log.info(
         "tool=workspace_secret_render_file secret_name=%s workstream_id=%s "

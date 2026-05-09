@@ -17,6 +17,7 @@
 package io.flowtree.slack;
 
 import fi.iki.elonen.NanoHTTPD;
+import org.almostrealism.io.Console;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Before;
@@ -37,9 +38,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.logging.Handler;
-import java.util.logging.LogRecord;
-import java.util.logging.Logger;
+import java.util.function.Consumer;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -68,9 +67,11 @@ public class SecretsEndpointTest extends TestSuiteBase {
     private Path secretFile;
     private int port;
 
-    /** A simple log handler that captures audit log messages. */
+    /** Captures messages written to {@link Console#root()} so tests can
+     *  verify the audit log content. {@code SecretsRequestHandler} logs via
+     *  {@code ConsoleFeatures.log()} which routes through {@code Console.root()}. */
     private final List<String> auditMessages = new ArrayList<>();
-    private Handler auditHandler;
+    private Consumer<String> auditListener;
 
     @Before
     public void setUp() throws Exception {
@@ -86,17 +87,14 @@ public class SecretsEndpointTest extends TestSuiteBase {
             // Non-POSIX; skip permission setting on the test file
         }
 
-        // Capture audit log output
-        Logger logger = Logger.getLogger("ar-manager.audit");
-        auditHandler = new Handler() {
-            @Override
-            public void publish(LogRecord record) {
-                auditMessages.add(record.getMessage());
-            }
-            @Override public void flush() { }
-            @Override public void close() { }
+        // Capture audit log output. SecretsRequestHandler logs via
+        // ConsoleFeatures.log() which routes through Console.root().println().
+        // Listening on Console.root() captures every line written by the
+        // handler, including the SECRET_RETRIEVE audit lines.
+        auditListener = msg -> {
+            if (msg != null) auditMessages.add(msg);
         };
-        logger.addHandler(auditHandler);
+        Console.root().addListener(auditListener);
 
         // Build secrets cache
         WorkstreamConfig.WorkspaceSecretEntry entry = new WorkstreamConfig.WorkspaceSecretEntry();
@@ -130,7 +128,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
     public void tearDown() throws Exception {
         if (endpoint != null) endpoint.stop();
         if (secretsDir != null) deleteRecursively(secretsDir.toFile());
-        Logger.getLogger("ar-manager.audit").removeHandler(auditHandler);
+        if (auditListener != null) Console.root().removeListener(auditListener);
     }
 
     // ----------------------------------------------------------------
@@ -215,14 +213,27 @@ public class SecretsEndpointTest extends TestSuiteBase {
                 "/api/secrets/aws-prod?workstream_id=" + WORKSTREAM_A, token);
         assertEquals(200, conn.getResponseCode());
 
-        // The audit log (via ConsoleFeatures log()) checks the controller log lines.
-        // Verify the response body does not contain raw secret values.
+        // The retrieve handler logs SECRET_RETRIEVE through ConsoleFeatures.log(),
+        // which routes through Console.root() — captured by the listener installed
+        // in setUp(). Verify the audit line was captured and contains the expected
+        // identifying fields but no payload values.
         String body = readBody(conn);
         assertTrue("Response should contain payload", body.contains("\"payload\""));
+
+        boolean sawAuditLine = false;
         for (String msg : auditMessages) {
+            if (msg.contains("SECRET_RETRIEVE")) {
+                sawAuditLine = true;
+                assertTrue("Audit log line should mention secret name: " + msg,
+                        msg.contains("aws-prod"));
+                assertTrue("Audit log line should mention workstream: " + msg,
+                        msg.contains(WORKSTREAM_A));
+            }
             assertFalse("Audit log must not contain secret values: " + msg,
                     msg.contains("AKIATEST123") || msg.contains("SECTEST456"));
         }
+        assertTrue("Expected to capture a SECRET_RETRIEVE audit line; "
+                + "got " + auditMessages.size() + " message(s)", sawAuditLine);
     }
 
     // ----------------------------------------------------------------
@@ -292,14 +303,14 @@ public class SecretsEndpointTest extends TestSuiteBase {
         endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
         port = endpoint.getListeningPort();
 
-        String payload = "{\"token\":\"ghp_TEST_TOKEN\"}";
+        String payload = "{\"token\":\"FAKE_TOKEN_VALUE\"}";
         HttpURLConnection conn = openPut(
                 "/api/secrets/gh-token?workspace_id=" + WORKSPACE_A,
                 SHARED_SECRET, payload);
         assertEquals(200, conn.getResponseCode());
         assertTrue("File should be written", Files.exists(newFile));
         String written = Files.readString(newFile);
-        assertTrue(written.contains("ghp_TEST_TOKEN"));
+        assertTrue(written.contains("FAKE_TOKEN_VALUE"));
     }
 
     @Test(timeout = 10000)

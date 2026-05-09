@@ -1313,7 +1313,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             Map<String, String> bodyMap = new HashMap<>();
             session.parseBody(bodyMap);
             // POST bodies are stored inline under "postData"; PUT bodies are stored
-            // as a temp-file path under "content" (NanoHTTPD 2.3.1 behaviour).
+            // as a temp-file path under "content" — handle both shapes.
             if (bodyMap.containsKey("postData")) {
                 return bodyMap.get("postData");
             }
