@@ -139,9 +139,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * <p>Producer-typed parameters are sampled from channel 0's gene state.
 	 * The PDSL layer applies the same producer to every channel inside
 	 * {@code for each channel}, so this is necessarily an approximation of
-	 * the per-channel-distinct envelopes in {@code MixdownManager.createCells()};
-	 * the structural rendition discussion in {@code PDSL_AUDIO_DSP.md}
-	 * Section 11 describes this trade-off.</p>
+	 * the per-channel-distinct envelopes in {@code MixdownManager.createCells()}.</p>
 	 *
 	 * @param manager constructed mixdown manager (chromosomes already populated)
 	 * @param config  structural configuration (channels, signal size, sample rate, FIR order, wet level, delay)
