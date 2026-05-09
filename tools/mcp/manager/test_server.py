@@ -584,8 +584,7 @@ class TestAuthMiddlewareTokenContextLifecycle(unittest.TestCase):
         async def send(_msg):
             return None
 
-        asyncio.get_event_loop().run_until_complete(
-            middleware(scope, receive, send))
+        asyncio.run(middleware(scope, receive, send))
         # Static tokens carry no workstream binding; the middleware must
         # have cleared the leaked thread-local values.
         self.assertFalse(bool(captured.get("workstream_id")))
