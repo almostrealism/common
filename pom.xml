@@ -6,7 +6,7 @@
 
     <groupId>org.almostrealism</groupId>
     <artifactId>common</artifactId>
-    <version>0.73</version>
+    <version>0.74</version>
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
