@@ -232,21 +232,23 @@ public final class MidiPatternPersistence {
 
 		Track[] tracks = sequence.getTracks();
 		List<TrackedEvent> merged = new ArrayList<>();
+		long[] sequenceCounter = new long[]{0};
 		for (int trackIdx = 0; trackIdx < tracks.length; trackIdx++) {
 			Track track = tracks[trackIdx];
-			Map<Long, MidiEvent> pendingNotes = new HashMap<>();
+			Map<Long, PendingNote> pendingNotes = new HashMap<>();
 			for (int i = 0; i < track.size(); i++) {
 				MidiEvent midiEvent = track.get(i);
 				MidiMessage message = midiEvent.getMessage();
 				if (message instanceof ShortMessage) {
 					convertShortMessage(merged, pendingNotes, (ShortMessage) message,
-							midiEvent.getTick(), trackIdx);
+							midiEvent.getTick(), trackIdx, sequenceCounter);
 				} else if (message instanceof MetaMessage) {
-					convertMetaMessage(merged, (MetaMessage) message, midiEvent.getTick(), trackIdx);
+					convertMetaMessage(merged, (MetaMessage) message, midiEvent.getTick(), trackIdx,
+							sequenceCounter[0]++);
 				}
 			}
 		}
-		merged.sort(TrackedEvent::compareByTick);
+		merged.sort(TrackedEvent::compare);
 		for (TrackedEvent te : merged) pattern.addEvents(te.event);
 		return pattern.build();
 	}
@@ -263,7 +265,8 @@ public final class MidiPatternPersistence {
 	 * @param trackIdx     originating track index
 	 */
 	private static void convertShortMessage(List<TrackedEvent> out,
-			Map<Long, MidiEvent> pendingNotes, ShortMessage sm, long tick, int trackIdx) {
+			Map<Long, PendingNote> pendingNotes, ShortMessage sm, long tick, int trackIdx,
+			long[] sequenceCounter) {
 		int command = sm.getCommand();
 		int channel = sm.getChannel();
 		int data1 = sm.getData1();
@@ -272,7 +275,7 @@ public final class MidiPatternPersistence {
 			case ShortMessage.NOTE_ON:
 				if (data2 > 0) {
 					long key = ((long) trackIdx << 24) | ((long) channel << 16) | data1;
-					pendingNotes.put(key, new MidiEvent(sm, tick));
+					pendingNotes.put(key, new PendingNote(sm, tick, sequenceCounter[0]++));
 				} else {
 					closeNote(out, pendingNotes, trackIdx, channel, data1, tick);
 				}
@@ -281,14 +284,14 @@ public final class MidiPatternPersistence {
 				closeNote(out, pendingNotes, trackIdx, channel, data1, tick);
 				break;
 			case ShortMessage.CONTROL_CHANGE:
-				out.add(new TrackedEvent(tick, Audio.MidiEvent.newBuilder()
+				out.add(new TrackedEvent(tick, sequenceCounter[0]++, Audio.MidiEvent.newBuilder()
 						.setTick(tick).setTrack(trackIdx).setChannel(channel)
 						.setControlChange(Audio.ControlChangeEvent.newBuilder()
 								.setController(data1).setValue(data2))
 						.build()));
 				break;
 			case ShortMessage.PROGRAM_CHANGE:
-				out.add(new TrackedEvent(tick, Audio.MidiEvent.newBuilder()
+				out.add(new TrackedEvent(tick, sequenceCounter[0]++, Audio.MidiEvent.newBuilder()
 						.setTick(tick).setTrack(trackIdx).setChannel(channel)
 						.setProgramChange(Audio.ProgramChangeEvent.newBuilder()
 								.setProgram(data1))
@@ -296,7 +299,7 @@ public final class MidiPatternPersistence {
 				break;
 			case ShortMessage.PITCH_BEND:
 				int raw = (data2 << 7) | data1;
-				out.add(new TrackedEvent(tick, Audio.MidiEvent.newBuilder()
+				out.add(new TrackedEvent(tick, sequenceCounter[0]++, Audio.MidiEvent.newBuilder()
 						.setTick(tick).setTrack(trackIdx).setChannel(channel)
 						.setPitchBend(Audio.PitchBendEvent.newBuilder().setValue(raw - 8192))
 						.build()));
@@ -317,14 +320,14 @@ public final class MidiPatternPersistence {
 	 * @param pitch    note pitch (0-127)
 	 * @param offTick  absolute tick of the closing note-off
 	 */
-	private static void closeNote(List<TrackedEvent> out, Map<Long, MidiEvent> pending,
+	private static void closeNote(List<TrackedEvent> out, Map<Long, PendingNote> pending,
 			int trackIdx, int channel, int pitch, long offTick) {
 		long key = ((long) trackIdx << 24) | ((long) channel << 16) | pitch;
-		MidiEvent on = pending.remove(key);
+		PendingNote on = pending.remove(key);
 		if (on == null) return;
-		ShortMessage sm = (ShortMessage) on.getMessage();
-		long onTick = on.getTick();
-		out.add(new TrackedEvent(onTick, Audio.MidiEvent.newBuilder()
+		ShortMessage sm = on.message;
+		long onTick = on.tick;
+		out.add(new TrackedEvent(onTick, on.sequence, Audio.MidiEvent.newBuilder()
 				.setTick(onTick).setTrack(trackIdx).setChannel(channel)
 				.setNote(Audio.NoteEvent.newBuilder()
 						.setPitch(sm.getData1())
@@ -342,7 +345,8 @@ public final class MidiPatternPersistence {
 	 * @param tick     absolute tick of the message
 	 * @param trackIdx originating track index
 	 */
-	private static void convertMetaMessage(List<TrackedEvent> out, MetaMessage mm, long tick, int trackIdx) {
+	private static void convertMetaMessage(List<TrackedEvent> out, MetaMessage mm, long tick,
+			int trackIdx, long sequence) {
 		int type = mm.getType();
 		byte[] data = mm.getData();
 		switch (type) {
@@ -350,7 +354,7 @@ public final class MidiPatternPersistence {
 				if (data.length < 3) return;
 				int micros = ((data[0] & 0xff) << 16) | ((data[1] & 0xff) << 8) | (data[2] & 0xff);
 				int bpm = micros == 0 ? 0 : (int) Math.round(60_000_000.0 / micros);
-				out.add(new TrackedEvent(tick, Audio.MidiEvent.newBuilder()
+				out.add(new TrackedEvent(tick, sequence, Audio.MidiEvent.newBuilder()
 						.setTick(tick).setTrack(trackIdx)
 						.setSetTempo(Audio.SetTempoEvent.newBuilder().setBpm(bpm))
 						.build()));
@@ -360,7 +364,7 @@ public final class MidiPatternPersistence {
 				if (data.length < 4) return;
 				int numerator = data[0] & 0xff;
 				int denominator = 1 << (data[1] & 0xff);
-				out.add(new TrackedEvent(tick, Audio.MidiEvent.newBuilder()
+				out.add(new TrackedEvent(tick, sequence, Audio.MidiEvent.newBuilder()
 						.setTick(tick).setTrack(trackIdx)
 						.setTimeSignature(Audio.TimeSignatureEvent.newBuilder()
 								.setNumerator(numerator).setDenominator(denominator))
@@ -371,7 +375,7 @@ public final class MidiPatternPersistence {
 				if (data.length < 2) return;
 				int sf = (byte) data[0];
 				int mi = data[1] & 0xff;
-				out.add(new TrackedEvent(tick, Audio.MidiEvent.newBuilder()
+				out.add(new TrackedEvent(tick, sequence, Audio.MidiEvent.newBuilder()
 						.setTick(tick).setTrack(trackIdx)
 						.setKeySignature(Audio.KeySignatureEvent.newBuilder()
 								.setSharpsFlats(sf).setMode(mi))
@@ -582,35 +586,75 @@ public final class MidiPatternPersistence {
 	}
 
 	/**
-	 * Pair of (tick, proto-event) used while merging multi-track SMFs into a
-	 * single tick-ordered event stream.
+	 * Triple of (tick, sequence, proto-event) used while merging multi-track
+	 * SMFs into a single tick-ordered event stream.
+	 *
+	 * <p>The {@code sequence} is the original stream-insertion order of the
+	 * event. For NOTE events, this is the sequence of the NOTE_ON (not the
+	 * NOTE_OFF that closed it) — preserving the original ordering at tied
+	 * ticks so {@code SMF → MidiPattern → SMF} round-trips byte-for-byte.</p>
 	 */
 	private static final class TrackedEvent {
 		/** Absolute tick of the event. */
 		private final long tick;
+		/** Stream-insertion sequence number (NOTE_ON sequence for NOTE events). */
+		private final long sequence;
 		/** Proto event payload. */
 		private final Audio.MidiEvent event;
 
 		/**
 		 * Creates a tracked event.
 		 *
-		 * @param tick  absolute tick
-		 * @param event the proto event
+		 * @param tick     absolute tick
+		 * @param sequence stream-insertion sequence number
+		 * @param event    the proto event
 		 */
-		TrackedEvent(long tick, Audio.MidiEvent event) {
+		TrackedEvent(long tick, long sequence, Audio.MidiEvent event) {
 			this.tick = tick;
+			this.sequence = sequence;
 			this.event = event;
 		}
 
 		/**
-		 * Comparator helper for tick-ordering tracked events.
+		 * Comparator helper for tick-ordering tracked events. Ties on tick
+		 * are broken by stream-insertion sequence to preserve original
+		 * ordering at coincident ticks.
 		 *
 		 * @param a left side
 		 * @param b right side
 		 * @return negative / zero / positive per {@link Long#compare(long, long)}
 		 */
-		static int compareByTick(TrackedEvent a, TrackedEvent b) {
-			return Long.compare(a.tick, b.tick);
+		static int compare(TrackedEvent a, TrackedEvent b) {
+			int byTick = Long.compare(a.tick, b.tick);
+			if (byTick != 0) return byTick;
+			return Long.compare(a.sequence, b.sequence);
+		}
+	}
+
+	/**
+	 * Pending NOTE_ON awaiting a matching NOTE_OFF. Carries the original
+	 * stream-insertion sequence number so the resulting NOTE event keeps the
+	 * NOTE_ON's position in the merged event stream.
+	 */
+	private static final class PendingNote {
+		/** The NOTE_ON ShortMessage. */
+		private final ShortMessage message;
+		/** Absolute tick of the NOTE_ON. */
+		private final long tick;
+		/** Stream-insertion sequence number assigned to the NOTE_ON. */
+		private final long sequence;
+
+		/**
+		 * Creates a pending NOTE_ON.
+		 *
+		 * @param message  the NOTE_ON message
+		 * @param tick     absolute tick of the NOTE_ON
+		 * @param sequence stream-insertion sequence number of the NOTE_ON
+		 */
+		PendingNote(ShortMessage message, long tick, long sequence) {
+			this.message = message;
+			this.tick = tick;
+			this.sequence = sequence;
 		}
 	}
 }
