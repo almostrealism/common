@@ -308,16 +308,19 @@ message LayerRef {
 // ---- 5.4 Device type ---------------------------------------------------
 
 // Capture device class. Coarse on purpose — richer device tracking is
-// deferred (see §6.5 and §10). DEVICE_SOFTWARE covers software instruments
-// (AU hosts, other virtual instruments); the physical-mic values cover
+// deferred (see §6.5 and §10). SOFTWARE covers software instruments (AU
+// hosts, other virtual instruments); the physical-mic values cover
 // hardware capture. See §6.5 for why software is its own value rather
 // than a sub-flag of an existing one.
+//
+// Note: enum value names omit the redundant `DEVICE_` prefix — the
+// enum type is already named `DeviceType`.
 enum DeviceType {
-  DEVICE_UNSPECIFIED = 0;
-  DEVICE_SOFTWARE    = 1;
-  VOCAL_MIC          = 2;
-  INSTRUMENT_MIC     = 3;
-  ROOM_MIC           = 4;
+  UNSPECIFIED    = 0;
+  SOFTWARE       = 1;
+  VOCAL_MIC      = 2;
+  INSTRUMENT_MIC = 3;
+  ROOM_MIC       = 4;
 }
 
 // ---- 5.5 Transform info ------------------------------------------------
@@ -708,7 +711,7 @@ handling becomes more central in future use cases, this enum is promoted back
 to a message at that point. The risk of having to do this conversion later is
 small and worth taking now in favour of doing less.
 
-`DEVICE_SOFTWARE` is a peer of the physical-mic values rather than a
+`SOFTWARE` is a peer of the physical-mic values rather than a
 sub-flag on one of them. The first consumer (Rings 0.39 AU capture) and
 the broader near-term capture path are dominated by software AUs and
 other virtual instruments, not by physical microphones — `VOCAL_MIC`,
@@ -719,7 +722,7 @@ audio" with "what kind of microphone produced this audio." Sub-flagging
 it (e.g. a `software: bool` boolean alongside `INSTRUMENT_MIC`) would
 have the same effect: the consumer would have to read two fields to
 decide whether the layer is mic or software. A peer enum value is the
-straight expression. `DEVICE_SOFTWARE = 1` places it at the lowest
+straight expression. `SOFTWARE = 1` places it at the lowest
 non-unspecified value, ahead of the physical-mic values, reflecting its
 weight in the near-term producer mix.
 
@@ -762,7 +765,7 @@ If schema-revision branching becomes necessary, both fields are additive on
 | **A** (dry → echo → reverb)              | 3 | layers[0]=dry (buffer; lineage.kind=MICROPHONE_RECORDING or EXTERNAL_FILE depending on origin); layers[1]=echo (buffer; derived_from=[{dry}]; lineage.kind=TRANSFORM, transform_kind=ECHO); layers[2]=reverb (buffer; derived_from=[{echo}]; lineage.kind=TRANSFORM, transform_kind=REVERB). |
 | **B** (drum kit + room)                  | N+1 | each close-mic layer: buffer; lineage.kind=MICROPHONE_RECORDING; device_type=INSTRUMENT_MIC. Room layer: buffer with channel_count=2; lineage.kind=MICROPHONE_RECORDING; device_type=ROOM_MIC. Per-instrument labelling ("kick", "snare") is **deferred** — see §10. |
 | **C** (synth + FX)                       | 2 | synth: buffer; lineage.kind=SYNTHESIS. FX: buffer; derived_from=[{synth}]; lineage.kind=TRANSFORM, transform_kind=FX_BUS. **Gap (acknowledged):** synth-genome parameters and FX-chain parameters are not stored in 0.74. The relationship and producer kind are; the parameter state arrives when the second producer's state is wired up (see §6.3 and §10). |
-| **D** (AU sample + AU snapshot)          | 2 | layers[0] = MIDI source: `content.midi = MidiPattern { ticks_per_quarter, events: [...] }`, `device_type = DEVICE_SOFTWARE`, no `transform`, no `au_state`, no `derived_from`. layers[1] = audio rendering: `content.audio = WaveDetailData{…}`, `derived_from = [{layer_id of layers[0]}]`, `device_type = DEVICE_SOFTWARE`, `au_state = AudioUnitParameterState{component_description, parameters, optional preset_data}`, `created_at_millis` populated, no `transform`. The MIDI-source-plus-`au_state` pair signals an AU rendering without needing a `RENDER` enum value. This is the first-consumer path and is fully expressible. |
+| **D** (AU sample + AU snapshot)          | 2 | layers[0] = MIDI source: `content.midi = MidiPattern { ticks_per_quarter, events: [...] }`, `device_type = SOFTWARE`, no `transform`, no `au_state`, no `derived_from`. layers[1] = audio rendering: `content.audio = WaveDetailData{…}`, `derived_from = [{layer_id of layers[0]}]`, `device_type = SOFTWARE`, `au_state = AudioUnitParameterState{component_description, parameters, optional preset_data}`, `created_at_millis` populated, no `transform`. The MIDI-source-plus-`au_state` pair signals an AU rendering without needing a `RENDER` enum value. This is the first-consumer path and is fully expressible. |
 | **Compose** (D's plugin produced C's synth, with B's room mic alongside) | 1+N+1 | The "synth" layer has lineage.kind=AUDIO_UNIT (the AU plugin produced it) plus au_state. The mic layers stand alongside the synth as siblings in the same AudioLayerGroup with their own device_type. A non-derivation "synth_room_mic_for_layer" relationship would need a future LayerEdge mechanism — out of scope for 0.74. |
 
 Use cases A, B and D are fully expressible. Use case C stores the relationship
@@ -797,14 +800,14 @@ AudioLayerGroup {
                                                      duration_ticks = 480 } },
       ]
     }
-    device_type        = DEVICE_SOFTWARE
+    device_type        = SOFTWARE
     created_at_millis  = 1714000000000
   }
   layers[1] = AudioLayer {                        // AU rendering
     layer_id        = "audio-001"
     content.audio   = WaveDetailData { /* PCM, identifier=md5 of bytes */ }
     derived_from    = [ { layer_id = "midi-001" } ]
-    device_type     = DEVICE_SOFTWARE
+    device_type     = SOFTWARE
     au_state        = AudioUnitParameterState {
       component_description = "aumu,Alch,Appl,0001"
       parameters            = { /* AUParameterAddress -> float */ }
