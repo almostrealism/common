@@ -581,7 +581,7 @@ public class SlackListener implements ConsoleFeatures {
         // ar-manager config: generate temporary HMAC token for this job
         if (arManagerUrl != null && !arManagerUrl.isEmpty()
                 && arManagerSharedSecret != null && !arManagerSharedSecret.isEmpty()) {
-            String arToken = FlowTreeApiEndpoint.generateTemporaryToken(
+            String arToken = SecretsRequestHandler.generateTemporaryToken(
                 workstream.getWorkstreamId(), factory.getTaskId(),
                 arManagerSharedSecret, 43200);
             if (arToken != null) {

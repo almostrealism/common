@@ -24,6 +24,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -31,6 +32,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -67,7 +69,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
     private int port;
 
     /** A simple log handler that captures audit log messages. */
-    private final List<String> auditMessages = new java.util.ArrayList<>();
+    private final List<String> auditMessages = new ArrayList<>();
     private Handler auditHandler;
 
     @Before
@@ -158,7 +160,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
     @Test(timeout = 10000)
     public void testExpiredTokenReturns403() throws Exception {
         // Generate a token that expires in -1 seconds (already expired)
-        String token = FlowTreeApiEndpoint.generateTemporaryToken(
+        String token = SecretsRequestHandler.generateTemporaryToken(
                 WORKSTREAM_A, "job-001", SHARED_SECRET, -1L);
         HttpURLConnection conn = openGet(
                 "/api/secrets/aws-prod?workstream_id=" + WORKSTREAM_A, token);
@@ -216,8 +218,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         // The audit log (via ConsoleFeatures log()) checks the controller log lines.
         // Verify the response body does not contain raw secret values.
         String body = readBody(conn);
-        // Values should be in the payload field of the response (that is the expected behavior)
-        // but must not appear in the audit messages
+        assertTrue("Response should contain payload", body.contains("\"payload\""));
         for (String msg : auditMessages) {
             assertFalse("Audit log must not contain secret values: " + msg,
                     msg.contains("AKIATEST123") || msg.contains("SECTEST456"));
@@ -348,7 +349,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
     // ----------------------------------------------------------------
 
     private String generateToken(String workstreamId) {
-        return FlowTreeApiEndpoint.generateTemporaryToken(
+        return SecretsRequestHandler.generateTemporaryToken(
                 workstreamId, "job-test-001", SHARED_SECRET, 3600);
     }
 
@@ -392,7 +393,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
     }
 
     private static String readErrorBody(HttpURLConnection conn) throws IOException {
-        java.io.InputStream err = conn.getErrorStream();
+        InputStream err = conn.getErrorStream();
         if (err != null) {
             return new String(err.readAllBytes(), StandardCharsets.UTF_8);
         }

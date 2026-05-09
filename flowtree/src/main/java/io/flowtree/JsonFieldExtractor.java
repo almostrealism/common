@@ -467,6 +467,23 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
+	 * Escapes a string for safe inclusion in a JSON string literal,
+	 * replacing backslash, double-quote, and common whitespace control
+	 * characters.
+	 *
+	 * @param s the string to escape, or {@code null}
+	 * @return  the escaped string, or an empty string if {@code s} is {@code null}
+	 */
+	public static String escapeJson(String s) {
+		if (s == null) return "";
+		return s.replace("\\", "\\\\")
+				.replace("\"", "\\\"")
+				.replace("\n", "\\n")
+				.replace("\r", "\\r")
+				.replace("\t", "\\t");
+	}
+
+	/**
 	 * Extracts a numeric string from the beginning of the input.
 	 *
 	 * @param rest         the string to extract from (already trimmed after the colon)
