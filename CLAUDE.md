@@ -355,6 +355,34 @@ Never add dependencies. Write code assuming the dependency exists, run `mvn comp
 
 Never include specific version numbers in any file. Versions change constantly. Refer to pom.xml as the source of truth.
 
+## CRITICAL: Verify Changes Against Relevant Tests Before Declaring Done
+
+The full project test suite takes hours — do NOT run it. For every code file you modified
+or created, identify the tests that directly exercise it and run THOSE before declaring done.
+
+**Concrete heuristic:**
+1. For each modified Java file `Foo.java`, look for `FooTest.java`, `FooTests.java`, or
+   `FooIT.java` in the same module's `src/test/java` and run them.
+2. Look for any tests in the same package that import the file you changed and run those too.
+3. If you split or moved classes, the original tests still apply to the split pieces —
+   find them and run them.
+4. For Python changes in `tools/`, run the corresponding pytest module
+   (e.g., `python -m pytest tools/mcp/manager/test_server.py`).
+5. Use the MCP test runner with `test_classes` to run a specific class quickly.
+   Use the full module run only when you've touched many files in one module.
+
+```
+mcp__ar-test-runner__start_test_run module:"<module>" test_classes:["FooTest"]
+```
+
+Do NOT use `-DskipTests` to declare a refactor or bug fix complete. `-DskipTests` is
+appropriate only for the initial compile-check pass; you MUST run the relevant tests
+before declaring work complete.
+
+If a test fails, fix the underlying cause. Do NOT add `@Disabled`, comment out assertions,
+or weaken tests to make them green — those are deception patterns that will be detected
+and reverted.
+
 ## Validate Code Quality Before Completing Any Task
 
 Before declaring a task done, run the build validator to catch style and policy violations
