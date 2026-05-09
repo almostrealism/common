@@ -998,4 +998,72 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		PostCompletionCommandRule rule = new PostCompletionCommandRule("true", null);
 		assertEquals("post-completion-command", rule.getName());
 	}
+
+	/**
+	 * Disabling the post-completion command on a factory must clear the corresponding
+	 * properties from the wire format. Otherwise the factory appears disabled locally
+	 * but re-enables silently after a serialize/deserialize round-trip because
+	 * {@code AbstractJobFactory.encode()} serializes every non-null property.
+	 */
+	@Test(timeout = 30000)
+	public void factoryPostCompletionCommandClearedFromWireFormatOnDisable() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		factory.setPostCompletionCommand("mvn test");
+		factory.setPostCompletionWorkingDir("/tmp/work");
+		factory.setPostCompletionTimeoutSeconds(600);
+
+		factory.setPostCompletionCommand(null);
+
+		String encoded = factory.encode();
+		assertFalse("postCmd must be absent after disable", encoded.contains("postCmd:="));
+		assertFalse("postCmdDir must be absent after disable", encoded.contains("postCmdDir:="));
+		assertFalse("postCmdTimeout must be absent after disable",
+				encoded.contains("postCmdTimeout:="));
+
+		assertNull(factory.getPostCompletionCommand());
+		assertNull(factory.getPostCompletionWorkingDir());
+		assertEquals(PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS,
+				factory.getPostCompletionTimeoutSeconds());
+	}
+
+	/**
+	 * Setting the post-completion working directory back to {@code null} must clear
+	 * the {@code postCmdDir} property so it does not survive a serialize/deserialize
+	 * round-trip.
+	 */
+	@Test(timeout = 30000)
+	public void factoryPostCompletionWorkingDirClearedOnNull() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		factory.setPostCompletionCommand("mvn test");
+		factory.setPostCompletionWorkingDir("/tmp/work");
+
+		factory.setPostCompletionWorkingDir(null);
+
+		String encoded = factory.encode();
+		assertFalse("postCmdDir must be absent after null reset",
+				encoded.contains("postCmdDir:="));
+		assertNull(factory.getPostCompletionWorkingDir());
+	}
+
+	/**
+	 * A post-completion command that produces more output than the OS pipe buffer
+	 * must not deadlock: with the previous implementation that read stdout only after
+	 * {@code waitFor}, the child blocked on write once the pipe filled (typically
+	 * 64 KiB) and the wall-clock timeout fired even though the work completed.
+	 * Output is now redirected to a temp file, so the child can drain freely.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionLargeOutputDoesNotDeadlock() {
+		// 200 KiB of output — well past the typical 64 KiB pipe buffer.
+		String cmd = "yes x | head -c 200000";
+		PostCompletionCommandRule rule = new PostCompletionCommandRule(cmd, null, 20);
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		assertFalse("Large-output command must complete without timeout",
+				rule.isViolated(job));
+		assertEquals(0, rule.getLastExitCode());
+		assertFalse("Should not be reported as timed out", rule.wasLastRunTimedOut());
+		assertNotNull(rule.getLastOutput());
+		assertTrue("Captured output should be non-empty",
+				rule.getLastOutput().length() > 0);
+	}
 }

@@ -670,12 +670,23 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     /**
      * Sets the post-completion command for jobs created by this factory.
      *
+     * <p>When the command is cleared (set to {@code null} or empty), the
+     * dependent {@code postCmdDir} and {@code postCmdTimeout} property keys
+     * are also cleared so that a serialize/deserialize round-trip cannot
+     * silently re-enable the feature with stale dependent values.</p>
+     *
      * @param postCompletionCommand the shell command, or {@code null}/empty to disable
      */
     public void setPostCompletionCommand(String postCompletionCommand) {
         this.postCompletionCommand = postCompletionCommand;
         if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
             set("postCmd", GitManagedJob.base64Encode(postCompletionCommand));
+        } else {
+            set("postCmd", null);
+            set("postCmdDir", null);
+            set("postCmdTimeout", null);
+            this.postCompletionWorkingDir = null;
+            this.postCompletionTimeoutSeconds = PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS;
         }
     }
 
@@ -691,12 +702,18 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     /**
      * Sets the working directory for the post-completion command.
      *
+     * <p>Passing {@code null} clears the corresponding {@code postCmdDir}
+     * property key so that a serialize/deserialize round-trip does not
+     * silently re-apply a previously-set working directory.</p>
+     *
      * @param postCompletionWorkingDir the path, or {@code null} for the job's working dir
      */
     public void setPostCompletionWorkingDir(String postCompletionWorkingDir) {
         this.postCompletionWorkingDir = postCompletionWorkingDir;
         if (postCompletionWorkingDir != null) {
             set("postCmdDir", GitManagedJob.base64Encode(postCompletionWorkingDir));
+        } else {
+            set("postCmdDir", null);
         }
     }
 
@@ -1003,7 +1020,9 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
                 this.postCompletionWorkingDir = GitManagedJob.base64Decode(value);
                 return;
             case "postCmdTimeout":
-                this.postCompletionTimeoutSeconds = Integer.parseInt(value);
+                this.postCompletionTimeoutSeconds = (value == null)
+                        ? PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS
+                        : Integer.parseInt(value);
                 return;
             default:
                 // Unknown key; already stored in properties map by AbstractJobFactory.set().

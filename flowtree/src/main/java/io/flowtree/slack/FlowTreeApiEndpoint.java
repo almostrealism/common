@@ -828,7 +828,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      *
      * <p>Workstream resolution: explicit {@code workstreamId} in body takes priority, then
      * {@code targetBranch} match, then the URL path parameter. Supports optional per-job
-     * overrides for {@code model}, {@code effort}, {@code maxTurns}, and {@code maxBudgetUsd}.</p>
+     * overrides for {@code model}, {@code effort}, {@code maxTurns}, {@code maxBudgetUsd},
+     * {@code postCompletionCommand}, {@code postCompletionWorkingDir}, and
+     * {@code postCompletionTimeoutSeconds}.</p>
      *
      * @param session          the HTTP session
      * @param pathWorkstreamId the workstream identifier from the URL path (fallback)

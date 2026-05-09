@@ -18,7 +18,9 @@ package io.flowtree.jobs;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -210,16 +212,25 @@ class PostCompletionCommandRule implements EnforcementRule {
      * stores the result in the cached fields for use by {@link #isViolated} and
      * {@link #buildCorrectionPrompt}.
      *
+     * <p>Output is redirected to a temporary file rather than read from the process
+     * pipe after exit. Reading the pipe only after {@code waitFor} returns can
+     * deadlock when the command emits more output than fits in the OS pipe buffer:
+     * the child blocks on write, never exits, and the wall-clock timeout fires
+     * even though the work was effectively complete.</p>
+     *
      * @param job the job providing the fallback working directory
      */
     private void runCommand(ClaudeCodeJob job) {
         String effectiveWorkingDir = workingDir != null ? workingDir : job.getWorkingDirectory();
+        File outputFile = null;
         try {
+            outputFile = File.createTempFile("post-completion-", ".log");
             ProcessBuilder pb = new ProcessBuilder("sh", "-c", command);
             if (effectiveWorkingDir != null) {
                 pb.directory(new File(effectiveWorkingDir));
             }
             pb.redirectErrorStream(true);
+            pb.redirectOutput(outputFile);
             GitOperations.augmentPath(pb);
 
             Process process = pb.start();
@@ -230,11 +241,10 @@ class PostCompletionCommandRule implements EnforcementRule {
                 process.destroyForcibly();
                 lastTimedOut = true;
                 lastExitCode = 1;
-                lastOutput = "";
+                lastOutput = readOutputFile(outputFile);
             } else {
                 lastExitCode = process.exitValue();
-                lastOutput = new String(
-                        process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                lastOutput = readOutputFile(outputFile);
             }
         } catch (IOException e) {
             lastTimedOut = false;
@@ -247,6 +257,40 @@ class PostCompletionCommandRule implements EnforcementRule {
             lastOutput = "Command interrupted: " + e.getMessage();
         } finally {
             cacheValid = true;
+            if (outputFile != null && outputFile.exists()) {
+                // Best-effort cleanup; failure to delete is non-fatal because the
+                // temp directory is purged by the OS on a regular schedule.
+                outputFile.delete();
+            }
+        }
+    }
+
+    /**
+     * Reads the contents of the redirected output file, capping the read at
+     * {@link #MAX_OUTPUT_CHARS} bytes from the end so that a runaway command
+     * that emits megabytes of output cannot exhaust the agent's heap. The
+     * char-based truncation applied by {@link #truncateOutput} runs afterwards;
+     * this byte-level cap exists purely to bound the read.
+     *
+     * @param file the redirected output file
+     * @return the (possibly tail-only) file contents, or an error message if
+     *         the file cannot be read
+     */
+    private static String readOutputFile(File file) {
+        try {
+            long size = file.length();
+            if (size <= MAX_OUTPUT_CHARS) {
+                return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+            }
+            try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+                long start = size - MAX_OUTPUT_CHARS;
+                raf.seek(start);
+                byte[] buf = new byte[MAX_OUTPUT_CHARS];
+                raf.readFully(buf);
+                return new String(buf, StandardCharsets.UTF_8);
+            }
+        } catch (IOException e) {
+            return "Failed to read command output: " + e.getMessage();
         }
     }
 
