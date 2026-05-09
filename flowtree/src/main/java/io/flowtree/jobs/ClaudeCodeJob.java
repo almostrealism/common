@@ -49,27 +49,6 @@ import java.util.concurrent.TimeUnit;
  * Claude Code completes its work. Set a target branch via {@link #setTargetBranch(String)}
  * to enable automatic git management.</p>
  *
- * <h2>Usage</h2>
- * <pre>{@code
- * // Simple job without git management
- * ClaudeCodeJob job = new ClaudeCodeJob(taskId, "Fix the bug in auth.py");
- * job.run();
- *
- * // Job with git management
- * ClaudeCodeJob job = new ClaudeCodeJob(taskId, "Fix the bug in auth.py");
- * job.setTargetBranch("feature/fix-auth-bug");
- * job.run();  // Changes will be committed and pushed
- *
- * // Via factory (for Flowtree integration)
- * ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(
- *     "Review and improve error handling",
- *     "Add unit tests for the new feature"
- * );
- * factory.setAllowedTools("Read,Edit,Bash,Glob,Grep");
- * factory.setTargetBranch("feature/improvements");
- * server.sendTask(factory);
- * }</pre>
- *
  * @author Michael Murray
  * @see GitManagedJob
  * @see ClaudeCodeJobFactory
@@ -159,20 +138,20 @@ public class ClaudeCodeJob extends GitManagedJob {
      */
     private String deduplicationMode;
 
-    /**
-     * When {@code true}, the Maven dependency protection rule is active.
-     * Any {@code <dependency>} additions, removals, or changes in {@code pom.xml}
-     * files detected against the base branch trigger a correction loop that
-     * instructs the agent to revert those changes.
-     */
+    /** When {@code true}, pom.xml {@code <dependency>} changes trigger a correction loop. */
     private boolean enforceMavenDependencies;
 
-    /**
-     * When {@code true} (the default), the organizational placement rule is active.
-     * After the agent's primary work, a correction session prompts the agent to review
-     * whether new files are placed at the appropriate level of the module hierarchy.
-     */
+    /** When {@code true} (the default), new files are reviewed for correct module placement. */
     private boolean enforceOrganizationalPlacement = true;
+
+    /** Shell command run after the agent completes; non-empty activates {@link PostCompletionCommandRule}. */
+    private String postCompletionCommand;
+
+    /** Working directory for {@link #postCompletionCommand}; {@code null} uses the job's working directory. */
+    private String postCompletionWorkingDir;
+
+    /** Timeout in seconds for {@link #postCompletionCommand}; defaults to {@link PostCompletionCommandRule#DEFAULT_TIMEOUT_SECONDS}. */
+    private int postCompletionTimeoutSeconds = PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS;
 
     /**
      * Additional enforcement rules registered via {@link #addEnforcementRule(EnforcementRule)}.
@@ -591,6 +570,24 @@ public class ClaudeCodeJob extends GitManagedJob {
         this.enforceOrganizationalPlacement = enforceOrganizationalPlacement;
     }
 
+    /** Returns the post-completion command; non-empty activates {@link PostCompletionCommandRule}. */
+    public String getPostCompletionCommand() { return postCompletionCommand; }
+
+    /** Sets the post-completion command; non-empty activates {@link PostCompletionCommandRule}. */
+    public void setPostCompletionCommand(String postCompletionCommand) { this.postCompletionCommand = postCompletionCommand; }
+
+    /** Returns the working directory for the post-completion command; {@code null} uses the job's working directory. */
+    public String getPostCompletionWorkingDir() { return postCompletionWorkingDir; }
+
+    /** Sets the working directory for the post-completion command; {@code null} uses the job's working directory. */
+    public void setPostCompletionWorkingDir(String postCompletionWorkingDir) { this.postCompletionWorkingDir = postCompletionWorkingDir; }
+
+    /** Returns the post-completion command timeout in seconds; defaults to {@link PostCompletionCommandRule#DEFAULT_TIMEOUT_SECONDS}. */
+    public int getPostCompletionTimeoutSeconds() { return postCompletionTimeoutSeconds; }
+
+    /** Sets the post-completion command timeout in seconds. */
+    public void setPostCompletionTimeoutSeconds(int postCompletionTimeoutSeconds) { this.postCompletionTimeoutSeconds = postCompletionTimeoutSeconds; }
+
     /**
      * Registers an additional enforcement rule to run after the agent completes
      * its primary work.
@@ -718,6 +715,12 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
         if (enforceOrganizationalPlacement) {
             rules.add(new OrganizationalPlacementRule());
+        }
+        if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
+            rules.add(new PostCompletionCommandRule(
+                    postCompletionCommand,
+                    postCompletionWorkingDir,
+                    postCompletionTimeoutSeconds));
         }
         if (enforceMavenDependencies) {
             rules.add(new MavenDependencyProtectionRule());
@@ -1030,16 +1033,8 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Checks whether the agent's changes modify {@code <dependency>} entries
+     * Returns {@code true} if the agent's changes modify {@code <dependency>} entries
      * in any {@code pom.xml} files when compared against the base branch.
-     *
-     * <p>Detects added or removed lines containing {@code <dependency>} in
-     * the diff of {@code pom.xml} files against {@code origin/<baseBranch>}.
-     * Changes to other {@code pom.xml} content (plugin configuration, properties,
-     * etc.) are not flagged.</p>
-     *
-     * @return {@code true} if any {@code <dependency>} additions or removals
-     *         were detected
      */
     boolean hasMavenDependencyChanges() {
         String workDir = getWorkingDirectory();
@@ -1245,23 +1240,13 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
     }
 
-    /**
-     * Returns new Java method names introduced since the base branch.
-     * Delegates to {@link GitOperations#extractNewMethodNames}.
-     *
-     * @return deduplicated list of new method names, order-preserving
-     */
+    /** Returns new Java method names introduced since the base branch. */
     List<String> extractNewMethodNames() {
         String base = getBaseBranch() != null ? getBaseBranch() : "master";
         return GitOperations.extractNewMethodNames(getWorkingDirectory(), base, this::warn);
     }
 
-    /**
-     * Returns the paths of files that are new on the branch since the base branch.
-     * Delegates to {@link GitOperations#extractNewFilePaths}.
-     *
-     * @return deduplicated list of new file paths, relative to the working directory
-     */
+    /** Returns paths of files that are new on the branch since the base branch. */
     List<String> extractNewFilePaths() {
         String base = getBaseBranch() != null ? getBaseBranch() : "master";
         return GitOperations.extractNewFilePaths(getWorkingDirectory(), base, this::warn);
@@ -1331,10 +1316,6 @@ public class ClaudeCodeJob extends GitManagedJob {
     /**
      * Extracts the controller base URL (scheme + host + port) from a workstream URL.
      *
-     * <p>Workstream URLs follow the pattern
-     * {@code http://host:port/api/workstreams/{id}/jobs/{jobId}}.
-     * This method returns everything before {@code /api/workstreams/}.</p>
-     *
      * @param workstreamUrl the full workstream URL
      * @return the controller base URL, or {@code null} if the URL cannot be parsed
      */
@@ -1346,10 +1327,6 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /**
      * Extracts the workstream identifier from a workstream URL.
-     *
-     * <p>Workstream URLs follow the pattern
-     * {@code http://host:port/api/workstreams/{id}/jobs/{jobId}}.
-     * This method returns the {@code {id}} segment.</p>
      *
      * @param workstreamUrl the full workstream URL
      * @return the workstream ID, or {@code null} if the URL cannot be parsed
@@ -1515,6 +1492,15 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (!enforceOrganizationalPlacement) {
             sb.append("::enforceOrgPlacement:=false");
         }
+        if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
+            sb.append("::postCmd:=").append(base64Encode(postCompletionCommand));
+            if (postCompletionWorkingDir != null) {
+                sb.append("::postCmdDir:=").append(base64Encode(postCompletionWorkingDir));
+            }
+            if (postCompletionTimeoutSeconds != PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS) {
+                sb.append("::postCmdTimeout:=").append(postCompletionTimeoutSeconds);
+            }
+        }
         return sb.toString();
     }
 
@@ -1562,6 +1548,15 @@ public class ClaudeCodeJob extends GitManagedJob {
                 break;
             case "enforceOrgPlacement":
                 this.enforceOrganizationalPlacement = Boolean.parseBoolean(value);
+                break;
+            case "postCmd":
+                this.postCompletionCommand = base64Decode(value);
+                break;
+            case "postCmdDir":
+                this.postCompletionWorkingDir = base64Decode(value);
+                break;
+            case "postCmdTimeout":
+                this.postCompletionTimeoutSeconds = Integer.parseInt(value);
                 break;
             default:
                 // Delegate to parent for git-related properties

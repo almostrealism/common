@@ -360,6 +360,57 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertIn("Invalid model", result["error"])
         self.assertIn("sonnet-4-6", result["error"])
 
+    @patch.object(server, "_controller_post")
+    def test_submit_post_completion_command_included_in_payload(self, mock_post):
+        """post_completion_command is forwarded to the controller payload."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-pcc"}
+        server.workstream_submit_task(
+            prompt="Task",
+            post_completion_command="mvn -pl flowtree test -Dtest=FooTest",
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(
+            payload["postCompletionCommand"],
+            "mvn -pl flowtree test -Dtest=FooTest",
+        )
+
+    @patch.object(server, "_controller_post")
+    def test_submit_post_completion_command_omitted_by_default(self, mock_post):
+        """post_completion_command must not appear in the payload when not set."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-pcc-default"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("postCompletionCommand", payload)
+        self.assertNotIn("postCompletionTimeoutSeconds", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_post_completion_timeout_included_when_set(self, mock_post):
+        """A non-zero post_completion_timeout_seconds is forwarded."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-pct"}
+        server.workstream_submit_task(
+            prompt="Task",
+            post_completion_command="make test",
+            post_completion_timeout_seconds=600,
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["postCompletionTimeoutSeconds"], 600)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_post_completion_timeout_omitted_when_zero(self, mock_post):
+        """Timeout=0 (the default) must not appear in the payload."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-pct-zero"}
+        server.workstream_submit_task(
+            prompt="Task",
+            post_completion_command="make test",
+            post_completion_timeout_seconds=0,
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("postCompletionTimeoutSeconds", payload)
+
 
 class TestWorkstreamSubmitSelfCollision(unittest.TestCase):
     """workstream_submit_task must not let an agent submit work to its

@@ -1315,6 +1315,8 @@ def workstream_submit_task(
     deduplication_mode: str = "",
     model: str = "",
     effort: str = "",
+    post_completion_command: str = "",
+    post_completion_timeout_seconds: int = 0,
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -1360,12 +1362,34 @@ def workstream_submit_task(
             of ``"low"``, ``"medium"``, ``"high"``, ``"xhigh"``, ``"max"``.
             Empty string falls back to the workstream default, which in turn
             falls back to the CLI default.
+        post_completion_command: Shell command run after the agent declares its
+            work done. If the command exits non-zero, the agent receives a
+            correction session showing the output and is asked to fix the
+            failure. The loop continues until the command exits zero or max
+            retries is exhausted. Examples:
+
+            - Run a single test class:
+              ``"mvn -pl flowtree test -Dtest=NotifierRegistryTest"``
+            - Run a pytest file:
+              ``"cd tools/mcp/manager && pytest tests/test_secrets.py"``
+            - Run a custom script: ``"bash scripts/verify-foo.sh"``
+
+            The command runs on the agent's host with the agent's privileges.
+            It is NOT sandboxed — treat it like any other trusted instruction.
+            Empty string (default) disables the feature.
+        post_completion_timeout_seconds: Maximum seconds to wait for the
+            post-completion command before killing it and treating the run as a
+            failure. 0 (default) uses the server-side default of 1800 seconds
+            (30 minutes).
 
     Returns:
         Dictionary with job_id and workstream_id on success.
     """
     _require_scope("submit")
     err = _check_length(prompt, "prompt", MAX_PROMPT_LEN)
+    if err:
+        return err
+    err = _check_length(post_completion_command, "post_completion_command", MAX_PROMPT_LEN)
     if err:
         return err
     err = _check_short_strings(
@@ -1475,6 +1499,10 @@ def workstream_submit_task(
         payload["model"] = model
     if effort:
         payload["effort"] = effort
+    if post_completion_command:
+        payload["postCompletionCommand"] = post_completion_command
+    if post_completion_timeout_seconds > 0:
+        payload["postCompletionTimeoutSeconds"] = post_completion_timeout_seconds
 
     result = _controller_post("/api/submit", payload)
 

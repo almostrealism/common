@@ -824,39 +824,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Handles {@code POST /api/workstreams/{id}/submit} for programmatic
-     * job submission from external systems (e.g., GitHub Actions).
+     * Handles {@code POST /api/workstreams/{id}/submit} for programmatic job submission.
      *
-     * <p>Request body:</p>
-     * <pre>{@code
-     * {
-     *   "prompt": "Post a comment on PR #42...",
-     *   "targetBranch": "feature/pipeline-agents",
-     *   "baseBranch": "master",
-     *   "workstreamId": "ws-rings",
-     *   "maxTurns": 30,
-     *   "maxBudgetUsd": 5.0,
-     *   "model": "sonnet",
-     *   "effort": "high"
-     * }
-     * }</pre>
-     *
-     * <p>Both {@code model} and {@code effort} are optional per-job overrides
-     * of the workstream defaults.  The effective value is the request override
-     * when present, otherwise the workstream default, otherwise the CLI
-     * default.  Invalid {@code effort} values produce a 400 response.</p>
-     *
-     * <p><b>Workstream resolution order:</b></p>
-     * <ol>
-     *   <li>If the request body contains a {@code workstreamId} field, use that workstream</li>
-     *   <li>If the request body contains a {@code targetBranch}, search all registered
-     *       workstreams for one whose {@code defaultBranch} matches exactly</li>
-     *   <li>Fall back to the workstream identified by the URL path parameter</li>
-     * </ol>
-     *
-     * <p>This allows pipeline jobs to automatically inherit the context (env vars,
-     * MCP tools, allowed tools, budget) of an active workstream when one is
-     * configured for the target branch.</p>
+     * <p>Workstream resolution: explicit {@code workstreamId} in body takes priority, then
+     * {@code targetBranch} match, then the URL path parameter. Supports optional per-job
+     * overrides for {@code model}, {@code effort}, {@code maxTurns}, and {@code maxBudgetUsd}.</p>
      *
      * @param session          the HTTP session
      * @param pathWorkstreamId the workstream identifier from the URL path (fallback)
@@ -1005,6 +977,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         boolean autoCreatePr = extractJsonBooleanField(body, "autoCreatePr");
         String requestModel = extractJsonField(body, "model");
         String requestEffort = extractJsonField(body, "effort");
+        String postCompletionCommand = extractJsonField(body, "postCompletionCommand");
+        String postCompletionWorkingDir = extractJsonField(body, "postCompletionWorkingDir");
+        int postCompletionTimeoutSeconds = extractJsonIntField(body, "postCompletionTimeoutSeconds");
 
         // Create job factory with workstream defaults, overridden by request values
         ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompt);
@@ -1086,6 +1061,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Deduplication mode (local inline session or spawn follow-up job)
         if (deduplicationMode != null && !deduplicationMode.isEmpty()) {
             factory.setDeduplicationMode(deduplicationMode);
+        }
+
+        // Post-completion command: verification check that must exit zero before the job is done
+        if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
+            factory.setPostCompletionCommand(postCompletionCommand);
+            if (postCompletionWorkingDir != null && !postCompletionWorkingDir.isEmpty()) {
+                factory.setPostCompletionWorkingDir(postCompletionWorkingDir);
+            }
+            if (postCompletionTimeoutSeconds > 0) {
+                factory.setPostCompletionTimeoutSeconds(postCompletionTimeoutSeconds);
+            }
         }
 
         // Required labels for Node routing (e.g., {"platform": "macos"}).

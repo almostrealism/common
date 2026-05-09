@@ -107,6 +107,25 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     private boolean enforceOrganizationalPlacement = true;
 
     /**
+     * Shell command run after the agent's primary work to verify the result.
+     * Propagated to jobs via {@link ClaudeCodeJob#setPostCompletionCommand(String)}.
+     * Empty or {@code null} disables the post-completion check.
+     */
+    private String postCompletionCommand;
+
+    /**
+     * Working directory for the post-completion command.
+     * {@code null} means the job's working directory is used.
+     */
+    private String postCompletionWorkingDir;
+
+    /**
+     * Timeout in seconds for the post-completion command.
+     * Defaults to {@link PostCompletionCommandRule#DEFAULT_TIMEOUT_SECONDS}.
+     */
+    private int postCompletionTimeoutSeconds = PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS;
+
+    /**
      * Default constructor for deserialization.
      */
     public ClaudeCodeJobFactory() {
@@ -636,6 +655,71 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     }
 
     /**
+     * Returns the post-completion command for jobs created by this factory.
+     *
+     * <p>When non-empty, the command is run after the agent's primary work.
+     * A non-zero exit triggers a correction session. See
+     * {@link ClaudeCodeJob#getPostCompletionCommand()} for examples.</p>
+     *
+     * @return the command string, or {@code null}/empty if disabled
+     */
+    public String getPostCompletionCommand() {
+        return postCompletionCommand;
+    }
+
+    /**
+     * Sets the post-completion command for jobs created by this factory.
+     *
+     * @param postCompletionCommand the shell command, or {@code null}/empty to disable
+     */
+    public void setPostCompletionCommand(String postCompletionCommand) {
+        this.postCompletionCommand = postCompletionCommand;
+        if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
+            set("postCmd", GitManagedJob.base64Encode(postCompletionCommand));
+        }
+    }
+
+    /**
+     * Returns the working directory for the post-completion command.
+     *
+     * @return the directory path, or {@code null} to use the job's working directory
+     */
+    public String getPostCompletionWorkingDir() {
+        return postCompletionWorkingDir;
+    }
+
+    /**
+     * Sets the working directory for the post-completion command.
+     *
+     * @param postCompletionWorkingDir the path, or {@code null} for the job's working dir
+     */
+    public void setPostCompletionWorkingDir(String postCompletionWorkingDir) {
+        this.postCompletionWorkingDir = postCompletionWorkingDir;
+        if (postCompletionWorkingDir != null) {
+            set("postCmdDir", GitManagedJob.base64Encode(postCompletionWorkingDir));
+        }
+    }
+
+    /**
+     * Returns the timeout in seconds for the post-completion command.
+     *
+     * @return timeout seconds; defaults to {@link PostCompletionCommandRule#DEFAULT_TIMEOUT_SECONDS}
+     */
+    public int getPostCompletionTimeoutSeconds() {
+        return postCompletionTimeoutSeconds;
+    }
+
+    /**
+     * Sets the timeout in seconds for the post-completion command.
+     *
+     * @param postCompletionTimeoutSeconds timeout in seconds (must be positive)
+     */
+    public void setPostCompletionTimeoutSeconds(int postCompletionTimeoutSeconds) {
+        this.postCompletionTimeoutSeconds = postCompletionTimeoutSeconds;
+        set("postCmdTimeout", String.valueOf(postCompletionTimeoutSeconds));
+    }
+
+    /**
      * Returns whether a pull request should be automatically created
      * upon successful job completion.
      */
@@ -792,6 +876,15 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         job.setDeduplicationMode(deduplicationMode);
         job.setEnforceMavenDependencies(enforceMavenDependencies);
         job.setEnforceOrganizationalPlacement(enforceOrganizationalPlacement);
+        if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
+            job.setPostCompletionCommand(postCompletionCommand);
+            if (postCompletionWorkingDir != null) {
+                job.setPostCompletionWorkingDir(postCompletionWorkingDir);
+            }
+            if (postCompletionTimeoutSeconds != PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS) {
+                job.setPostCompletionTimeoutSeconds(postCompletionTimeoutSeconds);
+            }
+        }
 
         String pyReqs = getPythonRequirements();
         if (pyReqs != null) {
@@ -902,6 +995,15 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
                 return;
             case "enforceOrgPlacement":
                 this.enforceOrganizationalPlacement = Boolean.parseBoolean(value);
+                return;
+            case "postCmd":
+                this.postCompletionCommand = GitManagedJob.base64Decode(value);
+                return;
+            case "postCmdDir":
+                this.postCompletionWorkingDir = GitManagedJob.base64Decode(value);
+                return;
+            case "postCmdTimeout":
+                this.postCompletionTimeoutSeconds = Integer.parseInt(value);
                 return;
             default:
                 // Unknown key; already stored in properties map by AbstractJobFactory.set().

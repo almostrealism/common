@@ -19,12 +19,15 @@ package io.flowtree.jobs;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+
+import static org.junit.Assert.assertNull;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -675,5 +678,324 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		// 5-retries-per-rule × 4 built-in rules a healthy job could reach
 		// once, and roughly 160× below the observed pathological case.
 		assertEquals(25, ClaudeCodeJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS);
+	}
+
+	// ── PostCompletionCommandRule — unit tests ───────────────────────────────
+
+	/**
+	 * A rule wrapping a successful command (exit 0) must not be violated.
+	 * No correction session should be triggered.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionSuccessfulCommandNotViolated() {
+		PostCompletionCommandRule rule = new PostCompletionCommandRule("true", null);
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		assertFalse("exit 0 command should not be violated", rule.isViolated(job));
+		assertEquals(0, rule.getLastExitCode());
+		assertFalse(rule.wasLastRunTimedOut());
+	}
+
+	/**
+	 * A rule wrapping a failing command (exit 1) must be violated, and the
+	 * correction prompt must include the command and the exit code.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionFailingCommandIsViolated() {
+		PostCompletionCommandRule rule = new PostCompletionCommandRule("false", null);
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		assertTrue("exit 1 command should be violated", rule.isViolated(job));
+		assertFalse(rule.wasLastRunTimedOut());
+		String prompt = rule.buildCorrectionPrompt(job);
+		assertTrue("Correction prompt must mention the command",
+				prompt.contains("false"));
+		assertTrue("Correction prompt must mention exit code",
+				prompt.contains("exit") || prompt.contains("code"));
+	}
+
+	/**
+	 * A timed-out command must be treated as a failure.
+	 * The correction prompt must clearly indicate a timeout occurred.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionTimeoutTreatedAsFailure() {
+		// 1-second timeout, command that sleeps longer than that
+		PostCompletionCommandRule rule = new PostCompletionCommandRule("sleep 60", null, 1);
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		assertTrue("timed-out command should be violated", rule.isViolated(job));
+		assertTrue("should be recorded as timed out", rule.wasLastRunTimedOut());
+		String prompt = rule.buildCorrectionPrompt(job);
+		assertTrue("Correction prompt must mention timeout", prompt.toLowerCase().contains("timeout")
+				|| prompt.toLowerCase().contains("timed out"));
+	}
+
+	/**
+	 * After {@link PostCompletionCommandRule#onCorrectionAttempted}, the next
+	 * {@link PostCompletionCommandRule#isViolated} call must re-run the command.
+	 * This test uses a shell command that succeeds on the second invocation by
+	 * relying on a counter written to a temp file.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionRuleExitsLoopAfterSuccessfulCorrection() throws Exception {
+		// Use a temp file as a call counter: first call writes "1", second call succeeds.
+		File counter = File.createTempFile("pcr_test_", ".txt");
+		counter.deleteOnExit();
+		String cmd = "if [ -f " + counter.getAbsolutePath() + " ] && "
+				+ "[ \"$(cat " + counter.getAbsolutePath() + ")\" = \"done\" ]; "
+				+ "then exit 0; else echo done > " + counter.getAbsolutePath() + "; exit 1; fi";
+
+		PostCompletionCommandRule rule = new PostCompletionCommandRule(cmd, null);
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+
+		// First call: exits 1 (file did not contain "done" yet)
+		assertTrue("First call should be violated", rule.isViolated(job));
+
+		// onCorrectionAttempted: invalidates the cache so next isViolated re-runs
+		rule.onCorrectionAttempted(job);
+
+		// Second call: exits 0 (file now contains "done")
+		assertFalse("Second call should not be violated", rule.isViolated(job));
+	}
+
+	/**
+	 * The output of a failing command is captured and included (possibly truncated)
+	 * in the correction prompt.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionOutputCapturedInCorrectionPrompt() {
+		PostCompletionCommandRule rule = new PostCompletionCommandRule(
+				"echo 'BUILD FAILED'; exit 1", null);
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		assertTrue(rule.isViolated(job));
+		assertTrue("Output should be captured",
+				rule.getLastOutput().contains("BUILD FAILED"));
+		String prompt = rule.buildCorrectionPrompt(job);
+		assertTrue("Correction prompt should include captured output",
+				prompt.contains("BUILD FAILED"));
+	}
+
+	/**
+	 * Output longer than {@link PostCompletionCommandRule#MAX_OUTPUT_CHARS} is
+	 * truncated to the tail so the correction prompt stays bounded.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionOutputTruncatedToLimit() {
+		// Produce output larger than MAX_OUTPUT_CHARS
+		String line = "x".repeat(100) + "\n";
+		int repetitions = PostCompletionCommandRule.MAX_OUTPUT_CHARS / 100 + 20;
+		String bigOutput = line.repeat(repetitions);
+		String truncated = PostCompletionCommandRule.truncateOutput(bigOutput);
+		assertTrue("Truncated output should be within limit",
+				truncated.length() <= PostCompletionCommandRule.MAX_OUTPUT_CHARS + 100);
+		assertTrue("Truncated output should indicate truncation",
+				truncated.contains("truncated"));
+	}
+
+	/**
+	 * Short output (under the limit) is returned unchanged by
+	 * {@link PostCompletionCommandRule#truncateOutput}.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionShortOutputNotTruncated() {
+		String output = "BUILD SUCCESS\n";
+		assertEquals(output, PostCompletionCommandRule.truncateOutput(output));
+	}
+
+	/**
+	 * An always-failing post-completion command eventually hits the max-retries cap
+	 * inside the enforcement loop.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionNeverSatisfiedHitsMaxRetries() {
+		AtomicInteger correctionCalls = new AtomicInteger();
+		PostCompletionCommandRule rule = new PostCompletionCommandRule("false", null);
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test") {
+			@Override
+			protected void runCorrectionSession(String correctionPrompt, String activity) {
+				correctionCalls.incrementAndGet();
+			}
+		};
+
+		// Disable built-in rules so only the post-completion rule fires.
+		job.setEnforceOrganizationalPlacement(false);
+		job.addEnforcementRule(rule);
+
+		job.runEnforcementRules();
+
+		int attempts = correctionCalls.get();
+		assertTrue("Expected at least 1 correction attempt, got " + attempts, attempts >= 1);
+		assertTrue("Expected at most max total attempts, got " + attempts,
+				attempts <= ClaudeCodeJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS);
+	}
+
+	// ── PostCompletionCommandRule — ClaudeCodeJob integration ────────────────
+
+	/**
+	 * When no post-completion command is set, no PostCompletionCommandRule is
+	 * added to the active rule list. This ensures the feature is purely additive.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionRuleNotActiveWhenCommandEmpty() {
+		AtomicInteger correctionCalls = new AtomicInteger();
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test") {
+			@Override
+			protected void runCorrectionSession(String correctionPrompt, String activity) {
+				correctionCalls.incrementAndGet();
+			}
+		};
+		// No postCompletionCommand set; disable org placement to avoid noise
+		job.setEnforceOrganizationalPlacement(false);
+		job.runEnforcementRules();
+		assertEquals("No correction sessions should fire without a command", 0, correctionCalls.get());
+	}
+
+	/**
+	 * When a post-completion command is set on a job, the getter returns it
+	 * and it participates in the active rule list.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionCommandGetterSetterRoundTrip() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		assertNull(job.getPostCompletionCommand());
+		job.setPostCompletionCommand("mvn -pl flowtree test -Dtest=Foo");
+		assertEquals("mvn -pl flowtree test -Dtest=Foo", job.getPostCompletionCommand());
+		job.setPostCompletionCommand(null);
+		assertNull(job.getPostCompletionCommand());
+	}
+
+	// ── PostCompletionCommandRule — serialisation ─────────────────────────────
+
+	/**
+	 * A non-empty post-completion command round-trips through encode/set
+	 * (the wire format used for job serialization).
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionCommandRoundTripThroughEncodeDecode() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		job.setPostCompletionCommand("mvn -pl flowtree test -Dtest=FooTest");
+		String encoded = job.encode();
+		assertNotNull(encoded);
+		assertTrue("Wire format must contain postCmd", encoded.contains("postCmd:="));
+
+		ClaudeCodeJob restored = new ClaudeCodeJob();
+		for (String part : encoded.split("::")) {
+			int sep = part.indexOf(":=");
+			if (sep > 0) {
+				restored.set(part.substring(0, sep), part.substring(sep + 2));
+			}
+		}
+		assertEquals("mvn -pl flowtree test -Dtest=FooTest", restored.getPostCompletionCommand());
+	}
+
+	/**
+	 * When no post-completion command is set, the wire format must not contain
+	 * the {@code postCmd} key.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionCommandAbsentFromWireFormatWhenEmpty() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		String encoded = job.encode();
+		assertFalse("postCmd must not appear in wire format when unset",
+				encoded.contains("postCmd"));
+	}
+
+	/**
+	 * A non-default timeout round-trips through encode/set.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionTimeoutRoundTripThroughEncodeDecode() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		job.setPostCompletionCommand("make test");
+		job.setPostCompletionTimeoutSeconds(300);
+		String encoded = job.encode();
+		assertTrue("Wire format must contain postCmdTimeout", encoded.contains("postCmdTimeout:=300"));
+
+		ClaudeCodeJob restored = new ClaudeCodeJob();
+		for (String part : encoded.split("::")) {
+			int sep = part.indexOf(":=");
+			if (sep > 0) {
+				restored.set(part.substring(0, sep), part.substring(sep + 2));
+			}
+		}
+		assertEquals(300, restored.getPostCompletionTimeoutSeconds());
+	}
+
+	/**
+	 * The default timeout (1800 s) is NOT written to the wire format to keep it compact.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionDefaultTimeoutAbsentFromWireFormat() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		job.setPostCompletionCommand("make test");
+		// Default timeout — should not appear in wire format
+		String encoded = job.encode();
+		assertFalse("Default timeout must not appear in wire format",
+				encoded.contains("postCmdTimeout"));
+	}
+
+	// ── PostCompletionCommandRule — factory propagation ──────────────────────
+
+	/**
+	 * A post-completion command set on the factory propagates to jobs created
+	 * by {@link ClaudeCodeJobFactory#nextJob()}.
+	 */
+	@Test(timeout = 30000)
+	public void factoryPostCompletionCommandPropagatesToJob() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do something");
+		factory.setPostCompletionCommand("mvn -pl flowtree test -Dtest=FooTest");
+		ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+		assertNotNull(job);
+		assertEquals("mvn -pl flowtree test -Dtest=FooTest", job.getPostCompletionCommand());
+	}
+
+	/**
+	 * When no post-completion command is set on the factory, the job's command is null.
+	 */
+	@Test(timeout = 30000)
+	public void factoryNoPostCompletionCommandJobHasNoCommand() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do something");
+		ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+		assertNotNull(job);
+		assertNull(job.getPostCompletionCommand());
+	}
+
+	/**
+	 * A factory with a post-completion command round-trips through the
+	 * {@code set()} deserialization path.
+	 */
+	@Test(timeout = 30000)
+	public void factoryPostCompletionCommandRoundTripViaSet() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		factory.setPostCompletionCommand("bash scripts/verify.sh");
+		assertEquals("bash scripts/verify.sh", factory.getPostCompletionCommand());
+
+		// Simulate wire deserialisation
+		ClaudeCodeJobFactory restored = new ClaudeCodeJobFactory("prompt");
+		restored.set("postCmd",
+				GitManagedJob.base64Encode("bash scripts/verify.sh"));
+		assertEquals("bash scripts/verify.sh", restored.getPostCompletionCommand());
+	}
+
+	/**
+	 * A non-default timeout set on the factory propagates to the created job.
+	 */
+	@Test(timeout = 30000)
+	public void factoryPostCompletionTimeoutPropagatesToJob() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do something");
+		factory.setPostCompletionCommand("mvn test");
+		factory.setPostCompletionTimeoutSeconds(600);
+		ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+		assertNotNull(job);
+		assertEquals(600, job.getPostCompletionTimeoutSeconds());
+	}
+
+	/**
+	 * {@link PostCompletionCommandRule#getName()} must return
+	 * {@code "post-completion-command"} so enforcement logs and activity tags
+	 * identify the rule correctly.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionRuleNameIsCorrect() {
+		PostCompletionCommandRule rule = new PostCompletionCommandRule("true", null);
+		assertEquals("post-completion-command", rule.getName());
 	}
 }
