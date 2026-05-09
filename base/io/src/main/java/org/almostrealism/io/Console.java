@@ -244,6 +244,20 @@ public class Console {
 	}
 
 	/**
+	 * Removes a previously {@linkplain #addListener registered} listener so
+	 * that it no longer receives output. Tests in particular should call this
+	 * in their teardown to avoid leaking listeners across the global
+	 * {@link #root() root} console.
+	 *
+	 * @param listener the listener to remove
+	 * @return this console for method chaining
+	 */
+	public Console removeListener(Consumer<String> listener) {
+		listeners.remove(listener);
+		return this;
+	}
+
+	/**
 	 * Adds a filter that can modify or suppress output before it is displayed.
 	 * Filters returning null will suppress the output entirely.
 	 *

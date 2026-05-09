@@ -151,6 +151,51 @@ important tools are declared in the function signature (not hidden in the body).
 
 ---
 
+## Security Rules for Workspace Secrets
+
+When any tool in this codebase (currently `workspace_secret_render_file`,
+`workspace_secret_list_names`) handles credential data, the following rules apply
+**without exception**.  They exist because a single accidental echo of a secret
+into an agent response, a log line, or a PR description permanently compromises
+that credential.
+
+### NEVER read the rendered file back into context
+
+After calling `workspace_secret_render_file`, the agent MUST NOT:
+- Read the rendered file with any tool (`Read`, `Bash cat`, etc.)
+- Echo or print its contents in any response
+- Pass its path to a tool that returns file contents
+
+The rendered file is an ephemeral on-disk resource for the process that follows.
+Treat it as write-only from the agent's perspective.
+
+### NEVER include secret values in commits, logs, or PR descriptions
+
+Secret values must never appear in:
+- Commit messages or commit diffs (`git show`, `git diff`)
+- PR titles, descriptions, or review comments
+- Log output from `Bash`, test runners, or any tool
+- Agent responses, reasoning text, or tool call arguments
+
+If you are about to write something that contains a value from a secret payload
+— stop.  Replace it with a placeholder like `<REDACTED>` in any context that
+persists beyond the current tool call.
+
+### NEVER return payload values from controller helpers
+
+Any Python helper that fetches a `/api/secrets/{name}` response MUST pass the
+`payload` only into the template renderer — never into a return value that
+crosses the MCP channel back to the caller.
+
+### Audit log expectations
+
+Every `workspace_secret_render_file` call writes a `secret_access` audit line
+via `_audit()`.  The audit line MUST include workstream ID, secret name, and job
+ID, but MUST NOT include any key/value from the payload.  Verify this when adding
+new code paths that touch secret payloads.
+
+---
+
 ## Server Directory Map
 
 | Directory | Server name | Tool registration pattern |

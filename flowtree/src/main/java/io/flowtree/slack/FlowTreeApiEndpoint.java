@@ -39,7 +39,6 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -47,8 +46,6 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.crypto.Mac;
-import javax.crypto.spec.SecretKeySpec;
 
 /**
  * HTTP API endpoint for FlowTree orchestration.
@@ -151,6 +148,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /** Handles all {@code /api/github/proxy} requests and GitHub PR creation. */
     private final GitHubProxyHandler githubProxyHandler;
 
+    /** Handles all {@code /api/secrets/*} endpoint requests and token generation. */
+    private final SecretsRequestHandler secretsHandler;
+
     /** Handles all {@code /api/stats} requests. */
     private StatsQueryHandler statsQueryHandler;
 
@@ -205,6 +205,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         super(port);
         this.notifiers = new NotifierRegistry(primaryNotifier, notifiersByWorkspace);
         this.githubProxyHandler = new GitHubProxyHandler(githubOrgTokens);
+        this.secretsHandler = new SecretsRequestHandler(notifiers);
     }
 
     /**
@@ -290,6 +291,28 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     public void setStatsStore(JobStatsStore statsStore) {
         this.statsQueryHandler = new StatsQueryHandler(statsStore);
+    }
+
+    /**
+     * Sets the shared secret used to validate HMAC temporary tokens.
+     *
+     * <p>When set, the secrets retrieve endpoint validates inbound workstream HMAC
+     * tokens. The secret also serves as the admin token for management endpoints.</p>
+     *
+     * @param sharedSecret the shared secret string
+     */
+    public void setSharedSecret(String sharedSecret) {
+        secretsHandler.setSharedSecret(sharedSecret);
+    }
+
+    /**
+     * Sets the in-memory secrets index used by the {@code /api/secrets/*} endpoints.
+     *
+     * @param cache workspace-ID → (secret-name → entry) map
+     */
+    public void setSecretsCache(
+            Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> cache) {
+        secretsHandler.setSecretsCache(cache);
     }
 
     /**
@@ -404,6 +427,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (Method.GET.equals(method) && uri.startsWith("/api/tools/")) {
             String toolName = uri.substring("/api/tools/".length());
             return handleToolDownload(toolName);
+        }
+
+        if (uri.startsWith("/api/secrets") && (Method.GET.equals(method)
+                || Method.PUT.equals(method) || Method.DELETE.equals(method))) {
+            return secretsHandler.handle(session, method, uri, this::readBody, this::errorResponse);
         }
 
         return newFixedLengthResponse(Response.Status.NOT_FOUND,
@@ -663,7 +691,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
             StringBuilder json = new StringBuilder();
             json.append("{\"ok\":true,\"existing\":true");
-            json.append(",\"workstreamId\":\"").append(escapeJson(existing.getWorkstreamId())).append("\"");
+            json.append(",\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(existing.getWorkstreamId())).append("\"");
             json.append("}");
 
             return newFixedLengthResponse(Response.Status.OK,
@@ -731,12 +759,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         StringBuilder json = new StringBuilder();
         json.append("{\"ok\":true");
-        json.append(",\"workstreamId\":\"").append(escapeJson(workstream.getWorkstreamId())).append("\"");
+        json.append(",\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(workstream.getWorkstreamId())).append("\"");
         if (channelId != null) {
-            json.append(",\"channelId\":\"").append(escapeJson(channelId)).append("\"");
+            json.append(",\"channelId\":\"").append(JsonFieldExtractor.escapeJson(channelId)).append("\"");
         }
         if (channelName != null) {
-            json.append(",\"channelName\":\"").append(escapeJson(channelName)).append("\"");
+            json.append(",\"channelName\":\"").append(JsonFieldExtractor.escapeJson(channelName)).append("\"");
         }
         json.append("}");
 
@@ -820,7 +848,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         log("Updated workstream via API: " + workstreamId);
 
         return newFixedLengthResponse(Response.Status.OK,
-                "application/json", "{\"ok\":true,\"workstreamId\":\"" + escapeJson(workstreamId) + "\"}");
+                "application/json", "{\"ok\":true,\"workstreamId\":\"" + JsonFieldExtractor.escapeJson(workstreamId) + "\"}");
     }
 
     /**
@@ -1119,8 +1147,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Generate temporary ar-manager auth token
         String sharedSecret = FlowTreeController.loadSharedSecret();
         if (sharedSecret != null && !sharedSecret.isEmpty() && arManagerUrl != null) {
-            String arToken = generateTemporaryToken(
-                workstreamId, factory.getTaskId(), sharedSecret, 43200); // 12 hours
+            String arToken = SecretsRequestHandler.generateTemporaryToken(
+                workstreamId, factory.getTaskId(), sharedSecret, 43200);
             if (arToken != null) {
                 factory.setArManagerUrl(arManagerUrl);
                 factory.setArManagerToken(arToken);
@@ -1284,7 +1312,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         try {
             Map<String, String> bodyMap = new HashMap<>();
             session.parseBody(bodyMap);
-            return bodyMap.get("postData");
+            // POST bodies are stored inline under "postData"; PUT bodies are stored
+            // as a temp-file path under "content" — handle both shapes.
+            if (bodyMap.containsKey("postData")) {
+                return bodyMap.get("postData");
+            }
+            String contentFile = bodyMap.get("content");
+            if (contentFile != null && !contentFile.isEmpty()) {
+                return Files.readString(Path.of(contentFile), StandardCharsets.UTF_8);
+            }
+            return null;
         } catch (IOException | ResponseException e) {
             warn("Error reading body: " + e.getMessage());
             return null;
@@ -1312,7 +1349,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * Creates an error response with the specified message.
      */
     private Response errorResponse(String message) {
-        String json = "{\"ok\":false,\"error\":\"" + escapeJson(message) + "\"}";
+        String json = "{\"ok\":false,\"error\":\"" + JsonFieldExtractor.escapeJson(message) + "\"}";
         return newFixedLengthResponse(Response.Status.BAD_REQUEST,
                 "application/json", json);
     }
@@ -1367,58 +1404,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Generates an HMAC-based temporary token for ar-manager authentication.
-     *
-     * <p>The token format is {@code armt_tmp_{base64url(hmac)}:{base64url(payload)}}
-     * where the payload contains the workstream ID, job ID, and expiry timestamp
-     * separated by colons. The HMAC is computed using SHA-256 with the shared secret.</p>
-     *
-     * @param workstreamId the workstream identifier
-     * @param jobId        the job identifier
-     * @param sharedSecret the shared secret (from AR_MANAGER_SHARED_SECRET env var)
-     * @param ttlSeconds   token time-to-live in seconds
-     * @return the token string, or null if the shared secret is not configured
-     */
-    public static String generateTemporaryToken(String workstreamId, String jobId,
-                                                 String sharedSecret, long ttlSeconds) {
-        if (sharedSecret == null || sharedSecret.isEmpty()) return null;
-
-        long expiry = System.currentTimeMillis() / 1000 + ttlSeconds;
-        String payload = workstreamId + ":" + jobId + ":" + expiry;
-
-        try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(
-                sharedSecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-            byte[] hmacBytes = mac.doFinal(
-                payload.getBytes(StandardCharsets.UTF_8));
-
-            String hmacB64 = Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(hmacBytes);
-            String payloadB64 = Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(payload.getBytes(StandardCharsets.UTF_8));
-
-            return "armt_tmp_" + hmacB64 + ":" + payloadB64;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * Escapes a string for safe inclusion in a JSON string literal.
-     *
-     * @param s  the string to escape, or {@code null}
-     * @return   the escaped string, or an empty string if {@code s} is {@code null}
-     */
-    private static String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
-    }
-
-    /**
      * Truncates a string to at most {@code maxLength} characters, appending
      * {@code "..."} when the string is shortened.
      *
@@ -1453,24 +1438,24 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private String jobEventToJson(JobCompletionEvent event, String workstreamId) {
         StringBuilder j = new StringBuilder();
         j.append("{");
-        j.append("\"jobId\":\"").append(escapeJson(event.getJobId())).append("\"");
+        j.append("\"jobId\":\"").append(JsonFieldExtractor.escapeJson(event.getJobId())).append("\"");
         j.append(",\"status\":\"").append(event.getStatus().name()).append("\"");
-        j.append(",\"description\":\"").append(escapeJson(event.getDescription())).append("\"");
+        j.append(",\"description\":\"").append(JsonFieldExtractor.escapeJson(event.getDescription())).append("\"");
         j.append(",\"timestamp\":\"").append(event.getTimestamp().toString()).append("\"");
         if (workstreamId != null) {
-            j.append(",\"workstreamId\":\"").append(escapeJson(workstreamId)).append("\"");
+            j.append(",\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(workstreamId)).append("\"");
         }
         if (event.getTargetBranch() != null) {
-            j.append(",\"targetBranch\":\"").append(escapeJson(event.getTargetBranch())).append("\"");
+            j.append(",\"targetBranch\":\"").append(JsonFieldExtractor.escapeJson(event.getTargetBranch())).append("\"");
         }
         if (event.getCommitHash() != null) {
-            j.append(",\"commitHash\":\"").append(escapeJson(event.getCommitHash())).append("\"");
+            j.append(",\"commitHash\":\"").append(JsonFieldExtractor.escapeJson(event.getCommitHash())).append("\"");
         }
         if (event.getPullRequestUrl() != null) {
-            j.append(",\"pullRequestUrl\":\"").append(escapeJson(event.getPullRequestUrl())).append("\"");
+            j.append(",\"pullRequestUrl\":\"").append(JsonFieldExtractor.escapeJson(event.getPullRequestUrl())).append("\"");
         }
         if (event.getErrorMessage() != null) {
-            j.append(",\"errorMessage\":\"").append(escapeJson(event.getErrorMessage())).append("\"");
+            j.append(",\"errorMessage\":\"").append(JsonFieldExtractor.escapeJson(event.getErrorMessage())).append("\"");
         }
         if (event.getCostUsd() > 0) {
             j.append(String.format(",\"costUsd\":%.4f", event.getCostUsd()));
