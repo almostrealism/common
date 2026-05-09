@@ -241,7 +241,8 @@ message AudioLayerGroup {
 // `data` field may be inline or omitted, and either way the buffer's
 // `identifier` (existing MD5 of file bytes) is the content-addressed
 // reference the library uses to resolve missing-audio cases. For MIDI
-// layers the payload is a MidiPattern (raw SMF bytes by default; see §5.7).
+// layers the payload is a MidiPattern carrying a structured event list
+// modelled on MidiNoteEvent / PatternElement (see §5.7).
 // An unset `content` oneof is permitted for metadata-only placeholders.
 //
 // A typical AU-capture writer emits two layers per take: a MidiPattern
@@ -307,12 +308,16 @@ message LayerRef {
 // ---- 5.4 Device type ---------------------------------------------------
 
 // Capture device class. Coarse on purpose — richer device tracking is
-// deferred (see §6.5 and §10).
+// deferred (see §6.5 and §10). DEVICE_SOFTWARE covers software instruments
+// (AU hosts, other virtual instruments); the physical-mic values cover
+// hardware capture. See §6.5 for why software is its own value rather
+// than a sub-flag of an existing one.
 enum DeviceType {
   DEVICE_UNSPECIFIED = 0;
-  VOCAL_MIC          = 1;
-  INSTRUMENT_MIC     = 2;
-  ROOM_MIC           = 3;
+  DEVICE_SOFTWARE    = 1;
+  VOCAL_MIC          = 2;
+  INSTRUMENT_MIC     = 3;
+  ROOM_MIC           = 4;
 }
 
 // ---- 5.5 Transform info ------------------------------------------------
@@ -361,19 +366,112 @@ message AudioUnitParameterState {
 // ---- 5.7 MIDI pattern --------------------------------------------------
 
 // MIDI payload for a layer whose `content` oneof selects `midi`. The
-// representation is intentionally a thin envelope around well-defined MIDI
-// bytes — duration, tempo, time signature and ticks-per-quarter are all
-// carried by the SMF format itself, so they are not re-stored as protobuf
-// fields. Richer structure (structured event lists, etc.) is deferred
-// until a consumer needs it (see §10).
+// shape mirrors the canonical in-memory MIDI representation in the music
+// module — `org.almostrealism.music.midi.MidiNoteEvent` — which is the
+// event type already consumed by both the SkyTNT V2 tokenizer
+// (`SkyTntTokenizerV2`) and the Moonbeam tokenizer (`MidiTokenizer`), as
+// well as the pattern-to-MIDI export path on `PatternElement`.
+//
+// Time is absolute ticks at a stated `ticks_per_quarter` (PPQ), matching
+// `MidiNoteEvent.tick` and the standard MIDI File idiom. Tempo and
+// time-signature changes ride inside the event stream as their own event
+// types (mirroring `MidiNoteEvent.EventType.SET_TEMPO` /
+// `TIME_SIGNATURE`); they are not re-stored as separate pattern-level
+// scalars. See §6.X1 for the time-representation rationale and §6.X2 for
+// the AU-host serialisation contract.
 message MidiPattern {
-  // Raw MIDI byte stream. Standard MIDI File (SMF) format unless `format`
-  // says otherwise.
-  bytes data = 1;
+  // PPQ for all `tick` and `duration_ticks` values in this pattern.
+  // Defaults to 480 (the SkyTNT default and a standard SMF value) when
+  // absent.
+  optional int32 ticks_per_quarter = 1;
 
-  // Container format identifier. Defaults to "smf" when absent. Other
-  // values reserved for future use (e.g. "raw_events").
-  optional string format = 2;
+  // Events comprising this pattern, ordered by tick (writers SHOULD emit
+  // them in tick order; readers MAY rely on this).
+  repeated MidiEvent events = 2;
+}
+
+// One MIDI event — a single record carrying a discriminated payload.
+// The single-class-with-discriminant shape mirrors `MidiNoteEvent` (one
+// class, one `EventType` enum, one set of fields) rather than wrapping
+// each event type in its own outer message.
+message MidiEvent {
+  // Absolute tick offset from the start of the pattern.
+  int64 tick = 1;
+
+  // MIDI track index (0-based). Defaults to 0 when absent.
+  optional int32 track = 2;
+
+  // MIDI channel (0–15). Relevant for `note`, `control_change`,
+  // `pitch_bend`, `program_change`. Tempo / time-signature / key-signature
+  // events ignore it.
+  optional int32 channel = 3;
+
+  // Event-type-specific payload. The set mirrors `MidiNoteEvent.EventType`
+  // (NOTE, PATCH_CHANGE, CONTROL_CHANGE, SET_TEMPO, TIME_SIGNATURE,
+  // KEY_SIGNATURE) plus pitch-bend, which `MidiSynthesizerBridge` handles
+  // today but `MidiNoteEvent` does not yet enumerate.
+  oneof payload {
+    NoteEvent           note            = 4;
+    ControlChangeEvent  control_change  = 5;
+    PitchBendEvent      pitch_bend      = 6;
+    ProgramChangeEvent  program_change  = 7;
+    SetTempoEvent       set_tempo       = 8;
+    TimeSignatureEvent  time_signature  = 9;
+    KeySignatureEvent   key_signature   = 10;
+  }
+}
+
+// A pitched note-on plus its matching note-off, encoded as a single record
+// with a duration. This mirrors `MidiNoteEvent` (NOTE events carry
+// `durationTicks`) and `PatternElement` (which carries an effective
+// duration via `NoteDurationStrategy`). On AU export the duration is
+// materialised as a deferred note-off at `tick + duration_ticks` (see
+// §6.X2).
+message NoteEvent {
+  int32 pitch          = 1;  // 0–127
+  int32 velocity       = 2;  // 0–127
+  int64 duration_ticks = 3;  // tick units of the enclosing pattern
+}
+
+// Continuous-controller change.
+message ControlChangeEvent {
+  int32 controller = 1;  // 0–127
+  int32 value      = 2;  // 0–127
+}
+
+// 14-bit pitch-bend, signed (-8192 .. +8191), `0` = no bend.
+message PitchBendEvent {
+  int32 value = 1;
+}
+
+// Program (patch) change. Mirrors `MidiNoteEvent.EventType.PATCH_CHANGE`.
+message ProgramChangeEvent {
+  int32 program = 1;  // 0–127
+}
+
+// Tempo change, in BPM. Mirrors `MidiNoteEvent.EventType.SET_TEMPO`
+// (the `bpm` field). Microseconds-per-beat is recoverable as
+// `60_000_000 / bpm`.
+message SetTempoEvent {
+  int32 bpm = 1;
+}
+
+// Time signature. Stored in the user-visible form (numerator + denominator
+// as a power of two: 2, 4, 8, 16). Mirrors `MidiNoteEvent`'s `nn` /
+// `dd` (which store `numerator − 1` / `log2(denominator) − 1` for the
+// SkyTNT vocabulary); conversion is mechanical at the boundary.
+message TimeSignatureEvent {
+  int32 numerator   = 1;  // beats per bar
+  int32 denominator = 2;  // 2, 4, 8, 16 (power of two)
+}
+
+// Key signature. Mirrors `MidiNoteEvent.EventType.KEY_SIGNATURE` with the
+// SMF-native sharp/flat convention (negative = flats, positive = sharps,
+// range -7..+7). `MidiNoteEvent.sf` stores `sharps_flats + 7`; conversion
+// is mechanical at the boundary.
+message KeySignatureEvent {
+  int32 sharps_flats = 1;  // -7 (7 flats) .. +7 (7 sharps); 0 = C / a
+  int32 mode         = 2;  // 0 = major, 1 = minor
 }
 ```
 
@@ -481,6 +579,114 @@ class layer payload makes the AU-render relationship "audio derived from
 MIDI source, with `au_state` describing the plugin" expressible without
 adding new enum values or wrapping types (see §6.2 and §7 use case D).
 
+#### `MidiPattern` is structured, not a bytes blob
+
+The earlier draft made `MidiPattern` a thin envelope around an SMF byte
+stream (`bytes data` + optional `string format`). That was a cop-out: once
+the format ships, "we'll structure it later" never actually happens, and
+every consumer that wants to inspect, edit, or generate a pattern would
+have to drag in an SMF parser to do it. The first-consumer use case (AU
+capture) is *exactly* one of those consumers — the AU host JSON protocol
+takes structured `note_on` / `note_off` events, not opaque SMF.
+
+The structured shape (§5.7) is grounded in the music module's existing
+canonical event type, `org.almostrealism.music.midi.MidiNoteEvent`, which
+is already the single representation consumed by the SkyTNT V2 tokenizer
+(`SkyTntTokenizerV2`) and the Moonbeam tokenizer (`MidiTokenizer`), and
+produced by the pattern-to-MIDI export path on `PatternElement.toMidiEvents`.
+Three things follow from that grounding:
+
+1. **Same event-type vocabulary.** `MidiEvent.payload`'s arms cover the
+   six event types in `MidiNoteEvent.EventType` (NOTE, PATCH_CHANGE,
+   CONTROL_CHANGE, SET_TEMPO, TIME_SIGNATURE, KEY_SIGNATURE) plus
+   pitch-bend, which `engine/audio` already handles
+   (`MidiSynthesizerBridge`) but `MidiNoteEvent` does not yet enumerate.
+   Aftertouch and system messages remain deferred (see §10).
+2. **Single record per event, with discriminator.** `MidiNoteEvent` is a
+   single class with an `EventType` discriminator and per-type fields;
+   `MidiEvent` mirrors that with one message and a `oneof payload`. This
+   avoids the "wrap each event type in its own outer message" idiom,
+   which would introduce a structural divergence between the wire format
+   and the in-memory representation.
+3. **Notes carry duration, not on/off pairs.** `MidiNoteEvent.NOTE`
+   carries `durationTicks`; `PatternElement` carries an effective
+   duration via `NoteDurationStrategy`. `NoteEvent.duration_ticks`
+   matches both. AU export materialises the matching note-off at
+   `tick + duration_ticks` (see §6.X2). On round-trip from SMF, paired
+   note-on/note-off bytes collapse into one `NoteEvent`; on round-trip
+   to SMF, each `NoteEvent` re-expands into the matched pair.
+
+Features `PatternElement` carries that exceed the basic MIDI message set
+(MAIN/WET voicing, scale-relative pitch via `ScaleTraversalStrategy`,
+`automationParameters` as a `PackedCollection`, repeat structure,
+`PatternDirection`) are intentionally *not* present in the §5.7 schema.
+They survive a `PatternElement → structured MidiPattern → SMF` export
+only by being expanded into concrete events at export time (each repeat
+becomes its own NoteEvent; scale traversal resolves to a concrete pitch;
+automation curves render as CC streams when wired up). The schema
+provides the substrate they expand *into*; it does not yet carry the
+unexpanded form. This is the deliberate "do less" cut described in §10.
+
+#### 6.X1 Time representation — absolute ticks at a stated PPQ
+
+`MidiPattern.ticks_per_quarter` plus per-event `tick` and per-`NoteEvent`
+`duration_ticks` is the chosen time representation. It is grounded in
+three observations from the codebase:
+
+- `MidiNoteEvent.tick` is an absolute long-tick offset from the start of
+  the sequence; `durationTicks` is in the same unit. The structured
+  pattern uses the same convention to make the `MidiNoteEvent` ↔
+  `MidiPattern` mapping field-for-field.
+- `SkyTntMidi.DEFAULT_TICKS_PER_BEAT = 480` matches the most common SMF
+  PPQ and is already the assumed rate for SkyTNT-produced patterns.
+  `ticks_per_quarter` defaults to 480 when absent, so writers that don't
+  care can omit it.
+- Tempo and time-signature changes are first-class events
+  (`SetTempoEvent`, `TimeSignatureEvent`), riding inside the event stream
+  rather than being hoisted to pattern-level scalars. This matches
+  `MidiNoteEvent.EventType.SET_TEMPO` / `TIME_SIGNATURE` (both already
+  modelled as events, not as out-of-band metadata) and matches SMF
+  semantics directly.
+
+Fractional-beat time (the alternative the task surfaced) was rejected
+because nothing in the codebase already represents MIDI events that way:
+both tokenizers, the canonical `MidiNoteEvent`, and the SMF round-trip
+path are tick-native. Going fractional-beats would require a translation
+layer at every boundary; ticks are already the lingua franca. The mapping
+to `PatternElement`'s measure-relative `position` is mechanical: at
+export time, `position_in_measures × beats_per_measure ×
+ticks_per_quarter` yields the absolute tick.
+
+#### 6.X2 AU-host serialisation contract
+
+The AU host wire protocol (`AUHostManager.noteOn` /
+`AUHostManager.noteOff` in `audio-desktop/...auhost`) accepts JSON
+commands of the form:
+
+```json
+{ "cmd": "midi", "id": "<pluginId>", "type": "note_on",  "note": 60, "velocity": 100 }
+{ "cmd": "midi", "id": "<pluginId>", "type": "note_off", "note": 60, "velocity":   0 }
+```
+
+The structured `MidiPattern` serialises to this protocol by walking
+`events` in tick order and emitting, for each event:
+
+| Structured event              | AU host JSON command(s) |
+|-------------------------------|-------------------------|
+| `NoteEvent { pitch, velocity, duration_ticks }` | one `note_on` at `tick`, one `note_off` at `tick + duration_ticks` |
+| `ControlChangeEvent { controller, value }`      | (TBD when AU host gains a CC command — currently dropped) |
+| `PitchBendEvent { value }`                      | (TBD — currently dropped) |
+| `ProgramChangeEvent { program }`                | (TBD — currently dropped) |
+| `SetTempoEvent`, `TimeSignatureEvent`, `KeySignatureEvent` | not sent — AU host does not consume them |
+
+For the *first-consumer* case (AU capture playback driving an instrument
+plugin) only `NoteEvent` is needed, and the mapping is the trivial
+duration-to-deferred-`note_off` materialisation above. As the AU host
+gains CC / pitch-bend / program-change commands, the corresponding
+`MidiEvent.payload` arms map directly without wire-format change. The
+AU-host bridge is responsible for translating ticks to wall time using
+the surrounding `SetTempoEvent` / `ticks_per_quarter`.
+
 ### 6.5 No pair-of-layers stereo encoding
 
 The earlier draft introduced `stereo_side` and `stereo_pair_layer_id` fields to
@@ -501,6 +707,21 @@ capture-device identifiers, per-instrument labels — is deferred. If device
 handling becomes more central in future use cases, this enum is promoted back
 to a message at that point. The risk of having to do this conversion later is
 small and worth taking now in favour of doing less.
+
+`DEVICE_SOFTWARE` is a peer of the physical-mic values rather than a
+sub-flag on one of them. The first consumer (Rings 0.39 AU capture) and
+the broader near-term capture path are dominated by software AUs and
+other virtual instruments, not by physical microphones — `VOCAL_MIC`,
+`INSTRUMENT_MIC`, and `ROOM_MIC` all assume a physical capture device,
+and a software instrument is *not* a kind of microphone. Adding it as a
+fourth physical-mic-flavoured value would conflate "what produced this
+audio" with "what kind of microphone produced this audio." Sub-flagging
+it (e.g. a `software: bool` boolean alongside `INSTRUMENT_MIC`) would
+have the same effect: the consumer would have to read two fields to
+decide whether the layer is mic or software. A peer enum value is the
+straight expression. `DEVICE_SOFTWARE = 1` places it at the lowest
+non-unspecified value, ahead of the physical-mic values, reflecting its
+weight in the near-term producer mix.
 
 ### 6.6 Backward compatibility
 
@@ -541,13 +762,157 @@ If schema-revision branching becomes necessary, both fields are additive on
 | **A** (dry → echo → reverb)              | 3 | layers[0]=dry (buffer; lineage.kind=MICROPHONE_RECORDING or EXTERNAL_FILE depending on origin); layers[1]=echo (buffer; derived_from=[{dry}]; lineage.kind=TRANSFORM, transform_kind=ECHO); layers[2]=reverb (buffer; derived_from=[{echo}]; lineage.kind=TRANSFORM, transform_kind=REVERB). |
 | **B** (drum kit + room)                  | N+1 | each close-mic layer: buffer; lineage.kind=MICROPHONE_RECORDING; device_type=INSTRUMENT_MIC. Room layer: buffer with channel_count=2; lineage.kind=MICROPHONE_RECORDING; device_type=ROOM_MIC. Per-instrument labelling ("kick", "snare") is **deferred** — see §10. |
 | **C** (synth + FX)                       | 2 | synth: buffer; lineage.kind=SYNTHESIS. FX: buffer; derived_from=[{synth}]; lineage.kind=TRANSFORM, transform_kind=FX_BUS. **Gap (acknowledged):** synth-genome parameters and FX-chain parameters are not stored in 0.74. The relationship and producer kind are; the parameter state arrives when the second producer's state is wired up (see §6.3 and §10). |
-| **D** (AU sample + AU snapshot)          | 1 | buffer; lineage.kind=AUDIO_UNIT; au_state=AudioUnitParameterState{…, midi_note, midi_velocity, parameters, optional preset_data}. created_at_millis populated. This is the first-consumer path and is fully expressible. |
+| **D** (AU sample + AU snapshot)          | 2 | layers[0] = MIDI source: `content.midi = MidiPattern { ticks_per_quarter, events: [...] }`, `device_type = DEVICE_SOFTWARE`, no `transform`, no `au_state`, no `derived_from`. layers[1] = audio rendering: `content.audio = WaveDetailData{…}`, `derived_from = [{layer_id of layers[0]}]`, `device_type = DEVICE_SOFTWARE`, `au_state = AudioUnitParameterState{component_description, parameters, optional preset_data}`, `created_at_millis` populated, no `transform`. The MIDI-source-plus-`au_state` pair signals an AU rendering without needing a `RENDER` enum value. This is the first-consumer path and is fully expressible. |
 | **Compose** (D's plugin produced C's synth, with B's room mic alongside) | 1+N+1 | The "synth" layer has lineage.kind=AUDIO_UNIT (the AU plugin produced it) plus au_state. The mic layers stand alongside the synth as siblings in the same AudioLayerGroup with their own device_type. A non-derivation "synth_room_mic_for_layer" relationship would need a future LayerEdge mechanism — out of scope for 0.74. |
 
 Use cases A, B and D are fully expressible. Use case C stores the relationship
 and producer kind but defers the producer-state payload (the synth genome and
 the FX-chain parameters). This is an acknowledged gap that closes when the
 second producer's state is wired up.
+
+### 7.1 Worked example — single C-major chord captured through an AU
+
+A capture of a single C-major triad (C4, E4, G4 played together for one
+beat at 120 BPM through a software AU) is two layers in one
+`AudioLayerGroup`:
+
+```
+AudioLayerGroup {
+  key       = "take-2026-05-09-001"
+  layers[0] = AudioLayer {                        // MIDI source
+    layer_id    = "midi-001"
+    content.midi = MidiPattern {
+      ticks_per_quarter = 480
+      events = [
+        MidiEvent { tick = 0, channel = 0,
+                    payload.set_tempo = SetTempoEvent { bpm = 120 } },
+        MidiEvent { tick = 0, channel = 0,
+                    payload.note      = NoteEvent { pitch = 60, velocity = 100,
+                                                     duration_ticks = 480 } },
+        MidiEvent { tick = 0, channel = 0,
+                    payload.note      = NoteEvent { pitch = 64, velocity = 100,
+                                                     duration_ticks = 480 } },
+        MidiEvent { tick = 0, channel = 0,
+                    payload.note      = NoteEvent { pitch = 67, velocity = 100,
+                                                     duration_ticks = 480 } },
+      ]
+    }
+    device_type        = DEVICE_SOFTWARE
+    created_at_millis  = 1714000000000
+  }
+  layers[1] = AudioLayer {                        // AU rendering
+    layer_id        = "audio-001"
+    content.audio   = WaveDetailData { /* PCM, identifier=md5 of bytes */ }
+    derived_from    = [ { layer_id = "midi-001" } ]
+    device_type     = DEVICE_SOFTWARE
+    au_state        = AudioUnitParameterState {
+      component_description = "aumu,Alch,Appl,0001"
+      parameters            = { /* AUParameterAddress -> float */ }
+    }
+    created_at_millis = 1714000000050
+  }
+}
+```
+
+The AU bridge serialises the MIDI-source layer to the AU-host JSON
+protocol by walking `events` in tick order. The `SetTempoEvent` is
+consumed by the bridge's tick→wall-time conversion (480 ticks/quarter at
+120 BPM ⇒ 500 ms per quarter ⇒ ~1.04 ms/tick) and is *not* sent to the
+host. Each `NoteEvent` produces two host commands: a `note_on` at its
+tick and a deferred `note_off` at `tick + duration_ticks`. Concretely:
+
+```json
+// at t = 0 ms
+{ "cmd": "midi", "id": "<plug>", "type": "note_on", "note": 60, "velocity": 100 }
+{ "cmd": "midi", "id": "<plug>", "type": "note_on", "note": 64, "velocity": 100 }
+{ "cmd": "midi", "id": "<plug>", "type": "note_on", "note": 67, "velocity": 100 }
+
+// at t = 500 ms (tick 480 at 120 BPM, 480 PPQ)
+{ "cmd": "midi", "id": "<plug>", "type": "note_off", "note": 60, "velocity": 0 }
+{ "cmd": "midi", "id": "<plug>", "type": "note_off", "note": 64, "velocity": 0 }
+{ "cmd": "midi", "id": "<plug>", "type": "note_off", "note": 67, "velocity": 0 }
+```
+
+A round-trip from the same content as an SMF file is lossless on the
+basic message set: each note's tempo, channel, pitch, velocity, and
+duration are recovered field-for-field; the three simultaneous notes
+remain three NoteEvents at `tick = 0` with `duration_ticks = 480`.
+
+### 7.2 Worked example — `PatternElement` exported through `MidiPattern`
+
+A `PatternElement` placed at `position = 0.5` in 4/4 time, with
+`scaleTraversalStrategy = CHORD`, `scalePositions = [0, 2, 4]` over a
+C-major scale, `repeatCount = 2`, `repeatDuration = 1.0` (one measure
+between repeats), `durationStrategy = FIXED`, `noteDuration = 0.25`
+(quarter-beat), and `automationParameters` set to `[1.0]` (so velocity
+defaults to 100), exports through `PatternElement.toMidiEvents` into the
+following structured form (assuming `ticks_per_quarter = 480`,
+`beats_per_measure = 4`):
+
+```
+MidiPattern {
+  ticks_per_quarter = 480
+  events = [
+    // Repeat #0 — position 0.5 measures × 4 beats × 480 ticks = 960
+    MidiEvent { tick = 960,  channel = 0,
+                payload.note = NoteEvent { pitch = 60, velocity = 100,
+                                           duration_ticks = 480 } },
+    MidiEvent { tick = 960,  channel = 0,
+                payload.note = NoteEvent { pitch = 64, velocity = 100,
+                                           duration_ticks = 480 } },
+    MidiEvent { tick = 960,  channel = 0,
+                payload.note = NoteEvent { pitch = 67, velocity = 100,
+                                           duration_ticks = 480 } },
+    // Repeat #1 — position (0.5 + 1.0) × 4 × 480 = 2880
+    MidiEvent { tick = 2880, channel = 0,
+                payload.note = NoteEvent { pitch = 60, velocity = 100,
+                                           duration_ticks = 480 } },
+    MidiEvent { tick = 2880, channel = 0,
+                payload.note = NoteEvent { pitch = 64, velocity = 100,
+                                           duration_ticks = 480 } },
+    MidiEvent { tick = 2880, channel = 0,
+                payload.note = NoteEvent { pitch = 67, velocity = 100,
+                                           duration_ticks = 480 } },
+  ]
+}
+```
+
+What survived the export:
+
+- **Pitch**: scale traversal resolved `[0, 2, 4]` against C-major into
+  C4 / E4 / G4, expressed as MIDI pitch numbers via the existing
+  `KeyPosition.position() + 21` convention.
+- **Time position**: `position` (in measures) × beats × ticks-per-quarter.
+- **Duration**: `NoteDurationStrategy.FIXED` × `noteDurationSelection`
+  collapsed to `duration_ticks`.
+- **Velocity**: derived from `automationParameters[0] × 127` per the
+  existing pattern→MIDI export convention; defaulting to 100 when no
+  automation is present.
+- **Repeat structure**: each of the two repetitions becomes its own
+  triad of `NoteEvent`s at the corresponding tick. The structured form
+  carries the *expanded* events; the unexpanded `repeatCount` /
+  `repeatDuration` is dropped at this boundary.
+
+What was deferred (intentionally — see §10):
+
+- **Voicing (MAIN/WET)**: the wet-channel `PatternNote`, if present, is
+  a separate audio source rather than a separate MIDI note; it does not
+  survive a MIDI round-trip and is not represented in the structured
+  pattern.
+- **`ScaleTraversalStrategy`**: collapsed at export time into concrete
+  pitches. Re-importing the structured pattern back into a
+  `PatternElement` yields a chord with explicit pitches, not the
+  unresolved `[0, 2, 4]` scale-relative form.
+- **`automationParameters` as a continuous `PackedCollection`**: only
+  the velocity-baking-in is preserved on note events. A continuous
+  automation curve would render as a `ControlChangeEvent` stream once
+  the export path supports it; until then the curve is dropped.
+- **`PatternDirection`**: collapsed at export. Reverse/alternating
+  directions resolve into the actual emitted event order.
+
+The structured pattern is, in other words, lossless for everything that
+can survive an SMF round-trip and explicit about the
+`PatternElement` features that can't.
 
 ---
 
@@ -642,6 +1007,35 @@ step is independently mergeable.
    `WaveDetailData`. Coordinate with the Rings 0.39 implementer before the
    proto file is modified so that the placement is shared.
 
+6. **Pattern-level vs layer-level tempo / time signature**: the structured
+   `MidiPattern` carries `ticks_per_quarter` plus in-stream
+   `SetTempoEvent` / `TimeSignatureEvent` records, mirroring SMF and
+   `MidiNoteEvent`. This places the time base on the *pattern*, not on
+   the enclosing `AudioLayer` or `AudioLayerGroup`. For a group whose
+   layers are all rendered against the same wall-clock take, hoisting a
+   shared tempo/time-signature to `AudioLayerGroup` would avoid
+   per-pattern duplication. This is left as an open question for the
+   implementing task: do consumers need a group-level "scene tempo," or
+   is per-pattern sufficient? Default position is per-pattern, since
+   that is what `MidiNoteEvent` already enforces in memory.
+
+7. **CC / pitch-bend / program-change export to the AU host**: §6.X2
+   notes that the AU-host JSON protocol presently exposes only `note_on`
+   / `note_off`. The structured pattern can carry the other event types
+   today; the bridge drops them on export. When the host gains CC /
+   pitch-bend / program-change commands, the mapping is mechanical (one
+   `MidiEvent` ⇒ one host command). No wire-format change is required.
+
+8. **`pitch_bend` versus `MidiNoteEvent.EventType`**: the structured
+   `MidiPattern` has a `PitchBendEvent` arm even though
+   `MidiNoteEvent.EventType` does not enumerate pitch-bend.
+   `MidiSynthesizerBridge` (in `engine/audio`) handles pitch-bend, but
+   the canonical event class does not yet carry it. The implementing
+   task should either (a) extend `MidiNoteEvent.EventType` with
+   `PITCH_BEND` for full parity with the wire format, or (b) accept the
+   asymmetry and document it. Default is (a) — the wire format and the
+   in-memory event class should stay in sync.
+
 ---
 
 ## 10. Out-of-Scope Notes
@@ -665,6 +1059,29 @@ an oversight.
   `AudioUnitParameterState au_state` field on `AudioLayer` is direct; the
   `oneof` wrapper to hold a second payload type is introduced at the moment
   the second type is needed (see §6.3).
+- **Pattern-level features that exceed the basic MIDI message set.** The
+  structured `MidiPattern` (§5.7) ships *with* the basic MIDI message set
+  (note, control change, pitch bend, program change, set tempo, time
+  signature, key signature). It does NOT yet ship the
+  `PatternElement`-level features that go beyond MIDI: MAIN/WET voicing,
+  unresolved scale-relative pitch via `ScaleTraversalStrategy`,
+  `automationParameters` as a continuous `PackedCollection`,
+  `repeatCount` / `repeatDuration` in unexpanded form, and
+  `PatternDirection`. These collapse into concrete events at export
+  (each repeat becomes its own `NoteEvent`; scale traversal resolves to
+  a concrete pitch; an automation curve renders as a `ControlChangeEvent`
+  stream once the export wires that up). When a consumer needs the
+  unexpanded form, the schema grows by adding optional fields *to
+  `MidiPattern`* (a `pattern_element` extension list), not by changing
+  `MidiEvent`. The "do less" cut here is: the structured pattern is the
+  expanded view; the unexpanded view stays in `PatternElement` until a
+  cross-process consumer needs it.
+- **MIDI message types beyond the basic set.** Channel aftertouch,
+  polyphonic key pressure, and system messages (sysex, MTC,
+  song-position pointer) are not in §5.7. None of the existing
+  consumers (`MidiNoteEvent`, both tokenizers, `PatternElement`) carry
+  them today. They are added as new `MidiEvent.payload` arms when a
+  consumer needs them — additive, not breaking.
 - **Time-slicing of layer references is deferred.** `LayerRef` carries
   `layer_id` + `repeated int32 channels`; the same composition pattern
   extends to time slicing later (`start_time_samples`,
