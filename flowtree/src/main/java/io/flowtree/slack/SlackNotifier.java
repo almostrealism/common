@@ -26,6 +26,7 @@ import com.slack.api.methods.response.conversations.ConversationsInviteResponse;
 import com.slack.api.methods.response.conversations.ConversationsListResponse;
 import com.slack.api.model.Conversation;
 import com.slack.api.model.ConversationType;
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
 import org.almostrealism.io.Alert;
@@ -551,7 +552,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         // Notify callback for testing
         if (messageCallback != null) {
             messageCallback.accept("{\"channel\":\"" + effectiveChannel + "\",\"text\":\"" +
-                                   escapeJson(text) + "\"}");
+                                   JsonFieldExtractor.escapeJson(text) + "\"}");
         }
 
         if (client == null) {
@@ -617,8 +618,8 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         if (messageCallback != null) {
             messageCallback.accept("{\"channel\":\"" + effectiveChannel +
-                                   "\",\"thread_ts\":\"" + escapeJson(threadTs) +
-                                   "\",\"text\":\"" + escapeJson(text) + "\"}");
+                                   "\",\"thread_ts\":\"" + JsonFieldExtractor.escapeJson(threadTs) +
+                                   "\",\"text\":\"" + JsonFieldExtractor.escapeJson(text) + "\"}");
         }
 
         if (client == null) {
@@ -1056,22 +1057,6 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         long hours = minutes / 60;
         long remainingMinutes = minutes % 60;
         return hours + "h " + remainingMinutes + "m";
-    }
-
-    /**
-     * Escapes a string for safe inclusion in a JSON string literal, replacing
-     * backslash, double-quote, and common whitespace control characters.
-     *
-     * @param s  the string to escape, or {@code null}
-     * @return   the escaped string, or an empty string if {@code s} is {@code null}
-     */
-    private static String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
     }
 
     /**

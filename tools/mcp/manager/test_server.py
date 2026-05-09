@@ -2136,6 +2136,8 @@ class TestToolRegistration(unittest.TestCase):
             "tracker_delete_task",
             "tracker_search_tasks",
             "tracker_project_summary",
+            "workspace_secret_list_names",
+            "workspace_secret_render_file",
         }
         registered = set(tools.keys())
         missing = expected - registered
@@ -3504,6 +3506,262 @@ class TestTrackerScopedFiltering(unittest.TestCase):
         }
         with self.assertRaises(PermissionError):
             server.tracker_get_task("t1")
+
+
+# -----------------------------------------------------------------------
+# Workspace secrets tools
+# -----------------------------------------------------------------------
+
+
+class TestWorkspaceSecretListNames(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_require_workstream_in_scope")
+    def test_list_names_success(self, mock_scope, mock_get):
+        mock_scope.return_value = None
+        mock_get.return_value = {"names": ["aws-prod", "github-deploy-key"]}
+        result = server.workspace_secret_list_names("ws-abc")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["names"], ["aws-prod", "github-deploy-key"])
+        # Verify that the call included a workstream_id query parameter
+        called_path = mock_get.call_args[0][0]
+        self.assertIn("workstream_id=ws-abc", called_path)
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_require_workstream_in_scope")
+    def test_list_names_empty_workspace(self, mock_scope, mock_get):
+        mock_scope.return_value = None
+        mock_get.return_value = {"names": []}
+        result = server.workspace_secret_list_names("ws-abc")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["names"], [])
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_require_workstream_in_scope")
+    def test_controller_error_propagated(self, mock_scope, mock_get):
+        mock_scope.return_value = None
+        mock_get.return_value = {"ok": False, "error": "workspace not found"}
+        result = server.workspace_secret_list_names("ws-abc")
+        self.assertFalse(result["ok"])
+        self.assertIn("workspace not found", result["error"])
+
+    @patch.object(server, "SHARED_SECRET", "")
+    @patch.object(server, "_require_workstream_in_scope")
+    def test_returns_error_when_no_shared_secret(self, mock_scope):
+        mock_scope.return_value = None
+        result = server.workspace_secret_list_names("ws-abc")
+        self.assertFalse(result["ok"])
+        self.assertIn("Shared secret not configured", result["error"])
+
+    def test_requires_read_scope(self):
+        _grant_scopes("write")
+        with self.assertRaises(PermissionError):
+            server.workspace_secret_list_names("ws-abc")
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_requires_workstream_in_scope(self):
+        """Scoped tokens must not access out-of-scope workstreams."""
+        _set_workspaces("TAAA")
+        _reset_workspace_cache()
+        try:
+            with patch.object(
+                server,
+                "_require_workstream_in_scope",
+                side_effect=PermissionError("out of scope"),
+            ):
+                with self.assertRaises(PermissionError):
+                    server.workspace_secret_list_names("ws-other")
+        finally:
+            _clear_workspaces()
+            _reset_workspace_cache()
+
+
+class TestWorkspaceSecretRenderFile(unittest.TestCase):
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def _make_payload_resp(self):
+        return {
+            "name": "aws-prod",
+            "workspace_id": "T0123456789",
+            "payload": {
+                "access_key_id": "AKIATEST",
+                "secret_access_key": "SECRET123",
+                "region": "us-east-1",
+            },
+        }
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_require_workstream_in_scope")
+    def test_render_success(self, mock_scope, mock_get):
+        import tempfile, os
+        mock_scope.return_value = None
+        mock_get.return_value = self._make_payload_resp()
+        template = "[default]\naws_access_key_id = {{access_key_id}}\n" \
+                   "aws_secret_access_key = {{secret_access_key}}\nregion = {{region}}\n"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = os.path.join(tmpdir, "credentials")
+            result = server.workspace_secret_render_file(
+                workstream_id="ws-abc",
+                secret_name="aws-prod",
+                template=template,
+                output_path=output,
+                mode="0600",
+            )
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["output_path"], output)
+            # File must exist and contain rendered values
+            self.assertTrue(os.path.exists(output))
+            with open(output) as fh:
+                content = fh.read()
+            self.assertIn("AKIATEST", content)
+            self.assertIn("SECRET123", content)
+            # File must not be in the returned dict's values
+            self.assertNotIn("AKIATEST", str(result))
+            self.assertNotIn("SECRET123", str(result))
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_require_workstream_in_scope")
+    def test_output_file_permissions(self, mock_scope, mock_get):
+        import tempfile, os, stat
+        mock_scope.return_value = None
+        mock_get.return_value = self._make_payload_resp()
+        template = "{{access_key_id}}"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = os.path.join(tmpdir, "creds")
+            server.workspace_secret_render_file(
+                workstream_id="ws-abc",
+                secret_name="aws-prod",
+                template=template,
+                output_path=output,
+                mode="0600",
+            )
+            mode = os.stat(output).st_mode
+            self.assertEqual(stat.S_IMODE(mode), 0o600)
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_require_workstream_in_scope")
+    def test_missing_placeholder_returns_error_no_file(self, mock_scope, mock_get):
+        import tempfile, os
+        mock_scope.return_value = None
+        mock_get.return_value = self._make_payload_resp()
+        template = "[default]\ntoken = {{missing_key}}\n"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = os.path.join(tmpdir, "creds")
+            result = server.workspace_secret_render_file(
+                workstream_id="ws-abc",
+                secret_name="aws-prod",
+                template=template,
+                output_path=output,
+            )
+            self.assertFalse(result["ok"])
+            self.assertIn("missing_key", result["error"])
+            # No file written
+            self.assertFalse(os.path.exists(output))
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_require_workstream_in_scope")
+    def test_extra_payload_keys_silently_ignored(self, mock_scope, mock_get):
+        import tempfile, os
+        mock_scope.return_value = None
+        mock_get.return_value = self._make_payload_resp()
+        # Template uses only one of the three keys
+        template = "key={{access_key_id}}"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = os.path.join(tmpdir, "creds")
+            result = server.workspace_secret_render_file(
+                workstream_id="ws-abc",
+                secret_name="aws-prod",
+                template=template,
+                output_path=output,
+            )
+            self.assertTrue(result["ok"])
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_require_workstream_in_scope")
+    def test_tilde_expansion(self, mock_scope, mock_get):
+        import tempfile, os
+        mock_scope.return_value = None
+        mock_get.return_value = self._make_payload_resp()
+        # We can't use ~ to write to actual home in tests; verify expansion
+        # by patching os.path.expanduser instead.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            expected_path = os.path.join(tmpdir, ".aws", "credentials")
+            with patch("os.path.expanduser", return_value=expected_path):
+                result = server.workspace_secret_render_file(
+                    workstream_id="ws-abc",
+                    secret_name="aws-prod",
+                    template="key={{access_key_id}}",
+                    output_path="~/.aws/credentials",
+                )
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["output_path"], expected_path)
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_require_workstream_in_scope")
+    def test_controller_error_propagated(self, mock_scope, mock_get):
+        mock_scope.return_value = None
+        mock_get.return_value = {"ok": False, "error": "secret not found"}
+        result = server.workspace_secret_render_file(
+            workstream_id="ws-abc",
+            secret_name="no-such-secret",
+            template="{{foo}}",
+            output_path="/tmp/out",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("secret not found", result["error"])
+
+    @patch.object(server, "SHARED_SECRET", "")
+    @patch.object(server, "_require_workstream_in_scope")
+    def test_returns_error_when_no_shared_secret(self, mock_scope):
+        mock_scope.return_value = None
+        result = server.workspace_secret_render_file(
+            workstream_id="ws-abc",
+            secret_name="aws-prod",
+            template="{{foo}}",
+            output_path="/tmp/out",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("Shared secret not configured", result["error"])
+
+    def test_requires_read_scope(self):
+        _grant_scopes("write")
+        with self.assertRaises(PermissionError):
+            server.workspace_secret_render_file(
+                workstream_id="ws-abc",
+                secret_name="aws-prod",
+                template="",
+                output_path="/tmp/out",
+            )
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_requires_workstream_in_scope(self):
+        """Scoped tokens must not access secrets from out-of-scope workstreams."""
+        with patch.object(
+            server,
+            "_require_workstream_in_scope",
+            side_effect=PermissionError("out of scope"),
+        ):
+            with self.assertRaises(PermissionError):
+                server.workspace_secret_render_file(
+                    workstream_id="ws-other",
+                    secret_name="aws-prod",
+                    template="",
+                    output_path="/tmp/out",
+                )
 
 
 if __name__ == "__main__":

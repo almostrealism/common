@@ -321,7 +321,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"tracker_update_task",
 			"tracker_delete_task",
 			"tracker_search_tasks",
-			"tracker_project_summary"
+			"tracker_project_summary",
+			"workspace_secret_list_names",
+			"workspace_secret_render_file"
 		));
 
 		List<String> discovered = McpToolDiscovery.discoverToolNames(serverFile);
@@ -469,6 +471,24 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			McpToolDiscovery.discoverToolParameters(serverFile, "tracker_project_summary");
 		assertTrue("tracker_project_summary must declare project_id in signature",
 			trackerSummaryParams.contains("project_id"));
+
+		List<String> secretListParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workspace_secret_list_names");
+		assertTrue("workspace_secret_list_names must declare workstream_id in signature",
+			secretListParams.contains("workstream_id"));
+
+		List<String> secretRenderParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workspace_secret_render_file");
+		assertTrue("workspace_secret_render_file must declare workstream_id in signature",
+			secretRenderParams.contains("workstream_id"));
+		assertTrue("workspace_secret_render_file must declare secret_name in signature",
+			secretRenderParams.contains("secret_name"));
+		assertTrue("workspace_secret_render_file must declare template in signature",
+			secretRenderParams.contains("template"));
+		assertTrue("workspace_secret_render_file must declare output_path in signature",
+			secretRenderParams.contains("output_path"));
+		assertTrue("workspace_secret_render_file must declare mode in signature",
+			secretRenderParams.contains("mode"));
 	}
 
 	@Test(timeout = 30000)

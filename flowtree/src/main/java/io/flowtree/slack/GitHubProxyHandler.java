@@ -20,6 +20,7 @@ import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import fi.iki.elonen.NanoHTTPD.Method;
 import fi.iki.elonen.NanoHTTPD.Response;
+import io.flowtree.JsonFieldExtractor;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
@@ -184,7 +185,7 @@ class GitHubProxyHandler implements ConsoleFeatures {
             StringBuilder json = new StringBuilder();
             json.append("{\"status\":").append(status);
             json.append(",\"link\":\"")
-                .append(escapeJson(linkHeader != null ? linkHeader : ""))
+                .append(JsonFieldExtractor.escapeJson(linkHeader != null ? linkHeader : ""))
                 .append("\"");
             json.append(",\"body\":")
                 .append(responseBody.isEmpty() ? "null" : responseBody);
@@ -213,10 +214,10 @@ class GitHubProxyHandler implements ConsoleFeatures {
                                    String title, String body, String token) {
         try {
             String apiUrl = "https://api.github.com/repos/" + ownerRepo + "/pulls";
-            String payload = "{\"title\":\"" + escapeJson(title)
-                    + "\",\"head\":\"" + escapeJson(head)
-                    + "\",\"base\":\"" + escapeJson(base)
-                    + "\",\"body\":\"" + escapeJson(body) + "\"}";
+            String payload = "{\"title\":\"" + JsonFieldExtractor.escapeJson(title)
+                    + "\",\"head\":\"" + JsonFieldExtractor.escapeJson(head)
+                    + "\",\"base\":\"" + JsonFieldExtractor.escapeJson(base)
+                    + "\",\"body\":\"" + JsonFieldExtractor.escapeJson(body) + "\"}";
 
             URL url = URI.create(apiUrl).toURL();
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -312,20 +313,6 @@ class GitHubProxyHandler implements ConsoleFeatures {
         if (ownerRepo == null) return null;
         int slash = ownerRepo.indexOf('/');
         return slash > 0 ? ownerRepo.substring(0, slash) : null;
-    }
-
-    /**
-     * Escapes a string for safe inclusion in a JSON string literal.
-     *
-     * @param s the string to escape, or {@code null}
-     * @return  the escaped string, or an empty string if {@code s} is {@code null}
-     */
-    private static String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
     }
 
     /**

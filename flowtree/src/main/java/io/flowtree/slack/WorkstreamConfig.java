@@ -125,6 +125,8 @@ public class WorkstreamConfig {
         private List<String> channelOwnerUserIds;
         /** Per-organization GitHub tokens scoped to this workspace. */
         private Map<String, GitHubOrgEntry> githubOrgs = new LinkedHashMap<>();
+        /** Secrets declared as available to workstreams in this workspace. */
+        private List<WorkspaceSecretEntry> secrets = new ArrayList<>();
 
         /** Returns the Slack team ID (T...). */
         public String getWorkspaceId() { return workspaceId; }
@@ -192,6 +194,39 @@ public class WorkstreamConfig {
         public Map<String, GitHubOrgEntry> getGithubOrgs() { return githubOrgs; }
         /** Sets the per-organization GitHub token map. */
         public void setGithubOrgs(Map<String, GitHubOrgEntry> githubOrgs) { this.githubOrgs = githubOrgs; }
+
+        /** Returns the list of secrets declared for this workspace. */
+        public List<WorkspaceSecretEntry> getSecrets() { return secrets; }
+        /** Sets the list of secrets declared for this workspace. */
+        public void setSecrets(List<WorkspaceSecretEntry> secrets) {
+            this.secrets = secrets != null ? secrets : new ArrayList<>();
+        }
+    }
+
+    /**
+     * Declares a single workspace-scoped secret available to agent workstreams.
+     *
+     * <p>Each entry maps a logical name to the JSON file on disk that holds
+     * the secret payload. The file must exist and must be readable only by the
+     * controller process (permissions {@code 0600}). The controller logs a
+     * warning at startup when a declared file is world- or group-readable.</p>
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class WorkspaceSecretEntry {
+        /** Unique name within the workspace; URL-safe (lowercase letters, digits, hyphens). */
+        private String name;
+        /** Absolute path to the JSON payload file on disk. */
+        private String file;
+
+        /** Returns the secret name. */
+        public String getName() { return name; }
+        /** Sets the secret name. */
+        public void setName(String name) { this.name = name; }
+
+        /** Returns the absolute path to the JSON payload file. */
+        public String getFile() { return file; }
+        /** Sets the path to the JSON payload file. */
+        public void setFile(String file) { this.file = file; }
     }
 
     /**

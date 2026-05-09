@@ -99,13 +99,16 @@ public abstract class PolicyViolationDetector implements ConsoleFeatures {
 	 * Includes the detector infrastructure itself and test files.
 	 */
 	protected static final List<String> EXCLUDED_PATHS = List.of(
-			"PolicyViolationDetector.java",       // This parent class
-			"CodePolicyViolationDetector.java",   // The orchestrator
-			"PackedCollectionDetector.java",      // Sub-detector
-			"ProducerPatternDetector.java",       // Sub-detector
-			"NamingConventionDetector.java",      // Sub-detector
-			"CodePolicyEnforcementTest.java",     // The test that runs this
-			"/test/"                               // Test files may have intentional examples
+			"PolicyViolationDetector.java",            // This parent class
+			"CodePolicyViolationDetector.java",        // The orchestrator
+			"PackedCollectionDetector.java",           // Sub-detector
+			"ProducerPatternDetector.java",            // Sub-detector
+			"NamingConventionDetector.java",           // Sub-detector
+			"VersionReferenceDetector.java",           // Sub-detector (scans for version markers)
+			"PlanningDocumentReferenceDetector.java",  // Sub-detector (scans for planning-doc refs)
+			"CodePolicyEnforcementTest.java",          // The test that runs this
+			"/test/",                                  // Test files may have intentional examples
+			"/target/"                                 // Maven build output (mirrors src; not a source location)
 	);
 
 	/**
