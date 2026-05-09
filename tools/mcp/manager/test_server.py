@@ -463,6 +463,134 @@ class TestWorkstreamSubmitUnscopedCallerUnaffected(unittest.TestCase):
         mock_post.assert_called_once()
 
 
+class TestWorkstreamSubmitStaticTokenIsolation(unittest.TestCase):
+    """Regression: a static-token (Claude.ai web chat / third-party API)
+    request that lands on a thread previously used to handle an in-cluster
+    HMAC-temp-token request must not inherit that prior request's
+    workstream binding via the thread-local fallback in
+    ``_get_token_workstream_id``.
+
+    Before the fix, the auth middleware's static-token path set request
+    scopes but never reset the thread-local workstream_id. A subsequent
+    static-token request handled on the same worker thread would find
+    the stale value via ``_thread_local.workstream_id`` (since the
+    contextvar was unset for the new request) and the self-collision
+    check would refuse a perfectly legitimate cross-workstream
+    submission.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+        # Simulate a previous HMAC-temp-token request (an in-cluster
+        # Claude Code agent running on workstream "ws-prior") having
+        # left thread-local state behind on this worker thread.
+        server._thread_local.workstream_id = "ws-prior"
+        server._thread_local.job_id = "job-prior"
+        server._workspace_map_cache["map"] = None
+        server._workspace_map_cache["fetched"] = 0.0
+
+    def tearDown(self):
+        if hasattr(server._thread_local, "workstream_id"):
+            del server._thread_local.workstream_id
+        if hasattr(server._thread_local, "job_id"):
+            del server._thread_local.job_id
+        server._request_workstream_id.set(None)
+        server._request_job_id.set(None)
+        server._workspace_map_cache["map"] = None
+        server._workspace_map_cache["fetched"] = 0.0
+
+    def test_static_token_path_clears_stale_thread_local(self):
+        # Mirror what AuthMiddleware does for a matched static token.
+        server._set_scopes(["read", "write", "submit"], label="static")
+        server._set_workspace_scopes(None)
+        server._set_token_context("", "")
+        # The self-collision check uses _get_token_workstream_id();
+        # after the middleware fix, it must not see the leaked binding.
+        self.assertFalse(bool(server._get_token_workstream_id()))
+
+    @patch.object(server, "_controller_post")
+    def test_static_token_can_submit_to_previously_bound_workstream(
+            self, mock_post):
+        # Mirror what AuthMiddleware does for a matched static token.
+        server._set_scopes(["read", "write", "submit"], label="static")
+        server._set_workspace_scopes(None)
+        server._set_token_context("", "")
+        mock_post.return_value = {"ok": True, "jobId": "job-1"}
+        # A static-token caller submitting to the workstream that was
+        # bound to a previous temp-token request on this thread must
+        # succeed — the caller has no checkout and cannot collide.
+        result = server.workstream_submit_task(
+            prompt="Delegated task", workstream_id="ws-prior")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_post.assert_called_once()
+
+
+class TestAuthMiddlewareTokenContextLifecycle(unittest.TestCase):
+    """The auth middleware must bind a fresh token context on every
+    authenticated request — including static-token requests, which have
+    no workstream binding of their own — so that thread-local state from
+    a prior HMAC-temp-token request cannot leak into the new request's
+    self-collision check.
+    """
+
+    def setUp(self):
+        # Simulate a previous temp-token request on this thread.
+        server._thread_local.workstream_id = "ws-cluster-prior"
+        server._thread_local.job_id = "job-cluster-prior"
+
+    def tearDown(self):
+        if hasattr(server._thread_local, "workstream_id"):
+            del server._thread_local.workstream_id
+        if hasattr(server._thread_local, "job_id"):
+            del server._thread_local.job_id
+        server._request_workstream_id.set(None)
+        server._request_job_id.set(None)
+        server._request_scopes.set(None)
+        server._request_token_label.set(None)
+        server._request_workspace_scopes.set(None)
+        if hasattr(server._thread_local, "scopes"):
+            del server._thread_local.scopes
+        if hasattr(server._thread_local, "token_label"):
+            del server._thread_local.token_label
+        if hasattr(server._thread_local, "workspace_scopes"):
+            del server._thread_local.workspace_scopes
+
+    def test_static_token_match_clears_token_context(self):
+        import asyncio
+
+        captured = {}
+
+        async def downstream(scope, receive, send):
+            captured["workstream_id"] = server._get_token_workstream_id()
+            captured["job_id"] = server._get_token_job_id()
+            await send({"type": "http.response.start", "status": 200,
+                        "headers": []})
+            await send({"type": "http.response.body", "body": b""})
+
+        middleware = server.BearerAuthMiddleware(
+            downstream,
+            tokens=[{"value": "static-token-xyz", "scopes": ["submit"],
+                     "label": "static-test"}],
+        )
+        scope = {
+            "type": "http",
+            "path": "/mcp",
+            "headers": [(b"authorization", b"Bearer static-token-xyz")],
+        }
+
+        async def receive():
+            return {"type": "http.request"}
+
+        async def send(_msg):
+            return None
+
+        asyncio.run(middleware(scope, receive, send))
+        # Static tokens carry no workstream binding; the middleware must
+        # have cleared the leaked thread-local values.
+        self.assertFalse(bool(captured.get("workstream_id")))
+        self.assertFalse(bool(captured.get("job_id")))
+
+
 class TestWorkstreamRegister(unittest.TestCase):
 
     @patch.object(server, "_controller_post")
