@@ -26,11 +26,15 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Builds MCP configuration JSON and allowed-tools strings for the
@@ -51,7 +55,8 @@ import java.util.Map;
 public class McpConfigBuilder implements ConsoleFeatures {
 
     /**
-     * ar-manager tools that are always included for agent jobs.
+     * ar-manager tool names (without the {@code mcp__ar-manager__} prefix)
+     * that are always included for agent jobs.
      *
      * <p>Tracker tools are read-only for agents. Task endpoints
      * ({@code tracker_get_task}, {@code tracker_list_tasks}, and
@@ -61,39 +66,122 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * ({@code tracker_project_summary}, {@code tracker_list_projects},
      * and {@code tracker_list_releases}) remain available for shared
      * project and release visibility and are not documented here as
-     * strictly workspace-filtered. Mutation tools
-     * ({@code tracker_create_task}, {@code tracker_update_task},
-     * {@code tracker_delete_task}, {@code tracker_*_project}, and
-     * {@code tracker_*_release}) are deliberately excluded so agents
-     * cannot alter the shared task tracker.</p>
+     * strictly workspace-filtered.</p>
      *
      * <p>{@code workstream_submit_task} is included so agents can
      * delegate work to other workstreams in the same workspace. The
      * server rejects self-submission (a job targeting the agent's own
      * workstream) with an explanatory error, since that would cause
      * two agents to commit to the same git branch concurrently.</p>
+     *
+     * <p>{@code workspace_secret_list_names} and
+     * {@code workspace_secret_render_file} are included so agents can
+     * stage workspace-scoped credentials (e.g., AWS, GitHub tokens)
+     * into local files without ever seeing the secret values
+     * themselves. Both tools enforce workspace ownership on the server.</p>
+     *
+     * <p>The set of ar-manager tools that exist on the server but are
+     * deliberately NOT in this list is documented in
+     * {@link #EXCLUDED_AR_MANAGER_TOOLS}. The
+     * {@code allowlistCoversEveryArManagerTool} test in
+     * {@code McpConfigBuilderTest} fails when a newly registered
+     * server tool is in neither set, forcing a deliberate decision
+     * before merging.</p>
      */
-    private static final String AR_MANAGER_TOOLS =
-        "mcp__ar-manager__send_message," +
-        "mcp__ar-manager__memory_recall," +
-        "mcp__ar-manager__memory_store," +
-        "mcp__ar-manager__workstream_context," +
-        "mcp__ar-manager__workstream_list," +
-        "mcp__ar-manager__workstream_get_status," +
-        "mcp__ar-manager__workstream_submit_task," +
-        "mcp__ar-manager__github_pr_find," +
-        "mcp__ar-manager__github_pr_review_comments," +
-        "mcp__ar-manager__github_pr_conversation," +
-        "mcp__ar-manager__github_pr_reply," +
-        "mcp__ar-manager__github_list_open_prs," +
-        "mcp__ar-manager__github_create_pr," +
-        "mcp__ar-manager__tracker_get_task," +
-        "mcp__ar-manager__tracker_list_tasks," +
-        "mcp__ar-manager__tracker_search_tasks," +
-        "mcp__ar-manager__tracker_project_summary," +
-        "mcp__ar-manager__tracker_list_projects," +
-        "mcp__ar-manager__tracker_list_releases," +
-        "mcp__ar-manager__controller_health";
+    static final Set<String> AR_MANAGER_TOOL_NAMES = Collections.unmodifiableSet(
+        new LinkedHashSet<>(Arrays.asList(
+            "controller_health",
+            "send_message",
+            "memory_recall",
+            "memory_store",
+            "workstream_context",
+            "workstream_list",
+            "workstream_get_status",
+            "workstream_get_job",
+            "workstream_submit_task",
+            "github_pr_find",
+            "github_pr_review_comments",
+            "github_pr_conversation",
+            "github_pr_reply",
+            "github_list_open_prs",
+            "github_create_pr",
+            "github_request_copilot_review",
+            "github_read_file",
+            "github_pr_check_status",
+            "project_read_plan",
+            "tracker_get_task",
+            "tracker_list_tasks",
+            "tracker_search_tasks",
+            "tracker_project_summary",
+            "tracker_list_projects",
+            "tracker_list_releases",
+            "workspace_secret_list_names",
+            "workspace_secret_render_file"
+        ))
+    );
+
+    /**
+     * ar-manager tool names that are deliberately NOT exposed to coding
+     * agents. Each tool listed here is either an admin/orchestration
+     * operation (creating workstreams, dispatching workflows, mutating
+     * controller config) or a shared-state mutation (creating, updating,
+     * or deleting tracker projects, releases, or tasks).
+     *
+     * <p>Tools in this set still exist on the ar-manager server but
+     * cannot be invoked by agent jobs through the
+     * {@code --allowedTools} list. Operators retain access via the
+     * Slack MCP integration and the ar-manager HTTP API.</p>
+     *
+     * <p>Together with {@link #AR_MANAGER_TOOL_NAMES}, this set must
+     * cover every {@code @mcp.tool()} function in
+     * {@code tools/mcp/manager/server.py}. The
+     * {@code allowlistCoversEveryArManagerTool} test fails if a tool
+     * is missing from both sets.</p>
+     */
+    static final Set<String> EXCLUDED_AR_MANAGER_TOOLS = Collections.unmodifiableSet(
+        new LinkedHashSet<>(Arrays.asList(
+            // Controller admin
+            "controller_update_config",
+            // Workstream admin
+            "workstream_register",
+            "workstream_update_config",
+            // Project orchestration / mutations
+            "project_create_branch",
+            "project_verify_branch",
+            "project_commit_plan",
+            // Tracker mutations (agents must not alter the shared tracker)
+            "tracker_create_project",
+            "tracker_update_project",
+            "tracker_delete_project",
+            "tracker_create_release",
+            "tracker_update_release",
+            "tracker_delete_release",
+            "tracker_create_task",
+            "tracker_update_task",
+            "tracker_delete_task"
+        ))
+    );
+
+    /**
+     * Comma-separated {@code mcp__ar-manager__*} entries appended to the
+     * {@code --allowedTools} flag when ar-manager is configured.
+     */
+    private static final String AR_MANAGER_TOOLS = buildArManagerToolsCsv();
+
+    /**
+     * Builds the comma-separated {@code mcp__ar-manager__*} entry list
+     * from {@link #AR_MANAGER_TOOL_NAMES}.
+     *
+     * @return comma-separated allowed-tool entries for the agent allowlist
+     */
+    private static String buildArManagerToolsCsv() {
+        StringBuilder sb = new StringBuilder();
+        for (String name : AR_MANAGER_TOOL_NAMES) {
+            if (sb.length() > 0) sb.append(',');
+            sb.append("mcp__ar-manager__").append(name);
+        }
+        return sb.toString();
+    }
 
     /** Shared Jackson mapper for serializing the MCP config JSON. */
     private static final ObjectMapper mapper = new ObjectMapper();

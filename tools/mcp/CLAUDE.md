@@ -146,8 +146,13 @@ important tools are declared in the function signature (not hidden in the body).
 4. Add the tool name to the `expected` set in `McpToolDiscoveryTest.managerAllExpectedToolsAreRegisteredInServerPy`.
 5. Add parameter assertions to `McpToolDiscoveryTest.managerToolParametersAreProperlyDeclaredInSignatures` for any parameters that are not obvious (e.g., optional parameters that were historically missed).
 6. Add the tool name to the `expected` set in `TestToolRegistration.test_expected_tool_count` in `tools/mcp/manager/test_server.py`.
-7. Run `mvn test -pl flowtree -Dtest=McpToolDiscoveryTest` and confirm all tests pass.
-8. Run `python -m pytest tools/mcp/manager/test_server.py` and confirm all tests pass.
+7. **Update the agent allowlist in `flowtree/src/main/java/io/flowtree/jobs/McpConfigBuilder.java`.** Every new tool must be classified as either:
+   - **Granted to agents:** add the bare tool name to `AR_MANAGER_TOOL_NAMES`. The Claude Code harness will then include `mcp__ar-manager__<name>` in the launched agent's `--allowedTools` list.
+   - **Deliberately excluded:** add the tool name to `EXCLUDED_AR_MANAGER_TOOLS` (admin/orchestration tools, shared-state mutations, anything an autonomous coding agent should not invoke).
+
+   The `allowlistCoversEveryArManagerTool` test in `McpConfigBuilderTest` fails when a tool exists in `server.py` but is in neither set, forcing this decision before merge. The historical failure mode was that new tools were registered on the server but never added to the harness allowlist, so the Claude Code subprocess silently blocked them — the test prevents that.
+8. Run `mvn test -pl flowtree -Dtest=McpToolDiscoveryTest,McpConfigBuilderTest` and confirm all tests pass.
+9. Run `python -m pytest tools/mcp/manager/test_server.py` and confirm all tests pass.
 
 ---
 
