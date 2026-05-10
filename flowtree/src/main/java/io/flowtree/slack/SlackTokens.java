@@ -84,6 +84,27 @@ public class SlackTokens {
 	public void setAppToken(String appToken) { this.appToken = appToken; }
 
 	/**
+	 * Creates a {@link SlackTokens} instance from a workspace configuration entry.
+	 *
+	 * <p>Resolution order within the entry (first match wins):</p>
+	 * <ol>
+	 *   <li>{@code tokensFile} — path to a JSON file containing
+	 *       {@code botToken} and {@code appToken}</li>
+	 *   <li>Inline {@code botToken} / {@code appToken} fields on the entry</li>
+	 * </ol>
+	 *
+	 * @param entry the workspace configuration entry
+	 * @return a {@link SlackTokens} instance
+	 * @throws IOException if {@code tokensFile} is set but cannot be read
+	 */
+	public static SlackTokens from(WorkstreamConfig.SlackWorkspaceEntry entry) throws IOException {
+		if (entry.getTokensFile() != null && !entry.getTokensFile().isEmpty()) {
+			return loadFromFile(new File(entry.getTokensFile()));
+		}
+		return new SlackTokens(entry.getBotToken(), entry.getAppToken());
+	}
+
+	/**
 	 * Loads tokens from a JSON file.
 	 *
 	 * @param file the JSON file to read

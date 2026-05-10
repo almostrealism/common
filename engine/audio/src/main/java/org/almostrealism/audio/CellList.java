@@ -33,7 +33,6 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.graph.temporal.CollectionTemporalCellAdapter;
 import org.almostrealism.graph.temporal.DefaultWaveCellData;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.heredity.Gene;
 import org.almostrealism.time.Temporal;
 import org.almostrealism.time.TemporalList;
@@ -280,12 +279,6 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 
 	/** Number of frames processed per tick segment; zero means process all frames per tick. */
 	private int tickSegmentSize;
-
-	/** Number of tick loop iterations per call; allows multiple steps within a single tick. */
-	private int tickLoopCount;
-
-	/** Optional action executed before each tick cycle begins. */
-	private Runnable tickPreAction;
 
 	/**
 	 * Creates a new CellList with the specified parent CellLists.
@@ -889,54 +882,20 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 	 */
 	public void setTickSegmentSize(int size) { this.tickSegmentSize = size; }
 
-	/**
-	 * Sets an action to run before building the tick operation list.
-	 *
-	 * <p>This action runs when {@link #tick()} is called, before any
-	 * compilation occurs. It can be used to adjust global compilation
-	 * settings (e.g., optimization level) between setup and tick phases.</p>
-	 *
-	 * @param action the action to run before tick construction
-	 */
-	public void setTickPreAction(Runnable action) { this.tickPreAction = action; }
-
-	/**
-	 * Sets the number of iterations for a compiled tick loop.
-	 *
-	 * <p>When set to a positive value, {@link #tick()} wraps all tick
-	 * operations in a {@link Loop} that executes the specified number of
-	 * iterations in a single compiled native function call. The returned
-	 * {@link Runnable} executes all iterations on its first invocation
-	 * and is a no-op on subsequent calls.</p>
-	 *
-	 * <p>This eliminates per-tick overhead (argument marshalling, thread
-	 * creation) that dominates when the tick function is called hundreds
-	 * of thousands of times from Java. Instead, one native invocation
-	 * performs all iterations with only for-loop increment overhead
-	 * between iterations.</p>
-	 *
-	 * @param count number of iterations, or zero to disable
-	 */
-	public void setTickLoopCount(int count) { this.tickLoopCount = count; }
-
 	@Override
 	public Supplier<Runnable> tick() {
-		if (tickSegmentSize <= 0 && tickLoopCount <= 0 && tickPreAction == null) {
+		if (tickSegmentSize <= 0) {
 			OperationList tick = new OperationList("CellList Tick");
 			getAllRoots().stream().map(r -> r.push(c(0.0))).forEach(tick::add);
 			tick.add(getAllTemporals().tick());
 			return tick;
 		}
 
-		if (tickPreAction != null) {
-			tickPreAction.run();
-		}
-
 		List<Supplier<Runnable>> rootPushes = getAllRoots().stream()
 				.map(r -> r.push(c(0.0)))
 				.collect(Collectors.toList());
 
-		if (tickSegmentSize > 0 && rootPushes.size() > tickSegmentSize) {
+		if (rootPushes.size() > tickSegmentSize) {
 			OperationList tick = new OperationList("CellList Tick", false);
 
 			for (int i = 0; i < rootPushes.size(); i += tickSegmentSize) {
@@ -955,21 +914,6 @@ public class CellList extends ArrayList<Cell<PackedCollection>> implements Cells
 		OperationList tick = new OperationList("CellList Tick");
 		rootPushes.forEach(tick::add);
 		tick.add(getAllTemporals().tick());
-
-		if (tickLoopCount > 0) {
-			Loop loop = new Loop(tick, tickLoopCount);
-			return () -> {
-				Runnable compiled = ((Supplier<Runnable>) loop).get();
-				boolean[] executed = {false};
-				return () -> {
-					if (!executed[0]) {
-						executed[0] = true;
-						compiled.run();
-					}
-				};
-			};
-		}
-
 		return tick;
 	}
 

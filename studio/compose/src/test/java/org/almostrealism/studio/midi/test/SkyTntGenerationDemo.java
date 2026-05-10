@@ -17,6 +17,7 @@
 package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -98,7 +99,7 @@ public class SkyTntGenerationDemo extends TestSuiteBase implements ConsoleFeatur
      * to {@value #OUTPUT_DIR}. The method logs which weight mode was used so
      * the caller can assess the quality of the output.</p>
      */
-    @Test
+    @Test(timeout = 600000)
     public void generateMidiFiles() throws Exception {
         File outputDir = new File(OUTPUT_DIR);
         if (!outputDir.exists() && !outputDir.mkdirs()) {
@@ -210,9 +211,9 @@ public class SkyTntGenerationDemo extends TestSuiteBase implements ConsoleFeatur
 
         PackedCollection netPos = new PackedCollection(1);
         PackedCollection tokenPos = new PackedCollection(1);
-        PackedCollection netFreqCis = RotationFeatures.computeRopeFreqs(
+        CollectionProducer netFreqCis = RotationFeatures.computeRopeFreqs(
                 config.ropeTheta, netHeadSize, SEQ_LEN);
-        PackedCollection tokenFreqCis = RotationFeatures.computeRopeFreqs(
+        CollectionProducer tokenFreqCis = RotationFeatures.computeRopeFreqs(
                 config.ropeTheta, tokenHeadSize, SEQ_LEN);
         PackedCollection lmHeadWeight = stateDict.get("lm_head.weight");
 

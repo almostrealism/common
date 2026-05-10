@@ -18,7 +18,6 @@ package org.almostrealism.studio.pattern.test;
 
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.audio.CellFeatures;
-import org.almostrealism.audio.Cells;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.audio.data.WaveData;
@@ -210,36 +209,6 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 		AudioStats stats = analyzeAudio(outputFile);
 
 		return new RenderResult(outputFile, stats, timing, numBuffers, totalFrames);
-	}
-
-	/**
-	 * Renders audio using the traditional (offline) runner.
-	 *
-	 * @param scene           the AudioScene to render
-	 * @param durationSeconds how many seconds to render
-	 * @param outputFile      path to write the WAV file
-	 * @return render result with audio statistics (no timing)
-	 */
-	public RenderResult renderTraditional(AudioScene<?> scene, double durationSeconds, String outputFile) {
-		File file = new File(outputFile);
-		file.getParentFile().mkdirs();
-
-		WaveOutput output = new WaveOutput(() -> file, 24, true);
-		Cells cells = scene.getCells(new MultiChannelAudioOutput(output));
-
-		int totalFrames = (int) (durationSeconds * SAMPLE_RATE);
-
-		cells.setup().get().run();
-		Runnable tick = cells.tick().get();
-		for (int i = 0; i < totalFrames; i++) {
-			tick.run();
-		}
-
-		output.write().get().run();
-
-		AudioStats stats = analyzeAudio(outputFile);
-
-		return new RenderResult(outputFile, stats, null, 0, totalFrames);
 	}
 
 	/**

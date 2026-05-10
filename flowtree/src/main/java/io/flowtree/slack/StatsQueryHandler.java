@@ -19,6 +19,7 @@ package io.flowtree.slack;
 import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import fi.iki.elonen.NanoHTTPD.Response;
+import io.flowtree.JsonFieldExtractor;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -122,7 +123,7 @@ class StatsQueryHandler {
 
         if (workstreamFilter != null && !workstreamFilter.isEmpty()) {
             JobStatsStore.WeeklyStats stats = statsStore.getWeeklyStats(workstreamFilter, weekStart);
-            json.append("\"").append(escapeJson(workstreamFilter)).append("\":");
+            json.append("\"").append(JsonFieldExtractor.escapeJson(workstreamFilter)).append("\":");
             appendStatsJson(json, stats);
         } else {
             Map<String, JobStatsStore.WeeklyStats> byWs =
@@ -131,7 +132,7 @@ class StatsQueryHandler {
             for (Map.Entry<String, JobStatsStore.WeeklyStats> entry : byWs.entrySet()) {
                 if (!first) json.append(",");
                 first = false;
-                json.append("\"").append(escapeJson(entry.getKey())).append("\":");
+                json.append("\"").append(JsonFieldExtractor.escapeJson(entry.getKey())).append("\":");
                 appendStatsJson(json, entry.getValue());
             }
         }
@@ -159,17 +160,4 @@ class StatsQueryHandler {
         json.append("}");
     }
 
-    /**
-     * Escapes a string for safe inclusion in a JSON string literal.
-     *
-     * @param s the string to escape, or {@code null}
-     * @return  the escaped string, or an empty string if {@code s} is {@code null}
-     */
-    private static String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r");
-    }
 }

@@ -18,14 +18,12 @@ package org.almostrealism.studio.optimize;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.almostrealism.lifecycle.Destroyable;
-import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.studio.health.StableDurationHealthComputation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.heredity.TemporalCellular;
@@ -54,6 +52,26 @@ import java.util.stream.Collectors;
  * JSON using {@link #store(OutputStream)} and {@link #read(InputStream)}.</p>
  */
 public class AudioScenePopulation implements Population<PackedCollection, TemporalCellular>, Destroyable, CodeFeatures {
+	/**
+	 * When {@code true}, an explicit {@link System#gc()} request is made at the
+	 * start of {@link #enableGenome(int)}. Defaults to {@code true}.
+	 *
+	 * <p>Long-lived drivers that evaluate many genomes back-to-back (the optimizer's
+	 * health loop and the {@link #generate(int, int, java.util.function.Supplier,
+	 * java.util.function.Consumer) generate} loop used for previews) accumulate
+	 * heap state across renders that {@link AudioScene#destroy()} alone does not
+	 * collect. Without this hint, eventually a major GC fires <em>during</em> a
+	 * render and inflates per-tick latency 5×–10×; the GC hint at the per-genome
+	 * boundary forces that work into an idle moment instead.</p>
+	 *
+	 * <p>The hint is placed on {@link #enableGenome(int)} rather than
+	 * {@link #disableGenome()} because the latter is also used during
+	 * {@link #init(Genome, MultiChannelAudioOutput, List, int)} and
+	 * {@link #validateGenome(Genome) validation}; firing GC there would interrupt
+	 * setup paths that have nothing to clean up yet.</p>
+	 */
+	public static boolean gcBeforeGenome = true;
+
 
 	/** The audio scene whose parameters are governed by the genomes in this population. */
 	private final AudioScene<?> scene;
@@ -102,12 +120,13 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	 */
 	public void init(Genome<PackedCollection> templateGenome,
 					 MultiChannelAudioOutput output) {
-		init(templateGenome, output, null);
+		init(templateGenome, output, null, AudioScene.DEFAULT_REALTIME_BUFFER_SIZE);
 	}
 
 	/**
 	 * Initializes the temporal cell pipeline using the specified template genome, audio output,
-	 * and an optional list of channel indices to include in rendering.
+	 * and an optional list of channel indices to include in rendering. Uses the default
+	 * realtime buffer size.
 	 *
 	 * @param templateGenome the genome used to configure the scene during initialization
 	 * @param output         the multi-channel audio output that receives rendered audio
@@ -115,8 +134,25 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	 */
 	public void init(Genome<PackedCollection> templateGenome,
 					 MultiChannelAudioOutput output, List<Integer> channels) {
+		init(templateGenome, output, channels, AudioScene.DEFAULT_REALTIME_BUFFER_SIZE);
+	}
+
+	/**
+	 * Initializes the temporal cell pipeline using the specified template genome, audio output,
+	 * an optional list of channel indices, and an explicit per-tick buffer size. Each call to
+	 * {@code temporal.tick().get().run()} will advance exactly {@code bufferSize} frames, so
+	 * downstream consumers (e.g. {@code StableDurationHealthComputation}) must use this same
+	 * value as their iteration size.
+	 *
+	 * @param templateGenome the genome used to configure the scene during initialization
+	 * @param output         the multi-channel audio output that receives rendered audio
+	 * @param channels       the channel indices to include, or {@code null} for all channels
+	 * @param bufferSize     number of frames advanced per tick of the realtime runner
+	 */
+	public void init(Genome<PackedCollection> templateGenome,
+					 MultiChannelAudioOutput output, List<Integer> channels, int bufferSize) {
 		enableGenome(templateGenome);
-		this.temporal = scene.runner(output, channels);
+		this.temporal = scene.runnerRealTime(output, channels, bufferSize);
 		disableGenome();
 	}
 
@@ -141,6 +177,9 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 
 	@Override
 	public TemporalCellular enableGenome(int index) {
+		if (gcBeforeGenome) {
+			System.gc();
+		}
 		enableGenome(getGenomes().get(index));
 		temporal.reset();
 		return temporal;
@@ -218,9 +257,10 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 
 			init(getGenomes().get(0), new MultiChannelAudioOutput(out), List.of(channel));
 
-			OperationProfile profile = new OperationProfile("AudioScenePopulation");
-
-			Runnable gen = null;
+			int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
+			int bufferCount = (frames + bufferSize - 1) / bufferSize;
+			Runnable setup = null;
+			Runnable tick = null;
 
 			for (int i = 0; i < getGenomes().size(); i++) {
 				TemporalCellular cells = null;
@@ -230,18 +270,16 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 					outputPath = null;
 					cells = enableGenome(i);
 
-					if (gen == null) {
-						Supplier<Runnable> op = cells.iter(frames, false);
-
-						if (op instanceof OperationList) {
-							gen = ((OperationList) op).get(profile);
-						} else {
-							gen = op.get();
-						}
+					if (tick == null) {
+						setup = cells.setup().get();
+						tick = cells.tick().get();
 					}
 
 					log("Starting generation for genome " + i + " of " + getGenomes().size());
-					gen.run();
+					setup.run();
+					for (int b = 0; b < bufferCount; b++) {
+						tick.run();
+					}
 				} finally {
 					long generationTime = System.currentTimeMillis() - start;
 					StableDurationHealthComputation.recordGenerationTime(frames, generationTime);

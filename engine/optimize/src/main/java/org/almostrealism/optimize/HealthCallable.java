@@ -209,7 +209,7 @@ public class HealthCallable<T extends Temporal, S extends HealthScore> implement
 				}
 			} catch (Exception e) {
 				if (getErrorListener() == null) {
-					e.printStackTrace();
+					warn(e.getMessage(), e);
 				} else {
 					getErrorListener().accept(e);
 				}

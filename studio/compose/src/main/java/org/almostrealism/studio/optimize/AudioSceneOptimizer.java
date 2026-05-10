@@ -147,7 +147,8 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 						hc.setWaveDetailsProcessor(detailsProcessor);
 
 						if (enableVerbose) log("Initializing AudioScenePopulation");
-						population.init(population.getGenomes().get(0), hc.getOutput());
+						population.init(population.getGenomes().get(0), hc.getOutput(),
+								null, ((StableDurationHealthComputation) hc).getBatchSize());
 
 						if (enableVerbose) {
 							log("AudioScenePopulation initialized (getCells duration = " +
@@ -312,7 +313,7 @@ public class AudioSceneOptimizer extends AudioPopulationOptimizer<TemporalCellul
 		OperationProfileNode profile = setVerbosity(verbosity, enableProfile);
 
 		// Setup features
-		PopulationOptimizer.popSize = enableBreeding ? 10 : 3;
+		PopulationOptimizer.popSize = 10;
 		setFeatureLevel(7);
 
 		// Create computations before applying Heap

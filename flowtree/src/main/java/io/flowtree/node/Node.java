@@ -23,6 +23,7 @@ import io.flowtree.job.JobFactory;
 import io.flowtree.msg.Connection;
 import io.flowtree.msg.Message;
 import io.flowtree.msg.NodeProxy;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.RSSFeed;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -89,7 +90,7 @@ import java.util.function.Consumer;
  * @see <a href="../docs/node-relay.md">Node Relay and Job Routing</a>
  */
 // TODO  Implement JobQueue
-public class Node implements Runnable, ThreadFactory {
+public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 	/** Shared {@link Random} instance used for probabilistic relay and connection decisions. */
 	public static Random random = new Random();
 
@@ -434,9 +435,7 @@ public class Node implements Runnable, ThreadFactory {
 							else
 								Node.this.displayMessage("Exception while working -- ");
 
-							e.printStackTrace();
-							
-							if (e instanceof NullPointerException) e.printStackTrace();
+							warn(e.getMessage(), e);
 							Node.this.totalErrJobs++;
 							Node.this.addFailedJob(j.encode());
 						}
@@ -467,7 +466,7 @@ public class Node implements Runnable, ThreadFactory {
 						try {
 							Thread.sleep(5000);
 						} catch (InterruptedException ie) {
-							System.out.println("Node " + Node.this.id + ": " + ie);
+							Node.this.warn("Node " + Node.this.id + ": " + ie);
 						}
 					}
 				}
@@ -1101,7 +1100,7 @@ public class Node implements Runnable, ThreadFactory {
 		if (this.sleep > max) this.sleep = (int) max;
 		
 		if (this.verbose)
-			System.out.println(this + ": Sleep = " + this.sleep);
+			log(this + ": Sleep = " + this.sleep);
 	}
 	
 	/**
@@ -1163,8 +1162,8 @@ public class Node implements Runnable, ThreadFactory {
 		
 		this.lastMessage = s;
 		
-		System.out.println(s);
-		
+		log(s);
+
 		if (this.log != null) {
 			StringBuilder b = new StringBuilder();
 
@@ -1362,7 +1361,7 @@ public class Node implements Runnable, ThreadFactory {
 			
 			p.flush();
 		} catch (FileNotFoundException fnf) {
-			fnf.printStackTrace(System.out);
+			warn(fnf.getMessage(), fnf);
 		}
 	}
 	
@@ -1454,7 +1453,7 @@ public class Node implements Runnable, ThreadFactory {
 				Thread.sleep(s);
 			} catch (InterruptedException ie) {
 				if (this.stop) break;
-				System.out.println("Node " + id + ": " + ie);
+				warn("Node " + id + ": " + ie);
 			}
 			
 			long start = System.currentTimeMillis();
@@ -1491,7 +1490,14 @@ public class Node implements Runnable, ThreadFactory {
 			this.relaySum += r;
 			this.relayDiv++;
 
-			r: if ((isRelay ? js > 0 : js > this.minJobs) && Math.random() < r) {
+			// Worker nodes should only relay when currently executing a job
+			// (so they have a genuine backlog) or when the queue has more
+			// jobs than a single worker thread can immediately absorb (> 1).
+			// This prevents eager relay-back to the controller by idle workers
+			// that received a job before their worker thread had a chance to run.
+			boolean shouldRelay = isRelay ? js > 0
+					: (js > this.minJobs && (this.working || js > 1));
+			r: if (shouldRelay && Math.random() < r) {
 				Connection c;
 
 				if (Math.random() < this.parentalRelayP ||
@@ -1527,11 +1533,11 @@ public class Node implements Runnable, ThreadFactory {
 							break r;
 						}
 					} catch (SocketException se) {
-						System.out.println("Node " + id + ": " + se.getMessage());
+						warn("Node " + id + ": " + se.getMessage());
 						this.peers.remove(c);
 						this.displayMessage("Dropped peer connection " + c);
 					} catch (IOException ioe) {
-						System.out.println("Node " + id + ": " + ioe);
+						warn("Node " + id + ": " + ioe);
 					}
 				}
 			}

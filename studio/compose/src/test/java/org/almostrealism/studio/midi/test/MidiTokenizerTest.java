@@ -39,7 +39,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	 * Onset times are reconstructed from deltas and should match
 	 * the originals.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testRoundTrip() {
 		List<MidiNoteEvent> events = new ArrayList<>();
 		events.add(new MidiNoteEvent(60, 0, 50, 80, 0));     // C4 at t=0
@@ -75,7 +75,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	 * Verify that compound tokens correctly decompose pitch into
 	 * octave and pitch class, and that onset deltas are computed.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testCompoundTokenAttributes() {
 		List<MidiNoteEvent> events = new ArrayList<>();
 		events.add(new MidiNoteEvent(60, 0, 50, 80, 0));     // C4: octave=5, pc=0
@@ -102,7 +102,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	/**
 	 * Verify special token factory methods produce correct sentinel values.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSpecialTokens() {
 		MidiCompoundToken sos = MidiCompoundToken.sos();
 		assertTrue("SOS should be special", sos.isSpecial());
@@ -121,7 +121,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	/**
 	 * Verify toModelInput produces correct shape and values.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testToModelInput() {
 		List<MidiNoteEvent> events = new ArrayList<>();
 		events.add(new MidiNoteEvent(60, 0, 50, 80, 0));
@@ -137,7 +137,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	/**
 	 * Verify that MidiCompoundToken.fromArray round-trips correctly.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testCompoundTokenArrayRoundTrip() {
 		MidiCompoundToken token = new MidiCompoundToken(100, 50, 5, 0, 0, 80);
 		int[] array = token.toArray();
@@ -148,7 +148,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	/**
 	 * Verify MoonbeamConfig default configuration is valid.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testDefaultConfigValid() {
 		MoonbeamConfig config = MoonbeamConfig.defaultConfig();
 		config.validate();
@@ -165,7 +165,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	/**
 	 * Verify MoonbeamConfig test configuration is valid.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testTestConfigValid() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		config.validate();
@@ -175,7 +175,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	/**
 	 * Verify that tokenizing an empty event list produces only SOS and EOS.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testEmptySequence() {
 		MidiTokenizer tokenizer = new MidiTokenizer();
 		List<MidiCompoundToken> tokens = tokenizer.tokenize(new ArrayList<>());
@@ -187,7 +187,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	/**
 	 * Verify that large onset and duration values are clamped.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testValueClamping() {
 		List<MidiNoteEvent> events = new ArrayList<>();
 		events.add(new MidiNoteEvent(60, 0, 999999, 80, 0));
@@ -209,7 +209,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	 * Verify that MidiCompoundToken.fromArray rejects arrays
 	 * with the wrong number of elements.
 	 */
-	@Test(expected = IllegalArgumentException.class)
+	@Test(timeout = 60000, expected = IllegalArgumentException.class)
 	public void testFromArrayInvalidLength() {
 		MidiCompoundToken.fromArray(new int[]{1, 2, 3});
 	}
@@ -217,7 +217,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	/**
 	 * Verify that MidiNoteEvent sorts by onset first, then by pitch.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testNoteEventOrdering() {
 		MidiNoteEvent early = new MidiNoteEvent(72, 0, 50, 80, 0);
 		MidiNoteEvent late = new MidiNoteEvent(60, 100, 50, 80, 0);
@@ -234,7 +234,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	/**
 	 * Verify MidiNoteEvent equals and hashCode contract.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testNoteEventEquality() {
 		MidiNoteEvent a = new MidiNoteEvent(60, 100, 50, 80, 0);
 		MidiNoteEvent b = new MidiNoteEvent(60, 100, 50, 80, 0);
@@ -250,7 +250,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	/**
 	 * Verify MidiNoteEvent octave and pitch class derivation.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testNoteEventOctaveAndPitchClass() {
 		MidiNoteEvent middleC = new MidiNoteEvent(60, 0, 50, 80, 0);
 		assertEquals("C4 octave", 5, middleC.getOctave());
@@ -268,7 +268,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	/**
 	 * Verify MoonbeamConfig.validate rejects invalid head configuration.
 	 */
-	@Test(expected = IllegalStateException.class)
+	@Test(timeout = 60000, expected = IllegalStateException.class)
 	public void testConfigInvalidHeads() {
 		new MoonbeamConfig(
 				48, 144, 2, 7, 6, 8,
@@ -284,7 +284,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	/**
 	 * Verify MoonbeamConfig.validate rejects mismatched headsPerGroup sum.
 	 */
-	@Test(expected = IllegalStateException.class)
+	@Test(timeout = 60000, expected = IllegalStateException.class)
 	public void testConfigInvalidHeadsPerGroup() {
 		new MoonbeamConfig(
 				48, 144, 2, 6, 6, 8,
@@ -300,7 +300,7 @@ public class MidiTokenizerTest extends TestSuiteBase {
 	/**
 	 * Verify MidiCompoundToken equality and hashCode contract.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testCompoundTokenEquality() {
 		MidiCompoundToken a = new MidiCompoundToken(100, 50, 5, 0, 0, 80);
 		MidiCompoundToken b = new MidiCompoundToken(100, 50, 5, 0, 0, 80);

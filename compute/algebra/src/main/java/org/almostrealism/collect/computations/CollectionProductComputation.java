@@ -158,6 +158,19 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The emitted expression is {@code c_1 · c_2 · … · c_K}, inlining each
+	 * operand's full emission. Width is the operand count
+	 * ({@code getChildren().size() - 1} excludes the destination).</p>
+	 */
+	@Override
+	public long getExpansionWidth() {
+		int operands = getChildren().size() - 1;
+		return Math.max(1L, operands);
+	}
+
+	/**
 	 * Computes the derivative (delta) of this product computation with respect to the
 	 * specified target using the product rule for automatic differentiation.
 	 *

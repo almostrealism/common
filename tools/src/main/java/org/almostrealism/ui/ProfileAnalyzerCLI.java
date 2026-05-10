@@ -18,6 +18,7 @@ package org.almostrealism.ui;
 
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.profile.OperationSource;
+import org.almostrealism.io.Console;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -90,21 +91,21 @@ public class ProfileAnalyzerCLI {
                     break;
                 case "search":
                     if (args.length < 3) {
-                        System.err.println("Error: search requires a pattern argument");
+                        Console.root().warn("Error: search requires a pattern argument", null);
                         System.exit(1);
                     }
                     searchOperations(filePath, args[2]);
                     break;
                 case "breakdown":
                     if (args.length < 3) {
-                        System.err.println("Error: breakdown requires a node_key argument");
+                        Console.root().warn("Error: breakdown requires a node_key argument", null);
                         System.exit(1);
                     }
                     printBreakdown(filePath, args[2]);
                     break;
                 case "source":
                     if (args.length < 3) {
-                        System.err.println("Error: source requires a node_key argument");
+                        Console.root().warn("Error: source requires a node_key argument", null);
                         System.exit(1);
                     }
                     int maxLines = 200;
@@ -115,18 +116,18 @@ public class ProfileAnalyzerCLI {
                     break;
                 case "source-summary":
                     if (args.length < 3) {
-                        System.err.println("Error: source-summary requires a node_key argument");
+                        Console.root().warn("Error: source-summary requires a node_key argument", null);
                         System.exit(1);
                     }
                     printSourceSummary(filePath, args[2]);
                     break;
                 default:
-                    System.err.println("Unknown command: " + command);
+                    Console.root().warn("Unknown command: " + command, null);
                     printUsage();
                     System.exit(1);
             }
         } catch (Exception e) {
-            System.out.println("{\"error\": \"" + escapeJson(e.getMessage()) + "\", " +
+            Console.root().println("{\"error\": \"" + escapeJson(e.getMessage()) + "\", " +
                     "\"type\": \"" + e.getClass().getSimpleName() + "\"}");
             System.exit(1);
         }
@@ -136,15 +137,15 @@ public class ProfileAnalyzerCLI {
      * Prints the command usage summary to standard error.
      */
     private static void printUsage() {
-        System.err.println("Usage: ProfileAnalyzerCLI <command> <file> [args...]");
-        System.err.println("Commands:");
-        System.err.println("  summary <file>                           - Load profile and output summary");
-        System.err.println("  slowest <file> [limit] [--category=X]    - Find slowest operations");
-        System.err.println("                                             category: compile|run|all (default: all)");
-        System.err.println("  children <file> [node_key]               - List children of a node");
-        System.err.println("  search <file> <pattern>                  - Search operations by name");
-        System.err.println("  breakdown <file> <node_key>              - Get compile vs run time breakdown");
-        System.err.println("  source <file> <node_key> [max_lines]     - Get generated source code for a node");
+        Console.root().warn("Usage: ProfileAnalyzerCLI <command> <file> [args...]", null);
+        Console.root().warn("Commands:", null);
+        Console.root().warn("  summary <file>                           - Load profile and output summary", null);
+        Console.root().warn("  slowest <file> [limit] [--category=X]    - Find slowest operations", null);
+        Console.root().warn("                                             category: compile|run|all (default: all)", null);
+        Console.root().warn("  children <file> [node_key]               - List children of a node", null);
+        Console.root().warn("  search <file> <pattern>                  - Search operations by name", null);
+        Console.root().warn("  breakdown <file> <node_key>              - Get compile vs run time breakdown", null);
+        Console.root().warn("  source <file> <node_key> [max_lines]     - Get generated source code for a node", null);
     }
 
     /**
@@ -200,7 +201,7 @@ public class ProfileAnalyzerCLI {
         json.append("  ]\n");
         json.append("}");
 
-        System.out.println(json);
+        Console.root().println(String.valueOf(json));
     }
 
     /**
@@ -262,7 +263,7 @@ public class ProfileAnalyzerCLI {
         json.append("  ]\n");
         json.append("}");
 
-        System.out.println(json);
+        Console.root().println(String.valueOf(json));
     }
 
     /**
@@ -277,7 +278,7 @@ public class ProfileAnalyzerCLI {
 
         OperationProfileNode node = findByKey(root, nodeKey);
         if (node == null) {
-            System.out.println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
+            Console.root().println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
             return;
         }
 
@@ -344,7 +345,7 @@ public class ProfileAnalyzerCLI {
         json.append("  \"run_percentage\": ").append(round(runPct, 1)).append("\n");
         json.append("}");
 
-        System.out.println(json);
+        Console.root().println(String.valueOf(json));
     }
 
     /**
@@ -360,7 +361,7 @@ public class ProfileAnalyzerCLI {
 
         OperationProfileNode parent = nodeKey == null ? root : findByKey(root, nodeKey);
         if (parent == null) {
-            System.out.println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
+            Console.root().println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
             return;
         }
 
@@ -400,7 +401,7 @@ public class ProfileAnalyzerCLI {
         json.append("  ]\n");
         json.append("}");
 
-        System.out.println(json);
+        Console.root().println(String.valueOf(json));
     }
 
     /**
@@ -445,7 +446,7 @@ public class ProfileAnalyzerCLI {
         json.append("  ]\n");
         json.append("}");
 
-        System.out.println(json);
+        Console.root().println(String.valueOf(json));
     }
 
     /**
@@ -460,7 +461,7 @@ public class ProfileAnalyzerCLI {
 
         OperationProfileNode node = findByKey(root, nodeKey);
         if (node == null) {
-            System.out.println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
+            Console.root().println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
             return;
         }
 
@@ -579,7 +580,7 @@ public class ProfileAnalyzerCLI {
         }
 
         json.append("}");
-        System.out.println(json);
+        Console.root().println(String.valueOf(json));
     }
 
     /**
@@ -592,7 +593,7 @@ public class ProfileAnalyzerCLI {
 
         OperationProfileNode node = findByKey(root, nodeKey);
         if (node == null) {
-            System.out.println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
+            Console.root().println("{\"error\": \"Node not found: " + escapeJson(nodeKey) + "\"}");
             return;
         }
 
@@ -608,13 +609,13 @@ public class ProfileAnalyzerCLI {
         }
 
         if (matched == null || matched.isEmpty()) {
-            System.out.println("{\"error\": \"No source found for node: " + escapeJson(nodeKey) + "\"}");
+            Console.root().println("{\"error\": \"No source found for node: " + escapeJson(nodeKey) + "\"}");
             return;
         }
 
         String sourceCode = matched.get(0).getSource();
         if (sourceCode == null) {
-            System.out.println("{\"error\": \"Source is null for node: " + escapeJson(nodeKey) + "\"}");
+            Console.root().println("{\"error\": \"Source is null for node: " + escapeJson(nodeKey) + "\"}");
             return;
         }
 
@@ -752,7 +753,7 @@ public class ProfileAnalyzerCLI {
         json.append("  }\n");
 
         json.append("}");
-        System.out.println(json);
+        Console.root().println(String.valueOf(json));
     }
 
     /**

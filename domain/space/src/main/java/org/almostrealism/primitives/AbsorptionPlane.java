@@ -26,6 +26,8 @@ import org.almostrealism.physics.Fast;
 import org.almostrealism.physics.PhysicalConstants;
 import org.almostrealism.texture.GraphicsConverter;
 
+import org.almostrealism.io.ConsoleFeatures;
+
 import javax.swing.*;
 import java.awt.*;
 import java.io.IOException;
@@ -39,7 +41,7 @@ import java.io.OutputStream;
  * 
  * @author  Michael Murray
  */
-public class AbsorptionPlane extends Plane implements Absorber, Fast {
+public class AbsorptionPlane extends Plane implements Absorber, Fast, ConsoleFeatures {
 	/** Scale factor used when printing debug absorption coordinates. */
 	public static double displayCoords = Math.pow(10.0, 4.0);
 
@@ -233,7 +235,7 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast {
 	 * @param g the graphics context to draw on
 	 */
 	public void drawImage(Graphics g) {
-		System.out.println("AbsorptionPlane.drawImage");
+		log("drawImage");
 		g.drawImage(GraphicsConverter.convertToAWTImage(getImage()), 0, 0, display);
 	}
 	

@@ -277,7 +277,7 @@ public class Repeated<T> extends Scope<T> {
 		extractInvariantSubExpressions(scope, variantNames, loopIndices, extractedDeclarations);
 
 		if (enableLicmDiagnostics && allDeclarations.size() > 10) {
-			log("[LICM] " + scope.getName() + ": " +
+			log(scope.getName() + ": " +
 					allDeclarations.size() + " decls, " +
 					hoisted.size() + " hoisted, " +
 					extractedDeclarations.size() + " extracted");

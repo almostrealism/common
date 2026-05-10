@@ -1,465 +1,410 @@
 # AudioScene Rendering Pipeline Redesign
 
-> **Status (April 2026):** The plan is active. Key context: `AudioSceneLoader` has been
-> extracted from `AudioScene` on master; alternate sample rates are now supported in
-> `BufferedAudioPlayer`; the `getCells()` path already separates LEFT/RIGHT stereo channels.
-> Per-channel kernel splitting (Phase 1) has not yet been implemented.
+> **Status (May 2026):** Plan revised to reflect two developments since the original
+> was written: (1) the PDSL audio DSP substrate has landed on master — it is the path
+> forward for the DSP half of the redesign, not one option among several; (2) profiling
+> on `feature/rings-realtime-generation` found that **pattern generation** accounts for
+> ~278ms of 311ms total per-tick cost, making it the dominant bottleneck — the DSP
+> mixdown this plan originally focused on is a small fraction of total cost.
+>
+> The revised scope covers both: DSP cutover (substrate ready, mostly mechanical) and
+> pattern generation (bottleneck identified, strategy evaluative until profiling clarifies).
 
 ---
 
-## Motivation
+## 1. The Corrected Scope
 
-A week of incremental optimization on the `feature/audio-loop-performance` branch
-established clear evidence that the current architecture has fundamental limits:
+The original plan framed AudioScene redesign as a DSP/mixdown performance problem. It
+was written before the PDSL audio DSP work landed and before recent profiling identified
+where render time actually goes. Both of those have changed the picture materially.
 
-- **Expression-level optimizations don't help.** LICM factoring hoisted 216/229 sin()
-  calls — zero kernel impact. Exponent strength reduction eliminated 111 powf() calls —
-  zero kernel impact. The GPU compiler already performs these optimizations independently.
+**Reality after profiling (32-measure render, M1 Ultra, 4096 frames):**
 
-- **Copy elimination doesn't help.** Removing 46 array assignments from CachedStateCell —
-  zero kernel impact. GPU memory bandwidth absorbs trivial copy operations.
+| Component | Time | Fraction |
+|-----------|------|---------|
+| Pattern generation (PatternLayerManager.sumInternal + PatternFeatures.render) | ~278ms | ~89% |
+| DSP kernel (Loop, monolithic) | ~33ms | ~11% |
+| **Total per tick** | **311ms** | — |
 
-- **The kernel is memory-bandwidth bound**, not compute bound. 2530 array assignments per
-  iteration × 4096 = 10.4M memory operations per tick. The monolithic kernel processes
-  all 6 channels sequentially in a single loop, creating a 2783-line inner loop body
-  that thrashes the cache.
+The DSP mixdown — the subject of the original plan's entire analysis and Options A–D
+architecture section — accounts for roughly 11% of total cost. Pattern generation
+accounts for the other 89%. A redesign that only fixes DSP leaves the dominant cost
+untouched.
 
-- **prepareBatch() adds 53ms (27.5%) per tick** at 4096-frame buffers. This is pure
-  Java-side work (pattern resolution, sample buffer preparation) that cannot be
-  GPU-accelerated.
-
-The conclusion: **no amount of expression-level optimization will achieve real-time
-rendering.** The architecture itself must change.
-
-### Current Performance (M1 Ultra, Metal+JNI, 4096 frames)
-
-| Component | Time | Budget | Over |
-|-----------|------|--------|------|
-| prepareBatch (24 channels) | 53ms | — | — |
-| Loop kernel (monolithic) | 139ms | — | — |
-| **Total per tick** | **192ms** | **92.9ms** | **2.07×** |
+The revised scope covers both halves:
+- **DSP cutover:** Replace the Cell-based DSP path with the PDSL substrate. The substrate
+  exists and is tested. The remaining work is mechanical: production cutover, EfxManager
+  migration, one deferred primitive (`delay_network`), and variable channel count support.
+- **Pattern generation:** Profile-and-fix. The 278ms bottleneck is identified but not yet
+  decomposed into its contributors. The strategy is: profile first, fix what the data
+  points to, then evaluate whether a structural change is needed.
 
 ---
 
-## Current Architecture
+## 2. What Has Already Landed
 
-### How a Tick Works Today
+### 2A: The PDSL Audio DSP Substrate (merged to master)
 
-```
-AudioScene.tick() → OperationList:
-  Phase 0: bufferFrameIndex = 0                          [Java, ~0ms]
-  Phase 1-24: PatternAudioBuffer.prepareBatch() × 24     [Java, ~53ms]
-  Phase 25: Loop(4096) { cellGraph.tick() }              [Native, ~139ms]
-  Phase 26: currentFrame += bufferSize                   [Java, ~0ms]
-```
+The `feature/pdsl-audio-dsp` branch, now merged, implemented the full declarative
+substrate for the DSP pipeline. This is the foundation the DSP cutover builds on.
 
-### The Monolithic Kernel Problem
+**Audio primitives** — all implemented and tested:
+`fir`, `scale`, `identity`, `lowpass`, `highpass`, `biquad`, `delay`, `lfo`
 
-The Loop at Phase 25 compiles the entire cell graph into a **single C function** with
-a single for-loop iterating 4096 times. Inside each iteration:
+**Multi-channel constructs:**
+- `channels: int` header parameter — declares N-channel layer
+- `for each channel { }` — iterates a body over each channel independently
+- `repeat(N)` — replicates a `[1, signal_size]` input to `[N, signal_size]`
+- `route(matrix)` — cross-channel routing via `[in, out]` matrix (square or rectangular)
+- `sum_channels()` — collapses `[N, signal_size]` to `[1, signal_size]`
+- `accum_blocks(...)` — branches, applies each arm to the input, sums outputs
 
-- 6 source channels are read (PatternAudioBuffer outputs)
-- Each channel passes through: sample interpolation → filter chain (IIR biquad) →
-  delay line → automation (sin/pow LFO modulation) → mix to output
-- All channels process sequentially within the same loop body
-- Data flows through CachedStateCell chains: `cachedValue → push → receptor → ...`
-- Each CachedStateCell adds: 1 copy + 1 zero reset + downstream push(es)
-- Result: 535 simple copies, 103 zero resets, 117 accumulations per iteration
+**Producer-valued arguments:**
+Every audio primitive that the live system drives with a `Producer<PackedCollection>`
+(volume, HP/LP cutoff, delay time, automation modulation) accepts `producer([shape])`.
+Constant-folded literal calls compile identically to before — no regression for
+fixed-parameter PDSL files. `bindProducerArg` is the single dispatch point.
 
-### The Cell Graph Memory Model
+**PDSL files:**
+| File | What it covers |
+|------|---------------|
+| `pdsl/audio/efx_channel.pdsl` | EFX channel: `efx_wet_chain`, `efx_lowpass_wet`, `efx_highpass_wet`, `efx_dry_path`, `efx_delay`, `efx_wet_dry_mix` |
+| `pdsl/audio/mixdown_channel.pdsl` | Mixdown layers: `mixdown_main` (HP→scale→LP), `mixdown_channel` (full with wet/delay) |
+| `pdsl/audio/delay_feedback_bank.pdsl` | Multi-channel delay bank: `delay_feedback_bank` (repeat → per-channel delay → route → sum_channels) |
+| `pdsl/audio/mixdown_manager.pdsl` | Top-level mixdown: `mixdown_main_bus`, `mixdown_efx_bus`, `mixdown_master` |
 
-```
-CellList.tick() → getAllTemporals() → ordered list of Temporal.tick() calls
-  → each CachedStateCell.tick():
-      1. push(cachedValue) to receptor     [copy or accumulate]
-      2. reset(cachedValue) to 0.0         [zero write]
-  → receptor chain propagates data through more cells
-  → all operations compile into one OperationList → one Loop → one kernel
-```
+**Adapter and verification:**
+- `MixdownManagerPdslAdapter` — bridges genome state to PDSL args (`buildArgsMap`) and
+  exposes a compiled Block's Cell as a CellList (`wrapBlockAsCellList`).
+- `MixdownManagerPdslVerificationTest` — verifies the PDSL path matches the Cell path
+  with reverb disabled (reverb path depends on `delay_network`, which is deferred).
 
-The push-based receptor pattern means data flows through chains of intermediate
-buffers. Each link in the chain owns its own `cachedValue` and `outValue` memory,
-even when the transformation is trivial (pass-through, identity).
+**Key design note:** Per-channel kernel splitting — the central goal of the original
+plan's Phase 1 — happens automatically as a property of how PDSL compiles the
+`for each channel` construct. No graph-analysis pass, no CellList restructuring.
+The original plan's Options A–D and their associated difficulty/tradeoff analysis are
+moot: PDSL is the answer to all of them.
 
-### What Has Changed Since This Plan Was Written
+### 2B: Structural Changes on the Branch
 
-**`AudioSceneLoader` extracted (master, April 2026):**
-Loading, saving, JSON serialization, and the `Settings` data class were extracted
-from `AudioScene` into a separate `AudioSceneLoader` utility class (~309 lines added,
-265 lines removed from `AudioScene`). `AudioScene` now focuses exclusively on the
-rendering pipeline. Loading a scene from files is now:
-```java
-AudioScene<?> scene = AudioSceneLoader.load(settingsFile, patternsFile, libraryRoot, bpm, sampleRate);
-```
+Since the original plan was written, the following have landed:
 
-**Alternate sample rates supported (branch, April 2026):**
-`BufferedAudioPlayer` now accepts a `sampleRate` parameter. `AudioScene` has always
-carried `sampleRate` as a constructor argument; this change makes the real-time
-playback path honor it consistently. Important context for redesign: sample-rate
-changes do not require recompilation of the cell graph.
-
-**Stereo channel separation already in `getCells()`:**
-The current `getCells()` already calls `getPatternCells()` twice — once for
-`StereoChannel.LEFT` and once for `StereoChannel.RIGHT` — and combines them via
-`cells(left, right)`. This is a structural hint toward per-channel splitting but still
-produces one combined `CellList` and one monolithic kernel.
-
-**Render buffer consolidation already implemented:**
-`consolidateRenderBuffers(channelCount, bufferSize)` allocates a single contiguous
-backing buffer sized `channelCount × 4 × bufferSize` (MAIN + WET voicing × 2 stereo).
-Each `PatternAudioBuffer` gets a delegate (range) into this buffer. The Loop scope's
-argument deduplication collapses all render buffer arguments into a single kernel
-argument. This is already in production.
-
-**Offline Loop optimization (LLVM -O0):**
-For offline rendering, `getCells()` sets `MathOptLevel.NONE` via
-`LlvmCommandProvider` before the tick loop. This avoids super-linear LLVM -O3
-compile times on aarch64 (which were prohibitive with ~140 kernel arguments). The
-real-time path still uses the default optimization level.
-
-**Package reorganization:**
-The `music` and `compose` submodules under `studio/` were reorganized. Key classes
-are now in more semantically appropriate packages:
-- `org.almostrealism.studio.*` — `AudioScene`, `AudioSceneLoader`, `Mixer`
-- `org.almostrealism.studio.arrange.*` — `MixdownManager`, `EfxManager`, `AutomationManager`
-- `org.almostrealism.music.pattern.*` — `PatternSystemManager`, `PatternAudioBuffer`
-
-### Why Per-Channel Splitting Is Hard Today
-
-1. **CellList builds one OperationList** — no concept of channel grouping
-2. **OperationList.get() requires uniform count** — all ops must agree on parallelism
-3. **Memory consolidation is global** — one contiguous buffer for all channels
-4. **Tick ordering is a single flat list** — parent hierarchy doesn't support
-   per-channel scheduling
-5. **Loop wraps the entire tick** — can't have per-channel loops with different
-   iteration counts or schedules
+- **`AudioSceneLoader` extracted** (master, April 2026): Loading, saving, and JSON
+  serialization moved out of `AudioScene`. `AudioScene` now focuses on the rendering
+  pipeline only.
+- **Alternate sample rates** (branch, April 2026): `BufferedAudioPlayer` honors the
+  `sampleRate` parameter consistently.
+- **Package reorganization**: Key classes are now in semantically appropriate packages:
+  - `org.almostrealism.studio.*` — `AudioScene`, `AudioSceneLoader`, `Mixer`
+  - `org.almostrealism.studio.arrange.*` — `MixdownManager`, `EfxManager`, `AutomationManager`
+  - `org.almostrealism.music.pattern.*` — `PatternSystemManager`, `PatternAudioBuffer`
 
 ---
 
-## Design Goals
+## 3. The DSP Path: What Remains
 
-### G1: Per-Channel Parallelism
+The PDSL substrate is in place. The remaining DSP work is:
 
-Each channel should compile to its own kernel, enabling:
-- Parallel GPU dispatch (6 channels × 2 stereo = 12 independent kernels)
-- Independent optimization per channel (silent channels skipped entirely)
-- Smaller kernels with better cache behavior (~460 lines vs 2783)
-- Potential for different channels on different devices (CPU vs GPU routing)
+### 3A: Production Cutover (MixdownManager)
 
-### G2: Reduced Memory Traffic
+The Cell-based `MixdownManager.createCells()` body is still the production path.
+`MixdownManagerPdslAdapter.buildArgsMap()` and `wrapBlockAsCellList()` exist and are
+tested. The cutover means replacing (or A/B-flagging) the `createCells()` body with
+calls to the adapter.
 
-Eliminate unnecessary intermediate buffers and copy chains:
-- In-place operations where the source and destination are the same logical buffer
-- Fused read-process-write paths (no intermediate CachedStateCell staging)
-- Direct producer-consumer connections without double-buffering when temporal
-  ordering guarantees make it safe
+The adapter applies a shared producer to all channels for genome-driven parameters
+(volume, HP cutoff, LP cutoff, transmission) — this is a known simplification relative
+to the per-channel-distinct envelopes in the Java path, documented in the adapter's
+javadoc. `MixdownManagerPdslVerificationTest` captures the current scope of equivalence.
 
-### G3: Aggregation as a Separate Phase
+### 3B: `delay_network` Primitive
 
-After per-channel processing, a lightweight aggregation kernel mixes channel
-outputs to the final stereo buffer:
-- Simple multiply-accumulate across channels
-- Naturally parallelizable (each output sample is independent)
-- Could run on GPU with high efficiency
+The multi-tap feedback reverb (`org.almostrealism.audio.filter.DelayNetwork`) has no
+PDSL equivalent yet. This is explicitly deferred to this workstream
+(`PDSL_AUDIO_DSP.md`, Section 12.5). `MixdownManagerPdslVerificationTest` runs both
+paths with reverb disabled to keep the comparison meaningful until this lands.
 
-### G4: prepareBatch() Cost Reduction
+Implementing `delay_network` unblocks the full reverb path in the PDSL rendition and is
+a prerequisite for a complete MixdownManager cutover. It is sized as weeks of work.
 
-Reduce the 53ms Java-side overhead through:
-- Caching pattern resolution across ticks when patterns haven't changed
-- Lazy evaluation (only prepare channels that have active notes)
-- Potential pre-rendering of pattern data into GPU-resident buffers
+### 3C: EfxManager Migration
 
-### G5: Maintain Correctness
+`EfxManager` is fully Cell-based. Its per-channel processing (FIR filtering, adjustable
+delay, automation-modulated wet/dry mix, self-feedback) overlaps substantially with what
+the existing `efx_channel.pdsl` describes. The migration is expected to be mostly
+mechanical once `delay_network` is available (EfxManager also uses DelayNetwork for its
+reverb tail).
 
-Any redesign must preserve:
-- Exact same audio output (bit-for-bit comparison against current implementation)
-- Support for feedback loops (delay lines that read their own output)
-- Temporal ordering guarantees (effects that depend on previous state)
-- Dynamic genome changes without recompilation
+### 3D: Variable Channel Count
 
----
+The `channels` parameter in PDSL is fixed at block-build time. Dynamic channel count —
+channel activation via gene — remains Java CellList code. Supporting this in PDSL is
+deferred; the current PDSL rendition targets a fixed channel count configuration.
 
-## Architecture Options
+### 3E: CellList Retirement
 
-### Option A: Channel-Scoped CellLists
-
-**Concept:** Build a separate CellList per channel, each compiling to its own kernel.
-Add a final aggregation CellList that mixes channel outputs.
-
-```
-AudioScene.tick() → OperationList:
-  Phase 0: Reset frame index
-  Phase 1-N: prepareBatch() per active channel
-  Phase N+1: Loop(4096) { channel_0.tick() }    [Kernel 0]
-  Phase N+2: Loop(4096) { channel_1.tick() }    [Kernel 1]
-  ...
-  Phase N+K: Loop(4096) { channel_K.tick() }    [Kernel K]
-  Phase N+K+1: Loop(4096) { aggregate() }       [Aggregation kernel]
-  Phase final: Advance frame
-```
-
-**Pros:**
-- Minimal framework changes — CellList already supports parent hierarchies
-- Each channel kernel is independently optimizable
-- Silent channels can skip their Loop entirely (zero cost)
-- Memory per channel is isolated — better cache locality
-- Aggregation kernel is trivially parallelizable
-
-**Cons:**
-- Multiple kernel dispatches instead of one (GPU dispatch overhead)
-- Cross-channel effects (send/return buses) need special handling
-- Memory consolidation needs per-channel scoping
-- Channels cannot share intermediate computations (duplicated filter coefficients, etc.)
-
-**Difficulty:** Medium — requires changes to AudioScene.getCells() to build per-channel
-CellLists, and to CellList.tick() to support channel-scoped Loop wrapping.
-
-**Relationship to current code:** `getPatternCells()` already produces per-stereo-channel
-lists. The next step is to further split into per-mix-channel lists and give each its
-own Loop.
-
-### Option B: Flat Buffer Pipeline (No Cell Graph)
-
-**Concept:** Replace the Cell/CachedStateCell/Receptor architecture entirely for the
-inner loop. Instead, define the audio pipeline as a sequence of buffer-to-buffer
-transformations operating on flat arrays.
-
-```
-Per channel, per tick:
-  1. Read source samples:     src[i] → channel_buf[i]
-  2. Apply filter (in-place): channel_buf[i] = biquad(channel_buf[i], state)
-  3. Apply delay (in-place):  channel_buf[i] += delay_line[offset + i]
-  4. Apply automation:        channel_buf[i] *= lfo_value(i)
-  5. Mix to output:           output[i] += channel_buf[i] * volume
-```
-
-**Pros:**
-- Zero copy overhead — every operation reads/writes the same buffer
-- No CachedStateCell double-buffering, no receptor chains
-- Maximum cache locality — single buffer stays in L1
-- Simple, auditable generated code
-- Easy to reason about memory layout
-
-**Cons:**
-- Major architectural departure — bypasses the entire Cell/Factor/Receptor framework
-- Loses generality of the graph-based approach
-- Effects ordering becomes explicit (hardcoded pipeline stages)
-- Feedback loops require explicit delay-line management
-- Harder to compose dynamically (adding/removing effects)
-
-**Difficulty:** High — essentially building a new audio engine that replaces the cell
-graph for the inner loop, while keeping the cell graph for configuration/setup.
-
-### Option C: Hybrid — Cell Graph for Structure, Direct Buffers for Execution
-
-**Concept:** Keep the Cell graph for defining the signal flow and managing lifecycle,
-but at compilation time, analyze the graph to produce an optimized flat-buffer execution
-plan that eliminates intermediate copies.
-
-```
-Build phase (Java, once):
-  CellList → analyze graph → identify copy chains → produce execution plan
-  Plan: [(read, buf_A, offset_0), (filter_inplace, buf_A),
-         (delay_read, buf_B, buf_A), (mix, buf_out, buf_A, volume)]
-
-Compile phase (once):
-  execution_plan → per-channel C function → compile → cache
-
-Execute phase (per tick):
-  prepareBatch() → dispatch per-channel kernels → aggregate
-```
-
-**Pros:**
-- Preserves Cell graph flexibility for configuration
-- Eliminates copies at compilation time through graph analysis
-- Can still use CellList fluent API for building pipelines
-- Incremental adoption — can coexist with current approach
-- Graph analysis can detect and skip trivial cells (pass-through, identity)
-
-**Cons:**
-- Requires a new "graph optimizer" pass between cell construction and compilation
-- Analysis must correctly handle all cell types (SummationCell, FilteredCell, etc.)
-- More complex than either A or B alone
-- Risk of analysis bugs producing incorrect execution plans
-
-**Difficulty:** High — the graph analysis is the hard part. But it's the most
-future-proof approach.
-
-### Option D: Stream-Oriented Processing (Pull Model)
-
-**Concept:** Instead of push-based receptor chains, use a pull-based model where the
-output requests samples from upstream, and each stage processes on demand. Combined
-with per-channel scoping.
-
-```
-output.requestSamples(4096)
-  → mixer.requestSamples(4096)
-    → channel_0.requestSamples(4096)
-      → delay.requestSamples(4096)
-        → filter.requestSamples(4096)
-          → source.getSamples(4096)
-          ← filtered samples (in-place)
-        ← delayed samples (in-place)
-      ← automated samples
-    ← channel_0 contribution
-    → channel_1.requestSamples(4096)
-    ...
-  ← mixed output
-```
-
-**Pros:**
-- Natural per-channel scoping (each pull chain is independent)
-- Lazy evaluation — silent channels never requested
-- In-place processing natural in pull model (transform and return same buffer)
-- Familiar pattern in audio frameworks (JUCE, VST, CoreAudio all use pull)
-
-**Cons:**
-- Fundamental change to the data flow model (push → pull)
-- Feedback loops more complex in pull model (circular dependencies)
-- May not compose well with the existing Producer/Computation expression system
-- Significant refactoring of Cell, CellAdapter, Receptor interfaces
-
-**Difficulty:** Very High — changes the fundamental data flow direction.
+`CellList` and the Cell/CachedStateCell/Receptor model are being deprecated in favor of
+Block-based execution. `wrapBlockAsCellList` is an intentionally narrow bridge that lets
+the PDSL Block slot into AudioScene without changing AudioScene's interface. The CellList
+interface can be retired once all callers migrate to Block.
 
 ---
 
-## Recommended Approach
+## 4. The Pattern Generation Bottleneck
 
-### Phase 1: Option A — Channel-Scoped CellLists (Immediate)
+### 4A: Where the 278ms Goes (Current Understanding)
 
-Start with per-channel kernel splitting. This is the most tractable change that
-delivers the biggest architectural improvement:
+The profiling finding is: Java orchestration in `PatternLayerManager.sumInternal` and
+`PatternFeatures.render` accounts for ~278ms of 311ms total per tick at 32 measures.
 
-1. **Modify AudioScene.getCells()** to build one CellList per channel instead of
-   one monolithic CellList. The existing `getPatternCells()` LEFT/RIGHT split is
-   a natural starting point — extend it to split per mix channel as well.
-2. **Each channel CellList** wraps its own Loop(4096) independently
-3. **Add an aggregation phase** that mixes per-channel outputs to stereo
-4. **Skip silent channels** — if prepareBatch() detects no active notes, skip
-   the channel's Loop entirely
+Reading the code makes the source visible:
 
-**Expected impact:**
-- 6 independent kernels (~460 lines each) instead of 1 monolithic (2783 lines)
-- Better cache behavior (each kernel's working set fits in L1)
-- Silent channel skipping could save 30ms+ per tick
-- Foundation for GPU parallel dispatch
+**`PatternLayerManager.sumInternal`** iterates over pattern repetitions (`IntStream.range`)
+and, for each repetition, over `NoteAudioChoice` entries. For each (repetition, choice)
+pair, it creates a `NoteAudioContext` and calls `PatternFeatures.render()`.
 
-### Phase 2: Option C — Copy Chain Elimination (Follow-up)
+**`PatternFeatures.render`** iterates over `PatternElement` instances via streams. For
+each element it calls `getNoteDestinations()`, which produces `RenderedNoteAudio` objects.
+For each note not in cache, it calls `note.getProducer(-1).evaluate()` — a JNI round-trip
+that evaluates one note's audio against the GPU (or CPU) and returns a `PackedCollection`.
+It then sums the result into the destination buffer via `AudioProcessingUtils.getSum()`.
 
-Once channels are independent, apply graph analysis within each channel to
-eliminate unnecessary CachedStateCell copies:
+The per-note evaluation pattern is the structural source of cost: each note is an
+independent `evaluate()` call. If a 32-measure arrangement has many pattern elements
+across many repetitions and many layers, this accumulates to many separate kernel
+dispatches in sequence.
 
-1. **Analyze the per-channel cell graph** for trivial copy chains
-2. **Fuse producer-consumer pairs** where no other reader exists
-3. **Eliminate double-buffering** where temporal ordering makes it safe
-4. **Generate in-place operations** where source and destination can alias
+**Note:** We do not yet have a breakdown of the 278ms by contributor (allocation, JNI
+dispatch, sum-to-destination, Java loop overhead). The profiling finding is at the method
+level. Phase 2 exists to get that breakdown.
 
-**Expected impact:**
-- Eliminate ~80% of the 535 per-iteration copies (per channel: ~89 copies → ~18)
-- Reduce per-channel kernel from ~460 lines to ~200 lines
-- Further improve cache locality
+### 4B: Candidate Directions
 
-### Phase 3: prepareBatch() Optimization (Parallel Track)
+These are candidate directions only. Which ones are worth pursuing depends on what Phase 2
+profiling finds. The plan does not commit to any of them now.
 
-Independently optimize the Java-side overhead:
+**Reduce allocation churn.** `PatternElement.getNoteDestinations()` creates
+`RenderedNoteAudio` objects on every render call. If these allocations are frequent and
+short-lived, GC pressure could contribute materially. This is the cheapest hypothesis to
+test: measure allocation rate and GC pause time during a render.
 
-1. **Cache pattern resolution** — don't re-resolve patterns that haven't changed
-2. **Skip inactive channels** — no prepareBatch() for channels with no notes
-3. **Pre-render to GPU buffers** — move sample data to GPU once, not per tick
+**Batch note evaluation.** Rather than calling `evaluate()` per note, compose a single
+`CollectionProducer` that evaluates all notes for a given choice in one kernel dispatch,
+then scatter-accumulate the results. This is a Producer-pattern fix: express "evaluate N
+notes" as one computation graph rather than N sequential graphs.
 
----
+**Cache more aggressively.** `NoteAudioCache` already caches by frame offset. If pattern
+content is stable across ticks (no genome change), the cache avoids re-evaluation. The
+question is what fraction of notes actually hit the cache in real-time rendering — if
+cache hit rate is low, improving it could close a large gap with small code changes.
 
-## Investigation Questions
+**Batch-render across pattern variants.** The vector-space exploration UX uses a compact
+fixed-size pattern representation with similarity-driven sampling. This suggests a
+possible reorganization: rather than "render this one pattern," render a neighborhood of
+similar patterns in a batched forward pass. This aligns naturally with how ML inference
+batches inputs. This is speculative and would require significant restructuring; it is
+not a Phase 2 candidate but a framing for Phase 3 evaluation.
 
-Before implementing, we need to answer:
-
-### Q1: Channel Independence *(open)*
-
-Are all 6 channels truly independent within the inner loop? Or do any cross-channel
-effects exist (send/return buses, sidechain compression, stereo linking)?
-
-**How to verify:** Trace the cell graph connections in AudioScene.getCells(). Check
-whether any cell's receptor points to a cell in a different channel.
-
-### Q2: Kernel Dispatch Overhead *(open)*
-
-What is the GPU dispatch overhead for 6-12 small kernels vs 1 large kernel?
-The earlier profiling showed collectionProduct/collectionZeros dispatch overhead
-was 600-700% worse for trivial operations. But per-channel kernels are not trivial
-(~460 lines each).
-
-**How to verify:** Benchmark: compile the current kernel split into 6 independent
-functions called sequentially, measure total time vs monolithic.
-
-### Q3: Memory Consolidation Scope *(partially answered)*
-
-Can we consolidate memory per-channel instead of globally?
-
-**Current state:** `consolidateRenderBuffers()` already consolidates into a single
-backing buffer sized `channelCount × 4 × bufferSize`. The Loop's argument
-deduplication collapses all delegate arguments to a single kernel argument. Per-channel
-splitting will need to decide whether each channel kernel gets its own slice of this
-buffer or an independent allocation.
-
-### Q4: CellList Fluent API Compatibility *(answered)*
-
-Can AudioScene.getCells() return multiple CellLists without breaking callers?
-
-**Current state:** `getCells()` returns `Cells` (not `CellList`), takes a
-`MultiChannelAudioOutput` and a `List<Integer> channels`. The return value is consumed
-by callers as a `Cells`. Multiple CellLists can be composed before returning — the
-existing `cells(left, right)` call already does this. Per-channel splitting can return
-a `Cells` wrapping multiple independently-compiled sub-lists.
-
-### Q5: Feedback Loops Across Channels *(open)*
-
-Do delay lines or other feedback effects read from buffers written by other
-channels? If so, per-channel splitting requires explicit synchronization points.
-
-**How to verify:** Trace delay line buffer references in the cell graph. Check
-`MixdownManager.createEfx()` for cross-channel transmission routing.
-
-Note: `MixdownManager` has a `transmission` chromosome for cross-channel delay
-feedback. If this routes audio between channels, splitting those channels into
-independent kernels requires the inter-channel communication to happen between
-kernel dispatches, not within a single kernel.
-
-### Q6: prepareBatch() Redundancy *(open)*
-
-How much work does prepareBatch() repeat across ticks? If patterns don't change
-between ticks, is the pattern resolution cached or recomputed?
-
-**How to verify:** Read PatternSystemManager.sum() and trace whether it caches
-resolved pattern elements.
+**Move pattern assembly to PDSL.** Patterns as tensor operations: `PatternElement`
+positions become a tensor, note audio becomes a learned embedding, assembly becomes a
+matrix operation. This is the long-term direction (Phase 4 / trajectory). It requires
+PDSL to support dynamic-shape operations not currently on the roadmap. Not a near-term
+option.
 
 ---
 
-## Success Criteria
+## 5. Phasing
 
-| Metric | Current | Target | Stretch |
-|--------|---------|--------|---------|
-| M1 Ultra avg buffer time | 192ms | <93ms (real-time) | <70ms |
-| M4 avg buffer time | 148ms | <93ms (real-time) | <70ms |
-| Kernel time (Loop phase) | 139ms | <60ms | <40ms |
-| prepareBatch time | 53ms | <25ms | <10ms |
-| Silent channel cost | Same as active | <1ms | 0ms |
-| Kernel count | 1 monolithic | 6+ per-channel | — |
-| Inner loop body (lines) | 2783 | <500 per channel | <300 |
+### Phase 1: DSP Cutover (Mostly Mechanical)
+
+The PDSL substrate is in place. Phase 1 delivers the production cutover.
+
+**1A — `delay_network` primitive.** Implement the PDSL equivalent of
+`org.almostrealism.audio.filter.DelayNetwork`. This is the prerequisite for completing
+the MixdownManager and EfxManager migrations. Deferred from PDSL audio DSP; sized as
+weeks.
+
+**1B — MixdownManager production cutover.** Replace (or A/B-flag with a runtime switch)
+`MixdownManager.createCells()` with calls through `MixdownManagerPdslAdapter`. Enable
+the reverb path in `MixdownManagerPdslVerificationTest` once `delay_network` is
+available. Verify acoustic match.
+
+**1C — EfxManager migration.** Migrate EfxManager's per-channel Cell chain to the PDSL
+`efx_channel.pdsl` definition. Expected to be mostly mechanical once `delay_network` is
+available.
+
+**1D — Variable channel count.** If runtime-variable channel count via gene is needed,
+design the bridge. Current position: PDSL uses fixed channel count; variable channel
+activation remains in Java. Evaluate whether this is a blocker for the cutover.
+
+**Expected outcome of Phase 1:** The DSP path runs through PDSL-compiled Block kernels
+instead of the monolithic CellList kernel. Per-channel splitting happens automatically.
+The expected improvement to DSP time (~33ms today) is secondary to pattern generation;
+Phase 1's primary value is architectural foundation.
+
+Phase 1 is characterised as "mostly mechanical" because the substrate exists and is
+tested. The hard engineering work is `delay_network`; the rest follows from it.
+
+### Phase 2: Pattern Profiling and First-Pass Fixes (Evaluative)
+
+Phase 2's gate question is: **where within the 278ms does the time actually go?**
+
+The goal is not an architectural rewrite. It is targeted fixes, guided by profiling data,
+that close as much of the gap as the data indicates is closeable without restructuring.
+
+**2A — Profile sumInternal and render.** Use JFR or a similar profiler to get a
+breakdown of the 278ms by call site. Candidates: `getNoteDestinations()` allocation,
+`evaluate()` JNI dispatch, `sumToDestination()` copy cost, Java loop overhead. The
+profiling must distinguish between "time inside evaluate()" and "time orchestrating
+around evaluate()."
+
+**2B — Implement targeted fixes.** Based on profiling findings, implement the fixes that
+the data supports. No assumption about which ones matter until 2A is complete. Likely
+candidates (see Section 4B) include cache hit-rate improvements, allocation reduction,
+and potentially batch evaluation of multiple notes in one Producer composition.
+
+**2C — Measure and decide.** After fixes: re-profile. Compare total per-tick time to
+the 92.9ms real-time threshold. If pattern generation is now below a usable threshold,
+Phase 3 becomes optional. If not, Phase 3 becomes necessary.
+
+Phase 2 is characterised as "evaluative" because the right interventions are not known
+until the profiling data exists.
+
+### Phase 3: Pattern Restructuring (Conditional, Evaluative)
+
+Phase 3 is entered only if Phase 2's targeted fixes are insufficient. It addresses the
+question: **if per-note evaluate() calls are the structural bottleneck, what is the
+restructuring that removes them?**
+
+Candidate restructurings (to evaluate, not commit to):
+
+- **Block-based pattern rendering.** Compose pattern-element audio as a single
+  `CollectionProducer` graph per pattern layer, compile it once, and execute it once per
+  tick. This eliminates per-note `evaluate()` calls in favor of one larger kernel. The
+  challenge: note positions and lengths vary dynamically; expressing this as a static
+  graph requires either padding to max-note-count or a different rendering model.
+
+- **Batch generation across pattern variants.** If the vector-space exploration loop
+  generates many similar patterns, restructure rendering to evaluate a batch of pattern
+  variants in one forward pass. This aligns with how ML inference batches work. The
+  challenge: requires the pattern representation to be tensorized, which is a larger
+  structural change.
+
+- **Hybrid: Java orchestration for scheduling, PDSL for per-note audio.** Keep the
+  Java loop structure for repetition and note selection, but compile note audio
+  evaluation into PDSL layers that execute as a batch per tick. This is a narrower
+  change than full pattern → PDSL conversion.
+
+Phase 3 is a decision point, not a commitment. The specific path is chosen after Phase 2
+results are in hand.
+
+### Phase 4: Convergence (Aspirational, No Timeline)
+
+The long-term direction is AudioScene as a single PDSL computation graph — DSP,
+pattern generation, and the whole rendering pipeline. Patterns become tensor operations
+(element positions → index tensors, note audio → learned embeddings, assembly →
+matrix-multiply-accumulate). The framework compiles the entire graph to a single native
+kernel per tick.
+
+This is stated as the trajectory, not as a near-term deliverable. The trajectory matters
+for design decisions in earlier phases: choices in Phases 1–3 should preserve the option
+to keep moving toward Phase 4. Specifically:
+
+- The DSP cutover should use Block-based execution (not invent new CellList abstractions)
+  because Block composes directly with PDSL.
+- Pattern generation fixes should not entrench the per-note-evaluate pattern in new ways
+  that make batch compilation harder to add later.
+- New data structures introduced for pattern optimization should be expressible as
+  tensor shapes, even if they aren't yet evaluated as tensors.
+
+The endpoint is not "PDSL for DSP only." It is "PDSL for everything that benefits from
+being a tensor operation" — which, over time, means the full pipeline.
 
 ---
 
-## Key Files
+## 6. Scope
+
+### In Scope
+
+- `delay_network` PDSL primitive (Phase 1 prerequisite)
+- MixdownManager production cutover from Cell-based to PDSL-based (Phase 1)
+- EfxManager migration to PDSL (Phase 1)
+- Variable channel count support in the PDSL rendition (Phase 1, if needed for cutover)
+- CellList retirement as callers migrate (ongoing with Phase 1)
+- Pattern generation profiling: decompose the 278ms by contributor (Phase 2)
+- Pattern generation first-pass targeted fixes based on profiling data (Phase 2)
+
+### Out of Scope (Trajectory Only)
+
+- Wholesale pattern → PDSL conversion (Phase 4, aspirational)
+- AudioScene as a single PDSL graph (Phase 4, aspirational)
+- Real-time streaming or low-latency targets below ratio-of-1: the realtime goal is
+  ratio-of-1 (render time ≤ audio duration), not sub-millisecond latency.
+- Timeline or release estimates
+
+---
+
+## 7. What the Original Plan Got Right and What Changed
+
+**Still valid:**
+- The monolithic kernel is a real performance problem for the DSP path.
+- Per-channel splitting is the right architectural goal.
+- `prepareBatch()` / Java-side overhead is real (53ms measured, reduced but not
+  eliminated in subsequent work).
+- The goal of reducing per-tick render time to below 92.9ms (ratio-of-1) is correct.
+
+**Overtaken by events:**
+- Options A–D (Channel-Scoped CellLists, Flat Buffer Pipeline, Hybrid+graph-analysis,
+  Stream-Oriented) are all moot. PDSL is the answer to all of them. The `for each channel`
+  construct delivers per-channel kernels; the Block model eliminates the Cell/CachedStateCell
+  copy chain; the declarative structure makes graph analysis unnecessary.
+- The graph-analysis pass (Option C) for copy-chain elimination is not needed: PDSL's
+  expression tree handles this at the Producer level.
+- The "Performance" framing as pure DSP/mixdown is incorrect: pattern generation dominates.
+- The success criteria table targeting kernel time and prepareBatch time is incomplete
+  without a corresponding row for pattern generation cost.
+
+**Investigation questions from the original plan:** Q1 (channel independence), Q2
+(kernel dispatch overhead), Q3 (memory consolidation), Q4 (CellList API compatibility),
+Q5 (feedback loops), Q6 (prepareBatch redundancy) — these remain worth understanding but
+their answers inform the PDSL cutover design rather than a Cell-graph analysis pass.
+
+---
+
+## 8. Success Criteria (Revised)
+
+| Metric | Current | Target | Notes |
+|--------|---------|--------|-------|
+| Total per-tick time (32m) | 311ms | <93ms (ratio-of-1) | Both pattern + DSP must improve |
+| Pattern generation time | ~278ms | Unknown after Phase 2 | Phase 2 sets the achievable target |
+| DSP kernel time | ~33ms | <20ms (estimate) | PDSL cutover + per-channel splitting |
+| prepareBatch time | 53ms | <25ms | Partially addressed; cache improvements |
+| DSP kernel count | 1 monolithic | N per-channel | Automatic from PDSL |
+| Acoustic match (PDSL vs Cell) | N/A | Verified by MixdownManagerPdslVerificationTest | With reverb path enabled post-delay_network |
+
+---
+
+## 9. Key Files
+
+### DSP Path (Phase 1)
 
 | File | Role | Expected Changes |
 |------|------|-----------------|
-| `compose/.../AudioScene.java` | Pipeline orchestrator | Major — per-channel CellList construction |
-| `compose/.../AudioSceneLoader.java` | JSON loading/saving | None — already extracted from AudioScene |
-| `audio/.../CellList.java` | Cell container + tick ordering | Medium — channel grouping support |
-| `graph/.../CachedStateCell.java` | Double-buffering state | Medium — copy elimination analysis |
-| `graph/.../SummationCell.java` | Multi-source accumulation | Minor — aggregation kernel source |
-| `hardware/.../OperationList.java` | Compilation orchestration | Minor — per-channel compilation |
-| `hardware/.../Loop.java` | Inner loop generation | Minor — per-channel loop instances |
-| `compose/.../EfxManager.java` | Effects/filter management | Medium — per-channel filter consolidation |
-| `compose/.../AutomationManager.java` | LFO/envelope generation | Minor — per-channel automation |
-| `music/.../PatternAudioBuffer.java` | Sample buffer management | Medium — inactive channel detection |
-| `compose/.../MixdownManager.java` | Channel mixing | Medium — aggregation kernel |
+| `compose/.../arrange/MixdownManager.java` | Cell-based DSP pipeline | `createCells()` replaced by PDSL path |
+| `compose/.../arrange/MixdownManagerPdslAdapter.java` | Adapter: genome → PDSL args | Minor updates as cutover lands |
+| `compose/.../arrange/EfxManager.java` | Cell-based EFX | Migration to PDSL `efx_channel.pdsl` |
+| `compose/.../arrange/AutomationManager.java` | Automation producers | Minor — continues supplying `Producer` args to PDSL |
+| `ml/.../resources/pdsl/audio/*.pdsl` | PDSL layer definitions | `delay_network` primitive added |
+| `compose/.../dsl/audio/AudioDspPrimitives.java` | PDSL primitive registration | `delay_network` primitive registered |
+| `compose/.../dsl/audio/MultiChannelDspFeatures.java` | Multi-channel block builders | `delay_network` block implementation |
+| `compose/.../AudioScene.java` | Pipeline orchestrator | Switch to Block-based cells path |
+
+### Pattern Generation Path (Phase 2)
+
+| File | Role | Expected Changes |
+|------|------|-----------------|
+| `music/.../pattern/PatternLayerManager.java` | Pattern rendering coordinator | Targeted fixes based on profiling |
+| `music/.../pattern/PatternFeatures.java` | Per-note evaluation + accumulation | Targeted fixes based on profiling |
+| `music/.../pattern/PatternElement.java` | Pattern element: positions + note audio | Targeted fixes based on profiling |
+| `music/.../notes/RenderedNoteAudio.java` | Note audio producer factory | Targeted fixes based on profiling |
+| `music/.../notes/NoteAudioCache.java` | Per-tick note audio cache | Cache strategy changes based on profiling |

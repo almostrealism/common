@@ -97,8 +97,8 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			.build();
 		assertTrue("Expected Branch Awareness section when target branch is set",
 			result.contains("Branch Awareness"));
-		assertTrue("Expected memory_branch_context reference",
-			result.contains("memory_branch_context"));
+		assertTrue("Expected workstream_context reference",
+			result.contains("workstream_context"));
 	}
 
 	@Test(timeout = 30000)
@@ -150,5 +150,27 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			.build();
 		assertFalse("Expected no Dependent Repositories section when paths not set",
 			result.contains("## Dependent Repositories"));
+	}
+
+	@Test(timeout = 30000)
+	public void includesInactivityRestartPreambleWhenAttemptPositive() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.setInactivityRestartAttempt(1)
+			.build();
+		assertTrue("Expected inactivity restart warning header when attempt > 0",
+			result.contains("SESSION RESTARTED -- INACTIVITY TIMEOUT"));
+		assertTrue("Expected pgrep -f cause guidance in inactivity preamble",
+			result.contains("pgrep -f"));
+	}
+
+	@Test(timeout = 30000)
+	public void excludesInactivityRestartPreambleWhenAttemptZero() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.setInactivityRestartAttempt(0)
+			.build();
+		assertFalse("Expected no inactivity restart warning when attempt == 0",
+			result.contains("SESSION RESTARTED -- INACTIVITY TIMEOUT"));
 	}
 }

@@ -216,6 +216,15 @@ suite before concluding.
 6. **Verify by running the full CI command above.** Not individual tests -- the full
    module suite. If it passes, your fix works.
 
+7. **Run the build validator to confirm your fix doesn't introduce new style or policy issues:**
+   ```
+   mcp__ar-build-validator__start_validation skip_build:true
+   ```
+   This checks checkstyle, code policy, test timeouts, and duplicate code without re-running
+   the full build (since the project is already compiled at this point).
+   Poll `mcp__ar-build-validator__get_validation_status` until done, then check
+   `mcp__ar-build-validator__get_validation_violations` for any new violations.
+
 **Remember: if a test exists on the base branch, the test is the specification — fix
 the production code. Modifications to base-branch test files or CI files will be rejected.**
 EOF

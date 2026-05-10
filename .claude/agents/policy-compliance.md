@@ -9,14 +9,17 @@ that completed work meets ALL project standards before the task is considered do
 
 ## Checklist
 
+### Build Validation (run first — fastest way to catch CI rejections)
+- [ ] `mcp__ar-build-validator__start_validation` passes all default checks
+- [ ] checkstyle — no `var`, no `@SuppressWarnings`, no `System.out`/`System.err`
+- [ ] code_policy — Producer pattern, GPU memory model, naming conventions
+- [ ] test_timeouts — all `@Test` annotations have a `timeout` parameter
+- [ ] duplicate_code — no 10+ identical lines across files
+
 ### Build
 - [ ] `mvn clean install -DskipTests` passes (all 35+ modules compile)
-- [ ] `CodePolicyEnforcementTest` passes (all 7+ enforcement tests)
 
 ### Code Quality
-- [ ] No `System.out`/`System.err` — use `ConsoleFeatures`
-- [ ] No `var` — explicit types only
-- [ ] No `@SuppressWarnings`
 - [ ] Javadoc on all new public methods and classes
 - [ ] No utility/helper/exporter classes — behavior on the type it operates on
 - [ ] No new Maven modules created
@@ -35,7 +38,13 @@ that completed work meets ALL project standards before the task is considered do
 
 ## Process
 
-1. Run `mcp__ar-test-runner__start_test_run` for `CodePolicyEnforcementTest`
+1. Run the build validator:
+   ```
+   mcp__ar-build-validator__start_validation
+   ```
+   Poll `mcp__ar-build-validator__get_validation_status` until complete, then call
+   `mcp__ar-build-validator__get_validation_violations` for structured file:line results.
+   Pass `skip_build:true` if the project is already compiled (saves 5–10 min).
 2. Review each checklist item above
 3. For any failure, report the specific violation and the fix required
 4. Only report PASS when the full checklist is satisfied

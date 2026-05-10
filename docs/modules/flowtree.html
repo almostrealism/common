@@ -248,6 +248,33 @@ relay Node activity thread
                 </tbody>
             </table>
 
+            <p>Two additional fields are internal execution controls (not currently
+            exposed via <code>ClaudeCodeJob.Factory</code> setters or the wire protocol):
+            <code>inactivityTimeoutMillis</code> (default 20 min) governs the
+            stdout-silence threshold after which <code>ClaudeInactivityMonitor</code>
+            kills the Claude subprocess, and <code>maxInactivityRestarts</code>
+            (default 3) caps how many times the run loop relaunches Claude after such
+            a kill.</p>
+
+            <h3>Inactivity Monitor and Restart Loop</h3>
+
+            <p>Each Claude subprocess is supervised by a daemon
+            <code>ClaudeInactivityMonitor</code> that destroys the process and its
+            descendants when stdout has been silent for <code>inactivityTimeoutMillis</code>.
+            The most common cause of indefinite hangs in autonomous agent sessions is a
+            shell polling loop where the wait condition never becomes true — for example,
+            <code>pgrep -f &lt;pattern&gt;</code> matching its own command line, or
+            <code>curl</code>-against-an-invented endpoint inside a bash <code>until</code>
+            loop. The monitor catches both classes of failure mechanically.</p>
+
+            <p>When the monitor fires, <code>ClaudeCodeJob</code> relaunches Claude up to
+            <code>maxInactivityRestarts</code> times. Each relaunch carries a prompt
+            preamble (<code>## !! SESSION RESTARTED -- INACTIVITY TIMEOUT !!</code>) that
+            explains the polling-loop failure mode and points the agent to the MCP
+            <code>get_*_status</code> tools as the correct way to wait on a managed run.
+            Prior progress on the branch is preserved in git, so the restart picks up
+            where the killed attempt left off rather than starting from scratch.</p>
+
             <h3>Deduplication Check</h3>
 
             <p>Agent sessions routinely re-implement functionality that already exists

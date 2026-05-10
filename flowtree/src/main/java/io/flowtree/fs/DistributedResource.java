@@ -21,6 +21,8 @@ import io.almostrealism.db.Query;
 import io.almostrealism.resource.IOStreams;
 import io.almostrealism.resource.Permissions;
 import io.almostrealism.resource.Resource;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.apache.commons.lang3.NotImplementedException;
 
 import java.io.IOException;
@@ -51,7 +53,7 @@ import java.util.Map;
  * 
  * @author  Michael Murray
  */
-public class DistributedResource implements Resource {
+public class DistributedResource implements Resource, ConsoleFeatures {
 	/**
 	 * When {@code true}, diagnostic messages about chunk loading, caching, and
 	 * URI operations are printed to standard output.  Corresponds to the
@@ -256,7 +258,7 @@ public class DistributedResource implements Resource {
 			else
 				loaded = " (not loaded).";
 			
-			System.out.println("DistributedResource (" + this.uri +
+			log("DistributedResource (" + this.uri +
 								"): Total bytes = " + this.tot +
 								loaded);
 		}
@@ -276,10 +278,9 @@ public class DistributedResource implements Resource {
 			String msg = "DistributedResource (" + this.uri +
 								"): Set data[" + index + "] to ";
 			if (d == null)
-				System.out.println(msg + "null.");
+				log(msg + "null.");
 			else
-				System.out.println(msg + (d.length / 1000.0) +
-									" kilobyte chunk.");
+				log(msg + (d.length / 1000.0) + " kilobyte chunk.");
 		}
 		
 		this.data[index] = d;
@@ -354,16 +355,16 @@ public class DistributedResource implements Resource {
 					try {
 						DistributedResource.this.loadFromResourceServer();
 					} catch (IOException ioe) {
-						System.out.println("DistributedResource (" + DistributedResource.this.uri +
+						DistributedResource.this.warn("DistributedResource (" + DistributedResource.this.uri +
 											"): IO error while loading from resource server -- " +
 											ioe.getMessage());
 					}
 				}
 			};
 			
-			System.out.println("DistributedResource: Starting thread " + t);
+			log("DistributedResource: Starting thread " + t);
 			t.start();
-			System.out.println("Started");
+			log("Started");
 			
 			while (this.loaded == null || index >= this.loaded.length || !this.loaded[index]) {
 				if (!t.isAlive()) break r;
@@ -375,11 +376,11 @@ public class DistributedResource implements Resource {
 		}
 		
 		if (index >= l) {
-			System.out.println("DistributedResource: Data is " + l +
+			warn("DistributedResource: Data is " + l +
 								" chunks. Chunk " + index + " does not exist.");
 			return null;
 		} else if (index >= this.loaded.length) {
-			System.out.println("DistributedResource: Loaded list knows " +
+			warn("DistributedResource: Loaded list knows " +
 								this.loaded.length + " chunks. Data has " +
 								this.data.length + " chunks. Chunk " + index +
 								" was requested.");
@@ -413,8 +414,7 @@ public class DistributedResource implements Resource {
 			ResourceDistributionTask.getCurrentTask().subtractCache(this.tot);
 		
 		if (verbose)
-			System.out.println("DistributedResource (" + this.uri +
-								"): Cleared cache.");
+			log("DistributedResource (" + this.uri + "): Cleared cache.");
 	}
 	
 	/**
@@ -464,11 +464,9 @@ public class DistributedResource implements Resource {
 		this.clearCache();
 		
 		if (DistributedResource.ioVerbose) {
-			System.out.println("DistributedResource (" + this.uri +
-								"): Loading from stream...");
+			log("DistributedResource (" + this.uri + "): Loading from stream...");
 			if (this.data != null)
-				System.out.println("DistributedResource (" + this.uri +
-									"): Current data will be flushed.");
+				log("DistributedResource (" + this.uri + "): Current data will be flushed.");
 		}
 		
 		int t = Integer.MAX_VALUE;
@@ -501,8 +499,7 @@ public class DistributedResource implements Resource {
 				r = in.read();
 				
 				if (DistributedResource.ioVerbose && j == 0 && i == 0)
-					System.out.println("DistributedResource (" + this.uri +
-										"): Read first byte from in stream.");
+					log("DistributedResource (" + this.uri + "): Read first byte from in stream.");
 				
 				if (r < 0) {
 					if (j == 0 && i == 0) return;
@@ -519,28 +516,28 @@ public class DistributedResource implements Resource {
 						System.arraycopy(d, 0, latest, 0, j);
 						
 						if (DistributedResource.ioVerbose)
-							System.out.println("DistributedResource (" + this.uri +
+							log("DistributedResource (" + this.uri +
 												"): Loaded " + (latest.length / 1000.0) +
 												" kilobytes from stream.");
 						l.add(latest);
 					}
-					
+
 					if (!this.commitAtEnd) this.commitToLocalDB(toa, latest, i);
 					break i;
 				}
-				
+
 				if (l == null)
 					this.data[i][j] = (byte) r;
 				else
 					latest[j] = (byte) r;
 			}
-			
+
 			if (l == null) {
 				this.loaded[i] = true;
 				this.toa[i] = toa;
 			} else {
 				if (DistributedResource.ioVerbose)
-					System.out.println("DistributedResource: Loaded " +
+					log("DistributedResource: Loaded " +
 										(latest.length / 1000.0) +
 										" kilobytes from stream.");
 				l.add(latest);
@@ -561,8 +558,8 @@ public class DistributedResource implements Resource {
 			this.data = new byte[this.size][0];
 			
 			if (verbose) {
-				System.out.println("DistributedResource: tot = " + this.tot);
-				System.out.println("DistributedResource: size = " + this.size);
+				log("DistributedResource: tot = " + this.tot);
+				log("DistributedResource: size = " + this.size);
 			}
 			
 			Iterator<byte[]> itr = l.iterator();
@@ -598,8 +595,7 @@ public class DistributedResource implements Resource {
 		if (s == null) return;
 		
 		if (verbose)
-			System.out.println("DistributedResource (" + this.uri +
-								"): Loading from local DB...");
+			log("DistributedResource (" + this.uri + "): Loading from local DB...");
 		
 		String table = s.getDatabaseConnection().getTable();
 		Query q = new Query(table, DatabaseConnection.indexColumn,
@@ -627,7 +623,7 @@ public class DistributedResource implements Resource {
 			this.data[i] = (byte[]) e.getValue();
 			
 			if (this.data[i] == null) {
-				System.out.println("DistributedResource (" + this.uri +
+				warn("DistributedResource (" + this.uri +
 									"): Query result contained null row at " + i);
 				continue w;
 			}
@@ -652,7 +648,7 @@ public class DistributedResource implements Resource {
 	 */
 	private byte[] loadFromLocalDB(int index) {
 		if (verbose)
-			System.out.println("DistributedResource (" + this.uri + "): Loading chunk " +
+			log("DistributedResource (" + this.uri + "): Loading chunk " +
 								index + " from local DB...");
 		
 		OutputServer s = OutputServer.getCurrentServer();
@@ -679,8 +675,7 @@ public class DistributedResource implements Resource {
 	 * @throws IOException if a network error occurs while contacting the peer
 	 */
 	private void loadFromResourceServer() throws IOException {
-		System.out.println("DistributedResource (" + this.uri +
-							"): Loading data from resource server...");
+		log("DistributedResource (" + this.uri + "): Loading data from resource server...");
 		
 		OutputServer.getCurrentServer().getNodeServer().loadResource(this, this.exclude, true);
 		this.exclude = null;
@@ -694,20 +689,17 @@ public class DistributedResource implements Resource {
 		OutputServer s = OutputServer.getCurrentServer();
 
 		if (s == null) {
-			System.out.println("DistributedResource (" + this.uri +
-								"): Unable to commit (no local DB)");
+			warn("DistributedResource (" + this.uri + "): Unable to commit (no local DB)");
 			return;
 		}
-		
+
 		if (DistributedResource.verbose)
-			System.out.println("DistributedResource (" + this.uri +
-								"): Deleting from local DB...");
-		
+			log("DistributedResource (" + this.uri + "): Deleting from local DB...");
+
 		s.getDatabaseConnection().deleteUri(this.uri);
-		
+
 		if (DistributedResource.verbose)
-			System.out.println("DistributedResource (" + this.uri +
-								"): Commiting data to local DB...");
+			log("DistributedResource (" + this.uri + "): Commiting data to local DB...");
 		
 		int tot = 0;
 		
@@ -719,7 +711,7 @@ public class DistributedResource implements Resource {
 		}
 		
 		if (DistributedResource.verbose)
-			System.out.println("DistributedResource (" + this.uri +
+			log("DistributedResource (" + this.uri +
 								"): Commited " + tot + " chunks to local DB");
 	}
 	
@@ -745,21 +737,17 @@ public class DistributedResource implements Resource {
 		OutputServer s = OutputServer.getCurrentServer();
 		
 		if (DistributedResource.verbose)
-			System.out.println("DistributedResource (" + this.uri +
-					"): Deleting " + index + " from local DB...");
-		
+			log("DistributedResource (" + this.uri + "): Deleting " + index + " from local DB...");
+
 		if (!s.getDatabaseConnection().deleteIndex(uri, index)) {
-			System.out.println("DistributedResource (" + this.uri +
-					"): DB delete failed.");
+			warn("DistributedResource (" + this.uri + "): DB delete failed.");
 		}
-		
+
 		if (DistributedResource.verbose)
-			System.out.println("DistributedResource (" + this.uri +
-								"): Commiting " + index + " to local DB...");
-		
+			log("DistributedResource (" + this.uri + "): Commiting " + index + " to local DB...");
+
 		if (!s.getDatabaseConnection().storeOutput(toa, data, this.uri, index)) {
-			System.out.println("DistributedResource (" + this.uri +
-					"): DB store failed.");
+			warn("DistributedResource (" + this.uri + "): DB store failed.");
 		}
 	}
 	
@@ -779,7 +767,7 @@ public class DistributedResource implements Resource {
 			@Override
 			public int read() {
 				if (chunk == 0 && this.index == 0 && DistributedResource.ioVerbose)
-					System.out.println("DistributedResource (" +
+					DistributedResource.this.log("DistributedResource (" +
 										DistributedResource.this.uri +
 										"): Begin read");
 				
@@ -790,7 +778,7 @@ public class DistributedResource implements Resource {
 				
 				if (index >= DistributedResource.this.chunkSize) {
 					if (DistributedResource.ioVerbose)
-						System.out.println("DistributedResource (" +
+						DistributedResource.this.log("DistributedResource (" +
 											DistributedResource.this.uri +
 											"): Reached end of chunk " + this.chunk);
 					
@@ -803,7 +791,7 @@ public class DistributedResource implements Resource {
 					if (this.b == null) return this.eof();
 					
 					if (DistributedResource.ioVerbose) {
-						System.out.println("DistributedResource (" +
+						DistributedResource.this.log("DistributedResource (" +
 										DistributedResource.this.uri +
 										"): Input stream buffered " +
 										(this.b.length / 1000.0) + " kilobytes.");
@@ -824,12 +812,12 @@ public class DistributedResource implements Resource {
 			
 			public int eof() {
 				if (DistributedResource.ioVerbose) {
-					System.out.println("DistributedResource (" +
+					DistributedResource.this.log("DistributedResource (" +
 									DistributedResource.this.uri +
 									"): EOF after " +
 									(this.total / 1000.0) + " kilobytes.");
 				}
-				
+
 				return -1;
 			}
 			
@@ -840,7 +828,7 @@ public class DistributedResource implements Resource {
 			
 			protected void finalize() {
 				if (DistributedResource.ioVerbose) {
-					System.out.println("DistributedResource (" +
+					DistributedResource.this.log("DistributedResource (" +
 									DistributedResource.this.uri +
 									"): Finalizing IO stream after " +
 									(this.total / 1000.0) + " kilobytes.");
@@ -885,7 +873,7 @@ public class DistributedResource implements Resource {
 		int s = io.in.readInt();
 		
 		if (verbose)
-			System.out.println("DistributedResource.load: " + s + " chunks to load.");
+			log("DistributedResource.load: " + s + " chunks to load.");
 		
 		byte[][] b = new byte[0][0];
 		
@@ -894,7 +882,7 @@ public class DistributedResource implements Resource {
 			this.data = null;
 			
 			if (verbose)
-				System.out.println("DistributedResource.load: Existing data was incomplete.");
+				log("DistributedResource.load: Existing data was incomplete.");
 		}
 		
 		if (this.data == null) {
@@ -917,7 +905,7 @@ public class DistributedResource implements Resource {
 			int si = io.in.readInt();
 			
 			if (si < 0) {
-				System.out.println("DistributedResource: Unable to load chunk " + i);
+				warn("DistributedResource: Unable to load chunk " + i);
 				continue i;
 			}
 			
@@ -933,7 +921,7 @@ public class DistributedResource implements Resource {
 			if (!this.commitAtEnd) this.commitToLocalDB(i);
 			
 			if (verbose)
-				System.out.println("DistributedResource.load: Loaded chunk " + i);
+				log("DistributedResource.load: Loaded chunk " + i);
 		}
 		
 		this.size = this.data.length;
@@ -941,7 +929,7 @@ public class DistributedResource implements Resource {
 		io.out.writeInt(-1);
 		
 		if (verbose)
-			System.out.println("DistributedResource.load: Sent end.");
+			log("DistributedResource.load: Sent end.");
 		
 		if (commitAtEnd) this.commitToLocalDB();
 		
@@ -963,7 +951,7 @@ public class DistributedResource implements Resource {
 		if (this.data == null) this.getData(0, true);
 		
 		if (verbose)
-			System.out.println("DistributedResource.send: " + this.data.length + " chunks.");
+			log("DistributedResource.send: " + this.data.length + " chunks.");
 		
 		io.out.writeInt(this.data.length);
 		
@@ -988,11 +976,11 @@ public class DistributedResource implements Resource {
 				io.out.writeByte(this.data[i][j]);
 			
 			if (verbose)
-				System.out.println("DistributedResource.send: Sent chunk " + i);
+				log("DistributedResource.send: Sent chunk " + i);
 		}
 		
 		if (verbose)
-			System.out.println("DistributedResource.send: Recieved end.");
+			log("DistributedResource.send: Recieved end.");
 	}
 
 	/**
@@ -1023,7 +1011,7 @@ public class DistributedResource implements Resource {
 	@Override
 	public void loadFromURI() throws IOException {
 		String origUri = this.uri;
-		System.out.println("\t\t" + origUri);
+		log(origUri);
 		
 		if (this.uri.startsWith("http://")) {
 			this.uri = "/http/" + this.uri.substring(7);
@@ -1043,8 +1031,7 @@ public class DistributedResource implements Resource {
 			this.load(io);
 		}
 		
-		System.out.println(this + ": Loaded from URI");
-		new Exception().printStackTrace();
+		log(this + ": Loaded from URI");
 		
 //		throw new IOException("Tried to load DistributedResource from URI -- " + this.uri);
 	}
@@ -1124,23 +1111,21 @@ public class DistributedResource implements Resource {
 		if (c.equals(DistributedResource.class)) return res;
 		
 		if (DistributedResource.verbose)
-			System.out.println("DistributedResource: Found resource class " + c.getName());
-		
+			Console.root().println("DistributedResource: Found resource class " + c.getName());
+
 		try {
 			DistributedResource r = (DistributedResource) c.newInstance();
 			r.setURI(res.getURI());
 			return r;
 		} catch (ClassCastException e) {
-			System.out.println("DistributedResource: Resource class " + c +
-							" is not a subclass of DistributedResource.");
+			Console.root().warn("DistributedResource: Resource class " + c +
+							" is not a subclass of DistributedResource.", null);
 		} catch (InstantiationException e) {
-			System.out.println("DistributedResource: Could not instantiate resource class " +
-								c + " (" + e.getMessage() + ")");
-			e.printStackTrace();
+			Console.root().warn("DistributedResource: Could not instantiate resource class " +
+								c + " (" + e.getMessage() + ")", e);
 		} catch (IllegalAccessException e) {
-			System.out.println("DistributedResource: Could not access resource class " +
-								c + " (" + e.getMessage() + ")");
-			e.printStackTrace();
+			Console.root().warn("DistributedResource: Could not access resource class " +
+								c + " (" + e.getMessage() + ")", e);
 		}
 		
 		return res;

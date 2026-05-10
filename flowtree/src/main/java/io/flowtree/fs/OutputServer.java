@@ -20,6 +20,8 @@ import io.almostrealism.db.DatabaseConnection;
 import io.almostrealism.db.Query;
 import io.almostrealism.db.QueryHandler;
 import io.flowtree.node.Client;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.JobOutput;
 import org.almostrealism.io.OutputHandler;
 import org.hsqldb.Server;
@@ -59,7 +61,7 @@ import java.util.function.Consumer;
  *
  * @author  Michael Murray
  */
-public class OutputServer implements Runnable, Consumer<JobOutput> {
+public class OutputServer implements Runnable, Consumer<JobOutput>, ConsoleFeatures {
 
 	/** Name of the database table used to store job output data. */
 	private static String outputTable;
@@ -97,9 +99,9 @@ public class OutputServer implements Runnable, Consumer<JobOutput> {
 			OutputServer s = new OutputServer(p);
 			s.setCurrentServer();
 			
-			System.out.println("\nDB Server started");
+			Console.root().println("\nDB Server started");
 		} catch (Exception e) {
-			System.err.println("OutputServer: Error starting server: " + e);
+			Console.root().warn("OutputServer: Error starting server: " + e, e);
 		}
 	}
 
@@ -150,17 +152,16 @@ public class OutputServer implements Runnable, Consumer<JobOutput> {
 		String dbpasswd = p.getProperty("db.password", "rings");
 		
 		if (driver == null || dburi == null) {
-			System.out.println("OutputServer: Driver and/or URI not specified, " +
-								"starting HSQLDB...");
-			
+			log("OutputServer: Driver and/or URI not specified, starting HSQLDB...");
+
 			String[] args = new String[4];
 			args[0] = "-database.0";
 			args[1] = "file:flowtreedb";
 			args[2] = "-dbname.0";
 			args[3] = "flowtree";
-			
-			System.out.println("OutputServer: HSQLDB file = " + args[1]);
-			System.out.println("OutputServer: HSQLDB name = " + args[3]);
+
+			log("OutputServer: HSQLDB file = " + args[1]);
+			log("OutputServer: HSQLDB name = " + args[3]);
 			
 			Server.main(args);
 			
@@ -191,11 +192,11 @@ public class OutputServer implements Runnable, Consumer<JobOutput> {
 				if (h instanceof QueryHandler)
 					this.db.addQueryHandler((QueryHandler) h);
 			} catch (InstantiationException e) {
-				System.out.println("DBS: Error instantiating db handler (" + e.getMessage() + ")");
+				warn("DBS: Error instantiating db handler (" + e.getMessage() + ")", e);
 			} catch (IllegalAccessException e) {
-				System.out.println("DBS: Error accessing db handler (" + e.getMessage() + ")");
+				warn("DBS: Error accessing db handler (" + e.getMessage() + ")", e);
 			} catch (ClassNotFoundException e) {
-				System.out.println("DBS: Could not find db handler (" + e.getMessage() + ")");
+				warn("DBS: Could not find db handler (" + e.getMessage() + ")", e);
 			}
 		}
 		
@@ -213,7 +214,7 @@ public class OutputServer implements Runnable, Consumer<JobOutput> {
 		t.start();
 		
 		this.setCurrentServer();
-		System.out.println("Set current DBS: " + this);
+		log("Set current DBS: " + this);
 	}
 	
 	/**
@@ -382,34 +383,32 @@ public class OutputServer implements Runnable, Consumer<JobOutput> {
 				if (o instanceof Externalizable)
 					((Externalizable)o).readExternal(in);
 				else
-					System.out.println("DBS: Received class that is not externalizable.");
-				
+					warn("DBS: Received class that is not externalizable.");
+
 //				Object o = in.readObject();
-				
+
 				if (o instanceof Query) {
 					Map h = this.db.executeQuery((Query)o);
-					
+
 					out.writeObject(h);
 					out.flush();
 				} else if (o instanceof JobOutput) {
 					this.db.storeOutput((JobOutput)o);
 				} else {
-					System.out.println("DBS: Recieved " + o);
+					log("DBS: Recieved " + o);
 				}
-				
+
 				done = true;
 			} catch (EOFException eof) {
-				if (!done) System.out.println("DB Server: EOF Error (" + eof.getMessage() + ")");
+				if (!done) warn("DB Server: EOF Error (" + eof.getMessage() + ")", eof);
 			} catch (ClassNotFoundException cnf) {
-				System.out.println("DB Server: Received an unknown class type.");
+				warn("DB Server: Received an unknown class type.", cnf);
 			} catch (IOException ioe) {
 				if (!done) {
-					System.out.println("DB Server: IO Error (" + ioe.getMessage() + ")");
-					ioe.printStackTrace(System.out);
+					warn("DB Server: IO Error (" + ioe.getMessage() + ")", ioe);
 				}
 			} catch (Exception e) {
-				System.out.println("DB Server: " + e);
-				e.printStackTrace();
+				warn("DB Server: " + e, e);
 			}
 		}
 	}

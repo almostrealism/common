@@ -64,7 +64,7 @@ import java.nio.file.Path;
  *     processFile(asset.getFile());
  * } else {
  *     // File will be downloaded on next getFile() call
- *     System.out.println("Asset will be downloaded from: " + asset.getUrl());
+ *     log("Asset will be downloaded from: " + asset.getUrl());
  * }
  * }</pre>
  *

@@ -71,7 +71,7 @@ public class RandomPeerJoin implements ServerBehavior {
 				s.close(i);
 			}
 		} catch (IOException e) {
-			System.out.println("RandomPeerJoin: " + e);
+			out.println("RandomPeerJoin: " + e);
 		}
 	}
 }

@@ -18,6 +18,7 @@ package org.almostrealism.hardware.mem;
 
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.io.Console;
 
 import java.util.HashMap;
 import java.util.List;
@@ -161,7 +162,7 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 
 	static {
 		if (defaultCacheLevel == CacheLevel.ALL) {
-			System.out.println("WARN: Default CacheLevel is ALL");
+			Console.root().warn("Default CacheLevel is ALL", null);
 		}
 	}
 

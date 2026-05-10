@@ -1,6 +1,7 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.Memory;
+import org.almostrealism.io.SystemUtils;
 
 import java.lang.ref.PhantomReference;
 import java.lang.ref.ReferenceQueue;
@@ -73,8 +74,31 @@ import java.lang.ref.ReferenceQueue;
  * @see HardwareMemoryProvider
  */
 public abstract class MemoryReference<T extends Memory> extends PhantomReference<T> {
+	/**
+	 * If true, the memory provider dispatch path captures a stack trace at the point
+	 * of first deallocation, in addition to the cheap volatile flag guard. The volatile
+	 * guard is always active; this flag controls only the stack trace capture (which is
+	 * the more expensive part). Controlled by the
+	 * {@code AR_HARDWARE_DOUBLE_FREE_DETECTION} system property, which accepts
+	 * {@code enabled} or {@code disabled} (per {@link SystemUtils#isEnabled(String)});
+	 * if the property is unset, defaults to enabled.
+	 */
+	public static boolean captureFreeStackTrace =
+			SystemUtils.isEnabled("AR_HARDWARE_DOUBLE_FREE_DETECTION").orElse(true);
+
 	/** Stack trace captured at allocation time, stored for post-GC leak reporting. */
 	private StackTraceElement[] allocationStackTrace;
+
+	/**
+	 * True once the backend has been instructed to release this memory. Used by the
+	 * double-free guard in {@link HardwareMemoryProvider#deallocateNow} to skip a
+	 * second native release of the same address. Volatile so concurrent deallocators
+	 * see the flag even outside the synchronized claim.
+	 */
+	private volatile boolean freed;
+
+	/** Stack trace captured at the first deallocation, when {@link #captureFreeStackTrace} is enabled. */
+	private StackTraceElement[] firstFreeStackTrace;
 
 	/**
 	 * Creates a phantom reference for the given memory object, registered with the given queue.
@@ -84,6 +108,57 @@ public abstract class MemoryReference<T extends Memory> extends PhantomReference
 	 */
 	public MemoryReference(T referent, ReferenceQueue<? super T> q) {
 		super(referent, q);
+	}
+
+	/**
+	 * Returns whether this reference has already been claimed by a deallocator.
+	 *
+	 * @return true if the backend release path has been entered for this reference
+	 */
+	public boolean isFreed() { return freed; }
+
+	/**
+	 * Returns the stack trace captured at the first successful claim of {@link #tryClaimFreed},
+	 * or null if {@link #captureFreeStackTrace} was disabled when the claim was made.
+	 *
+	 * @return Stack trace from the first free, or null
+	 */
+	public StackTraceElement[] getFirstFreeStackTrace() { return firstFreeStackTrace; }
+
+	/**
+	 * Atomically claims this reference for deallocation. The first caller wins and
+	 * receives true; concurrent or subsequent callers receive false and must skip
+	 * calling the backend release path. When {@link #captureFreeStackTrace} is true,
+	 * the winning caller also has its current stack trace recorded for diagnostic
+	 * reporting on a later double-free attempt.
+	 *
+	 * <p>If the backend release fails, the caller should invoke {@link #unclaimFreed()}
+	 * to allow a future deallocation attempt to retry. Otherwise the reference would
+	 * remain marked as freed even though the underlying memory was never released,
+	 * permanently leaking the block.</p>
+	 *
+	 * @return true if this caller is responsible for releasing the underlying memory,
+	 *         false if a previous caller has already claimed responsibility
+	 */
+	public synchronized boolean tryClaimFreed() {
+		if (freed) return false;
+		if (captureFreeStackTrace) {
+			firstFreeStackTrace = Thread.currentThread().getStackTrace();
+		}
+		freed = true;
+		return true;
+	}
+
+	/**
+	 * Reverses a previous successful claim of {@link #tryClaimFreed()} when the
+	 * backend release call failed. Restores the reference to an unfreed state so
+	 * that a subsequent attempt (e.g. via the GC-driven deallocation path) can
+	 * retry. The first-free stack trace, if captured, is also cleared so that
+	 * a later genuine double-free can record fresh diagnostic context.
+	 */
+	public synchronized void unclaimFreed() {
+		freed = false;
+		firstFreeStackTrace = null;
 	}
 
 	/**

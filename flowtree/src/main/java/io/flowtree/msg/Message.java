@@ -19,6 +19,7 @@ package io.flowtree.msg;
 import io.flowtree.job.Job;
 import io.flowtree.job.JobFactory;
 import io.flowtree.node.Node;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.Externalizable;
 import java.io.IOException;
@@ -70,7 +71,7 @@ import java.util.ArrayList;
  * @see NodeProxy
  * @see Connection
  */
-public class Message implements Externalizable {
+public class Message implements Externalizable, ConsoleFeatures {
 	/** Type code for a message carrying an encoded {@link io.flowtree.job.Job}. */
 	public static final int Job = 1;
 
@@ -219,7 +220,7 @@ public class Message implements Externalizable {
 	 */
 	public Message() {
 		assert false : "Message constructed with no NodeProxy";
-		new Exception().printStackTrace();
+		warn("Message constructed with no NodeProxy", new Exception());
 	}
 	
 	/**
@@ -364,7 +365,7 @@ public class Message implements Externalizable {
 		
 		if (this.type == Message.Job && this.data == null) {
 			if (Message.verbose)
-				System.out.println("Message: Null job not sent.");
+				log("Message: Null job not sent.");
 			return null;
 		}
 		
@@ -377,7 +378,7 @@ public class Message implements Externalizable {
 			Message m = (Message) this.proxy.waitFor(this.sender, 10000);
 			
 			if (m != null && m.getSender() >= 0) {
-				System.out.println("Message: Constructing connection...");
+				log("Message: Constructing connection...");
 				return new Connection(this.node, this.proxy, m.getSender());
 			}
 		} else if (this.type == Message.ConnectionConfirmation && this.data == null) {
@@ -409,7 +410,7 @@ public class Message implements Externalizable {
 				return l;
 			}
 		} else if (this.type == Message.ResourceRequest) {
-			System.out.println("Message: Sending resource request to " + this.proxy + " for " + this.data);
+			log("Message: Sending resource request to " + this.proxy + " for " + this.data);
 
 			Message m = (Message) this.proxy.waitForMessage(Message.ResourceUri, null, 10000);
 			
@@ -427,7 +428,7 @@ public class Message implements Externalizable {
 	 */
 	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
-		if (Message.verbose) System.out.println("Write " + this);
+		if (Message.verbose) log("Write " + this);
 		
 		out.writeInt(this.sender);
 		out.writeInt(this.receiver);
@@ -446,7 +447,7 @@ public class Message implements Externalizable {
 		
 		this.data = (String) in.readObject();
 		
-		if (Message.verbose) System.out.println("Read " + this);
+		if (Message.verbose) log("Read " + this);
 		
 		this.node = null;
 		this.local = false;
@@ -475,7 +476,7 @@ public class Message implements Externalizable {
 			this.data = new String(b, 3, b.length - 3);
 		
 		if (Message.verbose)
-			System.out.println("Read " + b.length + " bytes " + this);
+			log("Read " + b.length + " bytes " + this);
 		
 		this.node = null;
 		this.local = false;
@@ -502,7 +503,7 @@ public class Message implements Externalizable {
 		System.arraycopy(db, 0, b, 3, db.length);
 		
 		if (Message.verbose)
-			System.out.println("Write " + b.length + " bytes " + this);
+			log("Write " + b.length + " bytes " + this);
 		
 		return b;
 	}

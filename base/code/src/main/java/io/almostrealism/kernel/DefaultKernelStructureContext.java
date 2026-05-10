@@ -40,11 +40,25 @@ public class DefaultKernelStructureContext implements KernelStructureContext {
 	}
 
 	/**
-	 * Creates a {@link DefaultKernelStructureContext} with the given kernel element count.
+	 * Creates a {@link DefaultKernelStructureContext} with the given kernel
+	 * iteration count from {@link #getKernelMaximum()}.
 	 *
-	 * @param count the number of kernel elements
+	 * @param count the kernel iteration count; must be {@code > 0}.
+	 *              See {@link KernelStructureContext#getKernelMaximum()} for
+	 *              why {@code 0} is forbidden. If the bound is genuinely
+	 *              unknown, use the no-arg constructor so
+	 *              {@code getKernelMaximum()} returns
+	 *              {@link OptionalLong#empty()}.
+	 * @throws IllegalArgumentException if {@code count <= 0}
 	 */
 	public DefaultKernelStructureContext(long count) {
+		if (count <= 0) {
+			throw new IllegalArgumentException(
+					"DefaultKernelStructureContext requires count > 0 (got "
+					+ count + "). A zero-iteration kernel does not exist — "
+					+ "use the no-arg constructor for an unbounded context. "
+					+ "See KernelStructureContext#getKernelMaximum().");
+		}
 		this.count = OptionalLong.of(count);
 	}
 

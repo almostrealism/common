@@ -192,4 +192,134 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 		assertTrue("Should have no results when no tokens configured",
 				results.isEmpty());
 	}
+
+	// -------------------------------------------------------------------------
+	// Phase 1d: Per-workspace githubOrgs validation tests
+	// -------------------------------------------------------------------------
+
+	@Test(timeout = 10000)
+	public void validateAllIncludesPerWorkspaceOrgTokens() throws Exception {
+		StubValidator validator = new StubValidator();
+		validator.stubResponse("/user", 200, "{\"login\":\"ws-bot\"}");
+		validator.stubResponse("/repos/ws-org/ws-repo",
+				200, "{\"permissions\":{\"push\":true,\"pull\":true}}");
+
+		String yaml = "slackWorkspaces:\n"
+				+ "  - workspaceId: \"T_WS\"\n"
+				+ "    botToken: \"xoxb-ws\"\n"
+				+ "    appToken: \"xapp-ws\"\n"
+				+ "    githubOrgs:\n"
+				+ "      ws-org:\n"
+				+ "        token: \"ghp_workspace_token\"\n"
+				+ "workstreams:\n"
+				+ "  - channelId: \"C001\"\n"
+				+ "    channelName: \"#ws-channel\"\n"
+				+ "    slackWorkspaceId: \"T_WS\"\n"
+				+ "    repoUrl: \"https://github.com/ws-org/ws-repo.git\"\n"
+				+ "    defaultBranch: \"main\"\n";
+
+		WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+		List<GitHubTokenValidator.TokenValidationResult> results =
+				validator.validateAll(config);
+
+		assertFalse("Per-workspace org token should be validated", results.isEmpty());
+		assertTrue("Workspace org token should be valid", results.get(0).isValid());
+		assertTrue("Result label should identify workspace context",
+				results.get(0).getLabel().contains("T_WS")
+						|| results.get(0).getLabel().contains("ws-org"));
+	}
+
+	@Test(timeout = 10000)
+	public void validateAllMergesGlobalAndWorkspaceOrgTokens() throws Exception {
+		StubValidator validator = new StubValidator();
+		validator.stubResponse("/user", 200, "{\"login\":\"bot\"}");
+
+		String yaml = "githubOrgs:\n"
+				+ "  global-org:\n"
+				+ "    token: \"ghp_global\"\n"
+				+ "slackWorkspaces:\n"
+				+ "  - workspaceId: \"T111\"\n"
+				+ "    botToken: \"xoxb-t111\"\n"
+				+ "    appToken: \"xapp-t111\"\n"
+				+ "    githubOrgs:\n"
+				+ "      workspace-org:\n"
+				+ "        token: \"ghp_workspace\"\n"
+				+ "workstreams: []\n";
+
+		WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+		List<GitHubTokenValidator.TokenValidationResult> results =
+				validator.validateAll(config);
+
+		// Both tokens (global + workspace) should appear in validation results
+		assertEquals("Both global and workspace org tokens should be validated", 2, results.size());
+	}
+
+	@Test(timeout = 10000)
+	public void validateAllHandlesWorkspaceOrgCollisionWithGlobal() throws Exception {
+		StubValidator validator = new StubValidator();
+		validator.stubResponse("/user", 200, "{\"login\":\"bot\"}");
+
+		String yaml = "githubOrgs:\n"
+				+ "  shared-org:\n"
+				+ "    token: \"ghp_global\"\n"
+				+ "slackWorkspaces:\n"
+				+ "  - workspaceId: \"T111\"\n"
+				+ "    botToken: \"xoxb-t111\"\n"
+				+ "    appToken: \"xapp-t111\"\n"
+				+ "    githubOrgs:\n"
+				+ "      shared-org:\n"
+				+ "        token: \"ghp_workspace_override\"\n"
+				+ "workstreams: []\n";
+
+		WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+		// Should not throw; collision is a warning, not an error
+		List<GitHubTokenValidator.TokenValidationResult> results =
+				validator.validateAll(config);
+
+		// The workspace token overrides the global — we expect exactly one token context
+		// for "shared-org" since both map to the same org key
+		assertEquals("Collision: workspace overrides global, one context per unique token",
+				1, results.size());
+	}
+
+	@Test(timeout = 10000)
+	public void validateAllBackwardCompatSingleWorkspaceNoSlackWorkspaces() throws Exception {
+		StubValidator validator = new StubValidator();
+		validator.stubResponse("/user", 200, "{\"login\":\"bot\"}");
+
+		String yaml = "githubOrgs:\n"
+				+ "  solo-org:\n"
+				+ "    token: \"ghp_solo\"\n"
+				+ "workstreams: []\n";
+
+		WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+		List<GitHubTokenValidator.TokenValidationResult> results =
+				validator.validateAll(config);
+
+		assertEquals("Single-workspace mode: one result for one token", 1, results.size());
+		assertEquals("org:solo-org", results.get(0).getLabel());
+	}
+
+	@Test(timeout = 10000)
+	public void validateAllEmptyGithubOrgsOnWorkspaceEntry() throws Exception {
+		StubValidator validator = new StubValidator();
+
+		String yaml = "slackWorkspaces:\n"
+				+ "  - workspaceId: \"T_EMPTY\"\n"
+				+ "    botToken: \"xoxb-empty\"\n"
+				+ "    appToken: \"xapp-empty\"\n"
+				+ "workstreams: []\n";
+
+		WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+		List<GitHubTokenValidator.TokenValidationResult> results =
+				validator.validateAll(config);
+
+		// No tokens configured — should return empty results without throwing
+		assertTrue("No GitHub tokens should produce empty results", results.isEmpty());
+	}
 }

@@ -24,6 +24,7 @@ import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.profile.ScopeTimingListener;
+import org.almostrealism.io.Console;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.List;
@@ -168,7 +169,7 @@ public class ScopeSettings {
 			simplification = new TieredSimplificationSettings();
 		} else {
 			if (!Objects.equals(defaultSimplify, simplify))
-				System.out.println("SpectrumSimplification[" + simplify + "]");
+				Console.root().println("SpectrumSimplification[" + simplify + "]");
 
 			simplification = new SpectrumSimplification(Double.parseDouble(simplify));
 		}
@@ -180,7 +181,7 @@ public class ScopeSettings {
 			caching = new ExplicitDepthCaching();
 		} else {
 			if (!Objects.equals(cd, cache))
-				System.out.println("SpectrumCaching[" + cache + "]");
+				Console.root().println("SpectrumCaching[" + cache + "]");
 
 			String c[] = cache.split(":");
 			caching = new SpectrumCaching(Double.parseDouble(c[0]), Double.parseDouble(c[1]));

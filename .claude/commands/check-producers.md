@@ -9,8 +9,13 @@ orchestration language, not the execution language.
 1. Call `mcp__ar-consultant__consult` with question about the file or change in question
    and keywords like `["ProducerPatternDetector", "evaluate in computation"]`
 
-2. Use `mcp__ar-test-runner__start_test_run` to run:
-   `CodePolicyEnforcementTest#enforceCodePolicies`
+2. Run the build validator to check code policy:
+   ```
+   mcp__ar-build-validator__start_validation checks:["code_policy"]
+   ```
+   Poll `mcp__ar-build-validator__get_validation_status` until complete, then call
+   `mcp__ar-build-validator__get_validation_violations` for structured file:line results.
+   Pass `skip_build:true` if the project is already compiled.
 
 3. For each violation found, diagnose and fix using the Producer pattern:
 

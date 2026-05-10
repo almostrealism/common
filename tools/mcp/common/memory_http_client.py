@@ -142,7 +142,7 @@ class MemoryHTTPClient:
         self,
         repo_url: str,
         branch: str,
-        namespace: str = "default",
+        namespace: Optional[str] = "default",
         limit: int = 20,
     ) -> list[dict]:
         """Non-semantic lookup of memories by branch.
@@ -150,7 +150,9 @@ class MemoryHTTPClient:
         Args:
             repo_url: Repository URL to match.
             branch: Branch name to match.
-            namespace: Namespace to search within.
+            namespace: Namespace to search within. Pass ``None`` or an empty
+                string to search across every namespace and receive the
+                combined result sorted newest-first.
             limit: Maximum results.
 
         Returns:
@@ -159,7 +161,7 @@ class MemoryHTTPClient:
         payload = {
             "repo_url": repo_url,
             "branch": branch,
-            "namespace": namespace,
+            "namespace": "" if not namespace else namespace,
             "limit": limit,
         }
         result = self._post("/api/memory/branch", payload)

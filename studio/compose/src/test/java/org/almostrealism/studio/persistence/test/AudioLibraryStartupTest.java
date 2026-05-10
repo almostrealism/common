@@ -169,7 +169,7 @@ public class AudioLibraryStartupTest extends TestSuiteBase {
 				oldDataDir.resolve("library").toString());
 		ProtobufWaveDetailsStore store = dest.migrateAndOpenStore(storeDir.toFile());
 		long migrateMs = System.currentTimeMillis() - startMigrate;
-		System.out.println("Migration: " + migrateMs + "ms, entries: " + store.size());
+		log("Migration: " + migrateMs + "ms, entries: " + store.size());
 
 		Assert.assertEquals(entryCount, store.size());
 
@@ -185,7 +185,7 @@ public class AudioLibraryStartupTest extends TestSuiteBase {
 		List<PrototypeDiscovery.PrototypeResult> prototypes =
 				PrototypeDiscovery.discoverPrototypes(library, 5, null);
 		long discoveryMs = System.currentTimeMillis() - startDiscovery;
-		System.out.println("Discovery: " + discoveryMs + "ms, prototypes: " + prototypes.size());
+		log("Discovery: " + discoveryMs + "ms, prototypes: " + prototypes.size());
 
 		Assert.assertFalse("Should find at least one prototype", prototypes.isEmpty());
 
@@ -193,7 +193,7 @@ public class AudioLibraryStartupTest extends TestSuiteBase {
 		store.close();
 
 		long totalMs = migrateMs + discoveryMs;
-		System.out.println("Total startup: " + totalMs + "ms");
+		log("Total startup: " + totalMs + "ms");
 	}
 
 	// ── Helpers ──────────────────────────────────────────────────────────

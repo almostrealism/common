@@ -34,9 +34,9 @@ public class CollectionKernelTests extends TestSuiteBase {
 				c(shape(2, 5), 2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0)
 						.get().evaluate(args));
 		PackedCollection out = a.traverse(1).get().evaluate();
-		System.out.println("CollectionKernelTests.func: Out shape = " + out.getShape());
-		System.out.println("CollectionKernelTests.func: Out count = " + out.getCountLong());
-		System.out.println("CollectionKernelTests.func: Out atomic length = " + out.getAtomicMemLength());
+		log("CollectionKernelTests.func: Out shape = " + out.getShape());
+		log("CollectionKernelTests.func: Out count = " + out.getCountLong());
+		log("CollectionKernelTests.func: Out atomic length = " + out.getAtomicMemLength());
 
 		Assert.assertEquals(2, out.getShape().length(0));
 		Assert.assertEquals(5, out.getShape().length(1));
@@ -59,15 +59,15 @@ public class CollectionKernelTests extends TestSuiteBase {
 			Evaluable<PackedCollection> eval = c.get();
 			PackedCollection out = eval.evaluate();
 
-			System.out.println("CollectionKernelTests.divide: Out shape = " + out.getShape());
-			System.out.println("CollectionKernelTests.divide: Out count = " + out.getCountLong());
+			log("CollectionKernelTests.divide: Out shape = " + out.getShape());
+			log("CollectionKernelTests.divide: Out count = " + out.getCountLong());
 
 			Assert.assertEquals(2, out.getShape().length(0));
 			Assert.assertEquals(5, out.getShape().length(1));
 			Assert.assertEquals(2, out.getCountLong());
 
 			double[] values = out.toArray(0, 10);
-			System.out.println(Arrays.toString(values));
+			log(Arrays.toString(values));
 
 			for (int i = 0; i < 5; i++) {
 				assertEquals(v1[i] * v2[i], values[i]);
@@ -92,14 +92,14 @@ public class CollectionKernelTests extends TestSuiteBase {
 			Evaluable<PackedCollection> eval = c.get();
 			PackedCollection out = eval.evaluate();
 
-			System.out.println("CollectionKernelTests.divide: Out shape = " + out.getShape());
-			System.out.println("CollectionKernelTests.divide: Out count = " + out.getCountLong());
+			log("CollectionKernelTests.divide: Out shape = " + out.getShape());
+			log("CollectionKernelTests.divide: Out count = " + out.getCountLong());
 
 			Assert.assertEquals(2, out.getShape().length(0));
 			Assert.assertEquals(5, out.getShape().length(1));
 
 			double[] values = out.toArray(0, 10);
-			System.out.println(Arrays.toString(values));
+			log(Arrays.toString(values));
 
 			for (int i = 0; i < 10; i++) {
 				assertEquals(v1[i] / v2[0], values[i]);
@@ -136,8 +136,8 @@ public class CollectionKernelTests extends TestSuiteBase {
 		PackedCollection value = tensor(shape(100)).pack();
 		PackedCollection out = conditional.get().evaluate(value.traverseEach());
 
-		System.out.println(out.valueAt(45));
-		System.out.println(out.valueAt(60));
+		log(String.valueOf(out.valueAt(45)));
+		log(String.valueOf(out.valueAt(60)));
 
 		assertEquals(67.5, out.valueAt(45));
 		assertEquals(30.0, out.valueAt(60));

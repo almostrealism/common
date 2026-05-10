@@ -27,7 +27,6 @@ import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -241,18 +240,15 @@ public class GitHubTokenValidator implements ConsoleFeatures {
 	private Map<String, TokenContext> collectTokenContexts(WorkstreamConfig config) {
 		Map<String, TokenContext> contexts = new LinkedHashMap<>();
 
-		// Per-org tokens (the ONLY source of GitHub tokens)
-		Map<String, String> orgTokens = new LinkedHashMap<>();
-		if (config.getGithubOrgs() != null) {
-			for (Map.Entry<String, WorkstreamConfig.GitHubOrgEntry> entry
-					: config.getGithubOrgs().entrySet()) {
-				String orgToken = entry.getValue().getToken();
-				if (orgToken != null && !orgToken.isEmpty()) {
-					orgTokens.put(entry.getKey(), orgToken);
-					contexts.computeIfAbsent(orgToken,
-							k -> new TokenContext("org:" + entry.getKey()));
-				}
-			}
+		// Build the merged org-name → token map via WorkstreamConfig so the merge
+		// logic is not duplicated here and in FlowTreeController.startApiEndpoint().
+		Map<String, String> orgTokens = config.mergedGithubOrgTokens();
+
+		// Build token contexts from the merged map so each token appears exactly once,
+		// with no leftover contexts for tokens that were overridden by workspace entries.
+		for (Map.Entry<String, String> entry : orgTokens.entrySet()) {
+			contexts.computeIfAbsent(entry.getValue(),
+					k -> new TokenContext("org:" + entry.getKey()));
 		}
 
 		// Scan workstreams to determine which token handles which repo

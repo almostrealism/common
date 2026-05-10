@@ -108,13 +108,13 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Expression c = new IntegerConstant(3);
 		Expression out = a.add(b).multiply(c).toInt();
 
-		System.out.println(out.getSimpleExpression(lang));
+		log(String.valueOf(out.getSimpleExpression(lang)));
 	}
 
 	@Test(timeout = 30000)
 	public void divide() {
 		String e = e(1).divide(e(2)).getSimpleExpression(lang);
-		System.out.println(e);
+		log(String.valueOf(e));
 		Assert.assertTrue(e.length() < 12);
 	}
 
@@ -122,7 +122,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	public void constantSum() {
 		// 1 + (- ((2.0 - 0) / 4.0))
 		Expression<?> out = e(1).add(e(2.0).subtract(e(0)).divide(e(4.0)).minus());
-		System.out.println(out.getExpression(lang));
+		log(String.valueOf(out.getExpression(lang)));
 
 		out = out.simplify(new NoOpKernelStructureContext());
 		Assert.assertEquals("0.5", out.getExpression(lang));
@@ -133,7 +133,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Expression d = e(1).divide(e(2));
 		Expression out = e(25).add(d).toInt();
 
-		System.out.println(out.getSimpleExpression(lang));
+		log(String.valueOf(out.getSimpleExpression(lang)));
 		Assert.assertEquals("25", out.getSimpleExpression(lang));
 	}
 
@@ -144,7 +144,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Expression b = c.add(e(2));
 		Expression out = b.add(d).toInt();
 
-		System.out.println(out.getSimpleExpression(lang));
+		log(String.valueOf(out.getSimpleExpression(lang)));
 		Assert.assertEquals("25", out.getSimpleExpression(lang));
 	}
 
@@ -166,7 +166,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Expression exp = e(0.0).divide(e(4.0)).floor()
 				.multiply(e(4)).add(e(0.0).toInt()
 						.mod(e(4), false)).toInt();
-		System.out.println(exp.getExpression(lang));
+		log(String.valueOf(exp.getExpression(lang)));
 		Assert.assertEquals("0", exp.getSimpleExpression(lang));
 	}
 
@@ -259,7 +259,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	public void kernelModProduct1() {
 		Expression kernel0 = new KernelIndex();
 		Expression result = kernel0.multiply(e(4)).imod(e(8)).imod(e(4));
-		System.out.println(Arrays.toString(result.sequence(new KernelIndex(), 4).toArray()));
+		log(Arrays.toString(result.sequence(new KernelIndex(), 4).toArray()));
 		Assert.assertTrue(result.isValue(new IndexValues(0)));
 
 		String simple = new DefaultKernelStructureContext(64).simplify(result).getExpression(lang);
@@ -334,7 +334,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	public void modSumSeq1() {
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
 		Expression<?> e = idx.multiply(2).add(idx.imod(2));
-		System.out.println(e.getExpression(lang));
+		log(String.valueOf(e.getExpression(lang)));
 		compareSimplifiedSequence(e);
 	}
 
@@ -342,7 +342,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	public void modSumSeq2() {
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
 		Expression<?> e = idx.multiply(2).add(idx).imod(4);
-		System.out.println(e.getExpression(lang));
+		log(String.valueOf(e.getExpression(lang)));
 		compareSimplifiedSequence(e);
 	}
 
@@ -350,7 +350,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	public void modSumSeq3() {
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
 		Expression<?> e = idx.add(idx.imod(2)).imod(4);
-		System.out.println(e.getExpression(lang));
+		log(String.valueOf(e.getExpression(lang)));
 		compareSimplifiedSequence(e);
 	}
 
@@ -358,7 +358,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	public void modSumSeq5() {
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
 		Expression<?> e = idx.multiply(2).add(idx.imod(2)).imod(4);
-		System.out.println(e.getExpression(lang));
+		log(String.valueOf(e.getExpression(lang)));
 		compareSimplifiedSequence(e);
 	}
 
@@ -366,7 +366,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	public void modSumSeq6() {
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
 		Expression<?> e = idx.multiply(2).add(idx.imod(2)).imod(4).divide(2);
-		System.out.println(e.getExpression(lang));
+		log(String.valueOf(e.getExpression(lang)));
 		compareSimplifiedSequence(e);
 	}
 
@@ -375,7 +375,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		// (((((ind0 * 2) + (ind0 % 2)) % 4) / 2) % 2)
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
 		Expression<?> e = idx.multiply(2).add(idx.imod(2)).imod(4).divide(2).imod(2);
-		System.out.println(e.getExpression(lang));
+		log(String.valueOf(e.getExpression(lang)));
 		compareSimplifiedSequence(e);
 	}
 
@@ -384,7 +384,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		// (((((ind0 * 4) + (ind0 % 4)) % 4)
 		DefaultIndex idx = new DefaultIndex("ind0", 16);
 		Expression<?> e = idx.multiply(4).add(idx.imod(4)).imod(4);
-		System.out.println(e.getExpression(lang));
+		log(String.valueOf(e.getExpression(lang)));
 		compareSimplifiedSequence(e);
 
 		Assert.assertEquals("ind0 % 4", e.getSimpleExpression(lang));
@@ -408,30 +408,30 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		// (((((ind0 * 2) + (ind0 % 2)) % 4) / 2) % 2)
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
 		Expression<?> e = idx.multiply(2).add(idx.imod(2)).imod(4).divide(2).imod(2);
-		System.out.println(e.getExpression(lang));
+		log(String.valueOf(e.getExpression(lang)));
 
 		IndexSequence seq = e.sequence(idx, 4, 4);
-		System.out.println(Arrays.toString(seq.intValues().toArray()));
+		log(Arrays.toString(seq.intValues().toArray()));
 
 		e = e.getSimplified();
-		System.out.println(e.getExpression(lang));
+		log(String.valueOf(e.getExpression(lang)));
 
 		seq = e.sequence(idx, 4, 4);
-		System.out.println(Arrays.toString(seq.intValues().limit(4).toArray()));
+		log(Arrays.toString(seq.intValues().limit(4).toArray()));
 	}
 
 	@Test(timeout = 30000)
 	public void equals1() {
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
 		Expression<?> e = idx.imod(4).eq(idx.imod(8));
-		System.out.println(e.getExpression(lang));
+		log(String.valueOf(e.getExpression(lang)));
 
 		Expression se = new DefaultKernelStructureContext().getSeriesProvider().getSeries(e);
-		System.out.println(se.getExpression(lang));
+		log(String.valueOf(se.getExpression(lang)));
 		Assert.assertEquals("true", se.getExpression(lang));
 
 		e = e.getSimplified();
-		System.out.println(e.getExpression(lang));
+		log(String.valueOf(e.getExpression(lang)));
 		Assert.assertEquals("true", e.getExpression(lang));
 	}
 
@@ -441,17 +441,17 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
 		Expression<?> e = idx.multiply(2).add(idx.imod(2)).imod(4).divide(2).imod(2)
 							.eq(idx.multiply(2).add(idx.imod(2)).imod(2));
-		System.out.println(e.getExpression(lang));
+		log(String.valueOf(e.getExpression(lang)));
 
 		IndexSequence seq = e.sequence(idx, 4, 4);
-		System.out.println(Arrays.toString(seq.toArray()));
+		log(Arrays.toString(seq.toArray()));
 		Assert.assertEquals("1", seq.getExpression(idx).getExpression(lang));
 
 		e = e.getSimplified(new DefaultKernelStructureContext());
-		System.out.println(e.getExpression(lang));
+		log(String.valueOf(e.getExpression(lang)));
 
 		seq = e.sequence(idx, 4, 4);
-		System.out.println(Arrays.toString(seq.toArray()));
+		log(Arrays.toString(seq.toArray()));
 		Assert.assertEquals("1", seq.getExpression(idx).getExpression(lang));
 
 		Assert.assertEquals("true", e.getExpression(lang));
@@ -461,7 +461,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	public void sequenceMax1() {
 		Expression e = kernel().withLimit(3).multiply(Integer.MAX_VALUE);
 		IndexSequence seq = e.sequence();
-		System.out.println(Arrays.toString(seq.longStream().toArray()));
+		log(Arrays.toString(seq.longStream().toArray()));
 		Assert.assertEquals(2L * Integer.MAX_VALUE, seq.longStream().toArray()[2]);
 	}
 
@@ -469,7 +469,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	public void sequenceMax2() {
 		Expression e = kernel().withLimit(3).multiply(Integer.MAX_VALUE);
 		IndexSequence seq = e.sequence();
-		System.out.println(Arrays.toString(seq.longStream().toArray()));
+		log(Arrays.toString(seq.longStream().toArray()));
 		Assert.assertEquals(2L * Integer.MAX_VALUE, seq.longStream().toArray()[2]);
 	}
 
@@ -480,7 +480,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 
 		Expression e = kernel().withLimit(n*n).multiply(n).add(kernel().imod(n));
 		long o = e.value(new IndexValues().put(kernel(), 1342178)).longValue();
-		System.out.println(o);
+		log(String.valueOf(o));
 		Assert.assertTrue(o > 0);
 
 		IndexSequence seq = e.sequence();
@@ -500,7 +500,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 
 		Expression e = kernel().withLimit(n*n).multiply(n).add(kernel().imod(n)).imod(n*n);
 		long o = e.value(new IndexValues().put(kernel(), 1342178)).longValue();
-		System.out.println(o);
+		log(String.valueOf(o));
 		Assert.assertTrue(o > 0);
 
 		IndexSequence seq = e.sequence();
@@ -526,8 +526,8 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Expression e = ref0.add(ref0.add(ref1).divide(2.0).minus()).multiply(ref0.add(ref0.add(ref1).divide(2.0).minus()))
 				.add(ref1.add(ref0.add(ref1).divide(2.0).minus()).multiply(ref1.add(ref0.add(ref1).divide(2.0).minus())))
 				.divide(2.0);
-		System.out.println(e.getExpression(lang));
-		System.out.println(e.getSimplified().getExpression(lang));
+		log(String.valueOf(e.getExpression(lang)));
+		log(String.valueOf(e.getSimplified().getExpression(lang)));
 	}
 
 	@Test(timeout = 30000)
@@ -545,21 +545,21 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	public void kernelConditional1() {
 		// ((0 == (kernel0 / 3)) ? 1 : 0)
 		Expression e = e(0).eq(kernel().divide(3)).conditional(e(1), e(0));
-		System.out.println(e.getExpression(lang));
-		System.out.println(Arrays.toString(e.sequence(9).toArray()));
+		log(String.valueOf(e.getExpression(lang)));
+		log(Arrays.toString(e.sequence(9).toArray()));
 
-		System.out.println(new DefaultKernelStructureContext(9).getSeriesProvider().getSeries(e).getExpression(lang));
+		log(String.valueOf(new DefaultKernelStructureContext(9).getSeriesProvider().getSeries(e).getExpression(lang)));
 	}
 
 	@Test(timeout = 30000)
 	public void kernelSumMod1() {
 		// (((((kernel0 % 3) * 3) + (kernel0 / 3) + ((kernel0 / 9) * 9)) / 3) % 3)
 		Expression e = kernel().imod(3).multiply(3).add(kernel().divide(3)).add(kernel().divide(9).multiply(9)).divide(3).imod(3);
-		System.out.println(e.getExpression(lang));
-		System.out.println(Arrays.toString(e.sequence(9).toArray()));
+		log(String.valueOf(e.getExpression(lang)));
+		log(Arrays.toString(e.sequence(9).toArray()));
 
 		e = new DefaultKernelStructureContext(9).getSeriesProvider().getSeries(e);
-		System.out.println(e.getExpression(lang));
+		log(String.valueOf(e.getExpression(lang)));
 		Assert.assertEquals("kernel0 % 3", e.getSimpleExpression(lang));
 	}
 
@@ -786,12 +786,12 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 				.add(e(1).eq(kernel().divide(3)).conditional(e(1), e(0)))
 				.add(e(2).eq(kernel().divide(3)).conditional(e(1), e(0)))
 				.multiply(3.0).divide(9.0);
-		System.out.println(e.getExpression(lang));
-		System.out.println(Arrays.toString(e.sequence(9).toArray()));
+		log(String.valueOf(e.getExpression(lang)));
+		log(Arrays.toString(e.sequence(9).toArray()));
 
 		e = new DefaultKernelStructureContext(9).getSeriesProvider().getSeries(e);
 
-		System.out.println(e.getExpression(lang));
+		log(String.valueOf(e.getExpression(lang)));
 		Assert.assertEquals(String.valueOf(1.0 / 3.0), e.getSimpleExpression(lang));
 	}
 
@@ -878,8 +878,8 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		long seqB[] = IntStream.range(0, seqA.length).mapToLong(i -> s.valueAt(i).longValue()).toArray();
 
 		if (seqA.length < 100) {
-			System.out.println(Arrays.toString(seqA));
-			System.out.println(Arrays.toString(seqB));
+			log(Arrays.toString(seqA));
+			log(Arrays.toString(seqB));
 		}
 
 		Assert.assertArrayEquals(seqA, seqB);

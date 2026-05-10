@@ -17,11 +17,11 @@
 package org.almostrealism.studio.filter.test;
 
 import org.almostrealism.studio.AudioScene;
-import org.almostrealism.audio.Cells;
 import org.almostrealism.studio.generative.NoOpGenerationProvider;
 import org.almostrealism.studio.health.StableDurationHealthComputation;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.hardware.mem.MemoryBankAdapter.CacheLevel;
+import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
@@ -62,7 +62,7 @@ public class PeriodicCellAdjustmentTest extends TestSuiteBase {
 		health.setMaxDuration(8);
 		health.setOutputFile("results/periodic-test-noadjust.wav");
 
-		Cells organ = scene().getCells(health.getOutput());
+		TemporalCellular organ = scene().runnerRealTime(health.getOutput(), health.getBatchSize());
 		organ.reset();
 		health.setTarget(organ);
 		health.computeHealth();
@@ -78,7 +78,7 @@ public class PeriodicCellAdjustmentTest extends TestSuiteBase {
 		health.setMaxDuration(8);
 		health.setOutputFile("results/periodic-test-adjust.wav");
 
-		Cells organ = scene().getCells(health.getOutput());
+		TemporalCellular organ = scene().runnerRealTime(health.getOutput(), health.getBatchSize());
 		organ.reset();
 		health.setTarget(organ);
 		health.computeHealth();

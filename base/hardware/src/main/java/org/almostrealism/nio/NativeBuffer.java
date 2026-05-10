@@ -20,6 +20,7 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import org.almostrealism.hardware.mem.RAM;
 
 import java.io.File;
@@ -116,6 +117,12 @@ public class NativeBuffer extends RAM implements Destroyable {
 
 	@Override
 	public void destroy() {
+		// Diagnostic: warn if a kernel is still actively using this buffer.
+		// We proceed with unmap regardless — blocking or silently deferring
+		// explicit destroy is as dangerous as complex finalizer logic.
+		KernelMemoryGuard.warnIfActivelyReferenced(
+				getContentPointer(), getAllocationStackTrace(), "NativeBuffer");
+
 		if (sharedLocation != null) {
 			NIO.unmapSharedMemory(rootBuffer, rootBuffer.capacity());
 		}

@@ -34,16 +34,16 @@ public class MinMaxTests extends TestSuiteBase {
 		verboseLog(() -> {
 			Evaluable<PackedCollection> ev = divide(in, speedUpDuration).get();
 			PackedCollection out = ev.evaluate(timeline, speedUp);
-			System.out.println(out.toDouble(10 * 4410));
-			System.out.println(timeline.toDouble(10 * 4410) / speedUp.toDouble(0));
+			log(String.valueOf(out.toDouble(10 * 4410)));
+			log(String.valueOf(timeline.toDouble(10 * 4410) / speedUp.toDouble(0)));
 			assertEquals(timeline.toDouble(10 * 4410) / speedUp.toDouble(0), out.toDouble(10 * 4410));
 		});
 
 		verboseLog(() -> {
 			Evaluable<PackedCollection> ev = floor(divide(in, speedUpDuration)).get();
 			PackedCollection out = ev.evaluate(timeline, speedUp);
-			System.out.println(out.toDouble(10 * 4410));
-			System.out.println(Math.floor(timeline.toDouble(10 * 4410) / speedUp.toDouble(0)));
+			log(String.valueOf(out.toDouble(10 * 4410)));
+			log(String.valueOf(Math.floor(timeline.toDouble(10 * 4410) / speedUp.toDouble(0))));
 			assertEquals(Math.floor(timeline.toDouble(10 * 4410) / speedUp.toDouble(0)), out.toDouble(10 * 4410));
 		});
 	}

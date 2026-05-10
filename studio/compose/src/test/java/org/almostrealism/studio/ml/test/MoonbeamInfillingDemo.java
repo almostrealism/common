@@ -89,7 +89,7 @@ public class MoonbeamInfillingDemo extends TestSuiteBase implements ConsoleFeatu
 	 * <p>Requires pretrained weights at {@value WEIGHTS_DIR} and significant
 	 * memory for the full 309M checkpoint. Skipped automatically in CI.</p>
 	 */
-	@Test
+	@Test(timeout = 600000)
 	@TestDepth(2)
 	public void generateInfillingSamples() throws Exception {
 		Assume.assumeTrue("Moonbeam weights not found at " + WEIGHTS_DIR,

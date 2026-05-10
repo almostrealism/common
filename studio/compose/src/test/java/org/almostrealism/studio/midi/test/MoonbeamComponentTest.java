@@ -17,6 +17,7 @@
 package org.almostrealism.studio.midi.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.RotationFeatures;
 import org.almostrealism.ml.StateDictionary;
@@ -153,7 +154,7 @@ public class MoonbeamComponentTest extends TestSuiteBase implements ConsoleFeatu
 			double theta = REAL_CONFIG.ropeThetas[g];
 
 			long groupStart = System.currentTimeMillis();
-			PackedCollection freqCis = RotationFeatures.computeRopeFreqs(
+			CollectionProducer freqCis = RotationFeatures.computeRopeFreqs(
 					theta, headDim, maxSeqLen);
 			long groupTime = System.currentTimeMillis() - groupStart;
 

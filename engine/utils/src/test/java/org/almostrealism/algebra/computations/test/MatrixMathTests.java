@@ -80,7 +80,7 @@ public class MatrixMathTests extends TestSuiteBase {
 
 		PackedCollection c = product.get().evaluate();
 		c.traverse(1).print();
-		System.out.println("--");
+		log("--");
 
 		PackedCollection reference = new PackedCollection(shape(n, p));
 		multiplyMatrices(n, m, p, a, b, reference);

@@ -18,6 +18,7 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.profile.OperationMetadata;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -45,7 +46,7 @@ import java.util.Map;
  * @see MetalProgram
  * @see InstructionSet
  */
-public class MetalOperatorMap implements InstructionSet {
+public class MetalOperatorMap implements InstructionSet, ConsoleFeatures {
 	/** The compute context providing the Metal device and command runner for kernel execution. */
 	private MetalComputeContext context;
 	/** The compiled Metal program (MSL) containing the kernel function used by all operators in this map. */
@@ -81,12 +82,12 @@ public class MetalOperatorMap implements InstructionSet {
 	 */
 	protected void init(OperationMetadata metadata, String func, String src) {
 		if (MetalOperator.enableLog) {
-			System.out.println("MetalOperatorMap: init " + metadata.getDisplayName());
+			log("MetalOperatorMap: init " + metadata.getDisplayName());
 		}
 
 		if (MetalOperator.enableVerboseLog) {
-			System.out.println("Source:");
-			System.out.println(src);
+			log("Source:");
+			log(src);
 		}
 
 		prog = MetalProgram.create(context, metadata, func, src);
@@ -101,7 +102,7 @@ public class MetalOperatorMap implements InstructionSet {
 
 		if (ex != null) {
 			if (MetalOperator.enableLog) {
-				System.out.println("Error compiling:\n" + src);
+				log("Error compiling:\n" + src);
 			}
 
 			throw ex;

@@ -19,6 +19,7 @@ package org.almostrealism.physics;
 
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.electrostatic.PotentialMap;
+import org.almostrealism.io.ConsoleFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.ZeroVector;
@@ -30,7 +31,7 @@ import org.almostrealism.collect.PackedCollection;
  * 
  * @author  Michael Murray
  */
-public class HarmonicAbsorber implements SphericalAbsorber, VectorFeatures {
+public class HarmonicAbsorber implements SphericalAbsorber, VectorFeatures, ConsoleFeatures {
 	/** Probability threshold below which verbose logging of absorption and emission is printed. */
 	public static double verbose = Math.pow(10.0, -3.0);
 
@@ -104,7 +105,7 @@ public class HarmonicAbsorber implements SphericalAbsorber, VectorFeatures {
 		if (x.length() > this.radius) return false;
 		
 		if (Math.random() < verbose)
-			System.out.println("HarmonicAbsorber: Absorb energy = " + energy);
+			log("Absorb energy = " + energy);
 
 		place = (Vector) add(v(place), v(p)).get().evaluate();
 		this.energy += energy;
@@ -135,7 +136,7 @@ public class HarmonicAbsorber implements SphericalAbsorber, VectorFeatures {
 		double e = this.energy - this.k * dq * dq;
 		
 		if (Math.random() < verbose)
-			System.out.println("HarmonicAbsorber: Emit energy = " + e);
+			log("Emit energy = " + e);
 		
 		return e;
 	}
@@ -146,7 +147,7 @@ public class HarmonicAbsorber implements SphericalAbsorber, VectorFeatures {
 	@Override
 	public double getNextEmit() {
 		if (Math.random() < HarmonicAbsorber.verbose)
-			System.out.println("HarmonicAbsorber: D = " + this.d);
+			log("D = " + this.d);
 		
 		if (this.d >= this.q)
 			return 0.0;

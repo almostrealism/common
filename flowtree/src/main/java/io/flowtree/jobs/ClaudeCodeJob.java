@@ -18,7 +18,6 @@ package io.flowtree.jobs;
 
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.job.Job;
-import org.almostrealism.io.JobOutput;
 import org.almostrealism.util.KeyUtils;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -34,13 +33,10 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
+import java.util.concurrent.TimeUnit;
 
 /**
  * A {@link Job} implementation that executes a Claude Code prompt.
@@ -54,27 +50,6 @@ import java.util.regex.Pattern;
  * Claude Code completes its work. Set a target branch via {@link #setTargetBranch(String)}
  * to enable automatic git management.</p>
  *
- * <h2>Usage</h2>
- * <pre>{@code
- * // Simple job without git management
- * ClaudeCodeJob job = new ClaudeCodeJob(taskId, "Fix the bug in auth.py");
- * job.run();
- *
- * // Job with git management
- * ClaudeCodeJob job = new ClaudeCodeJob(taskId, "Fix the bug in auth.py");
- * job.setTargetBranch("feature/fix-auth-bug");
- * job.run();  // Changes will be committed and pushed
- *
- * // Via factory (for Flowtree integration)
- * ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(
- *     "Review and improve error handling",
- *     "Add unit tests for the new feature"
- * );
- * factory.setAllowedTools("Read,Edit,Bash,Glob,Grep");
- * factory.setTargetBranch("feature/improvements");
- * server.sendTask(factory);
- * }</pre>
- *
  * @author Michael Murray
  * @see GitManagedJob
  * @see ClaudeCodeJobFactory
@@ -84,6 +59,15 @@ public class ClaudeCodeJob extends GitManagedJob {
     public static final String PROMPT_SEPARATOR = ";;PROMPT;;";
     /** Default comma-separated list of tools permitted for Claude Code sessions. */
     public static final String DEFAULT_TOOLS = "Read,Edit,Write,Bash,Glob,Grep";
+
+    /** Valid values for the Claude Code {@code --effort} flag (thinking level). */
+    public static final List<String> VALID_EFFORT_LEVELS =
+            List.of("low", "medium", "high", "xhigh", "max");
+
+    /** Accepted values for the Claude Code {@code --model} flag (CLI aliases + full IDs). */
+    public static final List<String> VALID_MODELS = List.of(
+            "sonnet", "opus", "haiku",
+            "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001");
 
     /**
      * Deduplication mode that runs an inline Claude Code session before the
@@ -118,6 +102,10 @@ public class ClaudeCodeJob extends GitManagedJob {
     private int maxTurns;
     /** Maximum spend budget for this job in US dollars; negative disables the limit. */
     private double maxBudgetUsd;
+    /** Model alias or full name passed via {@code --model}; {@code null} uses the CLI default. */
+    private String model;
+    /** Effort/thinking level passed via {@code --effort}; {@code null} uses the CLI default. */
+    private String effort;
     /** HTTP base URL of the ar-manager service, or {@code null} if not configured. */
     private String arManagerUrl;
     /** Bearer token for authenticating against the ar-manager service. */
@@ -130,8 +118,18 @@ public class ClaudeCodeJob extends GitManagedJob {
     private boolean enforceChanges;
     /** Number of times enforcement has been re-attempted after an empty commit. */
     private int enforcementAttempt;
+    /** Enforcement rule name for the current correction session; {@code null} during primary runs. */
+    private String currentActivity;
     /** Description of a git-tampering rule violation detected during this job. */
     private String gitTamperingViolation;
+    /** Stdout silence duration after which the Claude subprocess is killed (default 20 min). */
+    private long inactivityTimeoutMillis = TimeUnit.MINUTES.toMillis(20);
+    /** Maximum relaunches of Claude after inactivity-triggered kills (default 3). */
+    private int maxInactivityRestarts = 3;
+    /** Number of inactivity-triggered relaunches in the current run; resets to 0 after the run. */
+    private int inactivityRestartAttempt;
+    /** Set by the monitor when it kills the Claude subprocess; consumed by the retry loop. */
+    private volatile boolean wasKilledForInactivity;
     /**
      * Controls post-work deduplication behaviour.
      * {@code null} (the default) disables deduplication — the factory sets
@@ -141,13 +139,20 @@ public class ClaudeCodeJob extends GitManagedJob {
      */
     private String deduplicationMode;
 
-    /**
-     * When {@code true}, the Maven dependency protection rule is active.
-     * Any {@code <dependency>} additions, removals, or changes in {@code pom.xml}
-     * files detected against the base branch trigger a correction loop that
-     * instructs the agent to revert those changes.
-     */
+    /** When {@code true}, pom.xml {@code <dependency>} changes trigger a correction loop. */
     private boolean enforceMavenDependencies;
+
+    /** When {@code true} (the default), new files are reviewed for correct module placement. */
+    private boolean enforceOrganizationalPlacement = true;
+
+    /** Shell command run after the agent completes; non-empty activates {@link PostCompletionCommandRule}. */
+    private String postCompletionCommand;
+
+    /** Working directory for {@link #postCompletionCommand}; {@code null} uses the job's working directory. */
+    private String postCompletionWorkingDir;
+
+    /** Timeout in seconds for {@link #postCompletionCommand}; defaults to {@link PostCompletionCommandRule#DEFAULT_TIMEOUT_SECONDS}. */
+    private int postCompletionTimeoutSeconds = PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS;
 
     /**
      * Additional enforcement rules registered via {@link #addEnforcementRule(EnforcementRule)}.
@@ -185,6 +190,9 @@ public class ClaudeCodeJob extends GitManagedJob {
     private int permissionDenials;
     /** Names of the tools that were denied during the session. */
     private List<String> deniedToolNames;
+
+    /** Wall-clock instant at which {@link #doWork()} began; used to filter abandoned-test-run scans. */
+    private Instant sessionStartedAt;
 
     /**
      * Default constructor for deserialization.
@@ -355,6 +363,44 @@ public class ClaudeCodeJob extends GitManagedJob {
         this.maxBudgetUsd = maxBudgetUsd;
     }
 
+    /** Returns the Claude Code model, or {@code null} to use the CLI default. */
+    public String getModel() { return model; }
+
+    /**
+     * Sets the Claude Code model.  Validated against {@link #VALID_MODELS} so
+     * an unknown value fails at the caller instead of silently 404-ing the
+     * dispatched subprocess.
+     *
+     * @param model a value from {@link #VALID_MODELS}, or {@code null}/empty
+     * @throws IllegalArgumentException if not a recognised identifier
+     */
+    public void setModel(String model) {
+        if (model == null || model.isEmpty()) { this.model = null; return; }
+        if (!VALID_MODELS.contains(model)) {
+            throw new IllegalArgumentException("Invalid model '" + model
+                    + "'. Must be one of " + VALID_MODELS);
+        }
+        this.model = model;
+    }
+
+    /** Returns the effort/thinking level, or {@code null} to use the CLI default. */
+    public String getEffort() { return effort; }
+
+    /**
+     * Sets the effort/thinking level. Fails loud for unknown values.
+     *
+     * @param effort one of {@link #VALID_EFFORT_LEVELS}, or {@code null}/empty
+     * @throws IllegalArgumentException if not a valid level
+     */
+    public void setEffort(String effort) {
+        if (effort == null || effort.isEmpty()) { this.effort = null; return; }
+        if (!VALID_EFFORT_LEVELS.contains(effort)) {
+            throw new IllegalArgumentException("Invalid effort level '" + effort
+                    + "'. Must be one of " + VALID_EFFORT_LEVELS);
+        }
+        this.effort = effort;
+    }
+
     /** Returns the ar-manager HTTP URL. */
     public String getArManagerUrl() {
         return arManagerUrl;
@@ -506,6 +552,47 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
+     * Returns whether the organizational placement rule is active for this job.
+     *
+     * <p>When active, a correction session is run after the agent's primary work to
+     * verify that new files are placed at the appropriate level of the module hierarchy.
+     * If the agent moves no files after reviewing placement, the rule considers the
+     * placement correct and exits.</p>
+     *
+     * @return {@code true} if organizational placement enforcement is enabled (the default)
+     */
+    public boolean isEnforceOrganizationalPlacement() {
+        return enforceOrganizationalPlacement;
+    }
+
+    /**
+     * Sets whether the organizational placement rule is active for this job.
+     *
+     * @param enforceOrganizationalPlacement {@code false} to disable placement enforcement
+     */
+    public void setEnforceOrganizationalPlacement(boolean enforceOrganizationalPlacement) {
+        this.enforceOrganizationalPlacement = enforceOrganizationalPlacement;
+    }
+
+    /** Returns the post-completion command; non-empty activates {@link PostCompletionCommandRule}. */
+    public String getPostCompletionCommand() { return postCompletionCommand; }
+
+    /** Sets the post-completion command; non-empty activates {@link PostCompletionCommandRule}. */
+    public void setPostCompletionCommand(String postCompletionCommand) { this.postCompletionCommand = postCompletionCommand; }
+
+    /** Returns the working directory for the post-completion command; {@code null} uses the job's working directory. */
+    public String getPostCompletionWorkingDir() { return postCompletionWorkingDir; }
+
+    /** Sets the working directory for the post-completion command; {@code null} uses the job's working directory. */
+    public void setPostCompletionWorkingDir(String postCompletionWorkingDir) { this.postCompletionWorkingDir = postCompletionWorkingDir; }
+
+    /** Returns the post-completion command timeout in seconds; defaults to {@link PostCompletionCommandRule#DEFAULT_TIMEOUT_SECONDS}. */
+    public int getPostCompletionTimeoutSeconds() { return postCompletionTimeoutSeconds; }
+
+    /** Sets the post-completion command timeout in seconds. */
+    public void setPostCompletionTimeoutSeconds(int postCompletionTimeoutSeconds) { this.postCompletionTimeoutSeconds = postCompletionTimeoutSeconds; }
+
+    /**
      * Registers an additional enforcement rule to run after the agent completes
      * its primary work.
      *
@@ -572,6 +659,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                 .setDependentRepoPaths(getDependentRepoPaths())
                 .setGitHubMcpEnabled(true)
                 .setGitTamperingViolation(gitTamperingViolation)
+                .setInactivityRestartAttempt(inactivityRestartAttempt)
                 .build();
     }
 
@@ -594,8 +682,16 @@ public class ClaudeCodeJob extends GitManagedJob {
      */
     public static final int DEFAULT_MAX_RULE_RETRIES = 5;
 
+    /**
+     * Hard cap on total correction attempts across all rules in
+     * {@link #runEnforcementRules()}; bounds the otherwise-unbounded outer
+     * loop so a chronically broken agent cannot spin forever.
+     */
+    public static final int DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS = 25;
+
     @Override
     protected void doWork() {
+        if (sessionStartedAt == null) sessionStartedAt = Instant.now();
         executeSingleRun();
 
         // Git integrity violations are handled by onGitTampering() in GitManagedJob;
@@ -622,6 +718,15 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (DEDUP_LOCAL.equals(deduplicationMode)) {
             rules.add(new DeduplicationRule());
         }
+        if (enforceOrganizationalPlacement) {
+            rules.add(new OrganizationalPlacementRule());
+        }
+        if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
+            rules.add(new PostCompletionCommandRule(
+                    postCompletionCommand,
+                    postCompletionWorkingDir,
+                    postCompletionTimeoutSeconds));
+        }
         if (enforceMavenDependencies) {
             rules.add(new MavenDependencyProtectionRule());
         }
@@ -640,65 +745,79 @@ public class ClaudeCodeJob extends GitManagedJob {
      * <p>Exits early if the agent commits during a correction session — the
      * tampering-detection path in {@link GitManagedJob} handles that case.</p>
      */
-    private void runEnforcementRules() {
-        for (EnforcementRule rule : buildActiveRules()) {
-            if (!rule.isViolated(this)) {
-                log("Enforcement rule '" + rule.getName() + "': no violation");
-                continue;
-            }
+    void runEnforcementRules() {
+        List<EnforcementRule> rules = buildActiveRules();
+        int totalAttempts = 0;
+        boolean anyRuleCorrectionRan;
+        do {
+            anyRuleCorrectionRan = false;
+            for (EnforcementRule rule : rules) {
+                if (!rule.isViolated(this)) {
+                    log("Enforcement rule '" + rule.getName() + "': no violation");
+                    continue;
+                }
 
-            log("Enforcement rule '" + rule.getName() + "': violation detected");
-            int attempts = 0;
-            while (attempts < rule.getMaxRetries()
-                    && rule.isViolated(this)
-                    && !hasAgentCommitted()) {
-                attempts++;
-                log("Enforcement rule '" + rule.getName()
-                        + "': correction attempt " + attempts);
-                String correctionPrompt = rule.buildCorrectionPrompt(this);
-                if (correctionPrompt != null) {
-                    runCorrectionSession(correctionPrompt);
-                } else {
-                    // Re-run with the existing prompt; the job's built-in instruction
-                    // context (e.g., enforceChanges) already provides correction guidance.
-                    // Only escalate enforcementAttempt for the enforce-changes rule so
-                    // that unrelated custom rules returning null do not inflate the counter
-                    // and trigger spurious enforcement escalation messaging.
-                    if ("enforce-changes".equals(rule.getName())) {
-                        enforcementAttempt++;
-                        log("Enforcement attempt: " + (enforcementAttempt + 1));
+                log("Enforcement rule '" + rule.getName() + "': violation detected");
+                int attempts = 0;
+                while (attempts < rule.getMaxRetries()
+                        && rule.isViolated(this)
+                        && !hasAgentCommitted()
+                        && totalAttempts < DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
+                    attempts++;
+                    totalAttempts++;
+                    anyRuleCorrectionRan = true;
+                    log("Enforcement rule '" + rule.getName()
+                            + "': correction attempt " + attempts);
+                    String correctionPrompt = rule.buildCorrectionPrompt(this);
+                    if (correctionPrompt != null) {
+                        runCorrectionSession(correctionPrompt, rule.getName());
+                    } else {
+                        // enforce-changes is the only rule that re-runs with the existing
+                        // prompt; bumping enforcementAttempt for other rules would inflate
+                        // the user-facing escalation messaging.
+                        if ("enforce-changes".equals(rule.getName())) {
+                            enforcementAttempt++;
+                            log("Enforcement attempt: " + (enforcementAttempt + 1));
+                        }
+                        executeSingleRun();
                     }
-                    executeSingleRun();
+                    rule.onCorrectionAttempted(this);
+                    if (hasAgentCommitted()) break;
                 }
-                rule.onCorrectionAttempted(this);
-                if (hasAgentCommitted()) {
-                    break;
-                }
-            }
 
-            if (!hasAgentCommitted() && rule.isViolated(this)) {
-                warn("Enforcement rule '" + rule.getName() + "': exhausted "
-                        + rule.getMaxRetries() + " retries without resolution");
+                if (!hasAgentCommitted() && rule.isViolated(this)) {
+                    if (attempts >= rule.getMaxRetries()) {
+                        warn("Enforcement rule '" + rule.getName() + "': exhausted "
+                                + rule.getMaxRetries() + " retries without resolution");
+                    } else if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
+                        warn("Enforcement rule '" + rule.getName()
+                                + "': stopped because the total enforcement attempt cap was reached");
+                    }
+                }
+                if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) break;
             }
+        } while (totalAttempts < DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS
+                && anyRuleCorrectionRan && !hasAgentCommitted());
+
+        if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
+            warn("Enforcement aborted after " + totalAttempts + " total attempts (cap: "
+                    + DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS + ") — giving up to"
+                    + " avoid an unbounded retry loop");
         }
     }
 
     /**
-     * Runs a correction session inline with the specified prompt replacing the
-     * primary job's prompt for the duration of the session.
+     * Runs a correction session tagged with {@code activity} (the rule name)
+     * via {@code AR_AGENT_ACTIVITY} so {@code send_message} calls are labelled.
      *
-     * <p>The original prompt is always restored in a {@code finally} block.
-     * Any commit message written by the primary agent is also saved and
-     * restored, preventing correction sessions from overwriting it.</p>
-     *
-     * @param correctionPrompt the prompt to use for the correction session
+     * @param correctionPrompt prompt for this session
+     * @param activity         rule name used as the activity tag
      */
-    private void runCorrectionSession(String correctionPrompt) {
+    protected void runCorrectionSession(String correctionPrompt, String activity) {
         String originalPrompt = this.prompt;
-
-        // Preserve the primary agent's commit.txt so the correction session cannot
-        // overwrite it.  executeSingleRun() deletes any stale commit.txt at startup,
-        // so we read the content now and write it back in finally.
+        String previousActivity = this.currentActivity;
+        this.currentActivity = activity;
+        // Preserve commit.txt so the correction session cannot overwrite it.
         Path commitFile = resolveWorkingPath("commit.txt");
         String savedCommitMessage = null;
         if (commitFile != null && Files.exists(commitFile)) {
@@ -714,7 +833,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             executeSingleRun();
         } finally {
             this.prompt = originalPrompt;
-
+            this.currentActivity = previousActivity;
             if (commitFile != null) {
                 try {
                     if (savedCommitMessage != null) {
@@ -727,162 +846,6 @@ public class ClaudeCodeJob extends GitManagedJob {
                     warn("Could not restore commit.txt after correction session: " + e.getMessage());
                 }
             }
-        }
-    }
-
-    /**
-     * Enforcement rule that verifies the agent produced at least one uncommitted
-     * file change. Used when {@link #isEnforceChanges()} is {@code true}.
-     *
-     * <p>Returns {@code null} from {@link #buildCorrectionPrompt} so the framework
-     * re-runs the agent with the existing prompt unchanged; the {@code enforceChanges}
-     * flag already injects a "code changes are required" message via
-     * {@link InstructionPromptBuilder}.</p>
-     */
-    private static class EnforceChangesRule implements EnforcementRule {
-        @Override
-        public String getName() { return "enforce-changes"; }
-
-        @Override
-        public boolean isViolated(ClaudeCodeJob job) {
-            return !job.hasUncommittedChanges() && !job.hasAgentCommitted();
-        }
-
-        @Override
-        public String buildCorrectionPrompt(ClaudeCodeJob job) {
-            // Return null: re-run with the existing prompt.  The enforceChanges
-            // flag causes InstructionPromptBuilder to emit the escalating warning.
-            return null;
-        }
-    }
-
-    /**
-     * Enforcement rule that detects new Java methods introduced since the base
-     * branch and runs a deduplication session to remove any that duplicate
-     * existing functionality. Active when {@link #getDeduplicationMode()} is
-     * {@link #DEDUP_LOCAL}.
-     *
-     * <p>This rule uses method-set comparison to determine when to stop looping.
-     * Before each correction session, {@link #isViolated(ClaudeCodeJob)} records
-     * the current set of new method names. After the session completes,
-     * {@link #onCorrectionAttempted(ClaudeCodeJob)} compares the post-session
-     * set with the recorded pre-session set. If the sets are identical, the agent
-     * had one opportunity and removed nothing — the rule marks itself as resolved
-     * so the loop exits on the next {@link #isViolated} check. If the set changed
-     * (methods were removed), another pass is made to check for remaining
-     * duplicates. This approach is deterministic and does not rely on heuristics
-     * about file changes or agent output.</p>
-     */
-    private class DeduplicationRule implements EnforcementRule {
-
-        /**
-         * The set of new method names recorded by the most recent {@link #isViolated}
-         * call. Used by {@link #onCorrectionAttempted} to compare against the
-         * post-session set and determine whether the agent removed any methods.
-         */
-        private Set<String> methodSetBeforeSession = null;
-
-        /**
-         * Set to {@code true} by {@link #onCorrectionAttempted} when a correction
-         * session completes without changing the method set, indicating the agent
-         * found no duplicates to remove. Once resolved, {@link #isViolated} returns
-         * {@code false} immediately so the loop exits.
-         */
-        private boolean resolved = false;
-
-        @Override
-        public String getName() { return "deduplication"; }
-
-        @Override
-        public boolean isViolated(ClaudeCodeJob job) {
-            if (resolved) return false;
-            List<String> newMethods = job.extractNewMethodNames();
-            methodSetBeforeSession = new LinkedHashSet<>(newMethods);
-            if (!newMethods.isEmpty()) {
-                log("Deduplication scan: found " + newMethods.size() + " new method(s)");
-            }
-            return !newMethods.isEmpty();
-        }
-
-        /**
-         * Compares the post-session method set against the pre-session snapshot
-         * recorded by {@link #isViolated}. If the sets are equal, the agent
-         * removed nothing during the correction session and the rule marks itself
-         * resolved so the loop exits on the next {@link #isViolated} check.
-         *
-         * <p><b>Performance note:</b> this method calls
-         * {@link ClaudeCodeJob#extractNewMethodNames()}, which spawns
-         * {@code git diff} and {@code git ls-files} processes. Combined with the
-         * calls already made in {@link #isViolated} and
-         * {@link #buildCorrectionPrompt}, each correction attempt currently
-         * performs three separate scans. A future improvement would be to cache
-         * the pre-session result from {@code isViolated} in a {@code List<String>}
-         * field and reuse it in {@code buildCorrectionPrompt}, reducing each
-         * attempt to one pre-session scan and one post-session scan.</p>
-         */
-        @Override
-        public void onCorrectionAttempted(ClaudeCodeJob job) {
-            if (methodSetBeforeSession == null) return;
-            Set<String> currentMethodSet = new LinkedHashSet<>(job.extractNewMethodNames());
-            if (currentMethodSet.equals(methodSetBeforeSession)) {
-                // The correction session ran but the method set is unchanged.
-                // The agent had one shot and removed nothing — mark as resolved.
-                log("Deduplication: method set unchanged after correction session; stopping deduplication loop");
-                resolved = true;
-            }
-        }
-
-        @Override
-        public String buildCorrectionPrompt(ClaudeCodeJob job) {
-            List<String> newMethods = job.extractNewMethodNames();
-            List<String> capped = newMethods.size() > MAX_DEDUP_METHODS
-                    ? newMethods.subList(0, MAX_DEDUP_METHODS) : newMethods;
-            return buildDeduplicationPrompt(capped,
-                    newMethods.size() > MAX_DEDUP_METHODS, newMethods.size());
-        }
-    }
-
-    /**
-     * Enforcement rule that prevents {@code <dependency>} changes in Maven
-     * {@code pom.xml} files. Active when {@link #isEnforceMavenDependencies()}
-     * is {@code true}.
-     *
-     * <p>Only {@code <dependency>} element additions, removals, or modifications
-     * are flagged. Changes to other {@code pom.xml} content (plugin configuration,
-     * properties, etc.) are not affected.</p>
-     */
-    private static class MavenDependencyProtectionRule implements EnforcementRule {
-        @Override
-        public String getName() { return "no-maven-dependency-changes"; }
-
-        @Override
-        public boolean isViolated(ClaudeCodeJob job) {
-            return job.hasMavenDependencyChanges();
-        }
-
-        @Override
-        public String buildCorrectionPrompt(ClaudeCodeJob job) {
-            String baseBranch = job.getBaseBranch() != null ? job.getBaseBranch() : "master";
-            StringBuilder sb = new StringBuilder();
-            sb.append("MAVEN DEPENDENCY PROTECTION RULE VIOLATION\n\n");
-            sb.append("Your changes to one or more pom.xml files add, remove, or modify ");
-            sb.append("<dependency> entries. Maven module dependencies are externally ");
-            sb.append("controlled and MUST NOT be modified by agents.\n\n");
-            sb.append("MANDATORY ACTION: Revert all <dependency> changes in any pom.xml files.\n\n");
-            sb.append("Steps to identify and fix the violation:\n");
-            sb.append("1. Run: git diff origin/").append(baseBranch)
-              .append(" -- '**/pom.xml' 'pom.xml'\n");
-            sb.append("   to see exactly what <dependency> lines you added or removed.\n");
-            sb.append("2. Use the Edit tool to surgically remove any added <dependency> ");
-            sb.append("blocks and restore any removed ones.\n\n");
-            sb.append("IMPORTANT — do NOT use git restore, git checkout --, or git reset ");
-            sb.append("to revert pom.xml files. Those commands discard ALL your changes ");
-            sb.append("to the file, not just the dependency modifications. Use the Edit ");
-            sb.append("tool to remove only the <dependency> changes.\n\n");
-            sb.append("You MAY keep all non-dependency changes to pom.xml files ");
-            sb.append("(plugin configuration, properties, build settings, etc.). ");
-            sb.append("Only <dependency> additions, removals, and modifications must be undone.");
-            return sb.toString();
         }
     }
 
@@ -907,15 +870,12 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Executes a single Claude Code session.
-     *
-     * <p>This method encapsulates the full lifecycle of one agent invocation:
-     * tool download, command construction, process execution, and output
-     * parsing. It is called once in normal mode and potentially multiple
-     * times when enforcement mode is active.</p>
+     * Executes a single Claude Code session.  Internally retries the Claude
+     * subprocess up to {@link #maxInactivityRestarts} times when the inactivity
+     * monitor kills it.  Called once in normal mode and once per
+     * enforcement-rule correction when enforcement mode is active.
      */
     private void executeSingleRun() {
-        // Remove stale commit.txt from any previous run
         Path staleCommitFile = resolveWorkingPath("commit.txt");
         if (staleCommitFile != null && Files.exists(staleCommitFile)) {
             try {
@@ -928,9 +888,34 @@ public class ClaudeCodeJob extends GitManagedJob {
 
         File outputDir = new File("claude-output");
         if (!outputDir.exists()) outputDir.mkdir();
-
         String outputFile = "claude-output/" + KeyUtils.generateKey() + ".json";
+        output = "";
+        for (int attempt = 0; attempt <= maxInactivityRestarts; attempt++) {
+            inactivityRestartAttempt = attempt;
+            wasKilledForInactivity = false;
+            output = launchClaudeAttempt();
+            if (!wasKilledForInactivity) break;
+            if (attempt == maxInactivityRestarts) {
+                warn("Inactivity-restart limit (" + maxInactivityRestarts + ") reached -- abandoning Claude session");
+            } else {
+                log("Relaunching Claude after inactivity timeout (attempt " + (attempt + 2) + " of " + (maxInactivityRestarts + 1) + ")");
+            }
+        }
+        inactivityRestartAttempt = 0;
 
+        try (FileWriter writer = new FileWriter(outputFile)) { writer.write(output); }
+        catch (IOException e) { warn("Failed to save Claude output to " + outputFile + ": " + e.getMessage()); }
+        extractOutputMetrics(output);
+        log("Output saved to: " + outputFile);
+
+        if (getOutputConsumer() != null) {
+            getOutputConsumer().accept(new ClaudeCodeJobOutput(
+                getTaskId(), prompt, output, sessionId, exitCode));
+        }
+    }
+
+    /** Launches one Claude subprocess via {@link ClaudeAttemptRunner} and returns its captured stdout. */
+    private String launchClaudeAttempt() {
         List<String> command = new ArrayList<>();
         command.add("claude");
         command.add("-p");
@@ -948,6 +933,16 @@ public class ClaudeCodeJob extends GitManagedJob {
             command.add(String.format("%.2f", maxBudgetUsd));
         }
 
+        if (model != null) {
+            command.add("--model");
+            command.add(model);
+        }
+
+        if (effort != null) {
+            command.add("--effort");
+            command.add(effort);
+        }
+
         log("Starting: " + getTaskString());
         log("Tools: " + allowedTools);
         if (getTargetBranch() != null) {
@@ -956,78 +951,48 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (enforcementAttempt > 0) {
             log("Enforcement attempt: " + (enforcementAttempt + 1));
         }
+        if (inactivityRestartAttempt > 0) {
+            log("Inactivity restart attempt: " + (inactivityRestartAttempt + 1)
+                    + " of " + (maxInactivityRestarts + 1));
+        }
 
-        // Verify MCP tool server files exist before launching Claude Code
         Path mcpWorkDir = getWorkingDirectory() != null
             ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
         toolsDownloader.verifyMcpToolFiles(mcpWorkDir);
 
-        // MCP config (ar-github always; ar-messages when workstream URL is set)
         command.add("--mcp-config");
         command.add(mcpConfigBuilder.buildMcpConfig());
 
-        try {
-            ProcessBuilder pb = new ProcessBuilder(command);
-
-            String workDir = getWorkingDirectory();
-            if (workDir != null) {
-                pb.directory(new File(workDir));
-            }
-
-            // Set resolved workstream URL for MCP servers (ar-messages, ar-github).
-            String wsUrl = resolveWorkstreamUrl();
-            if (wsUrl != null && !wsUrl.isEmpty()) {
-                pb.environment().put("AR_WORKSTREAM_URL", wsUrl);
-                log("AR_WORKSTREAM_URL: " + wsUrl);
-            }
-
-            GitOperations.augmentPath(pb);
-
-            log("Command: " + String.join(" ", command));
-            log("Working directory: " + (workDir != null ? workDir : System.getProperty("user.dir")));
-
-            pb.redirectErrorStream(true);
-            pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
-            Process process = pb.start();
-
-            long pid = process.pid();
-            log("Process started (PID: " + pid + ")");
-
-            StringBuilder outputBuilder = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    outputBuilder.append(line).append("\n");
-                    log("[ClaudeCode] " + line);
-                }
-            }
-
-            log("Process output stream closed, waiting for exit...");
-            exitCode = process.waitFor();
-            output = outputBuilder.toString();
-
-            // Save output to file
-            try (FileWriter writer = new FileWriter(outputFile)) {
-                writer.write(output);
-            }
-
-            // Extract session ID and timing metrics from JSON output
-            extractOutputMetrics(output);
-
-            log("Completed with exit code: " + exitCode);
-            log("Output saved to: " + outputFile);
-
-            if (getOutputConsumer() != null) {
-                getOutputConsumer().accept(new ClaudeCodeJobOutput(
-                    getTaskId(), prompt, output, sessionId, exitCode
-                ));
-            }
-
-        } catch (IOException | InterruptedException e) {
-            warn("Error: " + e.getMessage(), e);
-            exitCode = -1;
+        ProcessBuilder pb = new ProcessBuilder(command);
+        String workDir = getWorkingDirectory();
+        if (workDir != null) {
+            pb.directory(new File(workDir));
         }
+
+        String wsUrl = resolveWorkstreamUrl();
+        if (wsUrl != null && !wsUrl.isEmpty()) {
+            pb.environment().put("AR_WORKSTREAM_URL", wsUrl);
+            log("AR_WORKSTREAM_URL: " + wsUrl);
+        }
+
+        if (currentActivity != null && !currentActivity.isEmpty()) {
+            pb.environment().put("AR_AGENT_ACTIVITY", currentActivity);
+        } else {
+            pb.environment().remove("AR_AGENT_ACTIVITY");
+        }
+        GitOperations.augmentPath(pb);
+
+        log("Command: " + String.join(" ", command));
+        log("Working directory: " + (workDir != null ? workDir : System.getProperty("user.dir")));
+
+        pb.redirectErrorStream(true);
+        pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
+
+        ClaudeAttemptRunner.Result result = ClaudeAttemptRunner.runAttempt(
+                pb, inactivityTimeoutMillis, getTaskId(), this);
+        exitCode = result.exitCode();
+        wasKilledForInactivity = result.killedForInactivity();
+        return result.output();
     }
 
     /**
@@ -1039,7 +1004,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      *
      * @return true if there are uncommitted changes to non-excluded files
      */
-    private boolean hasUncommittedChanges() {
+    boolean hasUncommittedChanges() {
         try {
             ProcessBuilder pb = new ProcessBuilder(GitOperations.resolveGitCommand(), "status", "--porcelain");
             String workDir = getWorkingDirectory();
@@ -1060,11 +1025,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                     if (file.contains(" -> ")) {
                         file = file.split(" -> ")[1];
                     }
-                    if (!file.isEmpty()
-                            && !file.startsWith("claude-output/")
-                            && !file.startsWith(".claude/")
-                            && !file.startsWith("target/")
-                            && !file.equals("commit.txt")) {
+                    if (!GitOperations.isExcludedPath(file)) {
                         return true;
                     }
                 }
@@ -1077,18 +1038,10 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Checks whether the agent's changes modify {@code <dependency>} entries
+     * Returns {@code true} if the agent's changes modify {@code <dependency>} entries
      * in any {@code pom.xml} files when compared against the base branch.
-     *
-     * <p>Detects added or removed lines containing {@code <dependency>} in
-     * the diff of {@code pom.xml} files against {@code origin/<baseBranch>}.
-     * Changes to other {@code pom.xml} content (plugin configuration, properties,
-     * etc.) are not flagged.</p>
-     *
-     * @return {@code true} if any {@code <dependency>} additions or removals
-     *         were detected
      */
-    private boolean hasMavenDependencyChanges() {
+    boolean hasMavenDependencyChanges() {
         String workDir = getWorkingDirectory();
         String baseBranch = getBaseBranch() != null ? getBaseBranch() : "master";
 
@@ -1147,19 +1100,12 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     @Override
     protected JobCompletionEvent createEvent(Exception error) {
-        if (error != null) {
-            return ClaudeCodeJobEvent.failed(
-                getTaskId(), getTaskString(),
-                error.getMessage(), error
-            );
-        } else if (exitCode != 0) {
-            return ClaudeCodeJobEvent.failed(
-                getTaskId(), getTaskString(),
-                "Claude Code exited with code " + exitCode, null
-            );
-        } else {
-            return ClaudeCodeJobEvent.success(getTaskId(), getTaskString());
-        }
+        if (error != null) return ClaudeCodeJobEvent.failed(getTaskId(), getTaskString(), error.getMessage(), error);
+        if (exitCode != 0) return ClaudeCodeJobEvent.failed(getTaskId(), getTaskString(), "Claude Code exited with code " + exitCode, null);
+        List<String> abandoned = AbandonedTestRunDetector.findAbandonedRunsForJob(getWorkingDirectory(), sessionStartedAt);
+        if (abandoned.isEmpty()) return ClaudeCodeJobEvent.success(getTaskId(), getTaskString());
+        return ClaudeCodeJobEvent.degraded(getTaskId(), getTaskString(),
+            "Agent abandoned " + abandoned.size() + " test-runner run(s): " + String.join(", ", abandoned));
     }
 
     @Override
@@ -1172,21 +1118,8 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
     }
 
-    /**
-     * Pattern that matches new Java method declarations in a unified diff.
-     *
-     * <p>Matches lines beginning with {@code +} (new content) followed by
-     * optional whitespace, an access modifier, optional other modifiers and
-     * generic type parameters, a return type, and then the method name
-     * immediately before an opening parenthesis.  Constructors and interface
-     * default methods are included intentionally — the deduplication agent
-     * decides whether they constitute genuine duplicates.</p>
-     */
-    private static final Pattern NEW_METHOD_PATTERN = Pattern.compile(
-            "^\\+[ \\t]+(?:public|private|protected)\\b.*\\b(\\w+)[ \\t]*\\(");
-
     /** Maximum number of method names included in a single deduplication prompt. */
-    private static final int MAX_DEDUP_METHODS = 50;
+    static final int MAX_DEDUP_METHODS = 50;
 
     @Override
     protected boolean validateChanges() throws Exception {
@@ -1305,120 +1238,16 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
     }
 
-    /**
-     * Scans the working tree for new Java method declarations introduced since
-     * the base branch.
-     *
-     * <p>Two sources are checked:
-     * <ol>
-     *   <li>The unified diff of tracked {@code .java} files against
-     *       {@code origin/<baseBranch>} — new lines ({@code +}) that contain
-     *       a method declaration are parsed via {@link #NEW_METHOD_PATTERN}.</li>
-     *   <li>Untracked {@code .java} files reported by {@code git ls-files --others}
-     *       — every method declaration in these entirely new files is included.</li>
-     * </ol>
-     *
-     * <p><b>Performance note:</b> each call spawns at least two child processes
-     * ({@code git diff} and {@code git ls-files}). {@link DeduplicationRule}
-     * currently calls this method up to three times per correction attempt (once
-     * in {@code isViolated}, once in {@code buildCorrectionPrompt}, once in
-     * {@code onCorrectionAttempted}). A future improvement would cache the
-     * pre-session result in {@code DeduplicationRule} and reuse it in
-     * {@code buildCorrectionPrompt} to reduce that to two calls per attempt.</p>
-     *
-     * @return deduplicated list of new method names, order-preserving
-     */
-    private List<String> extractNewMethodNames() {
-        Set<String> seen = new LinkedHashSet<>();
-        String workDir = getWorkingDirectory();
-        String baseBranch = getBaseBranch() != null ? getBaseBranch() : "master";
-
-        // Tracked Java files: diff working tree against remote base branch
-        try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    GitOperations.resolveGitCommand(),
-                    "diff", "origin/" + baseBranch, "--", "*.java");
-            if (workDir != null) pb.directory(new File(workDir));
-            pb.redirectErrorStream(true);
-            GitOperations.augmentPath(pb);
-            Process p = pb.start();
-            String diff = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            p.waitFor();
-            extractMethodNamesFromDiff(diff, seen);
-        } catch (IOException | InterruptedException e) {
-            warn("Deduplication scan: failed to diff tracked Java files: " + e.getMessage());
-        }
-
-        // Untracked Java files: every method in these files is new
-        try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    GitOperations.resolveGitCommand(),
-                    "ls-files", "--others", "--exclude-standard", "--", "*.java");
-            if (workDir != null) pb.directory(new File(workDir));
-            pb.redirectErrorStream(true);
-            GitOperations.augmentPath(pb);
-            Process p = pb.start();
-            String listing = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            p.waitFor();
-            for (String rel : listing.split("\n")) {
-                rel = rel.trim();
-                if (!rel.isEmpty()) {
-                    extractMethodNamesFromFile(rel, workDir, seen);
-                }
-            }
-        } catch (IOException | InterruptedException e) {
-            warn("Deduplication scan: failed to list untracked Java files: " + e.getMessage());
-        }
-
-        return new ArrayList<>(seen);
+    /** Returns new Java method names introduced since the base branch. */
+    List<String> extractNewMethodNames() {
+        String base = getBaseBranch() != null ? getBaseBranch() : "master";
+        return GitOperations.extractNewMethodNames(getWorkingDirectory(), base, this::warn);
     }
 
-    /**
-     * Parses new-line entries ({@code +} prefix) from a unified diff and adds
-     * any Java method names found to {@code sink}.
-     *
-     * @param diff  the unified diff output
-     * @param sink  the set to add discovered method names to
-     */
-    private static void extractMethodNamesFromDiff(String diff, Set<String> sink) {
-        for (String line : diff.split("\n")) {
-            if (line.startsWith("+++") || line.startsWith("---")) {
-                continue;
-            }
-            Matcher m = NEW_METHOD_PATTERN.matcher(line);
-            if (m.find()) {
-                sink.add(m.group(1));
-            }
-        }
-    }
-
-    /**
-     * Reads a Java source file and adds all method names declared with a
-     * public/private/protected access modifier to {@code sink}.
-     *
-     * @param relativePath  path relative to the working directory (or absolute)
-     * @param workDir       working directory, or {@code null}
-     * @param sink          the set to add discovered method names to
-     */
-    private void extractMethodNamesFromFile(String relativePath,
-                                             String workDir,
-                                             Set<String> sink) {
-        File file = (workDir != null)
-                ? new File(workDir, relativePath) : new File(relativePath);
-        if (!file.exists()) return;
-
-        try {
-            String source = Files.readString(file.toPath(), StandardCharsets.UTF_8);
-            // Synthesise a diff-like representation so the same pattern applies
-            for (String line : source.split("\n")) {
-                Matcher m = NEW_METHOD_PATTERN.matcher("+ " + line);
-                if (m.find()) {
-                    sink.add(m.group(1));
-                }
-            }
-        } catch (IOException e) {
-            warn("Deduplication scan: cannot read " + relativePath + ": " + e.getMessage());
-        }
+    /** Returns paths of files that are new on the branch since the base branch. */
+    List<String> extractNewFilePaths() {
+        String base = getBaseBranch() != null ? getBaseBranch() : "master";
+        return GitOperations.extractNewFilePaths(getWorkingDirectory(), base, this::warn);
     }
 
     /**
@@ -1430,7 +1259,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * @param totalCount   the total number of methods found (before capping)
      * @return the full prompt string
      */
-    private static String buildDeduplicationPrompt(List<String> methodNames,
+    static String buildDeduplicationPrompt(List<String> methodNames,
                                                     boolean truncated,
                                                     int totalCount) {
         StringBuilder sb = new StringBuilder();
@@ -1485,10 +1314,6 @@ public class ClaudeCodeJob extends GitManagedJob {
     /**
      * Extracts the controller base URL (scheme + host + port) from a workstream URL.
      *
-     * <p>Workstream URLs follow the pattern
-     * {@code http://host:port/api/workstreams/{id}/jobs/{jobId}}.
-     * This method returns everything before {@code /api/workstreams/}.</p>
-     *
      * @param workstreamUrl the full workstream URL
      * @return the controller base URL, or {@code null} if the URL cannot be parsed
      */
@@ -1500,10 +1325,6 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /**
      * Extracts the workstream identifier from a workstream URL.
-     *
-     * <p>Workstream URLs follow the pattern
-     * {@code http://host:port/api/workstreams/{id}/jobs/{jobId}}.
-     * This method returns the {@code {id}} segment.</p>
      *
      * @param workstreamUrl the full workstream URL
      * @return the workstream ID, or {@code null} if the URL cannot be parsed
@@ -1586,33 +1407,36 @@ public class ClaudeCodeJob extends GitManagedJob {
         try {
             JsonNode root = outputMapper.readTree(resultJson);
 
+            // Session ID and stop reason reflect the latest session only.
             sessionId = getTextOrNull(root, "session_id");
-
-            durationMs = root.path("duration_ms").asLong(0);
-            durationApiMs = root.path("duration_api_ms").asLong(0);
-            numTurns = root.path("num_turns").asInt(0);
-
-            costUsd = root.path("total_cost_usd").asDouble(0.0);
-            if (costUsd == 0.0) {
-                costUsd = root.path("cost_usd").asDouble(0.0);
-            }
-
             subtype = getTextOrNull(root, "subtype");
             isError = root.path("is_error").asBoolean(false);
 
-            // Count permission_denials array entries and extract denied tool names
+            // Accumulate numeric metrics across all sessions (main + enforcement
+            // correction sessions) so the final totals include every phase.
+            durationMs += root.path("duration_ms").asLong(0);
+            durationApiMs += root.path("duration_api_ms").asLong(0);
+            numTurns += root.path("num_turns").asInt(0);
+
+            double sessionCost = root.path("total_cost_usd").asDouble(0.0);
+            if (sessionCost == 0.0) {
+                sessionCost = root.path("cost_usd").asDouble(0.0);
+            }
+            costUsd += sessionCost;
+
+            // Accumulate permission denials across all sessions.
             JsonNode denials = root.get("permission_denials");
             if (denials != null && denials.isArray()) {
-                permissionDenials = denials.size();
-                deniedToolNames = new ArrayList<>();
+                permissionDenials += denials.size();
+                if (deniedToolNames == null) {
+                    deniedToolNames = new ArrayList<>();
+                }
                 for (JsonNode denial : denials) {
                     JsonNode toolNode = denial.get("tool");
                     if (toolNode != null && toolNode.isTextual()) {
                         deniedToolNames.add(toolNode.asText());
                     }
                 }
-            } else {
-                permissionDenials = 0;
             }
         } catch (Exception e) {
             warn("Failed to parse output metrics: " + e.getMessage());
@@ -1627,7 +1451,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * @param field  the field name to look up
      * @return       the string value, or {@code null}
      */
-    private static String getTextOrNull(JsonNode node, String field) {
+    static String getTextOrNull(JsonNode node, String field) {
         JsonNode child = node.get(field);
         return (child != null && child.isTextual()) ? child.asText() : null;
     }
@@ -1640,6 +1464,12 @@ public class ClaudeCodeJob extends GitManagedJob {
         sb.append("::tools:=").append(base64Encode(allowedTools));
         sb.append("::maxTurns:=").append(maxTurns);
         sb.append("::maxBudget:=").append(maxBudgetUsd);
+        if (model != null) {
+            sb.append("::model:=").append(model);
+        }
+        if (effort != null) {
+            sb.append("::effort:=").append(effort);
+        }
         if (arManagerUrl != null) {
             sb.append("::arManagerUrl:=").append(base64Encode(arManagerUrl));
         }
@@ -1656,6 +1486,18 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
         if (enforceMavenDependencies) {
             sb.append("::enforceMavenDeps:=true");
+        }
+        if (!enforceOrganizationalPlacement) {
+            sb.append("::enforceOrgPlacement:=false");
+        }
+        if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
+            sb.append("::postCmd:=").append(base64Encode(postCompletionCommand));
+            if (postCompletionWorkingDir != null) {
+                sb.append("::postCmdDir:=").append(base64Encode(postCompletionWorkingDir));
+            }
+            if (postCompletionTimeoutSeconds != PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS) {
+                sb.append("::postCmdTimeout:=").append(postCompletionTimeoutSeconds);
+            }
         }
         return sb.toString();
     }
@@ -1674,6 +1516,12 @@ public class ClaudeCodeJob extends GitManagedJob {
                 break;
             case "maxBudget":
                 this.maxBudgetUsd = Double.parseDouble(value);
+                break;
+            case "model":
+                setModel(value);
+                break;
+            case "effort":
+                setEffort(value);
                 break;
             case "arManagerUrl":
                 this.arManagerUrl = base64Decode(value);
@@ -1696,70 +1544,21 @@ public class ClaudeCodeJob extends GitManagedJob {
             case "enforceMavenDeps":
                 this.enforceMavenDependencies = Boolean.parseBoolean(value);
                 break;
+            case "enforceOrgPlacement":
+                this.enforceOrganizationalPlacement = Boolean.parseBoolean(value);
+                break;
+            case "postCmd":
+                this.postCompletionCommand = base64Decode(value);
+                break;
+            case "postCmdDir":
+                this.postCompletionWorkingDir = base64Decode(value);
+                break;
+            case "postCmdTimeout":
+                this.postCompletionTimeoutSeconds = Integer.parseInt(value);
+                break;
             default:
                 // Delegate to parent for git-related properties
                 super.set(key, value);
-        }
-    }
-
-    /**
-     * Output record produced by a completed {@link ClaudeCodeJob}.
-     */
-    public static class ClaudeCodeJobOutput extends JobOutput {
-        /** The prompt that was submitted to Claude Code for this job. */
-        private final String prompt;
-        /** The session identifier assigned by Claude Code. */
-        private final String sessionId;
-        /** The process exit code returned by the Claude Code process. */
-        private final int exitCode;
-
-        /**
-         * Constructs a new {@link ClaudeCodeJobOutput}.
-         *
-         * @param taskId     the task identifier
-         * @param prompt     the prompt submitted to Claude Code
-         * @param output     the raw text output produced by Claude Code
-         * @param sessionId  the Claude Code session identifier
-         * @param exitCode   the process exit code
-         */
-        public ClaudeCodeJobOutput(String taskId, String prompt, String output,
-                                   String sessionId, int exitCode) {
-            super(taskId, "", "", output);
-            this.prompt = prompt;
-            this.sessionId = sessionId;
-            this.exitCode = exitCode;
-        }
-
-        /**
-         * Returns the prompt that was submitted to Claude Code.
-         *
-         * @return the prompt string
-         */
-        public String getPrompt() { return prompt; }
-
-        /**
-         * Returns the Claude Code session identifier.
-         *
-         * @return the session ID
-         */
-        public String getSessionId() { return sessionId; }
-
-        /**
-         * Returns the process exit code returned by Claude Code.
-         *
-         * @return the exit code (0 typically indicates success)
-         */
-        public int getExitCode() { return exitCode; }
-
-        /**
-         * Returns a human-readable summary of this output record.
-         *
-         * @return a string including the task ID, exit code, and session ID
-         */
-        @Override
-        public String toString() {
-            return "ClaudeCodeJobOutput{taskId=" + getTaskId() + ", exitCode=" + exitCode +
-                   ", sessionId=" + sessionId + "}";
         }
     }
 

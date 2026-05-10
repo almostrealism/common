@@ -178,8 +178,8 @@ public class ConvolutionModelTrainingTest extends TestSuiteBase implements Model
 					"_" + ScopeSettings.shortDesc() + ".xml");
 		}
 
-		System.out.println();
-		System.out.println(results);
+		log("");
+		log(String.valueOf(results));
 	}
 
 	public double[] optimize(String name, CompiledModel model,

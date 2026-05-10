@@ -37,6 +37,7 @@ public class PdslLexer {
 		KEYWORDS.put("model", PdslToken.Type.MODEL);
 		KEYWORDS.put("config", PdslToken.Type.CONFIG);
 		KEYWORDS.put("data", PdslToken.Type.DATA);
+		KEYWORDS.put("state", PdslToken.Type.STATE);
 		KEYWORDS.put("let", PdslToken.Type.LET);
 		KEYWORDS.put("return", PdslToken.Type.RETURN);
 		KEYWORDS.put("if", PdslToken.Type.IF);
@@ -50,6 +51,7 @@ public class PdslLexer {
 		KEYWORDS.put("concat_blocks", PdslToken.Type.CONCAT_BLOCKS);
 		KEYWORDS.put("weight", PdslToken.Type.WEIGHT);
 		KEYWORDS.put("scalar", PdslToken.Type.SCALAR);
+		KEYWORDS.put("producer", PdslToken.Type.PRODUCER);
 		KEYWORDS.put("int", PdslToken.Type.INT_TYPE);
 		KEYWORDS.put("float", PdslToken.Type.FLOAT_TYPE);
 		KEYWORDS.put("bool", PdslToken.Type.BOOL_TYPE);

@@ -17,28 +17,22 @@
 package org.almostrealism.studio.pattern.test;
 
 import org.almostrealism.studio.AudioScene;
-import org.almostrealism.audio.CellList;
-import org.almostrealism.audio.Cells;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.studio.health.AudioHealthScore;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.studio.health.StableDurationHealthComputation;
+import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.music.notes.FileNoteSource;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.pattern.PatternElement;
 import org.almostrealism.music.pattern.PatternLayerManager;
 import org.almostrealism.music.pattern.PatternSystemManager;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.Receptor;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.util.TestDepth;
 import org.junit.Test;
 
-import org.almostrealism.graph.Receptor;
-
 import java.io.File;
-import java.util.Collection;
 import java.util.List;
 
 import static org.junit.Assert.*;
@@ -104,16 +98,23 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 		double offlineRenderSeconds = 1.0;
 
 		String outputFile = "results/baseline-seed-" + workingSeed + ".wav";
-		WaveOutput output = new WaveOutput(() -> new File(outputFile), 24, true);
-		CellList cells = (CellList) scene.getCells(new MultiChannelAudioOutput(output));
+		File wavFile = new File(outputFile);
+		wavFile.getParentFile().mkdirs();
+		WaveOutput output = new WaveOutput(() -> wavFile, 24, true);
+		int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
+
+		TemporalCellular runner = scene.runnerRealTime(
+				new MultiChannelAudioOutput(output), bufferSize);
 
 		int totalFrames = (int) (offlineRenderSeconds * SAMPLE_RATE);
-		log("Starting offline render (" + offlineRenderSeconds + "s, " + totalFrames + " frames)...");
+		int bufferCount = (totalFrames + bufferSize - 1) / bufferSize;
+		log("Starting render (" + offlineRenderSeconds + "s, " + totalFrames + " frames, "
+				+ bufferCount + " buffers of " + bufferSize + ")...");
 		long startTime = System.currentTimeMillis();
 
-		cells.setup().get().run();
-		Runnable tick = cells.tick().get();
-		for (int i = 0; i < totalFrames; i++) {
+		runner.setup().get().run();
+		Runnable tick = runner.tick().get();
+		for (int b = 0; b < bufferCount; b++) {
 			tick.run();
 		}
 
@@ -123,9 +124,10 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 		output.write().get().run();
 		log("Output written to " + outputFile);
 
-		File wavFile = new File(outputFile);
+		long expectedMinBytes = (long) totalFrames * 3 * 2; // 24-bit stereo
 		assertTrue("Output WAV file should exist", wavFile.exists());
-		assertTrue("Output WAV file should not be empty", wavFile.length() > 100);
+		assertTrue("Output WAV should be at least " + expectedMinBytes + " bytes (was " +
+				wavFile.length() + ")", wavFile.length() >= expectedMinBytes);
 	}
 
 	/**
@@ -165,9 +167,12 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 		StableDurationHealthComputation health =
 				new StableDurationHealthComputation(channelCount);
 		health.setMaxDuration((long) RENDER_SECONDS);
-		health.setOutputFile("results/baseline-health.wav");
+		File healthFile = new File("results/baseline-health.wav");
+		healthFile.getParentFile().mkdirs();
+		health.setOutputFile(healthFile.getPath());
 
-		TemporalCellular runner = scene.runner(health.getOutput());
+		TemporalCellular runner = scene.runnerRealTime(
+				health.getOutput(), null, health.getBatchSize());
 		health.setTarget(runner);
 
 		AudioHealthScore score = health.computeHealth();
@@ -176,16 +181,18 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 		log("Health score: " + score.getScore());
 		log("Stable frames: " + score.getFrames());
 
-		assertTrue("Health computation should complete with frames",
-				score.getFrames() > 0);
+		long expectedMinFrames = (long) RENDER_SECONDS * OutputLine.sampleRate / 2;
+		assertTrue("Health computation should produce at least " + expectedMinFrames +
+						" stable frames (was " + score.getFrames() + ")",
+				score.getFrames() >= expectedMinFrames);
+		assertTrue("Health score should be positive (was " + score.getScore() + ")",
+				score.getScore() > 0);
 	}
 
 	/**
-	 * Diagnostic test that verifies CellList root and push chain wiring.
-	 *
-	 * <p>Creates a scene, builds cells, and inspects the CellList structure
-	 * to ensure roots exist and push operations can reach the WaveOutput.
-	 * Runs only a handful of ticks to keep execution fast.</p>
+	 * Diagnostic test that verifies the realtime runner advances the WaveOutput cursor
+	 * across a small number of buffer ticks. Confirms end-to-end wiring from cell graph
+	 * to output without exercising the full duration.
 	 */
 	@Test(timeout = 60_000)
 	public void cellPipelineDiagnostic() {
@@ -199,47 +206,47 @@ public class AudioSceneBaselineTest extends AudioSceneTestBase {
 		PatternSystemManager.enableWarnings = false;
 
 		int sourceCount = 2;
+		int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
+		int bufferCount = 10;
 
 		AudioScene<?> scene = createBaselineScene(samplesDir, sourceCount);
 		applyGenome(scene, 42);
 
-		WaveOutput output = new WaveOutput(() -> new File("results/diagnostic.wav"), 24, true);
-		CellList cells = (CellList) scene.getCells(new MultiChannelAudioOutput(output));
+		File outFile = new File("results/diagnostic.wav");
+		outFile.getParentFile().mkdirs();
+		WaveOutput output = new WaveOutput(() -> outFile, 24, true);
+		TemporalCellular runner = scene.runnerRealTime(
+				new MultiChannelAudioOutput(output), bufferSize);
 
-		// Inspect CellList structure
-		Collection<Receptor<PackedCollection>> roots =
-				cells.getAllRoots();
-		log("Root count: " + roots.size());
-		log("Cell count: " + cells.size());
-		log("Temporal count: " + cells.getAllTemporals().size());
-		log("Setup count: " + cells.getAllSetup().size());
-
-		// Check WaveOutput cursors before anything runs
 		double cursorCh0Before = output.getCursor(0).toDouble(0);
 		double cursorCh1Before = output.getCursor(1).toDouble(0);
 		log("Cursor before: ch0=" + cursorCh0Before + " ch1=" + cursorCh1Before);
 
-		// Run setup
-		cells.setup().get().run();
+		runner.setup().get().run();
 		double cursorCh0AfterSetup = output.getCursor(0).toDouble(0);
 		double cursorCh1AfterSetup = output.getCursor(1).toDouble(0);
 		log("Cursor after setup: ch0=" + cursorCh0AfterSetup + " ch1=" + cursorCh1AfterSetup);
 
-		// Run a few ticks manually
-		Runnable tick = cells.tick().get();
-		for (int i = 0; i < 10; i++) {
+		Runnable tick = runner.tick().get();
+		for (int i = 0; i < bufferCount; i++) {
 			tick.run();
 		}
 
-		double cursorCh0After10 = output.getCursor(0).toDouble(0);
-		double cursorCh1After10 = output.getCursor(1).toDouble(0);
-		log("Cursor after 10 ticks: ch0=" + cursorCh0After10 + " ch1=" + cursorCh1After10);
+		double cursorCh0AfterTicks = output.getCursor(0).toDouble(0);
+		double cursorCh1AfterTicks = output.getCursor(1).toDouble(0);
+		log("Cursor after " + bufferCount + " ticks: ch0=" + cursorCh0AfterTicks
+				+ " ch1=" + cursorCh1AfterTicks);
+		log("Frame count: " + output.getFrameCount());
 
-		// Report
-		log("Frame count after 10 ticks: " + output.getFrameCount());
-		assertTrue("Should have at least one root", roots.size() > 0);
-		assertTrue("Cursor should advance after ticks",
-				cursorCh0After10 > 0 || cursorCh1After10 > 0);
+		long expectedFrames = (long) bufferCount * bufferSize;
+		assertTrue("Cursor on ch0 should advance by " + expectedFrames
+						+ " frames after " + bufferCount + " ticks (was "
+						+ cursorCh0AfterTicks + ")",
+				cursorCh0AfterTicks >= expectedFrames);
+		assertTrue("Cursor on ch1 should advance by " + expectedFrames
+						+ " frames after " + bufferCount + " ticks (was "
+						+ cursorCh1AfterTicks + ")",
+				cursorCh1AfterTicks >= expectedFrames);
 	}
 
 	/**

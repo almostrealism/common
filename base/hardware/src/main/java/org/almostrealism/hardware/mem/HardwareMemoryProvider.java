@@ -281,30 +281,72 @@ public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryPro
 	/**
 	 * Deallocates a memory block identified by its native reference.
 	 *
-	 * <p>If the {@link KernelMemoryGuard} indicates the block is still in use, it is
-	 * re-queued for later deallocation rather than being released immediately.</p>
+	 * <p>Consults {@link KernelMemoryGuard} for diagnostic visibility: if the
+	 * guard reports the block as still referenced by an active kernel, a warning
+	 * is emitted (with allocation stack trace when available) but deallocation
+	 * proceeds regardless. Blocking or silently deferring an explicit deallocate
+	 * has been determined to be a more dangerous strategy than producing a
+	 * visible warning plus potential use-after-free — the warning at least gives
+	 * the developer the context needed to diagnose the problem.</p>
+	 *
+	 * <p>Note: for the GC-driven deallocation path, the guard's strong references
+	 * to active RAMs should normally prevent the underlying phantom reference
+	 * from being enqueued in the first place. A warning here from the GC path
+	 * would therefore indicate either a race window between reference-queue
+	 * enqueuing and guard release, or a bug in the guard's accounting.</p>
 	 *
 	 * @param ref Native reference to the memory block to deallocate
 	 */
 	private void deallocateNow(NativeRef<T> ref) {
+		KernelMemoryGuard.warnIfActivelyReferenced(
+				ref.getAddress(), ref.getAllocationStackTrace(),
+				getClass().getSimpleName());
+
+		if (!ref.tryClaimFreed()) {
+			warnDoubleFree(ref);
+			return;
+		}
+
+		boolean released = false;
 		try {
-			Hardware hw = Hardware.getLocalHardware();
-			if (hw != null) {
-				KernelMemoryGuard guard = hw.getKernelMemoryGuard();
-				if (guard != null && !guard.canDeallocate(ref.getAddress())) {
-					getDeallocationQueue().put(ref);
-					return;
+			deallocate(ref);
+			released = true;
+		} finally {
+			if (released) {
+				if (!destroying) {
+					allocated.remove(ref.getAddress());
 				}
+			} else {
+				ref.unclaimFreed();
 			}
-		} catch (Exception e) {
-			// Guard check must not prevent deallocation
 		}
+	}
 
-		deallocate(ref);
+	/**
+	 * Logs a warning that a double-free of the given reference was prevented, including
+	 * the allocation stack trace and (when available) the stack trace of the first
+	 * successful release. Skips the warning during provider destruction, where extra
+	 * deallocation attempts are routine and not bug indicators.
+	 *
+	 * @param ref The native reference whose second free was suppressed
+	 */
+	private void warnDoubleFree(NativeRef<T> ref) {
+		if (destroying || !RAM.enableWarnings) return;
 
-		if (!destroying) {
-			allocated.remove(ref.getAddress());
+		warn("Skipping double deallocate of " + ref + " (address " + ref.getAddress() + ")");
+		StackTraceElement[] alloc = ref.getAllocationStackTrace();
+		if (alloc != null) {
+			warn("\tOriginally allocated at:");
+			Stream.of(alloc).forEach(stack -> warn("\t\tat " + stack));
 		}
+		StackTraceElement[] firstFree = ref.getFirstFreeStackTrace();
+		if (firstFree != null) {
+			warn("\tFirst freed at:");
+			Stream.of(firstFree).forEach(stack -> warn("\t\tat " + stack));
+		}
+		warn("\tCurrent free attempt at:");
+		Stream.of(Thread.currentThread().getStackTrace())
+				.forEach(stack -> warn("\t\tat " + stack));
 	}
 
 	/**

@@ -19,11 +19,6 @@ package org.almostrealism.collect;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.MemoryDataComputation;
-
-import java.util.function.Supplier;
-import java.util.stream.IntStream;
-import java.util.stream.LongStream;
 
 /**
  * Factory interface for creating and manipulating {@link TraversalPolicy} shapes.
@@ -34,7 +29,7 @@ import java.util.stream.LongStream;
  * <ul>
  *   <li>Creating {@link TraversalPolicy} instances from integer or long dimensions</li>
  *   <li>Creating position policies</li>
- *   <li>Extracting shapes from {@link Supplier} or {@link TraversableExpression} objects</li>
+ *   <li>Extracting shapes from {@link TraversableExpression} objects</li>
  *   <li>Querying element counts via {@code size()}</li>
  *   <li>Padding shapes to a target number of dimensions</li>
  * </ul>
@@ -45,134 +40,6 @@ import java.util.stream.LongStream;
  * @see CollectionFeatures
  */
 public interface TraversalPolicyFeatures extends ShapeFeatures {
-
-	/**
-	 * Creates a new {@link TraversalPolicy} with the specified dimensions.
-	 * This is one of the most fundamental methods for creating shapes that define
-	 * how data is organized and accessed in collections.
-	 *
-	 * @param dims the dimensions of the shape (e.g., width, height, depth)
-	 * @return a new {@link TraversalPolicy} representing the specified shape
-	 *
-	 * <pre>{@code
-	 * // Create a 1D shape with 5 elements
-	 * TraversalPolicy shape1D = shape(5);
-	 * // Result: shape with dimensions [5], total size = 5
-	 *
-	 * // Create a 2D shape (matrix) with 3 rows and 4 columns
-	 * TraversalPolicy shape2D = shape(3, 4);
-	 * // Result: shape with dimensions [3, 4], total size = 12
-	 *
-	 * // Create a 3D shape (tensor) with dimensions 2x3x4
-	 * TraversalPolicy shape3D = shape(2, 3, 4);
-	 * // Result: shape with dimensions [2, 3, 4], total size = 24
-	 * }</pre>
-	 */
-	@Override
-	default TraversalPolicy shape(int... dims) {
-		if (dims[0] == -1) {
-			if (dims.length == 1) {
-				return new TraversalPolicy(false, false, 1);
-			}
-
-			return new TraversalPolicy(false, false, IntStream.of(dims).skip(1).toArray());
-		}
-
-		return new TraversalPolicy(dims);
-	}
-
-	/**
-	 * Creates a new {@link TraversalPolicy} with the specified dimensions using long values.
-	 * This overload is useful when working with very large dimensions that exceed
-	 * the range of int values.
-	 *
-	 * @param dims the dimensions of the shape as long values
-	 * @return a new {@link TraversalPolicy} representing the specified shape
-	 *
-	 * <pre>{@code
-	 * // Create a large 1D shape
-	 * TraversalPolicy largShape = shape(1000000L);
-	 * // Result: shape with dimensions [1000000], total size = 1000000
-	 *
-	 * // Create a 2D shape with large dimensions
-	 * TraversalPolicy shape2D = shape(10000L, 20000L);
-	 * // Result: shape with dimensions [10000, 20000], total size = 200000000
-	 * }</pre>
-	 */
-	@Override
-	default TraversalPolicy shape(long... dims) {
-		if (dims[0] == -1) {
-			if (dims.length == 1) {
-				return new TraversalPolicy(false, false, 1);
-			}
-
-			return new TraversalPolicy(false, false, LongStream.of(dims).skip(1).toArray());
-		}
-
-		return new TraversalPolicy(dims);
-	}
-
-	/**
-	 * Creates a position {@link TraversalPolicy} with the specified dimensions.
-	 * Unlike regular shapes, positions are used to specify coordinates or offsets
-	 * within a larger collection structure.
-	 *
-	 * @param dims the position coordinates
-	 * @return a new {@link TraversalPolicy} representing the specified position
-	 *
-	 * <pre>{@code
-	 * // Create a position at coordinates (2, 3) in a 2D space
-	 * TraversalPolicy pos = position(2, 3);
-	 * // Result: position representing coordinates [2, 3]
-	 *
-	 * // Create a position at coordinates (1, 2, 3) in a 3D space
-	 * TraversalPolicy pos3D = position(1, 2, 3);
-	 * // Result: position representing coordinates [1, 2, 3]
-	 * }</pre>
-	 */
-	@Override
-	default TraversalPolicy position(int... dims) { return new TraversalPolicy(true, dims); }
-
-	/**
-	 * Extracts the {@link TraversalPolicy} shape from a {@link Supplier}.
-	 * This method is useful for determining the shape of collections at runtime
-	 * by examining the supplier object.
-	 *
-	 * @param s the supplier to extract shape from
-	 * @return the {@link TraversalPolicy} representing the supplier's shape,
-	 *         or {@link #shape(int...)} with a single element if no shape is available
-	 *
-	 * <pre>{@code
-	 * // Extract shape from a CollectionProducer created with c()
-	 * CollectionProducer vector = c(1.0, 2.0, 3.0);
-	 * TraversalPolicy vectorShape = shape(vector);
-	 * // Result: shape with dimensions [3]
-	 *
-	 * // Extract shape from arithmetic operation results
-	 * CollectionProducer a = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
-	 * CollectionProducer b = c(shape(2, 3), 2, 3, 4, 5, 6, 7);
-	 * CollectionProducer sum = add(a, b);
-	 * TraversalPolicy resultShape = shape(sum);
-	 * // Result: shape with dimensions [2, 3]
-	 *
-	 * // Extract shape from reshaped CollectionProducer
-	 * CollectionProducer reshaped = vector.reshape(shape(1, 3));
-	 * TraversalPolicy reshapedShape = shape(reshaped);
-	 * // Result: shape with dimensions [1, 3]
-	 * }</pre>
-	 */
-	@Override
-	default TraversalPolicy shape(Supplier s) {
-		if (s instanceof Shape) {
-			return ((Shape) s).getShape();
-		} else {
-			if (enableShapelessWarning) {
-				console.warn(s.getClass() + " does not have a Shape");
-			}
-
-			return shape(1);
-		}
-	}
 
 	/**
 	 * Extracts the {@link TraversalPolicy} shape from a {@link TraversableExpression}.
@@ -201,66 +68,6 @@ public interface TraversalPolicyFeatures extends ShapeFeatures {
 
 			return shape(1);
 		}
-	}
-
-	/**
-	 * Gets the number of elements that will be operated on by one thread of a kernel
-	 * for the given {@link Supplier}. This is not the total number of elements that can be
-	 * produced, but rather the number that will be processed by a single thread.
-	 * The total number is the product of the size and the count.
-	 *
-	 * @param s the supplier to examine
-	 * @return the total number of elements, or -1 if the supplier is null
-	 *
-	 * <pre>{@code
-	 * // Get size of a CollectionProducer created with c()
-	 * CollectionProducer vector = c(1.0, 2.0, 3.0);
-	 * int vectorSize = size(vector);
-	 * // Result: 3 (3 elements in the vector)
-	 *
-	 * // Get size of arithmetic operation results
-	 * CollectionProducer a = c(shape(2, 3), 1, 2, 3, 4, 5, 6);
-	 * CollectionProducer b = c(shape(2, 3), 2, 3, 4, 5, 6, 7);
-	 * CollectionProducer sum = add(a, b);
-	 * int matrixSize = size(sum);
-	 * // Result: 6 (2 * 3 matrix elements)
-	 *
-	 * // Get size of reshaped producers
-	 * CollectionProducer reshaped = vector.reshape(shape(1, 3));
-	 * int reshapedSize = size(reshaped);
-	 * // Result: 3 (same total elements, different shape)
-	 * }</pre>
-	 */
-	@Override
-	default int size(Supplier s) {
-		if (s == null) {
-			return -1;
-		} else if (s instanceof MemoryDataComputation) {
-			return ((MemoryDataComputation) s).getMemLength();
-		} else {
-			return shape(s).getSize();
-		}
-	}
-
-	/**
-	 * Gets the number of elements that will be operated on by a single thread
-	 * of a kernel for a {@link Shape}. This is a convenient method for getting
-	 * the size directly from objects that implement the {@link Shape} interface.
-	 * The total number of elements is the product of this size and the count.
-	 *
-	 * @param s the {@link Shape} to examine
-	 * @return the number of elements operated on by one thread
-	 *
-	 * <pre>{@code
-	 * // Get size of a shape object
-	 * Shape<?> collection = new PackedCollection(shape(2, 3, 4));
-	 * int totalElements = size(collection);
-	 * // Result: 24 (2 * 3 * 4 elements)
-	 * }</pre>
-	 */
-	@Override
-	default int size(Shape s) {
-		return s.getShape().getSize();
 	}
 
 	/**

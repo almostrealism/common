@@ -142,7 +142,7 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 
 			return () -> {
 				PackedCollection out = gr.evaluate();
-				System.out.println(Arrays.toString(out.toArray(0, out.getMemLength())));
+				log(Arrays.toString(out.toArray(0, out.getMemLength())));
 
 				out.getMem(0, result, 0, result.length);
 			};
@@ -211,8 +211,8 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 
 		PackedCollection gradient = new PackedCollection(shape(1, size)).fill(0.0, -1.0);
 
-		System.out.println("Input: " + Arrays.toString(input.toArray(0, input.getMemLength())));
-		System.out.println("Gradient: " + Arrays.toString(gradient.toArray(0, gradient.getMemLength())));
+		log("Input: " + Arrays.toString(input.toArray(0, input.getMemLength())));
+		log("Gradient: " + Arrays.toString(gradient.toArray(0, gradient.getMemLength())));
 
 		double tot = input.doubleStream().map(Math::exp).sum();
 
@@ -295,8 +295,8 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 
 		PackedCollection gradient = new PackedCollection(size).fill(0.0, -1.0);
 
-		System.out.println("Input: " + Arrays.toString(input.toArray(0, input.getMemLength())));
-		System.out.println("Gradient: " + Arrays.toString(gradient.toArray(0, gradient.getMemLength())));
+		log("Input: " + Arrays.toString(input.toArray(0, input.getMemLength())));
+		log("Gradient: " + Arrays.toString(gradient.toArray(0, gradient.getMemLength())));
 
 		double[] result = new double[size];
 

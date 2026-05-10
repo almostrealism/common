@@ -28,6 +28,7 @@ import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.model.Block;
+import org.almostrealism.model.DefaultBlock;
 import org.almostrealism.model.SequentialBlock;
 
 import java.util.ArrayList;
@@ -194,6 +195,98 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 				ops.add(next.push(multiply(traverseEach(ar.getReceipt()), traverseEach(br.getReceipt()))));
 			return ops;
 		}), null, requirements);
+	}
+
+	/**
+	 * Apply each of the given blocks to the same input and sum their outputs element-wise.
+	 * Every block must produce the same output shape; that shape is also the layer's
+	 * output shape. The N-block generalisation of {@link SequentialBlock#accum(Block, Block,
+	 * ComputeRequirement...)}.
+	 *
+	 * <p>Each block receives the layer's input independently, its output is captured via
+	 * {@link Cell.CaptureReceptor}, and all captured outputs are summed in order to form
+	 * the final output.</p>
+	 *
+	 * <h4>Relationship to {@code sum_channels}</h4>
+	 *
+	 * <p>{@code accumBlocks} sums <em>across multiple {@link Block} sources</em>: each
+	 * sub-block sees the same input and the layer's output is the element-wise sum of
+	 * the sub-block outputs. The summation axis is the implicit "branch" axis introduced
+	 * by enumerating the sub-blocks; no axis of any single sub-block's output tensor is
+	 * collapsed.</p>
+	 *
+	 * <p>The PDSL interpreter's {@code sum_channels()} construct (see
+	 * {@code PdslInterpreter#callSumChannels}) is the orthogonal operation: it operates
+	 * on a <em>single</em> upstream block whose output already has shape {@code [C, S]}
+	 * and reduces along axis 0 to yield {@code [1, S]}. The summation axis is internal
+	 * to that single block's output tensor.</p>
+	 *
+	 * <p>Both names contain "sum", but they sum over different things and are not
+	 * substitutable. Use {@code accumBlocks} when you have N independent sub-blocks
+	 * and want their outputs combined; use {@code sum_channels()} when you have one
+	 * multi-channel tensor and want the channel axis collapsed.</p>
+	 *
+	 * @param inputShape   the input tensor shape
+	 * @param blocks       the sub-blocks to apply in parallel and sum
+	 * @param requirements optional compute requirements
+	 * @return a CellularLayer whose output is the element-wise sum of all block outputs
+	 */
+	default Block accumBlocks(TraversalPolicy inputShape,
+							  List<Block> blocks,
+							  ComputeRequirement... requirements) {
+		if (blocks.isEmpty()) {
+			throw new IllegalArgumentException("accumBlocks requires at least one block");
+		}
+		TraversalPolicy outputShape = blocks.get(0).getOutputShape();
+		for (Block b : blocks) {
+			if (b.getOutputShape().getTotalSize() != outputShape.getTotalSize()) {
+				throw new IllegalArgumentException(
+						"accumBlocks requires all blocks to share an output shape; got "
+								+ outputShape + " and " + b.getOutputShape());
+			}
+		}
+
+		Cell<PackedCollection> forward = Cell.of((input, next) -> {
+			List<Cell.CaptureReceptor<PackedCollection>> receptors = new ArrayList<>();
+			for (Block b : blocks) {
+				Cell.CaptureReceptor<PackedCollection> receptor = new Cell.CaptureReceptor<>();
+				b.getForward().setReceptor(receptor);
+				receptors.add(receptor);
+			}
+
+			OperationList ops = new OperationList("accum_blocks");
+			for (Block b : blocks) {
+				ops.add(b.getForward().push(input));
+			}
+
+			if (next != null) {
+				CollectionProducer sum = c(receptors.get(0).getReceipt())
+						.reshape(outputShape);
+				for (int i = 1; i < blocks.size(); i++) {
+					sum = sum.add(c(receptors.get(i).getReceipt())
+							.reshape(outputShape));
+				}
+				ops.add(next.push(sum));
+			}
+
+			return ops;
+		});
+
+		// Backward of an element-wise sum is gradient pass-through to every branch.
+		// The upstream input gradient is the sum of each branch's input-gradient,
+		// which the framework handles via the per-branch backward chain wiring.
+		// For now this is a structural stub that satisfies the compile-time backward
+		// chain construction; full gradient flow through accum_blocks is not yet
+		// required by any test or production caller.
+		Cell<PackedCollection> backward = Cell.of((gradient, next) -> {
+			OperationList ops = new OperationList("accum_blocks-backward");
+			if (next != null) {
+				ops.add(next.push(gradient));
+			}
+			return ops;
+		});
+
+		return new DefaultBlock(inputShape, outputShape, forward, backward);
 	}
 
 	/**

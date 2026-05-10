@@ -32,6 +32,7 @@ import org.almostrealism.geometry.Intersectable;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -62,7 +63,7 @@ import java.util.List;
  *
  * @see LightingEngine
  */
-public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implements DimensionAware {
+public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implements DimensionAware, ConsoleFeatures {
 	/** When true, additional ranked-choice selection details are logged to stdout. */
 	public static boolean enableVerbose = false;
 
@@ -224,8 +225,8 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 		boolean printLog = enableVerbose;
 
 		if (printLog) {
-			System.out.println("RankedChoiceProducer: pixel(" + x + "," + y + ") -> position=" + position);
-			System.out.println("  There are " + size() + " Producers to choose from");
+			log("RankedChoiceProducer: pixel(" + x + "," + y + ") -> position=" + position);
+			log("  There are " + size() + " Producers to choose from");
 		}
 
 		r: for (int i = 0; i < size(); i++) {
@@ -233,17 +234,17 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 
 			// Use valueAt(position, 0) for shape (N, 1) instead of get(position).getValue() for Scalar
 			double r = ranks.get(i).valueAt(position, 0);
-			if (printLog) System.out.println("  Engine " + i + ": rank[" + position + "] = " + r);
-			if (r < e && printLog) System.out.println("  " + p + " was skipped due to being less than " + e);
+			if (printLog) log("  Engine " + i + ": rank[" + position + "] = " + r);
+			if (r < e && printLog) log("  " + p + " was skipped due to being less than " + e);
 			if (r < e) continue r;
 
 			if (best == null) {
-				if (printLog) System.out.println(p + " was assigned (rank = " + r + ")");
+				if (printLog) log(p + " was assigned (rank = " + r + ")");
 				best = (Producer<PackedCollection>) p.getProducer();
 				rank = r;
 			} else {
 				if (r >= e && r < rank) {
-					if (printLog) System.out.println(p + " was assigned (rank = " + r + ")");
+					if (printLog) log(p + " was assigned (rank = " + r + ")");
 					best = (Producer<PackedCollection>) p.getProducer();
 					rank = r;
 				}
@@ -252,7 +253,7 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 			if (rank <= e) break r;
 		}
 
-		if (printLog) System.out.println(best + " was chosen\n----------");
+		if (printLog) log(best + " was chosen\n----------");
 
 		if (best == null) return null;
 
@@ -268,7 +269,7 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 		}
 
 		if (printLog) {
-			System.out.println("  Color evaluated: RGB(" + color.getRed() + ", " + color.getGreen() + ", " + color.getBlue() + ")");
+			log("  Color evaluated: RGB(" + color.getRed() + ", " + color.getGreen() + ", " + color.getBlue() + ")");
 		}
 
 		return color;

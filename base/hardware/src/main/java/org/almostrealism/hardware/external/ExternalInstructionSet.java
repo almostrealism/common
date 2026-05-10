@@ -20,6 +20,7 @@ import io.almostrealism.code.Execution;
 import io.almostrealism.code.InstructionSet;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
 import java.io.IOException;
@@ -67,7 +68,7 @@ import java.util.stream.Stream;
  * @see ExternalComputeContext
  * @see LocalExternalMemoryProvider
  */
-public class ExternalInstructionSet implements InstructionSet {
+public class ExternalInstructionSet implements InstructionSet, ConsoleFeatures {
 	/** Path to the compiled standalone executable. */
 	private String executable;
 
@@ -144,7 +145,7 @@ public class ExternalInstructionSet implements InstructionSet {
 			long start = System.currentTimeMillis();
 			Process process = new ProcessBuilder(new File(executable).getAbsolutePath(), dir).inheritIO().start();
 			process.waitFor();
-			System.out.println("ExternalInstructionSet: " + (System.currentTimeMillis() - start) + " msec");
+			log("ExternalInstructionSet: " + (System.currentTimeMillis() - start) + " msec");
 
 			if (process.exitValue() != 0) {
 				throw new HardwareException("Native execution failure (" + process.exitValue() + ")");

@@ -1034,7 +1034,7 @@ public abstract class Expression<T> implements
 
 		if (getClass() == Expression.class) {
 			if (ScopeSettings.enableExpressionWarnings)
-				System.out.println("WARN: Unable to retrieve simplified expression");
+				warn("Unable to retrieve simplified expression");
 			return this;
 		}
 

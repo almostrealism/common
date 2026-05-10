@@ -58,9 +58,9 @@ public class ManualPlaybackTest extends TestSuiteBase {
 
 		SourceDataOutputLine outputLine = new SourceDataOutputLine(line, 1024);
 
-		System.out.println("Starting manual sine wave playback...");
-		System.out.println("Format: " + format);
-		System.out.println("Buffer size: " + outputLine.getBufferSize());
+		log("Starting manual sine wave playback...");
+		log("Format: " + format);
+		log("Buffer size: " + outputLine.getBufferSize());
 
 		// Generate and play 440 Hz sine wave for 3 seconds
 		int sampleRate = 44100;
@@ -94,21 +94,21 @@ public class ManualPlaybackTest extends TestSuiteBase {
 
 			// Log progress every second
 			if (framesWritten % sampleRate < bufferSizeFrames) {
-				System.out.println("Frames written: " + framesWritten + " / " + totalFrames);
-				System.out.println("Read position: " + outputLine.getReadPosition());
+				log("Frames written: " + framesWritten + " / " + totalFrames);
+				log("Read position: " + outputLine.getReadPosition());
 			}
 		}
 
 		// Wait for audio to finish playing
 		line.drain();
 
-		System.out.println("Total frames written: " + framesWritten);
-		System.out.println("Final read position: " + outputLine.getReadPosition());
+		log("Total frames written: " + framesWritten);
+		log("Final read position: " + outputLine.getReadPosition());
 
 		// Clean up
 		outputLine.destroy();
 
-		System.out.println("Manual sine wave playback test completed");
+		log("Manual sine wave playback test completed");
 	}
 
 	/**
@@ -125,7 +125,7 @@ public class ManualPlaybackTest extends TestSuiteBase {
 
 		SourceDataOutputLine outputLine = new SourceDataOutputLine(line);
 
-		System.out.println("Playing 1 second tone burst...");
+		log("Playing 1 second tone burst...");
 
 		// Play for 1 second
 		int sampleRate = 44100;
@@ -149,6 +149,6 @@ public class ManualPlaybackTest extends TestSuiteBase {
 		line.drain();
 		outputLine.destroy();
 
-		System.out.println("Tone burst completed");
+		log("Tone burst completed");
 	}
 }

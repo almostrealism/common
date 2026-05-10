@@ -345,14 +345,14 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 		CL.clGetPlatformIDs(0, null, numPlatformsArray);
 		int numPlatforms = numPlatformsArray[0];
 
-		if (Hardware.enableVerbose) System.out.println("Hardware[" + name + "]: " + numPlatforms + " platforms available");
+		if (Hardware.enableVerbose) log("Hardware[" + name + "]: " + numPlatforms + " platforms available");
 
 		cl_platform_id platforms[] = new cl_platform_id[numPlatforms];
 		CL.clGetPlatformIDs(platforms.length, platforms, null);
 		platform = platforms[platformIndex];
 
 		if (Hardware.enableVerbose)
-			System.out.println("Hardware[" + name + "]: Using platform " + platformIndex + " -- " + platform);
+			log("Hardware[" + name + "]: Using platform " + platformIndex + " -- " + platform);
 
 		/* Main Device Selection */
 
@@ -365,14 +365,14 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 		} catch (Exception e) { }
 
 		if (Hardware.enableVerbose)
-			System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(deviceType) + "(s) available");
+			log("Hardware[" + name + "]: " + numDevices + " " + deviceName(deviceType) + "(s) available");
 
 		if (numDevices > 0) {
 			cl_device_id devices[] = new cl_device_id[numDevices];
 			CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
 			mainDevice = devices[deviceIndex];
 
-			System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
+			log("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
 		}
 
 		/* Kernel Device Selection */
@@ -383,13 +383,13 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 			cl_device_id devices[] = new cl_device_id[numDevices];
 
 			if (Hardware.enableVerbose)
-				System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(CL.CL_DEVICE_TYPE_GPU) + "(s) available for kernels");
+				log("Hardware[" + name + "]: " + numDevices + " " + deviceName(CL.CL_DEVICE_TYPE_GPU) + "(s) available for kernels");
 
 			if (numDevices > 0) {
 				CL.clGetDeviceIDs(platform, CL.CL_DEVICE_TYPE_GPU, numDevices, devices, null);
 				kernelDevice = devices[deviceIndex];
 
-				System.out.println("Hardware[" + name + "]: Using " + deviceName(CL.CL_DEVICE_TYPE_GPU) + " " + deviceIndex + " for kernels");
+				log("Hardware[" + name + "]: Using " + deviceName(CL.CL_DEVICE_TYPE_GPU) + " " + deviceIndex + " for kernels");
 			}
 		}
 
@@ -428,11 +428,11 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 					null, null, null);
 		}
 
-		if (Hardware.enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL context initialized");
+		if (Hardware.enableVerbose) log("Hardware[" + name + "]: OpenCL context initialized");
 
 		cl_command_queue queue = CL.clCreateCommandQueue(ctx, mainDevice, 0, null);
 		if (Hardware.enableVerbose)
-			System.out.println("Hardware[" + getName() + "]: OpenCL read/write command queue initialized");
+			log("Hardware[" + getName() + "]: OpenCL read/write command queue initialized");
 
 		mainRam = new CLMemoryProvider(this, queue, getPrecision().bytes(),
 						maxReservation * getPrecision().bytes(), location);
@@ -632,7 +632,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 		}
 
 		try {
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Start " + ccName);
+			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Start " + ccName);
 			computeContexts.set(next);
 			return exec.call();
 		} catch (RuntimeException e) {
@@ -640,9 +640,9 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		} finally {
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: End " + ccName);
+			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: End " + ccName);
 			next.get(0).destroy();
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Destroyed " + ccName);
+			if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Destroyed " + ccName);
 			computeContexts.set(current);
 		}
 	}
@@ -735,10 +735,10 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 				info.getGlobalMem() / gb + "gb global (" +
 				info.getMaxAlloc() / gb + "gb allocation limit)";
 
-		System.out.println("Hardware[" + getName() + "]: " + cores + " cores @ " + clock);
-		System.out.println("Hardware[" + getName() + "]: " + work);
-		System.out.println("Hardware[" + getName() + "]: " + memory);
-		if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Max args " + info.getMaxConstantArgs());
+		log("Hardware[" + getName() + "]: " + cores + " cores @ " + clock);
+		log("Hardware[" + getName() + "]: " + work);
+		log("Hardware[" + getName() + "]: " + memory);
+		if (Hardware.enableVerbose) log("Hardware[" + getName() + "]: Max args " + info.getMaxConstantArgs());
 
 		return info;
 	}

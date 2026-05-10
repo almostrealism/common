@@ -30,6 +30,7 @@ import org.almostrealism.geometry.ClosestIntersection;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Intersectable;
 import org.almostrealism.geometry.TransformMatrix;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -43,7 +44,7 @@ import java.util.stream.Stream;
  * 
  * @author  Michael Murray
  */
-public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface implements NodeGroup<T>, Iterable<T> {
+public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface implements NodeGroup<T>, Iterable<T>, ConsoleFeatures {
 	/** The ordered list of child surfaces belonging to this group. */
 	private final ArrayList<T> surfaces;
 
@@ -101,17 +102,17 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	 */
 	@Deprecated
 	public ShadableSurface[] getSurfaces() {
-		System.out.println("Call to deprecated getSurfaces method");
+		log("Call to deprecated getSurfaces method");
 		return this.surfaces.toArray(new ShadableSurface[0]);
 	}
-	
+
 	/**
 	 * Returns the {@link ShadableSurface} object stored by this {@link SurfaceGroup} object at
 	 * the specified index.
 	 */
 	@Deprecated
 	public ShadableSurface getSurface(int index) {
-		System.out.println("Call to deprecated getSurface method");
+		log("Call to deprecated getSurface method");
 		return this.surfaces.get(index);
 	}
 

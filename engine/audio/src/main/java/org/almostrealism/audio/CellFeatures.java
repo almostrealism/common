@@ -453,7 +453,7 @@ public interface CellFeatures extends HeredityFeatures, TemporalFeatures, CodeFe
 			try {
 				return WaveData.load(f).toCell(channel, 1.0, offset, repeat).apply(data.get());
 			} catch (IOException e) {
-				e.printStackTrace();
+				console.warn(e.getMessage(), e);
 				return silence().get(0);
 			}
 		}).forEach(cells::addRoot);

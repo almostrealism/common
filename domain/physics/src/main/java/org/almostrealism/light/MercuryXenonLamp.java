@@ -16,6 +16,7 @@
 
 package org.almostrealism.light;
 
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.physics.PhysicalConstants;
 
 import java.util.ArrayList;
@@ -28,7 +29,7 @@ import java.util.ArrayList;
  * pick a random number in that range and return it in the proper units.
  * @author  Sam Tepper
  */
-public class MercuryXenonLamp extends LightBulb implements PhysicalConstants {
+public class MercuryXenonLamp extends LightBulb implements PhysicalConstants, ConsoleFeatures {
 	/** Probability threshold below which verbose emission logging is printed. */
 	public static double verbose = Math.pow(10.0, -7.0);
 
@@ -93,7 +94,7 @@ public class MercuryXenonLamp extends LightBulb implements PhysicalConstants {
 		
 		super.specAvg = this.getSpecAvg();
 		
-		System.out.println("MercuryXenonLamp: Constructed!");
+		log("Constructed!");
 	}
 	
 	/**
@@ -220,7 +221,7 @@ public class MercuryXenonLamp extends LightBulb implements PhysicalConstants {
 		}
 		
 		if (Math.random() < verbose)
-			System.out.println("MercuryXenonLamp: " + Answer);
+			log(String.valueOf(Answer));
 		
 		return Answer;
 		

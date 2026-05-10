@@ -171,7 +171,7 @@ public class WaveData implements Destroyable, SamplingFeatures, CollectionFeatur
 	 */
 	public WaveData(PackedCollection wave, int sampleRate) {
 		if (wave == null) {
-			System.out.println("WARN: Wave data is null");
+			warn("Wave data is null");
 		}
 
 		this.collection = wave;

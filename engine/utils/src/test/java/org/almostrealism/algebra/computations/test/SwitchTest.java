@@ -54,7 +54,7 @@ public class SwitchTest extends TestSuiteBase {
 			op.run();
 		});
 
-		System.out.println("chosen = " + output.toDouble(0));
+		log("chosen = " + output.toDouble(0));
 		assertEquals(4.0, output);
 	}
 
@@ -79,8 +79,8 @@ public class SwitchTest extends TestSuiteBase {
 			op.run();
 		});
 
-		System.out.println("first choice = " + output1.toDouble(0));
-		System.out.println("second choice = " + output2.toDouble(0));
+		log("first choice = " + output1.toDouble(0));
+		log("second choice = " + output2.toDouble(0));
 
 		assertEquals(4.0, output1);
 		assertEquals(8.0, output2);
@@ -113,10 +113,10 @@ public class SwitchTest extends TestSuiteBase {
 		AcceleratedOperation op = (AcceleratedOperation) list.get();
 		op.run();
 
-		System.out.println("first choice A = " + output1a.toDouble(0));
-		System.out.println("first choice B = " + output1b.toDouble(0));
-		System.out.println("second choice A = " + output2a.toDouble(0));
-		System.out.println("second choice B = " + output2b.toDouble(0));
+		log("first choice A = " + output1a.toDouble(0));
+		log("first choice B = " + output1b.toDouble(0));
+		log("second choice A = " + output2a.toDouble(0));
+		log("second choice B = " + output2b.toDouble(0));
 
 		assertEquals(4.0, output1a);
 		assertEquals(16.0, output1b);

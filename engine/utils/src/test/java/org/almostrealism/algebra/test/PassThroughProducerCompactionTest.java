@@ -49,8 +49,8 @@ public class PassThroughProducerCompactionTest extends TestSuiteBase implements 
 				c(1.0).get().evaluate(),
 				c(2.0).get().evaluate(),
 				c(3.0).get().evaluate());
-		System.out.println(s.toDouble(0));
-		System.out.println(s.toDouble(0));
+		log(String.valueOf(s.toDouble(0)));
+		log(String.valueOf(s.toDouble(0)));
 		Assert.assertEquals(9.0, s.toDouble(0), Math.pow(10, -10));
 	}
 

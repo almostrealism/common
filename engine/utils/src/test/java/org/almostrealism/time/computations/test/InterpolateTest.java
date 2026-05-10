@@ -31,11 +31,11 @@ public class InterpolateTest extends TestSuiteBase {
 		PackedCollection series = new PackedCollection(2, 10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		series.setMem(10, 12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0);
-		System.out.println(series.traverse(1).getCountLong() + " series");
+		log(String.valueOf(series.traverse(1).getCountLong() + " series"));
 
 		PackedCollection cursors = new PackedCollection(2, 1);
 		cursors.setMem(0, 5.5, 3.5);
-		System.out.println(cursors.traverse(1).getCountLong() + " cursors");
+		log(String.valueOf(cursors.traverse(1).getCountLong() + " cursors"));
 
 		PackedCollection rate = new PackedCollection(2, 1);
 		rate.setMem(0, 1.0, 1.0);
@@ -48,7 +48,7 @@ public class InterpolateTest extends TestSuiteBase {
 				v -> Sum.of(v, e(-1.0)));
 		PackedCollection dest = interpolate.get().evaluate(series.traverse(1), cursors.traverse(1), rate.traverse(1));
 
-		System.out.println(Arrays.toString(dest.toArray(0, 2)));
+		log(Arrays.toString(dest.toArray(0, 2)));
 		assertEquals(15, dest.toArray(0, 1)[0]);
 		assertEquals(11, dest.toArray(1, 1)[0]);
 	}
@@ -57,11 +57,11 @@ public class InterpolateTest extends TestSuiteBase {
 	public void interpolateKernelPassThrough() {
 		PackedCollection series = new PackedCollection(10);
 		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
-		System.out.println(series.traverse(0).getCountLong() + " series");
+		log(String.valueOf(series.traverse(0).getCountLong() + " series"));
 
 		PackedCollection cursors = new PackedCollection(2, 1);
 		cursors.setMem(0, 5.5, 6.5);
-		System.out.println(cursors.traverse(1).getCountLong() + " cursors");
+		log(String.valueOf(cursors.traverse(1).getCountLong() + " cursors"));
 
 		PackedCollection rate = new PackedCollection(2, 1);
 		rate.setMem(0, 1.0, 1.0);
@@ -74,7 +74,7 @@ public class InterpolateTest extends TestSuiteBase {
 		interpolate.get().into(dest.traverse(1))
 				.evaluate(series.traverse(0), cursors.traverse(1), rate.traverse(1));
 
-		System.out.println(Arrays.toString(dest.toArray(0, 2)));
+		log(Arrays.toString(dest.toArray(0, 2)));
 		assertEquals(11.5, dest.toArray(0, 1)[0]);
 		assertEquals(10.5, dest.toArray(1, 1)[0]);
 	}
@@ -119,7 +119,7 @@ public class InterpolateTest extends TestSuiteBase {
 				v -> Sum.of(v, e(-1.0)));
 		PackedCollection dest = interpolate.get().evaluate(series, cursor, rate);
 
-		System.out.println(Arrays.toString(dest.toArray(0, 1)));
+		log(Arrays.toString(dest.toArray(0, 1)));
 		assertEquals(15, dest.toArray(0, 1)[0]);
 	}
 

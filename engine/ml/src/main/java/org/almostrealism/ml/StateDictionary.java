@@ -125,7 +125,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 					}
 				}
 
-				System.out.println("Loaded " + libraryData.getCollectionsCount() +
+				log("Loaded " + libraryData.getCollectionsCount() +
 						" weight tensors from " + weightFile.getName());
 				return 1;
 			} catch (Exception e) {
@@ -134,7 +134,7 @@ public class StateDictionary extends AssetGroup implements Destroyable, ConsoleF
 			}
 		}).sum();
 
-		System.out.println("StateDictionary loaded " + weights.size() +
+		log("StateDictionary loaded " + weights.size() +
 				" total weight tensors from " + total + " protobuf files");
 	}
 

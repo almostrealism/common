@@ -39,7 +39,7 @@ public class MemoryAllocationTest extends TestSuiteBase {
 
 			b.destroy();
 			if (allocated % (32L * gb) == 0) {
-				System.out.println("Allocated " + allocated / gb + "GB");
+				log("Allocated " + allocated / gb + "GB");
 				Thread.sleep(10 * 1000L);
 			}
 		}

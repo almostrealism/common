@@ -22,6 +22,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.DecodePostProcessing;
 
 /**
@@ -31,7 +32,7 @@ import org.almostrealism.io.DecodePostProcessing;
  * 
  * @author  Michael Murray
  */
-public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostProcessing, VectorFeatures, TransformMatrixFeatures {
+public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostProcessing, VectorFeatures, TransformMatrixFeatures, ConsoleFeatures {
 	// TODO  Make these private
 	/** The location of this geometry in 3D world space. */
 	public Vector location;
@@ -320,8 +321,8 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 			this.transformCurrent = true;
 		} catch (Exception e) {
 			// TODO  There is probably a better way to handle this exceptional case
-			e.printStackTrace();
-			System.out.println("BasicGeometry: Transformation will be invalid");
+			warn(e.getMessage(), e);
+			log("Transformation will be invalid");
 			this.transformCurrent = true;
 		}
 	}

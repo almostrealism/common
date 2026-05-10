@@ -106,6 +106,15 @@ public class InstructionPromptBuilder {
     private String gitTamperingViolation;
 
     /**
+     * Number of times the current job has had to relaunch the Claude
+     * subprocess after an inactivity-triggered kill.  When greater than zero,
+     * a warning is prepended explaining that the prior attempt produced no
+     * output for an extended period and was terminated; the agent is asked
+     * to avoid the polling pattern that hung the previous attempt.
+     */
+    private int inactivityRestartAttempt;
+
+    /**
      * Sets the user's request prompt.
      *
      * @param prompt the user's request text
@@ -313,10 +322,34 @@ public class InstructionPromptBuilder {
     }
 
     /**
+     * Sets the number of times the current job has been relaunched after an
+     * inactivity-triggered kill of the Claude subprocess.
+     *
+     * <p>When non-zero, a warning is prepended to the prompt explaining that
+     * the prior attempt was terminated for producing no output for too long,
+     * and instructing the agent not to repeat the polling pattern that
+     * hung the previous attempt.</p>
+     *
+     * @param attempt the number of prior inactivity-triggered restarts
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setInactivityRestartAttempt(int attempt) {
+        this.inactivityRestartAttempt = attempt;
+        return this;
+    }
+
+    /**
      * Builds the full instruction prompt by assembling all configured
      * sections into a single string.
      *
-     * <p>The sections are assembled in the following order:</p>
+     * <p>The sections are assembled in the following order. Sections marked
+     * "restart preamble" are prepended above all other content when their
+     * triggering condition is set:</p>
+     * <ol start="0">
+     *   <li>Git Tampering Violation Warning -- restart preamble (when {@link #setGitTamperingViolation} is non-empty)</li>
+     *   <li>Inactivity Timeout Warning -- restart preamble (when {@link #setInactivityRestartAttempt} is &gt; 0)</li>
+     *   <li>Enforcement Retry Warning -- restart preamble (when {@code enforcementAttempt} is &gt; 0)</li>
+     * </ol>
      * <ol>
      *   <li>Opening paragraph (autonomous agent context)</li>
      *   <li>Communication (when workstream URL is set)</li>
@@ -330,6 +363,7 @@ public class InstructionPromptBuilder {
      *   <li>Branch Context (always)</li>
      *   <li>Working directory and branch info</li>
      *   <li>Branch Awareness and Continuity (when target branch is set)</li>
+     *   <li>Test Verification Reminder (always)</li>
      *   <li>Budget and turn limits (when applicable)</li>
      *   <li>Task ID and Workstream URL info</li>
      *   <li>Planning Document (when set)</li>
@@ -361,6 +395,36 @@ public class InstructionPromptBuilder {
             sb.append("**Consequences:** This is your LAST chance. If you tamper with git ");
             sb.append("again, ALL your changes will be destroyed and this session will be ");
             sb.append("terminated with no further retries. Your work will be lost entirely.\n\n");
+            sb.append("---\n\n");
+        }
+
+        // Inactivity restart warning -- prepended when the prior Claude
+        // subprocess was killed for going too long without producing any
+        // stdout (typically because the agent invoked a bash polling loop
+        // that did not terminate).  The agent must avoid that pattern on
+        // the relaunch.
+        if (inactivityRestartAttempt > 0) {
+            sb.append("## !! SESSION RESTARTED -- INACTIVITY TIMEOUT !!\n\n");
+            sb.append("Your previous attempt was killed because the Claude process produced ");
+            sb.append("no output for an extended period.  This is attempt ");
+            sb.append(inactivityRestartAttempt + 1).append(".\n\n");
+            sb.append("**The most common cause** is a Bash tool call that polls in a `while` ");
+            sb.append("or `until` loop and never terminates.  In particular: `pgrep -f <pattern>` ");
+            sb.append("matches the polling command's own command line when the pattern appears ");
+            sb.append("anywhere in that command line, so the loop sees its own PID forever and ");
+            sb.append("never exits.  Curling an invented HTTP endpoint in a bash loop has the ");
+            sb.append("same effect.\n\n");
+            sb.append("**Do NOT** poll for completion via shell loops.  To wait on an MCP-managed ");
+            sb.append("run (build validator, test runner, profile analyzer), call the tool's ");
+            sb.append("`get_*_status` method directly and re-call it after a brief pause if ");
+            sb.append("the run is still in progress.  Do not wrap status polling in a bash ");
+            sb.append("`while`/`until`/`for` loop under any circumstances.\n\n");
+            sb.append("If you genuinely need to wait on a local subprocess, give the wait ");
+            sb.append("command a hard upper bound (e.g. `timeout 60 ...`), and never use ");
+            sb.append("`pgrep -f` with a pattern that appears in the command being executed.\n\n");
+            sb.append("Resume the user's task below.  Prior progress on this branch is ");
+            sb.append("preserved in the git history; check `workstream_context` to see what ");
+            sb.append("has already been done before duplicating work.\n\n");
             sb.append("---\n\n");
         }
 
@@ -407,6 +471,31 @@ public class InstructionPromptBuilder {
             sb.append("Permission denials should never happen in this environment. ");
             sb.append("Reporting them is critical for diagnosing configuration issues.\n\n");
 
+            sb.append("## Using MCP Tools (ar-build-validator, ar-test-runner, ar-consultant, ...)\n");
+            sb.append("Every `mcp__*` tool listed in your allowed-tools list is a stdio MCP tool ");
+            sb.append("spawned as a local subprocess. None of them expose an HTTP endpoint. ");
+            sb.append("There is NO `http://localhost:<port>/api/build-validator/...`, ");
+            sb.append("`/api/test-runner/...`, or similar URL anywhere in this environment. ");
+            sb.append("Attempting to curl such a URL will either fail immediately or, if the port ");
+            sb.append("happens to be in use by another service, return junk that your code cannot parse.\n\n");
+
+            sb.append("Specifically: when an MCP tool like `mcp__ar-build-validator__start_validation` ");
+            sb.append("returns a `run_id`, poll for its completion by calling ");
+            sb.append("`mcp__ar-build-validator__get_validation_status` with that `run_id`. ");
+            sb.append("Do the same for `mcp__ar-test-runner__start_test_run` + ");
+            sb.append("`mcp__ar-test-runner__get_run_status`. NEVER shell out to `curl` to poll these ");
+            sb.append("services. NEVER write a bash `until` loop over curl to wait for a run to ");
+            sb.append("finish — it will never finish because the URL you invented does not exist, ");
+            sb.append("and your session will hang until the turn budget is exhausted. ");
+            sb.append("If the MCP status call reports `running`, call it again after a brief pause; ");
+            sb.append("call it directly, not through a shell loop.\n\n");
+
+            sb.append("More broadly: every capability you have is exposed through either the built-in ");
+            sb.append("tools (Read, Edit, Write, Bash, Glob, Grep) or the `mcp__*` tools in the list ");
+            sb.append("you were given. If you find yourself reaching for `curl` to talk to a service ");
+            sb.append("named in that list, stop — you are about to invent an API that does not exist. ");
+            sb.append("Use the MCP tool instead.\n\n");
+
             if (enforceChanges) {
                 // When changes are enforced, replace the permissive sections with
                 // a strict message that removes the "no changes needed" escape hatch.
@@ -444,6 +533,20 @@ public class InstructionPromptBuilder {
             sb.append("You can read and respond to GitHub PR review comments using ");
             sb.append("github_pr_find, github_pr_review_comments, github_pr_conversation, and github_pr_reply. ");
             sb.append("Use these to check for code review feedback and address it.\n\n");
+
+            sb.append("## When to Post PR Replies\n");
+            sb.append("Do NOT post a `github_pr_reply` claiming you have fixed a review comment ");
+            sb.append("until the fix is actually landed. 'Landed' means: the code change is on ");
+            sb.append("disk AND the relevant verification has succeeded (compile clean and, where ");
+            sb.append("applicable, the affected tests or the build validator passed). You will not ");
+            sb.append("see the commit or the push in your working copy — the harness performs both ");
+            sb.append("AFTER you exit — but your session will only lead to a real commit if you ");
+            sb.append("exit without the session hanging, crashing, or being killed. ");
+            sb.append("A reply that says 'I fixed X' that was posted while the claude process then ");
+            sb.append("got stuck in a polling loop is a lie to the reviewer: no commit is ever made.\n\n");
+            sb.append("Rule of thumb: edit first, verify second, reply LAST — immediately before ");
+            sb.append("you exit. If the verification fails, either fix it or reply honestly that the ");
+            sb.append("attempted fix did not pass checks. Never reply based on your intent alone.\n\n");
         }
 
         // Test integrity policy -only when protectTestFiles is enabled
@@ -536,10 +639,10 @@ public class InstructionPromptBuilder {
             sb.append("treat them as intentional progress, not as problems to undo.\n\n");
 
             sb.append("### Catching Up on Prior Work\n");
-            sb.append("Before making any changes, you MUST use the memory_branch_context tool ");
+            sb.append("Before making any changes, you MUST use the workstream_context tool ");
             sb.append("to understand what has already been done on this branch:\n");
             sb.append("```\n");
-            sb.append("memory_branch_context branch:\"").append(targetBranch).append("\"\n");
+            sb.append("workstream_context branch:\"").append(targetBranch).append("\"\n");
             sb.append("```\n");
             sb.append("This will show you memories from prior agent sessions and the ");
             sb.append("commit timeline.\n\n");
@@ -565,7 +668,7 @@ public class InstructionPromptBuilder {
             sb.append("This is NEVER the right approach. If CI fails after your changes:\n");
             sb.append("- **DO NOT** simply revert the changes. That undoes prior agent work.\n");
             sb.append("- **DO** investigate the actual failure and fix it properly.\n");
-            sb.append("- **DO** check `memory_branch_context` to see if this same pattern ");
+            sb.append("- **DO** check `workstream_context` to see if this same pattern ");
             sb.append("has already occurred in prior sessions.\n");
             sb.append("- **DO** store a memory describing the CI failure and your ");
             sb.append("analysis so the next session doesn't repeat the same mistake.\n");
@@ -573,6 +676,30 @@ public class InstructionPromptBuilder {
             sb.append("on the branch from prior sessions), investigate whether it's a ");
             sb.append("real bug that needs fixing vs. an environment/configuration issue.\n\n");
         }
+
+        // Test verification reminder -- always included for coding tasks
+        sb.append("## CRITICAL: Run Targeted Tests Before Declaring Work Complete\n");
+        sb.append("The full project test suite takes hours — do NOT run it. For every code ");
+        sb.append("file you modify or create, identify the tests that directly exercise it ");
+        sb.append("and run THOSE before declaring done.\n\n");
+        sb.append("Concrete heuristic:\n");
+        sb.append("1. For each modified Java file `Foo.java`, look for `FooTest.java`, ");
+        sb.append("`FooTests.java`, or `FooIT.java` in the same module's `src/test/java` ");
+        sb.append("and run them.\n");
+        sb.append("2. Look for any tests in the same package that import the file you ");
+        sb.append("changed and run those too.\n");
+        sb.append("3. If you split or moved classes, the original tests still apply to the ");
+        sb.append("split pieces — find them and run them.\n");
+        sb.append("4. For Python changes in `tools/`, run the corresponding pytest module ");
+        sb.append("(e.g., `python -m pytest tools/mcp/manager/test_server.py`).\n");
+        sb.append("5. Use `mcp__ar-test-runner__start_test_run` with `test_classes` to run ");
+        sb.append("a specific class quickly. Use the full module run only when you've ");
+        sb.append("touched many files in one module.\n\n");
+        sb.append("Do NOT use `-DskipTests` to declare a refactor or bug fix complete. ");
+        sb.append("`-DskipTests` is only for the initial compile-check pass. ");
+        sb.append("You MUST run the relevant tests before declaring work complete.\n\n");
+        sb.append("If a test fails, fix the underlying cause. Do NOT add `@Disabled`, ");
+        sb.append("comment out assertions, or weaken tests to make them green.\n\n");
 
         // Budget and turn limits
         if (maxBudgetUsd > 0 || maxTurns > 0) {

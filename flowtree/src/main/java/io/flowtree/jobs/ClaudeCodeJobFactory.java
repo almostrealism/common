@@ -61,6 +61,21 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     /** Maximum spend budget per job in US dollars. */
     private double maxBudgetUsd = 10.0;
 
+    /**
+     * Model alias or full model name propagated to jobs created by this
+     * factory.  {@code null} leaves the Claude Code {@code --model} flag off
+     * so the CLI uses its own default.
+     */
+    private String model;
+
+    /**
+     * Effort/thinking level propagated to jobs created by this factory.
+     * {@code null} leaves the Claude Code {@code --effort} flag off so the
+     * CLI uses its own default.  Must be one of
+     * {@link ClaudeCodeJob#VALID_EFFORT_LEVELS} when set.
+     */
+    private String effort;
+
     /** HTTP base URL of the ar-manager service, or {@code null} if not configured. */
     private String arManagerUrl;
 
@@ -83,6 +98,32 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
      * {@code pom.xml} files.
      */
     private boolean enforceMavenDependencies;
+
+    /**
+     * When {@code true} (the default), jobs created by this factory activate the
+     * organizational placement rule, prompting the agent to verify that new files
+     * are placed at the appropriate level of the module hierarchy.
+     */
+    private boolean enforceOrganizationalPlacement = true;
+
+    /**
+     * Shell command run after the agent's primary work to verify the result.
+     * Propagated to jobs via {@link ClaudeCodeJob#setPostCompletionCommand(String)}.
+     * Empty or {@code null} disables the post-completion check.
+     */
+    private String postCompletionCommand;
+
+    /**
+     * Working directory for the post-completion command.
+     * {@code null} means the job's working directory is used.
+     */
+    private String postCompletionWorkingDir;
+
+    /**
+     * Timeout in seconds for the post-completion command.
+     * Defaults to {@link PostCompletionCommandRule#DEFAULT_TIMEOUT_SECONDS}.
+     */
+    private int postCompletionTimeoutSeconds = PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS;
 
     /**
      * Default constructor for deserialization.
@@ -287,6 +328,75 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     public void setMaxBudgetUsd(double maxBudgetUsd) {
         this.maxBudgetUsd = maxBudgetUsd;
         set("maxBudget", String.valueOf(maxBudgetUsd));
+    }
+
+    /**
+     * Returns the Claude Code model for jobs created by this factory.
+     *
+     * @return the model alias or full name, or {@code null} to use the CLI default
+     */
+    public String getModel() {
+        return model;
+    }
+
+    /**
+     * Sets the Claude Code model for jobs created by this factory.  Passed to
+     * each created job via {@link ClaudeCodeJob#setModel(String)}.  The value
+     * is validated immediately against {@link ClaudeCodeJob#VALID_MODELS} so
+     * misconfiguration fails at the caller rather than silently at dispatch.
+     *
+     * @param model a value from {@link ClaudeCodeJob#VALID_MODELS}, or
+     *              {@code null}/empty to use the CLI default
+     * @throws IllegalArgumentException if {@code model} is non-empty and
+     *                                  not a recognised identifier
+     */
+    public void setModel(String model) {
+        if (model == null || model.isEmpty()) {
+            this.model = null;
+            set("model", null);
+            return;
+        }
+        if (!ClaudeCodeJob.VALID_MODELS.contains(model)) {
+            throw new IllegalArgumentException("Invalid model '" + model
+                    + "'. Must be one of " + ClaudeCodeJob.VALID_MODELS);
+        }
+        this.model = model;
+        set("model", model);
+    }
+
+    /**
+     * Returns the effort/thinking level for jobs created by this factory.
+     *
+     * @return one of {@link ClaudeCodeJob#VALID_EFFORT_LEVELS}, or
+     *         {@code null} to use the CLI default
+     */
+    public String getEffort() {
+        return effort;
+    }
+
+    /**
+     * Sets the effort/thinking level for jobs created by this factory.  The
+     * value is validated immediately against
+     * {@link ClaudeCodeJob#VALID_EFFORT_LEVELS} so misconfiguration fails at
+     * the caller rather than silently at dispatch.
+     *
+     * @param effort one of {@link ClaudeCodeJob#VALID_EFFORT_LEVELS}, or
+     *               {@code null}/empty to use the CLI default
+     * @throws IllegalArgumentException if {@code effort} is not valid
+     */
+    public void setEffort(String effort) {
+        if (effort == null || effort.isEmpty()) {
+            this.effort = null;
+            set("effort", null);
+            return;
+        }
+        if (!ClaudeCodeJob.VALID_EFFORT_LEVELS.contains(effort)) {
+            throw new IllegalArgumentException(
+                    "Invalid effort level '" + effort + "'. Must be one of "
+                    + ClaudeCodeJob.VALID_EFFORT_LEVELS);
+        }
+        this.effort = effort;
+        set("effort", effort);
     }
 
     /**
@@ -524,6 +634,109 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     }
 
     /**
+     * Returns whether jobs created by this factory activate the organizational
+     * placement rule.
+     *
+     * @return {@code true} if placement enforcement is enabled (the default)
+     */
+    public boolean isEnforceOrganizationalPlacement() {
+        return enforceOrganizationalPlacement;
+    }
+
+    /**
+     * Sets whether jobs created by this factory activate the organizational
+     * placement rule.
+     *
+     * @param enforceOrganizationalPlacement {@code false} to disable placement enforcement
+     */
+    public void setEnforceOrganizationalPlacement(boolean enforceOrganizationalPlacement) {
+        this.enforceOrganizationalPlacement = enforceOrganizationalPlacement;
+        set("enforceOrgPlacement", String.valueOf(enforceOrganizationalPlacement));
+    }
+
+    /**
+     * Returns the post-completion command for jobs created by this factory.
+     *
+     * <p>When non-empty, the command is run after the agent's primary work.
+     * A non-zero exit triggers a correction session. See
+     * {@link ClaudeCodeJob#getPostCompletionCommand()} for examples.</p>
+     *
+     * @return the command string, or {@code null}/empty if disabled
+     */
+    public String getPostCompletionCommand() {
+        return postCompletionCommand;
+    }
+
+    /**
+     * Sets the post-completion command for jobs created by this factory.
+     *
+     * <p>When the command is cleared (set to {@code null} or empty), the
+     * dependent {@code postCmdDir} and {@code postCmdTimeout} property keys
+     * are also cleared so that a serialize/deserialize round-trip cannot
+     * silently re-enable the feature with stale dependent values.</p>
+     *
+     * @param postCompletionCommand the shell command, or {@code null}/empty to disable
+     */
+    public void setPostCompletionCommand(String postCompletionCommand) {
+        this.postCompletionCommand = postCompletionCommand;
+        if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
+            set("postCmd", GitManagedJob.base64Encode(postCompletionCommand));
+        } else {
+            set("postCmd", null);
+            set("postCmdDir", null);
+            set("postCmdTimeout", null);
+            this.postCompletionWorkingDir = null;
+            this.postCompletionTimeoutSeconds = PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS;
+        }
+    }
+
+    /**
+     * Returns the working directory for the post-completion command.
+     *
+     * @return the directory path, or {@code null} to use the job's working directory
+     */
+    public String getPostCompletionWorkingDir() {
+        return postCompletionWorkingDir;
+    }
+
+    /**
+     * Sets the working directory for the post-completion command.
+     *
+     * <p>Passing {@code null} clears the corresponding {@code postCmdDir}
+     * property key so that a serialize/deserialize round-trip does not
+     * silently re-apply a previously-set working directory.</p>
+     *
+     * @param postCompletionWorkingDir the path, or {@code null} for the job's working dir
+     */
+    public void setPostCompletionWorkingDir(String postCompletionWorkingDir) {
+        this.postCompletionWorkingDir = postCompletionWorkingDir;
+        if (postCompletionWorkingDir != null) {
+            set("postCmdDir", GitManagedJob.base64Encode(postCompletionWorkingDir));
+        } else {
+            set("postCmdDir", null);
+        }
+    }
+
+    /**
+     * Returns the timeout in seconds for the post-completion command.
+     *
+     * @return timeout seconds; defaults to {@link PostCompletionCommandRule#DEFAULT_TIMEOUT_SECONDS}
+     */
+    public int getPostCompletionTimeoutSeconds() {
+        return postCompletionTimeoutSeconds;
+    }
+
+    /**
+     * Sets the timeout in seconds for the post-completion command.
+     *
+     * @param postCompletionTimeoutSeconds timeout in seconds (must be positive)
+     */
+    public void setPostCompletionTimeoutSeconds(int postCompletionTimeoutSeconds) {
+        this.postCompletionTimeoutSeconds = postCompletionTimeoutSeconds;
+        set("postCmdTimeout", String.valueOf(postCompletionTimeoutSeconds));
+    }
+
+    /**
      * Returns whether a pull request should be automatically created
      * upon successful job completion.
      */
@@ -627,6 +840,12 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         job.setWorkingDirectory(workingDirectory);
         job.setMaxTurns(maxTurns);
         job.setMaxBudgetUsd(maxBudgetUsd);
+        if (model != null) {
+            job.setModel(model);
+        }
+        if (effort != null) {
+            job.setEffort(effort);
+        }
 
         String desc = getDescription();
         if (desc != null) {
@@ -673,6 +892,16 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         job.setEnforceChanges(isEnforceChanges());
         job.setDeduplicationMode(deduplicationMode);
         job.setEnforceMavenDependencies(enforceMavenDependencies);
+        job.setEnforceOrganizationalPlacement(enforceOrganizationalPlacement);
+        if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
+            job.setPostCompletionCommand(postCompletionCommand);
+            if (postCompletionWorkingDir != null) {
+                job.setPostCompletionWorkingDir(postCompletionWorkingDir);
+            }
+            if (postCompletionTimeoutSeconds != PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS) {
+                job.setPostCompletionTimeoutSeconds(postCompletionTimeoutSeconds);
+            }
+        }
 
         String pyReqs = getPythonRequirements();
         if (pyReqs != null) {
@@ -740,6 +969,12 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
             case "maxBudget":
                 this.maxBudgetUsd = Double.parseDouble(value);
                 break;
+            case "model":
+                this.model = (value == null || value.isEmpty()) ? null : value;
+                break;
+            case "effort":
+                this.effort = (value == null || value.isEmpty()) ? null : value;
+                break;
             case "arManagerUrl":
                 this.arManagerUrl = GitManagedJob.base64Decode(value);
                 break;
@@ -751,14 +986,46 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
                 break;
             case "enforceChanges":
                 break;
+            default:
+                setEnforcementFlag(key, value);
+        }
+    }
+
+    /**
+     * Handles enforcement-flag key/value pairs, updating the corresponding local fields
+     * so that {@link #nextJob()} can propagate them to created jobs.
+     *
+     * <p>Called from {@link #set(String, String)} for keys not handled by the main switch.
+     * Uses early return rather than break so the switch bodies here are textually distinct
+     * from the equivalent cases in {@link ClaudeCodeJob#set(String, String)}.</p>
+     *
+     * @param key   the property key
+     * @param value the property value
+     */
+    private void setEnforcementFlag(String key, String value) {
+        switch (key) {
             case "dedupMode":
                 this.deduplicationMode = value;
-                break;
+                return;
             case "enforceMavenDeps":
                 this.enforceMavenDependencies = Boolean.parseBoolean(value);
-                break;
+                return;
+            case "enforceOrgPlacement":
+                this.enforceOrganizationalPlacement = Boolean.parseBoolean(value);
+                return;
+            case "postCmd":
+                this.postCompletionCommand = GitManagedJob.base64Decode(value);
+                return;
+            case "postCmdDir":
+                this.postCompletionWorkingDir = GitManagedJob.base64Decode(value);
+                return;
+            case "postCmdTimeout":
+                this.postCompletionTimeoutSeconds = (value == null)
+                        ? PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS
+                        : Integer.parseInt(value);
+                return;
             default:
-                break;
+                // Unknown key; already stored in properties map by AbstractJobFactory.set().
         }
     }
 

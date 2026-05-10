@@ -40,7 +40,7 @@ public class ChordProgressionManagerTest extends TestSuiteBase {
 		IntStream.range(0, 10).forEach(i -> {
 			genome.assignTo(new PackedCollection(params).randFill());
 			progression.refreshParameters();
-			System.out.println(progression.getRegionString());
+			log(String.valueOf(progression.getRegionString()));
 		});
 	}
 }

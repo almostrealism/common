@@ -79,7 +79,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 
 				score /= Math.sqrt(headSize);
 
-				System.out.println("AttentionTests[" + t + "]: " + score + " vs " + att.valueAt(h, t));
+				log("AttentionTests[" + t + "]: " + score + " vs " + att.valueAt(h, t));
 				assertEquals(score, att.valueAt(h, t));
 			}
 		}
@@ -132,7 +132,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 					vo += att.valueAt(h, t) * values.valueAt(t, h, i);
 				}
 
-				System.out.println("AttentionTests[" + i + "]: " + vo + " vs " + out.valueAt(h * headSize + i));
+				log("AttentionTests[" + i + "]: " + vo + " vs " + out.valueAt(h * headSize + i));
 				assertEquals(vo, out.valueAt(h * headSize + i));
 			}
 		}
@@ -226,7 +226,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -293,7 +293,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test inputs and expected output
 		PackedCollection q = referenceData.get("q");
@@ -409,7 +409,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract input and expected output
 		PackedCollection referenceInput = referenceData.get("input");
@@ -418,7 +418,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		assertNotNull("Reference input not found", referenceInput);
 		assertNotNull("Expected output not found", expectedOutput);
 
-		System.out.println("Reference input total is " + referenceInput.doubleStream().map(Math::abs).sum());
+		log("Reference input total is " + referenceInput.doubleStream().map(Math::abs).sum());
 
 		// Load all weights
 		PackedCollection toQKV = referenceData.get("model.model.transformer.layers.0.self_attn.to_qkv.weight");
@@ -498,7 +498,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -606,7 +606,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -686,7 +686,7 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		// Load reference data using StateDictionary
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");

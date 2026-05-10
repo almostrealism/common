@@ -69,7 +69,7 @@ public class SkyTntWeightsTest extends TestSuiteBase implements ConsoleFeatures 
 	 * Verify that all expected weight keys are present in the loaded dictionary.
 	 * Checks top-level tensors and a sample from every transformer layer.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void testWeightKeysPresent() throws IOException {
 		Assume.assumeTrue("SkyTNT weights not found at " + WEIGHTS_DIR,
@@ -119,7 +119,7 @@ public class SkyTntWeightsTest extends TestSuiteBase implements ConsoleFeatures 
 	 * Verify that key tensors have the correct shapes as defined in planning doc §4.2.
 	 * Checks embeddings, norms, and a full set of layer 0 weights for both transformers.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void testWeightShapes() throws IOException {
 		Assume.assumeTrue("SkyTNT weights not found at " + WEIGHTS_DIR,

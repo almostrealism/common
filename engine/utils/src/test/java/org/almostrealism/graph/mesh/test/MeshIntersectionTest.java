@@ -82,24 +82,24 @@ public class MeshIntersectionTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void normal1() {
 		Vector normal = new Vector(normal(data1).get().evaluate(), 0);
-		System.out.println("normal = " + normal);
+		log("normal = " + normal);
 	}
 
 	@Test(timeout = 10000)
 	public void data1() {
-		System.out.println(def(data1).get().evaluate());
+		log(String.valueOf(def(data1).get().evaluate()));
 
 		CollectionProducer h = TriangleIntersectAt.h(def(data1), direction1);
-		System.out.println("h = " + h.get().evaluate());
+		log("h = " + h.get().evaluate());
 
 		CollectionProducer f = TriangleIntersectAt.f(abc(data1), h);
-		System.out.println("f = " + f.get().evaluate().toDouble());
+		log("f = " + f.get().evaluate().toDouble());
 
 		Producer<PackedCollection> u = TriangleIntersectAt.u(
 												TriangleIntersectAt.s(jkl(data1), origin1),
 												TriangleIntersectAt.h(def(data1), direction1),
 												f.pow(-1.0));
-		System.out.println("u = " + u.get().evaluate().toDouble());
+		log("u = " + u.get().evaluate().toDouble());
 	}
 
 	@Test(timeout = 10000)
@@ -109,30 +109,30 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		Producer<PackedCollection> def = def(data2);
 		Producer<PackedCollection> jkl = jkl(data2);
 
-		System.out.println("abc = " + abc.get().evaluate());
-		System.out.println("def = " + def.get().evaluate());
-		System.out.println("jkl = " + jkl.get().evaluate());
+		log("abc = " + abc.get().evaluate());
+		log("def = " + def.get().evaluate());
+		log("jkl = " + jkl.get().evaluate());
 
 		CollectionProducer h = TriangleIntersectAt.h(def(data2), direction2);
-		System.out.println("h = " + h.get().evaluate());
+		log("h = " + h.get().evaluate());
 
 		CollectionProducer f = TriangleIntersectAt.f(abc(data2), h);
-		System.out.println("f = " + f.get().evaluate().toDouble());
+		log("f = " + f.get().evaluate().toDouble());
 
 		Producer<PackedCollection> u = TriangleIntersectAt.u(
 				TriangleIntersectAt.s(jkl(data2), origin2),
 				TriangleIntersectAt.h(def(data2), direction2),
 				f.pow(-1.0));
-		System.out.println("u = " + u.get().evaluate().toDouble());
+		log("u = " + u.get().evaluate().toDouble());
 
 		Producer<PackedCollection> s = TriangleIntersectAt.s(jkl(data2), origin2);
-		System.out.println("s = " + s.get().evaluate());
+		log("s = " + s.get().evaluate());
 
 		CollectionProducer q = TriangleIntersectAt.q(abc(data2), s);
-		System.out.println("q = " + q.get().evaluate());
+		log("q = " + q.get().evaluate());
 
 		Producer<PackedCollection> v = TriangleIntersectAt.v(direction2, f.pow(-1.0), q);
-		System.out.println("v = " + v.get().evaluate().toDouble());
+		log("v = " + v.get().evaluate().toDouble());
 	}
 
 	@Test(timeout = 10000)
@@ -148,7 +148,7 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		PackedCollection distances = new PackedCollection(shape(1, 1).traverse(1));
 		Producer<Ray> ray = (Producer) ray(origin1, direction1);
 		data1.evaluateIntersectionKernelScalar(ray.get(), distances, new MemoryBank[0]);
-		System.out.println("distance = " + distances.get(0).toDouble());
+		log("distance = " + distances.get(0).toDouble());
 		assertEquals(1.0, distances.get(0).toDouble());
 	}
 
@@ -156,7 +156,7 @@ public class MeshIntersectionTest extends TestSuiteBase {
 	public void intersectAt2() {
 		double distance = intersection().get().evaluate(
 				data2.get(0).traverse(0), origin2.get().evaluate(), direction2.get().evaluate()).toDouble();
-		System.out.println("distance = " + distance);
+		log("distance = " + distance);
 		assertEquals(1.0, distance);
 	}
 
@@ -165,7 +165,7 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		PackedCollection distances = new PackedCollection(shape(1, 1).traverse(1));
 		CollectionProducer ray = ray(origin2, direction2);
 		data2.evaluateIntersectionKernelScalar((Evaluable) ray.get(), distances, new MemoryBank[0]);
-		System.out.println("distance = " + distances.get(0).toDouble());
+		log("distance = " + distances.get(0).toDouble());
 		assertEquals(1.0, distances.get(0));
 	}
 

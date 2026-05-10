@@ -37,7 +37,7 @@ import java.util.Optional;
  *
  * // Get metadata only
  * AssetGroupInfo info = provider.getAssetGroupInfo("llama-3-8b");
- * System.out.println("Total size: " + info.getTotalSize() + " bytes");
+ * log("Total size: " + info.getTotalSize() + " bytes");
  * }</pre>
  *
  * @see AssetGroup

@@ -89,7 +89,7 @@ public class RayTest extends TestSuiteBase {
 		Evaluable<Ray> ev = comp.get();
 
 		Ray r = ev.evaluate();
-		System.out.println(r);
+		log(String.valueOf(r));
 
 		double[] d = r.toArray();
 		assertEquals(1.0, d[0]);
@@ -222,19 +222,19 @@ public class RayTest extends TestSuiteBase {
 		// Test oDoto (origin dot origin) = 0^2 + 0^2 + 3^2 = 9
 		PackedCollection oDotoResult = new PackedCollection(shape(1, 1).traverse(1));
 		oDoto(ray).get().into(oDotoResult.each()).evaluate(singleRay);
-		System.out.println("oDoto: " + oDotoResult.valueAt(0, 0) + " (expected 9.0)");
+		log("oDoto: " + oDotoResult.valueAt(0, 0) + " (expected 9.0)");
 		Assert.assertEquals(9.0, oDotoResult.valueAt(0, 0), 0.01);
 
 		// Test dDotd (direction dot direction) = 0^2 + 0^2 + (-1)^2 = 1
 		PackedCollection dDotdResult = new PackedCollection(shape(1, 1).traverse(1));
 		dDotd(ray).get().into(dDotdResult.each()).evaluate(singleRay);
-		System.out.println("dDotd: " + dDotdResult.valueAt(0, 0) + " (expected 1.0)");
+		log("dDotd: " + dDotdResult.valueAt(0, 0) + " (expected 1.0)");
 		Assert.assertEquals(1.0, dDotdResult.valueAt(0, 0), 0.01);
 
 		// Test oDotd (origin dot direction) = 0*0 + 0*0 + 3*(-1) = -3
 		PackedCollection oDotdResult = new PackedCollection(shape(1, 1).traverse(1));
 		oDotd(ray).get().into(oDotdResult.each()).evaluate(singleRay);
-		System.out.println("oDotd: " + oDotdResult.valueAt(0, 0) + " (expected -3.0)");
+		log("oDotd: " + oDotdResult.valueAt(0, 0) + " (expected -3.0)");
 		Assert.assertEquals(-3.0, oDotdResult.valueAt(0, 0), 0.01);
 	}
 }

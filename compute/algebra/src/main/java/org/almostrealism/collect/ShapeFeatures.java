@@ -130,7 +130,7 @@ public interface ShapeFeatures {
 			return ((Shape) t).getShape();
 		} else {
 			if (enableShapelessWarning) {
-				System.out.println("WARN: " + t.getClass() + " does not have a Shape");
+				console.warn(t.getClass() + " does not have a Shape", null);
 			}
 
 			return shape(1);

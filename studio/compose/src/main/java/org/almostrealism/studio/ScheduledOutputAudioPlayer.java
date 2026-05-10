@@ -23,6 +23,10 @@ import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.graph.TimeCell;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.function.DoubleConsumer;
 
 /**
@@ -74,8 +78,11 @@ public class ScheduledOutputAudioPlayer extends AudioPlayerBase {
 	/** The underlying buffered audio player that drives playback. */
 	private final BufferedAudioPlayer player;
 
-	/** The scheduler responsible for timing and delivering audio batches to the output. */
+	/** The primary scheduler responsible for timing and delivering audio batches to the output. */
 	private final BufferedOutputScheduler scheduler;
+
+	/** Additional schedulers for multi-device output groups. */
+	private final List<BufferedOutputScheduler> additionalSchedulers;
 
 	/**
 	 * Creates a new scheduled output player wrapping the specified player and
@@ -89,6 +96,7 @@ public class ScheduledOutputAudioPlayer extends AudioPlayerBase {
 									  BufferedAudio outputLine,
 									  OutputLine recordingLine) {
 		this.player = player;
+		this.additionalSchedulers = new ArrayList<>();
 		if (outputLine instanceof AudioLine) {
 			this.scheduler = player.deliver((AudioLine) outputLine, recordingLine);
 		} else {
@@ -97,10 +105,47 @@ public class ScheduledOutputAudioPlayer extends AudioPlayerBase {
 	}
 
 	/**
-	 * Starts the scheduler. This must be called before audio can be played.
+	 * Creates a new scheduled output player with pre-built schedulers for
+	 * multi-device output groups. The first scheduler in the map is used
+	 * as the primary scheduler; the rest are registered as additional.
+	 *
+	 * @param player     the underlying audio player
+	 * @param schedulers map from group name to scheduler (insertion-ordered, must not be empty)
+	 * @throws IllegalArgumentException if schedulers is null or empty
+	 */
+	public ScheduledOutputAudioPlayer(BufferedAudioPlayer player,
+									  Map<String, BufferedOutputScheduler> schedulers) {
+		if (schedulers == null || schedulers.isEmpty()) {
+			throw new IllegalArgumentException(
+					"schedulers must not be null or empty");
+		}
+		this.player = player;
+		this.additionalSchedulers = new ArrayList<>();
+
+		Iterator<BufferedOutputScheduler> iterator = schedulers.values().iterator();
+		this.scheduler = iterator.next();
+		iterator.forEachRemaining(this.additionalSchedulers::add);
+	}
+
+	/**
+	 * Registers an additional scheduler for a multi-device output group.
+	 * The scheduler will be managed alongside the primary scheduler for
+	 * start, stop, play, and suspend operations.
+	 *
+	 * @param groupScheduler the scheduler to add
+	 */
+	public void addScheduler(BufferedOutputScheduler groupScheduler) {
+		additionalSchedulers.add(groupScheduler);
+	}
+
+	/**
+	 * Starts all schedulers. This must be called before audio can be played.
 	 */
 	public void start() {
 		scheduler.start();
+		for (BufferedOutputScheduler s : additionalSchedulers) {
+			s.start();
+		}
 	}
 
 	/**
@@ -124,7 +169,7 @@ public class ScheduledOutputAudioPlayer extends AudioPlayerBase {
 	// ========== AudioPlayer Implementation ==========
 
 	/**
-	 * Starts or resumes playback. The scheduler is unsuspended before the
+	 * Starts or resumes playback. All schedulers are unsuspended before the
 	 * underlying player's play method is called.
 	 *
 	 * @return true if playback started successfully
@@ -132,12 +177,15 @@ public class ScheduledOutputAudioPlayer extends AudioPlayerBase {
 	@Override
 	public boolean play() {
 		scheduler.unsuspend();
+		for (BufferedOutputScheduler s : additionalSchedulers) {
+			s.unsuspend();
+		}
 		return player.play();
 	}
 
 	/**
 	 * Stops playback. The underlying player's stop method is called first
-	 * (to zero levels), then the scheduler is suspended to stop the output line.
+	 * (to zero levels), then all schedulers are suspended to stop the output lines.
 	 *
 	 * @return true if playback stopped successfully
 	 */
@@ -145,6 +193,9 @@ public class ScheduledOutputAudioPlayer extends AudioPlayerBase {
 	public boolean stop() {
 		boolean result = player.stop();
 		scheduler.suspend();
+		for (BufferedOutputScheduler s : additionalSchedulers) {
+			s.suspend();
+		}
 		return result;
 	}
 
@@ -191,6 +242,9 @@ public class ScheduledOutputAudioPlayer extends AudioPlayerBase {
 	@Override
 	public void destroy() {
 		scheduler.stop();
+		for (BufferedOutputScheduler s : additionalSchedulers) {
+			s.stop();
+		}
 		player.destroy();
 	}
 

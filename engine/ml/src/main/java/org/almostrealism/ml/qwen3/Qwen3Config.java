@@ -1,5 +1,7 @@
 package org.almostrealism.ml.qwen3;
 
+import org.almostrealism.ml.TransformerConfig;
+
 import java.nio.ByteBuffer;
 
 /**
@@ -54,35 +56,10 @@ import java.nio.ByteBuffer;
  * }</pre>
  *
  * @see Qwen3
+ * @see TransformerConfig
  * @author Michael Murray
  */
-public class Qwen3Config {
-	/** Transformer embedding dimension */
-	public final int dim;
-
-	/** Feed-forward network hidden layer dimension */
-	public final int hiddenDim;
-
-	/** Number of transformer layers */
-	public final int layerCount;
-
-	/** Number of query attention heads */
-	public final int headCount;
-
-	/** Number of key/value attention heads (for Grouped Query Attention) */
-	public final int kvHeadCount;
-
-	/** Vocabulary size (byte-level BPE: 151,669) */
-	public final int vocabSize;
-
-	/** Maximum sequence length (context window) */
-	public final int seqLen;
-
-	/** Whether to share weights between input embeddings and output projection */
-	public final boolean sharedWeights;
-
-	/** Size of each attention head (computed as dim / headCount) */
-	public final int headSize;
+public class Qwen3Config extends TransformerConfig {
 
 	/** RoPE base frequency for positional embeddings (1M for extended context) */
 	public final double ropeTheta;
@@ -102,22 +79,7 @@ public class Qwen3Config {
 	 * - (optional) double: ropeTheta
 	 */
 	public Qwen3Config(ByteBuffer buffer) {
-		this.dim = buffer.getInt();
-		this.hiddenDim = buffer.getInt();
-		this.layerCount = buffer.getInt();
-		this.headCount = buffer.getInt();
-		this.kvHeadCount = buffer.getInt();
-
-		int vocabSize = buffer.getInt();
-		this.vocabSize = Math.abs(vocabSize);
-		this.seqLen = buffer.getInt();
-
-		// Shared weights indicated by positive vocabSize
-		this.sharedWeights = vocabSize > 0;
-
-		// Compute derived values
-		this.headSize = dim / headCount;
-
+		super(buffer);
 		// RoPE theta - default to 1M for Qwen3, can be overridden in binary format
 		if (buffer.remaining() >= 8) {
 			this.ropeTheta = buffer.getDouble();
@@ -142,15 +104,7 @@ public class Qwen3Config {
 	public Qwen3Config(int dim, int hiddenDim, int layerCount, int headCount,
 	                   int kvHeadCount, int vocabSize, int seqLen,
 	                   boolean sharedWeights, double ropeTheta) {
-		this.dim = dim;
-		this.hiddenDim = hiddenDim;
-		this.layerCount = layerCount;
-		this.headCount = headCount;
-		this.kvHeadCount = kvHeadCount;
-		this.vocabSize = vocabSize;
-		this.seqLen = seqLen;
-		this.sharedWeights = sharedWeights;
-		this.headSize = dim / headCount;
+		super(dim, hiddenDim, layerCount, headCount, kvHeadCount, vocabSize, seqLen, sharedWeights);
 		this.ropeTheta = ropeTheta;
 	}
 

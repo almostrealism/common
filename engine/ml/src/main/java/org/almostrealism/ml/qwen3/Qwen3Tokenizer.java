@@ -1,5 +1,6 @@
 package org.almostrealism.ml.qwen3;
 
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.ml.tokenization.ByteLevelBPETokenizer;
 import org.almostrealism.ml.tokenization.RegexPreTokenizer;
 
@@ -70,7 +71,7 @@ import java.util.Map;
  * @see Qwen3
  * @author Michael Murray
  */
-public class Qwen3Tokenizer extends ByteLevelBPETokenizer {
+public class Qwen3Tokenizer extends ByteLevelBPETokenizer implements ConsoleFeatures {
 	/** Beginning-of-sequence token ID ({@code <|endoftext|>}). */
 	public static final int BOS_TOKEN = 151643;
 
@@ -120,7 +121,7 @@ public class Qwen3Tokenizer extends ByteLevelBPETokenizer {
 				vocabMap.put(vocab[i], i);
 			}
 
-			System.out.println("Loaded Qwen3 tokenizer: " + vocabSize + " tokens");
+			log("Loaded Qwen3 tokenizer: " + vocabSize + " tokens");
 		}
 
 		// Load BPE merges from merges.txt
@@ -191,7 +192,7 @@ public class Qwen3Tokenizer extends ByteLevelBPETokenizer {
 			}
 		}
 
-		System.out.println("Loaded " + loadedCount + " BPE merges from merges.txt");
+		log("Loaded " + loadedCount + " BPE merges from merges.txt");
 	}
 
 	/**

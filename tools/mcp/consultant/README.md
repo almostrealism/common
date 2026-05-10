@@ -197,7 +197,7 @@ The consultant could not find any LLM backend at startup. Check:
 The ar-memory HTTP server is not reachable. Check:
 
 1. Is ar-memory running? (`curl http://localhost:8020/api/health`)
-2. If using Docker: `docker compose -f tools/docker-compose.yml ps ar-memory`
+2. If using Docker: `docker compose -f flowtree/controller/docker-compose.yml ps ar-memory`
 3. Set `AR_MEMORY_URL` explicitly if auto-discovery fails
 
 ### Slow first response

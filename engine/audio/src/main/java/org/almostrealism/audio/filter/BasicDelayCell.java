@@ -86,7 +86,7 @@ public class BasicDelayCell extends SummationCell implements CodeFeatures {
 	 * @param frames delay length in frames; values less than or equal to 0 are clamped to 1
 	 */
 	public synchronized void setDelayInFrames(long frames) {
-		if (frames != delay) System.out.println("Delay frames: " + frames);
+		if (frames != delay) log("Delay frames: " + frames);
 		this.delay = (int) frames;
 		if (delay <= 0) delay = 1;
 	}

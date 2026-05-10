@@ -18,6 +18,7 @@ package org.almostrealism.color.buffer;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.io.ConsoleFeatures;
 
 /**
  * A 96-bit per-texel implementation of {@link AveragedVectorMap2D} that stores accumulated
@@ -32,7 +33,7 @@ import org.almostrealism.collect.PackedCollection;
  * @see AveragedVectorMap2D
  * @author Michael Murray
  */
-public class AveragedVectorMap2D96Bit implements AveragedVectorMap2D {
+public class AveragedVectorMap2D96Bit implements AveragedVectorMap2D, ConsoleFeatures {
 	/** The maximum value of a {@link Short}, used for fixed-point scaling. */
 	private static final double shortmax = Short.MAX_VALUE;
 
@@ -193,7 +194,7 @@ public class AveragedVectorMap2D96Bit implements AveragedVectorMap2D {
 	@Override
 	public void addVector(double u, double v, Producer<PackedCollection> e, boolean front) {
 		if (u >= 1.0 || v >= 1.0 || u < 0.0 || v < 0.0) {
-			System.out.println("AveragedVectorMap2D96Bit: Invalid UV " + u + ", " + v);
+			log("Invalid UV " + u + ", " + v);
 			return;
 		}
 		
@@ -238,7 +239,7 @@ public class AveragedVectorMap2D96Bit implements AveragedVectorMap2D {
 		if (this.vector != null) return this.vector;
 		
 		if (u >= 1.0 || v >= 1.0 || u < 0.0 || v < 0.0) {
-			System.out.println("AveragedVectorMap2D96Bit: Invalid UV " + u + ", " + v);
+			log("Invalid UV " + u + ", " + v);
 			return new double[3];
 		}
 		
@@ -271,7 +272,7 @@ public class AveragedVectorMap2D96Bit implements AveragedVectorMap2D {
 	@Override
 	public int getSampleCount(double u, double v, boolean front) {
 		if (u >= 1.0 || v >= 1.0 || u < 0.0 || v < 0.0) {
-			System.out.println("AveragedVectorMap2D96Bit: Invalid UV " + u + ", " + v);
+			log("Invalid UV " + u + ", " + v);
 			return 0;
 		}
 		

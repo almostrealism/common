@@ -32,6 +32,8 @@ public class PdslToken {
 		CONFIG,
 		/** {@code data} keyword introducing a data block definition. */
 		DATA,
+		/** {@code state} keyword introducing a state block definition. */
+		STATE,
 		/** {@code let} keyword for local variable binding. */
 		LET,
 		/** {@code return} keyword for returning a value. */
@@ -58,6 +60,13 @@ public class PdslToken {
 		WEIGHT,
 		/** {@code scalar} type annotation keyword. */
 		SCALAR,
+		/**
+		 * {@code producer} type annotation keyword. Followed by a shape literal in parentheses,
+		 * e.g. {@code producer([1])}, marks a parameter bound to a
+		 * {@link io.almostrealism.relation.Producer} of {@link org.almostrealism.collect.PackedCollection}
+		 * with the given shape.
+		 */
+		PRODUCER,
 		/** {@code int} type annotation keyword. */
 		INT_TYPE,
 		/** {@code float} type annotation keyword. */

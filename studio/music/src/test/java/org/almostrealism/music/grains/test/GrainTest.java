@@ -64,17 +64,17 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 		Producer cursor = integers(0, frames);
 
 		PackedCollection result = new PackedCollection(shape(frames), 1);
-		System.out.println("GrainTest: Evaluating timeline kernel...");
+		log("GrainTest: Evaluating timeline kernel...");
 		verboseLog(() -> {
 			c(source.getChannelData(0), cursor).get().into(result).evaluate();
 		});
-		System.out.println("GrainTest: Timeline kernel evaluated");
+		log("GrainTest: Timeline kernel evaluated");
 
-		System.out.println("GrainTest: Rendering grains...");
+		log("GrainTest: Rendering grains...");
 		w(0, new WaveData(result, OutputLine.sampleRate))
 				.o(i -> new File("results/grain-timeseries-test.wav"))
 				.sec(5).get().run();
-		System.out.println("GrainTest: Done");
+		log("GrainTest: Done");
 	}
 
 	@Test(timeout = 120_000)
@@ -106,17 +106,17 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 		CollectionProducer generate = interpolate(v(1, 0), pos, rate);
 		generate = generate.multiply(sinw(series, wavelength, c(1.0)));
 
-		System.out.println("GrainTest: Evaluating kernel...");
+		log("GrainTest: Evaluating kernel...");
 		Evaluable<PackedCollection> ev = generate.get();
 		PackedCollection result = ev.into(new PackedCollection(shape(frames), 1))
 										.evaluate(input.traverse(0), grain);
-		System.out.println("GrainTest: Kernel evaluated");
+		log("GrainTest: Kernel evaluated");
 
-		System.out.println("GrainTest: Rendering grains...");
+		log("GrainTest: Rendering grains...");
 		w(0, new WaveData(result, OutputLine.sampleRate))
 				.o(i -> new File("results/grain-test.wav"))
 				.sec(5).get().run();
-		System.out.println("GrainTest: Done");
+		log("GrainTest: Done");
 	}
 
 	@Test(timeout = 300_000)

@@ -16,7 +16,7 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 
 	@Test(timeout = 30000)
 	public void testCausalMaskInMinimalModel() {
-		System.out.println("\n=== Causal Mask Isolation Test ===\n");
+		log("\n=== Causal Mask Isolation Test ===\n");
 
 		int heads = 4;
 		int seqLen = 8;
@@ -43,7 +43,7 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 		CompiledModel compiled = model.compile(false);
 
 		// Test at position 0
-		System.out.println("Testing at position 0:");
+		log("Testing at position 0:");
 		position.setMem(0, 0.0);
 
 		PackedCollection input0 = new PackedCollection(shape(heads, seqLen));
@@ -51,24 +51,24 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 
 		PackedCollection output0 = compiled.forward(input0);
 
-		System.out.println("Input[0,0]: " + input0.toDouble(0));
-		System.out.println("Output[0,0]: " + output0.toDouble(0));
-		System.out.println("Expected: input[0,0] + 0 = " + input0.toDouble(0));
+		log("Input[0,0]: " + input0.toDouble(0));
+		log("Output[0,0]: " + output0.toDouble(0));
+		log("Expected: input[0,0] + 0 = " + input0.toDouble(0));
 
 		// Position 0 should be unmasked (input + 0)
 		assertEquals("Position 0 should be unmasked",
 				input0.toDouble(0), output0.toDouble(0), 1e-6);
 
-		System.out.println("\nInput[0,1]: " + input0.toDouble(1));
-		System.out.println("Output[0,1]: " + output0.toDouble(1));
-		System.out.println("Expected: input[0,1] + (-10000) = " + (input0.toDouble(1) - 10000.0));
+		log("\nInput[0,1]: " + input0.toDouble(1));
+		log("Output[0,1]: " + output0.toDouble(1));
+		log("Expected: input[0,1] + (-10000) = " + (input0.toDouble(1) - 10000.0));
 
 		// Position 1 should be masked (input + -10000)
 		assertEquals("Position 1 should be masked",
 				input0.toDouble(1) - 10000.0, output0.toDouble(1), 1e-6);
 
 		// Test at position 2
-		System.out.println("\n\nTesting at position 2:");
+		log("\n\nTesting at position 2:");
 		position.setMem(0, 2.0);
 
 		PackedCollection input2 = new PackedCollection(shape(heads, seqLen));
@@ -78,26 +78,22 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 
 		// Positions 0, 1, 2 should be unmasked
 		for (int i = 0; i <= 2; i++) {
-			System.out.println("Position " + i + ": input=" + input2.toDouble(i) +
-					", output=" + output2.toDouble(i) +
-					", expected=" + input2.toDouble(i));
+			log("Position " + i + ": input=" + input2.toDouble(i) + ", output=" + output2.toDouble(i) + ", expected=" + input2.toDouble(i));
 			assertEquals("Position " + i + " should be unmasked at position 2",
 					input2.toDouble(i), output2.toDouble(i), 1e-6);
 		}
 
 		// Position 3 should be masked
-		System.out.println("Position 3: input=" + input2.toDouble(3) +
-				", output=" + output2.toDouble(3) +
-				", expected=" + (input2.toDouble(3) - 10000.0));
+		log("Position 3: input=" + input2.toDouble(3) + ", output=" + output2.toDouble(3) + ", expected=" + (input2.toDouble(3) - 10000.0));
 		assertEquals("Position 3 should be masked at position 2",
 				input2.toDouble(3) - 10000.0, output2.toDouble(3), 1e-6);
 
-		System.out.println("\n[OK] Causal mask lambda approach works correctly!");
+		log("\n[OK] Causal mask lambda approach works correctly!");
 	}
 
 	@Test(timeout = 30000)
 	public void testCausalMaskDynamicPositionUpdates() {
-		System.out.println("\n=== Testing Dynamic Position Updates ===\n");
+		log("\n=== Testing Dynamic Position Updates ===\n");
 
 		int heads = 2;
 		int seqLen = 5;
@@ -128,7 +124,7 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 
 		// Test at different positions
 		for (int pos = 0; pos < seqLen; pos++) {
-			System.out.println("\nPosition " + pos + ":");
+			log("\nPosition " + pos + ":");
 			position.setMem(0, (double) pos);
 
 			PackedCollection output = compiled.forward(input);
@@ -138,14 +134,13 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 				double expected = (i <= pos) ? 1.0 : (1.0 - 10000.0);
 				double actual = output.toDouble(i);
 
-				System.out.printf("  [%d]: expected=%.1f, actual=%.1f %s\n",
-						i, expected, actual, (i <= pos) ? "OK" : "MASKED");
+				log(String.format("  [%d]: expected=%.1f, actual=%.1f %s\n", i, expected, actual, (i <= pos) ? "OK" : "MASKED"));
 
 				assertEquals("At position " + pos + ", index " + i,
 						expected, actual, 1e-6);
 			}
 		}
 
-		System.out.println("\n[OK] Dynamic position updates work correctly!");
+		log("\n[OK] Dynamic position updates work correctly!");
 	}
 }

@@ -58,6 +58,6 @@ public class DefaultChannelSectionTest extends TestSuiteBase implements CellFeat
 		process.add(section.process(destination, source));
 
 		process.get().run();
-		System.out.println("Processed " + result.getMemLength() + " samples");
+		log("Processed " + result.getMemLength() + " samples");
 	}
 }

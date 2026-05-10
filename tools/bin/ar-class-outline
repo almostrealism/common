@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+"""
+ar-class-outline: Show the structure of a Java class without method bodies.
+
+Usage: ar-class-outline <file.java>
+
+Displays package, class/interface/enum declaration, fields, and method
+signatures (skipping all implementation bodies). Useful for understanding
+a class at a glance without reading thousands of lines of implementation.
+
+Examples:
+  ar-class-outline flowtree/src/main/java/io/flowtree/jobs/ClaudeCodeJob.java
+  ar-class-outline $(ar-find-symbol MyClass --files | head -1)
+"""
+
+import re
+import sys
+from pathlib import Path
+
+
+# Patterns for structure elements
+CLASS_DECL = re.compile(
+    r'^\s*(?:(?:public|private|protected|abstract|final|static|sealed|non-sealed)\s+)*'
+    r'(?:class|interface|enum|record|@interface)\s+\w+'
+)
+FIELD_DECL = re.compile(
+    r'^\s*(?:(?:public|private|protected|static|final|volatile|transient|strictfp)\s+)+'
+    r'(?!(?:class|interface|enum|record|void|new)\b)'
+    r'[\w\[\]<>.,?\s]+\s+\w+\s*(?:=|;|\[)'
+)
+METHOD_DECL = re.compile(
+    r'^\s*(?:(?:public|private|protected|static|final|synchronized|default|abstract'
+    r'|native|strictfp|override|transient|volatile)\s+)*'  # modifiers optional
+    r'(?:<[^>]+>\s+)?'
+    r'(?:void|boolean|int|long|double|float|byte|char|short|String|\w[\w\[\]<>.,?\s]*)\s+'
+    r'\w+\s*\('
+)
+ANNOTATION = re.compile(r'^\s*@\w+')
+IMPORT_STMT = re.compile(r'^\s*import\s+')
+PACKAGE_STMT = re.compile(r'^\s*package\s+')
+
+
+def count_braces(line):
+    """Net brace count for a line, ignoring strings/comments."""
+    depth = 0
+    in_string = False
+    in_char = False
+    escape = False
+    i = 0
+    while i < len(line):
+        c = line[i]
+        if escape:
+            escape = False
+        elif in_string:
+            if c == '\\':
+                escape = True
+            elif c == '"':
+                in_string = False
+        elif in_char:
+            if c == '\\':
+                escape = True
+            elif c == "'":
+                in_char = False
+        elif c == '/' and i + 1 < len(line) and line[i + 1] == '/':
+            break
+        elif c == '"':
+            in_string = True
+        elif c == "'":
+            in_char = True
+        elif c == '{':
+            depth += 1
+        elif c == '}':
+            depth -= 1
+        i += 1
+    return depth
+
+
+def outline(path):
+    """Print the outline of a Java file."""
+    try:
+        lines = Path(path).read_text(encoding='utf-8', errors='replace').splitlines()
+    except OSError as e:
+        print(f'Error reading {path}: {e}', file=sys.stderr)
+        sys.exit(1)
+
+    depth = 0          # brace depth (0 = file level, 1 = class level, 2+ = inside method)
+    pending_annotation = None
+    in_block_comment = False
+    imports = []
+    import_packages = set()
+
+    print(f'OUTLINE: {path}')
+    print('=' * 72)
+
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+        line = raw.rstrip()
+        stripped = line.strip()
+
+        # Block comment handling
+        if in_block_comment:
+            if '*/' in stripped:
+                in_block_comment = False
+            i += 1
+            continue
+        if stripped.startswith('/*') or stripped.startswith('/**'):
+            if '*/' not in stripped:
+                in_block_comment = True
+            i += 1
+            continue
+        if stripped.startswith('//') or not stripped:
+            i += 1
+            continue
+
+        delta = count_braces(line)
+
+        # Package
+        if PACKAGE_STMT.match(line):
+            print(line)
+            i += 1
+            depth += delta
+            continue
+
+        # Imports — collect, summarize at end
+        if IMPORT_STMT.match(line):
+            imports.append(stripped)
+            # Extract top-level package
+            m = re.match(r'import\s+(?:static\s+)?(\w+(?:\.\w+)?)\.', stripped)
+            if m:
+                import_packages.add(m.group(1))
+            i += 1
+            continue
+
+        # Print import summary once we move past imports
+        if imports and not IMPORT_STMT.match(line):
+            print(f'\n// imports: {len(imports)} statements from {len(import_packages)} top-level packages')
+            imports = []
+
+        # Annotations — buffer to print with next declaration
+        if ANNOTATION.match(line) and depth <= 1:
+            pending_annotation = line
+            i += 1
+            continue
+
+        # Class / interface / enum declaration
+        if CLASS_DECL.match(line) and depth <= 1:
+            print()
+            if pending_annotation:
+                print(pending_annotation)
+                pending_annotation = None
+            # Collect multi-line declaration (until opening brace)
+            decl_lines = [line]
+            j = i
+            while '{' not in ''.join(decl_lines) and j + 1 < len(lines):
+                j += 1
+                decl_lines.append(lines[j].rstrip())
+            print('\n'.join(decl_lines))
+            # Sum all brace deltas
+            for dl in decl_lines:
+                depth += count_braces(dl)
+            i = j + 1
+            continue
+
+        # Fields at class level (depth == 1)
+        if depth == 1 and FIELD_DECL.match(line):
+            if pending_annotation:
+                print(f'  {pending_annotation.strip()}')
+                pending_annotation = None
+            # Collect until semicolon (handles multi-line fields)
+            field_lines = [line]
+            j = i
+            while ';' not in ''.join(field_lines) and j + 1 < len(lines):
+                j += 1
+                field_lines.append(lines[j].rstrip())
+            # Collapse to single line if possible
+            field_text = ' '.join(l.strip() for l in field_lines)
+            print(f'  {field_text}')
+            depth += sum(count_braces(fl) for fl in field_lines)
+            i = j + 1
+            continue
+
+        # Method / constructor signatures at class level (depth == 1)
+        if depth == 1 and METHOD_DECL.match(line):
+            if pending_annotation:
+                print(f'\n  {pending_annotation.strip()}')
+                pending_annotation = None
+            # Collect signature lines until we hit { or ;
+            sig_lines = [line]
+            j = i
+            while '{' not in ''.join(sig_lines) and ';' not in ''.join(sig_lines) and j + 1 < len(lines):
+                j += 1
+                sig_lines.append(lines[j].rstrip())
+            # Print signature, stripping body open-brace
+            sig = ' '.join(l.strip() for l in sig_lines)
+            if '{' in sig:
+                sig = sig[:sig.index('{')].rstrip() + ' { ... }'
+            print(f'\n  {sig}')
+            # Advance past the body
+            body_depth = sum(count_braces(sl) for sl in sig_lines)
+            depth += body_depth
+            i = j + 1
+            # Skip body lines until depth returns to 1
+            while i < len(lines) and depth > 1:
+                depth += count_braces(lines[i])
+                i += 1
+            continue
+
+        # Closing class brace
+        if depth == 1 and stripped == '}':
+            print('\n}')
+            depth += delta
+            i += 1
+            continue
+
+        pending_annotation = None
+        depth += delta
+        i += 1
+
+    print()
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ('-h', '--help'):
+        print(__doc__)
+        sys.exit(0 if sys.argv[1:] else 1)
+
+    for path in sys.argv[1:]:
+        outline(path)
+
+
+if __name__ == '__main__':
+    main()

@@ -5,6 +5,8 @@
 
 package org.almostrealism.spatial;
 
+import org.almostrealism.io.ConsoleFeatures;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -45,7 +47,7 @@ import java.util.List;
  * @see SpatialSelectionListener
  * @see SpatialTimeseries
  */
-public class SpatialDataHub {
+public class SpatialDataHub implements ConsoleFeatures {
 	/** The singleton hub instance, created lazily by {@link #getCurrent()}. */
 	private static SpatialDataHub current;
 
@@ -151,7 +153,7 @@ public class SpatialDataHub {
 			try {
 				l.selected(info);
 			} catch (Exception e) {
-				System.err.println("SpatialDataHub: " + e.getMessage());
+				warn(e.getMessage(), e);
 			}
 		});
 	}

@@ -119,7 +119,7 @@ public class GranularSynthesizer implements StatelessSource, CellFeatures {
 			for (int i = 0; i < playbackRates.size(); i++) {
 				playbackRate.setMem(0, playbackRates.get(i).asHertz());
 				if (WaveOutput.enableVerbose)
-					System.out.println("GranularSynthesizer: Rendering grains for playback rate " + playbackRates.get(i) + "...");
+					log("GranularSynthesizer: Rendering grains for playback rate " + playbackRates.get(i) + "...");
 
 				List<PackedCollection> results = new ArrayList<>();
 				int count = grains.stream().map(GrainSet::getGrains).mapToInt(List::size).sum();
@@ -139,7 +139,10 @@ public class GranularSynthesizer implements StatelessSource, CellFeatures {
 						p.setMem(phase);
 						a.setMem(amp);
 
-						results.add(processor.apply(source.getChannelData(0), grain, w, p, a).getChannelData(0));
+						PackedCollection rendered = processor.getKernel()
+								.into(processor.newOutputBuffer())
+								.evaluate(source.getChannelData(0).traverse(0), grain, w, p, a);
+						results.add(new WaveData(rendered, processor.getSampleRate()).getChannelData(0));
 					}
 				}
 
@@ -152,9 +155,9 @@ public class GranularSynthesizer implements StatelessSource, CellFeatures {
 
 				sum = multiply(sum, c(gain / count));
 
-				if (WaveOutput.enableVerbose) System.out.println("GranularSynthesizer: Summing grains...");
+				if (WaveOutput.enableVerbose) log("GranularSynthesizer: Summing grains...");
 				sum.get().into(providers.get(i).get().getChannelData(0)).evaluate(results.stream().toArray(Object[]::new));
-				if (WaveOutput.enableVerbose) System.out.println("GranularSynthesizer: Done");
+				if (WaveOutput.enableVerbose) log("GranularSynthesizer: Done");
 			}
 		});
 	}

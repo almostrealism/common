@@ -232,11 +232,18 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 			tick.add(receptor.push(p(cachedValue)));
 			tick.add(reset(p(cachedValue)));
 		} else if (receptor != null) {
-			// Standard path with receptor: copy cachedValue to outValue (so
-			// getResultant/next can read the output), push to the receptor,
-			// then reset the cache.
+			// Standard path with receptor: copy cachedValue to outValue, push
+			// p(outValue) to the receptor, then reset the cache. We push
+			// p(outValue) — not p(cachedValue) — because receptors such as
+			// FilteredCell wrap the pushed producer via filter.getResultant(),
+			// which STORES the reference (e.g. AudioPassFilter.input) and
+			// evaluates it LATER during the filter's own tick. By then this
+			// cell's cachedValue has been reset to zero, so a p(cachedValue)
+			// reference would always read zero. p(outValue) preserves the
+			// frame's value across the reset so deferred-evaluation receptors
+			// see the correct input.
 			tick.add(assign(p(outValue), p(cachedValue)));
-			tick.add(receptor.push(p(cachedValue)));
+			tick.add(receptor.push(p(outValue)));
 			tick.add(reset(p(cachedValue)));
 		} else {
 			// No receptor: transfer cached to output (for getResultant/next)

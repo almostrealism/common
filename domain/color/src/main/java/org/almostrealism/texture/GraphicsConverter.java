@@ -23,6 +23,7 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
+import org.almostrealism.io.Console;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
@@ -464,7 +465,7 @@ public class GraphicsConverter {
 		}
 
 		if (wasNull)
-			System.out.println("GraphicsConverter: Some image data was null.");
+			Console.root().println("Some image data was null.");
 
 		return evaluated;
 	}

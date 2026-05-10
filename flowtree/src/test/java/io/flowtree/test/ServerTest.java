@@ -46,6 +46,6 @@ public class ServerTest extends TestSuiteBase {
 	public void decodeJobTest() {
 		String data = "io.flowtree.jobs.ExternalProcessJob::cmd:=c2xlZXA7MzA=";
 		ExternalProcessJob j = (ExternalProcessJob) Server.instantiateJobClass(data);
-		System.out.println(j.getCommandString());
+		log(String.valueOf(j.getCommandString()));
 	}
 }

@@ -162,6 +162,17 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	/** Audio sample rate for this mixdown. */
 	private final int sampleRate;
 
+	/**
+	 * Master gain applied to the summed main bus, after per-channel volume
+	 * scaling and before EFX/reverb routing. The realtime path has no
+	 * look-ahead normalisation, so when the per-channel
+	 * {@link #adjustment} envelopes saturate (and they're bounded to
+	 * {@code [0, 1]}), summing across channels routinely exceeds 1.0 and
+	 * clips at the WAV writer. The default sits below unity to give the
+	 * sum the headroom that the offline auto-volume step used to provide.
+	 */
+	public static double masterBusGain = 0.5;
+
 	/** Scale factor collection for per-frame volume adjustment. */
 	private final PackedCollection volumeAdjustmentScale;
 
@@ -281,6 +292,42 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 
 	/** Returns the automation manager that drives time-varying parameter curves. */
 	public AutomationManager getAutomationManager() { return automation; }
+
+	/** Returns the time cell used for clock-driven effects (package-private — exposed for the PDSL adapter). */
+	TimeCell getClock() { return clock; }
+
+	/** Returns the configured audio sample rate (package-private — exposed for the PDSL adapter). */
+	int getSampleRate() { return sampleRate; }
+
+	/** Returns the per-channel volume chromosome (package-private — exposed for the PDSL adapter). */
+	Chromosome<PackedCollection> getVolumeSimple() { return volumeSimple; }
+
+	/** Returns the per-channel main-filter-up (HP) chromosome (package-private — exposed for the PDSL adapter). */
+	Chromosome<PackedCollection> getMainFilterUpSimple() { return mainFilterUpSimple; }
+
+	/** Returns the per-channel master-filter-down (LP) chromosome (package-private — exposed for the PDSL adapter). */
+	Chromosome<PackedCollection> getMainFilterDownSimple() { return mainFilterDownSimple; }
+
+	/** Returns the cross-channel transmission chromosome (package-private — exposed for the PDSL adapter). */
+	Chromosome<PackedCollection> getTransmission() { return transmission; }
+
+	/** Returns the wet-bus FixedFilterChromosome (package-private — exposed for the PDSL adapter). */
+	FixedFilterChromosome getWetFilter() { return wetFilter; }
+
+	/** Returns the wet-out chromosome (package-private — exposed for the PDSL adapter). */
+	Chromosome<PackedCollection> getWetOut() { return wetOut; }
+
+	/** Returns the delay chromosome (package-private — exposed for the PDSL adapter). */
+	Chromosome<PackedCollection> getDelay() { return delay; }
+
+	/** Returns the volume adjustment scale slot (package-private — exposed for the PDSL adapter). */
+	PackedCollection getVolumeAdjustmentScale() { return volumeAdjustmentScale; }
+
+	/** Returns the main-filter-up adjustment scale slot (package-private — exposed for the PDSL adapter). */
+	PackedCollection getMainFilterUpAdjustmentScale() { return mainFilterUpAdjustmentScale; }
+
+	/** Returns the main-filter-down adjustment scale slot (package-private — exposed for the PDSL adapter). */
+	PackedCollection getMainFilterDownAdjustmentScale() { return mainFilterDownAdjustmentScale; }
 
 	/**
 	 * Sets the global volume adjustment scale factor.
@@ -669,6 +716,7 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 			efx = efx.sum();
 		}
 
+
 		if (reverb != null) {
 			// Combine inputs and apply reverb
 			reverb = reverb.sum().map(fc(i -> new DelayNetwork(sampleRate, false)));
@@ -717,6 +765,20 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 		// TODO  Riser should actually feed into effects, if they are active
 		if (enableRiser) {
 			main = cells(main, riser).sum();
+		}
+
+		if (masterBusGain != 1.0) {
+			// Apply master headroom and a hard limiter right before main is
+			// wrapped in its receptor cell. The pre-gain signal can spike to
+			// extreme values (EFX feedback runaway can push peaks well past
+			// 1e5 in normalised units), so a pure ScaleFactor can't make the
+			// audio fit in [-1, 1] without making the body inaudibly quiet.
+			// We scale by masterBusGain for typical content level, then clip
+			// transients into [-1, 1] before they reach the int16 WAV writer.
+			final double gain = masterBusGain;
+			main = main.map(fc(i ->
+					(Factor<PackedCollection>) in ->
+							bound(multiply(in, c(gain)), -1.0, 1.0)));
 		}
 
 		// Deliver main to the output and measure #1

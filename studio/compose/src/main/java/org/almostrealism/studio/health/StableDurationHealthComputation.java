@@ -20,22 +20,21 @@ import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsFactory;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.io.Console;
 import org.almostrealism.time.Temporal;
-import org.almostrealism.time.TemporalRunner;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -45,9 +44,16 @@ import java.util.stream.Collectors;
  *
  * @author  Michael Murray
  */
-public class StableDurationHealthComputation extends SilenceDurationHealthComputation implements CellFeatures {
+public class StableDurationHealthComputation extends SilenceDurationHealthComputation implements CellFeatures, RGBFeatures {
 	/** When {@code true}, rendered audio is written to disk after each evaluation. */
 	public static boolean enableOutput = true;
+
+	/**
+	 * When {@code true} (and {@link #enableOutput} is also true), a spectrogram PNG is
+	 * written next to each rendered WAV (master and stems). The PNG path is derived from
+	 * the WAV path by replacing the {@code .wav} suffix with {@code .spectrogram.png}.
+	 */
+	public static boolean enableSpectrogramOutput = true;
 
 	/** When {@code true}, evaluations are aborted if the timeout threshold is exceeded. */
 	public static boolean enableTimeout = false;
@@ -57,6 +63,18 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 
 	/** Optional profile node used to collect kernel execution statistics. */
 	public static OperationProfile profile;
+
+	/**
+	 * Default number of audio frames advanced per evaluation loop iteration. Applied to
+	 * every newly-constructed {@link StableDurationHealthComputation} unless overridden
+	 * via {@link #setBatchSize(int)}. Defaults to {@code OutputLine.sampleRate / 2}; can
+	 * be overridden at JVM start via the {@code AR_HEALTH_BATCH_SIZE} system property
+	 * so benchmarks and tests can drive both the health loop and the population's
+	 * temporal buffer through the same value (the optimizer reads {@link #getBatchSize()}
+	 * and uses it as the buffer size for {@code AudioScenePopulation.init}).
+	 */
+	public static int defaultBatchSize =
+			Integer.getInteger("AR_HEALTH_BATCH_SIZE", OutputLine.sampleRate / 2);
 
 	/** Cumulative total audio frames generated across all evaluations. */
 	private static long totalGeneratedFrames;
@@ -79,8 +97,11 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 	/** Flag set by the silence listener when excessive silence is detected. */
 	private boolean encounteredSilence;
 
-	/** Temporal runner that drives the evaluation loop efficiently. */
-	private TemporalRunner runner;
+	/** Compiled one-shot setup runnable for the target temporal pipeline. */
+	private Runnable targetSetup;
+
+	/** Compiled per-buffer tick runnable; one invocation advances {@link #iter} frames. */
+	private Runnable targetTick;
 
 	/** Background thread that monitors the wall-clock timeout. */
 	private Thread timeoutTrigger;
@@ -115,16 +136,30 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 	public StableDurationHealthComputation(int channels, boolean stereo) {
 		super(channels, stereo, 6);
 		addSilenceListener(() -> encounteredSilence = true);
-		setBatchSize(TemporalRunner.enableOptimization ? 1 : (OutputLine.sampleRate / 2));
+		setBatchSize(defaultBatchSize);
 	}
 
 	/**
-	 * Sets the number of audio frames advanced per evaluation loop iteration.
+	 * Sets the number of audio frames advanced per evaluation loop iteration. The
+	 * temporal pipeline supplied to {@link #setTarget(TemporalCellular)} must already be
+	 * configured so that one invocation of its {@code tick()} runnable advances exactly
+	 * this many frames; the caller is responsible for keeping the two values in sync.
 	 *
 	 * @param iter frames per iteration
 	 */
 	public void setBatchSize(int iter) {
 		this.iter = iter;
+	}
+
+	/**
+	 * Returns the number of audio frames advanced per evaluation loop iteration. Callers
+	 * configuring the temporal pipeline (e.g. {@code AudioScene.runnerRealTime}) should
+	 * use this value as the buffer size so each tick advances exactly one batch.
+	 *
+	 * @return frames per iteration
+	 */
+	public int getBatchSize() {
+		return iter;
 	}
 
 	/**
@@ -141,8 +176,8 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 			super.setTarget(target);
 			this.abortFlag = new PackedCollection(1);
 			this.abortFlag.setMem(0, 0.0);
-			this.runner = new TemporalRunner(target, iter);
-			this.runner.setProfile(profile);
+			this.targetSetup = target.setup().get();
+			this.targetTick = target.tick().get();
 		} else if (getTarget() != target) {
 			throw new IllegalArgumentException("Health computation cannot be reused");
 		}
@@ -158,7 +193,7 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 				Thread.sleep(timeoutInterval + 100);
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
-				System.err.println("StableDurationHealthComputation: " + e.getMessage());
+				warn(e.getMessage(), e);
 			}
 		}
 
@@ -172,7 +207,7 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 					Thread.sleep(timeoutInterval);
 				} catch (InterruptedException e) {
 					Thread.currentThread().interrupt();
-					System.err.println("StableDurationHealthComputation: " + e.getMessage());
+					warn(e.getMessage(), e);
 					endTimeoutTrigger = true;
 				}
 
@@ -233,14 +268,12 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 		encounteredSilence = false;
 		OperationList.setAbortFlag(abortFlag);
 
-//		TODO  Restore average amplitude computation
-//		AverageAmplitude avg = new AverageAmplitude();
+//		TODO  Restore average amplitude computation using an on-device
+//		TODO  Producer-graph reduction (accumulate samples into a flat
+//		TODO  PackedCollection and compute abs().sum()/n at the boundary).
 
 		double score = 0.0;
 		double errorMultiplier = 1.0;
-
-		Runnable start;
-		Runnable iterate;
 
 		long l = 0;
 		long generationTime = 0;
@@ -248,16 +281,15 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 		WaveDetails details = null;
 
 		try {
-			start = runner.get();
-			iterate = runner.getContinue();
-
 			startTime = System.currentTimeMillis();
 			iterStart = startTime;
 			if (enableTimeout) startTimeoutTrigger();
 
+			targetSetup.run();
+
 			l:
 			for (l = 0; l < max && !isTimeout(); l = l + iter) {
-				(l == 0 ? start : iterate).run();
+				targetTick.run();
 
 				if (enableProfileAutosave && profile instanceof OperationProfileNode
 						&& (l + iter) % (OutputLine.sampleRate * 60L) == 0) {
@@ -267,7 +299,7 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 						((OperationProfileNode) profile).save(name);
 						log("Saved profile to " + name);
 					} catch (IOException e) {
-						System.err.println("StableDurationHealthComputation: " + e.getMessage());
+						warn(e.getMessage(), e);
 					}
 				}
 
@@ -331,6 +363,13 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 					getMaster().write().get().run();
 					if (getStems() != null) getStems().forEach(s -> s.write().get().run());
 
+					if (enableSpectrogramOutput) {
+						writeSpectrogram(getOutputFile());
+						if (getStemFiles() != null) {
+							getStemFiles().forEach(this::writeSpectrogram);
+						}
+					}
+
 					if (getWaveDetailsProcessor() != null) {
 						details = WaveDetailsFactory.getDefault()
 								.forFile(getOutputFile().getPath());
@@ -359,7 +398,36 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 	}
 
 	@Override
-	public Console console() { return console; }
+	public Console console() { return CellFeatures.console; }
+
+	/**
+	 * Writes a spectrogram PNG next to the given WAV. The image is sized by the
+	 * spectrogram's bin/time-slice grid and is silently skipped (with a warning) on
+	 * any error so spectrogram failures never abort a health evaluation.
+	 *
+	 * @param wavFile the WAV to read; must end in {@code .wav}
+	 */
+	private void writeSpectrogram(File wavFile) {
+		if (wavFile == null) return;
+		if (!wavFile.exists()) return;
+
+		File pngFile = HealthComputationAdapter.getAuxFile(wavFile, "spectrogram.png");
+		if (pngFile == null) return;
+
+		WaveData waveData = null;
+		PackedCollection spectrogram = null;
+		try {
+			waveData = WaveData.load(wavFile);
+			spectrogram = waveData.spectrogram(0);
+			saveRgb(pngFile.getPath(), cp(spectrogram)).get().run();
+		} catch (Exception e) {
+			warn("Failed to write spectrogram for " + wavFile.getPath() +
+					": " + e.getMessage());
+		} finally {
+			if (spectrogram != null) spectrogram.destroy();
+			if (waveData != null) waveData.destroy();
+		}
+	}
 
 	/**
 	 * Accumulates generation statistics for throughput reporting.
@@ -384,36 +452,4 @@ public class StableDurationHealthComputation extends SilenceDurationHealthComput
 		return seconds == 0 ? 0 : (generationTime / seconds);
 	}
 
-	/**
-	 * Collects audio amplitude samples and provides statistics about when the
-	 * average amplitude is first reached.
-	 */
-	private static class AverageAmplitude implements Consumer<PackedCollection> {
-		/** The collected amplitude samples. */
-		private final List<PackedCollection> values = new ArrayList<>();
-
-		/** {@inheritDoc} */
-		@Override
-		public void accept(PackedCollection s) {
-			values.add(s);
-		}
-
-		/** Returns the mean absolute amplitude across all collected samples. */
-		public double average() {
-			return values.stream().mapToDouble(v -> v.toDouble(0)).map(Math::abs).average().orElse(0.0);
-		}
-
-		/**
-		 * Returns the index of the first sample that meets or exceeds the average
-		 * amplitude, or -1 if all samples are below average.
-		 */
-		public int framesUntilAverage() {
-			double avg = average();
-			for (int i = 0; i < values.size(); i++) {
-				if (Math.abs(values.get(i).toDouble(0)) >= avg) return i;
-			}
-
-			return -1; // The mean value theorem states this should never happen
-		}
-	}
 }

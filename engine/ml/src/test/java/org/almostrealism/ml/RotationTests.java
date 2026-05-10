@@ -352,7 +352,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		// Load reference data
 		StateDictionary referenceData = new StateDictionary(referenceDir);
 		referenceData.keySet()
-				.forEach(key -> System.out.println("\t" + key + " " + referenceData.get(key).getShape()));
+				.forEach(key -> log("\t" + key + " " + referenceData.get(key).getShape()));
 
 		// Extract test configuration
 		PackedCollection testConfig = referenceData.get("test_config");
@@ -373,7 +373,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		PackedCollection expectedOutput = referenceData.get("expected_output");
 
 		log("\n=== Testing computeRotaryFreqs ===");
-		PackedCollection computedFreqs = computeRotaryFreqs(seqLen, invFreq);
+		PackedCollection computedFreqs = computeRotaryFreqs(seqLen, invFreq).evaluate();
 		log("Computed freqs shape - " + computedFreqs.getShape());
 		log("Expected freqs shape - " + freqs.getShape());
 
@@ -418,7 +418,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 				c(p(weights)), pos);
 		// r = c(p(r.get().evaluate()));
 
-		// CollectionProducer<PackedCollection> o = multiplyComplex(traverse(1, p(in)), r.reshape(headSize, 2));
+		// CollectionProducer o = multiplyComplex(traverse(1, p(in)), r.reshape(headSize, 2));
 		// Repeat frequencies for each head - multiplyComplex doesn't properly broadcast
 		CollectionProducer o = multiplyComplex(traverse(1, p(in)), r.traverse(1).repeat(heads));
 
@@ -435,12 +435,12 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
 				double expected = q0 * fcr - q1 * fci;
 				double actual = out.valueAt(h, i, 0);
-				System.out.println("RotationTests[" + h + "][" + i + "]: " + expected + " vs " + actual);
+				log("RotationTests[" + h + "][" + i + "]: " + expected + " vs " + actual);
 				assertEquals(expected, actual);
 
 				expected = q0 * fci + q1 * fcr;
 				actual = out.valueAt(h, i, 1);
-				System.out.println("RotationTests[" + h + "][" + i + "]: " + expected + " vs " + actual);
+				log("RotationTests[" + h + "][" + i + "]: " + expected + " vs " + actual);
 				assertEquals(expected, actual);
 			}
 		}
@@ -461,7 +461,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		int seqLen = 4;
 		int freqDim = headDim / 2;
 
-		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, seqLen);
+		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, seqLen).evaluate();
 
 		assertEquals("Shape dim 0 (seqLen)", seqLen, freqCis.getShape().length(0));
 		assertEquals("Shape dim 1 (freqDim)", freqDim, freqCis.getShape().length(1));
@@ -487,7 +487,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		int seqLen = 4;
 		int freqDim = headDim / 2;
 
-		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, seqLen);
+		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, seqLen).evaluate();
 
 		for (int pos = 0; pos < seqLen; pos++) {
 			for (int f = 0; f < freqDim; f++) {

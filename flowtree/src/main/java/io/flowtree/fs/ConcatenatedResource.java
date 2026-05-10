@@ -17,6 +17,7 @@
 package io.flowtree.fs;
 
 import io.almostrealism.persist.ResourceHeaderParser;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -40,7 +41,7 @@ import java.io.PrintStream;
  *
  * @author  Michael Murray
  */
-public class ConcatenatedResource extends DistributedResource {
+public class ConcatenatedResource extends DistributedResource implements ConsoleFeatures {
 
 	/** Magic prefix that identifies a resource as a {@link ConcatenatedResource}. */
 	private static final String header = "<ConcatenatedResource>";
@@ -83,7 +84,7 @@ public class ConcatenatedResource extends DistributedResource {
 	 * of multiple distributed child resources, inserting a newline separator
 	 * between consecutive resources.
 	 */
-	public static class ConcatenatedInputStream extends InputStream {
+	public static class ConcatenatedInputStream extends InputStream implements ConsoleFeatures {
 
 		/** Ordered list of child resource URIs to concatenate. */
 		private final String[] files;
@@ -161,8 +162,7 @@ public class ConcatenatedResource extends DistributedResource {
 		 */
 		private void next() throws IOException {
 			if (this.current != null) {
-				System.out.println("ConcatenatedResource: Read " + this.bytes +
-									" from " + this.current);
+				log("Read " + this.bytes + " from " + this.current);
 				this.current.close();
 			}
 

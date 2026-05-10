@@ -44,7 +44,7 @@ public class MemoryReferencePhantomTest extends TestSuiteBase {
 	/**
 	 * Verifies that {@link MemoryReference} is a {@link PhantomReference}.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void memoryReferenceExtendsPhantomReference() {
 		ReferenceQueue<RAM> queue = new ReferenceQueue<>();
 		TestRAM ram = new TestRAM(1000L, 4096L);
@@ -58,7 +58,7 @@ public class MemoryReferencePhantomTest extends TestSuiteBase {
 	 * Verifies that {@link NativeRef#get()} always returns {@code null},
 	 * as required by the {@link PhantomReference} contract.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void getAlwaysReturnsNull() {
 		ReferenceQueue<RAM> queue = new ReferenceQueue<>();
 		TestRAM ram = new TestRAM(2000L, 8192L);
@@ -71,7 +71,7 @@ public class MemoryReferencePhantomTest extends TestSuiteBase {
 	 * Verifies that {@link NativeRef} caches address and size at construction time,
 	 * making them available for post-GC deallocation even though {@code get()} returns null.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void nativeRefCachesAddressAndSize() {
 		ReferenceQueue<RAM> queue = new ReferenceQueue<>();
 		long expectedAddress = 42000L;
@@ -87,7 +87,7 @@ public class MemoryReferencePhantomTest extends TestSuiteBase {
 	 * Verifies that the allocation stack trace is preserved in the reference
 	 * independently of the referent object.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void allocationStackTracePreserved() {
 		ReferenceQueue<RAM> queue = new ReferenceQueue<>();
 		TrackedRAM ram = new TrackedRAM(3000L, 1024L);
@@ -103,7 +103,7 @@ public class MemoryReferencePhantomTest extends TestSuiteBase {
 	 * Verifies that {@link NativeRef} equality is based on address and size,
 	 * not on the referent identity (which is inaccessible via PhantomReference).
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void equalityBasedOnCachedFields() {
 		ReferenceQueue<RAM> queue = new ReferenceQueue<>();
 		TestRAM ram1 = new TestRAM(5000L, 2048L);
@@ -118,7 +118,7 @@ public class MemoryReferencePhantomTest extends TestSuiteBase {
 	/**
 	 * Verifies that {@link NativeRef} instances with different addresses are not equal.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void inequalityForDifferentAddresses() {
 		ReferenceQueue<RAM> queue = new ReferenceQueue<>();
 		TestRAM ram1 = new TestRAM(6000L, 2048L);

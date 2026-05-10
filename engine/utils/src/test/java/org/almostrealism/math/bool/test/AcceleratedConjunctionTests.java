@@ -70,7 +70,7 @@ public class AcceleratedConjunctionTests extends TestSuiteBase {
 		CollectionProducer c = dotProductConjunction(v(Ray.shape(), 0));
 
 		double v = c.evaluate(ray(i -> Math.random()).get().evaluate()).toDouble();
-		System.out.println(v);
+		log(String.valueOf(v));
 		Assert.assertNotEquals(0, v);
 	}
 

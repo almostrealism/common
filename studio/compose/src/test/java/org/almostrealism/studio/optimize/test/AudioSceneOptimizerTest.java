@@ -65,7 +65,7 @@ public class AudioSceneOptimizerTest extends TestSuiteBase implements CellFeatur
 				() -> AudioSceneOptimizer.defaultBreeder(0.001), null, cycles);
 
 		optimizer.setChildrenFunction(g -> {
-			System.out.println("Creating AudioScenePopulation...");
+			log("Creating AudioScenePopulation...");
 			AudioScenePopulation pop = new AudioScenePopulation(scene, genomes);
 			AudioHealthComputation hc = (AudioHealthComputation) optimizer.getHealthComputation();
 			pop.init(pop.getGenomes().get(0), hc.getOutput());
@@ -105,7 +105,7 @@ public class AudioSceneOptimizerTest extends TestSuiteBase implements CellFeatur
 
 					health.setOutputFile(() -> "results/layered-organ-optimizer-test-" + index.incrementAndGet() + ".wav");
 
-					System.out.println("Creating LayeredOrganPopulation...");
+					log("Creating LayeredOrganPopulation...");
 					AudioScenePopulation pop =
 							new AudioScenePopulation(null, AudioScenePopulation.read(new FileInputStream(AudioSceneOptimizer.POPULATION_FILE)));
 					pop.init(pop.getGenomes().get(0), health.getOutput());

@@ -18,6 +18,8 @@ package io.flowtree.cli;
 
 import io.flowtree.msg.Message;
 import io.flowtree.node.Client;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -49,7 +51,7 @@ import java.util.Date;
  * @see FlowTreeCliServer
  */
 // TODO  Rewrite as a Jersey service.
-public class HttpCommandServer implements Runnable {
+public class HttpCommandServer implements Runnable, ConsoleFeatures {
 
 	/** Date formatter for the HTTP {@code Date:} response header. */
 	private static final SimpleDateFormat format = new SimpleDateFormat("EEE, d MMM yyyy HH:mm:ss Z");
@@ -88,7 +90,7 @@ public class HttpCommandServer implements Runnable {
 		if (c != null) g = c.getServer().getThreadGroup();
 		Thread t = new Thread(g, s, "HttpCommandServer");
 		t.start();
-		System.out.println("HttpCommandServer: Started");
+		Console.root().println("HttpCommandServer: Started");
 	}
 
 	/**
@@ -119,15 +121,15 @@ public class HttpCommandServer implements Runnable {
 	public void run() {
 		while (true) {
 			try (Socket connection = this.socket.accept()) {
-				System.out.println("HttpCommandServer: Accepted connection...");
+				log("Accepted connection...");
 
 				this.in = connection.getInputStream();
 				this.out = connection.getOutputStream();
-				System.out.println("HttpCommandServer: Got IO streams...");
+				log("Got IO streams...");
 
 				this.br = new BufferedReader(new InputStreamReader(this.in));
 				this.ps = new PrintStream(this.out, false, StandardCharsets.US_ASCII);
-				System.out.println("HttpCommandServer: Constructed input buffer and print stream...");
+				log("Constructed input buffer and print stream...");
 
 				String command = null;
 
@@ -148,7 +150,7 @@ public class HttpCommandServer implements Runnable {
 				}
 
 				if (Message.verbose)
-					System.out.println("HttpCommandServer: Received " + command);
+					log("Received " + command);
 
 				if (command != null) {
 					String date = HttpCommandServer.format.format(new Date());
@@ -161,19 +163,18 @@ public class HttpCommandServer implements Runnable {
 					this.ps.println(FlowTreeCliServer.runCommand(command, ps));
 
 					if (Message.verbose)
-						System.out.println("HttpCommandServer: Sent HTTP header and output.");
+						log("Sent HTTP header and output.");
 				} else {
-					System.out.println("HttpCommandServer: Received null command");
+					warn("Received null command");
 				}
 
 				this.in.close();
 				this.out.close();
 				connection.close();
 			} catch (IOException ioe) {
-				System.out.println("HttpCommandServer: IO error accepting connection (" +
-									ioe.getMessage() + ")");
+				warn("IO error accepting connection (" + ioe.getMessage() + ")");
 			} catch (Exception e) {
-				System.out.println("HttpCommandServer: " + e);
+				warn(String.valueOf(e));
 			}
 		}
 	}

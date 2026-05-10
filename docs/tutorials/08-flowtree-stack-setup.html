@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tutorial: Setting Up the FlowTree Stack - Almost Realism</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .step-number {
+            display: inline-block;
+            background: #3949ab;
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 32px;
+            font-weight: bold;
+            margin-right: 10px;
+            flex-shrink: 0;
+        }
+        .step-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .step-header h3 {
+            margin: 0;
+        }
+        .component-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 16px;
+            margin: 20px 0;
+        }
+        .component-card {
+            background: #f8f9fa;
+            border-left: 4px solid #3949ab;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        .component-card h4 { margin: 0 0 6px 0; color: #3949ab; }
+        .component-card .port { font-size: 0.85em; color: #777; margin-bottom: 6px; }
+        .component-card p { margin: 0; font-size: 0.9em; }
+        .warning {
+            background: #ffebee;
+            border-left: 4px solid #c62828;
+            padding: 12px 15px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .tip {
+            background: #e8f5e9;
+            border-left: 4px solid #2e7d32;
+            padding: 12px 15px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .info {
+            background: #e8eaf6;
+            border-left: 4px solid #3949ab;
+            padding: 12px 15px;
+            margin: 15px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        .arch-diagram {
+            background: #1e1e2e;
+            color: #cdd6f4;
+            font-family: monospace;
+            font-size: 0.88em;
+            line-height: 1.5;
+            padding: 20px;
+            border-radius: 6px;
+            margin: 20px 0;
+            overflow-x: auto;
+            white-space: pre;
+        }
+        .checklist li { margin-bottom: 6px; }
+        .checklist li::before { content: "☐  "; }
+        table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+        th { background: #3949ab; color: white; padding: 8px 12px; text-align: left; }
+        td { padding: 8px 12px; border-bottom: 1px solid #e0e0e0; }
+        tr:nth-child(even) td { background: #f8f9fa; }
+        .file-tree {
+            background: #f5f5f5;
+            border-left: 4px solid #3949ab;
+            padding: 15px 20px;
+            margin: 15px 0;
+            font-family: monospace;
+            font-size: 0.9em;
+            line-height: 1.7;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><a href="../index.html" style="color: white; text-decoration: none;">Almost Realism Framework</a></h1>
+            <p class="tagline">Tutorial: Setting Up the FlowTree Coding Agent Stack</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="../index.html#tutorials">Tutorials</a>
+                <a href="../modules/flowtree.html">FlowTree Module</a>
+            </nav>
+        </header>
+
+        <main>
+
+            <!-- ── Introduction ─────────────────────────────────────── -->
+            <section id="intro">
+                <h2>Introduction</h2>
+
+                <p>This tutorial walks through deploying the complete FlowTree coding
+                agent stack from scratch: the controller, memory server, API bridge,
+                and a pool of Claude Code agents. By the end you will have:</p>
+
+                <ul>
+                    <li>A <strong>flowtree-controller</strong> accepting agent connections and
+                        dispatching <code>ClaudeCodeJob</code> instances</li>
+                    <li>An <strong>ar-memory</strong> semantic store persisting agent memories
+                        across sessions</li>
+                    <li>An <strong>ar-manager</strong> MCP server reachable from the public
+                        internet via Tailscale Funnel, acting as the primary entrypoint for
+                        submitting jobs and querying status</li>
+                    <li>A pool of <strong>agent containers</strong> that connect to the
+                        controller, run Claude Code headlessly, and push git changes</li>
+                </ul>
+
+                <h3>Prerequisites</h3>
+                <ul class="checklist">
+                    <li>Docker Desktop (or Docker Engine + Compose plugin) installed</li>
+                    <li>Java 17 and Maven installed (for the build step)</li>
+                    <li>Tailscale installed and authenticated on the controller host</li>
+                    <li>A Claude Code OAuth token — run <code>claude setup-token</code></li>
+                    <li>A GitHub personal access token with <code>repo</code> and
+                        <code>workflow</code> scopes (for Tier 2 pipeline operations)</li>
+                    <li>The <code>common</code> repository cloned locally</li>
+                </ul>
+            </section>
+
+            <!-- ── Architecture ─────────────────────────────────────── -->
+            <section id="architecture">
+                <h2>Architecture Overview</h2>
+
+                <div class="arch-diagram">  External triggers
+  (Slack, CI, API, Claude mobile)
+         │
+         │  HTTPS via Tailscale Funnel
+         ▼
+┌────────────────────────────────────────────────────────┐
+│  Controller Stack  (flowtree/controller/docker-compose) │
+│                                                        │
+│  ┌──────────────────────┐   ┌──────────────────────┐  │
+│  │  flowtree-controller  │   │      ar-manager       │  │
+│  │                      │◄──│   (MCP bridge)        │  │
+│  │  :7766  agent port   │   │   :8010  ◄── Funnel   │  │
+│  │  :7780  internal API │   │                       │  │
+│  └──────────┬───────────┘   └──────────────────────┘  │
+│             │                          │               │
+│             │               ┌──────────▼─────────┐    │
+│             │               │      ar-memory      │    │
+│             │               │   :8020             │    │
+│             │               └─────────────────────┘    │
+└─────────────┼──────────────────────────────────────────┘
+              │  outbound TCP :7766
+              ▼
+┌────────────────────────────────────────────────────────┐
+│  Agent Pool  (flowtree/agent/docker-compose)           │
+│                                                        │
+│  ┌───────────┐   ┌───────────┐   ┌───────────┐        │
+│  │  agent-1  │   │  agent-2  │   │  agent-N  │        │
+│  │  Claude   │   │  Claude   │   │  Claude   │        │
+│  │  Code CLI │   │  Code CLI │   │  Code CLI │        │
+│  └───────────┘   └───────────┘   └───────────┘        │
+└────────────────────────────────────────────────────────┘</div>
+
+                <div class="component-grid">
+                    <div class="component-card">
+                        <h4>flowtree-controller</h4>
+                        <div class="port">:7766 (agents) · :7780 (internal API)</div>
+                        <p>Java server. Accepts outbound connections from agents,
+                        dispatches <code>ClaudeCodeJob</code> instances, integrates
+                        with Slack. <strong>Internal only</strong> — do not call
+                        port 7780 directly.</p>
+                    </div>
+                    <div class="component-card">
+                        <h4>ar-manager</h4>
+                        <div class="port">:8010 (public via Tailscale Funnel)</div>
+                        <p><strong>Primary entrypoint.</strong> Python MCP server.
+                        Exposes FlowTree to Claude mobile, CI pipelines, and Claude
+                        Code agents via authenticated HTTP. Handles GitHub, memory,
+                        and workstream management.</p>
+                    </div>
+                    <div class="component-card">
+                        <h4>ar-memory</h4>
+                        <div class="port">:8020 (internal)</div>
+                        <p>Semantic vector store. Persists agent memories and
+                        decisions across sessions so agents recall prior work
+                        and avoid repeating mistakes.</p>
+                    </div>
+                    <div class="component-card">
+                        <h4>Agent containers</h4>
+                        <div class="port">no inbound ports required</div>
+                        <p>Each agent connects <em>outbound</em> to the controller.
+                        Runs Claude Code headlessly, commits changes, and pushes
+                        to the target git branch. Scales horizontally.</p>
+                    </div>
+                </div>
+
+                <div class="info">
+                    <strong>Why ar-manager and not the controller API directly?</strong>
+                    The controller's port 7780 is a raw internal API with no authentication,
+                    rate limiting, or GitHub integration. ar-manager adds all of those and
+                    also serves as a Claude Code MCP server, making it the correct
+                    entrypoint for every external caller.
+                </div>
+            </section>
+
+            <!-- ── Step 1: Directory structure ──────────────────────── -->
+            <section id="step1">
+                <h2>
+                    <span class="step-number">1</span>
+                    Understand the directory layout
+                </h2>
+
+                <p>All FlowTree infrastructure lives under <code>flowtree/</code>
+                in the repository:</p>
+
+                <div class="file-tree">flowtree/
+  controller/
+    Dockerfile            ← flowtree-controller image
+    docker-compose.yml    ← controller stack (controller + ar-memory + ar-manager)
+  agent/
+    Dockerfile            ← agent image
+    docker-compose.yml    ← agent pool
+    .env.example          ← copy to .env and fill in
+    start.sh
+  conf/
+    agent.properties      ← agent runtime configuration
+  rebuild.sh              ← one-command build + deploy
+
+tools/mcp/
+  manager/               ← ar-manager source (Python)
+    setup.sh             ← Tailscale Funnel setup helper
+    generate-token.sh    ← creates a bearer token
+  memory/                ← ar-memory source (Python)</div>
+
+                <p>The <code>rebuild.sh</code> script at the repository root handles
+                the Maven build and coordinates both stacks. Always run it from the
+                repository root.</p>
+            </section>
+
+            <!-- ── Step 2: Tailscale ─────────────────────────────────── -->
+            <section id="step2">
+                <h2>
+                    <span class="step-number">2</span>
+                    Enable Tailscale Funnel
+                </h2>
+
+                <p>Tailscale Funnel gives ar-manager a stable public HTTPS URL with
+                automatic TLS — no certificate management required. This step must
+                be done before starting the stack so the container can receive its
+                public URL as an environment variable.</p>
+
+                <h3>2a. Install and authenticate Tailscale</h3>
+                <pre><code># macOS
+brew install tailscale
+open -a Tailscale   # follow the login prompt
+
+# Linux
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up</code></pre>
+
+                <pre><code>tailscale status   # confirm you see your machine listed</code></pre>
+
+                <h3>2b. Enable HTTPS and Funnel in the admin console</h3>
+                <ol>
+                    <li>Log in at <a href="https://login.tailscale.com/admin" target="_blank">login.tailscale.com/admin</a></li>
+                    <li>Go to <strong>DNS</strong> → enable <strong>HTTPS Certificates</strong></li>
+                    <li>Go to <strong>Access Controls</strong> → enable <strong>Funnel</strong></li>
+                </ol>
+
+                <div class="info">
+                    Funnel requires a Tailscale Personal or Team plan. The free plan
+                    supports Funnel for evaluation. Once enabled in the admin console,
+                    the CLI command <code>tailscale funnel</code> becomes available.
+                </div>
+
+                <h3>2c. Note your Tailscale DNS name</h3>
+                <pre><code>tailscale status --self --json | python3 -c \
+  "import json,sys; print(json.load(sys.stdin)['Self']['DNSName'].rstrip('.'))"
+# e.g. my-studio.taild1234.ts.net</code></pre>
+
+                <p>This is the public hostname where ar-manager will be reachable.
+                Keep it handy — you will use it when configuring Claude mobile.</p>
+            </section>
+
+            <!-- ── Step 3: Host directories ─────────────────────────── -->
+            <section id="step3">
+                <h2>
+                    <span class="step-number">3</span>
+                    Create host directories and configuration files
+                </h2>
+
+                <p>The controller stack expects configuration and secrets on the host
+                machine at known paths mounted as Docker volumes.</p>
+
+                <pre><code>sudo mkdir -p /Users/Shared/flowtree/{controller,manager,memory-data,secrets}
+sudo chown -R "$(whoami)" /Users/Shared/flowtree</code></pre>
+
+                <h3>3a. Workstreams configuration</h3>
+                <p>Copy the example file and edit it:</p>
+                <pre><code>cp flowtree/src/main/resources/workstreams-example.yaml \
+   /Users/Shared/flowtree/controller/workstreams.yaml</code></pre>
+
+                <p>At minimum, configure one workstream. Key fields:</p>
+                <table>
+                    <thead>
+                        <tr><th>Field</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><code>id</code></td><td>Short identifier, e.g. <code>ws-myproject</code></td></tr>
+                        <tr><td><code>repoUrl</code></td><td>SSH clone URL of the target repository</td></tr>
+                        <tr><td><code>defaultBranch</code></td><td>Branch agents check out by default</td></tr>
+                        <tr><td><code>githubOrg</code></td><td>GitHub org name (for PR creation)</td></tr>
+                        <tr><td><code>allowedTools</code></td><td>Comma-separated Claude tool allowlist</td></tr>
+                    </tbody>
+                </table>
+
+                <h3>3b. GitHub token (optional, for PR creation)</h3>
+                <p>If you want agents to create pull requests, set
+                <code>AR_MANAGER_GITHUB_TOKEN</code> in the environment before
+                running <code>rebuild.sh</code>, or add it to a
+                <code>.env</code> file the compose file can pick up:</p>
+                <pre><code>export AR_MANAGER_GITHUB_TOKEN=ghp_your_token_here</code></pre>
+
+                <div class="tip">
+                    The shared secret between ar-manager and the controller is
+                    generated automatically by <code>rebuild.sh</code> on the first
+                    run and written to <code>/Users/Shared/flowtree/secrets/shared-secret</code>.
+                    You do not need to create it manually.
+                </div>
+            </section>
+
+            <!-- ── Step 4: Build and start the controller stack ─────── -->
+            <section id="step4">
+                <h2>
+                    <span class="step-number">4</span>
+                    Build and start the controller stack
+                </h2>
+
+                <p>Run from the repository root:</p>
+                <pre><code>./flowtree/rebuild.sh</code></pre>
+
+                <p>This script:</p>
+                <ol>
+                    <li>Generates the ar-manager shared secret (first run only)</li>
+                    <li>Runs <code>mvn package -pl flowtree -am -DskipTests</code></li>
+                    <li>Copies transitive dependencies to <code>target/dependency/</code></li>
+                    <li>Builds and starts <code>flowtree-controller</code>,
+                        <code>ar-memory</code>, and <code>ar-manager</code> via
+                        Docker Compose</li>
+                </ol>
+
+                <h3>Verify all three services are running</h3>
+                <pre><code>docker compose -f flowtree/controller/docker-compose.yml ps</code></pre>
+
+                <p>Expected output:</p>
+                <pre><code>NAME                  STATUS          PORTS
+flowtree-controller   running         0.0.0.0:7766->7766/tcp, 0.0.0.0:7780->7780/tcp
+ar-memory             running         0.0.0.0:8020->8020/tcp
+ar-manager            running         0.0.0.0:8010->8010/tcp</code></pre>
+
+                <pre><code># Health checks
+curl http://localhost:7780/health          # controller
+curl http://localhost:8020/_health         # ar-memory
+curl http://localhost:8010/_health         # ar-manager</code></pre>
+
+                <div class="tip">
+                    <strong>Rebuilding a single service</strong> after a code change:
+                    <pre><code>./flowtree/rebuild.sh flowtree-controller
+./flowtree/rebuild.sh ar-manager</code></pre>
+                </div>
+            </section>
+
+            <!-- ── Step 5: Tailscale Funnel ─────────────────────────── -->
+            <section id="step5">
+                <h2>
+                    <span class="step-number">5</span>
+                    Expose ar-manager via Tailscale Funnel
+                </h2>
+
+                <p>With the controller stack running, punch ar-manager through to the
+                internet:</p>
+
+                <pre><code>./tools/mcp/manager/setup.sh</code></pre>
+
+                <p>This script:</p>
+                <ol>
+                    <li>Generates a bearer token into
+                        <code>/Users/Shared/flowtree/manager/manager-tokens.json</code>
+                        (if none exists)</li>
+                    <li>Derives your Tailscale DNS name and sets
+                        <code>AR_MANAGER_ISSUER_URL</code></li>
+                    <li>Rebuilds and restarts the <code>ar-manager</code> container</li>
+                    <li>Runs <code>tailscale funnel --bg 8010</code></li>
+                </ol>
+
+                <p>When it finishes:</p>
+                <pre><code>==> Funnel active. Public MCP endpoint:
+
+    https://my-studio.taild1234.ts.net/
+
+    Configure this URL in Claude mobile as a remote MCP server.
+    OAuth will prompt you to enter your bearer token.</code></pre>
+
+                <h3>Verify public access</h3>
+                <pre><code>tailscale funnel status
+curl https://my-studio.taild1234.ts.net/_health</code></pre>
+
+                <h3>Add more bearer tokens</h3>
+                <p>Each client (Claude mobile, a CI pipeline, a teammate) should have
+                its own token with appropriate scopes:</p>
+                <pre><code># Full access token (read + write + pipeline + memory)
+AR_MANAGER_TOKEN_FILE=/Users/Shared/flowtree/manager/manager-tokens.json \
+  ./tools/mcp/manager/generate-token.sh "My label"
+
+# Read-only token
+AR_MANAGER_TOKEN_FILE=/Users/Shared/flowtree/manager/manager-tokens.json \
+  ./tools/mcp/manager/generate-token.sh "Monitoring" --scopes read,memory</code></pre>
+
+                <p>Token scopes:</p>
+                <table>
+                    <thead><tr><th>Scope</th><th>Grants access to</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>read</code></td><td>List workstreams, get stats, health check</td></tr>
+                        <tr><td><code>write</code></td><td>Submit tasks, register/update workstreams</td></tr>
+                        <tr><td><code>pipeline</code></td><td>Trigger GitHub workflows, commit plan files</td></tr>
+                        <tr><td><code>memory</code></td><td>Recall, store, and browse agent memories</td></tr>
+                    </tbody>
+                </table>
+
+                <div class="warning">
+                    <strong>Security:</strong> The bearer token is the only credential
+                    protecting ar-manager. Treat it like a password. Tailscale Funnel
+                    handles TLS — never add a plain HTTP Funnel or expose port 8010
+                    directly to the internet without Funnel.
+                </div>
+            </section>
+
+            <!-- ── Step 6: Agent pool ────────────────────────────────── -->
+            <section id="step6">
+                <h2>
+                    <span class="step-number">6</span>
+                    Start the agent pool
+                </h2>
+
+                <p>Agents can run on the same machine as the controller or on a
+                separate host. They connect <em>outbound</em> to the controller, so
+                no inbound firewall rules are needed on the agent machine.</p>
+
+                <h3>6a. Configure the agent environment</h3>
+                <pre><code>cp flowtree/agent/.env.example flowtree/agent/.env</code></pre>
+
+                <p>Edit <code>flowtree/agent/.env</code>:</p>
+                <pre><code>FLOWTREE_ROOT_HOST=my-studio.taild1234.ts.net   # controller hostname
+FLOWTREE_ROOT_PORT=7766                         # default, change if needed
+CLAUDE_CODE_OAUTH_TOKEN=&lt;token from claude setup-token&gt;
+GIT_USER_NAME=FlowTree Agent
+GIT_USER_EMAIL=agent@yourorg.com
+AGENT_COUNT=2                                   # number of parallel agents
+SSH_KEY_DIR=~/.ssh                              # SSH key for git push</code></pre>
+
+                <h3>6b. Start the pool</h3>
+                <pre><code>./flowtree/rebuild.sh --agents-only</code></pre>
+
+                <p>Or, to build both stacks together in one command:</p>
+                <pre><code>./flowtree/rebuild.sh --agents</code></pre>
+
+                <h3>6c. Verify agents are connected</h3>
+                <pre><code>docker compose -f flowtree/agent/docker-compose.yml ps
+docker compose -f flowtree/agent/docker-compose.yml logs -f</code></pre>
+
+                <p>Look for log lines like:</p>
+                <pre><code>FlowTree Agent starting
+  Controller: my-studio.taild1234.ts.net:7766
+NodeGroup: Added relay node (index 1)
+NodeGroup: startPersistentHost connecting to my-studio.taild1234.ts.net:7766</code></pre>
+
+                <div class="tip">
+                    <strong>Scale up or down</strong> without rebuilding:
+                    <pre><code>AGENT_COUNT=4 docker compose -f flowtree/agent/docker-compose.yml up -d --scale agent=4</code></pre>
+                </div>
+            </section>
+
+            <!-- ── Step 7: Submit your first job ─────────────────────── -->
+            <section id="step7">
+                <h2>
+                    <span class="step-number">7</span>
+                    Submit your first job
+                </h2>
+
+                <p>With the stack running, submit a job through ar-manager:</p>
+
+                <h3>Via HTTP (curl)</h3>
+                <pre><code>curl -X POST https://my-studio.taild1234.ts.net/api/workstreams/ws-myproject/submit \
+  -H "Authorization: Bearer armt_your_token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "Add a missing null check to UserService.findById()",
+    "targetBranch": "feature/null-checks"
+  }'</code></pre>
+
+                <h3>Via Claude Code MCP tool</h3>
+                <p>Configure ar-manager as a remote MCP server in your Claude Code
+                session (add to <code>.mcp.json</code> or
+                <code>settings.local.json</code>):</p>
+                <pre><code>{
+  "mcpServers": {
+    "ar-manager": {
+      "type": "http",
+      "url": "https://my-studio.taild1234.ts.net/",
+      "headers": {
+        "Authorization": "Bearer armt_your_token"
+      }
+    }
+  }
+}</code></pre>
+
+                <p>Then use the MCP tool in a Claude Code session:</p>
+                <pre><code>workstream_submit_task(
+    prompt="Add a missing null check to UserService.findById()",
+    workstream_id="ws-myproject",
+    target_branch="feature/null-checks"
+)</code></pre>
+
+                <h3>Via Claude mobile</h3>
+                <ol>
+                    <li>Open Claude mobile → Settings → MCP Servers</li>
+                    <li>Add a new server with URL
+                        <code>https://my-studio.taild1234.ts.net/</code></li>
+                    <li>Authenticate with your bearer token when prompted</li>
+                    <li>Use natural language: <em>"Submit a task to ws-myproject to
+                        add null checks to UserService"</em></li>
+                </ol>
+
+                <h3>Monitor progress</h3>
+                <pre><code># Check job status via API
+curl -H "Authorization: Bearer armt_your_token" \
+  "https://my-studio.taild1234.ts.net/api/workstreams/ws-myproject/status"
+
+# Watch agent logs in real time
+docker compose -f flowtree/agent/docker-compose.yml logs -f</code></pre>
+            </section>
+
+            <!-- ── Step 8: Surviving reboots ─────────────────────────── -->
+            <section id="step8">
+                <h2>
+                    <span class="step-number">8</span>
+                    Surviving reboots
+                </h2>
+
+                <p>Tailscale Funnel configuration persists across reboots automatically.
+                Docker containers do not — they need to be restarted. The simplest
+                approach is a single command:</p>
+
+                <pre><code>./flowtree/rebuild.sh --agents</code></pre>
+
+                <p>This rebuilds nothing if the jars are already compiled and the images
+                are already built — Docker's layer cache means it completes in seconds.
+                To skip the Maven build entirely when you have not changed Java code:</p>
+
+                <pre><code>docker compose -f flowtree/controller/docker-compose.yml up -d
+docker compose -f flowtree/agent/docker-compose.yml up -d</code></pre>
+
+                <h3>Optional: launch on login (macOS)</h3>
+                <p>A launchd plist for ar-manager is provided at
+                <code>tools/mcp/manager/com.almostrealism.ar-manager.plist</code>.
+                For the full stack, a simple approach is a login item that runs
+                <code>./flowtree/rebuild.sh --agents</code> from the repository root.</p>
+
+                <div class="info">
+                    <strong>Verify funnel is still active after reboot:</strong>
+                    <pre><code>tailscale funnel status
+curl https://my-studio.taild1234.ts.net/_health</code></pre>
+                    If the health check fails but Tailscale is up, the Docker containers
+                    stopped — run <code>rebuild.sh</code> to bring them back. The funnel
+                    itself does not need to be re-configured.
+                </div>
+            </section>
+
+            <!-- ── Troubleshooting ───────────────────────────────────── -->
+            <section id="troubleshooting">
+                <h2>Troubleshooting</h2>
+
+                <table>
+                    <thead>
+                        <tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Agents log "connection refused" to controller</td>
+                            <td>Controller container is not running or port 7766 is firewalled</td>
+                            <td>Run <code>docker compose ... ps</code>; check
+                                <code>FLOWTREE_ROOT_HOST</code> in agent <code>.env</code></td>
+                        </tr>
+                        <tr>
+                            <td><code>/_health</code> returns 502 from public URL</td>
+                            <td>ar-manager container stopped after reboot</td>
+                            <td><code>./flowtree/rebuild.sh</code></td>
+                        </tr>
+                        <tr>
+                            <td>Jobs submitted but agents never pick them up</td>
+                            <td>No agents connected yet, or peer connections not established</td>
+                            <td>Wait ~10 s after agent start; check logs for
+                                "Established connection"</td>
+                        </tr>
+                        <tr>
+                            <td><code>curl: (60) SSL certificate problem</code></td>
+                            <td>HTTPS not enabled in Tailscale admin console</td>
+                            <td>Enable under DNS → HTTPS Certificates</td>
+                        </tr>
+                        <tr>
+                            <td><code>tailscale funnel</code> command not found</td>
+                            <td>Tailscale CLI too old or not in PATH</td>
+                            <td>Use
+                                <code>/Applications/Tailscale.app/Contents/MacOS/Tailscale</code>
+                                on macOS</td>
+                        </tr>
+                        <tr>
+                            <td>ar-manager returns 401 on all requests</td>
+                            <td>Token file missing or token value copied incorrectly</td>
+                            <td>Check <code>/Users/Shared/flowtree/manager/manager-tokens.json</code>;
+                                regenerate with <code>generate-token.sh</code></td>
+                        </tr>
+                        <tr>
+                            <td>Two agents modify the same repository simultaneously</td>
+                            <td>Workspace directory is on a shared mount; lock contention</td>
+                            <td>The <code>.flowtree.lock</code> file inside each repo directory
+                                serialises access. Ensure agent workspace paths are not
+                                accidentally shared between different workstreams.</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Useful log commands</h3>
+                <pre><code># Controller stack
+docker compose -f flowtree/controller/docker-compose.yml logs -f flowtree-controller
+docker compose -f flowtree/controller/docker-compose.yml logs -f ar-manager
+docker compose -f flowtree/controller/docker-compose.yml logs -f ar-memory
+
+# Agent pool
+docker compose -f flowtree/agent/docker-compose.yml logs -f</code></pre>
+            </section>
+
+            <!-- ── Navigation ────────────────────────────────────────── -->
+            <section>
+                <h2>Further Reading</h2>
+                <ul>
+                    <li><a href="../modules/flowtree.html">FlowTree Module Reference</a>
+                        — Node/NodeGroup internals, relay mechanism, label routing</li>
+                    <li><a href="../../flowtree/docs/coding-agent.md">Coding Agent Guide</a>
+                        — ClaudeCodeJob options, git management, deduplication modes</li>
+                    <li><a href="../../flowtree/docs/ci-integration.md">CI Integration Guide</a>
+                        — Auto-resolve failures, verify-completion workflow</li>
+                    <li><a href="../../tools/mcp/manager/README.md">ar-manager Reference</a>
+                        — Full tool list, scopes, token management, reverse proxy config</li>
+                    <li><a href="../../flowtree/docs/agent-pool.md">Agent Pool Documentation</a>
+                        — Scaling, labels, bare-metal setup</li>
+                </ul>
+            </section>
+
+        </main>
+    </div>
+</body>
+</html>

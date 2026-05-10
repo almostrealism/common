@@ -70,7 +70,7 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 	public void enumerateSmall() {
 		PackedCollection input = integers(1, 17).evaluate().reshape(4, 4);
 		input.traverse().print();
-		System.out.println("--");
+		log("--");
 
 		CollectionProducer producer = cp(input)
 				.enumerate(1, 1)
@@ -220,7 +220,7 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 
 		CollectionProducer enumerated = enumerate(shape(size, size, 1), p(input));
 		PackedCollection output = enumerated.get().evaluate();
-		System.out.println(output.getShape());
+		log(String.valueOf(output.getShape()));
 
 		Assert.assertEquals(count, output.getShape().length(0));
 		Assert.assertEquals(size, output.getShape().length(1));
@@ -276,7 +276,7 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		PackedCollection operand = tensor(shape(4, 6, 1)).pack();
 
 		CollectionProducer product = enumerate(shape(6, 1), p(input)).traverse(0).multiply(p(operand));
-		System.out.println(product.getShape());
+		log(String.valueOf(product.getShape()));
 
 		Evaluable<PackedCollection> ev = product.get();
 		PackedCollection enumerated = ev.evaluate().reshape(shape(4, 6));
@@ -528,7 +528,7 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		Evaluable<PackedCollection> ev = stride.get();
 		PackedCollection enumerated = ev.evaluate().reshape(shape(9, 8, 2));
 
-		System.out.println(enumerated.getShape());
+		log(String.valueOf(enumerated.getShape()));
 
 		for (int i = 0; i < 9; i++) {
 			for (int j = 0; j < 8; j++) {
@@ -548,12 +548,12 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		CollectionProducer convY = c(p(input))
 				.enumerate(1, 2, 2);
 		PackedCollection output = convY.get().evaluate();
-		System.out.println(output.getShape());
+		log(String.valueOf(output.getShape()));
 
 		CollectionProducer convX = c(traverse(0, p(output)))
 				.enumerate(1, 2, 2);
 		output = convX.get().evaluate();
-		System.out.println(output.getShape());
+		log(String.valueOf(output.getShape()));
 
 		for (int i = 0; i < 2; i++) {
 			for (int j = 0; j < 2; j++) {
@@ -583,7 +583,7 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 				.enumerate(1, w, s)
 				.enumerate(1, w, s);
 		PackedCollection output = conv.get().evaluate();
-		System.out.println(output.getShape());
+		log(String.valueOf(output.getShape()));
 
 		for (int i = 0; i < r; i += s) {
 			for (int j = 0; j < c; j += s) {
@@ -676,7 +676,7 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 						.enumerate(3, x, s)
 						.enumerate(3, x, s);
 		PackedCollection output = conv.get().evaluate();
-		System.out.println(output.getShape());
+		log(String.valueOf(output.getShape()));
 
 		for (int np = 0; np < n; np++) {
 			for (int cp = 0; cp < c; cp++) {
@@ -707,12 +707,12 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 			CollectionProducer convY = c(p(input))
 					.enumerate(1, 3, 1);
 			PackedCollection output = convY.get().evaluate();
-			System.out.println(output.getShape());
+			log(String.valueOf(output.getShape()));
 
 			CollectionProducer convX = c(traverse(0, p(output)))
 					.enumerate(1, 3, 1);
 			output = convX.get().evaluate();
-			System.out.println(output.getShape());
+			log(String.valueOf(output.getShape()));
 
 			for (int i = 0; i < 8; i++) {
 				for (int j = 0; j < 8; j++) {

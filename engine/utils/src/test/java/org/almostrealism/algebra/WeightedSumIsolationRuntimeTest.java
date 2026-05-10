@@ -80,23 +80,21 @@ public class WeightedSumIsolationRuntimeTest extends TestSuiteBase implements Al
 	 */
 	@Test(timeout = 60000)
 	public void testCompilationVsExecutionTradeoff() {
-		System.out.println("=== Compilation vs Execution Tradeoff Analysis ===\n");
-		System.out.println("Measuring compilation time + execution time for " + MEASUREMENT_ITERATIONS + " iterations\n");
+		log("=== Compilation vs Execution Tradeoff Analysis ===\n");
+		log("Measuring compilation time + execution time for " + MEASUREMENT_ITERATIONS + " iterations\n");
 
 		int[] groupSizes = {8, 16, 32, 64, 128, 256, 512, 1024};
 		int outputSize = 16;
 
-		System.out.println(String.format("%-10s %-12s %-12s %-12s %-12s %-15s %-15s",
-				"GroupSize", "Compile(NI)", "Compile(I)", "Exec/iter(NI)", "Exec/iter(I)",
-				"Break-even", "100k total"));
-		System.out.println("-".repeat(100));
+		log(String.valueOf(String.format("%-10s %-12s %-12s %-12s %-12s %-15s %-15s", "GroupSize", "Compile(NI)", "Compile(I)", "Exec/iter(NI)", "Exec/iter(I)", "Break-even", "100k total")));
+		log("-".repeat(100));
 
 		for (int groupSize : groupSizes) {
 			Result noIsolation = measureFullCycle(outputSize, groupSize, false);
 			Result isolated = measureFullCycle(outputSize, groupSize, true);
 
 			if (noIsolation.compileTimeMs < 0 || isolated.compileTimeMs < 0) {
-				System.out.println(groupSize + " - FAILED");
+				log(String.valueOf(groupSize + " - FAILED"));
 				continue;
 			}
 
@@ -127,20 +125,13 @@ public class WeightedSumIsolationRuntimeTest extends TestSuiteBase implements Al
 			double total100kIsolated = isolated.compileTimeMs + (isolated.execTimePerIterUs * 100000 / 1000);
 			String winner100k = total100kNoIsolation < total100kIsolated ? "NI wins" : "I wins";
 
-			System.out.println(String.format("%-10d %-12d %-12d %-12.2f %-12.2f %-15s %-15s",
-					groupSize,
-					noIsolation.compileTimeMs,
-					isolated.compileTimeMs,
-					noIsolation.execTimePerIterUs,
-					isolated.execTimePerIterUs,
-					breakEvenStr,
-					winner100k + String.format(" (%.0f vs %.0f ms)", total100kNoIsolation, total100kIsolated)));
+			log(String.valueOf(String.format("%-10d %-12d %-12d %-12.2f %-12.2f %-15s %-15s", groupSize, noIsolation.compileTimeMs, isolated.compileTimeMs, noIsolation.execTimePerIterUs, isolated.execTimePerIterUs, breakEvenStr, winner100k + String.format(" (%.0f vs %.0f ms)", total100kNoIsolation, total100kIsolated))));
 		}
 
-		System.out.println("\nLegend:");
-		System.out.println("  NI = No Isolation, I = Isolated");
-		System.out.println("  Compile times in ms, Exec times in us per iteration");
-		System.out.println("  Break-even = iterations needed for isolation to pay off");
+		log("\nLegend:");
+		log("  NI = No Isolation, I = Isolated");
+		log("  Compile times in ms, Exec times in us per iteration");
+		log("  Break-even = iterations needed for isolation to pay off");
 	}
 
 	/**
@@ -148,7 +139,7 @@ public class WeightedSumIsolationRuntimeTest extends TestSuiteBase implements Al
 	 */
 	@Test(timeout = 60000)
 	public void testDetailedAnalysis() {
-		System.out.println("=== Detailed Analysis for GroupSize=64 ===\n");
+		log("=== Detailed Analysis for GroupSize=64 ===\n");
 
 		int groupSize = 64;
 		int outputSize = 16;
@@ -156,20 +147,20 @@ public class WeightedSumIsolationRuntimeTest extends TestSuiteBase implements Al
 		Result noIsolation = measureFullCycle(outputSize, groupSize, false);
 		Result isolated = measureFullCycle(outputSize, groupSize, true);
 
-		System.out.println("No Isolation:");
-		System.out.println("  Compilation time: " + noIsolation.compileTimeMs + " ms");
-		System.out.println("  Execution time per iteration: " + String.format("%.2f", noIsolation.execTimePerIterUs) + " us");
-		System.out.println();
+		log("No Isolation:");
+		log("  Compilation time: " + noIsolation.compileTimeMs + " ms");
+		log("  Execution time per iteration: " + String.format("%.2f", noIsolation.execTimePerIterUs) + " us");
+		log("");
 
-		System.out.println("Isolated:");
-		System.out.println("  Compilation time: " + isolated.compileTimeMs + " ms");
-		System.out.println("  Execution time per iteration: " + String.format("%.2f", isolated.execTimePerIterUs) + " us");
-		System.out.println();
+		log("Isolated:");
+		log("  Compilation time: " + isolated.compileTimeMs + " ms");
+		log("  Execution time per iteration: " + String.format("%.2f", isolated.execTimePerIterUs) + " us");
+		log("");
 
 		// Calculate totals for various iteration counts
-		System.out.println("Total time (compile + execute) for N iterations:");
-		System.out.println(String.format("%-15s %-20s %-20s %-10s", "Iterations", "No Isolation", "Isolated", "Winner"));
-		System.out.println("-".repeat(70));
+		log("Total time (compile + execute) for N iterations:");
+		log(String.format("%-15s %-20s %-20s %-10s", "Iterations", "No Isolation", "Isolated", "Winner"));
+		log("-".repeat(70));
 
 		long[] iterCounts = {1, 10, 100, 1000, 10000, 100000, 1000000};
 		for (long n : iterCounts) {
@@ -177,11 +168,7 @@ public class WeightedSumIsolationRuntimeTest extends TestSuiteBase implements Al
 			double totalI = isolated.compileTimeMs + (isolated.execTimePerIterUs * n / 1000);
 			String winner = totalNI < totalI ? "No Isolation" : "Isolated";
 
-			System.out.println(String.format("%-15s %-20s %-20s %-10s",
-					formatNumber(n),
-					String.format("%.2f ms", totalNI),
-					String.format("%.2f ms", totalI),
-					winner));
+			log(String.valueOf(String.format("%-15s %-20s %-20s %-10s", formatNumber(n), String.format("%.2f ms", totalNI), String.format("%.2f ms", totalI), winner)));
 		}
 	}
 
@@ -191,22 +178,21 @@ public class WeightedSumIsolationRuntimeTest extends TestSuiteBase implements Al
 	 */
 	@Test(timeout = 60000)
 	public void testThresholdForTypicalUsage() {
-		System.out.println("=== Threshold Analysis for 10K-100K Iterations ===\n");
-		System.out.println("Finding where isolation becomes beneficial for typical application usage.\n");
+		log("=== Threshold Analysis for 10K-100K Iterations ===\n");
+		log("Finding where isolation becomes beneficial for typical application usage.\n");
 
 		int[] groupSizes = {32, 64, 128, 256, 512, 1024, 2048};
 		int outputSize = 16;
 
-		System.out.println(String.format("%-10s %-12s %-12s %-12s %-12s %-12s %-12s",
-				"GroupSize", "Break-even", "10K winner", "50K winner", "100K winner", "Overhead%", "Verdict"));
-		System.out.println("-".repeat(90));
+		log(String.valueOf(String.format("%-10s %-12s %-12s %-12s %-12s %-12s %-12s", "GroupSize", "Break-even", "10K winner", "50K winner", "100K winner", "Overhead%", "Verdict")));
+		log("-".repeat(90));
 
 		for (int groupSize : groupSizes) {
 			Result noIsolation = measureFullCycle(outputSize, groupSize, false);
 			Result isolated = measureFullCycle(outputSize, groupSize, true);
 
 			if (noIsolation.compileTimeMs < 0 || isolated.compileTimeMs < 0) {
-				System.out.println(groupSize + " - FAILED (compilation error)");
+				log(String.valueOf(groupSize + " - FAILED (compilation error)"));
 				continue;
 			}
 
@@ -249,22 +235,21 @@ public class WeightedSumIsolationRuntimeTest extends TestSuiteBase implements Al
 				verdict = "MARGINAL";
 			}
 
-			System.out.println(String.format("%-10d %-12s %-12s %-12s %-12s %-12.1f%% %-12s",
-					groupSize, breakEvenStr, winner10k, winner50k, winner100k, overheadPct, verdict));
+			log(String.valueOf(String.format("%-10d %-12s %-12s %-12s %-12s %-12.1f%% %-12s", groupSize, breakEvenStr, winner10k, winner50k, winner100k, overheadPct, verdict)));
 
 			// Stop if compilation takes too long (non-isolated)
 			if (noIsolation.compileTimeMs > 60000) {
-				System.out.println("\nStopping - compilation time exceeds 60 seconds");
+				log("\nStopping - compilation time exceeds 60 seconds");
 				break;
 			}
 		}
 
-		System.out.println("\nLegend:");
-		System.out.println("  NI = No Isolation wins, I = Isolation wins");
-		System.out.println("  Overhead% = Extra execution time per iteration when isolated");
-		System.out.println("  ISOLATE = Isolation is beneficial for 10K-100K iterations");
-		System.out.println("  NO ISOLATE = No isolation is better for 10K-100K iterations");
-		System.out.println("  MARGINAL = Mixed results, depends on iteration count");
+		log("\nLegend:");
+		log("  NI = No Isolation wins, I = Isolation wins");
+		log("  Overhead% = Extra execution time per iteration when isolated");
+		log("  ISOLATE = Isolation is beneficial for 10K-100K iterations");
+		log("  NO ISOLATE = No isolation is better for 10K-100K iterations");
+		log("  MARGINAL = Mixed results, depends on iteration count");
 	}
 
 	private Result measureFullCycle(int outputSize, int groupSize, boolean isolate) {

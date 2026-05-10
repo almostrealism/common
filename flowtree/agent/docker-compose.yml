@@ -29,9 +29,14 @@ services:
         limits:
           cpus: "${AGENT_CPUS:-4}"
           memory: "${AGENT_MEMORY:-4g}"
+    # NO writable volumes. Each agent clones into its container-private
+    # overlay filesystem at /workspace/project and uses a container-private
+    # ~/.m2 — no sharing across containers, no carry-over across restarts.
+    # This is deliberate: writable shared volumes caused the April 2026
+    # cross-workstream collision documented in FLOWTREE_COLLISIONS.md.
+    # The entrypoint guard refuses to start if any writable volume is
+    # attached; adding any RW entry below will break the agent.
     volumes:
-      - /workspace/project
-      - /home/agent/.m2
       - ${SSH_KEY_DIR}:/home/agent/.ssh:ro
       - ${MODELS_DIR:-/Users/Shared/models}:/models:ro
       - ${SAMPLES_DIR:-/dev/null}:/samples:ro

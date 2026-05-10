@@ -23,7 +23,7 @@ ar-manager is the **single centralized MCP tool** for all agent jobs. It provide
 │  │              (port 8010, Docker service)               │   │
 │  │                                                       │   │
 │  │  Tools: send_message, memory_recall, memory_store,    │   │
-│  │         memory_branch_context, github_pr_find,        │   │
+│  │         workstream_context, github_pr_find,           │   │
 │  │         github_pr_review_comments, github_pr_reply,   │   │
 │  │         github_create_pr, workstream_get_status, ...  │   │
 │  └───┬──────────────┬──────────────┬─────────────────────┘   │
@@ -63,7 +63,7 @@ The controller generates a temporary HMAC token at job submission time:
 | `send_message` | Send a message (stored in memory, optionally notified via Slack) |
 | `memory_recall` | Semantic search across agent memories |
 | `memory_store` | Store a new memory entry |
-| `memory_branch_context` | Get all memories + commit history for a branch |
+| `workstream_context` | Get memories, commits, and jobs for a workstream branch |
 | `github_pr_find` | Find open PR for a branch |
 | `github_pr_review_comments` | Get code review comments on a PR |
 | `github_pr_conversation` | Get PR conversation (issue comments) |
@@ -82,6 +82,7 @@ For agents working on **this repo** (almostrealism/common), additional project-l
 | MCP Tool | Description |
 |---|---|
 | **ar-consultant** | Documentation-aware assistant with LLM inference and memory |
+| **ar-build-validator** | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne |
 | **ar-test-runner** | Async test execution with structured result parsing |
 | **ar-jmx** | JVM memory diagnostics via JDK tools |
 | **ar-profile-analyzer** | Profile XML analysis for performance investigation |
@@ -107,6 +108,7 @@ See `flowtree/src/main/resources/workstreams-example.yaml` for full configuratio
 | **ar-manager** | [manager/](manager/) | Centralized MCP endpoint for messaging, memory, GitHub, and workstream management |
 | **ar-consultant** | [consultant/](consultant/) | Documentation-aware assistant with local LLM inference, memory, and doc retrieval |
 | **ar-memory** | [memory/](memory/) | Centralized HTTP memory service with embedding-based search |
+| **ar-build-validator** | [build-validator/](build-validator/) | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne |
 | **ar-test-runner** | [test-runner/](test-runner/) | Async test execution with structured result parsing |
 | **ar-jmx** | [jmx/](jmx/) | JVM memory diagnostics via JDK tools (jcmd, jstat, JFR) |
 | **ar-profile-analyzer** | [profile-analyzer/](profile-analyzer/) | Profile XML analysis for performance investigation |
@@ -120,7 +122,7 @@ See `flowtree/src/main/resources/workstreams-example.yaml` for full configuratio
 ## Docker Infrastructure
 
 ar-memory, the FlowTree controller, and ar-manager run as Docker services
-defined in `tools/docker-compose.yml`:
+defined in `flowtree/controller/docker-compose.yml`:
 
 ```bash
 # Pre-build the controller JAR (from repo root)
@@ -128,7 +130,7 @@ mvn package -pl flowtree -am -DskipTests
 mvn dependency:copy-dependencies -pl flowtree -DoutputDirectory=target/dependency
 
 # Start all services
-docker compose -f tools/docker-compose.yml up -d
+docker compose -f flowtree/controller/docker-compose.yml up -d
 ```
 
 **Host directories:**
@@ -136,7 +138,7 @@ docker compose -f tools/docker-compose.yml up -d
 - `/Users/Shared/flowtree/manager/` — `manager-tokens.json`
 - `/Users/Shared/flowtree/memory-data/` — SQLite DB and FAISS indices
 
-See `tools/docker-compose.yml` for full configuration.
+See `flowtree/controller/docker-compose.yml` for full configuration.
 
 ## Installation
 

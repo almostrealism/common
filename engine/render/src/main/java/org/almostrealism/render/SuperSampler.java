@@ -22,6 +22,7 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.stream.IntStream;
 
@@ -61,7 +62,7 @@ import java.util.stream.IntStream;
  * @see org.almostrealism.raytrace.RenderParameters
  * @author Michael Murray
  */
-public class SuperSampler implements Producer<PackedCollection> {
+public class SuperSampler implements Producer<PackedCollection>, ConsoleFeatures {
 
 	/**
 	 * The 2D grid of sample color producers. First index is horizontal (x),
@@ -138,7 +139,7 @@ public class SuperSampler implements Producer<PackedCollection> {
 					PackedCollection allSamples = Pair.bank(((MemoryBank) args[0]).getCount());
 					PackedCollection out[][] = new PackedCollection[w][h];
 
-					System.out.println("SuperSampler: Evaluating sample kernels...");
+					SuperSampler.this.log("Evaluating sample kernels...");
 					for (int i = 0; i < ev.length; i++) {
 						for (int j = 0; j < ev[i].length; j++) {
 							double pos[] = ((MemoryBank<?>) args[0]).toArray(0, allSamples.getMemLength());
@@ -156,7 +157,7 @@ public class SuperSampler implements Producer<PackedCollection> {
 						}
 					}
 
-					System.out.println("SuperSampler: Combining samples...");
+					SuperSampler.this.log("Combining samples...");
 					for (int k = 0; k < ((MemoryBank) destination).getCount(); k++) {
 						for (int i = 0; i < ev.length; i++) {
 							j:

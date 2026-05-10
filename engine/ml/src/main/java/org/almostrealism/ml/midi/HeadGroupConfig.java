@@ -17,6 +17,7 @@
 package org.almostrealism.ml.midi;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.RotationFeatures;
 
@@ -52,7 +53,7 @@ public class HeadGroupConfig {
 	 * Precomputed RoPE frequency tensor for this group's theta value.
 	 * Shape: (maxSeqLen, headDim/2, 2) containing [cos, sin] pairs.
 	 */
-	public final PackedCollection freqCis;
+	public final CollectionProducer freqCis;
 
 	/**
 	 * Producer providing the attribute value as position index into freqCis.
@@ -69,7 +70,7 @@ public class HeadGroupConfig {
 	 *                shape (maxSeqLen, headDim/2, 2) containing [cos, sin]
 	 * @param position producer providing the attribute value as RoPE position
 	 */
-	public HeadGroupConfig(int headCount, PackedCollection freqCis,
+	public HeadGroupConfig(int headCount, CollectionProducer freqCis,
 						   Producer<PackedCollection> position) {
 		this.headCount = headCount;
 		this.freqCis = freqCis;
@@ -95,7 +96,7 @@ public class HeadGroupConfig {
 											   Producer<PackedCollection>[] attributePositions) {
 		HeadGroupConfig[] groups = new HeadGroupConfig[ropeThetas.length];
 		for (int g = 0; g < ropeThetas.length; g++) {
-			PackedCollection freqCis = RotationFeatures.computeRopeFreqs(
+			CollectionProducer freqCis = RotationFeatures.computeRopeFreqs(
 					ropeThetas[g], headDim, maxSeqLen);
 			groups[g] = new HeadGroupConfig(headsPerGroup[g], freqCis, attributePositions[g]);
 		}

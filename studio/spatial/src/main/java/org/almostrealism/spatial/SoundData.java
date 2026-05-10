@@ -284,7 +284,7 @@ public class SoundData {
 				return null;
 			}
 		} catch (Exception e) {
-			e.printStackTrace();
+			Console.root().warn(e.getMessage(), e);
 			return null;
 		}
 	}

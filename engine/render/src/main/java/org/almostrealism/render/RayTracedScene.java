@@ -20,6 +20,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Realization;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
@@ -64,7 +65,7 @@ import java.util.concurrent.TimeoutException;
  * @see Engine
  * @see RayIntersectionEngine
  */
-public class RayTracedScene implements Realization<RealizableImage, RenderParameters>, CodeFeatures, RGBFeatures {
+public class RayTracedScene implements Realization<RealizableImage, RenderParameters>, CodeFeatures, RGBFeatures, ConsoleFeatures {
 	/** The ray tracer that delegates to the rendering engine for each ray. */
 	private RayTracer tracer;
 	/** The camera that generates rays from pixel positions. */
@@ -173,7 +174,7 @@ public class RayTracedScene implements Realization<RealizableImage, RenderParame
 		try {
 			return color.get();
 		} catch (InterruptedException | ExecutionException e) {
-			e.printStackTrace();
+			warn(e.getMessage(), e);
 			return null;
 		}
 	}

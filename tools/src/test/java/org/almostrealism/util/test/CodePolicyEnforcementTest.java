@@ -103,23 +103,18 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 	);
 
 	private static Path findProjectRoot() {
-		// Start from current directory and look for common/ or pom.xml
+		// Walk up from the Surefire working directory (the tools module directory)
+		// until we find the project root, identified by the presence of both the
+		// base/ and engine/ layer directories alongside pom.xml.
 		Path current = Path.of("").toAbsolutePath();
 
-		// If we're in a submodule, go up to find common/
 		while (current != null) {
 			if (Files.exists(current.resolve("pom.xml")) &&
-					Files.exists(current.resolve("algebra")) &&
-					Files.exists(current.resolve("ml"))) {
+					Files.exists(current.resolve("base")) &&
+					Files.exists(current.resolve("engine"))) {
 				return current;
 			}
 			current = current.getParent();
-		}
-
-		// Fallback to workspace path
-		Path workspace = Path.of("/workspace/project/common");
-		if (Files.exists(workspace)) {
-			return workspace;
 		}
 
 		return Path.of("").toAbsolutePath();
@@ -267,7 +262,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 
 				    // This default method is fine
 				    default void doSomething() {
-				        System.out.println("OK");
+				        log("OK");
 				    }
 				}
 				""";
@@ -307,7 +302,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 				public interface GoodFeatures {
 				    // All methods are default - this is correct
 				    default void doSomething() {
-				        System.out.println("OK");
+				        log("OK");
 				    }
 
 				    default String computeValue(int x) {
@@ -350,7 +345,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 				package test;
 				public class BadCell {
 				    public void doSomething() {
-				        System.out.println("I am not a real Cell");
+				        log("I am not a real Cell");
 				    }
 				}
 				""";
@@ -387,7 +382,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 				import org.almostrealism.graph.CellAdapter;
 				public class GoodCell extends CellAdapter {
 				    public void doSomething() {
-				        System.out.println("I implement Cell via CellAdapter");
+				        log("I implement Cell via CellAdapter");
 				    }
 				}
 				""";
@@ -423,7 +418,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 				package test;
 				public class BadBlock {
 				    public void doSomething() {
-				        System.out.println("I am not a real Block");
+				        log("I am not a real Block");
 				    }
 				}
 				""";

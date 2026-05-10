@@ -416,6 +416,8 @@ public class JobStatsStore implements ConsoleFeatures {
             event = JobCompletionEvent.failed(jobId, description, errorMessage, null);
         } else if (status == JobCompletionEvent.Status.SUCCESS) {
             event = JobCompletionEvent.success(jobId, description);
+        } else if (status == JobCompletionEvent.Status.DEGRADED) {
+            event = JobCompletionEvent.degraded(jobId, description, errorMessage);
         } else {
             event = new JobCompletionEvent(jobId, status, description);
         }

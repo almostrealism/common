@@ -18,7 +18,6 @@ package org.almostrealism.studio.pattern.test;
 
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.audio.CellList;
-import org.almostrealism.audio.Cells;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.studio.arrange.MixdownManager;
 import org.almostrealism.music.data.ChannelInfo;
@@ -335,52 +334,6 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 	}
 
 	/**
-	 * Compares traditional and real-time rendering output.
-	 */
-	@Test(timeout = 600_000)
-	@TestDepth(2)
-	public void compareTraditionalAndRealTime() {
-		File libraryDir = new File(LIBRARY_PATH);
-		assumeTrue("Library directory required: " + libraryDir.getAbsolutePath(),
-				libraryDir.exists());
-
-		MixdownManager.enableMainFilterUp = false;
-		MixdownManager.enableEfxFilters = false;
-		MixdownManager.enableEfx = false;
-
-		// Generate traditional output
-		AudioScene<?> scene1 = createTestScene(libraryDir);
-		String traditionalFile = "results/comparison-traditional.wav";
-		WaveOutput output1 = new WaveOutput(() -> new File(traditionalFile), 24, true);
-		Cells cells = scene1.getCells(new MultiChannelAudioOutput(output1));
-		cells.sec(DURATION_SECONDS).get().run();
-		output1.write().get().run();
-
-		// Generate real-time output with the same scene configuration
-		AudioScene<?> scene2 = createTestScene(libraryDir);
-		String realtimeFile = "results/comparison-realtime.wav";
-		WaveOutput output2 = new WaveOutput(() -> new File(realtimeFile), 24, true);
-		TemporalCellular runner = scene2.runnerRealTime(
-				new MultiChannelAudioOutput(output2), BUFFER_SIZE);
-
-		runner.setup().get().run();
-		int totalFrames = (int)(DURATION_SECONDS * SAMPLE_RATE);
-		int numBuffers = totalFrames / BUFFER_SIZE;
-		Runnable tick = runner.tick().get();
-		for (int buf = 0; buf < numBuffers; buf++) {
-			tick.run();
-		}
-		output2.write().get().run();
-
-		// Generate spectrograms for both
-		generateSpectrogram(traditionalFile, "results/comparison-traditional-spectrogram.png");
-		generateSpectrogram(realtimeFile, "results/comparison-realtime-spectrogram.png");
-
-		// Compare the audio files
-		compareAudioFiles(traditionalFile, realtimeFile);
-	}
-
-	/**
 	 * Creates a properly configured test scene with programmatic audio choices.
 	 * This avoids dependency on external pattern-factory.json with invalid paths.
 	 */
@@ -507,50 +460,6 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 
 		} catch (Exception e) {
 			fail("Failed to verify audio content: " + e.getMessage());
-		}
-	}
-
-	private void compareAudioFiles(String file1, String file2) {
-		try {
-			WaveData data1 = WaveData.load(new File(file1));
-			WaveData data2 = WaveData.load(new File(file2));
-
-			PackedCollection samples1 = data1.getData();
-			PackedCollection samples2 = data2.getData();
-
-			int len1 = samples1.getShape().length(0);
-			int len2 = samples2.getShape().length(0);
-
-			log("\n=== Audio Comparison ===");
-			log("Traditional samples: " + len1 + ", Real-time samples: " + len2);
-
-			int compareLen = Math.min(len1, len2);
-			double maxDiff = 0;
-			double sumDiff = 0;
-			int diffCount = 0;
-
-			for (int i = 0; i < compareLen; i++) {
-				double diff = Math.abs(samples1.valueAt(i) - samples2.valueAt(i));
-				if (diff > maxDiff) maxDiff = diff;
-				sumDiff += diff;
-				if (diff > 0.001) diffCount++;
-			}
-
-			double avgDiff = sumDiff / compareLen;
-			log("Max difference: " + maxDiff);
-			log("Average difference: " + avgDiff);
-			log("Samples with significant difference: " + diffCount + " / " + compareLen);
-
-			double diffRatio = (double) diffCount / compareLen;
-			// Note: Real-time may differ due to incremental rendering
-			// We allow more tolerance here than for identical pipeline tests
-			if (diffRatio > 0.5) {
-				log("WARNING: High difference ratio - outputs may not match");
-			}
-
-		} catch (Exception e) {
-			log("Comparison failed: " + e.getMessage());
-			e.printStackTrace();
 		}
 	}
 

@@ -22,8 +22,10 @@ import org.almostrealism.studio.StreamingAudioPlayer;
 import org.almostrealism.studio.StreamingAudioPlayer.OutputMode;
 import org.almostrealism.audio.line.BufferDefaults;
 import org.almostrealism.audio.line.DelegatedAudioLine;
+import org.almostrealism.audio.line.LineUtilities;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.line.SharedMemoryAudioLine;
+import org.almostrealism.audio.line.SourceDataOutputLine;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
@@ -36,6 +38,7 @@ import javax.sound.sampled.AudioSystem;
 import javax.sound.sampled.DataLine;
 import javax.sound.sampled.SourceDataLine;
 
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 
@@ -330,6 +333,90 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that setDirectOutput() updates the delegate when already
+	 * in direct mode, so audio routes through the new line immediately.
+	 */
+	@Test(timeout = 10_000)
+	public void testSetDirectOutputUpdatesDelegateInDirectMode() {
+		assumeAudioHardware();
+		config = createPlayer(null);
+		config.setDirectMode();
+
+		// The delegate should be the initial direct output
+		OutputLine initialDelegate = delegatedLine.getOutputDelegate();
+		assertNotNull("Delegate should be set after setDirectMode", initialDelegate);
+
+		// Create a new SourceDataOutputLine (via hardware)
+		SourceDataOutputLine newLine = createHardwareOutputLine();
+		Assume.assumeNotNull("Need hardware line for this test", newLine);
+
+		config.setDirectOutput(newLine);
+
+		// The delegate should now point to the new line, not the old one
+		assertSame("Delegate must be updated to new line",
+				newLine, delegatedLine.getOutputDelegate());
+	}
+
+	/**
+	 * Verifies that setDirectOutput() does not activate the line when
+	 * in DAW mode — the new line is stored for later use.
+	 */
+	@Test(timeout = 10_000)
+	public void testSetDirectOutputDoesNotActivateInDawMode() {
+		config = createPlayer(null);
+		config.setDawMode();
+
+		SourceDataOutputLine newLine = createHardwareOutputLine();
+		Assume.assumeNotNull("Need hardware line for this test", newLine);
+
+		config.setDirectOutput(newLine);
+
+		// Delegate should still be null (DAW mode with no connection)
+		assertNull("Delegate should remain null in DAW mode",
+				delegatedLine.getOutputDelegate());
+
+		// But switching to direct should use the pre-set line
+		config.setDirectMode();
+		assertSame("Should use pre-set direct output",
+				newLine, delegatedLine.getOutputDelegate());
+	}
+
+	/**
+	 * Verifies that the full reinitialize flow works: destroy existing
+	 * stream, create new one, set direct output — audio should route
+	 * through the new device.
+	 */
+	@Test(timeout = 30_000)
+	public void testReinitializeWithDeviceOverride() {
+		assumeAudioHardware();
+
+		// Simulate initial setup
+		config = createPlayer(null);
+		config.setDirectMode();
+		OutputLine original = delegatedLine.getOutputDelegate();
+		assertNotNull(original);
+
+		// Simulate reinitialize: destroy and rebuild
+		config.destroy();
+
+		// Create fresh player and config
+		player = new BufferedAudioPlayer(PLAYER_COUNT, SAMPLE_RATE, MAX_FRAMES);
+		delegatedLine = new DelegatedAudioLine();
+		config = createPlayer(null);
+		config.setDirectMode();
+
+		// Now override with a specific device line
+		SourceDataOutputLine deviceLine = createHardwareOutputLine();
+		Assume.assumeNotNull("Need hardware line for this test", deviceLine);
+
+		config.setDirectOutput(deviceLine);
+
+		// Delegate must point to the device line
+		assertSame("After reinit + setDirectOutput, delegate must be device line",
+				deviceLine, delegatedLine.getOutputDelegate());
+	}
+
+	/**
 	 * Creates a mock OutputLine for testing.
 	 */
 	private OutputLine createMockOutputLine() {
@@ -346,5 +433,19 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 			@Override
 			public int getSampleRate() { return SAMPLE_RATE; }
 		};
+	}
+
+	/**
+	 * Creates a real hardware SourceDataOutputLine for testing device
+	 * switching. Returns null if hardware is unavailable.
+	 */
+	private SourceDataOutputLine createHardwareOutputLine() {
+		AudioFormat format = new AudioFormat(
+				AudioFormat.Encoding.PCM_SIGNED, SAMPLE_RATE,
+				16, 2, 4, SAMPLE_RATE, false);
+		OutputLine line = LineUtilities.getLine(
+				format, BufferDefaults.defaultBufferSize);
+		return line instanceof SourceDataOutputLine
+				? (SourceDataOutputLine) line : null;
 	}
 }

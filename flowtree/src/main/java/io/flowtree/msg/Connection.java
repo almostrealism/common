@@ -19,6 +19,7 @@ package io.flowtree.msg;
 import io.flowtree.job.Job;
 import io.flowtree.job.JobFactory;
 import io.flowtree.node.Node;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
 
@@ -48,7 +49,7 @@ import java.io.IOException;
  * @see NodeProxy
  * @see <a href="../docs/node-relay.md">Node Relay and Job Routing</a>
  */
-public class Connection implements Runnable, NodeProxy.EventListener {
+public class Connection implements Runnable, NodeProxy.EventListener, ConsoleFeatures {
 	/** The local {@link Node} that owns this connection and receives incoming jobs. */
 	private final Node node;
 
@@ -77,7 +78,7 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 	 *                      constructor but may be thrown by subclasses.
 	 */
 	public Connection(Node node, NodeProxy p, int id) throws IOException {
-		System.out.println("Constructing connection from [" + node +
+		log("Constructing connection from [" + node +
 							"] to remote node " + id +
 							" by way of " + p);
 		
@@ -157,8 +158,7 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 		
 		Boolean b = null;
 		
-		System.out.println("Connection (" + this +
-							"): Confirming connection...");
+		log("Connection (" + this + "): Confirming connection...");
 		
 		try {
 			Message m = new Message(Message.ConnectionConfirmation,
@@ -236,7 +236,7 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 	 */
 	@Override
 	public void connect(NodeProxy p) {
-		System.out.println(this + ": Connected to " + p);
+		log(this + ": Connected to " + p);
 		this.proxy = p;
 	}
 
@@ -253,7 +253,7 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 	 */
 	@Override
 	public int disconnect(NodeProxy p) {
-		System.out.println(this + ": Disconnected from " + p);
+		log(this + ": Disconnected from " + p);
 		p.removeEventListener(this);
 		this.proxy = null;
 
@@ -294,17 +294,15 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 				String md = m.getData();
 				
 				if (md == null) {
-					System.out.println(this + ": Job message contains no job data.");
+					log(this + ": Job message contains no job data.");
 					return true;
 				}
-				
+
 				if (Message.verbose) {
 					int mdi = md.indexOf("RAW");
 					String dis = md;
 					if (mdi > 0) dis = md.substring(0, mdi + 3);
-					System.out.println(this +
-										" -- Adding job to node  -- "
-										+ dis);
+					log(this + " -- Adding job to node  -- " + dis);
 				}
 				
 				Job received = this.node.getJobFactory().createJob(md);
@@ -332,17 +330,13 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 				this.node.sendKill(task, relay--);
 			}
 		} catch (IndexOutOfBoundsException obe) {
-			System.out.println("Connection: " + obe);
-			obe.printStackTrace(System.out);
+			warn(String.valueOf(obe), obe);
 			return false;
 		} catch (IllegalThreadStateException tse) {
-			System.out.println(this +
-							" -- Illegal Thread State (" +
-							tse.getMessage() + ")");
-			tse.printStackTrace(System.out);
+			warn(this + " -- Illegal Thread State (" + tse.getMessage() + ")", tse);
 			return false;
 		} catch (Exception e) {
-			System.out.println("Connection: " + e);
+			warn(String.valueOf(e));
 			return false;
 		}
 		
@@ -353,7 +347,7 @@ public class Connection implements Runnable, NodeProxy.EventListener {
 	 * Logs a finalisation notice when this object is garbage-collected.
 	 * Useful for diagnosing connection lifecycle issues during development.
 	 */
-	protected void finalize() { System.out.println("Finalizing " + this); }
+	protected void finalize() { log("Finalizing " + this); }
 
 	/**
 	 * Returns a brief human-readable description of this connection without

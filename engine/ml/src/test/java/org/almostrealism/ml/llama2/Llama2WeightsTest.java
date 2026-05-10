@@ -38,7 +38,7 @@ public class Llama2WeightsTest extends TestSuiteBase {
 	 * Verifies that {@code take} reads the correct number of floats
 	 * from the buffer and advances its position.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testTakeReadsCorrectElements() {
 		float[] data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
 		FloatBuffer buffer = FloatBuffer.wrap(data);
@@ -61,7 +61,7 @@ public class Llama2WeightsTest extends TestSuiteBase {
 	 * Verifies that {@code take} with a single dimension returns
 	 * the correct flat array.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testTakeSingleDimension() {
 		float[] data = {10.0f, 20.0f, 30.0f};
 		FloatBuffer buffer = FloatBuffer.wrap(data);
@@ -77,7 +77,7 @@ public class Llama2WeightsTest extends TestSuiteBase {
 	 * Verifies that {@code packComplex} correctly interleaves real and
 	 * imaginary parts into the expected [real, imag, real, imag, ...] layout.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testPackComplexInterleaving() {
 		float[] real = {1.0f, 2.0f, 3.0f, 4.0f};
 		float[] imag = {0.1f, 0.2f, 0.3f, 0.4f};
@@ -100,7 +100,7 @@ public class Llama2WeightsTest extends TestSuiteBase {
 	 * Verifies that {@code packComplex} rejects a shape whose last
 	 * dimension is not 2.
 	 */
-	@Test(expected = IllegalArgumentException.class)
+	@Test(timeout = 60000, expected = IllegalArgumentException.class)
 	public void testPackComplexRejectsInvalidShape() {
 		float[] real = {1.0f, 2.0f, 3.0f};
 		float[] imag = {0.1f, 0.2f, 0.3f};

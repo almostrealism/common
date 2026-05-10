@@ -16,6 +16,8 @@
 
 package io.almostrealism.profile;
 
+import org.almostrealism.io.Console;
+
 /**
  * A functional interface for listening to and recording the execution duration
  * of operations.
@@ -71,7 +73,7 @@ public interface OperationTimingListener {
 			metadata = ((OperationInfo) r).getMetadata();
 
 			if (metadata == null) {
-				System.out.println("Warning: " + r.getClass().getSimpleName() + " has no metadata");
+				Console.root().warn(r.getClass().getSimpleName() + " has no metadata");
 			}
 		}
 

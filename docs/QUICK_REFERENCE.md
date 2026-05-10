@@ -439,6 +439,32 @@ public class MyTest implements TestFeatures, ConsoleFeatures {
 }
 ```
 
+### Validate Code Quality Before Completing a Task
+
+Use the MCP build validator to check style and policy — never wait for CI to catch these:
+
+```
+mcp__ar-build-validator__start_validation
+```
+
+Default checks: `checkstyle`, `code_policy`, `test_timeouts`, `duplicate_code`.
+
+If the project is already compiled, skip the build step for speed:
+```
+mcp__ar-build-validator__start_validation skip_build:true
+```
+
+For checkstyle only (fastest — no build at all):
+```
+mcp__ar-build-validator__start_validation checks:["checkstyle"]
+```
+
+Poll status, then get structured violations:
+```
+mcp__ar-build-validator__get_validation_status run_id:<id>
+mcp__ar-build-validator__get_validation_violations run_id:<id>
+```
+
 ### Run Tests
 
 Use the MCP test runner — never use `mvn test` directly:

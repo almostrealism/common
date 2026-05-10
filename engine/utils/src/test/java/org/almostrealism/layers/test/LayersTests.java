@@ -119,7 +119,7 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 		gop = (OperationList) gop.optimize();
 		gop.get().run();
 
-		System.out.println("CPU vs GPU = " + cpuSum + " vs " + gpuSum);
+		log("CPU vs GPU = " + cpuSum + " vs " + gpuSum);
 
 		for (int i = 0; i < SIZE; i++) {
 			assertEquals(gpuOut[i], cpuOut[i]);

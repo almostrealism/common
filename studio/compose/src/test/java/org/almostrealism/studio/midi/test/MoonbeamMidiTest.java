@@ -57,7 +57,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	 * Verify that the model assembles with synthetic weights and the
 	 * compiled transformer can execute a forward pass.
 	 */
-	@Test @TestDepth(2)
+	@Test(timeout = 600000) @TestDepth(2)
 	public void testModelAssembly() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -77,7 +77,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	 * Verify that creating an autoregressive model and processing a single
 	 * prompt token exercises the compiled transformer forward pass.
 	 */
-	@Test @TestDepth(2)
+	@Test(timeout = 600000) @TestDepth(2)
 	public void testTransformerForwardPass() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -99,7 +99,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	/**
 	 * Verify that the autoregressive model produces compound tokens.
 	 */
-	@Test @TestDepth(2)
+	@Test(timeout = 600000) @TestDepth(2)
 	public void testAutoregressiveGeneration() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -129,7 +129,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	/**
 	 * Verify that the autoregressive loop can generate multiple tokens.
 	 */
-	@Test @TestDepth(2)
+	@Test(timeout = 600000) @TestDepth(2)
 	public void testMultipleTokenGeneration() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -152,7 +152,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	/**
 	 * Verify the end-to-end flow: tokens can be detokenized back to note events.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testDetokenizeGeneratedOutput() {
 		MidiTokenizer tokenizer = new MidiTokenizer();
 
@@ -171,7 +171,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	/**
 	 * Verify that output can be written to a MIDI file and read back.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testMidiRoundTrip() throws IOException, InvalidMidiDataException {
 		MidiTokenizer tokenizer = new MidiTokenizer();
 		MidiFileReader reader = new MidiFileReader();
@@ -200,7 +200,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	 * This exercises the lastHidden == null branch in
 	 * {@link MoonbeamMidiGenerator#next()}.
 	 */
-	@Test @TestDepth(2)
+	@Test(timeout = 600000) @TestDepth(2)
 	public void testUnconditionalGeneration() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -227,7 +227,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	 * before generating new ones, and that the returned list contains
 	 * only the generated (non-prompt) tokens.
 	 */
-	@Test @TestDepth(2)
+	@Test(timeout = 600000) @TestDepth(2)
 	public void testGenerateMethodSkipsPrompt() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -255,7 +255,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	/**
 	 * Verify that temperature and top-p settings are applied.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSamplingParameters() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -348,7 +348,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	 * n = tanh(W_in@x + b_in + r * (W_hn@h + b_hn)),
 	 * h' = (1 - z) * n + z * h</p>
 	 */
-	@Test
+	@Test(timeout = 300000)
 	public void testGruCellComputation() {
 		// W_ih = [W_ir; W_iz; W_in], shape (3*2, 2) = (6, 2)
 		PackedCollection weightIh = new PackedCollection(new TraversalPolicy(6, 2));
@@ -402,7 +402,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	 * Verify that the GRU cell correctly applies reset and update gates
 	 * when biases shift the gate activations away from 0.5.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	public void testGruCellWithBias() {
 		PackedCollection weightIh = new PackedCollection(new TraversalPolicy(3, 1));
 		PackedCollection weightHh = new PackedCollection(new TraversalPolicy(3, 1));
@@ -428,7 +428,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	 * Verify that GRUDecoder.toAttributeValues correctly maps flat decode
 	 * vocabulary indices to per-attribute values by subtracting offsets.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	public void testDecoderToAttributeValues() {
 		MoonbeamConfig config = MoonbeamConfig.defaultConfig();
 		int[] offsets = GRUDecoder.computeVocabOffsets(config);
@@ -457,7 +457,7 @@ public class MoonbeamMidiTest extends TestSuiteBase {
 	 * Verify that vocab offsets cover the full decode vocabulary.
 	 * The last offset plus the last attribute's vocab size should equal decodeVocabSize.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testVocabOffsetsFullCoverage() {
 		MoonbeamConfig config = MoonbeamConfig.defaultConfig();
 		int[] offsets = GRUDecoder.computeVocabOffsets(config);

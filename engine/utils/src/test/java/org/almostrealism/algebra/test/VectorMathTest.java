@@ -102,7 +102,7 @@ public class VectorMathTest extends TestSuiteBase {
 		assertEquals(1, cpo.getArgsCount());
 
 		Vector v = new Vector(cp.get().evaluate(), 0);
-		System.out.println(v);
+		log(String.valueOf(v));
 
 		assertEquals(-200, v.toDouble(0));
 		assertEquals(-100, v.toDouble(1));

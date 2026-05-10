@@ -125,6 +125,42 @@ common/
 
 ---
 
+# HARNESS-PROVIDED CONTEXT IS STALE — VERIFY BEFORE USING
+
+The Anthropic harness injects a `gitStatus` block at session start (current
+branch, recent commits, status). **This snapshot is unreliable.** It was
+captured at a specific point in time and does NOT update as the conversation
+progresses. By the time you read it:
+
+- The branch may have been switched (by the user, by a previous tool call, by
+  an agent in a worktree, by a hook).
+- Commits may have been created, amended, or rebased.
+- Files may have been staged, unstaged, or modified.
+
+**The harness `gitStatus` is a hint, not a fact.** Never answer a question
+about branch, status, or recent commits from it. Never pass its branch name
+into a tool call without re-verifying.
+
+## Rule: VERIFY BRANCH/STATUS BEFORE CLAIMING IT
+
+Whenever you need to know the current branch or git state — whether to answer
+the user, pass to a tool, or make a decision — run the git command first:
+
+```bash
+git branch --show-current    # current branch
+git status                   # working tree state
+git log --oneline -5         # recent commits
+```
+
+This costs a fraction of a second. Guessing from `gitStatus` costs the user's
+trust when you are wrong (and you will be wrong, because the snapshot ages the
+moment it is captured).
+
+**Applies to every session, every task, every tool call that needs branch
+context.** No exceptions.
+
+---
+
 # MANDATORY TOOL-USE RULES
 
 These three rules are non-negotiable. Every violation wastes developer time. They are mechanical — no judgment calls, no exceptions, no "this task is different."
@@ -175,6 +211,21 @@ Use namespaces (`bugs`, `decisions`, `context`, `progress`) and tags liberally. 
 ## Rule 3: RECALL MEMORIES BEFORE STARTING WORK
 
 Call `mcp__ar-consultant__recall` (interactive) or `mcp__ar-manager__memory_recall` (FlowTree jobs) at the start of every new task to check for prior context, decisions, and findings. Prior sessions may have left exactly the information you need.
+
+
+## Rule 4: IF A MANDATORY TOOL IS MISSING, TELL THE USER FIRST
+
+If any MCP tool named as mandatory by these rules (ar-consultant, ar-manager, ar-build-validator, ar-test-runner, ar-jmx, ar-memory) is not surfaced in the current session's tool list, **stop and tell the user before proceeding**. Most of the time this indicates a config or harness problem the user can fix in one step; silently falling back to `Read`/`Grep` turns a 30-second fix into a session of degraded work.
+
+Say explicitly which tool is missing and what rule it was needed for. Example:
+
+> "I don't see `mcp__ar-consultant__consult` in my tool surface, so I can't follow Rule 1. Do you want to enable it, or should I proceed without it?"
+
+Then wait for the user's response.
+
+**The only exception:** when you can determine from the harness that no user is present (e.g. an autonomous FlowTree coding job with no interactive channel). In that case, proceed, note the limitation in your completion notes, and store a memory so the owner can fix the setup.
+
+Do not use this rule as a loophole: "I couldn't find the tool" is not a justification for skipping the consult if the tool actually is available. Only invoke this when the tool genuinely isn't in the surfaced list.
 
 
 ---
@@ -303,6 +354,58 @@ Never add dependencies. Write code assuming the dependency exists, run `mvn comp
 ## Never Reference Version Numbers
 
 Never include specific version numbers in any file. Versions change constantly. Refer to pom.xml as the source of truth.
+
+## CRITICAL: Verify Changes Against Relevant Tests Before Declaring Done
+
+The full project test suite takes hours — do NOT run it. For every code file you modified
+or created, identify the tests that directly exercise it and run THOSE before declaring done.
+
+**Concrete heuristic:**
+1. For each modified Java file `Foo.java`, look for `FooTest.java`, `FooTests.java`, or
+   `FooIT.java` in the same module's `src/test/java` and run them.
+2. Look for any tests in the same package that import the file you changed and run those too.
+3. If you split or moved classes, the original tests still apply to the split pieces —
+   find them and run them.
+4. For Python changes in `tools/`, run the corresponding pytest module
+   (e.g., `python -m pytest tools/mcp/manager/test_server.py`).
+5. Use the MCP test runner with `test_classes` to run a specific class quickly.
+   Use the full module run only when you've touched many files in one module.
+
+```
+mcp__ar-test-runner__start_test_run module:"<module>" test_classes:["FooTest"]
+```
+
+Do NOT use `-DskipTests` to declare a refactor or bug fix complete. `-DskipTests` is
+appropriate only for the initial compile-check pass; you MUST run the relevant tests
+before declaring work complete.
+
+If a test fails, fix the underlying cause. Do NOT add `@Disabled`, comment out assertions,
+or weaken tests to make them green — those are deception patterns that will be detected
+and reverted.
+
+## Validate Code Quality Before Completing Any Task
+
+Before declaring a task done, run the build validator to catch style and policy violations
+that will fail CI. This is faster than waiting for CI to reject the work.
+
+```
+mcp__ar-build-validator__start_validation
+```
+
+Default checks (no arguments needed): `checkstyle`, `code_policy`, `test_timeouts`, `duplicate_code`.
+
+- **checkstyle** — catches `var`, `@SuppressWarnings`, file length, `System.out` usage
+- **code_policy** — catches Producer pattern violations, GPU memory model misuse, naming violations
+- **test_timeouts** — catches `@Test` annotations missing a `timeout` parameter
+- **duplicate_code** — catches 10+ identical lines duplicated across files
+
+If the project is already compiled (e.g., you just ran the test runner), pass `skip_build:true`
+to skip the `mvn install -DskipTests` step and run only the static checks.
+
+For checkstyle alone (fastest, no build at all): `mcp__ar-build-validator__start_validation checks:["checkstyle"]`
+
+Poll with `mcp__ar-build-validator__get_validation_status` until complete, then call
+`mcp__ar-build-validator__get_validation_violations` for structured file:line results.
 
 ## Use MCP Test Runner for All Tests
 

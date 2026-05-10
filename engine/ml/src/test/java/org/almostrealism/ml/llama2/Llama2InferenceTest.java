@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml.llama2;
 
+import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
@@ -208,7 +209,7 @@ public class Llama2InferenceTest extends TestSuiteBase implements ConsoleFeature
 			return;
 		}
 
-		System.out.println("Downloading " + remoteUrl + " to " + localPath + " ...");
+		Console.root().println("Downloading " + remoteUrl + " to " + localPath + " ...");
 		HttpURLConnection connection = (HttpURLConnection) new URL(remoteUrl).openConnection();
 		connection.setInstanceFollowRedirects(true);
 		connection.setConnectTimeout(30_000);
@@ -221,7 +222,7 @@ public class Llama2InferenceTest extends TestSuiteBase implements ConsoleFeature
 		}
 
 		long size = Files.size(path);
-		System.out.println("Downloaded " + size + " bytes to " + localPath);
+		Console.root().println("Downloaded " + size + " bytes to " + localPath);
 		if (size < minSize) {
 			throw new IOException("Downloaded file " + localPath
 					+ " is too small (" + size + " bytes, expected >= " + minSize + ")");

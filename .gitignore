@@ -42,6 +42,11 @@ Extensions/**
 # Automated coding
 claude-output/**
 .claude/*.local.json
+.claude/scheduled_tasks.lock
+**/population.json
+**/pattern-factory.json
+**/pattern-factory-new.json
+**/scene-settings.json
 commit.txt
 workstreams.yaml
 flowtree-controller.log

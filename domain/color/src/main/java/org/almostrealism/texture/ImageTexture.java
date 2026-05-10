@@ -18,6 +18,7 @@ package org.almostrealism.texture;
 
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.computations.GeneratedColorProducer;
@@ -87,7 +88,7 @@ import java.net.URL;
  * @see GraphicsConverter
  * @author Mike Murray
  */
-public class ImageTexture implements Texture {
+public class ImageTexture implements Texture, ConsoleFeatures {
   /** Projection type constant for spherical (environment-map) UV projection. */
   public static final int SPHERICAL_PROJECTION = 1;
 
@@ -215,7 +216,7 @@ public class ImageTexture implements Texture {
   		try {
   			m.waitForAll();
   		} catch (InterruptedException e) {
-  			System.err.println("ImageTexture: Wait for image loading was interrupted.");
+  			warn(e.getMessage(), e);
   		}
   		
   		if (m.isErrorAny()) throw new RuntimeException("ImageTexture: Error loading image.");
@@ -229,7 +230,7 @@ public class ImageTexture implements Texture {
   		try {
   			p.grabPixels();
   		} catch (InterruptedException e) {
-  			System.err.println("ImageTexture: Pixel grabbing interrupted.");
+  			warn(e.getMessage(), e);
   		}
   	}
 

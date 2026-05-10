@@ -81,7 +81,7 @@ public class PatternMidiExportTest extends TestSuiteBase {
 		return context;
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void singleNoteExport() {
 		Scale<?> scale = Scale.of(WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
 
@@ -108,7 +108,7 @@ public class PatternMidiExportTest extends TestSuiteBase {
 		assertEquals("Instrument should be 0 (piano)", 0, event.getInstrument());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void chordExport() {
 		Scale<?> scale = Scale.of(WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
 
@@ -138,7 +138,7 @@ public class PatternMidiExportTest extends TestSuiteBase {
 				events.stream().allMatch(e -> e.getOnset() == events.get(0).getOnset()));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void sequenceExport() {
 		Scale<?> scale = Scale.of(WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
 
@@ -169,7 +169,7 @@ public class PatternMidiExportTest extends TestSuiteBase {
 		assertEquals("Fourth note should be E4 (wraps)", pitchE4, events.get(3).getPitch());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void percussiveExport() {
 		Scale<?> scale = Scale.of(WesternChromatic.C4);
 
@@ -191,7 +191,7 @@ public class PatternMidiExportTest extends TestSuiteBase {
 				events.stream().allMatch(e -> e.getInstrument() == MidiNoteEvent.DRUM_INSTRUMENT));
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void automationVelocity() {
 		Scale<?> scale = Scale.of(WesternChromatic.C4);
 
@@ -218,7 +218,7 @@ public class PatternMidiExportTest extends TestSuiteBase {
 				expectedVelocity, events.get(0).getVelocity());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void timingAccuracy() {
 		Scale<?> scale = Scale.of(WesternChromatic.C4);
 		double secondsPerMeasure = (60.0 / BPM) * BEATS_PER_MEASURE;
@@ -244,7 +244,7 @@ public class PatternMidiExportTest extends TestSuiteBase {
 				expectedDurationTicks, events.get(0).getDuration());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void offsetTimingAccuracy() {
 		Scale<?> scale = Scale.of(WesternChromatic.C4);
 		double secondsPerMeasure = (60.0 / BPM) * BEATS_PER_MEASURE;
@@ -266,7 +266,7 @@ public class PatternMidiExportTest extends TestSuiteBase {
 				expectedOnsetTicks, events.get(0).getOnset());
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void roundTripMidiFile() throws Exception {
 		Scale<?> scale = Scale.of(
 				WesternChromatic.C4, WesternChromatic.D4,
@@ -313,7 +313,7 @@ public class PatternMidiExportTest extends TestSuiteBase {
 		}
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void tokenizerCompatibility() {
 		Scale<?> scale = Scale.of(
 				WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
@@ -351,7 +351,7 @@ public class PatternMidiExportTest extends TestSuiteBase {
 				originalPitches, roundTrippedPitches);
 	}
 
-	@Test
+	@Test(timeout = 60000)
 	public void pitchMapping() {
 		assertEquals("C4 should map to MIDI 60",
 				60, WesternChromatic.C4.position() + MidiNoteEvent.PITCH_OFFSET);

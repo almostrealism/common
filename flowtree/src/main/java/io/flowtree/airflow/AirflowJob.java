@@ -17,6 +17,7 @@
 package io.flowtree.airflow;
 
 import io.flowtree.job.Job;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
@@ -35,7 +36,7 @@ import java.util.concurrent.CompletableFuture;
  *
  * @author  Michael Murray
  */
-public class AirflowJob implements Job {
+public class AirflowJob implements Job, ConsoleFeatures {
 
 	/** Unique identifier for this job within the FlowTree task graph. */
 	private String taskId;
@@ -57,7 +58,7 @@ public class AirflowJob implements Job {
 		this.taskId = taskId;
 		this.command = command;
 		this.future = new CompletableFuture<>();
-		System.out.println("Constructing " + getTaskString());
+		log("Constructing " + getTaskString());
 	}
 
 	/**
@@ -133,11 +134,11 @@ public class AirflowJob implements Job {
 		Runtime r = Runtime.getRuntime();
 
 		try {
-			System.out.println("Running " + command);
+			log("Running " + command);
 			r.exec(command);
 			future.complete(null);
 		} catch (IOException e) {
-			e.printStackTrace();
+			warn(e.getMessage(), e);
 			future.completeExceptionally(e);
 		}
 	}

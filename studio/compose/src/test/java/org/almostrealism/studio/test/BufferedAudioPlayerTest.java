@@ -43,7 +43,6 @@ public class BufferedAudioPlayerTest extends TestSuiteBase implements AudioTestF
 			public void write(PackedCollection sample) {
 				data = sample;
 				total = sample.doubleStream().map(Math::abs).sum();
-				log("total = " + total);
 				count++;
 			}
 		});
@@ -58,7 +57,7 @@ public class BufferedAudioPlayerTest extends TestSuiteBase implements AudioTestF
 				Thread.sleep(1000);
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
-				System.err.println("BufferedAudioPlayerTest: " + e.getMessage());
+				warn("BufferedAudioPlayerTest: " + e.getMessage());
 			}
 		}
 

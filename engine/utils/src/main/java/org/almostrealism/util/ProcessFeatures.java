@@ -16,6 +16,8 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.io.Console;
+
 /**
  * Interface providing utilities for executing external system processes.
  *
@@ -55,7 +57,7 @@ public interface ProcessFeatures {
 			Process process = builder.start();
 			return process.waitFor();
 		} catch (Exception e) {
-			e.printStackTrace();
+			Console.root().warn(e.getMessage(), e);
 			return -1;
 		}
 	}

@@ -17,7 +17,6 @@
 package org.almostrealism.studio.pattern.test;
 
 import org.almostrealism.studio.AudioScene;
-import org.almostrealism.audio.Cells;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
@@ -35,11 +34,8 @@ import static org.junit.Assert.*;
 import static org.junit.Assume.assumeTrue;
 
 /**
- * Tests the real-time rendering pipeline by comparing its output
- * with the traditional offline renderer.
- *
- * <p>The traditional renderer is known to work correctly. If real-time
- * produces different results, the issue is in the real-time pipeline.</p>
+ * Tests the real-time rendering pipeline for buffer-size invariance and
+ * stable coverage over long durations.
  */
 public class RealTimeRendererCorrectnessTest extends AudioSceneTestBase {
 
@@ -59,120 +55,6 @@ public class RealTimeRendererCorrectnessTest extends AudioSceneTestBase {
 
 		// Ensure results directory exists
 		new File(RESULTS_DIR).mkdirs();
-	}
-
-	/**
-	 * Test: Compare real-time vs traditional rendering with the same seed.
-	 *
-	 * <p>This is the core correctness test. Both renderers should produce
-	 * similar output when using the same genome seed.</p>
-	 */
-	@Test(timeout = 300_000)
-	public void testRealTimeVsTraditionalSameSeed() {
-		log("=== Test: Real-Time vs Traditional (Same Seed) ===");
-
-		// Find a working seed that produces pattern elements
-		AudioScene<?> searchScene = createBaselineScene(samplesDir, 2);
-		long seed = findWorkingGenomeSeed(searchScene, samplesDir);
-		assumeTrue("Need a working genome seed", seed >= 0);
-
-		double duration = 1.0;  // Keep short for traditional per-frame rendering
-		int bufferSize = 4096;
-
-		// Render with traditional (offline) method
-		AudioScene<?> traditionalScene = createBaselineScene(samplesDir, 2);
-		applyGenome(traditionalScene, seed);
-		int elements = countElements(traditionalScene);
-		log("Scene has " + elements + " pattern elements with seed " + seed);
-
-		String traditionalPath = RESULTS_DIR + "/traditional-seed" + seed + ".wav";
-		RenderResult traditionalResult = helper.renderTraditional(traditionalScene, duration, traditionalPath);
-		log("Traditional: " + traditionalResult.stats());
-
-		// Render with real-time method
-		AudioScene<?> realTimeScene = createBaselineScene(samplesDir, 2);
-		applyGenome(realTimeScene, seed);
-
-		String realTimePath = RESULTS_DIR + "/realtime-seed" + seed + ".wav";
-		RenderResult realTimeResult = helper.renderRealTime(realTimeScene, bufferSize, duration, realTimePath);
-		log("Real-time:   " + realTimeResult.stats());
-
-		// Verify both produced audio
-		assertNotNull("Traditional should produce stats", traditionalResult.stats());
-		assertNotNull("Real-time should produce stats", realTimeResult.stats());
-
-		// Compare statistics
-		double tradNonZero = traditionalResult.stats().nonZeroRatio();
-		double rtNonZero = realTimeResult.stats().nonZeroRatio();
-		double nonZeroRatioDiff = Math.abs(tradNonZero - rtNonZero);
-
-		log("\n=== Comparison ===");
-		log(String.format("Non-zero ratio diff: %.1f%% (trad=%.1f%%, rt=%.1f%%)",
-				nonZeroRatioDiff * 100, tradNonZero * 100, rtNonZero * 100));
-
-		// Both should produce audio
-		assertTrue("Traditional should produce audio (was " + String.format("%.1f%%", tradNonZero * 100) + ")",
-				tradNonZero > 0.1);
-		assertTrue("Real-time should produce audio (was " + String.format("%.1f%%", rtNonZero * 100) + ")",
-				rtNonZero > 0.1);
-
-		// Results should be similar (within 30% difference)
-		assertTrue("Non-zero ratio diff should be < 30% (was " +
-						String.format("%.1f%%", nonZeroRatioDiff * 100) + ")",
-				nonZeroRatioDiff < 0.3);
-	}
-
-	/**
-	 * Test: Per-second timing accuracy.
-	 *
-	 * <p>Compares the per-second audio statistics between traditional
-	 * and real-time rendering to ensure timing is correct.</p>
-	 */
-	@Test(timeout = 300_000)
-	@TestDepth(1)
-	public void testPerSecondTimingAccuracy() {
-		log("=== Test: Per-Second Timing Accuracy ===");
-
-		long seed = 42;
-		double duration = 10.0;
-		int bufferSize = 4096;
-
-		// Render both methods
-		AudioScene<?> traditionalScene = createBaselineScene(samplesDir, 2);
-		applyGenome(traditionalScene, seed);
-		String traditionalPath = RESULTS_DIR + "/timing-traditional.wav";
-		AudioStats traditionalStats = renderTraditional(traditionalScene, duration, traditionalPath);
-
-		AudioScene<?> realTimeScene = createBaselineScene(samplesDir, 2);
-		applyGenome(realTimeScene, seed);
-		String realTimePath = RESULTS_DIR + "/timing-realtime.wav";
-		AudioStats realTimeStats = renderRealTime(realTimeScene, bufferSize, duration, realTimePath);
-
-		// Compare per-second
-		log("\n=== Per-Second Comparison ===");
-		int mismatchCount = 0;
-		int numSeconds = Math.min(traditionalStats.perSecondNonZero.size(),
-				realTimeStats.perSecondNonZero.size());
-
-		for (int sec = 0; sec < numSeconds; sec++) {
-			double tradRatio = traditionalStats.perSecondNonZero.get(sec);
-			double rtRatio = realTimeStats.perSecondNonZero.get(sec);
-			double diff = Math.abs(tradRatio - rtRatio);
-
-			boolean tradHasAudio = tradRatio > 0.05;
-			boolean rtHasAudio = rtRatio > 0.05;
-			boolean match = (tradHasAudio == rtHasAudio);
-
-			String status = match ? "OK" : "MISMATCH";
-			log(String.format("Second %d: trad=%.1f%%, rt=%.1f%%, diff=%.1f%% %s",
-					sec, tradRatio * 100, rtRatio * 100, diff * 100, status));
-
-			if (!match) mismatchCount++;
-		}
-
-		assertTrue("No more than 20% of seconds should mismatch (had " + mismatchCount +
-						"/" + numSeconds + ")",
-				mismatchCount <= numSeconds * 0.2);
 	}
 
 	/**
@@ -262,23 +144,6 @@ public class RealTimeRendererCorrectnessTest extends AudioSceneTestBase {
 
 		assertTrue("No more than 1 segment should be silent (had " + silentSegments + ")",
 				silentSegments <= 1);
-	}
-
-	/**
-	 * Renders using the traditional (offline) method.
-	 */
-	private AudioStats renderTraditional(AudioScene<?> scene, double duration, String path) {
-		// Ensure parent directory exists
-		File outputFile = new File(path);
-		outputFile.getParentFile().mkdirs();
-
-		WaveOutput output = new WaveOutput(() -> outputFile, 24, true);
-		Cells cells = scene.getCells(new MultiChannelAudioOutput(output));
-
-		cells.sec(duration).get().run();
-		output.write().get().run();
-
-		return analyzeFile(path);
 	}
 
 	/**

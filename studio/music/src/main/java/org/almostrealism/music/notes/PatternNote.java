@@ -18,10 +18,8 @@ package org.almostrealism.music.notes;
 import org.almostrealism.audio.notes.NoteAudioSourceAggregator;
 import org.almostrealism.audio.notes.NoteAudioFilter;
 
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.audio.filter.AudioProcessingUtils;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.sources.BufferDetails;
 import org.almostrealism.audio.tone.KeyPosition;
@@ -33,7 +31,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.DoubleFunction;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 /**
  * A composite note that can contain multiple audio layers.
@@ -255,43 +252,13 @@ public class PatternNote extends PatternNoteAudioAdapter {
 				? new BufferDetails(getSampleRate(target, audioSelection), frameCount)
 				: getBufferDetails(target, audioSelection);
 
-		if (layerAggregator == null) {
-			warn("Using PatternNote without SourceAggregation");
-
-			return () -> {
-				List<Evaluable<PackedCollection>> layerAudio =
-						layers.stream()
-								.map(l -> l.getAudio(target, channel, noteDuration, automationLevel,
-										audioSelection, offset, frameCount).get())
-								.toList();
-				int[] frames = IntStream.range(0, layerAudio.size())
-						.map(i -> (int) (layers.get(i).getDuration(target, audioSelection) *
-								layers.get(i).getSampleRate(target, audioSelection)))
-						.toArray();
-
-				return args -> {
-					int totalFrames = (int) (getDuration(target, audioSelection) * getSampleRate(target, audioSelection));
-
-					PackedCollection dest = PackedCollection.factory().apply(totalFrames);
-					for (int i = 0; i < layerAudio.size(); i++) {
-						PackedCollection audio = layerAudio.get(i).evaluate(args);
-						int f = Math.min(frames[i], totalFrames);
-
-						AudioProcessingUtils.getSum().sum(dest.range(shape(f)), audio.range(shape(f)));
-					}
-
-					return dest;
-				};
-			};
-		} else {
-			return layerAggregator.getAggregator(c(aggregationChoice)).aggregate(buffer,
-					null, null,
-					layers.stream()
-							.map(l -> l.getAudio(target, channel, noteDuration,
-									automationLevel, audioSelection,
-									offset, frameCount))
-							.toArray(Producer[]::new));
-		}
+		return layerAggregator.getAggregator(c(aggregationChoice)).aggregate(buffer,
+				null, null,
+				layers.stream()
+						.map(l -> l.getAudio(target, channel, noteDuration,
+								automationLevel, audioSelection,
+								offset, frameCount))
+						.toArray(Producer[]::new));
 	}
 
 	@Override

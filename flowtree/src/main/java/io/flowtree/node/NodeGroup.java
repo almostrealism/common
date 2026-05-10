@@ -279,18 +279,18 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		this.nodes = new ArrayList(nodeCount);
 		this.cachedTasks = new ArrayList();
 		
-		if (nodeCount > 0) System.out.println("NodeGroup: Constructing child nodes...");
+		if (nodeCount > 0) log("NodeGroup: Constructing child nodes...");
 
 		for (int i = 0; i < nodeCount; i++) {
 			Node n = new Node(this, i, nodeMaxJobs, nodeMaxPeers);
 			this.nodes.add(n);
 
-			System.out.println("NodeGroup: Added node " + i + " (" + n + ")");
+			log("NodeGroup: Added node " + i + " (" + n + ")");
 		}
 
 		this.relayNode = new Node(this, nodeCount, nodeMaxJobs, relayMaxPeers);
 		this.relayNode.setLabel("role", "relay");
-		System.out.println("NodeGroup: Added relay node (index " + nodeCount + ")");
+		log("NodeGroup: Added relay node (index " + nodeCount + ")");
 
 		NodeGroupNodeConfig.applyNodeLabels(this, this.nodes, p);
 
@@ -426,7 +426,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			try {
 				this.setParam(k, v);
 			} catch (NumberFormatException nfe) {
-				System.out.println("NodeGroup: Error parsing number " +
+				warn("NodeGroup: Error parsing number " +
 							k + " = " + v + " (" + nfe.getMessage() + ")");
 			}
 		}
@@ -601,15 +601,15 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		try {
 			return this.addServer(new NodeProxy(s, this.passwd, this.crypt, server));
 		} catch (InvalidKeyException e) {
-			System.out.println("\nNodeGroup: Invalid key (" + e.getMessage() + ").");
+			warn("NodeGroup: Invalid key (" + e.getMessage() + ").");
 		} catch (NoSuchAlgorithmException e) {
-			System.out.println("\nNodeGroup: Encryption algorithm not found (" + e.getMessage() + ").");
+			warn("NodeGroup: Encryption algorithm not found (" + e.getMessage() + ").");
 		} catch (InvalidKeySpecException e) {
-			System.out.println("\nNodeGroup: Invalid key spec (" + e.getMessage() + ").");
+			warn("NodeGroup: Invalid key spec (" + e.getMessage() + ").");
 		} catch (NoSuchPaddingException e) {
-			System.out.println("\nNodeGroup: Encryption padding not found (" + e.getMessage() + ").");
+			warn("NodeGroup: Encryption padding not found (" + e.getMessage() + ").");
 		} catch (InvalidAlgorithmParameterException e) {
-			System.out.println("\nNodeGroup: Invalid encryption parameter (" + e.getMessage() + ").");
+			warn("NodeGroup: Invalid encryption parameter (" + e.getMessage() + ").");
 		}
 		
 		return false;
@@ -731,24 +731,24 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 				try {
 					Thread.sleep(30 * 1000L);
 				} catch (InterruptedException e) {
-					e.printStackTrace();
+					warn(e.getMessage(), e);
 					return;
 				}
 
 				if (getServers().length > 0)
 					continue w;
 
-				System.out.println("NodeGroup: Connecting to root server...");
+				NodeGroup.this.log("NodeGroup: Connecting to root server...");
 
 				try {
 					addServer(new Socket(host, port));
 				} catch (UnknownHostException uh) {
-					System.out.println("NodeGroup: Server " + host + " is unknown host");
+					NodeGroup.this.warn("NodeGroup: Server " + host + " is unknown host");
 				} catch (IOException ioe) {
-					System.out.println("NodeGroup: IO error while connecting to server " +
+					NodeGroup.this.warn("NodeGroup: IO error while connecting to server " +
 							host + " -- " + ioe.getMessage());
 				} catch (SecurityException se) {
-					System.out.println("NodeGroup: Security exception while connecting to server " + host +
+					NodeGroup.this.warn("NodeGroup: Security exception while connecting to server " + host +
 							" (" + se.getMessage() + ")");
 				}
 			}
@@ -840,7 +840,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			this.displayMessage("Removing server " + p + " (" + se.getMessage() + ")");
 			this.removeServer(p);
 		} catch (IOException ioe) {
-			System.out.println("NodeGroup: " + ioe);
+			warn(String.valueOf(ioe));
 			return null;
 		}
 
@@ -920,10 +920,10 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			m.setString(data);
 			m.send(-1);
 		} catch (IOException ioe) {
-			System.out.println("NodeGroup: " + ioe);
+			warn(String.valueOf(ioe));
 		}
 	}
-	
+
 	/**
 	 * Sends an encoded JobFactory instance to a server that this {@link NodeGroup}
 	 * is connected to.
@@ -937,7 +937,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			m.setString(f.encode());
 			m.send(-1);
 		} catch (IOException ioe) {
-			System.out.println("NodeGroup: " + ioe);
+			warn(String.valueOf(ioe));
 		}
 	}
 	
@@ -954,7 +954,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			while (itr.hasNext()) {
 				if (((JobFactory)itr.next()).getTaskId().equals(task)) {
 					itr.remove();
-					System.out.println("NodeGroup: Killed task " + task);
+					log("NodeGroup: Killed task " + task);
 				}
 			}
 		}
@@ -1334,7 +1334,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 				else
 					Thread.sleep(sleep * 10L);
 			} catch (InterruptedException ie) {
-				System.out.println("NodeGroup: " + ie);
+				warn(String.valueOf(ie));
 			}
 			
 			if (this.isolationTime > 200) {
@@ -1352,17 +1352,17 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 
 			if (this.verbose && j != null) {
 				if (this.jobWasNull > 1) {
-					System.out.println("NodeGroup: Last " +
+					log("NodeGroup: Last " +
 									(this.jobWasNull - 1) +
 									" jobs were null.");
 				}
-				
-				System.out.println("NodeGroup: nextJob = " + j);
+
+				log("NodeGroup: nextJob = " + j);
 			}
-			
+
 			if (this.jobWasNull % 21 == 0) {
 				if (this.verbose)
-					System.out.println("NodeGroup: Last " +
+					log("NodeGroup: Last " +
 									(this.jobWasNull - 1) +
 									" jobs were null.");
 				
@@ -1420,17 +1420,12 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 			try {
 				j = f.nextJob();
 			} catch (RuntimeException e) {
-				System.out.println("NodeGroup: Runtime exception while getting next job from " + f);
-
-				if (e.getCause() != null)
-					e.getCause().printStackTrace();
-				else
-					e.printStackTrace();
+				warn("NodeGroup: Runtime exception while getting next job from " + f, e);
 			}
 
 			if (j != null) {
 				if (this.verbose)
-					System.out.println("NodeGroup: " + f + "  nextJob = " + j);
+					log("NodeGroup: " + f + "  nextJob = " + j);
 
 				routeJob(j);
 			}
@@ -1525,14 +1520,14 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 		n.setSleep((int) (n.getActivityRating() * n.getSleep()));
 		
 		if (this.verbose)
-			System.out.println("NodeGroup: Notifying iteration.");
-		
+			log("NodeGroup: Notifying iteration.");
+
 		synchronized (this.listeners) {
 			Iterator itr = this.listeners.iterator();
 			while (itr.hasNext()) ((ActivityListener)itr.next()).iteration(this);
 		}
-		
+
 		if (this.verbose)
-			System.out.println("NodeGroup: Notified listeners.");
+			log("NodeGroup: Notified listeners.");
 	}
 }

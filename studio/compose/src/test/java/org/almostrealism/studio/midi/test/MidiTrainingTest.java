@@ -79,7 +79,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	 * Verify that MidiDataset.synthetic() creates a dataset with the expected
 	 * number of sequences and tokens.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSyntheticDataset() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		MidiDataset dataset = MidiDataset.synthetic(3, 5, config);
@@ -93,7 +93,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	 * Verify that MidiDataset provides valid ValueTarget pairs with the correct
 	 * shapes for training.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testDatasetIterator() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		MidiDataset dataset = MidiDataset.synthetic(2, 4, config);
@@ -116,7 +116,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	 * Verify that the one-hot encoding in ValueTarget inputs has exactly the
 	 * right number of non-zero entries.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testDatasetOneHotEncoding() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		MidiDataset dataset = MidiDataset.synthetic(1, 3, config);
@@ -138,7 +138,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	/**
 	 * Verify that sequence packing correctly concatenates short sequences.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSequencePacking() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		List<List<MidiCompoundToken>> sequences = new ArrayList<>();
@@ -178,7 +178,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	 * A single sequence exceeding maxSeqLen should be truncated to exactly
 	 * maxSeqLen tokens and placed in its own packed chunk.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSequencePackingTruncatesLongSequence() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		int maxSeqLen = 10;
@@ -208,7 +208,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	 * one-hot encoding dimensions for special tokens (SOS/EOS) which use
 	 * position 0 in the decode vocabulary.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testOneHotEncodingSpecialTokens() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		MidiDataset dataset = MidiDataset.synthetic(1, 2, config);
@@ -231,7 +231,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	/**
 	 * Verify MidiTrainingConfig default values match the reference Moonbeam spec.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testDefaultTrainingConfig() {
 		MidiTrainingConfig config = MidiTrainingConfig.defaultConfig();
 
@@ -246,7 +246,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	/**
 	 * Verify MidiTrainingConfig test configuration is valid and smaller than default.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testTestTrainingConfig() {
 		MidiTrainingConfig config = MidiTrainingConfig.testConfig();
 
@@ -262,7 +262,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	 * Verify that LoRA adapter configuration is created correctly from
 	 * training config.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testLoraConfigCreation() {
 		MoonbeamConfig modelConfig = MoonbeamConfig.testConfig();
 		MidiTrainingConfig trainConfig = MidiTrainingConfig.defaultConfig();
@@ -286,7 +286,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	/**
 	 * Verify that LoRA adapter bundle can be saved to a file.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testLoraAdapterSave() throws IOException {
 		MoonbeamConfig modelConfig = MoonbeamConfig.testConfig();
 		MidiTrainingConfig trainConfig = MidiTrainingConfig.defaultConfig();
@@ -311,7 +311,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	/**
 	 * End-to-end generation test: SOS -> generate N tokens -> detokenize -> write MIDI.
 	 */
-	@Test @TestDepth(2)
+	@Test(timeout = 600000) @TestDepth(2)
 	public void testEndToEndGeneration() throws IOException, InvalidMidiDataException {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -342,7 +342,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	 * Prompt completion test: create a MIDI file, read it as prompt,
 	 * continue generation, write output.
 	 */
-	@Test @TestDepth(2)
+	@Test(timeout = 600000) @TestDepth(2)
 	public void testPromptCompletion() throws IOException, InvalidMidiDataException {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -392,7 +392,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	 * non-degenerate logits). We use non-zero weights to ensure non-trivial
 	 * logit distributions.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testTemperatureSamplingDiversity() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -435,7 +435,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	 * <p>Tests the GRU decoder's sampleFromLogits method directly to verify
 	 * that top-p filtering reduces the set of possible outputs.</p>
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testTopPSamplingRestriction() {
 		int vocabSize = 10;
 		PackedCollection logits = new PackedCollection(new TraversalPolicy(vocabSize));
@@ -462,7 +462,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	/**
 	 * Greedy decoding (temperature=0) produces deterministic output.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testGreedyDecodingDeterministic() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -490,7 +490,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	/**
 	 * Verify that setSeed makes sampling reproducible.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testSeedReproducibility() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -520,7 +520,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	/**
 	 * Verify that the profiling summary is non-empty after running inference.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testProfilingSummary() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -540,7 +540,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	 * Verify that the generateFromFile method can read a MIDI file, generate,
 	 * and write output in a single call.
 	 */
-	@Test @TestDepth(2)
+	@Test(timeout = 600000) @TestDepth(2)
 	public void testGenerateFromFile() throws IOException, InvalidMidiDataException {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -571,7 +571,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	/**
 	 * Verify that unconditional generation writes a valid MIDI file.
 	 */
-	@Test @TestDepth(2)
+	@Test(timeout = 600000) @TestDepth(2)
 	public void testGenerateUnconditional() throws IOException, InvalidMidiDataException {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		StateDictionary stateDict = createSyntheticWeights(config);
@@ -591,7 +591,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	/**
 	 * Verify that the MidiDataset can be created from a directory of MIDI files.
 	 */
-	@Test @TestDepth(2)
+	@Test(timeout = 600000) @TestDepth(2)
 	public void testDatasetFromDirectory() throws IOException, InvalidMidiDataException {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		MidiTrainingConfig trainConfig = MidiTrainingConfig.testConfig();
@@ -613,7 +613,7 @@ public class MidiTrainingTest extends TestSuiteBase {
 	/**
 	 * Verify that MidiTrainingConfig.toString() returns a readable string.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testTrainingConfigToString() {
 		MidiTrainingConfig config = MidiTrainingConfig.defaultConfig();
 		String str = config.toString();

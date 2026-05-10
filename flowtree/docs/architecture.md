@@ -55,6 +55,8 @@ without any special infrastructure.
 | `GitManagedJob` | Abstract base for jobs that commit results via git |
 | `ClaudeCodeJob` | Concrete job that invokes Claude Code CLI in headless mode |
 | `ClaudeCodeJob.Factory` | JobFactory that produces ClaudeCodeJobs from a prompt list |
+| `ClaudeAttemptRunner` | Stateless utility that runs one Claude subprocess attempt with stdout capture and inactivity monitoring |
+| `ClaudeInactivityMonitor` | Daemon thread that destroys the Claude subprocess (and its descendants) after a configured stdout-silence duration |
 | `GitOperations` | Encapsulates all git subprocess execution |
 | `FileStager` | Stateless guardrail evaluator for file staging decisions |
 | `WorkspaceResolver` | Resolves workspace paths and workstream URLs |

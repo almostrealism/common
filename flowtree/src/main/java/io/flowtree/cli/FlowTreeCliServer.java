@@ -25,6 +25,8 @@ import io.flowtree.node.Node;
 import io.flowtree.node.NodeGroup;
 import io.flowtree.python.JythonJob;
 import io.flowtree.ui.NetworkDialog;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import javax.swing.*;
 import java.awt.*;
@@ -72,7 +74,7 @@ import java.util.Properties;
  *
  * @author  Michael Murray
  */
-public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Node.ActivityListener {
+public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Node.ActivityListener, ConsoleFeatures {
 
 	/**
 	 * Extension point that allows external code to contribute custom commands
@@ -169,12 +171,12 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 				try {
 					in = new URL(args[0]).openStream();
 					p.load(in);
-					System.out.println("FlowTreeCliServer: Loaded config from " + args[0]);
+					Console.root().println("FlowTreeCliServer: Loaded config from " + args[0]);
 					break t;
 				} catch (FileNotFoundException fnfe) {
-					System.out.println("Config file not found: " + args[0]);
+					Console.root().println("Config file not found: " + args[0]);
 				} catch (IOException ioe) {
-					System.out.println("IO error loading config file: " + args[0]);
+					Console.root().println("IO error loading config file: " + args[0]);
 				}
 			}
 			
@@ -182,21 +184,21 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 			configFile = "node.conf (internal)";
 			if (r != null) {
 				in = r.openStream();
-				System.out.println("FlowTreeCliServer: Loaded config from internal resource.");
+				Console.root().println("FlowTreeCliServer: Loaded config from internal resource.");
 			} else {
 				configFile = "node.conf";
 				in = new FileInputStream("node.conf");
-				System.out.println("FlowTreeCliServer: Loaded config from local node.conf");
+				Console.root().println("FlowTreeCliServer: Loaded config from local node.conf");
 			}
-			
+
 			p.load(in);
 		} catch (MalformedURLException e) {
-			System.out.println("Client: Malformed properties URL");
+			Console.root().println("Client: Malformed properties URL");
 			System.exit(1);
 		} catch (FileNotFoundException fnf) {
-			System.out.println("Config file not found: " + configFile);
+			Console.root().println("Config file not found: " + configFile);
 		} catch (IOException ioe) {
-			System.out.println("IO error loading config file: " + configFile);
+			Console.root().println("IO error loading config file: " + configFile);
 			System.exit(3);
 		}
 		
@@ -208,7 +210,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 					String.valueOf(FlowTreeCliServer.defaultPort)));
 
 		if (OutputServer.getCurrentServer() == null) {
-			System.out.println("Starting Server...");
+			Console.root().println("Starting Server...");
 			
 			String user = p.getProperty("client.user", "public");
 			String passwd = p.getProperty("client.passwd", "public");
@@ -216,17 +218,15 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 			try {
 				Client.setCurrentClient(new Client(p, user, passwd, null));
 			} catch (IOException ioe) {
-				System.out.println("IO error starting network client: " + ioe.getMessage());
+				Console.root().println("IO error starting network client: " + ioe.getMessage());
 			}
 		}
 		
 		if ("on".equals(p.getProperty("server.terminal", "on"))) {
 			try {
-				System.out.print("Terminal: ");
-				
 				String cgui = p.getProperty("client.gui", "false");
 				boolean gui = cgui.equals("on") || cgui.equals("true");
-				
+
 				OutputServer os = OutputServer.getCurrentServer();
 				ThreadGroup g = null;
 				if (os != null) g = os.getNodeServer().getThreadGroup();
@@ -234,10 +234,10 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 				Thread t = new Thread(g, FlowTreeCliServer.current);
 				t.setName("Server Terminal");
 				t.start();
-				
-				System.out.println("Started");
+
+				Console.root().println("Terminal: Started");
 			} catch (IOException ioe) {
-				System.out.println("RingsClient: IO error starting client (" +
+				Console.root().println("RingsClient: IO error starting client (" +
 									ioe.getMessage() + ")");
 			}
 		}
@@ -247,7 +247,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 			try {
 				HttpCommandServer.main(new String[] {httpport});
 			} catch (IOException ioe) {
-				System.out.println("RingsClient: Unable to start HTTP server (" +
+				Console.root().println("RingsClient: Unable to start HTTP server (" +
 									ioe.getMessage() + ")");
 			}
 		}
@@ -264,9 +264,9 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 			try {
 				FlowTreeCliServer.current.execute(new BufferedReader(new FileReader(script)));
 			} catch (FileNotFoundException e) {
-				System.out.println("Terminal: " + script + " not found.");
+				Console.root().println("Terminal: " + script + " not found.");
 			} catch (IOException e) {
-				System.out.println("Terminal: IO error parsing " + script +
+				Console.root().println("Terminal: IO error parsing " + script +
 									" (" + e.getMessage() + ")");
 			}
 			
@@ -455,7 +455,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 						}
 					} catch (InterruptedException ignored) {
 					} catch (InvocationTargetException ite) {
-						System.err.println("FlowTreeCliServer: Invocation error during status update: " + ite);
+						Console.root().warn("FlowTreeCliServer: Invocation error during status update: " + ite, ite);
 					}
 				}
 			});
@@ -511,17 +511,17 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 	public void run() {
 		while (true) {
 			try (Socket connection = this.socket.accept()) {
-				System.out.println("FlowTreeCliServer: Accepted connection...");
-				
+				log("Accepted connection...");
+
 				this.in = connection.getInputStream();
 				this.out = connection.getOutputStream();
-				System.out.println("FlowTreeCliServer: Got IO streams...");
-				
+				log("Got IO streams...");
+
 				this.ps = new PrintStream(this.out, false, StandardCharsets.US_ASCII);
-				System.out.println("FlowTreeCliServer: Constructed print stream...");
-				
+				log("Constructed print stream...");
+
 				this.write("Welcome to FlowTree.io\n");
-				System.out.println("FlowTreeCliServer: Wrote welcome message...");
+				log("Wrote welcome message...");
 				
 				w: while(true) {
 					this.write("[----]> ");
@@ -543,10 +543,9 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 				this.out.close();
 				connection.close();
 			} catch (IOException ioe) {
-				System.out.println("FlowTreeCliServer: IO error accepting connection (" +
-									ioe.getMessage() + ")");
+				warn("IO error accepting connection (" + ioe.getMessage() + ")");
 			} catch (Exception e) {
-				System.out.println("FlowTreeCliServer: " + e);
+				warn(String.valueOf(e));
 			} finally {
 				JythonJob.closeInterpreter();
 			}
@@ -564,7 +563,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 		try {
 			this.out.write(s.getBytes(StandardCharsets.US_ASCII));
 		} catch (IOException ioe) {
-			System.out.println("FlowTreeCliServer: IO error writing message (" + ioe.getMessage() + ")");
+			warn("IO error writing message (" + ioe.getMessage() + ")");
 		}
 	}
 	
@@ -594,7 +593,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 				if (System.currentTimeMillis() - s > 180000) return null;
 			}
 		} catch (IOException ioe) {
-			System.out.println("FlowTreeCliServer: IO error reading message (" + ioe.getMessage() + ")");
+			warn("IO error reading message (" + ioe.getMessage() + ")");
 		}
 		
 		return null;
@@ -646,7 +645,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 		String line = null;
 
 		while ((line = in.readLine()) != null)
-			System.out.println("Terminal: " + this.runCommand(line));
+			log(this.runCommand(line));
 	}
 
 	/**
@@ -691,7 +690,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 			} else if (c.startsWith("::gtsrender")) {
 				return FlowTreeCliCommands.gtsRender(c, ps, current.jobSize, commands);
 			} else if (c.equals("::suicide")) {
-				System.out.println("Terminal: Received suicide");
+				Console.root().println("Terminal: Received suicide");
 				System.exit(9);
 				return "suicide";
 			} else if (c.startsWith("::sendtask")) {
@@ -788,7 +787,7 @@ public class FlowTreeCliServer implements Runnable, NodeProxy.EventListener, Nod
 		} catch (ConnectException ce) {
 			return "Could not connect to host: " + ce.getMessage();
 		} catch (Exception e) {
-			e.printStackTrace();
+			Console.root().warn(e.getMessage(), e);
 			return "Exception while running command: " + e;
 		}
 	}

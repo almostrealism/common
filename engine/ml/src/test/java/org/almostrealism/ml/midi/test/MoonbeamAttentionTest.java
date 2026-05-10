@@ -17,6 +17,7 @@
 package org.almostrealism.ml.midi.test;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.midi.GRUDecoder;
 import org.almostrealism.ml.RotationFeatures;
@@ -35,13 +36,13 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	/**
 	 * Verify that computeFreqCis produces the correct output shape.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testFreqCisShape() {
 		int headDim = 160;
 		int maxSeqLen = 128;
 		double theta = 199999.0;
 
-		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, maxSeqLen);
+		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, maxSeqLen).evaluate();
 
 		Assert.assertEquals(3, freqCis.getShape().getDimensions());
 		Assert.assertEquals(maxSeqLen, freqCis.getShape().length(0));
@@ -52,13 +53,13 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	/**
 	 * Verify that freqCis values are valid cos/sin (in [-1, 1] range).
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testFreqCisValues() {
 		int headDim = 8;
 		int maxSeqLen = 16;
 		double theta = 19.0;
 
-		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, maxSeqLen);
+		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, maxSeqLen).evaluate();
 
 		int totalSize = freqCis.getShape().getTotalSize();
 		for (int i = 0; i < totalSize; i++) {
@@ -71,14 +72,14 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	/**
 	 * Verify that position 0 produces cos=1, sin=0 for all frequencies.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testFreqCisPositionZero() {
 		int headDim = 8;
 		int maxSeqLen = 4;
 		double theta = 100.0;
 		int freqDim = headDim / 2;
 
-		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, maxSeqLen);
+		PackedCollection freqCis = RotationFeatures.computeRopeFreqs(theta, headDim, maxSeqLen).evaluate();
 
 		for (int f = 0; f < freqDim; f++) {
 			int idx = f * 2;
@@ -92,15 +93,15 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	/**
 	 * Verify that different theta values produce different frequencies.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testDifferentThetasProduceDifferentFreqs() {
 		int headDim = 8;
 		int maxSeqLen = 16;
 		int pos = 5;
 		int freqDim = headDim / 2;
 
-		PackedCollection freqCis1 = RotationFeatures.computeRopeFreqs(19.0, headDim, maxSeqLen);
-		PackedCollection freqCis2 = RotationFeatures.computeRopeFreqs(199999.0, headDim, maxSeqLen);
+		PackedCollection freqCis1 = RotationFeatures.computeRopeFreqs(19.0, headDim, maxSeqLen).evaluate();
+		PackedCollection freqCis2 = RotationFeatures.computeRopeFreqs(199999.0, headDim, maxSeqLen).evaluate();
 
 		boolean anyDifferent = false;
 		for (int f = 0; f < freqDim; f++) {
@@ -117,7 +118,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	 * Verify that fromConfig creates the correct number of head groups
 	 * with the correct head counts.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testFromConfigHeadGroups() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 
@@ -147,7 +148,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	/**
 	 * Verify that each head group's freqCis has the correct shape.
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testFromConfigFreqCisShapes() {
 		MoonbeamConfig config = MoonbeamConfig.testConfig();
 		int freqDim = config.headDim / 2;
@@ -163,7 +164,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 				config.ropeThetas, config.headDim, config.maxSeqLen, config.headsPerGroup, positions);
 
 		for (int g = 0; g < groups.length; g++) {
-			PackedCollection fc = groups[g].freqCis;
+			CollectionProducer fc = groups[g].freqCis;
 			Assert.assertEquals(3, fc.getShape().getDimensions());
 			Assert.assertEquals(config.maxSeqLen, fc.getShape().length(0));
 			Assert.assertEquals(freqDim, fc.getShape().length(1));
@@ -175,7 +176,7 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	 * Verify vocabulary offset computation for the GRU decode vocabulary.
 	 * Total should equal decodeVocabSize (8487).
 	 */
-	@Test
+	@Test(timeout = 60000)
 	public void testDecodeVocabOffsets() {
 		MoonbeamConfig config = MoonbeamConfig.defaultConfig();
 		int[] offsets = GRUDecoder.computeVocabOffsets(config);

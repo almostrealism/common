@@ -102,7 +102,7 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 		// Create the attention block using the actual method
 		Model attModel = new Model(shape(1, dim));
 		attModel.add(attention(heads, kvHeads, rmsAttWeight, wk, wv, wq, wo,
-				bk, bv, bq, qkNormQ, qkNormK, freqCis, p(position), 1e-6));
+				bk, bv, bq, qkNormQ, qkNormK, cp(freqCis), p(position), 1e-6));
 
 		log("\nCompiling and running attention...");
 		PackedCollection output = attModel.compile().forward(input);

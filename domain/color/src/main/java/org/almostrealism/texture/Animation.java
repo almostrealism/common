@@ -1,6 +1,7 @@
 package org.almostrealism.texture;
 
 import org.almostrealism.color.RealizableImage;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
 import java.io.IOException;
@@ -19,7 +20,7 @@ import java.util.Iterator;
  * @see org.almostrealism.color.RealizableImage
  * @author Michael Murray
  */
-public abstract class Animation implements Layered<RealizableImage> {
+public abstract class Animation implements Layered<RealizableImage>, ConsoleFeatures {
 	/** The current frame image returned by the iterator. */
 	private RealizableImage image;
 
@@ -87,7 +88,7 @@ public abstract class Animation implements Layered<RealizableImage> {
 				try {
 					ImageCanvas.encodeImageFile(r.get(), new File(name), ImageCanvas.JPEGEncoding);
 				} catch (IOException e) {
-					System.err.println(e.getMessage());
+					warn(e.getMessage(), e);
 				}
 			}
 		});

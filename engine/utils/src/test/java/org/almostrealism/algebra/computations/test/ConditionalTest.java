@@ -33,7 +33,7 @@ public class ConditionalTest extends TestSuiteBase {
 		Evaluable<PackedCollection> ev = equals(a, b, c, d).get();
 
 		PackedCollection result = ev.evaluate();
-		System.out.println(result.toDouble(0));
+		log(String.valueOf(result.toDouble(0)));
 		assertEquals(3, result.toDouble(0));
 	}
 
@@ -46,7 +46,7 @@ public class ConditionalTest extends TestSuiteBase {
 		Evaluable<PackedCollection> ev = equals(a, b, c, d).get();
 
 		PackedCollection result = ev.evaluate();
-		System.out.println(result.toDouble(0));
+		log(String.valueOf(result.toDouble(0)));
 		assertEquals(5, result.toDouble(0));
 	}
 }

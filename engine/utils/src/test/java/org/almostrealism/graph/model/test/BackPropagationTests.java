@@ -70,7 +70,7 @@ public class BackPropagationTests extends TestSuiteBase {
 
 		verboseLog(() -> {
 			PackedCollection output = runner.forward(input);
-			System.out.println("Output: " + Arrays.toString(output.toArray(0, output.getMemLength())));
+			log("Output: " + Arrays.toString(output.toArray(0, output.getMemLength())));
 
 			// double expected[] = new double[]{2.29283592e-12, 1.86271326e-09, 1.51327910e-06, 1.22939676e-03, 9.98769088e-01};
 			double[] expected = new double[]{0.034696079790592194, 0.06780441105365753, 0.13250578939914703, 0.2589479088783264, 0.5060457587242126};
@@ -86,7 +86,7 @@ public class BackPropagationTests extends TestSuiteBase {
 
 			return () -> {
 				PackedCollection out = gr.evaluate();
-				System.out.println(Arrays.toString(out.toArray(0, out.getMemLength())));
+				log(Arrays.toString(out.toArray(0, out.getMemLength())));
 
 				out.getMem(0, result, 0, result.length);
 			};
@@ -96,9 +96,9 @@ public class BackPropagationTests extends TestSuiteBase {
 		gradient.setMem(3, 1.0);
 		runner.backward(gradient);
 
-		System.out.println("Weights: " + Arrays.toString(weights.toArray(0, weights.getMemLength())));
-		System.out.println("Biases: " + Arrays.toString(biases.toArray(0, biases.getMemLength())));
-		System.out.println("Output Gradient: " + Arrays.toString(result));
+		log("Weights: " + Arrays.toString(weights.toArray(0, weights.getMemLength())));
+		log("Biases: " + Arrays.toString(biases.toArray(0, biases.getMemLength())));
+		log("Output Gradient: " + Arrays.toString(result));
 
 //		double expected[] = new double[] { -0.00012475, -0.0001249,  -0.00012506, -0.00012521, -0.00012536, -0.00012551,
 //				-0.00012566, -0.00012581, -0.00012596, -0.00012611, -0.00012626, -0.00012642 };
@@ -140,9 +140,9 @@ public class BackPropagationTests extends TestSuiteBase {
 
 			return () -> {
 				PackedCollection out = gr.evaluate();
-				System.out.println("Gradient shape vs input shape: " + out.getShape() + " / " + inputShape);
+				log("Gradient shape vs input shape: " + out.getShape() + " / " + inputShape);
 
-				System.out.println(Arrays.toString(out.toArray(0, out.getMemLength())));
+				log(Arrays.toString(out.toArray(0, out.getMemLength())));
 
 				result.setMem(0, out, 0, out.getMemLength());
 			};
@@ -154,9 +154,9 @@ public class BackPropagationTests extends TestSuiteBase {
 
 		for (int i = 0; i < h; i++) {
 			for (int j = 0; j < w; j++) {
-				System.out.println("Input = " + input.valueAt(i, j, 0) + ", Output = " + output.valueAt(i / size, j / size, 0));
+				log("Input = " + input.valueAt(i, j, 0) + ", Output = " + output.valueAt(i / size, j / size, 0));
 				if (input.valueAt(i, j, 0) == output.valueAt(i / size, j / size, 0)) {
-					System.out.println("Expected = " + gradient.valueAt(i / size, j / size, 0) + ", Actual = " + result.valueAt(i, j, 0));
+					log("Expected = " + gradient.valueAt(i / size, j / size, 0) + ", Actual = " + result.valueAt(i, j, 0));
 					Assert.assertEquals(gradient.valueAt(i / size, j / size, 0), result.valueAt(i, j, 0), 1e-6);
 				} else {
 					Assert.assertEquals(0, result.valueAt(i, j, 0), 1e-6);
@@ -210,7 +210,7 @@ public class BackPropagationTests extends TestSuiteBase {
 					expected *= 1e-2;
 
 					double actual = originalFilter.toDouble(filterShape.index(f, xf, yf)) - adjustedFilter.toDouble(filterShape.index(f, xf, yf));
-					System.out.println("PropagationTest: " + expected + " vs " + actual);
+					log("PropagationTest: " + expected + " vs " + actual);
 					Assert.assertEquals(expected, actual, 1e-6);
 				}
 			}

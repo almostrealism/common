@@ -26,6 +26,7 @@ import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.util.TestDepth;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
@@ -225,7 +226,7 @@ public class AudioSceneMultiGenomeTest extends AudioSceneTestBase {
 
 	/**
 	 * Evaluates multiple genomes through the full runner lifecycle:
-	 * {@code scene.runner()} to {@link TemporalCellular} to
+	 * {@code scene.runnerRealTime()} to {@link TemporalCellular} to
 	 * {@link StableDurationHealthComputation} to compile to setup to tick loop.
 	 *
 	 * <p>This exercises code paths NOT covered by {@link #multiGenomePatternRender()}:
@@ -276,7 +277,8 @@ public class AudioSceneMultiGenomeTest extends AudioSceneTestBase {
 				new StableDurationHealthComputation(2, true);
 
 		applyGenome(scene, initialSeed);
-		TemporalCellular temporal = scene.runner(health.getOutput());
+		TemporalCellular temporal = scene.runnerRealTime(
+				health.getOutput(), null, health.getBatchSize());
 
 		log("=== Multi-Genome Full Runner ===");
 		log("Genomes: " + RUNNER_GENOMES + ", health duration: " + HEALTH_DURATION_SEC + "s");
@@ -328,9 +330,17 @@ public class AudioSceneMultiGenomeTest extends AudioSceneTestBase {
 		long firstUsed = usedAfterGc[0];
 		long lastUsed = usedAfterGc[RUNNER_GENOMES - 1];
 		long growth = lastUsed - firstUsed;
+		long growthMb = growth / (1024 * 1024);
 		log(String.format("Growth: %dMB (first=%dMB, last=%dMB)",
-				growth / (1024 * 1024),
+				growthMb,
 				firstUsed / (1024 * 1024),
 				lastUsed / (1024 * 1024)));
+
+		long maxAllowedGrowthMb = 256;
+		Assert.assertTrue(
+				"Java heap growth across " + RUNNER_GENOMES +
+						" genome evaluations should stay under " + maxAllowedGrowthMb +
+						"MB (was " + growthMb + "MB)",
+				growthMb < maxAllowedGrowthMb);
 	}
 }

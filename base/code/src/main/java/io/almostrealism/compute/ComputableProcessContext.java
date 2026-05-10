@@ -64,7 +64,25 @@ public class ComputableProcessContext extends ParallelProcessContext {
 	 */
 	public ComputableProcessContext(int depth, long parallelism, long aggregationCount,
 									boolean fixed, List<ComputeRequirement> requirements) {
-		super(depth, parallelism, aggregationCount, fixed);
+		this(depth, parallelism, aggregationCount, 1L, fixed, requirements);
+	}
+
+	/**
+	 * Constructs a new {@code ComputableProcessContext} with the specified parameters
+	 * including an initial accumulated expansion width.
+	 *
+	 * @param depth            the nesting depth of this context in the process hierarchy
+	 * @param parallelism      the degree of parallelism (number of parallel execution units)
+	 * @param aggregationCount the number of elements to aggregate in batch operations
+	 * @param expansionWidth   the accumulated expansion width at this context
+	 * @param fixed            whether the parallelism count is fixed or may vary
+	 * @param requirements     the list of compute requirements for hardware acceleration,
+	 *                         or {@code null} if no specific requirements are needed
+	 */
+	public ComputableProcessContext(int depth, long parallelism, long aggregationCount,
+									long expansionWidth, boolean fixed,
+									List<ComputeRequirement> requirements) {
+		super(depth, parallelism, aggregationCount, expansionWidth, fixed);
 		this.requirements = requirements;
 	}
 
@@ -88,7 +106,8 @@ public class ComputableProcessContext extends ParallelProcessContext {
 	 */
 	public static ComputableProcessContext of(ParallelProcessContext c, List<ComputeRequirement> requirements) {
 		return new ComputableProcessContext(c.getDepth(), c.getCountLong(),
-					c.getAggregationCount(), c.isFixedCount(), requirements);
+					c.getAggregationCount(), c.getExpansionWidth(),
+					c.isFixedCount(), requirements);
 	}
 
 	/**
@@ -103,7 +122,8 @@ public class ComputableProcessContext extends ParallelProcessContext {
 	 * @return a new {@code ComputableProcessContext} initialized from the process
 	 */
 	public static ComputableProcessContext of(int depth, ParallelProcess c) {
-		return new ComputableProcessContext(depth, c.getParallelism(), 1, c.isFixedCount(), extractRequirements(c));
+		return new ComputableProcessContext(depth, c.getParallelism(), 1,
+				Process.expansionWidth(c), c.isFixedCount(), extractRequirements(c));
 	}
 
 	/**

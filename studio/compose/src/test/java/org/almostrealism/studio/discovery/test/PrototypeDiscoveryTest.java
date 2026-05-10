@@ -36,11 +36,11 @@ public class PrototypeDiscoveryTest extends TestSuiteBase {
 	private static final String PROTOBUF_PREFIX = "/Users/michael/Projects/AlmostRealism/library";
 	private static final String SAMPLES_ROOT = "/Users/michael/Music/Samples";
 
-	@Test @TestDepth(10)
+	@Test(timeout = 120000) @TestDepth(10)
 	public void runDiscovery() throws Exception {
 		File protobufFile = new File(PROTOBUF_PREFIX + "_0.bin");
 		if (!protobufFile.exists()) {
-			System.out.println("SKIP: Protobuf file not found: " + protobufFile);
+			log("SKIP: Protobuf file not found: " + protobufFile);
 			return;
 		}
 

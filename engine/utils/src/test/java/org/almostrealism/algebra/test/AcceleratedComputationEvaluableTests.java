@@ -29,7 +29,7 @@ public class AcceleratedComputationEvaluableTests extends TestSuiteBase {
 	public void staticProducer() {
 		Producer<PackedCollection> res = vector(0.0, 1.0, 2.0);
 		Vector v = new Vector(res.get().evaluate(), 0);
-		System.out.println(v);
+		log(String.valueOf(v));
 		assert v.getX() == 0.0;
 		assert v.getY() == 1.0;
 		assert v.getZ() == 2.0;

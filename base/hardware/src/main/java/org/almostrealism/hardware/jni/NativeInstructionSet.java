@@ -285,7 +285,7 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 		long id = NativeComputeContext.totalInvocations++;
 
 		if (NativeComputeContext.enableVerbose && (id + 1) % 100000 == 0) {
-			System.out.println("NativeInstructionSet: " + id);
+			log("NativeInstructionSet: " + id);
 		}
 
 		if (idx > Integer.MAX_VALUE) {
@@ -302,20 +302,39 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 
 	/**
 	 * Executes the native kernel with RAM arrays and explicit offsets/sizes.
-	 * Validates that no arguments are null and obtains the OpenCL command queue
-	 * if available from the compute context.
+	 * Validates that no arguments are null, that the offsets/sizes arrays
+	 * have a length matching the args array, and obtains the OpenCL command
+	 * queue if available from the compute context.
 	 *
 	 * @param args the RAM memory regions containing the data
 	 * @param offsets the starting offset within each RAM region
 	 * @param sizes the size of each memory region in atomic units
 	 * @param globalId the starting global index for kernel execution
 	 * @param kernelSize the total number of kernel iterations
-	 * @throws NullPointerException if any element of args is null
+	 * @throws NullPointerException if args, offsets, or sizes is null, or if
+	 *         any element of args is null
+	 * @throws IllegalArgumentException if the lengths of args, offsets, and
+	 *         sizes do not match
 	 */
 	default void apply(RAM[] args, int[] offsets, int[] sizes, int globalId, long kernelSize) {
+		if (args == null) {
+			throw new NullPointerException(getFunctionName() + ": args array is null");
+		}
+		if (offsets == null) {
+			throw new NullPointerException(getFunctionName() + ": offsets array is null");
+		}
+		if (sizes == null) {
+			throw new NullPointerException(getFunctionName() + ": sizes array is null");
+		}
+		if (offsets.length != args.length || sizes.length != args.length) {
+			throw new IllegalArgumentException(getFunctionName() +
+					": args/offsets/sizes length mismatch (" +
+					args.length + "/" + offsets.length + "/" + sizes.length + ")");
+		}
 		for (int i = 0; i < args.length; i++) {
 			if (args[i] == null) {
-				throw new NullPointerException("Argument " + i + " is null");
+				throw new NullPointerException(
+						getFunctionName() + ": argument " + i + " RAM is null");
 			}
 		}
 
@@ -336,17 +355,64 @@ public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 	 * Converts RAM regions to native content pointers and delegates to the
 	 * primitive array apply method.
 	 *
+	 * <p>Every pointer-typed value passed to the native kernel is checked
+	 * against zero before dispatch. The HPC codegen platform cannot produce
+	 * a zero pointer internally (assignments to pointer values are not
+	 * permitted by the IR; only numeric values can be assigned), so any
+	 * zero observed inside a generated kernel must have entered via this
+	 * boundary. Validating exhaustively here converts a silent
+	 * {@code SIGSEGV} deep inside the generated native kernel into a
+	 * diagnosable {@link NullPointerException} or
+	 * {@link IllegalArgumentException} attributed to the kernel by name.</p>
+	 *
+	 * <p>Specifically validated:</p>
+	 * <ul>
+	 *   <li>{@code commandQueue} must be either {@code -1} (sentinel for "no
+	 *   OpenCL") or a non-zero value. A {@code 0} value is treated as a bug
+	 *   in the caller's command-queue resolution.</li>
+	 *   <li>Each {@code args[i].getContentPointer()} must be non-zero.</li>
+	 *   <li>The pointer extracted into the {@code pointers} array is
+	 *   re-checked immediately before the native dispatch as a defense
+	 *   against TOCTOU within this thread (e.g., a JNI-visible side effect
+	 *   from a callback fired during pointer extraction).</li>
+	 * </ul>
+	 *
 	 * @param commandQueue the OpenCL command queue pointer, or -1 if not using OpenCL
 	 * @param args the RAM memory regions containing the data
 	 * @param offsets the starting offset within each RAM region
 	 * @param sizes the size of each memory region in atomic units
 	 * @param globalId the starting global index for kernel execution
 	 * @param kernelSize the total number of kernel iterations
+	 * @throws NullPointerException if any argument's content pointer is zero
+	 * @throws IllegalArgumentException if {@code commandQueue} is zero
 	 */
 	default void apply(long commandQueue, RAM[] args, int[] offsets, int[] sizes, int globalId, long kernelSize) {
-		apply(commandQueue,
-				Stream.of(args).mapToLong(RAM::getContentPointer).toArray(),
-				offsets, sizes, args.length, globalId, kernelSize);
+		if (commandQueue == 0) {
+			throw new IllegalArgumentException(getFunctionName() +
+					": commandQueue is zero; expected -1 (no OpenCL) or a valid cl_command_queue pointer");
+		}
+
+		long[] pointers = new long[args.length];
+		for (int i = 0; i < args.length; i++) {
+			pointers[i] = args[i].getContentPointer();
+			if (pointers[i] == 0) {
+				throw new NullPointerException(
+						getFunctionName() + ": argument " + i +
+						" has a zero content pointer at extraction " +
+						"(backing memory may have been deallocated or unmapped " +
+						"between argument resolution and kernel dispatch)");
+			}
+		}
+
+		for (int i = 0; i < pointers.length; i++) {
+			if (pointers[i] == 0) {
+				throw new NullPointerException(
+						getFunctionName() + ": argument " + i +
+						" pointer became zero between extraction and dispatch");
+			}
+		}
+
+		apply(commandQueue, pointers, offsets, sizes, args.length, globalId, kernelSize);
 	}
 
 	/**

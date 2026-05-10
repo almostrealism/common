@@ -70,24 +70,24 @@ public class LoopedSumDiagnosticTest extends TestSuiteBase {
 				cp(input),
 				cp(weights));
 
-		System.out.println("=== Diagnostic Test ===");
-		System.out.println("outerCount=" + outerCount + ", innerCount=" + innerCount);
-		System.out.println("isIsolationTarget: " + computation.isIsolationTarget(null));
-		System.out.println();
+		log("=== Diagnostic Test ===");
+		log("outerCount=" + outerCount + ", innerCount=" + innerCount);
+		log("isIsolationTarget: " + computation.isIsolationTarget(null));
+		log("");
 
 		OperationList ops = new OperationList();
 		PackedCollection output = new PackedCollection(outputShape);
 		ops.add(a("diagnosticResult", p(output), computation));
 
-		System.out.println("Compiling...");
+		log("Compiling...");
 		long start = System.currentTimeMillis();
 		Runnable r = ops.get();
 		long elapsed = System.currentTimeMillis() - start;
-		System.out.println("Compilation took " + elapsed + "ms");
+		log("Compilation took " + elapsed + "ms");
 
 		r.run();
-		System.out.println("Output[0]: " + output.toDouble(0));
-		System.out.println();
+		log("Output[0]: " + output.toDouble(0));
+		log("");
 
 		// Reset
 		HardwareOperator.enableInstructionSetMonitoring = false;
@@ -139,34 +139,34 @@ public class LoopedSumDiagnosticTest extends TestSuiteBase {
 					cp(input),
 					cp(weights));
 
-			System.out.println("=== Test With Optimization Enabled ===");
-			System.out.println("outerCount=" + outerCount + ", innerCount=" + innerCount);
-			System.out.println("isIsolationTarget: " + computation.isIsolationTarget(null));
-			System.out.println("enableAutomaticOptimization: " + OperationList.enableAutomaticOptimization);
-			System.out.println();
+			log("=== Test With Optimization Enabled ===");
+			log("outerCount=" + outerCount + ", innerCount=" + innerCount);
+			log("isIsolationTarget: " + computation.isIsolationTarget(null));
+			log("enableAutomaticOptimization: " + OperationList.enableAutomaticOptimization);
+			log("");
 
 			OperationList ops = new OperationList();
 			PackedCollection output = new PackedCollection(outputShape);
 			ops.add(a("optimizedResult", p(output), computation));
 
-			System.out.println("isUniform: " + ops.isUniform());
-			System.out.println("Note: Uniform lists skip automatic optimization, calling optimize() explicitly");
-			System.out.println();
+			log("isUniform: " + ops.isUniform());
+			log("Note: Uniform lists skip automatic optimization, calling optimize() explicitly");
+			log("");
 
 			// Explicitly call optimize() to trigger isolation logic
 			// The automatic optimization only runs for non-uniform lists (line 684 in OperationList)
-			System.out.println("Optimizing...");
+			log("Optimizing...");
 			OperationList optimized = (OperationList) ops.optimize();
 
-			System.out.println("Compiling optimized version...");
+			log("Compiling optimized version...");
 			long start = System.currentTimeMillis();
 			Runnable r = optimized.get();
 			long elapsed = System.currentTimeMillis() - start;
-			System.out.println("Compilation took " + elapsed + "ms");
+			log("Compilation took " + elapsed + "ms");
 
 			r.run();
-			System.out.println("Output[0]: " + output.toDouble(0));
-			System.out.println();
+			log("Output[0]: " + output.toDouble(0));
+			log("");
 		} finally {
 			// Reset
 			OperationList.enableAutomaticOptimization = previousOptimization;
@@ -199,9 +199,9 @@ public class LoopedSumDiagnosticTest extends TestSuiteBase {
 			return outerIndex.multiply(innerCount).add(innerIndex);
 		};
 
-		System.out.println("=== Timing Breakdown Test ===");
-		System.out.println("outerCount=" + outerCount + ", innerCount=" + innerCount);
-		System.out.println();
+		log("=== Timing Breakdown Test ===");
+		log("outerCount=" + outerCount + ", innerCount=" + innerCount);
+		log("");
 
 		// Time the computation creation
 		long createStart = System.currentTimeMillis();
@@ -217,7 +217,7 @@ public class LoopedSumDiagnosticTest extends TestSuiteBase {
 				cp(input),
 				cp(weights));
 		long createTime = System.currentTimeMillis() - createStart;
-		System.out.println("Computation creation: " + createTime + "ms");
+		log("Computation creation: " + createTime + "ms");
 
 		// Time the operation list setup
 		long opsStart = System.currentTimeMillis();
@@ -225,22 +225,22 @@ public class LoopedSumDiagnosticTest extends TestSuiteBase {
 		PackedCollection output = new PackedCollection(outputShape);
 		ops.add(a("timingResult", p(output), computation));
 		long opsTime = System.currentTimeMillis() - opsStart;
-		System.out.println("OperationList setup: " + opsTime + "ms");
+		log("OperationList setup: " + opsTime + "ms");
 
 		// Time the get() call which does the actual compilation
-		System.out.println("Calling ops.get() (this is where compilation happens)...");
+		log("Calling ops.get() (this is where compilation happens)...");
 		long compileStart = System.currentTimeMillis();
 		Runnable r = ops.get();
 		long compileTime = System.currentTimeMillis() - compileStart;
-		System.out.println("ops.get() compilation: " + compileTime + "ms");
+		log("ops.get() compilation: " + compileTime + "ms");
 
 		// Time the execution
 		long runStart = System.currentTimeMillis();
 		r.run();
 		long runTime = System.currentTimeMillis() - runStart;
-		System.out.println("Execution: " + runTime + "ms");
+		log("Execution: " + runTime + "ms");
 
-		System.out.println();
-		System.out.println("Output[0]: " + output.toDouble(0));
+		log("");
+		log("Output[0]: " + output.toDouble(0));
 	}
 }

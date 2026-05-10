@@ -23,6 +23,8 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -166,7 +168,7 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 		int segmentSamples = (int) (segmentSeconds * sampleRate);
 
 		// Build encoder model
-		System.out.println("Building encoder model...");
+		Console.root().println("Building encoder model...");
 		int batchSize = 1;
 		OobleckEncoder encoder = new OobleckEncoder(autoencoderWeights, batchSize, segmentSamples);
 		int encoderOutputLength = encoder.getOutputLength();
@@ -179,21 +181,21 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 		encoderModel.add(bottleneck.getBottleneck());
 		CompiledModel compiledEncoder = encoderModel.compile(false);
 
-		System.out.println("Encoder built. Output shape: (1, 64, " + encoderOutputLength + ")");
+		Console.root().println("Encoder built. Output shape: (1, 64, " + encoderOutputLength + ")");
 
 		// Process audio files
 		List<PackedCollection> latents = new ArrayList<>();
 
 		try {
 			for (Path audioFile : audioFiles) {
-				System.out.println("Processing: " + audioFile.getFileName());
+				Console.root().println("Processing: " + audioFile.getFileName());
 				try {
 					List<PackedCollection> fileLatents = encodeAudioFile(
 							audioFile, compiledEncoder, segmentSamples);
 					latents.addAll(fileLatents);
-					System.out.println("  Encoded " + fileLatents.size() + " segments");
+					Console.root().println("Encoded " + fileLatents.size() + " segments");
 				} catch (Exception e) {
-					System.err.println("  Failed to process: " + e.getMessage());
+					Console.root().warn("Failed to process: " + e.getMessage(), e);
 				}
 			}
 		} finally {
@@ -202,7 +204,7 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 			encoderModel.destroy();
 		}
 
-		System.out.println("Total latents: " + latents.size());
+		Console.root().println("Total latents: " + latents.size());
 
 		return new AudioLatentDataset(latents, 64, encoderOutputLength);
 	}
@@ -283,26 +285,18 @@ public class AudioLatentDataset implements Dataset<PackedCollection>, Collection
 	/**
 	 * Normalizes audio amplitude to the range [-1, 1] using hardware acceleration.
 	 *
-	 * <p>If normalization is applied, a new {@link PackedCollection} is returned
-	 * and the caller is responsible for destroying the original {@code data}.
-	 * If the data is already normalized (max is 0 or 1), the same instance is
-	 * returned unchanged.</p>
+	 * <p>Always returns a freshly allocated {@link PackedCollection}. The caller is
+	 * responsible for destroying the original {@code data}. Callers should not rely
+	 * on reference identity with the input.</p>
 	 */
 	private static PackedCollection normalizeAmplitude(PackedCollection data) {
 		CollectionFeatures cf = CollectionFeatures.getInstance();
 
-		// Use hardware-accelerated abs().max() to find maximum absolute value
-		PackedCollection maxResult = cf.c(cf.p(data)).abs().max().evaluate();
-		double maxAbs = maxResult.toDouble(0);
-		maxResult.destroy();
-
-		if (maxAbs > 0 && maxAbs != 1.0) {
-			double scale = 1.0 / maxAbs;
-			// Use hardware-accelerated multiply for scaling
-			return cf.c(cf.p(data)).multiply(cf.c(scale)).evaluate();
-		}
-
-		return data;
+		// Compute the normalization scale as a single producer graph so the scalar
+		// decision stays on the device: scale = (max > 0) ? 1/max : 1.
+		CollectionProducer maxAbs = cf.c(cf.p(data)).abs().max();
+		CollectionProducer scale = maxAbs.greaterThan(cf.c(0.0), cf.c(1.0).divide(maxAbs), cf.c(1.0));
+		return cf.c(cf.p(data)).multiply(scale).evaluate();
 	}
 
 	/**

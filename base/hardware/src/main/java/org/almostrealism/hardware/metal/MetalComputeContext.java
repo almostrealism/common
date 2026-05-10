@@ -121,19 +121,19 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 		this.mainDevice = mainDevice;
 
 		if (Hardware.enableVerbose) {
-			System.out.println("Hardware[" + getDataContext().getName() + "]: Max Threadgroup Size (" +
+			log("Hardware[" + getDataContext().getName() + "]: Max Threadgroup Size (" +
 					mainDevice.maxThreadgroupWidth() + ", " +
 					mainDevice.maxThreadgroupHeight() + ", " +
 					mainDevice.maxThreadgroupDepth() + ")");
 		}
 
 		queue = mainDevice.newCommandQueue();
-		if (Hardware.enableVerbose) System.out.println("Hardware[" + getDataContext().getName() + "]: Metal command queue initialized");
+		if (Hardware.enableVerbose) log("Hardware[" + getDataContext().getName() + "]: Metal command queue initialized");
 
 		if (enableFastQueue) {
 			fastQueue = mainDevice.newCommandQueue();
 			if (Hardware.enableVerbose)
-				System.out.println("Hardware[" + getDataContext().getName() + "]: Metal fast command queue initialized");
+				log("Hardware[" + getDataContext().getName() + "]: Metal fast command queue initialized");
 		}
 
 		this.runner = new MetalCommandRunner(queue);

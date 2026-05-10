@@ -2,6 +2,7 @@ package org.almostrealism.chem;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.RGB;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.physics.BlackBody;
 import org.almostrealism.physics.PhysicalConstants;
 import org.almostrealism.texture.GraphicsConverter;
@@ -19,7 +20,7 @@ import java.awt.Graphics;
  * {@link JPanel} at configurable intervals.
  * </p>
  */
-public class SpectralLineDiagram extends BlackBody {
+public class SpectralLineDiagram extends BlackBody implements ConsoleFeatures {
     /** Per-column absorption counts across the visible spectrum. */
     private long[] absorbed;
 
@@ -117,7 +118,7 @@ public class SpectralLineDiagram extends BlackBody {
 	 * @param g  the AWT {@link Graphics} context to draw into
 	 */
 	public void drawImage(Graphics g) {
-    	System.out.println("SpectralLineDiagram.drawImage");
+		log("drawImage");
 		g.drawImage(GraphicsConverter.convertToAWTImage(getImage()), 0, 0, display);
 	}
 

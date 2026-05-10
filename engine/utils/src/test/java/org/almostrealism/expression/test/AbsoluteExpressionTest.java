@@ -68,7 +68,7 @@ public class AbsoluteExpressionTest extends TestSuiteBase implements ExpressionF
 		OptionalDouble dv = abs.doubleValue();
 		// For a constant input, Absolute SHOULD be able to compute doubleValue
 		// But currently it doesn't override doubleValue(), so it returns empty
-		System.out.println("Absolute.doubleValue() for constant input: " + dv);
+		log("Absolute.doubleValue() for constant input: " + dv);
 	}
 
 	/**
@@ -83,12 +83,11 @@ public class AbsoluteExpressionTest extends TestSuiteBase implements ExpressionF
 		// 1.0 - |-0.5| should equal 0.5
 		Expression<?> diff = e(1.0).subtract(abs);
 
-		System.out.println("Expression class: " + diff.getClass().getName());
-		System.out.println("Expression children count: " + diff.getChildren().size());
+		log("Expression class: " + diff.getClass().getName());
+		log("Expression children count: " + diff.getChildren().size());
 		for (int i = 0; i < diff.getChildren().size(); i++) {
 			Expression<?> child = diff.getChildren().get(i);
-			System.out.println("  Child " + i + ": " + child.getClass().getName() +
-					" doubleValue=" + child.doubleValue());
+			log("  Child " + i + ": " + child.getClass().getName() + " doubleValue=" + child.doubleValue());
 		}
 
 		// The difference should have 2 children: DoubleConstant(1.0) and Absolute
@@ -105,19 +104,19 @@ public class AbsoluteExpressionTest extends TestSuiteBase implements ExpressionF
 	public void testOneMinusAbsoluteOfDifference() {
 		// Inner: 0.5 - 1.0 = -0.5
 		Expression<Double> inner = (Expression<Double>) e(0.5).subtract(e(1.0));
-		System.out.println("Inner expression (0.5 - 1.0): " + inner.getClass().getName());
-		System.out.println("Inner doubleValue: " + inner.doubleValue());
+		log("Inner expression (0.5 - 1.0): " + inner.getClass().getName());
+		log("Inner doubleValue: " + inner.doubleValue());
 
 		// Absolute: |-0.5| = 0.5
 		Absolute abs = new Absolute(inner);
-		System.out.println("Absolute expression: " + abs.getClass().getName());
-		System.out.println("Absolute doubleValue: " + abs.doubleValue());
+		log("Absolute expression: " + abs.getClass().getName());
+		log("Absolute doubleValue: " + abs.doubleValue());
 
 		// Outer: 1.0 - 0.5 = 0.5
 		Expression<?> result = e(1.0).subtract(abs);
-		System.out.println("Result expression: " + result.getClass().getName());
-		System.out.println("Result children: " + result.getChildren().size());
-		System.out.println("Result doubleValue: " + result.doubleValue());
+		log("Result expression: " + result.getClass().getName());
+		log("Result children: " + result.getChildren().size());
+		log("Result doubleValue: " + result.doubleValue());
 
 		// Check the structure is correct
 		assertEquals("Result should have 2 children", 2, result.getChildren().size());
@@ -139,8 +138,8 @@ public class AbsoluteExpressionTest extends TestSuiteBase implements ExpressionF
 		// Call Difference.of directly
 		Expression<?> diff = Difference.of(one, abs);
 
-		System.out.println("Difference.of result: " + diff.getClass().getName());
-		System.out.println("Children count: " + diff.getChildren().size());
+		log("Difference.of result: " + diff.getClass().getName());
+		log("Children count: " + diff.getChildren().size());
 
 		// Should be a Difference with 2 children
 		assertTrue("Should be Difference instance", diff instanceof Difference);
@@ -159,10 +158,10 @@ public class AbsoluteExpressionTest extends TestSuiteBase implements ExpressionF
 		// Simplify the expression
 		Expression<?> simplified = diff.getSimplified();
 
-		System.out.println("Original: " + diff.getClass().getName() + " with " + diff.getChildren().size() + " children");
-		System.out.println("Simplified: " + simplified.getClass().getName());
+		log("Original: " + diff.getClass().getName() + " with " + diff.getChildren().size() + " children");
+		log("Simplified: " + simplified.getClass().getName());
 		if (simplified.getChildren() != null) {
-			System.out.println("Simplified children: " + simplified.getChildren().size());
+			log("Simplified children: " + simplified.getChildren().size());
 		}
 
 		// After simplification, we expect either:

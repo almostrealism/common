@@ -289,7 +289,7 @@ public class ChordProgressionManager implements CodeFeatures {
 			}
 		}
 
-		System.out.println("WARN: Exhausted regions");
+		warn("Exhausted regions");
 		return getKey();
 	}
 

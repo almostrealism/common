@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.physics.Absorber;
 import org.almostrealism.physics.Clock;
 import org.almostrealism.physics.Volume;
@@ -34,7 +35,7 @@ import java.util.ArrayList;
  * 
  * @author  Michael Murray
  */
-public class SnellAbsorber implements Absorber, VectorFeatures {
+public class SnellAbsorber implements Absorber, VectorFeatures, ConsoleFeatures {
 	/** The 3D volume within which photon absorption occurs. */
 	private Volume<?> volume;
 
@@ -111,7 +112,7 @@ public class SnellAbsorber implements Absorber, VectorFeatures {
 		Vector R = n.multiply(alpha).multiply(-1).add(n.crossProduct(n.crossProduct(new Vector(d))).multiply(Math.sqrt(1 - ((alpha * alpha)))));
 		
 		if (Math.random() < 0.0001) {
-			System.out.println(R.toString());
+			log(R.toString());
 		}
 		
 		this.queue.remove(0);
@@ -152,7 +153,7 @@ public class SnellAbsorber implements Absorber, VectorFeatures {
 	public Producer<PackedCollection> getEmitPosition() {
 		if (!queue.isEmpty()) {
 			if (Math.random() < 0.0001)
-				System.out.println(queue.get(0)[0].toString());
+				log(queue.get(0)[0].toString());
 
 			return v((Vector) queue.get(0)[0]);
 		} else {

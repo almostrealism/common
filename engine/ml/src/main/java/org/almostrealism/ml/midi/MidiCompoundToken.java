@@ -123,6 +123,15 @@ public class MidiCompoundToken {
 	}
 
 	/**
+	 * Returns all 6 attribute values as a double array, suitable for bulk assignment
+	 * into a {@code PackedCollection} via {@code setMem(0, ...)}.
+	 * Order: onset, duration, octave, pitchClass, instrument, velocity.
+	 */
+	public double[] toDoubleArray() {
+		return new double[]{onset, duration, octave, pitchClass, instrument, velocity};
+	}
+
+	/**
 	 * Create a compound token from an array of 6 attribute values.
 	 *
 	 * @param values array of exactly 6 values in order: onset, duration, octave, pitchClass, instrument, velocity

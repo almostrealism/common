@@ -30,6 +30,7 @@ import io.almostrealism.resource.IOStreams;
 import io.almostrealism.resource.Permissions;
 import io.almostrealism.resource.Resource;
 import io.flowtree.node.Client;
+import org.almostrealism.io.ConsoleFeatures;
 import org.apache.commons.lang3.NotImplementedException;
 
 import java.awt.image.BufferedImage;
@@ -61,7 +62,7 @@ import java.io.PipedOutputStream;
  *
  * @author  Mike Murray
  */
-public class ImageResource implements Resource {
+public class ImageResource implements Resource, ConsoleFeatures {
 
 	/** URI that identifies this resource within the distributed file system. */
 	private String uri;
@@ -204,7 +205,7 @@ public class ImageResource implements Resource {
 		this.data[0] = w;
 		this.data[1] = h;
 
-		System.out.println("ImageResource: Reading " + w + "x" + h + " image...");
+		log("ImageResource: Reading " + w + "x" + h + " image...");
 
 		int one = data.length / 4;
 		int two = data.length / 2;
@@ -215,13 +216,13 @@ public class ImageResource implements Resource {
 			this.data[i] = io.in.readInt();
 
 			if (i == one)
-				System.out.println("ImageResource: Load 25% Complete.");
+				log("ImageResource: Load 25% Complete.");
 			else if (i == two)
-				System.out.println("ImageResource: Load 50% Complete.");
+				log("ImageResource: Load 50% Complete.");
 			else if (i == three)
-				System.out.println("ImageResource: Load 75% Complete.");
+				log("ImageResource: Load 75% Complete.");
 			else if (i == four)
-				System.out.println("ImageResource: Load 100% Complete.");
+				log("ImageResource: Load 100% Complete.");
 		}
 	}
 
@@ -269,7 +270,7 @@ public class ImageResource implements Resource {
 
 				final String fur = ur;
 
-				System.out.println("ImageResource: Loading image from " + user + "@" + host + ur);
+				log("ImageResource: Loading image from " + user + "@" + host + ur);
 
 				PipedInputStream in = new PipedInputStream();
 				final PipedOutputStream out = new PipedOutputStream(in);
@@ -285,7 +286,7 @@ public class ImageResource implements Resource {
 						try {
 							scpd.download(fur, out);
 						} catch (IOException ioe) {
-							System.out.println("Server: " + ioe.getMessage());
+							ImageResource.this.warn(ioe.getMessage());
 						}
 					}
 				};
@@ -296,14 +297,14 @@ public class ImageResource implements Resource {
 				IOStreams io = Client.getCurrentClient().getServer().parseResourceUri(uri);
 
 				if (io == null) {
-					System.out.println("ImageResource: Resource unavailable.");
+					warn("ImageResource: Resource unavailable.");
 					return;
 				}
 
 				this.load(io);
 				io.close();
 			} else {
-				System.out.println("ImageResource: Loading image from " + uri);
+				log("ImageResource: Loading image from " + uri);
 //				TODO  Must load image without JAI
 //				im = JAI.create("url", new URL(uri));
 			}
@@ -314,7 +315,7 @@ public class ImageResource implements Resource {
 				int w = im.getWidth();
 				int h = im.getHeight();
 
-				System.out.println("ImageResource: Buffer is " + w + " x " + h);
+				log("ImageResource: Buffer is " + w + " x " + h);
 
 				BufferedImage bim = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
 				bim.setData(im.copyData(null));
@@ -324,7 +325,7 @@ public class ImageResource implements Resource {
 				this.data[0] = w;
 				this.data[1] = h;
 
-				System.out.println("ImageResource: Converting...");
+				log("ImageResource: Converting...");
 
 				for (int j = 0; j < h; j++) {
 					for (int i = 0; i < w; i++) {
@@ -332,18 +333,16 @@ public class ImageResource implements Resource {
 					}
 				}
 
-				System.out.println("ImageResource: Converted.");
+				log("ImageResource: Converted.");
 			}
 
-			System.out.println("ImageResource: Loaded " + this.data[0] + " x " + this.data[1]);
+			log("ImageResource: Loaded " + this.data[0] + " x " + this.data[1]);
 		} catch (IndexOutOfBoundsException oob) {
-			System.out.println("Server: Index out of bounds while loading image.");
-			oob.printStackTrace(System.out);
+			warn("Index out of bounds while loading image.", oob);
 		} catch (NullPointerException np) {
-			System.out.println("Server: Error loading image (null pointer).");
-			np.printStackTrace(System.out);
+			warn("Error loading image (null pointer).", np);
 		} catch (Exception e) {
-			System.out.println("Server: Error loading image - " + e);
+			warn("Error loading image - " + e);
 		}
 	}
 
@@ -372,7 +371,7 @@ public class ImageResource implements Resource {
 
 		int[] rgb = this.clip(sx, sy, sw, sh);
 
-		System.out.println("ImageResource: Sending " + rgb[0] + "x" + rgb[1] + " image...");
+		log("ImageResource: Sending " + rgb[0] + "x" + rgb[1] + " image...");
 
 		io.out.writeInt(rgb[0]);
 		io.out.writeInt(rgb[1]);
@@ -386,20 +385,20 @@ public class ImageResource implements Resource {
 			io.out.writeInt(rgb[i]);
 
 			if (i == 2)
-				System.out.println("ImageResource: Sent first pixel.");
+				log("ImageResource: Sent first pixel.");
 			else if (i == one)
-				System.out.println("ImageResource: Send 25% Complete.");
+				log("ImageResource: Send 25% Complete.");
 			else if (i == two)
-				System.out.println("ImageResource: Send 50% Complete.");
+				log("ImageResource: Send 50% Complete.");
 			else if (i == three)
-				System.out.println("ImageResource: Send 75% Complete.");
+				log("ImageResource: Send 75% Complete.");
 			else if (i == four)
-				System.out.println("ImageResource: Send 100% Complete.");
+				log("ImageResource: Send 100% Complete.");
 		}
 
-		System.out.println("ImageResource: Flushing output stream.");
+		log("ImageResource: Flushing output stream.");
 		io.out.flush();
-		System.out.println("ImageResource: Done.");
+		log("ImageResource: Done.");
 	}
 
 
@@ -414,9 +413,7 @@ public class ImageResource implements Resource {
 	 * @return pixel data for the clipped region
 	 */
 	public int[] clip(int cx, int cy, int cw, int ch) {
-		System.out.println("ImageResource: Clipping to "
-							+ cx + ", " + cy + ", " +
-							cw + ", " + ch + "...");
+		log("ImageResource: Clipping to " + cx + ", " + cy + ", " + cw + ", " + ch + "...");
 
 		if (cx == 0 && cy == 0 && cw == this.w && ch == this.h) {
 			int[] out = new int[this.data.length];

@@ -16,6 +16,10 @@
 
 package io.flowtree.jobs;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
@@ -50,7 +54,15 @@ public class JobCompletionEvent {
         /** Job failed with an error */
         FAILED,
         /** Job was cancelled before completion */
-        CANCELLED
+        CANCELLED,
+        /**
+         * Job exited cleanly but the agent abandoned work it had started —
+         * for example, by invoking the test runner and ending its turn while
+         * the run was still in progress. Distinguished from SUCCESS so the
+         * developer can tell that the agent's session is incomplete and from
+         * FAILED so the agent's clean exit is not conflated with a crash.
+         */
+        DEGRADED
     }
 
     /** Unique identifier for the job that produced this event. */
@@ -119,6 +131,24 @@ public class JobCompletionEvent {
         JobCompletionEvent event = new JobCompletionEvent(jobId, Status.FAILED, description);
         event.errorMessage = errorMessage;
         event.exception = exception;
+        return event;
+    }
+
+    /**
+     * Creates a {@link Status#DEGRADED} event for a job whose process
+     * exited cleanly but which left work in an incomplete state — most
+     * commonly, a test run started via the ar-test-runner MCP that the
+     * agent never polled to completion.
+     *
+     * @param jobId        the job identifier
+     * @param description  human-readable description of the job
+     * @param errorMessage diagnostic detail describing what was abandoned
+     * @return a new event with {@link Status#DEGRADED} status
+     */
+    public static JobCompletionEvent degraded(String jobId, String description,
+                                              String errorMessage) {
+        JobCompletionEvent event = new JobCompletionEvent(jobId, Status.DEGRADED, description);
+        event.errorMessage = errorMessage;
         return event;
     }
 
@@ -285,6 +315,55 @@ public class JobCompletionEvent {
     public JobCompletionEvent withPullRequestUrl(String url) {
         this.pullRequestUrl = url;
         return this;
+    }
+
+    /** Shared Jackson mapper for {@link #toJson()}. */
+    private static final ObjectMapper EVENT_MAPPER = new ObjectMapper();
+
+    /**
+     * Serializes this event to a JSON string for transmission to the controller.
+     *
+     * @return JSON string representation of this event
+     */
+    public String toJson() {
+        ObjectNode root = EVENT_MAPPER.createObjectNode();
+        root.put("jobId", jobId);
+        root.put("status", status.name());
+        root.put("description", description);
+        root.put("targetBranch", targetBranch);
+        root.put("commitHash", commitHash);
+        root.put("pushed", pushed);
+
+        ArrayNode stagedArray = root.putArray("stagedFiles");
+        for (String f : stagedFiles) stagedArray.add(f);
+
+        ArrayNode skippedArray = root.putArray("skippedFiles");
+        for (String f : skippedFiles) skippedArray.add(f);
+
+        root.put("pullRequestUrl", pullRequestUrl);
+        root.put("errorMessage", errorMessage);
+
+        root.put("prompt", getPrompt());
+        root.put("sessionId", getSessionId());
+        root.put("exitCode", getExitCode());
+
+        root.put("durationMs", getDurationMs());
+        root.put("durationApiMs", getDurationApiMs());
+        root.put("costUsd", getCostUsd());
+        root.put("numTurns", getNumTurns());
+
+        root.put("subtype", getSubtype());
+        root.put("sessionIsError", isSessionError());
+        root.put("permissionDenials", getPermissionDenials());
+
+        ArrayNode deniedArray = root.putArray("deniedToolNames");
+        for (String t : getDeniedToolNames()) deniedArray.add(t);
+
+        try {
+            return EVENT_MAPPER.writeValueAsString(root);
+        } catch (Exception e) {
+            return "{}";
+        }
     }
 
     /**

@@ -74,7 +74,7 @@ public class OperationSemaphoreTests extends TestSuiteBase {
 			waitTime += (System.currentTimeMillis() - start);
 		}
 
-		System.out.println("Semaphore wait time: " + waitTime + "ms");
+		log("Semaphore wait time: " + waitTime + "ms");
 		profiles.print();
 
 		if (validate) {

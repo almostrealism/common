@@ -50,6 +50,9 @@ class GitRepositorySetup implements ConsoleFeatures {
     /** Paths of files that were in a conflicted state during base-branch synchronization. */
     private final List<String> conflictFiles = new ArrayList<>();
 
+    /** Resolved filesystem paths for dependent repos after cloning. */
+    private final List<String> dependentRepoPaths = new ArrayList<>();
+
     /**
      * Creates a new {@code GitRepositorySetup} for the given job.
      *
@@ -133,10 +136,13 @@ class GitRepositorySetup implements ConsoleFeatures {
 
             String stashMessage = "flowtree: interrupted job residue before "
                     + job.getTaskId() + " [" + fileList + "]";
-            if (job.executeGit("stash", "push", "--include-untracked", "-m", stashMessage) != 0) {
-                throw new RuntimeException("Failed to stash uncommitted changes: " + fileList);
+            if (job.executeGit("stash", "push", "--include-untracked", "-m", stashMessage) == 0) {
+                log("Working directory cleaned (changes stashed)");
+            } else {
+                warn("Failed to stash uncommitted changes (" + fileList
+                        + ") -- wiping working tree to allow new job to proceed");
+                wipeWorkingTree();
             }
-            log("Working directory cleaned (changes stashed)");
         }
 
         // 2. Fetch latest from origin.
@@ -336,6 +342,175 @@ class GitRepositorySetup implements ConsoleFeatures {
             }
         }
         return result;
+    }
+
+    /**
+     * Discards all uncommitted changes in the primary working directory.
+     *
+     * <p>Used as a fallback when {@code git stash push} fails (for example,
+     * because a file is in a {@code needs merge} state from a previously
+     * aborted job).  Stashing is only a precaution to preserve residue for
+     * later inspection; allowing the new job to proceed takes priority.</p>
+     *
+     * <p>Aborts any in-progress merge, then resets the index and working
+     * tree to {@code HEAD} and removes untracked files and directories.</p>
+     */
+    private void wipeWorkingTree() throws IOException, InterruptedException {
+        if (GitOperations.isMergeInProgress(job.getWorkingDirectory())) {
+            job.executeGit("merge", "--abort");
+        }
+        int resetExitCode = job.executeGit("reset", "--hard", "HEAD");
+        if (resetExitCode != 0) {
+            throw new IOException("Failed to reset working tree after stash failure"
+                    + " (exit " + resetExitCode + ")");
+        }
+        int cleanExitCode = job.executeGit("clean", "-fd");
+        if (cleanExitCode != 0) {
+            throw new IOException("Failed to clean working tree after stash failure"
+                    + " (exit " + cleanExitCode + ")");
+        }
+        log("Working tree wiped (stash fallback)");
+    }
+
+    /**
+     * Discards all uncommitted changes in a dependent repo working directory.
+     *
+     * <p>See {@link #wipeWorkingTree()} for the rationale.</p>
+     *
+     * @param gitOps the {@link GitOperations} instance bound to the dependent repo
+     */
+    private void wipeWorkingTree(GitOperations gitOps) throws IOException, InterruptedException {
+        if (gitOps.isMergeInProgress()) {
+            gitOps.execute("merge", "--abort");
+        }
+        int resetExitCode = gitOps.execute("reset", "--hard", "HEAD");
+        if (resetExitCode != 0) {
+            throw new IOException("Failed to reset working tree after stash failure"
+                    + " (exit " + resetExitCode + ")");
+        }
+        int cleanExitCode = gitOps.execute("clean", "-fd");
+        if (cleanExitCode != 0) {
+            throw new IOException("Failed to clean working tree after stash failure"
+                    + " (exit " + cleanExitCode + ")");
+        }
+        log("Working tree wiped (stash fallback)");
+    }
+
+    /**
+     * Returns the resolved filesystem paths for dependent repos cloned during
+     * {@link #prepareDependentRepos()}.
+     *
+     * @return list of dependent repo paths
+     */
+    List<String> getDependentRepoPaths() {
+        return new ArrayList<>(dependentRepoPaths);
+    }
+
+    /**
+     * Clones dependent repositories as siblings of the primary repo and records
+     * their paths in {@link #dependentRepoPaths} for later branch preparation
+     * and commit handling.
+     *
+     * @throws IOException if a git command fails
+     * @throws InterruptedException if a command is interrupted
+     */
+    void prepareDependentRepos() throws IOException, InterruptedException {
+        List<String> deps = job.getDependentRepos();
+        if (deps == null || deps.isEmpty()) {
+            return;
+        }
+
+        String workDir = job.getWorkingDirectory();
+        String defaultWsPath = job.getDefaultWorkspacePath();
+        String parentDir = (workDir != null && !workDir.isEmpty())
+                ? new File(workDir).getParent() : defaultWsPath;
+        if (parentDir == null) {
+            warn("Cannot resolve parent directory for dependent repos");
+            return;
+        }
+
+        for (String depRepoUrl : deps) {
+            String repoName = WorkspaceResolver.extractRepoName(depRepoUrl);
+            String depPath = parentDir + "/" + repoName;
+            File depDir = new File(depPath);
+            if (new File(depDir, ".git").exists()) {
+                log("Dependent repo already cloned: " + depPath);
+            } else {
+                log("Cloning dependent repo: " + depRepoUrl + " into " + depPath);
+                GitOperations gitOps = new GitOperations(parentDir, job.getTaskId());
+                gitOps.cloneRepository(depRepoUrl, depPath);
+            }
+            dependentRepoPaths.add(depPath);
+        }
+    }
+
+    /**
+     * Prepares branch state for all dependent repos: stash, fetch, checkout the target
+     * branch (creating it from the base branch if needed), and pull latest changes.
+     *
+     * @throws IOException if a git command fails
+     * @throws InterruptedException if a command is interrupted
+     */
+    void prepareDependentReposBranches() throws IOException, InterruptedException {
+        String targetBranch = job.getTargetBranch();
+        String baseBranch = job.getBaseBranch();
+        for (String depPath : dependentRepoPaths) {
+            log("Preparing dependent repo branch: " + depPath);
+            GitOperations gitOps = new GitOperations(depPath, job.getTaskId());
+
+            String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
+            if (!statusOutput.trim().isEmpty()) {
+                String stashMsg = "flowtree: dependent repo cleanup before " + job.getTaskId();
+                log("Stashing uncommitted changes in dependent repo: " + depPath);
+                int stashExit = gitOps.execute("stash", "push", "--include-untracked", "-m", stashMsg);
+                if (stashExit != 0) {
+                    warn("Failed to stash dependent repo " + depPath
+                            + " (exit " + stashExit + ") -- wiping working tree to allow new job to proceed");
+                    wipeWorkingTree(gitOps);
+                }
+            }
+
+            if (gitOps.execute("fetch", "origin") != 0) {
+                warn("git fetch origin failed in dependent repo: " + depPath);
+            }
+
+            String currentBranch = gitOps.executeWithOutput(
+                "rev-parse", "--abbrev-ref", "HEAD").trim();
+            boolean remoteExists = gitOps.execute("show-ref", "--verify", "--quiet",
+                "refs/remotes/origin/" + targetBranch) == 0;
+
+            if (!targetBranch.equals(currentBranch)) {
+                boolean localExists = gitOps.execute("show-ref", "--verify", "--quiet",
+                    "refs/heads/" + targetBranch) == 0;
+                if (localExists || remoteExists) {
+                    int checkoutExit = gitOps.execute("checkout", targetBranch);
+                    if (checkoutExit != 0) {
+                        throw new IOException("git checkout " + targetBranch
+                            + " failed (exit " + checkoutExit + ") in " + depPath);
+                    }
+                } else {
+                    String startPoint = "origin/" + baseBranch;
+                    log("Creating branch " + targetBranch + " from " + startPoint + " in " + depPath);
+                    int createExit = gitOps.execute("checkout", "-b", targetBranch, "--no-track", startPoint);
+                    if (createExit != 0) {
+                        throw new IOException("git checkout -b " + targetBranch
+                            + " failed (exit " + createExit + ") in " + depPath);
+                    }
+                    continue;
+                }
+            }
+
+            if (remoteExists) {
+                int pullExit = gitOps.execute("pull", "--ff-only", "origin", targetBranch);
+                if (pullExit != 0) {
+                    log("Fast-forward pull failed; resetting to origin/" + targetBranch + " in " + depPath);
+                    int resetExit = gitOps.execute("reset", "--hard", "origin/" + targetBranch);
+                    if (resetExit != 0) {
+                        throw new IOException("Failed to sync with origin/" + targetBranch + " in " + depPath);
+                    }
+                }
+            }
+        }
     }
 
     @Override

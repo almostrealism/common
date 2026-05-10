@@ -20,6 +20,8 @@ import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
 import com.jcraft.jsch.UserInfo;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -36,7 +38,7 @@ import java.util.LinkedHashMap;
  * serialised via {@code synchronized} on the instance. Sessions are reconnected automatically
  * on failure up to the configured retry count.</p>
  */
-public class ScpDownloader implements UserInfo {
+public class ScpDownloader implements UserInfo, ConsoleFeatures {
 	/** Maximum number of cached downloader instances. */
 	private static final int maxCache = 5;
 	/** Cache of live {@link ScpDownloader} instances keyed by "host|user|password". */
@@ -79,8 +81,8 @@ public class ScpDownloader implements UserInfo {
 		this.sch = new JSch();
 		
 		i: for (int i = 0; i < this.retry; i++) {
-			if (i > 0) System.out.println("ScpDownloader: Retrying...");
-			
+			if (i > 0) log("ScpDownloader: Retrying...");
+
 			try {
 				this.init();
 				break;
@@ -118,7 +120,7 @@ public class ScpDownloader implements UserInfo {
 			this.session.setUserInfo(this);
 			this.session.connect();
 		} catch (JSchException e) {
-			System.out.println("ScpDownloader (INIT): " + e.getMessage());
+			log("ScpDownloader (INIT): " + e.getMessage());
 			throw new IOException("JSCP Error -- " + e.getMessage());
 		}
 	}
@@ -151,21 +153,21 @@ public class ScpDownloader implements UserInfo {
 		ScpDownloader.this.streamOpen = true;
 		
 		i: for (int i = 0; i < ScpDownloader.this.retry; i++) {
-			if (i > 0) System.out.println("ScpDownloader: Retrying...");
-			
+			if (i > 0) log("ScpDownloader: Retrying...");
+
 			boolean done = false;
-			
+
 			try {
 //				TODO  This class is missing
 //				ScpFromMessage scp = new ScpFromMessage(this.session, file, fout, true);
 //				scp.execute();
-				
+
 				done = true;
-				System.out.println("ScpDownloader: Done");
+				log("ScpDownloader: Done");
 				fout.flush();
 				break;
 			} catch (IOException e) {
-				System.out.println("ScpDownloader: " + e.getMessage());
+				log("ScpDownloader: " + e.getMessage());
 				if (done) break;
 //			} catch (JSchException jsch) {
 //				System.out.println("ScpDownloader: " + jsch.getMessage());
@@ -244,7 +246,7 @@ public class ScpDownloader implements UserInfo {
 			
 			if (r != null) {
 				ScpDownloader.cache.remove(r);
-				System.out.println("ScpDownloader: Removed cache of " + r);
+				Console.root().println("ScpDownloader: Removed cache of " + r);
 			}
 			
 			ScpDownloader.cache.put(s, d);
@@ -278,8 +280,8 @@ public class ScpDownloader implements UserInfo {
 				sb.append((char)c);
 			} while(c != '\n');
 			
-			if(b == 1) System.out.println("ScpDownloader (ERROR): " + sb);
-			if(b == 2) System.out.println("ScpDownloader (FATAL): " + sb);
+			if(b == 1) Console.root().println("ScpDownloader (ERROR): " + sb);
+			if(b == 2) Console.root().println("ScpDownloader (FATAL): " + sb);
 		}
 		
 		return b;
@@ -296,33 +298,33 @@ public class ScpDownloader implements UserInfo {
 	/** {@inheritDoc} */
 	@Override
 	public boolean promptPassword(String message) {
-		System.out.println("ScpDownloader: " + message);
+		log("ScpDownloader: " + message);
 		return (this.passwd != null);
 	}
 
 	/** {@inheritDoc} Always returns {@code true}. */
 	@Override
 	public boolean promptPassphrase(String message) {
-		System.out.println("ScpDownloader: " + message);
+		log("ScpDownloader: " + message);
 		return true;
 	}
 
 	/** {@inheritDoc} Always returns {@code true}. */
 	@Override
 	public boolean promptYesNo(String message) {
-		System.out.println("ScpDownloader: " + message);
+		log("ScpDownloader: " + message);
 		return true;
 	}
 
 	/** {@inheritDoc} Logs the message to standard output. */
 	@Override
-	public void showMessage(String message) { System.out.println("ScpDownloader: " + message); }
+	public void showMessage(String message) { log("ScpDownloader: " + message); }
 
 	/**
 	 * Disposes the SSH session when this object is garbage collected.
 	 */
 	protected void finalize() {
-		System.out.println("ScpDownloader: Disposing " + this);
+		log("ScpDownloader: Disposing " + this);
 		this.dispose();
 	}
 }

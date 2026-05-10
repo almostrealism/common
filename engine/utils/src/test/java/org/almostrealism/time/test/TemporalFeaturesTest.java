@@ -19,31 +19,14 @@ package org.almostrealism.time.test;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.FirFilterTestFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-public class TemporalFeaturesTest extends TestSuiteBase {
-	protected double[] lowPassCoefficients(double cutoff, int sampleRate, int filterOrder) {
-		double[] coefficients = new double[filterOrder + 1];
-		double normalizedCutoff = 2 * cutoff / sampleRate;
-
-		for (int i = 0; i <= filterOrder; i++) {
-			if (i == filterOrder / 2) {
-				coefficients[i] = normalizedCutoff;
-			} else {
-				int k = i - filterOrder / 2;
-				coefficients[i] = Math.sin(Math.PI * k * normalizedCutoff) / (Math.PI * k);
-			}
-
-			// Hamming window
-			coefficients[i] *= 0.54 - 0.46 * Math.cos(2 * Math.PI * i / filterOrder);
-		}
-
-		return coefficients;
-	}
+public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTestFeatures {
 
 	protected double[] highPassCoefficients(double cutoff, int sampleRate, int filterOrder) {
-		double[] lowPassCoefficients = lowPassCoefficients(cutoff, sampleRate, filterOrder);
+		double[] lowPassCoefficients = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
 
 		double[] highPassCoefficients = new double[filterOrder + 1];
 		for (int i = 0; i <= filterOrder; i++) {
@@ -59,7 +42,7 @@ public class TemporalFeaturesTest extends TestSuiteBase {
 		int sampleRate = 44100;
 		double cutoff = 3000;
 
-		double[] coefficients = lowPassCoefficients(cutoff, sampleRate, filterOrder);
+		double[] coefficients = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
 		double[] result = lowPassCoefficients(c(cutoff), sampleRate, filterOrder).get().evaluate().toArray();
 
 		for (int i = 0; i < filterOrder + 1; i++) {
@@ -78,7 +61,7 @@ public class TemporalFeaturesTest extends TestSuiteBase {
 		int len = filterOrder + 1;
 
 		for (int c = 0; c < cutoffs.getShape().getTotalSize(); c++) {
-			double[] coefficients = lowPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
+			double[] coefficients = referenceLowPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
 			double[] resultCoefficients = result.range(shape(len), c * len).toArray();
 
 			for (int i = 0; i < filterOrder + 1; i++) {
@@ -126,7 +109,7 @@ public class TemporalFeaturesTest extends TestSuiteBase {
 		int len = filterOrder + 1;
 
 		for (int c = 0; c < cutoffs.getShape().getTotalSize(); c++) {
-			double[] coefficients = lowPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
+			double[] coefficients = referenceLowPassCoefficients(cutoffs.toDouble(c), sampleRate, filterOrder);
 			double[] resultCoefficients = result.range(shape(len), c * len).toArray();
 
 			for (int i = 0; i < filterOrder + 1; i++) {

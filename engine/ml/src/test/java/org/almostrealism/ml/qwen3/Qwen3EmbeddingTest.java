@@ -22,14 +22,14 @@ public class Qwen3EmbeddingTest extends TestSuiteBase implements AttentionFeatur
 	public void testEmbeddingLookup() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
 
-		System.out.println("\n=== Embedding Lookup Test ===\n");
+		log("\n=== Embedding Lookup Test ===\n");
 
 		// Load embeddings
 		StateDictionary stateDict = new StateDictionary(WEIGHTS_DIR);
 		PackedCollection embeddings = stateDict.get("model.embed_tokens.weight");
 
-		System.out.println("Embedding table shape: " + embeddings.getShape());
-		System.out.println("Embedding size: " + embeddings.getMemLength());
+		log("Embedding table shape: " + embeddings.getShape());
+		log("Embedding size: " + embeddings.getMemLength());
 
 		// Load tokenizer
 		Qwen3Tokenizer tokenizer = new Qwen3Tokenizer(TOKENIZER_PATH);
@@ -38,15 +38,15 @@ public class Qwen3EmbeddingTest extends TestSuiteBase implements AttentionFeatur
 		int token = 9707;
 		int dim = 896;
 
-		System.out.println("\nTesting token " + token + " (\"Hello\")");
-		System.out.println("Expected embedding index: " + token + " * " + dim + " = " + (token * dim));
+		log("\nTesting token " + token + " (\"Hello\")");
+		log("Expected embedding index: " + token + " * " + dim + " = " + (token * dim));
 
 		// Extract embedding using range (as model does)
 		PackedCollection embedding = embeddings.range(shape(dim), token * dim);
 
-		System.out.println("Embedding first 10 values:");
+		log("Embedding first 10 values:");
 		for (int i = 0; i < 10; i++) {
-			System.out.printf("  [%d] %.6f\n", i, embedding.toDouble(i));
+			log(String.format("  [%d] %.6f\n", i, embedding.toDouble(i)));
 		}
 
 		// Verify embedding is not all zeros
@@ -55,19 +55,19 @@ public class Qwen3EmbeddingTest extends TestSuiteBase implements AttentionFeatur
 			sum += Math.abs(embedding.toDouble(i));
 		}
 
-		System.out.println("\nEmbedding L1 norm: " + sum);
+		log("\nEmbedding L1 norm: " + sum);
 
 		if (sum < 0.001) {
-			System.out.println("[ERROR] WARNING: Embedding appears to be all zeros!");
+			log("[ERROR] WARNING: Embedding appears to be all zeros!");
 		} else {
-			System.out.println("[OK] Embedding looks valid");
+			log("[OK] Embedding looks valid");
 		}
 
 		// Test a few more tokens
 		String[] testWords = {"Tell", "me", "a", "story"};
 		int[] testTokens = tokenizer.encode("Tell me a story", false, false);
 
-		System.out.println("\n\"Tell me a story\" tokens: " + Arrays.toString(testTokens));
+		log("\n\"Tell me a story\" tokens: " + Arrays.toString(testTokens));
 
 		for (int i = 0; i < testTokens.length && i < testWords.length; i++) {
 			PackedCollection emb = embeddings.range(shape(dim), testTokens[i] * dim);
@@ -75,7 +75,7 @@ public class Qwen3EmbeddingTest extends TestSuiteBase implements AttentionFeatur
 			for (int j = 0; j < dim; j++) {
 				norm += Math.abs(emb.toDouble(j));
 			}
-			System.out.printf("Token %d: L1 norm = %.4f\n", testTokens[i], norm);
+			log(String.format("Token %d: L1 norm = %.4f\n", testTokens[i], norm));
 		}
 
 		stateDict.destroy();

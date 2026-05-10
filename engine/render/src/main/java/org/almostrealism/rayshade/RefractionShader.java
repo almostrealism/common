@@ -20,6 +20,8 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.RGBFeatures;
@@ -96,7 +98,7 @@ import java.util.List;
  * @author Michael Murray
  */
 // TODO  Fix refraction algorithm.
-public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, CodeFeatures {
+public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, CodeFeatures, ConsoleFeatures {
 
 	/**
 	 * The last refracted ray direction (for debugging purposes).
@@ -145,7 +147,7 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 
 			if (Math.random() < 0.01 &&
 					po.getX() * po.getX() + po.getY() * po.getY() + po.getZ() * po.getZ() - 1.0 > 0.01)
-				System.out.println("RefractionShader: " + po);
+				log(String.valueOf(po));
 
 			Vector n = new Ray(normals.iterator().next().get().evaluate(args), 0).getDirection();
 
@@ -157,7 +159,7 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 				try {
 					point = new Ray(p.getIntersection().get(0).get().evaluate(args), 0).getOrigin();
 				} catch (Exception e) {
-					e.printStackTrace();
+					warn(e.getMessage(), e);
 					return null;
 				}
 
@@ -168,7 +170,7 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 				c = multiply(rgb(10, 10, 10), c);
 
 				if (Math.random() < 0.01)
-					System.out.println("RefractionShader.shadeFront: " + c.get().evaluate(args));
+					log(String.valueOf(c.get().evaluate(args)));
 
 				if (c != null) {
 					if (color == null) {
@@ -187,7 +189,7 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 						p.getOtherSurfaces(), n.minus(), p);
 
 				if (Math.random() < 0.01)
-					System.out.println("RefractionShader.shadeBack: " + c.get().evaluate(args));
+					log(String.valueOf(c.get().evaluate(args)));
 
 				if (c != null) {
 					if (color == null) {
@@ -426,18 +428,18 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 	 */
 	@Deprecated
 	public static Vector refract(Vector vector, Vector normal, double ni, double nr, boolean v) {
-		if (v) System.out.println("Vector = " + vector);
+		if (v) Console.root().println("Vector = " + vector);
 
 		vector = vector.minus();
 
 		double p = -vector.dotProduct(normal);
 		double r = ni / nr;
 
-		if (v) System.out.println("p = " + p + " r = " + r);
+		if (v) Console.root().println("p = " + p + " r = " + r);
 
 		vector = vector.minus();
 		if (vector.dotProduct(normal) < 0) {
-			if (v) System.out.println("LALA");
+			if (v) Console.root().println("LALA");
 			normal = normal.minus();
 			p = -p;
 		}
@@ -445,11 +447,11 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 
 		double s = Math.sqrt(1.0 - r * r * (1.0 - p * p));
 
-		if (v) System.out.println("s = " + s);
+		if (v) Console.root().println("s = " + s);
 
 		Vector refracted = vector.multiply(r);
 
-		if (v) System.out.println(refracted);
+		if (v) Console.root().println(String.valueOf(refracted));
 
 		//	if (p >= 0.0) {
 		refracted.addTo(normal.multiply((p * r) - s));
@@ -457,7 +459,7 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 		//		refracted.addTo(normal.multiply((p * r) - s));
 		//	}
 
-		if (v) System.out.println(refracted);
+		if (v) Console.root().println(String.valueOf(refracted));
 
 		// Vector refracted = ((vector.subtract(normal.multiply(p))).multiply(r)).subtract(normal.multiply(s));
 

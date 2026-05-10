@@ -2,6 +2,7 @@ package org.almostrealism.heap;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import org.almostrealism.io.Console;
 import org.netbeans.lib.profiler.heap.Heap;
 import org.netbeans.lib.profiler.heap.HeapFactory;
 import org.netbeans.lib.profiler.heap.HeapSummary;
@@ -107,7 +108,7 @@ public class HeapAnalyzer {
 					return;
 			}
 
-			System.out.println(MAPPER.writeValueAsString(result));
+			Console.root().println(MAPPER.writeValueAsString(result));
 		} catch (IOException e) {
 			printError("Failed to parse HPROF file: " + e.getMessage());
 		}
@@ -260,9 +261,9 @@ public class HeapAnalyzer {
 		Map<String, String> error = new LinkedHashMap<>();
 		error.put("error", message);
 		try {
-			System.out.println(MAPPER.writeValueAsString(error));
+			Console.root().println(MAPPER.writeValueAsString(error));
 		} catch (IOException e) {
-			System.out.println("{\"error\": \"" + message + "\"}");
+			Console.root().println("{\"error\": \"" + message + "\"}");
 		}
 	}
 

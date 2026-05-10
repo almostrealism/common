@@ -114,4 +114,49 @@ public interface FirFilterTestFeatures extends TestFeatures {
 
 		return output;
 	}
+
+	/**
+	 * Computes the sum-of-squares energy of a signal, skipping the first and last
+	 * {@code skip} samples to avoid FIR filter edge effects.
+	 *
+	 * @param signal the signal samples
+	 * @param skip   number of samples to skip at each end
+	 * @return the sum of squared sample values in the interior region
+	 */
+	default double energy(double[] signal, int skip) {
+		double sum = 0.0;
+		for (int i = skip; i < signal.length - skip; i++) {
+			sum += signal[i] * signal[i];
+		}
+		return sum;
+	}
+
+	/**
+	 * Returns the peak absolute value of a signal.
+	 *
+	 * @param samples the signal samples
+	 * @return the maximum absolute sample value
+	 */
+	default double peakOf(double[] samples) {
+		double peak = 0.0;
+		for (double v : samples) {
+			double a = Math.abs(v);
+			if (a > peak) peak = a;
+		}
+		return peak;
+	}
+
+	/**
+	 * Converts a {@code float[]} array to a {@code double[]} array.
+	 *
+	 * @param input the float array to convert
+	 * @return a new double array with the same values
+	 */
+	default double[] floatToDouble(float[] input) {
+		double[] output = new double[input.length];
+		for (int i = 0; i < input.length; i++) {
+			output[i] = input[i];
+		}
+		return output;
+	}
 }

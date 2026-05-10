@@ -55,7 +55,7 @@ public class MoonbeamInferenceTest extends TestSuiteBase implements ConsoleFeatu
 	 * Test that real-weight embeddings produce non-trivial outputs for SOS,
 	 * normal tokens, and EOS.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void testRealWeightEmbedding() throws IOException {
 		Assume.assumeTrue("Weights directory not found", new File(WEIGHTS_DIR).isDirectory());
@@ -97,7 +97,7 @@ public class MoonbeamInferenceTest extends TestSuiteBase implements ConsoleFeatu
 	/**
 	 * Test that the GRU decoder with real weights produces valid output tokens.
 	 */
-	@Test
+	@Test(timeout = 300000)
 	@TestDepth(2)
 	public void testRealWeightGruDecoder() throws IOException {
 		Assume.assumeTrue("Weights directory not found", new File(WEIGHTS_DIR).isDirectory());
@@ -142,7 +142,7 @@ public class MoonbeamInferenceTest extends TestSuiteBase implements ConsoleFeatu
 	 * and generates a few tokens from SOS. It is the most resource-intensive
 	 * test and may require significant memory.</p>
 	 */
-	@Test
+	@Test(timeout = 600000)
 	@TestDepth(2)
 	public void testFullModelInference() throws Exception {
 		Assume.assumeTrue("Weights directory not found", new File(WEIGHTS_DIR).isDirectory());
