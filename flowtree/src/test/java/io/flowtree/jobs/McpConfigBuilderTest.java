@@ -119,9 +119,12 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 			allowed.contains("mcp__ar-manager__memory_recall"));
 		assertTrue("Should include github_pr_find",
 			allowed.contains("mcp__ar-manager__github_pr_find"));
-		assertTrue("Should include workspace_secret_list_names",
+		// Workspace secret tools moved to the in-container ar-secrets stdio
+		// MCP server — they are now in EXCLUDED_AR_MANAGER_TOOLS and must not
+		// appear in the ar-manager allowlist passed to agents.
+		assertFalse("Must not include workspace_secret_list_names (moved to ar-secrets)",
 			allowed.contains("mcp__ar-manager__workspace_secret_list_names"));
-		assertTrue("Should include workspace_secret_render_file",
+		assertFalse("Must not include workspace_secret_render_file (moved to ar-secrets)",
 			allowed.contains("mcp__ar-manager__workspace_secret_render_file"));
 	}
 

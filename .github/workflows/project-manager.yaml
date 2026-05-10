@@ -45,9 +45,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Count open PRs targeting master using the ar-github MCP server's CLI mode.
-          RESULT=$(python3 tools/mcp/github/server.py list-open-prs --base master)
-          OPEN_PR_COUNT=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('count', 0))")
+          # Count open PRs targeting master via the GitHub CLI. The previous
+          # ar-github MCP CLI mode was retired when the tool was consolidated
+          # into ar-manager; ar-manager is an HTTP MCP server and is not
+          # invokable from a CI shell step.
+          OPEN_PR_COUNT=$(gh pr list --base master --state open --json number --jq 'length')
           echo "open_prs=$OPEN_PR_COUNT" >> "$GITHUB_OUTPUT"
           echo "target=$PROJECT_BRANCH_TARGET" >> "$GITHUB_OUTPUT"
 

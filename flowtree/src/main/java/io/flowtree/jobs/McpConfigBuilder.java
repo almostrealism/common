@@ -74,11 +74,13 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * workstream) with an explanatory error, since that would cause
      * two agents to commit to the same git branch concurrently.</p>
      *
-     * <p>{@code workspace_secret_list_names} and
-     * {@code workspace_secret_render_file} are included so agents can
-     * stage workspace-scoped credentials (e.g., AWS, GitHub tokens)
-     * into local files without ever seeing the secret values
-     * themselves. Both tools enforce workspace ownership on the server.</p>
+     * <p>The {@code workspace_secret_list_names} and
+     * {@code workspace_secret_render_file} tools also exist on the
+     * ar-manager server but are deliberately excluded from this list —
+     * see {@link #EXCLUDED_AR_MANAGER_TOOLS}. Agents stage workspace
+     * credentials through the in-container {@code ar-secrets} MCP server
+     * instead, which writes the rendered file in the agent's own
+     * filesystem namespace.</p>
      *
      * <p>The set of ar-manager tools that exist on the server but are
      * deliberately NOT in this list is documented in
@@ -114,9 +116,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "tracker_search_tasks",
             "tracker_project_summary",
             "tracker_list_projects",
-            "tracker_list_releases",
-            "workspace_secret_list_names",
-            "workspace_secret_render_file"
+            "tracker_list_releases"
         ))
     );
 
@@ -158,7 +158,13 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "tracker_delete_release",
             "tracker_create_task",
             "tracker_update_task",
-            "tracker_delete_task"
+            "tracker_delete_task",
+            // Workspace secrets: still callable by admin/Slack flows on the
+            // controller, but agents use the in-container ar-secrets MCP
+            // server (tools/mcp/secrets/server.py) so the rendered file
+            // lands in the agent's filesystem rather than ar-manager's.
+            "workspace_secret_list_names",
+            "workspace_secret_render_file"
         ))
     );
 
@@ -330,6 +336,31 @@ public class McpConfigBuilder implements ConsoleFeatures {
         }
 
         return sb.toString();
+    }
+
+    /**
+     * Injects environment variables consumed by in-container MCP helpers
+     * (notably {@code ar-secrets}) onto the agent {@link ProcessBuilder}'s
+     * environment map. Sets {@code AR_WORKSTREAM_URL},
+     * {@code AR_CONTROLLER_URL}, {@code AR_WORKSTREAM_ID}, and
+     * {@code AR_MANAGER_TOKEN} when their source values are non-empty.
+     *
+     * @param env    the mutable environment map (typically
+     *               {@code pb.environment()})
+     * @param wsUrl  the resolved workstream URL with placeholders replaced;
+     *               may be {@code null} or empty
+     */
+    public void applyAgentEnvironment(Map<String, String> env, String wsUrl) {
+        if (wsUrl != null && !wsUrl.isEmpty()) {
+            env.put("AR_WORKSTREAM_URL", wsUrl);
+            String base = ClaudeCodeJob.extractControllerBaseUrl(wsUrl);
+            if (base != null) env.put("AR_CONTROLLER_URL", base);
+            String wid = ClaudeCodeJob.extractWorkstreamId(wsUrl);
+            if (wid != null) env.put("AR_WORKSTREAM_ID", wid);
+        }
+        if (arManagerToken != null && !arManagerToken.isEmpty()) {
+            env.put("AR_MANAGER_TOKEN", arManagerToken);
+        }
     }
 
     /**

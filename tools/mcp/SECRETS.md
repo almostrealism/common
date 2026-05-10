@@ -4,10 +4,35 @@ Workspace secrets let agents read credential files from the FlowTree controller
 host without those credentials ever appearing in agent output, prompts, PR
 descriptions, or logs.  The agent requests that a secret be **rendered into a
 file** at a path it supplies.  The controller stores and serves the JSON
-payload; the ar-manager MCP server fetches that payload, substitutes it into
-the supplied template, and writes the rendered file on the host where
-ar-manager (and the agent) is running.  The agent receives only a
-success/failure acknowledgement — never the credential values themselves.
+payload; an MCP server fetches that payload, substitutes it into the supplied
+template, and writes the rendered file on the host where the agent runs.  The
+agent receives only a success/failure acknowledgement — never the credential
+values themselves.
+
+## Two MCP servers, two topologies
+
+There are two MCP servers that expose secret rendering, and the right one to
+use depends on where the calling agent runs relative to the controller.
+
+| Server | Topology | Use for |
+|--------|----------|---------|
+| `ar-secrets` (`tools/mcp/secrets/server.py`) | **stdio in the agent container** | Coding agents launched by `ClaudeCodeJob` — the default and recommended path. Tools: `secret_list_names`, `secret_render_file`. |
+| `ar-manager` (`workspace_secret_list_names`, `workspace_secret_render_file`) | HTTP, on the controller | Admin/Slack flows where the caller already runs alongside the controller and the rendered file is meant to land on the controller host. |
+
+The two are not interchangeable. `ar-manager`'s `workspace_secret_render_file`
+writes the rendered file on the **controller's** filesystem; in the default
+`ClaudeCodeJob` topology the agent runs in a separate container with a
+different filesystem namespace, so the agent never sees the file.
+`ar-secrets` is a small stdio MCP server that the agent launches locally, so
+its `secret_render_file` writes the file in the same filesystem namespace as
+the agent. Both servers talk to the same controller `/api/secrets/*`
+endpoints; only the location of the file write differs.
+
+`ar-secrets` reads its authentication context from environment variables that
+`ClaudeCodeJob` injects on the agent process — `AR_CONTROLLER_URL`,
+`AR_WORKSTREAM_ID`, and `AR_MANAGER_TOKEN` (the same `armt_tmp_*` bearer that
+ar-manager already uses). No additional configuration is required in
+`workstreams.yaml`.
 
 ---
 
@@ -210,11 +235,13 @@ workspace_secret_render_file(
 
 ## Security properties
 
-- **Payloads stay on the agent host**: `workspace_secret_render_file` writes
-  the rendered file on the host where the ar-manager MCP server runs (which
-  is also where the calling agent runs).  The values are fetched from the
-  controller over an authenticated channel and substituted into the template
-  inside ar-manager — they never cross the MCP channel back to the agent.
+- **Payloads stay on the writer's host**: the renderer (whichever server is
+  in use) fetches the JSON payload from the controller over an authenticated
+  channel and performs template substitution locally.  Only the rendered
+  file path crosses the MCP channel back to the caller; the values never do.
+  For `ar-secrets` the write lands on the agent's host (the recommended
+  path for coding agents); for `ar-manager`'s `workspace_secret_render_file`
+  the write lands on the controller's host.
 - **Audit log**: every retrieve call logs `secret_access` with the secret name,
   workstream ID, job ID, and workspace ID — but never the payload values.
 - **Scope enforcement**: agents must hold a `read`-or-higher scope token and the

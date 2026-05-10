@@ -114,39 +114,6 @@ public class ManagedToolsDownloader implements ConsoleFeatures {
 	}
 
 	/**
-	 * Verifies that MCP tool server files exist in the working directory
-	 * and logs their modification times for deployment diagnostics.
-	 *
-	 * <p>Checks for {@code tools/mcp/messages/server.py} and
-	 * {@code tools/mcp/github/server.py} relative to the given working
-	 * directory. For each file that exists, the age in seconds since last
-	 * modification is logged. Missing files produce a warning.</p>
-	 *
-	 * @param workingDirectory the working directory to resolve tool paths against
-	 */
-	public void verifyMcpToolFiles(Path workingDirectory) {
-		String[] toolFiles = {
-			"tools/mcp/messages/server.py",
-			"tools/mcp/github/server.py"
-		};
-
-		for (String toolFile : toolFiles) {
-			Path resolved = workingDirectory.resolve(toolFile);
-			if (Files.exists(resolved)) {
-				try {
-					long lastModified = Files.getLastModifiedTime(resolved).toMillis();
-					long ageSeconds = (System.currentTimeMillis() - lastModified) / 1000;
-					log("MCP tool: " + toolFile + " (modified " + ageSeconds + "s ago)");
-				} catch (IOException e) {
-					log("MCP tool: " + toolFile + " (exists, could not read mtime)");
-				}
-			} else {
-				warn("MCP tool missing: " + resolved.toAbsolutePath());
-			}
-		}
-	}
-
-	/**
 	 * Performs an HTTP GET request and returns the response body as a string.
 	 *
 	 * <p>Uses a connect timeout of 10000ms and a read timeout of 30000ms.

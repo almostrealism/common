@@ -1,6 +1,6 @@
 # Slack Integration
 
-The Slack integration allows operators to submit coding agent prompts by mentioning a bot in Slack. Results and status updates are posted back to the channel in real time. Running Claude Code sessions can also store messages and send notifications through the `ar-messages` MCP tool.
+The Slack integration allows operators to submit coding agent prompts by mentioning a bot in Slack. Results and status updates are posted back to the channel in real time. Running Claude Code sessions can also store messages and send notifications through `ar-manager`'s `send_message` MCP tool.
 
 ## Architecture
 
@@ -16,7 +16,7 @@ Slack (Socket Mode)          FlowTreeController          FlowTree Network
     |                              |                          |-- Node runs job
     |                              |                          |
     |                    FlowTreeApiEndpoint (port 7780)          |
-    |<-- "Progress update" --------|<-- ar-messages MCP ---------|
+    |<-- "Progress update" --------|<-- ar-manager send_message-|
     |                              |                          |
     |                              |<-- JobCompletionEvent ---|
     |<-- "Job complete!" ----------|                          |
@@ -91,7 +91,7 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | GET | `/api/stats` | -- | Weekly job statistics (query params: `workstream`, `period`) |
 | GET | `/api/tools/{name}` | -- | Download a pushed tool's Python source file |
 
-When a `ClaudeCodeJob` has `workstreamUrl` set, it passes the URL to Claude Code as the `AR_WORKSTREAM_URL` environment variable. The `ar-messages` MCP server reads this and POSTs messages to `{url}/messages`.
+When a `ClaudeCodeJob` has `workstreamUrl` set, it passes the URL to Claude Code as the `AR_WORKSTREAM_URL` environment variable. The `ar-manager` HTTP MCP server reads this (forwarded to it by the controller) and the `send_message` tool POSTs messages to `{url}/messages`.
 
 #### Workstream Registration Endpoint
 
@@ -212,15 +212,13 @@ mcpServers:
     port: 7784
 
 # Optional: pushed MCP tools served as files by the controller and downloaded
-# into dev containers on first use. Use for tools that depend on per-job state.
-# Each entry supports an optional 'env' map for per-tool environment variables.
-pushedTools:
-  ar-messages:
-    source: tools/mcp/messages/server.py
-  ar-github:
-    source: tools/mcp/github/server.py
-    env:
-      GITHUB_TOKEN: ghp_your_token_here
+# into dev containers on first use. Use for tools that need to run in the
+# agent's filesystem namespace rather than the controller's. Each entry
+# supports an optional 'env' map for per-tool environment variables. The
+# previous default ar-messages and ar-github pushed tools have been retired
+# — their functionality is now exposed by the centralized ar-manager HTTP
+# MCP server (send_message, github_pr_*, github_read_file, etc.).
+# pushedTools: {}
 
 workstreams:
   - channelId: "C0123456789"

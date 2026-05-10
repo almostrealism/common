@@ -38,6 +38,11 @@
       },
       "description": "Internet-facing endpoint for managing workstreams and triggering project workflows"
     },
+    "ar-secrets": {
+      "command": "python3",
+      "args": ["tools/mcp/secrets/server.py"],
+      "description": "In-container renderer for workspace secrets (writes credential files locally in the agent's filesystem)"
+    },
     "onyx": {
       "command": "/Users/Shared/flowtree/tools/OnyxMCP",
       "env": {

@@ -115,8 +115,6 @@ public class ClaudeCodeJob extends GitManagedJob {
     private String arManagerToken;
     /** Optional planning document text injected into the Claude Code system prompt. */
     private String planningDocument;
-    /** GitHub organisation name used to look up API tokens for PR creation. */
-    private String githubOrg;
     /** Whether the job must produce at least one staged file change to succeed. */
     private boolean enforceChanges;
     /** Number of times enforcement has been re-attempted after an empty commit. */
@@ -169,8 +167,6 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /** Builder used to assemble the MCP tool configuration JSON for Claude Code. */
     private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
-    /** Helper that downloads managed tool definitions referenced by the MCP config. */
-    private final ManagedToolsDownloader toolsDownloader = new ManagedToolsDownloader(mcpConfigBuilder);
     /** JSON mapper used to parse structured output from Claude Code. */
     private static final ObjectMapper outputMapper = new ObjectMapper();
 
@@ -454,24 +450,6 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Returns the GitHub organization name for this job.
-     * When set, the {@code AR_GITHUB_ORG} env var is injected into
-     * the ar-github MCP server entry.
-     */
-    public String getGithubOrg() {
-        return githubOrg;
-    }
-
-    /**
-     * Sets the GitHub organization name for org-based token selection.
-     *
-     * @param githubOrg the GitHub organization name
-     */
-    public void setGithubOrg(String githubOrg) {
-        this.githubOrg = githubOrg;
-    }
-
-    /**
      * Returns whether this job enforces that code changes must be produced.
      *
      * <p>When enabled, the instruction prompt replaces the permissive
@@ -650,10 +628,11 @@ public class ClaudeCodeJob extends GitManagedJob {
      * with operational context for autonomous execution.
      *
      * <p>Sections are conditionally included based on the job's configuration:
-     * Messaging instructions appear only when a workstream URL is configured,
-     * GitHub instructions only when the MCP config includes ar-github,
-     * commit.txt instructions only when git management is active, and
-     * budget/turn/task/workstream context is included when available.</p>
+     * messaging and GitHub instructions appear when their respective
+     * {@code mcp__ar-manager__*} tools are reachable (the standard agent
+     * configuration), commit.txt instructions only when git management is
+     * active, and budget/turn/task/workstream context is included when
+     * available.</p>
      */
     private String buildInstructionPrompt() {
         return new InstructionPromptBuilder()
@@ -971,10 +950,6 @@ public class ClaudeCodeJob extends GitManagedJob {
                     + " of " + (maxInactivityRestarts + 1));
         }
 
-        Path mcpWorkDir = getWorkingDirectory() != null
-            ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
-        toolsDownloader.verifyMcpToolFiles(mcpWorkDir);
-
         command.add("--mcp-config");
         command.add(mcpConfigBuilder.buildMcpConfig());
 
@@ -986,9 +961,9 @@ public class ClaudeCodeJob extends GitManagedJob {
 
         String wsUrl = resolveWorkstreamUrl();
         if (wsUrl != null && !wsUrl.isEmpty()) {
-            pb.environment().put("AR_WORKSTREAM_URL", wsUrl);
             log("AR_WORKSTREAM_URL: " + wsUrl);
         }
+        mcpConfigBuilder.applyAgentEnvironment(pb.environment(), wsUrl);
 
         if (currentActivity != null && !currentActivity.isEmpty()) {
             pb.environment().put("AR_AGENT_ACTIVITY", currentActivity);
