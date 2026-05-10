@@ -1078,9 +1078,27 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	}
 
 	/**
-	 * DeduplicationRule with default cap (2): a third consecutive changing pass
-	 * must be blocked by the cap. Uses a controllable inner subclass so no real
-	 * git working tree is required.
+	 * The pass cap must be exposed via {@link EnforcementRule#getMaxRetries()} so
+	 * the enforcement framework can bound the correction loop. This keeps
+	 * {@link EnforcementRule#isViolated(ClaudeCodeJob)} honest — it always reflects
+	 * the actual violation state rather than returning {@code false} to stop the loop.
+	 */
+	@Test(timeout = 30000)
+	public void deduplicationRuleCapExposedViaGetMaxRetries() {
+		assertEquals(ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, new DeduplicationRule().getMaxRetries());
+		assertEquals(5, new DeduplicationRule(5).getMaxRetries());
+		assertEquals(1, new DeduplicationRule(1).getMaxRetries());
+	}
+
+	/**
+	 * DeduplicationRule with default cap (2): the enforcement loop (simulated here
+	 * using the same {@code attempts < getMaxRetries()} guard the framework uses)
+	 * must stop after 2 correction attempts.
+	 *
+	 * <p>{@link EnforcementRule#isViolated} must continue to return {@code true}
+	 * after the cap is reached if duplicates still exist — the cap is enforced by
+	 * the framework counting attempts, not by {@code isViolated} returning
+	 * {@code false}.</p>
 	 */
 	@Test(timeout = 30000)
 	public void deduplicationRuleCapStopsAfterDefaultTwoPasses() {
@@ -1093,24 +1111,24 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		};
 		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
 
-		// Pass 1: outer if + while condition both violated
-		assertTrue(rule.isViolated(job));
-		assertTrue(rule.isViolated(job));
-		items.remove("methodC"); // agent removed one method
-		rule.onCorrectionAttempted(job); // passCount = 1
-
-		// Pass 2: still violated (set changed)
-		assertTrue(rule.isViolated(job));
-		items.remove("methodB"); // agent removed another
-		rule.onCorrectionAttempted(job); // passCount = 2
-
-		// Pass cap reached — must return false even though items remain
-		assertFalse("Default cap of 2 must stop the loop", rule.isViolated(job));
-		assertFalse("Item still in list but cap reached", items.isEmpty());
+		// Simulate the runEnforcementRules() while loop using getMaxRetries() as cap.
+		int attempts = 0;
+		if (rule.isViolated(job)) {
+			while (attempts < rule.getMaxRetries() && rule.isViolated(job)) {
+				if (!items.isEmpty()) items.remove(0); // agent removes one method per pass
+				rule.onCorrectionAttempted(job);
+				attempts++;
+			}
+		}
+		// Default cap of 2 must bound the enforcement loop.
+		assertEquals("Default cap of 2 must bound enforcement loop", 2, attempts);
+		// isViolated must still accurately report violations after the cap.
+		assertTrue("isViolated must still be true because items remain", rule.isViolated(job));
 	}
 
 	/**
-	 * DeduplicationRule with cap=5 allows up to 5 changing passes.
+	 * DeduplicationRule with cap=5: the enforcement loop simulation runs exactly
+	 * 5 correction attempts.
 	 */
 	@Test(timeout = 30000)
 	public void deduplicationRuleCapFiveAllowsFivePasses() {
@@ -1124,19 +1142,23 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 			}
 		};
 		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		assertEquals(5, rule.getMaxRetries());
 
-		for (int pass = 1; pass <= 5; pass++) {
-			assertTrue("Pass " + pass + " should still be allowed", rule.isViolated(job));
-			if (!items.isEmpty()) items.remove(0); // agent removes one method per pass
-			rule.onCorrectionAttempted(job);
+		int attempts = 0;
+		if (rule.isViolated(job)) {
+			while (attempts < rule.getMaxRetries() && rule.isViolated(job)) {
+				if (!items.isEmpty()) items.remove(0);
+				rule.onCorrectionAttempted(job);
+				attempts++;
+			}
 		}
-
-		// Cap reached — sixth pass must be blocked
-		assertFalse("Cap of 5 must stop at pass 6", rule.isViolated(job));
+		assertEquals("Cap of 5 must bound enforcement loop to exactly 5 attempts", 5, attempts);
+		assertTrue("isViolated must still be true because items remain", rule.isViolated(job));
 	}
 
 	/**
-	 * DeduplicationRule with cap=1 allows only a single pass.
+	 * DeduplicationRule with cap=1: the enforcement loop simulation runs exactly
+	 * 1 correction attempt.
 	 */
 	@Test(timeout = 30000)
 	public void deduplicationRuleCapOneAllowsSinglePass() {
@@ -1149,13 +1171,18 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 			}
 		};
 		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		assertEquals(1, rule.getMaxRetries());
 
-		assertTrue("First check should be violated", rule.isViolated(job));
-		items.remove("methodB");
-		rule.onCorrectionAttempted(job); // passCount = 1
-
-		// Cap of 1 reached — must return false
-		assertFalse("Cap of 1 must block second pass", rule.isViolated(job));
+		int attempts = 0;
+		if (rule.isViolated(job)) {
+			while (attempts < rule.getMaxRetries() && rule.isViolated(job)) {
+				items.remove("methodB");
+				rule.onCorrectionAttempted(job);
+				attempts++;
+			}
+		}
+		assertEquals("Cap of 1 must bound enforcement loop to exactly 1 attempt", 1, attempts);
+		assertTrue("isViolated must still be true because items remain", rule.isViolated(job));
 	}
 
 	/**
@@ -1179,10 +1206,115 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		assertTrue(rule.isViolated(job));
 
 		// Agent made no changes: onCorrectionAttempted should set resolved = true
-		rule.onCorrectionAttempted(job); // passCount = 1 (still < 5)
+		rule.onCorrectionAttempted(job); // set unchanged → resolved
 
-		// Resolved by unchanged-set logic — must return false despite passCount < cap
+		// Resolved by unchanged-set logic — must return false even though cap not yet reached
 		assertFalse("Unchanged set must trigger early exit before cap", rule.isViolated(job));
+	}
+
+	// ── DeduplicationRule input validation ───────────────────────────────────
+
+	/**
+	 * Constructor must reject non-positive maxPasses to prevent accidental deduplication
+	 * disablement.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void deduplicationRuleConstructorRejectsZero() {
+		new DeduplicationRule(0);
+	}
+
+	/**
+	 * Constructor must reject negative maxPasses.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void deduplicationRuleConstructorRejectsNegative() {
+		new DeduplicationRule(-1);
+	}
+
+	/**
+	 * {@link ClaudeCodeJob#setMaxDeduplicationPasses(int)} must reject non-positive values.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void setMaxDeduplicationPassesRejectsZero() {
+		new ClaudeCodeJob("t1", "test").setMaxDeduplicationPasses(0);
+	}
+
+	/**
+	 * {@link ClaudeCodeJob#setMaxDeduplicationPasses(int)} must reject negative values.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void setMaxDeduplicationPassesRejectsNegative() {
+		new ClaudeCodeJob("t1", "test").setMaxDeduplicationPasses(-5);
+	}
+
+	/**
+	 * {@link ClaudeCodeJobFactory#setMaxDeduplicationPasses(int)} must reject non-positive values.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void factorySetMaxDeduplicationPassesRejectsZero() {
+		new ClaudeCodeJobFactory("prompt").setMaxDeduplicationPasses(0);
+	}
+
+	/**
+	 * Deserialization must fall back to the default when the wire value is empty,
+	 * rather than throwing {@code NumberFormatException}.
+	 */
+	@Test(timeout = 30000)
+	public void maxDeduplicationPassesDeserializationFallsBackOnEmptyString() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		job.setMaxDeduplicationPasses(3);
+		job.set("maxDedupPasses", "");
+		assertEquals("Empty string must fall back to default",
+				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, job.getMaxDeduplicationPasses());
+	}
+
+	/**
+	 * Deserialization must fall back to the default when the wire value is non-numeric.
+	 */
+	@Test(timeout = 30000)
+	public void maxDeduplicationPassesDeserializationFallsBackOnInvalidString() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		job.set("maxDedupPasses", "notanumber");
+		assertEquals("Non-numeric value must fall back to default",
+				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, job.getMaxDeduplicationPasses());
+	}
+
+	/**
+	 * Deserialization must fall back to the default when the wire value is non-positive.
+	 */
+	@Test(timeout = 30000)
+	public void maxDeduplicationPassesDeserializationFallsBackOnNonPositive() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		job.set("maxDedupPasses", "0");
+		assertEquals("Zero must fall back to default",
+				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, job.getMaxDeduplicationPasses());
+
+		job.set("maxDedupPasses", "-3");
+		assertEquals("Negative must fall back to default",
+				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, job.getMaxDeduplicationPasses());
+	}
+
+	/**
+	 * Factory deserialization must fall back to the default when the wire value is empty.
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxDeduplicationPassesDeserializationFallsBackOnEmptyString() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		factory.setMaxDeduplicationPasses(4);
+		factory.set("maxDedupPasses", "");
+		assertEquals("Factory: empty string must fall back to default",
+				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, factory.getMaxDeduplicationPasses());
+	}
+
+	/**
+	 * Factory deserialization must fall back to the default when the wire value is non-positive.
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxDeduplicationPassesDeserializationFallsBackOnNonPositive() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		factory.set("maxDedupPasses", "0");
+		assertEquals("Factory: zero must fall back to default",
+				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, factory.getMaxDeduplicationPasses());
 	}
 
 	/**

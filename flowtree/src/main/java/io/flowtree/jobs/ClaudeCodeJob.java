@@ -536,8 +536,12 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /** Returns the per-job deduplication pass cap; defaults to {@link #DEFAULT_MAX_DEDUP_PASSES}. */
     public int getMaxDeduplicationPasses() { return maxDeduplicationPasses; }
-    /** Sets the per-job deduplication pass cap (see {@link #DEFAULT_MAX_DEDUP_PASSES}). */
-    public void setMaxDeduplicationPasses(int maxDeduplicationPasses) { this.maxDeduplicationPasses = maxDeduplicationPasses; }
+    /** Sets the per-job deduplication pass cap; must be positive (see {@link #DEFAULT_MAX_DEDUP_PASSES}). */
+    public void setMaxDeduplicationPasses(int maxDeduplicationPasses) {
+        if (maxDeduplicationPasses <= 0)
+            throw new IllegalArgumentException("maxDeduplicationPasses must be positive, got: " + maxDeduplicationPasses);
+        this.maxDeduplicationPasses = maxDeduplicationPasses;
+    }
 
     /**
      * Returns whether the Maven dependency protection rule is active for this job.
@@ -1556,7 +1560,8 @@ public class ClaudeCodeJob extends GitManagedJob {
                 this.deduplicationMode = value;
                 break;
             case "maxDedupPasses":
-                this.maxDeduplicationPasses = Integer.parseInt(value);
+                try { int p = Integer.parseInt(value); this.maxDeduplicationPasses = p > 0 ? p : DEFAULT_MAX_DEDUP_PASSES; }
+                catch (NumberFormatException e) { this.maxDeduplicationPasses = DEFAULT_MAX_DEDUP_PASSES; }
                 break;
             case "enforceMavenDeps":
                 this.enforceMavenDependencies = Boolean.parseBoolean(value);
@@ -1580,20 +1585,15 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Backward-compatible alias for {@link ClaudeCodeJobFactory}.
-     *
-     * <p>New code should reference {@link ClaudeCodeJobFactory} directly.
-     * This subclass exists so that existing call sites using
-     * {@code new ClaudeCodeJob.Factory(...)} and serialized wire-format
-     * strings containing {@code ClaudeCodeJob$Factory} continue to work.</p>
+     * Backward-compatible alias for {@link ClaudeCodeJobFactory}; new code should use that class directly.
+     * Exists so that {@code new ClaudeCodeJob.Factory(...)} call sites and
+     * {@code ClaudeCodeJob$Factory} wire-format strings continue to work.
      */
     public static class Factory extends ClaudeCodeJobFactory {
         /** Default constructor for deserialization. */
         public Factory() { super(); }
-
         /** Creates a factory with the specified prompts. */
         public Factory(String... prompts) { super(prompts); }
-
         /** Creates a factory with the specified prompts list. */
         public Factory(List<String> prompts) { super(prompts); }
     }

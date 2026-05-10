@@ -627,8 +627,13 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
      * Sets the maximum number of deduplication passes for jobs created by this factory.
      *
      * @param maxDeduplicationPasses cap on correction sessions per job; must be positive
+     * @throws IllegalArgumentException if the value is not positive
      */
     public void setMaxDeduplicationPasses(int maxDeduplicationPasses) {
+        if (maxDeduplicationPasses <= 0) {
+            throw new IllegalArgumentException(
+                    "maxDeduplicationPasses must be positive, got: " + maxDeduplicationPasses);
+        }
         this.maxDeduplicationPasses = maxDeduplicationPasses;
         set("maxDedupPasses", String.valueOf(maxDeduplicationPasses));
     }
@@ -1034,9 +1039,17 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
                 this.deduplicationMode = value;
                 return;
             case "maxDedupPasses":
-                this.maxDeduplicationPasses = (value == null)
-                        ? ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES
-                        : Integer.parseInt(value);
+                if (value == null || value.isEmpty()) {
+                    this.maxDeduplicationPasses = ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES;
+                } else {
+                    try {
+                        int parsed = Integer.parseInt(value);
+                        this.maxDeduplicationPasses = (parsed > 0)
+                                ? parsed : ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES;
+                    } catch (NumberFormatException e) {
+                        this.maxDeduplicationPasses = ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES;
+                    }
+                }
                 return;
             case "enforceMavenDeps":
                 this.enforceMavenDependencies = Boolean.parseBoolean(value);
