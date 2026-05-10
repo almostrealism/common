@@ -288,6 +288,30 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertNotIn("deduplicationMode", payload)
 
     @patch.object(server, "_controller_post")
+    def test_submit_max_deduplication_passes_forwarded(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-dp1"}
+        server.workstream_submit_task(prompt="Task", max_deduplication_passes=5)
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["maxDeduplicationPasses"], 5)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_max_deduplication_passes_omitted_by_default(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-dp2"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("maxDeduplicationPasses", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_max_deduplication_passes_one(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-dp3"}
+        server.workstream_submit_task(prompt="Task", max_deduplication_passes=1)
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["maxDeduplicationPasses"], 1)
+
+    @patch.object(server, "_controller_post")
     def test_submit_preserves_job_id_in_next_steps(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {

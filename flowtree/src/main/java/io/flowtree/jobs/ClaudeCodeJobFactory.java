@@ -93,6 +93,12 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     private String deduplicationMode = ClaudeCodeJob.DEDUP_LOCAL;
 
     /**
+     * Per-job cap on deduplication passes propagated to jobs created by this factory.
+     * Defaults to {@link ClaudeCodeJob#DEFAULT_MAX_DEDUP_PASSES}.
+     */
+    private int maxDeduplicationPasses = ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES;
+
+    /**
      * When {@code true}, jobs created by this factory activate the Maven
      * dependency protection rule, blocking {@code <dependency>} changes in
      * {@code pom.xml} files.
@@ -609,6 +615,25 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     }
 
     /**
+     * Returns the maximum number of deduplication passes for jobs created by this factory.
+     *
+     * @return the pass cap; defaults to {@link ClaudeCodeJob#DEFAULT_MAX_DEDUP_PASSES}
+     */
+    public int getMaxDeduplicationPasses() {
+        return maxDeduplicationPasses;
+    }
+
+    /**
+     * Sets the maximum number of deduplication passes for jobs created by this factory.
+     *
+     * @param maxDeduplicationPasses cap on correction sessions per job; must be positive
+     */
+    public void setMaxDeduplicationPasses(int maxDeduplicationPasses) {
+        this.maxDeduplicationPasses = maxDeduplicationPasses;
+        set("maxDedupPasses", String.valueOf(maxDeduplicationPasses));
+    }
+
+    /**
      * Returns whether jobs created by this factory activate the Maven dependency
      * protection rule.
      *
@@ -891,6 +916,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         job.setProtectTestFiles(isProtectTestFiles());
         job.setEnforceChanges(isEnforceChanges());
         job.setDeduplicationMode(deduplicationMode);
+        job.setMaxDeduplicationPasses(maxDeduplicationPasses);
         job.setEnforceMavenDependencies(enforceMavenDependencies);
         job.setEnforceOrganizationalPlacement(enforceOrganizationalPlacement);
         if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
@@ -1006,6 +1032,11 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         switch (key) {
             case "dedupMode":
                 this.deduplicationMode = value;
+                return;
+            case "maxDedupPasses":
+                this.maxDeduplicationPasses = (value == null)
+                        ? ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES
+                        : Integer.parseInt(value);
                 return;
             case "enforceMavenDeps":
                 this.enforceMavenDependencies = Boolean.parseBoolean(value);

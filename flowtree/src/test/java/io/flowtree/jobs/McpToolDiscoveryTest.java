@@ -386,6 +386,8 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			submitParams.contains("effort"));
 		assertTrue("workstream_submit_task must declare post_completion_command in signature",
 			submitParams.contains("post_completion_command"));
+		assertTrue("workstream_submit_task must declare max_deduplication_passes in signature",
+			submitParams.contains("max_deduplication_passes"));
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");

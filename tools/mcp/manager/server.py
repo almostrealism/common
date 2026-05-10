@@ -1345,6 +1345,7 @@ def workstream_submit_task(
     started_after: str = "",
     required_labels: str = "",
     deduplication_mode: str = "",
+    max_deduplication_passes: int = 0,
     model: str = "",
     effort: str = "",
     post_completion_command: str = "",
@@ -1386,6 +1387,15 @@ def workstream_submit_task(
             spawned). Use "spawn" to submit a separate follow-up job to the
             same workstream after committing (requires workstream URL). Pass
             "none" to disable deduplication entirely.
+        max_deduplication_passes: Maximum number of deduplication correction
+            sessions per job. 0 (default) uses the server-side default of 2.
+            Each pass runs a full agent session which adds time and cost; the
+            cap lets you trade some thoroughness for predictable cost across
+            multi-job workstreams where the audit re-runs from scratch on each
+            job. Set to 1 for trivial follow-up jobs unlikely to introduce
+            duplication. Set higher (e.g. 5) for first-time large feature work
+            where thoroughness matters. Has no effect when
+            ``deduplication_mode="none"``.
         model: Claude Code model alias (e.g. ``"sonnet"``, ``"opus"``,
             ``"haiku"``) or full identifier (e.g. ``"claude-sonnet-4-6"``)
             for this job. Empty string falls back to the workstream default,
@@ -1527,6 +1537,8 @@ def workstream_submit_task(
             payload["requiredLabels"] = labels_dict
     if deduplication_mode:
         payload["deduplicationMode"] = deduplication_mode
+    if max_deduplication_passes > 0:
+        payload["maxDeduplicationPasses"] = max_deduplication_passes
     if model:
         payload["model"] = model
     if effort:

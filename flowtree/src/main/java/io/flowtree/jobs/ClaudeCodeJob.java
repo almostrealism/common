@@ -92,6 +92,9 @@ public class ClaudeCodeJob extends GitManagedJob {
      */
     public static final String DEDUP_NONE = "none";
 
+    /** Default per-job deduplication pass cap; override via {@link #setMaxDeduplicationPasses(int)}. */
+    public static final int DEFAULT_MAX_DEDUP_PASSES = 2;
+
     /** The prompt submitted to Claude Code for this job. */
     private String prompt;
     /** Short human-readable description of this job, used in status messages. */
@@ -138,6 +141,9 @@ public class ClaudeCodeJob extends GitManagedJob {
      * {@link #DEDUP_NONE} also disables deduplication explicitly.
      */
     private String deduplicationMode;
+
+    /** Per-job cap on deduplication passes; passed to {@link DeduplicationRule}. */
+    private int maxDeduplicationPasses = DEFAULT_MAX_DEDUP_PASSES;
 
     /** When {@code true}, pom.xml {@code <dependency>} changes trigger a correction loop. */
     private boolean enforceMavenDependencies;
@@ -528,6 +534,11 @@ public class ClaudeCodeJob extends GitManagedJob {
         this.deduplicationMode = deduplicationMode;
     }
 
+    /** Returns the per-job deduplication pass cap; defaults to {@link #DEFAULT_MAX_DEDUP_PASSES}. */
+    public int getMaxDeduplicationPasses() { return maxDeduplicationPasses; }
+    /** Sets the per-job deduplication pass cap (see {@link #DEFAULT_MAX_DEDUP_PASSES}). */
+    public void setMaxDeduplicationPasses(int maxDeduplicationPasses) { this.maxDeduplicationPasses = maxDeduplicationPasses; }
+
     /**
      * Returns whether the Maven dependency protection rule is active for this job.
      *
@@ -716,7 +727,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             rules.add(new EnforceChangesRule());
         }
         if (DEDUP_LOCAL.equals(deduplicationMode)) {
-            rules.add(new DeduplicationRule());
+            rules.add(new DeduplicationRule(maxDeduplicationPasses));
         }
         if (enforceOrganizationalPlacement) {
             rules.add(new OrganizationalPlacementRule());
@@ -1484,6 +1495,9 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (deduplicationMode != null) {
             sb.append("::dedupMode:=").append(deduplicationMode);
         }
+        if (maxDeduplicationPasses != DEFAULT_MAX_DEDUP_PASSES) {
+            sb.append("::maxDedupPasses:=").append(maxDeduplicationPasses);
+        }
         if (enforceMavenDependencies) {
             sb.append("::enforceMavenDeps:=true");
         }
@@ -1541,6 +1555,9 @@ public class ClaudeCodeJob extends GitManagedJob {
             case "dedupMode":
                 this.deduplicationMode = value;
                 break;
+            case "maxDedupPasses":
+                this.maxDeduplicationPasses = Integer.parseInt(value);
+                break;
             case "enforceMavenDeps":
                 this.enforceMavenDependencies = Boolean.parseBoolean(value);
                 break;
@@ -1571,23 +1588,13 @@ public class ClaudeCodeJob extends GitManagedJob {
      * strings containing {@code ClaudeCodeJob$Factory} continue to work.</p>
      */
     public static class Factory extends ClaudeCodeJobFactory {
-        /**
-         * Default constructor for deserialization.
-         */
+        /** Default constructor for deserialization. */
         public Factory() { super(); }
 
-        /**
-         * Creates a factory with the specified prompts.
-         *
-         * @param prompts the prompts to process
-         */
+        /** Creates a factory with the specified prompts. */
         public Factory(String... prompts) { super(prompts); }
 
-        /**
-         * Creates a factory with the specified prompts list.
-         *
-         * @param prompts the list of prompts to process
-         */
+        /** Creates a factory with the specified prompts list. */
         public Factory(List<String> prompts) { super(prompts); }
     }
 }

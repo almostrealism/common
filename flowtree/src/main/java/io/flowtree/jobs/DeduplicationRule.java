@@ -28,6 +28,12 @@ import java.util.List;
  * determine when to stop looping: after a correction session that produces no
  * change in the new-method set, the rule marks itself resolved and exits.</p>
  *
+ * <p>A per-job pass cap ({@link #maxPasses}) provides a cost ceiling independent
+ * of the set-comparison exit condition. Once {@link #passCount} reaches
+ * {@link #maxPasses}, {@link #isViolated} returns {@code false} immediately so
+ * the enforcement loop exits. The default cap is
+ * {@link ClaudeCodeJob#DEFAULT_MAX_DEDUP_PASSES}.</p>
+ *
  * @author Michael Murray
  * @see ClaudeCodeJob#extractNewMethodNames()
  * @see ClaudeCodeJob#buildDeduplicationPrompt(List, boolean, int)
@@ -36,12 +42,53 @@ import java.util.List;
  */
 class DeduplicationRule extends SetComparisonRule {
 
+    /** Maximum number of correction sessions allowed per job. */
+    private final int maxPasses;
+
+    /** Number of correction sessions completed so far. */
+    private int passCount;
+
+    /** Creates a rule with the default pass cap ({@link ClaudeCodeJob#DEFAULT_MAX_DEDUP_PASSES}). */
+    DeduplicationRule() {
+        this(ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES);
+    }
+
+    /**
+     * Creates a rule with an explicit pass cap.
+     *
+     * @param maxPasses maximum deduplication sessions before self-reporting satisfied;
+     *                  must be positive
+     */
+    DeduplicationRule(int maxPasses) {
+        this.maxPasses = maxPasses;
+    }
+
     @Override
     public String getName() { return "deduplication"; }
 
     @Override
     protected List<String> extractItems(ClaudeCodeJob job) {
         return job.extractNewMethodNames();
+    }
+
+    /**
+     * Returns {@code false} once the pass cap has been reached, in addition to
+     * the unchanged-set resolved condition inherited from {@link SetComparisonRule}.
+     */
+    @Override
+    public boolean isViolated(ClaudeCodeJob job) {
+        if (passCount >= maxPasses) return false;
+        return super.isViolated(job);
+    }
+
+    /**
+     * Increments the pass counter then delegates to
+     * {@link SetComparisonRule#onCorrectionAttempted} for the unchanged-set exit check.
+     */
+    @Override
+    public void onCorrectionAttempted(ClaudeCodeJob job) {
+        passCount++;
+        super.onCorrectionAttempted(job);
     }
 
     @Override

@@ -1066,4 +1066,190 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		assertTrue("Captured output should be non-empty",
 				rule.getLastOutput().length() > 0);
 	}
+
+	// ── DeduplicationRule pass cap ───────────────────────────────────────────
+
+	/**
+	 * Pins the default cap constant so silent regressions are caught.
+	 */
+	@Test(timeout = 30000)
+	public void defaultDeduplicationPassCapIsTwo() {
+		assertEquals(2, ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES);
+	}
+
+	/**
+	 * DeduplicationRule with default cap (2): a third consecutive changing pass
+	 * must be blocked by the cap. Uses a controllable inner subclass so no real
+	 * git working tree is required.
+	 */
+	@Test(timeout = 30000)
+	public void deduplicationRuleCapStopsAfterDefaultTwoPasses() {
+		List<String> items = new ArrayList<>(List.of("methodA", "methodB", "methodC"));
+		DeduplicationRule rule = new DeduplicationRule() {
+			@Override
+			protected List<String> extractItems(ClaudeCodeJob job) {
+				return new ArrayList<>(items);
+			}
+		};
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+
+		// Pass 1: outer if + while condition both violated
+		assertTrue(rule.isViolated(job));
+		assertTrue(rule.isViolated(job));
+		items.remove("methodC"); // agent removed one method
+		rule.onCorrectionAttempted(job); // passCount = 1
+
+		// Pass 2: still violated (set changed)
+		assertTrue(rule.isViolated(job));
+		items.remove("methodB"); // agent removed another
+		rule.onCorrectionAttempted(job); // passCount = 2
+
+		// Pass cap reached — must return false even though items remain
+		assertFalse("Default cap of 2 must stop the loop", rule.isViolated(job));
+		assertFalse("Item still in list but cap reached", items.isEmpty());
+	}
+
+	/**
+	 * DeduplicationRule with cap=5 allows up to 5 changing passes.
+	 */
+	@Test(timeout = 30000)
+	public void deduplicationRuleCapFiveAllowsFivePasses() {
+		List<String> items = new ArrayList<>();
+		for (int i = 0; i < 10; i++) items.add("method" + i);
+
+		DeduplicationRule rule = new DeduplicationRule(5) {
+			@Override
+			protected List<String> extractItems(ClaudeCodeJob job) {
+				return new ArrayList<>(items);
+			}
+		};
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+
+		for (int pass = 1; pass <= 5; pass++) {
+			assertTrue("Pass " + pass + " should still be allowed", rule.isViolated(job));
+			if (!items.isEmpty()) items.remove(0); // agent removes one method per pass
+			rule.onCorrectionAttempted(job);
+		}
+
+		// Cap reached — sixth pass must be blocked
+		assertFalse("Cap of 5 must stop at pass 6", rule.isViolated(job));
+	}
+
+	/**
+	 * DeduplicationRule with cap=1 allows only a single pass.
+	 */
+	@Test(timeout = 30000)
+	public void deduplicationRuleCapOneAllowsSinglePass() {
+		List<String> items = new ArrayList<>(List.of("methodA", "methodB"));
+
+		DeduplicationRule rule = new DeduplicationRule(1) {
+			@Override
+			protected List<String> extractItems(ClaudeCodeJob job) {
+				return new ArrayList<>(items);
+			}
+		};
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+
+		assertTrue("First check should be violated", rule.isViolated(job));
+		items.remove("methodB");
+		rule.onCorrectionAttempted(job); // passCount = 1
+
+		// Cap of 1 reached — must return false
+		assertFalse("Cap of 1 must block second pass", rule.isViolated(job));
+	}
+
+	/**
+	 * The early-exit on unchanged method set still works independently of the cap.
+	 * When the agent makes no changes, the rule should exit before hitting the cap.
+	 */
+	@Test(timeout = 30000)
+	public void deduplicationRuleEarlyExitOnUnchangedSetBeforeCap() {
+		List<String> items = new ArrayList<>(List.of("methodA"));
+
+		DeduplicationRule rule = new DeduplicationRule(5) { // cap is 5
+			@Override
+			protected List<String> extractItems(ClaudeCodeJob job) {
+				return new ArrayList<>(items);
+			}
+		};
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+
+		// outer if + while condition
+		assertTrue(rule.isViolated(job));
+		assertTrue(rule.isViolated(job));
+
+		// Agent made no changes: onCorrectionAttempted should set resolved = true
+		rule.onCorrectionAttempted(job); // passCount = 1 (still < 5)
+
+		// Resolved by unchanged-set logic — must return false despite passCount < cap
+		assertFalse("Unchanged set must trigger early exit before cap", rule.isViolated(job));
+	}
+
+	/**
+	 * maxDeduplicationPasses round-trips through encode/decode (non-default value).
+	 */
+	@Test(timeout = 30000)
+	public void maxDeduplicationPassesRoundTripEncodeDecode() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		job.setDeduplicationMode(ClaudeCodeJob.DEDUP_LOCAL);
+		job.setMaxDeduplicationPasses(5);
+		String encoded = job.encode();
+		assertNotNull(encoded);
+		assertTrue("Wire format must contain maxDedupPasses:=5",
+				encoded.contains("maxDedupPasses:=5"));
+
+		ClaudeCodeJob restored = new ClaudeCodeJob();
+		for (String part : encoded.split("::")) {
+			int sep = part.indexOf(":=");
+			if (sep > 0) {
+				restored.set(part.substring(0, sep), part.substring(sep + 2));
+			}
+		}
+		assertEquals(5, restored.getMaxDeduplicationPasses());
+	}
+
+	/**
+	 * The default value (2) must not appear in the wire format to keep it compact.
+	 */
+	@Test(timeout = 30000)
+	public void maxDeduplicationPassesDefaultAbsentFromWireFormat() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		String encoded = job.encode();
+		assertFalse("Default maxDedupPasses must not appear in wire format",
+				encoded.contains("maxDedupPasses"));
+	}
+
+	/**
+	 * Factory propagates the non-default cap to the job created by nextJob().
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxDeduplicationPassesPropagatesToJob() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do something");
+		factory.setMaxDeduplicationPasses(4);
+		ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+		assertNotNull(job);
+		assertEquals(4, job.getMaxDeduplicationPasses());
+	}
+
+	/**
+	 * Factory default cap matches the ClaudeCodeJob constant.
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxDeduplicationPassesDefaultIsTwo() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		assertEquals(ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, factory.getMaxDeduplicationPasses());
+	}
+
+	/**
+	 * Factory maxDeduplicationPasses round-trips through the set() deserialization path.
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxDeduplicationPassesRoundTripViaSet() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		factory.set("maxDedupPasses", "3");
+		assertEquals(3, factory.getMaxDeduplicationPasses());
+
+		factory.set("maxDedupPasses", "1");
+		assertEquals(1, factory.getMaxDeduplicationPasses());
+	}
 }

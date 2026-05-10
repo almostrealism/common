@@ -857,8 +857,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * <p>Workstream resolution: explicit {@code workstreamId} in body takes priority, then
      * {@code targetBranch} match, then the URL path parameter. Supports optional per-job
      * overrides for {@code model}, {@code effort}, {@code maxTurns}, {@code maxBudgetUsd},
-     * {@code postCompletionCommand}, {@code postCompletionWorkingDir}, and
-     * {@code postCompletionTimeoutSeconds}.</p>
+     * {@code postCompletionCommand}, {@code postCompletionWorkingDir},
+     * {@code postCompletionTimeoutSeconds}, and {@code maxDeduplicationPasses}.</p>
      *
      * @param session          the HTTP session
      * @param pathWorkstreamId the workstream identifier from the URL path (fallback)
@@ -1004,6 +1004,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         boolean protectTestFiles = extractJsonBooleanField(body, "protectTestFiles");
         boolean enforceChanges = extractJsonBooleanField(body, "enforceChanges");
         String deduplicationMode = extractJsonField(body, "deduplicationMode");
+        int maxDeduplicationPasses = extractJsonIntField(body, "maxDeduplicationPasses");
         boolean autoCreatePr = extractJsonBooleanField(body, "autoCreatePr");
         String requestModel = extractJsonField(body, "model");
         String requestEffort = extractJsonField(body, "effort");
@@ -1091,6 +1092,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Deduplication mode (local inline session or spawn follow-up job)
         if (deduplicationMode != null && !deduplicationMode.isEmpty()) {
             factory.setDeduplicationMode(deduplicationMode);
+        }
+        if (maxDeduplicationPasses > 0) {
+            factory.setMaxDeduplicationPasses(maxDeduplicationPasses);
         }
 
         // Post-completion command: verification check that must exit zero before the job is done
