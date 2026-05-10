@@ -10,6 +10,7 @@ Provides tools for running and managing test executions with:
 """
 
 import asyncio
+import atexit
 import json
 import os
 import re
@@ -17,6 +18,7 @@ import shutil
 import signal
 import statistics
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -33,9 +35,20 @@ from mcp.types import Tool, TextContent
 # Configuration - derive project root from script location (tools/mcp/test-runner/server.py -> project root)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
 RUNS_DIR = Path(__file__).parent / "runs"
+# External watcher process script — spawned in a detached session so it
+# survives the python parent's death and can update metadata even when the
+# in-process daemon thread cannot run (e.g., claude exits cleanly while a run
+# is in progress and reaps its MCP stdio children).
+WATCHER_SCRIPT = Path(__file__).parent / "watcher.py"
 MAX_RUNS = 50
 DEFAULT_MODULE = "utils"
-DEFAULT_TIMEOUT = 30
+# Default test timeout in minutes. The harness inactivity monitor
+# (ClaudeCodeJob.java:146) kills the agent process after 20 minutes of stdout
+# silence, so the test-runner default is set 5 minutes below that ceiling so a
+# legitimately long-running test fires this timer rather than the harness's
+# inactivity kill (which is a confusing failure mode for the agent). Callers
+# may pass a higher value, but values >20 are unsafe under the harness.
+DEFAULT_TIMEOUT = 15
 DEFAULT_OUTPUT_LINES = 200  # Default max lines for get_run_output
 DEFAULT_STACKTRACE_LINES = 30  # Max lines per stacktrace
 MAX_OUTPUT_BYTES = 50000  # ~50KB max response size
@@ -273,6 +286,13 @@ class TestRunner:
         # Save metadata
         self._save_metadata(run_id, metadata)
 
+        # Spawn detached watcher subprocess. This is the durable backup to
+        # the in-process daemon thread below: when the python parent dies
+        # mid-run (e.g., claude exits cleanly and reaps its MCP children),
+        # the daemon thread cannot run, but the watcher subprocess is in a
+        # separate session and survives to write terminal metadata.
+        self._spawn_watcher_subprocess(run_id, process.pid, config.module, run_dir)
+
         # Start completion watcher
         watcher = threading.Thread(
             target=self._watch_completion,
@@ -301,6 +321,40 @@ class TestRunner:
             self.timeout_timers[run_id] = timer
 
         return run_id, cmd_str
+
+    def _spawn_watcher_subprocess(self, run_id: str, maven_pid: int, module: str,
+                                  run_dir: Path) -> None:
+        """Spawn the external watcher.py as a session-detached subprocess.
+
+        The watcher polls the maven PID via `os.kill(pid, 0)`, then writes
+        terminal metadata if the in-process daemon thread did not get the
+        chance (because the python parent was killed mid-run).
+
+        Failures to spawn the watcher are logged to stderr but do not abort
+        the run: the in-process daemon thread remains the primary path.
+        """
+        if not WATCHER_SCRIPT.exists():
+            sys.stderr.write(
+                f"[ar-test-runner] watcher script not found at {WATCHER_SCRIPT}; "
+                "skipping detached watcher\n")
+            return
+        metadata_path = RUNS_DIR / run_id / "metadata.json"
+        output_path = RUNS_DIR / run_id / "output.txt"
+        reports_dst = RUNS_DIR / run_id / "reports"
+        try:
+            subprocess.Popen(
+                [sys.executable, str(WATCHER_SCRIPT),
+                 str(maven_pid), str(metadata_path), str(output_path),
+                 str(reports_dst), str(PROJECT_ROOT), module],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+                close_fds=True,
+            )
+        except OSError as exc:
+            sys.stderr.write(
+                f"[ar-test-runner] failed to spawn watcher subprocess: {exc}\n")
 
     def _watch_completion(self, run_id: str, process: subprocess.Popen, module: str,
                           config: RunConfig = None, run_dir: Path = None):
@@ -390,6 +444,9 @@ class TestRunner:
             metadata["jmx_monitoring_degraded"] = True
             metadata["jmx_retry_reason"] = "Fork failure with JFR/NMT arguments"
             self._save_metadata_dict(run_id, metadata)
+
+        # Spawn detached watcher subprocess for the retry's maven PID.
+        self._spawn_watcher_subprocess(run_id, new_process.pid, module, run_dir)
 
         # New watcher (config=None prevents infinite retry)
         threading.Thread(target=self._watch_completion,
@@ -1144,6 +1201,50 @@ class TestRunner:
                 result["all_tests"] = all_tests_list
             return result
 
+    def abandon_running_runs(self) -> list[str]:
+        """Mark every active run with ``status="abandoned"`` and return their IDs.
+
+        Used as an atexit safety net: when the python parent (ar-test-runner)
+        is shutting down, any run still in ``status="running"`` is marked
+        ``abandoned`` so that the next inspector can distinguish "actually in
+        progress" from "stranded by parent death". This is a complement to
+        the detached watcher subprocess (which infers terminal status from
+        output.txt); the watcher catches the case where maven completes after
+        the parent dies, while this handler catches the inverse case where
+        maven is still mid-run when the parent dies.
+        """
+        abandoned: list[str] = []
+        if not RUNS_DIR.exists():
+            return abandoned
+        try:
+            run_dirs = list(RUNS_DIR.iterdir())
+        except OSError:
+            return abandoned
+        for run_dir in run_dirs:
+            if not run_dir.is_dir():
+                continue
+            metadata_path = run_dir / "metadata.json"
+            if not metadata_path.exists():
+                continue
+            try:
+                with open(metadata_path) as f:
+                    metadata = json.load(f)
+            except (OSError, json.JSONDecodeError):
+                continue
+            if metadata.get("status") not in ("running", "pending"):
+                continue
+            metadata["status"] = "abandoned"
+            metadata["abandoned_at"] = datetime.now().isoformat()
+            metadata["abandoned_reason"] = (
+                "ar-test-runner process exited while this run was still in progress")
+            try:
+                with open(metadata_path, "w") as f:
+                    json.dump(metadata, f, indent=2)
+                abandoned.append(run_dir.name)
+            except OSError:
+                pass
+        return abandoned
+
     def list_runs(self, limit: int = 10, status_filter: Optional[str] = None) -> list[dict]:
         """List recent runs."""
         runs = []
@@ -1177,6 +1278,28 @@ class TestRunner:
 # Global runner instance
 runner = TestRunner()
 
+
+def _on_shutdown_mark_abandoned():
+    """atexit handler: mark any still-running runs as ``abandoned``.
+
+    SIGKILL bypasses atexit, so this only fires on clean python exit
+    (e.g., the MCP stdio loop ending because the parent claude process
+    closed its end of the pipe). Combined with the detached watcher
+    subprocesses spawned by ``start_run``, this ensures every metadata.json
+    has a defined terminal state by the time a future agent inspects it.
+    """
+    try:
+        abandoned = runner.abandon_running_runs()
+        if abandoned:
+            sys.stderr.write(
+                "[ar-test-runner] atexit: marked "
+                f"{len(abandoned)} run(s) as abandoned: {','.join(abandoned)}\n")
+    except Exception as exc:  # noqa: BLE001
+        sys.stderr.write(f"[ar-test-runner] atexit handler failed: {exc}\n")
+
+
+atexit.register(_on_shutdown_mark_abandoned)
+
 # Create MCP server
 server = Server("ar-test-runner")
 
@@ -1187,7 +1310,32 @@ async def list_tools():
     return [
         Tool(
             name="start_test_run",
-            description="Start a new test run asynchronously. Returns a run_id for tracking.",
+            description=(
+                "Start a new test run asynchronously. Returns a run_id for tracking.\n"
+                "\n"
+                "POLLING IS MANDATORY. This tool is asynchronous: it returns "
+                "immediately with status=\"started\" while maven runs in the "
+                "background. You MUST poll get_run_status(run_id) repeatedly "
+                "until status is one of completed | failed | timeout | cancelled, "
+                "then call get_run_failures(run_id) for the result, BEFORE "
+                "ending your turn.\n"
+                "\n"
+                "If you end your turn while status==\"running\", the ar-test-runner "
+                "subprocess will be killed by the harness — even if maven completes "
+                "successfully — and your test result will be silently abandoned. "
+                "The job will be marked DEGRADED and the next agent session will "
+                "have to redo the work.\n"
+                "\n"
+                "Between polls, emit small productive tool calls (Read, Grep) "
+                "every 30-60 seconds to keep the harness's inactivity clock alive. "
+                "Do NOT use Bash sleep or ScheduleWakeup with delaySeconds>=300 "
+                "to wait — both exceed the harness's 20-minute inactivity ceiling.\n"
+                "\n"
+                f"Default timeout_minutes is {DEFAULT_TIMEOUT}, set 5 minutes under the "
+                "harness's 20-minute inactivity timeout. Values >20 are unsafe — "
+                "the harness will kill the agent (and ar-test-runner) before the "
+                "test-runner's own timer fires."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -1221,7 +1369,11 @@ async def list_tools():
                     "timeout_minutes": {
                         "type": "integer",
                         "minimum": 1,
-                        "description": f"Max run time in minutes (default: {DEFAULT_TIMEOUT})"
+                        "description": (
+                            f"Max run time in minutes (default: {DEFAULT_TIMEOUT}). "
+                            "Values >20 are unsafe under the harness's "
+                            "20-minute inactivity timeout."
+                        )
                     },
                     "jvm_args": {
                         "type": "array",

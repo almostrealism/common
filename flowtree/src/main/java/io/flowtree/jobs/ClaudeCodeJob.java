@@ -33,6 +33,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -189,6 +190,9 @@ public class ClaudeCodeJob extends GitManagedJob {
     private int permissionDenials;
     /** Names of the tools that were denied during the session. */
     private List<String> deniedToolNames;
+
+    /** Wall-clock instant at which {@link #doWork()} began; used to filter abandoned-test-run scans. */
+    private Instant sessionStartedAt;
 
     /**
      * Default constructor for deserialization.
@@ -687,6 +691,7 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     @Override
     protected void doWork() {
+        if (sessionStartedAt == null) sessionStartedAt = Instant.now();
         executeSingleRun();
 
         // Git integrity violations are handled by onGitTampering() in GitManagedJob;
@@ -1095,19 +1100,12 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     @Override
     protected JobCompletionEvent createEvent(Exception error) {
-        if (error != null) {
-            return ClaudeCodeJobEvent.failed(
-                getTaskId(), getTaskString(),
-                error.getMessage(), error
-            );
-        } else if (exitCode != 0) {
-            return ClaudeCodeJobEvent.failed(
-                getTaskId(), getTaskString(),
-                "Claude Code exited with code " + exitCode, null
-            );
-        } else {
-            return ClaudeCodeJobEvent.success(getTaskId(), getTaskString());
-        }
+        if (error != null) return ClaudeCodeJobEvent.failed(getTaskId(), getTaskString(), error.getMessage(), error);
+        if (exitCode != 0) return ClaudeCodeJobEvent.failed(getTaskId(), getTaskString(), "Claude Code exited with code " + exitCode, null);
+        List<String> abandoned = AbandonedTestRunDetector.findAbandonedRunsForJob(getWorkingDirectory(), sessionStartedAt);
+        if (abandoned.isEmpty()) return ClaudeCodeJobEvent.success(getTaskId(), getTaskString());
+        return ClaudeCodeJobEvent.degraded(getTaskId(), getTaskString(),
+            "Agent abandoned " + abandoned.size() + " test-runner run(s): " + String.join(", ", abandoned));
     }
 
     @Override
@@ -1453,7 +1451,7 @@ public class ClaudeCodeJob extends GitManagedJob {
      * @param field  the field name to look up
      * @return       the string value, or {@code null}
      */
-    private static String getTextOrNull(JsonNode node, String field) {
+    static String getTextOrNull(JsonNode node, String field) {
         JsonNode child = node.get(field);
         return (child != null && child.isTextual()) ? child.asText() : null;
     }

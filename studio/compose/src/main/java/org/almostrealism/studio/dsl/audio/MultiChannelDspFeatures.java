@@ -205,7 +205,8 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 										.subtract(delayN)
 										.add(c(bufSize)),
 								c(bufSize)).add(c(n * bufSize));
-						CollectionProducer yN = c(sigShape, buffer, readPositions);
+						CollectionProducer yN = c(shape(signalSize), buffer, readPositions)
+							.reshape(sigShape);
 						yAll = yAll == null ? yN : (CollectionProducer) concat(yAll, yN);
 					}
 					CollectionProducer fbAll = null;
