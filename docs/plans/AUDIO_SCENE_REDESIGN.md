@@ -1,14 +1,23 @@
 # AudioScene Rendering Pipeline Redesign
 
-> **Status (May 2026):** Plan revised to reflect two developments since the original
-> was written: (1) the PDSL audio DSP substrate has landed on master — it is the path
-> forward for the DSP half of the redesign, not one option among several; (2) profiling
-> on `feature/rings-realtime-generation` found that **pattern generation** accounts for
-> ~278ms of 311ms total per-tick cost, making it the dominant bottleneck — the DSP
-> mixdown this plan originally focused on is a small fraction of total cost.
+> **Status (May 2026, revised after PatternRenderingFloorBenchmark exploration):** Plan
+> revised to reflect three developments since the original was written: (1) the PDSL
+> audio DSP substrate has landed on master — it is the path forward for the DSP half
+> of the redesign, not one option among several; (2) profiling on
+> `feature/rings-realtime-generation` found that **pattern generation** accounts for
+> ~278ms of 311ms total per-tick cost, making it the dominant bottleneck; (3) the
+> `PatternRenderingFloorBenchmark` (May 2026, six additions across two task rounds)
+> demonstrated that batching the pattern chain into a single `Producer` evaluation
+> drops cost by 100–1500× and lands all chain variants well under the 92.9ms realtime
+> threshold even on the slowest backend (Linux/JNI CPU). Specifically: the 2-kernel
+> batched form runs in 0.90ms at 64 notes/m (921× speedup), and the 4-kernel batched
+> form *with* FIR runs in 1.89ms (49× under threshold). The benchmark settles the
+> Phase 2 vs Phase 3 question (Phase 3 is required) and resolves the FIR-batching
+> open question (padded-row strategy works with zero `MultiOrderFilter` changes).
 >
-> The revised scope covers both: DSP cutover (substrate ready, mostly mechanical) and
-> pattern generation (bottleneck identified, strategy evaluative until profiling clarifies).
+> The revised scope covers both halves: DSP cutover (substrate ready, mostly mechanical)
+> and pattern generation (Phase 3 batched compilation is required, confirmed achievable,
+> and now has concrete implementation guidance — see Section 5, Phase 3).
 
 ---
 
@@ -31,13 +40,21 @@ architecture section — accounts for roughly 11% of total cost. Pattern generat
 accounts for the other 89%. A redesign that only fixes DSP leaves the dominant cost
 untouched.
 
+**The PatternRenderingFloorBenchmark (May 2026) further decomposed the 278ms.** Per-note
+sequential JNI dispatch is the dominant cost, not arithmetic or allocation. At 64 notes/m
+the per-note cost is 0.88ms but **99.4% of that is JNI boundary overhead, not compute**.
+Batching all 2048 notes into one `evaluate()` call drops the tick to 6.39ms — well below
+the 92.9ms realtime threshold. The compute itself is essentially free; the cost is the
+dispatch frequency. Phase 3 (batch compilation, single Producer per tick) is therefore
+required, not contingent on Phase 2 outcomes.
+
 The revised scope covers both halves:
 - **DSP cutover:** Replace the Cell-based DSP path with the PDSL substrate. The substrate
   exists and is tested. The remaining work is mechanical: production cutover, EfxManager
   migration, one deferred primitive (`delay_network`), and variable channel count support.
-- **Pattern generation:** Profile-and-fix. The 278ms bottleneck is identified but not yet
-  decomposed into its contributors. The strategy is: profile first, fix what the data
-  points to, then evaluate whether a structural change is needed.
+- **Pattern generation:** Phase 3 batched compilation is the required path. The benchmark
+  data settles this question. Phase 2 targeted fixes (cache, allocation) attack the ~1% of
+  cost that is not JNI dispatch — they are incremental wins, not the architectural fix.
 
 ---
 
@@ -180,30 +197,34 @@ level. Phase 2 exists to get that breakdown.
 
 ### 4B: Candidate Directions
 
-These are candidate directions only. Which ones are worth pursuing depends on what Phase 2
-profiling finds. The plan does not commit to any of them now.
+The PatternRenderingFloorBenchmark settled which of these is the load-bearing fix.
+**Batch note evaluation** (the third candidate below) is the required path; the others
+are incremental improvements at most.
 
-**Reduce allocation churn.** `PatternElement.getNoteDestinations()` creates
-`RenderedNoteAudio` objects on every render call. If these allocations are frequent and
-short-lived, GC pressure could contribute materially. This is the cheapest hypothesis to
-test: measure allocation rate and GC pause time during a render.
+**Batch note evaluation. (Phase 3 — required path.)** Rather than calling `evaluate()`
+per note, compose a single `CollectionProducer` that evaluates all notes for a given
+choice in one kernel dispatch. The benchmark showed this drops the kernel cost from
+1804ms to 1.89ms at 64 notes/m for the full 4-kernel chain with FIR (954× speedup, 49×
+under threshold), or 0.90ms for a 2-kernel batched form (921× speedup, 103× under
+threshold). 99.4% of the per-note cost is JNI dispatch overhead, not arithmetic.
+Production work to integrate this with `PatternFeatures.render` orchestration is the
+central Phase 3 task.
 
-**Batch note evaluation.** Rather than calling `evaluate()` per note, compose a single
-`CollectionProducer` that evaluates all notes for a given choice in one kernel dispatch,
-then scatter-accumulate the results. This is a Producer-pattern fix: express "evaluate N
-notes" as one computation graph rather than N sequential graphs.
+**Reduce allocation churn. (Phase 2 — incremental.)** `PatternElement.getNoteDestinations()`
+creates `RenderedNoteAudio` objects on every render call. These attack at most a few
+percent of the cost — not ratio-of-1. Worth doing alongside Phase 3, not instead of it.
 
-**Cache more aggressively.** `NoteAudioCache` already caches by frame offset. If pattern
-content is stable across ticks (no genome change), the cache avoids re-evaluation. The
-question is what fraction of notes actually hit the cache in real-time rendering — if
-cache hit rate is low, improving it could close a large gap with small code changes.
+**Cache more aggressively. (Phase 2 — incremental.)** `NoteAudioCache` already caches by
+frame offset. Each cache hit removes one JNI dispatch. With Phase 3 batched compilation,
+all dispatches collapse to one per pattern layer per tick anyway, so cache improvements
+remove a small constant fraction of an already-small total.
 
-**Batch-render across pattern variants.** The vector-space exploration UX uses a compact
-fixed-size pattern representation with similarity-driven sampling. This suggests a
-possible reorganization: rather than "render this one pattern," render a neighborhood of
-similar patterns in a batched forward pass. This aligns naturally with how ML inference
-batches inputs. This is speculative and would require significant restructuring; it is
-not a Phase 2 candidate but a framing for Phase 3 evaluation.
+**Batch-render across pattern variants. (Phase 3+ extension.)** The vector-space
+exploration UX uses a compact fixed-size pattern representation with similarity-driven
+sampling. This suggests a possible reorganization: render a neighborhood of similar
+patterns in a batched forward pass. This is a Phase 3 implementation choice, not a
+separate phase: if the batched compilation graph is shaped right, batching across pattern
+variants is a re-batch dimension rather than an architectural change.
 
 **Move pattern assembly to PDSL.** Patterns as tensor operations: `PatternElement`
 positions become a tensor, note audio becomes a learned embedding, assembly becomes a
@@ -245,58 +266,92 @@ Phase 1's primary value is architectural foundation.
 Phase 1 is characterised as "mostly mechanical" because the substrate exists and is
 tested. The hard engineering work is `delay_network`; the rest follows from it.
 
-### Phase 2: Pattern Profiling and First-Pass Fixes (Evaluative)
+### Phase 2: Targeted Cleanup (Optional Incremental Wins)
 
-Phase 2's gate question is: **where within the 278ms does the time actually go?**
+Phase 2 was originally framed as the path to ratio-of-1 performance. The benchmark data
+disproves that framing: the 278ms cost is dominated by JNI dispatch frequency
+(~99.4% on the slowest backend), not by allocation, cache misses, or Java loop overhead.
+Phase 2 fixes attack the wrong part of the cost curve.
 
-The goal is not an architectural rewrite. It is targeted fixes, guided by profiling data,
-that close as much of the gap as the data indicates is closeable without restructuring.
+Phase 2 work is reframed as **incremental wins worth doing alongside the structural fix**,
+not as the path to ratio-of-1. Each candidate from Section 4B is sized accordingly:
 
-**2A — Profile sumInternal and render.** Use JFR or a similar profiler to get a
-breakdown of the 278ms by call site. Candidates: `getNoteDestinations()` allocation,
-`evaluate()` JNI dispatch, `sumToDestination()` copy cost, Java loop overhead. The
-profiling must distinguish between "time inside evaluate()" and "time orchestrating
-around evaluate()."
+**2A — Allocation/GC.** `RenderedNoteAudio` allocations may add GC pressure. Worth
+measuring. Even if eliminated, this attacks at most a few percent of the 278ms — not
+ratio-of-1. Time-box: 1–2 days, only if GC pause time turns out to be measurable in JFR.
 
-**2B — Implement targeted fixes.** Based on profiling findings, implement the fixes that
-the data supports. No assumption about which ones matter until 2A is complete. Likely
-candidates (see Section 4B) include cache hit-rate improvements, allocation reduction,
-and potentially batch evaluation of multiple notes in one Producer composition.
+**2B — Cache hit rate.** `NoteAudioCache` already caches by frame offset. If hit rate is
+already high, no change. If low, raising it removes JNI dispatches one by one — strictly
+better than nothing, but it does not change the structural bottleneck.
 
-**2C — Measure and decide.** After fixes: re-profile. Compare total per-tick time to
-the 92.9ms real-time threshold. If pattern generation is now below a usable threshold,
-Phase 3 becomes optional. If not, Phase 3 becomes necessary.
+**2C — `Process.optimized()`.** Do **NOT** apply `Process.optimized()` to the per-note
+chain. The benchmark showed this **adds ~15% overhead** vs the un-optimized chain on a
+linear 4-kernel pipeline (no isolation targets to restructure). The optimization pass is
+designed for graphs with isolation targets (reuse points, shared sub-expressions); on a
+flat chain it is pure overhead. Future agents should default to the un-optimized path for
+this kind of pipeline.
 
-Phase 2 is characterised as "evaluative" because the right interventions are not known
-until the profiling data exists.
+Phase 2 outputs are nice-to-haves. They do **not** gate Phase 3.
 
-### Phase 3: Pattern Restructuring (Conditional, Evaluative)
+### Phase 3: Batched Compilation (Required Path)
 
-Phase 3 is entered only if Phase 2's targeted fixes are insufficient. It addresses the
-question: **if per-note evaluate() calls are the structural bottleneck, what is the
-restructuring that removes them?**
+Phase 3 is the architectural fix. The benchmark established four load-bearing facts:
 
-Candidate restructurings (to evaluate, not commit to):
+1. **Per-note JNI dispatch dominates.** ~99.4% of the sequential per-note cost is dispatch,
+   not arithmetic. Batching eliminates this directly.
+2. **Kernel fusion is real.** The combined 4-kernel chain (1 evaluate per note, 4 fused
+   kernels) is 1.73× faster than running the same kernels separately (4 evaluates per
+   note). Composition matters; the framework already fuses adjacent ops in a single
+   compiled graph.
+3. **Batching wins regardless of chain length.** A 2-kernel batched chain at 64 notes/m
+   runs in 0.90ms (921× speedup vs sequential 829ms). The 4-kernel padded-FIR batched
+   chain runs in 1.89ms. Both are far below threshold. JNI dispatch elimination is the
+   load-bearing mechanic; chain length is secondary.
+4. **The FIR-batching question is resolved.** Padding each row with `filterOrder/2` zero
+   samples on each side allows the standard `MultiOrderFilter` to operate on a
+   `[N, NOTE_SIZE + filterOrder]` input with cross-row bleed landing in pad zones. Zero
+   `MultiOrderFilter` changes required. Demonstrated working at all five density points
+   (Addition 5).
 
-- **Block-based pattern rendering.** Compose pattern-element audio as a single
-  `CollectionProducer` graph per pattern layer, compile it once, and execute it once per
-  tick. This eliminates per-note `evaluate()` calls in favor of one larger kernel. The
-  challenge: note positions and lengths vary dynamically; expressing this as a static
-  graph requires either padding to max-note-count or a different rendering model.
+Phase 3 builds the production batched-render path. The benchmark exists at the kernel
+level — production needs to integrate this with `PatternLayerManager` / `PatternFeatures`
+note scheduling and the rest of the orchestration. Implementation guidance, informed by
+the exploration:
 
-- **Batch generation across pattern variants.** If the vector-space exploration loop
-  generates many similar patterns, restructure rendering to evaluate a batch of pattern
-  variants in one forward pass. This aligns with how ML inference batches work. The
-  challenge: requires the pattern representation to be tensorized, which is a larger
-  structural change.
+- **Sequencing — minimum viable batched form first, then grow.** Addition 4 demonstrated
+  that a 2-kernel batched form (volume * envelope + accumulate) already delivers 921×
+  speedup at 64 notes/m. The full 4-kernel chain is not a prerequisite for the bulk of
+  the win. A pragmatic Phase 3 sequencing: land the 2-kernel batched form first as a
+  proof-of-integration with `PatternFeatures.render`, then incrementally add resample
+  and FIR. Each milestone is independently below the threshold.
+- **FIR strategy — padded-row.** Use `pad(input, 0, filterOrder/2)` (or equivalent) to
+  produce `[N, NOTE_SIZE + filterOrder]`, then apply the existing `MultiOrderFilter`.
+  No `MultiOrderFilter` modification needed; ~4% memory overhead at production filter
+  order. The other strategies (per-row index clamping in `MultiOrderFilter`,
+  `weightedSum()`-based primitives) remain valid alternatives but are not necessary.
+- **Output shape — reduce to `[NOTE_SIZE]`, not tile to `[N × NOTE_SIZE]`.** Addition 6
+  showed that the framework folds the across-batch sum reduction into the same kernel as
+  the upstream operations: reduction costs the same as (or less than) tile at production
+  density. Phase 3 should produce a compact `[NOTE_SIZE]` accumulator buffer per pattern
+  layer per tick — no `[N × NOTE_SIZE]` intermediate, no Java-side post-sum.
+- **Variable note positions.** Notes have different start times, lengths, and pitches.
+  The benchmark used uniform notes for kernel-cost measurement; production needs to
+  express variable scheduling as a static computation graph. Options: pad all notes to
+  max length and mask out unused samples (consistent with the FIR padding approach);
+  tile by pitch class for resample caching; group notes into fixed-shape batches per
+  pattern layer. This is the central remaining design question for Phase 3 — the
+  benchmark intentionally does not prescribe an answer.
+- **Integration with `PatternFeatures.render`.** The current orchestration iterates
+  `PatternElement` instances and calls `evaluate()` per note. Phase 3 needs a different
+  shape: gather all notes for a pattern layer's tick into one tensor input, compile
+  once, dispatch once per tick. The `note.getProducer(-1).evaluate()` per-note pattern
+  in `PatternFeatures.render` (line ~135 / ~155) is the integration point that has to
+  change.
 
-- **Hybrid: Java orchestration for scheduling, PDSL for per-note audio.** Keep the
-  Java loop structure for repetition and note selection, but compile note audio
-  evaluation into PDSL layers that execute as a batch per tick. This is a narrower
-  change than full pattern → PDSL conversion.
-
-Phase 3 is a decision point, not a commitment. The specific path is chosen after Phase 2
-results are in hand.
+Phase 3 is the architectural commitment. The benchmark exploration narrows the
+implementation guidance — minimum-viable batched form first, padded-row FIR, reduction
+output shape — without prescribing the full design. The variable-note-scheduling
+question is the central remaining unknown for Phase 3 implementation.
 
 ### Phase 4: Convergence (Aspirational, No Timeline)
 
@@ -331,8 +386,10 @@ being a tensor operation" — which, over time, means the full pipeline.
 - EfxManager migration to PDSL (Phase 1)
 - Variable channel count support in the PDSL rendition (Phase 1, if needed for cutover)
 - CellList retirement as callers migrate (ongoing with Phase 1)
-- Pattern generation profiling: decompose the 278ms by contributor (Phase 2)
-- Pattern generation first-pass targeted fixes based on profiling data (Phase 2)
+- Pattern generation incremental cleanup: cache hit-rate, allocation reduction (Phase 2,
+  optional, not gating)
+- Pattern generation batched compilation: single Producer per pattern layer per tick,
+  including the FIR strategy decision (Phase 3, required)
 
 ### Out of Scope (Trajectory Only)
 
@@ -376,10 +433,11 @@ their answers inform the PDSL cutover design rather than a Cell-graph analysis p
 | Metric | Current | Target | Notes |
 |--------|---------|--------|-------|
 | Total per-tick time (32m) | 311ms | <93ms (ratio-of-1) | Both pattern + DSP must improve |
-| Pattern generation time | ~278ms | Unknown after Phase 2 | Phase 2 sets the achievable target |
+| Pattern generation time | ~278ms | <30ms (Phase 3) | Batched compilation is required path; benchmark floor on JNI is 1.89ms (4-kernel padded-FIR batched at 64 notes/m) |
 | DSP kernel time | ~33ms | <20ms (estimate) | PDSL cutover + per-channel splitting |
 | prepareBatch time | 53ms | <25ms | Partially addressed; cache improvements |
 | DSP kernel count | 1 monolithic | N per-channel | Automatic from PDSL |
+| Pattern dispatches per tick | N (one per note) | 1 (one per pattern layer) | Phase 3 batched compilation |
 | Acoustic match (PDSL vs Cell) | N/A | Verified by MixdownManagerPdslVerificationTest | With reverb path enabled post-delay_network |
 
 ---

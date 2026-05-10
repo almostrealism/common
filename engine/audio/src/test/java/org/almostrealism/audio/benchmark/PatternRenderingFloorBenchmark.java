@@ -106,6 +106,88 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 	private static final int TIMED_RUNS = 20;
 
 	/**
+	 * Sequential warmup count per pass: each warmup iteration evaluates the chain this
+	 * many times before timing begins. Sized as 16 notes per measure × {@link #MEASURES_PER_TICK}
+	 * measures so warmup exercises a realistic per-tick load.
+	 */
+	private static final int WARMUP_NOTES = MEASURES_PER_TICK * 16;
+
+	/** Real-time per-tick budget in milliseconds (32 measures at 60bpm worth of audio). */
+	private static final double THRESHOLD_MS = 92.9;
+
+	/** Output path for the benchmark results log; shared by all test methods. */
+	private static final String RESULTS_PATH = "results/pattern-rendering-floor.txt";
+
+	/**
+	 * Notes-per-measure densities measured by every Dimension-1 / batched test:
+	 * 16, 32, 64, 128, 256. Combined with {@link #MEASURES_PER_TICK} this produces
+	 * total-note counts of 512, 1024, 2048, 4096, 8192 per tick.
+	 */
+	private static final int[] NOTES_PER_MEASURE_VALUES = {16, 32, 64, 128, 256};
+
+	/**
+	 * Creates the {@code results/} directory and registers a file-output listener
+	 * on {@link Console#root()} pointing at {@link #RESULTS_PATH}. Called at the
+	 * top of every benchmark test method.
+	 */
+	private static void setupResultsListener() {
+		new File("results").mkdirs();
+		Console.root().addListener(OutputFeatures.fileOutput(RESULTS_PATH));
+	}
+
+	/**
+	 * Builds the lowpass FIR coefficients used by every chain that includes the
+	 * filter kernel: order {@link #FILTER_ORDER}, cutoff {@link #LP_CUTOFF_HZ} Hz,
+	 * sample rate {@link #SAMPLE_RATE} Hz.
+	 */
+	private PackedCollection buildLpCoeffs() {
+		double[] data = referenceLowPassCoefficients(LP_CUTOFF_HZ, SAMPLE_RATE, FILTER_ORDER);
+		PackedCollection lpCoeffs = new PackedCollection(FILTER_ORDER + 1);
+		lpCoeffs.setMem(data);
+		return lpCoeffs;
+	}
+
+	/**
+	 * Builds a random {@code [size]} signal in the range {@code [-1, 1]}, using a
+	 * fixed seed so all benchmark runs see the same content (deterministic timing,
+	 * no run-to-run content variation).
+	 */
+	private PackedCollection buildRandomSource(int size) {
+		Random rng = new Random(12345L);
+		return createSignal(size, i -> rng.nextDouble() * 2.0 - 1.0);
+	}
+
+	/**
+	 * Formats a "vs {@value #THRESHOLD_MS}ms threshold" comparison string for the
+	 * given mean-per-tick measurement: {@code BELOW (Nx headroom)} when under the
+	 * real-time budget, {@code ABOVE (Nx overhead)} when over. Used by both the
+	 * dimension-1 reporter ({@link #reportStats}) and the padded-FIR inline
+	 * reporter ({@link #benchmarkBatchedChainWithPaddedFir}).
+	 */
+	private static String formatVsThreshold(double meanMs) {
+		return meanMs < THRESHOLD_MS
+				? String.format("BELOW (%.1fx headroom)", THRESHOLD_MS / meanMs)
+				: String.format("ABOVE (%.1fx overhead)", meanMs / THRESHOLD_MS);
+	}
+
+	/**
+	 * Performs the standard sequential warmup: {@link #WARMUP_RUNS} passes, each running
+	 * {@link #WARMUP_NOTES} sequential {@code evaluate()} calls on the given chain. The
+	 * {@code description} is interpolated into the "Warming up &lt;description&gt; (...)"
+	 * log line so each call site retains a meaningful label.
+	 */
+	private void warmupSequential(String description, Evaluable<PackedCollection> chain) {
+		log("Warming up " + description + " (" + WARMUP_NOTES + " notes × " + WARMUP_RUNS + " passes)...");
+		for (int w = 0; w < WARMUP_RUNS; w++) {
+			for (int n = 0; n < WARMUP_NOTES; n++) {
+				chain.evaluate();
+			}
+		}
+		log("Warmup complete.");
+		log("");
+	}
+
+	/**
 	 * Dimension 1: notes-per-measure, single layer, monophonic.
 	 *
 	 * <p>This is the load-bearing measurement. For each notes-per-measure value
@@ -119,9 +201,7 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 	@Test(timeout = 600000)
 	@TestDepth(2)
 	public void benchmarkNotesPerMeasureSingleLayer() throws Exception {
-		new File("results").mkdirs();
-		String resultsPath = "results/pattern-rendering-floor.txt";
-		Console.root().addListener(OutputFeatures.fileOutput(resultsPath));
+		setupResultsListener();
 
 		log("==========================================================");
 		log("  PATTERN RENDERING FLOOR BENCHMARK — Dimension 1");
@@ -138,12 +218,9 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 		log("");
 
 		PackedCollection envelope = buildAdsrEnvelope();
-		double[] lpCoeffsData = referenceLowPassCoefficients(LP_CUTOFF_HZ, SAMPLE_RATE, FILTER_ORDER);
-		PackedCollection lpCoeffs = new PackedCollection(FILTER_ORDER + 1);
-		lpCoeffs.setMem(lpCoeffsData);
+		PackedCollection lpCoeffs = buildLpCoeffs();
 		PackedCollection accumBuffer = new PackedCollection(NOTE_SIZE);
-		Random rng = new Random(12345L);
-		PackedCollection source = createSignal(SOURCE_SIZE, i -> rng.nextDouble() * 2.0 - 1.0);
+		PackedCollection source = buildRandomSource(SOURCE_SIZE);
 
 		log("Compiling four-kernel chain (no backprop — inference path)...");
 		long compileStart = System.currentTimeMillis();
@@ -152,28 +229,19 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 		log("Compilation time: " + compileMs + " ms");
 		log("");
 
-		int warmupNotes = MEASURES_PER_TICK * 16;
-		log("Warming up (" + warmupNotes + " notes × " + WARMUP_RUNS + " passes)...");
-		for (int w = 0; w < WARMUP_RUNS; w++) {
-			for (int n = 0; n < warmupNotes; n++) {
-				compiled.evaluate();
-			}
-		}
-		log("Warmup complete.");
-		log("");
+		warmupSequential("four-kernel chain", compiled);
 
 		log("--- Dimension 1: notes_per_measure × 32 measures, 1 layer, monophonic ---");
 		log("");
 
-		int[] notesPerMeasureValues = {16, 32, 64, 128, 256};
-		for (int npm : notesPerMeasureValues) {
+		for (int npm : NOTES_PER_MEASURE_VALUES) {
 			int totalNotes = npm * MEASURES_PER_TICK;
 			long[] timesNs = runTimedIterations(compiled, totalNotes);
 			reportStats(npm, totalNotes, timesNs);
 		}
 
 		log("==========================================================");
-		log("Results written to: " + resultsPath);
+		log("Results written to: " + RESULTS_PATH);
 	}
 
 	/**
@@ -192,14 +260,7 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 										  PackedCollection lpCoeffs,
 										  PackedCollection accumBuffer) {
 		// Kernel 1: pitch interpolation via linear resample (SOURCE_SIZE -> NOTE_SIZE)
-		// Positions 0..NOTE_SIZE-1 scaled by RESAMPLE_RATIO map into the source array.
-		CollectionProducer srcPos = integers(0, NOTE_SIZE)
-				.multiply(c(RESAMPLE_RATIO));
-		CollectionProducer fPos = floor(srcPos);
-		CollectionProducer frac = srcPos.subtract(fPos);
-		CollectionProducer s0 = c(shape(NOTE_SIZE), cp(source), fPos);
-		CollectionProducer s1 = c(shape(NOTE_SIZE), cp(source), fPos.add(c(1.0)));
-		CollectionProducer resampled = s0.add(frac.multiply(s1.subtract(s0)));
+		CollectionProducer resampled = buildResampleProducer(source);
 
 		// Kernel 2: volume envelope — elementwise multiply by ADSR shape
 		CollectionProducer volumed = resampled.multiply(cp(envelope));
@@ -211,6 +272,24 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 		// Kernel 4: accumulate into output buffer (elementwise add)
 		// Reshape to NOTE_SIZE in case MultiOrderFilter changes traversal axis
 		return c(filtered).reshape(shape(NOTE_SIZE)).add(cp(accumBuffer));
+	}
+
+	/**
+	 * Builds the per-note linear-resample producer that maps a {@code [SOURCE_SIZE]}
+	 * source array onto a {@code [NOTE_SIZE]} output via fractional-position lerp.
+	 *
+	 * <p>Reused by every chain builder that needs the un-batched (single-note)
+	 * resample step: {@link #buildChain}, {@link #buildResampleOnly}, and
+	 * {@link #buildChain3Kernels}. Returns the producer un-compiled so callers can
+	 * chain additional kernels onto it.</p>
+	 */
+	private CollectionProducer buildResampleProducer(PackedCollection source) {
+		CollectionProducer srcPos = integers(0, NOTE_SIZE).multiply(c(RESAMPLE_RATIO));
+		CollectionProducer fPos = floor(srcPos);
+		CollectionProducer frac = srcPos.subtract(fPos);
+		CollectionProducer s0 = c(shape(NOTE_SIZE), cp(source), fPos);
+		CollectionProducer s1 = c(shape(NOTE_SIZE), cp(source), fPos.add(c(1.0)));
+		return s0.add(frac.multiply(s1.subtract(s0)));
 	}
 
 	private long[] runTimedIterations(Evaluable<PackedCollection> compiled, int totalNotes) {
@@ -226,32 +305,21 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 	}
 
 	private void reportStats(int notesPerMeasure, int totalNotes, long[] timesNs) {
-		long[] sorted = timesNs.clone();
-		Arrays.sort(sorted);
-
-		double meanMs = Arrays.stream(timesNs).average().orElse(0) / 1_000_000.0;
-		double medianMs = sorted[sorted.length / 2] / 1_000_000.0;
-		int p95Index = (int) Math.min(Math.ceil(sorted.length * 0.95) - 1, sorted.length - 1);
-		double p95Ms = sorted[p95Index] / 1_000_000.0;
+		double[] stats = computeTimingStats(timesNs);
+		double meanMs = stats[0];
+		double medianMs = stats[1];
+		double p95Ms = stats[2];
 		double variance = Arrays.stream(timesNs).mapToDouble(t -> {
 			double diff = t / 1_000_000.0 - meanMs;
 			return diff * diff;
 		}).average().orElse(0);
 		double stdMs = Math.sqrt(variance);
 
-		double thresholdMs = 92.9;
-		String vsThreshold;
-		if (meanMs < thresholdMs) {
-			vsThreshold = String.format("BELOW (%.1fx headroom)", thresholdMs / meanMs);
-		} else {
-			vsThreshold = String.format("ABOVE (%.1fx overhead)", meanMs / thresholdMs);
-		}
-
 		log(String.format("notes_per_measure=%d  (total=%d notes/tick)", notesPerMeasure, totalNotes));
 		log(String.format("  Mean=%.2fms  Median=%.2fms  P95=%.2fms  StdDev=%.2fms",
 				meanMs, medianMs, p95Ms, stdMs));
 		log(String.format("  Per-note: %.4f ms avg", meanMs / totalNotes));
-		log(String.format("  vs 92.9ms threshold: %s", vsThreshold));
+		log(String.format("  vs %.1fms threshold: %s", THRESHOLD_MS, formatVsThreshold(meanMs)));
 		log("");
 	}
 
@@ -298,9 +366,7 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 	@Test(timeout = 600000)
 	@TestDepth(2)
 	public void benchmarkOptimizedChain() throws Exception {
-		new File("results").mkdirs();
-		String resultsPath = "results/pattern-rendering-floor.txt";
-		Console.root().addListener(OutputFeatures.fileOutput(resultsPath));
+		setupResultsListener();
 
 		log("==========================================================");
 		log("  ADDITION 1 — Optimization-applied measurement");
@@ -310,12 +376,9 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 		log("");
 
 		PackedCollection envelope = buildAdsrEnvelope();
-		double[] lpCoeffsData = referenceLowPassCoefficients(LP_CUTOFF_HZ, SAMPLE_RATE, FILTER_ORDER);
-		PackedCollection lpCoeffs = new PackedCollection(FILTER_ORDER + 1);
-		lpCoeffs.setMem(lpCoeffsData);
+		PackedCollection lpCoeffs = buildLpCoeffs();
 		PackedCollection accumBuffer = new PackedCollection(NOTE_SIZE);
-		Random rng = new Random(12345L);
-		PackedCollection source = createSignal(SOURCE_SIZE, i -> rng.nextDouble() * 2.0 - 1.0);
+		PackedCollection source = buildRandomSource(SOURCE_SIZE);
 
 		log("Compiling optimized four-kernel chain (Process.optimized before .get())...");
 		long compileStart = System.currentTimeMillis();
@@ -325,21 +388,12 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 		log("Compilation time: " + compileMs + " ms");
 		log("");
 
-		int warmupNotes = MEASURES_PER_TICK * 16;
-		log("Warming up (" + warmupNotes + " notes × " + WARMUP_RUNS + " passes)...");
-		for (int w = 0; w < WARMUP_RUNS; w++) {
-			for (int n = 0; n < warmupNotes; n++) {
-				compiled.evaluate();
-			}
-		}
-		log("Warmup complete.");
-		log("");
+		warmupSequential("optimized four-kernel chain", compiled);
 
 		log("--- Addition 1: optimized chain, notes_per_measure × 32 measures, 1 layer ---");
 		log("");
 
-		int[] notesPerMeasureValues = {16, 32, 64, 128, 256};
-		for (int npm : notesPerMeasureValues) {
+		for (int npm : NOTES_PER_MEASURE_VALUES) {
 			int totalNotes = npm * MEASURES_PER_TICK;
 			long[] timesNs = runTimedIterations(compiled, totalNotes);
 			reportStats(npm, totalNotes, timesNs);
@@ -348,7 +402,7 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 		log("Note: baseline (no Process.optimized) per-note cost was ~0.87 ms.");
 		log("If the above per-note cost matches that, optimization has no effect on sequential JNI.");
 		log("==========================================================");
-		log("Results appended to: " + resultsPath);
+		log("Results appended to: " + RESULTS_PATH);
 	}
 
 	// ===========================================================================================
@@ -373,9 +427,7 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 	@Test(timeout = 600000)
 	@TestDepth(2)
 	public void benchmarkPerPhaseBreakdown() throws Exception {
-		new File("results").mkdirs();
-		String resultsPath = "results/pattern-rendering-floor.txt";
-		Console.root().addListener(OutputFeatures.fileOutput(resultsPath));
+		setupResultsListener();
 
 		log("==========================================================");
 		log("  ADDITION 2 — Per-phase kernel breakdown");
@@ -386,12 +438,9 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 		int totalNotes = 64 * MEASURES_PER_TICK;
 
 		PackedCollection envelope = buildAdsrEnvelope();
-		double[] lpCoeffsData = referenceLowPassCoefficients(LP_CUTOFF_HZ, SAMPLE_RATE, FILTER_ORDER);
-		PackedCollection lpCoeffs = new PackedCollection(FILTER_ORDER + 1);
-		lpCoeffs.setMem(lpCoeffsData);
+		PackedCollection lpCoeffs = buildLpCoeffs();
 		PackedCollection accumBuffer = new PackedCollection(NOTE_SIZE);
-		Random rng = new Random(12345L);
-		PackedCollection source = createSignal(SOURCE_SIZE, i -> rng.nextDouble() * 2.0 - 1.0);
+		PackedCollection source = buildRandomSource(SOURCE_SIZE);
 
 		// Pre-compute intermediate results for kernels 2-4 (fine in test/benchmark code)
 		log("Pre-computing intermediate buffers for isolated kernel timing...");
@@ -427,22 +476,22 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 		log("");
 
 		long[] k1Times = runTimedIterations(k1, totalNotes);
-		double k1MeanMs = Arrays.stream(k1Times).average().orElse(0) / 1_000_000.0;
+		double k1MeanMs = computeTimingStats(k1Times)[0];
 		log("Kernel 1 (resample 2048→1024, linear lerp):");
 		reportPhaseStats(k1Times, totalNotes);
 
 		long[] k2Times = runTimedIterations(k2, totalNotes);
-		double k2MeanMs = Arrays.stream(k2Times).average().orElse(0) / 1_000_000.0;
+		double k2MeanMs = computeTimingStats(k2Times)[0];
 		log("Kernel 2 (volume envelope multiply):");
 		reportPhaseStats(k2Times, totalNotes);
 
 		long[] k3Times = runTimedIterations(k3, totalNotes);
-		double k3MeanMs = Arrays.stream(k3Times).average().orElse(0) / 1_000_000.0;
+		double k3MeanMs = computeTimingStats(k3Times)[0];
 		log("Kernel 3 (lowpass FIR, order=" + FILTER_ORDER + ", cutoff=" + (int) LP_CUTOFF_HZ + " Hz):");
 		reportPhaseStats(k3Times, totalNotes);
 
 		long[] k4Times = runTimedIterations(k4, totalNotes);
-		double k4MeanMs = Arrays.stream(k4Times).average().orElse(0) / 1_000_000.0;
+		double k4MeanMs = computeTimingStats(k4Times)[0];
 		log("Kernel 4 (accumulate into output buffer):");
 		reportPhaseStats(k4Times, totalNotes);
 
@@ -463,16 +512,11 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 		log("If sum < combined: kernel fusion reducing intermediate buffers in composed chain.");
 		log("If sum > combined: per-phase overhead (separate evaluables) adds overhead.");
 		log("==========================================================");
-		log("Results appended to: " + resultsPath);
+		log("Results appended to: " + RESULTS_PATH);
 	}
 
 	private Evaluable<PackedCollection> buildResampleOnly(PackedCollection source) {
-		CollectionProducer srcPos = integers(0, NOTE_SIZE).multiply(c(RESAMPLE_RATIO));
-		CollectionProducer fPos = floor(srcPos);
-		CollectionProducer frac = srcPos.subtract(fPos);
-		CollectionProducer s0 = c(shape(NOTE_SIZE), cp(source), fPos);
-		CollectionProducer s1 = c(shape(NOTE_SIZE), cp(source), fPos.add(c(1.0)));
-		return s0.add(frac.multiply(s1.subtract(s0))).get();
+		return buildResampleProducer(source).get();
 	}
 
 	private Evaluable<PackedCollection> buildVolumeOnly(PackedCollection resampledInput,
@@ -493,15 +537,27 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 	}
 
 	private void reportPhaseStats(long[] timesNs, int totalNotes) {
+		double[] stats = computeTimingStats(timesNs);
+		double meanMs = stats[0];
+		log(String.format("  Mean=%.2fms  Median=%.2fms  P95=%.2fms  Per-note=%.4fms",
+				meanMs, stats[1], stats[2], meanMs / totalNotes));
+		log("");
+	}
+
+	/**
+	 * Computes mean, median, and p95 (in milliseconds) for the given nanosecond
+	 * timing samples. Returns {@code [meanMs, medianMs, p95Ms]} for use by the
+	 * three reporting helpers ({@link #reportStats}, {@link #reportPhaseStats},
+	 * {@link #reportBatchedStats}).
+	 */
+	private static double[] computeTimingStats(long[] timesNs) {
 		long[] sorted = timesNs.clone();
 		Arrays.sort(sorted);
 		double meanMs = Arrays.stream(timesNs).average().orElse(0) / 1_000_000.0;
 		double medianMs = sorted[sorted.length / 2] / 1_000_000.0;
 		int p95Index = (int) Math.min(Math.ceil(sorted.length * 0.95) - 1, sorted.length - 1);
 		double p95Ms = sorted[p95Index] / 1_000_000.0;
-		log(String.format("  Mean=%.2fms  Median=%.2fms  P95=%.2fms  Per-note=%.4fms",
-				meanMs, medianMs, p95Ms, meanMs / totalNotes));
-		log("");
+		return new double[]{meanMs, medianMs, p95Ms};
 	}
 
 	private String formatPhaseRow(String label, double meanMs, double sumMs) {
@@ -535,9 +591,7 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 	@Test(timeout = 600000)
 	@TestDepth(2)
 	public void benchmarkBatchedCeiling() throws Exception {
-		new File("results").mkdirs();
-		String resultsPath = "results/pattern-rendering-floor.txt";
-		Console.root().addListener(OutputFeatures.fileOutput(resultsPath));
+		setupResultsListener();
 
 		log("==========================================================");
 		log("  ADDITION 3 — Batched ceiling measurement");
@@ -555,40 +609,29 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 
 		PackedCollection envelope = buildAdsrEnvelope();
 		PackedCollection accumBuffer = new PackedCollection(NOTE_SIZE);
-		Random rng = new Random(12345L);
-		PackedCollection source = createSignal(SOURCE_SIZE, i -> rng.nextDouble() * 2.0 - 1.0);
-
-		int[] notesPerMeasureValues = {16, 32, 64, 128, 256};
+		PackedCollection source = buildRandomSource(SOURCE_SIZE);
 
 		// Sequential 3-kernel baseline (resample + volume + accumulate, no FIR) for comparison
 		log("Compiling sequential 3-kernel chain (resample + volume + accumulate, no FIR)...");
 		Evaluable<PackedCollection> seqChain3 = buildChain3Kernels(source, envelope, accumBuffer);
-		int warmupNotes = MEASURES_PER_TICK * 16;
-		log("Warming up sequential 3-kernel chain...");
-		for (int w = 0; w < WARMUP_RUNS; w++) {
-			for (int n = 0; n < warmupNotes; n++) {
-				seqChain3.evaluate();
-			}
-		}
-		log("Warmup complete.");
-		log("");
+		warmupSequential("sequential 3-kernel chain", seqChain3);
 
 		log("--- Sequential 3-kernel baseline (for comparison) ---");
 		log("");
-		double[] seqPerNoteMs = new double[notesPerMeasureValues.length];
-		for (int d = 0; d < notesPerMeasureValues.length; d++) {
-			int npm = notesPerMeasureValues[d];
+		double[] seqPerNoteMs = new double[NOTES_PER_MEASURE_VALUES.length];
+		for (int d = 0; d < NOTES_PER_MEASURE_VALUES.length; d++) {
+			int npm = NOTES_PER_MEASURE_VALUES[d];
 			int totalNotes = npm * MEASURES_PER_TICK;
 			long[] timesNs = runTimedIterations(seqChain3, totalNotes);
-			seqPerNoteMs[d] = Arrays.stream(timesNs).average().orElse(0) / 1_000_000.0 / totalNotes;
+			seqPerNoteMs[d] = computeTimingStats(timesNs)[0] / totalNotes;
 			reportStats(npm, totalNotes, timesNs);
 		}
 
 		log("--- Batched ceiling: 1 evaluate() per density level ---");
 		log("");
 
-		for (int d = 0; d < notesPerMeasureValues.length; d++) {
-			int npm = notesPerMeasureValues[d];
+		for (int d = 0; d < NOTES_PER_MEASURE_VALUES.length; d++) {
+			int npm = NOTES_PER_MEASURE_VALUES[d];
 			int totalNotes = npm * MEASURES_PER_TICK;
 
 			log("Compiling batched chain for " + totalNotes + " notes (" + npm + " notes/m)...");
@@ -603,7 +646,7 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 			}
 			log("Warmup complete.");
 
-			long[] batchedTimesNs = runBatchedTimedIterations(batchedChain);
+			long[] batchedTimesNs = runTimedIterations(batchedChain, 1);
 			reportBatchedStats(npm, totalNotes, batchedTimesNs, seqPerNoteMs[d]);
 		}
 
@@ -613,7 +656,7 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 		log("- On JNI/CPU: speedup > 1x means JNI boundary-crossing overhead was real.");
 		log("- On Metal: much larger speedup expected (parallel kernel execution).");
 		log("==========================================================");
-		log("Results appended to: " + resultsPath);
+		log("Results appended to: " + RESULTS_PATH);
 	}
 
 	/**
@@ -623,32 +666,28 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 	private Evaluable<PackedCollection> buildChain3Kernels(PackedCollection source,
 														   PackedCollection envelope,
 														   PackedCollection accumBuffer) {
-		CollectionProducer srcPos = integers(0, NOTE_SIZE).multiply(c(RESAMPLE_RATIO));
-		CollectionProducer fPos = floor(srcPos);
-		CollectionProducer frac = srcPos.subtract(fPos);
-		CollectionProducer s0 = c(shape(NOTE_SIZE), cp(source), fPos);
-		CollectionProducer s1 = c(shape(NOTE_SIZE), cp(source), fPos.add(c(1.0)));
-		CollectionProducer resampled = s0.add(frac.multiply(s1.subtract(s0)));
+		CollectionProducer resampled = buildResampleProducer(source);
 		CollectionProducer volumed = resampled.multiply(cp(envelope));
 		return volumed.add(cp(accumBuffer)).get();
 	}
 
 	/**
-	 * Builds a batched 3-kernel chain (resample + volume + accumulate) over all
-	 * {@code batchSize} notes in a single {@link CollectionProducer} covering
-	 * {@code [batchSize × NOTE_SIZE]} output positions.
+	 * Builds the batched resample + volume-envelope portion of the chain over all
+	 * {@code batchSize} notes as a flat {@code [batchSize × NOTE_SIZE]} producer.
 	 *
 	 * <p>The resample kernel uses modulo/floor arithmetic to map each flat output index
 	 * back to a (note, sample) pair: {@code sampleIdx = outputIdx mod NOTE_SIZE} and
 	 * {@code srcPos = sampleIdx × RESAMPLE_RATIO}. All notes draw from the same source
 	 * (appropriate for a benchmark measuring kernel cost, not content variation). The
-	 * volume envelope is tiled {@code batchSize} times to cover all notes. The accumulate
-	 * kernel adds to a similarly tiled output buffer.</p>
+	 * volume envelope is tiled {@code batchSize} times to cover all notes.</p>
+	 *
+	 * <p>Reused by every batched test that starts from the same resample+volume base
+	 * ({@link #buildBatchedChain}, {@link #buildBatchedPaddedFirChain}, and the two
+	 * loops in {@link #benchmarkBatchedReductionAccumulate}).</p>
 	 */
-	private Evaluable<PackedCollection> buildBatchedChain(int batchSize,
-														  PackedCollection source,
-														  PackedCollection envelope,
-														  PackedCollection accumBuffer) {
+	private CollectionProducer buildBatchedResampleVolume(int batchSize,
+														   PackedCollection source,
+														   PackedCollection envelope) {
 		int totalSamples = batchSize * NOTE_SIZE;
 
 		// Batched resample: map flat output index → within-note sample → source position.
@@ -668,38 +707,359 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 
 		// Volume envelope: tile the [NOTE_SIZE] envelope batchSize times → [totalSamples]
 		CollectionProducer tiledEnvelope = cp(envelope).repeat(batchSize).reshape(shape(totalSamples));
-		CollectionProducer batchedVolumed = batchedResampled.multiply(tiledEnvelope);
+		return batchedResampled.multiply(tiledEnvelope);
+	}
+
+	/**
+	 * Builds a batched 3-kernel chain (resample + volume + accumulate) over all
+	 * {@code batchSize} notes in a single {@link CollectionProducer} covering
+	 * {@code [batchSize × NOTE_SIZE]} output positions. The resample+volume base is
+	 * delegated to {@link #buildBatchedResampleVolume}; this method appends the
+	 * accumulate kernel which adds to a tiled output buffer.
+	 */
+	private Evaluable<PackedCollection> buildBatchedChain(int batchSize,
+														  PackedCollection source,
+														  PackedCollection envelope,
+														  PackedCollection accumBuffer) {
+		int totalSamples = batchSize * NOTE_SIZE;
+		CollectionProducer batchedVolumed = buildBatchedResampleVolume(batchSize, source, envelope);
 
 		// Accumulate: add to per-note output buffer (tiled, not reduced — one slot per note-sample)
 		CollectionProducer tiledAccum = cp(accumBuffer).repeat(batchSize).reshape(shape(totalSamples));
-		CollectionProducer batchedOutput = batchedVolumed.add(tiledAccum);
-
-		return batchedOutput.get();
+		return batchedVolumed.add(tiledAccum).get();
 	}
 
-	private long[] runBatchedTimedIterations(Evaluable<PackedCollection> compiled) {
-		long[] results = new long[TIMED_RUNS];
-		for (int r = 0; r < TIMED_RUNS; r++) {
-			long t0 = System.nanoTime();
-			compiled.evaluate();
-			results[r] = System.nanoTime() - t0;
+	// ===========================================================================================
+	// ADDITION 4 — Two-kernel batched chain (volume + accumulate, no resample, no FIR)
+	// ===========================================================================================
+
+	/**
+	 * Measures the simplest meaningful batched form: volume envelope multiply followed by
+	 * accumulate, with no resample and no FIR. Tests whether even a minimal 2-kernel
+	 * batched chain captures most of the JNI-dispatch elimination, or whether more kernels
+	 * are needed in the chain to amortize setup cost effectively.
+	 *
+	 * <p>Sequential 2-kernel baseline: each note runs {@code volume*envelope + accumBuffer}
+	 * via {@code .evaluate()}. Batched form: all N notes run as one
+	 * {@code [N × NOTE_SIZE]} output with one {@code .evaluate()} call.</p>
+	 *
+	 * <p>If the 2-kernel batched chain delivers a substantial fraction of the 3-kernel
+	 * batched speedup (Addition 3, ~172× at 64 notes/m), batching is the right ordering
+	 * regardless of the kernel count in the chain — just one batched dispatch per layer
+	 * collapses N JNI crossings to 1. If the 2-kernel form is barely faster than
+	 * sequential, the JNI overhead per dispatch is much smaller than expected and
+	 * batching only pays off when many kernels are folded into one Producer.</p>
+	 */
+	@Test(timeout = 600000)
+	@TestDepth(2)
+	public void benchmarkBatched2KernelChain() throws Exception {
+		setupResultsListener();
+
+		log("==========================================================");
+		log("  ADDITION 4 — Two-kernel batched chain");
+		log("  Volume envelope multiply + accumulate (no resample, no FIR)");
+		log("==========================================================");
+		log("");
+
+		PackedCollection envelope = buildAdsrEnvelope();
+		PackedCollection accumBuffer = new PackedCollection(NOTE_SIZE);
+		PackedCollection inputNote = buildRandomSource(NOTE_SIZE);
+
+		// Sequential 2-kernel baseline
+		log("Compiling sequential 2-kernel chain (volume * envelope + accumulate)...");
+		Evaluable<PackedCollection> seqChain2 =
+				cp(inputNote).multiply(cp(envelope)).add(cp(accumBuffer)).get();
+		warmupSequential("sequential 2-kernel chain", seqChain2);
+
+		log("--- Sequential 2-kernel baseline (for comparison) ---");
+		log("");
+		double[] seqPerNoteMs = new double[NOTES_PER_MEASURE_VALUES.length];
+		for (int d = 0; d < NOTES_PER_MEASURE_VALUES.length; d++) {
+			int npm = NOTES_PER_MEASURE_VALUES[d];
+			int totalNotes = npm * MEASURES_PER_TICK;
+			long[] timesNs = runTimedIterations(seqChain2, totalNotes);
+			seqPerNoteMs[d] = computeTimingStats(timesNs)[0] / totalNotes;
+			reportStats(npm, totalNotes, timesNs);
 		}
-		return results;
+
+		log("--- Batched 2-kernel ceiling: 1 evaluate() per density level ---");
+		log("");
+
+		for (int d = 0; d < NOTES_PER_MEASURE_VALUES.length; d++) {
+			int npm = NOTES_PER_MEASURE_VALUES[d];
+			int totalNotes = npm * MEASURES_PER_TICK;
+
+			log("Compiling batched 2-kernel chain for " + totalNotes + " notes...");
+			long compileStart = System.currentTimeMillis();
+			int totalSamples = totalNotes * NOTE_SIZE;
+			// Tile both inputs to [totalSamples], multiply, then add tiled accumBuffer.
+			CollectionProducer tiledInput = cp(inputNote).repeat(totalNotes).reshape(shape(totalSamples));
+			CollectionProducer tiledEnvelope = cp(envelope).repeat(totalNotes).reshape(shape(totalSamples));
+			CollectionProducer tiledAccum = cp(accumBuffer).repeat(totalNotes).reshape(shape(totalSamples));
+			Evaluable<PackedCollection> batchedChain2 =
+					tiledInput.multiply(tiledEnvelope).add(tiledAccum).get();
+			long compileMs = System.currentTimeMillis() - compileStart;
+			log("Compilation: " + compileMs + " ms");
+
+			log("Warming up batched 2-kernel chain...");
+			for (int w = 0; w < WARMUP_RUNS; w++) {
+				batchedChain2.evaluate();
+			}
+			log("Warmup complete.");
+
+			long[] batchedTimesNs = runTimedIterations(batchedChain2, 1);
+			reportBatchedStats(npm, totalNotes, batchedTimesNs, seqPerNoteMs[d]);
+		}
+
+		log("INTERPRETATION:");
+		log("- Compare 2-kernel batched speedup to 3-kernel batched speedup (Addition 3).");
+		log("- If 2-kernel speedup is similar to 3-kernel speedup, JNI dispatch is the cost driver");
+		log("  regardless of chain length — batching ANY chain delivers the win.");
+		log("- If 2-kernel speedup is substantially lower, the win requires longer chains to");
+		log("  amortize setup cost. (Less likely given Addition 2's ~43% fusion benefit.)");
+		log("==========================================================");
+		log("Results appended to: " + RESULTS_PATH);
+	}
+
+	// ===========================================================================================
+	// ADDITION 5 — Padded batched FIR — addresses the FIR batching question
+	// ===========================================================================================
+
+	/**
+	 * Tests the hypothesis that {@link MultiOrderFilter} can be applied to a batched
+	 * {@code [N, NOTE_SIZE + filterOrder]} input where each row has been zero-padded by
+	 * {@code filterOrder/2} on each side, with the bleed across row boundaries falling
+	 * into the padded zeros rather than into adjacent-note audio.
+	 *
+	 * <p>Background: {@link MultiOrderFilter#getScope} uses {@code kernel(context)} as a
+	 * flat index across the entire input array, with boundary check
+	 * {@code index >= 0 && index < input.length()}. For a 2D {@code [N, M]} input with
+	 * {@code traverse(1)}, samples within {@code ±filterOrder/2} of a row boundary index
+	 * into the adjacent row — which contains the previous note's audio. With each row
+	 * pre-padded by {@code filterOrder/2} zeros on both sides, the boundary indices
+	 * instead read into the padded zeros (still within the same row's slot in the flat
+	 * array), preserving acoustic independence per note.</p>
+	 *
+	 * <p>This benchmark measures (a) does it run at all without a stateful-FIR error, and
+	 * (b) what is the per-tick time of a 4-kernel batched chain when FIR is included via
+	 * the padded approach? If the timing is comparable to the 3-kernel batched ceiling,
+	 * FIR can be batched in production without modifying {@link MultiOrderFilter}.</p>
+	 */
+	@Test(timeout = 600000)
+	@TestDepth(2)
+	public void benchmarkBatchedChainWithPaddedFir() throws Exception {
+		setupResultsListener();
+
+		log("==========================================================");
+		log("  ADDITION 5 — Batched 4-kernel chain with padded FIR");
+		log("  Tests: can FIR be batched if each row is padded with");
+		log("  filterOrder/2 zeros on both sides to absorb cross-row bleed?");
+		log("==========================================================");
+		log("");
+
+		PackedCollection envelope = buildAdsrEnvelope();
+		PackedCollection lpCoeffs = buildLpCoeffs();
+		PackedCollection source = buildRandomSource(SOURCE_SIZE);
+
+		int padHalf = FILTER_ORDER / 2;
+		int paddedNoteSize = NOTE_SIZE + 2 * padHalf;
+		log("Pad layout: each row = " + padHalf + " zeros + " + NOTE_SIZE
+				+ " samples + " + padHalf + " zeros = " + paddedNoteSize + " elements");
+		log("");
+
+		for (int d = 0; d < NOTES_PER_MEASURE_VALUES.length; d++) {
+			int npm = NOTES_PER_MEASURE_VALUES[d];
+			int totalNotes = npm * MEASURES_PER_TICK;
+
+			log("Compiling padded batched 4-kernel chain for " + totalNotes + " notes...");
+			long compileStart = System.currentTimeMillis();
+			Evaluable<PackedCollection> batchedChain;
+			try {
+				batchedChain = buildBatchedPaddedFirChain(totalNotes, padHalf,
+						source, envelope, lpCoeffs);
+			} catch (Exception ex) {
+				log("FAILED to compile batched padded FIR chain at " + totalNotes + " notes: "
+						+ ex.getClass().getSimpleName() + ": " + ex.getMessage());
+				log("This is a finding — documents the limit of the padded approach.");
+				log("");
+				continue;
+			}
+			long compileMs = System.currentTimeMillis() - compileStart;
+			log("Compilation: " + compileMs + " ms");
+
+			log("Warming up...");
+			for (int w = 0; w < WARMUP_RUNS; w++) {
+				batchedChain.evaluate();
+			}
+			log("Warmup complete.");
+
+			long[] batchedTimesNs = runTimedIterations(batchedChain, 1);
+			double[] stats = computeTimingStats(batchedTimesNs);
+			double meanMs = stats[0];
+
+			log(String.format("notes_per_measure=%d  (total=%d notes/tick) [BATCHED 4-KERNEL + PADDED FIR]",
+					npm, totalNotes));
+			log(String.format("  Mean=%.2fms  Median=%.2fms  P95=%.2fms", meanMs, stats[1], stats[2]));
+			log(String.format("  Amortized per-note: %.4f ms/note", meanMs / totalNotes));
+			log(String.format("  vs %.1fms threshold: %s", THRESHOLD_MS, formatVsThreshold(meanMs)));
+			log("");
+		}
+
+		log("INTERPRETATION:");
+		log("- If timing at 64 notes/m is comparable to 3-kernel batched (~6.39ms),");
+		log("  FIR can be added to the batched chain in production via padded rows.");
+		log("- If significantly slower, the FIR per-row independent processing is more");
+		log("  expensive than the cross-row bleed — alternate strategies needed.");
+		log("- Either way, this measures whether MultiOrderFilter can be batched at all");
+		log("  in a per-row independent fashion via the padding workaround.");
+		log("==========================================================");
+		log("Results appended to: " + RESULTS_PATH);
+	}
+
+	/**
+	 * Builds a batched 3-kernel chain (resample + volume + FIR), with the FIR kernel
+	 * applied to a row-padded {@code [batchSize, NOTE_SIZE + 2 * padHalf]} tensor.
+	 *
+	 * <p>The active audio occupies the central {@code NOTE_SIZE} of each row; the
+	 * {@code padHalf} elements at front and back of each row are zeros (created by
+	 * {@code pad()}). {@link MultiOrderFilter} reads {@code ±padHalf} samples around
+	 * each output position, so cross-row bleed at row boundaries reads into the
+	 * pre-zeroed pad zones rather than into adjacent-note audio. This tests whether
+	 * the standard {@link MultiOrderFilter} can be batched per-row when the input is
+	 * shaped to absorb the cross-row index reach.</p>
+	 *
+	 * <p>Accumulate is omitted from this chain to isolate the FIR contribution; the
+	 * accumulate-as-reduction question is benchmarked separately in
+	 * {@link #benchmarkBatchedReductionAccumulate}.</p>
+	 */
+	private Evaluable<PackedCollection> buildBatchedPaddedFirChain(int batchSize, int padHalf,
+																   PackedCollection source,
+																   PackedCollection envelope,
+																   PackedCollection lpCoeffs) {
+		// Resample + volume over the un-padded [batchSize × NOTE_SIZE] flat layout, then
+		// reshape into [batchSize, NOTE_SIZE] so each row is one note's audio.
+		CollectionProducer batchedVolumed = buildBatchedResampleVolume(batchSize, source, envelope)
+				.reshape(shape(batchSize, NOTE_SIZE));
+
+		// Pad each row by padHalf zeros on each side: shape [batchSize, NOTE_SIZE + 2*padHalf].
+		// The 0 in the first axis means "no padding on the batch dim"; padHalf on the second
+		// pads NOTE_SIZE on both sides.
+		CollectionProducer padded = pad(batchedVolumed, 0, padHalf);
+
+		// FIR via MultiOrderFilter on the padded 2D tensor. Boundary reads at row
+		// transitions land in the pre-zeroed pad zones rather than adjacent notes.
+		CollectionProducer filtered = MultiOrderFilter.create(traverseEach(padded), cp(lpCoeffs));
+
+		return c(filtered).get();
+	}
+
+	// ===========================================================================================
+	// ADDITION 6 — True scatter-accumulate (sum-along-axis) vs tile-and-add
+	// ===========================================================================================
+
+	/**
+	 * The existing batched chains in Addition 3/4/5 produce a {@code [N × NOTE_SIZE]}
+	 * output: each note keeps its own slot in the output array. In production, all N
+	 * notes for a pattern layer's tick must sum into a single {@code [NOTE_SIZE]} buffer.
+	 *
+	 * <p>This benchmark contrasts two ways of expressing that final reduction:</p>
+	 * <ul>
+	 *   <li><b>Tile-and-add</b> (current): output is {@code [N, NOTE_SIZE]}. Java still
+	 *       has to sum it down to {@code [NOTE_SIZE]} after the kernel returns. Memory:
+	 *       {@code O(N × NOTE_SIZE)}.</li>
+	 *   <li><b>True reduction</b>: output is {@code [NOTE_SIZE]} directly, computed as
+	 *       {@code sum(traverse(0, batchedVolumed))}. Memory: {@code O(NOTE_SIZE)}.</li>
+	 * </ul>
+	 *
+	 * <p>Reduces the per-tick output footprint by a factor of N and confirms that
+	 * the framework can express the final accumulate as part of the batched compilation
+	 * graph rather than a separate post-processing step.</p>
+	 */
+	@Test(timeout = 600000)
+	@TestDepth(2)
+	public void benchmarkBatchedReductionAccumulate() throws Exception {
+		setupResultsListener();
+
+		log("==========================================================");
+		log("  ADDITION 6 — Tile-and-add vs true reduction accumulate");
+		log("  Output shape: [N, NOTE_SIZE] (current) vs [NOTE_SIZE] (true reduce)");
+		log("==========================================================");
+		log("");
+
+		PackedCollection envelope = buildAdsrEnvelope();
+		PackedCollection source = buildRandomSource(SOURCE_SIZE);
+
+		log("--- Tile-and-add (output = [N × NOTE_SIZE]) ---");
+		log("");
+		double[] tileMeans = new double[NOTES_PER_MEASURE_VALUES.length];
+		for (int d = 0; d < NOTES_PER_MEASURE_VALUES.length; d++) {
+			int npm = NOTES_PER_MEASURE_VALUES[d];
+			int totalNotes = npm * MEASURES_PER_TICK;
+
+			CollectionProducer batchedVolumed = buildBatchedResampleVolume(totalNotes, source, envelope);
+			Evaluable<PackedCollection> tileChain = batchedVolumed.get();
+
+			for (int w = 0; w < WARMUP_RUNS; w++) tileChain.evaluate();
+			long[] times = runTimedIterations(tileChain, 1);
+			tileMeans[d] = computeTimingStats(times)[0];
+			log(String.format("notes_per_measure=%d  (total=%d notes) [TILE]  Mean=%.2fms  per-note=%.4fms",
+					npm, totalNotes, tileMeans[d], tileMeans[d] / totalNotes));
+		}
+		log("");
+
+		log("--- True reduction (output = [NOTE_SIZE], sum across notes) ---");
+		log("");
+		for (int d = 0; d < NOTES_PER_MEASURE_VALUES.length; d++) {
+			int npm = NOTES_PER_MEASURE_VALUES[d];
+			int totalNotes = npm * MEASURES_PER_TICK;
+
+			CollectionProducer batchedVolumed = buildBatchedResampleVolume(totalNotes, source, envelope);
+
+			// Reduce [N, NOTE_SIZE] to [NOTE_SIZE] by summing across the note axis.
+			// Reshape to [N, NOTE_SIZE], permute to [NOTE_SIZE, N], then traverse(1).sum()
+			// reduces each row of N notes to a single value, giving [NOTE_SIZE, 1] which
+			// is reshaped back to [NOTE_SIZE]. This is the standard "sum across batch
+			// axis" pattern in the framework (see ActivationFeatures, AttentionFeatures).
+			CollectionProducer reshaped = batchedVolumed.reshape(shape(totalNotes, NOTE_SIZE));
+			Evaluable<PackedCollection> reduceChain;
+			try {
+				CollectionProducer permuted = permute(reshaped, 1, 0);
+				reduceChain = permuted.traverse(1).sum().reshape(shape(NOTE_SIZE)).get();
+			} catch (Exception ex) {
+				log("notes_per_measure=" + npm + " [REDUCE] FAILED to compile: "
+						+ ex.getClass().getSimpleName() + ": " + ex.getMessage());
+				log("  Tile-and-add fallback recommended; or use weightedSum-based primitives.");
+				continue;
+			}
+
+			for (int w = 0; w < WARMUP_RUNS; w++) reduceChain.evaluate();
+			long[] times = runTimedIterations(reduceChain, 1);
+			double reduceMs = computeTimingStats(times)[0];
+			log(String.format("notes_per_measure=%d  (total=%d notes) [REDUCE] Mean=%.2fms  vs tile=%.2fms (%.2fx)",
+					npm, totalNotes, reduceMs, tileMeans[d], reduceMs / Math.max(tileMeans[d], 0.001)));
+		}
+		log("");
+
+		log("INTERPRETATION:");
+		log("- Tile-and-add output is [N × NOTE_SIZE]: 1024×N elements written per tick.");
+		log("- True reduction output is [NOTE_SIZE]: 1024 elements written per tick.");
+		log("- If reduction time ~ tile time: framework fuses sum into the kernel — Phase 3");
+		log("  can produce a compact [NOTE_SIZE] output buffer per tick, no Java-side post-sum.");
+		log("- If reduction time >> tile time: reduction is a separate pass; Phase 3 may need");
+		log("  a different reduction primitive or stay with tile-and-add followed by a tight sum.");
+		log("==========================================================");
+		log("Results appended to: " + RESULTS_PATH);
 	}
 
 	private void reportBatchedStats(int notesPerMeasure, int totalNotes, long[] timesNs, double seqPerNoteMs) {
-		long[] sorted = timesNs.clone();
-		Arrays.sort(sorted);
-		double meanMs = Arrays.stream(timesNs).average().orElse(0) / 1_000_000.0;
-		double medianMs = sorted[sorted.length / 2] / 1_000_000.0;
-		int p95Index = (int) Math.min(Math.ceil(sorted.length * 0.95) - 1, sorted.length - 1);
-		double p95Ms = sorted[p95Index] / 1_000_000.0;
+		double[] stats = computeTimingStats(timesNs);
+		double meanMs = stats[0];
 		double amortizedPerNoteMs = meanMs / totalNotes;
 		double speedup = seqPerNoteMs > 0 ? seqPerNoteMs / amortizedPerNoteMs : 0.0;
 
 		log(String.format("notes_per_measure=%d  (total=%d notes/tick) [BATCHED — 1 evaluate()]",
 				notesPerMeasure, totalNotes));
-		log(String.format("  Mean=%.2fms  Median=%.2fms  P95=%.2fms", meanMs, medianMs, p95Ms));
+		log(String.format("  Mean=%.2fms  Median=%.2fms  P95=%.2fms", meanMs, stats[1], stats[2]));
 		log(String.format("  Amortized per-note: %.4f ms/note", amortizedPerNoteMs));
 		log(String.format("  Sequential 3-kernel per-note: %.4f ms/note", seqPerNoteMs));
 		log(String.format("  Batching speedup: %.2fx %s", speedup,
