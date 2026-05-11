@@ -22,6 +22,7 @@ import io.flowtree.Server;
 import io.flowtree.jobs.ClaudeCodeJob;
 import io.flowtree.jobs.ClaudeCodeJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
+import io.flowtree.jobs.McpConfigBuilder;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -1161,6 +1162,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
         if (pushedToolsConfig != null && !pushedToolsConfig.isEmpty()) {
             factory.setPushedToolsConfig(pushedToolsConfig);
+        } else {
+            warn("no pushedToolsConfig to forward to " + factory.getTaskId()
+                + " (value: " + McpConfigBuilder.pushedToolsConfigPreview(pushedToolsConfig) + ")");
         }
 
         // Notify that the job has been submitted (not yet executing)

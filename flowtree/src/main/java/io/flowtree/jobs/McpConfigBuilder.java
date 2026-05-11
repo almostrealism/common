@@ -189,8 +189,36 @@ public class McpConfigBuilder implements ConsoleFeatures {
         return sb.toString();
     }
 
+    /**
+     * Maximum characters of a {@code pushedToolsConfig} JSON to include in
+     * diagnostic log lines. Strings longer than this are truncated with an
+     * ellipsis so logs remain readable when the full config is large.
+     */
+    private static final int PUSHED_TOOLS_CONFIG_PREVIEW_LIMIT = 200;
+
     /** Shared Jackson mapper for serializing the MCP config JSON. */
     private static final ObjectMapper mapper = new ObjectMapper();
+
+    /**
+     * Renders a {@code pushedToolsConfig} JSON string in a form safe and useful
+     * for log output. {@code null} becomes {@code "<null>"}, the empty string
+     * becomes {@code "<empty>"}, and longer values are truncated to
+     * {@link #PUSHED_TOOLS_CONFIG_PREVIEW_LIMIT} characters with an ellipsis.
+     *
+     * <p>Used across the pushed-tools pipeline ({@link ClaudeCodeJobFactory},
+     * {@link ClaudeCodeJob}, {@link ManagedToolsDownloader}, and the
+     * submission sites in the controller) so that every stage emits a
+     * consistent, comparable preview of the value it observed.</p>
+     *
+     * @param config the pushed-tools configuration JSON; may be {@code null}
+     * @return a log-safe preview string, never {@code null}
+     */
+    public static String pushedToolsConfigPreview(String config) {
+        if (config == null) return "<null>";
+        if (config.isEmpty()) return "<empty>";
+        if (config.length() <= PUSHED_TOOLS_CONFIG_PREVIEW_LIMIT) return config;
+        return config.substring(0, PUSHED_TOOLS_CONFIG_PREVIEW_LIMIT) + "...";
+    }
 
     /** ar-manager service URL (e.g., {@code "http://ar-manager:8010"}). */
     private String arManagerUrl;
@@ -385,11 +413,14 @@ public class McpConfigBuilder implements ConsoleFeatures {
         for (Map.Entry<String, JsonNode> entry : pushed.entrySet()) {
             JsonNode toolsNode = entry.getValue().get("tools");
             if (toolsNode == null || !toolsNode.isArray()) continue;
+            int count = 0;
             for (JsonNode tn : toolsNode) {
                 if (tn.isTextual()) {
                     sb.append(",mcp__").append(entry.getKey()).append("__").append(tn.asText());
+                    count++;
                 }
             }
+            log("Added " + count + " tool(s) from pushed server " + entry.getKey());
         }
 
         // Discover and include tools from project MCP servers

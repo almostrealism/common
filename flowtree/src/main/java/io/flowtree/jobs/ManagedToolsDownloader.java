@@ -81,7 +81,11 @@ public class ManagedToolsDownloader implements ConsoleFeatures {
 	 */
 	public void ensurePushedTools(String pushedToolsConfig) {
 		Map<String, List<String>> pushedTools = parseAllServerNames(pushedToolsConfig);
-		if (pushedTools.isEmpty()) return;
+		if (pushedTools.isEmpty()) {
+			warn("no pushed tools to download (pushedToolsConfig: "
+				+ McpConfigBuilder.pushedToolsConfigPreview(pushedToolsConfig) + ")");
+			return;
+		}
 
 		String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
 		String home = System.getProperty("user.home");

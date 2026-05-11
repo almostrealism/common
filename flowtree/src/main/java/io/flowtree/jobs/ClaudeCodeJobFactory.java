@@ -18,6 +18,7 @@ package io.flowtree.jobs;
 
 import io.flowtree.job.AbstractJobFactory;
 import io.flowtree.job.Job;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.KeyUtils;
 
 import java.util.ArrayList;
@@ -41,7 +42,7 @@ import java.util.Map;
  * @author Michael Murray
  * @see ClaudeCodeJob
  */
-public class ClaudeCodeJobFactory extends AbstractJobFactory {
+public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleFeatures {
 
     /** Cached decoded list of prompts; populated lazily from the serialized properties. */
     private List<String> prompts;
@@ -942,6 +943,8 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         }
         if (pushedToolsConfig != null) {
             job.setPushedToolsConfig(pushedToolsConfig);
+        } else {
+            warn("no pushedToolsConfig to propagate to " + job.getTaskId());
         }
 
         if (planningDocument != null) {

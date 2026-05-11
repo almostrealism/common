@@ -19,6 +19,7 @@ package io.flowtree.slack;
 import io.flowtree.Server;
 import io.flowtree.jobs.ClaudeCodeJob;
 import io.flowtree.jobs.JobCompletionEvent;
+import io.flowtree.jobs.McpConfigBuilder;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -584,7 +585,12 @@ public class SlackListener implements ConsoleFeatures {
                 factory.setArManagerToken(arToken);
             }
         }
-        if (pushedToolsConfig != null && !pushedToolsConfig.isEmpty()) factory.setPushedToolsConfig(pushedToolsConfig);
+        if (pushedToolsConfig != null && !pushedToolsConfig.isEmpty()) {
+            factory.setPushedToolsConfig(pushedToolsConfig);
+        } else {
+            warn("no pushedToolsConfig to forward to " + factory.getTaskId()
+                + " (value: " + McpConfigBuilder.pushedToolsConfigPreview(pushedToolsConfig) + ")");
+        }
 
         // Dependent repos
         if (workstream.getDependentRepos() != null) {
