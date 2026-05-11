@@ -42,6 +42,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.HashSet;
 import java.util.Set;
 
 import java.io.File;
@@ -634,6 +635,7 @@ public class FlowTreeController implements ConsoleFeatures {
         if (listener != null) {
             listener.setPushedToolsConfig(pushedToolsConfig);
         }
+        verifyPushedToolsServing();
         printStartupSummary();
     }
 
@@ -1047,6 +1049,16 @@ public class FlowTreeController implements ConsoleFeatures {
         File configDir = configFile != null ? configFile.getParentFile() : null;
         int listeningPort = apiEndpoint.getListeningPort();
 
+        // Set of server names that are mandatory built-ins. A missing
+        // source file for any of these is a deployment bug, not a config
+        // edge case — we abort startup rather than silently degrade.
+        // (Past failure: when ar-secrets was bundled but its source was
+        //  missing from the controller image, the controller came up
+        //  "fine" but agents got an empty pushed-tools config and could
+        //  not access workspace secrets at all.)
+        Set<String> mandatory = new HashSet<>();
+        mandatory.add("ar-secrets");
+
         // Merge built-in entries (ar-secrets) with operator-declared
         // workstreams.yaml entries. The built-ins go first so that
         // operator entries with the same name silently override them
@@ -1068,6 +1080,15 @@ public class FlowTreeController implements ConsoleFeatures {
 
             Path sourcePath = resolveToolSource(toolEntry.getSource(), configDir);
             if (!Files.exists(sourcePath)) {
+                if (mandatory.contains(serverName)) {
+                    throw new IllegalStateException(
+                        "Mandatory pushed-tool source not found for "
+                        + serverName + ": " + sourcePath
+                        + " — controller image is misbuilt. Ensure "
+                        + toolEntry.getSource()
+                        + " is COPY'd into the controller container "
+                        + "(see flowtree/controller/Dockerfile).");
+                }
                 warn("Pushed tool source not found for " + serverName + ": "
                     + sourcePath + " — skipping");
                 continue;
@@ -1146,6 +1167,12 @@ public class FlowTreeController implements ConsoleFeatures {
      */
     public String getPushedToolsConfig() {
         return pushedToolsConfig;
+    }
+
+    /** Delegates to {@link PushedToolsSelfTest}. */
+    private void verifyPushedToolsServing() {
+        if (apiEndpoint == null) return;
+        new PushedToolsSelfTest().run(apiEndpoint.getListeningPort());
     }
 
     /**
