@@ -92,6 +92,9 @@ public class ClaudeCodeJob extends GitManagedJob {
      */
     public static final String DEDUP_NONE = "none";
 
+    /** Default per-job deduplication pass cap; override via {@link #setMaxDeduplicationPasses(int)}. */
+    public static final int DEFAULT_MAX_DEDUP_PASSES = 2;
+
     /** The prompt submitted to Claude Code for this job. */
     private String prompt;
     /** Short human-readable description of this job, used in status messages. */
@@ -110,10 +113,10 @@ public class ClaudeCodeJob extends GitManagedJob {
     private String arManagerUrl;
     /** Bearer token for authenticating against the ar-manager service. */
     private String arManagerToken;
+    /** Pushed-tools JSON; null when no controller is in the loop. */
+    private String pushedToolsConfig;
     /** Optional planning document text injected into the Claude Code system prompt. */
     private String planningDocument;
-    /** GitHub organisation name used to look up API tokens for PR creation. */
-    private String githubOrg;
     /** Whether the job must produce at least one staged file change to succeed. */
     private boolean enforceChanges;
     /** Number of times enforcement has been re-attempted after an empty commit. */
@@ -139,6 +142,9 @@ public class ClaudeCodeJob extends GitManagedJob {
      */
     private String deduplicationMode;
 
+    /** Per-job cap on deduplication passes; passed to {@link DeduplicationRule}. */
+    private int maxDeduplicationPasses = DEFAULT_MAX_DEDUP_PASSES;
+
     /** When {@code true}, pom.xml {@code <dependency>} changes trigger a correction loop. */
     private boolean enforceMavenDependencies;
 
@@ -163,7 +169,7 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /** Builder used to assemble the MCP tool configuration JSON for Claude Code. */
     private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
-    /** Helper that downloads managed tool definitions referenced by the MCP config. */
+    /** Downloads pushed MCP tool source files before each agent launch. */
     private final ManagedToolsDownloader toolsDownloader = new ManagedToolsDownloader(mcpConfigBuilder);
     /** JSON mapper used to parse structured output from Claude Code. */
     private static final ObjectMapper outputMapper = new ObjectMapper();
@@ -429,6 +435,14 @@ public class ClaudeCodeJob extends GitManagedJob {
         this.arManagerToken = arManagerToken;
     }
 
+    /** Returns the pushed-tools configuration JSON, or {@code null}. */
+    public String getPushedToolsConfig() { return pushedToolsConfig; }
+
+    /** Sets the pushed-tools configuration JSON (may be {@code null}). */
+    public void setPushedToolsConfig(String pushedToolsConfig) {
+        this.pushedToolsConfig = pushedToolsConfig;
+    }
+
     /**
      * Returns the planning document path for this job.
      * When set, the agent is instructed to read this file for the
@@ -445,24 +459,6 @@ public class ClaudeCodeJob extends GitManagedJob {
      */
     public void setPlanningDocument(String planningDocument) {
         this.planningDocument = planningDocument;
-    }
-
-    /**
-     * Returns the GitHub organization name for this job.
-     * When set, the {@code AR_GITHUB_ORG} env var is injected into
-     * the ar-github MCP server entry.
-     */
-    public String getGithubOrg() {
-        return githubOrg;
-    }
-
-    /**
-     * Sets the GitHub organization name for org-based token selection.
-     *
-     * @param githubOrg the GitHub organization name
-     */
-    public void setGithubOrg(String githubOrg) {
-        this.githubOrg = githubOrg;
     }
 
     /**
@@ -526,6 +522,15 @@ public class ClaudeCodeJob extends GitManagedJob {
      */
     public void setDeduplicationMode(String deduplicationMode) {
         this.deduplicationMode = deduplicationMode;
+    }
+
+    /** Returns the per-job deduplication pass cap; defaults to {@link #DEFAULT_MAX_DEDUP_PASSES}. */
+    public int getMaxDeduplicationPasses() { return maxDeduplicationPasses; }
+    /** Sets the per-job deduplication pass cap; must be positive (see {@link #DEFAULT_MAX_DEDUP_PASSES}). */
+    public void setMaxDeduplicationPasses(int maxDeduplicationPasses) {
+        if (maxDeduplicationPasses <= 0)
+            throw new IllegalArgumentException("maxDeduplicationPasses must be positive, got: " + maxDeduplicationPasses);
+        this.maxDeduplicationPasses = maxDeduplicationPasses;
     }
 
     /**
@@ -592,6 +597,9 @@ public class ClaudeCodeJob extends GitManagedJob {
     /** Sets the post-completion command timeout in seconds. */
     public void setPostCompletionTimeoutSeconds(int postCompletionTimeoutSeconds) { this.postCompletionTimeoutSeconds = postCompletionTimeoutSeconds; }
 
+    /** Sets the current correction-session rule name; null for primary work. Package-private for tests. */
+    void setCurrentActivity(String currentActivity) { this.currentActivity = currentActivity; }
+
     /**
      * Registers an additional enforcement rule to run after the agent completes
      * its primary work.
@@ -632,21 +640,22 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /**
      * Builds the full instruction prompt that wraps the user's request
-     * with operational context for autonomous execution.
-     *
-     * <p>Sections are conditionally included based on the job's configuration:
-     * Messaging instructions appear only when a workstream URL is configured,
-     * GitHub instructions only when the MCP config includes ar-github,
-     * commit.txt instructions only when git management is active, and
-     * budget/turn/task/workstream context is included when available.</p>
+     * with operational context for autonomous execution. When this job is
+     * running an enforcement-rule correction session (non-null
+     * {@link #currentActivity}), the outer {@code enforceChanges} preamble
+     * and the enforcement-attempt retry preamble are suppressed so rule
+     * correction prompts (which may accept "no changes" as resolution)
+     * are not contradicted by the harness preamble.
      */
-    private String buildInstructionPrompt() {
+    String buildInstructionPrompt() {
+        boolean inRuleCorrection = currentActivity != null && !currentActivity.isEmpty();
         return new InstructionPromptBuilder()
                 .setPrompt(prompt)
                 .setWorkstreamUrl(getWorkstreamUrl())
                 .setProtectTestFiles(isProtectTestFiles())
                 .setEnforceChanges(enforceChanges)
                 .setEnforcementAttempt(enforcementAttempt)
+                .setCorrectionSession(inRuleCorrection)
                 .setBaseBranch(getBaseBranch())
                 .setTargetBranch(getTargetBranch())
                 .setWorkingDirectory(getWorkingDirectory())
@@ -669,6 +678,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     private void configureMcpBuilder() {
         mcpConfigBuilder.setArManagerUrl(arManagerUrl);
         mcpConfigBuilder.setArManagerToken(arManagerToken);
+        mcpConfigBuilder.setPushedToolsConfig(pushedToolsConfig);
         mcpConfigBuilder.setPythonCommand(getPythonCommand());
         Path workDir = getWorkingDirectory() != null
             ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
@@ -716,7 +726,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             rules.add(new EnforceChangesRule());
         }
         if (DEDUP_LOCAL.equals(deduplicationMode)) {
-            rules.add(new DeduplicationRule());
+            rules.add(new DeduplicationRule(maxDeduplicationPasses));
         }
         if (enforceOrganizationalPlacement) {
             rules.add(new OrganizationalPlacementRule());
@@ -956,9 +966,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                     + " of " + (maxInactivityRestarts + 1));
         }
 
-        Path mcpWorkDir = getWorkingDirectory() != null
-            ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
-        toolsDownloader.verifyMcpToolFiles(mcpWorkDir);
+        toolsDownloader.ensurePushedTools(pushedToolsConfig);
 
         command.add("--mcp-config");
         command.add(mcpConfigBuilder.buildMcpConfig());
@@ -971,9 +979,9 @@ public class ClaudeCodeJob extends GitManagedJob {
 
         String wsUrl = resolveWorkstreamUrl();
         if (wsUrl != null && !wsUrl.isEmpty()) {
-            pb.environment().put("AR_WORKSTREAM_URL", wsUrl);
             log("AR_WORKSTREAM_URL: " + wsUrl);
         }
+        mcpConfigBuilder.applyAgentEnvironment(pb.environment(), wsUrl);
 
         if (currentActivity != null && !currentActivity.isEmpty()) {
             pb.environment().put("AR_AGENT_ACTIVITY", currentActivity);
@@ -1476,6 +1484,9 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (arManagerToken != null) {
             sb.append("::arManagerToken:=").append(base64Encode(arManagerToken));
         }
+        if (pushedToolsConfig != null) {
+            sb.append("::pushedTools:=").append(base64Encode(pushedToolsConfig));
+        }
         if (planningDocument != null) {
             sb.append("::planDoc:=").append(base64Encode(planningDocument));
         }
@@ -1483,6 +1494,9 @@ public class ClaudeCodeJob extends GitManagedJob {
         sb.append("::enforceChanges:=").append(enforceChanges);
         if (deduplicationMode != null) {
             sb.append("::dedupMode:=").append(deduplicationMode);
+        }
+        if (maxDeduplicationPasses != DEFAULT_MAX_DEDUP_PASSES) {
+            sb.append("::maxDedupPasses:=").append(maxDeduplicationPasses);
         }
         if (enforceMavenDependencies) {
             sb.append("::enforceMavenDeps:=true");
@@ -1529,6 +1543,9 @@ public class ClaudeCodeJob extends GitManagedJob {
             case "arManagerToken":
                 this.arManagerToken = base64Decode(value);
                 break;
+            case "pushedTools":
+                this.pushedToolsConfig = base64Decode(value);
+                break;
             case "planDoc":
                 this.planningDocument = base64Decode(value);
                 break;
@@ -1540,6 +1557,10 @@ public class ClaudeCodeJob extends GitManagedJob {
                 break;
             case "dedupMode":
                 this.deduplicationMode = value;
+                break;
+            case "maxDedupPasses":
+                try { int p = Integer.parseInt(value); this.maxDeduplicationPasses = p > 0 ? p : DEFAULT_MAX_DEDUP_PASSES; }
+                catch (NumberFormatException e) { this.maxDeduplicationPasses = DEFAULT_MAX_DEDUP_PASSES; }
                 break;
             case "enforceMavenDeps":
                 this.enforceMavenDependencies = Boolean.parseBoolean(value);
@@ -1563,31 +1584,16 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Backward-compatible alias for {@link ClaudeCodeJobFactory}.
-     *
-     * <p>New code should reference {@link ClaudeCodeJobFactory} directly.
-     * This subclass exists so that existing call sites using
-     * {@code new ClaudeCodeJob.Factory(...)} and serialized wire-format
-     * strings containing {@code ClaudeCodeJob$Factory} continue to work.</p>
+     * Backward-compatible alias for {@link ClaudeCodeJobFactory}; new code should use that class directly.
+     * Exists so that {@code new ClaudeCodeJob.Factory(...)} call sites and
+     * {@code ClaudeCodeJob$Factory} wire-format strings continue to work.
      */
     public static class Factory extends ClaudeCodeJobFactory {
-        /**
-         * Default constructor for deserialization.
-         */
+        /** Default constructor for deserialization. */
         public Factory() { super(); }
-
-        /**
-         * Creates a factory with the specified prompts.
-         *
-         * @param prompts the prompts to process
-         */
+        /** Creates a factory with the specified prompts. */
         public Factory(String... prompts) { super(prompts); }
-
-        /**
-         * Creates a factory with the specified prompts list.
-         *
-         * @param prompts the list of prompts to process
-         */
+        /** Creates a factory with the specified prompts list. */
         public Factory(List<String> prompts) { super(prompts); }
     }
 }

@@ -32,13 +32,13 @@ import java.util.regex.Pattern;
  * <p>Supports three common MCP server patterns:</p>
  * <ul>
  *   <li><b>Decorator pattern:</b> {@code @mcp.tool()} decorating individual
- *       {@code def function_name()} definitions (used by ar-messages, ar-memory,
- *       ar-consultant, ar-profile-analyzer)</li>
+ *       {@code def function_name()} definitions (used by ar-manager, ar-memory,
+ *       ar-consultant, ar-profile-analyzer, ar-secrets)</li>
  *   <li><b>List-tools pattern:</b> {@code @server.list_tools()} returning a
  *       list of {@code Tool(name="tool_name", ...)} entries (used by
  *       ar-test-runner, ar-jmx, ar-docs)</li>
  *   <li><b>Dynamic registration pattern:</b> {@code server.tool()(fn)} calls
- *       in a loop over a list of function references (used by ar-github)</li>
+ *       in a loop over a list of function references</li>
  * </ul>
  *
  * <p>Used by both {@link ClaudeCodeJob} (for local servers) and

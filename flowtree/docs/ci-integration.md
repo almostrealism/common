@@ -284,7 +284,7 @@ POST /api/workstreams/{workstreamId}/messages
 Content-Type: application/json
 ```
 
-Used by agents to store messages and send notifications during job execution. The `ar-messages` MCP tool calls this endpoint.
+Used by agents to store messages and send notifications during job execution. `ar-manager`'s `send_message` MCP tool calls this endpoint.
 
 **Request Body:**
 

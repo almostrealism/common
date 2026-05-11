@@ -192,20 +192,6 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	}
 
 	@Test(timeout = 30000)
-	public void discoverFromActualGitHub() {
-		Path serverFile = Path.of("tools/mcp/github/server.py");
-		if (!Files.exists(serverFile)) return;
-
-		List<String> tools = McpToolDiscovery.discoverToolNames(serverFile);
-		assertTrue("Expected at least 4 tools from ar-github, got " + tools.size(),
-			tools.size() >= 4);
-		assertTrue("Expected github_pr_find", tools.contains("github_pr_find"));
-		assertTrue("Expected github_pr_review_comments", tools.contains("github_pr_review_comments"));
-		assertTrue("Expected github_pr_conversation", tools.contains("github_pr_conversation"));
-		assertTrue("Expected github_pr_reply", tools.contains("github_pr_reply"));
-	}
-
-	@Test(timeout = 30000)
 	public void missingFileReturnsEmpty() {
 		List<String> tools = McpToolDiscovery.discoverToolNames(Path.of("/nonexistent/server.py"));
 		assertTrue(tools.isEmpty());
@@ -386,6 +372,8 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			submitParams.contains("effort"));
 		assertTrue("workstream_submit_task must declare post_completion_command in signature",
 			submitParams.contains("post_completion_command"));
+		assertTrue("workstream_submit_task must declare max_deduplication_passes in signature",
+			submitParams.contains("max_deduplication_passes"));
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");

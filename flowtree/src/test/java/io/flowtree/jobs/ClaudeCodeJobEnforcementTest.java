@@ -426,6 +426,89 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		assertEquals("maven_dependency_protection", capturedActivity.get());
 	}
 
+	// ── enforce_changes suppression during rule correction sessions ─────────
+
+	/**
+	 * When {@code enforce_changes} is enabled on the outer job, the primary
+	 * work prompt carries the strict "Code Changes Are Required" preamble.
+	 * Verifies the wiring through {@link ClaudeCodeJob#buildInstructionPrompt()}.
+	 */
+	@Test(timeout = 30000)
+	public void primaryPromptCarriesEnforceChangesStrictBlock() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do the work");
+		job.setEnforceChanges(true);
+		job.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1");
+
+		String primary = job.buildInstructionPrompt();
+		assertTrue("Primary prompt with enforceChanges should carry strict block",
+				primary.contains("Code Changes Are Required"));
+	}
+
+	/**
+	 * The enforcement-rule correction sessions for rules whose
+	 * {@code buildCorrectionPrompt} returns a non-null value (deduplication,
+	 * organizational placement, maven dependency protection, post-completion
+	 * command) must NOT carry the outer {@code enforce_changes} strict preamble.
+	 * The rule's own correction prompt is self-contained and may legitimately
+	 * accept "no changes needed" as a valid outcome.
+	 *
+	 * <p>This test verifies the wiring from {@link ClaudeCodeJob#setCurrentActivity(String)}
+	 * through {@link ClaudeCodeJob#buildInstructionPrompt()} to
+	 * {@link InstructionPromptBuilder#setCorrectionSession(boolean)}.</p>
+	 */
+	@Test(timeout = 30000)
+	public void correctionSessionPromptOmitsEnforceChangesStrictBlock() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "rule correction prompt");
+		job.setEnforceChanges(true);
+		job.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1");
+
+		// Simulate the state runCorrectionSession sets while invoking the agent.
+		job.setCurrentActivity("deduplication");
+
+		String correction = job.buildInstructionPrompt();
+		assertFalse("Correction-session prompt must not include 'Code Changes Are Required'",
+				correction.contains("Code Changes Are Required"));
+		assertFalse("Correction-session prompt must not include the 'Exiting without code changes' threat",
+				correction.contains("Exiting without code changes"));
+		assertTrue("Correction-session prompt must include the permissive Non-Code Requests block",
+				correction.contains("Non-Code Requests"));
+	}
+
+	/**
+	 * Sanity check: clearing the activity restores primary-session behaviour
+	 * so the outer enforce_changes pressure resumes for the next primary run.
+	 */
+	@Test(timeout = 30000)
+	public void clearingCurrentActivityRestoresPrimaryPromptBehaviour() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "primary prompt");
+		job.setEnforceChanges(true);
+		job.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1");
+
+		job.setCurrentActivity("organizational-placement");
+		assertFalse(job.buildInstructionPrompt().contains("Code Changes Are Required"));
+
+		job.setCurrentActivity(null);
+		assertTrue("Strict block returns once activity is cleared",
+				job.buildInstructionPrompt().contains("Code Changes Are Required"));
+	}
+
+	/**
+	 * The harness_feedback invitation is included in primary prompts when a
+	 * workstream URL is configured.  Verifies the wiring through
+	 * {@link ClaudeCodeJob#buildInstructionPrompt()}.
+	 */
+	@Test(timeout = 30000)
+	public void primaryPromptIncludesHarnessFeedbackInvitation() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do the work");
+		job.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1");
+
+		String primary = job.buildInstructionPrompt();
+		assertTrue("Primary prompt should invite harness_feedback messages",
+				primary.contains("harness_feedback"));
+		assertTrue("Primary prompt should include the Feedback to the Harness section",
+				primary.contains("Feedback to the Harness"));
+	}
+
 	// ── Backward compatibility ───────────────────────────────────────────────
 
 	@Test(timeout = 30000)
@@ -1065,5 +1148,323 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		assertNotNull(rule.getLastOutput());
 		assertTrue("Captured output should be non-empty",
 				rule.getLastOutput().length() > 0);
+	}
+
+	// ── DeduplicationRule pass cap ───────────────────────────────────────────
+
+	/**
+	 * Pins the default cap constant so silent regressions are caught.
+	 */
+	@Test(timeout = 30000)
+	public void defaultDeduplicationPassCapIsTwo() {
+		assertEquals(2, ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES);
+	}
+
+	/**
+	 * The pass cap must be exposed via {@link EnforcementRule#getMaxRetries()} so
+	 * the enforcement framework can bound the correction loop. This keeps
+	 * {@link EnforcementRule#isViolated(ClaudeCodeJob)} honest — it always reflects
+	 * the actual violation state rather than returning {@code false} to stop the loop.
+	 */
+	@Test(timeout = 30000)
+	public void deduplicationRuleCapExposedViaGetMaxRetries() {
+		assertEquals(ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, new DeduplicationRule().getMaxRetries());
+		assertEquals(5, new DeduplicationRule(5).getMaxRetries());
+		assertEquals(1, new DeduplicationRule(1).getMaxRetries());
+	}
+
+	/**
+	 * DeduplicationRule with default cap (2): the enforcement loop (simulated here
+	 * using the same {@code attempts < getMaxRetries()} guard the framework uses)
+	 * must stop after 2 correction attempts.
+	 *
+	 * <p>{@link EnforcementRule#isViolated} must continue to return {@code true}
+	 * after the cap is reached if duplicates still exist — the cap is enforced by
+	 * the framework counting attempts, not by {@code isViolated} returning
+	 * {@code false}.</p>
+	 */
+	@Test(timeout = 30000)
+	public void deduplicationRuleCapStopsAfterDefaultTwoPasses() {
+		List<String> items = new ArrayList<>(List.of("methodA", "methodB", "methodC"));
+		DeduplicationRule rule = new DeduplicationRule() {
+			@Override
+			protected List<String> extractItems(ClaudeCodeJob job) {
+				return new ArrayList<>(items);
+			}
+		};
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+
+		// Simulate the runEnforcementRules() while loop using getMaxRetries() as cap.
+		int attempts = 0;
+		if (rule.isViolated(job)) {
+			while (attempts < rule.getMaxRetries() && rule.isViolated(job)) {
+				if (!items.isEmpty()) items.remove(0); // agent removes one method per pass
+				rule.onCorrectionAttempted(job);
+				attempts++;
+			}
+		}
+		// Default cap of 2 must bound the enforcement loop.
+		assertEquals("Default cap of 2 must bound enforcement loop", 2, attempts);
+		// isViolated must still accurately report violations after the cap.
+		assertTrue("isViolated must still be true because items remain", rule.isViolated(job));
+	}
+
+	/**
+	 * DeduplicationRule with cap=5: the enforcement loop simulation runs exactly
+	 * 5 correction attempts.
+	 */
+	@Test(timeout = 30000)
+	public void deduplicationRuleCapFiveAllowsFivePasses() {
+		List<String> items = new ArrayList<>();
+		for (int i = 0; i < 10; i++) items.add("method" + i);
+
+		DeduplicationRule rule = new DeduplicationRule(5) {
+			@Override
+			protected List<String> extractItems(ClaudeCodeJob job) {
+				return new ArrayList<>(items);
+			}
+		};
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		assertEquals(5, rule.getMaxRetries());
+
+		int attempts = 0;
+		if (rule.isViolated(job)) {
+			while (attempts < rule.getMaxRetries() && rule.isViolated(job)) {
+				if (!items.isEmpty()) items.remove(0);
+				rule.onCorrectionAttempted(job);
+				attempts++;
+			}
+		}
+		assertEquals("Cap of 5 must bound enforcement loop to exactly 5 attempts", 5, attempts);
+		assertTrue("isViolated must still be true because items remain", rule.isViolated(job));
+	}
+
+	/**
+	 * DeduplicationRule with cap=1: the enforcement loop simulation runs exactly
+	 * 1 correction attempt.
+	 */
+	@Test(timeout = 30000)
+	public void deduplicationRuleCapOneAllowsSinglePass() {
+		List<String> items = new ArrayList<>(List.of("methodA", "methodB"));
+
+		DeduplicationRule rule = new DeduplicationRule(1) {
+			@Override
+			protected List<String> extractItems(ClaudeCodeJob job) {
+				return new ArrayList<>(items);
+			}
+		};
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		assertEquals(1, rule.getMaxRetries());
+
+		int attempts = 0;
+		if (rule.isViolated(job)) {
+			while (attempts < rule.getMaxRetries() && rule.isViolated(job)) {
+				items.remove("methodB");
+				rule.onCorrectionAttempted(job);
+				attempts++;
+			}
+		}
+		assertEquals("Cap of 1 must bound enforcement loop to exactly 1 attempt", 1, attempts);
+		assertTrue("isViolated must still be true because items remain", rule.isViolated(job));
+	}
+
+	/**
+	 * The early-exit on unchanged method set still works independently of the cap.
+	 * When the agent makes no changes, the rule should exit before hitting the cap.
+	 */
+	@Test(timeout = 30000)
+	public void deduplicationRuleEarlyExitOnUnchangedSetBeforeCap() {
+		List<String> items = new ArrayList<>(List.of("methodA"));
+
+		DeduplicationRule rule = new DeduplicationRule(5) { // cap is 5
+			@Override
+			protected List<String> extractItems(ClaudeCodeJob job) {
+				return new ArrayList<>(items);
+			}
+		};
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+
+		// outer if + while condition
+		assertTrue(rule.isViolated(job));
+		assertTrue(rule.isViolated(job));
+
+		// Agent made no changes: onCorrectionAttempted should set resolved = true
+		rule.onCorrectionAttempted(job); // set unchanged → resolved
+
+		// Resolved by unchanged-set logic — must return false even though cap not yet reached
+		assertFalse("Unchanged set must trigger early exit before cap", rule.isViolated(job));
+	}
+
+	// ── DeduplicationRule input validation ───────────────────────────────────
+
+	/**
+	 * Constructor must reject non-positive maxPasses to prevent accidental deduplication
+	 * disablement.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void deduplicationRuleConstructorRejectsZero() {
+		new DeduplicationRule(0);
+	}
+
+	/**
+	 * Constructor must reject negative maxPasses.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void deduplicationRuleConstructorRejectsNegative() {
+		new DeduplicationRule(-1);
+	}
+
+	/**
+	 * {@link ClaudeCodeJob#setMaxDeduplicationPasses(int)} must reject non-positive values.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void setMaxDeduplicationPassesRejectsZero() {
+		new ClaudeCodeJob("t1", "test").setMaxDeduplicationPasses(0);
+	}
+
+	/**
+	 * {@link ClaudeCodeJob#setMaxDeduplicationPasses(int)} must reject negative values.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void setMaxDeduplicationPassesRejectsNegative() {
+		new ClaudeCodeJob("t1", "test").setMaxDeduplicationPasses(-5);
+	}
+
+	/**
+	 * {@link ClaudeCodeJobFactory#setMaxDeduplicationPasses(int)} must reject non-positive values.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void factorySetMaxDeduplicationPassesRejectsZero() {
+		new ClaudeCodeJobFactory("prompt").setMaxDeduplicationPasses(0);
+	}
+
+	/**
+	 * Deserialization must fall back to the default when the wire value is empty,
+	 * rather than throwing {@code NumberFormatException}.
+	 */
+	@Test(timeout = 30000)
+	public void maxDeduplicationPassesDeserializationFallsBackOnEmptyString() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		job.setMaxDeduplicationPasses(3);
+		job.set("maxDedupPasses", "");
+		assertEquals("Empty string must fall back to default",
+				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, job.getMaxDeduplicationPasses());
+	}
+
+	/**
+	 * Deserialization must fall back to the default when the wire value is non-numeric.
+	 */
+	@Test(timeout = 30000)
+	public void maxDeduplicationPassesDeserializationFallsBackOnInvalidString() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		job.set("maxDedupPasses", "notanumber");
+		assertEquals("Non-numeric value must fall back to default",
+				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, job.getMaxDeduplicationPasses());
+	}
+
+	/**
+	 * Deserialization must fall back to the default when the wire value is non-positive.
+	 */
+	@Test(timeout = 30000)
+	public void maxDeduplicationPassesDeserializationFallsBackOnNonPositive() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		job.set("maxDedupPasses", "0");
+		assertEquals("Zero must fall back to default",
+				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, job.getMaxDeduplicationPasses());
+
+		job.set("maxDedupPasses", "-3");
+		assertEquals("Negative must fall back to default",
+				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, job.getMaxDeduplicationPasses());
+	}
+
+	/**
+	 * Factory deserialization must fall back to the default when the wire value is empty.
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxDeduplicationPassesDeserializationFallsBackOnEmptyString() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		factory.setMaxDeduplicationPasses(4);
+		factory.set("maxDedupPasses", "");
+		assertEquals("Factory: empty string must fall back to default",
+				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, factory.getMaxDeduplicationPasses());
+	}
+
+	/**
+	 * Factory deserialization must fall back to the default when the wire value is non-positive.
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxDeduplicationPassesDeserializationFallsBackOnNonPositive() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		factory.set("maxDedupPasses", "0");
+		assertEquals("Factory: zero must fall back to default",
+				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, factory.getMaxDeduplicationPasses());
+	}
+
+	/**
+	 * maxDeduplicationPasses round-trips through encode/decode (non-default value).
+	 */
+	@Test(timeout = 30000)
+	public void maxDeduplicationPassesRoundTripEncodeDecode() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		job.setDeduplicationMode(ClaudeCodeJob.DEDUP_LOCAL);
+		job.setMaxDeduplicationPasses(5);
+		String encoded = job.encode();
+		assertNotNull(encoded);
+		assertTrue("Wire format must contain maxDedupPasses:=5",
+				encoded.contains("maxDedupPasses:=5"));
+
+		ClaudeCodeJob restored = new ClaudeCodeJob();
+		for (String part : encoded.split("::")) {
+			int sep = part.indexOf(":=");
+			if (sep > 0) {
+				restored.set(part.substring(0, sep), part.substring(sep + 2));
+			}
+		}
+		assertEquals(5, restored.getMaxDeduplicationPasses());
+	}
+
+	/**
+	 * The default value (2) must not appear in the wire format to keep it compact.
+	 */
+	@Test(timeout = 30000)
+	public void maxDeduplicationPassesDefaultAbsentFromWireFormat() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		String encoded = job.encode();
+		assertFalse("Default maxDedupPasses must not appear in wire format",
+				encoded.contains("maxDedupPasses"));
+	}
+
+	/**
+	 * Factory propagates the non-default cap to the job created by nextJob().
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxDeduplicationPassesPropagatesToJob() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do something");
+		factory.setMaxDeduplicationPasses(4);
+		ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+		assertNotNull(job);
+		assertEquals(4, job.getMaxDeduplicationPasses());
+	}
+
+	/**
+	 * Factory default cap matches the ClaudeCodeJob constant.
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxDeduplicationPassesDefaultIsTwo() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		assertEquals(ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, factory.getMaxDeduplicationPasses());
+	}
+
+	/**
+	 * Factory maxDeduplicationPasses round-trips through the set() deserialization path.
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxDeduplicationPassesRoundTripViaSet() {
+		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		factory.set("maxDedupPasses", "3");
+		assertEquals(3, factory.getMaxDeduplicationPasses());
+
+		factory.set("maxDedupPasses", "1");
+		assertEquals(1, factory.getMaxDeduplicationPasses());
 	}
 }
