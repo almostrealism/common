@@ -173,4 +173,120 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 		assertFalse("Expected no inactivity restart warning when attempt == 0",
 			result.contains("SESSION RESTARTED -- INACTIVITY TIMEOUT"));
 	}
+
+	// ── Correction-session preamble suppression ─────────────────────────────
+
+	@Test(timeout = 30000)
+	public void primarySessionWithEnforceChangesIncludesStrictBlock() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1")
+			.setEnforceChanges(true)
+			.build();
+		assertTrue("Primary session with enforceChanges should include the strict block",
+			result.contains("Code Changes Are Required"));
+	}
+
+	@Test(timeout = 30000)
+	public void correctionSessionSuppressesEnforceChangesStrictBlock() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("rule correction prompt")
+			.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1")
+			.setEnforceChanges(true)
+			.setCorrectionSession(true)
+			.build();
+		assertFalse("Correction session must not include the outer enforceChanges strict block",
+			result.contains("Code Changes Are Required"));
+		assertFalse("Correction session must not include the 'Exiting without code changes' threat",
+			result.contains("Exiting without code changes"));
+	}
+
+	@Test(timeout = 30000)
+	public void correctionSessionStillIncludesPermissivePromptsWhenWorkstreamUrlSet() {
+		// When enforce_changes is true on the outer job but we are inside a
+		// correction session, the permissive "no changes is OK" block must
+		// appear in place of the strict block so the rule can legitimately
+		// exit without changes.
+		String result = new InstructionPromptBuilder()
+			.setPrompt("rule correction prompt")
+			.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1")
+			.setEnforceChanges(true)
+			.setCorrectionSession(true)
+			.build();
+		assertTrue("Correction session must include the permissive Non-Code Requests block",
+			result.contains("Non-Code Requests"));
+		assertTrue("Correction session must include the Justifying No Code Changes block",
+			result.contains("Justifying No Code Changes"));
+	}
+
+	@Test(timeout = 30000)
+	public void primarySessionIncludesEnforcementRetryPreamble() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.setEnforcementAttempt(2)
+			.build();
+		assertTrue("Primary session with attempt > 0 must include retry preamble",
+			result.contains("SESSION RESTARTED -- ATTEMPT"));
+	}
+
+	@Test(timeout = 30000)
+	public void correctionSessionSuppressesEnforcementRetryPreamble() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("rule correction prompt")
+			.setEnforcementAttempt(2)
+			.setCorrectionSession(true)
+			.build();
+		assertFalse("Correction session must not include the retry preamble",
+			result.contains("SESSION RESTARTED -- ATTEMPT"));
+	}
+
+	// ── Harness-feedback invitation ─────────────────────────────────────────
+
+	@Test(timeout = 30000)
+	public void harnessFeedbackInvitationAppearsWhenWorkstreamUrlSet() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1")
+			.build();
+		assertTrue("Harness feedback section must appear when workstream URL is set",
+			result.contains("Feedback to the Harness"));
+		assertTrue("Harness feedback must reference activity=\"harness_feedback\"",
+			result.contains("harness_feedback"));
+	}
+
+	@Test(timeout = 30000)
+	public void harnessFeedbackInvitationAbsentWithoutWorkstreamUrl() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.build();
+		assertFalse("Harness feedback should not appear without a workstream URL",
+			result.contains("Feedback to the Harness"));
+	}
+
+	@Test(timeout = 30000)
+	public void harnessFeedbackInvitationAppearsInCorrectionSessions() {
+		// The feedback invitation should be visible in both primary and
+		// correction prompts so agents can flag harness issues from any phase.
+		String result = new InstructionPromptBuilder()
+			.setPrompt("rule correction prompt")
+			.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1")
+			.setCorrectionSession(true)
+			.build();
+		assertTrue("Harness feedback section must also appear in correction prompts",
+			result.contains("Feedback to the Harness"));
+	}
+
+	@Test(timeout = 30000)
+	public void harnessFeedbackInvitationAppearsBeforeUserRequestMarker() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("task body")
+			.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1")
+			.build();
+		int feedbackIdx = result.indexOf("Feedback to the Harness");
+		int requestIdx = result.indexOf("--- BEGIN USER REQUEST ---");
+		assertTrue("Feedback section should appear in the prompt", feedbackIdx >= 0);
+		assertTrue("User request marker should appear in the prompt", requestIdx >= 0);
+		assertTrue("Feedback section should precede the user request marker",
+			feedbackIdx < requestIdx);
+	}
 }

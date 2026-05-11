@@ -174,11 +174,11 @@ workstream_submit_task(
 
 Claude Code sessions started by `ClaudeCodeJob` automatically have access to these MCP tools:
 
-- **ar-messages** — Store messages in the memory database and optionally notify the Slack channel, plus query job statistics via the controller's `FlowTreeApiEndpoint`
-- **ar-github** — Read and respond to GitHub PR review comments
-- **Project servers** — Any servers defined in `.mcp.json` (filtered by `.claude/settings.json`) are included automatically
+- **ar-manager** — A centralized HTTP MCP server providing Slack messaging (`send_message`), GitHub PR operations (`github_pr_*`, `github_read_file`, `github_request_copilot_review`), memory access (`memory_recall`, `memory_store`), workstream context (`workstream_context`, `workstream_get_status`, `workstream_submit_task`), and read-only tracker queries. Replaces the legacy `ar-messages` and `ar-github` pushed tools that were consolidated into ar-manager.
+- **ar-secrets** — A small in-container stdio MCP server that renders workspace secrets into files on the agent's local filesystem (`secret_list_names`, `secret_render_file`).
+- **Project servers** — Any servers defined in `.mcp.json` (filtered by `.claude/settings.json`) are included automatically.
 
-These tools are appended to `--allowedTools` regardless of the configured allowlist. The `ar-messages` tool uses the `AR_WORKSTREAM_URL` environment variable (derived from `workstreamUrl`) to route messages to the correct channel.
+The ar-manager tool list is appended to `--allowedTools` automatically whenever the job has both an ar-manager URL and an `armt_tmp_*` bearer token. ar-manager reads the workstream URL forwarded from the controller to route `send_message` events to the correct workstream.
 
 ### Centralized MCP Servers
 
@@ -191,8 +191,8 @@ When the controller's YAML config includes an `mcpServers` section, those server
 
 | Server | Mode | Reason |
 |--------|------|--------|
-| ar-messages | Pushed | Depends on per-job `AR_WORKSTREAM_URL` |
-| ar-github | Pushed | Depends on local git repo/branch |
+| ar-manager | Centralized HTTP | Single internet-facing endpoint; bearer-token auth scoped per job |
+| ar-secrets | Project (stdio in agent container) | Must write rendered credential files in the agent's filesystem namespace |
 | ar-memory | Centralized | SQLite + FAISS state shared across agents |
 | ar-consultant | Centralized | Memory + history DB; must be shared |
 | ar-docs | Local (.mcp.json) | Project-specific repo docs |
@@ -212,52 +212,19 @@ When `centralizedMcpConfig` is set on a job, `buildMcpConfig()` emits `{"type":"
 
 ### Pushed Tools
 
-Some MCP tools cannot run as centralized HTTP servers because they depend on per-job state:
+Pushed tools are an optional mechanism for serving an MCP server's Python source file from the controller and having the agent download it to `~/.flowtree/tools/mcp/{name}/server.py` before launch. The scaffolding remains available in `FlowTreeController.registerPushedTools()` and `ManagedToolsDownloader` for future use, but the standard configuration does not declare any pushed tools — `ar-manager` (centralized HTTP) and `ar-secrets` (a project stdio server bundled in `tools/mcp/secrets/`) cover the agent's needs.
 
-- **ar-messages** reads `AR_WORKSTREAM_URL` at module load time, and each agent job has a different workstream URL
-- **ar-github** detects the local git branch via subprocess, so it must run inside the agent's working directory
-
-These tools are **pushed** to dev containers: the controller serves the Python source files over HTTP, and `ClaudeCodeJob` downloads them to `~/.flowtree/tools/mcp/{name}/server.py` before starting Claude Code.
-
-**YAML configuration:**
+If a deployment does declare pushed tools in `workstreams.yaml`:
 
 ```yaml
 pushedTools:
-  ar-messages:
-    source: tools/mcp/messages/server.py
-  ar-github:
-    source: tools/mcp/github/server.py
+  my-helper:
+    source: path/to/server.py
     env:
-      GITHUB_TOKEN: ghp_your_token_here
+      MY_HELPER_OPTION: "value"
 ```
 
-Each entry supports an optional `env` map of environment variables that are injected into the MCP stdio config as defaults. Per-workstream overrides are also supported via the `env` field on each workstream entry:
-
-```yaml
-workstreams:
-  - channelId: "C0123456789"
-    channelName: "#org-a-agent"
-    env:
-      GITHUB_TOKEN: ghp_org_a_token
-
-  - channelId: "C9876543210"
-    channelName: "#org-b-agent"
-    env:
-      GITHUB_TOKEN: ghp_org_b_token
-```
-
-When both are present, workstream-level env vars override the global pushed tool defaults. This allows different workstreams to target repos in different GitHub orgs without modifying the tool source or the container's global environment.
-
-**How it works:**
-
-1. At startup, `FlowTreeController.registerPushedTools()` resolves each source path, discovers tool names via `McpToolDiscovery`, and registers the files with `FlowTreeApiEndpoint` for serving via `GET /api/tools/{name}`.
-2. The resulting `pushedToolsConfig` JSON (mapping server names to download URLs and tool lists) is stored on `SlackListener` and passed to every `ClaudeCodeJob.Factory`.
-3. At job execution time, `ClaudeCodeJob.ensurePushedTools()` downloads any missing tools from the controller to `~/.flowtree/tools/mcp/{name}/server.py`.
-4. `buildMcpConfig()` emits stdio entries pointing to `~/.flowtree/tools/mcp/{name}/server.py` for pushed tools.
-
-**Download-on-first-use:** Tools are only downloaded once per container. Subsequent jobs reuse the files already present in `~/.flowtree/tools/`. The `FLOWTREE_ROOT_HOST` environment variable is used to resolve the `0.0.0.0` placeholder in download URLs.
-
-**Backward compatibility:** When the `pushedTools` section is absent from the YAML, ar-messages and ar-github fall back to the hardcoded `tools/mcp/` paths (requiring the files to exist locally in the project directory).
+each entry supports an optional `env` map of environment variables that are injected into the MCP stdio config as defaults. Per-workstream overrides are also supported via the `env` field on each workstream entry. When both are present, workstream-level env vars override the global pushed tool defaults.
 
 ### McpToolDiscovery
 

@@ -945,9 +945,9 @@ The configuration arrives as a JSON string in the `centralizedMcpConfig` field:
 
 ```json
 {
-    "ar-messages": {
-        "url": "http://0.0.0.0:8080/mcp/ar-messages",
-        "tools": ["send_message", "get_stats"]
+    "ar-manager": {
+        "url": "http://0.0.0.0:8010",
+        "tools": ["send_message", "github_pr_find", "memory_recall"]
     },
     "ar-consultant": {
         "url": "http://0.0.0.0:8080/mcp/ar-consultant",
@@ -964,9 +964,10 @@ In the final `--mcp-config` JSON, centralized servers appear as HTTP entries:
 ```json
 {
     "mcpServers": {
-        "ar-messages": {
+        "ar-manager": {
             "type": "http",
-            "url": "http://192.168.1.100:8080/mcp/ar-messages"
+            "url": "http://192.168.1.100:8010",
+            "headers": {"Authorization": "Bearer armt_tmp_..."}
         }
     }
 }
@@ -1037,7 +1038,7 @@ consulted to determine which servers are enabled.
 1. Read `.mcp.json` from the working directory.
 2. Extract server names and their Python source file paths.
 3. Read `.claude/settings.json` to get the `enabledMcpjsonServers` list.
-4. Filter out `ar-github` and `ar-messages` (handled separately).
+4. Filter out the `ar-manager` server (it is always handled separately as the centralized HTTP entry).
 5. Filter out any servers already covered by centralized or pushed configs.
 6. Return the remaining servers.
 
@@ -1045,20 +1046,14 @@ For each discovered project server, `McpToolDiscovery.discoverToolNames()` parse
 Python source file to extract the tool function names, so they can be added to the
 `--allowedTools` list.
 
-### Special Servers: ar-github and ar-messages
+### Consolidated Functionality: ar-manager
 
-Two MCP servers receive special treatment because they are always needed (ar-github) or
-conditionally needed (ar-messages):
-
-**ar-github** is always included. Its tools (`github_pr_find`, `github_pr_review_comments`,
-`github_pr_conversation`, `github_pr_reply`) are essential for reading and responding to
-PR review comments. If ar-github is not provided via centralized or pushed configs, a stdio
-fallback is added pointing to `tools/mcp/github/server.py` in the working directory.
-
-**ar-messages** is included only when a `workstreamUrl` is configured (i.e., the job has a
-communication channel back to the user). Its tool (`send_message`) allows the agent
-to store messages and post status updates. Like ar-github, if not centralized or pushed, a stdio fallback is
-used pointing to `tools/mcp/messages/server.py`.
+The capabilities previously provided by the standalone `ar-github` and `ar-messages` MCP
+servers (PR review comments, Slack/Memory messaging) have been folded into the single
+centralized `ar-manager` HTTP server. Its allowlist (`McpConfigBuilder.AR_MANAGER_TOOL_NAMES`)
+is automatically appended to `--allowedTools` whenever the job has both a configured
+ar-manager URL and an `armt_tmp_*` bearer token; the previous fallback stdio entries
+for those two retired servers no longer exist.
 
 ### Configuration Assembly
 
@@ -1077,14 +1072,8 @@ buildMcpConfig()
     |       (with global env merged with workstreamEnv, workstream wins)
     |
     +-- Discover project servers from .mcp.json
-    |       (skip ar-github, ar-messages, already centralized, already pushed)
-    |       Emit as {"command":"python3","args":["path/to/server.py"]}
-    |
-    +-- If ar-github not centralized and not pushed:
-    |       Emit stdio fallback: {"command":"python3","args":["tools/mcp/github/server.py"]}
-    |
-    +-- If ar-messages not centralized and not pushed AND workstreamUrl is set:
-            Emit stdio fallback: {"command":"python3","args":["tools/mcp/messages/server.py"]}
+            (skip ar-manager, already centralized, already pushed)
+            Emit as {"command":"python3","args":["path/to/server.py"]}
 ```
 
 `McpConfigBuilder.buildAllowedTools()` assembles the comma-separated tools string:
@@ -1099,12 +1088,6 @@ buildAllowedTools(baseTools)
     |
     +-- For each pushed server:
     |       Append: mcp__<serverName>__<tool1>,mcp__<serverName>__<tool2>,...
-    |
-    +-- If ar-github not centralized/pushed:
-    |       Append: mcp__ar-github__github_pr_find,...
-    |
-    +-- If ar-messages not centralized/pushed AND workstreamUrl set:
-    |       Append: mcp__ar-messages__send_message
     |
     +-- For each discovered project server:
             Parse Python source for tool names
@@ -1126,15 +1109,12 @@ or customized version of what the repository ships.
 
 ### ManagedToolsDownloader
 
-The `ManagedToolsDownloader` class handles two responsibilities:
-
-1. **Downloading pushed tools** -- `ensurePushedTools()` downloads server files from the
-   controller to `~/.flowtree/tools/mcp/{name}/server.py`. Files are only downloaded if
-   they do not already exist, avoiding redundant downloads across jobs.
-
-2. **Verifying MCP tool files** -- `verifyMcpToolFiles()` checks that the expected tool
-   files exist in the working directory and logs their modification times. This aids
-   deployment diagnostics by making it visible when tool files are stale or missing.
+The `ManagedToolsDownloader` class downloads pushed tool source files from the controller
+to `~/.flowtree/tools/mcp/{name}/server.py`. `ensurePushedTools()` only downloads files
+that do not already exist locally, avoiding redundant downloads across jobs. The class is
+held in reserve for future pushed-tool integrations; the standard configuration does not
+use it because `ar-manager` (centralized HTTP) covers the previously-pushed `ar-github`
+and `ar-messages` tools.
 
 ### InstructionPromptBuilder
 
@@ -1148,7 +1128,7 @@ configuration:
 | Permission Denials | workstreamUrl is set |
 | Non-Code Requests | workstreamUrl is set |
 | Justifying No Code Changes | workstreamUrl is set |
-| GitHub instructions | ar-github is in MCP config (always true) |
+| GitHub instructions | ar-manager allowlist is granted (always true for controller-dispatched jobs) |
 | Test Integrity Policy | protectTestFiles is enabled |
 | Git commit instructions | targetBranch is set |
 | Merge Conflicts | mergeConflictsDetected is true |

@@ -115,6 +115,16 @@ public class InstructionPromptBuilder {
     private int inactivityRestartAttempt;
 
     /**
+     * When {@code true}, the prompt is for an enforcement-rule correction
+     * session rather than the primary work session.  The outer job's
+     * {@code enforceChanges} pressure and any enforcement-attempt retry
+     * preamble are suppressed so the rule's own correction prompt (which
+     * may legitimately accept "no changes needed" as a valid outcome)
+     * is not contradicted by the harness preamble.
+     */
+    private boolean correctionSession;
+
+    /**
      * Sets the user's request prompt.
      *
      * @param prompt the user's request text
@@ -339,6 +349,32 @@ public class InstructionPromptBuilder {
     }
 
     /**
+     * Marks this prompt as belonging to an enforcement-rule correction
+     * session rather than the primary work session.
+     *
+     * <p>When set, the {@code enforce_changes} strict preamble ("Code Changes
+     * Are Required") and the enforcement-attempt retry preamble
+     * ("SESSION RESTARTED -- ATTEMPT N") are suppressed.  Enforcement rules
+     * such as {@code deduplication} or {@code organizational-placement} carry
+     * their own self-contained correction prompts where "no changes needed"
+     * is a legitimate outcome, and combining the outer job's
+     * change-required pressure with the rule prompt produces contradictory
+     * instructions to the agent.</p>
+     *
+     * <p>The {@code enforce-changes} rule itself never goes through this
+     * path; it re-runs with the existing job prompt, so the outer
+     * preamble correctly continues to apply to that retry.</p>
+     *
+     * @param correctionSession {@code true} when building the prompt for a
+     *                          correction session
+     * @return this builder for chaining
+     */
+    public InstructionPromptBuilder setCorrectionSession(boolean correctionSession) {
+        this.correctionSession = correctionSession;
+        return this;
+    }
+
+    /**
      * Builds the full instruction prompt by assembling all configured
      * sections into a single string.
      *
@@ -348,7 +384,7 @@ public class InstructionPromptBuilder {
      * <ol start="0">
      *   <li>Git Tampering Violation Warning -- restart preamble (when {@link #setGitTamperingViolation} is non-empty)</li>
      *   <li>Inactivity Timeout Warning -- restart preamble (when {@link #setInactivityRestartAttempt} is &gt; 0)</li>
-     *   <li>Enforcement Retry Warning -- restart preamble (when {@code enforcementAttempt} is &gt; 0)</li>
+     *   <li>Enforcement Retry Warning -- restart preamble (when {@code enforcementAttempt} is &gt; 0 and the prompt is not for a correction session)</li>
      * </ol>
      * <ol>
      *   <li>Opening paragraph (autonomous agent context)</li>
@@ -367,6 +403,7 @@ public class InstructionPromptBuilder {
      *   <li>Budget and turn limits (when applicable)</li>
      *   <li>Task ID and Workstream URL info</li>
      *   <li>Planning Document (when set)</li>
+     *   <li>Feedback to the Harness invitation (when workstream URL is set)</li>
      *   <li>BEGIN/END USER REQUEST markers wrapping the prompt</li>
      * </ol>
      *
@@ -431,7 +468,10 @@ public class InstructionPromptBuilder {
         // Enforcement retry warning -- prepended above everything else so the
         // agent sees it immediately.  This is used when the job has been
         // restarted because a previous attempt produced no code changes.
-        if (enforcementAttempt > 0) {
+        // Suppressed inside correction sessions: the outer enforce_changes
+        // retry pressure does not apply to rule-specific correction prompts
+        // that may legitimately accept "no changes needed" as resolution.
+        if (enforcementAttempt > 0 && !correctionSession) {
             sb.append("## !! SESSION RESTARTED -- ATTEMPT ").append(enforcementAttempt + 1).append(" !!\n\n");
             sb.append("This job was submitted because CI was failing on this branch. ");
             sb.append("Your previous ").append(enforcementAttempt).append(" session");
@@ -496,9 +536,14 @@ public class InstructionPromptBuilder {
             sb.append("named in that list, stop — you are about to invent an API that does not exist. ");
             sb.append("Use the MCP tool instead.\n\n");
 
-            if (enforceChanges) {
+            if (enforceChanges && !correctionSession) {
                 // When changes are enforced, replace the permissive sections with
                 // a strict message that removes the "no changes needed" escape hatch.
+                // The strict block is suppressed for enforcement-rule correction
+                // sessions: rules like deduplication and organizational-placement
+                // carry self-contained prompts where "no changes needed" is a
+                // valid outcome, and the outer change-required pressure would
+                // contradict the rule prompt.
                 sb.append("## Code Changes Are Required\n");
                 sb.append("This task was submitted because CI was failing on this branch. ");
                 sb.append("You MUST produce code changes. Run the failing CI command ");
@@ -736,6 +781,23 @@ public class InstructionPromptBuilder {
             sb.append("document's goals, even if the current sub-task doesn't directly relate to it. ");
             sb.append("If the sub-task conflicts with the planning document, note the conflict in ");
             sb.append("a message and proceed with the sub-task unless the conflict is severe.\n\n");
+        }
+
+        // Feedback to the harness — appears right before the user request
+        // so it is visible to the agent without competing for top-of-prompt
+        // attention with the task itself.  Gated on workstreamUrl because
+        // it depends on send_message, which needs a workstream context.
+        if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
+            sb.append("## Feedback to the Harness\n");
+            sb.append("If you notice anything wrong with the way these instructions are ");
+            sb.append("formatted, missing or broken tools you needed, contradictions ");
+            sb.append("between different parts of the task, or anything else about the ");
+            sb.append("harness or process that should be improved, send a message ");
+            sb.append("explaining your observations. Use the `send_message` tool with ");
+            sb.append("`activity=\"harness_feedback\"` so these observations do not ");
+            sb.append("clutter the normal workstream context but are still surfaced to ");
+            sb.append("maintainers. This is not required; only send harness feedback when ");
+            sb.append("you have something concrete to report.\n\n");
         }
 
         sb.append("--- BEGIN USER REQUEST ---\n");

@@ -288,6 +288,30 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertNotIn("deduplicationMode", payload)
 
     @patch.object(server, "_controller_post")
+    def test_submit_max_deduplication_passes_forwarded(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-dp1"}
+        server.workstream_submit_task(prompt="Task", max_deduplication_passes=5)
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["maxDeduplicationPasses"], 5)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_max_deduplication_passes_omitted_by_default(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-dp2"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("maxDeduplicationPasses", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_max_deduplication_passes_one(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-dp3"}
+        server.workstream_submit_task(prompt="Task", max_deduplication_passes=1)
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["maxDeduplicationPasses"], 1)
+
+    @patch.object(server, "_controller_post")
     def test_submit_preserves_job_id_in_next_steps(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {
@@ -2432,71 +2456,67 @@ class TestGithubRequestCopilotReview(unittest.TestCase):
         }}}
 
     @staticmethod
-    def _mutation_response(reviewer_logins):
-        """Build a requestReviews GraphQL response with given reviewers."""
-        nodes = [
-            {"requestedReviewer": {"__typename": "Bot", "login": lg}}
-            for lg in reviewer_logins
-        ]
-        return {"data": {"requestReviews": {"pullRequest": {
-            "reviewRequests": {"nodes": nodes},
-        }}}}
+    def _rest_response(reviewer_logins):
+        """Build a realistic REST requested_reviewers PR response."""
+        reviewers = [{"login": lg, "type": "Bot", "id": 12345}
+                     for lg in reviewer_logins]
+        return {"id": 1234567, "number": 10, "state": "open",
+                "requested_reviewers": reviewers, "requested_teams": []}
 
+    @patch.object(server, "_request_reviews_via_rest")
     @patch.object(server, "_github_graphql_request")
-    def test_request_copilot_review_helper_success(self, mock_gql):
-        # Success requires the bot's login to appear in the post-mutation
-        # reviewRequests connection. The helper must use GraphQL — the
-        # REST POST endpoint silently no-ops with the slug "copilot".
-        mock_gql.side_effect = [
-            self._lookup_response(pr_id="PR_kg1", bot_id="BOT_kg1"),
-            self._mutation_response(["copilot-pull-request-reviewer"]),
-        ]
+    def test_request_copilot_review_helper_success(self, mock_gql, mock_rest):
+        # The implementation uses REST with the bot's login string, not
+        # the GraphQL requestReviews mutation (which fails for Bot node IDs).
+        mock_gql.return_value = self._lookup_response(
+            pr_id="PR_kg1", bot_id="BOT_kg1",
+            bot_login="copilot-pull-request-reviewer")
+        mock_rest.return_value = self._rest_response(["copilot-pull-request-reviewer"])
         result = server._request_copilot_review("owner", "repo", 10)
         self.assertTrue(result["ok"])
-        # Two GraphQL calls: lookup (PR + bot ID) and mutation.
-        self.assertEqual(mock_gql.call_count, 2)
+        # Only one GraphQL call (the lookup) — no GraphQL mutation.
+        self.assertEqual(mock_gql.call_count, 1)
         lookup_call_args = mock_gql.call_args_list[0][0]
         self.assertIn("CopilotLookup", lookup_call_args[0])
         self.assertEqual(lookup_call_args[1],
                          {"owner": "owner", "name": "repo", "number": 10})
-        mutation_call_args = mock_gql.call_args_list[1][0]
-        self.assertIn("requestReviews", mutation_call_args[0])
-        self.assertEqual(mutation_call_args[1],
-                         {"pullRequestId": "PR_kg1", "userIds": ["BOT_kg1"]})
+        # REST called with the bot's login string, not its Bot node ID.
+        mock_rest.assert_called_once_with(
+            "owner", "repo", 10, "copilot-pull-request-reviewer"
+        )
 
+    @patch.object(server, "_request_reviews_via_rest")
     @patch.object(server, "_github_graphql_request")
-    def test_request_copilot_review_helper_no_op_without_bot_is_failure(self, mock_gql):
-        # Regression: in the wild, the old REST implementation returned 2xx
-        # but the bot was not added. The GraphQL implementation has the
-        # same potential failure mode if the mutation returns no errors
-        # but the bot is missing from reviewRequests (e.g. repo-level
-        # Copilot toggle off after passing the lookup gate). Must NOT
-        # claim success.
-        mock_gql.side_effect = [
-            self._lookup_response(pr_id="PR_kg1", bot_id="BOT_kg1"),
-            self._mutation_response([]),
-        ]
+    def test_request_copilot_review_helper_no_op_without_bot_is_failure(
+            self, mock_gql, mock_rest):
+        # Regression guard: the REST call returns 2xx but the bot is absent
+        # from requested_reviewers (e.g. Copilot toggle disabled after the
+        # lookup gate). Must NOT claim success.
+        mock_gql.return_value = self._lookup_response(
+            pr_id="PR_kg1", bot_id="BOT_kg1")
+        mock_rest.return_value = self._rest_response([])
         result = server._request_copilot_review("owner", "repo", 10)
         self.assertFalse(result["ok"])
-        self.assertIn("not added", result["error"])
+        self.assertIn("not added", result["error"].lower())
         self.assertIn("Copilot", result["error"])
 
+    @patch.object(server, "_request_reviews_via_rest")
     @patch.object(server, "_github_graphql_request")
-    def test_request_copilot_review_helper_recognises_all_observed_logins(self, mock_gql):
+    def test_request_copilot_review_helper_recognises_all_observed_logins(
+            self, mock_gql, mock_rest):
         # GitHub exposes Copilot under different login strings on different
         # endpoints (verified on live PRs against github.com):
-        #   - ``copilot-pull-request-reviewer``        (GraphQL Bot.login)
+        #   - ``copilot-pull-request-reviewer``        (suggestedActors Bot.login)
         #   - ``Copilot``                              (GET /pulls/N/comments user.login)
         #   - ``copilot-pull-request-reviewer[bot]``   (GET /pulls/N/reviews user.login)
-        # The verification helper must accept all three so success is
-        # detected regardless of which form appears in the response.
+        # The REST response's requested_reviewers must match all three.
         for login in ("copilot-pull-request-reviewer", "Copilot",
                       "copilot-pull-request-reviewer[bot]"):
             mock_gql.reset_mock()
-            mock_gql.side_effect = [
-                self._lookup_response(pr_id="PR_kg1", bot_id="BOT_kg1"),
-                self._mutation_response([login]),
-            ]
+            mock_rest.reset_mock()
+            mock_gql.return_value = self._lookup_response(
+                pr_id="PR_kg1", bot_id="BOT_kg1")
+            mock_rest.return_value = self._rest_response([login])
             result = server._request_copilot_review("owner", "repo", 10)
             self.assertTrue(result["ok"],
                             f"Expected ok=True for login={login!r}, got {result}")
@@ -2539,48 +2559,59 @@ class TestGithubRequestCopilotReview(unittest.TestCase):
         self.assertIn("controller proxy unreachable", result["error"])
 
     @patch.object(server, "_dismiss_copilot_review", return_value={"ok": True})
+    @patch.object(server, "_request_reviews_via_rest")
     @patch.object(server, "_github_graphql_request")
-    def test_request_copilot_review_retries_after_dismiss(self, mock_gql, mock_dismiss):
-        """When the mutation reports 'already reviewed', dismisses the prior
-        review and retries. The retry succeeds and the helper returns ok=True."""
-        mock_gql.side_effect = [
-            self._lookup_response(pr_id="PR_kg1", bot_id="BOT_kg1"),
-            {"data": {"requestReviews": None},
-             "errors": [{"message": "Reviewer has already reviewed this pull request"}]},
-            self._mutation_response(["copilot-pull-request-reviewer"]),
+    def test_request_copilot_review_retries_after_dismiss(
+            self, mock_gql, mock_rest, mock_dismiss):
+        """When REST returns 'cannot be requested', dismisses the prior review
+        and retries. The retry succeeds and the helper returns ok=True."""
+        mock_gql.return_value = self._lookup_response(
+            pr_id="PR_kg1", bot_id="BOT_kg1")
+        # First REST call: GitHub 422 "already reviewed"
+        mock_rest.side_effect = [
+            {"ok": False,
+             "error": "GitHub returned HTTP 422: Review cannot be requested at this time"},
+            self._rest_response(["copilot-pull-request-reviewer"]),
         ]
         result = server._request_copilot_review("owner", "repo", 10)
         self.assertTrue(result["ok"])
         mock_dismiss.assert_called_once_with("owner", "repo", 10)
-        self.assertEqual(mock_gql.call_count, 3)
+        self.assertEqual(mock_rest.call_count, 2)
 
     @patch.object(server, "_dismiss_copilot_review",
                   return_value={"ok": False, "error": "No dismissible reviews"})
+    @patch.object(server, "_request_reviews_via_rest")
     @patch.object(server, "_github_graphql_request")
-    def test_request_copilot_review_error_when_dismiss_fails(self, mock_gql, mock_dismiss):
-        """When the mutation fails with an 'already reviewed' error and the
-        dismiss step also fails, returns ok=False with the original error."""
-        mock_gql.side_effect = [
-            self._lookup_response(pr_id="PR_kg1", bot_id="BOT_kg1"),
-            {"data": {"requestReviews": None},
-             "errors": [{"message": "Review cannot be requested at this time."}]},
-        ]
+    def test_request_copilot_review_error_when_dismiss_fails(
+            self, mock_gql, mock_rest, mock_dismiss):
+        """When REST fails with 'cannot be requested' and dismiss also fails,
+        returns ok=False propagating the original error."""
+        mock_gql.return_value = self._lookup_response(
+            pr_id="PR_kg1", bot_id="BOT_kg1")
+        mock_rest.return_value = {
+            "ok": False,
+            "error": "GitHub returned HTTP 422: Review cannot be requested at this time",
+        }
         result = server._request_copilot_review("owner", "repo", 10)
         self.assertFalse(result["ok"])
-        self.assertIn("Review cannot be requested at this time.", result["error"])
+        self.assertIn("Review request failed", result["error"])
+        self.assertIn("Review cannot be requested", result["error"])
 
+    @patch.object(server, "_request_reviews_via_rest")
     @patch.object(server, "_github_graphql_request")
-    def test_request_copilot_review_helper_generic_graphql_error(self, mock_gql):
-        """Surfaces a GraphQL error message that is not the 'already
-        reviewed' shape without attempting a dismiss/retry."""
-        mock_gql.side_effect = [
-            self._lookup_response(pr_id="PR_kg1", bot_id="BOT_kg1"),
-            {"data": {"requestReviews": None},
-             "errors": [{"message": "Field 'requestReviews' is malformed"}]},
-        ]
+    def test_request_copilot_review_helper_rest_transport_error(
+            self, mock_gql, mock_rest):
+        """Surfaces a REST transport error that is not the 'already reviewed'
+        shape without attempting a dismiss/retry."""
+        mock_gql.return_value = self._lookup_response(
+            pr_id="PR_kg1", bot_id="BOT_kg1")
+        mock_rest.return_value = {
+            "ok": False,
+            "error": "GitHub returned HTTP 403: Resource not accessible by token",
+        }
         result = server._request_copilot_review("owner", "repo", 10)
         self.assertFalse(result["ok"])
-        self.assertIn("Field 'requestReviews' is malformed", result["error"])
+        self.assertIn("Resource not accessible by token", result["error"])
 
     @patch.object(server, "_github_request")
     def test_dismiss_copilot_review_success(self, mock_gh):
@@ -3031,7 +3062,7 @@ class TestNoDirectGithubPath(unittest.TestCase):
         self.assertFalse(hasattr(server, "GITHUB_TOKEN"))
 
     def test_github_api_module_has_no_direct_request(self):
-        from tools.mcp.manager import github_api
+        import github_api
         self.assertFalse(hasattr(github_api, "_github_direct_request"))
         self.assertFalse(hasattr(github_api, "_github_token"))
 

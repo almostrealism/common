@@ -115,6 +115,8 @@ These safeguards already exist on the `feature/devtools-qa` branch and will be m
 | `McpToolDiscoveryTest.managerAllExpectedToolsAreRegisteredInServerPy` | `flowtree/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java` | Tool function missing `@mcp.tool()` decorator |
 | `McpToolDiscoveryTest.managerToolParametersAreProperlyDeclaredInSignatures` | `flowtree/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java` | Key parameters missing from function signature |
 | `McpToolDiscoveryTest.managerRegisterAndUpdateConfigHaveRequiredLabelsAndDependentRepos` | `flowtree/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java` | `required_labels` and `dependent_repos` missing from workstream tools |
+| `McpConfigBuilderTest.allowlistCoversEveryArManagerTool` | `flowtree/src/test/java/io/flowtree/jobs/McpConfigBuilderTest.java` | New tool added to `server.py` but not classified into `AR_MANAGER_TOOL_NAMES` (granted) or `EXCLUDED_AR_MANAGER_TOOLS` (denied), causing the Claude Code harness to silently block the call |
+| `McpConfigBuilderTest.allowlistAndExclusionsAreDisjoint` | `flowtree/src/test/java/io/flowtree/jobs/McpConfigBuilderTest.java` | A tool listed in both the granted and excluded sets, leaving its agent access ambiguous |
 | `TestToolRegistration.test_expected_tool_count` | `tools/mcp/manager/test_server.py` | Any tool in the expected set not in the actual registry |
 | `TestGithubRequestCopilotReview` | `tools/mcp/manager/test_server.py` | `github_request_copilot_review` tool behavior |
 | `tools/mcp/CLAUDE.md` | `tools/mcp/CLAUDE.md` | Human/agent-readable instructions |

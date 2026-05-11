@@ -18,6 +18,7 @@ package io.flowtree.jobs;
 
 import io.flowtree.job.AbstractJobFactory;
 import io.flowtree.job.Job;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.KeyUtils;
 
 import java.util.ArrayList;
@@ -41,7 +42,7 @@ import java.util.Map;
  * @author Michael Murray
  * @see ClaudeCodeJob
  */
-public class ClaudeCodeJobFactory extends AbstractJobFactory {
+public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleFeatures {
 
     /** Cached decoded list of prompts; populated lazily from the serialized properties. */
     private List<String> prompts;
@@ -82,6 +83,13 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     /** Bearer token for authenticating against the ar-manager service. */
     private String arManagerToken;
 
+    /**
+     * JSON describing pushed MCP tools the controller is serving for this
+     * job (always includes ar-secrets; may include additional operator
+     * declarations). Format matches {@code FlowTreeController.getPushedToolsConfig()}.
+     */
+    private String pushedToolsConfig;
+
     /** Optional planning document text to inject into the Claude Code system prompt. */
     private String planningDocument;
 
@@ -91,6 +99,12 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
      * See {@link ClaudeCodeJob#DEDUP_NONE} to disable.
      */
     private String deduplicationMode = ClaudeCodeJob.DEDUP_LOCAL;
+
+    /**
+     * Per-job cap on deduplication passes propagated to jobs created by this factory.
+     * Defaults to {@link ClaudeCodeJob#DEFAULT_MAX_DEDUP_PASSES}.
+     */
+    private int maxDeduplicationPasses = ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES;
 
     /**
      * When {@code true}, jobs created by this factory activate the Maven
@@ -535,6 +549,26 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     }
 
     /**
+     * Returns the pushed-tools configuration JSON. May be {@code null}.
+     */
+    public String getPushedToolsConfig() {
+        return pushedToolsConfig;
+    }
+
+    /**
+     * Sets the pushed-tools configuration JSON. The same string is later
+     * forwarded to each created job so it can drive both
+     * {@link ManagedToolsDownloader#ensurePushedTools(String)} and
+     * {@link McpConfigBuilder#setPushedToolsConfig(String)}.
+     *
+     * @param pushedToolsConfig the JSON configuration; may be {@code null}
+     */
+    public void setPushedToolsConfig(String pushedToolsConfig) {
+        this.pushedToolsConfig = pushedToolsConfig;
+        set("pushedToolsConfig", GitManagedJob.base64Encode(pushedToolsConfig));
+    }
+
+    /**
      * Returns the planning document path for jobs.
      */
     public String getPlanningDocument() {
@@ -606,6 +640,30 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     public void setDeduplicationMode(String deduplicationMode) {
         this.deduplicationMode = deduplicationMode;
         set("dedupMode", deduplicationMode);
+    }
+
+    /**
+     * Returns the maximum number of deduplication passes for jobs created by this factory.
+     *
+     * @return the pass cap; defaults to {@link ClaudeCodeJob#DEFAULT_MAX_DEDUP_PASSES}
+     */
+    public int getMaxDeduplicationPasses() {
+        return maxDeduplicationPasses;
+    }
+
+    /**
+     * Sets the maximum number of deduplication passes for jobs created by this factory.
+     *
+     * @param maxDeduplicationPasses cap on correction sessions per job; must be positive
+     * @throws IllegalArgumentException if the value is not positive
+     */
+    public void setMaxDeduplicationPasses(int maxDeduplicationPasses) {
+        if (maxDeduplicationPasses <= 0) {
+            throw new IllegalArgumentException(
+                    "maxDeduplicationPasses must be positive, got: " + maxDeduplicationPasses);
+        }
+        this.maxDeduplicationPasses = maxDeduplicationPasses;
+        set("maxDedupPasses", String.valueOf(maxDeduplicationPasses));
     }
 
     /**
@@ -883,6 +941,11 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         if (arManagerToken != null) {
             job.setArManagerToken(arManagerToken);
         }
+        if (pushedToolsConfig != null) {
+            job.setPushedToolsConfig(pushedToolsConfig);
+        } else {
+            warn("no pushedToolsConfig to propagate to " + job.getTaskId());
+        }
 
         if (planningDocument != null) {
             job.setPlanningDocument(planningDocument);
@@ -891,6 +954,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         job.setProtectTestFiles(isProtectTestFiles());
         job.setEnforceChanges(isEnforceChanges());
         job.setDeduplicationMode(deduplicationMode);
+        job.setMaxDeduplicationPasses(maxDeduplicationPasses);
         job.setEnforceMavenDependencies(enforceMavenDependencies);
         job.setEnforceOrganizationalPlacement(enforceOrganizationalPlacement);
         if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
@@ -981,6 +1045,9 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
             case "arManagerToken":
                 this.arManagerToken = GitManagedJob.base64Decode(value);
                 break;
+            case "pushedToolsConfig":
+                this.pushedToolsConfig = GitManagedJob.base64Decode(value);
+                break;
             case "planDoc":
                 this.planningDocument = GitManagedJob.base64Decode(value);
                 break;
@@ -1006,6 +1073,19 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         switch (key) {
             case "dedupMode":
                 this.deduplicationMode = value;
+                return;
+            case "maxDedupPasses":
+                if (value == null || value.isEmpty()) {
+                    this.maxDeduplicationPasses = ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES;
+                } else {
+                    try {
+                        int parsed = Integer.parseInt(value);
+                        this.maxDeduplicationPasses = (parsed > 0)
+                                ? parsed : ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES;
+                    } catch (NumberFormatException e) {
+                        this.maxDeduplicationPasses = ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES;
+                    }
+                }
                 return;
             case "enforceMavenDeps":
                 this.enforceMavenDependencies = Boolean.parseBoolean(value);
