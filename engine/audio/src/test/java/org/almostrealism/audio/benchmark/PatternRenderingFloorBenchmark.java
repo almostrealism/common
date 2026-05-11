@@ -325,27 +325,44 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 
 	private PackedCollection buildAdsrEnvelope() {
 		double[] data = new double[NOTE_SIZE];
-		int attackSamples = (int) (NOTE_SIZE * 0.05);
-		int decaySamples = (int) (NOTE_SIZE * 0.10);
-		int releaseSamples = (int) (NOTE_SIZE * 0.15);
-		int sustainSamples = NOTE_SIZE - attackSamples - decaySamples - releaseSamples;
-		double sustainLevel = 0.7;
-		int idx = 0;
-		for (int i = 0; i < attackSamples; i++) {
-			data[idx++] = (double) i / attackSamples;
-		}
-		for (int i = 0; i < decaySamples; i++) {
-			data[idx++] = 1.0 - (1.0 - sustainLevel) * i / decaySamples;
-		}
-		for (int i = 0; i < sustainSamples; i++) {
-			data[idx++] = sustainLevel;
-		}
-		for (int i = 0; i < releaseSamples; i++) {
-			data[idx++] = sustainLevel * (1.0 - (double) i / releaseSamples);
-		}
+		fillAdsrShape(data, 0, NOTE_SIZE, 0.0, 1.0, 0.7, 0.0, 0.05, 0.10, 0.15);
 		PackedCollection env = new PackedCollection(NOTE_SIZE);
 		env.setMem(data);
 		return env;
+	}
+
+	/**
+	 * Fills a piecewise-linear ADSR shape into {@code data[offset..offset+size]}:
+	 * attack ramp from {@code base} to {@code peak}, decay from {@code peak} to
+	 * {@code sustain}, held at {@code sustain}, release ramp from {@code sustain}
+	 * to {@code end}. ADSR section lengths come from {@code attackFrac},
+	 * {@code decayFrac}, {@code releaseFrac} (fractions of {@code size}); the
+	 * sustain section fills the remainder.
+	 *
+	 * <p>Shared by {@link #buildAdsrEnvelope}, {@link #buildAdsrCutoff},
+	 * {@link #buildPerRowVolumeEnvelopes}, and {@link #buildPerRowFilterCutoffs} —
+	 * all four pre-materialize the same shape with different parameters per row.</p>
+	 */
+	private static void fillAdsrShape(double[] data, int offset, int size,
+									   double base, double peak, double sustain, double end,
+									   double attackFrac, double decayFrac, double releaseFrac) {
+		int attackSamples = (int) (size * attackFrac);
+		int decaySamples = (int) (size * decayFrac);
+		int releaseSamples = (int) (size * releaseFrac);
+		int sustainSamples = size - attackSamples - decaySamples - releaseSamples;
+		int idx = offset;
+		for (int i = 0; i < attackSamples; i++) {
+			data[idx++] = base + (peak - base) * i / attackSamples;
+		}
+		for (int i = 0; i < decaySamples; i++) {
+			data[idx++] = peak - (peak - sustain) * i / decaySamples;
+		}
+		for (int i = 0; i < sustainSamples; i++) {
+			data[idx++] = sustain;
+		}
+		for (int i = 0; i < releaseSamples; i++) {
+			data[idx++] = sustain - (sustain - end) * i / releaseSamples;
+		}
 	}
 
 	// ===========================================================================================
@@ -1065,6 +1082,427 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 		log(String.format("  Batching speedup: %.2fx %s", speedup,
 				speedup >= 1.0 ? "(setup overhead amortized)" : "(batching adds overhead — expected on JNI CPU)"));
 		log("");
+	}
+
+	// ===========================================================================================
+	// ENVELOPE-1 — Volume envelope alone, batched per-row
+	// ===========================================================================================
+
+	/**
+	 * E1: isolated batched volume envelope kernel — per-row {@code [N, NOTE_SIZE]} audio
+	 * multiplied elementwise by per-row {@code [N, NOTE_SIZE]} gain envelopes (each row's
+	 * envelope shape independent of every other row's). One {@code evaluate()} per density.
+	 *
+	 * <p>Compared against a sequential per-note baseline where each note's audio×envelope
+	 * runs in its own {@code evaluate()} (mirrors current production cost shape). The
+	 * difference between sequential and batched is the JNI-amortization headroom.</p>
+	 *
+	 * <p>The volume envelope here is pre-materialized as a {@link PackedCollection} of
+	 * shape {@code [N, NOTE_SIZE]} — varying ADSR shape per row. Production today uses
+	 * {@code AudioProcessingUtils.getVolumeEnv()} which computes the envelope inside the
+	 * kernel from 4 scalar ADSR params per note; this benchmark deliberately leaves the
+	 * "pre-materialized vs in-kernel" decision for Part 2 of the replanning by measuring
+	 * the kernel cost as a pure elementwise multiply against a per-row gain tensor.</p>
+	 */
+	@Test(timeout = 600000)
+	@TestDepth(2)
+	public void benchmarkVolumeEnvelopeBatched() throws Exception {
+		setupResultsListener();
+
+		log("==========================================================");
+		log("  ENVELOPE-1 — Volume envelope alone, batched");
+		log("  Input: [N, NOTE_SIZE] audio");
+		log("  Envelope: [N, NOTE_SIZE] per-row gain (varied shape per row)");
+		log("  Operation: elementwise multiply");
+		log("==========================================================");
+		log("");
+
+		PackedCollection seqAudio = buildRandomSource(NOTE_SIZE);
+		PackedCollection seqEnvelope = buildAdsrEnvelope();
+
+		log("Compiling sequential per-note volume envelope kernel...");
+		Evaluable<PackedCollection> seqChain = cp(seqAudio).multiply(cp(seqEnvelope)).get();
+		warmupSequential("sequential volume envelope (audio × envelope)", seqChain);
+
+		log("--- Sequential per-note baseline (for comparison) ---");
+		log("");
+		double[] seqPerNoteMs = new double[NOTES_PER_MEASURE_VALUES.length];
+		for (int d = 0; d < NOTES_PER_MEASURE_VALUES.length; d++) {
+			int npm = NOTES_PER_MEASURE_VALUES[d];
+			int totalNotes = npm * MEASURES_PER_TICK;
+			long[] timesNs = runTimedIterations(seqChain, totalNotes);
+			seqPerNoteMs[d] = computeTimingStats(timesNs)[0] / totalNotes;
+			reportStats(npm, totalNotes, timesNs);
+		}
+
+		log("--- Batched volume envelope: 1 evaluate() per density ---");
+		log("");
+		for (int d = 0; d < NOTES_PER_MEASURE_VALUES.length; d++) {
+			int npm = NOTES_PER_MEASURE_VALUES[d];
+			int totalNotes = npm * MEASURES_PER_TICK;
+			int totalSamples = totalNotes * NOTE_SIZE;
+
+			log("Compiling batched volume envelope for " + totalNotes + " notes...");
+			long compileStart = System.currentTimeMillis();
+			PackedCollection perRowAudio = buildPerRowAudio(totalNotes);
+			PackedCollection perRowEnvelopes = buildPerRowVolumeEnvelopes(totalNotes);
+
+			CollectionProducer flatAudio = cp(perRowAudio).reshape(shape(totalSamples));
+			CollectionProducer flatEnv = cp(perRowEnvelopes).reshape(shape(totalSamples));
+			Evaluable<PackedCollection> batched = flatAudio.multiply(flatEnv).get();
+			long compileMs = System.currentTimeMillis() - compileStart;
+			log("Compilation: " + compileMs + " ms");
+
+			log("Warming up batched volume envelope...");
+			for (int w = 0; w < WARMUP_RUNS; w++) batched.evaluate();
+			log("Warmup complete.");
+
+			long[] batchedTimesNs = runTimedIterations(batched, 1);
+			reportBatchedStats(npm, totalNotes, batchedTimesNs, seqPerNoteMs[d]);
+		}
+
+		log("INTERPRETATION:");
+		log("- Per-row independence holds (each row's envelope is content-independent).");
+		log("- Volume envelope is the cheapest of the per-note envelopes — pure elementwise.");
+		log("- Compare amortized per-note batched cost to sequential per-note cost for headroom.");
+		log("==========================================================");
+		log("Results appended to: " + RESULTS_PATH);
+	}
+
+	// ===========================================================================================
+	// ENVELOPE-2 — Filter envelope alone, batched per-row (per-sample varying cutoff)
+	// ===========================================================================================
+
+	/**
+	 * E2: isolated batched filter envelope kernel — per-row {@code [N, NOTE_SIZE]} audio,
+	 * lowpass-filtered with per-row {@code [N, NOTE_SIZE]} cutoff envelope. Each row gets
+	 * a different cutoff value per sample, different envelope shape per row. The filter
+	 * primitive used is {@link MultiOrderFilter} via {@code lowPass(...)} — same primitive
+	 * production uses inside {@link org.almostrealism.audio.filter.MultiOrderFilterEnvelopeProcessor}.
+	 *
+	 * <p>To preserve per-row independence under FIR convolution, each row is padded by
+	 * {@code FILTER_ORDER/2} zero samples on each side (same workaround as Addition 5 for
+	 * FIR batching). The cutoff tensor is padded with edge cutoff values so the filter
+	 * sees a continuous control signal across the boundary.</p>
+	 *
+	 * <p>If this benchmark cannot be built — i.e. the existing {@code lowPass(input,
+	 * cutoff, ...)} primitive does not handle a 2D batched cutoff input correctly — that
+	 * IS the finding for Part 2. The benchmark catches the exception, logs it, and
+	 * documents which primitive is missing. Sequential per-note baseline still runs in
+	 * either case so amortization headroom can be estimated.</p>
+	 */
+	@Test(timeout = 600000)
+	@TestDepth(2)
+	public void benchmarkFilterEnvelopeBatched() throws Exception {
+		setupResultsListener();
+
+		log("==========================================================");
+		log("  ENVELOPE-2 — Filter envelope alone, batched");
+		log("  Input: [N, NOTE_SIZE] audio");
+		log("  Cutoff: [N, NOTE_SIZE] per-row, per-sample (varied per row)");
+		log("  Filter: MultiOrderFilter low-pass, order=" + FILTER_ORDER);
+		log("==========================================================");
+		log("");
+
+		int padHalf = FILTER_ORDER / 2;
+		int paddedNoteSize = NOTE_SIZE + 2 * padHalf;
+
+		PackedCollection seqAudio = buildRandomSource(NOTE_SIZE);
+		PackedCollection seqCutoff = buildAdsrCutoff(NOTE_SIZE);
+
+		log("Compiling sequential per-note filter envelope kernel (lowPass with per-sample cutoff)...");
+		Evaluable<PackedCollection> seqChain;
+		try {
+			MultiOrderFilter seqFilter = lowPass(traverseEach(cp(seqAudio)), cp(seqCutoff),
+					SAMPLE_RATE, FILTER_ORDER);
+			seqChain = c(seqFilter).reshape(shape(NOTE_SIZE)).get();
+		} catch (Exception ex) {
+			log("FAILED to compile sequential per-note lowPass with per-sample cutoff: "
+					+ ex.getClass().getSimpleName() + ": " + ex.getMessage());
+			log("This is a finding — the lowPass primitive may not accept Producer-valued");
+			log("per-sample cutoff in this configuration. Skipping E2.");
+			log("==========================================================");
+			return;
+		}
+
+		warmupSequential("sequential filter envelope (lowPass, per-sample cutoff)", seqChain);
+
+		log("--- Sequential per-note baseline (for comparison) ---");
+		log("");
+		double[] seqPerNoteMs = new double[NOTES_PER_MEASURE_VALUES.length];
+		for (int d = 0; d < NOTES_PER_MEASURE_VALUES.length; d++) {
+			int npm = NOTES_PER_MEASURE_VALUES[d];
+			int totalNotes = npm * MEASURES_PER_TICK;
+			long[] timesNs = runTimedIterations(seqChain, totalNotes);
+			seqPerNoteMs[d] = computeTimingStats(timesNs)[0] / totalNotes;
+			reportStats(npm, totalNotes, timesNs);
+		}
+
+		log("--- Batched filter envelope: 1 evaluate() per density ---");
+		log("Pad layout: each row = " + padHalf + " zero samples + " + NOTE_SIZE
+				+ " + " + padHalf + " = " + paddedNoteSize + " elements");
+		log("");
+
+		for (int d = 0; d < NOTES_PER_MEASURE_VALUES.length; d++) {
+			int npm = NOTES_PER_MEASURE_VALUES[d];
+			int totalNotes = npm * MEASURES_PER_TICK;
+
+			log("Compiling batched filter envelope for " + totalNotes + " notes...");
+			long compileStart;
+			Evaluable<PackedCollection> batched;
+			try {
+				compileStart = System.currentTimeMillis();
+				PackedCollection perRowAudio = buildPerRowAudio(totalNotes);
+				PackedCollection perRowCutoff = buildPerRowFilterCutoffs(totalNotes);
+
+				int paddedTotal = totalNotes * paddedNoteSize;
+
+				// Pad each row by padHalf samples on each side: [N, NOTE_SIZE+2*padHalf].
+				// pad(producer, 0, padHalf) puts 0 padding on axis 0 (batch) and padHalf on axis 1.
+				CollectionProducer paddedAudio2D = pad(cp(perRowAudio), 0, padHalf);
+				CollectionProducer paddedCutoff2D = pad(cp(perRowCutoff), 0, padHalf);
+
+				// Flatten to 1D so MultiOrderFilter sees one long signal with the per-row
+				// boundary samples already absorbed by the pad zones.
+				CollectionProducer flatAudio = paddedAudio2D.reshape(shape(paddedTotal));
+				CollectionProducer flatCutoff = paddedCutoff2D.reshape(shape(paddedTotal));
+
+				MultiOrderFilter filter = lowPass(traverseEach(flatAudio), flatCutoff,
+						SAMPLE_RATE, FILTER_ORDER);
+				batched = c(filter).get();
+			} catch (Exception ex) {
+				log("FAILED to compile batched filter envelope at " + totalNotes + " notes: "
+						+ ex.getClass().getSimpleName() + ": " + ex.getMessage());
+				log("This is a finding — names what primitive is missing for batched filter envelope.");
+				log("");
+				continue;
+			}
+			long compileMs = System.currentTimeMillis() - compileStart;
+			log("Compilation: " + compileMs + " ms");
+
+			log("Warming up batched filter envelope...");
+			for (int w = 0; w < WARMUP_RUNS; w++) batched.evaluate();
+			log("Warmup complete.");
+
+			long[] batchedTimesNs = runTimedIterations(batched, 1);
+			reportBatchedStats(npm, totalNotes, batchedTimesNs, seqPerNoteMs[d]);
+		}
+
+		log("INTERPRETATION:");
+		log("- E2 batched form requires per-row cutoff [N, NOTE_SIZE] flattened to [N*paddedNote].");
+		log("- The lowPass primitive accepts a Producer cutoff signal; per-sample variation is");
+		log("  driven by the cutoff tensor itself. Per-row independence is preserved by padding.");
+		log("- If batched amortizes well below sequential, the per-note JNI cost dominates the");
+		log("  filter envelope path just like it does for the resample/volume kernels.");
+		log("==========================================================");
+		log("Results appended to: " + RESULTS_PATH);
+	}
+
+	// ===========================================================================================
+	// ENVELOPE-3 — Combined volume + filter envelope chain, batched
+	// ===========================================================================================
+
+	/**
+	 * E3: combined batched envelope chain — per-row {@code [N, NOTE_SIZE]} audio →
+	 * filter envelope (lowpass with per-row per-sample cutoff) → volume envelope multiply
+	 * → output. Confirms that the two envelopes compose cleanly under batching.
+	 *
+	 * <p>Production stack per melodic note (see
+	 * {@code studio/music/.../pattern/PatternElementFactory.java:266-271}) wraps the note
+	 * audio with the filter envelope first, then the volume envelope on top. When audio
+	 * is computed, the outermost (volume) envelope's apply() pulls from the inner
+	 * (filter) envelope's apply() which pulls from raw audio — so the effective
+	 * application order on raw audio is filter first, then volume. This benchmark
+	 * mirrors that order.</p>
+	 */
+	@Test(timeout = 600000)
+	@TestDepth(2)
+	public void benchmarkCombinedEnvelopeChainBatched() throws Exception {
+		setupResultsListener();
+
+		log("==========================================================");
+		log("  ENVELOPE-3 — Combined filter + volume envelope chain, batched");
+		log("  Chain: audio -> lowPass(per-row cutoff) -> × volume_envelope");
+		log("==========================================================");
+		log("");
+
+		int padHalf = FILTER_ORDER / 2;
+		int paddedNoteSize = NOTE_SIZE + 2 * padHalf;
+
+		PackedCollection seqAudio = buildRandomSource(NOTE_SIZE);
+		PackedCollection seqEnvelope = buildAdsrEnvelope();
+		PackedCollection seqCutoff = buildAdsrCutoff(NOTE_SIZE);
+
+		log("Compiling sequential per-note combined chain (lowPass -> × envelope)...");
+		Evaluable<PackedCollection> seqChain;
+		try {
+			MultiOrderFilter seqFilter = lowPass(traverseEach(cp(seqAudio)), cp(seqCutoff),
+					SAMPLE_RATE, FILTER_ORDER);
+			seqChain = c(seqFilter).reshape(shape(NOTE_SIZE)).multiply(cp(seqEnvelope)).get();
+		} catch (Exception ex) {
+			log("FAILED to compile sequential combined chain: "
+					+ ex.getClass().getSimpleName() + ": " + ex.getMessage());
+			log("Skipping E3.");
+			log("==========================================================");
+			return;
+		}
+
+		warmupSequential("sequential combined envelope chain", seqChain);
+
+		log("--- Sequential per-note baseline (for comparison) ---");
+		log("");
+		double[] seqPerNoteMs = new double[NOTES_PER_MEASURE_VALUES.length];
+		for (int d = 0; d < NOTES_PER_MEASURE_VALUES.length; d++) {
+			int npm = NOTES_PER_MEASURE_VALUES[d];
+			int totalNotes = npm * MEASURES_PER_TICK;
+			long[] timesNs = runTimedIterations(seqChain, totalNotes);
+			seqPerNoteMs[d] = computeTimingStats(timesNs)[0] / totalNotes;
+			reportStats(npm, totalNotes, timesNs);
+		}
+
+		log("--- Batched combined envelope chain: 1 evaluate() per density ---");
+		log("");
+
+		for (int d = 0; d < NOTES_PER_MEASURE_VALUES.length; d++) {
+			int npm = NOTES_PER_MEASURE_VALUES[d];
+			int totalNotes = npm * MEASURES_PER_TICK;
+
+			log("Compiling batched combined envelope chain for " + totalNotes + " notes...");
+			long compileStart;
+			Evaluable<PackedCollection> batched;
+			try {
+				compileStart = System.currentTimeMillis();
+				PackedCollection perRowAudio = buildPerRowAudio(totalNotes);
+				PackedCollection perRowEnvelopes = buildPerRowVolumeEnvelopes(totalNotes);
+				PackedCollection perRowCutoff = buildPerRowFilterCutoffs(totalNotes);
+
+				int totalSamples = totalNotes * NOTE_SIZE;
+				int paddedTotal = totalNotes * paddedNoteSize;
+
+				// Filter envelope first: pad each row, flatten, run lowPass, reshape back to [N, NOTE_SIZE].
+				CollectionProducer paddedAudio2D = pad(cp(perRowAudio), 0, padHalf);
+				CollectionProducer paddedCutoff2D = pad(cp(perRowCutoff), 0, padHalf);
+				CollectionProducer flatPaddedAudio = paddedAudio2D.reshape(shape(paddedTotal));
+				CollectionProducer flatPaddedCutoff = paddedCutoff2D.reshape(shape(paddedTotal));
+				MultiOrderFilter filter = lowPass(traverseEach(flatPaddedAudio), flatPaddedCutoff,
+						SAMPLE_RATE, FILTER_ORDER);
+				CollectionProducer filtered2D = c(filter).reshape(shape(totalNotes, paddedNoteSize));
+
+				// Drop the pad on each side: keep only the central NOTE_SIZE samples.
+				// shape() arg = [totalNotes, NOTE_SIZE] window starting at axis-1 offset padHalf.
+				CollectionProducer trimmed = subset(shape(totalNotes, NOTE_SIZE), filtered2D, 0, padHalf);
+
+				// Volume envelope multiply on the [N*NOTE_SIZE] flat output.
+				CollectionProducer flatTrimmed = trimmed.reshape(shape(totalSamples));
+				CollectionProducer flatEnv = cp(perRowEnvelopes).reshape(shape(totalSamples));
+				batched = flatTrimmed.multiply(flatEnv).get();
+			} catch (Exception ex) {
+				log("FAILED to compile batched combined chain at " + totalNotes + " notes: "
+						+ ex.getClass().getSimpleName() + ": " + ex.getMessage());
+				log("");
+				continue;
+			}
+			long compileMs = System.currentTimeMillis() - compileStart;
+			log("Compilation: " + compileMs + " ms");
+
+			log("Warming up batched combined chain...");
+			for (int w = 0; w < WARMUP_RUNS; w++) batched.evaluate();
+			log("Warmup complete.");
+
+			long[] batchedTimesNs = runTimedIterations(batched, 1);
+			reportBatchedStats(npm, totalNotes, batchedTimesNs, seqPerNoteMs[d]);
+		}
+
+		log("INTERPRETATION:");
+		log("- E3 confirms the two envelopes compose under batching.");
+		log("- If E3 batched cost ≈ E1 + E2 batched cost, the kernels add linearly.");
+		log("- If E3 batched cost < E1 + E2, the framework is fusing envelope + filter.");
+		log("==========================================================");
+		log("Results appended to: " + RESULTS_PATH);
+	}
+
+	// ===========================================================================================
+	// Helpers shared by E1, E2, E3
+	// ===========================================================================================
+
+	/**
+	 * Builds a deterministic per-row audio tensor of shape {@code [batchSize, NOTE_SIZE]}.
+	 * Each row gets a different sinusoidal content driven by row index, so per-row
+	 * filter independence can be verified visually if the result is dumped — content
+	 * does not affect kernel timing.
+	 */
+	private PackedCollection buildPerRowAudio(int batchSize) {
+		double[] data = new double[batchSize * NOTE_SIZE];
+		for (int n = 0; n < batchSize; n++) {
+			double freq = 220.0 + (n % 64) * 30.0;
+			for (int i = 0; i < NOTE_SIZE; i++) {
+				data[n * NOTE_SIZE + i] = Math.sin(2.0 * Math.PI * freq * i / SAMPLE_RATE);
+			}
+		}
+		PackedCollection out = new PackedCollection(shape(batchSize, NOTE_SIZE));
+		out.setMem(data);
+		return out;
+	}
+
+	/**
+	 * Builds a per-row volume envelope tensor of shape {@code [batchSize, NOTE_SIZE]}.
+	 * Each row carries a distinct ADSR shape: attack/decay/release fractions and the
+	 * sustain level vary deterministically with row index so no two rows share an
+	 * envelope curve.
+	 */
+	private PackedCollection buildPerRowVolumeEnvelopes(int batchSize) {
+		double[] data = new double[batchSize * NOTE_SIZE];
+		for (int n = 0; n < batchSize; n++) {
+			double sustainLevel = 0.4 + (n % 16) * (0.5 / 16.0);
+			double attackFrac = 0.02 + (n % 8) * 0.01;
+			double decayFrac = 0.05 + (n % 8) * 0.01;
+			double releaseFrac = 0.10 + (n % 8) * 0.02;
+			fillAdsrShape(data, n * NOTE_SIZE, NOTE_SIZE,
+					0.0, 1.0, sustainLevel, 0.0,
+					attackFrac, decayFrac, releaseFrac);
+		}
+		PackedCollection out = new PackedCollection(shape(batchSize, NOTE_SIZE));
+		out.setMem(data);
+		return out;
+	}
+
+	/**
+	 * Builds a single-row ADSR-shaped cutoff envelope of shape {@code [size]} for use
+	 * as the sequential per-note filter cutoff. Cutoff varies from 200 Hz at the start
+	 * up to a peak of 8000 Hz then back down to 400 Hz, modelling a typical filter
+	 * sweep envelope.
+	 */
+	private PackedCollection buildAdsrCutoff(int size) {
+		double[] data = new double[size];
+		fillAdsrShape(data, 0, size, 200.0, 8000.0, 1500.0, 400.0, 0.05, 0.10, 0.15);
+		PackedCollection out = new PackedCollection(size);
+		out.setMem(data);
+		return out;
+	}
+
+	/**
+	 * Builds a per-row filter cutoff envelope tensor of shape
+	 * {@code [batchSize, NOTE_SIZE]}. Each row's cutoff envelope has a different peak
+	 * frequency and sustain level, so per-row independence is exercised: row N's
+	 * filter response at sample {@code i} reads only row N's cutoff at sample {@code i},
+	 * never neighbouring rows'.
+	 */
+	private PackedCollection buildPerRowFilterCutoffs(int batchSize) {
+		double[] data = new double[batchSize * NOTE_SIZE];
+		for (int n = 0; n < batchSize; n++) {
+			double peak = 4000.0 + (n % 16) * 600.0;
+			double sustain = 800.0 + (n % 8) * 200.0;
+			double base = 150.0 + (n % 4) * 50.0;
+			double attackFrac = 0.03 + (n % 8) * 0.005;
+			double decayFrac = 0.08 + (n % 8) * 0.005;
+			double releaseFrac = 0.12 + (n % 8) * 0.005;
+			fillAdsrShape(data, n * NOTE_SIZE, NOTE_SIZE,
+					base, peak, sustain, base,
+					attackFrac, decayFrac, releaseFrac);
+		}
+		PackedCollection out = new PackedCollection(shape(batchSize, NOTE_SIZE));
+		out.setMem(data);
+		return out;
 	}
 
 }
