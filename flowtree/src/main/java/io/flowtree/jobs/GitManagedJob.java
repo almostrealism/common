@@ -1147,7 +1147,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
 
             int responseCode = conn.getResponseCode();
             if (responseCode < 200 || responseCode >= 300) {
-                warn("POST to " + url + " returned " + responseCode);
+                warn("Post to " + url + " returned " + responseCode);
             }
         } catch (Exception e) {
             warn("Failed to POST to " + url + ": " + e.getMessage());
