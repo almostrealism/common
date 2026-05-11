@@ -40,7 +40,8 @@ import java.io.IOException;
  *   <li>{@link Message#Job} — decodes and routes an inbound job.</li>
  *   <li>{@link Message#StringMessage} — logs a human-readable string.</li>
  *   <li>{@link Message#ConnectionRequest} — assigns the least-connected local
- *       node (or the relay node) to service the request, creates a
+ *       node — either a worker or the dedicated relay node, preferring the
+ *       relay on a tie — to service the request, creates a
  *       {@link Connection}, and sends a {@link Message#ConnectionConfirmation}
  *       back to the requester.</li>
  *   <li>{@link Message#ConnectionConfirmation} — completes the two-phase
@@ -132,8 +133,8 @@ class NodeGroupMessageHandler implements ConsoleFeatures {
 	}
 
 	/**
-	 * Handles a {@link Message#ConnectionRequest} by selecting the least-connected
-	 * available node (falling back to the relay node), constructing a
+	 * Handles a {@link Message#ConnectionRequest} by selecting an available
+	 * local node via {@link #selectPeerTarget()}, constructing a
 	 * {@link Connection}, and sending back a {@link Message#ConnectionConfirmation}.
 	 *
 	 * @param p        The {@link NodeProxy} that delivered the message.
@@ -141,10 +142,7 @@ class NodeGroupMessageHandler implements ConsoleFeatures {
 	 */
 	private void handleConnectionRequest(NodeProxy p, int remoteId) {
 		try {
-			Node n = group.getLeastConnectedNode();
-			if (n == null) {
-				n = group.getRelayNode();
-			}
+			Node n = selectPeerTarget();
 
 			Connection c;
 
@@ -181,6 +179,37 @@ class NodeGroupMessageHandler implements ConsoleFeatures {
 		} catch (IOException ioe) {
 			warn(String.valueOf(ioe));
 		}
+	}
+
+	/**
+	 * Selects the local {@link Node} that should receive an inbound peer
+	 * connection.  Considers every worker child plus the {@link NodeGroup}'s
+	 * dedicated {@code relayNode}, returning whichever has the lowest
+	 * {@link Node#getConnectivityRating() connectivity rating}.  On a tie the
+	 * relay node is preferred, because its sole purpose is to forward jobs to
+	 * peers — starving it of peer connections produces the "black hole"
+	 * routing loop where {@link NodeGroup#routeJob} falls back to the relay
+	 * node for label-mismatched jobs that the relay then cannot forward.
+	 *
+	 * <p>This method intentionally does <em>not</em> reuse
+	 * {@link NodeGroup#getLeastConnectedNode()} because that helper iterates
+	 * only the worker collection and would never return the relay node while
+	 * any worker exists, regardless of peer counts.
+	 *
+	 * @return the chosen {@link Node}, or {@code null} if neither workers nor a
+	 *         relay node are available.
+	 */
+	private Node selectPeerTarget() {
+		Node relay = group.getRelayNode();
+		Node leastWorker = group.getLeastConnectedNode();
+
+		if (leastWorker == null) return relay;
+		if (relay == null) return leastWorker;
+
+		if (relay.getConnectivityRating() <= leastWorker.getConnectivityRating()) {
+			return relay;
+		}
+		return leastWorker;
 	}
 
 	/**
