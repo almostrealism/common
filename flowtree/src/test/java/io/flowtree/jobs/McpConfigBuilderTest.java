@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -26,6 +27,7 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -219,6 +221,92 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 				"have access or are explicitly denied access: " + unaccounted,
 			unaccounted.isEmpty()
 		);
+	}
+
+	/**
+	 * Verifies that pushed server names containing path separators or other
+	 * unsafe characters are rejected by {@link McpConfigBuilder#parsePushedConfig()}.
+	 * An attacker who can supply the pushed-tools JSON must not be able to
+	 * cause the generated MCP config to reference a path outside
+	 * {@code ~/.flowtree/tools/mcp/}.
+	 */
+	@Test(timeout = 30000)
+	public void parsePushedConfigRejectsInvalidServerNames() {
+		McpConfigBuilder builder = new McpConfigBuilder();
+		// All of these names should be silently rejected.
+		builder.setPushedToolsConfig(
+			"{"
+			+ "\"../evil\":{\"tools\":[\"secret_list_names\"]},"
+			+ "\"bad/slash\":{\"tools\":[\"t\"]},"
+			+ "\"UPPER\":{\"tools\":[\"t\"]},"
+			+ "\"has space\":{\"tools\":[\"t\"]},"
+			+ "\",inject\":{\"tools\":[\"t\"]}"
+			+ "}");
+
+		Map<String, JsonNode> parsed = builder.parsePushedConfig();
+		assertTrue("All invalid names must be rejected", parsed.isEmpty());
+	}
+
+	/**
+	 * Verifies that pushed tool names containing commas or other unsafe characters
+	 * are rejected by {@link McpConfigBuilder#buildAllowedTools(String)} so they
+	 * cannot inject additional entries into the {@code --allowedTools} string.
+	 */
+	@Test(timeout = 30000)
+	public void buildAllowedToolsRejectsInvalidToolNames() {
+		McpConfigBuilder builder = new McpConfigBuilder();
+		builder.setPushedToolsConfig(
+			"{\"ar-secrets\":{\"tools\":["
+			+ "\"secret_list_names\","
+			+ "\"bad,inject\","
+			+ "\"UPPER_CASE\","
+			+ "\"has space\""
+			+ "]}}");
+
+		String allowed = builder.buildAllowedTools("Read,Edit");
+		assertTrue("Valid tool must be included",
+			allowed.contains("mcp__ar-secrets__secret_list_names"));
+		assertFalse("Tool with comma must be rejected",
+			allowed.contains("bad,inject"));
+		assertFalse("Uppercase tool must be rejected",
+			allowed.contains("UPPER_CASE"));
+		assertFalse("Tool with space must be rejected",
+			allowed.contains("has space"));
+	}
+
+	/**
+	 * Verifies that {@link McpConfigBuilder#isValidServerName(String)} accepts
+	 * the names used in practice and rejects obvious attacks.
+	 */
+	@Test(timeout = 30000)
+	public void isValidServerNameAcceptsAndRejectsCorrectly() {
+		assertTrue(McpConfigBuilder.isValidServerName("ar-secrets"));
+		assertTrue(McpConfigBuilder.isValidServerName("ar-test-runner"));
+		assertTrue(McpConfigBuilder.isValidServerName("myserver123"));
+		assertFalse(McpConfigBuilder.isValidServerName("../evil"));
+		assertFalse(McpConfigBuilder.isValidServerName("bad/slash"));
+		assertFalse(McpConfigBuilder.isValidServerName("UPPER"));
+		assertFalse(McpConfigBuilder.isValidServerName("has space"));
+		assertFalse(McpConfigBuilder.isValidServerName(",inject"));
+		assertFalse(McpConfigBuilder.isValidServerName(""));
+		assertFalse(McpConfigBuilder.isValidServerName(null));
+	}
+
+	/**
+	 * Verifies that {@link McpConfigBuilder#isValidToolName(String)} accepts
+	 * the names used in practice and rejects obvious attacks.
+	 */
+	@Test(timeout = 30000)
+	public void isValidToolNameAcceptsAndRejectsCorrectly() {
+		assertTrue(McpConfigBuilder.isValidToolName("secret_list_names"));
+		assertTrue(McpConfigBuilder.isValidToolName("secret_render_file"));
+		assertTrue(McpConfigBuilder.isValidToolName("_helper"));
+		assertFalse(McpConfigBuilder.isValidToolName("bad,inject"));
+		assertFalse(McpConfigBuilder.isValidToolName("UPPER_CASE"));
+		assertFalse(McpConfigBuilder.isValidToolName("has space"));
+		assertFalse(McpConfigBuilder.isValidToolName("tool-with-dash"));
+		assertFalse(McpConfigBuilder.isValidToolName(""));
+		assertFalse(McpConfigBuilder.isValidToolName(null));
 	}
 
 	/**

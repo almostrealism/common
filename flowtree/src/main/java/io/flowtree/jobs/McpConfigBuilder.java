@@ -35,6 +35,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Builds MCP configuration JSON and allowed-tools strings for the
@@ -360,10 +361,52 @@ public class McpConfigBuilder implements ConsoleFeatures {
     }
 
     /**
+     * Pattern that a pushed MCP server name must match.
+     * Allows only lowercase ASCII letters, digits, and hyphens, with a
+     * letter or digit as the first character. This prevents names that
+     * contain path separators (e.g. {@code ../evil}) or characters that
+     * alter the MCP config JSON or allowed-tools string.
+     */
+    static final Pattern SAFE_SERVER_NAME = Pattern.compile("^[a-z0-9][a-z0-9-]*$");
+
+    /**
+     * Pattern that a pushed MCP tool name must match.
+     * Allows only lowercase ASCII letters, digits, and underscores, with a
+     * letter or underscore as the first character. This prevents names that
+     * contain commas or other characters that could inject entries into the
+     * comma-separated {@code --allowedTools} string.
+     */
+    static final Pattern SAFE_TOOL_NAME = Pattern.compile("^[a-z_][a-z0-9_]*$");
+
+    /**
+     * Returns {@code true} when {@code name} is a safe pushed MCP server name.
+     *
+     * @param name candidate server name from pushed-tools JSON
+     * @return true if the name matches {@link #SAFE_SERVER_NAME}
+     */
+    static boolean isValidServerName(String name) {
+        return name != null && SAFE_SERVER_NAME.matcher(name).matches();
+    }
+
+    /**
+     * Returns {@code true} when {@code name} is a safe MCP tool name.
+     *
+     * @param name candidate tool name from pushed-tools JSON
+     * @return true if the name matches {@link #SAFE_TOOL_NAME}
+     */
+    static boolean isValidToolName(String name) {
+        return name != null && SAFE_TOOL_NAME.matcher(name).matches();
+    }
+
+    /**
      * Parses {@link #pushedToolsConfig} into a server-name → entry map.
      * Returns an empty map when the config is {@code null}, empty, or
      * malformed. Each entry value is the raw {@link JsonNode} for that
      * server (carrying {@code tools}, optional {@code env}, etc.).
+     *
+     * <p>Server names that do not match {@link #SAFE_SERVER_NAME} are
+     * silently skipped to prevent path-traversal attacks when the name is
+     * used as a filesystem path segment (see {@link #buildMcpConfig()}).</p>
      *
      * @return parsed pushed-tools map, never {@code null}
      */
@@ -376,6 +419,10 @@ public class McpConfigBuilder implements ConsoleFeatures {
             Iterator<String> names = root.fieldNames();
             while (names.hasNext()) {
                 String name = names.next();
+                if (!isValidServerName(name)) {
+                    warn("Skipping pushed server with invalid name: " + name);
+                    continue;
+                }
                 JsonNode node = root.get(name);
                 if (node != null && node.isObject()) result.put(name, node);
             }
@@ -408,7 +455,11 @@ public class McpConfigBuilder implements ConsoleFeatures {
             log("Added ar-manager tools");
         }
 
-        // Pushed-tool tools: tool names are listed verbatim in the JSON
+        // Pushed-tool tools: tool names are listed verbatim in the JSON.
+        // Both the server name and the tool name are validated before being
+        // appended so a malformed pushed config cannot inject entries into
+        // the --allowedTools string (server names are already validated in
+        // parsePushedConfig; tool names are validated here).
         Map<String, JsonNode> pushed = parsePushedConfig();
         for (Map.Entry<String, JsonNode> entry : pushed.entrySet()) {
             JsonNode toolsNode = entry.getValue().get("tools");
@@ -416,7 +467,12 @@ public class McpConfigBuilder implements ConsoleFeatures {
             int count = 0;
             for (JsonNode tn : toolsNode) {
                 if (tn.isTextual()) {
-                    sb.append(",mcp__").append(entry.getKey()).append("__").append(tn.asText());
+                    String toolName = tn.asText();
+                    if (!isValidToolName(toolName)) {
+                        warn("Skipping pushed tool with invalid name: " + toolName);
+                        continue;
+                    }
+                    sb.append(",mcp__").append(entry.getKey()).append("__").append(toolName);
                     count++;
                 }
             }

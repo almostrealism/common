@@ -9,14 +9,13 @@ token minting silently return empty results despite the docs being
 present on disk.
 """
 
+import importlib.util
 import os
 import sys
 import types
 import unittest
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
-if _DIR not in sys.path:
-    sys.path.insert(0, _DIR)
 
 
 def _stub_mcp_imports():
@@ -58,7 +57,10 @@ def _stub_mcp_imports():
 
 
 _stub_mcp_imports()
-import server  # noqa: E402
+_spec = importlib.util.spec_from_file_location("ar_docs_server", os.path.join(_DIR, "server.py"))
+server = importlib.util.module_from_spec(_spec)
+sys.modules["ar_docs_server"] = server
+_spec.loader.exec_module(server)
 
 
 class TestStandaloneRootExpansion(unittest.TestCase):
