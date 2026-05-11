@@ -141,38 +141,97 @@ Retrieve responses include the JSON payload under a `payload` key:
 
 ## MCP tools
 
-### `workspace_secret_list_names`
+Each topology has its own tool names.  **Coding agents use the `ar-secrets`
+tools** (no `workspace_` prefix).  The `workspace_secret_*` tools on
+`ar-manager` exist only for admin/Slack flows that run alongside the
+controller and are deliberately not on the agent allowlist — calling them
+from a coding agent will fail with a tool-denied error.  Pick the row that
+matches where your caller runs:
 
-Returns the names of all secrets available to a workstream's workspace.
-Payloads are **never** returned.
+| Caller runs in… | Server | Tool to list | Tool to render | Rendered file lands on… |
+|----------------|--------|--------------|----------------|-------------------------|
+| Agent container (`ClaudeCodeJob`, the default) | `ar-secrets` | `mcp__ar-secrets__secret_list_names` | `mcp__ar-secrets__secret_render_file` | Agent's filesystem |
+| Controller host (admin tooling, Slack handlers) | `ar-manager` | `mcp__ar-manager__workspace_secret_list_names` | `mcp__ar-manager__workspace_secret_render_file` | Controller's filesystem |
+
+The two pairs are functionally identical aside from where the rendered file
+is written.  Both pairs talk to the same controller `/api/secrets/*`
+endpoints; both omit payload values from every response and audit line.
+
+### Coding-agent tools (`ar-secrets`)
+
+This is what an agent launched by `ClaudeCodeJob` should call.  No
+`workspace_id` argument — the workstream is read from the
+`AR_WORKSTREAM_ID` environment variable that `ClaudeCodeJob` injects.
+
+#### `secret_list_names`
+
+Returns the names of all secrets available to the current workstream's
+workspace.  Payloads are **never** returned.
+
+```python
+secret_list_names()
+# {"ok": True, "names": ["aws-prod", "gh-deploy-token"]}
+```
+
+#### `secret_render_file`
+
+Fetches a secret and renders a template into a file **on the agent's host**.
+The `template` string uses `{{key}}` placeholders matching keys in the JSON
+payload.  **Rendered content is never returned to the caller.**
+
+```python
+secret_render_file(
+    secret_name = "aws-prod",
+    template    = "[default]\naws_access_key_id={{access_key_id}}\naws_secret_access_key={{secret_access_key}}\nregion={{region}}\n",
+    output_path = "~/.aws/credentials",
+    mode        = "0600",       # optional, defaults to "0600"
+)
+# {"ok": True, "output_path": "/home/agent/.aws/credentials"}
+```
+
+### Controller/admin tools (`ar-manager`) — not callable by coding agents
+
+Use these only when the caller already runs alongside the controller — for
+example, Slack command handlers or administrative scripts where the
+rendered file is meant to land on the controller host.  Both require a
+`workstream_id` argument because the caller is not bound to a workstream
+by environment.
+
+`flowtree/src/main/java/io/flowtree/jobs/McpConfigBuilder.java` keeps both
+of these on the agent allowlist's exclusion set
+(`EXCLUDED_AR_MANAGER_TOOLS`), so a `ClaudeCodeJob` agent that calls them
+will see a tool-denied error.  If you see that error, the agent has the
+wrong tool name — switch to the `ar-secrets` pair above.
+
+#### `workspace_secret_list_names`
 
 ```python
 workspace_secret_list_names(workstream_id="ws-my-project")
 # {"ok": True, "names": ["aws-prod", "gh-deploy-token"]}
 ```
 
-### `workspace_secret_render_file`
+#### `workspace_secret_render_file`
 
-Fetches a secret and renders a template into a file on the controller host.
-The `template` string uses `{{key}}` placeholders matching keys in the JSON
-payload.  **Rendered content is never returned to the caller.**
+Renders into a file **on the controller's host**:
 
 ```python
 workspace_secret_render_file(
     workstream_id = "ws-my-project",
     secret_name   = "aws-prod",
     template      = "[default]\naws_access_key_id={{access_key_id}}\naws_secret_access_key={{secret_access_key}}\nregion={{region}}\n",
-    output_path   = "~/.aws/credentials",
-    mode          = "0600",       # optional, defaults to "0600"
+    output_path   = "/Users/Shared/flowtree/rendered/aws-credentials",
+    mode          = "0600",
 )
-# {"ok": True, "output_path": "/home/agent/.aws/credentials"}
+# {"ok": True, "output_path": "/Users/Shared/flowtree/rendered/aws-credentials"}
 ```
 
-**Strict placeholder matching**: every `{{key}}` in the template must exist as
-a key in the JSON payload — a missing payload key causes an error and no file
-is written.  Extra keys present in the payload but not referenced by the
-template are silently ignored, so a single secret can carry more keys than any
-one template needs.
+### Shared behaviour
+
+**Strict placeholder matching** (both pairs): every `{{key}}` in the
+template must exist as a key in the JSON payload — a missing payload key
+causes an error and no file is written.  Extra keys present in the payload
+but not referenced by the template are silently ignored, so a single
+secret can carry more keys than any one template needs.
 
 ---
 
@@ -211,25 +270,31 @@ slackWorkspaces:
 
 ### 4. Agent usage
 
-The agent running inside a job on workstream `ws-deploy-prod` (which belongs to
-workspace `T01AB2CD3EF`) calls:
+The coding agent running inside a `ClaudeCodeJob` on workstream
+`ws-deploy-prod` (which belongs to workspace `T01AB2CD3EF`) calls the
+**`ar-secrets`** tools.  No `workstream_id` argument — `AR_WORKSTREAM_ID`
+is already set in the agent's environment.
 
 ```python
 # Step 1: confirm the secret exists
-workspace_secret_list_names(workstream_id="ws-deploy-prod")
+secret_list_names()
 # → {"ok": True, "names": ["aws-prod"]}
 
-# Step 2: render into ~/.aws/credentials
-workspace_secret_render_file(
-    workstream_id = "ws-deploy-prod",
-    secret_name   = "aws-prod",
-    template      = "[default]\naws_access_key_id={{access_key_id}}\naws_secret_access_key={{secret_access_key}}\nregion={{region}}\n",
-    output_path   = "~/.aws/credentials",
+# Step 2: render into ~/.aws/credentials on the agent's host
+secret_render_file(
+    secret_name = "aws-prod",
+    template    = "[default]\naws_access_key_id={{access_key_id}}\naws_secret_access_key={{secret_access_key}}\nregion={{region}}\n",
+    output_path = "~/.aws/credentials",
 )
 # → {"ok": True, "output_path": "/home/agent/.aws/credentials"}
 
 # Step 3: run AWS CLI — it reads the file directly; credentials never enter agent context
 ```
+
+Agents must not call `workspace_secret_list_names` /
+`workspace_secret_render_file`.  Those are the `ar-manager` variants for
+admin tooling that runs on the controller; they are excluded from the
+`ClaudeCodeJob` allowlist and will return a tool-denied error.
 
 ---
 
