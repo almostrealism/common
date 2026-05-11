@@ -597,6 +597,9 @@ public class ClaudeCodeJob extends GitManagedJob {
     /** Sets the post-completion command timeout in seconds. */
     public void setPostCompletionTimeoutSeconds(int postCompletionTimeoutSeconds) { this.postCompletionTimeoutSeconds = postCompletionTimeoutSeconds; }
 
+    /** Sets the current correction-session rule name; null for primary work. Package-private for tests. */
+    void setCurrentActivity(String currentActivity) { this.currentActivity = currentActivity; }
+
     /**
      * Registers an additional enforcement rule to run after the agent completes
      * its primary work.
@@ -637,22 +640,22 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /**
      * Builds the full instruction prompt that wraps the user's request
-     * with operational context for autonomous execution.
-     *
-     * <p>Sections are conditionally included based on the job's configuration:
-     * messaging and GitHub instructions appear when their respective
-     * {@code mcp__ar-manager__*} tools are reachable (the standard agent
-     * configuration), commit.txt instructions only when git management is
-     * active, and budget/turn/task/workstream context is included when
-     * available.</p>
+     * with operational context for autonomous execution. When this job is
+     * running an enforcement-rule correction session (non-null
+     * {@link #currentActivity}), the outer {@code enforceChanges} preamble
+     * and the enforcement-attempt retry preamble are suppressed so rule
+     * correction prompts (which may accept "no changes" as resolution)
+     * are not contradicted by the harness preamble.
      */
-    private String buildInstructionPrompt() {
+    String buildInstructionPrompt() {
+        boolean inRuleCorrection = currentActivity != null && !currentActivity.isEmpty();
         return new InstructionPromptBuilder()
                 .setPrompt(prompt)
                 .setWorkstreamUrl(getWorkstreamUrl())
                 .setProtectTestFiles(isProtectTestFiles())
                 .setEnforceChanges(enforceChanges)
                 .setEnforcementAttempt(enforcementAttempt)
+                .setCorrectionSession(inRuleCorrection)
                 .setBaseBranch(getBaseBranch())
                 .setTargetBranch(getTargetBranch())
                 .setWorkingDirectory(getWorkingDirectory())

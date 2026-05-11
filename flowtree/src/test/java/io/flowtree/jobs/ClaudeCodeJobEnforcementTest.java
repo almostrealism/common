@@ -426,6 +426,89 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		assertEquals("maven_dependency_protection", capturedActivity.get());
 	}
 
+	// ── enforce_changes suppression during rule correction sessions ─────────
+
+	/**
+	 * When {@code enforce_changes} is enabled on the outer job, the primary
+	 * work prompt carries the strict "Code Changes Are Required" preamble.
+	 * Verifies the wiring through {@link ClaudeCodeJob#buildInstructionPrompt()}.
+	 */
+	@Test(timeout = 30000)
+	public void primaryPromptCarriesEnforceChangesStrictBlock() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do the work");
+		job.setEnforceChanges(true);
+		job.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1");
+
+		String primary = job.buildInstructionPrompt();
+		assertTrue("Primary prompt with enforceChanges should carry strict block",
+				primary.contains("Code Changes Are Required"));
+	}
+
+	/**
+	 * The enforcement-rule correction sessions for rules whose
+	 * {@code buildCorrectionPrompt} returns a non-null value (deduplication,
+	 * organizational placement, maven dependency protection, post-completion
+	 * command) must NOT carry the outer {@code enforce_changes} strict preamble.
+	 * The rule's own correction prompt is self-contained and may legitimately
+	 * accept "no changes needed" as a valid outcome.
+	 *
+	 * <p>This test verifies the wiring from {@link ClaudeCodeJob#setCurrentActivity(String)}
+	 * through {@link ClaudeCodeJob#buildInstructionPrompt()} to
+	 * {@link InstructionPromptBuilder#setCorrectionSession(boolean)}.</p>
+	 */
+	@Test(timeout = 30000)
+	public void correctionSessionPromptOmitsEnforceChangesStrictBlock() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "rule correction prompt");
+		job.setEnforceChanges(true);
+		job.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1");
+
+		// Simulate the state runCorrectionSession sets while invoking the agent.
+		job.setCurrentActivity("deduplication");
+
+		String correction = job.buildInstructionPrompt();
+		assertFalse("Correction-session prompt must not include 'Code Changes Are Required'",
+				correction.contains("Code Changes Are Required"));
+		assertFalse("Correction-session prompt must not include the 'Exiting without code changes' threat",
+				correction.contains("Exiting without code changes"));
+		assertTrue("Correction-session prompt must include the permissive Non-Code Requests block",
+				correction.contains("Non-Code Requests"));
+	}
+
+	/**
+	 * Sanity check: clearing the activity restores primary-session behaviour
+	 * so the outer enforce_changes pressure resumes for the next primary run.
+	 */
+	@Test(timeout = 30000)
+	public void clearingCurrentActivityRestoresPrimaryPromptBehaviour() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "primary prompt");
+		job.setEnforceChanges(true);
+		job.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1");
+
+		job.setCurrentActivity("organizational-placement");
+		assertFalse(job.buildInstructionPrompt().contains("Code Changes Are Required"));
+
+		job.setCurrentActivity(null);
+		assertTrue("Strict block returns once activity is cleared",
+				job.buildInstructionPrompt().contains("Code Changes Are Required"));
+	}
+
+	/**
+	 * The harness_feedback invitation is included in primary prompts when a
+	 * workstream URL is configured.  Verifies the wiring through
+	 * {@link ClaudeCodeJob#buildInstructionPrompt()}.
+	 */
+	@Test(timeout = 30000)
+	public void primaryPromptIncludesHarnessFeedbackInvitation() {
+		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do the work");
+		job.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1");
+
+		String primary = job.buildInstructionPrompt();
+		assertTrue("Primary prompt should invite harness_feedback messages",
+				primary.contains("harness_feedback"));
+		assertTrue("Primary prompt should include the Feedback to the Harness section",
+				primary.contains("Feedback to the Harness"));
+	}
+
 	// ── Backward compatibility ───────────────────────────────────────────────
 
 	@Test(timeout = 30000)
