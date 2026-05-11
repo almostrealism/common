@@ -198,6 +198,9 @@ public class McpConfigBuilder implements ConsoleFeatures {
     /** Temporary HMAC bearer token for ar-manager authentication. */
     private String arManagerToken;
 
+    /** Pushed-tools configuration JSON (see {@link #setPushedToolsConfig}). */
+    private String pushedToolsConfig;
+
     /** Project working directory used to locate {@code .mcp.json}. */
     private Path workingDirectory;
 
@@ -220,6 +223,21 @@ public class McpConfigBuilder implements ConsoleFeatures {
      */
     public void setArManagerToken(String token) {
         this.arManagerToken = token;
+    }
+
+    /**
+     * Sets the pushed-tools configuration JSON. The expected schema is a
+     * map keyed by server name with each value carrying {@code url},
+     * {@code tools} (array of tool names), and an optional {@code env}
+     * map. Servers in this config become stdio entries pointing at
+     * {@code ~/.flowtree/tools/mcp/{name}/server.py} in the agent
+     * container; the source file is provisioned separately by
+     * {@link ManagedToolsDownloader#ensurePushedTools(String)}.
+     *
+     * @param config the JSON configuration; may be {@code null}
+     */
+    public void setPushedToolsConfig(String config) {
+        this.pushedToolsConfig = config;
     }
 
     /**
@@ -280,9 +298,25 @@ public class McpConfigBuilder implements ConsoleFeatures {
             log("ar-manager HTTP entry: " + url);
         }
 
-        // Include project MCP servers discovered from .mcp.json
+        // Pushed tools: provisioned to ~/.flowtree/tools/mcp/{name}/server.py
+        // by ManagedToolsDownloader and registered here as stdio entries.
+        Map<String, JsonNode> pushed = parsePushedConfig();
+        String homeDir = System.getProperty("user.home");
+        for (Map.Entry<String, JsonNode> entry : pushed.entrySet()) {
+            String name = entry.getKey();
+            ObjectNode serverNode = mcpServers.putObject(name);
+            serverNode.put("command", pythonCommand);
+            ArrayNode argsArray = serverNode.putArray("args");
+            argsArray.add(homeDir + "/.flowtree/tools/mcp/" + name + "/server.py");
+            JsonNode envNode = entry.getValue().get("env");
+            if (envNode != null && envNode.isObject()) serverNode.set("env", envNode);
+        }
+
+        // Include project MCP servers discovered from .mcp.json (skip
+        // anything already covered by a pushed entry above)
         Map<String, String> projectServers = discoverProjectMcpServers();
         for (Map.Entry<String, String> entry : projectServers.entrySet()) {
+            if (pushed.containsKey(entry.getKey())) continue;
             ObjectNode serverNode = mcpServers.putObject(entry.getKey());
             serverNode.put("command", pythonCommand);
             ArrayNode argsArray = serverNode.putArray("args");
@@ -295,6 +329,32 @@ public class McpConfigBuilder implements ConsoleFeatures {
             warn("Failed to serialize MCP config: " + e.getMessage());
             return "{\"mcpServers\":{}}";
         }
+    }
+
+    /**
+     * Parses {@link #pushedToolsConfig} into a server-name → entry map.
+     * Returns an empty map when the config is {@code null}, empty, or
+     * malformed. Each entry value is the raw {@link JsonNode} for that
+     * server (carrying {@code tools}, optional {@code env}, etc.).
+     *
+     * @return parsed pushed-tools map, never {@code null}
+     */
+    Map<String, JsonNode> parsePushedConfig() {
+        Map<String, JsonNode> result = new LinkedHashMap<>();
+        if (pushedToolsConfig == null || pushedToolsConfig.isEmpty()) return result;
+        try {
+            JsonNode root = mapper.readTree(pushedToolsConfig);
+            if (!root.isObject()) return result;
+            Iterator<String> names = root.fieldNames();
+            while (names.hasNext()) {
+                String name = names.next();
+                JsonNode node = root.get(name);
+                if (node != null && node.isObject()) result.put(name, node);
+            }
+        } catch (IOException e) {
+            warn("Failed to parse pushedToolsConfig: " + e.getMessage());
+        }
+        return result;
     }
 
     /**
@@ -320,11 +380,24 @@ public class McpConfigBuilder implements ConsoleFeatures {
             log("Added ar-manager tools");
         }
 
+        // Pushed-tool tools: tool names are listed verbatim in the JSON
+        Map<String, JsonNode> pushed = parsePushedConfig();
+        for (Map.Entry<String, JsonNode> entry : pushed.entrySet()) {
+            JsonNode toolsNode = entry.getValue().get("tools");
+            if (toolsNode == null || !toolsNode.isArray()) continue;
+            for (JsonNode tn : toolsNode) {
+                if (tn.isTextual()) {
+                    sb.append(",mcp__").append(entry.getKey()).append("__").append(tn.asText());
+                }
+            }
+        }
+
         // Discover and include tools from project MCP servers
         Path workDir = resolveWorkingDirectory();
         Map<String, String> projectServers = discoverProjectMcpServers();
         for (Map.Entry<String, String> entry : projectServers.entrySet()) {
             String serverName = entry.getKey();
+            if (pushed.containsKey(serverName)) continue;
             Path serverFile = workDir.resolve(entry.getValue());
             List<String> tools = discoverToolNames(serverFile);
             for (String tool : tools) {

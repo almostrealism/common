@@ -105,6 +105,53 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 	}
 
 	@Test(timeout = 30000)
+	public void pushedToolsEmitStdioEntryAndAllowedTools() {
+		McpConfigBuilder builder = new McpConfigBuilder();
+		builder.setPushedToolsConfig(
+			"{\"ar-secrets\":{\"url\":\"http://0.0.0.0:7780/api/tools/ar-secrets\","
+				+ "\"tools\":[\"secret_list_names\",\"secret_render_file\"]}}");
+
+		String config = builder.buildMcpConfig();
+		assertTrue("Config must register ar-secrets server", config.contains("\"ar-secrets\""));
+		assertTrue("Config must point at downloaded server.py",
+			config.contains(".flowtree/tools/mcp/ar-secrets/server.py"));
+		assertTrue("Config must use stdio command", config.contains("\"command\":\"python3\""));
+
+		String allowed = builder.buildAllowedTools("Read,Edit");
+		assertTrue("Allowlist must include secret_list_names",
+			allowed.contains("mcp__ar-secrets__secret_list_names"));
+		assertTrue("Allowlist must include secret_render_file",
+			allowed.contains("mcp__ar-secrets__secret_render_file"));
+	}
+
+	@Test(timeout = 30000)
+	public void pushedToolEntryOverridesProjectMcpJsonOfSameName() throws IOException {
+		Path tempDir = Files.createTempDirectory("mcp_pushed_dedup_");
+		try {
+			Path mcpJson = tempDir.resolve(".mcp.json");
+			Files.writeString(mcpJson, "{\"mcpServers\":{\"ar-secrets\":{"
+				+ "\"command\":\"python3\",\"args\":[\"tools/mcp/secrets/server.py\"]}}}",
+				StandardCharsets.UTF_8);
+
+			McpConfigBuilder builder = new McpConfigBuilder();
+			builder.setWorkingDirectory(tempDir);
+			builder.setPushedToolsConfig(
+				"{\"ar-secrets\":{\"url\":\"http://x/api/tools/ar-secrets\",\"tools\":[]}}");
+
+			String config = builder.buildMcpConfig();
+			// Pushed entry wins: arg must point at the downloaded path,
+			// not the project-relative tools/mcp/secrets/server.py.
+			assertTrue("Pushed-tool path must win",
+				config.contains(".flowtree/tools/mcp/ar-secrets/server.py"));
+			assertFalse("Project-relative path must not appear",
+				config.contains("\"tools/mcp/secrets/server.py\""));
+		} finally {
+			Files.walk(tempDir).sorted(Comparator.reverseOrder())
+				.forEach(p -> { try { Files.deleteIfExists(p); } catch (IOException ignored) { } });
+		}
+	}
+
+	@Test(timeout = 30000)
 	public void buildAllowedToolsIncludesArManager() {
 		McpConfigBuilder builder = new McpConfigBuilder();
 		builder.setArManagerUrl("http://ar-manager:8010");

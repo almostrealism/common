@@ -106,7 +106,7 @@ See `flowtree/src/main/resources/workstreams-example.yaml` for full configuratio
 | Server | Directory | Description |
 |--------|-----------|-------------|
 | **ar-manager** | [manager/](manager/) | Centralized MCP endpoint for messaging, memory, GitHub, and workstream management |
-| **ar-secrets** | [secrets/](secrets/) | In-container stdio server that renders workspace secrets into files on the agent's filesystem (see [SECRETS.md](SECRETS.md)) |
+| **ar-secrets** | [secrets/](secrets/) | Auto-pushed stdio server (delivered by the controller to every agent container) that renders workspace secrets into files on the agent's filesystem (see [SECRETS.md](SECRETS.md)) |
 | **ar-consultant** | [consultant/](consultant/) | Documentation-aware assistant with local LLM inference, memory, and doc retrieval |
 | **ar-memory** | [memory/](memory/) | Centralized HTTP memory service with embedding-based search |
 | **ar-build-validator** | [build-validator/](build-validator/) | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne |

@@ -162,6 +162,18 @@ public class FlowTreeController implements ConsoleFeatures {
 
     /** HTTP API endpoint for programmatic job submission and agent communication. */
     private FlowTreeApiEndpoint apiEndpoint;
+    /**
+     * JSON describing every pushed MCP tool the controller has registered.
+     *
+     * <p>Includes the built-in {@code ar-secrets} entry plus any tools
+     * declared under {@code pushedTools:} in {@code workstreams.yaml}. The
+     * string is the input format expected by
+     * {@link io.flowtree.jobs.ManagedToolsDownloader#ensurePushedTools(String)};
+     * agent jobs receive it through {@code ClaudeCodeJobFactory.setPushedToolsConfig}.
+     * Populated by {@link #registerPushedTools()}; never {@code null} after
+     * controller startup.</p>
+     */
+    private String pushedToolsConfig = "{}";
     /** Desired port for the HTTP API endpoint; 0 for ephemeral assignment. */
     private int apiPort = FlowTreeApiEndpoint.DEFAULT_PORT;
     /** Persistent store for per-workstream job statistics. */
@@ -612,7 +624,16 @@ public class FlowTreeController implements ConsoleFeatures {
         }
 
         startApiEndpoint();
-        // Pushed tools removed — ar-manager is the single centralized tool
+        registerPushedTools();
+        // After registration, propagate the config to anything that builds
+        // ClaudeCodeJobFactory instances so each launched job picks up the
+        // built-in ar-secrets plus any operator-declared pushed tools.
+        if (apiEndpoint != null) {
+            apiEndpoint.setPushedToolsConfig(pushedToolsConfig);
+        }
+        if (listener != null) {
+            listener.setPushedToolsConfig(pushedToolsConfig);
+        }
         printStartupSummary();
     }
 
@@ -1021,13 +1042,20 @@ public class FlowTreeController implements ConsoleFeatures {
      * the API endpoint reference and its resolved listening port.</p>
      */
     private void registerPushedTools() {
-        if (loadedConfig == null || apiEndpoint == null) return;
-
-        Map<String, WorkstreamConfig.PushedToolEntry> pushedTools = loadedConfig.getPushedTools();
-        if (pushedTools == null || pushedTools.isEmpty()) return;
+        if (apiEndpoint == null) return;
 
         File configDir = configFile != null ? configFile.getParentFile() : null;
         int listeningPort = apiEndpoint.getListeningPort();
+
+        // Merge built-in entries (ar-secrets) with operator-declared
+        // workstreams.yaml entries. The built-ins go first so that
+        // operator entries with the same name silently override them
+        // (giving operators a release valve if they need a custom build).
+        Map<String, WorkstreamConfig.PushedToolEntry> pushedTools = new LinkedHashMap<>();
+        pushedTools.put("ar-secrets", builtInSecretsEntry());
+        if (loadedConfig != null && loadedConfig.getPushedTools() != null) {
+            pushedTools.putAll(loadedConfig.getPushedTools());
+        }
 
         log("Registering " + pushedTools.size() + " pushed tool(s)...");
 
@@ -1038,21 +1066,20 @@ public class FlowTreeController implements ConsoleFeatures {
             String serverName = entry.getKey();
             WorkstreamConfig.PushedToolEntry toolEntry = entry.getValue();
 
-            // Resolve source path relative to config file directory,
-            // falling back to the app directory for container deployments
-            // where /config is a volume mount that hides bundled files
             Path sourcePath = resolveToolSource(toolEntry.getSource(), configDir);
+            if (!Files.exists(sourcePath)) {
+                warn("Pushed tool source not found for " + serverName + ": "
+                    + sourcePath + " — skipping");
+                continue;
+            }
 
-            // Discover tool names from the source file
             List<String> tools = McpToolDiscovery.discoverToolNames(sourcePath);
             if (tools.isEmpty()) {
                 warn("No tools discovered from " + sourcePath + " for pushed tool " + serverName);
             }
 
-            // Register the file with the API endpoint
             apiEndpoint.registerToolFile(serverName, sourcePath);
 
-            // Build this tool's entry in the config JSON
             String url = "http://0.0.0.0:" + listeningPort + "/api/tools/" + serverName;
 
             if (!first) configJson.append(",");
@@ -1086,9 +1113,39 @@ public class FlowTreeController implements ConsoleFeatures {
         }
 
         configJson.append("}");
-        String pushedConfig = configJson.toString();
+        this.pushedToolsConfig = configJson.toString();
+    }
 
-        log("Pushed tools config (legacy, not used): " + pushedConfig);
+    /**
+     * Builds the synthetic {@link WorkstreamConfig.PushedToolEntry} for the
+     * built-in {@code ar-secrets} MCP server. Source path
+     * ({@code tools/mcp/secrets/server.py}) is resolved through the same
+     * {@link #resolveToolSource(String, File)} fallback chain as
+     * operator-declared entries: config-relative first, then
+     * {@code FLOWTREE_APP_DIR}-relative (default {@code /app}). No env
+     * overrides — ar-secrets reads {@code AR_CONTROLLER_URL},
+     * {@code AR_WORKSTREAM_ID}, and {@code AR_MANAGER_TOKEN} from the
+     * process environment that {@code ClaudeCodeJob} sets per job.
+     *
+     * @return a {@link WorkstreamConfig.PushedToolEntry} for ar-secrets
+     */
+    private static WorkstreamConfig.PushedToolEntry builtInSecretsEntry() {
+        WorkstreamConfig.PushedToolEntry entry = new WorkstreamConfig.PushedToolEntry();
+        entry.setSource("tools/mcp/secrets/server.py");
+        return entry;
+    }
+
+    /**
+     * Returns the pushed-tools configuration JSON built at controller
+     * startup. The string is the input format expected by
+     * {@link io.flowtree.jobs.ManagedToolsDownloader#ensurePushedTools(String)}
+     * and by {@link io.flowtree.jobs.McpConfigBuilder#setPushedToolsConfig(String)}.
+     *
+     * @return the JSON configuration; {@code "{}"} when no pushed tools
+     *         are registered (never {@code null})
+     */
+    public String getPushedToolsConfig() {
+        return pushedToolsConfig;
     }
 
     /**

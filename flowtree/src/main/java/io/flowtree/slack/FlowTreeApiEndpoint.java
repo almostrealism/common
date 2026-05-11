@@ -176,6 +176,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /** Base URL of the ar-manager HTTP server (e.g., "http://ar-manager:8010"). */
     private String arManagerUrl;
 
+    /** Pushed-tools configuration JSON forwarded to every submitted job. */
+    private String pushedToolsConfig;
+
     /**
      * Creates a new API endpoint on the specified port, using a single
      * primary notifier (legacy single-workspace mode).
@@ -271,6 +274,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     public void setArManagerUrl(String url) {
         this.arManagerUrl = url;
+    }
+
+    /**
+     * Sets the pushed-tools configuration JSON forwarded to every submitted
+     * job. Format matches {@link FlowTreeController#getPushedToolsConfig()}.
+     *
+     * @param config the JSON configuration; may be {@code null}
+     */
+    public void setPushedToolsConfig(String config) {
+        this.pushedToolsConfig = config;
     }
 
     /**
@@ -1145,6 +1158,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 factory.setArManagerUrl(arManagerUrl);
                 factory.setArManagerToken(arToken);
             }
+        }
+        if (pushedToolsConfig != null && !pushedToolsConfig.isEmpty()) {
+            factory.setPushedToolsConfig(pushedToolsConfig);
         }
 
         // Notify that the job has been submitted (not yet executing)

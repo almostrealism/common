@@ -113,6 +113,8 @@ public class ClaudeCodeJob extends GitManagedJob {
     private String arManagerUrl;
     /** Bearer token for authenticating against the ar-manager service. */
     private String arManagerToken;
+    /** Pushed-tools JSON; null when no controller is in the loop. */
+    private String pushedToolsConfig;
     /** Optional planning document text injected into the Claude Code system prompt. */
     private String planningDocument;
     /** Whether the job must produce at least one staged file change to succeed. */
@@ -167,6 +169,8 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /** Builder used to assemble the MCP tool configuration JSON for Claude Code. */
     private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
+    /** Downloads pushed MCP tool source files before each agent launch. */
+    private final ManagedToolsDownloader toolsDownloader = new ManagedToolsDownloader(mcpConfigBuilder);
     /** JSON mapper used to parse structured output from Claude Code. */
     private static final ObjectMapper outputMapper = new ObjectMapper();
 
@@ -431,6 +435,14 @@ public class ClaudeCodeJob extends GitManagedJob {
         this.arManagerToken = arManagerToken;
     }
 
+    /** Returns the pushed-tools configuration JSON, or {@code null}. */
+    public String getPushedToolsConfig() { return pushedToolsConfig; }
+
+    /** Sets the pushed-tools configuration JSON (may be {@code null}). */
+    public void setPushedToolsConfig(String pushedToolsConfig) {
+        this.pushedToolsConfig = pushedToolsConfig;
+    }
+
     /**
      * Returns the planning document path for this job.
      * When set, the agent is instructed to read this file for the
@@ -663,6 +675,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     private void configureMcpBuilder() {
         mcpConfigBuilder.setArManagerUrl(arManagerUrl);
         mcpConfigBuilder.setArManagerToken(arManagerToken);
+        mcpConfigBuilder.setPushedToolsConfig(pushedToolsConfig);
         mcpConfigBuilder.setPythonCommand(getPythonCommand());
         Path workDir = getWorkingDirectory() != null
             ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
@@ -949,6 +962,8 @@ public class ClaudeCodeJob extends GitManagedJob {
             log("Inactivity restart attempt: " + (inactivityRestartAttempt + 1)
                     + " of " + (maxInactivityRestarts + 1));
         }
+
+        toolsDownloader.ensurePushedTools(pushedToolsConfig);
 
         command.add("--mcp-config");
         command.add(mcpConfigBuilder.buildMcpConfig());
@@ -1466,6 +1481,9 @@ public class ClaudeCodeJob extends GitManagedJob {
         if (arManagerToken != null) {
             sb.append("::arManagerToken:=").append(base64Encode(arManagerToken));
         }
+        if (pushedToolsConfig != null) {
+            sb.append("::pushedTools:=").append(base64Encode(pushedToolsConfig));
+        }
         if (planningDocument != null) {
             sb.append("::planDoc:=").append(base64Encode(planningDocument));
         }
@@ -1521,6 +1539,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                 break;
             case "arManagerToken":
                 this.arManagerToken = base64Decode(value);
+                break;
+            case "pushedTools":
+                this.pushedToolsConfig = base64Decode(value);
                 break;
             case "planDoc":
                 this.planningDocument = base64Decode(value);

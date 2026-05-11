@@ -82,6 +82,13 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     /** Bearer token for authenticating against the ar-manager service. */
     private String arManagerToken;
 
+    /**
+     * JSON describing pushed MCP tools the controller is serving for this
+     * job (always includes ar-secrets; may include additional operator
+     * declarations). Format matches {@code FlowTreeController.getPushedToolsConfig()}.
+     */
+    private String pushedToolsConfig;
+
     /** Optional planning document text to inject into the Claude Code system prompt. */
     private String planningDocument;
 
@@ -541,6 +548,26 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
     }
 
     /**
+     * Returns the pushed-tools configuration JSON. May be {@code null}.
+     */
+    public String getPushedToolsConfig() {
+        return pushedToolsConfig;
+    }
+
+    /**
+     * Sets the pushed-tools configuration JSON. The same string is later
+     * forwarded to each created job so it can drive both
+     * {@link ManagedToolsDownloader#ensurePushedTools(String)} and
+     * {@link McpConfigBuilder#setPushedToolsConfig(String)}.
+     *
+     * @param pushedToolsConfig the JSON configuration; may be {@code null}
+     */
+    public void setPushedToolsConfig(String pushedToolsConfig) {
+        this.pushedToolsConfig = pushedToolsConfig;
+        set("pushedToolsConfig", GitManagedJob.base64Encode(pushedToolsConfig));
+    }
+
+    /**
      * Returns the planning document path for jobs.
      */
     public String getPlanningDocument() {
@@ -913,6 +940,9 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
         if (arManagerToken != null) {
             job.setArManagerToken(arManagerToken);
         }
+        if (pushedToolsConfig != null) {
+            job.setPushedToolsConfig(pushedToolsConfig);
+        }
 
         if (planningDocument != null) {
             job.setPlanningDocument(planningDocument);
@@ -1011,6 +1041,9 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory {
                 break;
             case "arManagerToken":
                 this.arManagerToken = GitManagedJob.base64Decode(value);
+                break;
+            case "pushedToolsConfig":
+                this.pushedToolsConfig = GitManagedJob.base64Decode(value);
                 break;
             case "planDoc":
                 this.planningDocument = GitManagedJob.base64Decode(value);
