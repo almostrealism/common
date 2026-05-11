@@ -1037,8 +1037,11 @@ public class FlowTreeController implements ConsoleFeatures {
      * with the API endpoint for serving via {@code GET /api/tools/{name}}.
      * Tool names are discovered from the Python source files so they can
      * be included in the per-job allowed-tools list. The resulting JSON
-     * is logged but is no longer actively used since ar-manager replaced
-     * pushed tools as the standard MCP integration.</p>
+     * is stored in {@link #pushedToolsConfig} and forwarded to the API
+     * endpoint and Slack listener so that every agent job started by
+     * this controller can install and invoke the configured pushed tools
+     * (notably the built-in {@code ar-secrets} server). It is also
+     * surfaced via {@link #getPushedToolsConfig()} for ops/debugging.</p>
      *
      * <p>Must be called after {@link #startApiEndpoint()} since it requires
      * the API endpoint reference and its resolved listening port.</p>
