@@ -158,21 +158,36 @@ important tools are declared in the function signature (not hidden in the body).
 
 ## Security Rules for Workspace Secrets
 
-When any tool in this codebase (currently `workspace_secret_render_file`,
-`workspace_secret_list_names`) handles credential data, the following rules apply
-**without exception**.  They exist because a single accidental echo of a secret
-into an agent response, a log line, or a PR description permanently compromises
+Two MCP servers expose secret handling and the rules below apply to **both
+pairs without exception**:
+
+- **`ar-secrets`** (stdio in the agent container) — `secret_list_names`,
+  `secret_render_file`.  This is what coding agents launched by
+  `ClaudeCodeJob` must call; the rendered file lands on the agent's host.
+- **`ar-manager`** (HTTP on the controller) —
+  `workspace_secret_list_names`, `workspace_secret_render_file`.  These
+  exist for admin/Slack flows that run alongside the controller and are
+  excluded from the coding-agent allowlist
+  (`EXCLUDED_AR_MANAGER_TOOLS` in `McpConfigBuilder.java`).  An agent that
+  reaches for the `workspace_secret_*` names will be denied by the harness;
+  the fix is to call the `ar-secrets` pair, not to widen the allowlist.
+
+See `tools/mcp/SECRETS.md` for the full topology and tool reference.
+
+These rules exist because a single accidental echo of a secret into an
+agent response, a log line, or a PR description permanently compromises
 that credential.
 
 ### NEVER read the rendered file back into context
 
-After calling `workspace_secret_render_file`, the agent MUST NOT:
+After calling `secret_render_file` (or `workspace_secret_render_file` in
+admin tooling), the caller MUST NOT:
 - Read the rendered file with any tool (`Read`, `Bash cat`, etc.)
 - Echo or print its contents in any response
 - Pass its path to a tool that returns file contents
 
 The rendered file is an ephemeral on-disk resource for the process that follows.
-Treat it as write-only from the agent's perspective.
+Treat it as write-only from the caller's perspective.
 
 ### NEVER include secret values in commits, logs, or PR descriptions
 
@@ -188,16 +203,19 @@ persists beyond the current tool call.
 
 ### NEVER return payload values from controller helpers
 
-Any Python helper that fetches a `/api/secrets/{name}` response MUST pass the
-`payload` only into the template renderer — never into a return value that
-crosses the MCP channel back to the caller.
+Any Python helper in `ar-secrets` or `ar-manager` that fetches a
+`/api/secrets/{name}` response MUST pass the `payload` only into the
+template renderer — never into a return value that crosses the MCP channel
+back to the caller.
 
 ### Audit log expectations
 
-Every `workspace_secret_render_file` call writes a `secret_access` audit line
-via `_audit()`.  The audit line MUST include workstream ID, secret name, and job
-ID, but MUST NOT include any key/value from the payload.  Verify this when adding
-new code paths that touch secret payloads.
+Every render call (`secret_render_file` on `ar-secrets`,
+`workspace_secret_render_file` on `ar-manager`) writes a `secret_access`
+audit line via `_audit()`.  The audit line MUST include workstream ID,
+secret name, and job ID, but MUST NOT include any key/value from the
+payload.  Verify this when adding new code paths that touch secret
+payloads.
 
 ---
 
