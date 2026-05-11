@@ -1253,7 +1253,7 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 			try {
 				compileStart = System.currentTimeMillis();
 				PackedCollection perRowAudio = buildPerRowAudio(totalNotes);
-				PackedCollection perRowCutoff = buildPerRowFilterCutoffs(totalNotes);
+				PackedCollection perRowCutoff = buildPerRowFilterCutoffs(totalNotes, 0, NOTE_SIZE);
 
 				int paddedTotal = totalNotes * paddedNoteSize;
 
@@ -1374,7 +1374,7 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 				compileStart = System.currentTimeMillis();
 				PackedCollection perRowAudio = buildPerRowAudio(totalNotes);
 				PackedCollection perRowEnvelopes = buildPerRowVolumeEnvelopes(totalNotes);
-				PackedCollection perRowCutoff = buildPerRowFilterCutoffs(totalNotes);
+				PackedCollection perRowCutoff = buildPerRowFilterCutoffs(totalNotes, 0, NOTE_SIZE);
 
 				int totalSamples = totalNotes * NOTE_SIZE;
 				int paddedTotal = totalNotes * paddedNoteSize;
@@ -1482,13 +1482,18 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 
 	/**
 	 * Builds a per-row filter cutoff envelope tensor of shape
-	 * {@code [batchSize, NOTE_SIZE]}. Each row's cutoff envelope has a different peak
+	 * {@code [batchSize, paddedNoteSize]}. Each row's cutoff envelope has a different peak
 	 * frequency and sustain level, so per-row independence is exercised: row N's
 	 * filter response at sample {@code i} reads only row N's cutoff at sample {@code i},
-	 * never neighbouring rows'.
+	 * never neighbouring rows'. The ADSR shape occupies the central {@link #NOTE_SIZE}
+	 * samples; the {@code padHalf} samples on each side stay zero (matching the padded-row
+	 * FIR strategy used by Addition 7's Measurement 2 chain). Call with
+	 * {@code padHalf=0, paddedNoteSize=NOTE_SIZE} to produce the unpadded
+	 * {@code [batchSize, NOTE_SIZE]} variant used by E2/E3, which pad on the Producer side
+	 * via {@code pad(...)}.
 	 */
-	private PackedCollection buildPerRowFilterCutoffs(int batchSize) {
-		double[] data = new double[batchSize * NOTE_SIZE];
+	private PackedCollection buildPerRowFilterCutoffs(int batchSize, int padHalf, int paddedNoteSize) {
+		double[] data = new double[batchSize * paddedNoteSize];
 		for (int n = 0; n < batchSize; n++) {
 			double peak = 4000.0 + (n % 16) * 600.0;
 			double sustain = 800.0 + (n % 8) * 200.0;
@@ -1496,13 +1501,360 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 			double attackFrac = 0.03 + (n % 8) * 0.005;
 			double decayFrac = 0.08 + (n % 8) * 0.005;
 			double releaseFrac = 0.12 + (n % 8) * 0.005;
-			fillAdsrShape(data, n * NOTE_SIZE, NOTE_SIZE,
+			fillAdsrShape(data, n * paddedNoteSize + padHalf, NOTE_SIZE,
 					base, peak, sustain, base,
 					attackFrac, decayFrac, releaseFrac);
 		}
-		PackedCollection out = new PackedCollection(shape(batchSize, NOTE_SIZE));
+		PackedCollection out = new PackedCollection(shape(batchSize, paddedNoteSize));
 		out.setMem(data);
 		return out;
+	}
+
+	// ===========================================================================================
+	// ADDITION 7 — Java-side gather cost (Path B1, per-note memcpy)
+	// ===========================================================================================
+
+	/** Pool size for the synthetic source bank used by {@link #benchmarkJavaSideGatherCostB1}. */
+	private static final int B1_SOURCE_POOL_SIZE = 16;
+
+	/** Minimum source-buffer length in samples; ensures any random offset leaves at least
+	 *  {@link #NOTE_SIZE} samples to gather. */
+	private static final int B1_SOURCE_MIN_SAMPLES = 2 * NOTE_SIZE;
+
+	/** Range of additional samples added on top of {@link #B1_SOURCE_MIN_SAMPLES}; together
+	 *  these size source buffers to 2048-8192 samples (the typical resampled-buffer range
+	 *  for the production audioCache). */
+	private static final int B1_SOURCE_EXTRA_RANGE = 6 * NOTE_SIZE;
+
+	/**
+	 * Per-note metadata that drives the B1 gather: source index into the pool, sample offset
+	 * within that source, pitch ratio, volume + filter ADSR scalars, automation level, and
+	 * tick-relative start offset. Generated once per density level outside the timed loop;
+	 * the timed loop reads these arrays to populate the input tensors.
+	 */
+	private static final class B1NoteMetadata {
+		final int[] sourceIdx;
+		final int[] sourceOffset;
+		final double[] pitchRatio;
+		final double[] volAttack;
+		final double[] volDecay;
+		final double[] volSustain;
+		final double[] volRelease;
+		final double[] filterAttack;
+		final double[] filterDecay;
+		final double[] filterSustain;
+		final double[] filterRelease;
+		final double[] automationLevel;
+		final double[] tickStartOffset;
+
+		B1NoteMetadata(int totalNotes) {
+			sourceIdx = new int[totalNotes];
+			sourceOffset = new int[totalNotes];
+			pitchRatio = new double[totalNotes];
+			volAttack = new double[totalNotes];
+			volDecay = new double[totalNotes];
+			volSustain = new double[totalNotes];
+			volRelease = new double[totalNotes];
+			filterAttack = new double[totalNotes];
+			filterDecay = new double[totalNotes];
+			filterSustain = new double[totalNotes];
+			filterRelease = new double[totalNotes];
+			automationLevel = new double[totalNotes];
+			tickStartOffset = new double[totalNotes];
+		}
+	}
+
+	/**
+	 * Holds a compiled E3-style batched chain together with the pre-allocated audio buffer
+	 * the chain captures by reference. The chain is reused across timed iterations; each
+	 * iteration calls {@code audioInput.setMem(...)} to replace the audio contents before
+	 * invoking the chain. Per-row volume envelope and filter cutoff tensors are pre-built
+	 * outside the timed loop — see the javadoc of {@link #benchmarkJavaSideGatherCostB1}
+	 * Measurement 2 for the rationale.
+	 */
+	private static final class B1Chain {
+		final PackedCollection audioInput;
+		final Evaluable<PackedCollection> chain;
+
+		B1Chain(PackedCollection audioInput, Evaluable<PackedCollection> chain) {
+			this.audioInput = audioInput;
+			this.chain = chain;
+		}
+	}
+
+	/**
+	 * Addition 7: measures the Java-side cost of preparing the per-tick batched input
+	 * tensors (Path B1 from the Phase 3 design document — per-note {@link System#arraycopy}
+	 * from a pool of cached source buffers into the {@code [N, NOTE_SIZE + FILTER_ORDER]}
+	 * audio tensor, plus building eleven {@code [N]} scalar tensors).
+	 *
+	 * <p>The existing Additions 1-6 and the E1/E2/E3 envelope benchmarks measure the
+	 * <em>kernel-side</em> cost of batched pattern rendering — what the compiled
+	 * {@link CollectionProducer} chain costs once the inputs are in hand. This benchmark
+	 * measures the cost of <em>building</em> those inputs from production-shaped state
+	 * (genome decisions, per-note source selection, per-note ADSR scalars). The cost is
+	 * the open question Phase 3 needs to resolve before committing to a Path B sub-option
+	 * (B1 per-note memcpy vs B2 gather indirection vs B3 pre-staged source buffers vs B4
+	 * compile-per-neighborhood).</p>
+	 *
+	 * <h2>Setup (outside timed loop)</h2>
+	 * <ul>
+	 *   <li>Pool of {@value #B1_SOURCE_POOL_SIZE} source buffers of varying length (2048-8192
+	 *       samples), filled with deterministic random data. Mimics the shape of
+	 *       {@code NoteAudioProvider.audioCache} entries — resampled per-pitch buffers
+	 *       reused across many notes within a tick.</li>
+	 *   <li>Per-density {@link B1NoteMetadata}: for each of N notes, a random source index,
+	 *       a random in-source offset, a pitch ratio, four volume-envelope ADSR scalars,
+	 *       four filter-envelope ADSR scalars, an automation level, and a tick-relative
+	 *       start offset.</li>
+	 * </ul>
+	 *
+	 * <h2>Measurement 1 — B1 gather alone</h2>
+	 * <p>The timed inner loop measures, per density, the wall-clock cost of:</p>
+	 * <ol>
+	 *   <li>Gathering each note's {@code NOTE_SIZE} samples from {@code sourcePool[srcIdx]
+	 *       [offset..offset+NOTE_SIZE]} into row {@code n}'s central slot of a reusable
+	 *       Java {@code double[N × paddedNoteSize]} buffer via {@link System#arraycopy}.
+	 *       Pad zones (the {@code filterOrder/2} samples on each side) stay zero, which is
+	 *       the padded-row FIR strategy validated by Addition 5.</li>
+	 *   <li>Pushing the gathered audio data into the pre-allocated
+	 *       {@code [N, paddedNoteSize]} audio {@link PackedCollection} via
+	 *       {@code setMem(double[])} — the JNI boundary crossing into native memory.</li>
+	 *   <li>Allocating and populating eleven {@code [N]} scalar tensors: pitch ratio,
+	 *       four volume-envelope ADSR scalars, four filter-envelope ADSR scalars,
+	 *       automation level, and tick-relative start offset. Each tensor is a fresh
+	 *       {@link PackedCollection} populated by {@code setMem(double[])}; the per-iteration
+	 *       allocation cost is intentionally included because production would need to
+	 *       hand the kernel a fresh set of inputs every tick.</li>
+	 * </ol>
+	 *
+	 * <h2>Measurement 2 — B1 gather + invoke E3-like batched chain</h2>
+	 * <p>Same inputs as Measurement 1, plus a single {@code evaluate()} on a pre-compiled
+	 * batched chain that mirrors E3 (lowpass with per-sample cutoff, then volume-envelope
+	 * multiply). The chain captures the audio buffer by reference and is reused across
+	 * iterations — every iteration the audio buffer's contents are replaced via
+	 * {@code setMem(...)} before the chain is invoked.</p>
+	 *
+	 * <p>Per-row volume envelope and filter cutoff tensors are built once outside the
+	 * timed loop. This intentionally underestimates the realistic per-tick cost: in
+	 * production those envelopes would also need to be materialised every tick from the
+	 * {@code [N]} ADSR scalar tensors (either in-kernel — the Phase 3 design's
+	 * recommendation — or via a separate Java-side materialisation pass). The
+	 * Measurement 2 number is therefore a lower bound on the realistic per-tick cost
+	 * with B1; a follow-on iteration may measure the in-kernel envelope path once the
+	 * pure-Producer envelope refactor (§5.7 in the Phase 3 design doc) is in place.</p>
+	 *
+	 * <h2>Output</h2>
+	 * <p>For each density (16/32/64/128/256 notes/measure × 32 measures), reports mean,
+	 * median, p95, std-dev, and per-note cost, comparing against the 92.9ms ratio-of-1
+	 * threshold. Reported alongside the existing benchmark numbers in
+	 * {@code results/pattern-rendering-floor.txt}; the long-form interpretation goes in
+	 * {@code docs/plans/audio-scene-redesign/PATTERN_RENDERING_FLOOR.md} as Addition 7.</p>
+	 */
+	@Test(timeout = 600000)
+	@TestDepth(2)
+	public void benchmarkJavaSideGatherCostB1() throws Exception {
+		setupResultsListener();
+
+		int padHalf = FILTER_ORDER / 2;
+		int paddedNoteSize = NOTE_SIZE + 2 * padHalf;
+
+		log("==========================================================");
+		log("  ADDITION 7 — Java-side gather cost (Path B1, per-note memcpy)");
+		log("  Builds [N, " + paddedNoteSize + "] audio tensor + 11 [N] scalar tensors per tick");
+		log("==========================================================");
+		log("");
+		log("Source pool: " + B1_SOURCE_POOL_SIZE + " buffers of varying length ("
+				+ B1_SOURCE_MIN_SAMPLES + "-" + (B1_SOURCE_MIN_SAMPLES + B1_SOURCE_EXTRA_RANGE)
+				+ " samples).");
+		log("Padding: " + padHalf + " zero samples on each side of NOTE_SIZE=" + NOTE_SIZE
+				+ " → paddedNoteSize=" + paddedNoteSize);
+		log("");
+
+		Random rng = new Random(54321L);
+		int[] sourceLengths = new int[B1_SOURCE_POOL_SIZE];
+		double[][] sourcePool = new double[B1_SOURCE_POOL_SIZE][];
+		for (int s = 0; s < B1_SOURCE_POOL_SIZE; s++) {
+			sourceLengths[s] = B1_SOURCE_MIN_SAMPLES + rng.nextInt(B1_SOURCE_EXTRA_RANGE);
+			sourcePool[s] = new double[sourceLengths[s]];
+			for (int i = 0; i < sourceLengths[s]; i++) {
+				sourcePool[s][i] = rng.nextDouble() * 2.0 - 1.0;
+			}
+		}
+
+		log("--- Measurement 1: B1 gather + scalar tensor build (no kernel invoke) ---");
+		log("");
+
+		for (int npm : NOTES_PER_MEASURE_VALUES) {
+			int totalNotes = npm * MEASURES_PER_TICK;
+			B1NoteMetadata md = buildB1NoteMetadata(totalNotes, sourceLengths, rng);
+
+			PackedCollection audioBuf = new PackedCollection(shape(totalNotes, paddedNoteSize));
+			double[] audioData = new double[totalNotes * paddedNoteSize];
+
+			for (int w = 0; w < WARMUP_RUNS; w++) {
+				runB1Gather(audioBuf, audioData, totalNotes, paddedNoteSize, padHalf, sourcePool, md);
+			}
+
+			long[] timesNs = new long[TIMED_RUNS];
+			for (int r = 0; r < TIMED_RUNS; r++) {
+				long t0 = System.nanoTime();
+				runB1Gather(audioBuf, audioData, totalNotes, paddedNoteSize, padHalf, sourcePool, md);
+				timesNs[r] = System.nanoTime() - t0;
+			}
+			reportStats(npm, totalNotes, timesNs);
+		}
+
+		log("--- Measurement 2: B1 gather + invoke E3-like batched chain ---");
+		log("Chain: lowPass(audio, perRowCutoff) → trim → × perRowVolumeEnv");
+		log("Per-row envelopes pre-built outside timed loop (in-kernel envelope generation");
+		log("from scalar ADSR is deferred to a follow-on iteration — see Addition 7 memo).");
+		log("");
+
+		for (int npm : NOTES_PER_MEASURE_VALUES) {
+			int totalNotes = npm * MEASURES_PER_TICK;
+			B1NoteMetadata md = buildB1NoteMetadata(totalNotes, sourceLengths, rng);
+
+			B1Chain compiled;
+			try {
+				long compileStart = System.currentTimeMillis();
+				compiled = buildB1E3LikeChain(totalNotes, padHalf, paddedNoteSize);
+				long compileMs = System.currentTimeMillis() - compileStart;
+				log("notes_per_measure=" + npm + " (total=" + totalNotes + "): compile " + compileMs + " ms");
+			} catch (Exception ex) {
+				log("FAILED to compile B1+E3 chain at " + totalNotes + " notes: "
+						+ ex.getClass().getSimpleName() + ": " + ex.getMessage());
+				log("");
+				continue;
+			}
+
+			double[] audioData = new double[totalNotes * paddedNoteSize];
+
+			for (int w = 0; w < WARMUP_RUNS; w++) {
+				runB1GatherAndInvoke(compiled, audioData, totalNotes, paddedNoteSize, padHalf,
+						sourcePool, md);
+			}
+
+			long[] timesNs = new long[TIMED_RUNS];
+			for (int r = 0; r < TIMED_RUNS; r++) {
+				long t0 = System.nanoTime();
+				runB1GatherAndInvoke(compiled, audioData, totalNotes, paddedNoteSize, padHalf,
+						sourcePool, md);
+				timesNs[r] = System.nanoTime() - t0;
+			}
+			reportStats(npm, totalNotes, timesNs);
+		}
+
+		log("INTERPRETATION:");
+		log("- Measurement 1 is the floor for any Path B sub-option: every variant has to");
+		log("  hand the kernel a set of [N]-shaped inputs each tick. Lower bound on gather cost.");
+		log("- Measurement 2 adds one batched kernel invocation. The delta between the two is");
+		log("  the kernel cost on top of the prepared inputs — comparable to E3's batched ceiling.");
+		log("- A single-digit ms total at production density (64 notes/m) confirms B1 is viable.");
+		log("- If Measurement 1 alone is double-digit ms, B1's per-note memcpy is the bottleneck");
+		log("  and B2/B3/B4 (gather indirection / pre-staged buffers / per-neighborhood compile)");
+		log("  need to be measured next.");
+		log("==========================================================");
+		log("Results appended to: " + RESULTS_PATH);
+	}
+
+	/**
+	 * Builds per-note metadata for one density level: for each of {@code totalNotes} notes,
+	 * a random source index drawn from the pool, a random in-source offset that leaves at
+	 * least {@code NOTE_SIZE} samples to gather, and randomised pitch/ADSR/automation/start
+	 * values. Called once per density outside the timed loop.
+	 */
+	private B1NoteMetadata buildB1NoteMetadata(int totalNotes, int[] sourceLengths, Random rng) {
+		B1NoteMetadata md = new B1NoteMetadata(totalNotes);
+		for (int n = 0; n < totalNotes; n++) {
+			md.sourceIdx[n] = rng.nextInt(B1_SOURCE_POOL_SIZE);
+			int srcLen = sourceLengths[md.sourceIdx[n]];
+			md.sourceOffset[n] = rng.nextInt(Math.max(1, srcLen - NOTE_SIZE));
+			md.pitchRatio[n] = 0.5 + rng.nextDouble() * 1.5;
+			md.volAttack[n] = 0.01 + rng.nextDouble() * 0.1;
+			md.volDecay[n] = 0.05 + rng.nextDouble() * 0.15;
+			md.volSustain[n] = 0.3 + rng.nextDouble() * 0.5;
+			md.volRelease[n] = 0.05 + rng.nextDouble() * 0.2;
+			md.filterAttack[n] = 0.01 + rng.nextDouble() * 0.1;
+			md.filterDecay[n] = 0.05 + rng.nextDouble() * 0.15;
+			md.filterSustain[n] = 0.3 + rng.nextDouble() * 0.5;
+			md.filterRelease[n] = 0.05 + rng.nextDouble() * 0.2;
+			md.automationLevel[n] = rng.nextDouble();
+			md.tickStartOffset[n] = rng.nextInt(NOTE_SIZE);
+		}
+		return md;
+	}
+
+	/**
+	 * Executes one B1 gather iteration: copies each note's audio from the source pool into
+	 * row {@code n}'s central slot of {@code audioData}, pushes the gathered buffer to the
+	 * pre-allocated audio collection via {@code setMem}, and allocates + populates the
+	 * eleven {@code [N]} scalar tensors that production would need per tick.
+	 */
+	private void runB1Gather(PackedCollection audioBuf, double[] audioData,
+							 int totalNotes, int paddedNoteSize, int padHalf,
+							 double[][] sourcePool, B1NoteMetadata md) {
+		for (int n = 0; n < totalNotes; n++) {
+			System.arraycopy(sourcePool[md.sourceIdx[n]], md.sourceOffset[n],
+					audioData, n * paddedNoteSize + padHalf, NOTE_SIZE);
+		}
+		audioBuf.setMem(audioData);
+
+		PackedCollection.of(md.pitchRatio);
+		PackedCollection.of(md.volAttack);
+		PackedCollection.of(md.volDecay);
+		PackedCollection.of(md.volSustain);
+		PackedCollection.of(md.volRelease);
+		PackedCollection.of(md.filterAttack);
+		PackedCollection.of(md.filterDecay);
+		PackedCollection.of(md.filterSustain);
+		PackedCollection.of(md.filterRelease);
+		PackedCollection.of(md.automationLevel);
+		PackedCollection.of(md.tickStartOffset);
+	}
+
+	/**
+	 * Runs one Measurement 2 iteration: the same gather + scalar-tensor build as
+	 * {@link #runB1Gather}, then a single {@code evaluate()} on the pre-compiled chain
+	 * captured in {@code compiled}. The chain references {@code compiled.audioInput} by
+	 * the {@code cp(...)} idiom, so the {@code setMem} call performed inside
+	 * {@link #runB1Gather} replaces the contents the chain sees on the next invocation.
+	 */
+	private void runB1GatherAndInvoke(B1Chain compiled, double[] audioData,
+									  int totalNotes, int paddedNoteSize, int padHalf,
+									  double[][] sourcePool, B1NoteMetadata md) {
+		runB1Gather(compiled.audioInput, audioData, totalNotes, paddedNoteSize, padHalf,
+				sourcePool, md);
+		compiled.chain.evaluate();
+	}
+
+	/**
+	 * Builds the Measurement 2 chain: a single compiled {@link Evaluable} that takes a
+	 * pre-padded {@code [N, paddedNoteSize]} audio buffer (captured by reference) and
+	 * runs the E3-style filter+volume chain (lowpass with per-sample cutoff, trim padding,
+	 * multiply by per-row volume envelope). Per-row cutoff and envelope tensors are built
+	 * once and captured as constants — see the Measurement 2 javadoc on
+	 * {@link #benchmarkJavaSideGatherCostB1} for the rationale and the implications for
+	 * how to interpret Measurement 2.
+	 */
+	private B1Chain buildB1E3LikeChain(int totalNotes, int padHalf, int paddedNoteSize) {
+		PackedCollection audioInput = new PackedCollection(shape(totalNotes, paddedNoteSize));
+		PackedCollection paddedCutoff = buildPerRowFilterCutoffs(totalNotes, padHalf, paddedNoteSize);
+		PackedCollection envelopes = buildPerRowVolumeEnvelopes(totalNotes);
+
+		int totalSamples = totalNotes * NOTE_SIZE;
+		int paddedTotal = totalNotes * paddedNoteSize;
+
+		CollectionProducer flatPaddedAudio = cp(audioInput).reshape(shape(paddedTotal));
+		CollectionProducer flatPaddedCutoff = cp(paddedCutoff).reshape(shape(paddedTotal));
+		MultiOrderFilter filter = lowPass(traverseEach(flatPaddedAudio), flatPaddedCutoff,
+				SAMPLE_RATE, FILTER_ORDER);
+		CollectionProducer filtered2D = c(filter).reshape(shape(totalNotes, paddedNoteSize));
+		CollectionProducer trimmed = subset(shape(totalNotes, NOTE_SIZE), filtered2D, 0, padHalf);
+		CollectionProducer flatTrimmed = trimmed.reshape(shape(totalSamples));
+		CollectionProducer flatEnv = cp(envelopes).reshape(shape(totalSamples));
+		Evaluable<PackedCollection> chain = flatTrimmed.multiply(flatEnv).get();
+		return new B1Chain(audioInput, chain);
 	}
 
 }

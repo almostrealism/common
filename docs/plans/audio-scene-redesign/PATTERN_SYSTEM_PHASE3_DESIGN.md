@@ -74,6 +74,8 @@ recommended without addressing the per-note filter envelope at all.
    - §1.3 Volume envelope (corrected framing)
    - §1.4 Accumulate-reduce
    - §1.5 Per-channel arrangement filter (renamed; out of the per-tick batched chain)
+   - §1.6 Where caching fits
+   - §1.7 Java-side gather cost (Path B1) — measured (added 2026-05-11)
 2. [Variable-note-scheduling](#2-variable-note-scheduling)
 3. [Cutover strategy](#3-cutover-strategy)
 4. [PDSL vs `CollectionProducer` for the new substrate](#4-substrate)
@@ -538,6 +540,117 @@ The static `audioCache` in `NoteAudioProvider` is a different concern
 (resampled sample buffers, not rendered note audio). It can stay — sample
 resample results are still useful as Producer-constant inputs to the batched
 kernel. See §5.5.
+
+---
+
+### 1.7 Java-side gather cost (Path B1) — measured
+
+**(Added 2026-05-11 from Addition 7 of
+[PATTERN_RENDERING_FLOOR.md](PATTERN_RENDERING_FLOOR.md). The §1.1–§1.6
+kernel-mapping sections describe what the per-tick batched chain consumes.
+This section pins down what it costs to *build* those inputs from genome
+state per tick.)**
+
+Two architectural paths could turn genome state into the
+`[N, NOTE_SIZE + filterOrder]` audio tensor the batched chain consumes:
+
+- **Path A — kernel-internal selection.** Push the genome-decoding decision
+  process (which notes exist at which time, source selection, pitch ratio
+  resolution) into the kernel itself. The branchy decision logic is well
+  outside what PDSL/`CollectionProducer` programs are designed for. **Out of
+  scope for Phase 3.**
+- **Path B — Java-side gather, kernel-side compute.** Java continues to
+  decide which notes exist, resolve sources, and compute scalar parameters;
+  it then assembles the `[N, NOTE_SIZE + filterOrder]` audio tensor and the
+  eleven `[N]` scalar tensors (pitch ratio, 4 volume-envelope ADSR scalars,
+  4 filter-envelope ADSR scalars, automation level, tick-relative start
+  offset). The kernel runs on the prepared tensors. **This is the Phase 3
+  path.**
+
+Within Path B, four sub-options exist for how the audio tensor gets
+assembled:
+
+- **B1 — Per-note `System.arraycopy`** from cached resampled source buffers
+  into row `n` of the audio tensor.
+- B2 — Gather indirection (single packed source bank with per-note offset
+  tensor).
+- B3 — Pre-staged source buffers as Producer constants.
+- B4 — Compile kernel against a fixed source set per "neighborhood" of ticks
+  with respecialisation when the set changes.
+
+**Addition 7 measures B1.** Setup: 16 source buffers, lengths 2048–8192
+samples, per-note metadata generated outside the timed loop. The timed
+inner loop (1) gathers each note's `NOTE_SIZE` samples via
+`System.arraycopy` into a reusable Java `double[]`, (2) `setMem`'s the
+buffer into the audio collection, (3) allocates + `setMem`'s the eleven
+`[N]` scalar tensors.
+
+**Measured numbers (Darwin/Mac runner, framework auto-selected backend; see
+caveats in Addition 7):**
+
+| notes/m | Total notes | B1 gather alone (ms) | B1 + E3-like kernel (ms) | vs threshold (gather + kernel) |
+|---|---|---|---|---|
+| 16 | 512 | 1.29 | 3.95 | 23.5× BELOW |
+| 32 | 1,024 | 2.77 | 6.13 | 15.2× BELOW |
+| **64** | **2,048** | **4.90** | **10.36** | **9.0× BELOW** |
+| 128 | 4,096 | 9.05 | 13.59 | 6.8× BELOW |
+| 256 | 8,192 | 15.37 | 31.16 | 3.0× BELOW |
+
+**Conclusion: B1 delivers a viable Path B at production density on Mac.**
+The Phase 3 design's central per-tick latency assumption holds:
+gather + kernel runs comfortably below the 92.9 ms threshold at every
+density tested. At 64 notes/m (the production-typical density), the per-tick
+budget breaks down as roughly 5 ms gather + 5 ms kernel = 10 ms total —
+just over 10% of the threshold.
+
+**Implications for Phase 3 implementation:**
+
+- **Default to B1** for the first integration milestone of the batched
+  path. The other sub-options (B2/B3/B4) are not needed to clear the
+  threshold and add implementation complexity (gather indirection requires
+  a per-tick offset-tensor primitive; pre-staged Producer-constant source
+  buffers complicate the source-pool lifecycle; per-neighborhood compile
+  reintroduces a compile cost that bucketing in §2 is already paying once
+  per bucket).
+- **The gather is half the per-tick cost.** Both halves matter — the design
+  cannot optimise either to zero. Gather optimisations attack roughly the
+  same ms count as kernel optimisations.
+- **Scalar-tensor allocation is not the bottleneck.** The audio buffer
+  `setMem` dominates over the eleven small-tensor allocations. The eleven
+  scalar tensors per tick add microseconds; the audio buffer push adds
+  milliseconds. If profiling-driven optimisation becomes necessary, focus
+  on the audio buffer (sharing, reuse, or partial updates), not on the
+  scalar tensors.
+- **256 notes/m has high variance** (std-dev 22.6 ms vs sub-3 ms at all
+  other densities). At the upper end of bucket sizing this density may
+  warrant additional attention — either narrower bucketing around 128
+  notes/m (so the heaviest tick rarely overflows into the 256 bucket) or a
+  closer look at GC pressure from per-iteration scalar-tensor allocations.
+
+**What this section does not measure:**
+
+- **Linux/JNI numbers.** This iteration ran on a Mac runner (Darwin
+  platform); the framework's auto-selected backend benefited from
+  "Hardware[JNI]: Enabling shared memory via MetalMemoryProvider" — the
+  `setMem` push into native memory is via Metal shared memory rather than
+  a full-blown copy. A Linux/JNI-only environment (no Metal, no OpenCL)
+  has no shared-memory optimisation; its `setMem` cost is expected to be
+  modestly higher (the audio buffer push is a real copy in that case).
+  A follow-up iteration should run the same benchmark on a Linux container
+  and append numbers to Addition 7 alongside these.
+- **Per-tick envelope materialisation cost.** Measurement 2 pre-builds the
+  per-row envelopes outside the timed loop. The realistic per-tick path
+  builds envelopes from the `[N]` ADSR scalars either in-kernel (§1.2,
+  §1.3, §5.7's recommended path) or via a Java-side materialisation pass.
+  The §5.7 pure-Producer envelope refactor moves this into the batched
+  Producer graph — the marginal in-kernel cost is the small downstream of
+  the existing E1/E2/E3 measurements (envelope-from-scalar is a row-wise
+  fmadd, well within the framework's existing fusion). A follow-on
+  iteration can measure this directly once the §5.7 refactor is in place.
+- **B2/B3/B4 sub-options.** Not measured. The B1 numbers do not justify the
+  effort; they should be measured only if Linux/JNI gather costs are
+  unexpectedly high, or if profiling shows GC pressure from per-tick
+  allocations is real.
 
 ---
 

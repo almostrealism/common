@@ -435,3 +435,154 @@ handles it natively.
 | Phase 3 necessity | **Confirmed** | Batch compilation is architecturally required and sufficient |
 | Phase 3 sequencing | **2-kernel first viable** | Even minimal batching delivers ~1000× speedup; chain length grows incrementally |
 | FIR strategy | **Padded-row, no MultiOrderFilter changes** | Cheapest of the three strategies named earlier; demonstrated working |
+| **B1 Java-side gather alone at 64 notes/m** | **4.90ms** | **19× BELOW threshold; per-note ~2.4µs (Addition 7)** |
+| **B1 gather + E3-like kernel at 64 notes/m** | **10.36ms** | **9× BELOW threshold; gather + kernel still well in budget (Addition 7)** |
+
+---
+
+## Addition 7 — Java-side Gather Cost (Path B1, per-note memcpy)
+
+**Goal:** measure the per-tick wall-clock cost of preparing the batched input tensors
+from production-shaped state. Additions 1–6 and the E1/E2/E3 envelope benchmarks all
+measure the kernel-side cost of batched pattern rendering — they prove that the compiled
+chain runs well under threshold *once you have the input tensors in hand*. They do not
+measure the cost of *building* those tensors. That cost is Path B's first-class question.
+Addition 7 measures it for sub-option **B1 — per-note `System.arraycopy` from a pool of
+cached resampled source buffers into a `[N, NOTE_SIZE + filterOrder]` audio tensor**, plus
+the eleven `[N]` scalar tensors (pitch ratio, 4 volume-envelope ADSR scalars, 4 filter-
+envelope ADSR scalars, automation level, tick-relative start offset).
+
+**Platform:** Darwin (Mac runner). Hardware enumeration in the test output showed `JNI`,
+`Metal (MTL)`, and `OpenCL (CL)` backends all available; framework auto-selected. The
+numbers below are from a Mac system. A follow-up job running on a Linux/JNI-only
+container (no Metal, no OpenCL) can append its measurements to a "Addition 7 — Linux/JNI"
+sibling section once available. The numbers given here are therefore Mac/multi-backend
+auto-selected baselines; the Linux/JNI floor remains to be captured.
+
+**Setup (outside timed loop):** 16-buffer source pool, lengths 2048–8192 samples,
+deterministic random content. Per-density per-note metadata generated outside the timed
+loop. Audio buffer pre-allocated once per density (`[N, paddedNoteSize]` PackedCollection,
+reused via `setMem` per iteration). Scalar tensors allocated fresh per iteration to match
+realistic per-tick allocation cost.
+
+**Timed inner loop:** same warmup/measurement scaffolding as the existing benchmarks
+(`WARMUP_RUNS=3`, `TIMED_RUNS=20`).
+
+### Measurement 1 — B1 gather alone (no kernel invocation)
+
+Per iteration: gather audio into the Java `double[]` via per-note `System.arraycopy`,
+`setMem(audioData)` into the audio collection, alloc + `setMem` the eleven `[N]` scalar
+tensors.
+
+| notes/measure | Total notes/tick | Mean (ms) | Median (ms) | P95 (ms) | StdDev (ms) | Per-note (ms) | vs 92.9ms threshold |
+|---|---|---|---|---|---|---|---|
+| 16 | 512 | 1.29 | 1.24 | 1.52 | 0.16 | 0.0025 | **71.9× BELOW** |
+| 32 | 1,024 | 2.77 | 2.74 | 3.14 | 0.27 | 0.0027 | **33.5× BELOW** |
+| 64 | 2,048 | **4.90** | 5.02 | 5.89 | 0.59 | 0.0024 | **19.0× BELOW** |
+| 128 | 4,096 | 9.05 | 8.67 | 12.39 | 1.96 | 0.0022 | **10.3× BELOW** |
+| 256 | 8,192 | 15.37 | 14.42 | 20.20 | 3.58 | 0.0019 | **6.0× BELOW** |
+
+### Measurement 2 — B1 gather + invoke E3-like batched chain
+
+Per iteration: same gather + scalar-tensor build as Measurement 1, then a single
+`evaluate()` on a pre-compiled chain that mirrors E3 (lowpass with per-row per-sample
+cutoff, trim padding, multiply by per-row volume envelope). Per-row cutoff and envelope
+tensors are built once outside the timed loop — see "Caveats" below.
+
+| notes/measure | Total notes/tick | Compile (ms) | Mean (ms) | Median (ms) | P95 (ms) | Per-note (ms) | vs 92.9ms threshold |
+|---|---|---|---|---|---|---|---|
+| 16 | 512 | 93 | 3.95 | 3.99 | 4.29 | 0.0077 | **23.5× BELOW** |
+| 32 | 1,024 | 15 | 6.13 | 6.13 | 6.63 | 0.0060 | **15.2× BELOW** |
+| 64 | 2,048 | 17 | **10.36** | 10.20 | 10.90 | 0.0051 | **9.0× BELOW** |
+| 128 | 4,096 | 27 | 13.59 | 12.87 | 18.51 | 0.0033 | **6.8× BELOW** |
+| 256 | 8,192 | 40 | 31.16 | 23.84 | 43.76 | 0.0038 | **3.0× BELOW** |
+
+### Interpretation
+
+#### 1. B1 is viable at production densities (Mac)
+
+At 64 notes/measure (2,048 notes/tick), the production-typical density, **B1 gather alone
+runs in 4.90ms — 19× under the 92.9ms threshold.** Adding the kernel invocation brings the
+total per-tick cost to 10.36ms — still 9× under threshold. The gather is roughly half of
+the per-tick cost in this configuration.
+
+Scaling is essentially linear in N (1.29 → 2.77 → 4.90 → 9.05 → 15.37 ms across the
+five densities — close to 2× per doubling of note count). Per-note cost is sub-microsecond
+(1.9–2.7 µs/note) and decreases mildly with N as fixed costs amortise. The dominant work
+is `NOTE_SIZE` doubles per note × N notes × `System.arraycopy`, plus one large `setMem`
+call to push the audio buffer to native memory.
+
+#### 2. Allocation of small scalar tensors is not the bottleneck
+
+Eleven `[N]` PackedCollection allocations per iteration plus the audio `setMem` produces
+total Measurement 1 times in the 1–15 ms range. The audio `setMem` (pushing `N × 1064 ×
+sizeof(double)` bytes into native memory) dominates over the eleven small-tensor
+allocations — the small-tensor cost is fixed at the order of allocation + scalar `setMem`,
+which is microseconds per tensor.
+
+#### 3. Kernel invocation adds ~5–15 ms
+
+The Measurement 2 – Measurement 1 delta gives the kernel cost on top of the prepared
+inputs: 2.66, 3.36, 5.46, 4.54, 15.79 ms across the five densities. At 64 notes/m the
+chain invocation adds 5.46 ms — comparable to (slightly larger than) E3's 5.07 ms batched
+filter+volume measurement at the same density, which is the expected shape since
+Measurement 2's chain is the same E3 chain wrapped around a pre-padded audio input.
+
+#### 4. The 256 notes/measure result has high variance
+
+Std-dev jumps to 22.63 ms at 256 notes/m (Measurement 2) vs sub-3 ms at all other
+densities. Possible causes: GC pressure from the per-iteration scalar-tensor allocations,
+JNI memory pressure from the largest input tensor (`8192 × 1064 = 8.7 M doubles ≈ 70 MB`
+per `setMem`), or kernel-runtime contention. The median (23.84 ms) is closer to the trend
+than the mean (31.16 ms) suggests; this density is at the upper end of the input-tensor
+size where memory bandwidth becomes a real factor.
+
+#### 5. Conclusion on Path B sub-option B1
+
+**B1 delivers a viable Path B at production densities on the Mac runner.** Both
+Measurement 1 and Measurement 2 are comfortably below the 92.9 ms threshold at every
+density tested. The gather cost is real (~5 ms at 64 notes/m, scaling with N) but not
+remotely close to dominating the per-tick budget when added to the kernel cost.
+
+The follow-on Path B sub-options (B2 gather indirection, B3 pre-staged source buffers as
+Producer constants, B4 per-neighborhood compile) are not required to clear the threshold.
+They remain interesting if: (i) the Linux/JNI numbers show a much larger gather cost — in
+particular if the `setMem` JNI push is more expensive without the Metal shared-memory
+optimisation that the Mac runner enables (note "Hardware[JNI]: Enabling shared memory via
+MetalMemoryProvider" in the test output); (ii) at higher densities than 64 notes/m the
+linear-N gather cost begins to dominate over the sublinear kernel cost; or (iii) profiling
+of an integrated production path shows GC pressure from the per-tick allocations is a
+real factor.
+
+### Caveats
+
+**Mac-only numbers.** This iteration captures Mac runner numbers only. A Linux/JNI run on
+a container without Metal/OpenCL is still needed before final commitments on memory model
+costs — the `setMem` push has the Metal shared-memory optimisation on Mac (per the
+"Hardware[JNI]: Enabling shared memory via MetalMemoryProvider" line) which Linux/JNI does
+not benefit from. The Linux/JNI gather cost is expected to be **higher** than the Mac
+numbers due to the cost of pushing 70 MB of doubles into a non-shared native arena per
+tick at 256 notes/m, and modestly higher at lower densities for the smaller pushes.
+
+**Per-row envelopes pre-built.** Measurement 2 reuses pre-built `[N, NOTE_SIZE]` volume
+envelope and `[N, NOTE_SIZE + filterOrder]` filter cutoff tensors across all iterations
+of one density (they don't change tick-to-tick in this benchmark). In production, the
+envelopes come from the `[N]` ADSR scalar tensors via either (a) the in-kernel envelope
+generation that the Phase 3 design recommends (§1.2, §1.3, §5.7), or (b) a Java-side
+materialisation pass that turns the four `[N]` scalars into a `[N, NOTE_SIZE]` envelope.
+Measurement 2 therefore *underestimates* the realistic per-tick cost with B1 by the cost
+of envelope materialisation — which is the Phase 3 design's pure-Producer envelope
+refactor (§5.7). A follow-on iteration may measure the in-kernel envelope path once that
+refactor is in place.
+
+**Source pool size.** The benchmark uses 16 source buffers (in the middle of the design's
+8–32 range). Production note-source counts depend on the arrangement — fewer sources mean
+more `setMem` cache locality (the source pool fits in L2 cache), more sources mean the
+gather reads scatter across L3 / DRAM. The 16-source size is a reasonable midpoint and the
+measured numbers should be representative within a small factor for the typical
+arrangement.
+
+**Single-layer.** As with the existing benchmarks, this measures one pattern layer per
+tick. Multi-layer arrangements (up to `MAX_LAYERS = 32`) accumulate cost linearly across
+layers when each layer renders independently — the per-layer batching is the
+load-bearing approach (§5.3 in the Phase 3 design document).
