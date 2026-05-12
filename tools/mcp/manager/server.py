@@ -1037,8 +1037,15 @@ def controller_health() -> dict:
     Use this as a first step to verify connectivity before calling
     other tools. No authentication scope required.
 
+    The response includes a ``server_time`` field containing the
+    controller's current UTC time in ISO-8601 format
+    (e.g. ``"2026-05-11T18:23:45.123456789Z"``). This is useful for
+    verifying which deployment is running and for diagnosing clock
+    drift between the controller host and other systems.
+
     Returns:
-        Dictionary with controller status and version info.
+        Dictionary with controller status, version info, and
+        ``server_time`` (ISO-8601 UTC timestamp from the controller).
     """
     _require_scope("read")
     _audit("controller_health")

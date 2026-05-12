@@ -21,11 +21,12 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -53,25 +54,15 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
 
     @After
     public void tearDown() throws IOException {
-        deleteTree(tempDir.toFile());
+        if (tempDir != null && Files.exists(tempDir)) {
+            try (Stream<Path> walk = Files.walk(tempDir)) {
+                walk.sorted(Comparator.reverseOrder())
+                        .forEach(p -> { try { Files.delete(p); } catch (IOException ignored) { } });
+            }
+        }
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
-
-    private static void deleteTree(File dir) {
-        if (dir == null || !dir.exists()) return;
-        File[] children = dir.listFiles();
-        if (children != null) {
-            for (File child : children) {
-                if (child.isDirectory()) {
-                    deleteTree(child);
-                } else {
-                    child.delete();
-                }
-            }
-        }
-        dir.delete();
-    }
 
     private void writeCommitTxt(String content) throws IOException {
         Files.write(tempDir.resolve("commit.txt"), content.getBytes(StandardCharsets.UTF_8));

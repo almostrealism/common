@@ -36,6 +36,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
@@ -103,7 +104,7 @@ import java.util.regex.Pattern;
  *       <td>{@code {"accept":true}}</td>
  *       <td>Enable or disable automated job submissions</td></tr>
  *   <tr><td>GET</td><td>/api/health</td><td>--</td>
- *       <td>Health check</td></tr>
+ *       <td>Health check; response includes {@code server_time} (ISO-8601 UTC)</td></tr>
  * </table>
  *
  * @author Michael Murray
@@ -354,8 +355,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         Method method = session.getMethod();
 
         if (Method.GET.equals(method) && "/api/health".equals(uri)) {
+            String serverTime = Instant.now().toString();
             return newFixedLengthResponse(Response.Status.OK,
-                    "application/json", "{\"status\":\"ok\"}");
+                    "application/json",
+                    "{\"status\":\"ok\",\"server_time\":\"" + serverTime + "\"}");
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/stats")) {

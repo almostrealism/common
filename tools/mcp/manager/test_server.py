@@ -64,11 +64,36 @@ class TestControllerHealth(unittest.TestCase):
     @patch.object(server, "_controller_get")
     def test_returns_health(self, mock_get):
         _grant_all_scopes()
-        mock_get.return_value = {"status": "ok", "version": "1.0"}
+        mock_get.return_value = {
+            "status": "ok",
+            "version": "1.0",
+            "server_time": "2026-05-11T18:23:45.123456789Z",
+        }
         result = server.controller_health()
         mock_get.assert_called_once_with("/api/health")
         self.assertEqual(result["status"], "ok")
         self.assertIn("next_steps", result)
+
+    @patch.object(server, "_controller_get")
+    def test_server_time_present_and_utc(self, mock_get):
+        _grant_all_scopes()
+        mock_get.return_value = {
+            "status": "ok",
+            "server_time": "2026-05-11T18:23:45.123456789Z",
+        }
+        result = server.controller_health()
+        self.assertIn("server_time", result)
+        server_time = result["server_time"]
+        # Must match ISO-8601 UTC: YYYY-MM-DDTHH:MM:SS[.fractional]Z
+        import re
+        iso_utc_pattern = re.compile(
+            r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$'
+        )
+        self.assertRegex(
+            server_time,
+            iso_utc_pattern,
+            f"server_time must be ISO-8601 UTC (ending in Z), got: {server_time!r}",
+        )
 
     def test_requires_read_scope(self):
         _grant_scopes("write")

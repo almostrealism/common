@@ -302,6 +302,11 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
             String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
             assertTrue(response.contains("\"status\":\"ok\""));
+            assertTrue("Response must include server_time field",
+                    response.contains("\"server_time\""));
+            // server_time must be ISO-8601 UTC (ends with Z)
+            assertTrue("server_time must end with Z (UTC)",
+                    response.matches(".*\"server_time\":\"[^\"]+Z\".*"));
         } finally {
             endpoint.stop();
         }
