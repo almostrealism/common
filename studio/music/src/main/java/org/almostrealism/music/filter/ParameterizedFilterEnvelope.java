@@ -15,10 +15,8 @@
  */
 
 package org.almostrealism.music.filter;
-import org.almostrealism.audio.filter.EnvelopeProcessor;
 import org.almostrealism.audio.filter.AudioProcessingUtils;
 
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.music.data.ParameterFunction;
@@ -128,30 +126,16 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 		public Producer<PackedCollection> apply(Producer<PackedCollection> audio,
 												   Producer<PackedCollection> duration,
 												   Producer<PackedCollection> automationLevel) {
-			return () -> args -> {
-				PackedCollection audioData = audio.get().evaluate();
+			Producer<PackedCollection> adj = add(c(adjustmentBase),
+					multiply(c(adjustmentAutomation), automationLevel));
 
-				TraversalPolicy shape = audioData.getShape();
-				PackedCollection result = PackedCollection.factory()
-						.apply(shape.getTotalSize()).reshape(shape);
-				PackedCollection dr = duration.get().evaluate();
-				PackedCollection al = automationLevel.get().evaluate();
+			Producer<PackedCollection> attackProducer = c(getAttack());
+			Producer<PackedCollection> decayProducer = c(getDecay());
+			Producer<PackedCollection> sustainProducer = multiply(c(getSustain()), adj);
+			Producer<PackedCollection> releaseProducer = multiply(c(getRelease()), adj);
 
-				double adj = adjustmentBase + adjustmentAutomation * al.toDouble(0);
-//				log("Processing filter envelope with duration (" + dr.toDouble(0) +
-//						", attack: " + getAttack() + ", decay: " + getDecay() +
-//						", sustain: " + getSustain() * adj +
-//						", release: " + getRelease() * adj + ")");
-
-				EnvelopeProcessor processor = AudioProcessingUtils.getFilterEnv();
-				processor.setDuration(dr.toDouble(0));
-				processor.setAttack(getAttack());
-				processor.setDecay(getDecay());
-				processor.setSustain(getSustain() * adj);
-				processor.setRelease(getRelease() * adj);
-				processor.process(audioData, result);
-				return result;
-			};
+			return AudioProcessingUtils.filterEnv(audio, duration,
+					attackProducer, decayProducer, sustainProducer, releaseProducer);
 		}
 
 		@Override
