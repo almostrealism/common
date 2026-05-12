@@ -283,6 +283,11 @@ public class JobCompletionEvent {
     public int getPermissionDenials() { return 0; }
     /** Returns the denied tool names, or empty list for non-Claude jobs. */
     public List<String> getDeniedToolNames() { return Collections.emptyList(); }
+    /**
+     * Returns how the final commit message was produced, or {@code null} for non-Claude jobs.
+     * Values: {@code "agent"}, {@code "prompt_fallback"}, {@code "commit_rule_recovered"}.
+     */
+    public String getCommitMessageSource() { return null; }
 
     // ==================== Builder-pattern setters ====================
 
@@ -358,6 +363,7 @@ public class JobCompletionEvent {
 
         ArrayNode deniedArray = root.putArray("deniedToolNames");
         for (String t : getDeniedToolNames()) deniedArray.add(t);
+        root.put("commitMessageSource", getCommitMessageSource());
 
         try {
             return EVENT_MAPPER.writeValueAsString(root);

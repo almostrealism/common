@@ -55,6 +55,13 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
     private int permissionDenials;
     /** Names of the tools that were denied during the session. */
     private List<String> deniedToolNames;
+    /**
+     * How the final commit message was produced.
+     * {@code "agent"} — the agent wrote a valid {@code commit.txt}.
+     * {@code "prompt_fallback"} — the harness fell back to using the task prompt.
+     * {@code "commit_rule_recovered"} — {@link CommitMessageRule} recovered the message.
+     */
+    private String commitMessageSource;
 
     /**
      * Creates a new Claude Code job completion event.
@@ -280,5 +287,27 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
     @Override
     public List<String> getDeniedToolNames() {
         return deniedToolNames != null ? deniedToolNames : Collections.emptyList();
+    }
+
+    /**
+     * Sets the commit message source tag.
+     *
+     * @param commitMessageSource one of {@code "agent"}, {@code "prompt_fallback"},
+     *                            or {@code "commit_rule_recovered"}
+     * @return this event for chaining
+     */
+    public ClaudeCodeJobEvent withCommitMessageSource(String commitMessageSource) {
+        this.commitMessageSource = commitMessageSource;
+        return this;
+    }
+
+    /**
+     * Returns how the final commit message was produced for this job.
+     *
+     * @return the commit message source tag, or {@code null} if not set
+     */
+    @Override
+    public String getCommitMessageSource() {
+        return commitMessageSource;
     }
 }
