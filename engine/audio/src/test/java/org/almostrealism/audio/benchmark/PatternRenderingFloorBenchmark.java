@@ -341,11 +341,12 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 	 *
 	 * <p>Shared by {@link #buildAdsrEnvelope}, {@link #buildAdsrCutoff},
 	 * {@link #buildPerRowVolumeEnvelopes}, and {@link #buildPerRowFilterCutoffs} —
-	 * all four pre-materialize the same shape with different parameters per row.</p>
+	 * all four pre-materialize the same shape with different parameters per row.
+	 * Also used by {@code BatchedPatternRendererTest} in the same module.</p>
 	 */
-	private static void fillAdsrShape(double[] data, int offset, int size,
-									   double base, double peak, double sustain, double end,
-									   double attackFrac, double decayFrac, double releaseFrac) {
+	public static void fillAdsrShape(double[] data, int offset, int size,
+									  double base, double peak, double sustain, double end,
+									  double attackFrac, double decayFrac, double releaseFrac) {
 		int attackSamples = (int) (size * attackFrac);
 		int decaySamples = (int) (size * decayFrac);
 		int releaseSamples = (int) (size * releaseFrac);
