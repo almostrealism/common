@@ -126,6 +126,45 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	/** Whether verbose log messages are enabled. */
 	public static boolean enableLogging = SystemUtils.isEnabled("AR_PATTERN_LOGGING").orElse(false);
 
+	/**
+	 * Phase 3 batched pattern rendering feature flag (off by default). When
+	 * enabled, {@link PatternFeatures#render} dispatches through the
+	 * {@link BatchedPatternLayerRenderer} bucket cache instead of the legacy
+	 * per-note path. See
+	 * {@link BatchedPatternLayerRenderer} javadoc for the current integration
+	 * scope.
+	 */
+	public static boolean enableBatched = SystemUtils.isEnabled("AR_PATTERN_BATCHED").orElse(false);
+
+	/**
+	 * Default source-samples-per-note used when constructing a per-pattern
+	 * {@link BatchedPatternLayerRenderer}. Matches the production fixture used
+	 * by the batched-chain benchmarks.
+	 */
+	private static final int BATCHED_SOURCE_LENGTH = 2048;
+
+	/**
+	 * Default target-samples-per-note used when constructing a per-pattern
+	 * {@link BatchedPatternLayerRenderer}. Matches the production fixture used
+	 * by the batched-chain benchmarks.
+	 */
+	private static final int BATCHED_TARGET_LENGTH = 1024;
+
+	/**
+	 * FIR filter order used when constructing a per-pattern
+	 * {@link BatchedPatternLayerRenderer}. Matches the production
+	 * {@code EfxManager} filter order.
+	 */
+	private static final int BATCHED_FILTER_ORDER = 40;
+
+	/**
+	 * Audio sample rate used when constructing a per-pattern
+	 * {@link BatchedPatternLayerRenderer}. Matches the production
+	 * {@code OutputLine.sampleRate} value used by every existing pattern
+	 * acoustic-equivalence test.
+	 */
+	private static final int BATCHED_SAMPLE_RATE = 44100;
+
 	/** The audio channel index for this pattern. */
 	private int channel;
 	/** The duration of this pattern in measures. */
@@ -172,6 +211,13 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	private Map<ChannelInfo, PackedCollection> destination;
 	/** Cache for note audio across buffer ticks. */
 	private final NoteAudioCache noteAudioCache = new NoteAudioCache();
+
+	/**
+	 * Per-pattern batched dispatch site. Lazily constructed on first access from
+	 * {@link #getBatchedLayerRenderer()} so the bucket cache only materialises
+	 * when {@link #enableBatched} routes through it.
+	 */
+	private volatile BatchedPatternLayerRenderer batchedLayerRenderer;
 
 	/**
 	 * Creates a {@code PatternLayerManager} from a flat list of choices.
@@ -239,6 +285,37 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 
 	/** Returns the destination buffer map, keyed by channel info. */
 	public Map<ChannelInfo, PackedCollection> getDestination() { return destination; }
+
+	/**
+	 * Returns the per-pattern {@link BatchedPatternLayerRenderer}, lazily
+	 * constructing it on first call. Used by {@link PatternFeatures#render} to
+	 * route through the batched dispatch when {@link #enableBatched} is set.
+	 *
+	 * <p>The renderer is constructed with the default per-note source/target
+	 * lengths ({@value #BATCHED_SOURCE_LENGTH}/{@value #BATCHED_TARGET_LENGTH})
+	 * and {@value #BATCHED_FILTER_ORDER} FIR order, matching the production
+	 * fixture used by the iteration 3+4 acoustic equivalence test. The
+	 * per-pattern instance owns its bucket cache so compiled batched kernels
+	 * are shared across ticks of the same pattern.</p>
+	 *
+	 * @return the per-pattern batched renderer
+	 */
+	@Override
+	public BatchedPatternLayerRenderer getBatchedLayerRenderer() {
+		BatchedPatternLayerRenderer renderer = batchedLayerRenderer;
+		if (renderer == null) {
+			synchronized (this) {
+				renderer = batchedLayerRenderer;
+				if (renderer == null) {
+					renderer = new BatchedPatternLayerRenderer(
+							BATCHED_SOURCE_LENGTH, BATCHED_TARGET_LENGTH,
+							BATCHED_SAMPLE_RATE, BATCHED_FILTER_ORDER);
+					batchedLayerRenderer = renderer;
+				}
+			}
+		}
+		return renderer;
+	}
 
 	/**
 	 * Updates the destination buffer map from the given audio scene context.

@@ -55,8 +55,72 @@ public interface PatternFeatures extends CodeFeatures {
 	/**
 	 * Renders pattern elements to a destination buffer for a specific frame range.
 	 *
-	 * <p>This is the single render path shared by both offline and real-time modes.
-	 * For each element, it:</p>
+	 * <p>Dispatches to one of two rendering paths based on the
+	 * {@link PatternLayerManager#enableBatched} feature flag
+	 * ({@code AR_PATTERN_BATCHED}):</p>
+	 * <ul>
+	 *   <li><strong>Per-note path</strong> (flag off, default): the legacy
+	 *       sequential per-note dispatch via {@link #renderPerNote}. One
+	 *       {@code evaluate()} per note; the existing acoustic baseline.</li>
+	 *   <li><strong>Batched path</strong> (flag on): the Phase 3 integration via
+	 *       {@link BatchedPatternLayerRenderer#render}. Per-tick gathers notes
+	 *       into bucket-N tensors and dispatches through
+	 *       {@link org.almostrealism.audio.BatchedPatternRenderer}. The batched
+	 *       path falls back to the per-note path for cases its input gather
+	 *       cannot yet handle.</li>
+	 * </ul>
+	 *
+	 * <p>See {@link #renderPerNote} for the per-note rendering semantics.</p>
+	 *
+	 * @param sceneContext scene context containing destination buffer
+	 * @param audioContext note audio context
+	 * @param elements elements to render
+	 * @param melodic whether to use melodic or percussive rendering
+	 * @param offset measure offset for pattern positioning
+	 * @param startFrame starting frame of the target range (absolute position)
+	 * @param frameCount number of frames in the target range
+	 * @param cache optional cache for evaluated note audio (may be null)
+	 */
+	default void render(AudioSceneContext sceneContext, NoteAudioContext audioContext,
+						List<PatternElement> elements, boolean melodic, double offset,
+						int startFrame, int frameCount, NoteAudioCache cache) {
+		if (PatternLayerManager.enableBatched) {
+			BatchedPatternLayerRenderer batchedRenderer = getBatchedLayerRenderer();
+			if (batchedRenderer != null) {
+				batchedRenderer.render(this, sceneContext, audioContext, elements,
+						melodic, offset, startFrame, frameCount, cache);
+				return;
+			}
+		}
+
+		renderPerNote(sceneContext, audioContext, elements, melodic, offset,
+				startFrame, frameCount, cache);
+	}
+
+	/**
+	 * Returns the {@link BatchedPatternLayerRenderer} associated with this
+	 * features instance, or {@code null} when no batched dispatch site is
+	 * available.
+	 *
+	 * <p>Implementations that participate in the Phase 3 batched rendering path
+	 * (currently {@link PatternLayerManager}) return their per-pattern bucket
+	 * cache so the {@code AR_PATTERN_BATCHED} flag can route through it. The
+	 * default implementation returns {@code null}, which keeps the
+	 * per-note path active for arbitrary {@link PatternFeatures} usages outside
+	 * the production pattern-layer pipeline.</p>
+	 *
+	 * @return the batched renderer for this features instance, or {@code null}
+	 *         if the per-note path should be used
+	 */
+	default BatchedPatternLayerRenderer getBatchedLayerRenderer() {
+		return null;
+	}
+
+	/**
+	 * Renders pattern elements using the legacy per-note dispatch path.
+	 *
+	 * <p>This is the original rendering implementation shared by both offline and
+	 * real-time modes. For each element, it:</p>
 	 * <ol>
 	 *   <li>Creates {@link RenderedNoteAudio} instances via
 	 *       {@link PatternElement#getNoteDestinations}</li>
@@ -85,9 +149,9 @@ public interface PatternFeatures extends CodeFeatures {
 	 * @param frameCount number of frames in the target range
 	 * @param cache optional cache for evaluated note audio (may be null)
 	 */
-	default void render(AudioSceneContext sceneContext, NoteAudioContext audioContext,
-						List<PatternElement> elements, boolean melodic, double offset,
-						int startFrame, int frameCount, NoteAudioCache cache) {
+	default void renderPerNote(AudioSceneContext sceneContext, NoteAudioContext audioContext,
+							   List<PatternElement> elements, boolean melodic, double offset,
+							   int startFrame, int frameCount, NoteAudioCache cache) {
 		PackedCollection destination = sceneContext.getDestination();
 		if (destination == null) {
 			throw new IllegalArgumentException("Destination buffer is null");
