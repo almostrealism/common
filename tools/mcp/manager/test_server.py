@@ -279,6 +279,32 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertIn("maximum length", result["error"])
 
     @patch.object(server, "_controller_post")
+    def test_submit_repo_url_forwarded(self, mock_post):
+        # Two workstreams that share a default branch but live on
+        # different repos must be disambiguated by repo_url.  Verify the
+        # tool forwards repo_url as repoUrl so the controller-side
+        # findByBranchAndRepo lookup can pick the right workstream.
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-r1"}
+        server.workstream_submit_task(
+            prompt="Task",
+            target_branch="feature/audio-prototypes",
+            repo_url="git@github.com:almostrealism/common.git",
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["targetBranch"], "feature/audio-prototypes")
+        self.assertEqual(payload["repoUrl"],
+                         "git@github.com:almostrealism/common.git")
+
+    @patch.object(server, "_controller_post")
+    def test_submit_repo_url_omitted_when_blank(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-r2"}
+        server.workstream_submit_task(prompt="Task", target_branch="feature/x")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("repoUrl", payload)
+
+    @patch.object(server, "_controller_post")
     def test_submit_required_labels(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {"ok": True, "jobId": "job-3"}

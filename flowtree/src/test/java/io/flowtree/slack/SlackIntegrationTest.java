@@ -2022,6 +2022,150 @@ public class SlackIntegrationTest extends TestSuiteBase {
     }
 
     /**
+     * Two workstreams that share a defaultBranch but point at different
+     * repositories must NOT be cross-routed: a /submit request that names
+     * only the branch (no repoUrl) is rejected as ambiguous so the caller
+     * cannot accidentally dispatch a job to the wrong workstream's repo.
+     */
+    @Test(timeout = 10000)
+    public void testApiSubmitAmbiguousBranchAcrossDifferentRepos() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream wsCommon = new Workstream("C_COMMON", "#w-audio-prototypes");
+        wsCommon.setDefaultBranch("feature/audio-prototypes");
+        wsCommon.setRepoUrl("git@github.com:almostrealism/common.git");
+        notifier.registerWorkstream(wsCommon);
+
+        Workstream wsRings = new Workstream("C_RINGS", "#w-audio-prototypes-rings");
+        wsRings.setDefaultBranch("feature/audio-prototypes");
+        wsRings.setRepoUrl("git@github.com:almostrealism/ringsdesktop.git");
+        notifier.registerWorkstream(wsRings);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"prompt\":\"Do something\","
+                    + "\"targetBranch\":\"feature/audio-prototypes\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/submit").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(400, conn.getResponseCode());
+            String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue("Error should mention ambiguous resolution; was: " + error,
+                    error.contains("Ambiguous"));
+            assertTrue("Error should name the branch involved",
+                    error.contains("feature/audio-prototypes"));
+            assertTrue("Error should mention both repositories",
+                    error.contains("common") && error.contains("ringsdesktop"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * When two workstreams share a defaultBranch but the caller supplies
+     * the {@code repoUrl} disambiguator, the controller routes to the
+     * matching workstream — never the other one that happens to share
+     * the branch.
+     */
+    @Test(timeout = 10000)
+    public void testApiSubmitDisambiguatesByRepoUrl() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream wsCommon = new Workstream("C_COMMON", "#w-audio-prototypes");
+        wsCommon.setDefaultBranch("feature/audio-prototypes");
+        wsCommon.setRepoUrl("git@github.com:almostrealism/common.git");
+        notifier.registerWorkstream(wsCommon);
+
+        Workstream wsRings = new Workstream("C_RINGS", "#w-audio-prototypes-rings");
+        wsRings.setDefaultBranch("feature/audio-prototypes");
+        wsRings.setRepoUrl("git@github.com:almostrealism/ringsdesktop.git");
+        notifier.registerWorkstream(wsRings);
+
+        // No FlowTree server attached: resolution succeeds but submission
+        // returns "No FlowTree server configured" — confirming the request
+        // got past the resolver without an ambiguity error and that the
+        // matching workstream was chosen.
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"prompt\":\"Do something\","
+                    + "\"targetBranch\":\"feature/audio-prototypes\","
+                    + "\"repoUrl\":\"git@github.com:almostrealism/common.git\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/submit").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            // Resolution succeeded — the failure is downstream (no server).
+            assertEquals(400, conn.getResponseCode());
+            String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue("Resolver must not have flagged ambiguity; got: " + error,
+                    !error.contains("Ambiguous"));
+            assertTrue("Submission must reach the post-resolution server check; got: "
+                    + error, error.contains("No FlowTree server"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * When the caller supplies a {@code repoUrl} that matches no registered
+     * workstream on the named branch, resolution fails with the standard
+     * unknown-workstream error rather than silently routing to the
+     * other-repo workstream that happens to share the branch.
+     */
+    @Test(timeout = 10000)
+    public void testApiSubmitRepoUrlMismatchDoesNotCrossRoute() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream wsCommon = new Workstream("C_COMMON", "#w-audio-prototypes");
+        wsCommon.setDefaultBranch("feature/audio-prototypes");
+        wsCommon.setRepoUrl("git@github.com:almostrealism/common.git");
+        notifier.registerWorkstream(wsCommon);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            // Branch matches wsCommon but caller supplies a different repo.
+            String body = "{\"prompt\":\"Do something\","
+                    + "\"targetBranch\":\"feature/audio-prototypes\","
+                    + "\"repoUrl\":\"git@github.com:almostrealism/ringsdesktop.git\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/submit").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(400, conn.getResponseCode());
+            String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue("Should report no workstream found, not silently cross-route; got: "
+                    + error, error.contains("No workstream found for branch"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
      * A branch that ends with {@code /} is rejected with a 400 error.
      */
     @Test(timeout = 10000)

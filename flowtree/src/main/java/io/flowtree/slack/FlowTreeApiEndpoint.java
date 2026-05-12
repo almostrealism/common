@@ -897,16 +897,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     "application/json", json);
         }
 
-        // Branch-to-workstream resolution:
-        // 1. Explicit workstreamId in request body takes priority
-        // 2. Search for a workstream whose defaultBranch matches targetBranch
-        // 3. Fall back to the URL path workstream ID
+        // Branch-to-workstream resolution: explicit workstreamId wins, then
+        // (branch, repoUrl) — branch-only is rejected as ambiguous when more
+        // than one workstream shares the branch — finally the URL path id.
         String targetBranch = extractJsonField(body, "targetBranch");
         String bodyWorkstreamId = extractJsonField(body, "workstreamId");
-
+        String bodyRepoUrl = extractJsonField(body, "repoUrl");
         Workstream workstream = null;
         String resolvedWorkstreamId = pathWorkstreamId;
-
         if (bodyWorkstreamId != null && !bodyWorkstreamId.isEmpty()) {
             SlackNotifier n = notifiers.notifierFor(bodyWorkstreamId);
             workstream = n != null ? n.getWorkstream(bodyWorkstreamId) : null;
@@ -915,17 +913,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 log("Workstream resolved from request body: " + resolvedWorkstreamId);
             }
         }
-
         if (workstream == null && targetBranch != null && !targetBranch.isEmpty()) {
-            Workstream branchMatch = notifiers.findByBranch(targetBranch);
-            if (branchMatch != null) {
-                workstream = branchMatch;
-                resolvedWorkstreamId = branchMatch.getWorkstreamId();
-                log("Workstream resolved from branch match (" + targetBranch + "): "
-                    + resolvedWorkstreamId);
+            NotifierRegistry.BranchResolution res = notifiers.resolveBranch(targetBranch, bodyRepoUrl);
+            if (res.error() != null) return errorResponse(res.error());
+            if (res.match() != null) {
+                workstream = res.match();
+                resolvedWorkstreamId = workstream.getWorkstreamId();
+                log("Workstream resolved by branch=" + targetBranch
+                    + (bodyRepoUrl != null && !bodyRepoUrl.isEmpty() ? "/repo=" + bodyRepoUrl : "")
+                    + ": " + resolvedWorkstreamId);
             }
         }
-
         if (workstream == null && pathWorkstreamId != null) {
             SlackNotifier n = notifiers.notifierFor(pathWorkstreamId);
             workstream = n != null ? n.getWorkstream(pathWorkstreamId) : null;
@@ -1007,8 +1005,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         // Apply optional overrides from the request body
-        // (targetBranch was already extracted during workstream resolution above)
-        String repoUrl = extractJsonField(body, "repoUrl");
+        // (targetBranch and repoUrl were already extracted during workstream
+        // resolution above; reuse bodyRepoUrl as repoUrl here so downstream
+        // code reads the same value the resolver saw).
+        String repoUrl = bodyRepoUrl;
         String baseBranch = extractJsonField(body, "baseBranch");
         String jobDescription = extractJsonField(body, "description");
         int maxTurns = extractJsonIntField(body, "maxTurns");

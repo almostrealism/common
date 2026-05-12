@@ -377,7 +377,9 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * Finds a workstream whose {@code defaultBranch} exactly matches the
      * given branch name. Workstreams with a null {@code defaultBranch}
      * are skipped. If multiple workstreams match, the first one found is
-     * returned.
+     * returned — callers that need to detect ambiguity should use
+     * {@link #findWorkstreamsByBranch(String)} instead so they can apply
+     * a {@code repoUrl} disambiguator or reject the request.
      *
      * @param branch the branch name to match (e.g., "feature/new-decoder")
      * @return the matching workstream, or null if no match is found
@@ -394,6 +396,29 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
 
         return null;
+    }
+
+    /**
+     * Returns every workstream whose {@code defaultBranch} matches the given
+     * branch name. Unlike {@link #findWorkstreamByBranch(String)}, this method
+     * surfaces ambiguity so callers (in particular the job-submission
+     * endpoint) can either disambiguate by {@code repoUrl} or reject the
+     * request rather than silently routing to the wrong workstream.
+     *
+     * @param branch the branch name to match
+     * @return all matching workstreams (never {@code null})
+     */
+    public List<Workstream> findWorkstreamsByBranch(String branch) {
+        List<Workstream> matches = new ArrayList<>();
+        if (branch == null || branch.isEmpty()) {
+            return matches;
+        }
+        for (Workstream ws : workstreams.values()) {
+            if (branch.equals(ws.getDefaultBranch())) {
+                matches.add(ws);
+            }
+        }
+        return matches;
     }
 
     /**

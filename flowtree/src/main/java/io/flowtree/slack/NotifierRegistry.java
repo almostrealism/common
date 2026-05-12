@@ -18,8 +18,10 @@ package io.flowtree.slack;
 
 import io.flowtree.jobs.JobCompletionEvent;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -167,6 +169,14 @@ final class NotifierRegistry {
     /**
      * Searches every workspace for a workstream whose default branch matches
      * the given branch; returns the first match or {@code null}.
+     *
+     * <p>This lookup is ambiguous when two workstreams (typically on
+     * different repositories) share a {@code defaultBranch}. Callers that
+     * cannot tolerate cross-routing should use
+     * {@link #findAllByBranch(String)} instead and disambiguate explicitly,
+     * either by passing a {@code repoUrl} to
+     * {@link #findByBranchAndRepo(String, String)} or by rejecting the
+     * request when more than one match is returned.</p>
      */
     Workstream findByBranch(String branch) {
         if (!byWorkspace.isEmpty()) {
@@ -177,6 +187,106 @@ final class NotifierRegistry {
             return null;
         }
         return primary != null ? primary.findWorkstreamByBranch(branch) : null;
+    }
+
+    /**
+     * Outcome of {@link #resolveBranch(String, String)}: either a single
+     * matched workstream, an error message describing why no unambiguous
+     * match could be made, or both fields {@code null} when the branch
+     * matches no workstream at all.
+     */
+    static final class BranchResolution {
+        /** The matched workstream, or {@code null} when ambiguous or missing. */
+        private final Workstream match;
+        /** Human-readable error description when the lookup is ambiguous. */
+        private final String error;
+
+        /**
+         * Creates a resolution result. Exactly one of {@code match} and
+         * {@code error} should be non-null; both null means "no match".
+         *
+         * @param match the resolved workstream, or {@code null}
+         * @param error the ambiguity error message, or {@code null}
+         */
+        private BranchResolution(Workstream match, String error) {
+            this.match = match;
+            this.error = error;
+        }
+
+        /** Returns the matched workstream, or {@code null} when none. */
+        Workstream match() { return match; }
+        /** Returns the ambiguity error message, or {@code null} when none. */
+        String error() { return error; }
+
+        /** Returns a "no match" resolution. */
+        static BranchResolution none() { return new BranchResolution(null, null); }
+        /** Returns a successful resolution carrying {@code w}. */
+        static BranchResolution of(Workstream w) { return new BranchResolution(w, null); }
+        /** Returns an ambiguous resolution describing why in {@code msg}. */
+        static BranchResolution failed(String msg) { return new BranchResolution(null, msg); }
+    }
+
+    /**
+     * Resolves a workstream by branch (and optional repoUrl), returning a
+     * {@link BranchResolution} that the caller can convert into either a
+     * routing decision or an error response.
+     *
+     * <p>When {@code repoUrl} is supplied the lookup is unambiguous: the
+     * unique workstream registered for {@code (branch, repoUrl)} is
+     * returned, or {@code none()} when nothing matches. When {@code repoUrl}
+     * is absent the lookup falls back to branch-only matching but rejects
+     * ambiguous cases — two workstreams sharing a branch across different
+     * repositories must not be cross-routed silently.</p>
+     *
+     * @param branch  the requested target branch
+     * @param repoUrl the repository URL used to disambiguate (may be {@code null})
+     * @return a {@link BranchResolution} describing the outcome
+     */
+    BranchResolution resolveBranch(String branch, String repoUrl) {
+        if (branch == null || branch.isEmpty()) {
+            return BranchResolution.none();
+        }
+        if (repoUrl != null && !repoUrl.isEmpty()) {
+            Workstream m = findByBranchAndRepo(branch, repoUrl);
+            return m != null ? BranchResolution.of(m) : BranchResolution.none();
+        }
+        List<Workstream> matches = findAllByBranch(branch);
+        if (matches.isEmpty()) return BranchResolution.none();
+        if (matches.size() == 1) return BranchResolution.of(matches.get(0));
+        StringBuilder repos = new StringBuilder();
+        for (Workstream m : matches) {
+            if (repos.length() > 0) repos.append(", ");
+            String r = m.getRepoUrl();
+            repos.append(r != null && !r.isEmpty() ? r : "(no repoUrl)");
+        }
+        return BranchResolution.failed("Ambiguous workstream resolution: " + matches.size()
+            + " workstreams share defaultBranch '" + branch
+            + "' on different repositories (" + repos + "). Supply repoUrl in the"
+            + " request body to disambiguate, or pass workstreamId explicitly.");
+    }
+
+    /**
+     * Returns every workstream whose default branch matches the given branch,
+     * across every workspace. Useful for detecting branch-name collisions
+     * between workstreams on different repositories before routing a job
+     * submission.
+     *
+     * @param branch the branch name to match
+     * @return all matching workstreams (never {@code null})
+     */
+    List<Workstream> findAllByBranch(String branch) {
+        List<Workstream> matches = new ArrayList<>();
+        if (branch == null || branch.isEmpty()) {
+            return matches;
+        }
+        if (!byWorkspace.isEmpty()) {
+            for (SlackNotifier n : byWorkspace.values()) {
+                matches.addAll(n.findWorkstreamsByBranch(branch));
+            }
+        } else if (primary != null) {
+            matches.addAll(primary.findWorkstreamsByBranch(branch));
+        }
+        return matches;
     }
 
     /**
