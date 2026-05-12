@@ -23,6 +23,10 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.time.DayOfWeek;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import static org.junit.Assert.*;
@@ -340,6 +344,121 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
         assertEquals("Reload should add the new workspace connection", 2,
                 controller.getWorkspaceConnections().size());
         assertNotNull(controller.getWorkspaceConnections().get("T222"));
+    }
+
+    // -------------------------------------------------------------------------
+    // Stats store survives config reload — regression test for /flowtree stats
+    // -------------------------------------------------------------------------
+
+    /**
+     * Reproduces a regression where {@code /flowtree stats} returned
+     * {@code "Job statistics are not available."} after the controller
+     * reloaded its config.
+     *
+     * <p>Root cause: {@link FlowTreeController#buildWorkspaceConnections} was
+     * rebuilding every {@link FlowTreeController.WorkspaceConnection} (and
+     * therefore every {@link SlackNotifier}) on each reload, without
+     * propagating the controller-owned {@link JobStatsStore} onto the freshly
+     * constructed notifiers. The listener's primary notifier was then a
+     * stats-less instance, so the stats and active slash commands rejected
+     * every invocation. Any inbound message from an unknown channel triggers
+     * a reload (see {@link SlackListener#handleMessage}) so the regression
+     * manifested in production on the first such message.</p>
+     */
+    @Test(timeout = 10000)
+    public void testStatsSlashCommandSurvivesConfigReload() throws IOException {
+        String yaml = "slackWorkspaces:\n" +
+                      "  - workspaceId: \"T_STATS\"\n" +
+                      "    botToken: \"xoxb-stats\"\n" +
+                      "    appToken: \"xapp-stats\"\n" +
+                      "workstreams:\n" +
+                      "  - channelId: \"C_STATS\"\n" +
+                      "    channelName: \"#stats\"\n" +
+                      "    defaultBranch: \"main\"\n" +
+                      "    slackWorkspaceId: \"T_STATS\"\n";
+
+        File tmpFile = writeYamlTempFile(yaml);
+        FlowTreeController controller = new FlowTreeController(null, null);
+        controller.loadConfig(tmpFile);
+
+        // Capture the workstream ID assigned by ensureWorkstreamIds(); it is
+        // generated at load time and is what JobStatsStore is keyed on.
+        Workstream registered = controller.getListener().getWorkstreams()
+                .values().iterator().next();
+        String workstreamId = registered.getWorkstreamId();
+        assertNotNull("Loaded workstream must have an ID", workstreamId);
+
+        // Seed a stats store with a completed job in the current week so the
+        // primary "no stats" warning path is the only way to fail the test.
+        File statsDir = Files.createTempDirectory("ft-reload-stats").toFile();
+        statsDir.deleteOnExit();
+        JobStatsStore store = new JobStatsStore(
+                new File(statsDir, "stats").getAbsolutePath());
+        store.initialize();
+        try {
+            LocalDate today = LocalDate.now(ZoneOffset.UTC);
+            LocalDate monday = today.with(DayOfWeek.MONDAY);
+            Instant jobTime = monday.atStartOfDay(ZoneOffset.UTC).toInstant()
+                    .plusSeconds(3600);
+            store.recordJobStarted("reload-job-1", workstreamId,
+                    "Reload regression test", jobTime);
+            store.recordJobCompleted("reload-job-1", workstreamId, "SUCCESS",
+                    jobTime.plusMillis(60000), 55000, 30000, 0.50, 10,
+                    "sess-1", 0, "success", false, 0,
+                    null, null, null, null);
+
+            // Mirror what startApiEndpoint() does: install the store on the
+            // controller and propagate it to every notifier. Without starting
+            // the HTTP endpoint we can still exercise the slash command path.
+            controller.installStatsStore(store);
+
+            SlackNotifier preReloadNotifier = controller.getNotifier();
+            assertNotNull("Notifier should have the stats store before reload",
+                    preReloadNotifier.getStatsStore());
+
+            // Reload the config. The fix preserves the stats store on the
+            // freshly built notifiers; without the fix every workspace
+            // notifier is replaced with a stats-less instance.
+            controller.reloadConfig();
+
+            SlackNotifier postReloadNotifier = controller.getNotifier();
+            assertNotNull("Reload must propagate the stats store to the new notifier",
+                    postReloadNotifier.getStatsStore());
+            assertSame("Reload must reuse the controller's stats store, not a fresh one",
+                    store, postReloadNotifier.getStatsStore());
+
+            // End-to-end: exercise /flowtree stats and verify the response is
+            // a stats payload, not the "not available" warning.
+            List<String> responses = new ArrayList<>();
+            SlackListener.SlashCommandResponder responder = text -> responses.add(text);
+            controller.getListener().handleSlashCommand(
+                    "stats", "C_STATS", "#stats", responder, "T_STATS");
+
+            assertEquals(1, responses.size());
+            String response = responses.get(0);
+            assertFalse("Stats command must not return the 'not available' warning: "
+                    + response,
+                    response.contains("Job statistics are not available"));
+            assertTrue("Stats response must contain the channel name: " + response,
+                    response.contains("#stats"));
+            assertTrue("Stats response must include This Week section: " + response,
+                    response.contains("This Week"));
+
+            // Global variant — same code path, different aggregation.
+            responses.clear();
+            controller.getListener().handleSlashCommand(
+                    "stats global", "C_STATS", "#stats", responder, "T_STATS");
+            assertEquals(1, responses.size());
+            String globalResponse = responses.get(0);
+            assertFalse("Global stats must not return the 'not available' warning: "
+                    + globalResponse,
+                    globalResponse.contains("Job statistics are not available"));
+            assertTrue("Global stats must include 'All Workstreams' header: "
+                    + globalResponse,
+                    globalResponse.contains("All Workstreams"));
+        } finally {
+            store.close();
+        }
     }
 
     // -------------------------------------------------------------------------
