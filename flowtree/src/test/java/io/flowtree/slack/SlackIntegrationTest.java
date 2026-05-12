@@ -1838,5 +1838,220 @@ public class SlackIntegrationTest extends TestSuiteBase {
         Map<String, JobCompletionEvent> jobs = workspaceNotifier.getRecentJobs(ws.getWorkstreamId());
         assertNotNull("Workspace notifier should have workstream registered", jobs);
     }
+
+    // -------------------------------------------------------------------------
+    // Channel-name auto-generation from branch name
+    // -------------------------------------------------------------------------
+
+    /** {@code feature/foo} → {@code w-foo} (standard case). */
+    @Test(timeout = 10000)
+    public void testChannelNameFromBranchStandardCase() {
+        assertEquals("w-foo", SlackNotifier.channelNameFromBranch("feature/foo"));
+    }
+
+    /** {@code release/v2/bar} → {@code w-bar} (last slash wins). */
+    @Test(timeout = 10000)
+    public void testChannelNameFromBranchMultipleSlashes() {
+        assertEquals("w-bar", SlackNotifier.channelNameFromBranch("release/v2/bar"));
+    }
+
+    /** {@code singlename} (no slash) → {@code w-singlename}. */
+    @Test(timeout = 10000)
+    public void testChannelNameFromBranchNoSlash() {
+        assertEquals("w-singlename", SlackNotifier.channelNameFromBranch("singlename"));
+    }
+
+    /** Branch ending with {@code /} is malformed — returns {@code null}. */
+    @Test(timeout = 10000)
+    public void testChannelNameFromBranchMalformed() {
+        assertNull(SlackNotifier.channelNameFromBranch("feature/"));
+    }
+
+    /** Uppercase and spaces are sanitized to lowercase hyphens. */
+    @Test(timeout = 10000)
+    public void testChannelNameFromBranchSanitization() {
+        assertEquals("w-my-xyz", SlackNotifier.channelNameFromBranch("feature/My XYZ!"));
+        assertEquals("w-audio-loop", SlackNotifier.channelNameFromBranch("feature/audio_loop"));
+        assertEquals("w-foo-bar", SlackNotifier.channelNameFromBranch("feature/foo--bar"));
+    }
+
+    /** Names longer than 80 chars are truncated. */
+    @Test(timeout = 10000)
+    public void testChannelNameFromBranchLengthTruncation() {
+        // 79 'a' chars + "w-" prefix = 81 chars total → truncated to 80
+        String longSuffix = "a".repeat(79);
+        String result = SlackNotifier.channelNameFromBranch("feature/" + longSuffix);
+        assertNotNull(result);
+        assertTrue("Channel name must be ≤ 80 chars", result.length() <= 80);
+        assertTrue(result.startsWith("w-"));
+    }
+
+    /**
+     * When {@code channel_name} is omitted, the controller auto-generates one
+     * from the branch name.
+     */
+    @Test(timeout = 10000)
+    public void testApiRegisterWorkstreamAutoChannel() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.setListener(listener);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            // No channelName in body — controller must derive it from defaultBranch
+            String body = "{\"defaultBranch\":\"feature/auto-gen\","
+                    + "\"baseBranch\":\"master\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(200, conn.getResponseCode());
+            String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue("Response must be ok", response.contains("\"ok\":true"));
+            assertTrue("Response must contain workstreamId", response.contains("\"workstreamId\""));
+            assertTrue("Response must contain auto-generated channelName",
+                    response.contains("\"channelName\":\"w-auto-gen\""));
+
+            Workstream registered = notifier.findWorkstreamByBranch("feature/auto-gen");
+            assertNotNull("Workstream should be registered", registered);
+            String cn = registered.getChannelName();
+            assertNotNull("Channel name should be set", cn);
+            // channelId is null (no real Slack), so name stored without # prefix
+            assertTrue("Channel name should be w-auto-gen", cn.equals("w-auto-gen"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * An explicit {@code channelName} in the request overrides auto-generation.
+     */
+    @Test(timeout = 10000)
+    public void testApiRegisterWorkstreamExplicitChannelOverrides() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.setListener(listener);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"defaultBranch\":\"feature/some-branch\","
+                    + "\"baseBranch\":\"master\","
+                    + "\"channelName\":\"my-custom-channel\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(200, conn.getResponseCode());
+            String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(response.contains("\"channelName\":\"my-custom-channel\""));
+
+            Workstream registered = notifier.findWorkstreamByBranch("feature/some-branch");
+            assertNotNull(registered);
+            assertEquals("my-custom-channel", registered.getChannelName());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * When two registrations would produce the same auto-generated channel name,
+     * the second gets a {@code -2} suffix.
+     */
+    @Test(timeout = 10000)
+    public void testApiRegisterWorkstreamCollisionHandling() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        // Pre-register a workstream that already owns "w-foo"
+        Workstream existing = new Workstream(null, "w-foo");
+        existing.setDefaultBranch("feature/foo");
+        notifier.registerWorkstream(existing);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.setListener(listener);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            // A different branch whose suffix is also "foo" — should become "w-foo-2"
+            String body = "{\"defaultBranch\":\"bugfix/foo\","
+                    + "\"baseBranch\":\"master\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(200, conn.getResponseCode());
+            String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(response.contains("\"ok\":true"));
+            assertTrue("Second registration should get -2 suffix",
+                    response.contains("\"channelName\":\"w-foo-2\""));
+
+            Workstream second = notifier.findWorkstreamByBranch("bugfix/foo");
+            assertNotNull(second);
+            assertEquals("w-foo-2", second.getChannelName());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * A branch that ends with {@code /} is rejected with a 400 error.
+     */
+    @Test(timeout = 10000)
+    public void testApiRegisterWorkstreamMalformedBranch() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"defaultBranch\":\"feature/\","
+                    + "\"baseBranch\":\"master\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(400, conn.getResponseCode());
+            String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue("Error should mention malformed branch", error.contains("malformed"));
+        } finally {
+            endpoint.stop();
+        }
+    }
 }
 

@@ -627,25 +627,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Handles {@code POST /api/workstreams} to register a new workstream.
      *
-     * <p>Request body:</p>
-     * <pre>{@code
-     * {
-     *   "defaultBranch": "project/plan-20260223-foo",
-     *   "baseBranch": "master",
-     *   "repoUrl": "https://github.com/org/repo.git",
-     *   "planningDocument": "docs/plans/PLAN-20260223-foo.md",
-     *   "channelName": "project-plan-20260223-foo",
-     *   "model": "sonnet",
-     *   "effort": "medium"
-     * }
-     * }</pre>
+     * <p>All fields are optional except {@code defaultBranch}. When
+     * {@code channelName} is absent the controller derives one from the
+     * last path component of {@code defaultBranch} (e.g. {@code "feature/foo"}
+     * → {@code "w-foo"}) and appends a numeric suffix if the name collides
+     * with an existing workstream. Supply {@code channelName} to override.</p>
      *
      * <p>{@code model} and {@code effort} are workstream-level defaults
-     * applied when a job omits them; invalid {@code effort} → 400.</p>
-     *
-     * <p>If a {@code channelName} is provided and Slack is available, a new
-     * channel is created automatically. If Slack is not available (simulation
-     * mode), the workstream is registered without a channel.</p>
+     * applied when a job omits them; an invalid {@code effort} value → 400.</p>
      *
      * @param session the HTTP session
      * @return JSON response with {@code workstreamId}, {@code channelId},
@@ -666,6 +655,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String repoUrl = extractJsonField(body, "repoUrl");
         String planningDocument = extractJsonField(body, "planningDocument");
         String channelName = extractJsonField(body, "channelName");
+        if (channelName == null || channelName.isEmpty()) {
+            if (defaultBranch.endsWith("/")) {
+                return errorResponse("defaultBranch is malformed: ends with '/'");
+            }
+            channelName = SlackNotifier.autoChannelName(defaultBranch, notifiers.allWorkstreams().values());
+        }
         String explicitWorkspaceId = extractJsonField(body, "slackWorkspaceId");
         String model = extractJsonField(body, "model");
         String effort = extractJsonField(body, "effort");
