@@ -21,6 +21,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
@@ -87,8 +88,8 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 	/** Resample ratio: SOURCE_SIZE / NOTE_SIZE = 2.0 (one octave up). */
 	private static final double RESAMPLE_RATIO = (double) SOURCE_SIZE / NOTE_SIZE;
 
-	/** Audio sample rate matching the production pipeline. */
-	private static final int SAMPLE_RATE = 44100;
+	/** Audio sample rate — uses {@link OutputLine#sampleRate} so the benchmark adapts to any future default change. */
+	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
 	/** FIR filter order matching EfxManager.filterOrder. */
 	private static final int FILTER_ORDER = 40;

@@ -31,6 +31,8 @@ import org.almostrealism.heredity.Chromosome;
 import org.almostrealism.heredity.Gene;
 import org.almostrealism.heredity.HeredityFeatures;
 import org.almostrealism.heredity.ProjectedChromosome;
+import org.almostrealism.audio.filter.MultiOrderFilterEnvelopeProcessor;
+import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.io.SystemUtils;
 
@@ -149,21 +151,6 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 * by the batched-chain benchmarks.
 	 */
 	private static final int BATCHED_TARGET_LENGTH = 1024;
-
-	/**
-	 * FIR filter order used when constructing a per-pattern
-	 * {@link BatchedPatternLayerRenderer}. Matches the production
-	 * {@code EfxManager} filter order.
-	 */
-	private static final int BATCHED_FILTER_ORDER = 40;
-
-	/**
-	 * Audio sample rate used when constructing a per-pattern
-	 * {@link BatchedPatternLayerRenderer}. Matches the production
-	 * {@code OutputLine.sampleRate} value used by every existing pattern
-	 * acoustic-equivalence test.
-	 */
-	private static final int BATCHED_SAMPLE_RATE = 44100;
 
 	/** The audio channel index for this pattern. */
 	private int channel;
@@ -292,11 +279,12 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 * route through the batched dispatch when {@link #enableBatched} is set.
 	 *
 	 * <p>The renderer is constructed with the default per-note source/target
-	 * lengths ({@value #BATCHED_SOURCE_LENGTH}/{@value #BATCHED_TARGET_LENGTH})
-	 * and {@value #BATCHED_FILTER_ORDER} FIR order, matching the production
-	 * fixture used by the iteration 3+4 acoustic equivalence test. The
-	 * per-pattern instance owns its bucket cache so compiled batched kernels
-	 * are shared across ticks of the same pattern.</p>
+	 * lengths ({@value #BATCHED_SOURCE_LENGTH}/{@value #BATCHED_TARGET_LENGTH}),
+	 * the FIR order from {@link MultiOrderFilterEnvelopeProcessor#filterOrder},
+	 * and the sample rate from {@link OutputLine#sampleRate} (the user-configured
+	 * rate set at application startup). The per-pattern instance owns its bucket
+	 * cache so compiled batched kernels are shared across ticks of the same
+	 * pattern.</p>
 	 *
 	 * @return the per-pattern batched renderer
 	 */
@@ -309,7 +297,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				if (renderer == null) {
 					renderer = new BatchedPatternLayerRenderer(
 							BATCHED_SOURCE_LENGTH, BATCHED_TARGET_LENGTH,
-							BATCHED_SAMPLE_RATE, BATCHED_FILTER_ORDER);
+							OutputLine.sampleRate, MultiOrderFilterEnvelopeProcessor.filterOrder);
 					batchedLayerRenderer = renderer;
 				}
 			}

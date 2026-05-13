@@ -17,6 +17,7 @@
 package org.almostrealism.audio;
 
 import org.almostrealism.audio.benchmark.PatternRenderingFloorBenchmark;
+import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalFeatures;
@@ -48,8 +49,8 @@ public class BatchedPatternRendererTest extends TestSuiteBase implements Tempora
 	/** Target samples per note after resampling. */
 	private static final int TARGET_LENGTH = 1024;
 
-	/** Audio sample rate matching the production pipeline. */
-	private static final int SAMPLE_RATE = 44100;
+	/** Audio sample rate — uses the configured {@link OutputLine#sampleRate} so tests adapt to any future default change. */
+	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
 	/** FIR filter order matching production {@code EfxManager.filterOrder}. */
 	private static final int FILTER_ORDER = 40;
