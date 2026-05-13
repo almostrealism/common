@@ -149,37 +149,56 @@ public class ParameterizedVolumeEnvelope extends ParameterizedEnvelopeAdapter {
 		public Producer<PackedCollection> apply(Producer<PackedCollection> audio,
 												   Producer<PackedCollection> duration,
 												   Producer<PackedCollection> automationLevel) {
-			Producer<PackedCollection> adj = add(c(adjustmentBase),
-					multiply(c(adjustmentAutomation), automationLevel));
+			PackedCollection a = new PackedCollection(1);
+			PackedCollection d = new PackedCollection(1);
+			PackedCollection s = new PackedCollection(1);
+			PackedCollection r = new PackedCollection(1);
 
-			Producer<PackedCollection> attackProducer;
-			if (getMode() == Mode.NOTE_LAYER) {
-				attackProducer = c(2.0 * getAttackSelection().positive().apply(params));
-			} else {
-				double voicingAttackFactor = voicing == ChannelInfo.Voicing.WET ? 1.0 : 0.2;
-				attackProducer = multiply(duration,
-						c(voicingAttackFactor * getAttackSelection().positive().apply(params)));
-			}
+			return () -> args -> {
+				PackedCollection audioData = audio.get().evaluate();
+				PackedCollection dr = duration.get().evaluate();
+				PackedCollection al = automationLevel.get().evaluate();
 
-			Producer<PackedCollection> decayProducer = c(getDecay());
+				double dv = dr.toDouble(0);
+				double adj = adjustmentBase + adjustmentAutomation * al.toDouble(0);
 
-			Producer<PackedCollection> sustainProducer =
-					min(c(1.0), max(c(0.25), multiply(c(getSustain()), adj)));
+				double sustain = getSustain();
+				if (sustain > getMode().getMaxSustain(getVoicing())) {
+					throw new IllegalArgumentException();
+				}
 
-			Producer<PackedCollection> releaseProducer;
-			if (getMode() == Mode.NOTE_LAYER) {
-				Producer<PackedCollection> releaseBase =
-						c(2.0 * getReleaseSelection().positive().apply(params));
-				releaseProducer = min(multiply(c(0.7), duration), multiply(releaseBase, adj));
-			} else {
-				double voicingReleaseFactor = voicing == ChannelInfo.Voicing.WET ? 0.7 : 0.2;
-				Producer<PackedCollection> releaseBase = multiply(duration,
-						c(voicingReleaseFactor * getReleaseSelection().positive().apply(params)));
-				releaseProducer = min(multiply(c(0.7), duration), multiply(releaseBase, adj));
-			}
+				sustain = sustain * adj;
+				if (sustain < 0.25) {
+					sustain = 0.25;
+				} else if (sustain > 1.0) {
+					sustain = 1.0;
+				}
 
-			return AudioProcessingUtils.volumeEnv(audio, duration,
-					attackProducer, decayProducer, sustainProducer, releaseProducer);
+				double release = getRelease(dv);
+				if (release > getMode().getMaxRelease(getVoicing(), dv)) {
+					throw new IllegalArgumentException();
+				}
+
+				release = release * adj;
+				if (release > 0.7 * dv) {
+					release = 0.7 * dv;
+				}
+
+				a.set(0, getAttack(dr.toDouble()));
+				d.set(0, getDecay());
+				s.set(0, sustain);
+				r.set(0, release);
+
+				PackedCollection out = AudioProcessingUtils.getVolumeEnv()
+						.evaluate(audioData.traverse(1), dr, a, d, s, r);
+
+				if (out.getShape().getTotalSize() == 1) {
+					warn("Envelope produced a value with shape " +
+							out.getShape().toStringDetail());
+				}
+
+				return out;
+			};
 		}
 
 		@Override

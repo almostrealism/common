@@ -12,6 +12,7 @@ import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.io.DistributionMetric;
 
 import java.util.List;
+import java.util.regex.Pattern;
 
 /**
  * Interface providing core pattern rendering functionality.
@@ -51,6 +52,26 @@ import java.util.List;
 public interface PatternFeatures extends CodeFeatures {
 	/** Distribution metric tracking the sizes of rendered pattern audio segments. */
 	DistributionMetric sizes = CellFeatures.console.distribution("patternSizes");
+
+	/**
+	 * Maximum number of consecutive note-evaluation failures tolerated by
+	 * {@link #renderPerNote} before it aborts the render with an
+	 * {@link IllegalStateException}. Beyond this threshold every additional
+	 * attempt is wasted work and the warning stream drowns useful diagnostics.
+	 */
+	int MAX_CONSECUTIVE_NOTE_FAILURES = 5;
+
+	/**
+	 * Pattern matching exhaustion-class failure messages that should abort the
+	 * render immediately, without waiting for the consecutive-failure threshold.
+	 * Matches the {@code HardwareException("Could not obtain operator", ...)}
+	 * message thrown by {@code AcceleratedOperation.getRuntimeNativeOperator}
+	 * when the runtime native-lib template class pool is exhausted, and any
+	 * causal stack mention of {@code GeneratedOperationNNNN} which signals the
+	 * same condition surfaced through a different path.
+	 */
+	Pattern NOTE_EVAL_EXHAUSTION = Pattern.compile(
+			"Could not obtain operator|GeneratedOperation\\d+");
 
 	/**
 	 * Renders pattern elements to a destination buffer for a specific frame range.
@@ -158,6 +179,7 @@ public interface PatternFeatures extends CodeFeatures {
 		}
 
 		int endFrame = startFrame + frameCount;
+		int[] consecutiveFailures = {0};
 
 		elements.stream()
 				.map(e -> e.getNoteDestinations(melodic, offset, sceneContext, audioContext))
@@ -182,6 +204,7 @@ public interface PatternFeatures extends CodeFeatures {
 						// Cache hit: sum cached audio to destination
 						sumToDestination(destination, audio, noteStart, startFrame,
 								endFrame, frameCount);
+						consecutiveFailures[0] = 0;
 						return;
 					}
 
@@ -205,8 +228,10 @@ public interface PatternFeatures extends CodeFeatures {
 											startFrame, endFrame, frameCount);
 								}
 							});
+							consecutiveFailures[0] = 0;
 						} catch (Exception e) {
-							warn("Note evaluation failed at frame " + noteStart + ": " + e.getMessage());
+							consecutiveFailures[0]++;
+							handleNoteEvaluationFailure(noteStart, consecutiveFailures[0], e);
 						}
 					} else {
 						if (note.getExpectedFrameCount() <= 0
@@ -223,11 +248,70 @@ public interface PatternFeatures extends CodeFeatures {
 											startFrame, endFrame, frameCount);
 								}
 							});
+							consecutiveFailures[0] = 0;
 						} catch (Exception e) {
-							warn("Note evaluation failed at frame " + noteStart + ": " + e.getMessage());
+							consecutiveFailures[0]++;
+							handleNoteEvaluationFailure(noteStart, consecutiveFailures[0], e);
 						}
 					}
 				});
+	}
+
+	/**
+	 * Reacts to a single failed note evaluation. Logs the failure as a warning,
+	 * and escalates to {@link IllegalStateException} when the failure is either
+	 * (a) an exhaustion-class condition signaled in any layer of the cause chain
+	 * (see {@link #NOTE_EVAL_EXHAUSTION}), or (b) the
+	 * {@value #MAX_CONSECUTIVE_NOTE_FAILURES}<sup>th</sup> consecutive failure
+	 * since the most recent successful evaluation. Either condition indicates
+	 * that further attempts are guaranteed to fail and the render must stop
+	 * promptly with a single, diagnosable exception instead of thousands of
+	 * warnings.
+	 *
+	 * @param noteStart           the frame offset of the note that failed
+	 * @param consecutiveFailures running count of failures since the last success
+	 * @param cause               the exception thrown by the evaluation
+	 */
+	private void handleNoteEvaluationFailure(int noteStart, int consecutiveFailures,
+											 Exception cause) {
+		warn("Note evaluation failed at frame " + noteStart + ": " + cause.getMessage());
+
+		if (isExhaustionFailure(cause)) {
+			throw new IllegalStateException(
+					"Pattern rendering aborted at frame " + noteStart
+							+ " — runtime native-lib template class pool exhausted"
+							+ " (consecutiveFailures=" + consecutiveFailures
+							+ ", causeClass=" + cause.getClass().getName() + ")",
+					cause);
+		}
+
+		if (consecutiveFailures >= MAX_CONSECUTIVE_NOTE_FAILURES) {
+			throw new IllegalStateException(
+					"Pattern rendering aborted at frame " + noteStart
+							+ " after " + consecutiveFailures
+							+ " consecutive note-evaluation failures"
+							+ " (causeClass=" + cause.getClass().getName() + ")",
+					cause);
+		}
+	}
+
+	/**
+	 * Walks the cause chain of the given throwable and returns {@code true} if
+	 * any link reports a message matching {@link #NOTE_EVAL_EXHAUSTION}.
+	 *
+	 * @param t the throwable to inspect
+	 * @return {@code true} when the chain reports operator-pool exhaustion
+	 */
+	private static boolean isExhaustionFailure(Throwable t) {
+		Throwable cursor = t;
+		while (cursor != null) {
+			String msg = cursor.getMessage();
+			if (msg != null && NOTE_EVAL_EXHAUSTION.matcher(msg).find()) {
+				return true;
+			}
+			cursor = cursor.getCause();
+		}
+		return false;
 	}
 
 	/**
