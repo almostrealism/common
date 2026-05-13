@@ -21,6 +21,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.audio.BatchedPatternRenderer;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -118,6 +119,14 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 
 	/** Output path for the benchmark results log; shared by all test methods. */
 	private static final String RESULTS_PATH = "results/pattern-rendering-floor.txt";
+
+	/**
+	 * Shared single-note renderer used to delegate per-note resample-producer
+	 * construction to the production {@link BatchedPatternRenderer}, avoiding
+	 * a duplicate copy of the resample algorithm in this benchmark.
+	 */
+	private static final BatchedPatternRenderer SINGLE_NOTE_RENDERER =
+			new BatchedPatternRenderer(1, SOURCE_SIZE, NOTE_SIZE, SAMPLE_RATE, FILTER_ORDER);
 
 	/**
 	 * Notes-per-measure densities measured by every Dimension-1 / batched test:
@@ -279,18 +288,17 @@ public class PatternRenderingFloorBenchmark extends TestSuiteBase
 	 * Builds the per-note linear-resample producer that maps a {@code [SOURCE_SIZE]}
 	 * source array onto a {@code [NOTE_SIZE]} output via fractional-position lerp.
 	 *
+	 * <p>Delegates to {@link BatchedPatternRenderer#buildResampleProducer} so the
+	 * benchmark and production code share a single implementation of the resample
+	 * algorithm. Returns the producer un-compiled so callers can chain additional
+	 * kernels onto it.</p>
+	 *
 	 * <p>Reused by every chain builder that needs the un-batched (single-note)
 	 * resample step: {@link #buildChain}, {@link #buildResampleOnly}, and
-	 * {@link #buildChain3Kernels}. Returns the producer un-compiled so callers can
-	 * chain additional kernels onto it.</p>
+	 * {@link #buildChain3Kernels}.</p>
 	 */
 	private CollectionProducer buildResampleProducer(PackedCollection source) {
-		CollectionProducer srcPos = integers(0, NOTE_SIZE).multiply(c(RESAMPLE_RATIO));
-		CollectionProducer fPos = floor(srcPos);
-		CollectionProducer frac = srcPos.subtract(fPos);
-		CollectionProducer s0 = c(shape(NOTE_SIZE), cp(source), fPos);
-		CollectionProducer s1 = c(shape(NOTE_SIZE), cp(source), fPos.add(c(1.0)));
-		return s0.add(frac.multiply(s1.subtract(s0)));
+		return SINGLE_NOTE_RENDERER.buildResampleProducer(source, RESAMPLE_RATIO);
 	}
 
 	private long[] runTimedIterations(Evaluable<PackedCollection> compiled, int totalNotes) {

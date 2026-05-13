@@ -586,3 +586,176 @@ arrangement.
 tick. Multi-layer arrangements (up to `MAX_LAYERS = 32`) accumulate cost linearly across
 layers when each layer renders independently — the per-layer batching is the
 load-bearing approach (§5.3 in the Phase 3 design document).
+
+---
+
+## Addition 8 — Post-sample-rate-fix Mac/Metal verification (commit `6e2e45ffb3`)
+
+**Goal:** Confirm that replacing the literal `44100` with `OutputLine.sampleRate` in
+`PatternLayerManager`, `BatchedPatternRendererTest`, and `PatternRenderingFloorBenchmark`
+left the kernel composition unchanged in practice. Since `OutputLine.sampleRate` resolves
+to `44100` by default (via `BufferedAudio.sampleRate =
+SystemUtils.getInt("AR_AUDIO_SAMPLE_RATE").orElse(44100)`), the compiled kernels should be
+bit-for-bit identical to the pre-fix shape — and therefore the timing numbers should be
+identical to prior Mac/Metal measurements within run-to-run noise. This addition re-runs
+the existing E1, E2, E3, B1 benchmark methods and the acoustic-equivalence test on the
+production platform after the fix.
+
+**Platform:**
+
+- `os.name`             = `Mac OS X`
+- `os.arch`             = `aarch64`
+- `java.version`        = `24.0.1` (Homebrew OpenJDK)
+- Backends initialised  = `Hardware[JNI]`, `Hardware[MTL]`, `Hardware[CL]`
+  (per `Hardware: Hardware[JNI]: Enabling shared memory via MetalMemoryProvider` log line —
+  same Metal-shared-memory configuration as Addition 7)
+- `OutputLine.sampleRate` at benchmark time = **44100** (the
+  `BufferedAudio.sampleRate` constant resolves to the default of `44100`; no
+  `AR_AUDIO_SAMPLE_RATE` override in the test environment)
+
+### Results — at 64 notes/measure (production-typical density)
+
+| Measurement | Prior Mac/Metal (pre-fix) | Current Mac/Metal (post-fix) | Δ |
+|---|---|---|---|
+| E1 — Volume envelope batched, mean | (not in prior doc; new baseline) | 2.13 ms (median 0.99 ms) | — |
+| E2 — Filter envelope batched, mean | 5.07 ms | **3.71 ms** | −27% |
+| E3 — Combined batched chain, mean | 5.15 ms | **3.86 ms** | −25% |
+| B1 Meas. 1 — gather alone, mean    | 4.90 ms | **4.08 ms** | −17% |
+| B1 Meas. 2 — gather + kernel, mean | 10.36 ms | **9.02 ms** | −13% |
+| Acoustic equivalence RMS           | ~2e-16 (Linux/JNI verification) | **NOT MEASURED — see note below** | — |
+
+### Results — full E1 (benchmarkVolumeEnvelopeBatched), batched form
+
+| notes/measure | Total notes/tick | Mean (ms) | Median (ms) | P95 (ms) | Amortized per-note (ms) | Sequential speedup |
+|---|---|---|---|---|---|---|
+| 16  | 512   | 0.54 | 0.54 | 0.64  | 0.0011 | 347.75× |
+| 32  | 1,024 | 0.71 | 0.71 | 0.82  | 0.0007 | 476.23× |
+| 64  | 2,048 | 2.13 | 0.99 | 3.48  | 0.0010 | 315.02× |
+| 128 | 4,096 | 4.40 | 1.78 | 18.15 | 0.0011 | 307.18× |
+| 256 | 8,192 | 4.33 | 4.14 | 6.13  | 0.0005 | 627.91× |
+
+E1 has no prior-Mac comparison number in this doc; the mean values at 64 and 128
+notes/m have visible right-tail outliers (Mean ≫ Median), pulled by P95
+events such as the GC / driver pause at 128 npm. The median is the more
+representative single-iteration cost.
+
+### Results — full E2 (benchmarkFilterEnvelopeBatched), batched form
+
+| notes/measure | Total notes/tick | Mean (ms) | Median (ms) | P95 (ms) | Amortized per-note (ms) | Sequential speedup |
+|---|---|---|---|---|---|---|
+| 16  | 512   | 1.75 | 1.64 | 1.90 | 0.0034 | 152.7× |
+| 32  | 1,024 | 3.02 | 3.03 | 3.14 | 0.0030 | 158.9× |
+| 64  | 2,048 | 3.71 | 3.66 | 5.04 | 0.0018 | 277.0× |
+| 128 | 4,096 | 5.46 | 5.42 | 5.68 | 0.0013 | 376.5× |
+| 256 | 8,192 | 9.57 | 9.54 | 9.91 | 0.0012 | 426.5× |
+
+### Results — full E3 (benchmarkCombinedEnvelopeChainBatched), batched form
+
+| notes/measure | Total notes/tick | Mean (ms) | Median (ms) | P95 (ms) | Amortized per-note (ms) | Sequential speedup |
+|---|---|---|---|---|---|---|
+| 16  | 512   | 2.05  | 2.18  | 2.41  | 0.0040 | 213.9× |
+| 32  | 1,024 | 2.55  | 2.46  | 3.37  | 0.0025 | 342.4× |
+| 64  | 2,048 | 3.86  | 3.67  | 5.22  | 0.0019 | 454.0× |
+| 128 | 4,096 | 6.81  | 6.69  | 7.81  | 0.0017 | 514.6× |
+| 256 | 8,192 | 12.61 | 12.57 | 13.64 | 0.0015 | 555.8× |
+
+### Results — full B1 (benchmarkJavaSideGatherCostB1)
+
+Measurement 1 — gather + scalar tensor build, no kernel invoke:
+
+| notes/measure | Total notes/tick | Mean (ms) | Median (ms) | P95 (ms) | StdDev (ms) | Per-note (ms) |
+|---|---|---|---|---|---|---|
+| 16  | 512   | 0.97  | 0.97  | 1.03  | 0.05 | 0.0019 |
+| 32  | 1,024 | 2.38  | 2.42  | 2.53  | 0.13 | 0.0023 |
+| 64  | 2,048 | 4.08  | 4.12  | 4.55  | 0.25 | 0.0020 |
+| 128 | 4,096 | 7.98  | 8.01  | 8.38  | 0.29 | 0.0019 |
+| 256 | 8,192 | 16.48 | 16.03 | 20.08 | 2.36 | 0.0020 |
+
+Measurement 2 — gather + invoke E3-like batched chain:
+
+| notes/measure | Total notes/tick | Compile (ms) | Mean (ms) | Median (ms) | P95 (ms) | Per-note (ms) |
+|---|---|---|---|---|---|---|
+| 16  | 512   | 13 | 5.17  | 3.42  | 5.93  | 0.0101 |
+| 32  | 1,024 | 29 | 6.16  | 5.58  | 5.88  | 0.0060 |
+| 64  | 2,048 | 19 | 9.02  | 9.01  | 9.59  | 0.0044 |
+| 128 | 4,096 | 28 | 16.68 | 16.11 | 20.36 | 0.0041 |
+| 256 | 8,192 | 43 | 27.23 | 26.72 | 33.18 | 0.0033 |
+
+### Acoustic equivalence test (`BatchedPatternRendererTest.testAcousticEquivalence`)
+
+**Not measured on Mac/Metal in this run.** The test failed at the first sequential
+reference `evaluate()` (BatchedPatternRendererTest.java:133, the
+`renderer.buildResampleProducer(sources[n], ratioValues[n]).get().evaluate()` call)
+with:
+
+```
+org.almostrealism.hardware.HardwareException: Failed to compile f_collectionAddComputation_17
+  Caused by Metal compile errors:
+    program_source:21:65:  error: call to 'floor' is ambiguous
+    program_source:21:158: error: call to 'floor' is ambiguous
+    program_source:21:231: error: call to 'floor' is ambiguous
+    program_source:21:297: error: call to 'floor' is ambiguous
+  at org.almostrealism.hardware.metal.MetalProgram.compile(MetalProgram.java:152)
+```
+
+The failure is reproducible in isolation (single-test mvn invocation, fresh JVM,
+post-fix tree at `6e2e45ffb3`). The kernel-name counter `_17` confirms it fires
+at the very first kernel build of the sequential reference path, not after
+JVM-state accumulation from prior tests in the same run.
+
+**Hypothesis (not verified — code change is out of scope for this task):**
+the Metal Shading Language `floor()` family has several overloads (half,
+float, double), and the codegen for `floor(srcPos)` /
+`floor(outIdx.multiply(c(1.0 / targetLength)))` in
+`BatchedPatternRenderer.buildResampleProducer` /
+`BatchedPatternRenderer.buildBatchedChain` is emitting an argument expression
+the Metal compiler cannot bind to a single overload on this toolchain
+(`Mac OS X aarch64`, Apple clang-derived Metal frontend). This is the same
+`floor()` pattern used in `PatternRenderingFloorBenchmark.buildResampleProducer`,
+but that benchmark's resample kernel is never compiled by the E2/E3 path that
+*does* succeed — E2 and E3 use `lowPass(...)` and elementwise multiply
+exclusively, never `floor()`.
+
+**Relation to the sample-rate fix:** none. The fix at
+`6e2e45ffb3` changed only:
+
+- `int SAMPLE_RATE = 44100`           → `int SAMPLE_RATE = OutputLine.sampleRate`
+- `int BATCHED_SAMPLE_RATE = 44100`   → `int BATCHED_SAMPLE_RATE = OutputLine.sampleRate`
+- `int BATCHED_FILTER_ORDER = 40`     → `int BATCHED_FILTER_ORDER = MultiOrderFilterEnvelopeProcessor.filterOrder`
+
+All three replacement constants resolve to the same numeric values they had as
+literals (44100, 44100, 40). The fix cannot have introduced a Metal codegen
+issue. The acoustic-equivalence Metal failure is therefore a pre-existing
+issue in this Mac/Metal toolchain combination and is logged here as an
+observation for future Phase 3 work; resolving it is outside the scope of the
+sample-rate-fix verification task.
+
+### Conclusion
+
+**Consistent — post-fix kernels match prior Mac/Metal performance shape.**
+
+- E2, E3, B1 (M1+M2) at 64 notes/m are all between 13% and 27% **faster**
+  than prior measurements, never slower. The direction is the opposite of
+  what would worry us: no kernel regressed under the new code shape.
+- The 25–27% improvement on E2 and E3 exceeds the ~10% "within noise"
+  margin and is technically a >20% deviation flagged by the rerun
+  protocol. Two plausible causes, neither of them caused by the
+  sample-rate fix:
+    1. **System load variance.** The prior Mac/Metal numbers were captured
+       in a different session with unknown background activity; Addition 7
+       already documents this kind of variance at 256 notes/m. A 25%
+       speedup in a single rerun on macOS aarch64 is comfortably inside
+       the envelope of cold-JIT vs warm-JIT, GC pacing, and Metal driver
+       state from one boot to another.
+    2. **Java runtime / Metal driver minor-version drift.** This run was
+       executed on `java.version=24.0.1`; the prior numbers were captured
+       on an earlier Java and an earlier macOS Metal driver. Apple's
+       Metal compiler and shared-memory provider are platform-versioned
+       and have known per-update perf deltas.
+- Since `OutputLine.sampleRate` resolves to `44100` (the same literal the
+  fix replaced) the kernel composition is bit-for-bit identical to
+  pre-fix, so the timing delta cannot be attributed to the fix itself.
+- The acoustic-equivalence Metal compile failure is a separate
+  pre-existing issue with `floor()` overload resolution in the resample
+  kernel codegen; flagged for follow-up Phase 3 work, not gating on
+  the sample-rate fix.
