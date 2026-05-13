@@ -457,7 +457,7 @@ class GitCommitHandler implements ConsoleFeatures {
             for (String file : changedFiles) {
                 File f = new File(depPath, file);
                 if (f.exists() && f.length() > job.getMaxFileSizeBytes()) {
-                    log("SKIP (size) in dependent repo: " + file);
+                    log("Skipping (size) in dependent repo: " + file);
                     continue;
                 }
                 gitOps.execute("add", file);

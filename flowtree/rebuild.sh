@@ -72,14 +72,25 @@ if [ "${NEEDS_BUILD}" = true ]; then
 fi
 
 # ── Controller stack ───────────────────────────────────────────────
+#
+# `build --no-cache` followed by `up --force-recreate` is the only
+# reliable way to get a fresh deploy. Plain `up -d --build` reuses
+# cached COPY layers if Docker decides the source mtimes are
+# unchanged, which can silently ship a stale JAR or stale bundled
+# tool source. We hit exactly that bug shipping the ar-secrets
+# Python source — the rebuild "succeeded" but the running image was
+# the previous one. Always-fresh defaults are worth the few extra
+# seconds of cold build per deploy.
 
 if [ "${AGENTS_ONLY}" = false ]; then
   if [ ${#SERVICES[@]} -eq 0 ]; then
-    echo "Rebuilding all controller-stack containers..."
-    docker compose -f flowtree/controller/docker-compose.yml up -d --build
+    echo "Rebuilding all controller-stack containers (no cache)..."
+    docker compose -f flowtree/controller/docker-compose.yml build --no-cache --pull
+    docker compose -f flowtree/controller/docker-compose.yml up -d --force-recreate
   else
-    echo "Rebuilding: ${SERVICES[*]}"
-    docker compose -f flowtree/controller/docker-compose.yml up -d --build "${SERVICES[@]}"
+    echo "Rebuilding (no cache): ${SERVICES[*]}"
+    docker compose -f flowtree/controller/docker-compose.yml build --no-cache --pull "${SERVICES[@]}"
+    docker compose -f flowtree/controller/docker-compose.yml up -d --force-recreate "${SERVICES[@]}"
   fi
 fi
 
@@ -122,8 +133,9 @@ if [ "${AGENTS}" = true ] || [ "${AGENTS_ONLY}" = true ]; then
   export FLOWTREE_ROOT_HOST CLAUDE_CODE_OAUTH_TOKEN
 
   AGENT_COUNT="${AGENT_COUNT:-2}"
-  echo "Rebuilding ${AGENT_COUNT} agent container(s)..."
-  docker compose -f flowtree/agent/docker-compose.yml up -d --build
+  echo "Rebuilding ${AGENT_COUNT} agent container(s) (no cache)..."
+  docker compose -f flowtree/agent/docker-compose.yml build --no-cache --pull
+  docker compose -f flowtree/agent/docker-compose.yml up -d --force-recreate
 fi
 
 echo "Done."
