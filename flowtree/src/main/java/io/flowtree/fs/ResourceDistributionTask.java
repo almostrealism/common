@@ -488,7 +488,7 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 			@Override
 			public void handleResult(String key, String value) {
 				if (value == null) {
-					ResourceDistributionTask.this.warn("WARN: Null value for key " + key);
+					ResourceDistributionTask.this.warn("Null value for key " + key);
 					return;
 				}
 

@@ -486,6 +486,11 @@ Consult the linked references before writing related code.
 - **No utility/helper/exporter/converter classes.** If you need to add behavior that operates on an existing type, add it as a method on that type. A `PatternElement` that can produce MIDI events has a `toMidiEvents()` method — it does NOT have a `PatternMidiExporter` that operates on it from the outside. Before creating a new class, ask: "Does this behavior belong on an existing type?" If yes, add it there. New classes are for genuinely new concepts, not for wrapping operations on existing concepts. Organize code around the concepts it represents, not around the operations being performed.
 - **Module placement matters.** Code belongs in the module that matches its conceptual domain. MIDI data types and I/O are music concepts and belong in the music module, not the ML module. A model that combines ML and music belongs in a module that has both as dependencies (e.g., compose). Think about what a class *is*, not just what it *uses*.
 - No speculation when debugging. Follow evidence. Never say "the problem might be X" without proof.
+- **Do not decorate log messages with prefixes.** Every `log(...)` and `warn(...)` line already receives a timestamp, class name, method name, and (where relevant) task id from the logging framework before it reaches the file. You are not the stylist of the log files. Forbidden prefix shapes — all enforced by checkstyle (`BracketLabelInLog`, `ParenLabelInLog`, `AngleLabelInLog`, `CapsLabelInLog`, `SymbolPrefixInLog`) — include:
+  - `log("[Tag] ...")`, `log("(Tag) ...")`, `log("<Tag> ...")`
+  - `log("DIAG ...")`, `log("DEBUG ...")`, `log("INFO ...")`, `log("FIXME ...")`, `log("TODO ...")`, or anything with 4+ uppercase letters at the start
+  - `log("🔧 ...")`, `log("→ ...")`, or any other non-ASCII decorative leader
+  When a value needs to be greppable, embed it as a stable variable-style name in the prose: `log("pushedToolsConfig=" + pushedToolsConfig)` — not `log("DIAG pushedToolsConfig=" + ...)`. Grep on `pushedToolsConfig=`; the framework's own line decoration already gives you the file/class/method context. If you find yourself wanting to attach a marker to find the line later, you don't need a marker — you need a better value name.
 
 ---
 

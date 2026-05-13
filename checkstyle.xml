@@ -156,20 +156,73 @@
             <property name="ignoreComments" value="true"/>
             <property name="severity" value="warning"/>
         </module>
-        <!-- Prohibit bracket-prefixed labels in log/warn calls.
-             Pattern log("[ClassName] message") or log("[Tag] message") embeds
-             redundant source identification that the logging framework already
-             provides via the class name, and clutters log output with noise.
-             Write the message directly: log("message") instead.
-             Examples of the prohibited pattern:
-               log("[Prototypes] Library refresh complete");
-               log("[LICM] " + scope.getName());
-               log("[MoonbeamComponentTest] testSingleFmeEmbed: " + elapsed);
-             New code must comply from day one. -->
+        <!-- Prohibit decorative prefixes in log/warn calls.
+
+             The logging framework already prefixes every line with the
+             timestamp, class name, method name, and (where relevant) the
+             task identifier.  ANY agent-added prefix to the message text
+             itself is therefore redundant noise: it shows up next to the
+             framework's own decoration, clutters the output, and exists
+             only because the agent wants something easy to grep for. The
+             agent isn't the decorator of the log files.
+
+             Forbidden shapes (and example uses each tries to slip in):
+
+               [Tag] message              log("[Prototypes] Library refresh");
+               (Tag) message              log("(SECRETS) wired up");
+               <Tag> message              log("<DEBUG> mode active");
+               TAG: message               log("DIAG: pushedToolsConfig=...");
+               TAG - message              log("INFO - controller starting");
+               4+ CAPS at start of msg    log("DEBUG something happened");
+                                          log("FIXME this is broken");
+                                          log("TODO wire up X");
+               emoji/icon prefixes        log("🔧 reconfiguring ...");
+                                          log("→ launching subprocess");
+
+             Write the message directly: log("Library refresh complete");
+             If a piece of information is structurally important enough to
+             grep for, give the value a stable variable-style name in the
+             text (e.g. "pushedToolsConfig=..."). The reader can grep on
+             that name; you don't need a separate tag in front of it. -->
         <module name="RegexpSinglelineJava">
             <property name="id" value="BracketLabelInLog"/>
             <property name="format" value="\b(log|warn)\s*\(\s*&quot;\[[A-Za-z0-9]"/>
             <property name="message" value="Do not prefix log/warn messages with bracket labels such as '[Tag] message'. Write the message text directly without a label prefix."/>
+            <property name="ignoreComments" value="true"/>
+        </module>
+        <module name="RegexpSinglelineJava">
+            <property name="id" value="ParenLabelInLog"/>
+            <property name="format" value="\b(log|warn)\s*\(\s*&quot;\([A-Za-z0-9]"/>
+            <property name="message" value="Do not prefix log/warn messages with parenthesised labels such as '(Tag) message'. Write the message text directly without a label prefix."/>
+            <property name="ignoreComments" value="true"/>
+        </module>
+        <module name="RegexpSinglelineJava">
+            <property name="id" value="AngleLabelInLog"/>
+            <property name="format" value="\b(log|warn)\s*\(\s*&quot;&lt;[A-Za-z0-9]"/>
+            <property name="message" value="Do not prefix log/warn messages with angle-bracket labels such as '&lt;Tag&gt; message'. Write the message text directly without a label prefix."/>
+            <property name="ignoreComments" value="true"/>
+        </module>
+        <module name="RegexpSinglelineJava">
+            <property name="id" value="CapsLabelInLog"/>
+            <!-- 4+ uppercase letters at the start of a log message catches
+                 DIAG, INFO, WARN, DEBUG, TRACE, ERROR, FIXME, TODO, NOTE,
+                 STEP, HACK, XXX -prefixed variations like DEBUG:, INFO -,
+                 and any future "I'll just stick an all-caps marker on the
+                 front so I can grep" instinct. The framework's own level
+                 (already encoded by the log/warn method choice) and class
+                 name are sufficient. -->
+            <property name="format" value="\b(log|warn)\s*\(\s*&quot;[A-Z]{4,}"/>
+            <property name="message" value="Do not prefix log/warn messages with all-caps labels (DIAG, INFO, DEBUG, FIXME, TODO, etc.). The logging framework already provides level and class context; write the message text directly."/>
+            <property name="ignoreComments" value="true"/>
+        </module>
+        <module name="RegexpSinglelineJava">
+            <property name="id" value="SymbolPrefixInLog"/>
+            <!-- Catches non-ASCII prefix decoration like emoji, arrows, or
+                 box-drawing characters. The first character of a log
+                 message must be a normal ASCII alphanumeric or punctuation
+                 that belongs to the actual sentence — not an icon. -->
+            <property name="format" value="\b(log|warn)\s*\(\s*&quot;[^\x00-\x7F]"/>
+            <property name="message" value="Do not prefix log/warn messages with non-ASCII decoration (emoji, arrows, box-drawing). Start the message with the actual content."/>
             <property name="ignoreComments" value="true"/>
         </module>
     </module>
