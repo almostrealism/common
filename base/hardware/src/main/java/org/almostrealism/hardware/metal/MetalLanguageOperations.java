@@ -188,4 +188,27 @@ public class MetalLanguageOperations extends CLanguageOperations {
 	protected String argumentPost(int index, boolean enableAnnotation, Accessibility access) {
 		return (enableAnnotation && access == Accessibility.EXTERNAL) ? " [[buffer(" + index + ")]]" : super.argumentPost(index, enableAnnotation, access);
 	}
+
+	/**
+	 * Wraps math intrinsic arguments with a cast to the precision's float type.
+	 *
+	 * <p>Metal Shading Language overloads its math intrinsics ({@code exp},
+	 * {@code floor}, {@code sin}, {@code cos}, {@code tan}, {@code tanh},
+	 * {@code log}, {@code ceil}, {@code abs}/{@code fabs}, {@code pow},
+	 * {@code atan2}, {@code fmod}) for {@code half} and {@code float} only;
+	 * Metal has no {@code double} type. C++ floating-point literals default to
+	 * {@code double}, so an expression like {@code exp(-0.5)} is ambiguous to
+	 * the Metal compiler because it cannot choose between the {@code half} and
+	 * {@code float} overloads after demoting from {@code double}. Integer
+	 * operands fail to resolve at all. Wrapping the argument with an explicit
+	 * cast to the precision's float type forces the float overload regardless
+	 * of how the operand renders.</p>
+	 *
+	 * @param rendered the rendered argument expression string
+	 * @return the rendered argument wrapped with a precision-specific float cast
+	 */
+	@Override
+	public String castForMathArgument(String rendered) {
+		return "(" + nameForType(Double.class) + ") (" + rendered + ")";
+	}
 }

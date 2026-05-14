@@ -58,7 +58,8 @@ public class Tangent extends Expression<Double> {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return (hyperbolic ? "tanh(" : "tan(") + getChildren().get(0).getExpression(lang) + ")";
+		return (hyperbolic ? "tanh(" : "tan(") +
+				lang.castForMathArgument(getChildren().get(0).getExpression(lang)) + ")";
 	}
 
 	@Override

@@ -69,7 +69,8 @@ public class Ceiling extends Expression<Double> {
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		OptionalDouble v = getChildren().get(0).doubleValue();
-		return v.isPresent() ? "ceil(" + v.getAsDouble() + ")" : "ceil(" + getChildren().get(0).getExpression(lang) + ")";
+		String arg = v.isPresent() ? String.valueOf(v.getAsDouble()) : getChildren().get(0).getExpression(lang);
+		return "ceil(" + lang.castForMathArgument(arg) + ")";
 	}
 
 	/**

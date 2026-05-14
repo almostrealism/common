@@ -47,7 +47,7 @@ public class Exp extends Expression<Double> {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return "exp(" + getChildren().get(0).getExpression(lang) + ")";
+		return "exp(" + lang.castForMathArgument(getChildren().get(0).getExpression(lang)) + ")";
 	}
 
 	@Override

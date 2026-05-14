@@ -43,7 +43,8 @@ public class Floor extends Expression<Double> {
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		OptionalDouble v = getChildren().get(0).doubleValue();
-		return v.isPresent() ? "floor(" + v.getAsDouble()+ ")" : "floor(" + getChildren().get(0).getExpression(lang) + ")";
+		String arg = v.isPresent() ? String.valueOf(v.getAsDouble()) : getChildren().get(0).getExpression(lang);
+		return "floor(" + lang.castForMathArgument(arg) + ")";
 	}
 
 	@Override

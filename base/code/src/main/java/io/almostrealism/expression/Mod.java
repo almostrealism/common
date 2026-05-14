@@ -107,8 +107,8 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		if (fp) {
-			return "fmod(" + getChildren().get(0).getExpression(lang) + ", " +
-					getChildren().get(1).getExpression(lang) + ")";
+			return "fmod(" + lang.castForMathArgument(getChildren().get(0).getExpression(lang)) + ", " +
+					lang.castForMathArgument(getChildren().get(1).getExpression(lang)) + ")";
 		}
 
 		String a = getChildren().get(0).getWrappedExpression(lang);

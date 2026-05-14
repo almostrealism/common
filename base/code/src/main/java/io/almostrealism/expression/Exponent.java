@@ -54,8 +54,8 @@ public class Exponent extends Expression<Double> {
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		return lang.pow(
-				getChildren().get(0).getExpression(lang),
-				getChildren().get(1).getExpression(lang));
+				lang.castForMathArgument(getChildren().get(0).getExpression(lang)),
+				lang.castForMathArgument(getChildren().get(1).getExpression(lang)));
 	}
 
 	@Override
