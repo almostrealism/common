@@ -19,6 +19,7 @@ package io.flowtree.slack;
 import io.flowtree.Server;
 import io.flowtree.jobs.ClaudeCodeJob;
 import io.flowtree.jobs.JobCompletionEvent;
+import io.flowtree.jobs.McpConfigBuilder;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -122,6 +123,8 @@ public class SlackListener implements ConsoleFeatures {
     private String arManagerUrl;
     /** Shared secret used to generate temporary HMAC auth tokens for ar-manager. */
     private String arManagerSharedSecret;
+    /** Pushed-tools JSON forwarded to every submitted job. */
+    private String pushedToolsConfig;
     /** Global fallback path for repository checkouts when no workingDirectory is set. */
     private String defaultWorkspacePath;
 
@@ -305,19 +308,12 @@ public class SlackListener implements ConsoleFeatures {
         return arManagerUrl;
     }
 
-    /**
-     * Sets the ar-manager HTTP URL. When set, jobs are configured to
-     * access ar-manager over HTTP with temporary HMAC auth tokens.
-     *
-     * @param arManagerUrl the ar-manager service URL
-     */
-    public void setArManagerUrl(String arManagerUrl) {
-        this.arManagerUrl = arManagerUrl;
-    }
+    /** Sets the ar-manager HTTP URL used for HMAC token generation. */
+    public void setArManagerUrl(String arManagerUrl) { this.arManagerUrl = arManagerUrl; }
+    /** Sets the pushed-tools JSON forwarded to every submitted job. */
+    public void setPushedToolsConfig(String c) { this.pushedToolsConfig = c; }
 
-    /**
-     * Returns the shared secret for HMAC token generation.
-     */
+    /** Returns the shared secret for HMAC token generation. */
     public String getArManagerSharedSecret() {
         return arManagerSharedSecret;
     }
@@ -588,6 +584,12 @@ public class SlackListener implements ConsoleFeatures {
                 factory.setArManagerUrl(arManagerUrl);
                 factory.setArManagerToken(arToken);
             }
+        }
+        if (pushedToolsConfig != null && !pushedToolsConfig.isEmpty()) {
+            factory.setPushedToolsConfig(pushedToolsConfig);
+        } else {
+            warn("no pushedToolsConfig to forward to " + factory.getTaskId()
+                + " (value: " + McpConfigBuilder.pushedToolsConfigPreview(pushedToolsConfig) + ")");
         }
 
         // Dependent repos

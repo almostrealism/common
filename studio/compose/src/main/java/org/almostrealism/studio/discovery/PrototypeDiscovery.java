@@ -173,8 +173,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		log("Loaded " + allDetails.size() + " samples with pre-computed features");
 
 		if (allDetails.isEmpty()) {
-			log("ERROR: No samples with features found in library data");
-			log("       Make sure the protobuf file contains feature_data");
+			warn("No samples with features found in library data — make sure the protobuf file contains feature_data");
 			return;
 		}
 
@@ -193,8 +192,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		log("  Edges: " + edgeCount);
 
 		if (edgeCount == 0) {
-			log("WARNING: No similarity edges found in pre-computed data.");
-			log("         Will compute similarities on the fly...");
+			warn("No similarity edges found in pre-computed data — will compute on the fly");
 			computeMissingSimilarities(allDetails);
 			graph = new AudioSimilarityGraph(allDetails);
 
@@ -207,7 +205,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		}
 
 		if (edgeCount == 0) {
-			log("ERROR: Still no similarity edges. Cannot proceed.");
+			warn("Still no similarity edges — cannot proceed");
 			return;
 		}
 
@@ -427,7 +425,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 			String msg = "Library refresh did not complete within "
 					+ REFRESH_TIMEOUT_MINUTES + " minutes ("
 					+ library.getPendingJobs() + " jobs still pending)";
-			log("TIMEOUT: " + msg);
+			warn("Timeout: " + msg);
 			throw new PrototypeDiscoveryException(msg, e);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
@@ -519,7 +517,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 			return;
 		}
 
-		log("HNSW index has " + indexed + " entries for "
+		log("Index (HNSW) has " + indexed + " entries for "
 				+ totalDetails + " samples; backfilling missing vectors...");
 		report(statusCallback, "Indexing samples for similarity search...");
 
@@ -555,7 +553,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 			}
 		}
 
-		log("HNSW backfill complete: inserted=" + inserted
+		log("Index (HNSW) backfill complete: inserted=" + inserted
 				+ ", already-indexed=" + skippedAlreadyIndexed
 				+ ", no-features=" + skippedNoEmbedding);
 	}
@@ -649,7 +647,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 				if (deg == 0) isolatedNodesInGraph++;
 			}
 
-			log("HNSW diagnostics:");
+			log("Index (HNSW) diagnostics:");
 			log("  store size: " + store.size());
 			log("  samples skipped (no embedding/feature data): " + samplesNoEmbedding);
 			log("  samples whose HNSW search returned 0 neighbors (excl. self): " + samplesEmptyHnswResult);
@@ -893,7 +891,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		}
 
 		if (dataPrefix == null) {
-			Console.root().warn("ERROR: No data prefix specified.");
+			Console.root().warn("No data prefix specified.");
 			Console.root().warn("Use --data PREFIX to specify the library protobuf file prefix.");
 			Console.root().println("");
 			printUsage();
@@ -903,7 +901,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		// Verify at least one data file exists
 		File firstFile = new File(dataPrefix + "_0.bin");
 		if (!firstFile.exists()) {
-			Console.root().warn("ERROR: Library data file not found:");
+			Console.root().warn("Library data file not found:");
 			Console.root().warn("       " + firstFile.getAbsolutePath());
 			Console.root().println("");
 			Console.root().warn("Expected files: " + dataPrefix + "_0.bin, " + dataPrefix + "_1.bin, ...");

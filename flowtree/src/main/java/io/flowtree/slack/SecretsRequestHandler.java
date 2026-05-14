@@ -172,12 +172,12 @@ class SecretsRequestHandler implements ConsoleFeatures {
         if (workstreamId != null && !workstreamId.isEmpty()) {
             String tokenWorkstreamId = extractWorkstreamIdFromTempToken(session);
             if (tokenWorkstreamId == null) {
-                log("SECRET_RETRIEVE secret=" + secretName
+                log("event=secret_retrieve secret=" + secretName
                         + " workstream_id=" + workstreamId + " result=AUTH_FAILED");
                 return secretForbidden("Invalid or expired workstream token");
             }
             if (!tokenWorkstreamId.equals(workstreamId)) {
-                log("SECRET_RETRIEVE secret=" + secretName
+                log("event=secret_retrieve secret=" + secretName
                         + " workstream_id=" + workstreamId + " result=WORKSTREAM_MISMATCH");
                 return secretForbidden("Token workstream does not match request workstream");
             }
@@ -185,7 +185,7 @@ class SecretsRequestHandler implements ConsoleFeatures {
             SlackNotifier notifier = notifiers.notifierFor(workstreamId);
             Workstream workstream = notifier != null ? notifier.getWorkstream(workstreamId) : null;
             if (workstream == null) {
-                log("SECRET_RETRIEVE secret=" + secretName
+                log("event=secret_retrieve secret=" + secretName
                         + " workstream_id=" + workstreamId + " result=UNKNOWN_WORKSTREAM");
                 return secretForbidden("Unknown workstream: " + workstreamId);
             }
@@ -196,7 +196,7 @@ class SecretsRequestHandler implements ConsoleFeatures {
             }
 
             if (Method.GET.equals(method) && secretName != null) {
-                log("SECRET_RETRIEVE secret=" + secretName
+                log("event=secret_retrieve secret=" + secretName
                         + " workstream_id=" + workstreamId
                         + " workspace_id=" + resolvedWorkspaceId + " result=OK");
                 return handleRetrieveSecret(secretName, resolvedWorkspaceId, workstreamId);
@@ -359,7 +359,7 @@ class SecretsRequestHandler implements ConsoleFeatures {
         Map<String, WorkstreamConfig.WorkspaceSecretEntry> wsSecrets =
                 secretsCache.get(workspaceId);
         if (wsSecrets == null || !wsSecrets.containsKey(secretName)) {
-            log("SECRET_RETRIEVE secret=" + secretName
+            log("event=secret_retrieve secret=" + secretName
                     + " workstream_id=" + workstreamId
                     + " workspace_id=" + workspaceId + " result=NOT_FOUND");
             return NanoHTTPD.newFixedLengthResponse(Response.Status.NOT_FOUND,
@@ -374,7 +374,7 @@ class SecretsRequestHandler implements ConsoleFeatures {
             payload = readSecretPayload(entry.getFile());
         } catch (IOException e) {
             warn("Failed to read secret file for " + secretName + ": " + e.getMessage());
-            log("SECRET_RETRIEVE secret=" + secretName
+            log("event=secret_retrieve secret=" + secretName
                     + " workstream_id=" + workstreamId
                     + " workspace_id=" + workspaceId + " result=FILE_ERROR");
             return NanoHTTPD.newFixedLengthResponse(Response.Status.INTERNAL_ERROR,

@@ -22,6 +22,7 @@ import io.flowtree.Server;
 import io.flowtree.jobs.ClaudeCodeJob;
 import io.flowtree.jobs.ClaudeCodeJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
+import io.flowtree.jobs.McpConfigBuilder;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -176,6 +177,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /** Base URL of the ar-manager HTTP server (e.g., "http://ar-manager:8010"). */
     private String arManagerUrl;
 
+    /** Pushed-tools configuration JSON forwarded to every submitted job. */
+    private String pushedToolsConfig;
+
     /**
      * Creates a new API endpoint on the specified port, using a single
      * primary notifier (legacy single-workspace mode).
@@ -274,10 +278,20 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
+     * Sets the pushed-tools configuration JSON forwarded to every submitted
+     * job. Format matches {@link FlowTreeController#getPushedToolsConfig()}.
+     *
+     * @param config the JSON configuration; may be {@code null}
+     */
+    public void setPushedToolsConfig(String config) {
+        this.pushedToolsConfig = config;
+    }
+
+    /**
      * Registers a pushed tool file that can be served via
      * {@code GET /api/tools/{name}}.
      *
-     * @param name     the tool server name (e.g., "ar-messages")
+     * @param name     the tool server name as declared in {@code workstreams.yaml}
      * @param filePath the path to the Python source file on disk
      */
     public void registerToolFile(String name, Path filePath) {
@@ -550,7 +564,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             + ",\"branch\":" + escapeJsonValue(branch)
             + ",\"namespace\":\"messages\""
             + ",\"tags\":" + tagsJson
-            + ",\"source\":\"ar-messages\"}";
+            + ",\"source\":\"ar-manager\"}";
         try {
             HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
             conn.setRequestMethod("POST");
@@ -857,8 +871,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * <p>Workstream resolution: explicit {@code workstreamId} in body takes priority, then
      * {@code targetBranch} match, then the URL path parameter. Supports optional per-job
      * overrides for {@code model}, {@code effort}, {@code maxTurns}, {@code maxBudgetUsd},
-     * {@code postCompletionCommand}, {@code postCompletionWorkingDir}, and
-     * {@code postCompletionTimeoutSeconds}.</p>
+     * {@code postCompletionCommand}, {@code postCompletionWorkingDir},
+     * {@code postCompletionTimeoutSeconds}, and {@code maxDeduplicationPasses}.</p>
      *
      * @param session          the HTTP session
      * @param pathWorkstreamId the workstream identifier from the URL path (fallback)
@@ -1004,6 +1018,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         boolean protectTestFiles = extractJsonBooleanField(body, "protectTestFiles");
         boolean enforceChanges = extractJsonBooleanField(body, "enforceChanges");
         String deduplicationMode = extractJsonField(body, "deduplicationMode");
+        int maxDeduplicationPasses = extractJsonIntField(body, "maxDeduplicationPasses");
         boolean autoCreatePr = extractJsonBooleanField(body, "autoCreatePr");
         String requestModel = extractJsonField(body, "model");
         String requestEffort = extractJsonField(body, "effort");
@@ -1092,6 +1107,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (deduplicationMode != null && !deduplicationMode.isEmpty()) {
             factory.setDeduplicationMode(deduplicationMode);
         }
+        if (maxDeduplicationPasses > 0) {
+            factory.setMaxDeduplicationPasses(maxDeduplicationPasses);
+        }
 
         // Post-completion command: verification check that must exit zero before the job is done
         if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
@@ -1141,6 +1159,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 factory.setArManagerUrl(arManagerUrl);
                 factory.setArManagerToken(arToken);
             }
+        }
+        if (pushedToolsConfig != null && !pushedToolsConfig.isEmpty()) {
+            factory.setPushedToolsConfig(pushedToolsConfig);
+        } else {
+            warn("no pushedToolsConfig to forward to " + factory.getTaskId()
+                + " (value: " + McpConfigBuilder.pushedToolsConfigPreview(pushedToolsConfig) + ")");
         }
 
         // Notify that the job has been submitted (not yet executing)

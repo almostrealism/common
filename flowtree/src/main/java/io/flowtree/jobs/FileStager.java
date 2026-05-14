@@ -110,7 +110,7 @@ public class FileStager implements ConsoleFeatures {
 
             // Guardrail 1: Pattern exclusion
             if (matchesAnyPattern(file, config.getExcludedPatterns())) {
-                log("SKIP (pattern): " + file);
+                log("Skipping (pattern): " + file);
                 skippedFiles.add(file + " (excluded pattern)");
                 continue;
             }
@@ -119,24 +119,24 @@ public class FileStager implements ConsoleFeatures {
             if (config.isProtectTestFiles()
                     && matchesAnyPattern(file, config.getProtectedPathPatterns())) {
                 if (existsOnBaseBranch(file, config.getBaseBranch(), gitOps)) {
-                    log("BLOCKED (protected - exists on " + config.getBaseBranch() + "): " + file);
+                    log("Blocked (protected - exists on " + config.getBaseBranch() + "): " + file);
                     skippedFiles.add(file + " (protected - exists on base branch)");
                     continue;
                 } else {
-                    log("ALLOWED (branch-new file): " + file);
+                    log("Allowed (branch-new file): " + file);
                 }
             }
 
             // Guardrail 3: File size (skip deleted files)
             if (!isDeleted && f.length() > config.getMaxFileSizeBytes()) {
-                log("SKIP (size " + formatSize(f.length()) + "): " + file);
+                log("Skipping (size " + formatSize(f.length()) + "): " + file);
                 skippedFiles.add(file + " (exceeds " + formatSize(config.getMaxFileSizeBytes()) + ")");
                 continue;
             }
 
             // Guardrail 4: Binary detection (skip deleted files)
             if (!isDeleted && isBinaryFile(f)) {
-                log("SKIP (binary): " + file);
+                log("Skipping (binary): " + file);
                 skippedFiles.add(file + " (binary file)");
                 continue;
             }
