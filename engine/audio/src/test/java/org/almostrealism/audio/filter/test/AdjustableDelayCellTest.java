@@ -70,6 +70,7 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		AdjustableDelayCell delay = adjustableDelay();
+		delay.setup().get().run();
 		OperationList ops = computation(delay);
 
 		Runnable push = ops.get(0).get();
@@ -101,6 +102,7 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		AdjustableDelayCell delay = adjustableDelay();
+		delay.setup().get().run();
 		OperationList ops = computation(delay);
 
 		Runnable op = lp(ops, 25).get();

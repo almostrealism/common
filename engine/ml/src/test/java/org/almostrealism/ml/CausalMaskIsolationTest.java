@@ -1,8 +1,10 @@
 package org.almostrealism.ml;
 
+import io.almostrealism.code.Precision;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
@@ -17,6 +19,12 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 	@Test(timeout = 30000)
 	public void testCausalMaskInMinimalModel() {
 		log("\n=== Causal Mask Isolation Test ===\n");
+
+		// FP32 loses ~4 decimal digits when adding small random values to -10000,
+		// so the masked-position comparison needs a wider tolerance than FP64.
+		boolean fp64 = Hardware.getLocalHardware().getPrecision() == Precision.FP64;
+		double unmaskedTol = fp64 ? 1e-6 : 1e-4;
+		double maskedTol = fp64 ? 1e-6 : 1e-2;
 
 		int heads = 4;
 		int seqLen = 8;
@@ -57,7 +65,7 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 
 		// Position 0 should be unmasked (input + 0)
 		assertEquals("Position 0 should be unmasked",
-				input0.toDouble(0), output0.toDouble(0), 1e-6);
+				input0.toDouble(0), output0.toDouble(0), unmaskedTol);
 
 		log("\nInput[0,1]: " + input0.toDouble(1));
 		log("Output[0,1]: " + output0.toDouble(1));
@@ -65,7 +73,7 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 
 		// Position 1 should be masked (input + -10000)
 		assertEquals("Position 1 should be masked",
-				input0.toDouble(1) - 10000.0, output0.toDouble(1), 1e-6);
+				input0.toDouble(1) - 10000.0, output0.toDouble(1), maskedTol);
 
 		// Test at position 2
 		log("\n\nTesting at position 2:");
@@ -80,13 +88,13 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 		for (int i = 0; i <= 2; i++) {
 			log("Position " + i + ": input=" + input2.toDouble(i) + ", output=" + output2.toDouble(i) + ", expected=" + input2.toDouble(i));
 			assertEquals("Position " + i + " should be unmasked at position 2",
-					input2.toDouble(i), output2.toDouble(i), 1e-6);
+					input2.toDouble(i), output2.toDouble(i), unmaskedTol);
 		}
 
 		// Position 3 should be masked
 		log("Position 3: input=" + input2.toDouble(3) + ", output=" + output2.toDouble(3) + ", expected=" + (input2.toDouble(3) - 10000.0));
 		assertEquals("Position 3 should be masked at position 2",
-				input2.toDouble(3) - 10000.0, output2.toDouble(3), 1e-6);
+				input2.toDouble(3) - 10000.0, output2.toDouble(3), maskedTol);
 
 		log("\n[OK] Causal mask lambda approach works correctly!");
 	}
@@ -94,6 +102,10 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 	@Test(timeout = 30000)
 	public void testCausalMaskDynamicPositionUpdates() {
 		log("\n=== Testing Dynamic Position Updates ===\n");
+
+		// FP32 loses ~4 decimal digits when adding small values to -10000.
+		boolean fp64 = Hardware.getLocalHardware().getPrecision() == Precision.FP64;
+		double tolerance = fp64 ? 1e-6 : 1e-2;
 
 		int heads = 2;
 		int seqLen = 5;
@@ -137,7 +149,7 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 				log(String.format("  [%d]: expected=%.1f, actual=%.1f %s\n", i, expected, actual, (i <= pos) ? "OK" : "MASKED"));
 
 				assertEquals("At position " + pos + ", index " + i,
-						expected, actual, 1e-6);
+						expected, actual, tolerance);
 			}
 		}
 

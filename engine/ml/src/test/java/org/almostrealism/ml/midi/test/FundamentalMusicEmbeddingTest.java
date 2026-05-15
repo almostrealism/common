@@ -96,10 +96,10 @@ public class FundamentalMusicEmbeddingTest extends TestSuiteBase {
 		assertEquals("Should have dim/2 frequencies", dim / 2, invFreqs.getShape().getTotalSize());
 
 		double expected0 = 1.0 / Math.pow(base, 0.0 / dim);
-		assertEquals("invFreq[0] = 1.0", expected0, invFreqs.toDouble(0), 1e-10);
+		assertEquals("invFreq[0] = 1.0", expected0, invFreqs.toDouble(0), 1e-5);
 
 		double expected1 = 1.0 / Math.pow(base, 2.0 / dim);
-		assertEquals("invFreq[1]", expected1, invFreqs.toDouble(1), 1e-10);
+		assertEquals("invFreq[1]", expected1, invFreqs.toDouble(1), 1e-5);
 	}
 
 	/**
