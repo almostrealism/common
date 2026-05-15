@@ -712,8 +712,7 @@ public class FlowTreeController implements ConsoleFeatures {
         String appToken = defaultConnection != null ? defaultConnection.appToken : null;
 
         if (botToken == null || botToken.isEmpty() || appToken == null || appToken.isEmpty()) {
-            log("WARNING: Missing SLACK_BOT_TOKEN or SLACK_APP_TOKEN");
-            log("         Running in simulation mode");
+            warn("Missing SLACK_BOT_TOKEN or SLACK_APP_TOKEN — running in simulation mode");
             simulationMode = true;
             return;
         }
