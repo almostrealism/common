@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.JsonFieldExtractor;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Before;
@@ -235,11 +236,16 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
     }
 
     /**
-     * Verifies that a {@code commit.txt} written by the primary session is preserved
-     * even when the correction session agent writes its own commit.txt.
+     * Verifies that when a correction session writes its own {@code commit.txt}, that
+     * message is kept — it describes the actual changes the correction session made.
+     *
+     * <p>This is the corrected behavior for the bug described in PR review comment
+     * 3238476486: the old code always restored the primary session's message, which
+     * caused the final commit to use a stale message when the correction (or rerun)
+     * session made the substantive code changes.</p>
      */
     @Test(timeout = 30000)
-    public void commitTxtPreservedWhenCorrectionSessionWritesNewOne() throws IOException {
+    public void correctionSessionCommitTxtKeptWhenBothSessionsWrite() throws IOException {
         writeCommitTxt("Primary session commit message");
 
         // Spy: the correction-session agent writes a different commit.txt.
@@ -254,7 +260,8 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
 
         job.runCorrectionSession("correction prompt", "deduplication");
 
-        assertEquals("Primary session commit message", readCommitTxt());
+        // Correction session's message is authoritative when it writes its own commit.txt.
+        assertEquals("Correction session commit", readCommitTxt());
     }
 
     /**
@@ -384,5 +391,51 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
                 json.contains("commitMessageSource"));
         assertTrue("JSON must include the source value",
                 json.contains("prompt_fallback"));
+    }
+
+    /**
+     * Verifies that {@code commitMessageSource} survives a full round-trip:
+     * serialize via {@link JobCompletionEvent#toJson()}, parse with
+     * {@link JsonFieldExtractor#extractString(String, String)} (the same
+     * extraction the controller uses in {@code handleStatusEvent}), and
+     * re-apply via {@link ClaudeCodeJobEvent#withCommitMessageSource(String)}.
+     *
+     * <p>This is the path the controller walks when an agent POSTs a status
+     * event: it reads {@code commitMessageSource} from the JSON body and sets
+     * it on the reconstructed {@link ClaudeCodeJobEvent}.</p>
+     */
+    @Test(timeout = 30000)
+    public void commitMessageSourceSurvivesSerializeParseRoundTripAgent() {
+        assertCommitMessageSourceRoundTrip("agent");
+    }
+
+    @Test(timeout = 30000)
+    public void commitMessageSourceSurvivesSerializeParseRoundTripPromptFallback() {
+        assertCommitMessageSourceRoundTrip("prompt_fallback");
+    }
+
+    @Test(timeout = 30000)
+    public void commitMessageSourceSurvivesSerializeParseRoundTripCommitRuleRecovered() {
+        assertCommitMessageSourceRoundTrip("commit_rule_recovered");
+    }
+
+    private void assertCommitMessageSourceRoundTrip(String source) {
+        ClaudeCodeJobEvent original = ClaudeCodeJobEvent.success("j-rt-" + source, "round-trip");
+        original.withCommitMessageSource(source);
+
+        // Serialize (what the agent does before POST-ing to the controller)
+        String json = original.toJson();
+
+        // Parse (what the controller does in handleStatusEvent via extractJsonField)
+        String parsed = JsonFieldExtractor.extractString(json, "commitMessageSource");
+        assertEquals(source, parsed);
+
+        // Reconstruct (what the controller does after parsing)
+        ClaudeCodeJobEvent reconstructed = new ClaudeCodeJobEvent("j-rt-" + source,
+                JobCompletionEvent.Status.SUCCESS, "round-trip");
+        if (parsed != null) {
+            reconstructed.withCommitMessageSource(parsed);
+        }
+        assertEquals(source, reconstructed.getCommitMessageSource());
     }
 }

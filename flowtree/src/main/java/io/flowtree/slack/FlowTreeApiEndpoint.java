@@ -1252,19 +1252,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             event.withPullRequestUrl(pullRequestUrl);
         }
 
-        // Populate Claude Code-specific fields
         if (event instanceof ClaudeCodeJobEvent) {
             ClaudeCodeJobEvent ccEvent = (ClaudeCodeJobEvent) event;
             ccEvent.withClaudeCodeInfo(prompt, sessionId, exitCode);
-
-            // Populate timing info
             long durationMs = extractJsonLongField(body, "durationMs");
             long durationApiMs = extractJsonLongField(body, "durationApiMs");
             double costUsd = extractJsonDoubleField(body, "costUsd");
             int numTurns = extractJsonIntField(body, "numTurns");
             ccEvent.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
-
-            // Populate session details
             String subtype = extractJsonField(body, "subtype");
             boolean sessionIsError = extractJsonBooleanField(body, "sessionIsError");
             int permissionDenials = extractJsonIntField(body, "permissionDenials");
