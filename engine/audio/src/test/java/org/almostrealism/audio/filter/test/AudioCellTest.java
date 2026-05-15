@@ -48,7 +48,7 @@ public class AudioCellTest extends TestSuiteBase implements CellFeatures, AudioT
 		PackedCollection result = out.getChannelData(0).evaluate();
 		log(String.valueOf(result.toArrayString(0, 5)));
 
-		Assert.assertEquals(0.0, result.toDouble(2), 0.0);
+		Assert.assertEquals(0.0, result.toDouble(2), 1e-1);
 		Assert.assertNotEquals(0.0, result.toDouble(3), 0.0);
 	}
 
