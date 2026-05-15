@@ -213,7 +213,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
                 "/api/secrets/aws-prod?workstream_id=" + WORKSTREAM_A, token);
         assertEquals(200, conn.getResponseCode());
 
-        // The retrieve handler logs SECRET_RETRIEVE through ConsoleFeatures.log(),
+        // The retrieve handler logs event=secret_retrieve through ConsoleFeatures.log(),
         // which routes through Console.root() — captured by the listener installed
         // in setUp(). Verify the audit line was captured and contains the expected
         // identifying fields but no payload values.
@@ -222,7 +222,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
 
         boolean sawAuditLine = false;
         for (String msg : auditMessages) {
-            if (msg.contains("SECRET_RETRIEVE")) {
+            if (msg.contains("event=secret_retrieve")) {
                 sawAuditLine = true;
                 assertTrue("Audit log line should mention secret name: " + msg,
                         msg.contains("aws-prod"));
@@ -232,7 +232,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
             assertFalse("Audit log must not contain secret values: " + msg,
                     msg.contains("AKIATEST123") || msg.contains("SECTEST456"));
         }
-        assertTrue("Expected to capture a SECRET_RETRIEVE audit line; "
+        assertTrue("Expected to capture an event=secret_retrieve audit line; "
                 + "got " + auditMessages.size() + " message(s)", sawAuditLine);
     }
 
