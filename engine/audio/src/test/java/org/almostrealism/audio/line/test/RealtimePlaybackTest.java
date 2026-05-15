@@ -174,9 +174,9 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 		// Initially not active until line.start() is called
 		Assert.assertTrue("Line should be open", outputLine.isOpen());
 
-		// Start the line
+		// Start the line. Note: SourceDataLine.isActive() only returns true
+		// once data is being written, so we cannot assert it here.
 		outputLine.start();
-		Assert.assertTrue("Line should be active after start", outputLine.isActive());
 
 		// Create audio source
 		CellList cells = w(0, testFile.getPath());
@@ -306,8 +306,9 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 			// Start the scheduled buffered playback
 			scheduler.start();
 
-			// Run for extended time to observe patterns
-			Thread.sleep(120 * 1000);
+			// Run for a window short enough to fit under the 60s test timeout
+			// while still long enough to observe scheduler behavior.
+			Thread.sleep(30 * 1000);
 
 			log("---");
 			log("Playback statistics:");

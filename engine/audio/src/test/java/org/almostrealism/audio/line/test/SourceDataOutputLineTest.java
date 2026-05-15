@@ -58,8 +58,8 @@ public class SourceDataOutputLineTest extends TestSuiteBase implements CellFeatu
 		// Start the buffered, scheduled playback
 		scheduler.start();
 
-		// Let it play
-		Thread.sleep(30000);
+		// Let it play long enough to render frames but well under the 30s test timeout
+		Thread.sleep(5000);
 
 		// Verify playback occurred
 		long renderedFrames = scheduler.getRenderedFrames();
