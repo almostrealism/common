@@ -88,12 +88,18 @@ public class Floor extends Expression<Double> {
 	}
 
 	/**
-	 * Creates a floor expression for the given operand.
+	 * Creates a floor expression for the given operand, folding constants where possible.
 	 *
 	 * @param in the expression to floor
-	 * @return a new {@link Floor} expression
+	 * @return a constant if {@code in} has a known double value, otherwise a new {@link Floor}
 	 */
 	public static Expression of(Expression in) {
+		OptionalDouble d = in.doubleValue();
+
+		if (d.isPresent()) {
+			return new DoubleConstant(Math.floor(d.getAsDouble()));
+		}
+
 		return new Floor(in);
 	}
 }
