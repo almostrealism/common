@@ -660,6 +660,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 return errorResponse("defaultBranch is malformed: ends with '/'");
             }
             channelName = SlackNotifier.autoChannelName(defaultBranch, notifiers.allWorkstreams().values());
+            if (channelName == null) {
+                return errorResponse("Could not derive a valid channel name from defaultBranch: " + defaultBranch);
+            }
         }
         String explicitWorkspaceId = extractJsonField(body, "slackWorkspaceId");
         String model = extractJsonField(body, "model");
@@ -1267,6 +1270,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             int permissionDenials = extractJsonIntField(body, "permissionDenials");
             List<String> deniedToolNames = extractJsonArrayField(body, "deniedToolNames");
             ccEvent.withSessionDetails(subtype, sessionIsError, permissionDenials, deniedToolNames);
+
+            String commitMessageSource = extractJsonField(body, "commitMessageSource");
+            if (commitMessageSource != null) {
+                ccEvent.withCommitMessageSource(commitMessageSource);
+            }
         }
 
         log("Status event: " + eventStatus + " for job " + jobId + " in workstream " + workstreamId);

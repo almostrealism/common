@@ -1161,7 +1161,8 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 return candidate;
             }
         }
-        return base;
+        // All suffixes exhausted — cannot guarantee uniqueness.
+        return null;
     }
 
     /**

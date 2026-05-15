@@ -803,7 +803,10 @@ public class ClaudeCodeJob extends GitManagedJob {
                             catch (IOException e) { warn("Could not save commit.txt: " + e.getMessage()); }
                         }
                         executeSingleRun();
-                        if (savedForRerun != null && rerunCommitFile != null) {
+                        // Only restore old commit.txt if the rerun did not write a new one;
+                        // when the rerun makes the actual code changes its message is authoritative.
+                        boolean rerunWroteCommit = rerunCommitFile != null && Files.exists(rerunCommitFile);
+                        if (!rerunWroteCommit && savedForRerun != null && rerunCommitFile != null) {
                             try { Files.writeString(rerunCommitFile, savedForRerun, StandardCharsets.UTF_8); }
                             catch (IOException e) { warn("Could not restore commit.txt: " + e.getMessage()); }
                         }
@@ -858,9 +861,10 @@ public class ClaudeCodeJob extends GitManagedJob {
         } finally {
             this.prompt = originalPrompt;
             this.currentActivity = previousActivity;
-            // Restore primary-session commit.txt if it existed; if not, keep whatever
-            // the correction session wrote (CommitMessageRule relies on this).
-            if (savedCommitMessage != null && savedCommitFile != null) {
+            // Restore primary-session commit.txt only when the correction session did not
+            // write its own; if it did, that message describes the actual changes made.
+            boolean correctionWroteCommit = savedCommitFile != null && Files.exists(savedCommitFile);
+            if (!correctionWroteCommit && savedCommitMessage != null && savedCommitFile != null) {
                 try {
                     Files.writeString(savedCommitFile, savedCommitMessage, StandardCharsets.UTF_8);
                     log("Restored primary commit message from commit.txt");
