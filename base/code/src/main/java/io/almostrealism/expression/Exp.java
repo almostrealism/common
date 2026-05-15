@@ -22,6 +22,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
+import java.util.OptionalDouble;
 import java.util.OptionalLong;
 
 /**
@@ -86,13 +87,19 @@ public class Exp extends Expression<Double> {
 	}
 
 	/**
-	 * Creates an exponential expression for the given operand.
+	 * Creates an exponential expression for the given operand, folding constants where possible.
 	 *
 	 * @param input the exponent operand
 	 * @param <T>   the result type (always {@link Double})
-	 * @return a new {@link Exp} expression
+	 * @return a constant if the input has a known double value, otherwise a new {@link Exp}
 	 */
 	public static <T> Expression<T> of(Expression input) {
+		OptionalDouble d = input.doubleValue();
+
+		if (d.isPresent()) {
+			return (Expression<T>) new DoubleConstant(Math.exp(d.getAsDouble()));
+		}
+
 		return (Expression<T>) new Exp(input);
 	}
 }
