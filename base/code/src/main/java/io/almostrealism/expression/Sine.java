@@ -48,7 +48,7 @@ public class Sine extends Expression<Double> {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return "sin(" + lang.castForMathArgument(getChildren().get(0).getExpression(lang)) + ")";
+		return "sin(" + getChildren().get(0).getExpression(lang) + ")";
 	}
 
 	@Override

@@ -70,7 +70,7 @@ public class Absolute extends Expression<Double> {
 	 */
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return lang.abs(lang.castForMathArgument(getChildren().get(0).getExpression(lang)));
+		return lang.abs(getChildren().get(0).getExpression(lang));
 	}
 
 	/**

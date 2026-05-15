@@ -47,7 +47,7 @@ public class Logarithm extends Expression<Double> {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return "log(" + lang.castForMathArgument(getChildren().get(0).getExpression(lang)) + ")";
+		return "log(" + getChildren().get(0).getExpression(lang) + ")";
 	}
 
 	@Override

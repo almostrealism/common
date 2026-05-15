@@ -71,8 +71,7 @@ public class Atan2 extends BinaryExpression<Double> {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return "atan2(" + lang.castForMathArgument(getY().getExpression(lang)) + ", " +
-				lang.castForMathArgument(getX().getExpression(lang)) + ")";
+		return "atan2(" + getY().getExpression(lang) + ", " + getX().getExpression(lang) + ")";
 	}
 
 	@Override

@@ -120,23 +120,6 @@ public interface LanguageOperations {
 	String abs(String value);
 
 	/**
-	 * Wraps a rendered argument with the cast needed to disambiguate a math intrinsic
-	 * call (e.g. {@code exp}, {@code floor}, {@code sin}).
-	 *
-	 * <p>The default implementation returns {@code rendered} unchanged because C,
-	 * OpenCL, and JNI accept the implicit promotions from integer or {@code double}
-	 * literals to the float overload. Backends with strict overload resolution must
-	 * override this to emit an explicit cast so the math intrinsic's overload set
-	 * resolves unambiguously.</p>
-	 *
-	 * @param rendered the rendered argument expression string
-	 * @return the wrapped argument expression string
-	 */
-	default String castForMathArgument(String rendered) {
-		return rendered;
-	}
-
-	/**
 	 * Returns the language-specific kernel index variable for the given axis.
 	 *
 	 * @param axis the kernel dimension axis (0-based)

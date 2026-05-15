@@ -43,8 +43,7 @@ public class Floor extends Expression<Double> {
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		OptionalDouble v = getChildren().get(0).doubleValue();
-		String arg = v.isPresent() ? String.valueOf(v.getAsDouble()) : getChildren().get(0).getExpression(lang);
-		return "floor(" + lang.castForMathArgument(arg) + ")";
+		return v.isPresent() ? "floor(" + v.getAsDouble()+ ")" : "floor(" + getChildren().get(0).getExpression(lang) + ")";
 	}
 
 	@Override
@@ -89,12 +88,18 @@ public class Floor extends Expression<Double> {
 	}
 
 	/**
-	 * Creates a floor expression for the given operand.
+	 * Creates a floor expression for the given operand, folding constants where possible.
 	 *
 	 * @param in the expression to floor
-	 * @return a new {@link Floor} expression
+	 * @return a constant if {@code in} has a known double value, otherwise a new {@link Floor}
 	 */
 	public static Expression of(Expression in) {
+		OptionalDouble d = in.doubleValue();
+
+		if (d.isPresent()) {
+			return new DoubleConstant(Math.floor(d.getAsDouble()));
+		}
+
 		return new Floor(in);
 	}
 }
