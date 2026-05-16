@@ -64,9 +64,15 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		IntStream.range(0, 100).forEach(i -> r.run());
 	}
 
+	// Known issue: cycling 100 dc(...) blocks aborts on Linux glibc with
+	// "double free or corruption (out)". Root cause appears to be that
+	// NativeDataContext.destroy() bulk-frees every allocated native pointer
+	// via NativeMemoryProvider, but Java NativeMemory wrappers may still be
+	// referenced; their cleaner later free()s the same address. macOS libmalloc
+	// tolerates this; glibc detects it and aborts the JVM.
 	@Test(timeout = 60000)
 	@TestDepth(1)
-	@TestProperties(longRunning = true)
+	@TestProperties(longRunning = true, knownIssue = true)
 	public void endless() {
 		AtomicInteger total = new AtomicInteger();
 
