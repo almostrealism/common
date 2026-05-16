@@ -23,7 +23,6 @@ import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.LineUtilities;
 import org.almostrealism.audio.line.SourceDataOutputLine;
 import org.almostrealism.util.TestSuiteBase;
-import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.io.File;
@@ -40,8 +39,6 @@ public class SourceDataOutputLineTest extends TestSuiteBase implements CellFeatu
 	 */
 	@Test(timeout = 30000)
 	public void playWaveData() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File f = getTestWavFile();
 
 		// Create output line with default format

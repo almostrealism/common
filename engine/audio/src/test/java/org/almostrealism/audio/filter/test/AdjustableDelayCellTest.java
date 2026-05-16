@@ -28,7 +28,6 @@ import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalar;
-import org.almostrealism.util.TestUtils;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -67,8 +66,6 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 
 	@Test(timeout = 60000)
 	public void computationSeparately() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		AdjustableDelayCell delay = adjustableDelay();
 		delay.setup().get().run();
 		OperationList ops = computation(delay);
@@ -99,8 +96,6 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 
 	@Test(timeout = 60000)
 	public void computationLoop() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		AdjustableDelayCell delay = adjustableDelay();
 		delay.setup().get().run();
 		OperationList ops = computation(delay);
@@ -123,8 +118,6 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 
 	@Test(timeout = 60000)
 	public void withAdjustableDelayCell() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		AdjustableDelayCell delay = adjustableDelay();
 		delay.setReceptor(loggingReceptor());
 

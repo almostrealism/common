@@ -79,8 +79,6 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 	 */
 	@Test(timeout = 120000)
 	public void profileSynthTicks() throws IOException {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		ensureResultsDirectory();
 
 		log("=== PolyphonicSynthesizer Tick Performance Profile ===");
@@ -186,6 +184,10 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 	 */
 	@Test(timeout = 120000)
 	public void profileSchedulerPipeline() throws IOException {
+		// Skipped under PIPELINE profile pending investigation: this profile
+		// times out (120s budget) on Metal; no Linux/native baseline is
+		// available yet to determine whether it is a real perf delta.
+		// See docs/qa/test-media-mac-failures-2026-05-15.md.
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		ensureResultsDirectory();
@@ -296,6 +298,10 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 	 */
 	@Test(timeout = 120000)
 	public void profileTemporalRunner() throws IOException {
+		// Skipped under PIPELINE profile pending investigation: this profile
+		// times out (120s budget) on Metal; no Linux/native baseline is
+		// available yet to determine whether it is a real perf delta.
+		// See docs/qa/test-media-mac-failures-2026-05-15.md.
 		if (testProfileIs(TestUtils.PIPELINE)) return;
 
 		ensureResultsDirectory();
@@ -388,8 +394,6 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 	 */
 	@Test(timeout = 120000)
 	public void profileVoiceScaling() throws IOException {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		ensureResultsDirectory();
 
 		log("=== Voice Scaling Performance Profile ===");

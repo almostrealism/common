@@ -23,7 +23,6 @@ import org.almostrealism.audio.line.BufferDefaults;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.SourceDataOutputLine;
 import org.almostrealism.util.TestSuiteBase;
-import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -47,8 +46,6 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 */
 	@Test(timeout = 60000)
 	public void bufferedRealtimePlayback() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File testFile = getTestWavFile();
 
 		// Create audio format: 44100 Hz, 16-bit, stereo, signed PCM, little-endian
@@ -111,8 +108,6 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 */
 	@Test(timeout = 60000)
 	public void bufferedPositionTracking() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File testFile = getTestWavFile();
 
 		AudioFormat format = new AudioFormat(44100, 16, 2, true, false);
@@ -161,8 +156,6 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 */
 	@Test(timeout = 60000)
 	public void bufferedLifecycleManagement() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File testFile = getTestWavFile();
 
 		AudioFormat format = new AudioFormat(44100, 16, 2, true, false);
@@ -210,8 +203,6 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 */
 	@Test(timeout = 60000)
 	public void bufferedWithCustomBufferSize() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File testFile = getTestWavFile();
 
 		AudioFormat format = new AudioFormat(44100, 16, 2, true, false);
@@ -255,8 +246,6 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 */
 	@Test(timeout = 60000)
 	public void bufferedLoopedPlaybackWithVerboseLogging() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File testFile = getTestWavFile();
 
 		// Enable verbose logging to monitor scheduler behavior
