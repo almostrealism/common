@@ -34,9 +34,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 
 import org.almostrealism.music.midi.MidiNoteEvent;
 
@@ -238,12 +240,11 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	// -----------------------------------------------------------------------
 
 	/**
-	 * Generate a MIDI event sequence from a prompt token sequence.
+	 * Generate a MIDI event sequence from a prompt token sequence with no track filter.
 	 *
-	 * <p>The prompt is prefilled into the main transformer's KV cache before generation
-	 * begins.  The first row of {@code promptTokens} should be the BOS event
-	 * ({@code [1, 0, 0, 0, 0, 0, 0, 0]}).  Generation stops when the model produces
-	 * an EOS token or {@code maxNewEvents} events have been generated.</p>
+	 * <p>Equivalent to calling
+	 * {@link #generate(int[][], int, double, double, int, int[])} with
+	 * {@code allowedTrackIds == null}.</p>
 	 *
 	 * @param promptTokens  token array of shape (promptLen x maxTokenSeq); must not be null
 	 * @param maxNewEvents  maximum number of new events to generate
@@ -254,6 +255,42 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 */
 	public int[][] generate(int[][] promptTokens, int maxNewEvents,
 							double temperature, double topP, int topK) {
+		return generate(promptTokens, maxNewEvents, temperature, topP, topK, null);
+	}
+
+	/**
+	 * Generate a MIDI event sequence from a prompt token sequence, optionally
+	 * restricting generated events to a subset of MIDI track IDs.
+	 *
+	 * <p>The prompt is prefilled into the main transformer's KV cache before generation
+	 * begins.  The first row of {@code promptTokens} should be the BOS event
+	 * ({@code [1, 0, 0, 0, 0, 0, 0, 0]}).  Generation stops when the model produces
+	 * an EOS token or {@code maxNewEvents} events have been generated.</p>
+	 *
+	 * <p>When {@code allowedTrackIds} is non-null the per-event track parameter
+	 * (step 3 of the inner token loop) is constrained to the supplied set: only
+	 * track values present in the array can be sampled.  Other event parameters
+	 * (event-type, time, channel, pitch, velocity, duration, etc.) are unaffected.
+	 * Prompt events are never filtered — they are prefilled verbatim — so events
+	 * with disallowed tracks in the prompt remain in the returned sequence.</p>
+	 *
+	 * @param promptTokens    token array of shape (promptLen x maxTokenSeq); must not be null
+	 * @param maxNewEvents    maximum number of new events to generate
+	 * @param temperature     sampling temperature (0 = greedy argmax)
+	 * @param topP            nucleus sampling threshold (1.0 = no nucleus filtering)
+	 * @param topK            top-k limit (0 = no top-k filtering)
+	 * @param allowedTrackIds when non-null, restricts generated events to the
+	 *                        specified track IDs (0–127). {@code null} means
+	 *                        no filter (preserves legacy behaviour). Empty array
+	 *                        is rejected because it would block all generation.
+	 * @return full token array including prompt, shape ((promptLen + generatedLen) x maxTokenSeq)
+	 * @throws IllegalArgumentException if {@code allowedTrackIds} is a zero-length array
+	 *         or contains a value outside the valid range [0, 127]
+	 */
+	public int[][] generate(int[][] promptTokens, int maxNewEvents,
+							double temperature, double topP, int topK,
+							int[] allowedTrackIds) {
+		Set<Integer> allowedTrackTokens = validateAndExpandTrackFilter(allowedTrackIds);
 		List<int[]> sequence = new ArrayList<>(Arrays.asList(promptTokens));
 
 		// Prefill: process all prompt positions to populate the net KV cache.
@@ -289,6 +326,9 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 				// Apply validity mask: zero out logits for tokens that are not valid
 				// at this step (given the event type chosen at step 0)
 				int[] validIds = tokenizer.getValidTokenIds(step, eventTypeId);
+				if (step == 3 && allowedTrackTokens != null) {
+					validIds = intersectWithTokenSet(validIds, allowedTrackTokens);
+				}
 				PackedCollection maskedLogits = applyMask(rawLogits, validIds);
 
 				int sampledToken = sampleWithTopK(maskedLogits, temperature, topP, topK);
@@ -323,11 +363,11 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	}
 
 	/**
-	 * Generate complementary MIDI events from a list of existing events.
+	 * Generate complementary MIDI events from a list of existing events with no track filter.
 	 *
-	 * <p>Converts the events to tokens (with BOS), generates up to
-	 * {@code maxNewEvents} additional events, detokenizes the generated portion,
-	 * and returns only the newly generated events (not the prompt events).</p>
+	 * <p>Equivalent to calling
+	 * {@link #generateFromEvents(List, int, double, double, int, int, int[])}
+	 * with {@code allowedTrackIds == null}.</p>
 	 *
 	 * @param promptEvents   existing events to use as context (not returned in output)
 	 * @param maxNewEvents   maximum number of new events to generate
@@ -340,10 +380,46 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	public List<MidiNoteEvent> generateFromEvents(List<MidiNoteEvent> promptEvents,
 													int maxNewEvents, double temperature,
 													double topP, int topK, int ticksPerBeat) {
+		return generateFromEvents(promptEvents, maxNewEvents, temperature,
+				topP, topK, ticksPerBeat, null);
+	}
+
+	/**
+	 * Generate complementary MIDI events from a list of existing events, optionally
+	 * restricting generated events to a subset of MIDI track IDs.
+	 *
+	 * <p>Converts the events to tokens (with BOS), generates up to
+	 * {@code maxNewEvents} additional events, detokenizes the generated portion,
+	 * and returns only the newly generated events (not the prompt events).</p>
+	 *
+	 * <p>When {@code allowedTrackIds} is non-null, generated events are constrained
+	 * to the supplied track IDs (see
+	 * {@link #generate(int[][], int, double, double, int, int[])} for full filter
+	 * semantics).  Prompt events are tokenized verbatim — the filter does not
+	 * touch them — and are absent from the returned list either way.</p>
+	 *
+	 * @param promptEvents    existing events to use as context (not returned in output)
+	 * @param maxNewEvents    maximum number of new events to generate
+	 * @param temperature     sampling temperature
+	 * @param topP            nucleus sampling threshold
+	 * @param topK            top-k limit (0 = disabled)
+	 * @param ticksPerBeat    MIDI PPQ resolution for timing quantization
+	 * @param allowedTrackIds when non-null, restricts generated events to the
+	 *                        specified track IDs (0–127). {@code null} means
+	 *                        no filter. Empty array is rejected.
+	 * @return newly generated MIDI events (does not include prompt events)
+	 * @throws IllegalArgumentException if {@code allowedTrackIds} is a zero-length array
+	 *         or contains a value outside the valid range [0, 127]
+	 */
+	public List<MidiNoteEvent> generateFromEvents(List<MidiNoteEvent> promptEvents,
+													int maxNewEvents, double temperature,
+													double topP, int topK, int ticksPerBeat,
+													int[] allowedTrackIds) {
 		int[][] promptTokens = tokenizer.tokenize(promptEvents, ticksPerBeat);
 		int promptLen = promptTokens.length;
 
-		int[][] fullSequence = generate(promptTokens, maxNewEvents, temperature, topP, topK);
+		int[][] fullSequence = generate(promptTokens, maxNewEvents, temperature, topP, topK,
+				allowedTrackIds);
 
 		// Detokenize only the newly generated rows (excluding prompt)
 		int generatedLen = fullSequence.length - promptLen;
@@ -500,6 +576,70 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		PackedCollection result = new PackedCollection(new TraversalPolicy(1, config.hiddenSize));
 		result.setMem(0, netTokenEmbedTokens, tokenId * config.hiddenSize, config.hiddenSize);
 		return result;
+	}
+
+	// -----------------------------------------------------------------------
+	//  Track-filter helpers (orchestration over int[] vocabulary positions)
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Validates a caller-supplied {@code allowedTrackIds} array and expands it
+	 * to the corresponding vocabulary token positions used at step 3 of the
+	 * inner token loop.
+	 *
+	 * <p>The returned set is built once per call to {@code generate()} and
+	 * re-used on every iteration of the inner token loop, so the per-event
+	 * filter intersection at step 3 is O(|validIds|) rather than O(|validIds|
+	 * + |filter|).</p>
+	 *
+	 * @param allowedTrackIds the raw track ID filter from the caller; may be null
+	 * @return null when {@code allowedTrackIds} is null (no filter); otherwise a
+	 *         set of vocabulary positions {@code TRACK_OFFSET + id} for each
+	 *         allowed track ID
+	 * @throws IllegalArgumentException if the array is empty or contains values
+	 *         outside [0, 127]
+	 */
+	static Set<Integer> validateAndExpandTrackFilter(int[] allowedTrackIds) {
+		if (allowedTrackIds == null) {
+			return null;
+		}
+		if (allowedTrackIds.length == 0) {
+			throw new IllegalArgumentException(
+					"empty track filter would block all generation");
+		}
+		Set<Integer> tokens = new HashSet<>(allowedTrackIds.length * 2);
+		for (int i = 0; i < allowedTrackIds.length; i++) {
+			int id = allowedTrackIds[i];
+			if (id < 0 || id >= SkyTntTokenizerV2.TRACK_RANGE) {
+				throw new IllegalArgumentException(
+						"allowedTrackIds[" + i + "] = " + id +
+								" is out of range [0, " +
+								(SkyTntTokenizerV2.TRACK_RANGE - 1) + "]");
+			}
+			tokens.add(SkyTntTokenizerV2.TRACK_OFFSET + id);
+		}
+		return tokens;
+	}
+
+	/**
+	 * Returns the intersection of a tokenizer validity mask with a
+	 * caller-supplied allow-list expressed as a {@link Set} of token IDs.
+	 * The result preserves the order of the input {@code validIds}, which
+	 * keeps the per-step distribution shape predictable.
+	 *
+	 * @param validIds   the base validity mask from the tokenizer
+	 * @param filterSet  the supplemental allow-list (e.g. allowed track token IDs)
+	 * @return new array containing only token IDs present in both inputs
+	 */
+	static int[] intersectWithTokenSet(int[] validIds, Set<Integer> filterSet) {
+		int[] tmp = new int[validIds.length];
+		int n = 0;
+		for (int id : validIds) {
+			if (filterSet.contains(id)) {
+				tmp[n++] = id;
+			}
+		}
+		return Arrays.copyOf(tmp, n);
 	}
 
 	// -----------------------------------------------------------------------
