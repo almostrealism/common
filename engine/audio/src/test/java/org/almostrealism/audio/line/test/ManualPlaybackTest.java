@@ -18,6 +18,7 @@ package org.almostrealism.audio.line.test;
 
 import org.almostrealism.audio.line.SourceDataOutputLine;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -36,6 +37,7 @@ public class ManualPlaybackTest extends TestSuiteBase {
 	 * This proves the fundamental approach of PackedCollection -> toFrame() -> SourceDataLine works.
 	 */
 	@Test(timeout = 60000)
+	@TestProperties(audioDeviceRequired = true)
 	public void manualSineWavePlayback() throws Exception {
 		// Create audio format: 44100 Hz, 16-bit, stereo, signed PCM, little-endian
 		AudioFormat format = new AudioFormat(
@@ -112,6 +114,7 @@ public class ManualPlaybackTest extends TestSuiteBase {
 	 * Simpler test with a shorter burst of tone to quickly verify audio output works.
 	 */
 	@Test(timeout = 60000)
+	@TestProperties(audioDeviceRequired = true)
 	public void manualToneBurst() throws Exception {
 		AudioFormat format = new AudioFormat(44100, 16, 2, true, false);
 		SourceDataLine line = AudioSystem.getSourceDataLine(format);

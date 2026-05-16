@@ -77,4 +77,13 @@ public @interface TestProperties {
 	 * @return true if this test covers a known issue
 	 */
 	boolean knownIssue() default false;
+
+	/**
+	 * Marks a test as requiring a real audio output device. The CI Linux runners
+	 * do not expose one, so the test is skipped unless the host is macOS
+	 * (used as a proxy for "audio device probably available").
+	 *
+	 * @return true if this test needs an audio output device
+	 */
+	boolean audioDeviceRequired() default false;
 }
