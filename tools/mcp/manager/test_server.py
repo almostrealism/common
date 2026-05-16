@@ -64,11 +64,36 @@ class TestControllerHealth(unittest.TestCase):
     @patch.object(server, "_controller_get")
     def test_returns_health(self, mock_get):
         _grant_all_scopes()
-        mock_get.return_value = {"status": "ok", "version": "1.0"}
+        mock_get.return_value = {
+            "status": "ok",
+            "version": "1.0",
+            "server_time": "2026-05-11T18:23:45.123456789Z",
+        }
         result = server.controller_health()
         mock_get.assert_called_once_with("/api/health")
         self.assertEqual(result["status"], "ok")
         self.assertIn("next_steps", result)
+
+    @patch.object(server, "_controller_get")
+    def test_server_time_present_and_utc(self, mock_get):
+        _grant_all_scopes()
+        mock_get.return_value = {
+            "status": "ok",
+            "server_time": "2026-05-11T18:23:45.123456789Z",
+        }
+        result = server.controller_health()
+        self.assertIn("server_time", result)
+        server_time = result["server_time"]
+        # Must match ISO-8601 UTC: YYYY-MM-DDTHH:MM:SS[.fractional]Z
+        import re
+        iso_utc_pattern = re.compile(
+            r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$'
+        )
+        self.assertRegex(
+            server_time,
+            iso_utc_pattern,
+            f"server_time must be ISO-8601 UTC (ending in Z), got: {server_time!r}",
+        )
 
     def test_requires_read_scope(self):
         _grant_scopes("write")
@@ -252,6 +277,32 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         result = server.workstream_submit_task(prompt="x" * 50_001)
         self.assertFalse(result["ok"])
         self.assertIn("maximum length", result["error"])
+
+    @patch.object(server, "_controller_post")
+    def test_submit_repo_url_forwarded(self, mock_post):
+        # Two workstreams that share a default branch but live on
+        # different repos must be disambiguated by repo_url.  Verify the
+        # tool forwards repo_url as repoUrl so the controller-side
+        # findByBranchAndRepo lookup can pick the right workstream.
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-r1"}
+        server.workstream_submit_task(
+            prompt="Task",
+            target_branch="feature/audio-prototypes",
+            repo_url="git@github.com:almostrealism/common.git",
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["targetBranch"], "feature/audio-prototypes")
+        self.assertEqual(payload["repoUrl"],
+                         "git@github.com:almostrealism/common.git")
+
+    @patch.object(server, "_controller_post")
+    def test_submit_repo_url_omitted_when_blank(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-r2"}
+        server.workstream_submit_task(prompt="Task", target_branch="feature/x")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("repoUrl", payload)
 
     @patch.object(server, "_controller_post")
     def test_submit_required_labels(self, mock_post):

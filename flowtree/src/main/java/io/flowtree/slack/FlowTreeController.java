@@ -662,6 +662,7 @@ public class FlowTreeController implements ConsoleFeatures {
                 if (wsEntry.getDefaultChannel() != null) {
                     conn.notifier.setDefaultChannelId(wsEntry.getDefaultChannel());
                 }
+                if (statsStore != null) conn.notifier.setStatsStore(statsStore);
                 workspaceConnections.put(wsEntry.getWorkspaceId(), conn);
                 log("Configured workspace connection: " + wsEntry.getWorkspaceId()
                         + (wsEntry.getName() != null ? " (" + wsEntry.getName() + ")" : ""));
@@ -671,6 +672,7 @@ public class FlowTreeController implements ConsoleFeatures {
                         + " cross-workspace fallback");
                 WorkspaceConnection conn = new WorkspaceConnection(
                         wsEntry.getWorkspaceId(), null, null);
+                if (statsStore != null) conn.notifier.setStatsStore(statsStore);
                 workspaceConnections.put(wsEntry.getWorkspaceId(), conn);
             }
         }
@@ -685,6 +687,19 @@ public class FlowTreeController implements ConsoleFeatures {
                 notifierMap.put(entry.getKey(), entry.getValue().notifier);
             }
             listener.setNotifiersByWorkspace(notifierMap);
+        }
+    }
+
+    /**
+     * Records {@code store} as the stats store and propagates it to every
+     * notifier; {@link #buildWorkspaceConnections} re-applies it on reload.
+     */
+    void installStatsStore(JobStatsStore store) {
+        this.statsStore = store;
+        SlackNotifier primary = getNotifier();
+        if (primary != null) primary.setStatsStore(store);
+        for (WorkspaceConnection conn : workspaceConnections.values()) {
+            if (conn.notifier != primary) conn.notifier.setStatsStore(store);
         }
     }
 
@@ -1189,19 +1204,10 @@ public class FlowTreeController implements ConsoleFeatures {
                 ? configFile.getParentFile().getAbsolutePath()
                 : System.getProperty("user.home") + "/.flowtree";
         new File(dataDir).mkdirs();
-        statsStore = new JobStatsStore(dataDir + "/stats");
-        statsStore.initialize();
+        JobStatsStore newStore = new JobStatsStore(dataDir + "/stats");
+        newStore.initialize();
+        installStatsStore(newStore);
         SlackNotifier primaryNotifier = getNotifier();
-        if (primaryNotifier != null) {
-            primaryNotifier.setStatsStore(statsStore);
-        }
-        // Propagate the global stats store to every workspace notifier so that
-        // per-workspace slash commands (/flowtree jobs, /flowtree stats) work correctly.
-        for (WorkspaceConnection conn : workspaceConnections.values()) {
-            if (conn.notifier != primaryNotifier) {
-                conn.notifier.setStatsStore(statsStore);
-            }
-        }
 
         // Initialize SignalWire SMS alerting (no-op if config file is absent)
         SignalWireDeliveryProvider.attachDefault();

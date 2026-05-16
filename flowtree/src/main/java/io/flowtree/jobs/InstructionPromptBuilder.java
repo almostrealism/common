@@ -800,6 +800,19 @@ public class InstructionPromptBuilder {
             sb.append("you have something concrete to report.\n\n");
         }
 
+        // Commit message reminder -- only for primary work sessions (not correction
+        // sessions) where git management is active so commits will be made.
+        if (targetBranch != null && !targetBranch.isEmpty() && !correctionSession) {
+            sb.append("## Before You Finish\n");
+            sb.append("Write a `commit.txt` file at the repo root containing the commit ");
+            sb.append("message for your changes. Format:\n\n");
+            sb.append("  - **First line:** a short summary under 72 characters.\n");
+            sb.append("  - **Optionally:** a blank line followed by a short body explaining ");
+            sb.append("what you changed and why.\n\n");
+            sb.append("The message must describe the actual work you did — do NOT copy ");
+            sb.append("the task description into `commit.txt`, and do NOT leave it empty.\n\n");
+        }
+
         sb.append("--- BEGIN USER REQUEST ---\n");
         sb.append(prompt);
         sb.append("\n--- END USER REQUEST ---");

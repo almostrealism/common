@@ -37,7 +37,7 @@ import java.util.List;
  *
  * @author Michael Murray
  * @see ClaudeCodeJob#extractNewMethodNames()
- * @see ClaudeCodeJob#buildDeduplicationPrompt(List, boolean, int)
+ * @see DeduplicationRule#buildDeduplicationPrompt(List, boolean, int)
  * @see SetComparisonRule
  * @see EnforcementRule
  */
@@ -86,7 +86,67 @@ class DeduplicationRule extends SetComparisonRule {
         List<String> newMethods = job.extractNewMethodNames();
         List<String> capped = newMethods.size() > ClaudeCodeJob.MAX_DEDUP_METHODS
                 ? newMethods.subList(0, ClaudeCodeJob.MAX_DEDUP_METHODS) : newMethods;
-        return ClaudeCodeJob.buildDeduplicationPrompt(capped,
+        return buildDeduplicationPrompt(capped,
                 newMethods.size() > ClaudeCodeJob.MAX_DEDUP_METHODS, newMethods.size());
+    }
+
+    /**
+     * Builds the aggressive deduplication prompt sent to the follow-up agent session.
+     *
+     * @param methodNames the (possibly capped) list of new method names
+     * @param truncated   {@code true} if the list was capped due to size
+     * @param totalCount  the total number of methods found (before capping)
+     * @return the full prompt string
+     */
+    static String buildDeduplicationPrompt(List<String> methodNames,
+                                           boolean truncated,
+                                           int totalCount) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("DEDUPLICATION AUDIT — MANDATORY PRE-COMMIT REVIEW\n\n");
+        sb.append("A prior agent session has committed changes that introduce the ");
+        sb.append("following new methods");
+        if (truncated) {
+            sb.append(" (showing ").append(methodNames.size())
+              .append(" of ").append(totalCount).append(" total)");
+        }
+        sb.append(":\n\n");
+        for (String name : methodNames) {
+            sb.append("  - ").append(name).append("\n");
+        }
+        sb.append("\n");
+        sb.append("Your job is to determine whether any of these methods duplicate ");
+        sb.append("functionality that already exists elsewhere in the codebase. ");
+        sb.append("This is a mandatory review step — do not skip it and do not ");
+        sb.append("conclude quickly that a method is unique without actually searching.\n\n");
+        sb.append("CRITICAL ASSUMPTION: For every method in the list above, you MUST ");
+        sb.append("assume it is a clone of an existing method until you have proven ");
+        sb.append("otherwise. This is not a pessimistic assumption — it is statistically ");
+        sb.append("accurate. The majority of methods introduced by agent sessions are ");
+        sb.append("duplicates of functionality that already exists elsewhere. The agent ");
+        sb.append("re-implemented things it could not find by search. The clone may not ");
+        sb.append("be an exact copy: it may be renamed, slightly generalised, or placed ");
+        sb.append("in a different class — but it performs the same operation on the same ");
+        sb.append("data.\n\n");
+        sb.append("For each method:\n");
+        sb.append("1. Search the codebase for methods that perform the same logical ");
+        sb.append("operation. Use Grep to search by keyword, not just by name.\n");
+        sb.append("2. If a duplicate exists: remove the new method entirely and replace ");
+        sb.append("all call sites with the existing method.\n");
+        sb.append("3. Only after a thorough search may you conclude a method is ");
+        sb.append("genuinely new.\n\n");
+        sb.append("IMPORTANT — editing rules:\n");
+        sb.append("- Use the Edit tool to remove duplicate methods surgically. ");
+        sb.append("Remove only the duplicate method body and its declaration; ");
+        sb.append("preserve all other changes in the file.\n");
+        sb.append("- NEVER use git restore, git checkout --, git reset, or any ");
+        sb.append("other git command to revert a file. Those commands discard ALL ");
+        sb.append("changes in that file, not just the duplicate method, and will ");
+        sb.append("destroy work that must be preserved.\n\n");
+        sb.append("Do not rationalise keeping a duplicate because it is 'slightly ");
+        sb.append("different'. Slight differences are how duplicates hide. If the ");
+        sb.append("logical purpose is the same, merge them. The codebase already has ");
+        sb.append("too many near-identical copies of the same logic; every one you ");
+        sb.append("remove improves maintainability for every future session.");
+        return sb.toString();
     }
 }

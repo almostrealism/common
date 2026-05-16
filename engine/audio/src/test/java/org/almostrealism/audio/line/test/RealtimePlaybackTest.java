@@ -22,6 +22,7 @@ import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.line.BufferDefaults;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.SourceDataOutputLine;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -45,6 +46,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 * for actual hardware playback.
 	 */
 	@Test(timeout = 60000)
+	@TestProperties(audioDeviceRequired = true)
 	public void bufferedRealtimePlayback() throws Exception {
 		File testFile = getTestWavFile();
 
@@ -107,6 +109,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 * This verifies that getReadPosition() correctly reports hardware progress.
 	 */
 	@Test(timeout = 60000)
+	@TestProperties(audioDeviceRequired = true)
 	public void bufferedPositionTracking() throws Exception {
 		File testFile = getTestWavFile();
 
@@ -155,6 +158,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 * Tests lifecycle management with BufferedOutputScheduler.
 	 */
 	@Test(timeout = 60000)
+	@TestProperties(audioDeviceRequired = true)
 	public void bufferedLifecycleManagement() throws Exception {
 		File testFile = getTestWavFile();
 
@@ -202,6 +206,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 * Tests buffer size configuration with BufferedOutputScheduler.
 	 */
 	@Test(timeout = 60000)
+	@TestProperties(audioDeviceRequired = true)
 	public void bufferedWithCustomBufferSize() throws Exception {
 		File testFile = getTestWavFile();
 
@@ -245,6 +250,7 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 * 4. Running for extended duration to observe timing patterns
 	 */
 	@Test(timeout = 60000)
+	@TestProperties(audioDeviceRequired = true)
 	public void bufferedLoopedPlaybackWithVerboseLogging() throws Exception {
 		File testFile = getTestWavFile();
 

@@ -22,6 +22,7 @@ import org.almostrealism.audio.CellList;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.LineUtilities;
 import org.almostrealism.audio.line.SourceDataOutputLine;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -38,6 +39,7 @@ public class SourceDataOutputLineTest extends TestSuiteBase implements CellFeatu
 	 * This replaces the old direct write approach with proper Producer-based scheduling.
 	 */
 	@Test(timeout = 30000)
+	@TestProperties(audioDeviceRequired = true)
 	public void playWaveData() throws Exception {
 		File f = getTestWavFile();
 

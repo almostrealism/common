@@ -16,6 +16,7 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.io.SystemUtils;
 import org.junit.Assume;
 import org.junit.rules.MethodRule;
 import org.junit.runners.model.FrameworkMethod;
@@ -141,6 +142,9 @@ public class TestDepthRule implements MethodRule {
 			}
 			if (properties.knownIssue() && TestUtils.getSkipKnownIssues()) {
 				return skipStatement("Test covers a known issue and known-issue tests are disabled");
+			}
+			if (properties.audioDeviceRequired() && !SystemUtils.isMacOS()) {
+				return skipStatement("Test requires an audio output device; only macOS hosts are assumed to have one");
 			}
 		}
 
