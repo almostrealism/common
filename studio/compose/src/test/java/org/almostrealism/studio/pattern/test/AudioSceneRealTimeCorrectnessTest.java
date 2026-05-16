@@ -960,6 +960,13 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		// Setup
 		waveCell.setup().get().run();
 
+		// Compile push and tick once and reuse — calling .get() inside the loop
+		// recompiles the operation every iteration, which is catastrophically slow
+		// on backends with non-trivial kernel compilation cost (e.g. Metal).
+		Runnable push = waveCell.push(null).get();
+		Runnable tick = waveCell.tick().get();
+		PackedCollection valueBuffer = data.value();
+
 		// Tick and push through multiple "buffers" worth of frames
 		int ticksPerBuffer = bufferSize;
 		int numBuffers = 4;
@@ -971,15 +978,15 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 			nonZeroTicks[buf] = 0;
 			zeroTicks[buf] = 0;
 
-			for (int tick = 0; tick < ticksPerBuffer; tick++) {
+			for (int t = 0; t < ticksPerBuffer; t++) {
 				// Push triggers sample read into data.value()
-				waveCell.push(null).get().run();
+				push.run();
 
 				// Read the output value from the WaveCellData
-				double output = data.value().valueAt(0);
+				double output = valueBuffer.valueAt(0);
 
 				// Tick advances frame position
-				waveCell.tick().get().run();
+				tick.run();
 
 				if (Math.abs(output) > 0.0001) {
 					nonZeroTicks[buf]++;
