@@ -108,12 +108,16 @@ public class Exponent extends Expression<Double> {
 	/**
 	 * Creates and post-processes a power expression for the given base and exponent.
 	 *
+	 * <p>Non-FP operands are widened with {@link Expression#toDouble()} so the emitted
+	 * {@code pow()} call always has floating-point arguments — Metal's {@code pow()}
+	 * overloads are FP-only and an integer operand triggers a compile ambiguity.</p>
+	 *
 	 * @param base     the base expression
 	 * @param exponent the exponent expression
 	 * @return a simplified or constant-folded expression
 	 */
 	public static Expression<Double> of(Expression<Double> base, Expression<Double> exponent) {
-		return Expression.process(create(base, exponent));
+		return Expression.process(create(base.toDouble(), exponent.toDouble()));
 	}
 
 	/**

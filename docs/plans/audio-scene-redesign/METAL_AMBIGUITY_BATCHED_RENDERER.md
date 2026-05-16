@@ -446,3 +446,164 @@ over.
   printf in `MTL.cpp:137` already surfaces the Metal compiler error to
   stdout, and `MetalProgram.compile` already writes the MSL to disk on
   failure.
+
+---
+
+## Implementation update
+
+**Base commit:** `dca39859d` (HEAD of `feature/audio-scene-redesign` at
+the start of this iteration). The fix is staged in the working tree;
+the harness commits it after the agent exits.
+
+### Files changed
+
+- `base/code/src/main/java/io/almostrealism/expression/Floor.java`
+  — `Floor.of(...)` extended with integer-identity rule
+  (`floor(int|long) → operand`) and cast-fallback (`!isFP() →
+  toDouble()`). Generic return type widened to `<T> Expression<T>` so
+  the integer-identity branch can return the original int-typed
+  operand without unchecked conversion. `Floor.recreate(...)` routed
+  through `Floor.of(...)`.
+- `base/code/src/main/java/io/almostrealism/expression/Ceiling.java`
+  — new `Ceiling.of(...)` factory with literal folding +
+  integer-identity + cast-fallback (same pattern as Floor).
+  `Ceiling.recreate(...)` routed through `Ceiling.of(...)`.
+- `base/code/src/main/java/io/almostrealism/expression/Expression.java`
+  — `Expression.floor()` and `Expression.ceil()` simplified to
+  delegate to `Floor.of(this)` / `Ceiling.of(this)`. Removes the
+  previously-duplicated literal-folding / integer-identity inline
+  logic so all paths share one implementation.
+- `base/code/src/main/java/io/almostrealism/expression/Exp.java`
+  — `Exp.of(...)` extended with cast-fallback.
+- `base/code/src/main/java/io/almostrealism/expression/Logarithm.java`
+  — `Logarithm.of(...)` extended with cast-fallback.
+- `base/code/src/main/java/io/almostrealism/expression/Exponent.java`
+  — `Exponent.of(...)` widens both `base` and `exponent` with
+  `toDouble()` when they are not FP.
+- `base/code/src/main/java/io/almostrealism/expression/Sine.java`
+  — `Sine.of(...)` extended with cast-fallback.
+- `base/code/src/main/java/io/almostrealism/expression/Cosine.java`
+  — `Cosine.of(...)` extended with cast-fallback.
+- `base/code/src/main/java/io/almostrealism/expression/Tangent.java`
+  — `Tangent.of(...)` extended with cast-fallback (covers both `tan`
+  and `tanh` since they share the factory).
+- `base/code/src/main/java/io/almostrealism/expression/Atan2.java`
+  — `Atan2.of(...)` widens both `y` and `x` independently with
+  `toDouble()` when they are not FP.
+
+The audit confirmed there is no separate `Sqrt`, `Round`, or
+single-argument `Atan` expression class. `Absolute` was left alone:
+Metal's `abs(...)` has integer overloads, and the captured kernel does
+not exercise an ambiguous `abs` site. `Mod` was also left alone: it
+enforces operand FP-ness in its constructor and emits `fmod` only when
+both operands are FP.
+
+### Verification — `BatchedPatternRendererTest.testAcousticEquivalence`
+
+Platform: macOS aarch64 (Mac Studio M1 Ultra), JDK 24.0.1 Homebrew,
+JNI + Metal + OpenCL backends active.
+
+Test runner `b803d098`:
+
+```
+[INFO] Running org.almostrealism.audio.BatchedPatternRendererTest
+[19:14.24] BatchedPatternRendererTest: BatchedPatternRenderer acoustic equivalence:
+[19:14.24] BatchedPatternRendererTest:   Reference RMS: 0.247474
+[19:14.24] BatchedPatternRendererTest:   Difference RMS: 0.000000
+[19:14.24] BatchedPatternRendererTest:   Relative difference: 1.76e-07
+[INFO] Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.091 s
+```
+
+### Captured Metal source — the previously-failing kernel
+
+After the fix, the kernel `f_collectionAddComputation_17` (captured via
+`AR_INSTRUCTION_SET_MONITORING=always`,
+`AR_INSTRUCTION_SET_OUTPUT_DIR=results/metal-postfix-capture`) compiles
+cleanly and contains **zero** `floor(...)` calls. Full source from
+`engine/audio/results/metal-postfix-capture/mtl_instruction_set_0.c`:
+
+```c
+#include <metal_stdlib>
+using metal::min;
+using metal::max;
+using metal::fmod;
+using metal::floor;
+using metal::ceil;
+using metal::abs;
+using metal::pow;
+using metal::exp;
+using metal::log;
+using metal::sin;
+using metal::cos;
+using metal::tan;
+using metal::tanh;
+
+[[kernel]] void f_collectionAddComputation_17(device float *_17_v21 [[buffer(0)]], device float *_7_v3 [[buffer(1)]], device int *offsetArr [[buffer(2)]], device int *sizeArr [[buffer(3)]], uint global_id [[thread_position_in_grid]], uint global_count [[threads_per_grid]]) {
+int _17_v21Offset = (int) offsetArr[0];
+int _7_v3Offset = (int) offsetArr[1];
+int _17_v21Size = (int) sizeArr[0];
+int _7_v3Size = (int) sizeArr[1];
+_17_v21[((long)global_id) + _17_v21Offset] = _7_v3[((long)global_id) + _7_v3Offset];
+
+}
+```
+
+Compare this with the pre-fix source captured in Phase 1 §(A), which
+emitted the same kernel as a fused 5-operand expression containing
+four `floor(((long)global_id))` calls. The collapse to a single load
+is not just the removal of the `floor(...)` calls — it is the natural
+algebraic consequence of the integer-identity rule. With
+`floor((long)global_id) → (long)global_id`, the resample expression
+for ratio = 1.0 reduces:
+
+- `srcPos = (long)global_id`
+- `fPos = floor(srcPos) → srcPos = (long)global_id`
+- `frac = srcPos - fPos = 0`
+- `s0 = source[fPos % N]`
+- `s1 = source[(fPos + 1) % N]`
+- `s0 + frac * (s1 - s0) = s0 = source[(long)global_id % N]`
+  → further simplified to `source[(long)global_id]` because the
+  outer addition computation is just an index-aligned copy of the
+  source buffer.
+
+The integer-identity rule is therefore not merely a Metal
+compatibility shim — it is a true algebraic simplification that
+removes useless work from every backend.
+
+### Cross-check tests
+
+All on macOS aarch64, all on the same working-tree state:
+
+| Test class                                            | Module        | Run ID     | Result |
+| ----------------------------------------------------- | ------------- | ---------- | ------ |
+| `BatchedPatternRendererTest` (acoustic equivalence)   | engine/audio  | `b803d098` | 1/1 PASS |
+| `BatchedPatternRendererTest` (with capture monitoring)| engine/audio  | `4fd07892` | 1/1 PASS |
+| `HeapPatternRenderingTest` + `PatternFeaturesFastFailTest` | studio/music | `53fabd3d` | 2/2 PASS |
+| `ExpressionSimplificationTests` + `ExponentStrengthReductionTest` + `AbsoluteExpressionTest` | engine/utils | `057052ed` | 83/83 PASS |
+| `FundamentalMusicEmbeddingTest` (Phase-1 master test) | engine/ml     | `c4413fab` | 12/12 PASS |
+| `PatternRenderingFloorBenchmark` (sensible numbers)   | engine/audio  | `8f20d85a` | passes, benchmark prints expected stats |
+
+### Build-validator checks (skip_build=true)
+
+| Check          | Result | Notes                              |
+| -------------- | ------ | ---------------------------------- |
+| `checkstyle`   | PASS   | 0 violations                       |
+| `code_policy`  | PASS   | 0 violations                       |
+| `test_timeouts`| PASS   | 0 violations                       |
+| `duplicate_code`| PASS  | 0 violations                       |
+
+### Scope notes — what was NOT changed
+
+- `recreate(...)` paths that build `new Sine(...)`, `new Cosine(...)`,
+  `new Tangent(...)`, `new Logarithm(...)`, `new Atan2(...)` directly
+  still exist. The integer-identity / cast-fallback fix is in the
+  factory methods (`.of(...)`) only, matching the Phase 4 scope from
+  the original investigation. The simplifier never substitutes
+  Double-typed children with non-Double-typed children, so recreate is
+  not a realistic vector for the bug.
+- The algebraic simplifier rule that folds `x * 1.0 → x` is left
+  unchanged. The simplifier is correct; the fix is downstream at the
+  emission layer (per the original Phase 4 recommendation).
+- `BatchedPatternRenderer.buildResampleProducer` is unchanged. The
+  fix lives in the Expression API so any future caller of `floor(int)`
+  is also covered.

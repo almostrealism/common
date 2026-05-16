@@ -145,6 +145,38 @@ public class Ceiling extends Expression<Double> {
 			throw new UnsupportedOperationException();
 		}
 
-		return new Ceiling((Expression<Double>) children.get(0));
+		return Ceiling.of((Expression<Double>) children.get(0));
+	}
+
+	/**
+	 * Creates a ceiling expression for the given operand.
+	 *
+	 * <p>Applies the following reductions in order:</p>
+	 * <ol>
+	 *   <li>Constant folding: a numeric literal operand becomes a {@link DoubleConstant}
+	 *       holding the ceiled value.</li>
+	 *   <li>Integer-identity: when the operand's result type is {@link Integer} or
+	 *       {@link Long}, {@code ceil(n) == n} so the operand is returned unchanged.
+	 *       This eliminates the {@code ceil()} call from generated code and avoids
+	 *       backends (such as Metal) whose {@code ceil()} overloads are FP-only.</li>
+	 *   <li>Cast-fallback: a non-FP operand is widened with {@link Expression#toDouble()}
+	 *       so the emitted {@code ceil()} call always has a floating-point argument.</li>
+	 * </ol>
+	 *
+	 * @param in the expression whose ceiling is computed
+	 * @return a constant, the operand unchanged, or a new {@link Ceiling}
+	 */
+	public static <T> Expression<T> of(Expression in) {
+		OptionalDouble d = in.doubleValue();
+
+		if (d.isPresent()) {
+			return (Expression<T>) new DoubleConstant(Math.ceil(d.getAsDouble()));
+		}
+
+		if (in.getType() == Integer.class || in.getType() == Long.class) {
+			return (Expression<T>) in;
+		}
+
+		return (Expression<T>) new Ceiling(in.toDouble());
 	}
 }
