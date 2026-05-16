@@ -87,7 +87,12 @@ public class Exp extends Expression<Double> {
 	}
 
 	/**
-	 * Creates an exponential expression for the given operand, folding constants where possible.
+	 * Creates an exponential expression for the given operand.
+	 *
+	 * <p>Folds constants where possible. Non-FP operands are widened with
+	 * {@link Expression#toDouble()} so the emitted {@code exp()} call always
+	 * has a floating-point argument — Metal's {@code exp()} overloads are
+	 * FP-only and an integer operand triggers a compile ambiguity.</p>
 	 *
 	 * @param input the exponent operand
 	 * @param <T>   the result type (always {@link Double})
@@ -100,6 +105,6 @@ public class Exp extends Expression<Double> {
 			return (Expression<T>) new DoubleConstant(Math.exp(d.getAsDouble()));
 		}
 
-		return (Expression<T>) new Exp(input);
+		return (Expression<T>) new Exp(input.toDouble());
 	}
 }

@@ -106,6 +106,10 @@ public class Atan2 extends BinaryExpression<Double> {
 	/**
 	 * Factory method to create an Atan2 expression with constant folding.
 	 *
+	 * <p>Non-FP operands are widened with {@link Expression#toDouble()} so the emitted
+	 * {@code atan2()} call always has floating-point arguments — Metal's {@code atan2()}
+	 * overloads are FP-only and an integer operand triggers a compile ambiguity.</p>
+	 *
 	 * @param y the y-coordinate expression
 	 * @param x the x-coordinate expression
 	 * @return an Atan2 expression or a constant if both inputs are constants
@@ -118,6 +122,6 @@ public class Atan2 extends BinaryExpression<Double> {
 			return new DoubleConstant(Math.atan2(yVal.getAsDouble(), xVal.getAsDouble()));
 		}
 
-		return new Atan2(y, x);
+		return new Atan2(y.toDouble(), x.toDouble());
 	}
 }

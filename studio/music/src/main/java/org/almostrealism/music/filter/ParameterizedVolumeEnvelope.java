@@ -168,7 +168,6 @@ public class ParameterizedVolumeEnvelope extends ParameterizedEnvelopeAdapter {
 				}
 
 				sustain = sustain * adj;
-
 				if (sustain < 0.25) {
 					sustain = 0.25;
 				} else if (sustain > 1.0) {
@@ -185,11 +184,6 @@ public class ParameterizedVolumeEnvelope extends ParameterizedEnvelopeAdapter {
 					release = 0.7 * dv;
 				}
 
-//				log("Processing volume envelope with duration (" + dr.toDouble(0) +
-//						", attack: " + getAttack(dr.toDouble()) + ", decay: " + getDecay() +
-//						", sustain: " + sustain +
-//						", release: " + sustain +
-//						" | a:adj = " + al.toDouble(0) + ":" + adj + ")");
 				a.set(0, getAttack(dr.toDouble()));
 				d.set(0, getDecay());
 				s.set(0, sustain);

@@ -80,6 +80,10 @@ public class Logarithm extends Expression<Double> {
 	/**
 	 * Creates a natural logarithm expression, cancelling {@code log(exp(x))} to {@code x}.
 	 *
+	 * <p>Non-FP operands are widened with {@link Expression#toDouble()} so the emitted
+	 * {@code log()} call always has a floating-point argument — Metal's {@code log()}
+	 * overloads are FP-only and an integer operand triggers a compile ambiguity.</p>
+	 *
 	 * @param input the operand
 	 * @param <T>   the result type (always {@link Double})
 	 * @return the simplified expression or a new {@link Logarithm}
@@ -89,6 +93,6 @@ public class Logarithm extends Expression<Double> {
 			return (Expression<T>) input.getChildren().get(0);
 		}
 
-		return (Expression<T>) new Logarithm(input);
+		return (Expression<T>) new Logarithm(input.toDouble());
 	}
 }
