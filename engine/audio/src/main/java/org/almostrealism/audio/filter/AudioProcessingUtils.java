@@ -19,7 +19,6 @@ package org.almostrealism.audio.filter;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factor;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -140,58 +139,6 @@ public class AudioProcessingUtils {
 	 */
 	public static EnvelopeProcessor getFilterEnv() {
 		return filterEnv;
-	}
-
-	/**
-	 * Returns a Producer that applies an ADSR volume envelope to the given audio.
-	 *
-	 * <p>All inputs flow through as Producer values — no intermediate {@code evaluate()}
-	 * calls are made. The returned Producer can be composed into a larger batched chain.</p>
-	 *
-	 * @param audio    input audio signal
-	 * @param duration envelope total duration in seconds
-	 * @param attack   envelope attack time in seconds
-	 * @param decay    envelope decay time in seconds
-	 * @param sustain  envelope sustain level (0.0–1.0)
-	 * @param release  envelope release time in seconds
-	 * @return a Producer yielding the envelope-shaped audio
-	 */
-	public static Producer<PackedCollection> volumeEnv(
-			Producer<PackedCollection> audio,
-			Producer<PackedCollection> duration,
-			Producer<PackedCollection> attack,
-			Producer<PackedCollection> decay,
-			Producer<PackedCollection> sustain,
-			Producer<PackedCollection> release) {
-		EnvelopeFeatures o = EnvelopeFeatures.getInstance();
-		Factor<PackedCollection> factor = o.envelope(duration, attack, decay, sustain, release).get();
-		return o.sampling(OutputLine.sampleRate, MAX_SECONDS,
-				() -> factor.getResultant(audio));
-	}
-
-	/**
-	 * Returns a Producer that applies an ADSR filter (frequency) envelope to the given audio.
-	 *
-	 * <p>All inputs flow through as Producer values — no intermediate {@code evaluate()}
-	 * calls are made. The returned Producer can be composed into a larger batched chain.</p>
-	 *
-	 * @param audio    input audio signal
-	 * @param duration envelope total duration in seconds
-	 * @param attack   envelope attack time in seconds
-	 * @param decay    envelope decay time in seconds
-	 * @param sustain  envelope sustain level (0.0–1.0)
-	 * @param release  envelope release time in seconds
-	 * @return a Producer yielding the filtered audio
-	 */
-	public static Producer<PackedCollection> filterEnv(
-			Producer<PackedCollection> audio,
-			Producer<PackedCollection> duration,
-			Producer<PackedCollection> attack,
-			Producer<PackedCollection> decay,
-			Producer<PackedCollection> sustain,
-			Producer<PackedCollection> release) {
-		return ((MultiOrderFilterEnvelopeProcessor) filterEnv)
-				.apply(audio, duration, attack, decay, sustain, release);
 	}
 
 	/** Forces static initialization of all shared audio processing resources. */

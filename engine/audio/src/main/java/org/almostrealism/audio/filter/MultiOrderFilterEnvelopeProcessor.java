@@ -87,9 +87,6 @@ public class MultiOrderFilterEnvelopeProcessor implements EnvelopeProcessor, Des
 	/** Width of each histogram bin in frames. */
 	private static final int HISTOGRAM_BIN_WIDTH = (HISTOGRAM_MAX_FRAMES - HISTOGRAM_MIN_FRAMES) / HISTOGRAM_BINS;
 
-	/** The sample rate in Hz used for envelope and filter computation. */
-	private final int sampleRate;
-
 	/** Pre-allocated buffer for the time-varying cutoff frequency values computed by the envelope. */
 	private final PackedCollection cutoff;
 
@@ -132,7 +129,6 @@ public class MultiOrderFilterEnvelopeProcessor implements EnvelopeProcessor, Des
 	 *                    Determines the size of internal buffers.
 	 */
 	public MultiOrderFilterEnvelopeProcessor(int sampleRate, double maxSeconds) {
-		this.sampleRate = sampleRate;
 		int maxFrames = (int) (maxSeconds * sampleRate);
 
 		cutoff = new PackedCollection(maxFrames);
@@ -398,35 +394,6 @@ public class MultiOrderFilterEnvelopeProcessor implements EnvelopeProcessor, Des
 		}
 
 		histogramEnabled = true;
-	}
-
-	/**
-	 * Returns a Producer that applies the time-varying low-pass filter to the given audio.
-	 *
-	 * <p>The cutoff frequency follows an ADSR envelope driven by the supplied Producer scalars.
-	 * Unlike {@link #process(PackedCollection, PackedCollection)}, this method builds a pure
-	 * computation graph with no intermediate {@code evaluate()} calls — all inputs flow through
-	 * as Producer values and the result can be composed into a larger batched chain.</p>
-	 *
-	 * @param audio    input audio signal
-	 * @param duration envelope total duration in seconds
-	 * @param attack   envelope attack time in seconds
-	 * @param decay    envelope decay time in seconds
-	 * @param sustain  envelope sustain level (0.0–1.0)
-	 * @param release  envelope release time in seconds
-	 * @return a Producer yielding the filtered audio
-	 */
-	public Producer<PackedCollection> apply(
-			Producer<PackedCollection> audio,
-			Producer<PackedCollection> duration,
-			Producer<PackedCollection> attack,
-			Producer<PackedCollection> decay,
-			Producer<PackedCollection> sustain,
-			Producer<PackedCollection> release) {
-		EnvelopeSection env = envelope(duration, attack, decay, sustain, release);
-		Producer<PackedCollection> cutoffSignal = sampling(sampleRate,
-				() -> env.get().getResultant(c(filterPeak)));
-		return lowPass(audio, cutoffSignal, sampleRate, filterOrder);
 	}
 
 	/**
