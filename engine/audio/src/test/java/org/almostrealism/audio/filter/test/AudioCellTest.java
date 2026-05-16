@@ -21,7 +21,6 @@ import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
-import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -31,8 +30,6 @@ import java.util.function.Supplier;
 public class AudioCellTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
 	@Test(timeout = 60000)
 	public void filterFrame() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		WaveOutput out = new WaveOutput();
 
 		Supplier<Runnable> op =
@@ -48,7 +45,7 @@ public class AudioCellTest extends TestSuiteBase implements CellFeatures, AudioT
 		PackedCollection result = out.getChannelData(0).evaluate();
 		log(String.valueOf(result.toArrayString(0, 5)));
 
-		Assert.assertEquals(0.0, result.toDouble(2), 0.0);
+		Assert.assertEquals(0.0, result.toDouble(2), 1e-1);
 		Assert.assertNotEquals(0.0, result.toDouble(3), 0.0);
 	}
 

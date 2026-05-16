@@ -28,7 +28,6 @@ import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalar;
-import org.almostrealism.util.TestUtils;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -67,8 +66,6 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 
 	@Test(timeout = 60000)
 	public void computationSeparately() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		AdjustableDelayCell delay = adjustableDelay();
 		delay.setup().get().run();
 		OperationList ops = computation(delay);
@@ -99,8 +96,6 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 
 	@Test(timeout = 60000)
 	public void computationLoop() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		AdjustableDelayCell delay = adjustableDelay();
 		delay.setup().get().run();
 		OperationList ops = computation(delay);
@@ -123,8 +118,6 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 
 	@Test(timeout = 60000)
 	public void withAdjustableDelayCell() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		AdjustableDelayCell delay = adjustableDelay();
 		delay.setReceptor(loggingReceptor());
 
@@ -136,13 +129,10 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 		cell.setReceptor(delay);
 		delay.setReceptor(output.getWriter(0));
 
-		Runnable push = cell.push(c(0.0)).get();
-		Runnable tick = cell.tick().get();
-		IntStream.range(0, SineWaveCellTest.DURATION_FRAMES).forEach(i -> {
-			push.run();
-			tick.run();
-			if ((i + 1) % 1000 == 0) log("AdjustableDelayCellTest: " + (i + 1) + " iterations");
-		});
+		OperationList ops = new OperationList("SineWaveCell Push and Tick");
+		ops.add(cell.push(c(0.0)));
+		ops.add(cell.tick());
+		lp(ops, SineWaveCellTest.DURATION_FRAMES).get().run();
 
 		log("AdjustableDelayCellTest: Writing WAV...");
 		output.write().get().run();
