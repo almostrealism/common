@@ -8,11 +8,11 @@ import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.audio.filter.AudioProcessingUtils;
 import org.almostrealism.music.notes.NoteAudioContext;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.OperatorPoolExhaustedException;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.io.DistributionMetric;
 
 import java.util.List;
-import java.util.regex.Pattern;
 
 /**
  * Interface providing core pattern rendering functionality.
@@ -60,18 +60,6 @@ public interface PatternFeatures extends CodeFeatures {
 	 * attempt is wasted work and the warning stream drowns useful diagnostics.
 	 */
 	int MAX_CONSECUTIVE_NOTE_FAILURES = 5;
-
-	/**
-	 * Pattern matching exhaustion-class failure messages that should abort the
-	 * render immediately, without waiting for the consecutive-failure threshold.
-	 * Matches the {@code HardwareException("Could not obtain operator", ...)}
-	 * message thrown by {@code AcceleratedOperation.getRuntimeNativeOperator}
-	 * when the runtime native-lib template class pool is exhausted, and any
-	 * causal stack mention of {@code GeneratedOperationNNNN} which signals the
-	 * same condition surfaced through a different path.
-	 */
-	Pattern NOTE_EVAL_EXHAUSTION = Pattern.compile(
-			"Could not obtain operator|GeneratedOperation\\d+");
 
 	/**
 	 * Renders pattern elements to a destination buffer for a specific frame range.
@@ -260,8 +248,8 @@ public interface PatternFeatures extends CodeFeatures {
 	/**
 	 * Reacts to a single failed note evaluation. Logs the failure as a warning,
 	 * and escalates to {@link IllegalStateException} when the failure is either
-	 * (a) an exhaustion-class condition signaled in any layer of the cause chain
-	 * (see {@link #NOTE_EVAL_EXHAUSTION}), or (b) the
+	 * (a) an exhaustion-class condition — any {@link OperatorPoolExhaustedException}
+	 * in the cause chain — or (b) the
 	 * {@value #MAX_CONSECUTIVE_NOTE_FAILURES}<sup>th</sup> consecutive failure
 	 * since the most recent successful evaluation. Either condition indicates
 	 * that further attempts are guaranteed to fail and the render must stop
@@ -297,16 +285,15 @@ public interface PatternFeatures extends CodeFeatures {
 
 	/**
 	 * Walks the cause chain of the given throwable and returns {@code true} if
-	 * any link reports a message matching {@link #NOTE_EVAL_EXHAUSTION}.
+	 * any link is an {@link OperatorPoolExhaustedException}.
 	 *
 	 * @param t the throwable to inspect
-	 * @return {@code true} when the chain reports operator-pool exhaustion
+	 * @return {@code true} when the chain contains an operator-pool exhaustion cause
 	 */
 	private static boolean isExhaustionFailure(Throwable t) {
 		Throwable cursor = t;
 		while (cursor != null) {
-			String msg = cursor.getMessage();
-			if (msg != null && NOTE_EVAL_EXHAUSTION.matcher(msg).find()) {
+			if (cursor instanceof OperatorPoolExhaustedException) {
 				return true;
 			}
 			cursor = cursor.getCause();

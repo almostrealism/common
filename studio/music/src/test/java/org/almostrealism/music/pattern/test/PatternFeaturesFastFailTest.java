@@ -17,7 +17,7 @@
 package org.almostrealism.music.pattern.test;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.OperatorPoolExhaustedException;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.notes.NoteAudioContext;
 import org.almostrealism.music.pattern.PatternElement;
@@ -36,8 +36,8 @@ import java.util.List;
  * timing out. Two conditions are exercised:
  *
  * <ol>
- *   <li>Exhaustion-class failure (the {@code Could not obtain operator}
- *       message thrown when the runtime native-lib template class pool is
+ *   <li>Exhaustion-class failure (an {@link OperatorPoolExhaustedException}
+ *       thrown when the runtime native-lib template class pool is
  *       exhausted) aborts on the first occurrence.</li>
  *   <li>Generic per-note failures accumulate and abort after the
  *       {@link PatternFeatures#MAX_CONSECUTIVE_NOTE_FAILURES} threshold.</li>
@@ -80,7 +80,7 @@ public class PatternFeaturesFastFailTest extends TestSuiteBase implements Patter
 	}
 
 	/**
-	 * The first {@code Could not obtain operator} failure aborts the render
+	 * The first {@link OperatorPoolExhaustedException} failure aborts the render
 	 * immediately. Subsequent failing notes are not evaluated.
 	 */
 	@Test(timeout = 30_000)
@@ -90,7 +90,7 @@ public class PatternFeaturesFastFailTest extends TestSuiteBase implements Patter
 		List<PatternElement> elements = new ArrayList<>();
 		for (int i = 0; i < 100; i++) {
 			elements.add(failingElement(i * 64,
-					new HardwareException("Could not obtain operator",
+					new OperatorPoolExhaustedException(
 							new RuntimeException("synthetic-cause"))));
 		}
 

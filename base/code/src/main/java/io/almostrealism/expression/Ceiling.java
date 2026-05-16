@@ -155,10 +155,12 @@ public class Ceiling extends Expression<Double> {
 	 * <ol>
 	 *   <li>Constant folding: a numeric literal operand becomes a {@link DoubleConstant}
 	 *       holding the ceiled value.</li>
-	 *   <li>Integer-identity: when the operand's result type is {@link Integer} or
-	 *       {@link Long}, {@code ceil(n) == n} so the operand is returned unchanged.
+	 *   <li>Integer-identity: when the operand is not floating-point ({@code !in.isFP()}),
+	 *       {@code ceil(n) == n} so the operand is returned unchanged.
 	 *       This eliminates the {@code ceil()} call from generated code and avoids
-	 *       backends (such as Metal) whose {@code ceil()} overloads are FP-only.</li>
+	 *       backends (such as Metal) whose {@code ceil()} overloads are FP-only.
+	 *       Boolean operands are also covered — {@code ceil(b) == b} for any boolean
+	 *       value, even though this case is unlikely in practice.</li>
 	 *   <li>Cast-fallback: a non-FP operand is widened with {@link Expression#toDouble()}
 	 *       so the emitted {@code ceil()} call always has a floating-point argument.</li>
 	 * </ol>
@@ -173,7 +175,7 @@ public class Ceiling extends Expression<Double> {
 			return (Expression<T>) new DoubleConstant(Math.ceil(d.getAsDouble()));
 		}
 
-		if (in.getType() == Integer.class || in.getType() == Long.class) {
+		if (!in.isFP()) {
 			return (Expression<T>) in;
 		}
 

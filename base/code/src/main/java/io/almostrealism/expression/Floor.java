@@ -94,10 +94,12 @@ public class Floor extends Expression<Double> {
 	 * <ol>
 	 *   <li>Constant folding: a numeric literal operand becomes a {@link DoubleConstant}
 	 *       holding the floored value.</li>
-	 *   <li>Integer-identity: when the operand's result type is {@link Integer} or
-	 *       {@link Long}, {@code floor(n) == n} so the operand is returned unchanged.
+	 *   <li>Integer-identity: when the operand is not floating-point ({@code !in.isFP()}),
+	 *       {@code floor(n) == n} so the operand is returned unchanged.
 	 *       This eliminates the {@code floor()} call from generated code and avoids
-	 *       backends (such as Metal) whose {@code floor()} overloads are FP-only.</li>
+	 *       backends (such as Metal) whose {@code floor()} overloads are FP-only.
+	 *       Boolean operands are also covered — {@code floor(b) == b} for any boolean
+	 *       value, even though this case is unlikely in practice.</li>
 	 *   <li>Cast-fallback: a non-FP operand is widened with {@link Expression#toDouble()}
 	 *       so the emitted {@code floor()} call always has a floating-point argument.</li>
 	 * </ol>
@@ -112,7 +114,7 @@ public class Floor extends Expression<Double> {
 			return (Expression<T>) new DoubleConstant(Math.floor(d.getAsDouble()));
 		}
 
-		if (in.getType() == Integer.class || in.getType() == Long.class) {
+		if (!in.isFP()) {
 			return (Expression<T>) in;
 		}
 
