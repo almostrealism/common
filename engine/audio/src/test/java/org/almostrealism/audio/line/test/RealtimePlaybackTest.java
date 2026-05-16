@@ -23,7 +23,6 @@ import org.almostrealism.audio.line.BufferDefaults;
 import org.almostrealism.audio.line.BufferedOutputScheduler;
 import org.almostrealism.audio.line.SourceDataOutputLine;
 import org.almostrealism.util.TestSuiteBase;
-import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -47,8 +46,6 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 */
 	@Test(timeout = 60000)
 	public void bufferedRealtimePlayback() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File testFile = getTestWavFile();
 
 		// Create audio format: 44100 Hz, 16-bit, stereo, signed PCM, little-endian
@@ -111,8 +108,6 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 */
 	@Test(timeout = 60000)
 	public void bufferedPositionTracking() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File testFile = getTestWavFile();
 
 		AudioFormat format = new AudioFormat(44100, 16, 2, true, false);
@@ -161,8 +156,6 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 */
 	@Test(timeout = 60000)
 	public void bufferedLifecycleManagement() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File testFile = getTestWavFile();
 
 		AudioFormat format = new AudioFormat(44100, 16, 2, true, false);
@@ -191,12 +184,12 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 		// Stop scheduler
 		scheduler.stop();
 
-		// Line should still be active (scheduler stops, but line doesn't auto-stop)
-		Assert.assertTrue("Line should still be active", outputLine.isActive());
+		// Scheduler should not auto-close the line: it must still be open.
+		Assert.assertTrue("Line should still be open after scheduler stops", outputLine.isOpen());
 
-		// Manually stop the line
+		// Manually stop the line — this only halts I/O, the line stays open.
 		outputLine.stop();
-		Assert.assertFalse("Line should not be active after stop", outputLine.isActive());
+		Assert.assertTrue("Line should still be open after stop", outputLine.isOpen());
 
 		// Destroy should clean up everything
 		outputLine.destroy();
@@ -210,8 +203,6 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 */
 	@Test(timeout = 60000)
 	public void bufferedWithCustomBufferSize() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File testFile = getTestWavFile();
 
 		AudioFormat format = new AudioFormat(44100, 16, 2, true, false);
@@ -255,8 +246,6 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 	 */
 	@Test(timeout = 60000)
 	public void bufferedLoopedPlaybackWithVerboseLogging() throws Exception {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		File testFile = getTestWavFile();
 
 		// Enable verbose logging to monitor scheduler behavior

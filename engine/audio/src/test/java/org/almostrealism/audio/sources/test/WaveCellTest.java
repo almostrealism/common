@@ -34,7 +34,6 @@ import org.almostrealism.time.TemporalList;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
-import org.almostrealism.util.TestUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -69,8 +68,6 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 	@TestDepth(1)
 	@TestProperties(longRunning = true)
 	public void endless() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		AtomicInteger total = new AtomicInteger();
 
 		IntStream.range(0, 100).forEach(x -> {
@@ -125,8 +122,6 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 
 	@Test(timeout = 60000)
 	public void sequence() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		int count = 32;
 
 		CellList cells = silence().and(w(0, c(bpm(128).l(0.5)), c(bpm(128).l(1)),
