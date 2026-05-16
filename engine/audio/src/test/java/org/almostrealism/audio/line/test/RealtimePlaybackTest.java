@@ -184,12 +184,12 @@ public class RealtimePlaybackTest extends TestSuiteBase implements CellFeatures,
 		// Stop scheduler
 		scheduler.stop();
 
-		// Line should still be active (scheduler stops, but line doesn't auto-stop)
-		Assert.assertTrue("Line should still be active", outputLine.isActive());
+		// Scheduler should not auto-close the line: it must still be open.
+		Assert.assertTrue("Line should still be open after scheduler stops", outputLine.isOpen());
 
-		// Manually stop the line
+		// Manually stop the line — this only halts I/O, the line stays open.
 		outputLine.stop();
-		Assert.assertFalse("Line should not be active after stop", outputLine.isActive());
+		Assert.assertTrue("Line should still be open after stop", outputLine.isOpen());
 
 		// Destroy should clean up everything
 		outputLine.destroy();
