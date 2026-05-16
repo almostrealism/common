@@ -19,8 +19,8 @@ package io.flowtree.slack;
 import fi.iki.elonen.NanoHTTPD;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.Server;
-import io.flowtree.jobs.ClaudeCodeJob;
-import io.flowtree.jobs.ClaudeCodeJobEvent;
+import io.flowtree.jobs.CodingAgentJob;
+import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
 import io.flowtree.msg.NodeProxy;
@@ -1028,7 +1028,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         int postCompletionTimeoutSeconds = extractJsonIntField(body, "postCompletionTimeoutSeconds");
 
         // Create job factory with workstream defaults, overridden by request values
-        ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompt);
+        CodingAgentJob.Factory factory = new CodingAgentJob.Factory(prompt);
         if (jobDescription != null && !jobDescription.isEmpty()) {
             factory.setDescription(jobDescription);
         }
@@ -1139,7 +1139,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setAutoCreatePr(true);
             autoCreatePrJobs.put(factory.getTaskId(), new AutoPrContext(
                 effectiveRepoUrl, effectiveBase, workstream.getGithubOrg(),
-                jobDescription != null ? jobDescription : ClaudeCodeJob.summarizePrompt(prompt)));
+                jobDescription != null ? jobDescription : CodingAgentJob.summarizePrompt(prompt)));
         }
 
         // Build workstream URL for status reporting
@@ -1170,7 +1170,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         // Notify that the job has been submitted (not yet executing)
         String displaySummary = jobDescription != null && !jobDescription.isEmpty()
-            ? jobDescription : ClaudeCodeJob.summarizePrompt(prompt);
+            ? jobDescription : CodingAgentJob.summarizePrompt(prompt);
         JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), displaySummary);
         startEvent.withGitInfo(effectiveBranch, null, null, null, false);
         notifiers.notifierFor(workstream.getWorkstreamId()).onJobSubmitted(workstream.getWorkstreamId(), startEvent);
@@ -1225,9 +1225,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (isClaudeCodeEvent) {
             if (eventStatus == JobCompletionEvent.Status.FAILED) {
                 String errorMessage = extractJsonField(body, "errorMessage");
-                event = ClaudeCodeJobEvent.failed(jobId, description, errorMessage, null);
+                event = CodingAgentJobEvent.failed(jobId, description, errorMessage, null);
             } else {
-                event = new ClaudeCodeJobEvent(jobId, eventStatus, description);
+                event = new CodingAgentJobEvent(jobId, eventStatus, description);
             }
         } else {
             if (eventStatus == JobCompletionEvent.Status.FAILED) {
@@ -1252,8 +1252,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             event.withPullRequestUrl(pullRequestUrl);
         }
 
-        if (event instanceof ClaudeCodeJobEvent) {
-            ClaudeCodeJobEvent ccEvent = (ClaudeCodeJobEvent) event;
+        if (event instanceof CodingAgentJobEvent) {
+            CodingAgentJobEvent ccEvent = (CodingAgentJobEvent) event;
             ccEvent.withClaudeCodeInfo(prompt, sessionId, exitCode);
             long durationMs = extractJsonLongField(body, "durationMs");
             long durationApiMs = extractJsonLongField(body, "durationApiMs");

@@ -41,6 +41,20 @@ public final class JsonFieldExtractor {
 	private JsonFieldExtractor() { }
 
 	/**
+	 * Returns the text value of {@code field} on {@code node}, or {@code null}
+	 * when the field is absent or not a textual node.
+	 *
+	 * @param node  the parent JSON object node
+	 * @param field the field name to look up
+	 * @return the string value, or {@code null}
+	 */
+	public static String getTextOrNull(JsonNode node, String field) {
+		if (node == null) return null;
+		JsonNode child = node.get(field);
+		return (child != null && child.isTextual()) ? child.asText() : null;
+	}
+
+	/**
 	 * Extracts a string field from a JSON string.
 	 * Handles JSON escape sequences including Unicode escapes.
 	 *

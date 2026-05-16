@@ -18,7 +18,7 @@ package io.flowtree.jobs;
 
 /**
  * Enforcement rule that prevents {@code <dependency>} changes in Maven
- * {@code pom.xml} files. Active when {@link ClaudeCodeJob#isEnforceMavenDependencies()}
+ * {@code pom.xml} files. Active when {@link CodingAgentJob#isEnforceMavenDependencies()}
  * is {@code true}.
  *
  * <p>Only {@code <dependency>} element additions, removals, or modifications
@@ -26,7 +26,7 @@ package io.flowtree.jobs;
  * properties, etc.) are not affected.</p>
  *
  * @author Michael Murray
- * @see ClaudeCodeJob#hasMavenDependencyChanges()
+ * @see CodingAgentJob#hasMavenDependencyChanges()
  * @see EnforcementRule
  */
 class MavenDependencyProtectionRule implements EnforcementRule {
@@ -35,12 +35,12 @@ class MavenDependencyProtectionRule implements EnforcementRule {
     public String getName() { return "no-maven-dependency-changes"; }
 
     @Override
-    public boolean isViolated(ClaudeCodeJob job) {
+    public boolean isViolated(CodingAgentJob job) {
         return job.hasMavenDependencyChanges();
     }
 
     @Override
-    public String buildCorrectionPrompt(ClaudeCodeJob job) {
+    public String buildCorrectionPrompt(CodingAgentJob job) {
         String baseBranch = job.getBaseBranch() != null ? job.getBaseBranch() : "master";
         StringBuilder sb = new StringBuilder();
         sb.append("MAVEN DEPENDENCY PROTECTION RULE VIOLATION\n\n");

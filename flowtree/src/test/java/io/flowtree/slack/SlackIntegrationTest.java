@@ -18,8 +18,8 @@ package io.flowtree.slack;
 
 import fi.iki.elonen.NanoHTTPD;
 import io.flowtree.JsonFieldExtractor;
-import io.flowtree.jobs.ClaudeCodeJob;
-import io.flowtree.jobs.ClaudeCodeJobEvent;
+import io.flowtree.jobs.CodingAgentJob;
+import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
 import org.almostrealism.util.TestSuiteBase;
@@ -158,7 +158,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         messages.clear();
 
         // Test failure notification
-        ClaudeCodeJobEvent failEvent = ClaudeCodeJobEvent.failed(
+        CodingAgentJobEvent failEvent = CodingAgentJobEvent.failed(
             "job-456", "Build the thing",
             "Compilation failed", new RuntimeException("Syntax error")
         );
@@ -196,8 +196,8 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals(1, success.getStagedFiles().size());
         assertTrue(success.isPushed());
 
-        // Claude-specific fields require ClaudeCodeJobEvent
-        ClaudeCodeJobEvent ccEvent = ClaudeCodeJobEvent.success("j4", "Done");
+        // Claude-specific fields require CodingAgentJobEvent
+        CodingAgentJobEvent ccEvent = CodingAgentJobEvent.success("j4", "Done");
         ccEvent.withClaudeCodeInfo("Fix bug", "sess-1", 0);
         assertEquals("Fix bug", ccEvent.getPrompt());
         assertEquals("sess-1", ccEvent.getSessionId());
@@ -217,7 +217,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         controller.simulateMessage("C_UNKNOWN", "<@BOT> Hello");
         assertEquals(0, receivedMessages.size());
 
-        // Note: Full simulation test would require mocking the ClaudeCodeClient
+        // Note: Full simulation test would require mocking the CodingAgentClient
         // which connects to actual agents. This tests the basic plumbing.
     }
 
@@ -446,13 +446,13 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
     @Test(timeout = 10000)
     public void testFactoryWorkstreamUrlConfiguration() {
-        ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory("Test prompt");
+        CodingAgentJob.Factory factory = new CodingAgentJob.Factory("Test prompt");
         factory.setWorkstreamUrl("http://localhost:7780/api/workstreams/ws1/jobs/j1");
 
         assertEquals("http://localhost:7780/api/workstreams/ws1/jobs/j1", factory.getWorkstreamUrl());
 
         // Verify propagation to created job
-        ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+        CodingAgentJob job = (CodingAgentJob) factory.nextJob();
         assertNotNull(job);
         assertEquals("http://localhost:7780/api/workstreams/ws1/jobs/j1", job.getWorkstreamUrl());
     }

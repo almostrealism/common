@@ -57,14 +57,14 @@
  *   <dd>Immutable result of a staging evaluation: staged files and skipped
  *       files with reasons.</dd>
  *
- *   <dt>{@link io.flowtree.jobs.ClaudeCodeJob}</dt>
+ *   <dt>{@link io.flowtree.jobs.CodingAgentJob}</dt>
  *   <dd>Runs a Claude Code agent session inside a git-managed workspace,
  *       with optional enforcement rules (enforce-changes, deduplication,
  *       Maven dependency protection) that trigger correction sessions when
- *       violated. Extend or configure via {@link io.flowtree.jobs.ClaudeCodeJobFactory}.</dd>
+ *       violated. Extend or configure via {@link io.flowtree.jobs.CodingAgentJobFactory}.</dd>
  *
  *   <dt>{@link io.flowtree.jobs.EnforcementRule}</dt>
- *   <dd>Interface for post-session checks evaluated by {@link io.flowtree.jobs.ClaudeCodeJob}.
+ *   <dd>Interface for post-session checks evaluated by {@link io.flowtree.jobs.CodingAgentJob}.
  *       Implement this to add custom rules; built-in rules (enforce-changes,
  *       deduplication, Maven dependency protection) are activated by flags on
  *       the job or factory.</dd>

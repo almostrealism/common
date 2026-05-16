@@ -19,10 +19,10 @@ package io.flowtree.jobs;
 import org.almostrealism.io.JobOutput;
 
 /**
- * Output record produced by a completed {@link ClaudeCodeJob}.  Carries the
+ * Output record produced by a completed {@link CodingAgentJob}.  Carries the
  * prompt, the Claude Code session ID, and the final process exit code.
  */
-public class ClaudeCodeJobOutput extends JobOutput {
+public class CodingAgentJobOutput extends JobOutput {
     /** The prompt that was submitted to Claude Code for this job. */
     private final String prompt;
     /** The session identifier assigned by Claude Code. */
@@ -31,7 +31,7 @@ public class ClaudeCodeJobOutput extends JobOutput {
     private final int exitCode;
 
     /**
-     * Constructs a new {@link ClaudeCodeJobOutput}.
+     * Constructs a new {@link CodingAgentJobOutput}.
      *
      * @param taskId     the task identifier
      * @param prompt     the prompt submitted to Claude Code
@@ -39,7 +39,7 @@ public class ClaudeCodeJobOutput extends JobOutput {
      * @param sessionId  the Claude Code session identifier
      * @param exitCode   the process exit code
      */
-    public ClaudeCodeJobOutput(String taskId, String prompt, String output,
+    public CodingAgentJobOutput(String taskId, String prompt, String output,
                                String sessionId, int exitCode) {
         super(taskId, "", "", output);
         this.prompt = prompt;
@@ -58,7 +58,7 @@ public class ClaudeCodeJobOutput extends JobOutput {
 
     @Override
     public String toString() {
-        return "ClaudeCodeJobOutput{taskId=" + getTaskId() + ", exitCode=" + exitCode
+        return "CodingAgentJobOutput{taskId=" + getTaskId() + ", exitCode=" + exitCode
                 + ", sessionId=" + sessionId + "}";
     }
 }

@@ -29,7 +29,7 @@ import java.util.List;
  * @author Michael Murray
  * @see JobCompletionEvent
  */
-public class ClaudeCodeJobEvent extends JobCompletionEvent {
+public class CodingAgentJobEvent extends JobCompletionEvent {
 
     /** The prompt that was submitted to Claude Code for this job. */
     private String prompt;
@@ -64,13 +64,20 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
     private String commitMessageSource;
 
     /**
+     * Name of the {@link io.flowtree.jobs.agent.AgentRunner} that ran this
+     * job's sessions. {@code null} for events emitted before the pluggable
+     * agent refactor.
+     */
+    private String runnerName;
+
+    /**
      * Creates a new Claude Code job completion event.
      *
      * @param jobId       the job identifier
      * @param status      the completion status
      * @param description human-readable description of the job
      */
-    public ClaudeCodeJobEvent(String jobId, Status status, String description) {
+    public CodingAgentJobEvent(String jobId, Status status, String description) {
         super(jobId, status, description);
     }
 
@@ -81,8 +88,8 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      * @param description human-readable description of the job
      * @return a new event with {@link Status#SUCCESS} status
      */
-    public static ClaudeCodeJobEvent success(String jobId, String description) {
-        return new ClaudeCodeJobEvent(jobId, Status.SUCCESS, description);
+    public static CodingAgentJobEvent success(String jobId, String description) {
+        return new CodingAgentJobEvent(jobId, Status.SUCCESS, description);
     }
 
     /**
@@ -94,9 +101,9 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      * @param exception    the exception that caused the failure, or null
      * @return a new event with {@link Status#FAILED} status and error details
      */
-    public static ClaudeCodeJobEvent failed(String jobId, String description,
+    public static CodingAgentJobEvent failed(String jobId, String description,
                                             String errorMessage, Throwable exception) {
-        ClaudeCodeJobEvent event = new ClaudeCodeJobEvent(jobId, Status.FAILED, description);
+        CodingAgentJobEvent event = new CodingAgentJobEvent(jobId, Status.FAILED, description);
         event.setErrorMessage(errorMessage);
         event.setException(exception);
         return event;
@@ -113,9 +120,9 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      * @param errorMessage diagnostic detail describing what was abandoned
      * @return a new event with {@link Status#DEGRADED} status and detail
      */
-    public static ClaudeCodeJobEvent degraded(String jobId, String description,
+    public static CodingAgentJobEvent degraded(String jobId, String description,
                                               String errorMessage) {
-        ClaudeCodeJobEvent event = new ClaudeCodeJobEvent(jobId, Status.DEGRADED, description);
+        CodingAgentJobEvent event = new CodingAgentJobEvent(jobId, Status.DEGRADED, description);
         event.setErrorMessage(errorMessage);
         return event;
     }
@@ -130,7 +137,7 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      * @param exitCode  the process exit code from Claude Code
      * @return this event for chaining
      */
-    public ClaudeCodeJobEvent withClaudeCodeInfo(String prompt, String sessionId, int exitCode) {
+    public CodingAgentJobEvent withClaudeCodeInfo(String prompt, String sessionId, int exitCode) {
         this.prompt = prompt;
         this.sessionId = sessionId;
         this.exitCode = exitCode;
@@ -146,7 +153,7 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      * @param numTurns      number of agentic turns
      * @return this event for chaining
      */
-    public ClaudeCodeJobEvent withTimingInfo(long durationMs, long durationApiMs,
+    public CodingAgentJobEvent withTimingInfo(long durationMs, long durationApiMs,
                                              double costUsd, int numTurns) {
         this.durationMs = durationMs;
         this.durationApiMs = durationApiMs;
@@ -164,7 +171,7 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      * @param deniedToolNames   names of tools that were denied, or null
      * @return this event for chaining
      */
-    public ClaudeCodeJobEvent withSessionDetails(String subtype, boolean sessionIsError,
+    public CodingAgentJobEvent withSessionDetails(String subtype, boolean sessionIsError,
                                                  int permissionDenials,
                                                  List<String> deniedToolNames) {
         this.subtype = subtype;
@@ -296,7 +303,7 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
      *                            or {@code "commit_rule_recovered"}
      * @return this event for chaining
      */
-    public ClaudeCodeJobEvent withCommitMessageSource(String commitMessageSource) {
+    public CodingAgentJobEvent withCommitMessageSource(String commitMessageSource) {
         this.commitMessageSource = commitMessageSource;
         return this;
     }
@@ -309,5 +316,28 @@ public class ClaudeCodeJobEvent extends JobCompletionEvent {
     @Override
     public String getCommitMessageSource() {
         return commitMessageSource;
+    }
+
+    /**
+     * Sets the name of the runner that produced this event.
+     *
+     * @param runnerName the runner identifier (e.g.
+     *                   {@link io.flowtree.jobs.agent.AgentRunnerRegistry#CLAUDE})
+     * @return this event for chaining
+     */
+    public CodingAgentJobEvent withRunnerName(String runnerName) {
+        this.runnerName = runnerName;
+        return this;
+    }
+
+    /**
+     * Returns the name of the runner that produced this event, or
+     * {@code null} if not populated.
+     *
+     * @return the runner identifier
+     */
+    @Override
+    public String getRunnerName() {
+        return runnerName;
     }
 }

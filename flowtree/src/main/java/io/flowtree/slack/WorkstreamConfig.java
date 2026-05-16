@@ -20,7 +20,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import io.flowtree.jobs.ClaudeCodeJob;
+import io.flowtree.jobs.CodingAgentJob;
 
 import java.io.File;
 import java.io.IOException;
@@ -790,9 +790,9 @@ public class WorkstreamConfig {
 
     /**
      * Clears any workstream entry fields whose values fail validation
-     * against the canonical lists in {@link ClaudeCodeJob}.  Currently
-     * checks {@code model} against {@link ClaudeCodeJob#VALID_MODELS}
-     * and {@code effort} against {@link ClaudeCodeJob#VALID_EFFORT_LEVELS};
+     * against the canonical lists in {@link CodingAgentJob}.  Currently
+     * checks {@code model} against {@link CodingAgentJob#VALID_MODELS}
+     * and {@code effort} against {@link CodingAgentJob#VALID_EFFORT_LEVELS};
      * invalid values are reset to {@code null} so the runtime falls back
      * to the CLI default rather than aborting startup with an
      * {@link IllegalArgumentException} from {@link Workstream#setModel}
@@ -808,18 +808,18 @@ public class WorkstreamConfig {
                     ? entry.getWorkstreamId() : entry.getChannelName();
             String model = entry.getModel();
             if (model != null && !model.isEmpty()
-                    && !ClaudeCodeJob.VALID_MODELS.contains(model)) {
+                    && !CodingAgentJob.VALID_MODELS.contains(model)) {
                 warnings.add("Workstream '" + entryId + "' has invalid model '"
                         + model + "'; clearing (must be one of "
-                        + ClaudeCodeJob.VALID_MODELS + ")");
+                        + CodingAgentJob.VALID_MODELS + ")");
                 entry.setModel(null);
             }
             String effort = entry.getEffort();
             if (effort != null && !effort.isEmpty()
-                    && !ClaudeCodeJob.VALID_EFFORT_LEVELS.contains(effort)) {
+                    && !CodingAgentJob.VALID_EFFORT_LEVELS.contains(effort)) {
                 warnings.add("Workstream '" + entryId + "' has invalid effort '"
                         + effort + "'; clearing (must be one of "
-                        + ClaudeCodeJob.VALID_EFFORT_LEVELS + ")");
+                        + CodingAgentJob.VALID_EFFORT_LEVELS + ")");
                 entry.setEffort(null);
             }
         }

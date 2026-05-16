@@ -34,7 +34,7 @@ import java.util.concurrent.TimeUnit;
  * This is NOT a sandbox boundary; it is equivalent to any other instruction
  * the submitter provides.</p>
  *
- * <p>Active only when {@link ClaudeCodeJob#getPostCompletionCommand()} is
+ * <p>Active only when {@link CodingAgentJob#getPostCompletionCommand()} is
  * non-empty. Disabled by default.</p>
  *
  * <h2>Examples</h2>
@@ -50,8 +50,8 @@ import java.util.concurrent.TimeUnit;
  * </pre>
  *
  * @author Michael Murray
- * @see ClaudeCodeJob#getPostCompletionCommand()
- * @see ClaudeCodeJob#setPostCompletionCommand(String)
+ * @see CodingAgentJob#getPostCompletionCommand()
+ * @see CodingAgentJob#setPostCompletionCommand(String)
  * @see EnforcementRule
  */
 class PostCompletionCommandRule implements EnforcementRule {
@@ -119,7 +119,7 @@ class PostCompletionCommandRule implements EnforcementRule {
      * @return {@code true} if the command failed or timed out
      */
     @Override
-    public boolean isViolated(ClaudeCodeJob job) {
+    public boolean isViolated(CodingAgentJob job) {
         if (!cacheValid) {
             runCommand(job);
         }
@@ -133,7 +133,7 @@ class PostCompletionCommandRule implements EnforcementRule {
      * @param job the job after the correction session completed
      */
     @Override
-    public void onCorrectionAttempted(ClaudeCodeJob job) {
+    public void onCorrectionAttempted(CodingAgentJob job) {
         cacheValid = false;
     }
 
@@ -149,7 +149,7 @@ class PostCompletionCommandRule implements EnforcementRule {
      * @return the correction prompt
      */
     @Override
-    public String buildCorrectionPrompt(ClaudeCodeJob job) {
+    public String buildCorrectionPrompt(CodingAgentJob job) {
         StringBuilder sb = new StringBuilder();
 
         if (lastTimedOut) {
@@ -220,7 +220,7 @@ class PostCompletionCommandRule implements EnforcementRule {
      *
      * @param job the job providing the fallback working directory
      */
-    private void runCommand(ClaudeCodeJob job) {
+    private void runCommand(CodingAgentJob job) {
         String effectiveWorkingDir = workingDir != null ? workingDir : job.getWorkingDirectory();
         File outputFile = null;
         try {

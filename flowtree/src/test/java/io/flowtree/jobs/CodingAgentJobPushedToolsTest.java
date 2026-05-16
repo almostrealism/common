@@ -30,18 +30,18 @@ import static org.junit.Assert.assertTrue;
  * controller-dispatched job actually takes:
  *
  * <ol>
- *   <li>build a {@link ClaudeCodeJobFactory} and call
- *       {@link ClaudeCodeJobFactory#setPushedToolsConfig} with the same
+ *   <li>build a {@link CodingAgentJobFactory} and call
+ *       {@link CodingAgentJobFactory#setPushedToolsConfig} with the same
  *       JSON shape the controller emits;</li>
- *   <li>call {@link ClaudeCodeJobFactory#encode} (the wire format used
+ *   <li>call {@link CodingAgentJobFactory#encode} (the wire format used
  *       to ship the factory to a remote agent node), then create a
  *       fresh factory and feed every key/value back through
- *       {@link ClaudeCodeJobFactory#set} so we exercise the
+ *       {@link CodingAgentJobFactory#set} so we exercise the
  *       serialisation/deserialisation round-trip;</li>
- *   <li>have the deserialised factory produce a {@link ClaudeCodeJob}
- *       via {@link ClaudeCodeJobFactory#nextJob};</li>
+ *   <li>have the deserialised factory produce a {@link CodingAgentJob}
+ *       via {@link CodingAgentJobFactory#nextJob};</li>
  *   <li>round-trip that job too via
- *       {@link ClaudeCodeJob#encode} / {@link ClaudeCodeJob#set};</li>
+ *       {@link CodingAgentJob#encode} / {@link CodingAgentJob#set};</li>
  *   <li>drive the job's private {@code configureMcpBuilder} so the
  *       built-in {@link McpConfigBuilder} sees the propagated config;</li>
  *   <li>assert the produced {@code --mcp-config} JSON contains a stdio
@@ -56,7 +56,7 @@ import static org.junit.Assert.assertTrue;
  * format, builder hand-off, JSON emission) shows up only at deploy
  * time as "agent has no ar-secrets tools".</p>
  */
-public class ClaudeCodeJobPushedToolsTest {
+public class CodingAgentJobPushedToolsTest {
 
     private static final String CTRL_CONFIG = "{\"ar-secrets\":{"
         + "\"url\":\"http://0.0.0.0:7780/api/tools/ar-secrets\","
@@ -65,32 +65,32 @@ public class ClaudeCodeJobPushedToolsTest {
     /**
      * Drives the private {@code configureMcpBuilder} method via reflection.
      * The method is intentionally package-private/private on
-     * {@link ClaudeCodeJob}; this test bypasses that because the goal is
+     * {@link CodingAgentJob}; this test bypasses that because the goal is
      * to assert the builder receives the propagated state, not to widen
      * the public surface.
      */
-    private static void invokeConfigureMcpBuilder(ClaudeCodeJob job) throws Exception {
-        Method m = ClaudeCodeJob.class.getDeclaredMethod("configureMcpBuilder");
+    private static void invokeConfigureMcpBuilder(CodingAgentJob job) throws Exception {
+        Method m = CodingAgentJob.class.getDeclaredMethod("configureMcpBuilder");
         m.setAccessible(true);
         m.invoke(job);
     }
 
-    private static McpConfigBuilder readMcpBuilder(ClaudeCodeJob job) throws Exception {
-        Field f = ClaudeCodeJob.class.getDeclaredField("mcpConfigBuilder");
+    private static McpConfigBuilder readMcpBuilder(CodingAgentJob job) throws Exception {
+        Field f = CodingAgentJob.class.getDeclaredField("mcpConfigBuilder");
         f.setAccessible(true);
         return (McpConfigBuilder) f.get(job);
     }
 
-    private static ClaudeCodeJobFactory roundTripFactory(ClaudeCodeJobFactory original) {
+    private static CodingAgentJobFactory roundTripFactory(CodingAgentJobFactory original) {
         String encoded = original.encode();
-        ClaudeCodeJobFactory reconstructed = new ClaudeCodeJobFactory();
+        CodingAgentJobFactory reconstructed = new CodingAgentJobFactory();
         applyEncoded(reconstructed, encoded);
         return reconstructed;
     }
 
-    private static ClaudeCodeJob roundTripJob(ClaudeCodeJob original) {
+    private static CodingAgentJob roundTripJob(CodingAgentJob original) {
         String encoded = original.encode();
-        ClaudeCodeJob reconstructed = new ClaudeCodeJob("", "");
+        CodingAgentJob reconstructed = new CodingAgentJob("", "");
         applyEncoded(reconstructed, encoded);
         return reconstructed;
     }
@@ -127,29 +127,29 @@ public class ClaudeCodeJobPushedToolsTest {
 
     @Test(timeout = 30000)
     public void factorySetterStoresConfigAndExposesIt() {
-        ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("p");
+        CodingAgentJobFactory factory = new CodingAgentJobFactory("p");
         factory.setPushedToolsConfig(CTRL_CONFIG);
         Assert.assertEquals(CTRL_CONFIG, factory.getPushedToolsConfig());
     }
 
     @Test(timeout = 30000)
     public void factoryEncodeRoundTripPreservesPushedToolsConfig() {
-        ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("p");
+        CodingAgentJobFactory factory = new CodingAgentJobFactory("p");
         factory.setPushedToolsConfig(CTRL_CONFIG);
 
-        ClaudeCodeJobFactory reconstructed = roundTripFactory(factory);
+        CodingAgentJobFactory reconstructed = roundTripFactory(factory);
         Assert.assertEquals("pushedToolsConfig must survive factory wire round-trip",
                 CTRL_CONFIG, reconstructed.getPushedToolsConfig());
     }
 
     @Test(timeout = 30000)
     public void factoryPropagatesPushedToolsConfigToJob() {
-        ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do work");
+        CodingAgentJobFactory factory = new CodingAgentJobFactory("do work");
         factory.setArManagerUrl("http://ar-manager:8010");
         factory.setArManagerToken("armt_tmp_x");
         factory.setPushedToolsConfig(CTRL_CONFIG);
 
-        ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+        CodingAgentJob job = (CodingAgentJob) factory.nextJob();
         assertNotNull("Factory must produce a job", job);
         Assert.assertEquals("Job must receive pushedToolsConfig from factory",
                 CTRL_CONFIG, job.getPushedToolsConfig());
@@ -157,26 +157,26 @@ public class ClaudeCodeJobPushedToolsTest {
 
     @Test(timeout = 30000)
     public void jobEncodeRoundTripPreservesPushedToolsConfig() {
-        ClaudeCodeJob job = new ClaudeCodeJob("t1", "do work");
+        CodingAgentJob job = new CodingAgentJob("t1", "do work");
         job.setPushedToolsConfig(CTRL_CONFIG);
 
-        ClaudeCodeJob reconstructed = roundTripJob(job);
+        CodingAgentJob reconstructed = roundTripJob(job);
         Assert.assertEquals("pushedToolsConfig must survive job wire round-trip",
                 CTRL_CONFIG, reconstructed.getPushedToolsConfig());
     }
 
     @Test(timeout = 30000)
     public void mcpConfigContainsArSecretsStdioEntryAfterFullChain() throws Exception {
-        ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do work");
+        CodingAgentJobFactory factory = new CodingAgentJobFactory("do work");
         factory.setArManagerUrl("http://ar-manager:8010");
         factory.setArManagerToken("armt_tmp_x");
         factory.setPushedToolsConfig(CTRL_CONFIG);
 
         // Full wire round-trip: factory across the network, then the job
         // it produces across the network too.
-        ClaudeCodeJobFactory factoryAtAgent = roundTripFactory(factory);
-        ClaudeCodeJob jobBeforeWire = (ClaudeCodeJob) factoryAtAgent.nextJob();
-        ClaudeCodeJob job = roundTripJob(jobBeforeWire);
+        CodingAgentJobFactory factoryAtAgent = roundTripFactory(factory);
+        CodingAgentJob jobBeforeWire = (CodingAgentJob) factoryAtAgent.nextJob();
+        CodingAgentJob job = roundTripJob(jobBeforeWire);
 
         invokeConfigureMcpBuilder(job);
         McpConfigBuilder builder = readMcpBuilder(job);
@@ -205,7 +205,7 @@ public class ClaudeCodeJobPushedToolsTest {
         // No pushedToolsConfig set → builder must not emit any pushed-tool entry
         // and must not crash. Mirrors what happens to a job created locally
         // outside the controller path.
-        ClaudeCodeJob job = new ClaudeCodeJob("t1", "do work");
+        CodingAgentJob job = new CodingAgentJob("t1", "do work");
         job.setArManagerUrl("http://ar-manager:8010");
         job.setArManagerToken("armt_tmp_x");
 

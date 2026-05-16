@@ -39,7 +39,7 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * Tests for {@link AbandonedTestRunDetector} and the DEGRADED-status
- * detection wired into {@link ClaudeCodeJob#createEvent}.
+ * detection wired into {@link CodingAgentJob#createEvent}.
  *
  * <p>Each test creates a temporary ``runs/`` directory with synthetic
  * ``metadata.json`` files representing test-runner runs in various states,
@@ -188,18 +188,18 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         assertEquals(List.of("aa000011"), abandoned);
     }
 
-    // ── ClaudeCodeJob integration: createEvent returns DEGRADED ────────────
+    // ── CodingAgentJob integration: createEvent returns DEGRADED ────────────
 
     /**
-     * Test subclass that exposes the protected {@link ClaudeCodeJob#createEvent}
+     * Test subclass that exposes the protected {@link CodingAgentJob#createEvent}
      * for direct invocation. The integration tests do NOT call {@link #doWork()}
      * because that would launch a real claude subprocess; instead, they leave
      * {@code sessionStartedAt} as null (the detector treats null as "no time
      * filter") and rely on workdir contents alone.
      */
-    static class TestableClaudeCodeJob extends ClaudeCodeJob {
+    static class TestableCodingAgentJob extends CodingAgentJob {
         /** @param taskId task identifier; @param prompt initial prompt. */
-        TestableClaudeCodeJob(String taskId, String prompt) { super(taskId, prompt); }
+        TestableCodingAgentJob(String taskId, String prompt) { super(taskId, prompt); }
         /** @param error optional error; @return the event produced by createEvent. */
         JobCompletionEvent createEventNow(Exception error) { return createEvent(error); }
     }
@@ -225,7 +225,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
             throws IOException {
         Path workDir = makeTempJobWorkDirWithRun("ab000001", "running");
         try {
-            TestableClaudeCodeJob job = new TestableClaudeCodeJob("test-job-1", "do something");
+            TestableCodingAgentJob job = new TestableCodingAgentJob("test-job-1", "do something");
             job.setWorkingDirectory(workDir.toString());
             JobCompletionEvent event = job.createEventNow(null);
             assertEquals(JobCompletionEvent.Status.DEGRADED, event.getStatus());
@@ -242,7 +242,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
             throws IOException {
         Path workDir = makeTempJobWorkDirWithRun("ab000002", "completed");
         try {
-            TestableClaudeCodeJob job = new TestableClaudeCodeJob("test-job-2", "do something else");
+            TestableCodingAgentJob job = new TestableCodingAgentJob("test-job-2", "do something else");
             job.setWorkingDirectory(workDir.toString());
             JobCompletionEvent event = job.createEventNow(null);
             assertEquals(JobCompletionEvent.Status.SUCCESS, event.getStatus());
@@ -257,7 +257,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         // Even with an abandoned run, an actual error must dominate.
         Path workDir = makeTempJobWorkDirWithRun("ab000003", "running");
         try {
-            TestableClaudeCodeJob job = new TestableClaudeCodeJob("test-job-3", "do something");
+            TestableCodingAgentJob job = new TestableCodingAgentJob("test-job-3", "do something");
             job.setWorkingDirectory(workDir.toString());
             JobCompletionEvent event = job.createEventNow(new RuntimeException("boom"));
             assertEquals(JobCompletionEvent.Status.FAILED, event.getStatus());
@@ -277,7 +277,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
 
     @Test(timeout = 30000)
     public void claudeCodeDegradedFactoryHasDegradedStatus() {
-        ClaudeCodeJobEvent event = ClaudeCodeJobEvent.degraded("j", "d", "abandoned 2");
+        CodingAgentJobEvent event = CodingAgentJobEvent.degraded("j", "d", "abandoned 2");
         assertEquals(JobCompletionEvent.Status.DEGRADED, event.getStatus());
         assertEquals("abandoned 2", event.getErrorMessage());
     }

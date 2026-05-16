@@ -41,7 +41,7 @@ import java.util.regex.Pattern;
  *       in a loop over a list of function references</li>
  * </ul>
  *
- * <p>Used by both {@link ClaudeCodeJob} (for local servers) and
+ * <p>Used by both {@link CodingAgentJob} (for local servers) and
  * {@link io.flowtree.slack.FlowTreeController} (for centralized servers).</p>
  *
  * @author Michael Murray

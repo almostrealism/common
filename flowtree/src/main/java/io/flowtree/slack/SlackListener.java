@@ -17,7 +17,7 @@
 package io.flowtree.slack;
 
 import io.flowtree.Server;
-import io.flowtree.jobs.ClaudeCodeJob;
+import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
 import io.flowtree.msg.NodeProxy;
@@ -60,7 +60,7 @@ import java.util.regex.Pattern;
  *
  * @author Michael Murray
  * @see FlowTreeController
- * @see ClaudeCodeJob
+ * @see CodingAgentJob
  */
 public class SlackListener implements ConsoleFeatures {
 
@@ -337,7 +337,7 @@ public class SlackListener implements ConsoleFeatures {
 
     /**
      * Sets the global default workspace path for repo checkouts.
-     * Passed to every {@link ClaudeCodeJob.Factory} so agents know
+     * Passed to every {@link CodingAgentJob.Factory} so agents know
      * where to clone repositories when no explicit working directory
      * is configured.
      *
@@ -538,7 +538,7 @@ public class SlackListener implements ConsoleFeatures {
         }
 
         // Create job factory with workstream settings
-        ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompt);
+        CodingAgentJob.Factory factory = new CodingAgentJob.Factory(prompt);
         factory.setAllowedTools(workstream.getAllowedTools());
         factory.setMaxTurns(workstream.getMaxTurns());
         factory.setMaxBudgetUsd(workstream.getMaxBudgetUsd());
@@ -624,7 +624,7 @@ public class SlackListener implements ConsoleFeatures {
         // reply under it to create a thread. If already in a thread, continue there.
         String replyTo = (threadTs == null) ? messageTs : threadTs;
 
-        String displaySummary = ClaudeCodeJob.summarizePrompt(prompt);
+        String displaySummary = CodingAgentJob.summarizePrompt(prompt);
         JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), displaySummary);
         startEvent.withGitInfo(workstream.getDefaultBranch(), null, null, null, false);
 
