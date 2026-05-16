@@ -32,7 +32,6 @@ import org.almostrealism.audio.sequence.ValueSequencePush;
 import org.almostrealism.audio.sequence.ValueSequenceTick;
 import org.almostrealism.audio.sources.SineWaveCell;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.heredity.ScaleFactor;
 import org.almostrealism.time.Frequency;
@@ -74,7 +73,6 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 	@Test(timeout = 30_000)
 	public void valueSequenceCell() {
 		ValueSequenceCell cell = new ValueSequenceCell(i -> c(i + 1), c(0.1), 2);
-		cell.setReceptor(loggingReceptor());
 
 		cell.setup().get().run();
 		Runnable push = cell.push(c(0.0)).get();
@@ -234,7 +232,6 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		Assume.assumeTrue(new File("Library/BD 909 Color 06.wav").exists());
 		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
 		Assume.assumeTrue(new File("Library/GT_HAT_31.wav").exists());
-		WaveOutput.enableVerbose = true;
 
 		int count = 32;
 
@@ -263,10 +260,6 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		}
 
 		f.close();
-	}
-
-	protected Receptor<PackedCollection> loggingReceptor() {
-		return protein -> () -> () -> log(String.valueOf(protein.get().evaluate()));
 	}
 
 }
