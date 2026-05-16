@@ -93,3 +93,60 @@ are created. No pom.xml files are modified.
 ## Estimated Complexity
 
 Small. All changes are text edits to documentation and the prompt-builder.
+
+---
+
+## Observation: Agent Drops PR Reply After Code Fix
+
+**Documented: 2026-05-13**
+
+Across multiple jobs spanning different workstreams, agents explicitly prompted to call
+`github_pr_reply` complete the substantive code work and then end the turn without posting
+the reply. The reply step is skipped silently — no error, no indication it was intended.
+
+### Most recent confirmed instance
+
+- **Job:** `0d80c02e-00b5-4ca7-9869-326d385f8856`
+- **Workstream:** `b993e3fe-22d6-4288-9841-4e0ba0864d5f` (audio-scene-redesign, on common)
+- **PR:** almostrealism/common #175
+- **Comment:** `3236774262` (review comment from ashesfall on `PatternLayerManager.java:166`)
+- **Commit landed:** `6e2e45ffb3` (code fix complete)
+- **Prompt:** explicit instruction near the top — `github_pr_reply(pr_number=175, comment_id=3236774262, ...)`, with "before commit" ordering guidance
+- **Outcome:** code fix landed; PR comment never replied to. Verified via `github_pr_review_comments`
+  (no `in_reply_to_id` link to the original) and `github_pr_conversation` (no top-level reply either).
+
+### Earlier instances to check
+
+Other PR-review-driven jobs in the same session may show the same pattern.
+The rings-au-metadata and rings-midi-capture Copilot review fix jobs (PRs #36 and #39 on
+ringsdesktop) are candidates — the user's qualitative impression was that replies landed,
+but a programmatic check via `in_reply_to_id` has not been done.
+
+### Working hypothesis
+
+The reply step happens chronologically after the code + commit work. The agent considers
+work "substantively done" once the commit lands. Dedup audit and organizational placement
+review phases interpose between commit and reply, and the reply gets dropped in transition.
+GitHub tools appear to rank lower in the agent's internal action ordering than
+code-and-commit, so under budget pressure or session-end timing they are skipped first.
+
+### Why this matters
+
+Review-comment replies are how reviewers know the agent understood the feedback and how the
+fix relates to it. Without a reply, the reviewer must infer from the commit alone whether
+the principle behind the comment was internalized or whether the symptom was accidentally
+addressed. The agent's reasoning is the load-bearing piece; losing it silently degrades
+review-loop quality.
+
+### Suggested follow-up (not part of this job)
+
+- **Audit** other recent jobs that asked for `github_pr_reply` and check programmatically
+  (via `in_reply_to_id` in review comments) whether the reply actually landed.
+- **Reorganize** prompt structure so PR replies happen **before** commit rather than after,
+  placing them during the substantive-work phase rather than the wrap-up phase.
+- **Add a post-completion check** that verifies the reply landed and re-prompts the agent
+  if it did not.
+- **Reorder** dedup audit / placement review phases so the reply lands before the
+  commit-adjacent phases run.
+
+Tracker task: filed in Common project for follow-up investigation.

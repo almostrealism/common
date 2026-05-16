@@ -36,6 +36,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.DayOfWeek;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
@@ -103,7 +104,7 @@ import java.util.regex.Pattern;
  *       <td>{@code {"accept":true}}</td>
  *       <td>Enable or disable automated job submissions</td></tr>
  *   <tr><td>GET</td><td>/api/health</td><td>--</td>
- *       <td>Health check</td></tr>
+ *       <td>Health check; response includes {@code server_time} (ISO-8601 UTC)</td></tr>
  * </table>
  *
  * @author Michael Murray
@@ -354,8 +355,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         Method method = session.getMethod();
 
         if (Method.GET.equals(method) && "/api/health".equals(uri)) {
+            String serverTime = Instant.now().toString();
             return newFixedLengthResponse(Response.Status.OK,
-                    "application/json", "{\"status\":\"ok\"}");
+                    "application/json",
+                    "{\"status\":\"ok\",\"server_time\":\"" + serverTime + "\"}");
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/stats")) {
@@ -624,25 +627,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Handles {@code POST /api/workstreams} to register a new workstream.
      *
-     * <p>Request body:</p>
-     * <pre>{@code
-     * {
-     *   "defaultBranch": "project/plan-20260223-foo",
-     *   "baseBranch": "master",
-     *   "repoUrl": "https://github.com/org/repo.git",
-     *   "planningDocument": "docs/plans/PLAN-20260223-foo.md",
-     *   "channelName": "project-plan-20260223-foo",
-     *   "model": "sonnet",
-     *   "effort": "medium"
-     * }
-     * }</pre>
+     * <p>All fields are optional except {@code defaultBranch}. When
+     * {@code channelName} is absent the controller derives one from the
+     * last path component of {@code defaultBranch} (e.g. {@code "feature/foo"}
+     * → {@code "w-foo"}) and appends a numeric suffix if the name collides
+     * with an existing workstream. Supply {@code channelName} to override.</p>
      *
      * <p>{@code model} and {@code effort} are workstream-level defaults
-     * applied when a job omits them; invalid {@code effort} → 400.</p>
-     *
-     * <p>If a {@code channelName} is provided and Slack is available, a new
-     * channel is created automatically. If Slack is not available (simulation
-     * mode), the workstream is registered without a channel.</p>
+     * applied when a job omits them; an invalid {@code effort} value → 400.</p>
      *
      * @param session the HTTP session
      * @return JSON response with {@code workstreamId}, {@code channelId},
@@ -663,6 +655,15 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String repoUrl = extractJsonField(body, "repoUrl");
         String planningDocument = extractJsonField(body, "planningDocument");
         String channelName = extractJsonField(body, "channelName");
+        if (channelName == null || channelName.isEmpty()) {
+            if (defaultBranch.endsWith("/")) {
+                return errorResponse("defaultBranch is malformed: ends with '/'");
+            }
+            channelName = SlackNotifier.autoChannelName(defaultBranch, notifiers.allWorkstreams().values());
+            if (channelName == null) {
+                return errorResponse("Could not derive a valid channel name from defaultBranch: " + defaultBranch);
+            }
+        }
         String explicitWorkspaceId = extractJsonField(body, "slackWorkspaceId");
         String model = extractJsonField(body, "model");
         String effort = extractJsonField(body, "effort");
@@ -899,16 +900,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     "application/json", json);
         }
 
-        // Branch-to-workstream resolution:
-        // 1. Explicit workstreamId in request body takes priority
-        // 2. Search for a workstream whose defaultBranch matches targetBranch
-        // 3. Fall back to the URL path workstream ID
+        // Branch-to-workstream resolution: explicit workstreamId wins, then
+        // (branch, repoUrl) — branch-only is rejected as ambiguous when more
+        // than one workstream shares the branch — finally the URL path id.
         String targetBranch = extractJsonField(body, "targetBranch");
         String bodyWorkstreamId = extractJsonField(body, "workstreamId");
-
+        String bodyRepoUrl = extractJsonField(body, "repoUrl");
         Workstream workstream = null;
         String resolvedWorkstreamId = pathWorkstreamId;
-
         if (bodyWorkstreamId != null && !bodyWorkstreamId.isEmpty()) {
             SlackNotifier n = notifiers.notifierFor(bodyWorkstreamId);
             workstream = n != null ? n.getWorkstream(bodyWorkstreamId) : null;
@@ -917,17 +916,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 log("Workstream resolved from request body: " + resolvedWorkstreamId);
             }
         }
-
         if (workstream == null && targetBranch != null && !targetBranch.isEmpty()) {
-            Workstream branchMatch = notifiers.findByBranch(targetBranch);
-            if (branchMatch != null) {
-                workstream = branchMatch;
-                resolvedWorkstreamId = branchMatch.getWorkstreamId();
-                log("Workstream resolved from branch match (" + targetBranch + "): "
-                    + resolvedWorkstreamId);
+            NotifierRegistry.BranchResolution res = notifiers.resolveBranch(targetBranch, bodyRepoUrl);
+            if (res.error() != null) return errorResponse(res.error());
+            if (res.match() != null) {
+                workstream = res.match();
+                resolvedWorkstreamId = workstream.getWorkstreamId();
+                log("Workstream resolved by branch=" + targetBranch
+                    + (bodyRepoUrl != null && !bodyRepoUrl.isEmpty() ? "/repo=" + bodyRepoUrl : "")
+                    + ": " + resolvedWorkstreamId);
             }
         }
-
         if (workstream == null && pathWorkstreamId != null) {
             SlackNotifier n = notifiers.notifierFor(pathWorkstreamId);
             workstream = n != null ? n.getWorkstream(pathWorkstreamId) : null;
@@ -1009,8 +1008,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         // Apply optional overrides from the request body
-        // (targetBranch was already extracted during workstream resolution above)
-        String repoUrl = extractJsonField(body, "repoUrl");
+        // (targetBranch and repoUrl were already extracted during workstream
+        // resolution above; reuse bodyRepoUrl as repoUrl here so downstream
+        // code reads the same value the resolver saw).
+        String repoUrl = bodyRepoUrl;
         String baseBranch = extractJsonField(body, "baseBranch");
         String jobDescription = extractJsonField(body, "description");
         int maxTurns = extractJsonIntField(body, "maxTurns");
@@ -1251,24 +1252,24 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             event.withPullRequestUrl(pullRequestUrl);
         }
 
-        // Populate Claude Code-specific fields
         if (event instanceof ClaudeCodeJobEvent) {
             ClaudeCodeJobEvent ccEvent = (ClaudeCodeJobEvent) event;
             ccEvent.withClaudeCodeInfo(prompt, sessionId, exitCode);
-
-            // Populate timing info
             long durationMs = extractJsonLongField(body, "durationMs");
             long durationApiMs = extractJsonLongField(body, "durationApiMs");
             double costUsd = extractJsonDoubleField(body, "costUsd");
             int numTurns = extractJsonIntField(body, "numTurns");
             ccEvent.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
-
-            // Populate session details
             String subtype = extractJsonField(body, "subtype");
             boolean sessionIsError = extractJsonBooleanField(body, "sessionIsError");
             int permissionDenials = extractJsonIntField(body, "permissionDenials");
             List<String> deniedToolNames = extractJsonArrayField(body, "deniedToolNames");
             ccEvent.withSessionDetails(subtype, sessionIsError, permissionDenials, deniedToolNames);
+
+            String commitMessageSource = extractJsonField(body, "commitMessageSource");
+            if (commitMessageSource != null) {
+                ccEvent.withCommitMessageSource(commitMessageSource);
+            }
         }
 
         log("Status event: " + eventStatus + " for job " + jobId + " in workstream " + workstreamId);

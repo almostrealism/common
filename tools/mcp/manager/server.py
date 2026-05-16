@@ -1037,8 +1037,15 @@ def controller_health() -> dict:
     Use this as a first step to verify connectivity before calling
     other tools. No authentication scope required.
 
+    The response includes a ``server_time`` field containing the
+    controller's current UTC time in ISO-8601 format
+    (e.g. ``"2026-05-11T18:23:45.123456789Z"``). This is useful for
+    verifying which deployment is running and for diagnosing clock
+    drift between the controller host and other systems.
+
     Returns:
-        Dictionary with controller status and version info.
+        Dictionary with controller status, version info, and
+        ``server_time`` (ISO-8601 UTC timestamp from the controller).
     """
     _require_scope("read")
     _audit("controller_health")
@@ -1337,6 +1344,7 @@ def workstream_submit_task(
     prompt: str,
     workstream_id: str = "",
     target_branch: str = "",
+    repo_url: str = "",
     description: str = "",
     max_turns: int = 0,
     max_budget_usd: float = 0.0,
@@ -1367,7 +1375,14 @@ def workstream_submit_task(
             any constraints.
         workstream_id: Explicit workstream to submit to (from workstream_list).
         target_branch: Git branch to resolve workstream by (alternative to
-            workstream_id).
+            workstream_id). Must be paired with ``repo_url`` when more than
+            one registered workstream uses the same default branch on
+            different repositories — otherwise the controller rejects the
+            submission as ambiguous.
+        repo_url: Repository URL used to disambiguate ``target_branch`` when
+            several workstreams share the same branch name across different
+            repositories. Optional when ``workstream_id`` is given or when
+            ``target_branch`` is unique across all workstreams.
         description: Short human-readable description of the task (shown
             in Slack notifications).
         max_turns: Maximum Claude Code turns (0 = use workstream default).
@@ -1436,7 +1451,7 @@ def workstream_submit_task(
         return err
     err = _check_short_strings(
         workstream_id=workstream_id, target_branch=target_branch,
-        description=description, started_after=started_after,
+        repo_url=repo_url, description=description, started_after=started_after,
         deduplication_mode=deduplication_mode,
         model=model, effort=effort,
     )
@@ -1512,13 +1527,16 @@ def workstream_submit_task(
 
     _require_workstream_in_scope(workstream_id)
     _audit("workstream_submit_task", workstream_id=workstream_id,
-           target_branch=target_branch, prompt_len=len(prompt))
+           target_branch=target_branch, repo_url=repo_url,
+           prompt_len=len(prompt))
 
     payload = {"prompt": prompt}
     if workstream_id:
         payload["workstreamId"] = workstream_id
     if target_branch:
         payload["targetBranch"] = target_branch
+    if repo_url:
+        payload["repoUrl"] = repo_url
     if description:
         payload["description"] = description
     if max_turns > 0:

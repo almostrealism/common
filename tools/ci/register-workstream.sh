@@ -2,8 +2,10 @@
 # ─── Register a workstream with the FlowTree controller ─────────────
 #
 # Creates a new workstream for a branch, optionally with a planning
-# document and auto-created Slack channel. The channel name is derived
-# from the branch name by replacing slashes with hyphens.
+# document and auto-created Slack channel.  The controller derives the
+# channel name automatically from the branch name (last path component,
+# prepended with "w-", sanitized for Slack).  Pass CHANNEL_NAME to
+# override the auto-generated name.
 #
 # Idempotent: if a workstream already exists for the branch, and
 # PLAN_FILE is set, the existing workstream is updated with the
@@ -17,6 +19,7 @@
 #   BASE_BRANCH      - base branch (e.g., master)
 #
 # Optional environment variables:
+#   CHANNEL_NAME      - explicit Slack channel name (controller auto-generates when absent)
 #   PLAN_FILE         - path to the planning document (relative to repo root)
 #   CONTROLLER_HOST   - FlowTree controller hostname (default: localhost)
 #   CONTROLLER_PORT   - FlowTree controller port     (default: 7780)
@@ -43,30 +46,19 @@ CONTROLLER_PORT="${CONTROLLER_PORT:-7780}"
 
 ENDPOINT="http://${CONTROLLER_HOST}:${CONTROLLER_PORT}/api/workstreams"
 
-# Derive channel name from branch. If the branch contains a slash, use only
-# the part after the first slash to keep names short:
-#   feature/xyz            -> w-xyz
-#   project/plan-20260308  -> w-plan-20260308
-#   some-branch            -> w-some-branch
-# Slack channel names: lowercase, max 80 chars, no spaces or periods
-BRANCH_SUFFIX="${BRANCH#*/}"
-if [ "$BRANCH_SUFFIX" = "$BRANCH" ]; then
-    BRANCH_SUFFIX="$BRANCH"
-fi
-CHANNEL_NAME=$(echo "$BRANCH_SUFFIX" | sed 's|/|-|g' | tr '[:upper:]' '[:lower:]' | tr -d ' .')
-CHANNEL_NAME="w-${CHANNEL_NAME#w-}"
-# Enforce Slack 80-char channel name limit
-CHANNEL_NAME="${CHANNEL_NAME:0:80}"
-
 PAYLOAD=$(jq -n \
     --arg branch "$BRANCH" \
     --arg base "$BASE_BRANCH" \
-    --arg channel "$CHANNEL_NAME" \
     '{
         defaultBranch: $branch,
-        baseBranch: $base,
-        channelName: $channel
+        baseBranch: $base
     }')
+
+# Use an explicit channel name when provided; otherwise the controller
+# auto-generates one from the branch name.
+if [ -n "${CHANNEL_NAME:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --arg channel "$CHANNEL_NAME" '. + {channelName: $channel}')
+fi
 
 if [ -n "${PLAN_FILE:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --arg plan "$PLAN_FILE" '. + {planningDocument: $plan}')
