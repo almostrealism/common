@@ -36,11 +36,15 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
@@ -373,7 +377,9 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * Finds a workstream whose {@code defaultBranch} exactly matches the
      * given branch name. Workstreams with a null {@code defaultBranch}
      * are skipped. If multiple workstreams match, the first one found is
-     * returned.
+     * returned — callers that need to detect ambiguity should use
+     * {@link #findWorkstreamsByBranch(String)} instead so they can apply
+     * a {@code repoUrl} disambiguator or reject the request.
      *
      * @param branch the branch name to match (e.g., "feature/new-decoder")
      * @return the matching workstream, or null if no match is found
@@ -390,6 +396,29 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
 
         return null;
+    }
+
+    /**
+     * Returns every workstream whose {@code defaultBranch} matches the given
+     * branch name. Unlike {@link #findWorkstreamByBranch(String)}, this method
+     * surfaces ambiguity so callers (in particular the job-submission
+     * endpoint) can either disambiguate by {@code repoUrl} or reject the
+     * request rather than silently routing to the wrong workstream.
+     *
+     * @param branch the branch name to match
+     * @return all matching workstreams (never {@code null})
+     */
+    public List<Workstream> findWorkstreamsByBranch(String branch) {
+        List<Workstream> matches = new ArrayList<>();
+        if (branch == null || branch.isEmpty()) {
+            return matches;
+        }
+        for (Workstream ws : workstreams.values()) {
+            if (branch.equals(ws.getDefaultBranch())) {
+                matches.add(ws);
+            }
+        }
+        return matches;
     }
 
     /**
@@ -1057,6 +1086,83 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         long hours = minutes / 60;
         long remainingMinutes = minutes % 60;
         return hours + "h " + remainingMinutes + "m";
+    }
+
+    /**
+     * Derives a Slack channel name from a git branch name.
+     *
+     * <p>Takes the portion after the final {@code /} (the entire name when
+     * there is no {@code /}), prepends {@code "w-"}, lower-cases the result,
+     * replaces characters that are not lowercase letters, digits, or hyphens
+     * with a hyphen, collapses consecutive hyphens, trims leading/trailing
+     * hyphens, and truncates to 80 characters (Slack's channel name limit).</p>
+     *
+     * @param branch the git branch name (e.g. {@code "feature/my-xyz"})
+     * @return a Slack-safe channel name (e.g. {@code "w-my-xyz"}), or
+     *         {@code null} when the branch is {@code null}/empty or the
+     *         portion after the final slash is empty
+     */
+    public static String channelNameFromBranch(String branch) {
+        if (branch == null || branch.isEmpty()) {
+            return null;
+        }
+        int lastSlash = branch.lastIndexOf('/');
+        String suffix = (lastSlash >= 0) ? branch.substring(lastSlash + 1) : branch;
+        if (suffix.isEmpty()) {
+            return null;
+        }
+        String sanitized = suffix.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9-]", "-")
+                .replaceAll("-{2,}", "-")
+                .replaceAll("^-+|-+$", "");
+        if (sanitized.isEmpty()) {
+            return null;
+        }
+        String name = "w-" + sanitized;
+        if (name.length() > 80) {
+            name = name.substring(0, 80).replaceAll("-+$", "");
+        }
+        return name.length() > 2 ? name : null;
+    }
+
+    /**
+     * Derives a Slack channel name from a branch name and resolves any
+     * collision with an existing workstream's channel name by appending
+     * a numeric suffix ({@code -2}, {@code -3}, … up to {@code -99}).
+     *
+     * <p>Returns {@code null} when {@link #channelNameFromBranch(String)}
+     * returns {@code null} (e.g. the suffix after the last slash is empty).</p>
+     *
+     * @param branch   the git branch name
+     * @param existing all currently registered workstreams to check against
+     * @return a unique, Slack-safe channel name, or {@code null}
+     */
+    public static String autoChannelName(String branch, Collection<Workstream> existing) {
+        String base = channelNameFromBranch(branch);
+        if (base == null) {
+            return null;
+        }
+        Set<String> taken = new HashSet<>();
+        for (Workstream ws : existing) {
+            String cn = ws.getChannelName();
+            if (cn != null) {
+                taken.add(cn.startsWith("#") ? cn.substring(1) : cn);
+            }
+        }
+        if (!taken.contains(base)) {
+            return base;
+        }
+        for (int i = 2; i <= 99; i++) {
+            String sfx = "-" + i;
+            String candidate = base.length() + sfx.length() <= 80
+                    ? base + sfx
+                    : base.substring(0, 80 - sfx.length()) + sfx;
+            if (!taken.contains(candidate)) {
+                return candidate;
+            }
+        }
+        // All suffixes exhausted — cannot guarantee uniqueness.
+        return null;
     }
 
     /**

@@ -20,6 +20,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
@@ -37,6 +38,14 @@ public class NotifierRegistryTest extends TestSuiteBase {
     private static Workstream newWorkstream(String id, String channelId) {
         Workstream ws = new Workstream(id, channelId, channelId);
         ws.setDefaultBranch("feature/" + id);
+        return ws;
+    }
+
+    private static Workstream newWorkstream(String id, String channelId,
+                                            String branch, String repoUrl) {
+        Workstream ws = new Workstream(id, channelId, channelId);
+        ws.setDefaultBranch(branch);
+        ws.setRepoUrl(repoUrl);
         return ws;
     }
 
@@ -111,6 +120,70 @@ public class NotifierRegistryTest extends TestSuiteBase {
         assertNotNull("Workstream on second workspace must be discoverable",
                 found);
         assertEquals("ws-b", found.getWorkstreamId());
+    }
+
+    @Test(timeout = 10000)
+    public void testFindAllByBranchReturnsEveryWorkstreamSharingBranch() {
+        // Two workstreams on different repositories register the same
+        // defaultBranch.  Branch-only resolution must surface both so the
+        // caller can disambiguate or reject; silently picking the first
+        // would route jobs to the wrong repo.
+        Workstream wsCommon = newWorkstream("ws-common", "C-1",
+                "feature/audio-prototypes",
+                "git@github.com:almostrealism/common.git");
+        Workstream wsRings = newWorkstream("ws-rings", "C-2",
+                "feature/audio-prototypes",
+                "git@github.com:almostrealism/ringsdesktop.git");
+        SlackNotifier a = notifierWith(wsCommon);
+        SlackNotifier b = notifierWith(wsRings);
+        Map<String, SlackNotifier> byWs = new LinkedHashMap<>();
+        byWs.put("TAAA", a);
+        byWs.put("TBBB", b);
+        NotifierRegistry registry = new NotifierRegistry(a, byWs);
+
+        List<Workstream> matches = registry.findAllByBranch("feature/audio-prototypes");
+        assertEquals("Both workstreams share the branch", 2, matches.size());
+        assertTrue(matches.contains(wsCommon));
+        assertTrue(matches.contains(wsRings));
+
+        // findByBranchAndRepo must only return the matching repo, never
+        // the other workstream that happens to share the branch.
+        assertSame(wsCommon, registry.findByBranchAndRepo(
+                "feature/audio-prototypes",
+                "git@github.com:almostrealism/common.git"));
+        assertSame(wsRings, registry.findByBranchAndRepo(
+                "feature/audio-prototypes",
+                "git@github.com:almostrealism/ringsdesktop.git"));
+
+        // A repo URL not registered on either workstream must miss.
+        assertNull(registry.findByBranchAndRepo(
+                "feature/audio-prototypes",
+                "git@github.com:almostrealism/nope.git"));
+    }
+
+    @Test(timeout = 10000)
+    public void testFindAllByBranchSingleWorkspaceMode() {
+        Workstream wsA = newWorkstream("ws-a", "C-a",
+                "feature/shared", "git@github.com:org/a.git");
+        Workstream wsB = newWorkstream("ws-b", "C-b",
+                "feature/shared", "git@github.com:org/b.git");
+        SlackNotifier primary = notifierWith(wsA, wsB);
+        NotifierRegistry registry = new NotifierRegistry(primary, null);
+
+        List<Workstream> matches = registry.findAllByBranch("feature/shared");
+        assertEquals(2, matches.size());
+        assertTrue(matches.contains(wsA));
+        assertTrue(matches.contains(wsB));
+    }
+
+    @Test(timeout = 10000)
+    public void testFindAllByBranchEmptyResults() {
+        SlackNotifier primary = notifierWith(newWorkstream("ws-a", "C-a"));
+        NotifierRegistry registry = new NotifierRegistry(primary, null);
+
+        assertTrue(registry.findAllByBranch("feature/missing").isEmpty());
+        assertTrue(registry.findAllByBranch(null).isEmpty());
+        assertTrue(registry.findAllByBranch("").isEmpty());
     }
 
     @Test(timeout = 10000)

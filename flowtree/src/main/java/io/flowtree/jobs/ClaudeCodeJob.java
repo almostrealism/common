@@ -196,6 +196,8 @@ public class ClaudeCodeJob extends GitManagedJob {
     private int permissionDenials;
     /** Names of the tools that were denied during the session. */
     private List<String> deniedToolNames;
+    /** How the commit message was produced: {@code "agent"}, {@code "prompt_fallback"}, or {@code "commit_rule_recovered"}. */
+    private String commitMessageSource;
 
     /** Wall-clock instant at which {@link #doWork()} began; used to filter abandoned-test-run scans. */
     private Instant sessionStartedAt;
@@ -741,6 +743,10 @@ public class ClaudeCodeJob extends GitManagedJob {
             rules.add(new MavenDependencyProtectionRule());
         }
         rules.addAll(customEnforcementRules);
+        // Always last: verifies commit.txt is present and agent-authored.
+        if (getTargetBranch() != null && !getTargetBranch().isEmpty()) {
+            rules.add(new CommitMessageRule());
+        }
         return rules;
     }
 
@@ -789,7 +795,21 @@ public class ClaudeCodeJob extends GitManagedJob {
                             enforcementAttempt++;
                             log("Enforcement attempt: " + (enforcementAttempt + 1));
                         }
+                        // Preserve commit.txt: executeSingleRun() deletes it at startup.
+                        Path rerunCommitFile = resolveWorkingPath("commit.txt");
+                        String savedForRerun = null;
+                        if (rerunCommitFile != null && Files.exists(rerunCommitFile)) {
+                            try { savedForRerun = Files.readString(rerunCommitFile, StandardCharsets.UTF_8); }
+                            catch (IOException e) { warn("Could not save commit.txt: " + e.getMessage()); }
+                        }
                         executeSingleRun();
+                        // Only restore old commit.txt if the rerun did not write a new one;
+                        // when the rerun makes the actual code changes its message is authoritative.
+                        boolean rerunWroteCommit = rerunCommitFile != null && Files.exists(rerunCommitFile);
+                        if (!rerunWroteCommit && savedForRerun != null && rerunCommitFile != null) {
+                            try { Files.writeString(rerunCommitFile, savedForRerun, StandardCharsets.UTF_8); }
+                            catch (IOException e) { warn("Could not restore commit.txt: " + e.getMessage()); }
+                        }
                     }
                     rule.onCorrectionAttempted(this);
                     if (hasAgentCommitted()) break;
@@ -827,33 +847,29 @@ public class ClaudeCodeJob extends GitManagedJob {
         String originalPrompt = this.prompt;
         String previousActivity = this.currentActivity;
         this.currentActivity = activity;
-        // Preserve commit.txt so the correction session cannot overwrite it.
-        Path commitFile = resolveWorkingPath("commit.txt");
+        // Snapshot commit.txt so executeSingleRun() (which deletes it at startup)
+        // cannot discard the primary session's message.
+        Path savedCommitFile = resolveWorkingPath("commit.txt");
         String savedCommitMessage = null;
-        if (commitFile != null && Files.exists(commitFile)) {
-            try {
-                savedCommitMessage = Files.readString(commitFile, StandardCharsets.UTF_8);
-            } catch (IOException e) {
-                warn("Could not read commit.txt before correction session: " + e.getMessage());
-            }
+        if (savedCommitFile != null && Files.exists(savedCommitFile)) {
+            try { savedCommitMessage = Files.readString(savedCommitFile, StandardCharsets.UTF_8); }
+            catch (IOException e) { warn("Could not read commit.txt: " + e.getMessage()); }
         }
-
         try {
             this.prompt = correctionPrompt;
             executeSingleRun();
         } finally {
             this.prompt = originalPrompt;
             this.currentActivity = previousActivity;
-            if (commitFile != null) {
+            // Restore primary-session commit.txt only when the correction session did not
+            // write its own; if it did, that message describes the actual changes made.
+            boolean correctionWroteCommit = savedCommitFile != null && Files.exists(savedCommitFile);
+            if (!correctionWroteCommit && savedCommitMessage != null && savedCommitFile != null) {
                 try {
-                    if (savedCommitMessage != null) {
-                        Files.writeString(commitFile, savedCommitMessage, StandardCharsets.UTF_8);
-                        log("Restored primary commit message from commit.txt");
-                    } else {
-                        Files.deleteIfExists(commitFile);
-                    }
+                    Files.writeString(savedCommitFile, savedCommitMessage, StandardCharsets.UTF_8);
+                    log("Restored primary commit message from commit.txt");
                 } catch (IOException e) {
-                    warn("Could not restore commit.txt after correction session: " + e.getMessage());
+                    warn("Could not restore commit.txt: " + e.getMessage());
                 }
             }
         }
@@ -880,12 +896,10 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Executes a single Claude Code session.  Internally retries the Claude
-     * subprocess up to {@link #maxInactivityRestarts} times when the inactivity
-     * monitor kills it.  Called once in normal mode and once per
-     * enforcement-rule correction when enforcement mode is active.
+     * Executes a single Claude Code session, retrying up to {@link #maxInactivityRestarts}
+     * times on inactivity kills. Package-private to allow test subclasses to override.
      */
-    private void executeSingleRun() {
+    void executeSingleRun() {
         Path staleCommitFile = resolveWorkingPath("commit.txt");
         if (staleCommitFile != null && Files.exists(staleCommitFile)) {
             try {
@@ -1123,6 +1137,9 @@ public class ClaudeCodeJob extends GitManagedJob {
             ccEvent.withClaudeCodeInfo(prompt, sessionId, exitCode);
             ccEvent.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
             ccEvent.withSessionDetails(subtype, isError, permissionDenials, deniedToolNames);
+            if (commitMessageSource != null) {
+                ccEvent.withCommitMessageSource(commitMessageSource);
+            }
         }
     }
 
@@ -1204,7 +1221,7 @@ public class ClaudeCodeJob extends GitManagedJob {
                 ? newMethods.subList(0, MAX_DEDUP_METHODS) : newMethods;
         boolean truncated = newMethods.size() > MAX_DEDUP_METHODS;
         spawnDeduplicationJob(
-                buildDeduplicationPrompt(capped, truncated, newMethods.size()),
+                DeduplicationRule.buildDeduplicationPrompt(capped, truncated, newMethods.size()),
                 newMethods.size());
     }
 
@@ -1259,67 +1276,6 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Builds the aggressive deduplication prompt that is sent to the follow-up
-     * agent session.
-     *
-     * @param methodNames  the (possibly capped) list of new method names
-     * @param truncated    {@code true} if the list was capped due to size
-     * @param totalCount   the total number of methods found (before capping)
-     * @return the full prompt string
-     */
-    static String buildDeduplicationPrompt(List<String> methodNames,
-                                                    boolean truncated,
-                                                    int totalCount) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("DEDUPLICATION AUDIT — MANDATORY PRE-COMMIT REVIEW\n\n");
-        sb.append("A prior agent session has committed changes that introduce the ");
-        sb.append("following new methods");
-        if (truncated) {
-            sb.append(" (showing ").append(methodNames.size())
-              .append(" of ").append(totalCount).append(" total)");
-        }
-        sb.append(":\n\n");
-        for (String name : methodNames) {
-            sb.append("  - ").append(name).append("\n");
-        }
-        sb.append("\n");
-        sb.append("Your job is to determine whether any of these methods duplicate ");
-        sb.append("functionality that already exists elsewhere in the codebase. ");
-        sb.append("This is a mandatory review step — do not skip it and do not ");
-        sb.append("conclude quickly that a method is unique without actually searching.\n\n");
-        sb.append("CRITICAL ASSUMPTION: For every method in the list above, you MUST ");
-        sb.append("assume it is a clone of an existing method until you have proven ");
-        sb.append("otherwise. This is not a pessimistic assumption — it is statistically ");
-        sb.append("accurate. The majority of methods introduced by agent sessions are ");
-        sb.append("duplicates of functionality that already exists elsewhere. The agent ");
-        sb.append("re-implemented things it could not find by search. The clone may not ");
-        sb.append("be an exact copy: it may be renamed, slightly generalised, or placed ");
-        sb.append("in a different class — but it performs the same operation on the same ");
-        sb.append("data.\n\n");
-        sb.append("For each method:\n");
-        sb.append("1. Search the codebase for methods that perform the same logical ");
-        sb.append("operation. Use Grep to search by keyword, not just by name.\n");
-        sb.append("2. If a duplicate exists: remove the new method entirely and replace ");
-        sb.append("all call sites with the existing method.\n");
-        sb.append("3. Only after a thorough search may you conclude a method is ");
-        sb.append("genuinely new.\n\n");
-        sb.append("IMPORTANT — editing rules:\n");
-        sb.append("- Use the Edit tool to remove duplicate methods surgically. ");
-        sb.append("Remove only the duplicate method body and its declaration; ");
-        sb.append("preserve all other changes in the file.\n");
-        sb.append("- NEVER use git restore, git checkout --, git reset, or any ");
-        sb.append("other git command to revert a file. Those commands discard ALL ");
-        sb.append("changes in that file, not just the duplicate method, and will ");
-        sb.append("destroy work that must be preserved.\n\n");
-        sb.append("Do not rationalise keeping a duplicate because it is 'slightly ");
-        sb.append("different'. Slight differences are how duplicates hide. If the ");
-        sb.append("logical purpose is the same, merge them. The codebase already has ");
-        sb.append("too many near-identical copies of the same logic; every one you ");
-        sb.append("remove improves maintainability for every future session.");
-        return sb.toString();
-    }
-
-    /**
      * Extracts the controller base URL (scheme + host + port) from a workstream URL.
      *
      * @param workstreamUrl the full workstream URL
@@ -1345,6 +1301,21 @@ public class ClaudeCodeJob extends GitManagedJob {
         return end < 0 ? workstreamUrl.substring(start) : workstreamUrl.substring(start, end);
     }
 
+    /**
+     * Returns how the commit message was produced ({@code "agent"}, {@code "prompt_fallback"},
+     * or {@code "commit_rule_recovered"}). Populated on the first call to {@link #getCommitMessage()}.
+     *
+     * @return the source tag, or {@code null} if no commit has been made yet
+     */
+    public String getCommitMessageSource() {
+        return commitMessageSource;
+    }
+
+    /** Sets the commit message source tag; called by {@link CommitMessageRule} on recovery. */
+    void setCommitMessageSource(String source) {
+        this.commitMessageSource = source;
+    }
+
     @Override
     protected String getCommitMessage() {
         // Check if the agent wrote a commit.txt
@@ -1354,6 +1325,9 @@ public class ClaudeCodeJob extends GitManagedJob {
                 String agentMessage = Files.readString(commitFile, StandardCharsets.UTF_8).trim();
                 if (!agentMessage.isEmpty()) {
                     log("Using commit message from commit.txt");
+                    if (commitMessageSource == null) {
+                        commitMessageSource = "agent";
+                    }
                     return agentMessage;
                 }
             } catch (IOException e) {
@@ -1362,6 +1336,8 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
 
         // Fallback: generate commit message from prompt
+        warn("No commit.txt found or it was empty — falling back to task prompt as commit message");
+        commitMessageSource = "prompt_fallback";
         StringBuilder msg = new StringBuilder();
         msg.append("Claude Code: ");
 
@@ -1395,6 +1371,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         }
         return Path.of(filename);
     }
+
 
     /**
      * Extracts session ID, timing metrics, stop reason, and permission denials

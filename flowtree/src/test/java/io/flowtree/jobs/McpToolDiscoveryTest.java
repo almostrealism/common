@@ -374,6 +374,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			submitParams.contains("post_completion_command"));
 		assertTrue("workstream_submit_task must declare max_deduplication_passes in signature",
 			submitParams.contains("max_deduplication_passes"));
+		assertTrue("workstream_submit_task must declare repo_url in signature so callers can"
+			+ " disambiguate target_branch when multiple workstreams share the same branch",
+			submitParams.contains("repo_url"));
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
