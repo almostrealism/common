@@ -521,6 +521,33 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         payload = mock_post.call_args[0][1]
         self.assertEqual(payload["maxPostCompletionPasses"], 1)
 
+    @patch.object(server, "_controller_post")
+    def test_submit_delay_seconds_forwarded(self, mock_post):
+        """delay_seconds is forwarded to the controller payload as delaySeconds."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-delay"}
+        server.workstream_submit_task(prompt="Task", delay_seconds=30)
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["delaySeconds"], 30)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_delay_seconds_omitted_by_default(self, mock_post):
+        """delay_seconds must not appear in the payload when not specified."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-nodelay"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("delaySeconds", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_delay_seconds_zero_omitted(self, mock_post):
+        """delay_seconds=0 must not appear in the payload (immediate dispatch)."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-nodelay-zero"}
+        server.workstream_submit_task(prompt="Task", delay_seconds=0)
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("delaySeconds", payload)
+
 
 class TestWorkstreamSubmitSelfCollision(unittest.TestCase):
     """workstream_submit_task must not let an agent submit work to its

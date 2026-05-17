@@ -202,6 +202,50 @@ public class GitOperations implements ConsoleFeatures {
     }
 
     /**
+     * Returns whether {@code workingDirectory} has uncommitted changes to
+     * files that are not in the standard exclusion set (see
+     * {@link #isExcludedPath(String)}).
+     *
+     * <p>This is a static helper so it can be called for both the primary
+     * repository and each dependent repository without constructing a full
+     * {@link GitOperations} instance.</p>
+     *
+     * @param workingDirectory the repository root to inspect; {@code null}
+     *                         means the JVM's current working directory
+     * @return {@code true} if meaningful uncommitted changes exist,
+     *         {@code false} on no changes or I/O error
+     */
+    public static boolean hasUncommittedChanges(String workingDirectory) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(resolveGitCommand(), "status", "--porcelain");
+            if (workingDirectory != null) {
+                pb.directory(new File(workingDirectory));
+            }
+            pb.redirectErrorStream(true);
+            augmentPath(pb);
+            Process process = pb.start();
+            String statusOutput = new String(
+                    process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            process.waitFor();
+
+            for (String line : statusOutput.split("\n")) {
+                if (line.length() > 3) {
+                    String file = line.substring(3).trim();
+                    if (file.contains(" -> ")) {
+                        file = file.split(" -> ")[1];
+                    }
+                    if (!isExcludedPath(file)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        } catch (IOException | InterruptedException e) {
+            return false;
+        }
+    }
+
+    /**
      * Executes a git command and returns the process exit code.
      *
      * <p>The command is constructed as {@code git <args>}. Standard error

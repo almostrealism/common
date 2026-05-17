@@ -1090,45 +1090,27 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Checks whether the working directory has uncommitted changes
-     * (excluding files in the standard exclusion patterns).
+     * Checks whether the primary repository or any dependent repository has
+     * uncommitted changes (excluding files in the standard exclusion patterns).
      *
-     * <p>Used by the enforcement loop to determine whether the agent
-     * produced any meaningful code changes during its session.</p>
+     * <p>Used by the enforcement loop to determine whether the agent produced
+     * any meaningful code changes during its session. Dependent repos are
+     * checked so that agents whose only changes land in a dependent repo are
+     * not falsely flagged as having produced no output.</p>
      *
      * @return true if there are uncommitted changes to non-excluded files
+     *         in the primary repo or any dependent repo
      */
     boolean hasUncommittedChanges() {
-        try {
-            ProcessBuilder pb = new ProcessBuilder(GitOperations.resolveGitCommand(), "status", "--porcelain");
-            String workDir = getWorkingDirectory();
-            if (workDir != null) {
-                pb.directory(new File(workDir));
-            }
-            pb.redirectErrorStream(true);
-            GitOperations.augmentPath(pb);
-            Process process = pb.start();
-            String statusOutput = new String(
-                process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            process.waitFor();
-
-            // Filter out excluded patterns (claude-output, .claude, target, etc.)
-            for (String line : statusOutput.split("\n")) {
-                if (line.length() > 3) {
-                    String file = line.substring(3).trim();
-                    if (file.contains(" -> ")) {
-                        file = file.split(" -> ")[1];
-                    }
-                    if (!GitOperations.isExcludedPath(file)) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        } catch (IOException | InterruptedException e) {
-            warn("Failed to check for uncommitted changes: " + e.getMessage());
-            return false;
+        if (GitOperations.hasUncommittedChanges(getWorkingDirectory())) {
+            return true;
         }
+        for (String depPath : getDependentRepoPaths()) {
+            if (GitOperations.hasUncommittedChanges(depPath)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -379,6 +379,8 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			submitParams.contains("repo_url"));
 		assertTrue("workstream_submit_task must declare max_post_completion_passes in signature",
 			submitParams.contains("max_post_completion_passes"));
+		assertTrue("workstream_submit_task must declare delay_seconds in signature",
+			submitParams.contains("delay_seconds"));
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");

@@ -27,6 +27,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -157,6 +158,92 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         String encoded = job.encode();
         assertFalse("default runner should not be serialised: " + encoded,
                 encoded.contains("::runner:="));
+    }
+
+    @Test(timeout = 10000)
+    public void hasUncommittedChangesReturnsTrueForDirtyDependentRepo() throws Exception {
+        Path primary = initGitRepo();
+        Path dep = initGitRepo();
+        try {
+            // Primary: clean committed state.
+            Path pFile = primary.resolve("Primary.java");
+            Files.writeString(pFile, "class Primary {}");
+            gitRun(primary, "add", "Primary.java");
+            gitRun(primary, "commit", "-m", "init");
+
+            // Dependent: seed commit, then a new untracked file (dirty).
+            Path dSeed = dep.resolve("seed.txt");
+            Files.writeString(dSeed, "seed");
+            gitRun(dep, "add", "seed.txt");
+            gitRun(dep, "commit", "-m", "seed");
+            Files.writeString(dep.resolve("Dep.java"), "class Dep {}");
+
+            String depPath = dep.toString();
+            CodingAgentJob job = new CodingAgentJob("t-dep-dirty", "p") {
+                @Override
+                public List<String> getDependentRepoPaths() {
+                    return List.of(depPath);
+                }
+            };
+            job.setWorkingDirectory(primary.toString());
+
+            assertTrue("hasUncommittedChanges must detect dirty dependent repo",
+                    job.hasUncommittedChanges());
+        } finally {
+            deleteRecursively(primary);
+            deleteRecursively(dep);
+        }
+    }
+
+    @Test(timeout = 10000)
+    public void hasUncommittedChangesReturnsFalseWhenBothReposClean() throws Exception {
+        Path primary = initGitRepo();
+        Path dep = initGitRepo();
+        try {
+            // Both repos: clean committed state.
+            for (Path repo : new Path[] {primary, dep}) {
+                Path f = repo.resolve("seed.txt");
+                Files.writeString(f, "seed");
+                gitRun(repo, "add", "seed.txt");
+                gitRun(repo, "commit", "-m", "seed");
+            }
+
+            String depPath = dep.toString();
+            CodingAgentJob job = new CodingAgentJob("t-both-clean", "p") {
+                @Override
+                public List<String> getDependentRepoPaths() {
+                    return List.of(depPath);
+                }
+            };
+            job.setWorkingDirectory(primary.toString());
+
+            assertFalse("hasUncommittedChanges must return false when both repos are clean",
+                    job.hasUncommittedChanges());
+        } finally {
+            deleteRecursively(primary);
+            deleteRecursively(dep);
+        }
+    }
+
+    /** Initialises a new git repo in a temp directory and returns its path. */
+    private static Path initGitRepo() throws IOException, InterruptedException {
+        Path dir = Files.createTempDirectory("dispatch-test-repo-");
+        gitRun(dir, "init");
+        gitRun(dir, "config", "user.email", "test@test.com");
+        gitRun(dir, "config", "user.name", "Test");
+        return dir;
+    }
+
+    /** Runs a git sub-command in {@code workDir} and waits for completion. */
+    private static void gitRun(Path workDir, String... args) throws IOException, InterruptedException {
+        String[] cmd = new String[args.length + 1];
+        cmd[0] = GitOperations.resolveGitCommand();
+        System.arraycopy(args, 0, cmd, 1, args.length);
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.directory(workDir.toFile());
+        pb.redirectErrorStream(true);
+        GitOperations.augmentPath(pb);
+        pb.start().waitFor();
     }
 
     /** Stub runner that records requests and returns a canned result. */

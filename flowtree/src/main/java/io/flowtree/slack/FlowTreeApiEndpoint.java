@@ -45,6 +45,10 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -115,7 +119,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /** Default port for the API endpoint. */
     public static final int DEFAULT_PORT = 7780;
-
     /** Matches /api/workstreams/{wsId} with optional /jobs/{jobId} and optional /messages, /submit, or /update suffix. */
     private static final Pattern WORKSTREAM_PATTERN = Pattern.compile(
         "/api/workstreams/([^/]+)(?:/jobs/([^/]+))?(/messages|/submit|/update)?"
@@ -174,12 +177,15 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /** Base URL of the ar-memory HTTP server (e.g., "http://localhost:8020"). */
     private String memoryServerUrl;
-
     /** Base URL of the ar-manager HTTP server (e.g., "http://ar-manager:8010"). */
     private String arManagerUrl;
-
     /** Pushed-tools configuration JSON forwarded to every submitted job. */
     private String pushedToolsConfig;
+    /** Executor for dispatching delayed job submissions. */
+    private final ScheduledExecutorService delayedJobExecutor =
+            Executors.newSingleThreadScheduledExecutor();
+    /** Maps job ID to its pending future during a submission delay period. */
+    final Map<String, ScheduledFuture<?>> pendingDelayedJobs = new HashMap<>();
 
     /**
      * Creates a new API endpoint on the specified port, using a single
@@ -900,9 +906,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     "application/json", json);
         }
 
-        // Branch-to-workstream resolution: explicit workstreamId wins, then
-        // (branch, repoUrl) — branch-only is rejected as ambiguous when more
-        // than one workstream shares the branch — finally the URL path id.
+        // Workstream resolution: explicit ID wins, then branch/repo, then path ID.
         String targetBranch = extractJsonField(body, "targetBranch");
         String bodyWorkstreamId = extractJsonField(body, "workstreamId");
         String bodyRepoUrl = extractJsonField(body, "repoUrl");
@@ -999,7 +1003,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (server == null) {
             return errorResponse("No FlowTree server configured");
         }
-
         NodeProxy[] peers = server.getNodeGroup().getServers();
         if (peers.length == 0) {
             String json = "{\"ok\":false,\"error\":\"No agents connected\"}";
@@ -1007,10 +1010,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     "application/json", json);
         }
 
-        // Apply optional overrides from the request body
-        // (targetBranch and repoUrl were already extracted during workstream
-        // resolution above; reuse bodyRepoUrl as repoUrl here so downstream
-        // code reads the same value the resolver saw).
         String repoUrl = bodyRepoUrl;
         String baseBranch = extractJsonField(body, "baseBranch");
         String jobDescription = extractJsonField(body, "description");
@@ -1027,7 +1026,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String postCompletionWorkingDir = extractJsonField(body, "postCompletionWorkingDir");
         int postCompletionTimeoutSeconds = extractJsonIntField(body, "postCompletionTimeoutSeconds");
         int maxPostCompletionPasses = extractJsonIntField(body, "maxPostCompletionPasses");
-
+        int delaySeconds = extractJsonIntField(body, "delaySeconds");
         // Create job factory with workstream defaults, overridden by request values
         CodingAgentJob.Factory factory = new CodingAgentJob.Factory(prompt);
         if (jobDescription != null && !jobDescription.isEmpty()) {
@@ -1082,8 +1081,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (workstream.getGitUserEmail() != null) {
             factory.setGitUserEmail(workstream.getGitUserEmail());
         }
-
-        // ar-manager config is set below after workstream URL
 
         // Planning document
         if (workstream.getPlanningDocument() != null) {
@@ -1176,12 +1173,15 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         JobCompletionEvent startEvent = JobCompletionEvent.started(factory.getTaskId(), displaySummary);
         startEvent.withGitInfo(effectiveBranch, null, null, null, false);
         notifiers.notifierFor(workstream.getWorkstreamId()).onJobSubmitted(workstream.getWorkstreamId(), startEvent);
-
-        // Queue locally — the NodeGroup relay mechanism distributes
-        // the job to a Node whose labels match the job's requirements
-        server.addTask(factory);
-
-        log("Submitted job via API: " + factory.getTaskId());
+        if (delaySeconds > 0) {
+            ScheduledFuture<?> future = delayedJobExecutor.schedule(
+                    () -> server.addTask(factory), delaySeconds, TimeUnit.SECONDS);
+            pendingDelayedJobs.put(factory.getTaskId(), future);
+            log("Delayed job via API: " + factory.getTaskId() + " (delaySeconds=" + delaySeconds + ")");
+        } else {
+            server.addTask(factory);
+            log("Submitted job via API: " + factory.getTaskId());
+        }
 
         String json = "{\"ok\":true,\"jobId\":\"" + factory.getTaskId()
             + "\",\"workstreamId\":\"" + workstreamId + "\"}";
