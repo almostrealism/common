@@ -86,16 +86,17 @@ class TestModulesRegistry(unittest.TestCase):
 
     def test_flowtree_module_is_listed(self):
         # Without this, read_ar_module('flowtree') rejects with
-        # "Unknown module", even though flowtree/README.md and
-        # flowtree/docs/ both exist on disk.
+        # "Unknown module", even though flowtree/core/README.md and
+        # flowtree/core/docs/ both exist on disk.
         self.assertIn("flowtree", server.MODULES)
 
     def test_flowtree_module_has_docs_on_disk(self):
         # The read_ar_module fallback chain looks for
-        # COMMON_DIR/{module}/README.md and COMMON_DIR/{module}/docs/.
+        # COMMON_DIR/{module_dir}/README.md and COMMON_DIR/{module_dir}/docs/,
+        # where module_dir is MODULES['flowtree']['path'] = 'flowtree/core'.
         # Without those files this test would pass while the tool fails.
-        self.assertTrue((server.COMMON_DIR / "flowtree" / "README.md").is_file())
-        self.assertTrue((server.COMMON_DIR / "flowtree" / "docs").is_dir())
+        self.assertTrue((server.COMMON_DIR / "flowtree" / "core" / "README.md").is_file())
+        self.assertTrue((server.COMMON_DIR / "flowtree" / "core" / "docs").is_dir())
 
 
 if __name__ == "__main__":

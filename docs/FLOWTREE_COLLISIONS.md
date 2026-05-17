@@ -44,7 +44,7 @@ path name. Neither agent's lock ever sees the other's.**
 ### Evidence chain
 
 **E1.1 — The lock file is placed inside the repository.**
-[`GitManagedJob.java:648`](flowtree/src/main/java/io/flowtree/jobs/GitManagedJob.java#L648):
+[`GitManagedJob.java:648`](flowtree/core/src/main/java/io/flowtree/jobs/GitManagedJob.java#L648):
 
 ```java
 Path lockFile = Paths.get(workspacePath, ".flowtree.lock");
@@ -55,7 +55,7 @@ Path lockFile = Paths.get(workspacePath, ".flowtree.lock");
 **inside the repo's working tree**, as an untracked file.
 
 **E1.2 — The lock mechanism is a POSIX advisory lock via Java FileChannel.**
-[`GitManagedJob.java:650–655`](flowtree/src/main/java/io/flowtree/jobs/GitManagedJob.java#L650):
+[`GitManagedJob.java:650–655`](flowtree/core/src/main/java/io/flowtree/jobs/GitManagedJob.java#L650):
 
 ```java
 workspaceLockChannel = FileChannel.open(lockFile,
@@ -76,7 +76,7 @@ the path across unlink/recreate cycles.
 
 **E1.3 — The lock file is a DEFAULT_EXCLUDED_PATTERN for commits, but
 not for the stash step.**
-[`GitJobConfig.java:82–83`](flowtree/src/main/java/io/flowtree/jobs/GitJobConfig.java#L82):
+[`GitJobConfig.java:82–83`](flowtree/core/src/main/java/io/flowtree/jobs/GitJobConfig.java#L82):
 
 ```java
 // FlowTree internal lock files
@@ -88,7 +88,7 @@ parameterise the stash command.
 
 **E1.4 — `GitRepositorySetup.prepare()` stashes every untracked file
 indiscriminately, including `.flowtree.lock`.**
-[`GitRepositorySetup.java:118–140`](flowtree/src/main/java/io/flowtree/jobs/GitRepositorySetup.java#L118):
+[`GitRepositorySetup.java:118–140`](flowtree/core/src/main/java/io/flowtree/jobs/GitRepositorySetup.java#L118):
 
 ```java
 List<String> allDirtyFiles = getAllDirtyFiles();              // line 118

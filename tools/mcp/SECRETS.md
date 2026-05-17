@@ -197,7 +197,7 @@ rendered file is meant to land on the controller host.  Both require a
 `workstream_id` argument because the caller is not bound to a workstream
 by environment.
 
-`flowtree/src/main/java/io/flowtree/jobs/McpConfigBuilder.java` keeps both
+`flowtree/core/src/main/java/io/flowtree/jobs/McpConfigBuilder.java` keeps both
 of these on the agent allowlist's exclusion set
 (`EXCLUDED_AR_MANAGER_TOOLS`), so a `ClaudeCodeJob` agent that calls them
 will see a tool-denied error.  If you see that error, the agent has the

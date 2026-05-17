@@ -106,7 +106,7 @@ only run in layer-gated jobs — which are skipped on flowtree-only branches.
 ```bash
 grep -n "pl flowtree" .github/workflows/analysis.yaml
 ```
-This should show `mvn test -pl flowtree` inside the `build` job.
+This should show `mvn test -pl flowtree/core` inside the `build` job.
 
 If it's missing, re-add it. Flowtree tests MUST be in `build`, not in a separately-gated job.
 
@@ -255,7 +255,7 @@ grep -A20 '^  analysis:' .github/workflows/analysis.yaml | grep -E '(needs|build
 # 3. Verify mkdir -p all-coverage is present
 grep -n "mkdir -p all-coverage" .github/workflows/analysis.yaml
 
-# 4. Verify mvn test -pl flowtree is in build job
+# 4. Verify mvn test -pl flowtree/core is in build job
 grep -n "pl flowtree" .github/workflows/analysis.yaml
 ```
 
@@ -295,10 +295,10 @@ Only after completing Steps 1-3, answer the original question. Your answer must 
 specific pom.xml evidence from Step 2.
 
 **Example of correct reasoning**:
-> "I need to know if ar-flowtree depends on ar-utils-http.
-> I ran: `grep 'ar-utils-http' flowtree/pom.xml`
+> "I need to know if ar-flowtree-core depends on ar-utils-http.
+> I ran: `grep 'ar-utils-http' flowtree/core/pom.xml`
 > Output: `<artifactId>ar-utils-http</artifactId>`
-> Conclusion: yes, ar-flowtree depends on ar-utils-http."
+> Conclusion: yes, ar-flowtree-core depends on ar-utils-http."
 
 **Example of incorrect reasoning** (do not do this):
 > "flowtree is in the standalone layer, which is above the engine layer, so it probably

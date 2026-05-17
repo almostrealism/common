@@ -43,7 +43,7 @@ STEP 4 — TEST: Add the tool name to the expected set in
 McpToolDiscoveryTest.managerAllExpectedToolsAreRegisteredInServerPy (Java) AND to the
 expected set in TestToolRegistration.test_expected_tool_count (Python test_server.py).
 
-STEP 5 — VERIFY: Run `mvn test -pl flowtree -Dtest=McpToolDiscoveryTest` before declaring done.
+STEP 5 — VERIFY: Run `mvn test -pl flowtree/core -Dtest=McpToolDiscoveryTest` before declaring done.
 ```
 
 ### Rule 2: Pre-Commit Verification Hook
@@ -55,7 +55,7 @@ STEP 5 — VERIFY: Run `mvn test -pl flowtree -Dtest=McpToolDiscoveryTest` befor
 When `tools/mcp/manager/server.py` is saved/written, automatically run:
 ```bash
 cd /path/to/almostrealism-common
-mvn test -pl flowtree -Dtest=McpToolDiscoveryTest#managerAllExpectedToolsAreRegisteredInServerPy
+mvn test -pl flowtree/core -Dtest=McpToolDiscoveryTest#managerAllExpectedToolsAreRegisteredInServerPy
 ```
 
 If this fails, block the commit and show the error.
@@ -70,7 +70,7 @@ If this fails, block the commit and show the error.
         "hooks": [
           {
             "type": "command",
-            "command": "if echo \"$CLAUDE_TOOL_ARGS\" | grep -q 'tools/mcp/manager/server.py'; then cd /path/to/project && mvn test -pl flowtree -Dtest=McpToolDiscoveryTest -q && echo 'MCP tool registry check PASSED' || echo 'MCP TOOL REGISTRY CHECK FAILED — run McpToolDiscoveryTest for details'; fi"
+            "command": "if echo \"$CLAUDE_TOOL_ARGS\" | grep -q 'tools/mcp/manager/server.py'; then cd /path/to/project && mvn test -pl flowtree/core -Dtest=McpToolDiscoveryTest -q && echo 'MCP tool registry check PASSED' || echo 'MCP TOOL REGISTRY CHECK FAILED — run McpToolDiscoveryTest for details'; fi"
           }
         ]
       }
@@ -98,7 +98,7 @@ BEFORE committing any new function in tools/mcp/manager/server.py, run this chec
 - [ ] A complete docstring is present with Args: and Returns: sections
 - [ ] The tool name is added to the expected set in McpToolDiscoveryTest.java
 - [ ] The tool name is added to test_expected_tool_count in test_server.py
-- [ ] `mvn test -pl flowtree -Dtest=McpToolDiscoveryTest` passes
+- [ ] `mvn test -pl flowtree/core -Dtest=McpToolDiscoveryTest` passes
 - [ ] `python -m pytest tools/mcp/manager/test_server.py::TestToolRegistration` passes
 
 REFERENCE: See tools/mcp/CLAUDE.md for the exact pattern to follow.
@@ -112,11 +112,11 @@ These safeguards already exist on the `feature/devtools-qa` branch and will be m
 
 | Safeguard | Location | What it catches |
 |-----------|----------|-----------------|
-| `McpToolDiscoveryTest.managerAllExpectedToolsAreRegisteredInServerPy` | `flowtree/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java` | Tool function missing `@mcp.tool()` decorator |
-| `McpToolDiscoveryTest.managerToolParametersAreProperlyDeclaredInSignatures` | `flowtree/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java` | Key parameters missing from function signature |
-| `McpToolDiscoveryTest.managerRegisterAndUpdateConfigHaveRequiredLabelsAndDependentRepos` | `flowtree/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java` | `required_labels` and `dependent_repos` missing from workstream tools |
-| `McpConfigBuilderTest.allowlistCoversEveryArManagerTool` | `flowtree/src/test/java/io/flowtree/jobs/McpConfigBuilderTest.java` | New tool added to `server.py` but not classified into `AR_MANAGER_TOOL_NAMES` (granted) or `EXCLUDED_AR_MANAGER_TOOLS` (denied), causing the Claude Code harness to silently block the call |
-| `McpConfigBuilderTest.allowlistAndExclusionsAreDisjoint` | `flowtree/src/test/java/io/flowtree/jobs/McpConfigBuilderTest.java` | A tool listed in both the granted and excluded sets, leaving its agent access ambiguous |
+| `McpToolDiscoveryTest.managerAllExpectedToolsAreRegisteredInServerPy` | `flowtree/core/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java` | Tool function missing `@mcp.tool()` decorator |
+| `McpToolDiscoveryTest.managerToolParametersAreProperlyDeclaredInSignatures` | `flowtree/core/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java` | Key parameters missing from function signature |
+| `McpToolDiscoveryTest.managerRegisterAndUpdateConfigHaveRequiredLabelsAndDependentRepos` | `flowtree/core/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java` | `required_labels` and `dependent_repos` missing from workstream tools |
+| `McpConfigBuilderTest.allowlistCoversEveryArManagerTool` | `flowtree/core/src/test/java/io/flowtree/jobs/McpConfigBuilderTest.java` | New tool added to `server.py` but not classified into `AR_MANAGER_TOOL_NAMES` (granted) or `EXCLUDED_AR_MANAGER_TOOLS` (denied), causing the Claude Code harness to silently block the call |
+| `McpConfigBuilderTest.allowlistAndExclusionsAreDisjoint` | `flowtree/core/src/test/java/io/flowtree/jobs/McpConfigBuilderTest.java` | A tool listed in both the granted and excluded sets, leaving its agent access ambiguous |
 | `TestToolRegistration.test_expected_tool_count` | `tools/mcp/manager/test_server.py` | Any tool in the expected set not in the actual registry |
 | `TestGithubRequestCopilotReview` | `tools/mcp/manager/test_server.py` | `github_request_copilot_review` tool behavior |
 | `tools/mcp/CLAUDE.md` | `tools/mcp/CLAUDE.md` | Human/agent-readable instructions |

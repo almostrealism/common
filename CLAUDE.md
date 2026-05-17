@@ -113,10 +113,11 @@ common/
 │   └── compose/                   #   ar-compose: Audio scene orchestration, arrangement
 │
 ├── flowtree/                      # Standalone (above engine) — Workflow Orchestration
-├── flowtreeapi/                   #   Standalone (above engine) — FlowTree API abstractions
-├── flowtree-python/               #   Standalone (above engine) — Python bindings for FlowTree
-├── graphpersist/                  #   Standalone (above engine) — Database persistence, NFS/SSH
-│                                  #   NOTE: flowtree depends on engine layer (ar-utils, ar-utils-http).
+│   ├── core/                      #   ar-flowtree-core: Distributed job dispatch, ClaudeCodeJob, MCP wiring
+│   ├── api/                       #   ar-flowtreeapi: FlowTree API abstractions
+│   ├── python/                    #   ar-flowtree-python: Python bindings for FlowTree
+│   └── graphpersist/              #   ar-graphpersist: Database persistence, NFS/SSH
+│                                  #   NOTE: flowtree/core depends on engine layer (ar-utils, ar-utils-http).
 │                                  #   Nothing in base/compute/domain/engine/extern/studio depends on flowtree.
 ├── tools/                         # Standalone (above engine) — Dev tools, MCP servers
 ├── docs/                          # Documentation portal, internals, tutorials

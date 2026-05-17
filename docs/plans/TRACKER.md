@@ -375,7 +375,7 @@ ENTRYPOINT ["python", "server.py"]
 ### 3.3 docker-compose Entry
 
 The `ar-tracker` service is added to
-`flowtree/controller/docker-compose.yml` alongside `ar-memory`:
+`flowtree/core/controller/docker-compose.yml` alongside `ar-memory`:
 
 ```yaml
   ar-tracker:
@@ -962,7 +962,7 @@ def tracker_search_tasks(
 
 Per `tools/mcp/CLAUDE.md`, every new tool must be registered in two test files:
 
-1. **`flowtree/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java`**
+1. **`flowtree/core/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java`**
    — Add all 14 tool names to the `expected` set in
    `managerAllExpectedToolsAreRegisteredInServerPy`.
 
@@ -1199,7 +1199,7 @@ Goal: a working tracker service with basic CRUD, deployed alongside `ar-memory`.
 Deliverables:
 - `tools/tracker/` — Starlette service (server.py, api.py, store.py, migrate.py)
 - `tools/tracker/Dockerfile`
-- `ar-tracker` service entry in `flowtree/controller/docker-compose.yml`
+- `ar-tracker` service entry in `flowtree/core/controller/docker-compose.yml`
 - 14 MCP tools added to `tools/mcp/manager/server.py`
 - Both tool names and parameter assertions added to `McpToolDiscoveryTest.java` and
   `test_server.py`
@@ -1261,7 +1261,7 @@ flowtree/
 tools/mcp/manager/
 └── server.py                       # Add _tracker_* helpers + 14 @mcp.tool() functions
 
-flowtree/src/test/java/io/flowtree/jobs/
+flowtree/core/src/test/java/io/flowtree/jobs/
 └── McpToolDiscoveryTest.java       # Add 14 tool names to expected sets
 
 tools/mcp/manager/
@@ -1279,4 +1279,4 @@ Before implementing, read:
 - `tools/mcp/manager/server.py` — `_controller_get/_controller_post` pattern to copy
   for `_tracker_*` helpers; workspace scoping functions
 - `tools/mcp/CLAUDE.md` — mandatory checklist for adding new MCP tools
-- `flowtree/controller/docker-compose.yml` — live example of adding a new service
+- `flowtree/core/controller/docker-compose.yml` — live example of adding a new service

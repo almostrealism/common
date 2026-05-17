@@ -35,7 +35,7 @@ required for Phases 2-4)
    - `ClaudeCodeJob` → `CodingAgentJob`
    - `ClaudeCodeJobFactory` → `CodingAgentJobFactory`
    - `ClaudeCodeJobEvent` → `CodingAgentJobEvent`
-   - File: `flowtree/src/main/java/io/flowtree/jobs/CodingAgentJob.java`
+   - File: `flowtree/core/src/main/java/io/flowtree/jobs/CodingAgentJob.java`
    This is a wire-format break. Any persisted/queued job specs serialized
    under the old class discriminator will fail to deserialize on the new
    build. **Deployment requires draining in-flight jobs first** (or
@@ -53,9 +53,9 @@ required for Phases 2-4)
 
 - **Phase 2 (per-job/per-workstream selection through public surfaces) is
   not done.** None of these reference `runner`:
-  - `flowtree/src/main/java/io/flowtree/slack/Workstream.java`
-  - `flowtree/src/main/java/io/flowtree/slack/WorkstreamConfig.java`
-  - `flowtree/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java`
+  - `flowtree/core/src/main/java/io/flowtree/slack/Workstream.java`
+  - `flowtree/core/src/main/java/io/flowtree/slack/WorkstreamConfig.java`
+  - `flowtree/core/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java`
   - `tools/mcp/manager/server.py` (`workstream_submit_task` has no
     `runner` / `default_runner` parameter)
   Even though `CodingAgentJob` accepts `runnerName`, no submission surface
@@ -63,14 +63,14 @@ required for Phases 2-4)
 - **Phase 3 (opencode runner) is not done.** No
   `OpencodeRunner.java`/`OpencodeBinaryLocator`/`OpencodeOutputParser`
   exist. `AgentRunnerRegistry` registers only `CLAUDE`. The agent image
-  (`flowtree/agent/Dockerfile`) installs only `@anthropic-ai/claude-code`;
+  (`flowtree/core/agent/Dockerfile`) installs only `@anthropic-ai/claude-code`;
   no opencode binary is present.
 - **Phase 4 (`docs/operations/PLUGGABLE_AGENTS_RECIPES.md`)** does not
   exist.
 
 ### Deployment of what currently exists
 
-`flowtree/rebuild.sh --agents` is sufficient — all changes are inside the
+`flowtree/core/rebuild.sh --agents` is sufficient — all changes are inside the
 `flowtree` Maven module; no Dockerfile, compose, or external-binary
 changes. The behavior is unchanged from pre-branch (Claude only). The one
 operational caveat is the class-rename wire break above.
@@ -98,7 +98,7 @@ In rough order; each step is a separate PR.
    `AgentRunnerRegistry.available()` at submit time.
 4. **Phase 3 — opencode runner.** Implement `OpencodeRunner` and friends;
    register in `AgentRunnerRegistry`; add opencode binary install to
-   `flowtree/agent/Dockerfile`; gate behind `AgentRunnerNotAvailableException`
+   `flowtree/core/agent/Dockerfile`; gate behind `AgentRunnerNotAvailableException`
    for executors lacking the binary. Smoke test `AgentRunnerSmokeIT`.
 5. **Phase 4 — recipes doc.** Once at least two runners are usable in
    production, write `docs/operations/PLUGGABLE_AGENTS_RECIPES.md` per
@@ -128,7 +128,7 @@ behavior change in later phases.
 
 ### 0.1 The single-class orchestrator: `ClaudeCodeJob`
 
-`flowtree/src/main/java/io/flowtree/jobs/ClaudeCodeJob.java` (1,576 lines)
+`flowtree/core/src/main/java/io/flowtree/jobs/ClaudeCodeJob.java` (1,576 lines)
 holds three concerns in one class:
 
 1. **Job lifecycle** (extends `GitManagedJob`)
@@ -165,7 +165,7 @@ holds three concerns in one class:
 ### 0.2 Subprocess management
 
 `ClaudeAttemptRunner.runAttempt(pb, inactivityTimeoutMillis, taskId, logger)`
-(`flowtree/src/main/java/io/flowtree/jobs/ClaudeAttemptRunner.java`) is
+(`flowtree/core/src/main/java/io/flowtree/jobs/ClaudeAttemptRunner.java`) is
 generic: it just runs a `ProcessBuilder`, reads stdout line-by-line, and
 applies a `ClaudeInactivityMonitor` that destroys the process tree after
 stdout silence. This class has no Claude-specific behavior and can be reused
@@ -173,7 +173,7 @@ unchanged by every runner.
 
 ### 0.3 MCP wiring
 
-`McpConfigBuilder` (`flowtree/src/main/java/io/flowtree/jobs/McpConfigBuilder.java`)
+`McpConfigBuilder` (`flowtree/core/src/main/java/io/flowtree/jobs/McpConfigBuilder.java`)
 emits two artifacts:
 
 - `buildMcpConfig()` returns the JSON for the `--mcp-config` flag — an
@@ -235,8 +235,8 @@ and are applied by the controller at submit time.
 | Surface | File |
 |---------|------|
 | MCP tool | `tools/mcp/manager/server.py:workstream_submit_task` (~line 1343) |
-| HTTP endpoint | `flowtree/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java` (`POST /api/workstreams/{id}/submit`) |
-| Slack listener | `flowtree/src/main/java/io/flowtree/slack/SlackListener.java` |
+| HTTP endpoint | `flowtree/core/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java` (`POST /api/workstreams/{id}/submit`) |
+| Slack listener | `flowtree/core/src/main/java/io/flowtree/slack/SlackListener.java` |
 | YAML config | `WorkstreamConfig` / `Workstream` |
 
 ### 0.7 Telemetry
@@ -255,15 +255,15 @@ will report 0 here.
 ### 0.8 References to `ClaudeCodeJob` outside the package
 
 ```
-flowtree/src/main/java/io/flowtree/ClaudeCodeClient.java
-flowtree/src/main/java/io/flowtree/slack/Workstream.java
-flowtree/src/main/java/io/flowtree/slack/WorkstreamConfig.java
-flowtree/src/main/java/io/flowtree/slack/SlackListener.java
-flowtree/src/main/java/io/flowtree/slack/FlowTreeController.java
-flowtree/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java
+flowtree/core/src/main/java/io/flowtree/ClaudeCodeClient.java
+flowtree/core/src/main/java/io/flowtree/slack/Workstream.java
+flowtree/core/src/main/java/io/flowtree/slack/WorkstreamConfig.java
+flowtree/core/src/main/java/io/flowtree/slack/SlackListener.java
+flowtree/core/src/main/java/io/flowtree/slack/FlowTreeController.java
+flowtree/core/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java
 ```
 
-Test sites (`flowtree/src/test/java/io/flowtree/...`) reference the class
+Test sites (`flowtree/core/src/test/java/io/flowtree/...`) reference the class
 heavily and exercise nearly every property setter.
 
 ---
@@ -415,7 +415,7 @@ Static initializer pre-registers `"claude"` and (once added) `"opencode"`.
   node and replayed on deserialization. Renaming the class would change the
   class-discriminator used by `AbstractJobFactory` and break in-flight jobs.
 - `ClaudeCodeJob.Factory` is a backward-compat alias that is itself part of
-  the wire-format identity (see `flowtree/src/main/java/io/flowtree/jobs/ClaudeCodeJob.java:1568`).
+  the wire-format identity (see `flowtree/core/src/main/java/io/flowtree/jobs/ClaudeCodeJob.java:1568`).
   Removing it forces every persisted job spec to be rewritten.
 - 6 production files and 7 test files reference `ClaudeCodeJob` by name
   (§0.8). Each is a small change individually, but each is also an
@@ -931,7 +931,7 @@ that requires a real `claude` or `opencode` binary on the executor.
 ### 8.4 Regression sweeps
 
 The full existing test suite in
-`flowtree/src/test/java/io/flowtree/jobs/` must pass unchanged through
+`flowtree/core/src/test/java/io/flowtree/jobs/` must pass unchanged through
 Phase 1. Any test that asserts specific Claude flag construction moves into
 `ClaudeCodeRunnerTest` (no behavior change, just relocation).
 
@@ -952,13 +952,13 @@ Every phase ends with the existing test suite (`flowtree` module +
 ### Phase 1 — extract `AgentRunner` and move Claude logic out
 
 **Files added:**
-- `flowtree/src/main/java/io/flowtree/jobs/agent/AgentRunner.java`
-- `flowtree/src/main/java/io/flowtree/jobs/agent/AgentRunRequest.java`
-- `flowtree/src/main/java/io/flowtree/jobs/agent/AgentRunResult.java`
-- `flowtree/src/main/java/io/flowtree/jobs/agent/AgentCapabilities.java`
-- `flowtree/src/main/java/io/flowtree/jobs/agent/AgentRunnerRegistry.java`
-- `flowtree/src/main/java/io/flowtree/jobs/agent/ClaudeCodeRunner.java`
-- `flowtree/src/test/java/io/flowtree/jobs/agent/ClaudeCodeRunnerTest.java`
+- `flowtree/core/src/main/java/io/flowtree/jobs/agent/AgentRunner.java`
+- `flowtree/core/src/main/java/io/flowtree/jobs/agent/AgentRunRequest.java`
+- `flowtree/core/src/main/java/io/flowtree/jobs/agent/AgentRunResult.java`
+- `flowtree/core/src/main/java/io/flowtree/jobs/agent/AgentCapabilities.java`
+- `flowtree/core/src/main/java/io/flowtree/jobs/agent/AgentRunnerRegistry.java`
+- `flowtree/core/src/main/java/io/flowtree/jobs/agent/ClaudeCodeRunner.java`
+- `flowtree/core/src/test/java/io/flowtree/jobs/agent/ClaudeCodeRunnerTest.java`
 
 **Files renamed:**
 - `ClaudeAttemptRunner.java` → `AgentProcessRunner.java`
@@ -993,7 +993,7 @@ Every phase ends with the existing test suite (`flowtree` module +
   `tools/mcp/CLAUDE.md`).
 - `tools/mcp/manager/test_server.py` — assert parameters declared in
   signature.
-- `flowtree/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java` —
+- `flowtree/core/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java` —
   extend `managerToolParametersAreProperlyDeclaredInSignatures`.
 
 **Behavioral change:** none unless the submitter actively sets `runners`;
@@ -1011,12 +1011,12 @@ defaults reproduce Phase 1 behavior.
 ### Phase 3 — add the opencode runner
 
 **Files added:**
-- `flowtree/src/main/java/io/flowtree/jobs/agent/OpencodeRunner.java`
-- `flowtree/src/main/java/io/flowtree/jobs/agent/OpencodeBinaryLocator.java`
-- `flowtree/src/main/java/io/flowtree/jobs/agent/OpencodeOutputParser.java`
-- `flowtree/src/test/java/io/flowtree/jobs/agent/OpencodeRunnerTest.java`
-- `flowtree/src/test/java/io/flowtree/jobs/agent/OpencodeOutputParserTest.java`
-- `flowtree/src/test/java/io/flowtree/jobs/agent/AgentRunnerSmokeIT.java`
+- `flowtree/core/src/main/java/io/flowtree/jobs/agent/OpencodeRunner.java`
+- `flowtree/core/src/main/java/io/flowtree/jobs/agent/OpencodeBinaryLocator.java`
+- `flowtree/core/src/main/java/io/flowtree/jobs/agent/OpencodeOutputParser.java`
+- `flowtree/core/src/test/java/io/flowtree/jobs/agent/OpencodeRunnerTest.java`
+- `flowtree/core/src/test/java/io/flowtree/jobs/agent/OpencodeOutputParserTest.java`
+- `flowtree/core/src/test/java/io/flowtree/jobs/agent/AgentRunnerSmokeIT.java`
   (disabled by default).
 
 **Files modified:**
@@ -1141,28 +1141,28 @@ implementation starts.
 ## Appendix A — file inventory
 
 ### Modified in Phase 1 (refactor)
-- `flowtree/src/main/java/io/flowtree/jobs/ClaudeCodeJob.java`
-- `flowtree/src/main/java/io/flowtree/jobs/ClaudeAttemptRunner.java` → rename
-- `flowtree/src/main/java/io/flowtree/jobs/ClaudeInactivityMonitor.java` → rename
+- `flowtree/core/src/main/java/io/flowtree/jobs/ClaudeCodeJob.java`
+- `flowtree/core/src/main/java/io/flowtree/jobs/ClaudeAttemptRunner.java` → rename
+- `flowtree/core/src/main/java/io/flowtree/jobs/ClaudeInactivityMonitor.java` → rename
 
 ### Modified in Phase 2 (per-phase selection)
-- `flowtree/src/main/java/io/flowtree/jobs/ClaudeCodeJob.java`
-- `flowtree/src/main/java/io/flowtree/jobs/ClaudeCodeJobFactory.java`
-- `flowtree/src/main/java/io/flowtree/slack/Workstream.java`
-- `flowtree/src/main/java/io/flowtree/slack/WorkstreamConfig.java`
-- `flowtree/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java`
+- `flowtree/core/src/main/java/io/flowtree/jobs/ClaudeCodeJob.java`
+- `flowtree/core/src/main/java/io/flowtree/jobs/ClaudeCodeJobFactory.java`
+- `flowtree/core/src/main/java/io/flowtree/slack/Workstream.java`
+- `flowtree/core/src/main/java/io/flowtree/slack/WorkstreamConfig.java`
+- `flowtree/core/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java`
 - `tools/mcp/manager/server.py`
 - `tools/mcp/manager/test_server.py`
-- `flowtree/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java`
-- `flowtree/src/test/java/io/flowtree/jobs/ClaudeCodeJob*Test.java` (where
+- `flowtree/core/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java`
+- `flowtree/core/src/test/java/io/flowtree/jobs/ClaudeCodeJob*Test.java` (where
   serialization is asserted)
 
 ### Modified in Phase 3 (opencode runner)
-- `flowtree/src/main/java/io/flowtree/jobs/agent/AgentRunnerRegistry.java`
+- `flowtree/core/src/main/java/io/flowtree/jobs/agent/AgentRunnerRegistry.java`
 - `tools/mcp/manager/server.py` (registry-aware validation)
 
 ### Modified in Phase 4 (docs + validation)
-- `flowtree/src/main/java/io/flowtree/slack/WorkstreamConfig.java`
+- `flowtree/core/src/main/java/io/flowtree/slack/WorkstreamConfig.java`
 - `docs/operations/PLUGGABLE_AGENTS_RECIPES.md` (new)
 
 ## Appendix B — Out of scope

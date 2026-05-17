@@ -12,8 +12,8 @@ Find a Java method by name and return its full body with file path and line numb
 ```bash
 # Find all implementations of a method by name
 python3 tools/bin/ar-find-method isViolated
-python3 tools/bin/ar-find-method forward flowtree/
-python3 tools/bin/ar-find-method handleSubmit flowtree/src/
+python3 tools/bin/ar-find-method forward flowtree/core/
+python3 tools/bin/ar-find-method handleSubmit flowtree/core/src/
 ```
 
 Output: file path, line range, and the complete method body for each match. Skips `/target/` and `/generated/` directories.
@@ -26,8 +26,8 @@ Show the structure of a Java class without method bodies. Returns package, impor
 
 ```bash
 # Get a class table-of-contents without reading 1000+ lines
-python3 tools/bin/ar-class-outline flowtree/src/main/java/io/flowtree/jobs/ClaudeCodeJob.java
-python3 tools/bin/ar-class-outline flowtree/src/main/java/io/flowtree/jobs/EnforcementRule.java
+python3 tools/bin/ar-class-outline flowtree/core/src/main/java/io/flowtree/jobs/ClaudeCodeJob.java
+python3 tools/bin/ar-class-outline flowtree/core/src/main/java/io/flowtree/jobs/EnforcementRule.java
 ```
 
 Output: compact class structure — enough to know what methods exist and how to navigate to them, without reading the implementation.

@@ -61,18 +61,20 @@ run in the build job. They depend on engine-layer modules but nothing in the
 named layers depends on them.
 
 ```
-flowtreeapi     → utils
-graphpersist    → utils
-flowtree-python → flowtreeapi
-flowtree        → flowtreeapi, flowtree-python, graphpersist, utils-http
-tools           → ml
+flowtree/api         → utils
+flowtree/graphpersist → utils
+flowtree/python      → flowtree/api
+flowtree/core        → flowtree/api, flowtree/python, flowtree/graphpersist, utils-http
+tools                → ml
 ```
 
+(Artifact IDs: `ar-flowtree-core`, `ar-flowtreeapi`, `ar-flowtree-python`, `ar-graphpersist`.)
+
 **Critical facts:**
-- `flowtree` CONSUMES engine-layer modules. No named layer depends on flowtree.
+- `flowtree/core` CONSUMES engine-layer modules. No named layer depends on the flowtree family.
 - `tools` CONSUMES `ml` (engine layer). Tools tests run in `code-policy-check`
   and `test-timeout-check`, not in any layer-gated job.
-- `graphpersist` and `flowtreeapi` are only consumed by the flowtree family.
+- `flowtree/graphpersist` and `flowtree/api` are only consumed by the flowtree family.
 
 ---
 
@@ -89,7 +91,7 @@ The `changes` job detects which top-level directories changed and sets flags:
 | `extern_changed`   | `extern/` | `test-media`                     |
 | `studio_changed`   | `studio/` | `test-media`                     |
 
-**No flag exists for `flowtree/`, `flowtreeapi/`, `graphpersist/`, or `tools/`.**
+**No flag exists for `flowtree/` or `tools/`.**
 Changes to those directories set `code_changed=true` (triggering the build) but
 no layer flag — so all layer-gated test jobs are skipped. This is intentional:
 flowtree tests always run in the `test-flowtree` job regardless of what changed.
@@ -103,7 +105,7 @@ and does not upload coverage.
 
 ### What the `test-flowtree` job covers
 
-Runs `mvn test -pl flowtree` and uploads JaCoCo coverage as `coverage-flowtree`.
+Runs `mvn test -pl flowtree/core` and uploads JaCoCo coverage as `coverage-flowtree`.
 Gated on the same validation prerequisites as the `test` matrix
 (`code-policy-check`, `test-timeout-check`, `duplicate-code-check`,
 `test-integrity-check`) and runs in parallel with `test`. Extracted from `build`
@@ -172,11 +174,11 @@ it tolerates missing artifacts when test jobs are skipped.
 Always grep ALL pom.xml files for `ar-<module-name>` to find every consumer.
 
 **Mistake: Confusing dependency direction.**
-`flowtree` depends on `flowtreeapi` (flowtree is the consumer).
-`flowtreeapi` does NOT depend on `flowtree`.
+`flowtree/core` depends on `flowtree/api` (core is the consumer).
+`flowtree/api` does NOT depend on `flowtree/core`.
 
 **Mistake: Adding a layer flag for a standalone module.**
-`flowtree/`, `tools/`, `graphpersist/` are not layers. Their tests run in
+`flowtree/` and `tools/` are not layers. Their tests run in
 specific jobs (`test-flowtree`, `code-policy-check`) that always execute on
 code changes. Do not create spurious layer flags for them.
 

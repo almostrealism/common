@@ -1428,7 +1428,7 @@ def workstream_submit_task(
             retries is exhausted. Examples:
 
             - Run a single test class:
-              ``"mvn -pl flowtree test -Dtest=NotifierRegistryTest"``
+              ``"mvn -pl flowtree/core test -Dtest=NotifierRegistryTest"``
             - Run a pytest file:
               ``"cd tools/mcp/manager && pytest tests/test_secrets.py"``
             - Run a custom script: ``"bash scripts/verify-foo.sh"``
