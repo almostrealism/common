@@ -145,6 +145,47 @@ public class ParameterizedVolumeEnvelope extends ParameterizedEnvelopeAdapter {
 			return mode.getMaxRelease(getVoicing(), totalDuration) * getReleaseSelection().positive().apply(params);
 		}
 
+		/**
+		 * Resolves the automation-adjusted ADSR scalars for the given duration
+		 * and automation level, matching the production sustain/release clamping
+		 * applied inside {@link #apply}. Exposed so the batched dispatch path can
+		 * materialise the per-sample volume envelope in Java without invoking
+		 * {@code .evaluate()} on the kernel form.
+		 *
+		 * @param totalDuration   total note duration in seconds
+		 * @param automationLevel automation level value in [0, 1]
+		 * @return an array {@code [attack, decay, sustain, release]}
+		 */
+		public double[] resolveAdsr(double totalDuration, double automationLevel) {
+			double adj = adjustmentBase + adjustmentAutomation * automationLevel;
+			double sustain = Math.min(getSustain() * adj, 1.0);
+			if (sustain < 0.25) sustain = 0.25;
+			double release = getRelease(totalDuration) * adj;
+			if (release > 0.7 * totalDuration) release = 0.7 * totalDuration;
+			return new double[] {getAttack(totalDuration), getDecay(), sustain, release};
+		}
+
+		/**
+		 * Writes the per-sample volume envelope curve into the destination
+		 * buffer using the ADSR semantics enforced by
+		 * {@link org.almostrealism.audio.filter.EnvelopeFeatures#envelope}. The
+		 * computation mirrors the kernel form (attack→decay→sustain→release)
+		 * but runs in pure Java so the batched dispatch path can populate
+		 * {@link org.almostrealism.music.pattern.RenderedNoteAudio#setBatchedVolumeEnvelope}
+		 * without crossing the JNI boundary per note.
+		 *
+		 * @param dst             destination buffer; the entire {@code memLength}
+		 *                        is written
+		 * @param sampleRate      audio sample rate in Hz
+		 * @param totalDuration   total note duration in seconds
+		 * @param automationLevel automation level value in [0, 1]
+		 */
+		public void writeEnvelopeBuffer(PackedCollection dst, int sampleRate,
+										 double totalDuration, double automationLevel) {
+			writeAdsrCurve(dst, sampleRate, totalDuration,
+					resolveAdsr(totalDuration, automationLevel), 1.0);
+		}
+
 		@Override
 		public Producer<PackedCollection> apply(Producer<PackedCollection> audio,
 												   Producer<PackedCollection> duration,

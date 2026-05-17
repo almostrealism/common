@@ -23,6 +23,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.music.data.ParameterFunction;
 import org.almostrealism.music.data.ParameterSet;
+import org.almostrealism.audio.filter.MultiOrderFilterEnvelopeProcessor;
 import org.almostrealism.audio.notes.NoteAudioFilter;
 import org.almostrealism.collect.PackedCollection;
 
@@ -122,6 +123,45 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 		/** Returns the computed release duration in seconds. */
 		public double getRelease() {
 			return mode.getMaxRelease(getVoicing()) * getReleaseSelection().positive().apply(params);
+		}
+
+		/**
+		 * Resolves the automation-adjusted ADSR scalars matching the production
+		 * sustain/release adjustments inside {@link #apply}. Exposed so the
+		 * batched dispatch path can materialise the per-sample cutoff envelope
+		 * in Java without invoking {@code .evaluate()} on the kernel form.
+		 *
+		 * @param automationLevel automation level value in [0, 1]
+		 * @return an array {@code [attack, decay, sustain, release]} with sustain
+		 *         and release multiplied by {@code adjustmentBase + adjustmentAutomation * automationLevel}
+		 */
+		public double[] resolveAdsr(double automationLevel) {
+			double adj = adjustmentBase + adjustmentAutomation * automationLevel;
+			return new double[] {getAttack(), getDecay(),
+					getSustain() * adj, getRelease() * adj};
+		}
+
+		/**
+		 * Writes the per-sample cutoff-frequency envelope curve into the
+		 * destination buffer using the ADSR semantics enforced by
+		 * {@link org.almostrealism.audio.filter.EnvelopeFeatures#envelope},
+		 * scaled by {@link MultiOrderFilterEnvelopeProcessor#filterPeak}.
+		 * The computation mirrors the kernel form but runs in pure Java so the
+		 * batched dispatch path can populate
+		 * {@link org.almostrealism.music.pattern.RenderedNoteAudio#setBatchedFilterCutoffEnvelope}
+		 * without crossing the JNI boundary per note.
+		 *
+		 * @param dst             destination buffer; the entire {@code memLength}
+		 *                        is written
+		 * @param sampleRate      audio sample rate in Hz
+		 * @param totalDuration   total note duration in seconds
+		 * @param automationLevel automation level value in [0, 1]
+		 */
+		public void writeCutoffBuffer(PackedCollection dst, int sampleRate,
+									   double totalDuration, double automationLevel) {
+			writeAdsrCurve(dst, sampleRate, totalDuration,
+					resolveAdsr(automationLevel),
+					MultiOrderFilterEnvelopeProcessor.filterPeak);
 		}
 
 		@Override

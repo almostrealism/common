@@ -183,16 +183,26 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	/**
 	 * Default source-samples-per-note used when constructing a per-pattern
 	 * {@link BatchedPatternLayerRenderer}. Matches the production fixture used
-	 * by the batched-chain benchmarks.
+	 * by the batched-chain benchmarks. Public so the per-note
+	 * batched-input populator in
+	 * {@link ScaleTraversalStrategy#createRenderedNote} can size the source
+	 * buffer it materialises on each {@link RenderedNoteAudio}, and so
+	 * end-to-end batched dispatch tests in adjacent modules can build tick
+	 * buffers that match the renderer dimensions.
 	 */
-	private static final int BATCHED_SOURCE_LENGTH = 2048;
+	public static final int BATCHED_SOURCE_LENGTH = 2048;
 
 	/**
 	 * Default target-samples-per-note used when constructing a per-pattern
 	 * {@link BatchedPatternLayerRenderer}. Matches the production fixture used
-	 * by the batched-chain benchmarks.
+	 * by the batched-chain benchmarks. Public so the per-note
+	 * batched-input populator in
+	 * {@link ScaleTraversalStrategy#createRenderedNote} can size the per-sample
+	 * envelope buffers it materialises on each {@link RenderedNoteAudio}, and
+	 * so end-to-end batched dispatch tests in adjacent modules can build tick
+	 * buffers that match the renderer dimensions.
 	 */
-	private static final int BATCHED_TARGET_LENGTH = 1024;
+	public static final int BATCHED_TARGET_LENGTH = 1024;
 
 	/** The audio channel index for this pattern. */
 	private int channel;

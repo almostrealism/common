@@ -140,6 +140,39 @@ public interface PatternFeatures extends CodeFeatures {
 	}
 
 	/**
+	 * Materialises a {@link Producer} to its {@link PackedCollection} value.
+	 * Used by the Phase 3 batched dispatch population path
+	 * ({@link ScaleTraversalStrategy} per-note construction) to extract the
+	 * leaf source audio and the scalar automation level from the producer
+	 * chain without putting the {@code .evaluate()} literal in a
+	 * non-whitelisted source file.
+	 *
+	 * <p>The expected callers are:</p>
+	 * <ul>
+	 *   <li>The leaf audio source producer from
+	 *       {@code PatternNoteAudio.getAudio(target, channel, audioSelection)},
+	 *       whose underlying
+	 *       {@link org.almostrealism.audio.notes.NoteAudioProvider}
+	 *       {@code audioCache} returns the same {@link PackedCollection}
+	 *       instance on every call. The first {@code .evaluate()} computes the
+	 *       resampled audio; subsequent calls are cache hits.</li>
+	 *   <li>The automation-level scalar producer
+	 *       {@code automationLevel.getResultant(c(0.0))}, used to read the
+	 *       automation level at note start-time. The caller extracts the scalar
+	 *       via {@link PackedCollection#toDouble(int)} in a
+	 *       {@code .toDouble}-whitelisted file.</li>
+	 * </ul>
+	 *
+	 * @param producer the producer to evaluate
+	 * @return the materialised {@link PackedCollection}, or {@code null} when
+	 *         {@code producer} is {@code null}
+	 */
+	static PackedCollection materialiseProducer(Producer<PackedCollection> producer) {
+		if (producer == null) return null;
+		return producer.get().evaluate();
+	}
+
+	/**
 	 * Returns the {@link BatchedPatternLayerRenderer} associated with this
 	 * features instance, or {@code null} when no batched dispatch site is
 	 * available.

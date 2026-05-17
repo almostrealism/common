@@ -247,6 +247,30 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	 */
 	public Runnable generate(int channel, int frames, Supplier<String> destinations,
 							 Consumer<GenerationResult> output) {
+		return generate(channel, frames, AudioScene.DEFAULT_REALTIME_BUFFER_SIZE,
+				destinations, output);
+	}
+
+	/**
+	 * Builds a {@link Runnable} that iterates over all genomes in this population, generates
+	 * audio output for the specified channel and frame count using the given buffer size,
+	 * and reports results via the {@code output} consumer.
+	 *
+	 * <p>The {@code bufferSize} controls the per-tick frame count threaded through
+	 * {@link AudioScene#runnerRealTime(MultiChannelAudioOutput, List, int)}. Use a smaller
+	 * size to match shorter renderer dimensions (e.g. the Phase 3 batched dispatch path's
+	 * {@code targetLength=1024}), or the default to match the production realtime cadence.</p>
+	 *
+	 * @param channel      the audio channel index to generate audio for
+	 * @param frames       the number of audio frames to generate per genome
+	 * @param bufferSize   per-tick buffer size in frames
+	 * @param destinations supplier of output file path strings, or {@code null} for no file output
+	 * @param output       consumer that receives a {@link GenerationResult} for each completed genome
+	 * @return a {@link Runnable} that performs the generation when executed
+	 */
+	public Runnable generate(int channel, int frames, int bufferSize,
+							 Supplier<String> destinations,
+							 Consumer<GenerationResult> output) {
 		return () -> {
 			WaveOutput out = new WaveOutput(() ->
 					Optional.ofNullable(destinations).map(s -> {
@@ -255,9 +279,9 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 						return outputFile;
 					}).orElse(null), 24, true);
 
-			init(getGenomes().get(0), new MultiChannelAudioOutput(out), List.of(channel));
+			init(getGenomes().get(0), new MultiChannelAudioOutput(out), List.of(channel),
+					bufferSize);
 
-			int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
 			int bufferCount = (frames + bufferSize - 1) / bufferSize;
 			Runnable setup = null;
 			Runnable tick = null;

@@ -16,6 +16,7 @@
 
 package org.almostrealism.music.filter;
 
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.music.data.ParameterFunction;
 
 /**
@@ -87,4 +88,53 @@ public abstract class ParameterizedEnvelopeAdapter implements ParameterizedEnvel
 
 	/** Sets the function that selects the release duration. */
 	public void setReleaseSelection(ParameterFunction releaseSelection) { this.releaseSelection = releaseSelection; }
+
+	/**
+	 * Writes a per-sample ADSR curve into the destination buffer. Shared by
+	 * the per-sample Java materialisations used by the Phase 3 batched
+	 * dispatch path in {@link ParameterizedFilterEnvelope.Filter#writeCutoffBuffer}
+	 * and {@link ParameterizedVolumeEnvelope.Filter#writeEnvelopeBuffer}, which
+	 * differ only in the post-envelope multiplier. The curve follows the same
+	 * attack→decay→sustain→release semantics enforced by
+	 * {@link org.almostrealism.audio.filter.EnvelopeFeatures#envelope}, including
+	 * the canonical {@code min(attack, 0.75 * duration)} and
+	 * {@code min(decay, 0.25 * duration)} clamps.
+	 *
+	 * @param dst             destination buffer; the entire {@code memLength}
+	 *                        is written
+	 * @param sampleRate      audio sample rate in Hz
+	 * @param totalDuration   total note duration in seconds
+	 * @param adsr            {@code [attack, decay, sustain, release]} scalars
+	 *                        already adjusted for automation level
+	 * @param peak            post-envelope multiplier applied to each sample
+	 */
+	static void writeAdsrCurve(PackedCollection dst, int sampleRate,
+								double totalDuration, double[] adsr, double peak) {
+		int length = dst.getMemLength();
+		double a = Math.min(adsr[0], 0.75 * totalDuration);
+		double d = Math.min(adsr[1], 0.25 * totalDuration);
+		double s = adsr[2];
+		double r = adsr[3];
+		double[] curve = new double[length];
+		double dt = 1.0 / Math.max(1, sampleRate);
+		for (int i = 0; i < length; i++) {
+			double t = i * dt;
+			double v;
+			if (t < a) {
+				v = a > 0 ? t / a : 1.0;
+			} else if (t < a + d) {
+				double tp = d > 0 ? (t - a) / d : 1.0;
+				v = 1.0 - tp * (1.0 - s);
+			} else if (t < totalDuration - r) {
+				v = s;
+			} else if (t < totalDuration) {
+				double tp = r > 0 ? (t - (totalDuration - r)) / r : 1.0;
+				v = s * (1.0 - tp);
+			} else {
+				v = 0.0;
+			}
+			curve[i] = Math.max(0.0, v) * peak;
+		}
+		dst.setMem(curve);
+	}
 }

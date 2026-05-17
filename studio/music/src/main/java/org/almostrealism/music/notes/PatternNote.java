@@ -267,6 +267,52 @@ public class PatternNote extends PatternNoteAudioAdapter {
 		throw new UnsupportedOperationException();
 	}
 
+	/**
+	 * Walks the delegate chain of this note looking for a {@link NoteAudioFilter}
+	 * of the requested type and returns it, or {@code null} when no filter of
+	 * that type wraps this note. The walk follows each {@code PatternNote}'s
+	 * {@code delegate} link as long as the delegate is itself a {@code PatternNote}.
+	 *
+	 * <p>Used by the Phase 3 batched dispatch path to extract the parameter sets
+	 * of the volume and filter envelope wrappers without re-evaluating the
+	 * producer chain.</p>
+	 *
+	 * @param filterType the {@link NoteAudioFilter} subclass to locate
+	 * @param <T>        the filter subtype
+	 * @return the first matching filter encountered, or {@code null}
+	 */
+	public <T extends NoteAudioFilter> T findFilter(Class<T> filterType) {
+		PatternNote cursor = this;
+		while (cursor != null) {
+			if (filterType.isInstance(cursor.filter)) {
+				return filterType.cast(cursor.filter);
+			}
+			if (cursor.delegate instanceof PatternNote pn) {
+				cursor = pn;
+			} else {
+				cursor = null;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Returns the innermost {@link PatternNoteAudio} reachable by following the
+	 * {@code delegate} chain past any envelope-applying {@code PatternNote}
+	 * wrappers. The result is the un-filtered audio source — the value that
+	 * the batched dispatch path uses for {@link RenderedNoteAudio#setBatchedSource}.
+	 *
+	 * @return the leaf {@code PatternNoteAudio}, or this note when no delegate
+	 *         chain is present
+	 */
+	public PatternNoteAudio innermostAudio() {
+		PatternNote cursor = this;
+		while (cursor.delegate instanceof PatternNote pn) {
+			cursor = pn;
+		}
+		return cursor.delegate != null ? cursor.delegate : cursor;
+	}
+
 	@Override
 	public boolean equals(Object obj) {
 		if (!(obj instanceof PatternNote n)) return false;
