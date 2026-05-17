@@ -1,6 +1,7 @@
 package org.almostrealism.music.pattern;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.CellFeatures;
@@ -104,6 +105,38 @@ public interface PatternFeatures extends CodeFeatures {
 
 		renderPerNote(sceneContext, audioContext, elements, melodic, offset,
 				startFrame, frameCount, cache);
+	}
+
+	/**
+	 * Dispatches the Phase 3 four-kernel batched chain for a single
+	 * start-frame-aligned group of notes and sums the reduced
+	 * {@code [targetLength]} output into the destination buffer.
+	 *
+	 * <p>The {@code .evaluate()} call here is the pipeline boundary for the
+	 * batched dispatch (one compiled-kernel dispatch per note group per tick).
+	 * It lives on {@link PatternFeatures} so the per-note and per-group
+	 * dispatch paths share the same "evaluate at pipeline boundary" idiom.
+	 * The {@link BatchedPatternLayerRenderer}'s per-bucket cache supplies the
+	 * compiled {@link Evaluable} so this method does not rebuild the producer
+	 * graph or recompile the kernel on every dispatch.</p>
+	 *
+	 * @param compiledChain   compiled batched-chain {@link Evaluable} from the
+	 *                        per-bucket cache
+	 * @param destination     destination buffer for the summed output
+	 * @param groupStartFrame absolute frame at which the group's notes start
+	 * @param tickStartFrame  absolute start frame of the current tick range
+	 * @param tickEndFrame    absolute end frame of the current tick range (exclusive)
+	 * @param tickFrameCount  {@code tickEndFrame - tickStartFrame}
+	 */
+	default void dispatchBatchedGroup(Evaluable<PackedCollection> compiledChain,
+									  PackedCollection destination,
+									  int groupStartFrame,
+									  int tickStartFrame,
+									  int tickEndFrame,
+									  int tickFrameCount) {
+		PackedCollection reduced = compiledChain.evaluate();
+		sumToDestination(destination, reduced, groupStartFrame,
+				tickStartFrame, tickEndFrame, tickFrameCount);
 	}
 
 	/**

@@ -21,6 +21,8 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.time.TemporalFeatures;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 /**
  * Batched pattern renderer implementing the four-kernel chain used by
  * the Phase 3 pattern rendering architecture:
@@ -54,6 +56,18 @@ import org.almostrealism.time.TemporalFeatures;
  * @see org.almostrealism.audio.filter.AudioProcessingUtils
  */
 public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatures {
+
+	/**
+	 * Process-wide counter of {@link #buildBatchedChain} invocations. Incremented
+	 * each time the four-kernel batched chain is constructed for dispatch through
+	 * a {@link CollectionProducer}. Verification tests assert that this advances
+	 * when the {@code AR_PATTERN_BATCHED} feature flag routes through the
+	 * production batched path, and that it does not advance when the flag is off.
+	 *
+	 * <p>The counter is public for test-side {@code get()} / {@code reset()}
+	 * access; production code does not read or mutate it directly.</p>
+	 */
+	public static final AtomicLong batchedDispatchCount = new AtomicLong();
 
 	/** Number of notes processed per batch. */
 	private final int n;
@@ -152,6 +166,7 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 												 PackedCollection ratios,
 												 PackedCollection filterCutoffs,
 												 PackedCollection volumeEnvelopes) {
+		batchedDispatchCount.incrementAndGet();
 		int totalSamples = n * targetLength;
 		int paddedNoteSize = targetLength + 2 * padHalf;
 		int paddedTotal = n * paddedNoteSize;

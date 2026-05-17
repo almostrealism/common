@@ -40,6 +40,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -137,6 +138,47 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 * scope.
 	 */
 	public static boolean enableBatched = SystemUtils.isEnabled("AR_PATTERN_BATCHED").orElse(false);
+
+	/**
+	 * Strict-mode flag for the Phase 3 batched dispatch path (off by default).
+	 * When enabled together with {@link #enableBatched}, the
+	 * {@link BatchedPatternLayerRenderer} throws {@link IllegalStateException}
+	 * instead of falling back to {@link PatternFeatures#renderPerNote} when a
+	 * note lacks populated batched inputs. Useful for verification tests and
+	 * for detecting un-migrated callers in CI.
+	 */
+	public static boolean enableBatchedStrict = SystemUtils.isEnabled("AR_PATTERN_BATCHED_STRICT").orElse(false);
+
+	/**
+	 * Wall-clock measurement flag for the production rendering boundary (off
+	 * by default). When enabled, {@link #sum} records the elapsed wall time
+	 * per call together with the audio-duration produced and logs the
+	 * compute-to-audio time ratio. The instrumentation is verification-only
+	 * and does not gate any rendering behaviour.
+	 */
+	public static boolean enableBatchedMeasure = SystemUtils.isEnabled("AR_PATTERN_BATCHED_MEASURE").orElse(false);
+
+	/**
+	 * Total nanoseconds spent inside the {@link #sum} measured wall-clock
+	 * window across all calls since the last reset. Updated only when
+	 * {@link #enableBatchedMeasure} is true. Public for test-side observation.
+	 */
+	public static final AtomicLong measuredComputeNanos = new AtomicLong();
+
+	/**
+	 * Total nanoseconds of audio produced by the {@link #sum} measured
+	 * wall-clock window across all calls since the last reset (frame count
+	 * divided by sample rate, converted to nanoseconds). Updated only when
+	 * {@link #enableBatchedMeasure} is true. Public for test-side observation.
+	 */
+	public static final AtomicLong measuredAudioNanos = new AtomicLong();
+
+	/**
+	 * Total number of {@link #sum} calls measured since the last reset.
+	 * Updated only when {@link #enableBatchedMeasure} is true. Public for
+	 * test-side observation.
+	 */
+	public static final AtomicLong measuredCallCount = new AtomicLong();
 
 	/**
 	 * Default source-samples-per-note used when constructing a per-pattern
@@ -719,7 +761,28 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 					} else {
 						noteAudioCache.evictBefore(frame);
 					}
-					sumInternal(ctx, voicing, audioChannel, frame, frameCount, noteAudioCache);
+					if (enableBatchedMeasure) {
+						long startNanos = System.nanoTime();
+						try {
+							sumInternal(ctx, voicing, audioChannel, frame, frameCount,
+									noteAudioCache);
+						} finally {
+							long elapsed = System.nanoTime() - startNanos;
+							long audioNs = (long) (frameCount * 1_000_000_000.0
+									/ OutputLine.sampleRate);
+							measuredComputeNanos.addAndGet(elapsed);
+							measuredAudioNanos.addAndGet(audioNs);
+							long calls = measuredCallCount.incrementAndGet();
+							double ratio = elapsed / (double) Math.max(audioNs, 1L);
+							log("computeNs=" + elapsed + " audioNs=" + audioNs
+									+ " ratio=" + String.format("%.4f", ratio)
+									+ " channel=" + channel + " frameCount=" + frameCount
+									+ " call=" + calls);
+						}
+					} else {
+						sumInternal(ctx, voicing, audioChannel, frame, frameCount,
+								noteAudioCache);
+					}
 				});
 	}
 

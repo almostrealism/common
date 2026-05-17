@@ -70,6 +70,33 @@ public class RenderedNoteAudio {
 	private IntFunction<Producer<PackedCollection>> producerFactory;
 
 	/**
+	 * Optional per-note source buffer used by the Phase 3 batched dispatch path.
+	 * When non-null together with {@link #batchedFilterCutoffEnvelope} and
+	 * {@link #batchedVolumeEnvelope}, the note is eligible for dispatch through
+	 * {@link org.almostrealism.audio.BatchedPatternRenderer#buildBatchedChain}.
+	 * Shape: {@code [sourceLength]}.
+	 */
+	private PackedCollection batchedSource;
+
+	/**
+	 * Optional per-note pitch ratio paired with {@link #batchedSource}. A value
+	 * of {@code 1.0} means no pitch shift. Used by the batched resample kernel.
+	 */
+	private double batchedPitchRatio = 1.0;
+
+	/**
+	 * Optional per-sample filter cutoff envelope used by the Phase 3 batched
+	 * dispatch path. Shape: {@code [targetLength]}.
+	 */
+	private PackedCollection batchedFilterCutoffEnvelope;
+
+	/**
+	 * Optional per-sample volume envelope used by the Phase 3 batched dispatch
+	 * path. Shape: {@code [targetLength]}.
+	 */
+	private PackedCollection batchedVolumeEnvelope;
+
+	/**
 	 * Creates a RenderedNoteAudio with an expected frame count for pre-filtering.
 	 *
 	 * <p>The {@code expectedFrameCount} enables overlap checks before the expensive
@@ -163,5 +190,97 @@ public class RenderedNoteAudio {
 					"this indicates a missing setup in ScaleTraversalStrategy");
 		}
 		return producerFactory.apply(frameCount);
+	}
+
+	/**
+	 * Returns the per-note source buffer for the Phase 3 batched dispatch path,
+	 * or {@code null} when this note does not expose its inputs in batched form.
+	 *
+	 * @return source buffer of shape {@code [sourceLength]}, or {@code null}
+	 */
+	public PackedCollection getBatchedSource() {
+		return batchedSource;
+	}
+
+	/**
+	 * Sets the per-note source buffer used by the Phase 3 batched dispatch path.
+	 *
+	 * @param batchedSource source buffer of shape {@code [sourceLength]}
+	 */
+	public void setBatchedSource(PackedCollection batchedSource) {
+		this.batchedSource = batchedSource;
+	}
+
+	/**
+	 * Returns the per-note pitch ratio paired with {@link #getBatchedSource()}.
+	 *
+	 * @return pitch ratio (1.0 = no shift)
+	 */
+	public double getBatchedPitchRatio() {
+		return batchedPitchRatio;
+	}
+
+	/**
+	 * Sets the per-note pitch ratio paired with {@link #getBatchedSource()}.
+	 *
+	 * @param batchedPitchRatio pitch ratio (1.0 = no shift)
+	 */
+	public void setBatchedPitchRatio(double batchedPitchRatio) {
+		this.batchedPitchRatio = batchedPitchRatio;
+	}
+
+	/**
+	 * Returns the per-sample filter cutoff envelope for the Phase 3 batched
+	 * dispatch path, or {@code null} when not provided.
+	 *
+	 * @return cutoff envelope of shape {@code [targetLength]}, or {@code null}
+	 */
+	public PackedCollection getBatchedFilterCutoffEnvelope() {
+		return batchedFilterCutoffEnvelope;
+	}
+
+	/**
+	 * Sets the per-sample filter cutoff envelope used by the Phase 3 batched
+	 * dispatch path.
+	 *
+	 * @param batchedFilterCutoffEnvelope cutoff envelope of shape {@code [targetLength]}
+	 */
+	public void setBatchedFilterCutoffEnvelope(PackedCollection batchedFilterCutoffEnvelope) {
+		this.batchedFilterCutoffEnvelope = batchedFilterCutoffEnvelope;
+	}
+
+	/**
+	 * Returns the per-sample volume envelope for the Phase 3 batched dispatch
+	 * path, or {@code null} when not provided.
+	 *
+	 * @return volume envelope of shape {@code [targetLength]}, or {@code null}
+	 */
+	public PackedCollection getBatchedVolumeEnvelope() {
+		return batchedVolumeEnvelope;
+	}
+
+	/**
+	 * Sets the per-sample volume envelope used by the Phase 3 batched dispatch
+	 * path.
+	 *
+	 * @param batchedVolumeEnvelope volume envelope of shape {@code [targetLength]}
+	 */
+	public void setBatchedVolumeEnvelope(PackedCollection batchedVolumeEnvelope) {
+		this.batchedVolumeEnvelope = batchedVolumeEnvelope;
+	}
+
+	/**
+	 * Returns {@code true} when this note has populated all the batched-form
+	 * inputs ({@link #getBatchedSource()}, {@link #getBatchedFilterCutoffEnvelope()},
+	 * and {@link #getBatchedVolumeEnvelope()}) required by the Phase 3 batched
+	 * dispatch path. The pitch ratio is always populated (defaults to {@code 1.0}).
+	 *
+	 * @return {@code true} when this note can dispatch through
+	 *         {@link org.almostrealism.audio.BatchedPatternRenderer#buildBatchedChain}
+	 */
+	public boolean hasBatchedInputs() {
+		return batchedSource != null
+				&& batchedFilterCutoffEnvelope != null
+				&& batchedVolumeEnvelope != null;
 	}
 }
