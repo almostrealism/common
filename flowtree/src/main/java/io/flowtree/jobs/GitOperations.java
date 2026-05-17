@@ -221,12 +221,16 @@ public class GitOperations implements ConsoleFeatures {
             if (workingDirectory != null) {
                 pb.directory(new File(workingDirectory));
             }
-            pb.redirectErrorStream(true);
+            // Keep stderr separate so a git failure (not-a-repo, missing dir, etc.)
+            // cannot be mis-parsed as a porcelain "changed file" line.
             augmentPath(pb);
             Process process = pb.start();
             String statusOutput = new String(
                     process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            process.waitFor();
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                return false;
+            }
 
             for (String line : statusOutput.split("\n")) {
                 if (line.length() > 3) {
@@ -240,7 +244,10 @@ public class GitOperations implements ConsoleFeatures {
                 }
             }
             return false;
-        } catch (IOException | InterruptedException e) {
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (IOException e) {
             return false;
         }
     }

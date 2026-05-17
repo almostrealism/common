@@ -27,6 +27,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -198,7 +199,7 @@ public class GitOperationsTest extends TestSuiteBase {
      */
     private static void deleteRecursively(Path root) {
         if (root == null || !Files.exists(root)) return;
-        try (var stream = Files.walk(root)) {
+        try (Stream<Path> stream = Files.walk(root)) {
             stream.sorted((a, b) -> b.getNameCount() - a.getNameCount())
                     .forEach(p -> {
                         try { Files.deleteIfExists(p); } catch (Exception ignore) { /* best-effort */ }

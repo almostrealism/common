@@ -45,6 +45,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -181,11 +182,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private String arManagerUrl;
     /** Pushed-tools configuration JSON forwarded to every submitted job. */
     private String pushedToolsConfig;
-    /** Executor for dispatching delayed job submissions. */
-    private final ScheduledExecutorService delayedJobExecutor =
-            Executors.newSingleThreadScheduledExecutor();
-    /** Maps job ID to its pending future during a submission delay period. */
-    final Map<String, ScheduledFuture<?>> pendingDelayedJobs = new HashMap<>();
+    /** Executor for delayed job submissions. Daemon thread so it never blocks JVM shutdown. */
+    private final ScheduledExecutorService delayedJobExecutor = Executors.newSingleThreadScheduledExecutor(r -> { Thread t = new Thread(r, "flowtree-delay"); t.setDaemon(true); return t; });
+    /** Job ID -> pending future, removed when task runs/cancels. Concurrent for NanoHTTPD workers. */
+    final Map<String, ScheduledFuture<?>> pendingDelayedJobs = new ConcurrentHashMap<>();
 
     /**
      * Creates a new API endpoint on the specified port, using a single
@@ -1174,9 +1174,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         startEvent.withGitInfo(effectiveBranch, null, null, null, false);
         notifiers.notifierFor(workstream.getWorkstreamId()).onJobSubmitted(workstream.getWorkstreamId(), startEvent);
         if (delaySeconds > 0) {
-            ScheduledFuture<?> future = delayedJobExecutor.schedule(
-                    () -> server.addTask(factory), delaySeconds, TimeUnit.SECONDS);
-            pendingDelayedJobs.put(factory.getTaskId(), future);
+            pendingDelayedJobs.put(factory.getTaskId(), delayedJobExecutor.schedule(
+                    () -> { try { server.addTask(factory); } finally { pendingDelayedJobs.remove(factory.getTaskId()); } },
+                    delaySeconds, TimeUnit.SECONDS));
             log("Delayed job via API: " + factory.getTaskId() + " (delaySeconds=" + delaySeconds + ")");
         } else {
             server.addTask(factory);

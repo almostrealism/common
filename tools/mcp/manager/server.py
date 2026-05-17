@@ -1445,7 +1445,7 @@ def workstream_submit_task(
             Each pass runs a full agent session; without a cap a single flaky
             gate command can exhaust the entire context budget. Set to 1 for
             commands that should not be retried at all. Set higher (e.g. 5) when
-            the gate is known to be flakey but eventually converges. Has no
+            the gate is known to be flaky but eventually converges. Has no
             effect when ``post_completion_command`` is empty.
         delay_seconds: Number of seconds to wait before making the job visible
             to workers. The job is accepted immediately (and a job_id returned)
