@@ -1,5 +1,114 @@
 # Pluggable Agent Runners for FlowTree Coding Jobs
 
+---
+
+## Implementation status (as of 2026-05-17, branch `feature/pluggable-agents`)
+
+This document is both a design plan AND the canonical record of what has shipped.
+Read this section before reading the rest — the design below describes the
+**target state**, not the current state.
+
+### What has landed
+
+- `io.flowtree.jobs.agent.AgentRunner` interface + companion types
+  (`AgentRunRequest`, `AgentRunResult`, `AgentCapabilities`,
+  `AgentRunnerRegistry`).
+- `ClaudeCodeRunner` (implements `AgentRunner`) — owns subprocess
+  construction, command-line assembly, NDJSON parsing, model/effort
+  validation. The orchestrator no longer mentions `claude`,
+  `--allowedTools`, `--mcp-config`, `--max-turns`, `session_id`,
+  `total_cost_usd`, etc. directly.
+- The job dispatches its agent session through
+  `AgentRunnerRegistry.get(runnerName)`; the registry currently knows only
+  `"claude"`.
+- The job and factory carry a `runnerName` field with wire-format support
+  (`::runner:=<name>`, gated on non-default value). Validated against
+  `AgentRunnerRegistry.available()`.
+- The completion event carries `runnerName` via `withRunnerName(...)`.
+
+### Deviations from the original plan (important — these change the work
+required for Phases 2-4)
+
+1. **The job class was renamed.** Plan §2.1 explicitly recommended *keeping*
+   `ClaudeCodeJob` for wire-format and call-site reasons. Implementation
+   renamed it anyway:
+   - `ClaudeCodeJob` → `CodingAgentJob`
+   - `ClaudeCodeJobFactory` → `CodingAgentJobFactory`
+   - `ClaudeCodeJobEvent` → `CodingAgentJobEvent`
+   - File: `flowtree/src/main/java/io/flowtree/jobs/CodingAgentJob.java`
+   This is a wire-format break. Any persisted/queued job specs serialized
+   under the old class discriminator will fail to deserialize on the new
+   build. **Deployment requires draining in-flight jobs first** (or
+   accepting their loss).
+2. **One runner per job, not per phase.** Plan §2.2 specified a
+   `Map<Phase, String> runnerByPhase` with a `Phase` enum covering
+   `PRIMARY`, the six rule phases, and `GIT_TAMPERING_RESTART`.
+   Implementation has a single `runnerName` field on the job/factory; every
+   phase (primary, enforcement rules, git-tampering restart) uses the same
+   runner. The `Phase` enum was not introduced. Per-phase selection from
+   Phase 2 of the plan must be added on top of this — it is not a "wire it
+   to the API" step, it is "add the map first, then wire it."
+
+### What has NOT landed
+
+- **Phase 2 (per-job/per-workstream selection through public surfaces) is
+  not done.** None of these reference `runner`:
+  - `flowtree/src/main/java/io/flowtree/slack/Workstream.java`
+  - `flowtree/src/main/java/io/flowtree/slack/WorkstreamConfig.java`
+  - `flowtree/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java`
+  - `tools/mcp/manager/server.py` (`workstream_submit_task` has no
+    `runner` / `default_runner` parameter)
+  Even though `CodingAgentJob` accepts `runnerName`, no submission surface
+  lets an operator set it.
+- **Phase 3 (opencode runner) is not done.** No
+  `OpencodeRunner.java`/`OpencodeBinaryLocator`/`OpencodeOutputParser`
+  exist. `AgentRunnerRegistry` registers only `CLAUDE`. The agent image
+  (`flowtree/agent/Dockerfile`) installs only `@anthropic-ai/claude-code`;
+  no opencode binary is present.
+- **Phase 4 (`docs/operations/PLUGGABLE_AGENTS_RECIPES.md`)** does not
+  exist.
+
+### Deployment of what currently exists
+
+`flowtree/rebuild.sh --agents` is sufficient — all changes are inside the
+`flowtree` Maven module; no Dockerfile, compose, or external-binary
+changes. The behavior is unchanged from pre-branch (Claude only). The one
+operational caveat is the class-rename wire break above.
+
+### Concrete next steps for the next agent
+
+In rough order; each step is a separate PR.
+
+1. **Reconcile the rename decision.** Either (a) revert to `ClaudeCodeJob`
+   per plan §2.1, accepting the churn of un-renaming, or (b) keep the
+   rename and add a deserialization shim for the legacy class
+   discriminator (`AbstractJobFactory` already ignores unknown *keys*; the
+   *class name* is a different question — verify how a queued
+   `ClaudeCodeJob` spec is dispatched). Document the chosen path before
+   touching anything else.
+2. **Decide: stay single-runner-per-job or introduce per-phase.** If
+   per-phase, introduce the `Phase` enum and `runnerByPhase` map first,
+   keeping `runnerName` as a back-compat default. If single-runner is
+   accepted, update §2.2, §6, and §7 of this plan to match and shrink the
+   Phase 2 work accordingly.
+3. **Phase 2 — submission-surface plumbing.** Once step 2 is settled, wire
+   `runner` (and optionally `runners`) through `WorkstreamConfig`,
+   `Workstream`, `FlowTreeApiEndpoint.handleSubmit`, and
+   `workstream_submit_task`. Precedence per plan §6.5. Validate against
+   `AgentRunnerRegistry.available()` at submit time.
+4. **Phase 3 — opencode runner.** Implement `OpencodeRunner` and friends;
+   register in `AgentRunnerRegistry`; add opencode binary install to
+   `flowtree/agent/Dockerfile`; gate behind `AgentRunnerNotAvailableException`
+   for executors lacking the binary. Smoke test `AgentRunnerSmokeIT`.
+5. **Phase 4 — recipes doc.** Once at least two runners are usable in
+   production, write `docs/operations/PLUGGABLE_AGENTS_RECIPES.md` per
+   §9 Phase 4.
+
+The rest of this document is the original design — still the reference for
+*what to build*. Read it with the deviations above in mind.
+
+---
+
 ## Goal
 
 Refactor the FlowTree coding agent stack so that the code-generating agent
