@@ -873,7 +873,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * {@code targetBranch} match, then the URL path parameter. Supports optional per-job
      * overrides for {@code model}, {@code effort}, {@code maxTurns}, {@code maxBudgetUsd},
      * {@code postCompletionCommand}, {@code postCompletionWorkingDir},
-     * {@code postCompletionTimeoutSeconds}, and {@code maxDeduplicationPasses}.</p>
+     * {@code postCompletionTimeoutSeconds}, {@code maxDeduplicationPasses}, and {@code maxPostCompletionPasses}.</p>
      *
      * @param session          the HTTP session
      * @param pathWorkstreamId the workstream identifier from the URL path (fallback)
@@ -1026,6 +1026,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String postCompletionCommand = extractJsonField(body, "postCompletionCommand");
         String postCompletionWorkingDir = extractJsonField(body, "postCompletionWorkingDir");
         int postCompletionTimeoutSeconds = extractJsonIntField(body, "postCompletionTimeoutSeconds");
+        int maxPostCompletionPasses = extractJsonIntField(body, "maxPostCompletionPasses");
 
         // Create job factory with workstream defaults, overridden by request values
         CodingAgentJob.Factory factory = new CodingAgentJob.Factory(prompt);
@@ -1111,8 +1112,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (maxDeduplicationPasses > 0) {
             factory.setMaxDeduplicationPasses(maxDeduplicationPasses);
         }
-
-        // Post-completion command: verification check that must exit zero before the job is done
         if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
             factory.setPostCompletionCommand(postCompletionCommand);
             if (postCompletionWorkingDir != null && !postCompletionWorkingDir.isEmpty()) {
@@ -1120,6 +1119,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             }
             if (postCompletionTimeoutSeconds > 0) {
                 factory.setPostCompletionTimeoutSeconds(postCompletionTimeoutSeconds);
+            }
+            if (maxPostCompletionPasses > 0) {
+                factory.setMaxPostCompletionPasses(maxPostCompletionPasses);
             }
         }
 

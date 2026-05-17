@@ -141,6 +141,12 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private int postCompletionTimeoutSeconds = PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS;
 
     /**
+     * Per-job cap on post-completion correction sessions propagated to jobs created by this
+     * factory. Defaults to {@link CodingAgentJob#DEFAULT_MAX_POST_COMPLETION_PASSES}.
+     */
+    private int maxPostCompletionPasses = CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES;
+
+    /**
      * Name of the {@link io.flowtree.jobs.agent.AgentRunner} used to dispatch
      * sessions for jobs created by this factory. Defaults to
      * {@link AgentRunnerRegistry#CLAUDE}.
@@ -803,6 +809,33 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
+     * Returns the maximum number of post-completion correction sessions for jobs
+     * created by this factory.
+     *
+     * @return the pass cap; defaults to {@link CodingAgentJob#DEFAULT_MAX_POST_COMPLETION_PASSES}
+     */
+    public int getMaxPostCompletionPasses() {
+        return maxPostCompletionPasses;
+    }
+
+    /**
+     * Sets the maximum number of post-completion correction sessions for jobs created
+     * by this factory. Protects against a flaky gate command burning the entire context
+     * budget on repeated retries.
+     *
+     * @param maxPostCompletionPasses cap on correction sessions per job; must be positive
+     * @throws IllegalArgumentException if the value is not positive
+     */
+    public void setMaxPostCompletionPasses(int maxPostCompletionPasses) {
+        if (maxPostCompletionPasses <= 0) {
+            throw new IllegalArgumentException(
+                    "maxPostCompletionPasses must be positive, got: " + maxPostCompletionPasses);
+        }
+        this.maxPostCompletionPasses = maxPostCompletionPasses;
+        set("maxPostCmdPasses", String.valueOf(maxPostCompletionPasses));
+    }
+
+    /**
      * Returns the name of the agent runner used to dispatch sessions for jobs
      * created by this factory.
      *
@@ -1004,6 +1037,9 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             if (postCompletionTimeoutSeconds != PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS) {
                 job.setPostCompletionTimeoutSeconds(postCompletionTimeoutSeconds);
             }
+            if (maxPostCompletionPasses != CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES) {
+                job.setMaxPostCompletionPasses(maxPostCompletionPasses);
+            }
         }
 
         String pyReqs = getPythonRequirements();
@@ -1151,6 +1187,19 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 this.postCompletionTimeoutSeconds = (value == null)
                         ? PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS
                         : Integer.parseInt(value);
+                return;
+            case "maxPostCmdPasses":
+                if (value == null || value.isEmpty()) {
+                    this.maxPostCompletionPasses = CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES;
+                } else {
+                    try {
+                        int parsed = Integer.parseInt(value);
+                        this.maxPostCompletionPasses = (parsed > 0)
+                                ? parsed : CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES;
+                    } catch (NumberFormatException e) {
+                        this.maxPostCompletionPasses = CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES;
+                    }
+                }
                 return;
             default:
                 // Unknown key; already stored in properties map by AbstractJobFactory.set().

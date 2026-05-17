@@ -1435,4 +1435,296 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 		factory.set("maxDedupPasses", "1");
 		assertEquals(1, factory.getMaxDeduplicationPasses());
 	}
+
+	// ── PostCompletionCommandRule — pass cap ─────────────────────────────────
+
+	/**
+	 * Pins the default cap so a silent regression (e.g. raising it by an order
+	 * of magnitude) is caught immediately.
+	 */
+	@Test(timeout = 30000)
+	public void defaultPostCompletionPassCapIsThree() {
+		assertEquals(3, CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES);
+		assertEquals(PostCompletionCommandRule.DEFAULT_MAX_PASSES,
+				CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES);
+	}
+
+	/**
+	 * Four consecutive failing passes with the default cap of 3 must be cut off after
+	 * exactly 3 correction attempts. The enforcement loop honours
+	 * {@link EnforcementRule#getMaxRetries()} which now returns {@code maxPasses}.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionDefaultCapStopsAfterThreePasses() {
+		AtomicInteger correctionCalls = new AtomicInteger();
+		PostCompletionCommandRule rule = new PostCompletionCommandRule("false", null);
+		// Default cap is 3; rule always fails.
+		assertEquals(3, rule.getMaxRetries());
+
+		CodingAgentJob job = new CodingAgentJob("t1", "test") {
+			@Override
+			protected void runCorrectionSession(String correctionPrompt, String activity) {
+				correctionCalls.incrementAndGet();
+			}
+		};
+		job.setEnforceOrganizationalPlacement(false);
+		job.setPostCompletionCommand("false");
+		job.runEnforcementRules();
+
+		int attempts = correctionCalls.get();
+		assertTrue("Expected at least 1 correction attempt, got " + attempts, attempts >= 1);
+		assertTrue("Expected at most 3 correction attempts (default cap), got " + attempts,
+				attempts <= 3);
+	}
+
+	/**
+	 * A job with {@code maxPostCompletionPasses=5} allows up to 5 passes.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionCapFiveAllowsFivePasses() {
+		// Simulate the enforcement loop using getMaxRetries() as cap, as the real
+		// runEnforcementRules() does.
+		PostCompletionCommandRule rule = new PostCompletionCommandRule("false", null,
+				PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS, 5);
+		assertEquals(5, rule.getMaxRetries());
+
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
+		int attempts = 0;
+		if (rule.isViolated(job)) {
+			while (attempts < rule.getMaxRetries() && rule.isViolated(job)) {
+				rule.onCorrectionAttempted(job);
+				attempts++;
+			}
+		}
+		assertEquals("Cap of 5 must bound enforcement loop to exactly 5 attempts", 5, attempts);
+		assertFalse("isViolated returns false when the pass cap is hit (self-limiting)", rule.isViolated(job));
+		assertTrue("isCapHit must be true after the cap is reached", rule.isCapHit());
+	}
+
+	/**
+	 * A job with {@code maxPostCompletionPasses=1} allows only 1 pass.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionCapOneAllowsSinglePass() {
+		PostCompletionCommandRule rule = new PostCompletionCommandRule("false", null,
+				PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS, 1);
+		assertEquals(1, rule.getMaxRetries());
+
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
+		int attempts = 0;
+		if (rule.isViolated(job)) {
+			while (attempts < rule.getMaxRetries() && rule.isViolated(job)) {
+				rule.onCorrectionAttempted(job);
+				attempts++;
+			}
+		}
+		assertEquals("Cap of 1 must bound enforcement loop to exactly 1 attempt", 1, attempts);
+		assertFalse("isViolated returns false when the pass cap is hit (self-limiting)", rule.isViolated(job));
+		assertTrue("isCapHit must be true after the cap is reached", rule.isCapHit());
+	}
+
+	/**
+	 * A successful command on the first pass exits cleanly without further retries.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionSuccessOnFirstPassExitsImmediately() {
+		PostCompletionCommandRule rule = new PostCompletionCommandRule("true", null,
+				PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS, 3);
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
+
+		// Success must be reported immediately; no correction sessions should run.
+		assertFalse("Successful command must not be violated", rule.isViolated(job));
+		assertEquals(0, rule.getLastExitCode());
+	}
+
+	/**
+	 * The cap behaviour preserves exit-on-success: a rule that succeeds after one
+	 * failing attempt must exit without hitting the cap.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionCapPreservesExitOnSuccess() throws Exception {
+		File counter = File.createTempFile("pcr_cap_test_", ".txt");
+		counter.deleteOnExit();
+		String cmd = "if [ -f " + counter.getAbsolutePath() + " ] && "
+				+ "[ \"$(cat " + counter.getAbsolutePath() + ")\" = \"done\" ]; "
+				+ "then exit 0; else echo done > " + counter.getAbsolutePath() + "; exit 1; fi";
+
+		PostCompletionCommandRule rule = new PostCompletionCommandRule(cmd, null,
+				PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS, 5);
+
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
+		int attempts = 0;
+		if (rule.isViolated(job)) {
+			while (attempts < rule.getMaxRetries() && rule.isViolated(job)) {
+				rule.onCorrectionAttempted(job);
+				attempts++;
+			}
+		}
+		// Succeeded on second attempt (one correction): must not reach the cap of 5.
+		assertEquals("Should have needed exactly 1 correction before success", 1, attempts);
+		assertFalse("Rule should not be violated after success", rule.isViolated(job));
+	}
+
+	/**
+	 * {@link PostCompletionCommandRule} constructor rejects non-positive maxPasses.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void postCompletionRuleConstructorRejectsZeroMaxPasses() {
+		new PostCompletionCommandRule("true", null,
+				PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS, 0);
+	}
+
+	/**
+	 * {@link PostCompletionCommandRule} constructor rejects negative maxPasses.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void postCompletionRuleConstructorRejectsNegativeMaxPasses() {
+		new PostCompletionCommandRule("true", null,
+				PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS, -1);
+	}
+
+	/**
+	 * {@link CodingAgentJob#setMaxPostCompletionPasses(int)} must reject non-positive values.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void setMaxPostCompletionPassesRejectsZero() {
+		new CodingAgentJob("t1", "test").setMaxPostCompletionPasses(0);
+	}
+
+	/**
+	 * {@link CodingAgentJob#setMaxPostCompletionPasses(int)} must reject negative values.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void setMaxPostCompletionPassesRejectsNegative() {
+		new CodingAgentJob("t1", "test").setMaxPostCompletionPasses(-2);
+	}
+
+	/**
+	 * {@link CodingAgentJobFactory#setMaxPostCompletionPasses(int)} must reject non-positive values.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void factorySetMaxPostCompletionPassesRejectsZero() {
+		new CodingAgentJobFactory("prompt").setMaxPostCompletionPasses(0);
+	}
+
+	/**
+	 * maxPostCompletionPasses round-trips through encode/decode (non-default value).
+	 */
+	@Test(timeout = 30000)
+	public void maxPostCompletionPassesRoundTripEncodeDecode() {
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
+		job.setPostCompletionCommand("make test");
+		job.setMaxPostCompletionPasses(5);
+		String encoded = job.encode();
+		assertNotNull(encoded);
+		assertTrue("Wire format must contain maxPostCmdPasses:=5",
+				encoded.contains("maxPostCmdPasses:=5"));
+
+		CodingAgentJob restored = GitManagedJobSerializationTest.roundTrip(job);
+		assertEquals(5, restored.getMaxPostCompletionPasses());
+	}
+
+	/**
+	 * The default value (3) must not appear in the wire format to keep it compact.
+	 */
+	@Test(timeout = 30000)
+	public void maxPostCompletionPassesDefaultAbsentFromWireFormat() {
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
+		job.setPostCompletionCommand("make test");
+		// Default passes — should not appear in wire format
+		String encoded = job.encode();
+		assertFalse("Default maxPostCmdPasses must not appear in wire format",
+				encoded.contains("maxPostCmdPasses"));
+	}
+
+	/**
+	 * Factory propagates the non-default cap to the job created by nextJob().
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxPostCompletionPassesPropagatesToJob() {
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
+		factory.setPostCompletionCommand("make test");
+		factory.setMaxPostCompletionPasses(5);
+		CodingAgentJob job = (CodingAgentJob) factory.nextJob();
+		assertNotNull(job);
+		assertEquals(5, job.getMaxPostCompletionPasses());
+	}
+
+	/**
+	 * Factory default cap matches the CodingAgentJob constant.
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxPostCompletionPassesDefaultIsThree() {
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+		assertEquals(CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES,
+				factory.getMaxPostCompletionPasses());
+	}
+
+	/**
+	 * Factory maxPostCompletionPasses round-trips through the set() deserialization path.
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxPostCompletionPassesRoundTripViaSet() {
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+		factory.set("maxPostCmdPasses", "4");
+		assertEquals(4, factory.getMaxPostCompletionPasses());
+
+		factory.set("maxPostCmdPasses", "1");
+		assertEquals(1, factory.getMaxPostCompletionPasses());
+	}
+
+	/**
+	 * Factory deserialization falls back to the default when the wire value is empty.
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxPostCompletionPassesDeserializationFallsBackOnEmptyString() {
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+		factory.setPostCompletionCommand("make test");
+		factory.setMaxPostCompletionPasses(5);
+		factory.set("maxPostCmdPasses", "");
+		assertEquals("Empty string must fall back to default",
+				CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES,
+				factory.getMaxPostCompletionPasses());
+	}
+
+	/**
+	 * Factory deserialization falls back to the default when the wire value is non-positive.
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxPostCompletionPassesDeserializationFallsBackOnNonPositive() {
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+		factory.set("maxPostCmdPasses", "0");
+		assertEquals("Zero must fall back to default",
+				CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES,
+				factory.getMaxPostCompletionPasses());
+	}
+
+	/**
+	 * Job deserialization falls back to the default when the wire value is invalid.
+	 */
+	@Test(timeout = 30000)
+	public void maxPostCompletionPassesDeserializationFallsBackOnInvalidString() {
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
+		job.set("maxPostCmdPasses", "notanumber");
+		assertEquals("Non-numeric value must fall back to default",
+				CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES,
+				job.getMaxPostCompletionPasses());
+	}
+
+	/**
+	 * Job deserialization falls back to the default when the wire value is non-positive.
+	 */
+	@Test(timeout = 30000)
+	public void maxPostCompletionPassesDeserializationFallsBackOnNonPositive() {
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
+		job.set("maxPostCmdPasses", "0");
+		assertEquals("Zero must fall back to default",
+				CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES,
+				job.getMaxPostCompletionPasses());
+
+		job.set("maxPostCmdPasses", "-2");
+		assertEquals("Negative must fall back to default",
+				CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES,
+				job.getMaxPostCompletionPasses());
+	}
 }

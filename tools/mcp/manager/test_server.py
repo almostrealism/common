@@ -486,6 +486,41 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         payload = mock_post.call_args[0][1]
         self.assertNotIn("postCompletionTimeoutSeconds", payload)
 
+    @patch.object(server, "_controller_post")
+    def test_submit_max_post_completion_passes_forwarded(self, mock_post):
+        """max_post_completion_passes is forwarded to the controller payload."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-mpcp"}
+        server.workstream_submit_task(
+            prompt="Task",
+            post_completion_command="make test",
+            max_post_completion_passes=5,
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["maxPostCompletionPasses"], 5)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_max_post_completion_passes_omitted_by_default(self, mock_post):
+        """max_post_completion_passes must not appear in the payload when not set."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-mpcp-default"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("maxPostCompletionPasses", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_max_post_completion_passes_one(self, mock_post):
+        """max_post_completion_passes=1 is forwarded correctly."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-mpcp-one"}
+        server.workstream_submit_task(
+            prompt="Task",
+            post_completion_command="make test",
+            max_post_completion_passes=1,
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["maxPostCompletionPasses"], 1)
+
 
 class TestWorkstreamSubmitSelfCollision(unittest.TestCase):
     """workstream_submit_task must not let an agent submit work to its

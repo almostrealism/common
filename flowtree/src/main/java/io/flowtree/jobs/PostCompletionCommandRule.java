@@ -62,12 +62,25 @@ class PostCompletionCommandRule implements EnforcementRule {
     /** Maximum characters of combined command output injected into the correction prompt. */
     static final int MAX_OUTPUT_CHARS = 8000;
 
+    /**
+     * Default per-job cap on post-completion correction sessions.
+     * When a flaky gate command fails this many times consecutively the
+     * enforcement loop stops rather than exhausting the agent's entire
+     * context budget on a single stuck check.
+     */
+    static final int DEFAULT_MAX_PASSES = 3;
+
     /** The shell command passed to {@code sh -c}. */
     private final String command;
     /** Working directory for the command; {@code null} = use the job's working directory. */
     private final String workingDir;
     /** Maximum wall-clock seconds before the command is killed. */
     private final int timeoutSeconds;
+    /**
+     * Maximum correction sessions allowed before the enforcement loop gives up.
+     * Independent of {@link CodingAgentJob#DEFAULT_MAX_RULE_RETRIES}.
+     */
+    private final int maxPasses;
 
     /** Cached exit code from the most recent command run; {@code -1} before first run. */
     private int lastExitCode = -1;
@@ -77,20 +90,26 @@ class PostCompletionCommandRule implements EnforcementRule {
     private boolean lastTimedOut;
     /** Whether the cache is valid; set to {@code false} by {@link #onCorrectionAttempted}. */
     private boolean cacheValid;
+    /** Total correction sessions run; used to enforce the per-job pass cap. */
+    private int correctionPassCount;
+    /** Set to {@code true} when {@link #correctionPassCount} reaches {@link #maxPasses}. */
+    private boolean capHit;
 
     /**
-     * Creates a rule that runs the given command with the default timeout.
+     * Creates a rule that runs the given command with the default timeout and
+     * the default pass cap ({@link #DEFAULT_MAX_PASSES}).
      *
      * @param command    the shell command to run (passed to {@code sh -c})
      * @param workingDir the working directory for the command, or {@code null}
      *                   to use the job's working directory
      */
     PostCompletionCommandRule(String command, String workingDir) {
-        this(command, workingDir, DEFAULT_TIMEOUT_SECONDS);
+        this(command, workingDir, DEFAULT_TIMEOUT_SECONDS, DEFAULT_MAX_PASSES);
     }
 
     /**
-     * Creates a rule that runs the given command with a configurable timeout.
+     * Creates a rule that runs the given command with a configurable timeout and
+     * the default pass cap ({@link #DEFAULT_MAX_PASSES}).
      *
      * @param command        the shell command to run (passed to {@code sh -c})
      * @param workingDir     the working directory, or {@code null} to use the job's
@@ -99,13 +118,42 @@ class PostCompletionCommandRule implements EnforcementRule {
      *                       and treated as a failure
      */
     PostCompletionCommandRule(String command, String workingDir, int timeoutSeconds) {
+        this(command, workingDir, timeoutSeconds, DEFAULT_MAX_PASSES);
+    }
+
+    /**
+     * Creates a rule with an explicit timeout and pass cap.
+     *
+     * @param command        the shell command to run (passed to {@code sh -c})
+     * @param workingDir     the working directory, or {@code null} to use the job's
+     *                       working directory
+     * @param timeoutSeconds maximum wall-clock seconds before the command is killed
+     *                       and treated as a failure
+     * @param maxPasses      maximum correction sessions before the enforcement loop
+     *                       abandons this rule; must be positive
+     * @throws IllegalArgumentException if {@code maxPasses} is not positive
+     */
+    PostCompletionCommandRule(String command, String workingDir, int timeoutSeconds, int maxPasses) {
+        if (maxPasses <= 0) {
+            throw new IllegalArgumentException(
+                    "maxPasses must be positive, got: " + maxPasses);
+        }
         this.command = command;
         this.workingDir = workingDir;
         this.timeoutSeconds = timeoutSeconds;
+        this.maxPasses = maxPasses;
     }
 
     @Override
     public String getName() { return "post-completion-command"; }
+
+    /**
+     * Returns the per-job pass cap so the enforcement framework bounds the
+     * correction loop. When exhausted while the command still fails, the
+     * framework logs a warning and continues.
+     */
+    @Override
+    public int getMaxRetries() { return maxPasses; }
 
     /**
      * Runs the post-completion command (if not already cached) and returns
@@ -120,6 +168,10 @@ class PostCompletionCommandRule implements EnforcementRule {
      */
     @Override
     public boolean isViolated(CodingAgentJob job) {
+        if (correctionPassCount >= maxPasses) {
+            capHit = true;
+            return false;
+        }
         if (!cacheValid) {
             runCommand(job);
         }
@@ -129,13 +181,24 @@ class PostCompletionCommandRule implements EnforcementRule {
     /**
      * Invalidates the cached command result so the next {@link #isViolated}
      * call re-runs the command to check whether the correction resolved the issue.
+     * Also increments the per-job correction pass counter toward {@link #maxPasses}.
      *
      * @param job the job after the correction session completed
      */
     @Override
     public void onCorrectionAttempted(CodingAgentJob job) {
+        correctionPassCount++;
         cacheValid = false;
     }
+
+    /**
+     * Returns {@code true} when the per-job pass cap was reached without the
+     * command ever exiting zero.  The enforcement framework uses this to set
+     * the {@code postCompletionCapHit} telemetry field on the job event.
+     *
+     * @return {@code true} if the cap was hit
+     */
+    boolean isCapHit() { return capHit; }
 
     /**
      * Builds a correction prompt that shows the agent the command that was run,

@@ -71,6 +71,13 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     private String runnerName;
 
     /**
+     * {@code true} when the post-completion command exhausted its per-job pass
+     * cap without ever exiting zero. Distinguishes "command succeeded after N
+     * passes" from "command failed and the gate was abandoned".
+     */
+    private boolean postCompletionCapHit;
+
+    /**
      * Creates a new Claude Code job completion event.
      *
      * @param jobId       the job identifier
@@ -339,5 +346,27 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     @Override
     public String getRunnerName() {
         return runnerName;
+    }
+
+    /**
+     * Records whether the post-completion command gate was abandoned because the
+     * per-job pass cap was exhausted without a successful exit.
+     *
+     * @param postCompletionCapHit {@code true} when the cap was hit without success
+     * @return this event for chaining
+     */
+    public CodingAgentJobEvent withPostCompletionCapHit(boolean postCompletionCapHit) {
+        this.postCompletionCapHit = postCompletionCapHit;
+        return this;
+    }
+
+    /**
+     * Returns {@code true} when the post-completion command gate was abandoned because
+     * the per-job pass cap was exhausted without a successful exit.
+     *
+     * @return {@code true} if the gate was abandoned
+     */
+    public boolean isPostCompletionCapHit() {
+        return postCompletionCapHit;
     }
 }

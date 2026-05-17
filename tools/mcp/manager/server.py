@@ -1358,6 +1358,7 @@ def workstream_submit_task(
     effort: str = "",
     post_completion_command: str = "",
     post_completion_timeout_seconds: int = 0,
+    max_post_completion_passes: int = 0,
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -1438,6 +1439,13 @@ def workstream_submit_task(
             post-completion command before killing it and treating the run as a
             failure. 0 (default) uses the server-side default of 1800 seconds
             (30 minutes).
+        max_post_completion_passes: Maximum number of post-completion correction
+            sessions per job. 0 (default) uses the server-side default of 3.
+            Each pass runs a full agent session; without a cap a single flaky
+            gate command can exhaust the entire context budget. Set to 1 for
+            commands that should not be retried at all. Set higher (e.g. 5) when
+            the gate is known to be flakey but eventually converges. Has no
+            effect when ``post_completion_command`` is empty.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -1565,6 +1573,8 @@ def workstream_submit_task(
         payload["postCompletionCommand"] = post_completion_command
     if post_completion_timeout_seconds > 0:
         payload["postCompletionTimeoutSeconds"] = post_completion_timeout_seconds
+    if max_post_completion_passes > 0:
+        payload["maxPostCompletionPasses"] = max_post_completion_passes
 
     result = _controller_post("/api/submit", payload)
 

@@ -88,13 +88,6 @@ public class CodingAgentJobPushedToolsTest {
         return reconstructed;
     }
 
-    private static CodingAgentJob roundTripJob(CodingAgentJob original) {
-        String encoded = original.encode();
-        CodingAgentJob reconstructed = new CodingAgentJob("", "");
-        applyEncoded(reconstructed, encoded);
-        return reconstructed;
-    }
-
     /**
      * Applies an encoded wire string to a target by splitting on
      * {@code "::"} and calling the target's {@code set(key, value)} for
@@ -160,7 +153,7 @@ public class CodingAgentJobPushedToolsTest {
         CodingAgentJob job = new CodingAgentJob("t1", "do work");
         job.setPushedToolsConfig(CTRL_CONFIG);
 
-        CodingAgentJob reconstructed = roundTripJob(job);
+        CodingAgentJob reconstructed = GitManagedJobSerializationTest.roundTrip(job);
         Assert.assertEquals("pushedToolsConfig must survive job wire round-trip",
                 CTRL_CONFIG, reconstructed.getPushedToolsConfig());
     }
@@ -176,7 +169,7 @@ public class CodingAgentJobPushedToolsTest {
         // it produces across the network too.
         CodingAgentJobFactory factoryAtAgent = roundTripFactory(factory);
         CodingAgentJob jobBeforeWire = (CodingAgentJob) factoryAtAgent.nextJob();
-        CodingAgentJob job = roundTripJob(jobBeforeWire);
+        CodingAgentJob job = GitManagedJobSerializationTest.roundTrip(jobBeforeWire);
 
         invokeConfigureMcpBuilder(job);
         McpConfigBuilder builder = readMcpBuilder(job);

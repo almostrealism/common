@@ -105,6 +105,9 @@ public class CodingAgentJob extends GitManagedJob {
     /** Default per-job deduplication pass cap; override via {@link #setMaxDeduplicationPasses(int)}. */
     public static final int DEFAULT_MAX_DEDUP_PASSES = 2;
 
+    /** Default per-job post-completion pass cap; override via {@link #setMaxPostCompletionPasses(int)}. */
+    public static final int DEFAULT_MAX_POST_COMPLETION_PASSES = PostCompletionCommandRule.DEFAULT_MAX_PASSES;
+
     /** The prompt submitted to Claude Code for this job. */
     private String prompt;
     /** Short human-readable description of this job, used in status messages. */
@@ -170,18 +173,15 @@ public class CodingAgentJob extends GitManagedJob {
     /** Timeout in seconds for {@link #postCompletionCommand}; defaults to {@link PostCompletionCommandRule#DEFAULT_TIMEOUT_SECONDS}. */
     private int postCompletionTimeoutSeconds = PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS;
 
-    /**
-     * Additional enforcement rules registered via {@link #addEnforcementRule(EnforcementRule)}.
-     * Built-in rules (enforce-changes, deduplication, maven-dependency-protection) are
-     * instantiated from job flags in {@link #buildActiveRules()} and are not stored here.
-     */
+    /** Per-job post-completion pass cap; passed to {@link PostCompletionCommandRule}. */
+    private int maxPostCompletionPasses = DEFAULT_MAX_POST_COMPLETION_PASSES;
+    /** {@code true} when the pass cap was exhausted without a zero exit. */
+    private boolean postCompletionCapHit;
+
+    /** Additional enforcement rules from {@link #addEnforcementRule}; built-ins are created in {@link #buildActiveRules()}. */
     private final List<EnforcementRule> customEnforcementRules = new ArrayList<>();
 
-    /**
-     * Name of the {@link AgentRunner} used to dispatch this job's sessions.
-     * Phase 1 ships only the Claude Code runner; later phases plumb per-phase
-     * selection through this field.
-     */
+    /** Name of the {@link AgentRunner} used to dispatch sessions. */
     private String runnerName = AgentRunnerRegistry.CLAUDE;
 
     /** Builder used to assemble the MCP tool configuration JSON for Claude Code. */
@@ -264,15 +264,7 @@ public class CodingAgentJob extends GitManagedJob {
             : prompt;
     }
 
-    /**
-     * Returns a short display summary for this job suitable for notifications.
-     *
-     * <p>If a description is set, it is returned directly. Otherwise, short prompts
-     * (80 characters or fewer) are returned as-is, and longer prompts are summarized
-     * as their character count.</p>
-     *
-     * @return the display summary
-     */
+    /** Returns a short display summary for this job; description if set, else {@link #summarizePrompt(String)}. */
     public String getDisplaySummary() {
         if (description != null && !description.isEmpty()) {
             return description;
@@ -280,14 +272,7 @@ public class CodingAgentJob extends GitManagedJob {
         return summarizePrompt(prompt);
     }
 
-    /**
-     * Produces a short display string for a prompt. Short prompts (80 characters
-     * or fewer) are returned as-is; longer prompts are summarized as their
-     * character count.
-     *
-     * @param prompt the raw prompt text
-     * @return a concise summary suitable for notifications
-     */
+    /** Short display string for {@code prompt}: returned as-is if ≤80 chars, otherwise formatted as character count. */
     public static String summarizePrompt(String prompt) {
         if (prompt == null) {
             return "(no prompt)";
@@ -604,6 +589,15 @@ public class CodingAgentJob extends GitManagedJob {
     /** Sets the post-completion command; non-empty activates {@link PostCompletionCommandRule}. */
     public void setPostCompletionCommand(String postCompletionCommand) { this.postCompletionCommand = postCompletionCommand; }
 
+    /** Returns the per-job post-completion pass cap; defaults to {@link #DEFAULT_MAX_POST_COMPLETION_PASSES}. */
+    public int getMaxPostCompletionPasses() { return maxPostCompletionPasses; }
+    /** Sets the per-job post-completion pass cap; must be positive (see {@link #DEFAULT_MAX_POST_COMPLETION_PASSES}). */
+    public void setMaxPostCompletionPasses(int maxPostCompletionPasses) {
+        if (maxPostCompletionPasses <= 0)
+            throw new IllegalArgumentException("maxPostCompletionPasses must be positive, got: " + maxPostCompletionPasses);
+        this.maxPostCompletionPasses = maxPostCompletionPasses;
+    }
+
     /** Returns the working directory for the post-completion command; {@code null} uses the job's working directory. */
     public String getPostCompletionWorkingDir() { return postCompletionWorkingDir; }
 
@@ -782,7 +776,8 @@ public class CodingAgentJob extends GitManagedJob {
             rules.add(new PostCompletionCommandRule(
                     postCompletionCommand,
                     postCompletionWorkingDir,
-                    postCompletionTimeoutSeconds));
+                    postCompletionTimeoutSeconds,
+                    maxPostCompletionPasses));
         }
         if (enforceMavenDependencies) {
             rules.add(new MavenDependencyProtectionRule());
@@ -864,10 +859,13 @@ public class CodingAgentJob extends GitManagedJob {
                     if (attempts >= rule.getMaxRetries()) {
                         warn("Enforcement rule '" + rule.getName() + "': exhausted "
                                 + rule.getMaxRetries() + " retries without resolution");
+                        if ("post-completion-command".equals(rule.getName())) postCompletionCapHit = true;
                     } else if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
                         warn("Enforcement rule '" + rule.getName()
                                 + "': stopped because the total enforcement attempt cap was reached");
                     }
+                } else if ("post-completion-command".equals(rule.getName()) && ((PostCompletionCommandRule) rule).isCapHit()) {
+                    postCompletionCapHit = true;
                 }
                 if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) break;
             }
@@ -1198,6 +1196,9 @@ public class CodingAgentJob extends GitManagedJob {
     protected JobCompletionEvent createEvent(Exception error) {
         if (error != null) return CodingAgentJobEvent.failed(getTaskId(), getTaskString(), error.getMessage(), error);
         if (exitCode != 0) return CodingAgentJobEvent.failed(getTaskId(), getTaskString(), "Claude Code exited with code " + exitCode, null);
+        if (postCompletionCapHit)
+            return CodingAgentJobEvent.degraded(getTaskId(), getTaskString(),
+                "Post-completion command did not exit zero within " + maxPostCompletionPasses + " pass(es) — gate abandoned, work may be incomplete");
         List<String> abandoned = AbandonedTestRunDetector.findAbandonedRunsForJob(getWorkingDirectory(), sessionStartedAt);
         if (abandoned.isEmpty()) return CodingAgentJobEvent.success(getTaskId(), getTaskString());
         return CodingAgentJobEvent.degraded(getTaskId(), getTaskString(),
@@ -1215,6 +1216,7 @@ public class CodingAgentJob extends GitManagedJob {
                 ccEvent.withCommitMessageSource(commitMessageSource);
             }
             ccEvent.withRunnerName(runnerName);
+            if (postCompletionCapHit) ccEvent.withPostCompletionCapHit(true);
         }
     }
 
@@ -1496,6 +1498,8 @@ public class CodingAgentJob extends GitManagedJob {
             if (postCompletionTimeoutSeconds != PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS) {
                 sb.append("::postCmdTimeout:=").append(postCompletionTimeoutSeconds);
             }
+            if (maxPostCompletionPasses != DEFAULT_MAX_POST_COMPLETION_PASSES)
+                sb.append("::maxPostCmdPasses:=").append(maxPostCompletionPasses);
         }
         // Only emit the runner name when it differs from the registry default,
         // so wire-format snapshots of Phase 1 jobs match the pre-refactor output.
@@ -1565,6 +1569,10 @@ public class CodingAgentJob extends GitManagedJob {
                 break;
             case "postCmdTimeout":
                 this.postCompletionTimeoutSeconds = Integer.parseInt(value);
+                break;
+            case "maxPostCmdPasses":
+                try { int p = Integer.parseInt(value); this.maxPostCompletionPasses = p > 0 ? p : DEFAULT_MAX_POST_COMPLETION_PASSES; }
+                catch (NumberFormatException e) { this.maxPostCompletionPasses = DEFAULT_MAX_POST_COMPLETION_PASSES; }
                 break;
             case "runner":
                 setRunnerName(value);
