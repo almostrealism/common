@@ -279,7 +279,15 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Route("/api/memory/import", memory_import_endpoint, methods=["POST"]),
     ]
 
-    app = Starlette(routes=routes)
+    async def _value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
+        # Store-layer validation (e.g. malformed namespace) surfaces as ValueError.
+        # Map to 400 so the caller sees a clean rejection rather than a 500.
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+
+    app = Starlette(
+        routes=routes,
+        exception_handlers={ValueError: _value_error_handler},
+    )
 
     # Add CORS middleware for browser-based clients
     app.add_middleware(

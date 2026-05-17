@@ -25,7 +25,7 @@ import io.almostrealism.uml.Named;
  * maximum retry count is exhausted.
  *
  * <p>Rules are evaluated in order by the enforcement framework in
- * {@link ClaudeCodeJob}. Each rule is independent: a correction session
+ * {@link CodingAgentJob}. Each rule is independent: a correction session
  * for one rule does not prevent other rules from being checked or retried.</p>
  *
  * <p>The name returned by {@link #getName()} (inherited from
@@ -34,19 +34,19 @@ import io.almostrealism.uml.Named;
  * {@code "no-maven-dependency-changes"}).</p>
  *
  * <p>Implementations are generally stateless — all inspection is performed
- * through the {@link ClaudeCodeJob} argument passed to each method.
+ * through the {@link CodingAgentJob} argument passed to each method.
  * Implementations that need to track audit outcomes across retries may
- * override {@link #onCorrectionAttempted(ClaudeCodeJob)} to maintain
+ * override {@link #onCorrectionAttempted(CodingAgentJob)} to maintain
  * per-instance state.</p>
  *
  * <p>To add a new rule, implement this interface and add it via
- * {@link ClaudeCodeJob#addEnforcementRule(EnforcementRule)}. Built-in rules
+ * {@link CodingAgentJob#addEnforcementRule(EnforcementRule)}. Built-in rules
  * (enforce-changes, deduplication, maven-dependency-protection) are activated
  * by flags on the job or factory and do not need to be added manually.</p>
  *
  * @author Michael Murray
- * @see ClaudeCodeJob
- * @see ClaudeCodeJob#DEFAULT_MAX_RULE_RETRIES
+ * @see CodingAgentJob
+ * @see CodingAgentJob#DEFAULT_MAX_RULE_RETRIES
  */
 public interface EnforcementRule extends Named {
 
@@ -60,7 +60,7 @@ public interface EnforcementRule extends Named {
      * @param job the job whose current working-tree state is being inspected
      * @return {@code true} if a violation was detected
      */
-    boolean isViolated(ClaudeCodeJob job);
+    boolean isViolated(CodingAgentJob job);
 
     /**
      * Builds the correction prompt to send to the agent when a violation is detected.
@@ -72,13 +72,13 @@ public interface EnforcementRule extends Named {
      * <p>Return {@code null} to re-run the agent with the existing job prompt
      * unchanged. Use this when the job's built-in instruction context already
      * contains the correction guidance (e.g., when {@code enforceChanges} is
-     * enabled, {@link ClaudeCodeJob}'s instruction builder already injects the
+     * enabled, {@link CodingAgentJob}'s instruction builder already injects the
      * "code changes are required" message).</p>
      *
      * @param job the job whose current state is being inspected
      * @return the correction prompt, or {@code null} to reuse the existing job prompt
      */
-    String buildCorrectionPrompt(ClaudeCodeJob job);
+    String buildCorrectionPrompt(CodingAgentJob job);
 
     /**
      * Called by the enforcement framework after each correction attempt completes,
@@ -88,13 +88,13 @@ public interface EnforcementRule extends Named {
      * on the outcome of the correction session. For example, a deduplication rule
      * can use this to detect when the agent confirmed no duplicates (i.e., the
      * session produced no file changes), and mark the rule as resolved so that
-     * {@link #isViolated(ClaudeCodeJob)} returns {@code false} on the next check.</p>
+     * {@link #isViolated(CodingAgentJob)} returns {@code false} on the next check.</p>
      *
      * <p>The default implementation is a no-op.</p>
      *
      * @param job the job after the correction session completed
      */
-    default void onCorrectionAttempted(ClaudeCodeJob job) {
+    default void onCorrectionAttempted(CodingAgentJob job) {
         // no-op by default
     }
 
@@ -104,11 +104,11 @@ public interface EnforcementRule extends Named {
      * <p>When the attempt limit is reached and the violation is still present,
      * the framework logs a warning and moves on to the next rule.</p>
      *
-     * <p>Defaults to {@link ClaudeCodeJob#DEFAULT_MAX_RULE_RETRIES}.</p>
+     * <p>Defaults to {@link CodingAgentJob#DEFAULT_MAX_RULE_RETRIES}.</p>
      *
      * @return the maximum retry count (must be positive)
      */
     default int getMaxRetries() {
-        return ClaudeCodeJob.DEFAULT_MAX_RULE_RETRIES;
+        return CodingAgentJob.DEFAULT_MAX_RULE_RETRIES;
     }
 }

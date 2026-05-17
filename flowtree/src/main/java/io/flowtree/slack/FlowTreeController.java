@@ -170,7 +170,7 @@ public class FlowTreeController implements ConsoleFeatures {
      * declared under {@code pushedTools:} in {@code workstreams.yaml}. The
      * string is the input format expected by
      * {@link io.flowtree.jobs.ManagedToolsDownloader#ensurePushedTools(String)};
-     * agent jobs receive it through {@code ClaudeCodeJobFactory.setPushedToolsConfig}.
+     * agent jobs receive it through {@code CodingAgentJobFactory.setPushedToolsConfig}.
      * Populated by {@link #registerPushedTools()}; never {@code null} after
      * controller startup.</p>
      */
@@ -627,7 +627,7 @@ public class FlowTreeController implements ConsoleFeatures {
         startApiEndpoint();
         registerPushedTools();
         // After registration, propagate the config to anything that builds
-        // ClaudeCodeJobFactory instances so each launched job picks up the
+        // CodingAgentJobFactory instances so each launched job picks up the
         // built-in ar-secrets plus any operator-declared pushed tools.
         if (apiEndpoint != null) {
             apiEndpoint.setPushedToolsConfig(pushedToolsConfig);
@@ -1163,7 +1163,7 @@ public class FlowTreeController implements ConsoleFeatures {
      * {@code FLOWTREE_APP_DIR}-relative (default {@code /app}). No env
      * overrides — ar-secrets reads {@code AR_CONTROLLER_URL},
      * {@code AR_WORKSTREAM_ID}, and {@code AR_MANAGER_TOKEN} from the
-     * process environment that {@code ClaudeCodeJob} sets per job.
+     * process environment that {@code CodingAgentJob} sets per job.
      *
      * @return a {@link WorkstreamConfig.PushedToolEntry} for ar-secrets
      */

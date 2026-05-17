@@ -16,26 +16,27 @@
 
 package io.flowtree.jobs;
 
-import io.flowtree.JsonFieldExtractor;
 import io.flowtree.job.Job;
+import io.flowtree.jobs.agent.AgentRunRequest;
+import io.flowtree.jobs.agent.AgentRunResult;
+import io.flowtree.jobs.agent.AgentRunner;
+import io.flowtree.jobs.agent.AgentRunnerRegistry;
+import io.flowtree.jobs.agent.ClaudeCodeRunner;
 import org.almostrealism.util.KeyUtils;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -52,22 +53,31 @@ import java.util.concurrent.TimeUnit;
  *
  * @author Michael Murray
  * @see GitManagedJob
- * @see ClaudeCodeJobFactory
+ * @see CodingAgentJobFactory
  */
-public class ClaudeCodeJob extends GitManagedJob {
+public class CodingAgentJob extends GitManagedJob {
     /** Sentinel string used to delimit multiple prompts in the serialized wire format. */
     public static final String PROMPT_SEPARATOR = ";;PROMPT;;";
     /** Default comma-separated list of tools permitted for Claude Code sessions. */
     public static final String DEFAULT_TOOLS = "Read,Edit,Write,Bash,Glob,Grep";
 
-    /** Valid values for the Claude Code {@code --effort} flag (thinking level). */
-    public static final List<String> VALID_EFFORT_LEVELS =
-            List.of("low", "medium", "high", "xhigh", "max");
+    /**
+     * Valid values for the {@code --effort} flag exposed by the Claude Code runner.
+     *
+     * <p>Pluggable agent runners may accept different effort vocabularies; this
+     * list is retained on the orchestrator for backwards compatibility with
+     * callers (Workstream / WorkstreamConfig) that validate before submission.
+     * The canonical home is now {@link ClaudeCodeRunner#VALID_EFFORT_LEVELS}.</p>
+     */
+    public static final List<String> VALID_EFFORT_LEVELS = ClaudeCodeRunner.VALID_EFFORT_LEVELS;
 
-    /** Accepted values for the Claude Code {@code --model} flag (CLI aliases + full IDs). */
-    public static final List<String> VALID_MODELS = List.of(
-            "sonnet", "opus", "haiku",
-            "claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5-20251001");
+    /**
+     * Accepted values for the {@code --model} flag exposed by the Claude Code runner.
+     *
+     * <p>The canonical home is {@link ClaudeCodeRunner#VALID_MODELS}; this alias
+     * preserves the old API surface for callers that pre-validate inputs.</p>
+     */
+    public static final List<String> VALID_MODELS = ClaudeCodeRunner.VALID_MODELS;
 
     /**
      * Deduplication mode that runs an inline Claude Code session before the
@@ -79,7 +89,7 @@ public class ClaudeCodeJob extends GitManagedJob {
     public static final String DEDUP_LOCAL = "local";
 
     /**
-     * Deduplication mode that submits a separate {@link ClaudeCodeJob} to the
+     * Deduplication mode that submits a separate {@link CodingAgentJob} to the
      * same workstream after the current job's commit has been pushed.
      * Requires a workstream URL to be configured on this job.
      */
@@ -94,6 +104,9 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /** Default per-job deduplication pass cap; override via {@link #setMaxDeduplicationPasses(int)}. */
     public static final int DEFAULT_MAX_DEDUP_PASSES = 2;
+
+    /** Default per-job post-completion pass cap; override via {@link #setMaxPostCompletionPasses(int)}. */
+    public static final int DEFAULT_MAX_POST_COMPLETION_PASSES = PostCompletionCommandRule.DEFAULT_MAX_PASSES;
 
     /** The prompt submitted to Claude Code for this job. */
     private String prompt;
@@ -160,12 +173,16 @@ public class ClaudeCodeJob extends GitManagedJob {
     /** Timeout in seconds for {@link #postCompletionCommand}; defaults to {@link PostCompletionCommandRule#DEFAULT_TIMEOUT_SECONDS}. */
     private int postCompletionTimeoutSeconds = PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS;
 
-    /**
-     * Additional enforcement rules registered via {@link #addEnforcementRule(EnforcementRule)}.
-     * Built-in rules (enforce-changes, deduplication, maven-dependency-protection) are
-     * instantiated from job flags in {@link #buildActiveRules()} and are not stored here.
-     */
+    /** Per-job post-completion pass cap; passed to {@link PostCompletionCommandRule}. */
+    private int maxPostCompletionPasses = DEFAULT_MAX_POST_COMPLETION_PASSES;
+    /** {@code true} when the pass cap was exhausted without a zero exit. */
+    private boolean postCompletionCapHit;
+
+    /** Additional enforcement rules from {@link #addEnforcementRule}; built-ins are created in {@link #buildActiveRules()}. */
     private final List<EnforcementRule> customEnforcementRules = new ArrayList<>();
+
+    /** Name of the {@link AgentRunner} used to dispatch sessions. */
+    private String runnerName = AgentRunnerRegistry.CLAUDE;
 
     /** Builder used to assemble the MCP tool configuration JSON for Claude Code. */
     private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
@@ -205,19 +222,19 @@ public class ClaudeCodeJob extends GitManagedJob {
     /**
      * Default constructor for deserialization.
      */
-    public ClaudeCodeJob() {
+    public CodingAgentJob() {
         this.allowedTools = DEFAULT_TOOLS;
         this.maxTurns = 50;
         this.maxBudgetUsd = 10.0;
     }
 
     /**
-     * Creates a new ClaudeCodeJob with the specified prompt.
+     * Creates a new CodingAgentJob with the specified prompt.
      *
      * @param taskId  the task ID for tracking
      * @param prompt  the prompt to send to Claude Code
      */
-    public ClaudeCodeJob(String taskId, String prompt) {
+    public CodingAgentJob(String taskId, String prompt) {
         super(taskId);
         this.allowedTools = DEFAULT_TOOLS;
         this.maxTurns = 50;
@@ -226,13 +243,13 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Creates a new ClaudeCodeJob with the specified prompt and tools.
+     * Creates a new CodingAgentJob with the specified prompt and tools.
      *
      * @param taskId       the task ID for tracking
      * @param prompt       the prompt to send to Claude Code
      * @param allowedTools comma-separated list of allowed tools (e.g., "Read,Edit,Bash")
      */
-    public ClaudeCodeJob(String taskId, String prompt, String allowedTools) {
+    public CodingAgentJob(String taskId, String prompt, String allowedTools) {
         this(taskId, prompt);
         this.allowedTools = allowedTools;
     }
@@ -247,15 +264,7 @@ public class ClaudeCodeJob extends GitManagedJob {
             : prompt;
     }
 
-    /**
-     * Returns a short display summary for this job suitable for notifications.
-     *
-     * <p>If a description is set, it is returned directly. Otherwise, short prompts
-     * (80 characters or fewer) are returned as-is, and longer prompts are summarized
-     * as their character count.</p>
-     *
-     * @return the display summary
-     */
+    /** Returns a short display summary for this job; description if set, else {@link #summarizePrompt(String)}. */
     public String getDisplaySummary() {
         if (description != null && !description.isEmpty()) {
             return description;
@@ -263,14 +272,7 @@ public class ClaudeCodeJob extends GitManagedJob {
         return summarizePrompt(prompt);
     }
 
-    /**
-     * Produces a short display string for a prompt. Short prompts (80 characters
-     * or fewer) are returned as-is; longer prompts are summarized as their
-     * character count.
-     *
-     * @param prompt the raw prompt text
-     * @return a concise summary suitable for notifications
-     */
+    /** Short display string for {@code prompt}: returned as-is if ≤80 chars, otherwise formatted as character count. */
     public static String summarizePrompt(String prompt) {
         if (prompt == null) {
             return "(no prompt)";
@@ -587,6 +589,15 @@ public class ClaudeCodeJob extends GitManagedJob {
     /** Sets the post-completion command; non-empty activates {@link PostCompletionCommandRule}. */
     public void setPostCompletionCommand(String postCompletionCommand) { this.postCompletionCommand = postCompletionCommand; }
 
+    /** Returns the per-job post-completion pass cap; defaults to {@link #DEFAULT_MAX_POST_COMPLETION_PASSES}. */
+    public int getMaxPostCompletionPasses() { return maxPostCompletionPasses; }
+    /** Sets the per-job post-completion pass cap; must be positive (see {@link #DEFAULT_MAX_POST_COMPLETION_PASSES}). */
+    public void setMaxPostCompletionPasses(int maxPostCompletionPasses) {
+        if (maxPostCompletionPasses <= 0)
+            throw new IllegalArgumentException("maxPostCompletionPasses must be positive, got: " + maxPostCompletionPasses);
+        this.maxPostCompletionPasses = maxPostCompletionPasses;
+    }
+
     /** Returns the working directory for the post-completion command; {@code null} uses the job's working directory. */
     public String getPostCompletionWorkingDir() { return postCompletionWorkingDir; }
 
@@ -601,6 +612,34 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     /** Sets the current correction-session rule name; null for primary work. Package-private for tests. */
     void setCurrentActivity(String currentActivity) { this.currentActivity = currentActivity; }
+
+    /**
+     * Returns the name of the {@link AgentRunner} dispatching this job's
+     * sessions. Defaults to {@link AgentRunnerRegistry#CLAUDE}.
+     *
+     * @return the runner identifier
+     */
+    public String getRunnerName() { return runnerName; }
+
+    /**
+     * Sets the name of the {@link AgentRunner} that will dispatch this job's
+     * sessions. The value is validated against
+     * {@link AgentRunnerRegistry#available()} so misconfiguration fails at the
+     * caller rather than during dispatch.
+     *
+     * @param runnerName a registered runner identifier (e.g.
+     *                   {@link AgentRunnerRegistry#CLAUDE}); {@code null} or empty
+     *                   resets to the Claude runner
+     * @throws IllegalArgumentException when the runner is not registered
+     */
+    public void setRunnerName(String runnerName) {
+        if (runnerName == null || runnerName.isEmpty()) {
+            this.runnerName = AgentRunnerRegistry.CLAUDE;
+            return;
+        }
+        AgentRunnerRegistry.validateName(runnerName);
+        this.runnerName = runnerName;
+    }
 
     /**
      * Registers an additional enforcement rule to run after the agent completes
@@ -737,7 +776,8 @@ public class ClaudeCodeJob extends GitManagedJob {
             rules.add(new PostCompletionCommandRule(
                     postCompletionCommand,
                     postCompletionWorkingDir,
-                    postCompletionTimeoutSeconds));
+                    postCompletionTimeoutSeconds,
+                    maxPostCompletionPasses));
         }
         if (enforceMavenDependencies) {
             rules.add(new MavenDependencyProtectionRule());
@@ -819,10 +859,13 @@ public class ClaudeCodeJob extends GitManagedJob {
                     if (attempts >= rule.getMaxRetries()) {
                         warn("Enforcement rule '" + rule.getName() + "': exhausted "
                                 + rule.getMaxRetries() + " retries without resolution");
+                        if ("post-completion-command".equals(rule.getName())) postCompletionCapHit = true;
                     } else if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
                         warn("Enforcement rule '" + rule.getName()
                                 + "': stopped because the total enforcement attempt cap was reached");
                     }
+                } else if ("post-completion-command".equals(rule.getName()) && ((PostCompletionCommandRule) rule).isCapHit()) {
+                    postCompletionCapHit = true;
                 }
                 if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) break;
             }
@@ -896,8 +939,9 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Executes a single Claude Code session, retrying up to {@link #maxInactivityRestarts}
-     * times on inactivity kills. Package-private to allow test subclasses to override.
+     * Executes a single agent session via the configured {@link AgentRunner},
+     * retrying up to {@link #maxInactivityRestarts} times on inactivity kills.
+     * Package-private to allow test subclasses to override.
      */
     void executeSingleRun() {
         Path staleCommitFile = resolveWorkingPath("commit.txt");
@@ -913,150 +957,160 @@ public class ClaudeCodeJob extends GitManagedJob {
         File outputDir = new File("claude-output");
         if (!outputDir.exists()) outputDir.mkdir();
         String outputFile = "claude-output/" + KeyUtils.generateKey() + ".json";
-        output = "";
-        for (int attempt = 0; attempt <= maxInactivityRestarts; attempt++) {
-            inactivityRestartAttempt = attempt;
-            wasKilledForInactivity = false;
-            output = launchClaudeAttempt();
-            if (!wasKilledForInactivity) break;
-            if (attempt == maxInactivityRestarts) {
-                warn("Inactivity-restart limit (" + maxInactivityRestarts + ") reached -- abandoning Claude session");
-            } else {
-                log("Relaunching Claude after inactivity timeout (attempt " + (attempt + 2) + " of " + (maxInactivityRestarts + 1) + ")");
-            }
-        }
-        inactivityRestartAttempt = 0;
+        Path outputCapturePath = Path.of(outputFile);
 
-        try (FileWriter writer = new FileWriter(outputFile)) { writer.write(output); }
-        catch (IOException e) { warn("Failed to save Claude output to " + outputFile + ": " + e.getMessage()); }
-        extractOutputMetrics(output);
-        log("Output saved to: " + outputFile);
-
-        if (getOutputConsumer() != null) {
-            getOutputConsumer().accept(new ClaudeCodeJobOutput(
-                getTaskId(), prompt, output, sessionId, exitCode));
-        }
-    }
-
-    /** Launches one Claude subprocess via {@link ClaudeAttemptRunner} and returns its captured stdout. */
-    private String launchClaudeAttempt() {
-        List<String> command = new ArrayList<>();
-        command.add("claude");
-        command.add("-p");
-        command.add(buildInstructionPrompt());
-        command.add("--output-format");
-        command.add("json");
-        command.add("--allowedTools");
+        AgentRunner runner = resolveRunner();
+        toolsDownloader.ensurePushedTools(pushedToolsConfig);
         configureMcpBuilder();
-        command.add(mcpConfigBuilder.buildAllowedTools(allowedTools));
-        command.add("--max-turns");
-        command.add(String.valueOf(maxTurns));
+        String mcpConfigJson = mcpConfigBuilder.buildMcpConfig();
+        String composedAllowedTools = mcpConfigBuilder.buildAllowedTools(allowedTools);
 
-        if (maxBudgetUsd > 0) {
-            command.add("--max-budget-usd");
-            command.add(String.format("%.2f", maxBudgetUsd));
-        }
-
-        if (model != null) {
-            command.add("--model");
-            command.add(model);
-        }
-
-        if (effort != null) {
-            command.add("--effort");
-            command.add(effort);
-        }
-
-        log("Starting: " + getTaskString());
-        log("Tools: " + allowedTools);
         if (getTargetBranch() != null) {
             log("Target branch: " + getTargetBranch());
         }
         if (enforcementAttempt > 0) {
             log("Enforcement attempt: " + (enforcementAttempt + 1));
         }
-        if (inactivityRestartAttempt > 0) {
-            log("Inactivity restart attempt: " + (inactivityRestartAttempt + 1)
-                    + " of " + (maxInactivityRestarts + 1));
+
+        output = "";
+        AgentRunResult finalResult = null;
+        for (int attempt = 0; attempt <= maxInactivityRestarts; attempt++) {
+            inactivityRestartAttempt = attempt;
+            wasKilledForInactivity = false;
+            AgentRunRequest request = buildRunRequest(
+                    composedAllowedTools, mcpConfigJson, outputCapturePath, attempt);
+            AgentRunResult result = runner.run(request, this);
+            output = result.rawOutput();
+            wasKilledForInactivity = result.killedForInactivity();
+            finalResult = result;
+            if (!wasKilledForInactivity) break;
+            if (attempt == maxInactivityRestarts) {
+                warn("Inactivity-restart limit (" + maxInactivityRestarts + ") reached -- abandoning agent session");
+            } else {
+                log("Relaunching agent after inactivity timeout (attempt "
+                        + (attempt + 2) + " of " + (maxInactivityRestarts + 1) + ")");
+            }
         }
+        inactivityRestartAttempt = 0;
 
-        toolsDownloader.ensurePushedTools(pushedToolsConfig);
-
-        command.add("--mcp-config");
-        command.add(mcpConfigBuilder.buildMcpConfig());
-
-        ProcessBuilder pb = new ProcessBuilder(command);
-        String workDir = getWorkingDirectory();
-        if (workDir != null) {
-            pb.directory(new File(workDir));
+        if (finalResult != null) {
+            absorbResult(finalResult);
         }
+        log("Output saved to: " + outputFile);
 
+        if (getOutputConsumer() != null) {
+            getOutputConsumer().accept(new CodingAgentJobOutput(
+                getTaskId(), prompt, output, sessionId, exitCode));
+        }
+    }
+
+    /**
+     * Resolves the {@link AgentRunner} to use for the current session.
+     *
+     * <p>Phase 1 always returns the Claude Code runner. Phase 2 will switch
+     * here based on the current rule / phase identifier.</p>
+     *
+     * @return the runner, never {@code null}
+     */
+    AgentRunner resolveRunner() {
+        return AgentRunnerRegistry.get(runnerName != null ? runnerName : AgentRunnerRegistry.CLAUDE);
+    }
+
+    /**
+     * Builds the {@link AgentRunRequest} for the current session, snapshotting
+     * the instruction prompt and the orchestrator-owned MCP and tool policy.
+     *
+     * <p>Package-private for tests.</p>
+     *
+     * @param composedAllowedTools allowed-tools CSV including ar-manager and
+     *                             pushed-tool entries from {@link McpConfigBuilder}
+     * @param mcpConfigJson        MCP config JSON in the canonical
+     *                             {@code {"mcpServers":{...}}} shape
+     * @param outputCapturePath    file path where the runner should dump its
+     *                             raw output
+     * @param attempt              current inactivity-restart attempt index
+     * @return the request handed to {@link AgentRunner#run}
+     */
+    AgentRunRequest buildRunRequest(String composedAllowedTools,
+                                    String mcpConfigJson,
+                                    Path outputCapturePath,
+                                    int attempt) {
+        Map<String, String> env = new LinkedHashMap<>();
         String wsUrl = resolveWorkstreamUrl();
         if (wsUrl != null && !wsUrl.isEmpty()) {
             log("AR_WORKSTREAM_URL: " + wsUrl);
         }
-        mcpConfigBuilder.applyAgentEnvironment(pb.environment(), wsUrl);
+        mcpConfigBuilder.applyAgentEnvironment(env, wsUrl);
 
-        if (currentActivity != null && !currentActivity.isEmpty()) {
-            pb.environment().put("AR_AGENT_ACTIVITY", currentActivity);
-        } else {
-            pb.environment().remove("AR_AGENT_ACTIVITY");
-        }
-        GitOperations.augmentPath(pb);
-
-        log("Command: " + String.join(" ", command));
-        log("Working directory: " + (workDir != null ? workDir : System.getProperty("user.dir")));
-
-        pb.redirectErrorStream(true);
-        pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
-
-        ClaudeAttemptRunner.Result result = ClaudeAttemptRunner.runAttempt(
-                pb, inactivityTimeoutMillis, getTaskId(), this);
-        exitCode = result.exitCode();
-        wasKilledForInactivity = result.killedForInactivity();
-        return result.output();
+        Path workDir = getWorkingDirectory() != null
+                ? Path.of(getWorkingDirectory()) : null;
+        return AgentRunRequest.builder()
+                .prompt(buildInstructionPrompt())
+                .workingDirectory(workDir)
+                .allowedTools(composedAllowedTools)
+                .mcpConfigJson(mcpConfigJson)
+                .environment(env)
+                .model(model)
+                .effort(effort)
+                .maxTurns(maxTurns)
+                .maxBudgetUsd(maxBudgetUsd)
+                .inactivityTimeoutMillis(inactivityTimeoutMillis)
+                .inactivityRestartAttempt(attempt)
+                .maxInactivityRestarts(maxInactivityRestarts)
+                .taskId(getTaskId())
+                .activityTag(currentActivity)
+                .outputCapturePath(outputCapturePath)
+                .build();
     }
 
     /**
-     * Checks whether the working directory has uncommitted changes
-     * (excluding files in the standard exclusion patterns).
+     * Absorbs {@code result} into the orchestrator's accumulated session
+     * fields. Across primary and correction sessions, duration / cost / turn
+     * metrics are summed; identification fields (session id, stop reason)
+     * track only the latest session.
      *
-     * <p>Used by the enforcement loop to determine whether the agent
-     * produced any meaningful code changes during its session.</p>
+     * @param result the result returned by {@link AgentRunner#run}
+     */
+    void absorbResult(AgentRunResult result) {
+        exitCode = result.exitCode();
+        sessionId = result.sessionId();
+        subtype = result.stopReason();
+        isError = result.sessionIsError();
+        durationMs += result.durationMs();
+        durationApiMs += result.durationApiMs();
+        numTurns += result.numTurns();
+        costUsd += result.costUsd();
+        if (!result.deniedToolNames().isEmpty()) {
+            if (deniedToolNames == null) {
+                deniedToolNames = new ArrayList<>();
+            }
+            deniedToolNames.addAll(result.deniedToolNames());
+            permissionDenials += result.deniedToolNames().size();
+        }
+    }
+
+    /**
+     * Checks whether the primary repository or any dependent repository has
+     * uncommitted changes (excluding files in the standard exclusion patterns).
+     *
+     * <p>Used by the enforcement loop to determine whether the agent produced
+     * any meaningful code changes during its session. Dependent repos are
+     * checked so that agents whose only changes land in a dependent repo are
+     * not falsely flagged as having produced no output.</p>
      *
      * @return true if there are uncommitted changes to non-excluded files
+     *         in the primary repo or any dependent repo
      */
     boolean hasUncommittedChanges() {
-        try {
-            ProcessBuilder pb = new ProcessBuilder(GitOperations.resolveGitCommand(), "status", "--porcelain");
-            String workDir = getWorkingDirectory();
-            if (workDir != null) {
-                pb.directory(new File(workDir));
-            }
-            pb.redirectErrorStream(true);
-            GitOperations.augmentPath(pb);
-            Process process = pb.start();
-            String statusOutput = new String(
-                process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            process.waitFor();
-
-            // Filter out excluded patterns (claude-output, .claude, target, etc.)
-            for (String line : statusOutput.split("\n")) {
-                if (line.length() > 3) {
-                    String file = line.substring(3).trim();
-                    if (file.contains(" -> ")) {
-                        file = file.split(" -> ")[1];
-                    }
-                    if (!GitOperations.isExcludedPath(file)) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        } catch (IOException | InterruptedException e) {
-            warn("Failed to check for uncommitted changes: " + e.getMessage());
-            return false;
+        if (GitOperations.hasUncommittedChanges(getWorkingDirectory())) {
+            return true;
         }
+        for (String depPath : getDependentRepoPaths()) {
+            if (GitOperations.hasUncommittedChanges(depPath)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1122,24 +1176,29 @@ public class ClaudeCodeJob extends GitManagedJob {
 
     @Override
     protected JobCompletionEvent createEvent(Exception error) {
-        if (error != null) return ClaudeCodeJobEvent.failed(getTaskId(), getTaskString(), error.getMessage(), error);
-        if (exitCode != 0) return ClaudeCodeJobEvent.failed(getTaskId(), getTaskString(), "Claude Code exited with code " + exitCode, null);
+        if (error != null) return CodingAgentJobEvent.failed(getTaskId(), getTaskString(), error.getMessage(), error);
+        if (exitCode != 0) return CodingAgentJobEvent.failed(getTaskId(), getTaskString(), "Claude Code exited with code " + exitCode, null);
+        if (postCompletionCapHit)
+            return CodingAgentJobEvent.degraded(getTaskId(), getTaskString(),
+                "Post-completion command did not exit zero within " + maxPostCompletionPasses + " pass(es) — gate abandoned, work may be incomplete");
         List<String> abandoned = AbandonedTestRunDetector.findAbandonedRunsForJob(getWorkingDirectory(), sessionStartedAt);
-        if (abandoned.isEmpty()) return ClaudeCodeJobEvent.success(getTaskId(), getTaskString());
-        return ClaudeCodeJobEvent.degraded(getTaskId(), getTaskString(),
+        if (abandoned.isEmpty()) return CodingAgentJobEvent.success(getTaskId(), getTaskString());
+        return CodingAgentJobEvent.degraded(getTaskId(), getTaskString(),
             "Agent abandoned " + abandoned.size() + " test-runner run(s): " + String.join(", ", abandoned));
     }
 
     @Override
     protected void populateEventDetails(JobCompletionEvent event) {
-        if (event instanceof ClaudeCodeJobEvent) {
-            ClaudeCodeJobEvent ccEvent = (ClaudeCodeJobEvent) event;
+        if (event instanceof CodingAgentJobEvent) {
+            CodingAgentJobEvent ccEvent = (CodingAgentJobEvent) event;
             ccEvent.withClaudeCodeInfo(prompt, sessionId, exitCode);
             ccEvent.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
             ccEvent.withSessionDetails(subtype, isError, permissionDenials, deniedToolNames);
             if (commitMessageSource != null) {
                 ccEvent.withCommitMessageSource(commitMessageSource);
             }
+            ccEvent.withRunnerName(runnerName);
+            if (postCompletionCapHit) ccEvent.withPostCompletionCapHit(true);
         }
     }
 
@@ -1373,74 +1432,6 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
 
-    /**
-     * Extracts session ID, timing metrics, stop reason, and permission denials
-     * from the Claude Code JSON output using Jackson.
-     *
-     * @param jsonOutput the raw JSON output from Claude Code
-     */
-    private void extractOutputMetrics(String jsonOutput) {
-        if (jsonOutput == null || jsonOutput.isEmpty()) return;
-
-        // Claude Code with --output-format json emits NDJSON: one JSON object
-        // per line. Locate the result object (type=result) and extract from that.
-        String resultJson = JsonFieldExtractor.extractLastJsonObject(jsonOutput, "result");
-        if (resultJson == null) {
-            resultJson = jsonOutput;
-        }
-
-        try {
-            JsonNode root = outputMapper.readTree(resultJson);
-
-            // Session ID and stop reason reflect the latest session only.
-            sessionId = getTextOrNull(root, "session_id");
-            subtype = getTextOrNull(root, "subtype");
-            isError = root.path("is_error").asBoolean(false);
-
-            // Accumulate numeric metrics across all sessions (main + enforcement
-            // correction sessions) so the final totals include every phase.
-            durationMs += root.path("duration_ms").asLong(0);
-            durationApiMs += root.path("duration_api_ms").asLong(0);
-            numTurns += root.path("num_turns").asInt(0);
-
-            double sessionCost = root.path("total_cost_usd").asDouble(0.0);
-            if (sessionCost == 0.0) {
-                sessionCost = root.path("cost_usd").asDouble(0.0);
-            }
-            costUsd += sessionCost;
-
-            // Accumulate permission denials across all sessions.
-            JsonNode denials = root.get("permission_denials");
-            if (denials != null && denials.isArray()) {
-                permissionDenials += denials.size();
-                if (deniedToolNames == null) {
-                    deniedToolNames = new ArrayList<>();
-                }
-                for (JsonNode denial : denials) {
-                    JsonNode toolNode = denial.get("tool");
-                    if (toolNode != null && toolNode.isTextual()) {
-                        deniedToolNames.add(toolNode.asText());
-                    }
-                }
-            }
-        } catch (Exception e) {
-            warn("Failed to parse output metrics: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Returns the text value of a JSON field, or {@code null} if the field is
-     * absent or not a text node.
-     *
-     * @param node   the parent JSON object node
-     * @param field  the field name to look up
-     * @return       the string value, or {@code null}
-     */
-    static String getTextOrNull(JsonNode node, String field) {
-        JsonNode child = node.get(field);
-        return (child != null && child.isTextual()) ? child.asText() : null;
-    }
-
     @Override
     public String encode() {
         StringBuilder sb = new StringBuilder();
@@ -1489,6 +1480,13 @@ public class ClaudeCodeJob extends GitManagedJob {
             if (postCompletionTimeoutSeconds != PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS) {
                 sb.append("::postCmdTimeout:=").append(postCompletionTimeoutSeconds);
             }
+            if (maxPostCompletionPasses != DEFAULT_MAX_POST_COMPLETION_PASSES)
+                sb.append("::maxPostCmdPasses:=").append(maxPostCompletionPasses);
+        }
+        // Only emit the runner name when it differs from the registry default,
+        // so wire-format snapshots of Phase 1 jobs match the pre-refactor output.
+        if (runnerName != null && !AgentRunnerRegistry.CLAUDE.equals(runnerName)) {
+            sb.append("::runner:=").append(runnerName);
         }
         return sb.toString();
     }
@@ -1554,6 +1552,13 @@ public class ClaudeCodeJob extends GitManagedJob {
             case "postCmdTimeout":
                 this.postCompletionTimeoutSeconds = Integer.parseInt(value);
                 break;
+            case "maxPostCmdPasses":
+                try { int p = Integer.parseInt(value); this.maxPostCompletionPasses = p > 0 ? p : DEFAULT_MAX_POST_COMPLETION_PASSES; }
+                catch (NumberFormatException e) { this.maxPostCompletionPasses = DEFAULT_MAX_POST_COMPLETION_PASSES; }
+                break;
+            case "runner":
+                setRunnerName(value);
+                break;
             default:
                 // Delegate to parent for git-related properties
                 super.set(key, value);
@@ -1561,11 +1566,11 @@ public class ClaudeCodeJob extends GitManagedJob {
     }
 
     /**
-     * Backward-compatible alias for {@link ClaudeCodeJobFactory}; new code should use that class directly.
-     * Exists so that {@code new ClaudeCodeJob.Factory(...)} call sites and
-     * {@code ClaudeCodeJob$Factory} wire-format strings continue to work.
+     * Backward-compatible alias for {@link CodingAgentJobFactory}; new code should use that class directly.
+     * Exists so that {@code new CodingAgentJob.Factory(...)} call sites and
+     * {@code CodingAgentJob$Factory} wire-format strings continue to work.
      */
-    public static class Factory extends ClaudeCodeJobFactory {
+    public static class Factory extends CodingAgentJobFactory {
         /** Default constructor for deserialization. */
         public Factory() { super(); }
         /** Creates a factory with the specified prompts. */

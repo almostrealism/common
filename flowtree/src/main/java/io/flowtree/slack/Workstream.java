@@ -16,7 +16,7 @@
 
 package io.flowtree.slack;
 
-import io.flowtree.jobs.ClaudeCodeJob;
+import io.flowtree.jobs.CodingAgentJob;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -121,7 +121,7 @@ public class Workstream {
      * to this workstream when the submission does not specify its own
      * effort. {@code null} leaves the {@code --effort} flag off so the
      * CLI chooses.  Must be one of
-     * {@link ClaudeCodeJob#VALID_EFFORT_LEVELS} when set.
+     * {@link CodingAgentJob#VALID_EFFORT_LEVELS} when set.
      */
     private String effort;
 
@@ -499,12 +499,12 @@ public class Workstream {
     /**
      * Sets the default Claude Code model for this workstream.  Empty or
      * {@code null} clears the default so the CLI chooses.  Validated
-     * immediately against {@link ClaudeCodeJob#VALID_MODELS} so workstream
+     * immediately against {@link CodingAgentJob#VALID_MODELS} so workstream
      * registration with an unrecognised model fails fast — preventing the
      * dispatched Claude subprocess from returning a 404 and looping the
      * enforce-changes machinery indefinitely.
      *
-     * @param model a value from {@link ClaudeCodeJob#VALID_MODELS}, or
+     * @param model a value from {@link CodingAgentJob#VALID_MODELS}, or
      *              {@code null}/empty to clear
      * @throws IllegalArgumentException if {@code model} is non-empty and
      *                                  not a recognised identifier
@@ -514,9 +514,9 @@ public class Workstream {
             this.model = null;
             return;
         }
-        if (!ClaudeCodeJob.VALID_MODELS.contains(model)) {
+        if (!CodingAgentJob.VALID_MODELS.contains(model)) {
             throw new IllegalArgumentException("Invalid model '" + model
-                    + "'. Must be one of " + ClaudeCodeJob.VALID_MODELS);
+                    + "'. Must be one of " + CodingAgentJob.VALID_MODELS);
         }
         this.model = model;
     }
@@ -532,10 +532,10 @@ public class Workstream {
     /**
      * Sets the default Claude Code effort/thinking level for this
      * workstream.  Validated immediately against
-     * {@link ClaudeCodeJob#VALID_EFFORT_LEVELS} so misconfiguration fails
+     * {@link CodingAgentJob#VALID_EFFORT_LEVELS} so misconfiguration fails
      * at the caller rather than silently at job dispatch.
      *
-     * @param effort one of {@link ClaudeCodeJob#VALID_EFFORT_LEVELS}, or
+     * @param effort one of {@link CodingAgentJob#VALID_EFFORT_LEVELS}, or
      *               {@code null}/empty to clear
      * @throws IllegalArgumentException if {@code effort} is non-empty and
      *                                  not a recognised level
@@ -545,10 +545,10 @@ public class Workstream {
             this.effort = null;
             return;
         }
-        if (!ClaudeCodeJob.VALID_EFFORT_LEVELS.contains(effort)) {
+        if (!CodingAgentJob.VALID_EFFORT_LEVELS.contains(effort)) {
             throw new IllegalArgumentException(
                     "Invalid effort level '" + effort + "'. Must be one of "
-                    + ClaudeCodeJob.VALID_EFFORT_LEVELS);
+                    + CodingAgentJob.VALID_EFFORT_LEVELS);
         }
         this.effort = effort;
     }

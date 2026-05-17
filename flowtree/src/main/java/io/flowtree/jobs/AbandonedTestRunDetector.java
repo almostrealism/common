@@ -18,6 +18,7 @@ package io.flowtree.jobs;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.flowtree.JsonFieldExtractor;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -44,7 +45,7 @@ import java.util.Set;
  * before polling ``get_run_status`` to a terminal state, in which case the
  * ar-test-runner subprocess is killed by the harness as claude exits.</p>
  *
- * <p>The result feeds {@link ClaudeCodeJob#createEvent} which produces a
+ * <p>The result feeds {@link CodingAgentJob#createEvent} which produces a
  * {@link JobCompletionEvent.Status#DEGRADED} event when the list is non-empty,
  * so the developer can tell that the job's clean exit hides incomplete work.</p>
  *
@@ -138,10 +139,10 @@ public final class AbandonedTestRunDetector {
         } catch (IOException unparseable) {
             return false;
         }
-        String status = ClaudeCodeJob.getTextOrNull(root, "status");
+        String status = JsonFieldExtractor.getTextOrNull(root,"status");
         if (!NON_TERMINAL_STATUSES.contains(status)) return false;
         if (sessionStart != null) {
-            Instant startedAt = parseStartedAt(ClaudeCodeJob.getTextOrNull(root, "started_at"));
+            Instant startedAt = parseStartedAt(JsonFieldExtractor.getTextOrNull(root,"started_at"));
             if (startedAt == null) return false;
             if (startedAt.isBefore(sessionStart)) return false;
         }

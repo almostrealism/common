@@ -44,7 +44,7 @@ import java.nio.file.Path;
  * spinning forever.  After two failures the harness falls back to the
  * task prompt and logs a warning.
  *
- * @see ClaudeCodeJob
+ * @see CodingAgentJob
  */
 class CommitMessageRule implements EnforcementRule {
 
@@ -64,7 +64,7 @@ class CommitMessageRule implements EnforcementRule {
     public int getMaxRetries() { return MAX_RETRIES; }
 
     @Override
-    public boolean isViolated(ClaudeCodeJob job) {
+    public boolean isViolated(CodingAgentJob job) {
         String content = readCommitTxt(job);
         if (content == null || content.trim().isEmpty()) {
             return true;
@@ -83,7 +83,7 @@ class CommitMessageRule implements EnforcementRule {
     }
 
     @Override
-    public String buildCorrectionPrompt(ClaudeCodeJob job) {
+    public String buildCorrectionPrompt(CodingAgentJob job) {
         StringBuilder sb = new StringBuilder();
         sb.append("Your changes still need a commit message.\n\n");
         sb.append("Please write a `commit.txt` file at the repo root containing the commit ");
@@ -104,7 +104,7 @@ class CommitMessageRule implements EnforcementRule {
     }
 
     @Override
-    public void onCorrectionAttempted(ClaudeCodeJob job) {
+    public void onCorrectionAttempted(CodingAgentJob job) {
         // If the violation is now resolved, mark the job's commit message source
         // so the telemetry can distinguish recovered messages from primary-session ones.
         if (!isViolated(job)) {
@@ -119,7 +119,7 @@ class CommitMessageRule implements EnforcementRule {
      * @param job the job whose working directory is used
      * @return raw file content, or {@code null}
      */
-    private String readCommitTxt(ClaudeCodeJob job) {
+    private String readCommitTxt(CodingAgentJob job) {
         String workDir = job.getWorkingDirectory();
         Path commitFile = workDir != null
                 ? Path.of(workDir, "commit.txt")

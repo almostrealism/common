@@ -32,20 +32,20 @@ import java.util.concurrent.atomic.AtomicLong;
  * longer than a configured timeout.
  *
  * <p>This is the bulk of one Claude attempt extracted out of
- * {@link ClaudeCodeJob} so that command construction (which has its own
+ * {@link CodingAgentJob} so that command construction (which has its own
  * complexity around prompt, MCP, environment, etc.) stays in the job class
  * while process management lives here.</p>
  */
-final class ClaudeAttemptRunner {
+public final class AgentProcessRunner {
 
     /** Static-only utility; not instantiable. */
-    private ClaudeAttemptRunner() {}
+    private AgentProcessRunner() {}
 
     /**
      * Result of one attempt: exit code, captured stdout (possibly partial),
      * and whether the monitor killed the process for inactivity.
      */
-    record Result(int exitCode, String output, boolean killedForInactivity) {}
+    public record Result(int exitCode, String output, boolean killedForInactivity) {}
 
     /**
      * Starts the configured {@link ProcessBuilder} and reads its merged stdout
@@ -58,7 +58,7 @@ final class ClaudeAttemptRunner {
      * @param logger                   target for {@code log}/{@code warn} messages
      * @return the captured result; {@link Result#exitCode} is {@code -1} on I/O failure
      */
-    static Result runAttempt(ProcessBuilder pb,
+    public static Result runAttempt(ProcessBuilder pb,
                              long inactivityTimeoutMillis,
                              String taskId,
                              ConsoleFeatures logger) {
@@ -72,7 +72,7 @@ final class ClaudeAttemptRunner {
             logger.log("Process started (PID: " + pid + ")");
 
             AtomicLong lastOutputAt = new AtomicLong(System.currentTimeMillis());
-            monitor = new ClaudeInactivityMonitor(
+            monitor = new AgentInactivityMonitor(
                     process, lastOutputAt, inactivityTimeoutMillis,
                     idleMillis -> {
                         killed.set(true);

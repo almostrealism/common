@@ -31,9 +31,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Tests for {@link GitManagedJob} and {@link ClaudeCodeJob} serialization
+ * Tests for {@link GitManagedJob} and {@link CodingAgentJob} serialization
  * via the {@code encode()} and {@code set()} methods. Uses
- * {@link ClaudeCodeJob} as the concrete implementation since
+ * {@link CodingAgentJob} as the concrete implementation since
  * {@link GitManagedJob} is abstract.
  *
  * <p>There are two categories of test here:
@@ -54,7 +54,7 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 
 	/**
 	 * Encodes {@code original}, then parses the wire format and calls
-	 * {@code set()} on a fresh {@link ClaudeCodeJob} for every key-value pair.
+	 * {@code set()} on a fresh {@link CodingAgentJob} for every key-value pair.
 	 *
 	 * <p>This mirrors the logic in {@link io.flowtree.JobClassLoader}: the
 	 * encoded string is {@code className::k1:=v1::k2:=v2...} and
@@ -62,9 +62,9 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 	 * key-value separator.  The split uses a limit of {@code -1} so trailing
 	 * empty segments are retained.</p>
 	 */
-	private static ClaudeCodeJob roundTrip(ClaudeCodeJob original) {
+	static CodingAgentJob roundTrip(CodingAgentJob original) {
 		String encoded = original.encode();
-		ClaudeCodeJob restored = new ClaudeCodeJob();
+		CodingAgentJob restored = new CodingAgentJob();
 		String[] parts = encoded.split("::");
 		for (int i = 1; i < parts.length; i++) {
 			int sep = parts[i].indexOf(":=");
@@ -77,11 +77,24 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 		return restored;
 	}
 
+	static CodingAgentJob.Factory roundTripFactory(CodingAgentJob.Factory original) {
+		String encoded = original.encode();
+		CodingAgentJob.Factory restored = new CodingAgentJob.Factory();
+		String[] parts = encoded.split("::");
+		for (int i = 1; i < parts.length; i++) {
+			int sep = parts[i].indexOf(":=");
+			if (sep > 0) {
+				restored.set(parts[i].substring(0, sep), parts[i].substring(sep + 2));
+			}
+		}
+		return restored;
+	}
+
 	// ── Field-level tests ────────────────────────────────────────────────────
 
 	@Test(timeout = 30000)
 	public void encodeIncludesAllFields() {
-		ClaudeCodeJob job = new ClaudeCodeJob("task-1", "Fix the bug");
+		CodingAgentJob job = new CodingAgentJob("task-1", "Fix the bug");
 		job.setAllowedTools("Read,Edit,Bash");
 		job.setMaxTurns(75);
 		job.setTargetBranch("feature/fix");
@@ -90,7 +103,7 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 		String encoded = job.encode();
 
 		assertTrue("Expected class name prefix",
-			encoded.startsWith(ClaudeCodeJob.class.getName()));
+			encoded.startsWith(CodingAgentJob.class.getName()));
 		assertTrue("Expected prompt key",
 			encoded.contains("prompt:="));
 		assertTrue("Expected tools key",
@@ -105,7 +118,7 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void setRestoresAllFields() {
-		ClaudeCodeJob job = new ClaudeCodeJob();
+		CodingAgentJob job = new CodingAgentJob();
 		job.set("taskId", "task-2");
 		job.set("prompt", Base64.getEncoder()
 			.encodeToString("Do the work".getBytes(StandardCharsets.UTF_8)));
@@ -124,14 +137,14 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void encodeDecodeRoundTrip() {
-		ClaudeCodeJob original = new ClaudeCodeJob("task-rt", "Round trip prompt");
+		CodingAgentJob original = new CodingAgentJob("task-rt", "Round trip prompt");
 		original.setAllowedTools("Read,Edit");
 		original.setMaxTurns(42);
 		original.setMaxBudgetUsd(7.5);
 		original.setTargetBranch("feature/roundtrip");
 		original.setBaseBranch("main");
 
-		ClaudeCodeJob restored = roundTrip(original);
+		CodingAgentJob restored = roundTrip(original);
 
 		assertEquals(original.getPrompt(), restored.getPrompt());
 		assertEquals(original.getAllowedTools(), restored.getAllowedTools());
@@ -153,7 +166,7 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void jobDependentReposEncodeDecodeRoundTrip() {
-		ClaudeCodeJob original = new ClaudeCodeJob("task-dep", "Test dependent repos");
+		CodingAgentJob original = new CodingAgentJob("task-dep", "Test dependent repos");
 		original.setTargetBranch("feature/my-work");
 		original.setDependentRepos(Arrays.asList(
 			"https://github.com/org/repo-a",
@@ -163,7 +176,7 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 		assertTrue("encode() must include depRepos key",
 			encoded.contains("depRepos:="));
 
-		ClaudeCodeJob restored = roundTrip(original);
+		CodingAgentJob restored = roundTrip(original);
 
 		List<String> repos = restored.getDependentRepos();
 		assertNotNull("dependentRepos must not be null after decode", repos);
@@ -174,12 +187,12 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void jobDependentReposAbsentWhenEmpty() {
-		ClaudeCodeJob job = new ClaudeCodeJob("task-nodep", "No deps");
+		CodingAgentJob job = new CodingAgentJob("task-nodep", "No deps");
 		job.setDependentRepos(null);
 		assertFalse("encode() must not include depRepos key when null",
 			job.encode().contains("depRepos:="));
 
-		ClaudeCodeJob job2 = new ClaudeCodeJob("task-nodep2", "No deps");
+		CodingAgentJob job2 = new CodingAgentJob("task-nodep2", "No deps");
 		job2.setDependentRepos(Collections.emptyList());
 		assertFalse("encode() must not include depRepos key when empty",
 			job2.encode().contains("depRepos:="));
@@ -197,7 +210,7 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void allGitManagedJobPropertiesRoundTrip() {
-		ClaudeCodeJob original = new ClaudeCodeJob("task-full-git", "Full git props");
+		CodingAgentJob original = new CodingAgentJob("task-full-git", "Full git props");
 		original.setTargetBranch("feature/full");
 		original.setBaseBranch("master");
 		original.setRepoUrl("https://github.com/org/main-repo");
@@ -214,7 +227,7 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 			"https://github.com/org/dep-one",
 			"https://github.com/org/dep-two"));
 
-		ClaudeCodeJob restored = roundTrip(original);
+		CodingAgentJob restored = roundTrip(original);
 
 		assertEquals(original.getTargetBranch(), restored.getTargetBranch());
 		assertEquals(original.getBaseBranch(), restored.getBaseBranch());
@@ -237,15 +250,15 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Comprehensive round-trip for every {@link ClaudeCodeJob}-specific property.
+	 * Comprehensive round-trip for every {@link CodingAgentJob}-specific property.
 	 *
-	 * <p>Any property added to {@code ClaudeCodeJob.encode()} without a
+	 * <p>Any property added to {@code CodingAgentJob.encode()} without a
 	 * corresponding {@code set()} case (or vice-versa) will cause this
 	 * test to fail.</p>
 	 */
 	@Test(timeout = 30000)
-	public void allClaudeCodeJobPropertiesRoundTrip() {
-		ClaudeCodeJob original = new ClaudeCodeJob("task-full-cc", "Full ClaudeCode props");
+	public void allCodingAgentJobPropertiesRoundTrip() {
+		CodingAgentJob original = new CodingAgentJob("task-full-cc", "Full ClaudeCode props");
 		original.setAllowedTools("Read,Edit,Bash,Glob,Grep");
 		original.setMaxTurns(100);
 		original.setMaxBudgetUsd(25.0);
@@ -254,10 +267,10 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 		original.setPlanningDocument("## Plan\nDo the thing.");
 		original.setProtectTestFiles(true);
 		original.setEnforceChanges(true);
-		original.setDeduplicationMode(ClaudeCodeJob.DEDUP_NONE);
+		original.setDeduplicationMode(CodingAgentJob.DEDUP_NONE);
 		original.setEnforceMavenDependencies(true);
 
-		ClaudeCodeJob restored = roundTrip(original);
+		CodingAgentJob restored = roundTrip(original);
 
 		assertEquals(original.getPrompt(), restored.getPrompt());
 		assertEquals(original.getAllowedTools(), restored.getAllowedTools());
@@ -276,7 +289,7 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void factoryEncodeDecodeRoundTrip() {
-		ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory("Prompt A", "Prompt B");
+		CodingAgentJob.Factory factory = new CodingAgentJob.Factory("Prompt A", "Prompt B");
 		factory.setAllowedTools("Read,Edit,Bash");
 		factory.setTargetBranch("feature/factory-test");
 		factory.setMaxTurns(60);
@@ -285,7 +298,7 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 		String encoded = factory.encode();
 
 		assertTrue("Expected Factory class name in encoded output",
-			encoded.contains(ClaudeCodeJob.Factory.class.getName()));
+			encoded.contains(CodingAgentJob.Factory.class.getName()));
 		assertTrue("Expected prompts key in encoded output",
 			encoded.contains("prompts:="));
 		assertTrue("Expected branch key in encoded output",
@@ -296,7 +309,7 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void factoryDependentReposRoundTrip() {
-		ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory("Prompt");
+		CodingAgentJob.Factory factory = new CodingAgentJob.Factory("Prompt");
 		factory.setDependentRepos(Arrays.asList(
 			"https://github.com/org/repo-a",
 			"https://github.com/org/repo-b"));
@@ -305,15 +318,7 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 		assertTrue("Expected dependentRepos key in encoded output",
 			encoded.contains("dependentRepos:="));
 
-		// Parse the wire format to restore the factory
-		ClaudeCodeJob.Factory restored = new ClaudeCodeJob.Factory();
-		String[] parts = encoded.split("::");
-		for (int i = 1; i < parts.length; i++) {
-			int sep = parts[i].indexOf(":=");
-			if (sep > 0) {
-				restored.set(parts[i].substring(0, sep), parts[i].substring(sep + 2));
-			}
-		}
+		CodingAgentJob.Factory restored = roundTripFactory(factory);
 
 		List<String> repos = restored.getDependentRepos();
 		assertNotNull("Expected non-null dependentRepos after decode", repos);
@@ -324,14 +329,14 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void factoryDependentReposAbsentWhenEmpty() {
-		ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory("Prompt");
+		CodingAgentJob.Factory factory = new CodingAgentJob.Factory("Prompt");
 		factory.setDependentRepos(null);
 
 		String encoded = factory.encode();
 		assertFalse("Expected no dependentRepos key when null",
 			encoded.contains("dependentRepos:="));
 
-		ClaudeCodeJob.Factory factory2 = new ClaudeCodeJob.Factory("Prompt");
+		CodingAgentJob.Factory factory2 = new CodingAgentJob.Factory("Prompt");
 		factory2.setDependentRepos(Collections.emptyList());
 
 		String encoded2 = factory2.encode();

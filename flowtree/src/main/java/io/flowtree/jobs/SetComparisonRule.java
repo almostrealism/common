@@ -64,10 +64,10 @@ abstract class SetComparisonRule implements EnforcementRule {
      * @param job the job whose working-tree state is being inspected
      * @return the current list of relevant items; must not be {@code null}
      */
-    protected abstract List<String> extractItems(ClaudeCodeJob job);
+    protected abstract List<String> extractItems(CodingAgentJob job);
 
     @Override
-    public boolean isViolated(ClaudeCodeJob job) {
+    public boolean isViolated(CodingAgentJob job) {
         if (resolved) return false;
         List<String> items = extractItems(job);
         snapshot = new LinkedHashSet<>(items);
@@ -81,7 +81,7 @@ abstract class SetComparisonRule implements EnforcementRule {
      * {@link #isViolated} check.
      */
     @Override
-    public void onCorrectionAttempted(ClaudeCodeJob job) {
+    public void onCorrectionAttempted(CodingAgentJob job) {
         if (snapshot == null) return;
         Set<String> current = new LinkedHashSet<>(extractItems(job));
         if (current.equals(snapshot)) {

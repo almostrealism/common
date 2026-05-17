@@ -21,8 +21,8 @@ import java.util.List;
 /**
  * Enforcement rule that detects new Java methods introduced since the base
  * branch and runs a deduplication session to remove any that duplicate
- * existing functionality. Active when {@link ClaudeCodeJob#getDeduplicationMode()}
- * is {@link ClaudeCodeJob#DEDUP_LOCAL}.
+ * existing functionality. Active when {@link CodingAgentJob#getDeduplicationMode()}
+ * is {@link CodingAgentJob#DEDUP_LOCAL}.
  *
  * <p>Uses set-snapshot comparison (inherited from {@link SetComparisonRule}) to
  * determine when to stop looping: after a correction session that produces no
@@ -32,11 +32,11 @@ import java.util.List;
  * of the set-comparison exit condition. The cap is enforced via
  * {@link #getMaxRetries()}, which the enforcement framework uses to bound the
  * correction loop. When the cap is reached and duplicates still exist, the
- * framework logs a warning (via {@link ClaudeCodeJob#warn(String)}) and moves on.
- * The default cap is {@link ClaudeCodeJob#DEFAULT_MAX_DEDUP_PASSES}.</p>
+ * framework logs a warning (via {@link CodingAgentJob#warn(String)}) and moves on.
+ * The default cap is {@link CodingAgentJob#DEFAULT_MAX_DEDUP_PASSES}.</p>
  *
  * @author Michael Murray
- * @see ClaudeCodeJob#extractNewMethodNames()
+ * @see CodingAgentJob#extractNewMethodNames()
  * @see DeduplicationRule#buildDeduplicationPrompt(List, boolean, int)
  * @see SetComparisonRule
  * @see EnforcementRule
@@ -46,9 +46,9 @@ class DeduplicationRule extends SetComparisonRule {
     /** Maximum number of correction sessions allowed per job. */
     private final int maxPasses;
 
-    /** Creates a rule with the default pass cap ({@link ClaudeCodeJob#DEFAULT_MAX_DEDUP_PASSES}). */
+    /** Creates a rule with the default pass cap ({@link CodingAgentJob#DEFAULT_MAX_DEDUP_PASSES}). */
     DeduplicationRule() {
-        this(ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES);
+        this(CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES);
     }
 
     /**
@@ -77,17 +77,17 @@ class DeduplicationRule extends SetComparisonRule {
     public int getMaxRetries() { return maxPasses; }
 
     @Override
-    protected List<String> extractItems(ClaudeCodeJob job) {
+    protected List<String> extractItems(CodingAgentJob job) {
         return job.extractNewMethodNames();
     }
 
     @Override
-    public String buildCorrectionPrompt(ClaudeCodeJob job) {
+    public String buildCorrectionPrompt(CodingAgentJob job) {
         List<String> newMethods = job.extractNewMethodNames();
-        List<String> capped = newMethods.size() > ClaudeCodeJob.MAX_DEDUP_METHODS
-                ? newMethods.subList(0, ClaudeCodeJob.MAX_DEDUP_METHODS) : newMethods;
+        List<String> capped = newMethods.size() > CodingAgentJob.MAX_DEDUP_METHODS
+                ? newMethods.subList(0, CodingAgentJob.MAX_DEDUP_METHODS) : newMethods;
         return buildDeduplicationPrompt(capped,
-                newMethods.size() > ClaudeCodeJob.MAX_DEDUP_METHODS, newMethods.size());
+                newMethods.size() > CodingAgentJob.MAX_DEDUP_METHODS, newMethods.size());
     }
 
     /**

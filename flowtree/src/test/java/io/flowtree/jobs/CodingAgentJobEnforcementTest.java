@@ -35,11 +35,11 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Tests for the enforcement rule framework on {@link ClaudeCodeJob}:
+ * Tests for the enforcement rule framework on {@link CodingAgentJob}:
  * the {@link EnforcementRule} interface, built-in rule configuration,
  * Maven dependency protection, and serialisation round-trips.
  */
-public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
+public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 
 	// ── EnforcementRule interface defaults ──────────────────────────────────
 
@@ -49,36 +49,36 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 			@Override
 			public String getName() { return "test"; }
 			@Override
-			public boolean isViolated(ClaudeCodeJob job) { return false; }
+			public boolean isViolated(CodingAgentJob job) { return false; }
 			@Override
-			public String buildCorrectionPrompt(ClaudeCodeJob job) { return "fix it"; }
+			public String buildCorrectionPrompt(CodingAgentJob job) { return "fix it"; }
 		};
-		assertEquals(ClaudeCodeJob.DEFAULT_MAX_RULE_RETRIES, rule.getMaxRetries());
+		assertEquals(CodingAgentJob.DEFAULT_MAX_RULE_RETRIES, rule.getMaxRetries());
 	}
 
 	@Test(timeout = 30000)
 	public void defaultMaxRetriesValue() {
-		assertEquals(5, ClaudeCodeJob.DEFAULT_MAX_RULE_RETRIES);
+		assertEquals(5, CodingAgentJob.DEFAULT_MAX_RULE_RETRIES);
 	}
 
 	// ── enforceMavenDependencies flag ────────────────────────────────────────
 
 	@Test(timeout = 30000)
 	public void enforceMavenDependenciesDefaultFalse() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		assertFalse(job.isEnforceMavenDependencies());
 	}
 
 	@Test(timeout = 30000)
 	public void setEnforceMavenDependenciesTrue() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		job.setEnforceMavenDependencies(true);
 		assertTrue(job.isEnforceMavenDependencies());
 	}
 
 	@Test(timeout = 30000)
 	public void setEnforceMavenDependenciesRoundTrip() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		job.setEnforceMavenDependencies(true);
 		assertTrue(job.isEnforceMavenDependencies());
 		job.setEnforceMavenDependencies(false);
@@ -89,7 +89,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void enforceMavenDepsAppearsInWireFormatWhenTrue() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
 		job.setEnforceMavenDependencies(true);
 		String encoded = job.encode();
 		assertNotNull(encoded);
@@ -99,7 +99,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void enforceMavenDepsAbsentInWireFormatWhenFalse() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
 		String encoded = job.encode();
 		assertNotNull(encoded);
 		assertFalse("Did not expect enforceMavenDeps in: " + encoded,
@@ -108,17 +108,10 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void enforceMavenDepsDeserialises() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
 		job.setEnforceMavenDependencies(true);
-		String encoded = job.encode();
 
-		ClaudeCodeJob restored = new ClaudeCodeJob();
-		for (String part : encoded.split("::")) {
-			int sep = part.indexOf(":=");
-			if (sep > 0) {
-				restored.set(part.substring(0, sep), part.substring(sep + 2));
-			}
-		}
+		CodingAgentJob restored = GitManagedJobSerializationTest.roundTrip(job);
 		assertTrue(restored.isEnforceMavenDependencies());
 	}
 
@@ -126,14 +119,14 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void addEnforcementRuleAcceptsCustomRule() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		EnforcementRule rule = new EnforcementRule() {
 			@Override
 			public String getName() { return "my-custom-rule"; }
 			@Override
-			public boolean isViolated(ClaudeCodeJob j) { return false; }
+			public boolean isViolated(CodingAgentJob j) { return false; }
 			@Override
-			public String buildCorrectionPrompt(ClaudeCodeJob j) { return "fix it"; }
+			public String buildCorrectionPrompt(CodingAgentJob j) { return "fix it"; }
 		};
 		job.addEnforcementRule(rule);
 		// No exception thrown means the rule was accepted; correctness of
@@ -146,43 +139,43 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 			@Override
 			public String getName() { return "limited-rule"; }
 			@Override
-			public boolean isViolated(ClaudeCodeJob j) { return false; }
+			public boolean isViolated(CodingAgentJob j) { return false; }
 			@Override
-			public String buildCorrectionPrompt(ClaudeCodeJob j) { return "fix it"; }
+			public String buildCorrectionPrompt(CodingAgentJob j) { return "fix it"; }
 			@Override
 			public int getMaxRetries() { return 2; }
 		};
 		assertEquals(2, rule.getMaxRetries());
 	}
 
-	// ── ClaudeCodeJobFactory — enforceMavenDependencies ─────────────────────
+	// ── CodingAgentJobFactory — enforceMavenDependencies ─────────────────────
 
 	@Test(timeout = 30000)
 	public void factoryEnforceMavenDependenciesDefaultFalse() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		assertFalse(factory.isEnforceMavenDependencies());
 	}
 
 	@Test(timeout = 30000)
 	public void factorySetEnforceMavenDependenciesPropagatesToJob() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do something");
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
 		factory.setEnforceMavenDependencies(true);
-		ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+		CodingAgentJob job = (CodingAgentJob) factory.nextJob();
 		assertNotNull(job);
 		assertTrue(job.isEnforceMavenDependencies());
 	}
 
 	@Test(timeout = 30000)
 	public void factoryEnforceMavenDependenciesDefaultDoesNotPropagateTrue() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do something");
-		ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
+		CodingAgentJob job = (CodingAgentJob) factory.nextJob();
 		assertNotNull(job);
 		assertFalse(job.isEnforceMavenDependencies());
 	}
 
 	@Test(timeout = 30000)
 	public void factoryEnforceMavenDepsRoundTripViaEncode() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		factory.setEnforceMavenDependencies(true);
 		assertTrue(factory.isEnforceMavenDependencies());
 
@@ -202,12 +195,12 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 			@Override
 			public String getName() { return "test"; }
 			@Override
-			public boolean isViolated(ClaudeCodeJob job) { return false; }
+			public boolean isViolated(CodingAgentJob job) { return false; }
 			@Override
-			public String buildCorrectionPrompt(ClaudeCodeJob job) { return "fix it"; }
+			public String buildCorrectionPrompt(CodingAgentJob job) { return "fix it"; }
 		};
 		// Default implementation must not throw and must have no visible side-effects.
-		rule.onCorrectionAttempted(new ClaudeCodeJob("t1", "do something"));
+		rule.onCorrectionAttempted(new CodingAgentJob("t1", "do something"));
 	}
 
 	@Test(timeout = 30000)
@@ -217,13 +210,13 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 			@Override
 			public String getName() { return "counting-rule"; }
 			@Override
-			public boolean isViolated(ClaudeCodeJob job) { return false; }
+			public boolean isViolated(CodingAgentJob job) { return false; }
 			@Override
-			public String buildCorrectionPrompt(ClaudeCodeJob job) { return "fix it"; }
+			public String buildCorrectionPrompt(CodingAgentJob job) { return "fix it"; }
 			@Override
-			public void onCorrectionAttempted(ClaudeCodeJob job) { callCount.incrementAndGet(); }
+			public void onCorrectionAttempted(CodingAgentJob job) { callCount.incrementAndGet(); }
 		};
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		rule.onCorrectionAttempted(job);
 		rule.onCorrectionAttempted(job);
 		assertEquals(2, callCount.get());
@@ -259,7 +252,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 			public String getName() { return "method-set-test"; }
 
 			@Override
-			public boolean isViolated(ClaudeCodeJob job) {
+			public boolean isViolated(CodingAgentJob job) {
 				if (resolved.get()) return false;
 				Set<String> current = new LinkedHashSet<>(methodSet);
 				lastSeen.set(current);
@@ -268,7 +261,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 			}
 
 			@Override
-			public void onCorrectionAttempted(ClaudeCodeJob job) {
+			public void onCorrectionAttempted(CodingAgentJob job) {
 				Set<String> current = new LinkedHashSet<>(methodSet);
 				if (lastSeen.get() != null && current.equals(lastSeen.get())) {
 					resolved.set(true);
@@ -276,10 +269,10 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 			}
 
 			@Override
-			public String buildCorrectionPrompt(ClaudeCodeJob job) { return "fix it"; }
+			public String buildCorrectionPrompt(CodingAgentJob job) { return "fix it"; }
 		};
 
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 
 		// Simulate runEnforcementRules():
 		// 1. outer if (rule.isViolated(job)) — violation detected, record the set.
@@ -321,7 +314,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 			public String getName() { return "method-set-removal-test"; }
 
 			@Override
-			public boolean isViolated(ClaudeCodeJob job) {
+			public boolean isViolated(CodingAgentJob job) {
 				if (resolved.get()) return false;
 				Set<String> current = new LinkedHashSet<>(methodList);
 				lastSeen.set(current);
@@ -331,7 +324,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 			}
 
 			@Override
-			public void onCorrectionAttempted(ClaudeCodeJob job) {
+			public void onCorrectionAttempted(CodingAgentJob job) {
 				Set<String> current = new LinkedHashSet<>(methodList);
 				if (lastSeen.get() != null && current.equals(lastSeen.get())) {
 					resolved.set(true);
@@ -339,10 +332,10 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 			}
 
 			@Override
-			public String buildCorrectionPrompt(ClaudeCodeJob job) { return "fix it"; }
+			public String buildCorrectionPrompt(CodingAgentJob job) { return "fix it"; }
 		};
 
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 
 		// Simulate runEnforcementRules():
 		// 1. outer if: both methods present.
@@ -378,7 +371,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that {@link ClaudeCodeJob#runEnforcementRules()} passes
+	 * Verifies that {@link CodingAgentJob#runEnforcementRules()} passes
 	 * {@link EnforcementRule#getName()} as the {@code activity} parameter to
 	 * {@code runCorrectionSession}, which propagates it to {@code AR_AGENT_ACTIVITY}
 	 * in the subprocess environment.
@@ -399,17 +392,17 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 			public String getName() { return "maven_dependency_protection"; }
 
 			@Override
-			public boolean isViolated(ClaudeCodeJob job) { return !done; }
+			public boolean isViolated(CodingAgentJob job) { return !done; }
 
 			@Override
-			public String buildCorrectionPrompt(ClaudeCodeJob job) {
+			public String buildCorrectionPrompt(CodingAgentJob job) {
 				done = true;
 				return "correct the dependency violation";
 			}
 		};
 
 		// Spy subclass: capture the activity argument without launching a subprocess.
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test") {
+		CodingAgentJob job = new CodingAgentJob("t1", "test") {
 			@Override
 			protected void runCorrectionSession(String correctionPrompt, String activity) {
 				capturedActivity.set(activity);
@@ -431,11 +424,11 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	/**
 	 * When {@code enforce_changes} is enabled on the outer job, the primary
 	 * work prompt carries the strict "Code Changes Are Required" preamble.
-	 * Verifies the wiring through {@link ClaudeCodeJob#buildInstructionPrompt()}.
+	 * Verifies the wiring through {@link CodingAgentJob#buildInstructionPrompt()}.
 	 */
 	@Test(timeout = 30000)
 	public void primaryPromptCarriesEnforceChangesStrictBlock() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do the work");
+		CodingAgentJob job = new CodingAgentJob("t1", "do the work");
 		job.setEnforceChanges(true);
 		job.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1");
 
@@ -452,13 +445,13 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 * The rule's own correction prompt is self-contained and may legitimately
 	 * accept "no changes needed" as a valid outcome.
 	 *
-	 * <p>This test verifies the wiring from {@link ClaudeCodeJob#setCurrentActivity(String)}
-	 * through {@link ClaudeCodeJob#buildInstructionPrompt()} to
+	 * <p>This test verifies the wiring from {@link CodingAgentJob#setCurrentActivity(String)}
+	 * through {@link CodingAgentJob#buildInstructionPrompt()} to
 	 * {@link InstructionPromptBuilder#setCorrectionSession(boolean)}.</p>
 	 */
 	@Test(timeout = 30000)
 	public void correctionSessionPromptOmitsEnforceChangesStrictBlock() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "rule correction prompt");
+		CodingAgentJob job = new CodingAgentJob("t1", "rule correction prompt");
 		job.setEnforceChanges(true);
 		job.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1");
 
@@ -480,7 +473,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void clearingCurrentActivityRestoresPrimaryPromptBehaviour() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "primary prompt");
+		CodingAgentJob job = new CodingAgentJob("t1", "primary prompt");
 		job.setEnforceChanges(true);
 		job.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1");
 
@@ -495,11 +488,11 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	/**
 	 * The harness_feedback invitation is included in primary prompts when a
 	 * workstream URL is configured.  Verifies the wiring through
-	 * {@link ClaudeCodeJob#buildInstructionPrompt()}.
+	 * {@link CodingAgentJob#buildInstructionPrompt()}.
 	 */
 	@Test(timeout = 30000)
 	public void primaryPromptIncludesHarnessFeedbackInvitation() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do the work");
+		CodingAgentJob job = new CodingAgentJob("t1", "do the work");
 		job.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1");
 
 		String primary = job.buildInstructionPrompt();
@@ -513,7 +506,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void enforceChangesStillFunctionsAfterRefactor() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
 		assertFalse(job.isEnforceChanges());
 
 		job.setEnforceChanges(true);
@@ -522,28 +515,28 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void factoryDeduplicationModeDefaultIsLocal() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
-		assertEquals(ClaudeCodeJob.DEDUP_LOCAL, factory.getDeduplicationMode());
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+		assertEquals(CodingAgentJob.DEDUP_LOCAL, factory.getDeduplicationMode());
 	}
 
 	// ── OrganizationalPlacementRule — flag defaults ──────────────────────────
 
 	@Test(timeout = 30000)
 	public void enforceOrganizationalPlacementDefaultTrue() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		assertTrue(job.isEnforceOrganizationalPlacement());
 	}
 
 	@Test(timeout = 30000)
 	public void setEnforceOrganizationalPlacementFalse() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		job.setEnforceOrganizationalPlacement(false);
 		assertFalse(job.isEnforceOrganizationalPlacement());
 	}
 
 	@Test(timeout = 30000)
 	public void setEnforceOrganizationalPlacementRoundTrip() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		assertTrue(job.isEnforceOrganizationalPlacement());
 		job.setEnforceOrganizationalPlacement(false);
 		assertFalse(job.isEnforceOrganizationalPlacement());
@@ -555,7 +548,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void enforceOrgPlacementAbsentInWireFormatWhenTrue() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
 		// default is true — should not appear in wire format
 		String encoded = job.encode();
 		assertNotNull(encoded);
@@ -565,7 +558,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void enforceOrgPlacementAppearsInWireFormatWhenFalse() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
 		job.setEnforceOrganizationalPlacement(false);
 		String encoded = job.encode();
 		assertNotNull(encoded);
@@ -575,17 +568,10 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void enforceOrgPlacementDeserialises() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
 		job.setEnforceOrganizationalPlacement(false);
-		String encoded = job.encode();
 
-		ClaudeCodeJob restored = new ClaudeCodeJob();
-		for (String part : encoded.split("::")) {
-			int sep = part.indexOf(":=");
-			if (sep > 0) {
-				restored.set(part.substring(0, sep), part.substring(sep + 2));
-			}
-		}
+		CodingAgentJob restored = GitManagedJobSerializationTest.roundTrip(job);
 		assertFalse(restored.isEnforceOrganizationalPlacement());
 	}
 
@@ -593,30 +579,30 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void factoryEnforceOrganizationalPlacementDefaultTrue() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		assertTrue(factory.isEnforceOrganizationalPlacement());
 	}
 
 	@Test(timeout = 30000)
 	public void factorySetEnforceOrganizationalPlacementFalsePropagatesToJob() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do something");
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
 		factory.setEnforceOrganizationalPlacement(false);
-		ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+		CodingAgentJob job = (CodingAgentJob) factory.nextJob();
 		assertNotNull(job);
 		assertFalse(job.isEnforceOrganizationalPlacement());
 	}
 
 	@Test(timeout = 30000)
 	public void factoryEnforceOrganizationalPlacementDefaultPropagatesToJob() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do something");
-		ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
+		CodingAgentJob job = (CodingAgentJob) factory.nextJob();
 		assertNotNull(job);
 		assertTrue(job.isEnforceOrganizationalPlacement());
 	}
 
 	@Test(timeout = 30000)
 	public void factoryEnforceOrgPlacementRoundTripViaSet() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		assertTrue(factory.isEnforceOrganizationalPlacement());
 
 		factory.set("enforceOrgPlacement", "false");
@@ -645,16 +631,16 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 			public String getName() { return "rule-a"; }
 
 			@Override
-			public boolean isViolated(ClaudeCodeJob job) {
+			public boolean isViolated(CodingAgentJob job) {
 				// Violated only on the first check; clean afterwards
 				return ruleACheckCount.incrementAndGet() <= 2;
 			}
 
 			@Override
-			public String buildCorrectionPrompt(ClaudeCodeJob job) { return "fix A"; }
+			public String buildCorrectionPrompt(CodingAgentJob job) { return "fix A"; }
 
 			@Override
-			public void onCorrectionAttempted(ClaudeCodeJob job) {
+			public void onCorrectionAttempted(CodingAgentJob job) {
 				ruleACorrections.incrementAndGet();
 			}
 		};
@@ -665,13 +651,13 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 			public String getName() { return "rule-b"; }
 
 			@Override
-			public boolean isViolated(ClaudeCodeJob job) {
+			public boolean isViolated(CodingAgentJob job) {
 				ruleBChecks.incrementAndGet();
 				return false;
 			}
 
 			@Override
-			public String buildCorrectionPrompt(ClaudeCodeJob job) { return "fix B"; }
+			public String buildCorrectionPrompt(CodingAgentJob job) { return "fix B"; }
 		};
 
 		// Simulate one outer loop pass where rule A corrects and rule B passes
@@ -682,7 +668,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		// anyRuleCorrectionRan = false → exit
 
 		boolean anyRuleCorrectionRan;
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		List<EnforcementRule> rules = List.of(ruleA, ruleB);
 
 		do {
@@ -711,12 +697,12 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 * Reproduces the failure mode that produced 4000+ enforcement attempts on
 	 * a stuck job: an enforcement rule that always reports a violation, no
 	 * agent commit, no progress.  Prior to the cap the outer
-	 * {@code do-while} in {@link ClaudeCodeJob#runEnforcementRules()} reset
+	 * {@code do-while} in {@link CodingAgentJob#runEnforcementRules()} reset
 	 * the per-rule {@code attempts} counter every pass and looped forever.
 	 *
 	 * <p>The test uses a spy {@code runCorrectionSession} so no real Claude
 	 * subprocess is launched.  It asserts the call count is bounded by
-	 * {@link ClaudeCodeJob#DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS}.</p>
+	 * {@link CodingAgentJob#DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS}.</p>
 	 */
 	@Test(timeout = 30000)
 	public void runEnforcementRulesAbortsWhenTotalAttemptCapHit() {
@@ -726,14 +712,14 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 			@Override
 			public String getName() { return "test-always-violated"; }
 			@Override
-			public boolean isViolated(ClaudeCodeJob job) { return true; }
+			public boolean isViolated(CodingAgentJob job) { return true; }
 			@Override
-			public String buildCorrectionPrompt(ClaudeCodeJob job) {
+			public String buildCorrectionPrompt(CodingAgentJob job) {
 				return "this will never resolve";
 			}
 		};
 
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test") {
+		CodingAgentJob job = new CodingAgentJob("t1", "test") {
 			@Override
 			protected void runCorrectionSession(String correctionPrompt, String activity) {
 				correctionCalls.incrementAndGet();
@@ -748,10 +734,10 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 		int attempts = correctionCalls.get();
 		assertTrue("Expected attempts >= 1, got " + attempts, attempts >= 1);
-		assertTrue("Expected attempts <= " + ClaudeCodeJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS
+		assertTrue("Expected attempts <= " + CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS
 				+ ", got " + attempts,
-				attempts <= ClaudeCodeJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS);
-		assertEquals(ClaudeCodeJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS, attempts);
+				attempts <= CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS);
+		assertEquals(CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS, attempts);
 	}
 
 	@Test(timeout = 30000)
@@ -760,7 +746,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		// order of magnitude) are caught.  25 is comfortably above the
 		// 5-retries-per-rule × 4 built-in rules a healthy job could reach
 		// once, and roughly 160× below the observed pathological case.
-		assertEquals(25, ClaudeCodeJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS);
+		assertEquals(25, CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS);
 	}
 
 	// ── PostCompletionCommandRule — unit tests ───────────────────────────────
@@ -772,7 +758,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void postCompletionSuccessfulCommandNotViolated() {
 		PostCompletionCommandRule rule = new PostCompletionCommandRule("true", null);
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		assertFalse("exit 0 command should not be violated", rule.isViolated(job));
 		assertEquals(0, rule.getLastExitCode());
 		assertFalse(rule.wasLastRunTimedOut());
@@ -785,7 +771,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void postCompletionFailingCommandIsViolated() {
 		PostCompletionCommandRule rule = new PostCompletionCommandRule("false", null);
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		assertTrue("exit 1 command should be violated", rule.isViolated(job));
 		assertFalse(rule.wasLastRunTimedOut());
 		String prompt = rule.buildCorrectionPrompt(job);
@@ -803,7 +789,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	public void postCompletionTimeoutTreatedAsFailure() {
 		// 1-second timeout, command that sleeps longer than that
 		PostCompletionCommandRule rule = new PostCompletionCommandRule("sleep 60", null, 1);
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		assertTrue("timed-out command should be violated", rule.isViolated(job));
 		assertTrue("should be recorded as timed out", rule.wasLastRunTimedOut());
 		String prompt = rule.buildCorrectionPrompt(job);
@@ -827,7 +813,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 				+ "then exit 0; else echo done > " + counter.getAbsolutePath() + "; exit 1; fi";
 
 		PostCompletionCommandRule rule = new PostCompletionCommandRule(cmd, null);
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 
 		// First call: exits 1 (file did not contain "done" yet)
 		assertTrue("First call should be violated", rule.isViolated(job));
@@ -847,7 +833,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	public void postCompletionOutputCapturedInCorrectionPrompt() {
 		PostCompletionCommandRule rule = new PostCompletionCommandRule(
 				"echo 'BUILD FAILED'; exit 1", null);
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		assertTrue(rule.isViolated(job));
 		assertTrue("Output should be captured",
 				rule.getLastOutput().contains("BUILD FAILED"));
@@ -891,7 +877,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	public void postCompletionNeverSatisfiedHitsMaxRetries() {
 		AtomicInteger correctionCalls = new AtomicInteger();
 		PostCompletionCommandRule rule = new PostCompletionCommandRule("false", null);
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test") {
+		CodingAgentJob job = new CodingAgentJob("t1", "test") {
 			@Override
 			protected void runCorrectionSession(String correctionPrompt, String activity) {
 				correctionCalls.incrementAndGet();
@@ -907,10 +893,10 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		int attempts = correctionCalls.get();
 		assertTrue("Expected at least 1 correction attempt, got " + attempts, attempts >= 1);
 		assertTrue("Expected at most max total attempts, got " + attempts,
-				attempts <= ClaudeCodeJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS);
+				attempts <= CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS);
 	}
 
-	// ── PostCompletionCommandRule — ClaudeCodeJob integration ────────────────
+	// ── PostCompletionCommandRule — CodingAgentJob integration ────────────────
 
 	/**
 	 * When no post-completion command is set, no PostCompletionCommandRule is
@@ -919,7 +905,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void postCompletionRuleNotActiveWhenCommandEmpty() {
 		AtomicInteger correctionCalls = new AtomicInteger();
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test") {
+		CodingAgentJob job = new CodingAgentJob("t1", "test") {
 			@Override
 			protected void runCorrectionSession(String correctionPrompt, String activity) {
 				correctionCalls.incrementAndGet();
@@ -937,7 +923,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void postCompletionCommandGetterSetterRoundTrip() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		assertNull(job.getPostCompletionCommand());
 		job.setPostCompletionCommand("mvn -pl flowtree test -Dtest=Foo");
 		assertEquals("mvn -pl flowtree test -Dtest=Foo", job.getPostCompletionCommand());
@@ -953,19 +939,13 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void postCompletionCommandRoundTripThroughEncodeDecode() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
 		job.setPostCompletionCommand("mvn -pl flowtree test -Dtest=FooTest");
 		String encoded = job.encode();
 		assertNotNull(encoded);
 		assertTrue("Wire format must contain postCmd", encoded.contains("postCmd:="));
 
-		ClaudeCodeJob restored = new ClaudeCodeJob();
-		for (String part : encoded.split("::")) {
-			int sep = part.indexOf(":=");
-			if (sep > 0) {
-				restored.set(part.substring(0, sep), part.substring(sep + 2));
-			}
-		}
+		CodingAgentJob restored = GitManagedJobSerializationTest.roundTrip(job);
 		assertEquals("mvn -pl flowtree test -Dtest=FooTest", restored.getPostCompletionCommand());
 	}
 
@@ -975,7 +955,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void postCompletionCommandAbsentFromWireFormatWhenEmpty() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
 		String encoded = job.encode();
 		assertFalse("postCmd must not appear in wire format when unset",
 				encoded.contains("postCmd"));
@@ -986,19 +966,13 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void postCompletionTimeoutRoundTripThroughEncodeDecode() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
 		job.setPostCompletionCommand("make test");
 		job.setPostCompletionTimeoutSeconds(300);
 		String encoded = job.encode();
 		assertTrue("Wire format must contain postCmdTimeout", encoded.contains("postCmdTimeout:=300"));
 
-		ClaudeCodeJob restored = new ClaudeCodeJob();
-		for (String part : encoded.split("::")) {
-			int sep = part.indexOf(":=");
-			if (sep > 0) {
-				restored.set(part.substring(0, sep), part.substring(sep + 2));
-			}
-		}
+		CodingAgentJob restored = GitManagedJobSerializationTest.roundTrip(job);
 		assertEquals(300, restored.getPostCompletionTimeoutSeconds());
 	}
 
@@ -1007,7 +981,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void postCompletionDefaultTimeoutAbsentFromWireFormat() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
 		job.setPostCompletionCommand("make test");
 		// Default timeout — should not appear in wire format
 		String encoded = job.encode();
@@ -1019,13 +993,13 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 	/**
 	 * A post-completion command set on the factory propagates to jobs created
-	 * by {@link ClaudeCodeJobFactory#nextJob()}.
+	 * by {@link CodingAgentJobFactory#nextJob()}.
 	 */
 	@Test(timeout = 30000)
 	public void factoryPostCompletionCommandPropagatesToJob() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do something");
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
 		factory.setPostCompletionCommand("mvn -pl flowtree test -Dtest=FooTest");
-		ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+		CodingAgentJob job = (CodingAgentJob) factory.nextJob();
 		assertNotNull(job);
 		assertEquals("mvn -pl flowtree test -Dtest=FooTest", job.getPostCompletionCommand());
 	}
@@ -1035,8 +1009,8 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void factoryNoPostCompletionCommandJobHasNoCommand() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do something");
-		ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
+		CodingAgentJob job = (CodingAgentJob) factory.nextJob();
 		assertNotNull(job);
 		assertNull(job.getPostCompletionCommand());
 	}
@@ -1047,12 +1021,12 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void factoryPostCompletionCommandRoundTripViaSet() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		factory.setPostCompletionCommand("bash scripts/verify.sh");
 		assertEquals("bash scripts/verify.sh", factory.getPostCompletionCommand());
 
 		// Simulate wire deserialisation
-		ClaudeCodeJobFactory restored = new ClaudeCodeJobFactory("prompt");
+		CodingAgentJobFactory restored = new CodingAgentJobFactory("prompt");
 		restored.set("postCmd",
 				GitManagedJob.base64Encode("bash scripts/verify.sh"));
 		assertEquals("bash scripts/verify.sh", restored.getPostCompletionCommand());
@@ -1063,10 +1037,10 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void factoryPostCompletionTimeoutPropagatesToJob() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do something");
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
 		factory.setPostCompletionCommand("mvn test");
 		factory.setPostCompletionTimeoutSeconds(600);
-		ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+		CodingAgentJob job = (CodingAgentJob) factory.nextJob();
 		assertNotNull(job);
 		assertEquals(600, job.getPostCompletionTimeoutSeconds());
 	}
@@ -1090,7 +1064,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void factoryPostCompletionCommandClearedFromWireFormatOnDisable() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		factory.setPostCompletionCommand("mvn test");
 		factory.setPostCompletionWorkingDir("/tmp/work");
 		factory.setPostCompletionTimeoutSeconds(600);
@@ -1116,7 +1090,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void factoryPostCompletionWorkingDirClearedOnNull() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		factory.setPostCompletionCommand("mvn test");
 		factory.setPostCompletionWorkingDir("/tmp/work");
 
@@ -1140,7 +1114,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		// 200 KiB of output — well past the typical 64 KiB pipe buffer.
 		String cmd = "yes x | head -c 200000";
 		PostCompletionCommandRule rule = new PostCompletionCommandRule(cmd, null, 20);
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		assertFalse("Large-output command must complete without timeout",
 				rule.isViolated(job));
 		assertEquals(0, rule.getLastExitCode());
@@ -1157,18 +1131,18 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void defaultDeduplicationPassCapIsTwo() {
-		assertEquals(2, ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES);
+		assertEquals(2, CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES);
 	}
 
 	/**
 	 * The pass cap must be exposed via {@link EnforcementRule#getMaxRetries()} so
 	 * the enforcement framework can bound the correction loop. This keeps
-	 * {@link EnforcementRule#isViolated(ClaudeCodeJob)} honest — it always reflects
+	 * {@link EnforcementRule#isViolated(CodingAgentJob)} honest — it always reflects
 	 * the actual violation state rather than returning {@code false} to stop the loop.
 	 */
 	@Test(timeout = 30000)
 	public void deduplicationRuleCapExposedViaGetMaxRetries() {
-		assertEquals(ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, new DeduplicationRule().getMaxRetries());
+		assertEquals(CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES, new DeduplicationRule().getMaxRetries());
 		assertEquals(5, new DeduplicationRule(5).getMaxRetries());
 		assertEquals(1, new DeduplicationRule(1).getMaxRetries());
 	}
@@ -1188,11 +1162,11 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 		List<String> items = new ArrayList<>(List.of("methodA", "methodB", "methodC"));
 		DeduplicationRule rule = new DeduplicationRule() {
 			@Override
-			protected List<String> extractItems(ClaudeCodeJob job) {
+			protected List<String> extractItems(CodingAgentJob job) {
 				return new ArrayList<>(items);
 			}
 		};
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
 
 		// Simulate the runEnforcementRules() while loop using getMaxRetries() as cap.
 		int attempts = 0;
@@ -1220,11 +1194,11 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 		DeduplicationRule rule = new DeduplicationRule(5) {
 			@Override
-			protected List<String> extractItems(ClaudeCodeJob job) {
+			protected List<String> extractItems(CodingAgentJob job) {
 				return new ArrayList<>(items);
 			}
 		};
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
 		assertEquals(5, rule.getMaxRetries());
 
 		int attempts = 0;
@@ -1249,11 +1223,11 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 		DeduplicationRule rule = new DeduplicationRule(1) {
 			@Override
-			protected List<String> extractItems(ClaudeCodeJob job) {
+			protected List<String> extractItems(CodingAgentJob job) {
 				return new ArrayList<>(items);
 			}
 		};
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
 		assertEquals(1, rule.getMaxRetries());
 
 		int attempts = 0;
@@ -1278,11 +1252,11 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 
 		DeduplicationRule rule = new DeduplicationRule(5) { // cap is 5
 			@Override
-			protected List<String> extractItems(ClaudeCodeJob job) {
+			protected List<String> extractItems(CodingAgentJob job) {
 				return new ArrayList<>(items);
 			}
 		};
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
 
 		// outer if + while condition
 		assertTrue(rule.isViolated(job));
@@ -1315,27 +1289,27 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	}
 
 	/**
-	 * {@link ClaudeCodeJob#setMaxDeduplicationPasses(int)} must reject non-positive values.
+	 * {@link CodingAgentJob#setMaxDeduplicationPasses(int)} must reject non-positive values.
 	 */
 	@Test(timeout = 30000, expected = IllegalArgumentException.class)
 	public void setMaxDeduplicationPassesRejectsZero() {
-		new ClaudeCodeJob("t1", "test").setMaxDeduplicationPasses(0);
+		new CodingAgentJob("t1", "test").setMaxDeduplicationPasses(0);
 	}
 
 	/**
-	 * {@link ClaudeCodeJob#setMaxDeduplicationPasses(int)} must reject negative values.
+	 * {@link CodingAgentJob#setMaxDeduplicationPasses(int)} must reject negative values.
 	 */
 	@Test(timeout = 30000, expected = IllegalArgumentException.class)
 	public void setMaxDeduplicationPassesRejectsNegative() {
-		new ClaudeCodeJob("t1", "test").setMaxDeduplicationPasses(-5);
+		new CodingAgentJob("t1", "test").setMaxDeduplicationPasses(-5);
 	}
 
 	/**
-	 * {@link ClaudeCodeJobFactory#setMaxDeduplicationPasses(int)} must reject non-positive values.
+	 * {@link CodingAgentJobFactory#setMaxDeduplicationPasses(int)} must reject non-positive values.
 	 */
 	@Test(timeout = 30000, expected = IllegalArgumentException.class)
 	public void factorySetMaxDeduplicationPassesRejectsZero() {
-		new ClaudeCodeJobFactory("prompt").setMaxDeduplicationPasses(0);
+		new CodingAgentJobFactory("prompt").setMaxDeduplicationPasses(0);
 	}
 
 	/**
@@ -1344,11 +1318,11 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void maxDeduplicationPassesDeserializationFallsBackOnEmptyString() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
 		job.setMaxDeduplicationPasses(3);
 		job.set("maxDedupPasses", "");
 		assertEquals("Empty string must fall back to default",
-				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, job.getMaxDeduplicationPasses());
+				CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES, job.getMaxDeduplicationPasses());
 	}
 
 	/**
@@ -1356,10 +1330,10 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void maxDeduplicationPassesDeserializationFallsBackOnInvalidString() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
 		job.set("maxDedupPasses", "notanumber");
 		assertEquals("Non-numeric value must fall back to default",
-				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, job.getMaxDeduplicationPasses());
+				CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES, job.getMaxDeduplicationPasses());
 	}
 
 	/**
@@ -1367,14 +1341,14 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void maxDeduplicationPassesDeserializationFallsBackOnNonPositive() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "test");
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
 		job.set("maxDedupPasses", "0");
 		assertEquals("Zero must fall back to default",
-				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, job.getMaxDeduplicationPasses());
+				CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES, job.getMaxDeduplicationPasses());
 
 		job.set("maxDedupPasses", "-3");
 		assertEquals("Negative must fall back to default",
-				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, job.getMaxDeduplicationPasses());
+				CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES, job.getMaxDeduplicationPasses());
 	}
 
 	/**
@@ -1382,11 +1356,11 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void factoryMaxDeduplicationPassesDeserializationFallsBackOnEmptyString() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		factory.setMaxDeduplicationPasses(4);
 		factory.set("maxDedupPasses", "");
 		assertEquals("Factory: empty string must fall back to default",
-				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, factory.getMaxDeduplicationPasses());
+				CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES, factory.getMaxDeduplicationPasses());
 	}
 
 	/**
@@ -1394,10 +1368,10 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void factoryMaxDeduplicationPassesDeserializationFallsBackOnNonPositive() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		factory.set("maxDedupPasses", "0");
 		assertEquals("Factory: zero must fall back to default",
-				ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, factory.getMaxDeduplicationPasses());
+				CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES, factory.getMaxDeduplicationPasses());
 	}
 
 	/**
@@ -1405,21 +1379,15 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void maxDeduplicationPassesRoundTripEncodeDecode() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
-		job.setDeduplicationMode(ClaudeCodeJob.DEDUP_LOCAL);
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
+		job.setDeduplicationMode(CodingAgentJob.DEDUP_LOCAL);
 		job.setMaxDeduplicationPasses(5);
 		String encoded = job.encode();
 		assertNotNull(encoded);
 		assertTrue("Wire format must contain maxDedupPasses:=5",
 				encoded.contains("maxDedupPasses:=5"));
 
-		ClaudeCodeJob restored = new ClaudeCodeJob();
-		for (String part : encoded.split("::")) {
-			int sep = part.indexOf(":=");
-			if (sep > 0) {
-				restored.set(part.substring(0, sep), part.substring(sep + 2));
-			}
-		}
+		CodingAgentJob restored = GitManagedJobSerializationTest.roundTrip(job);
 		assertEquals(5, restored.getMaxDeduplicationPasses());
 	}
 
@@ -1428,7 +1396,7 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void maxDeduplicationPassesDefaultAbsentFromWireFormat() {
-		ClaudeCodeJob job = new ClaudeCodeJob("t1", "hello");
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
 		String encoded = job.encode();
 		assertFalse("Default maxDedupPasses must not appear in wire format",
 				encoded.contains("maxDedupPasses"));
@@ -1439,20 +1407,20 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void factoryMaxDeduplicationPassesPropagatesToJob() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("do something");
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
 		factory.setMaxDeduplicationPasses(4);
-		ClaudeCodeJob job = (ClaudeCodeJob) factory.nextJob();
+		CodingAgentJob job = (CodingAgentJob) factory.nextJob();
 		assertNotNull(job);
 		assertEquals(4, job.getMaxDeduplicationPasses());
 	}
 
 	/**
-	 * Factory default cap matches the ClaudeCodeJob constant.
+	 * Factory default cap matches the CodingAgentJob constant.
 	 */
 	@Test(timeout = 30000)
 	public void factoryMaxDeduplicationPassesDefaultIsTwo() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
-		assertEquals(ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES, factory.getMaxDeduplicationPasses());
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+		assertEquals(CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES, factory.getMaxDeduplicationPasses());
 	}
 
 	/**
@@ -1460,11 +1428,303 @@ public class ClaudeCodeJobEnforcementTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void factoryMaxDeduplicationPassesRoundTripViaSet() {
-		ClaudeCodeJobFactory factory = new ClaudeCodeJobFactory("prompt");
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		factory.set("maxDedupPasses", "3");
 		assertEquals(3, factory.getMaxDeduplicationPasses());
 
 		factory.set("maxDedupPasses", "1");
 		assertEquals(1, factory.getMaxDeduplicationPasses());
+	}
+
+	// ── PostCompletionCommandRule — pass cap ─────────────────────────────────
+
+	/**
+	 * Pins the default cap so a silent regression (e.g. raising it by an order
+	 * of magnitude) is caught immediately.
+	 */
+	@Test(timeout = 30000)
+	public void defaultPostCompletionPassCapIsThree() {
+		assertEquals(3, CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES);
+		assertEquals(PostCompletionCommandRule.DEFAULT_MAX_PASSES,
+				CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES);
+	}
+
+	/**
+	 * Four consecutive failing passes with the default cap of 3 must be cut off after
+	 * exactly 3 correction attempts. The enforcement loop honours
+	 * {@link EnforcementRule#getMaxRetries()} which now returns {@code maxPasses}.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionDefaultCapStopsAfterThreePasses() {
+		AtomicInteger correctionCalls = new AtomicInteger();
+		PostCompletionCommandRule rule = new PostCompletionCommandRule("false", null);
+		// Default cap is 3; rule always fails.
+		assertEquals(3, rule.getMaxRetries());
+
+		CodingAgentJob job = new CodingAgentJob("t1", "test") {
+			@Override
+			protected void runCorrectionSession(String correctionPrompt, String activity) {
+				correctionCalls.incrementAndGet();
+			}
+		};
+		job.setEnforceOrganizationalPlacement(false);
+		job.setPostCompletionCommand("false");
+		job.runEnforcementRules();
+
+		int attempts = correctionCalls.get();
+		assertTrue("Expected at least 1 correction attempt, got " + attempts, attempts >= 1);
+		assertTrue("Expected at most 3 correction attempts (default cap), got " + attempts,
+				attempts <= 3);
+	}
+
+	/**
+	 * A job with {@code maxPostCompletionPasses=5} allows up to 5 passes.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionCapFiveAllowsFivePasses() {
+		// Simulate the enforcement loop using getMaxRetries() as cap, as the real
+		// runEnforcementRules() does.
+		PostCompletionCommandRule rule = new PostCompletionCommandRule("false", null,
+				PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS, 5);
+		assertEquals(5, rule.getMaxRetries());
+
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
+		int attempts = 0;
+		if (rule.isViolated(job)) {
+			while (attempts < rule.getMaxRetries() && rule.isViolated(job)) {
+				rule.onCorrectionAttempted(job);
+				attempts++;
+			}
+		}
+		assertEquals("Cap of 5 must bound enforcement loop to exactly 5 attempts", 5, attempts);
+		assertFalse("isViolated returns false when the pass cap is hit (self-limiting)", rule.isViolated(job));
+		assertTrue("isCapHit must be true after the cap is reached", rule.isCapHit());
+	}
+
+	/**
+	 * A job with {@code maxPostCompletionPasses=1} allows only 1 pass.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionCapOneAllowsSinglePass() {
+		PostCompletionCommandRule rule = new PostCompletionCommandRule("false", null,
+				PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS, 1);
+		assertEquals(1, rule.getMaxRetries());
+
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
+		int attempts = 0;
+		if (rule.isViolated(job)) {
+			while (attempts < rule.getMaxRetries() && rule.isViolated(job)) {
+				rule.onCorrectionAttempted(job);
+				attempts++;
+			}
+		}
+		assertEquals("Cap of 1 must bound enforcement loop to exactly 1 attempt", 1, attempts);
+		assertFalse("isViolated returns false when the pass cap is hit (self-limiting)", rule.isViolated(job));
+		assertTrue("isCapHit must be true after the cap is reached", rule.isCapHit());
+	}
+
+	/**
+	 * A successful command on the first pass exits cleanly without further retries.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionSuccessOnFirstPassExitsImmediately() {
+		PostCompletionCommandRule rule = new PostCompletionCommandRule("true", null,
+				PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS, 3);
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
+
+		// Success must be reported immediately; no correction sessions should run.
+		assertFalse("Successful command must not be violated", rule.isViolated(job));
+		assertEquals(0, rule.getLastExitCode());
+	}
+
+	/**
+	 * The cap behaviour preserves exit-on-success: a rule that succeeds after one
+	 * failing attempt must exit without hitting the cap.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionCapPreservesExitOnSuccess() throws Exception {
+		File counter = File.createTempFile("pcr_cap_test_", ".txt");
+		counter.deleteOnExit();
+		String cmd = "if [ -f " + counter.getAbsolutePath() + " ] && "
+				+ "[ \"$(cat " + counter.getAbsolutePath() + ")\" = \"done\" ]; "
+				+ "then exit 0; else echo done > " + counter.getAbsolutePath() + "; exit 1; fi";
+
+		PostCompletionCommandRule rule = new PostCompletionCommandRule(cmd, null,
+				PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS, 5);
+
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
+		int attempts = 0;
+		if (rule.isViolated(job)) {
+			while (attempts < rule.getMaxRetries() && rule.isViolated(job)) {
+				rule.onCorrectionAttempted(job);
+				attempts++;
+			}
+		}
+		// Succeeded on second attempt (one correction): must not reach the cap of 5.
+		assertEquals("Should have needed exactly 1 correction before success", 1, attempts);
+		assertFalse("Rule should not be violated after success", rule.isViolated(job));
+	}
+
+	/**
+	 * {@link PostCompletionCommandRule} constructor rejects non-positive maxPasses.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void postCompletionRuleConstructorRejectsZeroMaxPasses() {
+		new PostCompletionCommandRule("true", null,
+				PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS, 0);
+	}
+
+	/**
+	 * {@link PostCompletionCommandRule} constructor rejects negative maxPasses.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void postCompletionRuleConstructorRejectsNegativeMaxPasses() {
+		new PostCompletionCommandRule("true", null,
+				PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS, -1);
+	}
+
+	/**
+	 * {@link CodingAgentJob#setMaxPostCompletionPasses(int)} must reject non-positive values.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void setMaxPostCompletionPassesRejectsZero() {
+		new CodingAgentJob("t1", "test").setMaxPostCompletionPasses(0);
+	}
+
+	/**
+	 * {@link CodingAgentJob#setMaxPostCompletionPasses(int)} must reject negative values.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void setMaxPostCompletionPassesRejectsNegative() {
+		new CodingAgentJob("t1", "test").setMaxPostCompletionPasses(-2);
+	}
+
+	/**
+	 * {@link CodingAgentJobFactory#setMaxPostCompletionPasses(int)} must reject non-positive values.
+	 */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void factorySetMaxPostCompletionPassesRejectsZero() {
+		new CodingAgentJobFactory("prompt").setMaxPostCompletionPasses(0);
+	}
+
+	/**
+	 * maxPostCompletionPasses round-trips through encode/decode (non-default value).
+	 */
+	@Test(timeout = 30000)
+	public void maxPostCompletionPassesRoundTripEncodeDecode() {
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
+		job.setPostCompletionCommand("make test");
+		job.setMaxPostCompletionPasses(5);
+		String encoded = job.encode();
+		assertNotNull(encoded);
+		assertTrue("Wire format must contain maxPostCmdPasses:=5",
+				encoded.contains("maxPostCmdPasses:=5"));
+
+		CodingAgentJob restored = GitManagedJobSerializationTest.roundTrip(job);
+		assertEquals(5, restored.getMaxPostCompletionPasses());
+	}
+
+	/**
+	 * The default value (3) must not appear in the wire format to keep it compact.
+	 */
+	@Test(timeout = 30000)
+	public void maxPostCompletionPassesDefaultAbsentFromWireFormat() {
+		CodingAgentJob job = new CodingAgentJob("t1", "hello");
+		job.setPostCompletionCommand("make test");
+		// Default passes — should not appear in wire format
+		String encoded = job.encode();
+		assertFalse("Default maxPostCmdPasses must not appear in wire format",
+				encoded.contains("maxPostCmdPasses"));
+	}
+
+	/**
+	 * Factory propagates the non-default cap to the job created by nextJob().
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxPostCompletionPassesPropagatesToJob() {
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
+		factory.setPostCompletionCommand("make test");
+		factory.setMaxPostCompletionPasses(5);
+		CodingAgentJob job = (CodingAgentJob) factory.nextJob();
+		assertNotNull(job);
+		assertEquals(5, job.getMaxPostCompletionPasses());
+	}
+
+	/**
+	 * Factory default cap matches the CodingAgentJob constant.
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxPostCompletionPassesDefaultIsThree() {
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+		assertEquals(CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES,
+				factory.getMaxPostCompletionPasses());
+	}
+
+	/**
+	 * Factory maxPostCompletionPasses round-trips through the set() deserialization path.
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxPostCompletionPassesRoundTripViaSet() {
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+		factory.set("maxPostCmdPasses", "4");
+		assertEquals(4, factory.getMaxPostCompletionPasses());
+
+		factory.set("maxPostCmdPasses", "1");
+		assertEquals(1, factory.getMaxPostCompletionPasses());
+	}
+
+	/**
+	 * Factory deserialization falls back to the default when the wire value is empty.
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxPostCompletionPassesDeserializationFallsBackOnEmptyString() {
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+		factory.setPostCompletionCommand("make test");
+		factory.setMaxPostCompletionPasses(5);
+		factory.set("maxPostCmdPasses", "");
+		assertEquals("Empty string must fall back to default",
+				CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES,
+				factory.getMaxPostCompletionPasses());
+	}
+
+	/**
+	 * Factory deserialization falls back to the default when the wire value is non-positive.
+	 */
+	@Test(timeout = 30000)
+	public void factoryMaxPostCompletionPassesDeserializationFallsBackOnNonPositive() {
+		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+		factory.set("maxPostCmdPasses", "0");
+		assertEquals("Zero must fall back to default",
+				CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES,
+				factory.getMaxPostCompletionPasses());
+	}
+
+	/**
+	 * Job deserialization falls back to the default when the wire value is invalid.
+	 */
+	@Test(timeout = 30000)
+	public void maxPostCompletionPassesDeserializationFallsBackOnInvalidString() {
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
+		job.set("maxPostCmdPasses", "notanumber");
+		assertEquals("Non-numeric value must fall back to default",
+				CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES,
+				job.getMaxPostCompletionPasses());
+	}
+
+	/**
+	 * Job deserialization falls back to the default when the wire value is non-positive.
+	 */
+	@Test(timeout = 30000)
+	public void maxPostCompletionPassesDeserializationFallsBackOnNonPositive() {
+		CodingAgentJob job = new CodingAgentJob("t1", "test");
+		job.set("maxPostCmdPasses", "0");
+		assertEquals("Zero must fall back to default",
+				CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES,
+				job.getMaxPostCompletionPasses());
+
+		job.set("maxPostCmdPasses", "-2");
+		assertEquals("Negative must fall back to default",
+				CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES,
+				job.getMaxPostCompletionPasses());
 	}
 }

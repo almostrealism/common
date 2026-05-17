@@ -37,13 +37,13 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * Tests for the commit-message production and preservation mechanics in
- * {@link ClaudeCodeJob} and {@link CommitMessageRule}.
+ * {@link CodingAgentJob} and {@link CommitMessageRule}.
  *
- * <p>The tests use a spy subclass of {@link ClaudeCodeJob} that overrides
- * {@link ClaudeCodeJob#executeSingleRun()} to avoid launching a real Claude
+ * <p>The tests use a spy subclass of {@link CodingAgentJob} that overrides
+ * {@link CodingAgentJob#executeSingleRun()} to avoid launching a real Claude
  * Code subprocess.</p>
  */
-public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
+public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
 
     /** Temporary working directory recreated for each test. */
     private Path tempDir;
@@ -76,11 +76,11 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
     }
 
     /**
-     * Creates a spy {@link ClaudeCodeJob} whose {@code executeSingleRun()} performs
+     * Creates a spy {@link CodingAgentJob} whose {@code executeSingleRun()} performs
      * {@code sessionAction} instead of launching a real subprocess.
      */
-    private ClaudeCodeJob spyJob(String prompt, Runnable sessionAction) {
-        ClaudeCodeJob job = new ClaudeCodeJob("t1", prompt) {
+    private CodingAgentJob spyJob(String prompt, Runnable sessionAction) {
+        CodingAgentJob job = new CodingAgentJob("t1", prompt) {
             @Override
             void executeSingleRun() {
                 // Delete commit.txt as the real executeSingleRun() does.
@@ -103,7 +103,7 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void commitMessageRuleViolatedWhenCommitTxtMissing() {
         CommitMessageRule rule = new CommitMessageRule();
-        ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+        CodingAgentJob job = new CodingAgentJob("t1", "do something");
         job.setWorkingDirectory(tempDir.toString());
         assertTrue("Rule must be violated when commit.txt is absent",
                 rule.isViolated(job));
@@ -113,7 +113,7 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
     public void commitMessageRuleViolatedWhenCommitTxtEmpty() throws IOException {
         writeCommitTxt("   ");
         CommitMessageRule rule = new CommitMessageRule();
-        ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+        CodingAgentJob job = new CodingAgentJob("t1", "do something");
         job.setWorkingDirectory(tempDir.toString());
         assertTrue("Rule must be violated when commit.txt is blank",
                 rule.isViolated(job));
@@ -124,7 +124,7 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
         String prompt = "Fix the authentication bug in UserService";
         writeCommitTxt(prompt);
         CommitMessageRule rule = new CommitMessageRule();
-        ClaudeCodeJob job = new ClaudeCodeJob("t1", prompt);
+        CodingAgentJob job = new CodingAgentJob("t1", prompt);
         job.setWorkingDirectory(tempDir.toString());
         assertTrue("Rule must be violated when commit.txt is a copy of the task prompt",
                 rule.isViolated(job));
@@ -134,7 +134,7 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
     public void commitMessageRuleNotViolatedOnNormalMessage() throws IOException {
         writeCommitTxt("Fix auth bug: validate token expiry before session creation\n\nAdded expiry check in UserService.authenticate().");
         CommitMessageRule rule = new CommitMessageRule();
-        ClaudeCodeJob job = new ClaudeCodeJob("t1", "Fix the authentication bug in UserService");
+        CodingAgentJob job = new CodingAgentJob("t1", "Fix the authentication bug in UserService");
         job.setWorkingDirectory(tempDir.toString());
         assertFalse("Rule must not be violated on a normal agent-authored message",
                 rule.isViolated(job));
@@ -143,7 +143,7 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void commitMessageRuleViolatedWhenAgentEchoesOwnPrompt() throws IOException {
         CommitMessageRule rule = new CommitMessageRule();
-        ClaudeCodeJob job = new ClaudeCodeJob("t1", "some task");
+        CodingAgentJob job = new CodingAgentJob("t1", "some task");
         job.setWorkingDirectory(tempDir.toString());
 
         // First call builds the correction prompt and stores it internally.
@@ -175,7 +175,7 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
     public void onCorrectionAttemptedSetsRecoveredSourceWhenResolved() throws IOException {
         writeCommitTxt("Add validation for pushed-tools server names");
         CommitMessageRule rule = new CommitMessageRule();
-        ClaudeCodeJob job = new ClaudeCodeJob("t1", "some task");
+        CodingAgentJob job = new CodingAgentJob("t1", "some task");
         job.setWorkingDirectory(tempDir.toString());
         assertFalse("Pre-condition: rule is not violated", rule.isViolated(job));
         rule.onCorrectionAttempted(job);
@@ -185,7 +185,7 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void onCorrectionAttemptedDoesNotSetSourceWhenStillViolated() {
         CommitMessageRule rule = new CommitMessageRule();
-        ClaudeCodeJob job = new ClaudeCodeJob("t1", "some task");
+        CodingAgentJob job = new CodingAgentJob("t1", "some task");
         job.setWorkingDirectory(tempDir.toString());
         assertTrue("Pre-condition: rule is violated (no commit.txt)", rule.isViolated(job));
         rule.onCorrectionAttempted(job);
@@ -198,7 +198,7 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void getCommitMessageSourceIsAgentWhenCommitTxtPresent() throws IOException {
         writeCommitTxt("Add validation for server name format");
-        ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+        CodingAgentJob job = new CodingAgentJob("t1", "do something");
         job.setWorkingDirectory(tempDir.toString());
         String msg = job.getCommitMessage();
         assertEquals("Add validation for server name format", msg);
@@ -207,7 +207,7 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
 
     @Test(timeout = 30000)
     public void getCommitMessageSourceIsPromptFallbackWhenCommitTxtMissing() {
-        ClaudeCodeJob job = new ClaudeCodeJob("t1", "do something");
+        CodingAgentJob job = new CodingAgentJob("t1", "do something");
         job.setWorkingDirectory(tempDir.toString());
         String msg = job.getCommitMessage();
         assertNotNull(msg);
@@ -227,7 +227,7 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
         writeCommitTxt("Primary session commit message");
 
         // Spy: the correction-session agent does nothing (no-op).
-        ClaudeCodeJob job = spyJob("task prompt", () -> { /* no-op */ });
+        CodingAgentJob job = spyJob("task prompt", () -> { /* no-op */ });
 
         // Simulate a correction session (the real method is protected/accessible here).
         job.runCorrectionSession("correction prompt", "deduplication");
@@ -249,7 +249,7 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
         writeCommitTxt("Primary session commit message");
 
         // Spy: the correction-session agent writes a different commit.txt.
-        ClaudeCodeJob job = spyJob("task prompt", () -> {
+        CodingAgentJob job = spyJob("task prompt", () -> {
             try {
                 Files.write(tempDir.resolve("commit.txt"),
                         "Correction session commit".getBytes(StandardCharsets.UTF_8));
@@ -274,7 +274,7 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
         // No commit.txt from the primary session.
 
         // Spy: correction session writes a commit.txt.
-        ClaudeCodeJob job = spyJob("task prompt", () -> {
+        CodingAgentJob job = spyJob("task prompt", () -> {
             try {
                 Files.write(tempDir.resolve("commit.txt"),
                         "Commit message from correction session".getBytes(StandardCharsets.UTF_8));
@@ -298,13 +298,13 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
      *
      * <p>This is enforced by the existing {@code setCorrectionSession(true)} path
      * in {@link InstructionPromptBuilder}, which the enforcement loop triggers via
-     * {@link ClaudeCodeJob#setCurrentActivity(String)}.  The test verifies the
+     * {@link CodingAgentJob#setCurrentActivity(String)}.  The test verifies the
      * wiring: when {@code currentActivity} is set to {@code "commit-message"},
      * the built prompt must NOT include the "Code Changes Are Required" section.</p>
      */
     @Test(timeout = 30000)
     public void commitMessageRuleCorrectionPromptDoesNotIncludeEnforceChangesBlock() {
-        ClaudeCodeJob job = new ClaudeCodeJob("t1", "do the work");
+        CodingAgentJob job = new CodingAgentJob("t1", "do the work");
         job.setEnforceChanges(true);
         job.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1");
 
@@ -328,7 +328,7 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
      */
     @Test(timeout = 30000)
     public void primarySessionPromptIncludesCommitTxtInstruction() {
-        ClaudeCodeJob job = new ClaudeCodeJob("t1", "do the work");
+        CodingAgentJob job = new CodingAgentJob("t1", "do the work");
         job.setTargetBranch("feature/my-branch");
 
         String prompt = job.buildInstructionPrompt();
@@ -344,7 +344,7 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
      */
     @Test(timeout = 30000)
     public void correctionSessionPromptOmitsCommitTxtInstruction() {
-        ClaudeCodeJob job = new ClaudeCodeJob("t1", "do the work");
+        CodingAgentJob job = new CodingAgentJob("t1", "do the work");
         job.setTargetBranch("feature/my-branch");
         job.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1");
         job.setCurrentActivity("deduplication");
@@ -360,31 +360,31 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
      */
     @Test(timeout = 30000)
     public void promptWithoutTargetBranchOmitsCommitTxtInstruction() {
-        ClaudeCodeJob job = new ClaudeCodeJob("t1", "do the work");
+        CodingAgentJob job = new CodingAgentJob("t1", "do the work");
         // No target branch set.
         String prompt = job.buildInstructionPrompt();
         assertFalse("Prompt without target branch must not include 'Before You Finish' commit block",
                 prompt.contains("Before You Finish"));
     }
 
-    // ── ClaudeCodeJobEvent — commitMessageSource ─────────────────────────────
+    // ── CodingAgentJobEvent — commitMessageSource ─────────────────────────────
 
     @Test(timeout = 30000)
     public void commitMessageSourcePropagatesIntoEventDefault() {
-        ClaudeCodeJobEvent event = ClaudeCodeJobEvent.success("j1", "desc");
+        CodingAgentJobEvent event = CodingAgentJobEvent.success("j1", "desc");
         assertNull("Default commitMessageSource must be null", event.getCommitMessageSource());
     }
 
     @Test(timeout = 30000)
     public void commitMessageSourcePropagatesIntoEventViaBuilder() {
-        ClaudeCodeJobEvent event = ClaudeCodeJobEvent.success("j1", "desc");
+        CodingAgentJobEvent event = CodingAgentJobEvent.success("j1", "desc");
         event.withCommitMessageSource("agent");
         assertEquals("agent", event.getCommitMessageSource());
     }
 
     @Test(timeout = 30000)
     public void commitMessageSourceAppearsInEventJson() {
-        ClaudeCodeJobEvent event = ClaudeCodeJobEvent.success("j1", "desc");
+        CodingAgentJobEvent event = CodingAgentJobEvent.success("j1", "desc");
         event.withCommitMessageSource("prompt_fallback");
         String json = event.toJson();
         assertTrue("JSON must include commitMessageSource field",
@@ -398,11 +398,11 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
      * serialize via {@link JobCompletionEvent#toJson()}, parse with
      * {@link JsonFieldExtractor#extractString(String, String)} (the same
      * extraction the controller uses in {@code handleStatusEvent}), and
-     * re-apply via {@link ClaudeCodeJobEvent#withCommitMessageSource(String)}.
+     * re-apply via {@link CodingAgentJobEvent#withCommitMessageSource(String)}.
      *
      * <p>This is the path the controller walks when an agent POSTs a status
      * event: it reads {@code commitMessageSource} from the JSON body and sets
-     * it on the reconstructed {@link ClaudeCodeJobEvent}.</p>
+     * it on the reconstructed {@link CodingAgentJobEvent}.</p>
      */
     @Test(timeout = 30000)
     public void commitMessageSourceSurvivesSerializeParseRoundTripAgent() {
@@ -420,7 +420,7 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
     }
 
     private void assertCommitMessageSourceRoundTrip(String source) {
-        ClaudeCodeJobEvent original = ClaudeCodeJobEvent.success("j-rt-" + source, "round-trip");
+        CodingAgentJobEvent original = CodingAgentJobEvent.success("j-rt-" + source, "round-trip");
         original.withCommitMessageSource(source);
 
         // Serialize (what the agent does before POST-ing to the controller)
@@ -431,7 +431,7 @@ public class ClaudeCodeJobCommitMessageTest extends TestSuiteBase {
         assertEquals(source, parsed);
 
         // Reconstruct (what the controller does after parsing)
-        ClaudeCodeJobEvent reconstructed = new ClaudeCodeJobEvent("j-rt-" + source,
+        CodingAgentJobEvent reconstructed = new CodingAgentJobEvent("j-rt-" + source,
                 JobCompletionEvent.Status.SUCCESS, "round-trip");
         if (parsed != null) {
             reconstructed.withCommitMessageSource(parsed);

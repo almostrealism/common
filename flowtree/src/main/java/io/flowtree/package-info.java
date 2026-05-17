@@ -26,7 +26,7 @@
  * <ul>
  *   <li>{@link io.flowtree.Manager} — lifecycle manager that starts and
  *       coordinates server instances.</li>
- *   <li>{@link io.flowtree.ClaudeCodeClient} — specialised client for
+ *   <li>{@link io.flowtree.CodingAgentClient} — specialised client for
  *       submitting Claude Code agent jobs.</li>
  *   <li>{@link io.flowtree.JsonFieldExtractor} — utility for extracting
  *       typed fields from JSON payloads received over the API.</li>

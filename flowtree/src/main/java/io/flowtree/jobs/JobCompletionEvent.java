@@ -30,15 +30,15 @@ import java.util.List;
  * <p>This event is fired when a job completes (successfully or with failure)
  * and contains all relevant information for status reporting. Generic fields
  * (job ID, status, git info, error info) live here; Claude Code-specific
- * fields (prompt, session, timing) are in {@link ClaudeCodeJobEvent}.</p>
+ * fields (prompt, session, timing) are in {@link CodingAgentJobEvent}.</p>
  *
  * <p>The Claude-specific getter methods on this base class return zero/null
  * defaults so that consumers (like {@code SlackNotifier}) can call them
- * uniformly on any event type. Only {@link ClaudeCodeJobEvent} returns real
+ * uniformly on any event type. Only {@link CodingAgentJobEvent} returns real
  * values.</p>
  *
  * @author Michael Murray
- * @see ClaudeCodeJobEvent
+ * @see CodingAgentJobEvent
  * @see JobCompletionListener
  */
 public class JobCompletionEvent {
@@ -288,6 +288,11 @@ public class JobCompletionEvent {
      * Values: {@code "agent"}, {@code "prompt_fallback"}, {@code "commit_rule_recovered"}.
      */
     public String getCommitMessageSource() { return null; }
+    /**
+     * Returns the name of the runner that produced this event, or
+     * {@code null} for non-coding-agent jobs.
+     */
+    public String getRunnerName() { return null; }
 
     // ==================== Builder-pattern setters ====================
 
@@ -364,6 +369,7 @@ public class JobCompletionEvent {
         ArrayNode deniedArray = root.putArray("deniedToolNames");
         for (String t : getDeniedToolNames()) deniedArray.add(t);
         root.put("commitMessageSource", getCommitMessageSource());
+        root.put("runnerName", getRunnerName());
 
         try {
             return EVENT_MAPPER.writeValueAsString(root);

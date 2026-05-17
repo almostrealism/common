@@ -1358,6 +1358,8 @@ def workstream_submit_task(
     effort: str = "",
     post_completion_command: str = "",
     post_completion_timeout_seconds: int = 0,
+    max_post_completion_passes: int = 0,
+    delay_seconds: int = 0,
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -1438,6 +1440,18 @@ def workstream_submit_task(
             post-completion command before killing it and treating the run as a
             failure. 0 (default) uses the server-side default of 1800 seconds
             (30 minutes).
+        max_post_completion_passes: Maximum number of post-completion correction
+            sessions per job. 0 (default) uses the server-side default of 3.
+            Each pass runs a full agent session; without a cap a single flaky
+            gate command can exhaust the entire context budget. Set to 1 for
+            commands that should not be retried at all. Set higher (e.g. 5) when
+            the gate is known to be flaky but eventually converges. Has no
+            effect when ``post_completion_command`` is empty.
+        delay_seconds: Number of seconds to wait before making the job visible
+            to workers. The job is accepted immediately (and a job_id returned)
+            but stays in a pending state until the delay elapses. Workers will
+            not pick it up until then. Cancellation works normally during the
+            pending period. 0 (default) means dispatch immediately.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -1565,6 +1579,10 @@ def workstream_submit_task(
         payload["postCompletionCommand"] = post_completion_command
     if post_completion_timeout_seconds > 0:
         payload["postCompletionTimeoutSeconds"] = post_completion_timeout_seconds
+    if max_post_completion_passes > 0:
+        payload["maxPostCompletionPasses"] = max_post_completion_passes
+    if delay_seconds > 0:
+        payload["delaySeconds"] = delay_seconds
 
     result = _controller_post("/api/submit", payload)
 

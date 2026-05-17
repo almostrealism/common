@@ -18,7 +18,7 @@ package io.flowtree.jobs;
 
 /**
  * Enforcement rule that verifies the agent produced at least one uncommitted
- * file change.  Used when {@link ClaudeCodeJob#isEnforceChanges()} is {@code true}.
+ * file change.  Used when {@link CodingAgentJob#isEnforceChanges()} is {@code true}.
  *
  * <p>{@link #buildCorrectionPrompt} returns {@code null} so the framework
  * re-runs the agent with the existing prompt; the {@code enforceChanges}
@@ -30,10 +30,10 @@ class EnforceChangesRule implements EnforcementRule {
     public String getName() { return "enforce-changes"; }
 
     @Override
-    public boolean isViolated(ClaudeCodeJob job) {
+    public boolean isViolated(CodingAgentJob job) {
         return !job.hasUncommittedChanges() && !job.hasAgentCommitted();
     }
 
     @Override
-    public String buildCorrectionPrompt(ClaudeCodeJob job) { return null; }
+    public String buildCorrectionPrompt(CodingAgentJob job) { return null; }
 }

@@ -27,11 +27,11 @@ import java.util.List;
  * change in the new-file set, the rule considers the agent satisfied with the
  * current placement and marks itself resolved.</p>
  *
- * <p>Active when {@link ClaudeCodeJob#isEnforceOrganizationalPlacement()} is {@code true}
+ * <p>Active when {@link CodingAgentJob#isEnforceOrganizationalPlacement()} is {@code true}
  * (the default).</p>
  *
  * @author Michael Murray
- * @see ClaudeCodeJob#extractNewFilePaths()
+ * @see CodingAgentJob#extractNewFilePaths()
  * @see SetComparisonRule
  * @see EnforcementRule
  */
@@ -41,12 +41,12 @@ class OrganizationalPlacementRule extends SetComparisonRule {
     public String getName() { return "organizational-placement"; }
 
     @Override
-    protected List<String> extractItems(ClaudeCodeJob job) {
+    protected List<String> extractItems(CodingAgentJob job) {
         return job.extractNewFilePaths();
     }
 
     @Override
-    public String buildCorrectionPrompt(ClaudeCodeJob job) {
+    public String buildCorrectionPrompt(CodingAgentJob job) {
         List<String> newFiles = job.extractNewFilePaths();
         StringBuilder sb = new StringBuilder();
         sb.append("ORGANIZATIONAL PLACEMENT REVIEW\n\n");

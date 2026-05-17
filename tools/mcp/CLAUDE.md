@@ -163,7 +163,7 @@ pairs without exception**:
 
 - **`ar-secrets`** (stdio in the agent container) — `secret_list_names`,
   `secret_render_file`.  This is what coding agents launched by
-  `ClaudeCodeJob` must call; the rendered file lands on the agent's host.
+  `CodingAgentJob` must call; the rendered file lands on the agent's host.
 - **`ar-manager`** (HTTP on the controller) —
   `workspace_secret_list_names`, `workspace_secret_render_file`.  These
   exist for admin/Slack flows that run alongside the controller and are
