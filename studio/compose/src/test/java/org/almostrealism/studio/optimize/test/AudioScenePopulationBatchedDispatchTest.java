@@ -18,6 +18,7 @@ package org.almostrealism.studio.optimize.test;
 
 import org.almostrealism.audio.BatchedPatternRenderer;
 import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.audio.filter.AudioProcessingUtils;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.collect.PackedCollection;
@@ -38,6 +39,7 @@ import org.junit.After;
 import org.junit.Assert;
 import org.junit.Assume;
 import org.junit.Before;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.io.File;
@@ -127,6 +129,19 @@ public class AudioScenePopulationBatchedDispatchTest extends TestSuiteBase {
 
 	private boolean savedEnableBatched;
 	private boolean savedEnableBatchedStrict;
+
+	/**
+	 * Forces {@link AudioProcessingUtils} static initialization before any
+	 * test enters a {@link Heap}-wrapped section. The shared compiled evaluables
+	 * built by {@code AudioProcessingUtils.<clinit>} (notably {@code AudioSumProvider})
+	 * refuse to construct when {@code Heap.getDefault() != null}, because their
+	 * GPU memory must outlive any thread-local heap. Running them eagerly here
+	 * binds them to the global default heap.
+	 */
+	@BeforeClass
+	public static void initProcessing() {
+		AudioProcessingUtils.init();
+	}
 
 	/**
 	 * Walks upward from the test's working directory looking for an ancestor
