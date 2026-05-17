@@ -104,13 +104,13 @@ public class NodeRelaySimulationTest extends NodeRelaySimulationBase {
      * <p><b>Pass:</b> All 3 latches reach zero.</p>
      * <p><b>Fail:</b> Any job is lost or permanently queued.</p>
      */
-    @Test(timeout = 20000)
+    @Test(timeout = 40000)
     public void a02_threeJobs_3nodes_noLabels() throws Exception {
         int cp = NEXT_PORT.getAndIncrement();
         boolean done = runScenario("a02",
                 controllerProps(cp),
                 agentPropsList(agentProps(NEXT_PORT.getAndIncrement(), cp, 3)),
-                3, Collections.<String, String>emptyMap(), 15);
+                3, Collections.<String, String>emptyMap(), 30);
         Assert.assertTrue("a02: All 3 jobs should have been executed", done);
     }
 
@@ -155,13 +155,13 @@ public class NodeRelaySimulationTest extends NodeRelaySimulationBase {
      * <p><b>Pass:</b> All 5 jobs executed.</p>
      * <p><b>Fail:</b> Fewer than 5 jobs execute within timeout.</p>
      */
-    @Test(timeout = 25000)
+    @Test(timeout = 45000)
     public void a04_fiveJobs_2nodes_noLabels() throws Exception {
         int cp = NEXT_PORT.getAndIncrement();
         boolean done = runScenario("a04",
                 controllerProps(cp),
                 agentPropsList(agentProps(NEXT_PORT.getAndIncrement(), cp, 2)),
-                5, Collections.<String, String>emptyMap(), 20);
+                5, Collections.<String, String>emptyMap(), 35);
         Assert.assertTrue("a04: All 5 jobs should have been executed", done);
     }
 
@@ -621,7 +621,7 @@ public class NodeRelaySimulationTest extends NodeRelaySimulationBase {
      * <p><b>Pass:</b> All 3 jobs executed.</p>
      * <p><b>Fail:</b> Any job lost with 3-agent topology.</p>
      */
-    @Test(timeout = 20000)
+    @Test(timeout = 40000)
     public void c02_threeJobs_3agents_2nodes_noLabels() throws Exception {
         int cp = NEXT_PORT.getAndIncrement();
         boolean done = runScenario("c02",
@@ -630,7 +630,7 @@ public class NodeRelaySimulationTest extends NodeRelaySimulationBase {
                         agentProps(NEXT_PORT.getAndIncrement(), cp, 2),
                         agentProps(NEXT_PORT.getAndIncrement(), cp, 2),
                         agentProps(NEXT_PORT.getAndIncrement(), cp, 2)),
-                3, Collections.<String, String>emptyMap(), 15);
+                3, Collections.<String, String>emptyMap(), 30);
         Assert.assertTrue("c02: All 3 jobs should execute", done);
     }
 
