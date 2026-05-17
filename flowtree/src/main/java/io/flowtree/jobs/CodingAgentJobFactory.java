@@ -18,6 +18,7 @@ package io.flowtree.jobs;
 
 import io.flowtree.job.AbstractJobFactory;
 import io.flowtree.job.Job;
+import io.flowtree.jobs.agent.AgentRunnerRegistry;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.KeyUtils;
 
@@ -26,7 +27,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Factory for producing {@link ClaudeCodeJob} instances from a list of prompts.
+ * Factory for producing {@link CodingAgentJob} instances from a list of prompts.
  *
  * <p>Each prompt becomes a separate job, allowing the Flowtree system to
  * distribute prompts across multiple nodes. When a node finishes a prompt,
@@ -36,13 +37,13 @@ import java.util.Map;
  * stored in the inherited {@link AbstractJobFactory} properties map so that
  * the factory survives wire serialization and deserialization unchanged.</p>
  *
- * <p>For backward source compatibility, {@link ClaudeCodeJob} publishes
- * {@code ClaudeCodeJob.Factory} as a thin subclass of this class.</p>
+ * <p>For backward source compatibility, {@link CodingAgentJob} publishes
+ * {@code CodingAgentJob.Factory} as a thin subclass of this class.</p>
  *
  * @author Michael Murray
- * @see ClaudeCodeJob
+ * @see CodingAgentJob
  */
-public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleFeatures {
+public class CodingAgentJobFactory extends AbstractJobFactory implements ConsoleFeatures {
 
     /** Cached decoded list of prompts; populated lazily from the serialized properties. */
     private List<String> prompts;
@@ -54,7 +55,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
     private int index;
 
     /** Comma-separated list of tools Claude Code is permitted to invoke. */
-    private String allowedTools = ClaudeCodeJob.DEFAULT_TOOLS;
+    private String allowedTools = CodingAgentJob.DEFAULT_TOOLS;
 
     /** Maximum number of agentic turns Claude Code may take per job. */
     private int maxTurns = 50;
@@ -73,7 +74,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
      * Effort/thinking level propagated to jobs created by this factory.
      * {@code null} leaves the Claude Code {@code --effort} flag off so the
      * CLI uses its own default.  Must be one of
-     * {@link ClaudeCodeJob#VALID_EFFORT_LEVELS} when set.
+     * {@link CodingAgentJob#VALID_EFFORT_LEVELS} when set.
      */
     private String effort;
 
@@ -95,16 +96,16 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
 
     /**
      * Deduplication mode applied to jobs created by this factory.
-     * Defaults to {@link ClaudeCodeJob#DEDUP_LOCAL}.
-     * See {@link ClaudeCodeJob#DEDUP_NONE} to disable.
+     * Defaults to {@link CodingAgentJob#DEDUP_LOCAL}.
+     * See {@link CodingAgentJob#DEDUP_NONE} to disable.
      */
-    private String deduplicationMode = ClaudeCodeJob.DEDUP_LOCAL;
+    private String deduplicationMode = CodingAgentJob.DEDUP_LOCAL;
 
     /**
      * Per-job cap on deduplication passes propagated to jobs created by this factory.
-     * Defaults to {@link ClaudeCodeJob#DEFAULT_MAX_DEDUP_PASSES}.
+     * Defaults to {@link CodingAgentJob#DEFAULT_MAX_DEDUP_PASSES}.
      */
-    private int maxDeduplicationPasses = ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES;
+    private int maxDeduplicationPasses = CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES;
 
     /**
      * When {@code true}, jobs created by this factory activate the Maven
@@ -122,7 +123,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
 
     /**
      * Shell command run after the agent's primary work to verify the result.
-     * Propagated to jobs via {@link ClaudeCodeJob#setPostCompletionCommand(String)}.
+     * Propagated to jobs via {@link CodingAgentJob#setPostCompletionCommand(String)}.
      * Empty or {@code null} disables the post-completion check.
      */
     private String postCompletionCommand;
@@ -140,9 +141,22 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
     private int postCompletionTimeoutSeconds = PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS;
 
     /**
+     * Per-job cap on post-completion correction sessions propagated to jobs created by this
+     * factory. Defaults to {@link CodingAgentJob#DEFAULT_MAX_POST_COMPLETION_PASSES}.
+     */
+    private int maxPostCompletionPasses = CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES;
+
+    /**
+     * Name of the {@link io.flowtree.jobs.agent.AgentRunner} used to dispatch
+     * sessions for jobs created by this factory. Defaults to
+     * {@link AgentRunnerRegistry#CLAUDE}.
+     */
+    private String runnerName = AgentRunnerRegistry.CLAUDE;
+
+    /**
      * Default constructor for deserialization.
      */
-    public ClaudeCodeJobFactory() {
+    public CodingAgentJobFactory() {
         super(KeyUtils.generateKey());
         // Persist taskId in properties so it survives wire serialization.
         // AbstractJobFactory.encode() does NOT serialize the taskId field,
@@ -172,7 +186,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
      *
      * @param prompts the prompts to process
      */
-    public ClaudeCodeJobFactory(String... prompts) {
+    public CodingAgentJobFactory(String... prompts) {
         this();
         if (prompts.length > 0) {
             setPrompts(prompts);
@@ -185,7 +199,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
      *
      * @param prompts the list of prompts to process
      */
-    public ClaudeCodeJobFactory(List<String> prompts) {
+    public CodingAgentJobFactory(List<String> prompts) {
         this();
         setPrompts(prompts.toArray(new String[0]));
     }
@@ -197,7 +211,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
      * @param prompts  the prompts to encode and store
      */
     public void setPrompts(String... prompts) {
-        String code = String.join(ClaudeCodeJob.PROMPT_SEPARATOR, prompts);
+        String code = String.join(CodingAgentJob.PROMPT_SEPARATOR, prompts);
         set("prompts", GitManagedJob.base64Encode(code));
     }
 
@@ -211,7 +225,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
         if (prompts == null) {
             String code = GitManagedJob.base64Decode(get("prompts"));
             prompts = code == null ? new ArrayList<>()
-                    : new ArrayList<>(List.of(code.split(ClaudeCodeJob.PROMPT_SEPARATOR)));
+                    : new ArrayList<>(List.of(code.split(CodingAgentJob.PROMPT_SEPARATOR)));
         }
         return prompts;
     }
@@ -355,11 +369,11 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
 
     /**
      * Sets the Claude Code model for jobs created by this factory.  Passed to
-     * each created job via {@link ClaudeCodeJob#setModel(String)}.  The value
-     * is validated immediately against {@link ClaudeCodeJob#VALID_MODELS} so
+     * each created job via {@link CodingAgentJob#setModel(String)}.  The value
+     * is validated immediately against {@link CodingAgentJob#VALID_MODELS} so
      * misconfiguration fails at the caller rather than silently at dispatch.
      *
-     * @param model a value from {@link ClaudeCodeJob#VALID_MODELS}, or
+     * @param model a value from {@link CodingAgentJob#VALID_MODELS}, or
      *              {@code null}/empty to use the CLI default
      * @throws IllegalArgumentException if {@code model} is non-empty and
      *                                  not a recognised identifier
@@ -370,9 +384,9 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
             set("model", null);
             return;
         }
-        if (!ClaudeCodeJob.VALID_MODELS.contains(model)) {
+        if (!CodingAgentJob.VALID_MODELS.contains(model)) {
             throw new IllegalArgumentException("Invalid model '" + model
-                    + "'. Must be one of " + ClaudeCodeJob.VALID_MODELS);
+                    + "'. Must be one of " + CodingAgentJob.VALID_MODELS);
         }
         this.model = model;
         set("model", model);
@@ -381,7 +395,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
     /**
      * Returns the effort/thinking level for jobs created by this factory.
      *
-     * @return one of {@link ClaudeCodeJob#VALID_EFFORT_LEVELS}, or
+     * @return one of {@link CodingAgentJob#VALID_EFFORT_LEVELS}, or
      *         {@code null} to use the CLI default
      */
     public String getEffort() {
@@ -391,10 +405,10 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
     /**
      * Sets the effort/thinking level for jobs created by this factory.  The
      * value is validated immediately against
-     * {@link ClaudeCodeJob#VALID_EFFORT_LEVELS} so misconfiguration fails at
+     * {@link CodingAgentJob#VALID_EFFORT_LEVELS} so misconfiguration fails at
      * the caller rather than silently at dispatch.
      *
-     * @param effort one of {@link ClaudeCodeJob#VALID_EFFORT_LEVELS}, or
+     * @param effort one of {@link CodingAgentJob#VALID_EFFORT_LEVELS}, or
      *               {@code null}/empty to use the CLI default
      * @throws IllegalArgumentException if {@code effort} is not valid
      */
@@ -404,10 +418,10 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
             set("effort", null);
             return;
         }
-        if (!ClaudeCodeJob.VALID_EFFORT_LEVELS.contains(effort)) {
+        if (!CodingAgentJob.VALID_EFFORT_LEVELS.contains(effort)) {
             throw new IllegalArgumentException(
                     "Invalid effort level '" + effort + "'. Must be one of "
-                    + ClaudeCodeJob.VALID_EFFORT_LEVELS);
+                    + CodingAgentJob.VALID_EFFORT_LEVELS);
         }
         this.effort = effort;
         set("effort", effort);
@@ -623,8 +637,8 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
     /**
      * Returns the deduplication mode applied to jobs created by this factory.
      *
-     * @return {@link ClaudeCodeJob#DEDUP_LOCAL}, {@link ClaudeCodeJob#DEDUP_SPAWN},
-     *         or {@link ClaudeCodeJob#DEDUP_NONE}
+     * @return {@link CodingAgentJob#DEDUP_LOCAL}, {@link CodingAgentJob#DEDUP_SPAWN},
+     *         or {@link CodingAgentJob#DEDUP_NONE}
      */
     public String getDeduplicationMode() {
         return deduplicationMode;
@@ -633,9 +647,9 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
     /**
      * Sets the deduplication mode for jobs created by this factory.
      *
-     * @param deduplicationMode {@link ClaudeCodeJob#DEDUP_LOCAL},
-     *                          {@link ClaudeCodeJob#DEDUP_SPAWN},
-     *                          or {@link ClaudeCodeJob#DEDUP_NONE}
+     * @param deduplicationMode {@link CodingAgentJob#DEDUP_LOCAL},
+     *                          {@link CodingAgentJob#DEDUP_SPAWN},
+     *                          or {@link CodingAgentJob#DEDUP_NONE}
      */
     public void setDeduplicationMode(String deduplicationMode) {
         this.deduplicationMode = deduplicationMode;
@@ -645,7 +659,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
     /**
      * Returns the maximum number of deduplication passes for jobs created by this factory.
      *
-     * @return the pass cap; defaults to {@link ClaudeCodeJob#DEFAULT_MAX_DEDUP_PASSES}
+     * @return the pass cap; defaults to {@link CodingAgentJob#DEFAULT_MAX_DEDUP_PASSES}
      */
     public int getMaxDeduplicationPasses() {
         return maxDeduplicationPasses;
@@ -717,7 +731,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
      *
      * <p>When non-empty, the command is run after the agent's primary work.
      * A non-zero exit triggers a correction session. See
-     * {@link ClaudeCodeJob#getPostCompletionCommand()} for examples.</p>
+     * {@link CodingAgentJob#getPostCompletionCommand()} for examples.</p>
      *
      * @return the command string, or {@code null}/empty if disabled
      */
@@ -792,6 +806,64 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
     public void setPostCompletionTimeoutSeconds(int postCompletionTimeoutSeconds) {
         this.postCompletionTimeoutSeconds = postCompletionTimeoutSeconds;
         set("postCmdTimeout", String.valueOf(postCompletionTimeoutSeconds));
+    }
+
+    /**
+     * Returns the maximum number of post-completion correction sessions for jobs
+     * created by this factory.
+     *
+     * @return the pass cap; defaults to {@link CodingAgentJob#DEFAULT_MAX_POST_COMPLETION_PASSES}
+     */
+    public int getMaxPostCompletionPasses() {
+        return maxPostCompletionPasses;
+    }
+
+    /**
+     * Sets the maximum number of post-completion correction sessions for jobs created
+     * by this factory. Protects against a flaky gate command burning the entire context
+     * budget on repeated retries.
+     *
+     * @param maxPostCompletionPasses cap on correction sessions per job; must be positive
+     * @throws IllegalArgumentException if the value is not positive
+     */
+    public void setMaxPostCompletionPasses(int maxPostCompletionPasses) {
+        if (maxPostCompletionPasses <= 0) {
+            throw new IllegalArgumentException(
+                    "maxPostCompletionPasses must be positive, got: " + maxPostCompletionPasses);
+        }
+        this.maxPostCompletionPasses = maxPostCompletionPasses;
+        set("maxPostCmdPasses", String.valueOf(maxPostCompletionPasses));
+    }
+
+    /**
+     * Returns the name of the agent runner used to dispatch sessions for jobs
+     * created by this factory.
+     *
+     * @return the runner identifier; defaults to
+     *         {@link AgentRunnerRegistry#CLAUDE}
+     */
+    public String getRunnerName() { return runnerName; }
+
+    /**
+     * Sets the agent runner name applied to jobs created by this factory.
+     *
+     * @param runnerName a registered runner identifier; {@code null}/empty
+     *                   resets to the Claude runner
+     * @throws IllegalArgumentException when the runner is not registered
+     */
+    public void setRunnerName(String runnerName) {
+        if (runnerName == null || runnerName.isEmpty()) {
+            this.runnerName = AgentRunnerRegistry.CLAUDE;
+            set("runner", null);
+            return;
+        }
+        AgentRunnerRegistry.validateName(runnerName);
+        this.runnerName = runnerName;
+        if (AgentRunnerRegistry.CLAUDE.equals(runnerName)) {
+            set("runner", null);
+        } else {
+            set("runner", runnerName);
+        }
     }
 
     /**
@@ -873,7 +945,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
     }
 
     /**
-     * Creates the next {@link ClaudeCodeJob} from the prompt list, applying
+     * Creates the next {@link CodingAgentJob} from the prompt list, applying
      * all configuration properties. Returns {@code null} when all prompts
      * have been dispatched.
      *
@@ -893,7 +965,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
         String gitUserEmail = getGitUserEmail();
         String workstreamUrl = getWorkstreamUrl();
 
-        ClaudeCodeJob job = new ClaudeCodeJob(getTaskId(), p.get(index++));
+        CodingAgentJob job = new CodingAgentJob(getTaskId(), p.get(index++));
         job.setAllowedTools(allowedTools);
         job.setWorkingDirectory(workingDirectory);
         job.setMaxTurns(maxTurns);
@@ -965,6 +1037,9 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
             if (postCompletionTimeoutSeconds != PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS) {
                 job.setPostCompletionTimeoutSeconds(postCompletionTimeoutSeconds);
             }
+            if (maxPostCompletionPasses != CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES) {
+                job.setMaxPostCompletionPasses(maxPostCompletionPasses);
+            }
         }
 
         String pyReqs = getPythonRequirements();
@@ -979,6 +1054,10 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
 
         for (Map.Entry<String, String> entry : getRequiredLabels().entrySet()) {
             job.setRequiredLabel(entry.getKey(), entry.getValue());
+        }
+
+        if (runnerName != null && !AgentRunnerRegistry.CLAUDE.equals(runnerName)) {
+            job.setRunnerName(runnerName);
         }
 
         return job;
@@ -1053,6 +1132,11 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
                 break;
             case "enforceChanges":
                 break;
+            case "runner":
+                this.runnerName = (value == null || value.isEmpty())
+                        ? AgentRunnerRegistry.CLAUDE
+                        : value;
+                break;
             default:
                 setEnforcementFlag(key, value);
         }
@@ -1064,7 +1148,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
      *
      * <p>Called from {@link #set(String, String)} for keys not handled by the main switch.
      * Uses early return rather than break so the switch bodies here are textually distinct
-     * from the equivalent cases in {@link ClaudeCodeJob#set(String, String)}.</p>
+     * from the equivalent cases in {@link CodingAgentJob#set(String, String)}.</p>
      *
      * @param key   the property key
      * @param value the property value
@@ -1076,14 +1160,14 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
                 return;
             case "maxDedupPasses":
                 if (value == null || value.isEmpty()) {
-                    this.maxDeduplicationPasses = ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES;
+                    this.maxDeduplicationPasses = CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES;
                 } else {
                     try {
                         int parsed = Integer.parseInt(value);
                         this.maxDeduplicationPasses = (parsed > 0)
-                                ? parsed : ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES;
+                                ? parsed : CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES;
                     } catch (NumberFormatException e) {
-                        this.maxDeduplicationPasses = ClaudeCodeJob.DEFAULT_MAX_DEDUP_PASSES;
+                        this.maxDeduplicationPasses = CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES;
                     }
                 }
                 return;
@@ -1104,6 +1188,19 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
                         ? PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS
                         : Integer.parseInt(value);
                 return;
+            case "maxPostCmdPasses":
+                if (value == null || value.isEmpty()) {
+                    this.maxPostCompletionPasses = CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES;
+                } else {
+                    try {
+                        int parsed = Integer.parseInt(value);
+                        this.maxPostCompletionPasses = (parsed > 0)
+                                ? parsed : CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES;
+                    } catch (NumberFormatException e) {
+                        this.maxPostCompletionPasses = CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES;
+                    }
+                }
+                return;
             default:
                 // Unknown key; already stored in properties map by AbstractJobFactory.set().
         }
@@ -1116,7 +1213,7 @@ public class ClaudeCodeJobFactory extends AbstractJobFactory implements ConsoleF
      */
     @Override
     public String toString() {
-        return "ClaudeCodeJobFactory[prompts=" + getPrompts().size() +
+        return "CodingAgentJobFactory[prompts=" + getPrompts().size() +
                ", tools=" + allowedTools +
                ", branch=" + getTargetBranch() +
                ", completeness=" + getCompleteness() + "]";

@@ -23,7 +23,7 @@ import java.util.List;
  * operational context for autonomous coding agent execution.
  *
  * <p>This builder extracts the prompt-assembly logic from
- * {@link ClaudeCodeJob#buildInstructionPrompt()} into a standalone,
+ * {@link CodingAgentJob#buildInstructionPrompt()} into a standalone,
  * reusable class. All configuration state is provided via setter methods
  * (which support chaining), and the final prompt string is produced by
  * calling {@link #build()}.</p>
@@ -35,7 +35,7 @@ import java.util.List;
  * budget/turn/task/workstream context is included when available.</p>
  *
  * @author Michael Murray
- * @see ClaudeCodeJob
+ * @see CodingAgentJob
  */
 public class InstructionPromptBuilder {
 

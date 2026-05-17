@@ -29,7 +29,7 @@ import java.util.function.LongConsumer;
  * against subprocesses that spawn shell loops which fail to terminate
  * (a recurring failure mode for autonomous coding agents).</p>
  */
-final class ClaudeInactivityMonitor {
+final class AgentInactivityMonitor {
 
     /** The process being watched. */
     private final Process process;
@@ -58,7 +58,7 @@ final class ClaudeInactivityMonitor {
      * @param onTimeout                callback invoked with the observed idle ms when firing
      * @param threadName               name for the daemon monitor thread
      */
-    ClaudeInactivityMonitor(Process process,
+    AgentInactivityMonitor(Process process,
                              AtomicLong lastOutputAt,
                              long inactivityTimeoutMillis,
                              LongConsumer onTimeout,

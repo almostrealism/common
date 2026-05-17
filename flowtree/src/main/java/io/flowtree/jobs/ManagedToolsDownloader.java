@@ -38,7 +38,7 @@ import java.util.Map;
  * Handles downloading and verification of MCP tool server files
  * for pushed tool configurations.
  *
- * <p>This class extracts tool downloading logic from {@link ClaudeCodeJob},
+ * <p>This class extracts tool downloading logic from {@link CodingAgentJob},
  * providing methods to download pushed tool source files from a controller
  * and to verify that MCP tool server files exist in a working directory.</p>
  *
@@ -47,7 +47,7 @@ import java.util.Map;
  * file is saved to {@code ~/.flowtree/tools/mcp/{name}/server.py}.</p>
  *
  * @author Michael Murray
- * @see ClaudeCodeJob
+ * @see CodingAgentJob
  * @see McpConfigBuilder
  */
 public class ManagedToolsDownloader implements ConsoleFeatures {

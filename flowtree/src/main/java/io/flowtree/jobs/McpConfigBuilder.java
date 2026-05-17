@@ -50,7 +50,7 @@ import java.util.regex.Pattern;
  * ar-test-runner, ar-docs) are included alongside ar-manager.</p>
  *
  * @author Michael Murray
- * @see ClaudeCodeJob
+ * @see CodingAgentJob
  * @see McpToolDiscovery
  */
 public class McpConfigBuilder implements ConsoleFeatures {
@@ -206,8 +206,8 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * becomes {@code "<empty>"}, and longer values are truncated to
      * {@link #PUSHED_TOOLS_CONFIG_PREVIEW_LIMIT} characters with an ellipsis.
      *
-     * <p>Used across the pushed-tools pipeline ({@link ClaudeCodeJobFactory},
-     * {@link ClaudeCodeJob}, {@link ManagedToolsDownloader}, and the
+     * <p>Used across the pushed-tools pipeline ({@link CodingAgentJobFactory},
+     * {@link CodingAgentJob}, {@link ManagedToolsDownloader}, and the
      * submission sites in the controller) so that every stage emits a
      * consistent, comparable preview of the value it observed.</p>
      *
@@ -513,9 +513,9 @@ public class McpConfigBuilder implements ConsoleFeatures {
     public void applyAgentEnvironment(Map<String, String> env, String wsUrl) {
         if (wsUrl != null && !wsUrl.isEmpty()) {
             env.put("AR_WORKSTREAM_URL", wsUrl);
-            String base = ClaudeCodeJob.extractControllerBaseUrl(wsUrl);
+            String base = CodingAgentJob.extractControllerBaseUrl(wsUrl);
             if (base != null) env.put("AR_CONTROLLER_URL", base);
-            String wid = ClaudeCodeJob.extractWorkstreamId(wsUrl);
+            String wid = CodingAgentJob.extractWorkstreamId(wsUrl);
             if (wid != null) env.put("AR_WORKSTREAM_ID", wid);
         }
         if (arManagerToken != null && !arManagerToken.isEmpty()) {

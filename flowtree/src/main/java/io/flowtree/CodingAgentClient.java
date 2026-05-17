@@ -16,7 +16,7 @@
 
 package io.flowtree;
 
-import io.flowtree.jobs.ClaudeCodeJob;
+import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.msg.Message;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.Console;
@@ -39,7 +39,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <h2>Usage</h2>
  * <pre>{@code
  * // Connect to agents
- * ClaudeCodeClient client = new ClaudeCodeClient();
+ * CodingAgentClient client = new CodingAgentClient();
  * client.addAgent("localhost", 7766);  // sandbox-a
  * client.addAgent("localhost", 7767);  // sandbox-b
  * client.start();
@@ -55,7 +55,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * );
  *
  * // Submit with custom configuration
- * ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(
+ * CodingAgentJob.Factory factory = new CodingAgentJob.Factory(
  *     "Implement the new caching feature"
  * );
  * factory.setAllowedTools("Read,Edit,Bash,Glob,Grep");
@@ -67,21 +67,21 @@ import java.util.concurrent.ConcurrentHashMap;
  * <h2>Command Line Usage</h2>
  * <pre>
  * # Submit a prompt to agents
- * java -cp flowtree-*.jar io.flowtree.ClaudeCodeClient \
+ * java -cp flowtree-*.jar io.flowtree.CodingAgentClient \
  *     --host localhost --port 7766 \
  *     --prompt "Fix the bug in auth.py"
  *
  * # Submit to multiple agents
- * java -cp flowtree-*.jar io.flowtree.ClaudeCodeClient \
+ * java -cp flowtree-*.jar io.flowtree.CodingAgentClient \
  *     --host localhost --port 7766,7767,7768,7769 \
  *     --prompt "Review and improve error handling"
  * </pre>
  *
  * @author Michael Murray
  * @see Server
- * @see io.flowtree.jobs.ClaudeCodeJob
+ * @see io.flowtree.jobs.CodingAgentJob
  */
-public class ClaudeCodeClient implements ConsoleFeatures {
+public class CodingAgentClient implements ConsoleFeatures {
 
 	/** Pool of remote agent connections available for job submission. */
 	private final List<AgentConnection> agents = new ArrayList<>();
@@ -95,7 +95,7 @@ public class ClaudeCodeClient implements ConsoleFeatures {
 	/**
 	 * Creates a new client with no initial connections.
 	 */
-	public ClaudeCodeClient() {
+	public CodingAgentClient() {
 	}
 
 	/**
@@ -190,7 +190,7 @@ public class ClaudeCodeClient implements ConsoleFeatures {
 	 * @param agentIndex the index of the target agent
 	 * @return true if the job was sent successfully, false otherwise
 	 */
-	private boolean trySendToAgent(ClaudeCodeJob.Factory factory, int agentIndex) {
+	private boolean trySendToAgent(CodingAgentJob.Factory factory, int agentIndex) {
 		for (int attempt = 0; attempt < 2; attempt++) {
 			NodeProxy proxy = ensureConnected(agentIndex);
 			if (proxy == null) {
@@ -221,7 +221,7 @@ public class ClaudeCodeClient implements ConsoleFeatures {
 	 *         could not be reached
 	 */
 	public boolean submit(String... prompts) {
-		ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompts);
+		CodingAgentJob.Factory factory = new CodingAgentJob.Factory(prompts);
 		return submit(factory);
 	}
 
@@ -234,7 +234,7 @@ public class ClaudeCodeClient implements ConsoleFeatures {
 	 * @return true if the job was submitted successfully, false if the agent
 	 *         could not be reached
 	 */
-	public boolean submit(ClaudeCodeJob.Factory factory) {
+	public boolean submit(CodingAgentJob.Factory factory) {
 		if (server == null) {
 			throw new IllegalStateException("Client not started. Call start() first.");
 		}
@@ -259,7 +259,7 @@ public class ClaudeCodeClient implements ConsoleFeatures {
 	 * @return true if the job was submitted successfully, false if the agent
 	 *         could not be reached
 	 */
-	public boolean submitTo(ClaudeCodeJob.Factory factory, int agentIndex) {
+	public boolean submitTo(CodingAgentJob.Factory factory, int agentIndex) {
 		if (server == null) {
 			throw new IllegalStateException("Client not started. Call start() first.");
 		}
@@ -305,8 +305,8 @@ public class ClaudeCodeClient implements ConsoleFeatures {
 	/**
 	 * Command-line entry point. Parses arguments for host, port(s), prompt
 	 * text, allowed tools, max turns, and max budget; creates a
-	 * {@link ClaudeCodeClient}; and submits a single
-	 * {@link io.flowtree.jobs.ClaudeCodeJob.Factory} to the configured agents.
+	 * {@link CodingAgentClient}; and submits a single
+	 * {@link io.flowtree.jobs.CodingAgentJob.Factory} to the configured agents.
 	 *
 	 * @param args  command-line arguments (see {@link #printUsage()} for details)
 	 * @throws IOException if a network error occurs while connecting to an agent
@@ -315,7 +315,7 @@ public class ClaudeCodeClient implements ConsoleFeatures {
 		String host = "localhost";
 		String ports = "7766";
 		String prompt = null;
-		String tools = ClaudeCodeJob.DEFAULT_TOOLS;
+		String tools = CodingAgentJob.DEFAULT_TOOLS;
 		int maxTurns = 50;
 		double maxBudget = 10.0;
 
@@ -355,14 +355,14 @@ public class ClaudeCodeClient implements ConsoleFeatures {
 		}
 
 		// Create client and add agents
-		ClaudeCodeClient client = new ClaudeCodeClient();
+		CodingAgentClient client = new CodingAgentClient();
 		for (String portStr : ports.split(",")) {
 			client.addAgent(host, Integer.parseInt(portStr.trim()));
 		}
 		client.start();
 
 		// Create and configure job factory
-		ClaudeCodeJob.Factory factory = new ClaudeCodeJob.Factory(prompt);
+		CodingAgentJob.Factory factory = new CodingAgentJob.Factory(prompt);
 		factory.setAllowedTools(tools);
 		factory.setMaxTurns(maxTurns);
 		factory.setMaxBudgetUsd(maxBudget);
@@ -383,7 +383,7 @@ public class ClaudeCodeClient implements ConsoleFeatures {
 	 * {@link System#out}.
 	 */
 	private static void printUsage() {
-		Console.root().println("Usage: ClaudeCodeClient [options]");
+		Console.root().println("Usage: CodingAgentClient [options]");
 		Console.root().println("");
 		Console.root().println("Options:");
 		Console.root().println("  --host, -h <host>       Agent hostname (default: localhost)");
@@ -396,12 +396,12 @@ public class ClaudeCodeClient implements ConsoleFeatures {
 		Console.root().println("");
 		Console.root().println("Examples:");
 		Console.root().println("  # Submit to single agent");
-		Console.root().println("  java -cp flowtree.jar io.flowtree.ClaudeCodeClient \\");
+		Console.root().println("  java -cp flowtree.jar io.flowtree.CodingAgentClient \\");
 		Console.root().println("      --host localhost --port 7766 \\");
 		Console.root().println("      --prompt \"Fix the null pointer in UserService\"");
 		Console.root().println("");
 		Console.root().println("  # Submit to multiple agents");
-		Console.root().println("  java -cp flowtree.jar io.flowtree.ClaudeCodeClient \\");
+		Console.root().println("  java -cp flowtree.jar io.flowtree.CodingAgentClient \\");
 		Console.root().println("      --host localhost --port 7766,7767,7768,7769 \\");
 		Console.root().println("      --prompt \"Review error handling across the codebase\"");
 	}

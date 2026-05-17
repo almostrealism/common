@@ -28,20 +28,20 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Tests for {@link ClaudeCodeJobEvent} covering inheritance,
+ * Tests for {@link CodingAgentJobEvent} covering inheritance,
  * Claude Code-specific builder methods, and default values.
  */
-public class ClaudeCodeJobEventTest extends TestSuiteBase {
+public class CodingAgentJobEventTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void extendsBaseEvent() {
-		ClaudeCodeJobEvent event = ClaudeCodeJobEvent.success("cc-1", "Claude job");
+		CodingAgentJobEvent event = CodingAgentJobEvent.success("cc-1", "Claude job");
 		assertTrue(event instanceof JobCompletionEvent);
 	}
 
 	@Test(timeout = 30000)
 	public void withClaudeCodeInfoSetsFields() {
-		ClaudeCodeJobEvent event = ClaudeCodeJobEvent.success("cc-2", "Claude job")
+		CodingAgentJobEvent event = CodingAgentJobEvent.success("cc-2", "Claude job")
 				.withClaudeCodeInfo("prompt", "session-1", 0);
 
 		assertEquals("prompt", event.getPrompt());
@@ -53,7 +53,7 @@ public class ClaudeCodeJobEventTest extends TestSuiteBase {
 	public void withSessionDetailsSetsFields() {
 		List<String> denied = Arrays.asList("Edit", "Bash");
 
-		ClaudeCodeJobEvent event = ClaudeCodeJobEvent.success("cc-3", "Claude job")
+		CodingAgentJobEvent event = CodingAgentJobEvent.success("cc-3", "Claude job")
 				.withSessionDetails("success", false, 2, denied);
 
 		assertEquals("success", event.getSubtype());
@@ -64,7 +64,7 @@ public class ClaudeCodeJobEventTest extends TestSuiteBase {
 
 	@Test(timeout = 30000)
 	public void deniedToolNamesDefaultsToEmpty() {
-		ClaudeCodeJobEvent event = ClaudeCodeJobEvent.success("cc-4", "Claude job");
+		CodingAgentJobEvent event = CodingAgentJobEvent.success("cc-4", "Claude job");
 
 		assertNotNull(event.getDeniedToolNames());
 		assertTrue(event.getDeniedToolNames().isEmpty());

@@ -308,7 +308,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * Called when git tampering is detected after {@link #doWork()}.
      *
      * <p>The default implementation logs a warning and returns {@code false}
-     * (no retry). Subclasses like {@link ClaudeCodeJob} override this to
+     * (no retry). Subclasses like {@link CodingAgentJob} override this to
      * restart the agent session with a violation warning, giving the agent
      * one chance to redo its work without tampering.</p>
      *
@@ -549,7 +549,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      * Creates the completion event for this job.
      *
      * <p>Subclasses can override to return a more specific event type.
-     * For example, {@link ClaudeCodeJob} returns {@link ClaudeCodeJobEvent}.</p>
+     * For example, {@link CodingAgentJob} returns {@link CodingAgentJobEvent}.</p>
      *
      * @param error the exception if the job failed, or null on success
      * @return the event to fire
@@ -572,7 +572,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      */
     protected void populateEventDetails(JobCompletionEvent event) {
         // Default implementation does nothing
-        // Subclasses like ClaudeCodeJob override to add prompt, sessionId, etc.
+        // Subclasses like CodingAgentJob override to add prompt, sessionId, etc.
     }
 
     /**
@@ -647,8 +647,8 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      *
      * <p>Example outputs:
      * <ul>
-     *   <li>With task ID: {@code "ClaudeCodeJob [abc-123]: message text"}</li>
-     *   <li>Without task ID: {@code "ClaudeCodeJob: message text"}</li>
+     *   <li>With task ID: {@code "CodingAgentJob [abc-123]: message text"}</li>
+     *   <li>Without task ID: {@code "CodingAgentJob: message text"}</li>
      * </ul>
      *
      * @param msg the raw message text
@@ -1121,7 +1121,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         String url = workstreamUrl;
 
         String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
-        if (rootHost != null && !rootHost.isEmpty() && url.contains("0.0.0.0")) {
+        if (url != null && rootHost != null && !rootHost.isEmpty() && url.contains("0.0.0.0")) {
             url = url.replace("0.0.0.0", rootHost);
         }
 
