@@ -48,7 +48,7 @@ its own host) — there are no per-workstream overrides.
 | `OPENCODE_PROVIDER_URL` | `http://localhost:11434/v1` | OpenAI-compatible endpoint URL. |
 | `OPENCODE_API_KEY` | empty | API key for the provider. Local llama.cpp / ollama do not require one. |
 | `OPENCODE_DEFAULT_MODEL` | (unset; falls back to `qwen3-coder-30b`) | Model name used when the submitted job does not specify one. |
-| `OPENCODE_CONFIG` | (set automatically) | Path to the synthesized config file. Set by the runner before launching the opencode subprocess; operators do not need to configure this. |
+| `OPENCODE_CONFIG` | (set automatically at launch) | Path to the synthesized config file. Set by the runner before launching the opencode subprocess; operators do not need to configure this. |
 
 ### Binary discovery order
 
