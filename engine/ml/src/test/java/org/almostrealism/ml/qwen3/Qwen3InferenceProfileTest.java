@@ -8,6 +8,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.ml.StateDictionary;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -71,7 +72,7 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 		log("Model compiled in " + compileTime + " ms");
 
 		OperationProfileNode profile = model.getProfile();
-		org.almostrealism.model.CompiledModel compiledModel = model.getCompiledModel();
+		CompiledModel compiledModel = model.getCompiledModel();
 		PackedCollection embeddings = model.getTokenEmbeddings();
 		PackedCollection position = model.getPosition();
 
