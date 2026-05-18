@@ -22,9 +22,9 @@ import io.flowtree.JsonFieldExtractor;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -99,9 +99,25 @@ final class OpencodeOutputParser {
         boolean isError = exitCode != 0;
         List<String> denied = new ArrayList<>();
 
+        EventStreamResult events = parseEventStream(rawOutput);
+        if (events != null) {
+            if (events.sessionId != null) sessionId = events.sessionId;
+            if (!events.responseText.isEmpty()) responseText = events.responseText;
+            if (events.numTurns > 0) numTurns = events.numTurns;
+            if (events.errorSeen) {
+                isError = true;
+                if (stopReason.equals(STOP_SUCCESS)) stopReason = STOP_ERROR_UNKNOWN;
+            }
+        }
+
         JsonNode root = findLastJsonObject(rawOutput);
         if (root != null) {
-            sessionId = firstText(root, "session_id", "sessionId", "id");
+            // Only overwrite values already set by the event-stream parser
+            // when the legacy single-object path can supply a non-null match.
+            String legacySession = firstText(root, "session_id", "sessionId", "id");
+            if (legacySession != null) {
+                sessionId = legacySession;
+            }
             String stop = firstText(root, "stopReason", "stop_reason", "finish_reason", "reason");
             if (stop != null && !stop.isEmpty()) {
                 stopReason = stop;
@@ -160,6 +176,105 @@ final class OpencodeOutputParser {
                 isError,
                 denied,
                 meta);
+    }
+
+    /**
+     * Walks the captured stdout as an NDJSON event stream and extracts the
+     * fields that map onto {@link AgentRunResult}. Recognised event types:
+     * <ul>
+     *   <li>{@code step_start} — counted as one turn</li>
+     *   <li>{@code text} — assistant-emitted text chunk; {@code part.text} is
+     *       appended to the running response text</li>
+     *   <li>{@code error} — flips {@code errorSeen}</li>
+     * </ul>
+     *
+     * <p>Other event types contribute only their {@code sessionID} if seen.
+     * Returns {@code null} when no line of {@code raw} looks like an opencode
+     * event — the caller then falls back to the legacy single-object parser
+     * for older fixtures.</p>
+     *
+     * @param raw the captured stdout
+     * @return aggregated stream result, or {@code null} when not an event stream
+     */
+    private static EventStreamResult parseEventStream(String raw) {
+        if (raw == null || raw.isEmpty()) return null;
+        String[] lines = raw.split("\\r?\\n");
+        EventStreamResult acc = new EventStreamResult();
+        boolean sawAny = false;
+        StringBuilder text = new StringBuilder();
+        Set<String> messageIds = new LinkedHashSet<>();
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty() || !trimmed.startsWith("{")) continue;
+            JsonNode node;
+            try {
+                node = MAPPER.readTree(trimmed);
+            } catch (Exception ignored) {
+                continue;
+            }
+            // Recognise an event by the presence of a top-level `type` AND
+            // either `sessionID` (opencode 1.x camelCase) or `part`. This
+            // avoids matching legacy single-object fixtures that carry a
+            // `type` field for some other reason.
+            JsonNode typeNode = node.get("type");
+            JsonNode partNode = node.get("part");
+            JsonNode sessionNode = node.get("sessionID");
+            if (typeNode == null || !typeNode.isTextual()) continue;
+            if (partNode == null && sessionNode == null) continue;
+            sawAny = true;
+            if (sessionNode != null && sessionNode.isTextual()) {
+                acc.sessionId = sessionNode.asText();
+            }
+            String type = typeNode.asText();
+            switch (type) {
+                case "step_start":
+                case "step-start":
+                    acc.numTurns++;
+                    break;
+                case "text":
+                    if (partNode != null) {
+                        JsonNode textNode = partNode.get("text");
+                        JsonNode msgIdNode = partNode.get("messageID");
+                        if (textNode != null && textNode.isTextual()) {
+                            text.append(textNode.asText());
+                        }
+                        if (msgIdNode != null && msgIdNode.isTextual()) {
+                            messageIds.add(msgIdNode.asText());
+                        }
+                    }
+                    break;
+                case "error":
+                    acc.errorSeen = true;
+                    break;
+                default:
+                    // ignore — tool_use, tool_result, step_finish, etc.
+                    break;
+            }
+        }
+        if (!sawAny) return null;
+        acc.responseText = text.toString();
+        // Prefer step_start count; if none were seen but text was produced,
+        // count distinct assistant messageIDs (some opencode flows omit
+        // step_start when there is no tool invocation).
+        if (acc.numTurns == 0 && !messageIds.isEmpty()) {
+            acc.numTurns = messageIds.size();
+        }
+        return acc;
+    }
+
+    /**
+     * Aggregated result of {@link #parseEventStream}: the values we surface to
+     * {@link AgentRunResult} from a successful event-stream walk.
+     */
+    private static final class EventStreamResult {
+        /** Latest {@code sessionID} seen on any event, or {@code null} when absent. */
+        String sessionId;
+        /** Concatenated {@code part.text} of all text events, in stream order. */
+        String responseText = "";
+        /** Number of {@code step_start} events, or distinct assistant messageIDs if none. */
+        int numTurns;
+        /** {@code true} when at least one {@code error} event was emitted. */
+        boolean errorSeen;
     }
 
     /**
@@ -298,13 +413,14 @@ final class OpencodeOutputParser {
 
     /** Known top-level field names we explicitly handle. */
     private static final Set<String> KNOWN_FIELDS = Set.of(
-            "session_id", "sessionId", "id",
+            "session_id", "sessionId", "sessionID", "id",
             "stopReason", "stop_reason", "finish_reason", "reason",
             "is_error", "isError", "error",
             "steps", "iterations", "num_turns", "numTurns",
             "denials", "permission_denials", "permissionDenials",
             "result", "response", "text", "messages",
-            "type", "role", "content");
+            "type", "role", "content",
+            "timestamp", "part");
 
     /**
      * Logs unknown top-level fields at debug level so future opencode releases

@@ -60,6 +60,16 @@ services:
       - OPENCODE_PROVIDER_URL=${OPENCODE_PROVIDER_URL:-}
       - OPENCODE_API_KEY=${OPENCODE_API_KEY:-}
       - OPENCODE_DEFAULT_MODEL=${OPENCODE_DEFAULT_MODEL:-}
+    # Lets containers resolve `mac-studio` to its Tailscale IP. The short
+    # MagicDNS name does not propagate into Docker Desktop's embedded DNS
+    # resolver — confirmed by `getent hosts mac-studio` failing inside a
+    # running agent container while the FQDN `mac-studio.taild0f87.ts.net`
+    # succeeds. Pinning the address keeps OPENCODE_PROVIDER_URL stable as
+    # `http://mac-studio:<port>/v1` regardless of which tailnet peer hosts
+    # the agent. Update the IP if mac-studio's Tailscale address ever
+    # changes (rare — it's a stable per-machine assignment).
+    extra_hosts:
+      - "mac-studio:100.126.249.28"
     logging:
       driver: json-file
       options:

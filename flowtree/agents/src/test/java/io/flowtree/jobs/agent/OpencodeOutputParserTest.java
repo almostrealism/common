@@ -156,4 +156,83 @@ public class OpencodeOutputParserTest extends TestSuiteBase {
                 withFakeCost, 0, false, 0L, Collections.emptyMap(), SILENT);
         assertEquals(0.0, result.costUsd(), 0.0);
     }
+
+    /**
+     * Real opencode 1.15.4 output: NDJSON event stream with top-level
+     * {@code type} / {@code sessionID} / {@code part}. Captured from
+     * {@code opencode run --format json} against a local llama.cpp endpoint.
+     */
+    private static final String OPENCODE_1_15_EVENT_STREAM = ""
+            + "{\"type\":\"step_start\",\"timestamp\":1779130904807,"
+            + "\"sessionID\":\"ses_1c388ed5affeeJOw2nrnpRZdFc\","
+            + "\"part\":{\"id\":\"prt_e3c7730e4001AiAKjiD26HhJXl\","
+            + "\"messageID\":\"msg_e3c77138a001GeGe2Ad9jnMWbI\","
+            + "\"sessionID\":\"ses_1c388ed5affeeJOw2nrnpRZdFc\","
+            + "\"type\":\"step-start\"}}\n"
+            + "{\"type\":\"text\",\"timestamp\":1779130904864,"
+            + "\"sessionID\":\"ses_1c388ed5affeeJOw2nrnpRZdFc\","
+            + "\"part\":{\"id\":\"prt_e3c7730e7001b6Uwgu84XAjEDo\","
+            + "\"messageID\":\"msg_e3c77138a001GeGe2Ad9jnMWbI\","
+            + "\"sessionID\":\"ses_1c388ed5affeeJOw2nrnpRZdFc\","
+            + "\"type\":\"text\",\"text\":\"OK\","
+            + "\"time\":{\"start\":1779130904807,\"end\":1779130904862}}}\n";
+
+    /** The 1.15.4 NDJSON event stream is recognised and mapped onto the result. */
+    @Test(timeout = 5000)
+    public void parsesOpencode1_15EventStream() {
+        AgentRunResult result = OpencodeOutputParser.parse(
+                OPENCODE_1_15_EVENT_STREAM, 0, false, 850L, Collections.emptyMap(), SILENT);
+
+        assertEquals(0, result.exitCode());
+        assertEquals("ses_1c388ed5affeeJOw2nrnpRZdFc", result.sessionId());
+        assertEquals("step_start should count as one turn", 1, result.numTurns());
+        assertEquals(OpencodeOutputParser.STOP_SUCCESS, result.stopReason());
+        assertFalse(result.sessionIsError());
+        assertEquals("OK", result.runnerMetadata().get("response_text"));
+    }
+
+    /** A multi-chunk text stream concatenates assistant text in order. */
+    @Test(timeout = 5000)
+    public void concatenatesStreamedTextChunks() {
+        String stream = ""
+                + "{\"type\":\"step_start\",\"sessionID\":\"ses_x\","
+                + "\"part\":{\"messageID\":\"msg_1\",\"type\":\"step-start\"}}\n"
+                + "{\"type\":\"text\",\"sessionID\":\"ses_x\","
+                + "\"part\":{\"messageID\":\"msg_1\",\"type\":\"text\",\"text\":\"Hello \"}}\n"
+                + "{\"type\":\"text\",\"sessionID\":\"ses_x\","
+                + "\"part\":{\"messageID\":\"msg_1\",\"type\":\"text\",\"text\":\"world\"}}\n";
+        AgentRunResult result = OpencodeOutputParser.parse(
+                stream, 0, false, 100L, Collections.emptyMap(), SILENT);
+        assertEquals("ses_x", result.sessionId());
+        assertEquals(1, result.numTurns());
+        assertEquals("Hello world", result.runnerMetadata().get("response_text"));
+    }
+
+    /** An event-stream {@code error} event flips sessionIsError even on exit 0. */
+    @Test(timeout = 5000)
+    public void eventStreamErrorEventTrumpsZeroExit() {
+        String stream = ""
+                + "{\"type\":\"step_start\",\"sessionID\":\"ses_y\","
+                + "\"part\":{\"messageID\":\"msg_2\",\"type\":\"step-start\"}}\n"
+                + "{\"type\":\"error\",\"sessionID\":\"ses_y\","
+                + "\"part\":{\"type\":\"error\",\"message\":\"provider 502\"}}\n";
+        AgentRunResult result = OpencodeOutputParser.parse(
+                stream, 0, false, 50L, Collections.emptyMap(), SILENT);
+        assertTrue(result.sessionIsError());
+        assertEquals(OpencodeOutputParser.STOP_ERROR_UNKNOWN, result.stopReason());
+    }
+
+    /** When no step_start events appear but text events carry messageIDs, count those. */
+    @Test(timeout = 5000)
+    public void countsDistinctMessageIdsWhenStepStartAbsent() {
+        String stream = ""
+                + "{\"type\":\"text\",\"sessionID\":\"ses_z\","
+                + "\"part\":{\"messageID\":\"msg_a\",\"type\":\"text\",\"text\":\"first\"}}\n"
+                + "{\"type\":\"text\",\"sessionID\":\"ses_z\","
+                + "\"part\":{\"messageID\":\"msg_b\",\"type\":\"text\",\"text\":\"second\"}}\n";
+        AgentRunResult result = OpencodeOutputParser.parse(
+                stream, 0, false, 10L, Collections.emptyMap(), SILENT);
+        assertEquals(2, result.numTurns());
+        assertEquals("firstsecond", result.runnerMetadata().get("response_text"));
+    }
 }

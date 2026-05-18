@@ -128,6 +128,7 @@ public class OpencodeRunner implements AgentRunner {
 
         ProcessBuilder pb = new ProcessBuilder(command);
         AgentProcessRunner.applyRequestToProcessBuilder(pb, request);
+        pb.environment().put("OPENCODE_CONFIG", configPath.toString());
 
         Path workDir = request.getWorkingDirectory();
         logger.log("Command: " + String.join(" ", command));
@@ -173,9 +174,17 @@ public class OpencodeRunner implements AgentRunner {
      * Builds the {@code opencode} command line. Exposed so tests can assert
      * the exact flags without running the subprocess.
      *
+     * <p>The {@code configPath} is intentionally not passed on the argv —
+     * opencode 1.x removed {@code --config}. The runner injects it instead
+     * via the {@code OPENCODE_CONFIG} environment variable when launching the
+     * process (see {@link #run}). The parameter is retained so the runner can
+     * synthesize and persist the JSON before launch and so the test surface
+     * stays stable.</p>
+     *
      * @param binary         resolved binary path
      * @param request        the run request
-     * @param configPath     path to the synthesized config file
+     * @param configPath     path to the synthesized config file (passed via
+     *                       {@code OPENCODE_CONFIG} at launch, not on argv)
      * @param qualifiedModel resolved provider/model identifier
      * @return the argv list passed to {@link ProcessBuilder}
      */
@@ -186,12 +195,11 @@ public class OpencodeRunner implements AgentRunner {
         List<String> command = new ArrayList<>();
         command.add(binary.toString());
         command.add("run");
-        command.add("--config");
-        command.add(configPath.toString());
         command.add("--model");
         command.add(qualifiedModel);
-        command.add("--output-format");
+        command.add("--format");
         command.add("json");
+        command.add("--dangerously-skip-permissions");
         command.add(request.getPrompt() != null ? request.getPrompt() : "");
         return command;
     }

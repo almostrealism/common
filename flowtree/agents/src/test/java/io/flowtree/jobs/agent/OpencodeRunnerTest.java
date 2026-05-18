@@ -64,7 +64,11 @@ public class OpencodeRunnerTest extends TestSuiteBase {
         assertTrue(runner instanceof OpencodeRunner);
     }
 
-    /** Command line includes the binary, run subcommand, config flag, model flag, and prompt. */
+    /**
+     * Command line matches opencode 1.x: {@code run}, {@code --model}, {@code --format json},
+     * {@code --dangerously-skip-permissions}, and the prompt — with the config path
+     * intentionally absent (it is injected via {@code OPENCODE_CONFIG} at launch).
+     */
     @Test(timeout = 5000)
     public void buildCommandLineIncludesCoreFlags() {
         OpencodeRunner runner = new OpencodeRunner();
@@ -81,9 +85,14 @@ public class OpencodeRunnerTest extends TestSuiteBase {
 
         Assert.assertEquals(FAKE_BINARY.toString(), cmd.get(0));
         Assert.assertEquals("run", cmd.get(1));
-        assertFlagFollows(cmd, "--config", configPath.toString());
         assertFlagFollows(cmd, "--model", "local/qwen3-coder");
-        assertFlagFollows(cmd, "--output-format", "json");
+        assertFlagFollows(cmd, "--format", "json");
+        assertTrue("--dangerously-skip-permissions must be present for headless runs",
+                cmd.contains("--dangerously-skip-permissions"));
+        Assert.assertFalse("opencode 1.x removed --config; path is passed via env",
+                cmd.contains("--config"));
+        Assert.assertFalse("opencode 1.x renamed --output-format to --format",
+                cmd.contains("--output-format"));
         Assert.assertEquals("do the thing", cmd.get(cmd.size() - 1));
     }
 
