@@ -128,7 +128,10 @@ public class OpencodeRunner implements AgentRunner {
 
         ProcessBuilder pb = new ProcessBuilder(command);
         AgentProcessRunner.applyRequestToProcessBuilder(pb, request);
-        pb.environment().put("OPENCODE_CONFIG", configPath.toString());
+        // Must be absolute: opencode resolves OPENCODE_CONFIG relative to the
+        // subprocess cwd, which is the agent's working directory (the repo
+        // clone), not the directory where the runner wrote the config file.
+        pb.environment().put("OPENCODE_CONFIG", configPath.toAbsolutePath().toString());
 
         Path workDir = request.getWorkingDirectory();
         logger.log("Command: " + String.join(" ", command));
