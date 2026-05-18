@@ -115,8 +115,8 @@ final class SubmissionRunnerResolver {
                 // should not be able to brick a submission).
                 continue;
             }
-            phases.putIfAbsent(phase, runner);
-            if (!AgentRunnerRegistry.available().contains(runner)) {
+            String previous = phases.putIfAbsent(phase, runner);
+            if (previous == null && !AgentRunnerRegistry.available().contains(runner)) {
                 return fail("Unknown runner: '" + runner + "'. Available: "
                         + AgentRunnerRegistry.available());
             }

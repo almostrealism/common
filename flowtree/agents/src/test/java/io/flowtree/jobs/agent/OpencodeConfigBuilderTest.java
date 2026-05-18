@@ -24,8 +24,6 @@ import org.junit.Test;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.Function;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -41,11 +39,6 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
     /** JSON mapper for assertions. */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /** Returns an environment lookup backed by {@code map}. */
-    private static Function<String, String> envOf(Map<String, String> map) {
-        return map::get;
-    }
-
     /** A representative orchestrator MCP config with both HTTP and stdio servers. */
     private static final String MCP_INPUT = "{"
             + "\"mcpServers\":{"
@@ -60,14 +53,14 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
     public void resolveProviderUrlReadsEnvFirst() {
         Map<String, String> env = new HashMap<>();
         env.put(OpencodeConfigBuilder.ENV_PROVIDER_URL, "http://10.0.0.5:11434/v1");
-        OpencodeConfigBuilder b = new OpencodeConfigBuilder(envOf(env));
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(env::get);
         assertEquals("http://10.0.0.5:11434/v1", b.resolveProviderUrl());
     }
 
     /** Without {@code OPENCODE_PROVIDER_URL}, the builder uses the ollama default. */
     @Test(timeout = 5000)
     public void resolveProviderUrlDefaultsToOllama() {
-        OpencodeConfigBuilder b = new OpencodeConfigBuilder(envOf(new HashMap<>()));
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
         assertEquals(OpencodeConfigBuilder.DEFAULT_PROVIDER_URL, b.resolveProviderUrl());
     }
 
@@ -75,11 +68,11 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
     @Test(timeout = 5000)
     public void resolveApiKeyReadsEnvOrEmpty() {
         Map<String, String> env = new HashMap<>();
-        OpencodeConfigBuilder b = new OpencodeConfigBuilder(envOf(env));
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(env::get);
         assertEquals("", b.resolveApiKey());
 
         env.put(OpencodeConfigBuilder.ENV_API_KEY, "sk-test-xyz");
-        OpencodeConfigBuilder withKey = new OpencodeConfigBuilder(envOf(env));
+        OpencodeConfigBuilder withKey = new OpencodeConfigBuilder(env::get);
         assertEquals("sk-test-xyz", withKey.resolveApiKey());
     }
 
@@ -87,12 +80,12 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
     @Test(timeout = 5000)
     public void resolveModelHonorsPrecedence() {
         Map<String, String> env = new HashMap<>();
-        OpencodeConfigBuilder b = new OpencodeConfigBuilder(envOf(env));
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(env::get);
         assertEquals(OpencodeConfigBuilder.FALLBACK_MODEL, b.resolveModel(null));
         assertEquals(OpencodeConfigBuilder.FALLBACK_MODEL, b.resolveModel(""));
 
         env.put(OpencodeConfigBuilder.ENV_DEFAULT_MODEL, "llama3");
-        OpencodeConfigBuilder withEnv = new OpencodeConfigBuilder(envOf(env));
+        OpencodeConfigBuilder withEnv = new OpencodeConfigBuilder(env::get);
         assertEquals("llama3", withEnv.resolveModel(null));
         assertEquals("requested-model", withEnv.resolveModel("requested-model"));
     }
@@ -100,7 +93,7 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
     /** Qualified-model identifier wraps the resolved name in the {@code local/} provider prefix. */
     @Test(timeout = 5000)
     public void resolveQualifiedModelPrefixesProvider() {
-        OpencodeConfigBuilder b = new OpencodeConfigBuilder(envOf(new HashMap<>()));
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
         assertEquals("local/" + OpencodeConfigBuilder.FALLBACK_MODEL, b.resolveQualifiedModel(null));
         assertEquals("local/qwen-2-7b", b.resolveQualifiedModel("qwen-2-7b"));
     }
@@ -108,7 +101,7 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
     /** HTTP MCP servers become opencode {@code type=remote} entries with headers preserved. */
     @Test(timeout = 5000)
     public void translateMcpServersHandlesHttpEntries() throws Exception {
-        OpencodeConfigBuilder b = new OpencodeConfigBuilder(envOf(new HashMap<>()));
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
         ObjectNode mcp = b.translateMcpServers(MCP_INPUT);
         JsonNode manager = mcp.get("ar-manager");
         assertNotNull(manager);
@@ -121,7 +114,7 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
     /** Stdio MCP servers become opencode {@code type=local} entries with a flattened command list. */
     @Test(timeout = 5000)
     public void translateMcpServersHandlesStdioEntries() {
-        OpencodeConfigBuilder b = new OpencodeConfigBuilder(envOf(new HashMap<>()));
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
         ObjectNode mcp = b.translateMcpServers(MCP_INPUT);
         JsonNode bv = mcp.get("ar-build-validator");
         assertNotNull(bv);
@@ -136,7 +129,7 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
     /** Empty or missing input produces an empty MCP block (not null). */
     @Test(timeout = 5000)
     public void translateMcpServersTreatsEmptyInputAsEmpty() {
-        OpencodeConfigBuilder b = new OpencodeConfigBuilder(envOf(new HashMap<>()));
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
         assertEquals(0, b.translateMcpServers(null).size());
         assertEquals(0, b.translateMcpServers("").size());
         assertEquals(0, b.translateMcpServers("{}").size());
@@ -145,7 +138,7 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
     /** Built-in tool names become per-tool allow entries; mcp__ entries become per-server grants. */
     @Test(timeout = 5000)
     public void translateAllowlistHandlesBuiltinsAndMcp() {
-        OpencodeConfigBuilder b = new OpencodeConfigBuilder(envOf(new HashMap<>()));
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
         ObjectNode permission = b.translateAllowlist(
                 "Read,Edit,Bash,mcp__ar-manager__memory_store,mcp__ar-manager__memory_recall,"
                         + "mcp__ar-build-validator__start_validation");
@@ -168,7 +161,7 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
     /** Empty allowlist input yields an empty permission block. */
     @Test(timeout = 5000)
     public void translateAllowlistHandlesEmptyInput() {
-        OpencodeConfigBuilder b = new OpencodeConfigBuilder(envOf(new HashMap<>()));
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
         assertEquals(0, b.translateAllowlist(null).size());
         assertEquals(0, b.translateAllowlist("").size());
     }
@@ -178,7 +171,7 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
     public void buildConfigJsonIncludesAllSections() throws Exception {
         Map<String, String> env = new HashMap<>();
         env.put(OpencodeConfigBuilder.ENV_PROVIDER_URL, "http://localhost:8080/v1");
-        OpencodeConfigBuilder b = new OpencodeConfigBuilder(envOf(env));
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(env::get);
 
         AgentRunRequest req = AgentRunRequest.builder()
                 .model("custom-model")
@@ -202,7 +195,7 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
     /** When the canonical {@code {"mcpServers":{}}} shape is empty, no top-level {@code mcp} block is emitted. */
     @Test(timeout = 5000)
     public void buildConfigJsonOmitsEmptyMcpBlock() throws Exception {
-        OpencodeConfigBuilder b = new OpencodeConfigBuilder(envOf(new HashMap<>()));
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
         AgentRunRequest req = AgentRunRequest.builder()
                 .mcpConfigJson("{\"mcpServers\":{}}")
                 .allowedTools("Read")

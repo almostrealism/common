@@ -26,8 +26,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -50,14 +48,6 @@ public class OpencodeBinaryLocatorTest extends TestSuiteBase {
     /** A second {@code PATH} entry that the locator should walk. */
     private static final Path PATH_HIT = Paths.get("/opt/tools/opencode");
 
-    /**
-     * Builds an environment lookup function from {@code map} that returns
-     * {@code null} for any key not present.
-     */
-    private static Function<String, String> envOf(Map<String, String> map) {
-        return map::get;
-    }
-
     /** When {@code OPENCODE_BIN} resolves to a runnable binary, the locator returns it. */
     @Test(timeout = 5000)
     public void resolvesFromEnvVariableWhenPresent() {
@@ -65,7 +55,7 @@ public class OpencodeBinaryLocatorTest extends TestSuiteBase {
         env.put(OpencodeBinaryLocator.ENV_OPENCODE_BIN, ENV_PATH.toString());
         Set<Path> executable = Set.of(ENV_PATH);
         OpencodeBinaryLocator locator = new OpencodeBinaryLocator(
-                envOf(env), name -> HOME, executable::contains);
+                env::get, name -> HOME, executable::contains);
 
         assertEquals(ENV_PATH, locator.locate());
     }
@@ -77,7 +67,7 @@ public class OpencodeBinaryLocatorTest extends TestSuiteBase {
         env.put(OpencodeBinaryLocator.ENV_OPENCODE_BIN, "/does/not/exist");
         Set<Path> executable = Set.of(MANAGED_PATH);
         OpencodeBinaryLocator locator = new OpencodeBinaryLocator(
-                envOf(env), name -> HOME, executable::contains);
+                env::get, name -> HOME, executable::contains);
 
         assertEquals(MANAGED_PATH, locator.locate());
     }
@@ -89,7 +79,7 @@ public class OpencodeBinaryLocatorTest extends TestSuiteBase {
         env.put("PATH", "/usr/bin");
         Set<Path> executable = Set.of(MANAGED_PATH);
         OpencodeBinaryLocator locator = new OpencodeBinaryLocator(
-                envOf(env), name -> HOME, executable::contains);
+                env::get, name -> HOME, executable::contains);
 
         assertEquals(MANAGED_PATH, locator.locate());
     }
@@ -101,7 +91,7 @@ public class OpencodeBinaryLocatorTest extends TestSuiteBase {
         env.put("PATH", "/usr/bin" + File.pathSeparator + PATH_HIT.getParent().toString());
         Set<Path> executable = Set.of(PATH_HIT);
         OpencodeBinaryLocator locator = new OpencodeBinaryLocator(
-                envOf(env), name -> HOME, executable::contains);
+                env::get, name -> HOME, executable::contains);
 
         assertEquals(PATH_HIT, locator.locate());
     }
@@ -113,7 +103,7 @@ public class OpencodeBinaryLocatorTest extends TestSuiteBase {
         env.put("PATH", "/usr/bin");
         Set<Path> executable = new HashSet<>();
         OpencodeBinaryLocator locator = new OpencodeBinaryLocator(
-                envOf(env), name -> HOME, executable::contains);
+                env::get, name -> HOME, executable::contains);
 
         try {
             locator.locate();
@@ -136,7 +126,7 @@ public class OpencodeBinaryLocatorTest extends TestSuiteBase {
         env.put(OpencodeBinaryLocator.ENV_OPENCODE_BIN, ENV_PATH.toString());
         Set<Path> executable = Set.of(ENV_PATH, MANAGED_PATH);
         OpencodeBinaryLocator locator = new OpencodeBinaryLocator(
-                envOf(env), name -> HOME, executable::contains);
+                env::get, name -> HOME, executable::contains);
 
         assertEquals(ENV_PATH, locator.locate());
     }

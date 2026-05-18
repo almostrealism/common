@@ -27,8 +27,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
-
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -42,11 +40,6 @@ public class OpencodeRunnerTest extends TestSuiteBase {
 
     /** Path used as the resolved opencode binary in tests that mock the locator. */
     private static final Path FAKE_BINARY = Paths.get("/opt/tools/opencode");
-
-    /** Returns an environment lookup backed by {@code map}. */
-    private static Function<String, String> envOf(Map<String, String> map) {
-        return map::get;
-    }
 
     /** Capabilities should match the documented per-runner contract. */
     @Test(timeout = 5000)
@@ -122,11 +115,11 @@ public class OpencodeRunnerTest extends TestSuiteBase {
     public void qualifiedModelFallsBackToEnvOrDefault() {
         Map<String, String> env = new HashMap<>();
         env.put(OpencodeConfigBuilder.ENV_DEFAULT_MODEL, "llama3");
-        OpencodeConfigBuilder builder = new OpencodeConfigBuilder(envOf(env));
+        OpencodeConfigBuilder builder = new OpencodeConfigBuilder(env::get);
         Assert.assertEquals("local/llama3", builder.resolveQualifiedModel(null));
 
         Map<String, String> noEnv = new HashMap<>();
-        OpencodeConfigBuilder fallback = new OpencodeConfigBuilder(envOf(noEnv));
+        OpencodeConfigBuilder fallback = new OpencodeConfigBuilder(noEnv::get);
         Assert.assertEquals("local/" + OpencodeConfigBuilder.FALLBACK_MODEL,
                 fallback.resolveQualifiedModel(null));
     }
@@ -148,7 +141,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 },
                 () -> {
                     configCalled[0] = true;
-                    return new OpencodeConfigBuilder(envOf(new HashMap<>()));
+                    return new OpencodeConfigBuilder(new HashMap<String, String>()::get);
                 });
 
         // We don't run() — that would launch a subprocess. Just exercise the

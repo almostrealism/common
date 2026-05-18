@@ -89,9 +89,11 @@ class MavenDependencyProtectionRule implements EnforcementRule {
             }
         } catch (IOException e) {
             warn.accept("Maven dependency check: failed to diff pom.xml files: " + e.getMessage());
+            return true;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             warn.accept("Maven dependency check: failed to diff pom.xml files: " + e.getMessage());
+            return true;
         }
         return false;
     }
