@@ -1,0 +1,22 @@
+// Test fixture exercising each audio DSP primitive in isolation.
+// Used by PdslAudioDspTest.testAudioPrimitivesParseAndBuild().
+
+// FIR filter layer using pre-computed coefficient array
+layer fir_filter(coeffs: weight) {
+    fir(coeffs)
+}
+
+// Scalar scaling layer with explicit signal_size for shape inference
+layer scale_layer(signal_size: int, factor: scalar) -> [1, signal_size] {
+    scale(factor)
+}
+
+// Low-pass FIR filter computed inline from cutoff/sampleRate/order
+layer lp_filter(signal_size: int, cutoff: scalar, sr: scalar, order: scalar) -> [1, signal_size] {
+    lowpass(cutoff, sr, order)
+}
+
+// High-pass FIR filter computed inline from cutoff/sampleRate/order
+layer hp_filter(signal_size: int, cutoff: scalar, sr: scalar, order: scalar) -> [1, signal_size] {
+    highpass(cutoff, sr, order)
+}

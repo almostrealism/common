@@ -1,0 +1,127 @@
+/*
+ * Copyright 2025 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package org.almostrealism.studio.arrange;
+import org.almostrealism.audio.notes.TremoloAudioFilter;
+import org.almostrealism.music.arrange.AudioSceneContext;
+
+import io.almostrealism.lifecycle.Setup;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.profile.OperationWithInfo;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.audio.CellFeatures;
+import org.almostrealism.audio.CellList;
+import org.almostrealism.audio.data.PolymorphicAudioData;
+import org.almostrealism.studio.health.HealthComputationAdapter;
+import org.almostrealism.music.notes.AutomatedPitchNoteAudio;
+import org.almostrealism.music.notes.NoteAudioContext;
+import org.almostrealism.music.notes.PatternNote;
+import org.almostrealism.music.notes.PatternNoteAudio;
+import org.almostrealism.music.pattern.PatternElement;
+import org.almostrealism.music.pattern.PatternFeatures;
+import org.almostrealism.audio.synth.AudioSynthesizer;
+import org.almostrealism.audio.synth.NoiseGenerator;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.OperationList;
+import org.almostrealism.heredity.ProjectedChromosome;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Supplier;
+
+/**
+ * Manages the generation of a rise (swell) audio element, combining a synthesized
+ * pitched tone with a noise generator over the full evaluation duration. The rendered
+ * audio is made available as a {@link CellList} for integration into the mixdown chain.
+ */
+public class RiseManager implements Setup, PatternFeatures, CellFeatures {
+	/** Duration of the rise effect in seconds (matches the standard health evaluation duration). */
+	public static final double riseDuration = HealthComputationAdapter.standardDurationSeconds;
+
+	/** Chromosome providing automation parameters for the rise effect. */
+	private final ProjectedChromosome chromosome;
+
+	/** Audio sample rate. */
+	private final int sampleRate;
+
+	/** Synthesizer producing the pitched tone component of the rise. */
+	private final AudioSynthesizer synth;
+
+	/** Noise generator producing the noise component of the rise. */
+	private final NoiseGenerator noise;
+
+	/** Setup operations list that renders the rise audio into {@link #destination}. */
+	private final OperationList setup;
+
+	/** GPU-resident buffer holding the rendered rise audio. */
+	private PackedCollection destination;
+
+	/**
+	 * Creates a rise manager that renders its audio during setup.
+	 *
+	 * @param chromosome the chromosome supplying automation parameters
+	 * @param context    supplier providing the audio scene context for rendering
+	 * @param sampleRate the audio sample rate
+	 */
+	public RiseManager(ProjectedChromosome chromosome, Supplier<AudioSceneContext> context, int sampleRate) {
+		this.chromosome = chromosome;
+		this.sampleRate = sampleRate;
+		this.setup = new OperationList("RiseManager Setup");
+		this.synth = new AudioSynthesizer(2, 2);
+		this.noise = new NoiseGenerator();
+
+		PatternNoteAudio riseAudio = new AutomatedPitchNoteAudio(synth, riseDuration);
+		PatternNote riseNote = new PatternNote(riseAudio, new TremoloAudioFilter());
+
+		PatternNoteAudio noiseAudio = new AutomatedPitchNoteAudio(noise, riseDuration);
+		PatternNote noiseNote = new PatternNote(noiseAudio, new TremoloAudioFilter());
+
+		List<PatternElement> elements = new ArrayList<>();
+		elements.add(new PatternElement(riseNote, 0.0));
+		elements.add(new PatternElement(noiseNote, 0.0));
+		elements.get(0).setAutomationParameters(new PackedCollection(6).fill(0.5));
+		elements.get(1).setAutomationParameters(new PackedCollection(6).fill(0.5));
+
+		setup.add(OperationWithInfo.of(new OperationMetadata("RiseManager.render", "RiseManager.render"),
+				() -> () -> {
+					AudioSceneContext ctx = context.get();
+					render(ctx, new NoteAudioContext(), elements, false, 0,
+							0, ctx.getFrames(), null);
+					destination = ctx.getDestination();
+				}
+		));
+	}
+
+	/** Returns the chromosome providing automation parameters for the rise effect. */
+	public ProjectedChromosome getChromosome() { return chromosome; }
+
+	/** {@inheritDoc} */
+	@Override
+	public Supplier<Runnable> setup() { return setup; }
+
+	/**
+	 * Returns a {@link CellList} wrapping the rendered rise audio, usable by the mixdown chain.
+	 *
+	 * @param frames the number of frames to expose from the rendered buffer
+	 * @return a cell list containing the rise audio
+	 */
+	public CellList getRise(int frames) {
+		Producer<PackedCollection> audio =
+				func(shape(frames), args -> destination, false);
+		return w(PolymorphicAudioData.supply(PackedCollection.factory()),
+				sampleRate, frames, null, null, traverse(0, audio));
+	}
+}

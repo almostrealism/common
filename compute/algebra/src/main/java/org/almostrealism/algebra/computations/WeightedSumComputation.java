@@ -1,0 +1,239 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package org.almostrealism.algebra.computations;
+
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.SubsetTraversalExpression;
+import io.almostrealism.collect.SubsetTraversalWeightedSumExpression;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.WeightedSumDeltaExpression;
+import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.AlgebraFeatures;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerParallelProcess;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
+import org.almostrealism.collect.computations.TraversableExpressionComputation;
+
+import java.util.List;
+
+/**
+ * A computation that performs a weighted sum operation, the fundamental building block for many linear algebra operations.
+ *
+ * <p>
+ * {@link WeightedSumComputation} implements a generalized weighted sum where:
+ * <ul>
+ *   <li>Input and weight arrays are traversed according to specified position policies</li>
+ *   <li>Elements are multiplied together</li>
+ *   <li>Products are summed over specified group shapes</li>
+ * </ul>
+ * This operation is used to implement:
+ * <ul>
+ *   <li>Matrix multiplication</li>
+ *   <li>Convolution</li>
+ *   <li>Attention mechanisms in transformers</li>
+ *   <li>Custom tensor contractions</li>
+ * </ul>
+ *
+ * <h2>Matrix Multiplication Example</h2>
+ * <pre>{@code
+ * // Matrix-vector multiplication: y = Ax
+ * // A: (3, 4) matrix, x: (4) vector, y: (3) result
+ * TraversalPolicy resultShape = shape(3);
+ * TraversalPolicy inputPos = shape(3, 4);   // Position policy for A
+ * TraversalPolicy weightPos = shape(3, 4);  // Position policy for x
+ * TraversalPolicy groupShape = shape(1, 4); // Sum over dimension 1
+ *
+ * WeightedSumComputation<PackedCollection> matmul =
+ *     new WeightedSumComputation<>(
+ *         resultShape, inputPos, weightPos,
+ *         groupShape, groupShape,
+ *         matrixA, vectorX
+ *     );
+ * }</pre>
+ *
+ * @author  Michael Murray
+ * @see org.almostrealism.algebra.AlgebraFeatures#weightedSum
+ * @see org.almostrealism.algebra.MatrixFeatures#matmul
+ */
+public class WeightedSumComputation
+		extends TraversableExpressionComputation {
+
+	/** The shape of the output collection produced by this computation. */
+	private final TraversalPolicy resultShape;
+
+	/** The traversal policy defining which positions in the input to use for each output element. */
+	private final TraversalPolicy inputPositions;
+
+	/** The traversal policy defining which positions in the weight tensor to use for each output element. */
+	private final TraversalPolicy weightPositions;
+
+	/** The group shape that defines the sub-dimensions of the input that are summed over. */
+	private final TraversalPolicy inputGroupShape;
+
+	/** The group shape that defines the sub-dimensions of the weights that are summed over. */
+	private final TraversalPolicy weightGroupShape;
+
+	/** The full shape of the input collection. */
+	private final TraversalPolicy inShape;
+
+	/** The full shape of the weight collection. */
+	private final TraversalPolicy weightShape;
+
+	/**
+	 * Creates a new weighted sum computation.
+	 *
+	 * @param resultShape  the shape of the result
+	 * @param inputPositions  traversal policy defining how to position input elements
+	 * @param weightPositions  traversal policy defining how to position weight elements
+	 * @param inputGroupShape  group shape for input (dimensions to sum over)
+	 * @param weightGroupShape  group shape for weights (dimensions to sum over)
+	 * @param input  producer for input values
+	 * @param weights  producer for weight values
+	 * @throws IllegalArgumentException if the traversal policies have incompatible dimensions
+	 */
+	public WeightedSumComputation(TraversalPolicy resultShape,
+								  TraversalPolicy inputPositions,
+								  TraversalPolicy weightPositions,
+								  TraversalPolicy inputGroupShape,
+								  TraversalPolicy weightGroupShape,
+								  Producer<PackedCollection> input,
+								  Producer<PackedCollection> weights) {
+		super("weightedSum", resultShape.traverseEach(), input, weights);
+		this.resultShape = resultShape;
+		this.inputPositions = inputPositions;
+		this.weightPositions = weightPositions;
+		this.inputGroupShape = inputGroupShape;
+		this.weightGroupShape = weightGroupShape;
+		this.inShape = shape(input);
+		this.weightShape = shape(weights);
+
+		if (inputPositions.getDimensions() != resultShape.getDimensions() ||
+				weightPositions.getDimensions() != resultShape.getDimensions()) {
+			throw new IllegalArgumentException();
+		} else if (inputPositions.getDimensions() != inShape.getDimensions() ||
+				inputGroupShape.getDimensions() != inShape.getDimensions()) {
+			throw new IllegalArgumentException();
+		} else if (weightPositions.getDimensions() != weightShape.getDimensions() ||
+				weightGroupShape.getDimensions() != weightShape.getDimensions()) {
+			throw new IllegalArgumentException();
+		}
+	}
+
+	/**
+	 * Generates the expression that performs the weighted sum.
+	 *
+	 * @param args  traversable expressions [this, input, weights]
+	 * @return the weighted sum expression
+	 */
+	@Override
+	protected CollectionExpression getExpression(TraversableExpression... args) {
+		return new SubsetTraversalWeightedSumExpression(
+				resultShape,
+				inputPositions, weightPositions,
+				inShape, weightShape,
+				inputGroupShape, weightGroupShape,
+				args[1], args[2]);
+	}
+
+	/**
+	 * Returns the subset traversal expression for the input.
+	 *
+	 * @return the input traversal expression
+	 */
+	public SubsetTraversalExpression getInputTraversal() {
+		return new SubsetTraversalExpression(resultShape, inShape, inputGroupShape, inputPositions);
+	}
+
+	/**
+	 * Returns the subset traversal expression for the weights.
+	 *
+	 * @return the weights traversal expression
+	 */
+	public SubsetTraversalExpression getWeightsTraversal() {
+		return new SubsetTraversalExpression(resultShape, weightShape, weightGroupShape, weightPositions);
+	}
+
+	/**
+	 * Determines whether this weighted sum should be compiled as an isolated kernel.
+	 *
+	 * <p>Large weighted sums (e.g., convolutions with many channels) produce expression
+	 * trees that are too complex for the simplifier when inlined. Isolating them forces
+	 * independent compilation, preventing expression explosion in the parent kernel.</p>
+	 *
+	 * @param context the process context
+	 * @return {@code true} if the group size exceeds the isolation threshold
+	 */
+	@Override
+	public boolean isIsolationTarget(ProcessContext context) {
+		long groupSize = inputGroupShape.getTotalSizeLong();
+		return groupSize >= 64;
+	}
+
+	/**
+	 * Generates the parallel process for this weighted sum computation.
+	 *
+	 * @param children  child processes
+	 * @return a new weighted sum computation with the child producers
+	 */
+	@Override
+	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
+		return new WeightedSumComputation(resultShape,
+				inputPositions, weightPositions,
+				inputGroupShape, weightGroupShape,
+				(Producer) children.get(1),
+				(Producer) children.get(2));
+	}
+
+	/**
+	 * Computes the delta (gradient) of this weighted sum with respect to a target.
+	 *
+	 * <p>
+	 * This method implements automatic differentiation for weighted sums:
+	 * <ul>
+	 *   <li>If target matches the input and not weights: returns gradient w.r.t. input</li>
+	 *   <li>If target matches the weights and not input: returns gradient w.r.t. weights</li>
+	 *   <li>Otherwise: delegates to superclass</li>
+	 * </ul>
+	 * </p>
+	 *
+	 * @param target  the target producer to differentiate with respect to
+	 * @return the delta computation
+	 */
+	@Override
+	public CollectionProducer delta(Producer<?> target) {
+		if (AlgebraFeatures.match(getInputs().get(1), target) && AlgebraFeatures.cannotMatch(getInputs().get(2), target)) {
+			return new DefaultTraversableExpressionComputation("weightedSumDelta",
+					getShape().append(shape(target)),
+					args ->
+							new WeightedSumDeltaExpression(getShape(), shape(target), getInputTraversal(), getWeightsTraversal(), args[1]),
+					getInputs().get(2));
+		} else if (AlgebraFeatures.match(getInputs().get(2), target) && AlgebraFeatures.cannotMatch(getInputs().get(1), target)) {
+			return new DefaultTraversableExpressionComputation("weightedSumDelta",
+					getShape().append(shape(target)),
+					args ->
+							new WeightedSumDeltaExpression(getShape(), shape(target), getWeightsTraversal(), getInputTraversal(), args[1]),
+					getInputs().get(1));
+		}
+
+		return super.delta(target);
+	}
+
+}

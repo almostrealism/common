@@ -1,0 +1,175 @@
+/*
+ * Copyright 2017 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.flowtree.ui;
+
+import io.flowtree.msg.Connection;
+import io.flowtree.node.Node;
+import io.flowtree.node.NodeGroup;
+
+import javax.swing.tree.MutableTreeNode;
+import javax.swing.tree.TreeNode;
+import java.util.Enumeration;
+
+
+/**
+ * A {@link NetworkTreeNode} object wraps a network Node object and can be used
+ * to display the connections between the node and other nodes.
+ * 
+ * @author Mike Murray
+ */
+public class NetworkTreeNode implements MutableTreeNode {
+	/** The FlowTree {@link Node} that this tree node represents. */
+	private Node node;
+	/** Parent tree node, or {@code null} if this is the root. */
+	private NetworkTreeNode parent;
+	
+	/**
+	 * Constructs a new NetworkTreeNode object that will act as a leaf node and display
+	 * the specified label.
+	 * 
+	 * @param label  String label to use.
+	 */
+	public NetworkTreeNode(String label) { }
+	
+	/**
+	 * Constructs a new NetworkTreeNode object that will display the info from the specified
+	 * network Node object.
+	 * 
+	 * @param n  Node object to use.
+	 */
+	public NetworkTreeNode(Node n) {
+		this.node = n;
+		if (node.getParent() != null) this.parent = new NetworkTreeNode(node.getParent());
+	}
+	
+	/**
+	 * @see javax.swing.tree.TreeNode#getChildAt(int)
+	 */
+	@Override
+	public TreeNode getChildAt(int index) {
+		if (this.node == null) {
+			return null;
+		} else if (this.node instanceof NodeGroup) {
+			return new NetworkTreeNode(((NodeGroup)this.node).getNodes()[index]);
+		} else {
+			return new NetworkTreeNode(this.node.getPeers()[index].toString());
+		}
+	}
+
+	/**
+	 * @see javax.swing.tree.TreeNode#getChildCount()
+	 */
+	@Override
+	public int getChildCount() {
+		if (this.node == null)
+			return 0;
+		else if (this.node instanceof NodeGroup)
+			return ((NodeGroup)this.node).getNodes().length;
+		else
+			return this.node.getPeers().length;
+	}
+
+	/**
+	 * @see javax.swing.tree.TreeNode#getParent()
+	 */
+	@Override
+	public TreeNode getParent() { return this.parent; }
+
+	/**
+	 * @see javax.swing.tree.TreeNode#getIndex(javax.swing.tree.TreeNode)
+	 * @return  -1
+	 */
+	@Override
+	public int getIndex(TreeNode node) { return -1; }
+
+	/**
+	 * @see javax.swing.tree.TreeNode#getAllowsChildren()
+	 */
+	@Override
+	public boolean getAllowsChildren() { return (this.node != null); }
+
+	/**
+	 * @see javax.swing.tree.TreeNode#isLeaf()
+	 */
+	@Override
+	public boolean isLeaf() { return (this.node == null); }
+
+	/**
+	 * @see javax.swing.tree.TreeNode#children()
+	 */
+	@Override
+	public Enumeration children() {
+		final NetworkTreeNode[] c;
+		
+		if (this.node instanceof NodeGroup) {
+			Node[] n = ((NodeGroup)this.node).getNodes();
+			c = new NetworkTreeNode[n.length];
+			for (int i = 0; i < c.length; i++) c[i] = new NetworkTreeNode(n[i]);
+		} else {
+			Connection[] n = this.node.getPeers();
+			c = new NetworkTreeNode[n.length];
+			for (int i = 0; i < c.length; i++) c[i] = new NetworkTreeNode(n[i].toString());
+		}
+		
+		Enumeration en = new Enumeration() {
+			int i = 0;
+			
+			@Override
+			public boolean hasMoreElements() { return (i < c.length); }
+			@Override
+			public Object nextElement() { return c[i++]; }
+		};
+		
+		return en;
+	}
+	
+	/**
+	 * Does nothing.
+	 */
+	@Override
+	public void insert(MutableTreeNode node, int index) { }
+	
+	/**
+	 * Does nothing.
+	 */
+	@Override
+	public void remove(int index) { }
+	
+	/**
+	 * Does nothing.
+	 */
+	@Override
+	public void remove(MutableTreeNode node) { }
+	
+	/**
+	 * Does nothing.
+	 */
+	@Override
+	public void setUserObject(Object o) { }
+	
+	/**
+	 * Does nothing.
+	 */
+	@Override
+	public void removeFromParent() { }
+	
+	/**
+	 * Does nothing.
+	 */
+	@Override
+	public void setParent(MutableTreeNode node) { }
+}

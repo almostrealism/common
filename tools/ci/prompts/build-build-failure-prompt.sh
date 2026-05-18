@@ -11,7 +11,6 @@
 # Required environment variables:
 #   BRANCH          - branch name where the build failed
 #   COMMIT_SHA      - commit SHA where the build failed
-#   RUN_URL         - URL to the GitHub Actions run
 #
 # Exit codes:
 #   0 - prompt written successfully
@@ -26,7 +25,7 @@ if [ -z "$OUTPUT_FILE" ]; then
     exit 1
 fi
 
-for var in BRANCH COMMIT_SHA RUN_URL; do
+for var in BRANCH COMMIT_SHA; do
     if [ -z "${!var:-}" ]; then
         echo "ERROR: ${var} is not set." >&2
         exit 1
@@ -41,7 +40,7 @@ cat > "$OUTPUT_FILE" <<PROMPT
 Before you touch ANY test file, you MUST determine whether the test existed on the
 base branch (master) before this branch was created. Run:
 
-    git log --oneline master -- <path/to/TestFile.java>
+    git log --oneline origin/master -- <path/to/TestFile.java>
 
 If the test file exists on master, **you are NOT allowed to modify the test in any
 way that would hide, weaken, or suppress the failure.**
@@ -55,13 +54,12 @@ The **build itself failed** on branch "${BRANCH}" (commit ${COMMIT_SHA}).
 This is a compilation or packaging failure — no tests were able to run. A build
 failure is equivalent to every test in the project failing.
 
-See the full build log for details: ${RUN_URL}
-
 ## Your task
 
-1. Check the build log at the URL above to identify the compilation errors.
+1. Run \`mvn install -DskipTests\` to reproduce the compilation error locally.
+   The error output will tell you exactly which file(s) and line(s) failed.
 2. Read the failing source files and understand what changed on this branch:
-       git diff master -- <path/to/FailingFile.java>
+       git diff origin/master -- <path/to/FailingFile.java>
 3. Make the **minimal production code change** needed to fix the build.
 4. Verify the build succeeds after your fix:
        mvn install -DskipTests

@@ -1,0 +1,90 @@
+// GRU Block computation from low-level primitives
+//
+// Implements the four sub-computations of one GRU step:
+//   r = sigmoid(W_ir @ x + b_ir + W_hr @ h + b_hr)     // reset gate
+//   z = sigmoid(W_iz @ x + b_iz + W_hz @ h + b_hz)     // update gate
+//   n = tanh(W_in @ x + b_in + r * (W_hn @ h + b_hn))  // new gate
+//   h' = n + z * (h - n)                                // hidden state update (lerp)
+//
+// Weight conventions (stacked layout):
+//   weight_ih = [W_ir; W_iz; W_in]  shape (3 * hidden_size, input_size)
+//   weight_hh = [W_hr; W_hz; W_hn]  shape (3 * hidden_size, hidden_size)
+//   bias_ih   = [b_ir; b_iz; b_in]  shape (3 * hidden_size)
+//   bias_hh   = [b_hr; b_hz; b_hn]  shape (3 * hidden_size)
+//
+// The data block below derives zero-copy per-gate sub-views from the stacked
+// tensors using range(), eliminating the need for Java-side slicing.
+
+data gru_weights {
+    weight_ih: weight
+    weight_hh: weight
+    bias_ih: weight
+    bias_hh: weight
+    input_size: int
+    hidden_size: int
+
+    // Input-hidden weight slices (rows 0..hidden_size, hidden_size..2h, 2h..3h)
+    w_ir = range(weight_ih, [hidden_size, input_size], 0)
+    w_iz = range(weight_ih, [hidden_size, input_size], hidden_size * input_size)
+    w_in = range(weight_ih, [hidden_size, input_size], 2 * hidden_size * input_size)
+
+    // Hidden-hidden weight slices
+    w_hr = range(weight_hh, [hidden_size, hidden_size], 0)
+    w_hz = range(weight_hh, [hidden_size, hidden_size], hidden_size * hidden_size)
+    w_hn = range(weight_hh, [hidden_size, hidden_size], 2 * hidden_size * hidden_size)
+
+    // Input-hidden bias slices
+    b_ir = range(bias_ih, [hidden_size], 0)
+    b_iz = range(bias_ih, [hidden_size], hidden_size)
+    b_in = range(bias_ih, [hidden_size], 2 * hidden_size)
+
+    // Hidden-hidden bias slices
+    b_hr = range(bias_hh, [hidden_size], 0)
+    b_hz = range(bias_hh, [hidden_size], hidden_size)
+    b_hn = range(bias_hh, [hidden_size], 2 * hidden_size)
+}
+
+// ----- Reset Gate -----
+// r = sigmoid(W_ir @ x + b_ir + W_hr @ h + b_hr)
+// Input: [x(input_size) | h(hidden_size)]
+
+layer gru_r_gate() {
+    accum_blocks(
+        { slice(0, input_size); dense(w_ir, b_ir) },
+        { slice(input_size, hidden_size); dense(w_hr, b_hr) }
+    )
+    sigmoid()
+}
+
+// ----- Update Gate -----
+// z = sigmoid(W_iz @ x + b_iz + W_hz @ h + b_hz)
+// Input: [x(input_size) | h(hidden_size)]
+
+layer gru_z_gate() {
+    accum_blocks(
+        { slice(0, input_size); dense(w_iz, b_iz) },
+        { slice(input_size, hidden_size); dense(w_hz, b_hz) }
+    )
+    sigmoid()
+}
+
+// ----- New Gate -----
+// n = tanh(W_in @ x + b_in + r * (W_hn @ h + b_hn))
+// Input: [x(input_size) | h(hidden_size) | r(hidden_size)]
+
+layer gru_n_gate() {
+    accum_blocks(
+        product({ slice(input_size + hidden_size, hidden_size) },
+                { slice(input_size, hidden_size); dense(w_hn, b_hn) }),
+        { slice(0, input_size); dense(w_in, b_in) }
+    )
+    tanh_act()
+}
+
+// ----- Hidden State Update -----
+// h' = n + z * (h - n)  expressed as lerp([n | z | h])
+// Input: [n(hidden_size) | z(hidden_size) | h(hidden_size)]
+
+layer gru_h_new() {
+    lerp(hidden_size)
+}

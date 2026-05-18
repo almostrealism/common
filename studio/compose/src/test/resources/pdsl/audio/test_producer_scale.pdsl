@@ -1,0 +1,12 @@
+// Test fixtures exercising the producer-valued `scale` primitive.
+//
+// `volume: producer([1])` declares a parameter bound to a Producer<PackedCollection>
+// of shape [1]. The interpreter accepts a Number, a 1-element PackedCollection,
+// or a Producer; the kernel reads the value through subset(shape(1), producer, 0)
+// regardless of which form the caller supplied.
+
+// Producer-valued volume scaler. Used to verify constant-folding regression,
+// mutable-slot reuse, and clock-driven per-sample variation.
+layer scale_producer_layer(signal_size: int, volume: producer([1])) -> [1, signal_size] {
+    scale(volume)
+}

@@ -10,15 +10,15 @@
       "args": ["tools/mcp/test-runner/server.py"],
       "description": "Test execution and result tracking server"
     },
+    "ar-build-validator": {
+      "command": "python3",
+      "args": ["tools/mcp/build-validator/server.py"],
+      "description": "Static analysis and build validation: checkstyle, CodePolicy, test timeouts, duplicate code, ErrorProne"
+    },
     "ar-profile-analyzer": {
       "command": "python3",
       "args": ["tools/mcp/profile-analyzer/server.py"],
       "description": "Performance profile analysis server"
-    },
-    "ar-memory": {
-      "command": "python3",
-      "args": ["tools/mcp/memory/server.py"],
-      "description": "Semantic memory storage and retrieval server"
     },
     "ar-consultant": {
       "command": "python3",
@@ -30,15 +30,19 @@
       "args": ["tools/mcp/jmx/server.py"],
       "description": "JVM memory analysis and leak detection via JDK diagnostic tools"
     },
-    "ar-slack": {
+    "ar-manager": {
       "command": "python3",
-      "args": ["tools/mcp/slack/server.py"],
-      "description": "Send messages to channels via the FlowTreeController API endpoint"
+      "args": ["tools/mcp/manager/server.py"],
+      "env": {
+        "AR_CONTROLLER_URL": "http://mac-studio:7780"
+      },
+      "description": "Internet-facing endpoint for managing workstreams and triggering project workflows"
     },
-    "ar-github": {
-      "command": "python3",
-      "args": ["tools/mcp/github/server.py"],
-      "description": "Read and respond to GitHub PR review comments"
+    "onyx": {
+      "command": "/Users/Shared/flowtree/tools/OnyxMCP",
+      "env": {
+        "ONYX_MCP_PORT": "19432"
+      }
     }
   }
 }

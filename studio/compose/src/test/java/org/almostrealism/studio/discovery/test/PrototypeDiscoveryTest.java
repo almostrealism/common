@@ -1,0 +1,54 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package org.almostrealism.studio.discovery.test;
+
+import org.almostrealism.studio.discovery.PrototypeDiscovery;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Ignore;
+import org.junit.Test;
+
+import java.io.File;
+
+/**
+ * Manual diagnostic test for running {@link PrototypeDiscovery} against
+ * real data to diagnose cache miss / loadSingleDetail behavior.
+ *
+ * <p>This test requires local data files that are only present on the
+ * developer's machine and is too slow to run as part of normal CI.
+ * Run individually with {@code -Dtest=PrototypeDiscoveryTest#runDiscovery}.</p>
+ */
+@Ignore("Manual diagnostic — requires developer-local protobuf and samples directory; too slow for CI")
+public class PrototypeDiscoveryTest extends TestSuiteBase {
+
+	private static final String PROTOBUF_PREFIX = "/Users/michael/Projects/AlmostRealism/library";
+	private static final String SAMPLES_ROOT = "/Users/michael/Music/Samples";
+
+	@Test(timeout = 120000)
+	public void runDiscovery() throws Exception {
+		File protobufFile = new File(PROTOBUF_PREFIX + "_0.bin");
+		if (!protobufFile.exists()) {
+			log("SKIP: Protobuf file not found: " + protobufFile);
+			return;
+		}
+
+		PrototypeDiscovery discovery = new PrototypeDiscovery(
+				PROTOBUF_PREFIX,
+				new File(SAMPLES_ROOT).isDirectory() ? SAMPLES_ROOT : null,
+				5, false);
+		discovery.run();
+	}
+}

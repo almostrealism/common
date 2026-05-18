@@ -1,0 +1,62 @@
+// SkyTNT LLaMA Transformer Block
+//
+// Standard LLaMA block: RMSNorm + Attention + Residual + RMSNorm + SwiGLU FFN + Residual.
+// Used for both the 12-layer main transformer (net) and the 3-layer token transformer
+// (net_token) — the block structure is identical; only hyperparameter values differ.
+//
+// Parameter naming follows the HuggingFace SkyTNT weight key conventions:
+//   gate_proj  = mlp.gate_proj  (SwiGLU gate path: dense -> SiLU)
+//   up_proj    = mlp.up_proj    (SwiGLU up path: dense)
+//   down_proj  = mlp.down_proj  (SwiGLU down projection)
+
+// ----- SwiGLU Feed-Forward Network -----
+// Architecture: RMSNorm -> (gate_proj -> SiLU) * up_proj -> down_proj
+// This is the standard LLaMA MLP sub-layer.
+
+layer skytnt_ffn(
+    norm_weights: weight,
+    gate_proj: weight,
+    up_proj: weight,
+    down_proj: weight,
+    epsilon: float
+) {
+    rmsnorm(norm_weights, epsilon)
+    product(
+        { dense(gate_proj); silu() },
+        { dense(up_proj) }
+    )
+    dense(down_proj)
+}
+
+// ----- LLaMA Transformer Block -----
+// Architecture:
+//   input -> accum(attention(input)) -> accum(skytnt_ffn(output)) -> output
+//
+// The attention built-in handles: RMSNorm, Q/K/V projections, RoPE rotation,
+// KV caching, scaled dot-product attention, output projection.
+// The skytnt_ffn user-defined layer handles the SwiGLU feed-forward sub-layer.
+
+layer skytnt_block(
+    heads: int,
+    rms_att_weight: weight,
+    wq: weight,
+    wk: weight,
+    wv: weight,
+    wo: weight,
+    freq_cis: weight,
+    position: scalar,
+    rms_ffn_weight: weight,
+    gate_proj: weight,
+    up_proj: weight,
+    down_proj: weight,
+    epsilon: float
+) -> [1, dim] {
+    accum {
+        attention(heads, rms_att_weight,
+                  wk, wv, wq, wo,
+                  freq_cis, position)
+    }
+    accum {
+        skytnt_ffn(rms_ffn_weight, gate_proj, up_proj, down_proj, epsilon)
+    }
+}

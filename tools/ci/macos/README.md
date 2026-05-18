@@ -88,9 +88,10 @@ shutdown: the runner deregisters from GitHub before exiting.
 The runner script exports AR environment variables automatically:
 
 ```
-AR_HARDWARE_LIBS=/tmp/ar_libs/
-AR_HARDWARE_DRIVER=native
+# AR_HARDWARE_LIBS is auto-detected — do not set manually
 ```
+
+`AR_HARDWARE_DRIVER` is intentionally left unset to auto-detect the best available backend.
 
 JDK and Maven must already be installed on the system. The
 `actions/setup-java` step in the workflow ensures correct PATH
@@ -209,8 +210,10 @@ gh api repos/almostrealism/common/actions/runners \
 - macOS uses `DYLD_LIBRARY_PATH` instead of `LD_LIBRARY_PATH`, but
   SIP may strip it. The `-DAR_HARDWARE_LIBS=Extensions` flag is the
   primary mechanism and should work regardless.
-- If you see `NoClassDefFoundError: PackedCollection`, verify
-  `AR_HARDWARE_DRIVER=native` is set.
+- If you see `NoClassDefFoundError: PackedCollection`, verify the
+  auto-detected library directory is writable. `AR_HARDWARE_LIBS` is
+  auto-detected — do not set it manually. `AR_HARDWARE_DRIVER` should be
+  left unset to auto-detect the best available backend.
 
 ### JDK not found after setup
 

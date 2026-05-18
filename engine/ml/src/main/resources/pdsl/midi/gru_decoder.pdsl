@@ -1,0 +1,146 @@
+// GRU Decoder computation from low-level primitives
+//
+// Defines ALL GRU computation for the Moonbeam MIDI decoder using the
+// Producer DSL. Loaded by GRUDecoder which binds weights from a
+// StateDictionary and orchestrates the autoregressive decode loop.
+//
+// Architecture (per decode position):
+//   1. summary_proj: transformer hidden (hiddenSize) -> (decoderHiddenSize)
+//   2. gru_full_step x numLayers: GRU hidden state update
+//   3. lm_head: last GRU hidden -> logits (decodeVocabSize)
+//
+// The autoregressive decode loop with argmax token selection and embedding
+// lookup cannot be expressed as a static computation graph because each
+// step's embedding input depends on the argmax of the previous step's logits
+// (data-dependent control flow). This loop is orchestrated in GRUDecoder
+// using the compiled Blocks produced by this file.
+//
+// All neural-network math (matrix multiplies, activations, gating) lives
+// here. GRUDecoder performs only data routing (state assembly and extraction)
+// and token selection between steps.
+
+// ----- Summary Projection -----
+// Projects transformer hidden state to decoder hidden size.
+// Input: (hidden_size)
+// Output: (decoder_hidden_size)
+
+layer summary_proj(w: weight, b: weight) {
+    dense(w, b)
+}
+
+// ----- LM Head -----
+// Projects GRU hidden state to decode vocabulary logits.
+// Input: (decoder_hidden_size)
+// Output: (decode_vocab_size)
+
+layer lm_head(w: weight, b: weight) {
+    dense(w, b)
+}
+
+// ----- FC Out (optional intermediate projection) -----
+// Some model checkpoints include an intermediate projection after GRU.
+// Input: (decoder_hidden_size)
+// Output: (decoder_hidden_size)
+
+layer fc_out(w: weight, b: weight) {
+    dense(w, b)
+}
+
+// ----- GRU Gates -----
+// The four sub-computations of one GRU step, used within gru_full_step.
+
+// r = sigmoid(W_ir @ x + b_ir + W_hr @ h + b_hr)
+// Input: [x(hidden_size) | h(hidden_size)]
+// Output: r of shape (hidden_size)
+
+layer gru_r_gate(w_ir: weight, b_ir: weight, w_hr: weight, b_hr: weight,
+                 input_size: int, hidden_size: int) {
+    accum_blocks(
+        { slice(0, input_size); dense(w_ir, b_ir) },
+        { slice(input_size, hidden_size); dense(w_hr, b_hr) }
+    )
+    sigmoid()
+}
+
+// z = sigmoid(W_iz @ x + b_iz + W_hz @ h + b_hz)
+// Input: [x(hidden_size) | h(hidden_size)]
+// Output: z of shape (hidden_size)
+
+layer gru_z_gate(w_iz: weight, b_iz: weight, w_hz: weight, b_hz: weight,
+                 input_size: int, hidden_size: int) {
+    accum_blocks(
+        { slice(0, input_size); dense(w_iz, b_iz) },
+        { slice(input_size, hidden_size); dense(w_hz, b_hz) }
+    )
+    sigmoid()
+}
+
+// n = tanh(W_in @ x + b_in + r * (W_hn @ h + b_hn))
+// Input: [x(hidden_size) | h(hidden_size) | r(hidden_size)]
+// Output: n of shape (hidden_size)
+
+layer gru_n_gate(w_in: weight, b_in: weight, w_hn: weight, b_hn: weight,
+                 input_size: int, hidden_size: int) {
+    accum_blocks(
+        product({ slice(input_size + hidden_size, hidden_size) },
+                { slice(input_size, hidden_size); dense(w_hn, b_hn) }),
+        { slice(0, input_size); dense(w_in, b_in) }
+    )
+    tanh_act()
+}
+
+// h' = n + z * (h - n)  (linear interpolation between n and h, gated by z)
+// Input: [n(hidden_size) | z(hidden_size) | h(hidden_size)]
+// Output: h' of shape (hidden_size)
+
+layer gru_h_new(hidden_size: int) {
+    lerp(hidden_size)
+}
+
+// ----- Full GRU Step -----
+// One complete GRU layer: [x | h] -> h'
+//
+// Computation:
+//   r = sigmoid(W_ir @ x + b_ir + W_hr @ h + b_hr)
+//   z = sigmoid(W_iz @ x + b_iz + W_hz @ h + b_hz)
+//   n = tanh(W_in @ x + b_in + r * (W_hn @ h + b_hn))
+//   h' = n + z * (h - n)
+//
+// Input:  [x(hidden_size) | h(hidden_size)]  (total 2 * hidden_size)
+// Output: h' of shape (hidden_size)
+//
+// Step 1: Extend [x|h] to [x|h|r|z] via concat_blocks.
+//   - identity branch passes [x|h] through unchanged
+//   - r branch computes reset gate from [x|h]
+//   - z branch computes update gate from [x|h]
+//
+// Step 2: Form [n|z|h] for lerp.
+//   - n branch: slice first 3*hidden_size of [x|h|r|z] to get [x|h|r], then n_gate
+//   - z branch: slice z from [x|h|r|z] at offset 3*hidden_size
+//   - h branch: slice h from [x|h|r|z] at offset hidden_size
+//
+// Step 3: lerp([n|z|h]) -> h'
+
+layer gru_full_step(
+        w_ir: weight, b_ir: weight, w_hr: weight, b_hr: weight,
+        w_iz: weight, b_iz: weight, w_hz: weight, b_hz: weight,
+        w_in: weight, b_in: weight, w_hn: weight, b_hn: weight,
+        hidden_size: int) {
+
+    // Step 1: [x|h] -> [x|h|r|z]  (4 * hidden_size)
+    concat_blocks(
+        { slice(0, hidden_size * 2) },
+        { gru_r_gate(w_ir, b_ir, w_hr, b_hr, hidden_size, hidden_size) },
+        { gru_z_gate(w_iz, b_iz, w_hz, b_hz, hidden_size, hidden_size) }
+    )
+
+    // Step 2: [x|h|r|z] -> [n|z|h]  (3 * hidden_size)
+    concat_blocks(
+        { slice(0, hidden_size * 3); gru_n_gate(w_in, b_in, w_hn, b_hn, hidden_size, hidden_size) },
+        { slice(hidden_size * 3, hidden_size) },
+        { slice(hidden_size, hidden_size) }
+    )
+
+    // Step 3: lerp([n|z|h]) -> h'
+    lerp(hidden_size)
+}

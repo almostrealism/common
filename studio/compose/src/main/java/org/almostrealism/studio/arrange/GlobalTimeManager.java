@@ -1,0 +1,126 @@
+/*
+ * Copyright 2022 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package org.almostrealism.studio.arrange;
+
+import io.almostrealism.lifecycle.Setup;
+import org.almostrealism.audio.CellFeatures;
+import org.almostrealism.graph.TimeCell;
+import org.almostrealism.hardware.OperationList;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.time.Temporal;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.IntUnaryOperator;
+import java.util.function.Supplier;
+import java.util.stream.IntStream;
+
+/**
+ * Manages global time tracking with support for reset points (breaks) in the timeline.
+ *
+ * <p>{@code GlobalTimeManager} wraps a {@link TimeCell} to provide time tracking
+ * for audio scenes. It supports reset points, which are specific frames where
+ * the time counter resets to zero, useful for song sections or arrangement breaks.</p>
+ *
+ * <h2>Reset Points</h2>
+ *
+ * <p>Reset points are added via {@link #addReset(int)} specifying the measure number.
+ * During setup, these are converted to frame positions using the {@code frameForMeasure}
+ * function. The {@link TimeCell} handles the actual reset logic during playback.</p>
+ *
+ * <h2>Setup/Tick Pattern</h2>
+ *
+ * <p>As a {@link Temporal} and {@link Setup} implementor:</p>
+ * <ul>
+ *   <li>{@link #setup()}: Configures reset points in the TimeCell</li>
+ *   <li>{@link #tick()}: Advances the clock by one frame</li>
+ * </ul>
+ *
+ * <h2>Integration</h2>
+ *
+ * <p>The clock from {@link #getClock()} is used by other components to access
+ * the current playback time, which is needed for time-based effects and automation.</p>
+ *
+ * @see TimeCell
+ * @see AudioScene
+ * @see AutomationManager
+ *
+ * @author Michael Murray
+ */
+public class GlobalTimeManager implements Setup, Temporal, ConsoleFeatures {
+	/** Maximum number of reset points that can be registered. */
+	public static final int MAX_RESETS = 32;
+
+	/** The underlying time cell that tracks the current frame position. */
+	private final TimeCell clock;
+
+	/** Ordered list of measure numbers where the clock resets to zero. */
+	private final List<Integer> resets;
+
+	/** Function that converts a measure number to its corresponding audio frame index. */
+	private final IntUnaryOperator frameForMeasure;
+
+	/**
+	 * Creates a global time manager using the given function to convert measure numbers to frames.
+	 *
+	 * @param frameForMeasure function mapping measure number to audio frame index
+	 */
+	public GlobalTimeManager(IntUnaryOperator frameForMeasure) {
+		this.clock = new TimeCell(MAX_RESETS);
+		this.frameForMeasure = frameForMeasure;
+		this.resets = new ArrayList<>();
+	}
+
+	/** Returns the underlying {@link TimeCell} used for time tracking. */
+	public TimeCell getClock() {
+		return clock;
+	}
+
+	/**
+	 * Registers a reset point at the given measure number, keeping the list sorted.
+	 *
+	 * @param measure the measure number where the clock should reset
+	 * @throws IllegalArgumentException if the maximum number of resets has been reached
+	 */
+	public void addReset(int measure) {
+		if (resets.size() >= MAX_RESETS) throw new IllegalArgumentException("Maximum number of resets exceeded");
+		resets.add(measure);
+		resets.sort(Integer::compareTo);
+	}
+
+	/** Returns the ordered list of registered reset measure numbers. */
+	public List<Integer> getResets() { return resets; }
+
+	@Override
+	public Supplier<Runnable> setup() {
+		OperationList setup = new OperationList("GlobalTimeManager Setup");
+		setup.add(() -> () -> {
+			IntStream.range(0, resets.size()).forEach(i -> clock.setReset(i, frameForMeasure.applyAsInt(resets.get(i))));
+		});
+		setup.add(clock.setup());
+		return setup;
+	}
+
+	@Override
+	public Supplier<Runnable> tick() {
+		return clock.tick();
+	}
+
+	@Override
+	public Console console() { return CellFeatures.console; }
+}

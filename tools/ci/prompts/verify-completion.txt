@@ -14,7 +14,7 @@ Extract every goal, requirement, and deliverable.
 
 ### Step 2: Assess Current State
 
-Use `git log ${BASE_BRANCH}..HEAD` and `git diff ${BASE_BRANCH}...HEAD` to understand
+Use `git log origin/${BASE_BRANCH}..HEAD` and `git diff origin/${BASE_BRANCH}...HEAD` to understand
 the full scope of changes already made on this branch. For each goal in the plan,
 determine whether the implementation is complete, partial, or missing entirely.
 
@@ -38,8 +38,8 @@ files have been committed), this is expected — implement the entire plan.
 ### Step 4: Verify and Report
 
 Once you have completed all implementation work, verify the branch is done and post
-your findings as a comment on the pull request (if one exists) or send a summary via
-Slack:
+your findings as a comment on the pull request (if one exists) or send a summary
+message:
 
 **Completion Status: [COMPLETE / INCOMPLETE]**
 

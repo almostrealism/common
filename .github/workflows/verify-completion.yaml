@@ -129,7 +129,7 @@ jobs:
           COMMIT_SHA: ${{ github.sha }}
         run: |
           chmod +x ./tools/ci/prompts/build-verify-prompt.sh
-          ./tools/ci/prompts/build-verify-prompt.sh /tmp/agent-prompt.txt
+          ./tools/ci/prompts/build-verify-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Submit agent job
         env:
@@ -140,7 +140,7 @@ jobs:
           DESCRIPTION: "Verify completion"
         run: |
           chmod +x ./tools/ci/submit-agent-job.sh
-          ./tools/ci/submit-agent-job.sh /tmp/agent-prompt.txt
+          ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
       - name: Summary
         if: always()

@@ -106,17 +106,26 @@ import java.util.List;
  * @author Michael Murray
  */
 public class OperationProfileFX extends Application implements ConsoleFeatures {
+	/** Path to the profile file passed on the command line or via launch arguments. */
 	private static String path;
 
+	/** Tree showing the compiled (source-bearing) nodes in the profile. */
 	private TreeView<OperationProfileNodeInfo> compiledTree;
+	/** Tree showing the detailed operation hierarchy including non-compiled nodes. */
 	private TreeView<OperationProfileNodeInfo> detailTree;
+	/** Tree showing the scope hierarchy derived from the profile. */
 	private TreeView<OperationProfileNodeInfo> scopeTree;
 
+	/** Text field used to enter a node key for direct navigation. */
 	private TextField idField;
+	/** Text area displaying metadata and timing information for the selected node. */
 	private TextArea infoArea;
+	/** Text area displaying the generated source code for the selected node. */
 	private TextArea sourceArea;
 
+	/** All tree views managed by this application, used for synchronized selection updates. */
 	private List<TreeView<OperationProfileNodeInfo>> trees;
+	/** Guard flag to prevent recursive selection-change callbacks across synchronized trees. */
 	private boolean updatingSelection;
 
 	/**
@@ -275,6 +284,11 @@ public class OperationProfileFX extends Application implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Recursively expands all tree items in the subtree rooted at {@code item}.
+	 *
+	 * @param item the root tree item to expand; does nothing if {@code null}
+	 */
 	private void expandAll(TreeItem<OperationProfileNodeInfo> item) {
 		if (item == null) return;
 
@@ -282,6 +296,15 @@ public class OperationProfileFX extends Application implements ConsoleFeatures {
 		item.getChildren().forEach(this::expandAll);
 	}
 
+	/**
+	 * Recursively traverses the tree to find and select the item matching {@code key}.
+	 *
+	 * <p>When {@code key} is {@code null}, the root item is expanded instead of selected.</p>
+	 *
+	 * @param currentItem the tree item to inspect and recurse into
+	 * @param key         the node key to match for selection, or {@code null} for root expansion
+	 * @param tree        the tree view whose selection model is updated when a match is found
+	 */
 	private void traverseAndSelect(TreeItem<OperationProfileNodeInfo> currentItem, String key,
 								   TreeView<OperationProfileNodeInfo> tree) {
 		if (currentItem == null) return;
@@ -376,16 +399,32 @@ public class OperationProfileFX extends Application implements ConsoleFeatures {
 		stage.show();
 	}
 
+	/**
+	 * Updates the information text area with the given text and scrolls to the top.
+	 *
+	 * @param text the text to display in the info area
+	 */
 	private void updateInfo(String text) {
 		infoArea.setText(text);
 		infoArea.setScrollTop(0);
 	}
 
+	/**
+	 * Updates the source code text area with the given text and scrolls to the top.
+	 *
+	 * @param text the source code to display
+	 */
 	private void updateSource(String text) {
 		sourceArea.setText(text);
 		sourceArea.setScrollTop(0);
 	}
 
+	/**
+	 * Wraps the given JavaFX node in a scroll pane configured to fit its width and height.
+	 *
+	 * @param content the node to embed in the scroll pane
+	 * @return a scroll pane containing {@code content}
+	 */
 	private ScrollPane createScrollPane(Node content) {
 		ScrollPane scrollPane = new ScrollPane(content);
 		scrollPane.setFitToWidth(true);

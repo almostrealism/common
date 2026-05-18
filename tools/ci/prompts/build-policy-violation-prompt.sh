@@ -11,7 +11,6 @@
 # Required environment variables:
 #   BRANCH          - branch name where violations occurred
 #   COMMIT_SHA      - commit SHA where violations occurred
-#   RUN_URL         - URL to the GitHub Actions run
 #
 # Exit codes:
 #   0 - prompt written successfully
@@ -26,7 +25,7 @@ if [ -z "$OUTPUT_FILE" ]; then
     exit 1
 fi
 
-for var in BRANCH COMMIT_SHA RUN_URL; do
+for var in BRANCH COMMIT_SHA; do
     if [ -z "${!var:-}" ]; then
         echo "ERROR: ${var} is not set." >&2
         exit 1
@@ -110,16 +109,22 @@ shared logic into helper methods, utility classes, or use composition.
 
 ### Your task
 
-1. Run the policy enforcement locally to see the exact violations:
+1. Run the build validator to see the exact violations:
    ```
-   mcp__ar-test-runner__start_test_run module:"tools" test_classes:["CodePolicyEnforcementTest"] timeout_minutes:10
+   mcp__ar-build-validator__start_validation checks:["code_policy","test_timeouts","duplicate_code"] skip_build:false
    ```
+   Then poll: `mcp__ar-build-validator__get_validation_status run_id:<id>`
+   Then read: `mcp__ar-build-validator__get_validation_violations run_id:<id>`
 
 2. Read each violation — it tells you the file, line number, rule, and what to fix.
 
 3. Fix the production code. Do not touch the enforcement infrastructure.
 
-4. Re-run the enforcement test to confirm all violations are resolved.
+4. Re-run the validator to confirm all violations are resolved:
+   ```
+   mcp__ar-build-validator__start_validation checks:["code_policy","test_timeouts","duplicate_code"] skip_build:true
+   ```
+   (`skip_build:true` is safe here since the project was already built in step 1.)
 PROMPT
 
 # Append the dynamic portion
@@ -129,7 +134,6 @@ cat >> "$OUTPUT_FILE" <<EOF
 
 Branch: ${BRANCH}
 Commit: ${COMMIT_SHA}
-CI run: ${RUN_URL}
 
 Start by examining what this branch changed:
     git diff --stat origin/master...HEAD

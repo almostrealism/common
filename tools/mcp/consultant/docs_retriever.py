@@ -12,39 +12,128 @@ from pathlib import Path
 from typing import Optional
 
 
-# Resolve project root relative to this script
+# Resolve project root: AR_DOCS_DIR env var takes priority (required
+# when running as a pushed tool outside the common repo), otherwise
+# fall back to the standard path relative to this script.
 SCRIPT_DIR = Path(__file__).parent
-COMMON_DIR = SCRIPT_DIR.parent.parent.parent  # tools/mcp/consultant -> common
-DOCS_DIR = COMMON_DIR / "docs"
+_env_docs = os.environ.get("AR_DOCS_DIR", "").strip()
+if _env_docs:
+    DOCS_DIR = Path(_env_docs)
+    COMMON_DIR = DOCS_DIR.parent
+else:
+    COMMON_DIR = SCRIPT_DIR.parent.parent.parent  # tools/mcp/consultant -> common
+    DOCS_DIR = COMMON_DIR / "docs"
 MODULES_DIR = DOCS_DIR / "modules"
 INTERNALS_DIR = DOCS_DIR / "internals"
 
 # Module metadata (mirrors ar-docs server)
+# Module short names -> descriptions (for HTML doc lookup and display)
 MODULES = {
-    "uml": "Annotations, lifecycle, metadata",
+    "meta": "Naming, identity, lifecycle interfaces",
     "io": "Logging, metrics, file I/O",
-    "relation": "Producer/Evaluable pattern",
-    "code": "Expression trees, code generation",
-    "collect": "PackedCollection, multi-dimensional arrays",
-    "hardware": "Hardware acceleration backends",
-    "algebra": "Vector, Scalar, linear algebra",
-    "geometry": "3D geometry, ray tracing primitives",
-    "time": "Temporal operations, FFT, filtering",
-    "stats": "Probability distributions",
-    "graph": "Neural network layers, Cell pattern",
-    "ml": "Transformer models, attention",
-    "audio": "Audio synthesis, AudioLibrary, sample management",
-    "music": "Pattern composition, notes, pattern rendering",
-    "compose": "Audio persistence, protobuf, AudioScene optimization",
-    "color": "RGB, lighting, shaders",
-    "space": "Scene management, meshes",
-    "physics": "Quantum mechanics, atoms",
-    "heredity": "Genetic algorithms",
-    "chemistry": "Periodic table, elements",
-    "optimize": "Loss functions, training",
-    "render": "Ray tracing engine",
-    "utils": "Testing framework",
+    "relation": "Relational computation, Producer/Evaluable, Process optimization",
+    "code": "Expression trees, code generation, kernel indexing",
+    "collect": "Collection abstractions (currently a dependency waypoint)",
+    "hardware": "Hardware acceleration backends, memory management",
+    "algebra": "Vector, Scalar, PackedCollection, CollectionProducer",
+    "geometry": "3D geometry, ray tracing primitives, cameras",
+    "time": "Temporal operations, FFT, filtering, signal processing",
+    "stats": "Probability distributions, statistical sampling",
+    "graph": "Neural network layers, Cell-Receptor-Transmitter pattern",
+    "ml": "Transformer models, attention, StateDictionary, diffusion",
+    "audio": "Audio synthesis, signal processing, filters, MIDI",
+    "music": "Pattern composition, notes, arrangements",
+    "compose": "Audio scene orchestration, generative audio, ML integration",
+    "color": "RGB, lighting, shaders, textures",
+    "space": "Scene management, meshes, spatial acceleration",
+    "physics": "Rigid body dynamics, absorbers, photon fields",
+    "heredity": "Genetic algorithms, evolutionary computation",
+    "chemistry": "Periodic table (Element enum), atomic structure",
+    "optimize": "ModelOptimizer, loss functions, Adam, evolutionary algorithms",
+    "render": "Ray tracing engine, lighting",
+    "utils": "Testing framework, TestSuiteBase, code policy enforcement",
+    "utils-http": "HTTP authentication, event delivery",
 }
+
+# Map module short names to actual directory paths relative to COMMON_DIR
+MODULE_PATHS = {
+    "meta": "base/meta",
+    "io": "base/io",
+    "relation": "base/relation",
+    "code": "base/code",
+    "collect": "base/collect",
+    "hardware": "base/hardware",
+    "algebra": "compute/algebra",
+    "geometry": "compute/geometry",
+    "time": "compute/time",
+    "stats": "compute/stats",
+    "graph": "domain/graph",
+    "ml": "engine/ml",
+    "audio": "engine/audio",
+    "music": "studio/music",
+    "compose": "studio/compose",
+    "color": "domain/color",
+    "space": "domain/space",
+    "physics": "domain/physics",
+    "heredity": "domain/heredity",
+    "chemistry": "domain/chemistry",
+    "optimize": "engine/optimize",
+    "render": "engine/render",
+    "utils": "engine/utils",
+    "utils-http": "engine/utils-http",
+}
+
+
+# Standalone (non-layer) documentation roots. These cover dirs that are
+# real first-class documentation but that don't live under a Maven layer
+# module — so they're not in MODULE_PATHS and would otherwise be invisible
+# to search. Listing them explicitly (rather than walking every *.md in
+# the repo) keeps planning docs / proposals / generated cruft out of the
+# index. Add a new entry here when introducing a new source of indexed
+# documentation; the file existence check at lookup time means non-
+# existent paths are silently ignored.
+#
+# Markdown entries are individual files OR directories (in which case
+# *.md inside is included); HTML entries are individual files OR
+# directories (in which case *.html inside is included).
+STANDALONE_MD_ROOTS = [
+    "flowtree/runtime/README.md",
+    "flowtree/runtime/docs",
+    "tools/mcp/README.md",
+    "tools/mcp/CLAUDE.md",
+    "tools/mcp/SECRETS.md",
+    "tools/mcp/consultant/README.md",
+    "tools/mcp/jmx/README.md",
+    "tools/mcp/manager/README.md",
+    "tools/mcp/memory/README.md",
+    "tools/mcp/profile-analyzer/README.md",
+    "tools/mcp/test-runner/README.md",
+]
+STANDALONE_HTML_ROOTS = [
+    "docs/tutorials",
+]
+
+
+def _expand_roots(common_dir: Path, entries: list[str], suffix: str) -> list[Path]:
+    """Expand a list of standalone-root entries (files or directories)
+    into concrete file paths that exist on disk.
+
+    @param common_dir: project root
+    @param entries:    relative paths from {@link STANDALONE_MD_ROOTS} or
+                       {@link STANDALONE_HTML_ROOTS}
+    @param suffix:     file suffix to glob when an entry is a directory
+                       (".md" or ".html")
+    @return list of resolved {@link Path} objects, in input order, with
+            directory globs sorted alphabetically
+    """
+    results: list[Path] = []
+    for entry in entries:
+        p = common_dir / entry
+        if p.is_file():
+            results.append(p)
+        elif p.is_dir():
+            results.extend(sorted(p.glob(f"*{suffix}")))
+    return results
 
 # Common synonyms for fuzzy matching (from ar-docs)
 SYNONYMS = {
@@ -223,21 +312,31 @@ class DocsRetriever:
         others = []
 
         if module:
-            readme = self.common_dir / module / "README.md"
+            mod_path = MODULE_PATHS.get(module, module)
+            readme = self.common_dir / mod_path / "README.md"
             if readme.exists():
                 readmes.append(readme)
-            module_docs = self.common_dir / module / "docs"
+            module_docs = self.common_dir / mod_path / "docs"
             if module_docs.exists():
                 others.extend(module_docs.glob("*.md"))
         else:
             # All module READMEs
-            for mod in MODULES:
-                readme = self.common_dir / mod / "README.md"
+            for mod, mod_path in MODULE_PATHS.items():
+                readme = self.common_dir / mod_path / "README.md"
                 if readme.exists():
                     readmes.append(readme)
-                mod_docs = self.common_dir / mod / "docs"
+                mod_docs = self.common_dir / mod_path / "docs"
                 if mod_docs.exists():
                     others.extend(mod_docs.glob("*.md"))
+
+            # Standalone (non-layer) doc roots: flowtree, tools/mcp, etc.
+            # READMEs go in the readmes bucket so they're guaranteed to be
+            # searched; everything else (docs/*.md per server) goes in others.
+            for path in _expand_roots(self.common_dir, STANDALONE_MD_ROOTS, ".md"):
+                if path.name == "README.md":
+                    readmes.append(path)
+                else:
+                    others.append(path)
 
             # Quick reference, CLAUDE.md, internals (not READMEs)
             qr = self.docs_dir / "QUICK_REFERENCE.md"
@@ -264,6 +363,7 @@ class DocsRetriever:
         else:
             if self.modules_dir.exists():
                 files.extend(sorted(self.modules_dir.glob("*.html")))
+            files.extend(_expand_roots(self.common_dir, STANDALONE_HTML_ROOTS, ".html"))
 
         return files
 
@@ -272,13 +372,14 @@ class DocsRetriever:
         files = []
 
         if module:
+            mod_path = MODULE_PATHS.get(module, module)
             html = self.modules_dir / f"{module}.html"
-            readme = self.common_dir / module / "README.md"
+            readme = self.common_dir / mod_path / "README.md"
             if html.exists():
                 files.append(html)
             if readme.exists():
                 files.append(readme)
-            module_docs = self.common_dir / module / "docs"
+            module_docs = self.common_dir / mod_path / "docs"
             if module_docs.exists():
                 files.extend(module_docs.glob("*.md"))
             return files
@@ -288,13 +389,17 @@ class DocsRetriever:
             files.extend(self.modules_dir.glob("*.html"))
 
         # All module READMEs and doc subdirectories
-        for mod in MODULES:
-            readme = self.common_dir / mod / "README.md"
+        for mod, mod_path in MODULE_PATHS.items():
+            readme = self.common_dir / mod_path / "README.md"
             if readme.exists():
                 files.append(readme)
-            mod_docs = self.common_dir / mod / "docs"
+            mod_docs = self.common_dir / mod_path / "docs"
             if mod_docs.exists():
                 files.extend(mod_docs.glob("*.md"))
+
+        # Standalone (non-layer) doc roots
+        files.extend(_expand_roots(self.common_dir, STANDALONE_MD_ROOTS, ".md"))
+        files.extend(_expand_roots(self.common_dir, STANDALONE_HTML_ROOTS, ".html"))
 
         # Quick reference, CLAUDE.md, internals
         qr = self.docs_dir / "QUICK_REFERENCE.md"
@@ -576,8 +681,9 @@ class DocsRetriever:
         if module not in MODULES:
             return f"Unknown module '{module}'. Available: {', '.join(sorted(MODULES))}"
 
+        mod_path = MODULE_PATHS.get(module, module)
         html_path = self.modules_dir / f"{module}.html"
-        readme_path = self.common_dir / module / "README.md"
+        readme_path = self.common_dir / mod_path / "README.md"
 
         content = ""
         if html_path.exists():
@@ -585,7 +691,7 @@ class DocsRetriever:
         elif readme_path.exists():
             content = _read_file(readme_path)
 
-        mod_docs = self.common_dir / module / "docs"
+        mod_docs = self.common_dir / mod_path / "docs"
         if mod_docs.exists():
             for md_file in sorted(mod_docs.glob("*.md")):
                 doc = _read_file(md_file, max_chars=20000)

@@ -11,6 +11,9 @@ Every tool invocation is recorded in a local SQLite history database for
 quality evaluation, retrieval accuracy assessment, and fine-tuning
 dataset construction.
 
+Memory access is via the ar-memory HTTP service (see tools/mcp/memory/).
+If ar-memory is unavailable, memory features degrade gracefully.
+
 Environment variables:
     AR_CONSULTANT_BACKEND      - "llamacpp", "ollama", "mlx", "passthrough", or "auto" (default)
     AR_CONSULTANT_LLAMACPP_URL - llama.cpp server URL (default: localhost:8083 on host, host.docker.internal:8083 in containers)
@@ -18,8 +21,7 @@ Environment variables:
     AR_CONSULTANT_MLX_MODEL    - MLX model path (default: mlx-community/Qwen2.5-Coder-32B-Instruct-4bit)
     AR_CONSULTANT_OLLAMA_URL   - Ollama base URL (default: http://localhost:11434)
     AR_CONSULTANT_HISTORY_DIR  - Directory for history.db (default: tools/mcp/consultant/data)
-    AR_MEMORY_DATA_DIR         - Shared memory data directory
-    AR_MEMORY_BACKEND          - Memory embedding backend
+    AR_MEMORY_URL              - ar-memory HTTP server URL (auto-discovered if not set)
 """
 
 import json
@@ -78,22 +80,25 @@ def _build_consult_prompt(question: str, doc_context: str, memory_context: str,
     """Build the prompt for a consultation question."""
     parts = []
 
+    # Put the question FIRST so the model knows what to look for in the docs
+    parts.append(f"## Question\n\n{question}")
+
+    if extra_context:
+        parts.append(f"## Additional Context from Agent\n\n{extra_context}")
+
     if doc_context:
-        parts.append(f"## Relevant Documentation\n\n{doc_context}")
+        parts.append(f"## Relevant Documentation\n\nRead these chunks carefully — the answer is in here.\n\n{doc_context}")
     else:
         parts.append("## Relevant Documentation\n\n(No documentation found for this query)")
 
     if memory_context:
         parts.append(f"## Relevant Memories from Prior Sessions\n\n{memory_context}")
 
-    if extra_context:
-        parts.append(f"## Additional Context from Agent\n\n{extra_context}")
-
-    parts.append(f"## Question\n\n{question}")
-
     parts.append(
-        "Answer the question using ONLY the documentation context above. "
-        "If no relevant documentation was found, respond with 'Not documented'."
+        "## Instructions\n\n"
+        "Answer the question above using the documentation chunks. "
+        "Include a code example if the docs provide one. "
+        "Cite the source file and line number."
     )
 
     return "\n\n".join(parts)
@@ -137,6 +142,44 @@ def _build_reformulate_prompt(raw_note: str, doc_context: str) -> str:
     )
 
     return "\n\n".join(parts)
+
+
+def _keyword_guidance(keywords: Optional[list[str]]) -> str:
+    """Generate guidance about keyword usage when results are poor."""
+    hints = []
+
+    if not keywords:
+        hints.append(
+            "Tip: Provide explicit keywords for better results. "
+            "Example: keywords=[\"StateDictionary\", \"weight loading\"]"
+        )
+    else:
+        # Check if keywords are all single words (common issue)
+        all_single = all(" " not in kw for kw in keywords)
+        has_generic = any(
+            kw.lower() in {
+                "default", "interface", "class", "method", "pattern",
+                "type", "module", "use", "create", "build", "make",
+            }
+            for kw in keywords
+        )
+        if all_single and len(keywords) > 2:
+            hints.append(
+                "Tip: Use multi-word phrases as keywords instead of "
+                "individual words. For example, [\"Features mixin\", "
+                "\"CollectionFeatures\"] works better than "
+                "[\"Features\", \"mixin\", \"CollectionFeatures\", "
+                "\"default\", \"interface\"] because single common words "
+                "match too many documents."
+            )
+        elif has_generic:
+            hints.append(
+                "Tip: Avoid generic keywords like 'default', 'interface', "
+                "'pattern'. Use domain-specific terms or multi-word phrases "
+                "that match documentation headings."
+            )
+
+    return (" " + " ".join(hints)) if hints else ""
 
 
 def _format_memory_context(memories: list[dict], max_entries: int = 3) -> str:
@@ -205,8 +248,9 @@ def consult(
         context: Optional additional context (e.g., code snippet, error message).
         keywords: Optional list of specific search terms. If provided, these are
             used directly for documentation search instead of extracting keywords
-            from the question. Use this to specify domain-specific terms that
-            matter most (e.g., ["AttentionFeatures", "backward", "gradient"]).
+            from the question. Use multi-word phrases for best results — e.g.,
+            ["Features mixin", "CollectionFeatures"] rather than individual
+            common words like ["Features", "mixin", "default", "interface"].
 
     Returns:
         Dictionary with answer, sources, and related memories.
@@ -236,8 +280,7 @@ def consult(
     # Source references: markdown files used in context + HTML for exploration
     sources = list({r["file"] for r in doc_results})
 
-    return {
-        "answer": answer,
+    result = {
         "sources": sources,
         "html_refs": html_refs,  # HTML docs for agent to explore if needed
         "related_memories": [
@@ -246,6 +289,25 @@ def consult(
         ],
         "backend": llm.name,
     }
+
+    # When the LLM could not synthesize an answer, replace "answer" with
+    # a "note" that encourages the caller to explore the listed sources.
+    if answer.strip().lower() in ("not documented", "not documented."):
+        if sources or html_refs:
+            note = (
+                "No direct answer was synthesized, but the sources and "
+                "html_refs fields contain related documentation worth exploring."
+            )
+            note += _keyword_guidance(keywords)
+            result["note"] = note
+        else:
+            note = "No documentation found for this query."
+            note += _keyword_guidance(keywords)
+            result["note"] = note
+    else:
+        result["answer"] = answer
+
+    return result
 
 
 @mcp.tool()
@@ -257,6 +319,11 @@ def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
     relevant documentation. The Consultant highlights which memories are
     still accurate and flags any that may be outdated.
 
+    Results are scoped to the current repository on a best-effort basis.
+    When git context detection succeeds, memories from unrelated projects
+    are filtered out. If detection fails, results may include cross-project
+    memories.
+
     Args:
         query: What to search for.
         namespace: Memory namespace to search.
@@ -265,7 +332,21 @@ def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
     Returns:
         Dictionary with summary, raw memories, and doc references.
     """
-    memories = memory.search(query=query, namespace=namespace, limit=limit)
+    # Auto-detect repo URL to scope results to the current repository
+    detected_repo_url = None
+    try:
+        _common_dir = os.path.join(os.path.dirname(__file__), "..", "common")
+        if _common_dir not in sys.path:
+            sys.path.insert(0, _common_dir)
+        from git_context import detect_git_context
+        detected_repo_url, _ = detect_git_context()
+    except (ValueError, ImportError):
+        pass  # Git detection is best-effort
+
+    memories = memory.search(
+        query=query, namespace=namespace, limit=limit,
+        repo_url=detected_repo_url,
+    )
 
     if not memories:
         return {
@@ -324,6 +405,9 @@ def remember(
     and the reformulated version are persisted, preserving the agent's
     intent while adding documentation context.
 
+    If repo_url/branch are not provided, they are auto-detected from
+    the current git working directory.
+
     Args:
         content: The raw note to store.
         namespace: Memory namespace.
@@ -335,6 +419,19 @@ def remember(
     Returns:
         Dictionary with both versions of the text and the entry ID.
     """
+    # Auto-detect git context if not provided
+    if not repo_url or not branch:
+        try:
+            _common_dir = os.path.join(os.path.dirname(__file__), "..", "common")
+            if _common_dir not in sys.path:
+                sys.path.insert(0, _common_dir)
+            from git_context import detect_git_context
+            detected_url, detected_branch = detect_git_context()
+            repo_url = repo_url or detected_url
+            branch = branch or detected_branch
+        except (ValueError, ImportError):
+            pass  # Git detection is best-effort
+
     # Get documentation context for the note's subject matter
     doc_retrieval = docs.get_context_for_query(content)
     doc_context = doc_retrieval["context"]
@@ -361,16 +458,22 @@ def remember(
         branch=branch,
     )
 
-    return {
+    result = {
         "reformulated": reformulated,
         "original": content,
-        "entry_id": entry["id"],
         "namespace": namespace,
         "tags": tags,
         "repo_url": repo_url,
         "branch": branch,
         "backend": llm.name,
     }
+
+    if "error" in entry:
+        result["error"] = entry["error"]
+    else:
+        result["entry_id"] = entry["id"]
+
+    return result
 
 
 @mcp.tool()
@@ -661,6 +764,7 @@ def branch_catchup(
     # memories that were stored without the repo_url/branch fields
     semantic_memories = memory.search(
         query=f"branch {branch} work progress", namespace=namespace, limit=5,
+        repo_url=repo_url,
     )
     # Deduplicate by ID
     seen_ids = {m["id"] for m in branch_memories}
@@ -765,6 +869,7 @@ def consultant_status() -> dict:
     return {
         "backend": llm.name,
         "backend_available": llm.available,
+        "memory_available": memory.available,
         "active_sessions": len(_sessions),
         "session_ttl_seconds": _SESSION_TTL,
         "docs_modules_available": len(docs._all_doc_files()),

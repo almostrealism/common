@@ -10,13 +10,22 @@
 #
 # The script examines git diff output for test files that existed on the
 # base branch and flags suspicious patterns:
-#   - Added @Ignore / @Disabled annotations
+#   - Added @Ignore / @Disabled annotations on existing methods
 #   - Deleted or commented-out assertions and test methods
 #   - Weakened assertions (assertEquals -> assertTrue, etc.)
-#   - Added try/catch blocks that swallow exceptions
+#   - Added try/catch blocks in existing methods that swallow exceptions
 #   - Changed expected values in assertions
-#   - Added skipLongTests guards
-#   - Added @TestDepth annotations
+#   - Added skipLongTests guards to existing methods
+#   - Added @TestDepth annotations to existing methods
+#
+# Method-scoping: patterns that flag *added* annotations or guards (1, 4, 5, 6)
+# associate each suspicious + line with the method that owns it in HEAD, and
+# only fire when that method also existed on the base branch. Method spans
+# are computed by counting { and } from each declaration through its matching
+# closing brace; "owns" ranges then extend each method to include the
+# annotations/javadoc/blank lines that immediately precede its declaration.
+# This prevents false positives when a branch adds brand-new test methods
+# that legitimately carry @TestDepth, skipLongTests, etc.
 #
 # Exit codes:
 #   0 - no test-hiding detected (or only new test files modified)
@@ -49,6 +58,141 @@ record_violation() {
     VIOLATION_COUNT=$((VIOLATION_COUNT + 1))
 }
 
+# ── Method-scoping helpers ──────────────────────────────────────────────
+#
+# These distinguish "modified an existing test" from "added a brand-new test
+# method." Patterns that fire on additions alone (added @Ignore, added
+# @TestDepth, added skipLongTests, added catch blocks) are filtered through
+# OWNS_RANGES so that lines inside brand-new test methods — and lines
+# between methods that lead into a new method — are not attributed to a
+# previous existing method.
+
+# Lists method spans for a Java file as TAB-separated
+# "START_LINE END_LINE METHOD_NAME". START_LINE is the declaration line;
+# END_LINE is the line of the matching closing brace, found by counting {
+# and } (with naive treatment of strings/comments — adequate for typical
+# test files). Abstract / interface declarations terminated by ';' before
+# any '{' are skipped.
+list_method_spans() {
+    awk '
+        function reset() { in_method = 0; depth = 0; seen_open = 0; method_name = "" }
+        BEGIN { reset() }
+        /^[[:space:]]*(public|private|protected)[[:space:]].*\(/ {
+            decl = $0
+            sub(/\(.*$/, "", decl)
+            n = split(decl, parts, /[[:space:]]+/)
+            name = parts[n]
+            if (name != "") {
+                # Abandon any previous unfinished method (likely abstract).
+                method_start = NR
+                method_name = name
+                in_method = 1
+                depth = 0
+                seen_open = 0
+            }
+        }
+        in_method {
+            line = $0
+            L = length(line)
+            for (i = 1; i <= L; i++) {
+                c = substr(line, i, 1)
+                if (c == "{") {
+                    depth++
+                    seen_open = 1
+                } else if (c == "}") {
+                    if (seen_open) {
+                        depth--
+                        if (depth == 0) {
+                            print method_start "\t" NR "\t" method_name
+                            reset()
+                            break
+                        }
+                    }
+                } else if (c == ";" && !seen_open) {
+                    reset()
+                    break
+                }
+            }
+        }
+    ' "$1"
+}
+
+# Converts method spans to "owns" ranges. Each method owns the lines from
+# (previous method end + 1) through its own end, so annotations, javadoc,
+# and blank lines preceding a declaration are attributed to the method
+# they introduce. Output: TAB-separated "OWNS_START OWNS_END METHOD_NAME".
+compute_owns_ranges() {
+    awk -F'\t' '
+        BEGIN { prev_end = 0 }
+        {
+            owns_start = prev_end + 1
+            owns_end = $2
+            print owns_start "\t" owns_end "\t" $3
+            prev_end = $2
+        }
+    ' <<< "$1"
+}
+
+# Finds the method that owns a given line number, or empty if the line
+# falls outside any methods range (imports, class header, file footer).
+find_owning_method() {
+    local owns_map="$1"
+    local line_no="$2"
+    [ -z "$owns_map" ] && return 0
+    awk -F'\t' -v t="$line_no" '
+        $1 <= t && $2 >= t { print $3; exit }
+    ' <<< "$owns_map"
+}
+
+# Extracts (LINENO\tCONTENT) for each + line in a unified diff, where
+# LINENO is the line number in the new file. Skips diff/index/+++/---
+# header lines.
+extract_added_lines_with_lineno() {
+    awk '
+        /^@@/ {
+            if (match($0, /\+[0-9]+/)) {
+                lineno = substr($0, RSTART + 1, RLENGTH - 1) + 0
+            }
+            in_hunk = 1
+            next
+        }
+        /^\+\+\+/ || /^---/ || /^diff/ || /^index/ { in_hunk = 0; next }
+        !in_hunk { next }
+        /^\+/ {
+            if (lineno != "") print lineno "\t" substr($0, 2)
+            lineno++
+            next
+        }
+        /^-/ { next }
+        { lineno++ }
+    ' <<< "$1"
+}
+
+# Filters added lines (LINENO\tCONTENT) to only those whose owning method
+# existed on the base branch. Lines outside any method (imports, class
+# header, gaps before the first method) are dropped — they are not test
+# behaviour and should be caught by other rules if they matter.
+filter_added_in_existing_methods() {
+    local added="$1"
+    local base_names="$2"
+    local owns_map="$3"
+    local ln content method
+
+    [ -z "$added" ] && return 0
+    [ -z "$base_names" ] && return 0
+
+    while IFS=$'\t' read -r ln content; do
+        [ -z "$ln" ] && continue
+        method=$(find_owning_method "$owns_map" "$ln")
+        [ -z "$method" ] && continue
+        if grep -qxF "$method" <<< "$base_names"; then
+            printf '%s\t%s\n' "$ln" "$content"
+        fi
+    done <<< "$added"
+}
+
+# ── File-level checks ───────────────────────────────────────────────────
+
 # Get list of modified (not added) test files.
 # We only care about files that existed on the base branch. New files (A status)
 # are excluded because modifying your own new tests is acceptable.
@@ -79,14 +223,28 @@ for FILE in $MODIFIED_TEST_FILES; do
     # Get only the additions and deletions for this file
     DIFF=$(git diff "${BASE_BRANCH}...HEAD" -- "$FILE")
 
-    # ── Pattern 1: Added @Ignore or @Disabled annotations ──
-    ADDED_IGNORE=$(echo "$DIFF" | grep -cE '^\+.*@(Ignore|Disabled)' || true)
+    # Pre-compute method spans and added-line metadata once per file. The
+    # method-scoped patterns below filter additions through OWNS_RANGES so
+    # that lines inside brand-new test methods (or between methods, leading
+    # into a new one) are not attributed to a previous existing method.
+    BASE_FILE_TMP=$(mktemp)
+    git show "${BASE_BRANCH}:${FILE}" > "$BASE_FILE_TMP" 2>/dev/null || true
+    BASE_METHOD_NAMES=$(list_method_spans "$BASE_FILE_TMP" | cut -f3 | sort -u)
+    HEAD_SPANS=$(list_method_spans "$FILE")
+    OWNS_RANGES=$(compute_owns_ranges "$HEAD_SPANS")
+    ADDED_LINES=$(extract_added_lines_with_lineno "$DIFF")
+    ADDED_IN_EXISTING=$(filter_added_in_existing_methods \
+        "$ADDED_LINES" "$BASE_METHOD_NAMES" "$OWNS_RANGES")
+    rm -f "$BASE_FILE_TMP"
+
+    # ── Pattern 1: Added @Ignore or @Disabled to EXISTING methods ──
+    ADDED_IGNORE=$(echo "$ADDED_IN_EXISTING" | grep -cE '@(Ignore|Disabled)' || true)
     if [ "$ADDED_IGNORE" -gt 0 ]; then
         record_violation "$FILE" "ADDED_SKIP_ANNOTATION" \
-            "Added ${ADDED_IGNORE} @Ignore/@Disabled annotation(s) to an existing test file"
+            "Added ${ADDED_IGNORE} @Ignore/@Disabled annotation(s) to test method(s) that existed on the base branch"
     fi
 
-    # ── Pattern 2: Deleted assertion lines ──
+    # ── Pattern 2: Deleted assertion lines (net) ──
     DELETED_ASSERTS=$(echo "$DIFF" | grep -cE '^\-.*\b(assert|Assert\.|assertEquals|assertTrue|assertFalse|assertNotNull|assertNull|assertThrows|fail\()' || true)
     ADDED_ASSERTS=$(echo "$DIFF" | grep -cE '^\+.*\b(assert|Assert\.|assertEquals|assertTrue|assertFalse|assertNotNull|assertNull|assertThrows|fail\()' || true)
     if [ "$DELETED_ASSERTS" -gt 0 ] && [ "$ADDED_ASSERTS" -lt "$DELETED_ASSERTS" ]; then
@@ -95,7 +253,7 @@ for FILE in $MODIFIED_TEST_FILES; do
             "Net ${NET_REMOVED} assertion(s) removed (${DELETED_ASSERTS} deleted, ${ADDED_ASSERTS} added)"
     fi
 
-    # ── Pattern 3: Deleted @Test methods ──
+    # ── Pattern 3: Deleted @Test methods (net) ──
     DELETED_TEST_METHODS=$(echo "$DIFF" | grep -cE '^\-.*@Test' || true)
     ADDED_TEST_METHODS=$(echo "$DIFF" | grep -cE '^\+.*@Test' || true)
     if [ "$DELETED_TEST_METHODS" -gt 0 ] && [ "$ADDED_TEST_METHODS" -lt "$DELETED_TEST_METHODS" ]; then
@@ -104,31 +262,36 @@ for FILE in $MODIFIED_TEST_FILES; do
             "Net ${NET_REMOVED} @Test method(s) removed"
     fi
 
-    # ── Pattern 4: Added try/catch that swallows exceptions in tests ──
-    # Look for added try/catch blocks where the catch is empty or just has a comment
-    ADDED_CATCH=$(echo "$DIFF" | grep -cE '^\+.*catch\s*\(' || true)
-    if [ "$ADDED_CATCH" -gt 0 ]; then
-        # Check if the catch blocks swallow (no rethrow or fail())
-        CATCH_WITH_RETHROW=$(echo "$DIFF" | grep -A3 '^\+.*catch\s*(' | grep -cE '^\+.*(throw|fail\(|Assert\.fail)' || true)
-        SWALLOWED=$((ADDED_CATCH - CATCH_WITH_RETHROW))
-        if [ "$SWALLOWED" -gt 0 ]; then
-            record_violation "$FILE" "EXCEPTION_SWALLOWING" \
-                "Added ${SWALLOWED} catch block(s) that may swallow exceptions without rethrowing or failing"
+    # ── Pattern 4: Added catch in EXISTING methods that swallows exceptions ──
+    # For each added catch line in an existing method, peek at the next 3
+    # lines of the HEAD file to see whether the catch body rethrows or fails.
+    SWALLOWED=0
+    while IFS=$'\t' read -r ADDED_LN ADDED_CONTENT; do
+        [ -z "$ADDED_LN" ] && continue
+        if echo "$ADDED_CONTENT" | grep -qE 'catch[[:space:]]*\('; then
+            NEXT_LINES=$(sed -n "$((ADDED_LN+1)),$((ADDED_LN+3))p" "$FILE" 2>/dev/null || true)
+            if ! echo "$NEXT_LINES" | grep -qE '(throw|fail\(|Assert\.fail)'; then
+                SWALLOWED=$((SWALLOWED + 1))
+            fi
         fi
+    done <<< "$ADDED_IN_EXISTING"
+    if [ "$SWALLOWED" -gt 0 ]; then
+        record_violation "$FILE" "EXCEPTION_SWALLOWING" \
+            "Added ${SWALLOWED} catch block(s) in existing method(s) that may swallow exceptions without rethrowing or failing"
     fi
 
-    # ── Pattern 5: Added skipLongTests guard ──
-    ADDED_SKIP=$(echo "$DIFF" | grep -cE '^\+.*skipLongTests' || true)
+    # ── Pattern 5: Added skipLongTests guard to EXISTING methods ──
+    ADDED_SKIP=$(echo "$ADDED_IN_EXISTING" | grep -cE 'skipLongTests' || true)
     if [ "$ADDED_SKIP" -gt 0 ]; then
         record_violation "$FILE" "ADDED_SKIP_GUARD" \
-            "Added skipLongTests guard to an existing test"
+            "Added skipLongTests guard to test method(s) that existed on the base branch"
     fi
 
-    # ── Pattern 6: Added @TestDepth annotation ──
-    ADDED_DEPTH=$(echo "$DIFF" | grep -cE '^\+.*@TestDepth' || true)
+    # ── Pattern 6: Added @TestDepth to EXISTING methods ──
+    ADDED_DEPTH=$(echo "$ADDED_IN_EXISTING" | grep -cE '@TestDepth' || true)
     if [ "$ADDED_DEPTH" -gt 0 ]; then
         record_violation "$FILE" "ADDED_TEST_DEPTH" \
-            "Added @TestDepth annotation(s) to push existing test(s) out of default run"
+            "Added @TestDepth annotation(s) to test method(s) that existed on the base branch"
     fi
 
     # ── Pattern 7: Commented out test code ──
@@ -141,7 +304,9 @@ for FILE in $MODIFIED_TEST_FILES; do
     fi
 
     # ── Pattern 8: @TestDepth value INCREASED (not just added) ──
-    # Catches the specific tactic of changing @TestDepth(2) to @TestDepth(10)
+    # Catches the specific tactic of changing @TestDepth(2) to @TestDepth(10).
+    # Requires a removed @TestDepth in the diff, so purely additive branches
+    # never trigger this — even when new methods have a high @TestDepth.
     REMOVED_DEPTH_LINES=$(echo "$DIFF" | grep -oP '^\-.*@TestDepth\(\K[0-9]+' || true)
     ADDED_DEPTH_LINES=$(echo "$DIFF" | grep -oP '^\+.*@TestDepth\(\K[0-9]+' || true)
     if [ -n "$REMOVED_DEPTH_LINES" ] && [ -n "$ADDED_DEPTH_LINES" ]; then

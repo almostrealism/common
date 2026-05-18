@@ -301,6 +301,30 @@ When `jmx_monitoring: true` is set and the forked JVM fails to start (detected b
 3. Updates metadata with `jmx_monitoring_degraded: true` and `jmx_retry_reason`
 4. Spawns PID discovery for the new process (jstat monitoring still works)
 
+## Offline Heap Dump Analysis
+
+When a JVM crashes with OOM or a `.hprof` file is captured, `analyze_heap_dump` analyzes it offline — no live process required.
+
+```
+analyze_heap_dump  path:"/var/dumps/java_pid17905.hprof"  mode:"summary"
+```
+
+**Modes:**
+- `histogram` — Top N classes by instance count and shallow size. Tells you *what* is filling the heap (e.g., 4 million `byte[]` arrays).
+- `dominators` — Top N objects by retained size. Tells you *who is holding* the memory (e.g., a single `HashMap` retaining 6 GB).
+- `summary` — Both views plus heap metadata (default).
+
+The tool uses `heap_analyzer.py` in `tools/mcp/jmx/`, which delegates to a Java-based HPROF parser for the heavy binary parsing and graph traversal. The results are returned in the same structured format as `get_class_histogram` and `diff_class_histogram` so existing histogram tooling works without modification.
+
+**Use when:**
+- A JVM crashed with OOM and left a `.hprof` file
+- You have a dump from a previous run and need post-hoc analysis
+- The live JVM is no longer running (so `attach_to_pid` and `attach_to_run` are not available)
+
+**Limitations:**
+- Dominator tree computation is memory-intensive for very large dumps (>4 GB); class histograms are always fast (single-pass)
+- The `.hprof` file must be readable by the same user running the MCP server
+
 ## Limitations
 
 - **Single fork only**: Supports `forkCount=1` (the default). Multiple forked JVMs are not tracked.

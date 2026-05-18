@@ -154,7 +154,53 @@ MODULES = {
     "optimize": {"badge": "Application", "desc": "Loss functions, training"},
     "render": {"badge": "Application", "desc": "Ray tracing engine"},
     "utils": {"badge": "Application", "desc": "Testing framework"},
+    "flowtree": {"badge": "Infrastructure",
+                 "desc": "Distributed job dispatch, ClaudeCodeJob, MCP wiring, pushed tools",
+                 "path": "flowtree/runtime"},
 }
+
+
+# Standalone (non-layer) documentation paths included in every
+# unfiltered search_ar_docs call. The list mirrors STANDALONE_MD_ROOTS in
+# ar-consultant's docs_retriever.py and is kept in sync by hand. Entries
+# are paths relative to COMMON_DIR; directories are globbed for *.md or
+# *.html, individual files are appended directly. Non-existent paths are
+# silently skipped so a partial checkout doesn't fail the tool.
+STANDALONE_MD_ROOTS = [
+    "flowtree/runtime/README.md",
+    "flowtree/runtime/docs",
+    "tools/mcp/README.md",
+    "tools/mcp/CLAUDE.md",
+    "tools/mcp/SECRETS.md",
+    "tools/mcp/consultant/README.md",
+    "tools/mcp/jmx/README.md",
+    "tools/mcp/manager/README.md",
+    "tools/mcp/memory/README.md",
+    "tools/mcp/profile-analyzer/README.md",
+    "tools/mcp/test-runner/README.md",
+]
+STANDALONE_HTML_ROOTS = [
+    "docs/tutorials",
+]
+
+
+def _expand_standalone_roots(entries: list[str], suffix: str) -> list[Path]:
+    """Resolve a list of {@link STANDALONE_MD_ROOTS} / {@link STANDALONE_HTML_ROOTS}
+    entries against {@link COMMON_DIR}.
+
+    @param entries: relative paths; each may be a file or a directory
+    @param suffix:  file suffix to glob when an entry is a directory
+                    (".md" or ".html")
+    @return existing paths in input order; directory globs sorted
+    """
+    results: list[Path] = []
+    for entry in entries:
+        p = COMMON_DIR / entry
+        if p.is_file():
+            results.append(p)
+        elif p.is_dir():
+            results.extend(sorted(p.glob(f"*{suffix}")))
+    return results
 
 
 def read_file_safely(path: Path, max_chars: int = 50000) -> str:
@@ -457,6 +503,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 if module_claude.exists():
                     files_to_search.append(module_claude)
 
+            # Standalone (non-layer) doc roots: flowtree, tools/mcp, etc.
+            files_to_search.extend(_expand_standalone_roots(STANDALONE_MD_ROOTS, ".md"))
+            files_to_search.extend(_expand_standalone_roots(STANDALONE_HTML_ROOTS, ".html"))
+
             # Implementation notes (internals)
             if INTERNALS_DIR.exists():
                 for md_file in INTERNALS_DIR.glob("*.md"):
@@ -490,9 +540,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return [TextContent(type="text", text=f"Unknown module '{module}'. Available: {available}")]
 
         # Try HTML first, then README, then docs directory
+        module_dir = MODULES[module].get("path", module)
         module_html = MODULES_DIR / f"{module}.html"
-        module_readme = COMMON_DIR / module / "README.md"
-        module_docs_dir = COMMON_DIR / module / "docs"
+        module_readme = COMMON_DIR / module_dir / "README.md"
+        module_docs_dir = COMMON_DIR / module_dir / "docs"
 
         content = ""
         if module_html.exists():

@@ -54,7 +54,7 @@ Dedicated [MCP tools](tools/mcp) are also available for AI-assisted development 
 One way to understand this project is as a kind of intermediate representation for portable computer
 programs, plus associated tools for optimization and execution, with a focus on mathematical operations.
 In this way it might be understood as loosely comparable to the LLVM project, but with a much narrower
-focus. The [code](code/README.md) module forms the basis of this intermediate representation.
+focus. The [code](base/code/README.md) module forms the basis of this intermediate representation.
 
 #### A Tensor Algebra Toolkit
 
@@ -63,7 +63,7 @@ operations. Unlike other acceleration frameworks, where specific operations are 
 kernel programs, the paradigm used here allows for the compilation at runtime of new accelerator programs
 from a tree of mathematical operations. This makes it potentially faster than systems which are designed
 to perform certain common operations quickly, but are not capable of generating custom accelerator code.
-The [algebra](algebra/README.md) module provides these tools, and they are extended in a range of ways
+The [algebra](compute/algebra/README.md) module provides these tools, and they are extended in a range of ways
 by other modules.
 
 #### Supported Accelerators
@@ -173,6 +173,37 @@ or you can use different backends in different places - leveraging Metal on MacO
 using a native lib on windows and an external native process in the cloud - all with the same
 language for defining your expressions.
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+### Module Map
+
+```
+common/
+├── base/                              — Foundation
+│   uml, io, relation, code, collect, hardware
+│
+├── compute/                           — Mathematical Domains
+│   algebra, geometry, stats, time
+│
+├── domain/                            — Domain Models
+│   color, heredity, graph, physics, space, chemistry, llvm
+│
+├── engine/                            — Applications & Training
+│   optimize, render, ml, audio, utils, utils-http
+│
+├── extern/                            — External Integrations
+│   ml-djl, ml-onnx, ml-script
+│
+├── studio/                            — Multimedia Composition
+│   music, spatial, compose
+│
+├── flowtree/                          — Workflow Orchestration
+│   api, base, agents, python,
+│   graphpersist, runtime
+│
+├── tools/                             — Dev Tools & MCP Servers
+├── docs/                              — Documentation
+└── scripts/                           — Build Helpers
+```
 
 ### Tutorial
 
@@ -657,7 +688,7 @@ public class MyNativeEnabledApplication implements CodeFeatures {
 ### Machine Learning
 
 The framework supports full transformer-based large language model (LLM) architectures with
-hardware acceleration. The [ml module](ml/README.md) provides comprehensive documentation on
+hardware acceleration. The [ml module](engine/ml/README.md) provides comprehensive documentation on
 building and running LLMs.
 
 #### Key Features
@@ -720,7 +751,7 @@ public class CustomModel implements AttentionFeatures {
 ```
 
 For complete documentation including attention mechanisms, tokenization, and model
-architecture details, see the [ML Module README](ml/README.md).
+architecture details, see the [ML Module README](engine/ml/README.md).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

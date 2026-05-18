@@ -1,0 +1,4 @@
+# Shared dependencies for AR MCP common libraries
+# Memory HTTP client uses only stdlib (urllib), no extra deps needed.
+# Inference backends use only stdlib (urllib) for HTTP-based backends.
+# MLX backend requires mlx-lm (optional, Apple Silicon only).

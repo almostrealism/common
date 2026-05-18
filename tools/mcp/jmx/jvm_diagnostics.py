@@ -7,6 +7,7 @@ structured exceptions on failure.
 """
 
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -24,38 +25,52 @@ class JVMDiagnosticsError(Exception):
 
 
 def is_process_alive(pid: int) -> bool:
-    """Check whether a process is alive via /proc/<pid>/stat.
-
-    Uses the proc filesystem directly to avoid spawning a subprocess.
-    """
+    """Check whether a process is alive. Uses /proc on Linux, kill(0) on macOS."""
+    # Try /proc first (Linux)
     try:
         stat_path = Path(f"/proc/{pid}/stat")
-        return stat_path.exists()
+        if stat_path.exists():
+            return True
     except (OSError, PermissionError):
+        pass
+
+    # Fallback: os.kill with signal 0 (works on macOS and all Unix)
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
         return False
+    except PermissionError:
+        return True  # Process exists but we lack permission
 
 
 def get_ppid(pid: int) -> Optional[int]:
-    """Read the parent PID from /proc/<pid>/stat.
-
-    The fourth field of /proc/<pid>/stat is the parent PID.
-    Returns None if the process does not exist or cannot be read.
-    """
+    """Get parent PID. Uses /proc on Linux, ps on macOS."""
+    # Try /proc first (Linux)
     try:
         stat_path = Path(f"/proc/{pid}/stat")
         text = stat_path.read_text()
-        # Format: pid (comm) state ppid ...
-        # comm can contain spaces/parens, so find the last ')' first
         close_paren = text.rfind(")")
         if close_paren == -1:
             return None
         fields_after_comm = text[close_paren + 2:].split()
-        # fields_after_comm[0] = state, fields_after_comm[1] = ppid
         if len(fields_after_comm) >= 2:
             return int(fields_after_comm[1])
-        return None
     except (OSError, PermissionError, ValueError):
-        return None
+        pass
+
+    # Fallback: ps (macOS / general Unix)
+    try:
+        result = subprocess.run(
+            ["ps", "-o", "ppid=", "-p", str(pid)],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return int(result.stdout.strip())
+    except (subprocess.TimeoutExpired, FileNotFoundError, ValueError):
+        pass
+
+    return None
 
 
 def _require_alive(pid: int) -> None:
