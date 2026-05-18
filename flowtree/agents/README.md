@@ -93,7 +93,10 @@ plan) lets callers route specific phases to opencode via the
            "post-completion":"opencode","commit-message":"opencode"}
   ```
 
-See `docs/plans/PLUGGABLE_AGENTS.md` for the full per-phase precedence rules.
+See [`flowtree/docs/architecture/PHASES.md`](../docs/architecture/PHASES.md) for
+the full per-phase precedence rules and
+[`flowtree/docs/operations/OPENCODE.md`](../docs/operations/OPENCODE.md) for
+operator-facing setup detail.
 
 ---
 
