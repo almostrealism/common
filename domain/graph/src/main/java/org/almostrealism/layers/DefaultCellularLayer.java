@@ -96,6 +96,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	/** Optional compute requirements to apply to operations in this layer. */
 	private List<ComputeRequirement> requirements;
 
+	/** Whether the entry cell records forward-pass inputs for use during backpropagation. */
 	private boolean inputTrackingEnabled;
 
 	/** The recorded forward-pass input (when input tracking is enabled). */

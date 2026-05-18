@@ -916,7 +916,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 */
 	public synchronized void sendTask(String data, int server) {
 		if (server < 0 || server >= this.servers.size()) {
-			System.out.println("NodeGroup: Server " + server + " is not connected");
+			warn("NodeGroup: Server " + server + " is not connected");
 			return;
 		}
 
@@ -938,7 +938,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 */
 	public synchronized void sendTask(JobFactory f, int server) {
 		if (server < 0 || server >= this.servers.size()) {
-			System.out.println("NodeGroup: Server " + server + " is not connected");
+			warn("NodeGroup: Server " + server + " is not connected");
 			return;
 		}
 
