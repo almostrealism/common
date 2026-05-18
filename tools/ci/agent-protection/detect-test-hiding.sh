@@ -191,6 +191,152 @@ filter_added_in_existing_methods() {
     done <<< "$added"
 }
 
+# ── Pattern-7 helpers (CODE_COMMENTED_OUT refinement) ─────────────────
+#
+# Pattern 7 catches "agent commented out failing tests instead of fixing
+# them." The naive form (count `-` code lines and `+ //` comment lines
+# globally) misfires whenever a branch combines a legitimate refactor
+# (renames, parameter-threading) with new test methods that carry leading
+# javadoc-style comments. These helpers narrow the rule by:
+#
+#   1. Restricting added comments to those inside methods that existed on
+#      the base branch — comments inside brand-new methods are docstrings
+#      for new content, not concealment.
+#   2. Pairing each removed code line with any +/added line in the same
+#      hunk whose token-set Jaccard similarity ≥ 0.6, so simple renames
+#      and parameter-threading don't count as deletions.
+#   3. Requiring added comments to look code-shaped before counting them
+#      (contains '(', ';', '=', assertX, Assert., return, throw, …) —
+#      prose docstrings are excluded.
+
+# Returns 0 (success — "yes, codelike") if the comment content (already
+# stripped of leading `// `) looks like commented-out code, 1 otherwise.
+# The strongest signal is code-shaped punctuation; assertion/Assert API
+# names are added as a fallback for short lines without trailing
+# punctuation. Generic English words (new, return, if, for, while,
+# throw, switch) are deliberately NOT in the regex — they produce false
+# positives on prose and any real code use of them is already covered by
+# the punctuation branch ("return x;", "throw new X();" both have ';' /
+# '(').
+is_codelike_comment() {
+    local content="$1"
+    if echo "$content" | grep -qE '(\(|;|=|\{|\}|->|::)|(\b(assertEquals|assertTrue|assertFalse|assertNotNull|assertNull|assertThrows|assertArrayEquals|assertSame|assertNotSame|Assert\.|fail\b)\b)'; then
+        return 0
+    fi
+    return 1
+}
+
+# Counts added `// ...` lines whose owning method existed on the base
+# branch AND whose stripped content is code-shaped (not prose). Input is
+# the ADDED_IN_EXISTING listing (LINENO\tCONTENT, tab-separated).
+count_codelike_comments_in_existing() {
+    local added_in_existing="$1"
+    local ln content stripped n
+    n=0
+
+    [ -z "$added_in_existing" ] && { echo 0; return 0; }
+
+    while IFS=$'\t' read -r ln content; do
+        [ -z "$ln" ] && continue
+        if echo "$content" | grep -qE '^[[:space:]]*//'; then
+            stripped=$(echo "$content" | sed -E 's|^[[:space:]]*//[[:space:]]*||')
+            if is_codelike_comment "$stripped"; then
+                n=$((n + 1))
+            fi
+        fi
+    done <<< "$added_in_existing"
+    echo "$n"
+}
+
+# Counts `-` code lines (excluding `// ...` removals and diff metadata
+# lines) that do NOT have a near-replacement on a `+` line in the same
+# hunk. "Near-replacement" = token-set Jaccard similarity ≥ 0.6, which
+# catches renames (`foo()` ↔ `foo(Phase.PRIMARY)`,
+# `"::runner:="` ↔ `"::defaultRunner:="`) and parameter threading.
+#
+# Implemented in awk: walks each hunk in the unified diff, collects all
+# `-` and `+` lines for that hunk, then for each `-` line computes its
+# best Jaccard against any `+` line in the hunk; only `-` lines with
+# best-match < 0.6 are counted.
+count_unpaired_removals() {
+    local diff="$1"
+    [ -z "$diff" ] && { echo 0; return 0; }
+    awk '
+        function tokenize(s, arr,    i, n, t, kept) {
+            gsub(/[^A-Za-z0-9_]+/, " ", s)
+            n = split(s, arr, " ")
+            kept = 0
+            for (i = 1; i <= n; i++) {
+                t = arr[i]
+                if (length(t) > 1) {
+                    kept++
+                    arr[kept] = t
+                }
+            }
+            for (i = kept + 1; i <= n; i++) delete arr[i]
+            return kept
+        }
+        # Containment ("overlap coefficient"): |A ∩ B| / min(|A|, |B|).
+        # More forgiving than Jaccard for renames that swap one token in
+        # an otherwise-identical line, which is the dominant refactor
+        # shape this pattern needs to ignore.
+        function containment(a, b,    ta, tb, na, nb, i, both, smaller) {
+            na = tokenize(a, ta)
+            nb = tokenize(b, tb)
+            if (na == 0 || nb == 0) return 0
+            both = 0
+            for (i = 1; i <= na; i++) seen[ta[i]] = 1
+            for (i = 1; i <= nb; i++) if (tb[i] in seen) { both++; seen[tb[i]] = 2 }
+            for (i in seen) delete seen[i]
+            smaller = (na < nb) ? na : nb
+            if (smaller == 0) return 0
+            return both / smaller
+        }
+        function flush_hunk(    i, j, best, sim, line, candidate) {
+            for (i = 1; i <= n_removed; i++) {
+                line = removed[i]
+                # Skip comment-line removals and pure-whitespace removals.
+                if (line ~ /^[[:space:]]*\/\//) continue
+                if (line ~ /^[[:space:]]*$/) continue
+                best = 0
+                for (j = 1; j <= n_added; j++) {
+                    candidate = added[j]
+                    # A commented-out line is NEVER a legitimate
+                    # replacement — that is precisely the concealment
+                    # pattern this rule is trying to detect. Excluding
+                    # `// ...` from the candidate pool prevents the
+                    # check from treating "remove code; add same code as
+                    # a comment" as a no-op refactor.
+                    if (candidate ~ /^[[:space:]]*\/\//) continue
+                    sim = containment(line, candidate)
+                    if (sim > best) best = sim
+                    if (best >= 0.6) break
+                }
+                if (best < 0.6) unpaired++
+            }
+            n_removed = 0
+            n_added = 0
+        }
+        BEGIN { n_removed = 0; n_added = 0; in_hunk = 0; unpaired = 0 }
+        /^@@/ {
+            flush_hunk()
+            in_hunk = 1
+            next
+        }
+        /^\+\+\+/ || /^---/ || /^diff/ || /^index/ { flush_hunk(); in_hunk = 0; next }
+        !in_hunk { next }
+        /^-/ {
+            removed[++n_removed] = substr($0, 2)
+            next
+        }
+        /^\+/ {
+            added[++n_added] = substr($0, 2)
+            next
+        }
+        END { flush_hunk(); print unpaired }
+    ' <<< "$diff"
+}
+
 # ── File-level checks ───────────────────────────────────────────────────
 
 # Get list of modified (not added) test files.
@@ -295,12 +441,23 @@ for FILE in $MODIFIED_TEST_FILES; do
     fi
 
     # ── Pattern 7: Commented out test code ──
-    ADDED_COMMENTED=$(echo "$DIFF" | grep -cE '^\+\s*//' | head -20 || true)
-    DELETED_CODE=$(echo "$DIFF" | grep -cE '^\-\s*[^/]' || true)
-    # Only flag if significant code was deleted AND comments were added in roughly the same amount
-    if [ "$DELETED_CODE" -gt 5 ] && [ "$ADDED_COMMENTED" -gt "$((DELETED_CODE / 2))" ]; then
+    #
+    # Refined to fire only when the deletions and added comments BOTH
+    # point at concealment of existing behaviour:
+    #   * UNPAIRED_DELETIONS = `-` code lines without a near-replacement
+    #     on a `+` line in the same hunk (token-set Jaccard ≥ 0.6).
+    #     Excludes renames, parameter-threading, message changes.
+    #   * SUSPICIOUS_COMMENTS = `+ // ...` lines inside methods that
+    #     existed on base AND whose stripped content is code-shaped
+    #     (has parens, semicolons, assertX, Assert., return, throw, …).
+    #     Excludes prose docstrings for brand-new test methods.
+    # See docs/plans/TEST_INTEGRITY_CHECK_IMPROVEMENTS.md for the
+    # full rationale and Phase-2 backup plans.
+    UNPAIRED_DELETIONS=$(count_unpaired_removals "$DIFF")
+    SUSPICIOUS_COMMENTS=$(count_codelike_comments_in_existing "$ADDED_IN_EXISTING")
+    if [ "$UNPAIRED_DELETIONS" -gt 5 ] && [ "$SUSPICIOUS_COMMENTS" -gt "$((UNPAIRED_DELETIONS / 2))" ]; then
         record_violation "$FILE" "CODE_COMMENTED_OUT" \
-            "Significant code deleted (${DELETED_CODE} lines) with many comment lines added (${ADDED_COMMENTED}) — possible commenting-out"
+            "${UNPAIRED_DELETIONS} unpaired code deletion(s) and ${SUSPICIOUS_COMMENTS} code-shaped comment(s) added inside existing method(s) — possible commenting-out"
     fi
 
     # ── Pattern 8: @TestDepth value INCREASED (not just added) ──
