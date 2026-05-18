@@ -377,7 +377,6 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 		try {
 			TraversalPolicy inputShape = shape(m, k);
 			TraversalPolicy weightShape = shape(k, n);
-			TraversalPolicy outputShape = shape(m, n);
 
 			// Create input and weight
 			Random rng = new Random(42);
@@ -961,7 +960,6 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 	private void runMultiAttentionTest(String name, int batch, int seq, int dim, int heads, int numBlocks) throws IOException {
 		Files.createDirectories(RESULTS_DIR);
 
-		int headDim = dim / heads;
 		log("=== Multi-Attention Test: " + name + " ===");
 		log("  Shape: (" + batch + "," + seq + "," + dim + "), heads=" + heads + ", blocks=" + numBlocks);
 

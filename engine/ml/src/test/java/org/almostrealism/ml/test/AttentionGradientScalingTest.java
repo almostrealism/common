@@ -28,6 +28,7 @@ import org.almostrealism.ml.audio.LoRADiffusionTransformer;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -304,16 +305,16 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 		k.randnFill(rng);
 		v.randnFill(rng);
 
-		org.almostrealism.model.SequentialBlock block =
-				new org.almostrealism.model.SequentialBlock(inputShape);
+		SequentialBlock block =
+				new SequentialBlock(inputShape);
 
 		// Self-attention with LoRA (with residual)
 		block.add(residual(buildLoRAAttentionBlock(batchSize, seqLen, heads, headSize,
 				wq, wo, k, v, loraRank)));
 
 		// FFN (with residual)
-		org.almostrealism.model.SequentialBlock ffn =
-				new org.almostrealism.model.SequentialBlock(shape(batchSize, seqLen, dim));
+		SequentialBlock ffn =
+				new SequentialBlock(shape(batchSize, seqLen, dim));
 		ffn.add(dense(w1));
 		ffn.add(gelu());
 		ffn.add(dense(w2));
@@ -333,8 +334,8 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 		int dim = heads * headSize;
 		double loraAlpha = 16.0;
 
-		org.almostrealism.model.SequentialBlock attention =
-				new org.almostrealism.model.SequentialBlock(shape(batchSize, seqLen, dim));
+		SequentialBlock attention =
+				new SequentialBlock(shape(batchSize, seqLen, dim));
 
 		// Q projection with LoRA: output = x @ W + scaling * x @ A @ B
 		LoRALinear loraQ = new LoRALinear(shape(batchSize, seqLen, dim), wq, null, loraRank, loraAlpha);
@@ -430,15 +431,15 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 		k.randnFill(rng);
 		v.randnFill(rng);
 
-		org.almostrealism.model.SequentialBlock block =
-				new org.almostrealism.model.SequentialBlock(inputShape);
+		SequentialBlock block =
+				new SequentialBlock(inputShape);
 
 		// Self-attention (with residual)
 		block.add(residual(buildAttentionOnlyBlock(batchSize, seqLen, heads, headSize, wq, wo, k, v)));
 
 		// FFN (with residual): x + W2(GELU(W1(x)))
-		org.almostrealism.model.SequentialBlock ffn =
-				new org.almostrealism.model.SequentialBlock(shape(batchSize, seqLen, dim));
+		SequentialBlock ffn =
+				new SequentialBlock(shape(batchSize, seqLen, dim));
 		ffn.add(dense(w1));  // (batch, seq, dim) -> (batch, seq, ffnHidden)
 		ffn.add(gelu());
 		ffn.add(dense(w2));  // (batch, seq, ffnHidden) -> (batch, seq, dim)
@@ -456,8 +457,8 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 										  PackedCollection k, PackedCollection v) {
 		int dim = heads * headSize;
 
-		org.almostrealism.model.SequentialBlock attention =
-				new org.almostrealism.model.SequentialBlock(shape(batchSize, seqLen, dim));
+		SequentialBlock attention =
+				new SequentialBlock(shape(batchSize, seqLen, dim));
 
 		// Project Q
 		attention.add(dense(wq));
@@ -603,12 +604,12 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 		k.randnFill(rng);
 		v.randnFill(rng);
 
-		org.almostrealism.model.SequentialBlock block =
-				new org.almostrealism.model.SequentialBlock(inputShape);
+		SequentialBlock block =
+				new SequentialBlock(inputShape);
 
 		// Pre-norm attention block: RMSNorm -> Attention -> residual
-		org.almostrealism.model.SequentialBlock attnBlock =
-				new org.almostrealism.model.SequentialBlock(inputShape);
+		SequentialBlock attnBlock =
+				new SequentialBlock(inputShape);
 
 		// Add RMSNorm before attention (shape-aware version)
 		CellularLayer norm1 = rmsnorm(inputShape, normWeight1);
@@ -620,16 +621,16 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 		block.add(residual(attnBlock));
 
 		// Pre-norm FFN block: RMSNorm -> FFN -> residual
-		org.almostrealism.model.SequentialBlock ffnBlock =
-				new org.almostrealism.model.SequentialBlock(inputShape);
+		SequentialBlock ffnBlock =
+				new SequentialBlock(inputShape);
 
 		// Add RMSNorm before FFN (shape-aware version)
 		CellularLayer norm2 = rmsnorm(inputShape, normWeight2);
 		ffnBlock.add(norm2);
 
 		// FFN
-		org.almostrealism.model.SequentialBlock ffn =
-				new org.almostrealism.model.SequentialBlock(inputShape);
+		SequentialBlock ffn =
+				new SequentialBlock(inputShape);
 		ffn.add(dense(w1));
 		ffn.add(gelu());
 		ffn.add(dense(w2));
@@ -806,8 +807,8 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 		Model model = new Model(mainInputShape);
 
 		// Timestep embedding branch: (batch, 1) -> (batch, dim)
-		org.almostrealism.model.SequentialBlock timestepEmbed =
-				new org.almostrealism.model.SequentialBlock(timestepShape);
+		SequentialBlock timestepEmbed =
+				new SequentialBlock(timestepShape);
 		PackedCollection tsW1 = new PackedCollection(dim, 1);
 		PackedCollection tsW2 = new PackedCollection(dim, dim);
 		tsW1.randnFill(rng);
@@ -819,15 +820,15 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 
 		// Conditioning embedding branch: (batch, condSeqLen, condDim) -> (batch, condSeqLen, dim)
 		// This would be used for cross-attention
-		org.almostrealism.model.SequentialBlock condEmbed =
-				new org.almostrealism.model.SequentialBlock(condShape);
+		SequentialBlock condEmbed =
+				new SequentialBlock(condShape);
 		PackedCollection condW = new PackedCollection(dim, dim);
 		condW.randnFill(rng);
 		condEmbed.add(dense(condW));
 		model.addInput(condEmbed);
 
 		// Main processing: combine timestep with main sequence and process
-		org.almostrealism.model.SequentialBlock main = model.sequential();
+		SequentialBlock main = model.sequential();
 
 		// Prepend timestep embedding as a token: concat(timestep.unsqueeze(1), main)
 		// This creates a dependency from timestep input to the main path
@@ -958,7 +959,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 
 			log("Running forward pass...");
 			long startFwd = System.nanoTime();
-			PackedCollection output = compiled.forward(x, t, globalCond);
+			compiled.forward(x, t, globalCond);
 			long fwdMs = (System.nanoTime() - startFwd) / 1_000_000;
 			log("  Forward run in " + fwdMs + " ms");
 
@@ -1039,7 +1040,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 
 		// Build attention block
 		Model model = new Model(inputShape);
-		Block attention = buildAttentionBlock(1, seqLen, heads, headSize, wq, wk, wv, wo);
+		Block attention = buildAttentionBlock(1, seqLen, heads, headSize, wq, wo);
 		model.add(attention);
 
 		// Compile forward pass
@@ -1076,8 +1077,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 	 * nested Product expressions during backward pass derivation.</p>
 	 */
 	private Block buildAttentionBlock(int batchSize, int seqLen, int heads, int headSize,
-									  PackedCollection wq, PackedCollection wk,
-									  PackedCollection wv, PackedCollection wo) {
+									  PackedCollection wq, PackedCollection wo) {
 		int dim = heads * headSize;
 		TraversalPolicy inputShape = shape(batchSize, seqLen, dim);
 
@@ -1090,8 +1090,8 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 		k.randnFill(rng);
 		v.randnFill(rng);
 
-		org.almostrealism.model.SequentialBlock attention =
-				new org.almostrealism.model.SequentialBlock(inputShape);
+		SequentialBlock attention =
+				new SequentialBlock(inputShape);
 
 		// Project Q: input @ Wq -> (batch, seq, dim)
 		attention.add(dense(wq));
