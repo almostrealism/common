@@ -127,8 +127,11 @@ public class SkyTntTokenizerV2 implements ConsoleFeatures {
     /** Base token ID for duration parameter (2048 values). */
     public static final int DURATION_OFFSET = 153;
 
-    /** Base token ID for track parameter (128 values). */
+    /** Base token ID for track parameter. */
     public static final int TRACK_OFFSET = 2201;
+
+    /** Number of distinct track parameter values (track IDs 0..TRACK_RANGE-1). */
+    public static final int TRACK_RANGE = 128;
 
     /** Base token ID for channel parameter (16 values). */
     public static final int CHANNEL_OFFSET = 2329;
