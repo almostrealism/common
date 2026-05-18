@@ -27,13 +27,18 @@ import org.almostrealism.studio.midi.SkyTntConfig;
 import org.almostrealism.studio.midi.SkyTntMidi;
 import org.almostrealism.studio.midi.SkyTntTokenizerV2;
 import org.almostrealism.model.CompiledModel;
+import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 
 /**
  * Milestones 4 and 5 tests: model assembly with synthetic weights and the
@@ -283,9 +288,255 @@ public class SkyTntMidiTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Verifies that {@link SkyTntMidi#generate(int[][], int, double, double, int, int[])}
+	 * restricts the track parameter of every generated event to the single track
+	 * supplied in {@code allowedTrackIds}.
+	 */
+	@Test(timeout = 60000)
+	public void generateRespectsAllowedTracksSingle() {
+		if (skipLongTests) return;
+
+		SkyTntMidi model = buildSyntheticModel(new Random(11), new Random(13));
+
+		int[][] prompt = bosPrompt(model.getConfig());
+		int[][] output = model.generate(prompt, 4,
+				SkyTntMidi.DEFAULT_TEMPERATURE,
+				SkyTntMidi.DEFAULT_TOP_P,
+				SkyTntMidi.DEFAULT_TOP_K,
+				new int[]{0});
+
+		assertGeneratedTracksWithin(output, prompt.length, new int[]{0});
+	}
+
+	/**
+	 * Verifies that {@link SkyTntMidi#generate(int[][], int, double, double, int, int[])}
+	 * restricts the track parameter of every generated event to one of the values
+	 * supplied in {@code allowedTrackIds}.
+	 */
+	@Test(timeout = 60000)
+	public void generateRespectsAllowedTracksMultiple() {
+		if (skipLongTests) return;
+
+		SkyTntMidi model = buildSyntheticModel(new Random(21), new Random(23));
+
+		int[][] prompt = bosPrompt(model.getConfig());
+		int[][] output = model.generate(prompt, 6,
+				SkyTntMidi.DEFAULT_TEMPERATURE,
+				SkyTntMidi.DEFAULT_TOP_P,
+				SkyTntMidi.DEFAULT_TOP_K,
+				new int[]{0, 5});
+
+		assertGeneratedTracksWithin(output, prompt.length, new int[]{0, 5});
+	}
+
+	/**
+	 * Verifies that passing {@code null} as the track filter preserves the
+	 * legacy (no-filter) behaviour, producing the same token sequence as the
+	 * legacy overload when called with identical RNG state.
+	 */
+	@Test(timeout = 60000)
+	public void generateNullFilterMatchesUnfiltered() {
+		if (skipLongTests) return;
+
+		SkyTntMidi modelA = buildSyntheticModel(new Random(31), new Random(37));
+		int[][] promptA = bosPrompt(modelA.getConfig());
+		int[][] outputLegacy = modelA.generate(promptA, 3,
+				SkyTntMidi.DEFAULT_TEMPERATURE,
+				SkyTntMidi.DEFAULT_TOP_P,
+				SkyTntMidi.DEFAULT_TOP_K);
+
+		SkyTntMidi modelB = buildSyntheticModel(new Random(31), new Random(37));
+		int[][] promptB = bosPrompt(modelB.getConfig());
+		int[][] outputNullFilter = modelB.generate(promptB, 3,
+				SkyTntMidi.DEFAULT_TEMPERATURE,
+				SkyTntMidi.DEFAULT_TOP_P,
+				SkyTntMidi.DEFAULT_TOP_K,
+				null);
+
+		Assert.assertEquals("Null filter must produce the same row count as the legacy overload",
+				outputLegacy.length, outputNullFilter.length);
+		for (int i = 0; i < outputLegacy.length; i++) {
+			Assert.assertArrayEquals(
+					"Row " + i + " must match between the legacy and null-filter overloads",
+					outputLegacy[i], outputNullFilter[i]);
+		}
+	}
+
+	/**
+	 * Verifies that an empty (zero-length) track filter is rejected with
+	 * {@link IllegalArgumentException} rather than silently blocking all
+	 * generation.  This test does not require a forward pass, so it runs
+	 * unconditionally.
+	 */
+	@Test(timeout = 60000)
+	public void generateEmptyFilterRejected() {
+		SkyTntMidi model = buildSyntheticModel(new Random(41), new Random(43));
+
+		int[][] prompt = bosPrompt(model.getConfig());
+
+		try {
+			model.generate(prompt, 2,
+					SkyTntMidi.DEFAULT_TEMPERATURE,
+					SkyTntMidi.DEFAULT_TOP_P,
+					SkyTntMidi.DEFAULT_TOP_K,
+					new int[0]);
+			Assert.fail("Empty allowedTrackIds should be rejected with IllegalArgumentException");
+		} catch (IllegalArgumentException expected) {
+			// pass — message content not enforced
+		}
+	}
+
+	/**
+	 * Verifies that the track filter only constrains the track parameter and
+	 * leaves the rest of the per-event token layout intact, including events
+	 * whose non-track parameters (BPM, controller value, etc.) live in
+	 * separate vocabulary regions.  The test asserts the contract by feeding
+	 * SET_TEMPO and CONTROL_CHANGE events through the prompt path and
+	 * verifying that they round-trip unmodified while a filtered single-track
+	 * generation still produces correctly-tracked output.
+	 */
+	@Test(timeout = 60000)
+	public void generateFilterDoesNotAffectTempoOrControl() {
+		if (skipLongTests) return;
+
+		SkyTntMidi model = buildSyntheticModel(new Random(51), new Random(53));
+
+		List<MidiNoteEvent> prompt = new ArrayList<>();
+		prompt.add(MidiNoteEvent.setTempo(0, 99, 120));
+		prompt.add(MidiNoteEvent.controlChange(0, 99, 1, 7, 64));
+		prompt.add(MidiNoteEvent.note(48, 0, 0, 60, 80, 16));
+
+		// Sanity: tokenize -> detokenize round-trips the tempo and control events,
+		// proving that the filter site (step 3) is the only point that touches the
+		// track parameter for these event types.
+		int[][] roundTripTokens = model.getTokenizer().tokenize(prompt,
+				SkyTntMidi.DEFAULT_TICKS_PER_BEAT);
+		List<MidiNoteEvent> roundTrip = model.getTokenizer().detokenize(roundTripTokens,
+				SkyTntMidi.DEFAULT_TICKS_PER_BEAT);
+		Assert.assertEquals("Round-trip should preserve the prompt event count",
+				prompt.size(), roundTrip.size());
+		boolean sawTempo = false;
+		boolean sawControl = false;
+		for (MidiNoteEvent event : roundTrip) {
+			if (event.getEventType() == MidiNoteEvent.EventType.SET_TEMPO) {
+				Assert.assertEquals(120, event.getBpm());
+				Assert.assertEquals(99, event.getTrack());
+				sawTempo = true;
+			} else if (event.getEventType() == MidiNoteEvent.EventType.CONTROL_CHANGE) {
+				Assert.assertEquals(7, event.getController());
+				Assert.assertEquals(64, event.getCcValue());
+				Assert.assertEquals(99, event.getTrack());
+				sawControl = true;
+			}
+		}
+		Assert.assertTrue("Tempo event must round-trip with bpm and track preserved", sawTempo);
+		Assert.assertTrue("Control event must round-trip with controller/value/track preserved",
+				sawControl);
+
+		List<MidiNoteEvent> generated = model.generateFromEvents(prompt, 4,
+				SkyTntMidi.DEFAULT_TEMPERATURE,
+				SkyTntMidi.DEFAULT_TOP_P,
+				SkyTntMidi.DEFAULT_TOP_K,
+				SkyTntMidi.DEFAULT_TICKS_PER_BEAT,
+				new int[]{0});
+
+		for (MidiNoteEvent event : generated) {
+			Assert.assertEquals(
+					"Every generated event (event-type " + event.getEventType() +
+							") should have track == 0 under the filter",
+					0, event.getTrack());
+		}
+	}
+
 	// -----------------------------------------------------------------------
 	//  Helpers
 	// -----------------------------------------------------------------------
+
+	/** Build a synthetic SkyTntMidi instance suitable for fast filter tests. */
+	static SkyTntMidi buildSyntheticModel(Random weightRng, Random samplerRng) {
+		SkyTntConfig config = new SkyTntConfig(VOCAB, DIM, EPSILON, 10000.0,
+				NET_LAYERS, HEADS, FFN, SEQ_LEN,
+				NET_TOKEN_LAYERS, HEADS_TOKEN, FFN_TOKEN);
+
+		StateDictionary stateDict = createSyntheticWeights(config, weightRng);
+
+		PdslLoader loader = new PdslLoader();
+		PdslNode.Program blockProgram = loader.parseResource("/pdsl/midi/skytnt_block.pdsl");
+		PdslNode.Program lmHeadProgram = loader.parseResource("/pdsl/midi/skytnt_lm_head.pdsl");
+
+		int netHeadSize = DIM / HEADS;
+		int tokenHeadSize = DIM / HEADS_TOKEN;
+		PackedCollection netPos = new PackedCollection(1);
+		PackedCollection tokenPos = new PackedCollection(1);
+		CollectionProducer netFreqCis = RotationFeatures.computeRopeFreqs(
+				config.ropeTheta, netHeadSize, SEQ_LEN);
+		CollectionProducer tokenFreqCis = RotationFeatures.computeRopeFreqs(
+				config.ropeTheta, tokenHeadSize, SEQ_LEN);
+
+		PackedCollection netEmbed = new PackedCollection(new TraversalPolicy(VOCAB, DIM));
+		PackedCollection tokenEmbed = new PackedCollection(new TraversalPolicy(VOCAB, DIM));
+		PackedCollection lmHeadWeight = stateDict.get("lm_head.weight");
+
+		CompiledModel netModel = SkyTntMidi.buildTransformerModel(
+				"net", stateDict, blockProgram, lmHeadProgram,
+				config.netLayers, config.netHeads,
+				netFreqCis, netPos, false, EPSILON, null);
+
+		CompiledModel netTokenModel = SkyTntMidi.buildTransformerModel(
+				"net_token", stateDict, blockProgram, lmHeadProgram,
+				config.netTokenLayers, config.netTokenHeads,
+				tokenFreqCis, tokenPos, true, EPSILON, lmHeadWeight);
+
+		return new SkyTntMidi(config, netEmbed, tokenEmbed,
+				netModel, netTokenModel, samplerRng);
+	}
+
+	/** Build a single-row BOS prompt for the supplied configuration. */
+	static int[][] bosPrompt(SkyTntConfig config) {
+		int[][] prompt = new int[1][config.maxTokenSeq];
+		prompt[0][0] = config.bosId;
+		return prompt;
+	}
+
+	/**
+	 * Asserts that every generated row (after the prompt prefix) carries a
+	 * track-parameter token whose decoded track ID is in {@code allowedIds},
+	 * if the row's event type has a track parameter at step 3.
+	 */
+	static void assertGeneratedTracksWithin(int[][] output, int promptLen, int[] allowedIds) {
+		Assert.assertNotNull("Generation output should not be null", output);
+		Assert.assertTrue("Output should retain the prompt rows", output.length >= promptLen);
+
+		Set<Integer> allowed = new HashSet<>();
+		for (int id : allowedIds) allowed.add(id);
+
+		int generatedRows = 0;
+		for (int i = promptLen; i < output.length; i++) {
+			int[] row = output[i];
+			int step0 = row[0];
+			if (step0 < SkyTntTokenizerV2.EVENT_NOTE
+					|| step0 > SkyTntTokenizerV2.EVENT_KEY_SIGNATURE) {
+				continue;  // EOS / PAD / unrecognized event — no track to check
+			}
+			int trackToken = row[3];
+			Assert.assertTrue(
+					"Row " + i + " step-3 token " + trackToken +
+							" is outside the track-token range",
+					trackToken >= SkyTntTokenizerV2.TRACK_OFFSET &&
+							trackToken < SkyTntTokenizerV2.TRACK_OFFSET +
+									SkyTntTokenizerV2.TRACK_RANGE);
+			int trackId = trackToken - SkyTntTokenizerV2.TRACK_OFFSET;
+			Assert.assertTrue(
+					"Row " + i + " has track " + trackId +
+							" which is outside the allowed set " + allowed,
+					allowed.contains(trackId));
+			generatedRows++;
+		}
+		Assert.assertTrue("Generation should have produced at least one trackable event",
+				generatedRows >= 1);
+	}
+
 
 	/**
 	 * Create a {@link StateDictionary} populated with random synthetic weights that
