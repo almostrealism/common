@@ -64,7 +64,7 @@ running.
 public record AgentRunResult(
         int exitCode,
         boolean killedForInactivity,
-        String responseText,
+        String rawOutput,
         String sessionId,
         long durationMs,
         long durationApiMs,

@@ -28,10 +28,14 @@ For the runner SPI itself, see [AGENT_RUNNERS.md](AGENT_RUNNERS.md).
 | `GIT_TAMPERING_RESTART` | `git-tampering-restart` | `onGitTampering()` re-run with a stern warning. |
 
 The orchestrator resolves the current phase from the existing
-`currentActivity` field — no new session state was needed. Rule
-`getName()` values map 1-1 onto the kebab-case wire names above, so phase
-keys in submission payloads use the same strings that already show up in
-the activity tags.
+`currentActivity` field — no new session state was needed. Most rule
+`getName()` values match the kebab-case wire names above directly. Two do
+not: `MavenDependencyProtectionRule.getName()` returns
+`"no-maven-dependency-changes"` (wire name: `maven-dependency-protection`)
+and `PostCompletionCommandRule.getName()` returns
+`"post-completion-command"` (wire name: `post-completion`).
+`Phase.fromRuleName(String)` handles both mappings; use it instead of
+`fromWireName` when translating a rule name to a phase.
 
 ---
 

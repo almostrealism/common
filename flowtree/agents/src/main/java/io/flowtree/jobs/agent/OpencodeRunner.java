@@ -52,7 +52,7 @@ import java.util.function.Supplier;
  */
 public class OpencodeRunner implements AgentRunner {
 
-    /** Canonical runner name on the wire. */
+    /** Canonical runner name used on the wire and registered with {@link AgentRunnerRegistry}. */
     public static final String NAME = "opencode";
 
     /** Discovery helper for the opencode binary. */
