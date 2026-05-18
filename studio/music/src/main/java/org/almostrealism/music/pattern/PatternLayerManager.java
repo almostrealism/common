@@ -42,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.IntSupplier;
+import java.util.function.LongConsumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -179,6 +180,22 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 * test-side observation.
 	 */
 	public static final AtomicLong measuredCallCount = new AtomicLong();
+
+	/**
+	 * Optional verification-only per-call timing observer. When non-null, the
+	 * elapsed wall-clock nanoseconds of each {@link #sum} call are forwarded
+	 * to {@link LongConsumer#accept(long) accept}. The observer fires
+	 * independently of {@link #enableBatchedMeasure} so it can be used by
+	 * benchmarks that want to capture each individual call's cost (for
+	 * percentile statistics) rather than the cumulative totals exposed by
+	 * {@link #measuredComputeNanos}.
+	 *
+	 * <p>Default {@code null}; tests that set this field are responsible for
+	 * clearing it back to {@code null} when done. When {@code null}, the
+	 * {@link #sum} fast path skips the per-call {@code System.nanoTime()}
+	 * pair entirely.</p>
+	 */
+	public static volatile LongConsumer perCallTimingObserver;
 
 	/**
 	 * Default source-samples-per-note used when constructing a per-pattern
@@ -771,23 +788,29 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 					} else {
 						noteAudioCache.evictBefore(frame);
 					}
-					if (enableBatchedMeasure) {
+					LongConsumer observer = perCallTimingObserver;
+					if (enableBatchedMeasure || observer != null) {
 						long startNanos = System.nanoTime();
 						try {
 							sumInternal(ctx, voicing, audioChannel, frame, frameCount,
 									noteAudioCache);
 						} finally {
 							long elapsed = System.nanoTime() - startNanos;
-							long audioNs = (long) (frameCount * 1_000_000_000.0
-									/ OutputLine.sampleRate);
-							measuredComputeNanos.addAndGet(elapsed);
-							measuredAudioNanos.addAndGet(audioNs);
-							long calls = measuredCallCount.incrementAndGet();
-							double ratio = elapsed / (double) Math.max(audioNs, 1L);
-							log("computeNs=" + elapsed + " audioNs=" + audioNs
-									+ " ratio=" + String.format("%.4f", ratio)
-									+ " channel=" + channel + " frameCount=" + frameCount
-									+ " call=" + calls);
+							if (enableBatchedMeasure) {
+								long audioNs = (long) (frameCount * 1_000_000_000.0
+										/ OutputLine.sampleRate);
+								measuredComputeNanos.addAndGet(elapsed);
+								measuredAudioNanos.addAndGet(audioNs);
+								long calls = measuredCallCount.incrementAndGet();
+								double ratio = elapsed / (double) Math.max(audioNs, 1L);
+								log("computeNs=" + elapsed + " audioNs=" + audioNs
+										+ " ratio=" + String.format("%.4f", ratio)
+										+ " channel=" + channel + " frameCount=" + frameCount
+										+ " call=" + calls);
+							}
+							if (observer != null) {
+								observer.accept(elapsed);
+							}
 						}
 					} else {
 						sumInternal(ctx, voicing, audioChannel, frame, frameCount,

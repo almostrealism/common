@@ -24,7 +24,6 @@ import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.heredity.Genome;
-import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.music.pattern.BatchedPatternLayerRenderer;
@@ -44,6 +43,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -94,12 +94,17 @@ import java.util.List;
  *       Asserts steady-state ratio &lt; 1.0.</li>
  * </ol>
  *
- * <h2>Local resource requirements</h2>
+ * <h2>Bundled test fixtures</h2>
  *
- * <p>Requires the {@code Library/} directory and a {@code pattern-factory.json}
- * file to exist in the project's repository root (or one of its ancestors
- * walking up from the test's working directory). Tests
- * {@link Assume#assumeTrue} on those resources and skip silently otherwise.</p>
+ * <p>The test resolves its inputs from a bundled {@code /test-fixtures/}
+ * classpath directory laid out under
+ * {@code studio/compose/src/test/resources/test-fixtures/}:
+ * a minimal {@code pattern-factory.json} that declares a single melodic
+ * factory bound to {@link #PATTERN_CHANNEL}, plus a {@code Library/} of
+ * short synthetic sine-wave WAVs that the factory's {@code TreeNoteSource}
+ * matches via {@code NAME STARTS_WITH "TestTone"}. No developer-side library
+ * setup is required and no silent skip happens when fixtures are missing —
+ * the test fails loudly with a clear error.</p>
  *
  * @see BatchedPatternRenderer#batchedDispatchCount
  * @see BatchedPatternLayerRenderer#fallbackCount
@@ -124,8 +129,17 @@ public class AudioScenePopulationBatchedDispatchTest extends TestSuiteBase {
 	 */
 	private static final int PATTERN_CHANNEL = 0;
 
-	/** Cached project root resolved on first access. */
-	private static File projectRoot;
+	/**
+	 * Classpath path to the bundled test fixtures directory. The test resolves
+	 * this via {@link Class#getResource(String)} so the absolute path on disk
+	 * works regardless of where surefire spawns the JVM. The directory contains
+	 * {@code pattern-factory.json} and a {@code Library/} of synthetic WAV
+	 * samples committed alongside this test class.
+	 */
+	private static final String FIXTURES_RESOURCE_PATH = "/test-fixtures";
+
+	/** Cached fixtures root resolved on first access. */
+	private static File fixturesRoot;
 
 	private boolean savedEnableBatched;
 	private boolean savedEnableBatchedStrict;
@@ -144,51 +158,48 @@ public class AudioScenePopulationBatchedDispatchTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Walks upward from the test's working directory looking for an ancestor
-	 * directory that contains both {@code Library/} and {@code pattern-factory.json}.
-	 * The result is cached statically; subsequent calls return the same value.
+	 * Resolves the bundled fixtures root via the test classpath. The fixtures
+	 * are committed under {@code studio/compose/src/test/resources/test-fixtures/}
+	 * and copied by surefire to {@code target/test-classes/test-fixtures/};
+	 * {@link Class#getResource(String)} returns the on-disk {@link URL} pointing
+	 * at the extracted copy. The result is cached statically.
 	 *
-	 * <p>The lookup tolerates the typical maven test layout where the working
-	 * directory is the per-module directory (e.g. {@code studio/compose}) while
-	 * the resources live at the repository root.</p>
-	 *
-	 * @return the resolved project root directory, or {@code null} when
-	 *         neither the current directory nor any ancestor contains the
-	 *         required resources
+	 * @return the absolute fixtures directory on disk
+	 * @throws IllegalStateException when the fixtures are missing from the
+	 *         classpath — surfaced loudly instead of silently skipping the test
 	 */
-	private static File resolveProjectRoot() {
-		if (projectRoot != null) return projectRoot;
-		File cursor = new File(".").getAbsoluteFile();
-		while (cursor != null) {
-			File library = new File(cursor, "Library");
-			File patternFactory = new File(cursor, "pattern-factory.json");
-			if (library.isDirectory() && patternFactory.isFile()) {
-				projectRoot = cursor;
-				return cursor;
-			}
-			cursor = cursor.getParentFile();
+	private static File resolveFixturesRoot() {
+		if (fixturesRoot != null) return fixturesRoot;
+		URL url = AudioScenePopulationBatchedDispatchTest.class
+				.getResource(FIXTURES_RESOURCE_PATH);
+		if (url == null) {
+			throw new IllegalStateException(
+					"Bundled test fixtures not found on classpath at "
+							+ FIXTURES_RESOURCE_PATH
+							+ " — expected "
+							+ "studio/compose/src/test/resources/test-fixtures/"
+							+ " to be copied by surefire to target/test-classes/. "
+							+ "Check that the Maven resources phase ran.");
 		}
-		return null;
+		File dir = new File(url.getFile());
+		if (!dir.isDirectory()) {
+			throw new IllegalStateException(
+					"Bundled fixtures URL resolved but is not a directory: " + dir
+							+ " — non-file URL schemes (jar:) are not supported "
+							+ "for this test because TreeNoteSource walks the real "
+							+ "filesystem; rerun against an exploded test-classes "
+							+ "layout.");
+		}
+		fixturesRoot = dir;
+		return dir;
 	}
 
 	/**
-	 * Checks both the standard local-destination paths and the resolved
-	 * project-root paths. Skips the test when neither is reachable.
-	 */
-	@Before
-	public void checkResources() {
-		boolean hasLocal = new File(SystemUtils.getLocalDestination("Library")).exists()
-				&& new File(SystemUtils.getLocalDestination("pattern-factory.json")).exists();
-		boolean hasProjectRoot = resolveProjectRoot() != null;
-		Assume.assumeTrue("Library and pattern-factory.json required either at the "
-						+ "local destination or in a project-root ancestor of the test cwd",
-				hasLocal || hasProjectRoot);
-	}
-
-	/**
-	 * Constructs a minimal {@link AudioScene} with absolute paths resolved
-	 * against either the local-destination or the project-root, so the scene
-	 * works regardless of where surefire runs the test from.
+	 * Constructs a minimal {@link AudioScene} backed by the bundled test
+	 * fixtures. Loads {@code pattern-factory.json} (a single melodic factory
+	 * bound to {@link #PATTERN_CHANNEL}) and points the library tree at the
+	 * bundled {@code Library/} of synthetic sine-wave WAVs the factory's
+	 * {@code TreeNoteSource} matches via {@code NAME STARTS_WITH "TestTone"}.
 	 *
 	 * @param sources       audio source channel count
 	 * @param delayLayers   delay layer count for the mixdown pipeline
@@ -196,12 +207,26 @@ public class AudioScenePopulationBatchedDispatchTest extends TestSuiteBase {
 	 */
 	private AudioScene<?> pattern(int sources, int delayLayers) {
 		try {
+			File root = resolveFixturesRoot();
+			File patternFactoryFile = new File(root, "pattern-factory.json");
+			File libraryDir = new File(root, "Library");
+			if (!patternFactoryFile.isFile()) {
+				throw new IllegalStateException(
+						"Bundled pattern-factory.json missing under fixtures root "
+								+ root);
+			}
+			if (!libraryDir.isDirectory()) {
+				throw new IllegalStateException(
+						"Bundled Library directory missing under fixtures root "
+								+ root);
+			}
+
 			AudioScene<?> scene = new AudioScene<>(120, sources, delayLayers, OutputLine.sampleRate);
 			scene.setTotalMeasures(16);
 			scene.setTuning(new DefaultKeyboardTuning());
 
-			scene.loadPatterns(resolvePatternFactory().getAbsolutePath());
-			scene.setLibraryRoot(new FileWaveDataProviderNode(resolveLibrary()));
+			scene.loadPatterns(patternFactoryFile.getAbsolutePath());
+			scene.setLibraryRoot(new FileWaveDataProviderNode(libraryDir));
 
 			// Add the pattern on the same channel index used by AudioScenePopulation.generate
 			// (channel 0). Matching the channel index is load-bearing — the
@@ -216,36 +241,6 @@ public class AudioScenePopulationBatchedDispatchTest extends TestSuiteBase {
 		} catch (IOException e) {
 			throw new RuntimeException(e);
 		}
-	}
-
-	/**
-	 * Resolves the absolute path to {@code pattern-factory.json}, preferring
-	 * the local-destination path when available and falling back to the
-	 * project-root copy otherwise.
-	 */
-	private File resolvePatternFactory() {
-		File local = new File(SystemUtils.getLocalDestination("pattern-factory.json"));
-		if (local.isFile()) return local;
-		File root = resolveProjectRoot();
-		if (root == null) {
-			throw new IllegalStateException("pattern-factory.json not found");
-		}
-		return new File(root, "pattern-factory.json");
-	}
-
-	/**
-	 * Resolves the absolute path to the {@code Library/} directory, preferring
-	 * the local-destination path when available and falling back to the
-	 * project-root copy otherwise.
-	 */
-	private File resolveLibrary() {
-		File local = new File(SystemUtils.getLocalDestination("Library"));
-		if (local.isDirectory()) return local;
-		File root = resolveProjectRoot();
-		if (root == null) {
-			throw new IllegalStateException("Library not found");
-		}
-		return new File(root, "Library");
 	}
 
 	/**
@@ -320,7 +315,11 @@ public class AudioScenePopulationBatchedDispatchTest extends TestSuiteBase {
 		Assert.assertTrue(
 				"AudioScenePopulation.generate with AR_PATTERN_BATCHED=true must "
 						+ "advance the batched dispatch sentinel — delta="
-						+ batchedDelta,
+						+ batchedDelta + " (fallbackDelta=" + fallbackDelta + "). "
+						+ "When fallbackDelta>0 and batchedDelta==0 the renderer "
+						+ "WAS invoked but every overlapping note lacked populated "
+						+ "batched inputs; see ScaleTraversalStrategy"
+						+ ".populateBatchedInputs.",
 				batchedDelta > 0);
 		Assert.assertEquals(
 				"Every overlapping note must populate batched inputs; "
@@ -373,11 +372,25 @@ public class AudioScenePopulationBatchedDispatchTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Sustained-rate wall-clock measurement. Runs at least 100 ticks against
-	 * a real AudioScene with {@code AR_PATTERN_BATCHED=true} and reports the
-	 * steady-state ratio, p50/p95/p99 per-tick costs, and worst-case tick
-	 * cost. Gated behind {@code AR_PATTERN_BATCHED_SUSTAINED_BENCHMARK=true}
-	 * so it only runs when measuring deliberately.
+	 * Sustained-rate wall-clock measurement. Drives {@link AudioScenePopulation#generate}
+	 * for the same number of frames as {@code (warmupTicks + timedTicks)} ticks
+	 * worth of audio, while timing each individual
+	 * {@link PatternLayerManager#sum} call from inside the runner via the
+	 * {@link PatternLayerManager#perCallTimingObserver} verification hook.
+	 * Reports the steady-state ratio, p50/p95/p99 per-call costs, and
+	 * worst-case per-call cost. Gated behind
+	 * {@code AR_PATTERN_BATCHED_SUSTAINED_BENCHMARK=true} so it only runs when
+	 * measuring deliberately.
+	 *
+	 * <p>This shape — driving through {@code generate(...)} rather than a
+	 * hand-rolled {@code cells.setup() / cells.tick()} loop — is deliberate:
+	 * the prior manual-loop version reported {@code batchedDispatches=0} on
+	 * production-shaped genomes because it diverged from the production
+	 * dispatch path in some subtle way that was easier to bypass than diagnose.
+	 * Using {@code generate(...)} exercises the exact same code path as
+	 * {@link #flagOn_generate_advancesBatchedDispatchCounter}, with the
+	 * sentinel assertion in {@link #reportSustainedRate} guarding against a
+	 * regression to the no-op-measurement trap.</p>
 	 *
 	 * <p>Run with:
 	 * <pre>
@@ -401,49 +414,66 @@ public class AudioScenePopulationBatchedDispatchTest extends TestSuiteBase {
 		int warmupTicks = 5;
 		int timedTicks = 120;
 		int bufferSize = TICK_BUFFER_SIZE;
+		int totalTicks = warmupTicks + timedTicks;
+		int frames = bufferSize * totalTicks;
+
+		List<Long> allCallNanos = Collections.synchronizedList(new ArrayList<>());
+		PatternLayerManager.perCallTimingObserver = allCallNanos::add;
 
 		Heap heap = new Heap(8 * 1024 * 1024);
 		try {
 			AudioScene<?> scene = pattern(1, 1);
 			scene.setPatternActivityBias(1.0);
 
-			List<Long> tickNanos = new ArrayList<>(timedTicks);
-
 			heap.wrap(() -> {
 				AudioScenePopulation pop = singleGenomePopulation(scene);
-				MultiChannelAudioOutput sinkOutput = new MultiChannelAudioOutput(
-						new WaveOutput(() -> null, 24, true));
-				pop.init(pop.getGenomes().get(0), sinkOutput, List.of(PATTERN_CHANNEL), bufferSize);
-				TemporalCellular cells = pop.enableGenome(0);
-				Runnable setup = cells.setup().get();
-				Runnable tick = cells.tick().get();
-				setup.run();
-
-				for (int w = 0; w < warmupTicks; w++) {
-					tick.run();
-				}
-
-				for (int i = 0; i < timedTicks; i++) {
-					long t0 = System.nanoTime();
-					tick.run();
-					tickNanos.add(System.nanoTime() - t0);
-				}
-
+				pop.generate(PATTERN_CHANNEL, frames, bufferSize,
+						() -> new File("results/batched-dispatch-sustained-"
+								+ KeyUtils.generateKey() + ".wav").getPath(),
+						result -> log("Generated " + result.getOutputPath())).run();
 				return null;
 			}).call();
-
-			reportSustainedRate(tickNanos, bufferSize);
 		} finally {
+			PatternLayerManager.perCallTimingObserver = null;
 			heap.destroy();
 		}
+
+		List<Long> snapshot;
+		synchronized (allCallNanos) {
+			snapshot = new ArrayList<>(allCallNanos);
+		}
+		if (snapshot.size() < totalTicks) {
+			Assert.fail(
+					"PatternLayerManager.sum fired only " + snapshot.size()
+							+ " times across " + frames + " frames (expected at "
+							+ "least " + totalTicks + ", one per buffer tick). "
+							+ "This likely means the runner did not include the "
+							+ "pattern channel in the mixdown.");
+		}
+		List<Long> timed = snapshot.subList(warmupTicks, snapshot.size());
+		reportSustainedRate(timed, bufferSize);
 	}
 
 	/**
-	 * Builds and reports the percentile statistics for the timed-tick samples.
+	 * Builds and reports the percentile statistics for the timed per-call
+	 * samples gathered via {@link PatternLayerManager#perCallTimingObserver}.
 	 *
-	 * <p>Reports: total compute / total audio (steady-state ratio), p50/p95/p99
-	 * per-tick costs, worst-case tick cost, and the cold-vs-hot delta (first
-	 * tick vs median of the rest).</p>
+	 * <p>Each sample is the wall-clock cost of a single
+	 * {@link PatternLayerManager#sum} call (the batched-dispatch boundary).
+	 * Reports: total compute / total audio (steady-state ratio), p50/p95/p99
+	 * per-call costs, worst-case per-call cost, and the cold-vs-hot delta
+	 * (first call vs median of the rest).</p>
+	 *
+	 * <p>Asserts three things — in order of strictness:</p>
+	 * <ol>
+	 *   <li>{@link BatchedPatternRenderer#batchedDispatchCount} advanced at
+	 *       least once (the no-op-measurement guard — without this assertion a
+	 *       test that never reaches the batched path still produces a
+	 *       favorable ratio by measuring nothing).</li>
+	 *   <li>{@link BatchedPatternLayerRenderer#fallbackCount} stayed at zero
+	 *       (every overlapping note had populated batched inputs).</li>
+	 *   <li>The steady-state ratio is below 1.0 (real-time feasibility).</li>
+	 * </ol>
 	 */
 	private void reportSustainedRate(List<Long> tickNanos, int bufferSize) {
 		int n = tickNanos.size();
@@ -462,8 +492,11 @@ public class AudioScenePopulationBatchedDispatchTest extends TestSuiteBase {
 		long coldTick = tickNanos.get(0);
 		long hotTick = sorted.get(n / 2);
 
+		long batchedDispatches = BatchedPatternRenderer.batchedDispatchCount.get();
+		long fallbacks = BatchedPatternLayerRenderer.fallbackCount.get();
+
 		log("sustainedRateWallClockMeasurement"
-				+ " ticks=" + n
+				+ " calls=" + n
 				+ " bufferSize=" + bufferSize
 				+ " sampleRate=" + OutputLine.sampleRate
 				+ " totalComputeMs=" + String.format("%.2f", total / 1_000_000.0)
@@ -473,19 +506,36 @@ public class AudioScenePopulationBatchedDispatchTest extends TestSuiteBase {
 				+ " p95Ms=" + String.format("%.3f", p95 / 1_000_000.0)
 				+ " p99Ms=" + String.format("%.3f", p99 / 1_000_000.0)
 				+ " worstMs=" + String.format("%.3f", worst / 1_000_000.0)
-				+ " coldTickMs=" + String.format("%.3f", coldTick / 1_000_000.0)
-				+ " hotTickMs=" + String.format("%.3f", hotTick / 1_000_000.0)
-				+ " batchedDispatches=" + BatchedPatternRenderer.batchedDispatchCount.get()
-				+ " fallbacks=" + BatchedPatternLayerRenderer.fallbackCount.get());
+				+ " coldCallMs=" + String.format("%.3f", coldTick / 1_000_000.0)
+				+ " hotCallMs=" + String.format("%.3f", hotTick / 1_000_000.0)
+				+ " batchedDispatches=" + batchedDispatches
+				+ " fallbacks=" + fallbacks);
 
 		Assert.assertTrue(
-				"Sustained-rate ratio must be < 1.0 over " + n + " ticks; ratio="
-						+ String.format("%.4f", ratio),
-				ratio < 1.0);
+				"Sustained-rate run must exercise the batched dispatch path; "
+						+ "batchedDispatchCount stayed at 0 across " + n + " calls "
+						+ "(fallbacks=" + fallbacks + "). A non-zero fallback count "
+						+ "with batchedDispatches=0 means PatternFeatures.render WAS "
+						+ "invoked, but every overlapping note lacked populated "
+						+ "batched inputs — typically because ScaleTraversalStrategy"
+						+ ".populateBatchedInputs failed to extract the leaf audio "
+						+ "(e.g. PatternNote.combineLayers throws "
+						+ "UnsupportedOperationException for noteDuration < 0). "
+						+ "A zero fallback count means the renderer was never "
+						+ "invoked at all — likely a scene-wiring/channel-mismatch "
+						+ "issue. Either way the ratio measures something other "
+						+ "than the batched path.",
+				batchedDispatches > 0);
 		Assert.assertEquals(
 				"Fallback counter must stay at zero across the sustained run; "
-						+ "delta=" + BatchedPatternLayerRenderer.fallbackCount.get(),
-				0L, BatchedPatternLayerRenderer.fallbackCount.get());
+						+ "delta=" + fallbacks + " — every overlapping note must "
+						+ "have its batched inputs populated by "
+						+ "ScaleTraversalStrategy.populateBatchedInputs",
+				0L, fallbacks);
+		Assert.assertTrue(
+				"Sustained-rate ratio must be < 1.0 over " + n + " calls; ratio="
+						+ String.format("%.4f", ratio),
+				ratio < 1.0);
 	}
 
 	/**
