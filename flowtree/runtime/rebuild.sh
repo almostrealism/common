@@ -81,7 +81,14 @@ if [ "${NEEDS_BUILD}" = true ]; then
   # them, so the dependency copy would pick up stale cached jars and the agent
   # image would run with outdated transitive code.
   mvn install -pl flowtree/runtime -am -DskipTests
-  mvn dependency:copy-dependencies -pl flowtree/runtime -DoutputDirectory=flowtree/runtime/target/dependency
+  # `dependency:copy-dependencies` with `-pl <module>` resolves
+  # -DoutputDirectory relative to the module's basedir, not the reactor cwd —
+  # passing `flowtree/runtime/target/dependency` would create
+  # `flowtree/runtime/flowtree/runtime/target/dependency/` and the
+  # controller/agent Dockerfile COPY would fail with "no such file or
+  # directory". Use an absolute path to pin it to the expected location.
+  mvn dependency:copy-dependencies -pl flowtree/runtime \
+      -DoutputDirectory="$(pwd)/flowtree/runtime/target/dependency"
 fi
 
 # ── Controller stack ───────────────────────────────────────────────
