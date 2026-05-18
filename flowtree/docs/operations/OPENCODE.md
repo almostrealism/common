@@ -1,6 +1,6 @@
 # Opencode Runner — Operator Setup
 
-The `opencode` runner drives the [opencode](https://opencode.ai) CLI
+The `opencode` CLI runner drives the [opencode](https://opencode.ai) CLI
 against an OpenAI-compatible inference endpoint. The intended use is to
 move phases that a local model can handle off Claude Opus (deduplication
 audit, organizational placement, commit-message recovery, post-completion
