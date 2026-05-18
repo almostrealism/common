@@ -17,8 +17,8 @@
 package org.almostrealism.studio.discovery.test;
 
 import org.almostrealism.studio.discovery.PrototypeDiscovery;
-import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.File;
@@ -27,16 +27,17 @@ import java.io.File;
  * Manual diagnostic test for running {@link PrototypeDiscovery} against
  * real data to diagnose cache miss / loadSingleDetail behavior.
  *
- * <p>This test requires local data files that are not available in CI.
- * It is marked {@link TestDepth @TestDepth(10)} to prevent automatic
- * execution. To run manually, set {@code AR_TEST_DEPTH=10} or higher.</p>
+ * <p>This test requires local data files that are only present on the
+ * developer's machine and is too slow to run as part of normal CI.
+ * Run individually with {@code -Dtest=PrototypeDiscoveryTest#runDiscovery}.</p>
  */
+@Ignore("Manual diagnostic — requires developer-local protobuf and samples directory; too slow for CI")
 public class PrototypeDiscoveryTest extends TestSuiteBase {
 
 	private static final String PROTOBUF_PREFIX = "/Users/michael/Projects/AlmostRealism/library";
 	private static final String SAMPLES_ROOT = "/Users/michael/Music/Samples";
 
-	@Test(timeout = 120000) @TestDepth(10)
+	@Test(timeout = 120000)
 	public void runDiscovery() throws Exception {
 		File protobufFile = new File(PROTOBUF_PREFIX + "_0.bin");
 		if (!protobufFile.exists()) {

@@ -19,6 +19,7 @@ package org.almostrealism.studio.ml.test;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.dsl.PdslLoader;
+import org.almostrealism.studio.dsl.audio.AudioDspPrimitives;
 import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
@@ -101,7 +102,7 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 	 */
 	@Test(timeout = 30000)
 	public void testMixdownChannelPdslParsesCorrectly() {
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_channel.pdsl");
 
 		Assert.assertNotNull("Program must not be null", program);
@@ -127,7 +128,7 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 	 */
 	@Test(timeout = 30000)
 	public void testMixdownMainBlockBuilds() {
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_channel.pdsl");
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
@@ -141,7 +142,7 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 	 */
 	@Test(timeout = 30000)
 	public void testMixdownChannelBlockBuilds() {
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_channel.pdsl");
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
@@ -170,7 +171,7 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 	@Test(timeout = 60000)
 	@TestDepth(2)
 	public void testMixdownMainFilters() {
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_channel.pdsl");
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
@@ -269,7 +270,7 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 	@Test(timeout = 60000)
 	@TestDepth(2)
 	public void testMixdownChannelWetDelayAddsEcho() {
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_channel.pdsl");
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 
@@ -336,7 +337,7 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 		File outputDir = new File("results/pdsl-audio-dsp");
 		outputDir.mkdirs();
 
-		PdslLoader loader = new PdslLoader();
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_channel.pdsl");
 		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
 

@@ -637,7 +637,7 @@ jobs:
 
       - name: Flowtree Tests
         run: |
-          mvn test -pl flowtree \
+          mvn test -pl flowtree/runtime \
            -DAR_TEST_PROFILE=pipeline
 
       - name: Collect Coverage Data
@@ -1020,7 +1020,8 @@ jobs:
           DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/audio \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
-           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
+           -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
+           -DAR_TEST_PROFILE=pipeline
 
       - name: Run Music Tests
         run: |

@@ -57,9 +57,7 @@ import java.util.stream.Stream;
  * <p>{@link #EXPANSION_THRESHOLD}, {@link #PARALLELISM_THRESHOLD} and the depth
  * limit are all open empirical questions. Initial values are chosen to match
  * {@link AggregationDepthTargetOptimization} so the behaviour is at least no
- * worse than the prior (unused) strategy. See
- * {@code docs/plans/EXPANSION_WIDTH_OPTIMIZATION.md} for the rollout plan and
- * empirical questions.</p>
+ * worse than the prior (unused) strategy.</p>
  *
  * @see Process#getExpansionWidth()
  * @see ParallelProcessContext#getExpansionWidth()

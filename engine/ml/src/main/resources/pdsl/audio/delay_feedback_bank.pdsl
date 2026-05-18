@@ -3,7 +3,7 @@
 //
 // Signal flow:
 //   mono input [1, signal_size]
-//     └── fan_out(channels)                         // broadcast to [channels, signal_size]
+//     └── repeat(channels)                          // broadcast to [channels, signal_size]
 //     └── for each channel {                        // per-channel delay [channels, signal_size]
 //           delay(delay_samples, buffers[channel], heads[channel])
 //         }
@@ -38,7 +38,7 @@ state delay_bank_state {
 // ---------------------------------------------------------------------------
 layer delay_feedback_bank(channels: int, signal_size: int, delay_samples: int,
                           transmission: weight) -> [1, signal_size] {
-    fan_out(channels)
+    repeat(channels)
     for each channel {
         delay(delay_samples, buffers[channel], heads[channel])
     }

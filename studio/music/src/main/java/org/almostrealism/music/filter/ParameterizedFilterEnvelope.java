@@ -15,8 +15,8 @@
  */
 
 package org.almostrealism.music.filter;
-import org.almostrealism.audio.filter.EnvelopeProcessor;
 import org.almostrealism.audio.filter.AudioProcessingUtils;
+import org.almostrealism.audio.filter.EnvelopeProcessor;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
@@ -138,10 +138,6 @@ public class ParameterizedFilterEnvelope extends ParameterizedEnvelopeAdapter {
 				PackedCollection al = automationLevel.get().evaluate();
 
 				double adj = adjustmentBase + adjustmentAutomation * al.toDouble(0);
-//				log("Processing filter envelope with duration (" + dr.toDouble(0) +
-//						", attack: " + getAttack() + ", decay: " + getDecay() +
-//						", sustain: " + getSustain() * adj +
-//						", release: " + getRelease() * adj + ")");
 
 				EnvelopeProcessor processor = AudioProcessingUtils.getFilterEnv();
 				processor.setDuration(dr.toDouble(0));

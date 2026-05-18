@@ -11,6 +11,9 @@ message AudioLibraryData {
   repeated WaveRecording recordings = 2;
   repeated SynthesizerModelData models = 3;
   optional PrototypeIndex prototype_index = 4;
+
+  // Multi-layer recordings, peers of WaveRecording. See AudioLayerGroup.
+  repeated AudioLayerGroup layer_groups = 5;
 }
 
 message WaveRecording {
@@ -67,4 +70,189 @@ message SynthesizerModelData {
   repeated double frequency_ratios = 2;
   double level_sample_rate = 3;
   CollectionData level_data = 4;
+}
+
+// =========================================================================
+// Multi-layer audio extensions.
+// All additions are optional; existing serialised data remains parseable.
+// =========================================================================
+
+// AudioLayerGroup is a peer of WaveRecording carrying layer relationships,
+// production lineage, and AU parameter state. Each layer is an AudioLayer
+// whose payload is either a WaveDetailData (audio) or a MidiPattern (MIDI).
+message AudioLayerGroup {
+  // Stable identifier for this group. Distinct from per-buffer identifiers.
+  string key = 1;
+
+  // Optional grouping (mirrors WaveRecording.group_key semantics).
+  optional string group_key = 2;
+  optional int32 group_order_index = 3;
+
+  // The layers comprising this group.
+  repeated AudioLayer layers = 4;
+}
+
+// A single layer carries either an audio rendering or a MIDI pattern via
+// the `content` oneof. An unset oneof is permitted for metadata-only
+// placeholders.
+message AudioLayer {
+  // Per-layer identifier, unique within the enclosing group.
+  string layer_id = 1;
+
+  // Layer payload — either audio or MIDI.
+  oneof content {
+    // Audio payload. Re-uses the existing per-buffer message; `audio.data`
+    // may be omitted, with `audio.identifier` (MD5 of bytes) used by the
+    // library to resolve the audio bytes on demand.
+    WaveDetailData audio = 2;
+
+    // MIDI payload. See MidiPattern.
+    MidiPattern midi = 3;
+  }
+
+  // Transform that produced this layer from its parents, when applicable.
+  optional TransformInfo transform = 4;
+
+  // Layers this layer was directly derived from (zero or more).
+  repeated LayerRef derived_from = 5;
+
+  // Capture device class (microphone or software).
+  optional DeviceType device_type = 6;
+
+  // AU parameter snapshot at the moment this layer was produced.
+  optional AudioUnitParameterState au_state = 7;
+
+  // Unix epoch milliseconds at which this layer was produced.
+  optional int64 created_at_millis = 8;
+}
+
+// LayerRef points at an AudioLayer by id, optionally narrowing to a subset
+// of channels. Time-slice referencing is deferred.
+message LayerRef {
+  // layer_id of an AudioLayer in the same AudioLayerGroup.
+  string layer_id = 1;
+
+  // Channel selection (zero-indexed). Empty list means all channels.
+  repeated int32 channels = 2;
+}
+
+// Capture device class. Coarse on purpose — richer device tracking is
+// deferred. SOFTWARE covers software instruments (AU hosts, virtual
+// instruments); the *_MIC values cover hardware capture.
+enum DeviceType {
+  UNSPECIFIED    = 0;
+  SOFTWARE       = 1;
+  VOCAL_MIC      = 2;
+  INSTRUMENT_MIC = 3;
+  ROOM_MIC       = 4;
+}
+
+// What transform produced a derived layer from its parent layers.
+message TransformInfo {
+  enum TransformKind {
+    TRANSFORM_UNSPECIFIED = 0;
+    ECHO     = 1;
+    REVERB   = 2;
+    EQ       = 3;
+    COMPRESS = 4;
+    GAIN     = 5;
+    PITCH    = 6;
+    TIME     = 7;
+    FX_BUS   = 8;
+    SUM      = 9;
+  }
+  optional TransformKind transform_kind = 1;
+  optional string transform_name = 2;
+}
+
+// AU parameter snapshot — the plugin's settings at render time. The MIDI
+// events that drove the rendering live on a sibling MidiPattern layer, not
+// here.
+message AudioUnitParameterState {
+  // Component description, e.g. "aumu,Alch,Appl,0001".
+  string component_description = 1;
+  optional string display_name = 2;
+  optional string manufacturer_name = 3;
+
+  // AUParameterAddress is uint64; protobuf forbids uint64 map keys, so
+  // addresses are decimal strings.
+  map<string, float> parameters = 4;
+
+  // AUAudioUnit.fullState binary plist. Optional because it can be MB-size.
+  optional bytes preset_data = 5;
+}
+
+// Structured MIDI pattern, modelled after MidiNoteEvent. Time is absolute
+// ticks at the stated PPQ.
+message MidiPattern {
+  // PPQ for all `tick` and `duration_ticks` values. Defaults to 480 when
+  // absent (the SkyTNT default and a standard SMF value).
+  optional int32 ticks_per_quarter = 1;
+
+  // Events comprising this pattern, ordered by tick.
+  repeated MidiEvent events = 2;
+}
+
+// One MIDI event with a discriminated payload, mirroring MidiNoteEvent.
+message MidiEvent {
+  // Absolute tick offset from the start of the pattern.
+  int64 tick = 1;
+
+  // MIDI track index (0-based). Defaults to 0 when absent.
+  optional int32 track = 2;
+
+  // MIDI channel (0–15). Relevant for note / control_change / pitch_bend /
+  // program_change. Tempo / time-signature / key-signature ignore it.
+  optional int32 channel = 3;
+
+  oneof payload {
+    NoteEvent          note           = 4;
+    ControlChangeEvent control_change = 5;
+    PitchBendEvent     pitch_bend     = 6;
+    ProgramChangeEvent program_change = 7;
+    SetTempoEvent      set_tempo      = 8;
+    TimeSignatureEvent time_signature = 9;
+    KeySignatureEvent  key_signature  = 10;
+  }
+}
+
+// Pitched note: a note-on plus its matching note-off, encoded with a
+// duration. Mirrors MidiNoteEvent.NOTE.
+message NoteEvent {
+  int32 pitch = 1;          // 0–127
+  int32 velocity = 2;       // 0–127
+  int64 duration_ticks = 3; // tick units of the enclosing pattern
+}
+
+// Continuous-controller change.
+message ControlChangeEvent {
+  int32 controller = 1;  // 0–127
+  int32 value = 2;       // 0–127
+}
+
+// 14-bit pitch-bend, signed (-8192 .. +8191), 0 = no bend.
+message PitchBendEvent {
+  int32 value = 1;
+}
+
+// Program (patch) change. Mirrors MidiNoteEvent.PATCH_CHANGE.
+message ProgramChangeEvent {
+  int32 program = 1;  // 0–127
+}
+
+// Tempo change, in BPM. Mirrors MidiNoteEvent.SET_TEMPO.
+message SetTempoEvent {
+  int32 bpm = 1;
+}
+
+// Time signature in the user-visible form. Numerator + denominator (2/4/8/16).
+message TimeSignatureEvent {
+  int32 numerator = 1;
+  int32 denominator = 2; // 2, 4, 8, 16
+}
+
+// Key signature, SMF-native (negative = flats, positive = sharps, range -7..+7).
+message KeySignatureEvent {
+  int32 sharps_flats = 1; // -7..+7
+  int32 mode = 2;         // 0 = major, 1 = minor
 }

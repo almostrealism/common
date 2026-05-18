@@ -83,6 +83,58 @@ MODULE_PATHS = {
     "utils-http": "engine/utils-http",
 }
 
+
+# Standalone (non-layer) documentation roots. These cover dirs that are
+# real first-class documentation but that don't live under a Maven layer
+# module — so they're not in MODULE_PATHS and would otherwise be invisible
+# to search. Listing them explicitly (rather than walking every *.md in
+# the repo) keeps planning docs / proposals / generated cruft out of the
+# index. Add a new entry here when introducing a new source of indexed
+# documentation; the file existence check at lookup time means non-
+# existent paths are silently ignored.
+#
+# Markdown entries are individual files OR directories (in which case
+# *.md inside is included); HTML entries are individual files OR
+# directories (in which case *.html inside is included).
+STANDALONE_MD_ROOTS = [
+    "flowtree/runtime/README.md",
+    "flowtree/runtime/docs",
+    "tools/mcp/README.md",
+    "tools/mcp/CLAUDE.md",
+    "tools/mcp/SECRETS.md",
+    "tools/mcp/consultant/README.md",
+    "tools/mcp/jmx/README.md",
+    "tools/mcp/manager/README.md",
+    "tools/mcp/memory/README.md",
+    "tools/mcp/profile-analyzer/README.md",
+    "tools/mcp/test-runner/README.md",
+]
+STANDALONE_HTML_ROOTS = [
+    "docs/tutorials",
+]
+
+
+def _expand_roots(common_dir: Path, entries: list[str], suffix: str) -> list[Path]:
+    """Expand a list of standalone-root entries (files or directories)
+    into concrete file paths that exist on disk.
+
+    @param common_dir: project root
+    @param entries:    relative paths from {@link STANDALONE_MD_ROOTS} or
+                       {@link STANDALONE_HTML_ROOTS}
+    @param suffix:     file suffix to glob when an entry is a directory
+                       (".md" or ".html")
+    @return list of resolved {@link Path} objects, in input order, with
+            directory globs sorted alphabetically
+    """
+    results: list[Path] = []
+    for entry in entries:
+        p = common_dir / entry
+        if p.is_file():
+            results.append(p)
+        elif p.is_dir():
+            results.extend(sorted(p.glob(f"*{suffix}")))
+    return results
+
 # Common synonyms for fuzzy matching (from ar-docs)
 SYNONYMS = {
     "assignment": {"assign", "destination", "target", "write"},
@@ -277,6 +329,15 @@ class DocsRetriever:
                 if mod_docs.exists():
                     others.extend(mod_docs.glob("*.md"))
 
+            # Standalone (non-layer) doc roots: flowtree, tools/mcp, etc.
+            # READMEs go in the readmes bucket so they're guaranteed to be
+            # searched; everything else (docs/*.md per server) goes in others.
+            for path in _expand_roots(self.common_dir, STANDALONE_MD_ROOTS, ".md"):
+                if path.name == "README.md":
+                    readmes.append(path)
+                else:
+                    others.append(path)
+
             # Quick reference, CLAUDE.md, internals (not READMEs)
             qr = self.docs_dir / "QUICK_REFERENCE.md"
             if qr.exists():
@@ -302,6 +363,7 @@ class DocsRetriever:
         else:
             if self.modules_dir.exists():
                 files.extend(sorted(self.modules_dir.glob("*.html")))
+            files.extend(_expand_roots(self.common_dir, STANDALONE_HTML_ROOTS, ".html"))
 
         return files
 
@@ -334,6 +396,10 @@ class DocsRetriever:
             mod_docs = self.common_dir / mod_path / "docs"
             if mod_docs.exists():
                 files.extend(mod_docs.glob("*.md"))
+
+        # Standalone (non-layer) doc roots
+        files.extend(_expand_roots(self.common_dir, STANDALONE_MD_ROOTS, ".md"))
+        files.extend(_expand_roots(self.common_dir, STANDALONE_HTML_ROOTS, ".html"))
 
         # Quick reference, CLAUDE.md, internals
         qr = self.docs_dir / "QUICK_REFERENCE.md"

@@ -32,6 +32,11 @@ import java.nio.file.Path;
  *       calls inside computation source trees</li>
  *   <li>{@link NamingConventionDetector} — {@code *Cell}/{@code *Block} interface contracts
  *       and {@code *Features} abstract-method violations</li>
+ *   <li>{@link VersionReferenceDetector} — release version markers
+ *       (e.g. "Common 0.74", "v0.74") embedded in comments or string literals</li>
+ *   <li>{@link PlanningDocumentReferenceDetector} — pointers to planning
+ *       documents (e.g. {@code docs/plans/...}, {@code FOO_BAR.md}) embedded
+ *       in source files</li>
  * </ul>
  *
  * <p><b>This tool exists because documentation alone does not prevent violations.</b>
@@ -47,11 +52,15 @@ import java.nio.file.Path;
  *   <li>.toDouble() calls in computation code</li>
  *   <li>Classes named *Cell that don't implement org.almostrealism.graph.Cell</li>
  *   <li>Classes named *Block that don't implement org.almostrealism.model.Block</li>
+ *   <li>Release version markers (e.g. "Common 0.74") in comments or string literals</li>
+ *   <li>Planning-document references (e.g. {@code docs/plans/FOO.md}) in source files</li>
  * </ul>
  *
  * @see PackedCollectionDetector
  * @see ProducerPatternDetector
  * @see NamingConventionDetector
+ * @see VersionReferenceDetector
+ * @see PlanningDocumentReferenceDetector
  * @see PolicyViolationDetector
  */
 public class CodePolicyViolationDetector extends PolicyViolationDetector {
@@ -69,7 +78,8 @@ public class CodePolicyViolationDetector extends PolicyViolationDetector {
 	 * Scans all Java source files under the root directory for all violation categories.
 	 *
 	 * <p>Delegates to {@link PackedCollectionDetector}, {@link ProducerPatternDetector},
-	 * and {@link NamingConventionDetector}, then aggregates their results.
+	 * {@link NamingConventionDetector}, {@link VersionReferenceDetector}, and
+	 * {@link PlanningDocumentReferenceDetector}, then aggregates their results.
 	 *
 	 * @return this detector for chaining
 	 * @throws IOException if file reading fails
@@ -89,6 +99,14 @@ public class CodePolicyViolationDetector extends PolicyViolationDetector {
 		NamingConventionDetector naming = new NamingConventionDetector(rootDir);
 		naming.scan();
 		violations.addAll(naming.getViolations());
+
+		VersionReferenceDetector version = new VersionReferenceDetector(rootDir);
+		version.scan();
+		violations.addAll(version.getViolations());
+
+		PlanningDocumentReferenceDetector planning = new PlanningDocumentReferenceDetector(rootDir);
+		planning.scan();
+		violations.addAll(planning.getViolations());
 
 		return this;
 	}
@@ -114,6 +132,14 @@ public class CodePolicyViolationDetector extends PolicyViolationDetector {
 		NamingConventionDetector naming = new NamingConventionDetector(rootDir);
 		naming.scanFile(file);
 		violations.addAll(naming.getViolations());
+
+		VersionReferenceDetector version = new VersionReferenceDetector(rootDir);
+		version.scanFile(file);
+		violations.addAll(version.getViolations());
+
+		PlanningDocumentReferenceDetector planning = new PlanningDocumentReferenceDetector(rootDir);
+		planning.scanFile(file);
+		violations.addAll(planning.getViolations());
 
 		return this;
 	}

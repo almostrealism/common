@@ -99,13 +99,14 @@ For FlowTree jobs to have ar-manager access, set these environment variables on 
 | `AR_MANAGER_URL` | Controller | URL of the ar-manager service (default: `http://ar-manager:8010`) |
 | `AR_MANAGER_SHARED_SECRET` | Controller + ar-manager | Shared secret for HMAC token generation. Generate with `openssl rand -base64 32` |
 
-See `flowtree/src/main/resources/workstreams-example.yaml` for full configuration reference.
+See `flowtree/runtime/src/main/resources/workstreams-example.yaml` for full configuration reference.
 
 ## Servers
 
 | Server | Directory | Description |
 |--------|-----------|-------------|
 | **ar-manager** | [manager/](manager/) | Centralized MCP endpoint for messaging, memory, GitHub, and workstream management |
+| **ar-secrets** | [secrets/](secrets/) | Auto-pushed stdio server (delivered by the controller to every agent container) that renders workspace secrets into files on the agent's filesystem (see [SECRETS.md](SECRETS.md)) |
 | **ar-consultant** | [consultant/](consultant/) | Documentation-aware assistant with local LLM inference, memory, and doc retrieval |
 | **ar-memory** | [memory/](memory/) | Centralized HTTP memory service with embedding-based search |
 | **ar-build-validator** | [build-validator/](build-validator/) | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne |
@@ -122,15 +123,15 @@ See `flowtree/src/main/resources/workstreams-example.yaml` for full configuratio
 ## Docker Infrastructure
 
 ar-memory, the FlowTree controller, and ar-manager run as Docker services
-defined in `flowtree/controller/docker-compose.yml`:
+defined in `flowtree/runtime/controller/docker-compose.yml`:
 
 ```bash
 # Pre-build the controller JAR (from repo root)
-mvn package -pl flowtree -am -DskipTests
-mvn dependency:copy-dependencies -pl flowtree -DoutputDirectory=target/dependency
+mvn package -pl flowtree/runtime -am -DskipTests
+mvn dependency:copy-dependencies -pl flowtree/runtime -DoutputDirectory=flowtree/runtime/target/dependency
 
 # Start all services
-docker compose -f flowtree/controller/docker-compose.yml up -d
+docker compose -f flowtree/runtime/controller/docker-compose.yml up -d
 ```
 
 **Host directories:**
@@ -138,7 +139,7 @@ docker compose -f flowtree/controller/docker-compose.yml up -d
 - `/Users/Shared/flowtree/manager/` — `manager-tokens.json`
 - `/Users/Shared/flowtree/memory-data/` — SQLite DB and FAISS indices
 
-See `flowtree/controller/docker-compose.yml` for full configuration.
+See `flowtree/runtime/controller/docker-compose.yml` for full configuration.
 
 ## Installation
 

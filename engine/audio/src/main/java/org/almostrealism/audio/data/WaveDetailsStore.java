@@ -99,6 +99,38 @@ public interface WaveDetailsStore extends Closeable {
 	List<NeighborResult> searchNeighbors(PackedCollection queryVector, int topK);
 
 	/**
+	 * Check whether the nearest-neighbor index has an embedding for the
+	 * given identifier. Implementations that do not maintain a vector
+	 * index should return {@code false}.
+	 *
+	 * @param identifier the content identifier
+	 * @return {@code true} if a vector entry is indexed for this identifier
+	 */
+	boolean hasEmbedding(String identifier);
+
+	/**
+	 * Insert (or replace) a vector entry in the nearest-neighbor index for
+	 * the given identifier without rewriting the underlying record. This
+	 * is intended for backfill scenarios where the record is already
+	 * persisted with valid feature data but the corresponding vector is
+	 * missing from the index. Implementations that do not maintain a
+	 * vector index may treat this as a no-op.
+	 *
+	 * @param identifier      the content identifier
+	 * @param embeddingVector the embedding vector to index
+	 */
+	void insertEmbedding(String identifier, PackedCollection embeddingVector);
+
+	/**
+	 * Return the number of indexed vectors in the nearest-neighbor index.
+	 * Implementations that do not maintain a vector index should return
+	 * {@code 0}.
+	 *
+	 * @return the number of indexed embeddings
+	 */
+	int indexedEmbeddingCount();
+
+	/**
 	 * Flush pending data to disk without closing the store.
 	 */
 	void flush();

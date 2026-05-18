@@ -5,7 +5,9 @@ Each namespace gets its own FAISS index file and ID mapping file.
 """
 
 import json
+import logging
 import os
+import re
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -16,6 +18,24 @@ import faiss
 import numpy as np
 
 from embedder import Embedder
+
+log = logging.getLogger(__name__)
+
+# A namespace becomes a filename component ("<ns>.index", "<ns>.ids.json").
+# Restrict to characters that are safe across filesystems and cannot smuggle
+# path separators or control characters from a malformed tool argument. A
+# single bad value (e.g. an XML literal pasted into the namespace field) used
+# to brick startup by making the FAISS index path uncreatable.
+_NAMESPACE_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
+def _validate_namespace(namespace: str) -> str:
+    if not isinstance(namespace, str) or not _NAMESPACE_RE.match(namespace):
+        raise ValueError(
+            f"invalid namespace: must match {_NAMESPACE_RE.pattern} "
+            f"(got {namespace!r})"
+        )
+    return namespace
 
 
 def _normalize_repo_url(url: Optional[str]) -> Optional[str]:
@@ -125,7 +145,13 @@ class MemoryStore:
         return self._data_dir / f"{namespace}.ids.json"
 
     def _load_all_indices(self):
-        """Load FAISS indices for all namespaces that have persisted index files."""
+        """Load FAISS indices for all namespaces that have persisted index files.
+
+        Namespaces that do not satisfy ``_NAMESPACE_RE`` are skipped with a
+        warning. They cannot be written to disk as a FAISS index path, and
+        previously caused startup to crash-loop. Skipping leaves the SQLite
+        rows intact so an operator can repair them.
+        """
         namespaces = {
             row[0]
             for row in self._conn.execute(
@@ -133,6 +159,11 @@ class MemoryStore:
             ).fetchall()
         }
         for ns in namespaces:
+            try:
+                _validate_namespace(ns)
+            except ValueError as exc:
+                log.warning("skipping unloadable namespace: %s", exc)
+                continue
             self._load_index(ns)
 
     def _load_index(self, namespace: str):
@@ -201,6 +232,7 @@ class MemoryStore:
         Returns:
             Dictionary with the created entry's fields.
         """
+        _validate_namespace(namespace)
         entry_id = str(uuid.uuid4())
         created_at = datetime.now(timezone.utc).isoformat()
         tags_json = json.dumps(tags) if tags else None
@@ -263,6 +295,7 @@ class MemoryStore:
         Returns:
             List of entry dicts with an added "score" field (L2 distance).
         """
+        _validate_namespace(namespace)
         if namespace not in self._indices:
             return []
 
@@ -340,6 +373,8 @@ class MemoryStore:
         Returns:
             List of entry dicts ordered by creation time (newest first).
         """
+        if namespace:
+            _validate_namespace(namespace)
         repo_url = _normalize_repo_url(repo_url)
         if namespace:
             rows = self._conn.execute(
@@ -373,6 +408,7 @@ class MemoryStore:
         Returns:
             Dictionary with status information.
         """
+        _validate_namespace(namespace)
         row = self._conn.execute(
             "SELECT id FROM entries WHERE id = ? AND namespace = ?",
             (entry_id, namespace),
@@ -407,6 +443,7 @@ class MemoryStore:
         Returns:
             List of entry dicts ordered by creation time (newest first).
         """
+        _validate_namespace(namespace)
         rows = self._conn.execute(
             "SELECT id, namespace, content, tags, source, created_at, repo_url, branch "
             "FROM entries WHERE namespace = ? "

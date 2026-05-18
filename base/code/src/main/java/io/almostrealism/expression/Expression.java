@@ -1361,14 +1361,7 @@ public abstract class Expression<T> implements
 	 *
 	 * @return an expression representing {@code floor(this)}
 	 */
-	public Expression floor() {
-		if (getType() == Integer.class) return this;
-
-		OptionalDouble v = doubleValue();
-		if (v.isPresent()) return new DoubleConstant(Math.floor(v.getAsDouble()));
-
-		return new Floor((Expression) this);
-	}
+	public Expression floor() { return Floor.of(this); }
 
 	/**
 	 * Returns the ceiling (smallest integer not less than) of this expression.
@@ -1378,14 +1371,7 @@ public abstract class Expression<T> implements
 	 *
 	 * @return an expression representing {@code ceil(this)}
 	 */
-	public Expression ceil() {
-		if (getType() == Integer.class) return this;
-
-		OptionalDouble v = doubleValue();
-		if (v.isPresent()) return new DoubleConstant(Math.ceil(v.getAsDouble()));
-
-		return new Ceiling((Expression) this);
-	}
+	public Expression ceil() { return Ceiling.of(this); }
 
 	/**
 	 * Returns the floating-point modulo of this expression by another.

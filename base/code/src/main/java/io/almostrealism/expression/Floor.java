@@ -84,16 +84,40 @@ public class Floor extends Expression<Double> {
 			throw new UnsupportedOperationException();
 		}
 
-		return new Floor((Expression<Double>) children.get(0));
+		return Floor.of((Expression<Double>) children.get(0));
 	}
 
 	/**
 	 * Creates a floor expression for the given operand.
 	 *
+	 * <p>Applies the following reductions in order:</p>
+	 * <ol>
+	 *   <li>Constant folding: a numeric literal operand becomes a {@link DoubleConstant}
+	 *       holding the floored value.</li>
+	 *   <li>Integer-identity: when the operand is not floating-point ({@code !in.isFP()}),
+	 *       {@code floor(n) == n} so the operand is returned unchanged.
+	 *       This eliminates the {@code floor()} call from generated code and avoids
+	 *       backends (such as Metal) whose {@code floor()} overloads are FP-only.
+	 *       Boolean operands are also covered — {@code floor(b) == b} for any boolean
+	 *       value, even though this case is unlikely in practice.</li>
+	 *   <li>Cast-fallback: a non-FP operand is widened with {@link Expression#toDouble()}
+	 *       so the emitted {@code floor()} call always has a floating-point argument.</li>
+	 * </ol>
+	 *
 	 * @param in the expression to floor
-	 * @return a new {@link Floor} expression
+	 * @return a constant, the operand unchanged, or a new {@link Floor}
 	 */
-	public static Expression of(Expression in) {
-		return new Floor(in);
+	public static <T> Expression<T> of(Expression in) {
+		OptionalDouble d = in.doubleValue();
+
+		if (d.isPresent()) {
+			return (Expression<T>) new DoubleConstant(Math.floor(d.getAsDouble()));
+		}
+
+		if (!in.isFP()) {
+			return (Expression<T>) in;
+		}
+
+		return (Expression<T>) new Floor(in.toDouble());
 	}
 }

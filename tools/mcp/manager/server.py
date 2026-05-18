@@ -41,6 +41,7 @@ import logging
 import os
 import re
 import sys
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -320,9 +321,36 @@ def _validate_temp_token(token_value: str) -> Optional[tuple[list, str, str, str
     if time.time() > expiry:
         return None
 
-    scopes = ["read", "write", "memory"]
+    scopes = ["read", "write", "submit", "github", "memory-read", "memory-write"]
     label = f"tmp:{workstream_id}/{job_id}"
     return scopes, label, workstream_id, job_id
+
+
+def _mint_temp_token(workstream_id: str, job_id: str = "ar-manager",
+                     ttl_seconds: int = 60) -> Optional[str]:
+    """Mint an HMAC temporary token for an internal call to the controller.
+
+    The controller's workstream-scoped endpoints (e.g.
+    ``/api/secrets/{name}?workstream_id=...``) require a Bearer token in the
+    ``armt_tmp_`` family rather than the raw shared secret. ar-manager already
+    holds ``SHARED_SECRET`` (it uses it to validate inbound tokens), so it can
+    sign a short-lived temp token for the workstream and pass it through.
+
+    Returns ``None`` when ``SHARED_SECRET`` is unset.
+    """
+    if not SHARED_SECRET:
+        return None
+    expiry = int(time.time()) + ttl_seconds
+    payload = f"{workstream_id}:{job_id}:{expiry}"
+    digest = hmac.new(
+        SHARED_SECRET.encode("utf-8"),
+        payload.encode("utf-8"),
+        "sha256",
+    ).digest()
+    hmac_b64 = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    payload_b64 = base64.urlsafe_b64encode(
+        payload.encode("utf-8")).rstrip(b"=").decode("ascii")
+    return f"armt_tmp_{hmac_b64}:{payload_b64}"
 
 
 def _require_scope(scope: str) -> None:
@@ -474,6 +502,18 @@ class BearerAuthMiddleware:
                 if matched:
                     _set_scopes(matched_scopes, matched_label)
                     _set_workspace_scopes(matched_workspace_scopes)
+                    # Static tokens are not bound to a specific workstream
+                    # or job. We MUST clear any token context that might
+                    # still be present on this thread from a previous
+                    # HMAC-temp-token request handled here — otherwise
+                    # _get_token_workstream_id() would fall back to that
+                    # stale thread-local value and incorrectly identify
+                    # this caller as an in-cluster agent on that
+                    # workstream's branch. (Static-token callers, e.g.
+                    # Claude.ai web chat or third-party API users, have
+                    # no association with any workstream's checkout and
+                    # cannot collide with one.)
+                    _set_token_context("", "")
                     await self.app(scope, receive, send)
                     return
 
@@ -622,18 +662,22 @@ class HealthMiddleware:
 # Controller HTTP helpers
 # ---------------------------------------------------------------------------
 
-def _controller_get(path: str, timeout: int = 10) -> dict:
+def _controller_get(path: str, timeout: int = 10, auth_token: str = None) -> dict:
     """GET a JSON resource from the FlowTree controller.
 
     Args:
         path: URL path (e.g., ``/api/health``).
         timeout: Request timeout in seconds.
+        auth_token: Optional Bearer token for the Authorization header.
 
     Returns:
         Parsed JSON response as a dict.
     """
     url = CONTROLLER_URL.rstrip("/") + path
-    req = Request(url, headers={"Accept": "application/json"})
+    headers = {"Accept": "application/json"}
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+    req = Request(url, headers=headers)
     print(f"ar-manager: GET {url}", file=sys.stderr)
     try:
         with urlopen(req, timeout=timeout) as resp:
@@ -875,6 +919,34 @@ def _filter_workstreams_by_scope(entries: list) -> list:
     return filtered
 
 
+def _filter_tasks_by_scope(tasks: list) -> list:
+    """Return only those task-dict entries whose linked workstream is
+    permitted by the current request's workspace scope. Unscoped callers
+    see all tasks; scoped callers see only tasks attached to a workstream
+    inside their workspace. Tasks with no workstream_id (project-level
+    tasks not bound to any workstream) are dropped for scoped callers,
+    because the workspace-scoping rule for agent callers requires an
+    attached workstream — there is no safe interpretation of "this task
+    belongs to your workspace" when no workstream link exists. Malformed
+    non-list task payloads are rejected for scoped callers by returning
+    an empty list.
+    """
+    if not _get_workspace_scopes():
+        return tasks
+    if not isinstance(tasks, list):
+        return []
+    filtered = []
+    for t in tasks:
+        if not isinstance(t, dict):
+            continue
+        ws_id = t.get("workstream_id") or ""
+        if not ws_id:
+            continue
+        if _is_workspace_allowed(_workspace_for_workstream(ws_id)):
+            filtered.append(t)
+    return filtered
+
+
 # ---------------------------------------------------------------------------
 # GitHub API helpers — delegated to github_api.py to reduce file size
 # ---------------------------------------------------------------------------
@@ -965,8 +1037,15 @@ def controller_health() -> dict:
     Use this as a first step to verify connectivity before calling
     other tools. No authentication scope required.
 
+    The response includes a ``server_time`` field containing the
+    controller's current UTC time in ISO-8601 format
+    (e.g. ``"2026-05-11T18:23:45.123456789Z"``). This is useful for
+    verifying which deployment is running and for diagnosing clock
+    drift between the controller host and other systems.
+
     Returns:
-        Dictionary with controller status and version info.
+        Dictionary with controller status, version info, and
+        ``server_time`` (ISO-8601 UTC timestamp from the controller).
     """
     _require_scope("read")
     _audit("controller_health")
@@ -1265,6 +1344,7 @@ def workstream_submit_task(
     prompt: str,
     workstream_id: str = "",
     target_branch: str = "",
+    repo_url: str = "",
     description: str = "",
     max_turns: int = 0,
     max_budget_usd: float = 0.0,
@@ -1273,8 +1353,13 @@ def workstream_submit_task(
     started_after: str = "",
     required_labels: str = "",
     deduplication_mode: str = "",
+    max_deduplication_passes: int = 0,
     model: str = "",
     effort: str = "",
+    post_completion_command: str = "",
+    post_completion_timeout_seconds: int = 0,
+    max_post_completion_passes: int = 0,
+    delay_seconds: int = 0,
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -1292,7 +1377,14 @@ def workstream_submit_task(
             any constraints.
         workstream_id: Explicit workstream to submit to (from workstream_list).
         target_branch: Git branch to resolve workstream by (alternative to
-            workstream_id).
+            workstream_id). Must be paired with ``repo_url`` when more than
+            one registered workstream uses the same default branch on
+            different repositories — otherwise the controller rejects the
+            submission as ambiguous.
+        repo_url: Repository URL used to disambiguate ``target_branch`` when
+            several workstreams share the same branch name across different
+            repositories. Optional when ``workstream_id`` is given or when
+            ``target_branch`` is unique across all workstreams.
         description: Short human-readable description of the task (shown
             in Slack notifications).
         max_turns: Maximum Claude Code turns (0 = use workstream default).
@@ -1312,6 +1404,15 @@ def workstream_submit_task(
             spawned). Use "spawn" to submit a separate follow-up job to the
             same workstream after committing (requires workstream URL). Pass
             "none" to disable deduplication entirely.
+        max_deduplication_passes: Maximum number of deduplication correction
+            sessions per job. 0 (default) uses the server-side default of 2.
+            Each pass runs a full agent session which adds time and cost; the
+            cap lets you trade some thoroughness for predictable cost across
+            multi-job workstreams where the audit re-runs from scratch on each
+            job. Set to 1 for trivial follow-up jobs unlikely to introduce
+            duplication. Set higher (e.g. 5) for first-time large feature work
+            where thoroughness matters. Has no effect when
+            ``deduplication_mode="none"``.
         model: Claude Code model alias (e.g. ``"sonnet"``, ``"opus"``,
             ``"haiku"``) or full identifier (e.g. ``"claude-sonnet-4-6"``)
             for this job. Empty string falls back to the workstream default,
@@ -1320,17 +1421,51 @@ def workstream_submit_task(
             of ``"low"``, ``"medium"``, ``"high"``, ``"xhigh"``, ``"max"``.
             Empty string falls back to the workstream default, which in turn
             falls back to the CLI default.
+        post_completion_command: Shell command run after the agent declares its
+            work done. If the command exits non-zero, the agent receives a
+            correction session showing the output and is asked to fix the
+            failure. The loop continues until the command exits zero or max
+            retries is exhausted. Examples:
+
+            - Run a single test class:
+              ``"mvn -pl flowtree/runtime test -Dtest=NotifierRegistryTest"``
+            - Run a pytest file:
+              ``"cd tools/mcp/manager && pytest tests/test_secrets.py"``
+            - Run a custom script: ``"bash scripts/verify-foo.sh"``
+
+            The command runs on the agent's host with the agent's privileges.
+            It is NOT sandboxed — treat it like any other trusted instruction.
+            Empty string (default) disables the feature.
+        post_completion_timeout_seconds: Maximum seconds to wait for the
+            post-completion command before killing it and treating the run as a
+            failure. 0 (default) uses the server-side default of 1800 seconds
+            (30 minutes).
+        max_post_completion_passes: Maximum number of post-completion correction
+            sessions per job. 0 (default) uses the server-side default of 3.
+            Each pass runs a full agent session; without a cap a single flaky
+            gate command can exhaust the entire context budget. Set to 1 for
+            commands that should not be retried at all. Set higher (e.g. 5) when
+            the gate is known to be flaky but eventually converges. Has no
+            effect when ``post_completion_command`` is empty.
+        delay_seconds: Number of seconds to wait before making the job visible
+            to workers. The job is accepted immediately (and a job_id returned)
+            but stays in a pending state until the delay elapses. Workers will
+            not pick it up until then. Cancellation works normally during the
+            pending period. 0 (default) means dispatch immediately.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
     """
-    _require_scope("write")
+    _require_scope("submit")
     err = _check_length(prompt, "prompt", MAX_PROMPT_LEN)
+    if err:
+        return err
+    err = _check_length(post_completion_command, "post_completion_command", MAX_PROMPT_LEN)
     if err:
         return err
     err = _check_short_strings(
         workstream_id=workstream_id, target_branch=target_branch,
-        description=description, started_after=started_after,
+        repo_url=repo_url, description=description, started_after=started_after,
         deduplication_mode=deduplication_mode,
         model=model, effort=effort,
     )
@@ -1342,15 +1477,80 @@ def workstream_submit_task(
     err = _check_model(model)
     if err:
         return err
+    # Self-submission protection. When this tool is called from inside a
+    # running ClaudeCodeJob (the agent has been issued a temporary token
+    # whose payload binds it to a specific workstream), the agent must
+    # never submit a job to its own workstream — two agent sessions on
+    # the same git branch produce immediate commit collisions.
+    #
+    # The only safe place to enforce this is upfront, before the
+    # controller submits the job. For target_branch resolution we'd need
+    # to wait for the controller's response, by which point the job is
+    # already running. Therefore agent callers are required to pass
+    # workstream_id explicitly so the collision check is local.
+    #
+    # This check runs before _require_workstream_in_scope so the agent
+    # gets a self-explanatory error rather than a generic permission
+    # failure when workstream_id is empty.
+    caller_workstream_id = _get_token_workstream_id()
+    if caller_workstream_id:
+        if not workstream_id:
+            return {
+                "ok": False,
+                "error": (
+                    "workstream_id is required when workstream_submit_task "
+                    "is called from inside a coding agent. target_branch "
+                    "alone cannot be resolved here because the controller "
+                    "would submit the job before a self-collision could "
+                    "be detected. Call workstream_list to find another "
+                    "workstream in your workspace and pass its workstream_id "
+                    "explicitly."
+                ),
+                "next_steps": [
+                    "Call workstream_list to enumerate workstreams in your workspace",
+                    "Pick the workstream you intend to delegate work to",
+                    "Re-call workstream_submit_task with that workstream_id",
+                ],
+            }
+        if workstream_id == caller_workstream_id:
+            return {
+                "ok": False,
+                "error": (
+                    "Cannot submit a task to the calling workstream itself "
+                    f"('{workstream_id}'). The current Claude Code session "
+                    "is already running on this workstream's branch, so "
+                    "submitting another job to it would cause two agents "
+                    "to commit to the same branch concurrently and produce "
+                    "immediate git collisions.\n\n"
+                    "Jobs CAN be submitted to any OTHER workstream in the "
+                    "same workspace — call workstream_list to see them. "
+                    "Jobs CANNOT be submitted to the current workstream.\n\n"
+                    "If a user has asked you to submit work for the current "
+                    "workstream, this is almost certainly a misunderstanding: "
+                    "they likely intended for the work to be done directly "
+                    "in this Claude Code session, not delegated to a "
+                    "separate job. Tell the user that work targeting the "
+                    "current workstream should be performed in the running "
+                    "session, then proceed with the work yourself."
+                ),
+                "next_steps": [
+                    "Do the requested work directly in this session (no submission needed)",
+                    "Or, if the user genuinely meant a different workstream, call workstream_list and submit using that workstream_id",
+                ],
+            }
+
     _require_workstream_in_scope(workstream_id)
     _audit("workstream_submit_task", workstream_id=workstream_id,
-           target_branch=target_branch, prompt_len=len(prompt))
+           target_branch=target_branch, repo_url=repo_url,
+           prompt_len=len(prompt))
 
     payload = {"prompt": prompt}
     if workstream_id:
         payload["workstreamId"] = workstream_id
     if target_branch:
         payload["targetBranch"] = target_branch
+    if repo_url:
+        payload["repoUrl"] = repo_url
     if description:
         payload["description"] = description
     if max_turns > 0:
@@ -1369,10 +1569,20 @@ def workstream_submit_task(
             payload["requiredLabels"] = labels_dict
     if deduplication_mode:
         payload["deduplicationMode"] = deduplication_mode
+    if max_deduplication_passes > 0:
+        payload["maxDeduplicationPasses"] = max_deduplication_passes
     if model:
         payload["model"] = model
     if effort:
         payload["effort"] = effort
+    if post_completion_command:
+        payload["postCompletionCommand"] = post_completion_command
+    if post_completion_timeout_seconds > 0:
+        payload["postCompletionTimeoutSeconds"] = post_completion_timeout_seconds
+    if max_post_completion_passes > 0:
+        payload["maxPostCompletionPasses"] = max_post_completion_passes
+    if delay_seconds > 0:
+        payload["delaySeconds"] = delay_seconds
 
     result = _controller_post("/api/submit", payload)
 
@@ -2197,7 +2407,7 @@ def project_read_plan(
     Returns:
         Dictionary with file content, path, branch, sha, and repo.
     """
-    _require_scope("read")
+    _require_scope("github")
     err = _check_short_strings(
         workstream_id=workstream_id, path=path, branch=branch,
     )
@@ -2373,7 +2583,7 @@ def memory_recall(
     Returns:
         Dictionary with memories and optional summary.
     """
-    _require_scope("memory")
+    _require_scope("memory-read")
     if scope not in ("repo", "branch", "all"):
         return {
             "ok": False,
@@ -2587,7 +2797,7 @@ def workstream_context(
         and ``initial_commit_sha`` (the first commit on the branch relative
         to the base).
     """
-    _require_scope("memory")
+    _require_scope("memory-read")
     err = _check_short_strings(
         workstream_id=workstream_id, repo_url=repo_url,
         branch=branch, namespace=namespace,
@@ -2828,7 +3038,7 @@ def memory_store(
     Returns:
         Dictionary with the created entry.
     """
-    _require_scope("memory")
+    _require_scope("memory-write")
     err = _check_length(content, "content", MAX_PROMPT_LEN)
     if err:
         return err
@@ -3001,7 +3211,7 @@ def github_pr_find(
     Returns:
         PR details if found, or error.
     """
-    _require_scope("read")
+    _require_scope("github")
     if org and repo:
         _require_org_in_scope(org)
     owner, repo, effective_branch, err = _resolve_github_repo(
@@ -3050,7 +3260,7 @@ def github_pr_review_comments(
     Returns:
         List of review comments.
     """
-    _require_scope("read")
+    _require_scope("github")
     if org and repo:
         _require_org_in_scope(org)
     owner, repo, _, err = _resolve_github_repo(
@@ -3151,7 +3361,7 @@ def github_pr_conversation(
     Returns:
         List of conversation comments.
     """
-    _require_scope("read")
+    _require_scope("github")
     if org and repo:
         _require_org_in_scope(org)
     owner, repo, _, err = _resolve_github_repo(
@@ -3201,7 +3411,7 @@ def github_pr_reply(
     Returns:
         The created reply.
     """
-    _require_scope("write")
+    _require_scope("github")
     if org and repo:
         _require_org_in_scope(org)
     owner, repo, _, err = _resolve_github_repo(
@@ -3241,7 +3451,7 @@ def github_list_open_prs(
     Returns:
         List of open PRs.
     """
-    _require_scope("read")
+    _require_scope("github")
     if org and repo:
         _require_org_in_scope(org)
     owner, repo, _, err = _resolve_github_repo(
@@ -3301,7 +3511,7 @@ def github_create_pr(
     Returns:
         The created PR details, including copilot_review_requested if applicable.
     """
-    _require_scope("write")
+    _require_scope("github")
     if org and repo:
         _require_org_in_scope(org)
     owner, repo, default_branch, err = _resolve_github_repo(
@@ -3399,67 +3609,216 @@ def _is_copilot_login(login: str) -> bool:
     GitHub exposes Copilot under multiple login strings depending on the
     endpoint, empirically observed on this repo:
 
-    - ``"copilot"`` — the slug accepted by ``POST /pulls/N/requested_reviewers``
-      (see the commit message on 6a2269f79: sending
-      ``copilot-pull-request-reviewer`` returns HTTP 422).
+    - ``"copilot-pull-request-reviewer"`` — the bot login returned by the
+      GraphQL ``suggestedActors`` query and used by the
+      ``requestReviews`` mutation.
     - ``"copilot-pull-request-reviewer[bot]"`` — the ``user.login`` on
       review objects returned by ``GET /pulls/N/reviews``.
     - ``"Copilot"`` — the ``user.login`` on review-comment objects
       returned by ``GET /pulls/N/comments``.
 
-    Matching all three with a case-insensitive substring check on
+    Matching all forms with a case-insensitive substring check on
     ``"copilot"`` is safe because it does not collide with any real user
     or team slug that could legitimately request a review (GitHub reserves
-    the ``copilot`` name). Used by both ``_copilot_is_requested`` (request
-    verification) and ``_dismiss_copilot_review`` (review lookup) so the
-    two paths cannot disagree about what counts as Copilot.
+    the ``copilot`` name).
     """
     if not isinstance(login, str):
         return False
     return COPILOT_REVIEWER_LOGIN in login.lower()
 
 
-def _copilot_is_requested(pr_response: dict) -> bool:
-    """True when the PR response's ``requested_reviewers`` array lists the
-    Copilot bot. The GitHub API accepts an empty-looking payload silently
-    (ignoring unknown fields), so we can't trust a 2xx status alone — we
-    verify the reviewer was actually added.
+# GraphQL query used to discover the PR node ID and the Copilot bot's ID
+# in a single round-trip. ``suggestedActors`` with ``CAN_BE_ASSIGNED``
+# returns Copilot when the repository has Copilot code review enabled.
+_COPILOT_LOOKUP_QUERY = """
+query CopilotLookup($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) { id }
+    suggestedActors(first: 100, capabilities: [CAN_BE_ASSIGNED]) {
+      nodes {
+        __typename
+        login
+        ... on Bot { id }
+        ... on User { id }
+      }
+    }
+  }
+}
+"""
 
-    Delegates the login comparison to :func:`_is_copilot_login` so request
-    verification, review lookup, and dismissal all use the same rule.
+
+# NOTE: The GraphQL requestReviews mutation with userIds was the prior approach,
+# but it fails for Bot node IDs because userIds only accepts User-type nodes.
+# Passing a Bot node ID (e.g. BOT_kgDOC9w8XQ) raises:
+#   "Could not resolve to User node with the global id of 'BOT_...'."
+# The REST endpoint uses string logins instead, which works for Bot accounts.
+# The constant below is preserved as documentation of the failure mode.
+_REQUEST_REVIEWS_MUTATION = """
+mutation RequestCopilotReview($pullRequestId: ID!, $userIds: [ID!]!) {
+  requestReviews(input: {pullRequestId: $pullRequestId, userIds: $userIds, union: true}) {
+    pullRequest {
+      reviewRequests(first: 100) {
+        nodes {
+          requestedReviewer {
+            __typename
+            ... on Bot { login }
+            ... on User { login }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+
+def _graphql_error_message(result: dict) -> str:
+    """Return the first GraphQL error message from a response, or ''."""
+    errors = result.get("errors") if isinstance(result, dict) else None
+    if isinstance(errors, list) and errors:
+        first = errors[0] or {}
+        if isinstance(first, dict):
+            return first.get("message", "") or ""
+    return ""
+
+
+def _is_already_reviewed_error(message: str) -> bool:
+    """Detect the GraphQL error GitHub returns when Copilot has already
+    reviewed the PR and a fresh review must be requested by dismissing
+    the prior one first.
     """
-    if not isinstance(pr_response, dict):
+    if not isinstance(message, str) or not message:
         return False
-    reviewers = pr_response.get("requested_reviewers") or []
-    for r in reviewers:
-        if isinstance(r, dict) and _is_copilot_login(r.get("login", "")):
-            return True
-    return False
+    lowered = message.lower()
+    return (
+        "already" in lowered
+        or "cannot be requested" in lowered
+        or "duplicate" in lowered
+    )
 
 
-def _post_copilot_review_request(owner: str, repo: str, pr_number: int) -> dict:
-    """POST the Copilot reviewer request. Returns the raw response dict so
-    callers can check success via :func:`_copilot_is_requested` and handle
-    fallback/retry on actual failure."""
+def _lookup_copilot_review_targets(owner: str, repo: str,
+                                   pr_number: int) -> dict:
+    """Discover the PR's GraphQL node ID and Copilot's bot ID.
+
+    Returns a dict with ``ok=True`` and ``pr_id``/``bot_id`` keys on
+    success. Returns an ``ok=False`` dict on transport errors, on a
+    missing PR, or when Copilot is not in the suggested-actors list
+    (which means Copilot code review is not enabled for the repo).
+    """
+    variables = {"owner": owner, "name": repo, "number": pr_number}
+    result = _github_graphql_request(_COPILOT_LOOKUP_QUERY, variables)
+
+    if isinstance(result, dict) and result.get("ok") is False:
+        return result
+    if not isinstance(result, dict) or "data" not in result:
+        message = _graphql_error_message(result) if isinstance(result, dict) else ""
+        return {"ok": False,
+                "error": message or "Unexpected response from GitHub GraphQL"}
+    if "errors" in result:
+        return {"ok": False,
+                "error": f"GraphQL error: {_graphql_error_message(result)}"}
+
+    repo_data = (result.get("data") or {}).get("repository") or {}
+    pr = repo_data.get("pullRequest") or {}
+    pr_id = pr.get("id")
+    if not pr_id:
+        return {"ok": False, "error": f"PR #{pr_number} not found"}
+
+    actors = ((repo_data.get("suggestedActors") or {}).get("nodes") or [])
+    bot_id = None
+    bot_login = None
+    for actor in actors:
+        if not isinstance(actor, dict):
+            continue
+        if actor.get("__typename") != "Bot":
+            continue
+        if _is_copilot_login(actor.get("login", "")):
+            bot_id = actor.get("id")
+            bot_login = actor.get("login")
+            break
+
+    if not bot_id:
+        return {"ok": False, "error": (
+            "Copilot is not available as a reviewer for this repository. "
+            "Enable Copilot code review in the repository settings.")}
+
+    return {"ok": True, "pr_id": pr_id, "bot_id": bot_id, "bot_login": bot_login}
+
+
+def _request_reviews_via_rest(owner: str, repo: str, pr_number: int,
+                              bot_login: str) -> dict:
+    """Request a review via the REST endpoint using the bot's login string.
+
+    The GraphQL ``requestReviews`` mutation's ``userIds`` field only accepts
+    User-type node IDs.  Passing a Bot node ID (e.g. ``BOT_kgDOC9w8XQ``)
+    raises "Could not resolve to User node with the global id of 'BOT_...'".
+    The REST endpoint uses string logins instead of typed GraphQL node IDs
+    and correctly handles Bot accounts such as
+    ``"copilot-pull-request-reviewer"``.
+
+    Args:
+        owner: Repository owner.
+        repo: Repository name.
+        pr_number: Pull request number.
+        bot_login: The bot's GitHub login string (e.g.
+            ``"copilot-pull-request-reviewer"``), obtained from the
+            CopilotLookup query's ``suggestedActors`` connection.
+
+    Returns:
+        The PR object dict (includes ``requested_reviewers``) on success,
+        or an ``ok=False`` error dict on failure.
+    """
     return _github_request(
         "POST",
         f"/repos/{owner}/{repo}/pulls/{pr_number}/requested_reviewers",
-        {"reviewers": [COPILOT_REVIEWER_LOGIN]},
+        {"reviewers": [bot_login]},
     )
+
+
+def _copilot_in_rest_response(rest_response: dict) -> bool:
+    """True when a REST requested_reviewers response includes the Copilot bot.
+
+    Checks the ``requested_reviewers`` array in the PR object returned by
+    ``POST /repos/{owner}/{repo}/pulls/{n}/requested_reviewers``.  Each
+    entry has a ``login`` field; this helper accepts all login forms that
+    ``_is_copilot_login`` recognises (e.g.
+    ``"copilot-pull-request-reviewer"``, ``"Copilot"``,
+    ``"copilot-pull-request-reviewer[bot]"``).
+
+    Never trusts a 2xx status alone — always checks the reviewer list so
+    silent no-ops are detected.
+    """
+    if not isinstance(rest_response, dict):
+        return False
+    for reviewer in (rest_response.get("requested_reviewers") or []):
+        if isinstance(reviewer, dict) and _is_copilot_login(reviewer.get("login", "")):
+            return True
+    return False
 
 
 def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     """Request a GitHub Copilot review on a pull request.
 
-    Copilot reviews are triggered by requesting a review from the 'copilot'
-    user via the standard ``requested_reviewers`` endpoint. If Copilot has
-    already reviewed the PR, the most recent dismissible review is dismissed
+    Uses the REST ``POST /repos/{owner}/{repo}/pulls/{n}/requested_reviewers``
+    endpoint with the bot's login string obtained from the GraphQL
+    ``suggestedActors`` query.
+
+    The GraphQL ``requestReviews`` mutation was the prior approach, but it
+    fails for Bot accounts: ``userIds`` only accepts User-type node IDs.
+    Passing a Bot node ID (``BOT_kgDOC9w8XQ``) raises "Could not resolve
+    to User node with the global id of 'BOT_...'".  The REST endpoint uses
+    string logins and handles Bot accounts correctly.
+
+    If Copilot has already reviewed the PR, the prior review is dismissed
     and the request is retried, making this call idempotent.
 
-    Verifies success by checking that the returned PR's
-    ``requested_reviewers`` array actually contains the bot — the GitHub
-    API silently drops unknown body fields and returns 2xx on no-op
-    requests, so a successful-looking status code alone cannot be trusted.
+    Verifies success by checking that the bot appears in the post-request
+    ``requested_reviewers`` list — never trusts a 2xx status alone.
+
+    NOTE: These tests use mocks; the only end-to-end verification is to
+    manually call the tool against a real PR and confirm Copilot appears
+    in the requested_reviewers list.
 
     Args:
         owner: Repository owner.
@@ -3469,38 +3828,51 @@ def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     Returns:
         dict with ok=True on success or ok=False with error details.
     """
-    result = _post_copilot_review_request(owner, repo, pr_number)
+    lookup = _lookup_copilot_review_targets(owner, repo, pr_number)
+    if not lookup.get("ok"):
+        return lookup
 
-    if _copilot_is_requested(result):
+    bot_login = lookup["bot_login"]
+
+    result = _request_reviews_via_rest(owner, repo, pr_number, bot_login)
+
+    if _copilot_in_rest_response(result):
         return {"ok": True}
 
-    # If the POST itself reported failure, try dismissing any existing
-    # Copilot review and retrying — Copilot rejects duplicate requests.
-    if isinstance(result, dict) and result.get("ok") is False:
+    error_message = result.get("error", "") if isinstance(result, dict) else ""
+
+    # If the REST API reported "already reviewed" (or "cannot be requested"),
+    # dismiss the prior Copilot review and retry once.
+    if _is_already_reviewed_error(error_message):
         dismiss = _dismiss_copilot_review(owner, repo, pr_number)
         if not dismiss.get("ok"):
             return {"ok": False,
-                    "error": f"Review request failed: {result.get('error', '')}"}
-        retry = _post_copilot_review_request(owner, repo, pr_number)
-        if _copilot_is_requested(retry):
+                    "error": f"Review request failed: {error_message}"}
+        retry = _request_reviews_via_rest(owner, repo, pr_number, bot_login)
+        if _copilot_in_rest_response(retry):
             return {"ok": True}
-        if isinstance(retry, dict) and "ok" in retry:
-            return retry
-        return {
-            "ok": False,
-            "error": (
-                f"Retry did not add Copilot as a reviewer. Response: {retry}"),
-        }
+        retry_error = retry.get("error", "") if isinstance(retry, dict) else ""
+        if retry_error:
+            return {"ok": False,
+                    "error": f"Retry did not add Copilot: {retry_error}"}
+        return {"ok": False,
+                "error": f"Retry did not add Copilot as a reviewer. Response: {retry}"}
 
-    # POST reported 2xx but the bot is not in requested_reviewers — something
-    # silently no-op'd the request. Surface this rather than claiming success.
+    if error_message:
+        return {"ok": False, "error": f"Review request failed: {error_message}"}
+
+    if isinstance(result, dict) and result.get("ok") is False:
+        return result
+
+    # Request returned a 2xx-like shape but the bot is not present in
+    # requested_reviewers — the request silently no-op'd.
     return {
         "ok": False,
         "error": (
-            "Copilot was not added as a reviewer. The API returned a 2xx "
-            "response but the requested_reviewers array does not include "
-            f"'{COPILOT_REVIEWER_LOGIN}'. Check that the Copilot code review "
-            "feature is enabled for this repository."),
+            "Copilot was not added as a reviewer. The REST API call "
+            "returned no errors but the post-request requested_reviewers "
+            "does not include the Copilot bot. Check that Copilot code "
+            "review is enabled for this repository."),
     }
 
 
@@ -3514,8 +3886,12 @@ def github_request_copilot_review(
 ) -> dict:
     """Request a GitHub Copilot automated code review on a pull request.
 
-    Copilot reviews are triggered by requesting a review from the 'copilot'
-    user via the GitHub API.
+    Uses the REST ``POST /repos/{owner}/{repo}/pulls/{n}/requested_reviewers``
+    endpoint with the bot's login string (``copilot-pull-request-reviewer``).
+    The GraphQL ``requestReviews`` mutation cannot be used because its
+    ``userIds`` field only accepts User-type node IDs — Copilot is a Bot
+    and its node ID (``BOT_kgDOC9w8XQ``) is rejected with "Could not
+    resolve to User node with the global id of 'BOT_...'.".
 
     Args:
         pr_number: Pull request number. If omitted, the open PR for the
@@ -3530,7 +3906,7 @@ def github_request_copilot_review(
     Returns:
         dict with ok=True on success or ok=False with error details.
     """
-    _require_scope("write")
+    _require_scope("github")
     if org and repo:
         _require_org_in_scope(org)
     # Direct addressing (org+repo) supplies no branch of its own. When the
@@ -3623,7 +3999,7 @@ def github_read_file(
     Returns:
         Dictionary with file content, path, ref, sha, and repo.
     """
-    _require_scope("read")
+    _require_scope("github")
     err = _check_short_strings(
         path=path, workstream_id=workstream_id, branch=branch, ref=ref,
     )
@@ -3778,7 +4154,7 @@ def github_pr_check_status(
         overall_status, workflow_runs list, and check_runs list. Failed
         check runs include html_url and details_url for log access.
     """
-    _require_scope("read")
+    _require_scope("github")
     if org and repo:
         _require_org_in_scope(org)
     owner, repo, effective_branch, err = _resolve_github_repo(
@@ -3948,6 +4324,833 @@ def github_pr_check_status(
         "check_runs": check_runs,
         "next_steps": next_steps,
     }
+
+
+# ---------------------------------------------------------------------------
+# Tracker HTTP helpers
+# ---------------------------------------------------------------------------
+
+TRACKER_URL = os.environ.get("AR_TRACKER_URL", "http://ar-tracker:8030")
+_TRACKER_AUTH_TOKEN = os.environ.get("AR_TRACKER_AUTH_TOKEN", "")
+
+
+def _tracker_headers() -> dict:
+    h = {"Accept": "application/json"}
+    if _TRACKER_AUTH_TOKEN:
+        h["Authorization"] = f"Bearer {_TRACKER_AUTH_TOKEN}"
+    return h
+
+
+def _tracker_get(path: str, timeout: int = 10) -> dict:
+    """GET a JSON resource from the ar-tracker service."""
+    url = TRACKER_URL.rstrip("/") + path
+    req = Request(url, headers=_tracker_headers())
+    print(f"ar-manager: TRACKER GET {url}", file=sys.stderr)
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            return json.loads(body) if body else {}
+    except HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError:
+            return {"ok": False, "error": f"Tracker returned HTTP {e.code}"}
+    except URLError as e:
+        return {"ok": False, "error": f"Tracker unreachable: {e.reason}"}
+    except Exception as e:
+        logging.getLogger("ar-manager").error("Tracker GET %s: %s", path, e)
+        return {"ok": False, "error": "Internal error contacting tracker"}
+
+
+def _tracker_post(path: str, payload: dict, timeout: int = 15) -> dict:
+    """POST a JSON payload to the ar-tracker service."""
+    url = TRACKER_URL.rstrip("/") + path
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    h = _tracker_headers()
+    h["Content-Type"] = "application/json; charset=utf-8"
+    req = Request(url, data=data, headers=h)
+    print(f"ar-manager: TRACKER POST {url}", file=sys.stderr)
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            return json.loads(body) if body else {"ok": True}
+    except HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError:
+            return {"ok": False, "error": f"Tracker returned HTTP {e.code}"}
+    except URLError as e:
+        return {"ok": False, "error": f"Tracker unreachable: {e.reason}"}
+    except Exception as e:
+        logging.getLogger("ar-manager").error("Tracker POST %s: %s", path, e)
+        return {"ok": False, "error": "Internal error contacting tracker"}
+
+
+def _tracker_put(path: str, payload: dict, timeout: int = 15) -> dict:
+    """PUT a JSON payload to the ar-tracker service."""
+    url = TRACKER_URL.rstrip("/") + path
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    h = _tracker_headers()
+    h["Content-Type"] = "application/json; charset=utf-8"
+    req = Request(url, data=data, headers=h, method="PUT")
+    print(f"ar-manager: TRACKER PUT {url}", file=sys.stderr)
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            return json.loads(body) if body else {"ok": True}
+    except HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError:
+            return {"ok": False, "error": f"Tracker returned HTTP {e.code}"}
+    except URLError as e:
+        return {"ok": False, "error": f"Tracker unreachable: {e.reason}"}
+    except Exception as e:
+        logging.getLogger("ar-manager").error("Tracker PUT %s: %s", path, e)
+        return {"ok": False, "error": "Internal error contacting tracker"}
+
+
+def _tracker_delete(path: str, timeout: int = 10) -> dict:
+    """DELETE a resource from the ar-tracker service."""
+    url = TRACKER_URL.rstrip("/") + path
+    req = Request(url, headers=_tracker_headers(), method="DELETE")
+    print(f"ar-manager: TRACKER DELETE {url}", file=sys.stderr)
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            return json.loads(body) if body else {"ok": True}
+    except HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        try:
+            return json.loads(body)
+        except json.JSONDecodeError:
+            return {"ok": False, "error": f"Tracker returned HTTP {e.code}"}
+    except URLError as e:
+        return {"ok": False, "error": f"Tracker unreachable: {e.reason}"}
+    except Exception as e:
+        logging.getLogger("ar-manager").error("Tracker DELETE %s: %s", path, e)
+        return {"ok": False, "error": "Internal error contacting tracker"}
+
+
+# -- Tracker tools -----------------------------------------------------------
+
+@mcp.tool()
+def tracker_list_projects() -> dict:
+    """List all tracker projects.
+
+    Returns all projects with their IDs and names. Projects are globally
+    visible — no workspace scope restriction.
+
+    Returns:
+        dict with ok=True and a list of projects.
+    """
+    _require_scope("read")
+    _audit("tracker_list_projects")
+    return _tracker_get("/v1/projects")
+
+
+@mcp.tool()
+def tracker_create_project(name: str) -> dict:
+    """Create a new tracker project.
+
+    Args:
+        name: Human-readable project name (e.g., "Rings").
+
+    Returns:
+        dict with ok=True and the created project record.
+    """
+    _require_scope("write")
+    _audit("tracker_create_project", name=name)
+    return _tracker_post("/v1/projects", {"name": name})
+
+
+@mcp.tool()
+def tracker_update_project(project_id: str, name: str) -> dict:
+    """Update an existing tracker project.
+
+    Args:
+        project_id: UUID of the project to update.
+        name: New name for the project.
+
+    Returns:
+        dict with ok=True and the updated project record.
+    """
+    _require_scope("write")
+    _audit("tracker_update_project", project_id=project_id)
+    return _tracker_put(f"/v1/projects/{project_id}", {"name": name})
+
+
+@mcp.tool()
+def tracker_delete_project(project_id: str) -> dict:
+    """Delete a tracker project.
+
+    Deleting a project sets project_id to NULL on any associated tasks
+    and releases (ON DELETE SET NULL). Tasks are not deleted.
+
+    Args:
+        project_id: UUID of the project to delete.
+
+    Returns:
+        dict with ok=True on success.
+    """
+    _require_scope("write")
+    _audit("tracker_delete_project", project_id=project_id)
+    return _tracker_delete(f"/v1/projects/{project_id}")
+
+
+@mcp.tool()
+def tracker_list_releases(project_id: str = "") -> dict:
+    """List tracker releases, optionally filtered by project.
+
+    Args:
+        project_id: Optional UUID to filter releases to a specific project.
+            Omit to list all releases.
+
+    Returns:
+        dict with ok=True and a list of releases.
+    """
+    _require_scope("read")
+    _audit("tracker_list_releases", project_id=project_id)
+    path = "/v1/releases"
+    if project_id:
+        path += "?" + urlencode({"project_id": project_id})
+    return _tracker_get(path)
+
+
+@mcp.tool()
+def tracker_create_release(name: str, project_id: str = "") -> dict:
+    """Create a new tracker release.
+
+    Args:
+        name: Release name (e.g., "Rings 0.38").
+        project_id: Optional UUID of the associated project.
+
+    Returns:
+        dict with ok=True and the created release record.
+    """
+    _require_scope("write")
+    _audit("tracker_create_release", name=name, project_id=project_id)
+    payload: dict = {"name": name}
+    if project_id:
+        payload["project_id"] = project_id
+    return _tracker_post("/v1/releases", payload)
+
+
+@mcp.tool()
+def tracker_update_release(
+    release_id: str,
+    name: str = "",
+    project_id: str = "",
+) -> dict:
+    """Update an existing tracker release.
+
+    Only fields with non-empty values are updated. Pass an empty string
+    to leave a field unchanged.
+
+    To clear the project association, pass the literal string "null" for
+    project_id. This sends JSON null to the tracker, which clears the FK.
+
+    Args:
+        release_id: UUID of the release to update.
+        name: New name for the release. Omit to leave unchanged.
+        project_id: New project UUID. Omit to leave unchanged. Pass
+            "null" to clear the project association.
+
+    Returns:
+        dict with ok=True and the updated release record.
+    """
+    _require_scope("write")
+    _audit("tracker_update_release", release_id=release_id)
+    payload: dict = {}
+    if name:
+        payload["name"] = name
+    if project_id == "null":
+        payload["project_id"] = None
+    elif project_id:
+        payload["project_id"] = project_id
+    return _tracker_put(f"/v1/releases/{release_id}", payload)
+
+
+@mcp.tool()
+def tracker_delete_release(release_id: str) -> dict:
+    """Delete a tracker release.
+
+    Deleting a release sets release_id to NULL on any associated tasks
+    (ON DELETE SET NULL). Tasks are not deleted.
+
+    Args:
+        release_id: UUID of the release to delete.
+
+    Returns:
+        dict with ok=True on success.
+    """
+    _require_scope("write")
+    _audit("tracker_delete_release", release_id=release_id)
+    return _tracker_delete(f"/v1/releases/{release_id}")
+
+
+@mcp.tool()
+def tracker_create_task(
+    title: str,
+    description: str = "",
+    project_id: str = "",
+    release_id: str = "",
+    workstream_id: str = "",
+    status: str = "open",
+    priority: int = 0,
+) -> dict:
+    """Create a new tracker task.
+
+    Args:
+        title: Short, descriptive task title.
+        description: Optional longer description. Markdown supported.
+        project_id: UUID of the project this task belongs to. Strongly
+            recommended — tasks without a project are harder to organize.
+        release_id: Optional UUID of the target release.
+        workstream_id: Optional FlowTree workstream ID to link this task
+            to an active coding workstream.
+        status: Task status. Either "open" (default) or "closed".
+        priority: Signed integer in the range [-2, 2]. Defaults to 0.
+            -2 = Lowest, -1 = Low, 0 = Medium, 1 = High, 2 = Highest.
+
+    Returns:
+        dict with ok=True and the created task record.
+    """
+    _require_scope("write")
+    if workstream_id:
+        _require_workstream_in_scope(workstream_id)
+    _audit("tracker_create_task", project_id=project_id, workstream_id=workstream_id)
+    payload: dict = {"title": title, "status": status, "priority": priority}
+    if description:
+        payload["description"] = description
+    if project_id:
+        payload["project_id"] = project_id
+    if release_id:
+        payload["release_id"] = release_id
+    if workstream_id:
+        payload["workstream_id"] = workstream_id
+    return _tracker_post("/v1/tasks", payload)
+
+
+@mcp.tool()
+def tracker_get_task(task_id: str) -> dict:
+    """Get a single tracker task by ID.
+
+    The full task record is returned. Workspace scoping is enforced:
+    if the task is linked to a workstream outside the caller's scope,
+    a PermissionError is raised (same behaviour as other scoped reads).
+
+    Args:
+        task_id: UUID of the task to retrieve.
+
+    Returns:
+        dict with ok=True and the task record.
+    """
+    _require_scope("read")
+    _audit("tracker_get_task", task_id=task_id)
+    result = _tracker_get(f"/v1/tasks/{task_id}")
+    if not result.get("ok"):
+        return result
+    ws = (result.get("task") or {}).get("workstream_id", "")
+    if ws:
+        _require_workstream_in_scope(ws)
+    elif _get_workspace_scopes():
+        # Scoped callers (agents) may only retrieve tasks attached to a
+        # workstream in their workspace. A task with no workstream_id
+        # is project-level and not workspace-bound, so we cannot prove
+        # it belongs to the caller's workspace — deny it rather than
+        # leak a task that may be from any project.
+        raise PermissionError(
+            "Task is not attached to any workstream and cannot be "
+            "retrieved by a scoped caller. Tasks must be linked to a "
+            "workstream in your workspace to be visible to an agent.")
+    return result
+
+
+@mcp.tool()
+def tracker_list_tasks(
+    project_id: str = "",
+    release_id: str = "",
+    workstream_id: str = "",
+    status: str = "",
+    sort: str = "",
+    order: str = "",
+    limit: int = 50,
+    offset: int = 0,
+    fields: str = "full",
+) -> dict:
+    """List tracker tasks with optional filtering.
+
+    When scanning a large backlog (200+ tasks), pass fields="headlines" to
+    receive only the compact task projection (id, title, priority, status,
+    project_id, release_id, workstream_id, created_at, updated_at) without
+    the description field. This is significantly cheaper for callers that
+    only need to triage or count tasks. Use tracker_get_task to fetch the
+    full record for a specific task by ID.
+
+    Args:
+        project_id: Filter to tasks in this project (UUID).
+        release_id: Filter to tasks in this release (UUID).
+        workstream_id: Filter to tasks linked to this workstream ID.
+            Enforces workspace scope — scoped tokens may only query
+            workstreams within their scope.
+        status: Filter by status: "open" or "closed". Omit for all.
+        sort: Sort column: "created_at" (default), "updated_at", or
+            "priority". Pass "" to use the default.
+        order: Sort order: "desc" (default) or "asc". Pass "" to use
+            the default.
+        limit: Maximum number of tasks to return. Defaults to 50, max 200.
+        offset: Pagination offset. Defaults to 0.
+        fields: Projection mode. "full" (default) returns all fields
+            including description. "headlines" omits description.
+
+    Returns:
+        dict with ok=True, a list of tasks, and pagination info
+        (total, limit, offset).
+    """
+    _require_scope("read")
+    if workstream_id:
+        _require_workstream_in_scope(workstream_id)
+    _audit("tracker_list_tasks", project_id=project_id,
+           release_id=release_id, workstream_id=workstream_id)
+    raw: dict = {}
+    if project_id:
+        raw["project_id"] = project_id
+    if release_id:
+        raw["release_id"] = release_id
+    if workstream_id:
+        raw["workstream_id"] = workstream_id
+    if status:
+        raw["status"] = status
+    if sort:
+        raw["sort"] = sort
+    if order:
+        raw["order"] = order
+    if limit != 50:
+        raw["limit"] = limit
+    if offset:
+        raw["offset"] = offset
+    if fields and fields != "full":
+        raw["fields"] = fields
+    qs = ("?" + urlencode(raw)) if raw else ""
+    result = _tracker_get(f"/v1/tasks{qs}")
+    # When the caller did not specify a workstream_id, the tracker may
+    # return tasks linked to workstreams outside the caller's workspace.
+    # Filter them out for scoped callers so an agent can only see tasks
+    # attached to a workstream in its own workspace. When workstream_id
+    # was supplied, _require_workstream_in_scope above already rejected
+    # the call if the workstream was out of scope, so no filtering is
+    # needed in that branch.
+    if result.get("ok") and not workstream_id:
+        tasks = result.get("tasks") or []
+        filtered_tasks = _filter_tasks_by_scope(tasks)
+        result["tasks"] = filtered_tasks
+        result["total"] = len(filtered_tasks)
+        if "count" in result:
+            result["count"] = len(filtered_tasks)
+    return result
+
+
+@mcp.tool()
+def tracker_update_task(
+    task_id: str,
+    title: str = "",
+    description: str = "",
+    status: str = "",
+    priority: int = -999,
+    project_id: str = "",
+    release_id: str = "",
+    workstream_id: str = "",
+) -> dict:
+    """Update an existing tracker task.
+
+    Only fields with non-empty values are updated. Pass an empty string
+    to leave a field unchanged.
+
+    To clear an optional field (e.g., remove the release association),
+    pass the literal string "null" for that parameter.
+
+    Args:
+        task_id: UUID of the task to update.
+        title: New title. Omit to leave unchanged.
+        description: New description. Omit to leave unchanged.
+        status: New status: "open" or "closed". Omit to leave unchanged.
+        priority: New priority in the range [-2, 2]. Defaults to the
+            sentinel value -999 meaning "leave unchanged" (zero is a
+            valid priority — Medium — and cannot be used as the
+            sentinel).
+        project_id: New project UUID. Omit to leave unchanged. Pass
+            "null" to clear.
+        release_id: New release UUID. Omit to leave unchanged. Pass
+            "null" to clear.
+        workstream_id: New workstream ID. Omit to leave unchanged. Pass
+            "null" to clear.
+
+    Returns:
+        dict with ok=True and the updated task record.
+    """
+    _require_scope("write")
+    current = _tracker_get(f"/v1/tasks/{task_id}")
+    if not current.get("ok"):
+        return current
+    current_ws = (current.get("task") or {}).get("workstream_id", "")
+    if current_ws:
+        _require_workstream_in_scope(current_ws)
+    if workstream_id and workstream_id != "null":
+        _require_workstream_in_scope(workstream_id)
+    _audit("tracker_update_task", task_id=task_id)
+    payload: dict = {}
+    if title:
+        payload["title"] = title
+    if description:
+        payload["description"] = description
+    if status:
+        payload["status"] = status
+    if priority != -999:
+        payload["priority"] = priority
+    for field, val in [("project_id", project_id),
+                       ("release_id", release_id),
+                       ("workstream_id", workstream_id)]:
+        if val == "null":
+            payload[field] = None
+        elif val:
+            payload[field] = val
+    return _tracker_put(f"/v1/tasks/{task_id}", payload)
+
+
+@mcp.tool()
+def tracker_delete_task(task_id: str) -> dict:
+    """Delete a tracker task permanently.
+
+    Args:
+        task_id: UUID of the task to delete.
+
+    Returns:
+        dict with ok=True on success.
+    """
+    _require_scope("write")
+    current = _tracker_get(f"/v1/tasks/{task_id}")
+    if not current.get("ok"):
+        return current
+    ws = (current.get("task") or {}).get("workstream_id", "")
+    if ws:
+        _require_workstream_in_scope(ws)
+    _audit("tracker_delete_task", task_id=task_id)
+    return _tracker_delete(f"/v1/tasks/{task_id}")
+
+
+@mcp.tool()
+def tracker_search_tasks(
+    query: str,
+    project_id: str = "",
+    status: str = "",
+    limit: int = 20,
+    offset: int = 0,
+    fields: str = "full",
+) -> dict:
+    """Full-text search over tracker task titles and descriptions.
+
+    Uses SQLite FTS5 for efficient full-text search. Supports
+    phrase queries ("exact phrase"), NOT, AND, OR operators.
+
+    Pass fields="headlines" to receive a compact projection (no description)
+    when scanning many search results. Use tracker_get_task to retrieve the
+    full record for any result by ID.
+
+    Args:
+        query: Search string. Supports FTS5 query syntax.
+        project_id: Optional UUID to restrict search to one project.
+        status: Optional status filter: "open" or "closed".
+        limit: Maximum results to return. Defaults to 20, max 100.
+        offset: Pagination offset. Defaults to 0.
+        fields: Projection mode. "full" (default) returns all fields
+            including description. "headlines" omits description.
+
+    Returns:
+        dict with ok=True, a list of matching tasks, and pagination info.
+    """
+    _require_scope("read")
+    _audit("tracker_search_tasks", query=query, project_id=project_id)
+    raw: dict = {"q": query}
+    if project_id:
+        raw["project_id"] = project_id
+    if status:
+        raw["status"] = status
+    if limit != 20:
+        raw["limit"] = limit
+    if offset:
+        raw["offset"] = offset
+    if fields and fields != "full":
+        raw["fields"] = fields
+    result = _tracker_get("/v1/search/tasks?" + urlencode(raw))
+    # Search has no workstream_id parameter, so for scoped callers we
+    # always have to filter results: the underlying tracker can return
+    # tasks attached to any workstream in the project. An agent caller
+    # must not see tasks belonging to other workspaces.
+    if result.get("ok"):
+        tasks = result.get("tasks") or []
+        filtered_tasks = _filter_tasks_by_scope(tasks)
+        filtered_total = len(filtered_tasks)
+        result["tasks"] = filtered_tasks
+        if "total" in result:
+            result["unfiltered_total"] = result["total"]
+        result["filtered_total"] = filtered_total
+        result["total"] = filtered_total
+        if "count" in result:
+            result["count"] = filtered_total
+    return result
+
+
+@mcp.tool()
+def tracker_project_summary(project_id: str) -> dict:
+    """Return aggregate task counts for a tracker project in one call.
+
+    Use this to answer "what's the shape of project X?" without fetching
+    all task rows. Returns counts grouped by status, priority, release, and
+    workstream. This is cheaper than calling tracker_list_tasks when you
+    only need summary metrics.
+
+    Workspace scoping: the by_workstream breakdown is filtered to only
+    include workstreams accessible to the caller's token. Workstreams
+    outside scope are silently omitted from by_workstream. Note that
+    total_tasks and other aggregates (by_status, by_priority, by_release)
+    are computed over all tasks in the project regardless of scope, so
+    by_workstream task counts may not sum to total_tasks for scoped callers.
+
+    Args:
+        project_id: UUID of the project to summarise.
+
+    Returns:
+        dict with ok=True and a summary containing:
+        - total_tasks: total task count for the project.
+        - by_status: {"open": N, "closed": N} (only keys with count > 0).
+        - by_priority: {-2: N, ..., 2: N} (only keys with count > 0).
+        - by_release: list of {release_id, release_name, task_count,
+          open_count} for each release in the project, plus one entry
+          with release_id=null for tasks with no release.
+        - by_workstream: list of {workstream_id, task_count, open_count}
+          for each workstream linked to this project, plus one entry with
+          workstream_id=null for tasks with no workstream.
+    """
+    _require_scope("read")
+    _audit("tracker_project_summary", project_id=project_id)
+    result = _tracker_get(f"/v1/projects/{project_id}/summary")
+    if not result.get("ok"):
+        return result
+    # Filter by_workstream to only include in-scope workstreams.
+    summary = result.get("summary") or {}
+    by_ws = summary.get("by_workstream") or []
+    filtered_ws = []
+    for entry in by_ws:
+        ws_id = entry.get("workstream_id")
+        if ws_id is None:
+            # Tasks with no workstream are always included.
+            filtered_ws.append(entry)
+            continue
+        try:
+            _require_workstream_in_scope(ws_id)
+            filtered_ws.append(entry)
+        except PermissionError:
+            pass
+    summary["by_workstream"] = filtered_ws
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Workspace secrets tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def workspace_secret_list_names(
+    workstream_id: str,
+) -> dict:
+    """List the names of secrets accessible to the calling workstream's workspace.
+
+    Returns only names — no payload values. Useful for an agent to discover
+    what secrets are available before calling workspace_secret_render_file.
+
+    Args:
+        workstream_id: The workstream whose workspace's secrets to list.
+
+    Returns:
+        dict with ok=True and names list, or ok=False with error.
+    """
+    _require_scope("read")
+    _require_workstream_in_scope(workstream_id)
+    _audit("workspace_secret_list_names", workstream_id=workstream_id)
+
+    if not SHARED_SECRET:
+        return {"ok": False, "error": "Shared secret not configured on ar-manager"}
+
+    # The controller's workstream-scoped endpoints require a Bearer token in
+    # the armt_tmp_ family. SHARED_SECRET (admin) is rejected here, so mint a
+    # short-lived workstream token using the same shared secret.
+    temp_token = _mint_temp_token(workstream_id)
+    if temp_token is None:
+        return {"ok": False, "error": "Unable to mint workstream token"}
+
+    path = f"/api/secrets?workstream_id={quote(workstream_id, safe='')}"
+    resp = _controller_get(path, auth_token=temp_token)
+    if resp.get("ok") is False:
+        return {"ok": False, "error": resp.get("error", "controller error")}
+    return {"ok": True, "names": resp.get("names", [])}
+
+
+@mcp.tool()
+def workspace_secret_render_file(
+    workstream_id: str,
+    secret_name: str,
+    template: str,
+    output_path: str,
+    mode: str = "0600",
+) -> dict:
+    """Fetch a workspace secret and render it into a file using a template.
+
+    The agent supplies a template with {{key}} placeholders. The secret
+    payload is fetched from the controller (the agent never sees the raw
+    values), all placeholders are substituted, and the result is written
+    to output_path with the specified permissions. The rendered content is
+    never returned to the agent.
+
+    Template placeholders use {{key}} syntax (double curly braces). Every
+    {{key}} in the template must exist in the secret payload — unresolved
+    placeholders cause an error and no file is written. Extra keys in the
+    payload that are not referenced in the template are silently ignored.
+
+    Example usage for AWS credentials:
+
+        template = \"\"\"[default]
+    aws_access_key_id = {{access_key_id}}
+    aws_secret_access_key = {{secret_access_key}}
+    region = {{region}}
+    \"\"\"
+        workspace_secret_render_file(
+            workstream_id="ws-abc",
+            secret_name="aws-prod",
+            template=template,
+            output_path="~/.aws/credentials",
+        )
+
+    After this call the agent can run AWS CLI commands without ever having
+    seen the credential values.
+
+    Args:
+        workstream_id: The workstream whose workspace owns the secret.
+        secret_name: Name of the secret to fetch.
+        template: Template string with {{key}} placeholders.
+        output_path: Destination file path (~ is expanded).
+        mode: Octal file permissions string, e.g. "0600" (default).
+
+    Returns:
+        dict with ok=True and output_path on success, or ok=False with
+        error. The rendered content is never included in the response.
+    """
+    _require_scope("read")
+    _require_workstream_in_scope(workstream_id)
+    # Deliberately omit template from audit log — it may contain partial secrets
+    # or structural hints. Log only identifying metadata.
+    _audit(
+        "workspace_secret_render_file",
+        workstream_id=workstream_id,
+        secret_name=secret_name,
+        output_path=output_path,
+        mode=mode,
+    )
+
+    if not SHARED_SECRET:
+        return {"ok": False, "error": "Shared secret not configured on ar-manager"}
+
+    # Validate mode before doing any I/O. int(s, 8) accepts negative numbers
+    # and silently parses values outside the POSIX permission range, so check
+    # the string shape and the resulting value explicitly.
+    if not isinstance(mode, str) or not mode:
+        return {"ok": False, "error": "mode must be a non-empty octal string"}
+    mode_str = mode[1:] if mode.startswith("0") and len(mode) > 1 else mode
+    if not mode_str or any(c not in "01234567" for c in mode_str):
+        return {
+            "ok": False,
+            "error": f"mode must be octal digits 0-7 (got {mode!r})",
+        }
+    try:
+        file_mode = int(mode, 8)
+    except ValueError:
+        return {"ok": False, "error": f"Invalid octal mode: {mode!r}"}
+    if file_mode < 0 or file_mode > 0o777:
+        return {
+            "ok": False,
+            "error": f"mode out of range — must be 0-0777 (got {mode!r})",
+        }
+
+    # The controller's retrieve endpoint requires a workstream-scoped temp
+    # token; the admin shared secret is rejected. Mint a short-lived token.
+    temp_token = _mint_temp_token(workstream_id)
+    if temp_token is None:
+        return {"ok": False, "error": "Unable to mint workstream token"}
+
+    # Fetch secret payload from controller
+    path = (f"/api/secrets/{quote(secret_name, safe='')}"
+            f"?workstream_id={quote(workstream_id, safe='')}")
+    resp = _controller_get(path, auth_token=temp_token)
+    if resp.get("ok") is False:
+        return {"ok": False, "error": resp.get("error", "controller error")}
+
+    payload = resp.get("payload", {})
+
+    # Strict placeholder resolution — every {{key}} must be present in payload
+    placeholders = re.findall(r"\{\{(\w+)\}\}", template)
+    missing = [p for p in placeholders if p not in payload]
+    if missing:
+        return {
+            "ok": False,
+            "error": (
+                f"Template references unknown keys: {missing}. "
+                f"Available keys: {sorted(payload.keys())}"
+            ),
+        }
+
+    rendered = template
+    for key in placeholders:
+        rendered = rendered.replace(f"{{{{{key}}}}}", payload[key])
+
+    # Atomic write: write the rendered content to a sibling temp file, fsync
+    # it, set its permissions, then os.replace() onto the destination. This
+    # avoids leaving a partial / empty credentials file on failure and avoids
+    # races where another reader could see the file mid-write.
+    expanded = os.path.expanduser(output_path)
+    parent = os.path.dirname(expanded) or "."
+    os.makedirs(parent, exist_ok=True)
+    rendered_bytes = rendered.encode("utf-8")
+    tmp_fd, tmp_path = tempfile.mkstemp(
+        prefix=os.path.basename(expanded) + ".",
+        suffix=".tmp",
+        dir=parent,
+    )
+    try:
+        with os.fdopen(tmp_fd, "wb") as tmp_fh:
+            tmp_fh.write(rendered_bytes)
+            tmp_fh.flush()
+            os.fsync(tmp_fh.fileno())
+        os.chmod(tmp_path, file_mode)
+        os.replace(tmp_path, expanded)
+    except Exception:
+        # Clean up the orphan temp file on failure; never let it linger with
+        # rendered secret content on disk.
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
+
+    audit_log.info(
+        "tool=workspace_secret_render_file secret_name=%s workstream_id=%s "
+        "output_path=%s result=OK",
+        secret_name, workstream_id, expanded,
+    )
+    return {"ok": True, "output_path": expanded}
 
 
 # ---------------------------------------------------------------------------

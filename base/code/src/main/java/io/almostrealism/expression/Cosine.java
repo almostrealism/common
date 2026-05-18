@@ -82,6 +82,10 @@ public class Cosine extends Expression<Double> {
 	/**
 	 * Creates a cosine expression, folding constants where possible.
 	 *
+	 * <p>Non-FP operands are widened with {@link Expression#toDouble()} so the emitted
+	 * {@code cos()} call always has a floating-point argument — Metal's {@code cos()}
+	 * overloads are FP-only and an integer operand triggers a compile ambiguity.</p>
+	 *
 	 * @param input the angle operand
 	 * @return a constant if the input is a known constant, otherwise a {@link Cosine}
 	 */
@@ -92,6 +96,6 @@ public class Cosine extends Expression<Double> {
 			return new DoubleConstant(Math.cos(d.getAsDouble()));
 		}
 
-		return new Cosine(input);
+		return new Cosine(input.toDouble());
 	}
 }

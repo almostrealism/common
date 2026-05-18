@@ -6,7 +6,7 @@
 
     <groupId>org.almostrealism</groupId>
     <artifactId>common</artifactId>
-    <version>0.73</version>
+    <version>0.74</version>
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -69,10 +69,12 @@
 		<module>studio/experiments</module>
 
 		<!-- Workflow Orchestration -->
-		<module>graphpersist</module>
-		<module>flowtreeapi</module>
-		<module>flowtree-python</module>
-		<module>flowtree</module>
+		<module>flowtree/graphpersist</module>
+		<module>flowtree/api</module>
+		<module>flowtree/base</module>
+		<module>flowtree/python</module>
+		<module>flowtree/agents</module>
+		<module>flowtree/runtime</module>
 
 		<!-- Standalone -->
 		<module>tools</module>

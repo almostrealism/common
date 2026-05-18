@@ -95,6 +95,10 @@ public class Tangent extends Expression<Double> {
 	/**
 	 * Creates a tangent or hyperbolic-tangent expression, folding constants.
 	 *
+	 * <p>Non-FP operands are widened with {@link Expression#toDouble()} so the emitted
+	 * {@code tan()}/{@code tanh()} call always has a floating-point argument — Metal's
+	 * overloads are FP-only and an integer operand triggers a compile ambiguity.</p>
+	 *
 	 * @param input     the operand
 	 * @param hyperbolic {@code true} for {@code tanh}, {@code false} for {@code tan}
 	 * @return a constant or a {@link Tangent} expression
@@ -106,6 +110,6 @@ public class Tangent extends Expression<Double> {
 			return new DoubleConstant(hyperbolic ? Math.tanh(d.getAsDouble()) : Math.tan(d.getAsDouble()));
 		}
 
-		return new Tangent(input, hyperbolic);
+		return new Tangent(input.toDouble(), hyperbolic);
 	}
 }

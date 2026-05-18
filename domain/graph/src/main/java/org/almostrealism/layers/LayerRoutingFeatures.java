@@ -207,6 +207,25 @@ public interface LayerRoutingFeatures extends LayerFeatures {
 	 * {@link Cell.CaptureReceptor}, and all captured outputs are summed in order to form
 	 * the final output.</p>
 	 *
+	 * <h4>Relationship to {@code sum_channels}</h4>
+	 *
+	 * <p>{@code accumBlocks} sums <em>across multiple {@link Block} sources</em>: each
+	 * sub-block sees the same input and the layer's output is the element-wise sum of
+	 * the sub-block outputs. The summation axis is the implicit "branch" axis introduced
+	 * by enumerating the sub-blocks; no axis of any single sub-block's output tensor is
+	 * collapsed.</p>
+	 *
+	 * <p>The PDSL interpreter's {@code sum_channels()} construct (see
+	 * {@code PdslInterpreter#callSumChannels}) is the orthogonal operation: it operates
+	 * on a <em>single</em> upstream block whose output already has shape {@code [C, S]}
+	 * and reduces along axis 0 to yield {@code [1, S]}. The summation axis is internal
+	 * to that single block's output tensor.</p>
+	 *
+	 * <p>Both names contain "sum", but they sum over different things and are not
+	 * substitutable. Use {@code accumBlocks} when you have N independent sub-blocks
+	 * and want their outputs combined; use {@code sum_channels()} when you have one
+	 * multi-channel tensor and want the channel axis collapsed.</p>
+	 *
 	 * @param inputShape   the input tensor shape
 	 * @param blocks       the sub-blocks to apply in parallel and sum
 	 * @param requirements optional compute requirements

@@ -9,7 +9,7 @@ clients. This has happened with `dependent_repos`, `required_labels`,
 first attempt.**
 
 Before committing, verify all three requirements below. There is a test suite in
-`flowtree/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java` that catches violations.
+`flowtree/runtime/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java` that catches violations.
 
 ---
 
@@ -126,7 +126,7 @@ After adding a new tool, verify it passes:
 
 ```bash
 cd /path/to/almostrealism-common
-mvn test -pl flowtree -Dtest=McpToolDiscoveryTest
+mvn test -pl flowtree/runtime -Dtest=McpToolDiscoveryTest
 ```
 
 The test `managerAllExpectedToolsAreRegisteredInServerPy` checks that every expected tool name
@@ -146,8 +146,76 @@ important tools are declared in the function signature (not hidden in the body).
 4. Add the tool name to the `expected` set in `McpToolDiscoveryTest.managerAllExpectedToolsAreRegisteredInServerPy`.
 5. Add parameter assertions to `McpToolDiscoveryTest.managerToolParametersAreProperlyDeclaredInSignatures` for any parameters that are not obvious (e.g., optional parameters that were historically missed).
 6. Add the tool name to the `expected` set in `TestToolRegistration.test_expected_tool_count` in `tools/mcp/manager/test_server.py`.
-7. Run `mvn test -pl flowtree -Dtest=McpToolDiscoveryTest` and confirm all tests pass.
-8. Run `python -m pytest tools/mcp/manager/test_server.py` and confirm all tests pass.
+7. **Update the agent allowlist in `flowtree/runtime/src/main/java/io/flowtree/jobs/McpConfigBuilder.java`.** Every new tool must be classified as either:
+   - **Granted to agents:** add the bare tool name to `AR_MANAGER_TOOL_NAMES`. The Claude Code harness will then include `mcp__ar-manager__<name>` in the launched agent's `--allowedTools` list.
+   - **Deliberately excluded:** add the tool name to `EXCLUDED_AR_MANAGER_TOOLS` (admin/orchestration tools, shared-state mutations, anything an autonomous coding agent should not invoke).
+
+   The `allowlistCoversEveryArManagerTool` test in `McpConfigBuilderTest` fails when a tool exists in `server.py` but is in neither set, forcing this decision before merge. The historical failure mode was that new tools were registered on the server but never added to the harness allowlist, so the Claude Code subprocess silently blocked them — the test prevents that.
+8. Run `mvn test -pl flowtree/runtime -Dtest=McpToolDiscoveryTest,McpConfigBuilderTest` and confirm all tests pass.
+9. Run `python -m pytest tools/mcp/manager/test_server.py` and confirm all tests pass.
+
+---
+
+## Security Rules for Workspace Secrets
+
+Two MCP servers expose secret handling and the rules below apply to **both
+pairs without exception**:
+
+- **`ar-secrets`** (stdio in the agent container) — `secret_list_names`,
+  `secret_render_file`.  This is what coding agents launched by
+  `CodingAgentJob` must call; the rendered file lands on the agent's host.
+- **`ar-manager`** (HTTP on the controller) —
+  `workspace_secret_list_names`, `workspace_secret_render_file`.  These
+  exist for admin/Slack flows that run alongside the controller and are
+  excluded from the coding-agent allowlist
+  (`EXCLUDED_AR_MANAGER_TOOLS` in `McpConfigBuilder.java`).  An agent that
+  reaches for the `workspace_secret_*` names will be denied by the harness;
+  the fix is to call the `ar-secrets` pair, not to widen the allowlist.
+
+See `tools/mcp/SECRETS.md` for the full topology and tool reference.
+
+These rules exist because a single accidental echo of a secret into an
+agent response, a log line, or a PR description permanently compromises
+that credential.
+
+### NEVER read the rendered file back into context
+
+After calling `secret_render_file` (or `workspace_secret_render_file` in
+admin tooling), the caller MUST NOT:
+- Read the rendered file with any tool (`Read`, `Bash cat`, etc.)
+- Echo or print its contents in any response
+- Pass its path to a tool that returns file contents
+
+The rendered file is an ephemeral on-disk resource for the process that follows.
+Treat it as write-only from the caller's perspective.
+
+### NEVER include secret values in commits, logs, or PR descriptions
+
+Secret values must never appear in:
+- Commit messages or commit diffs (`git show`, `git diff`)
+- PR titles, descriptions, or review comments
+- Log output from `Bash`, test runners, or any tool
+- Agent responses, reasoning text, or tool call arguments
+
+If you are about to write something that contains a value from a secret payload
+— stop.  Replace it with a placeholder like `<REDACTED>` in any context that
+persists beyond the current tool call.
+
+### NEVER return payload values from controller helpers
+
+Any Python helper in `ar-secrets` or `ar-manager` that fetches a
+`/api/secrets/{name}` response MUST pass the `payload` only into the
+template renderer — never into a return value that crosses the MCP channel
+back to the caller.
+
+### Audit log expectations
+
+Every render call (`secret_render_file` on `ar-secrets`,
+`workspace_secret_render_file` on `ar-manager`) writes a `secret_access`
+audit line via `_audit()`.  The audit line MUST include workstream ID,
+secret name, and job ID, but MUST NOT include any key/value from the
+payload.  Verify this when adding new code paths that touch secret
+payloads.
 
 ---
 

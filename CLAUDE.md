@@ -113,10 +113,15 @@ common/
 │   └── compose/                   #   ar-compose: Audio scene orchestration, arrangement
 │
 ├── flowtree/                      # Standalone (above engine) — Workflow Orchestration
-├── flowtreeapi/                   #   Standalone (above engine) — FlowTree API abstractions
-├── flowtree-python/               #   Standalone (above engine) — Python bindings for FlowTree
-├── graphpersist/                  #   Standalone (above engine) — Database persistence, NFS/SSH
-│                                  #   NOTE: flowtree depends on engine layer (ar-utils, ar-utils-http).
+│   ├── api/                       #   ar-flowtreeapi: protocol & API abstractions
+│   ├── base/                      #   ar-flowtree-base: shared helpers (JsonFieldExtractor, GitOperations)
+│   ├── agents/                    #   ar-flowtree-agents: AgentRunner abstraction + ClaudeCodeRunner
+│   ├── python/                    #   ar-flowtree-python: Python bindings for FlowTree
+│   ├── graphpersist/              #   ar-graphpersist: database persistence, NFS/SSH
+│   └── runtime/                   #   ar-flowtree-runtime: controller, jobs, NodeGroup, Slack integration
+│                                  #   NOTE: flowtree/runtime depends on engine layer (ar-utils, ar-utils-http).
+│                                  #   Internal order: api & base & graphpersist → agents (uses base) →
+│                                  #   runtime (uses api, base, agents, python, graphpersist).
 │                                  #   Nothing in base/compute/domain/engine/extern/studio depends on flowtree.
 ├── tools/                         # Standalone (above engine) — Dev tools, MCP servers
 ├── docs/                          # Documentation portal, internals, tutorials
@@ -355,6 +360,34 @@ Never add dependencies. Write code assuming the dependency exists, run `mvn comp
 
 Never include specific version numbers in any file. Versions change constantly. Refer to pom.xml as the source of truth.
 
+## CRITICAL: Verify Changes Against Relevant Tests Before Declaring Done
+
+The full project test suite takes hours — do NOT run it. For every code file you modified
+or created, identify the tests that directly exercise it and run THOSE before declaring done.
+
+**Concrete heuristic:**
+1. For each modified Java file `Foo.java`, look for `FooTest.java`, `FooTests.java`, or
+   `FooIT.java` in the same module's `src/test/java` and run them.
+2. Look for any tests in the same package that import the file you changed and run those too.
+3. If you split or moved classes, the original tests still apply to the split pieces —
+   find them and run them.
+4. For Python changes in `tools/`, run the corresponding pytest module
+   (e.g., `python -m pytest tools/mcp/manager/test_server.py`).
+5. Use the MCP test runner with `test_classes` to run a specific class quickly.
+   Use the full module run only when you've touched many files in one module.
+
+```
+mcp__ar-test-runner__start_test_run module:"<module>" test_classes:["FooTest"]
+```
+
+Do NOT use `-DskipTests` to declare a refactor or bug fix complete. `-DskipTests` is
+appropriate only for the initial compile-check pass; you MUST run the relevant tests
+before declaring work complete.
+
+If a test fails, fix the underlying cause. Do NOT add `@Disabled`, comment out assertions,
+or weaken tests to make them green — those are deception patterns that will be detected
+and reverted.
+
 ## Validate Code Quality Before Completing Any Task
 
 Before declaring a task done, run the build validator to catch style and policy violations
@@ -458,6 +491,11 @@ Consult the linked references before writing related code.
 - **No utility/helper/exporter/converter classes.** If you need to add behavior that operates on an existing type, add it as a method on that type. A `PatternElement` that can produce MIDI events has a `toMidiEvents()` method — it does NOT have a `PatternMidiExporter` that operates on it from the outside. Before creating a new class, ask: "Does this behavior belong on an existing type?" If yes, add it there. New classes are for genuinely new concepts, not for wrapping operations on existing concepts. Organize code around the concepts it represents, not around the operations being performed.
 - **Module placement matters.** Code belongs in the module that matches its conceptual domain. MIDI data types and I/O are music concepts and belong in the music module, not the ML module. A model that combines ML and music belongs in a module that has both as dependencies (e.g., compose). Think about what a class *is*, not just what it *uses*.
 - No speculation when debugging. Follow evidence. Never say "the problem might be X" without proof.
+- **Do not decorate log messages with prefixes.** Every `log(...)` and `warn(...)` line already receives a timestamp, class name, method name, and (where relevant) task id from the logging framework before it reaches the file. You are not the stylist of the log files. Forbidden prefix shapes — all enforced by checkstyle (`BracketLabelInLog`, `ParenLabelInLog`, `AngleLabelInLog`, `CapsLabelInLog`, `SymbolPrefixInLog`) — include:
+  - `log("[Tag] ...")`, `log("(Tag) ...")`, `log("<Tag> ...")`
+  - `log("DIAG ...")`, `log("DEBUG ...")`, `log("INFO ...")`, `log("FIXME ...")`, `log("TODO ...")`, or anything with 4+ uppercase letters at the start
+  - `log("🔧 ...")`, `log("→ ...")`, or any other non-ASCII decorative leader
+  When a value needs to be greppable, embed it as a stable variable-style name in the prose: `log("pushedToolsConfig=" + pushedToolsConfig)` — not `log("DIAG pushedToolsConfig=" + ...)`. Grep on `pushedToolsConfig=`; the framework's own line decoration already gives you the file/class/method context. If you find yourself wanting to attach a marker to find the line later, you don't need a marker — you need a better value name.
 
 ---
 

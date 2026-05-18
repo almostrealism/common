@@ -196,8 +196,9 @@ common/
 ├── studio/                            — Multimedia Composition
 │   music, spatial, compose
 │
-├── flowtree, flowtreeapi,             — Workflow Orchestration
-│   flowtree-python, graphpersist
+├── flowtree/                          — Workflow Orchestration
+│   api, base, agents, python,
+│   graphpersist, runtime
 │
 ├── tools/                             — Dev Tools & MCP Servers
 ├── docs/                              — Documentation

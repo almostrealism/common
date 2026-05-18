@@ -285,7 +285,7 @@ public class BufferedOutputScheduler implements CellFeatures {
 			double tot = (System.currentTimeMillis() - groupStart) / 1000.0;
 			double dur = groupSize / (double) output.getSampleRate();
 
-			if (enableVerbose || count % logRate == 0) {
+			if (enableVerbose && count % logRate == 0) {
 				log("Pausing at " + count + " - " + tot + " (x" +
 						NumberFormats.formatNumber(dur / tot) + ") | group " + getLastGroup());
 				log("Frames [" + diff + "/" + groupSize + "] (sleep " +

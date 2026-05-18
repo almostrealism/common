@@ -15,41 +15,41 @@ multi-tenant.
 
 The controller connects to exactly one Slack workspace through three components:
 
-**`FlowTreeController`** (`flowtree/src/main/java/io/flowtree/slack/FlowTreeController.java`):
+**`FlowTreeController`** (`flowtree/runtime/src/main/java/io/flowtree/slack/FlowTreeController.java`):
 - Holds a single `String botToken` (line 92) and `String appToken` (line 94)
 - Constructs one `SlackNotifier(botToken)` (line 161) and one `SlackListener(notifier)` (line 162)
 - At `start()` (line 383), creates one Bolt `App` with `AppConfig.builder().singleTeamBotToken(botToken)` (lines 424–427)
 - Creates one `SocketModeApp(appToken, app)` (line 448) and calls `startAsync()`
 - All three event handlers (`/flowtree`, `app_mention`, `message`) are registered on this single App (lines 476–527)
 
-**`SlackTokens`** (`flowtree/src/main/java/io/flowtree/slack/SlackTokens.java`):
+**`SlackTokens`** (`flowtree/runtime/src/main/java/io/flowtree/slack/SlackTokens.java`):
 - A simple value object with `String botToken` and `String appToken`
 - Resolved from: explicit file → `slack-tokens.json` → env vars `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN`
 - Only one pair of tokens at a time
 
-**`SlackNotifier`** (`flowtree/src/main/java/io/flowtree/slack/SlackNotifier.java`):
+**`SlackNotifier`** (`flowtree/runtime/src/main/java/io/flowtree/slack/SlackNotifier.java`):
 - Constructs a single `MethodsClient client = Slack.getInstance().methods(botToken)` (line 99)
 - All `chatPostMessage`, `conversationsCreate`, `conversationsInvite` calls use this single client
 - `createChannel(String name)` at line 148 calls `client.conversationsCreate(...)` — workspace-unaware
 
-**`SlackListener`** (`flowtree/src/main/java/io/flowtree/slack/SlackListener.java`):
+**`SlackListener`** (`flowtree/runtime/src/main/java/io/flowtree/slack/SlackListener.java`):
 - Routes incoming events by channel ID: `Map<String, Workstream> channelToWorkstream` (line 95)
 - All incoming slash commands and messages arrive via the single Bolt App — no workspace disambiguation
 
 ### Workstream Configuration
 
-**`WorkstreamConfig`** (`flowtree/src/main/java/io/flowtree/slack/WorkstreamConfig.java`):
+**`WorkstreamConfig`** (`flowtree/runtime/src/main/java/io/flowtree/slack/WorkstreamConfig.java`):
 - Global YAML config has `githubOrgs: Map<String, GitHubOrgEntry>` (line 71) — org name → token
 - Each `WorkstreamEntry` has a `githubOrg: String` field (line 113) for per-workstream org selection
 - No workspace/tenant identifier on workstream entries or at the global config level
 
-**`Workstream`** (`flowtree/src/main/java/io/flowtree/slack/Workstream.java`):
+**`Workstream`** (`flowtree/runtime/src/main/java/io/flowtree/slack/Workstream.java`):
 - Runtime representation of one workstream — has `channelId`, `channelName`, `githubOrg`, etc.
 - No workspace identifier
 
 ### GitHub Token Flow
 
-**`GitHubProxyHandler`** (`flowtree/src/main/java/io/flowtree/slack/GitHubProxyHandler.java`):
+**`GitHubProxyHandler`** (`flowtree/runtime/src/main/java/io/flowtree/slack/GitHubProxyHandler.java`):
 - Holds `Map<String, String> githubOrgTokens` (org name → token)
 - Token priority: `?org=` query param → org extracted from URL path `/repos/{org}/{repo}/...` → single default
 - Populated in `FlowTreeController.startApiEndpoint()` at lines 805–816 from `WorkstreamConfig.getGithubOrgs()`
@@ -122,8 +122,8 @@ private List<SlackWorkspaceEntry> slackWorkspaces = new ArrayList<>();
 Add `slackWorkspaceId` field to `WorkstreamEntry` (and corresponding `Workstream` field).
 
 **Files to modify:**
-- `flowtree/src/main/java/io/flowtree/slack/WorkstreamConfig.java` — add `SlackWorkspaceEntry`, `slackWorkspaces` list, `slackWorkspaceId` on `WorkstreamEntry`
-- `flowtree/src/main/java/io/flowtree/slack/Workstream.java` — add `slackWorkspaceId` field
+- `flowtree/runtime/src/main/java/io/flowtree/slack/WorkstreamConfig.java` — add `SlackWorkspaceEntry`, `slackWorkspaces` list, `slackWorkspaceId` on `WorkstreamEntry`
+- `flowtree/runtime/src/main/java/io/flowtree/slack/Workstream.java` — add `slackWorkspaceId` field
 
 ---
 
@@ -148,7 +148,7 @@ public class SlackTokens {
 ```
 
 **Files to modify:**
-- `flowtree/src/main/java/io/flowtree/slack/SlackTokens.java` — add `from(SlackWorkspaceEntry)` factory
+- `flowtree/runtime/src/main/java/io/flowtree/slack/SlackTokens.java` — add `from(SlackWorkspaceEntry)` factory
 
 ---
 
@@ -235,7 +235,7 @@ Events are routed to `listener.handleMessage(channelId, userId, text, messageTs,
 where the workspaceId disambiguates which workspace sent the event.
 
 **Files to modify:**
-- `flowtree/src/main/java/io/flowtree/slack/FlowTreeController.java` — major refactor of fields and startup
+- `flowtree/runtime/src/main/java/io/flowtree/slack/FlowTreeController.java` — major refactor of fields and startup
 
 ---
 
@@ -277,7 +277,7 @@ private static String channelKey(String workspaceId, String channelId) {
    `Map<String, SlackNotifier> notifiersByWorkspace` held by the listener).
 
 **Files to modify:**
-- `flowtree/src/main/java/io/flowtree/slack/SlackListener.java` — channel key, method signatures, per-workspace notifier dispatch
+- `flowtree/runtime/src/main/java/io/flowtree/slack/SlackListener.java` — channel key, method signatures, per-workspace notifier dispatch
 
 ---
 
@@ -312,8 +312,8 @@ public void setNotifierResolver(Function<String, SlackNotifier> resolver)
 ```
 
 **Files to modify:**
-- `flowtree/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java` — notifier resolver
-- `flowtree/src/main/java/io/flowtree/slack/SlackNotifier.java` — no changes needed for Option A
+- `flowtree/runtime/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java` — notifier resolver
+- `flowtree/runtime/src/main/java/io/flowtree/slack/SlackNotifier.java` — no changes needed for Option A
 
 ---
 
@@ -346,8 +346,8 @@ The `GitHubProxyHandler` already resolves tokens by org name. The needed change:
 Add workspace-scoped token resolution in Phase 2.
 
 **Files to modify:**
-- `flowtree/src/main/java/io/flowtree/slack/FlowTreeController.java` — merge all workspace githubOrgs
-- `flowtree/src/main/java/io/flowtree/slack/GitHubProxyHandler.java` — add `X-Workstream-Id` header handling (Phase 2)
+- `flowtree/runtime/src/main/java/io/flowtree/slack/FlowTreeController.java` — merge all workspace githubOrgs
+- `flowtree/runtime/src/main/java/io/flowtree/slack/GitHubProxyHandler.java` — add `X-Workstream-Id` header handling (Phase 2)
 
 ---
 
@@ -378,7 +378,7 @@ it rederives the key from the workspace ID embedded in the payload.
 
 **Files that will need modification (Phase 2+):**
 - `tools/mcp/manager/server.py` — workspace-scoped filtering on all tools
-- `flowtree/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java` — embed workspace in job tokens
+- `flowtree/runtime/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java` — embed workspace in job tokens
 - ar-memory service — namespace memory keys by workspace ID
 
 ---
@@ -491,12 +491,12 @@ connections and verifies events route to the correct handlers.
 
 | File | Change Type | Phase |
 |------|-------------|-------|
-| `flowtree/src/main/java/io/flowtree/slack/WorkstreamConfig.java` | Add `SlackWorkspaceEntry`, `slackWorkspaces`, `slackWorkspaceId` on entry | 1a |
-| `flowtree/src/main/java/io/flowtree/slack/Workstream.java` | Add `slackWorkspaceId` field | 1a |
-| `flowtree/src/main/java/io/flowtree/slack/SlackTokens.java` | Add `from(SlackWorkspaceEntry)` factory | 1a |
-| `flowtree/src/main/java/io/flowtree/slack/FlowTreeController.java` | Multi-workspace startup, `WorkspaceConnection` inner class | 1b |
-| `flowtree/src/main/java/io/flowtree/slack/SlackListener.java` | Workspace-aware channel key, `workspaceId` parameters | 1c |
-| `flowtree/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java` | Notifier resolver for per-workspace dispatch | 1c |
-| `flowtree/src/main/java/io/flowtree/slack/GitHubProxyHandler.java` | Workspace-scoped token resolution (Phase 2) | 1d |
-| `flowtree/src/main/java/io/flowtree/slack/GitHubTokenValidator.java` | Validate per-workspace githubOrgs sections | 1d |
+| `flowtree/runtime/src/main/java/io/flowtree/slack/WorkstreamConfig.java` | Add `SlackWorkspaceEntry`, `slackWorkspaces`, `slackWorkspaceId` on entry | 1a |
+| `flowtree/runtime/src/main/java/io/flowtree/slack/Workstream.java` | Add `slackWorkspaceId` field | 1a |
+| `flowtree/runtime/src/main/java/io/flowtree/slack/SlackTokens.java` | Add `from(SlackWorkspaceEntry)` factory | 1a |
+| `flowtree/runtime/src/main/java/io/flowtree/slack/FlowTreeController.java` | Multi-workspace startup, `WorkspaceConnection` inner class | 1b |
+| `flowtree/runtime/src/main/java/io/flowtree/slack/SlackListener.java` | Workspace-aware channel key, `workspaceId` parameters | 1c |
+| `flowtree/runtime/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java` | Notifier resolver for per-workspace dispatch | 1c |
+| `flowtree/runtime/src/main/java/io/flowtree/slack/GitHubProxyHandler.java` | Workspace-scoped token resolution (Phase 2) | 1d |
+| `flowtree/runtime/src/main/java/io/flowtree/slack/GitHubTokenValidator.java` | Validate per-workspace githubOrgs sections | 1d |
 | `tools/mcp/manager/server.py` | Workspace-scoped filtering (future) | 2+ |

@@ -6,7 +6,6 @@ import org.almostrealism.audio.CellList;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.ScaleFactor;
 import org.almostrealism.util.TestSuiteBase;
-import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.io.File;
@@ -14,8 +13,6 @@ import java.io.File;
 public class MixdownTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
 	@Test(timeout = 60000)
 	public void samples() {
-		if (testProfileIs(TestUtils.PIPELINE)) return;
-
 		int count = 32;
 
 		CellList cells =

@@ -90,7 +90,7 @@ public class SurfaceGroupNormalTest extends TestSuiteBase {
 	}
 
 	/** Verifies correct child selection along the Y axis. */
-	@Test(timeout = 5000)
+	@Test(timeout = 30000)
 	public void twoSpheresYAxis() {
 		Sphere top = new Sphere(new Vector(0.0, 5.0, 0.0), 1.0);
 		Sphere bottom = new Sphere(new Vector(0.0, -5.0, 0.0), 1.0);

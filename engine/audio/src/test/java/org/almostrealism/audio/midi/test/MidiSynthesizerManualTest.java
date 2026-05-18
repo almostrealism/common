@@ -41,6 +41,7 @@ import org.almostrealism.graph.ReceptorCell;
 import java.io.File;
 import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import javax.sound.midi.MidiDevice;
@@ -85,6 +86,8 @@ import java.util.List;
  * @see PolyphonicSynthesizer
  * @see BufferedOutputScheduler
  */
+@Ignore("Manual test class — requires real MIDI controller and audio output hardware. "
+		+ "Run individually with -Dtest=MidiSynthesizerManualTest#<methodName>.")
 public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeatures {
 
 	/**
@@ -1043,7 +1046,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		synth.noteOn(69, 1.0);
 
 		log("Running 1000 push() calls...");
-		Runnable push = synth.push(null).get();
+		Runnable push = synth.push(c(0.0)).get();
 		for (int i = 0; i < 1000; i++) {
 			push.run();
 		}

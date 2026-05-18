@@ -382,7 +382,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		} catch (HardwareException e) {
 			throw e;
 		} catch (Exception e) {
-			throw new HardwareException("Could not obtain operator", e);
+			throw new OperatorPoolExhaustedException(e);
 		}
 	}
 
