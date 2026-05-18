@@ -23,6 +23,8 @@ import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
+import io.flowtree.jobs.agent.AgentRunnerRegistry;
+import io.flowtree.jobs.agent.Phase;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -1133,6 +1135,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setRequiredLabel(entry.getKey(), entry.getValue());
         }
 
+        SubmissionRunnerResolver runnerResolver = SubmissionRunnerResolver.resolve(
+                extractJsonObjectFields(body, "runners"),
+                workstream.getDefaultRunner(), workstream.getRunners());
+        if (runnerResolver.error() != null) return errorResponse(runnerResolver.error());
+        runnerResolver.applyTo(factory);
+
         // Auto-create PR on successful completion
         if (autoCreatePr) {
             factory.setAutoCreatePr(true);
@@ -1568,33 +1576,4 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         return githubProxyHandler.handle(session, method, this::readBody, this::errorResponse);
     }
 
-    /**
-     * Context stored at job submission time for auto-creating a pull request
-     * when the job completes successfully.
-     */
-    private static class AutoPrContext {
-        /** URL of the git repository for which a pull request should be created. */
-        final String repoUrl;
-        /** Base branch against which the pull request will be opened. */
-        final String baseBranch;
-        /** GitHub organisation name, used to look up the API access token. */
-        final String githubOrg;
-        /** Human-readable description of the job, used as the PR title/body. */
-        final String description;
-
-        /**
-         * Constructs a new {@link AutoPrContext}.
-         *
-         * @param repoUrl     URL of the git repository
-         * @param baseBranch  base branch for the pull request
-         * @param githubOrg   GitHub organisation name
-         * @param description human-readable job description
-         */
-        AutoPrContext(String repoUrl, String baseBranch, String githubOrg, String description) {
-            this.repoUrl = repoUrl;
-            this.baseBranch = baseBranch;
-            this.githubOrg = githubOrg;
-            this.description = description;
-        }
-    }
 }

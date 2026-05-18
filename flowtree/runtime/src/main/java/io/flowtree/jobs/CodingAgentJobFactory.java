@@ -19,10 +19,12 @@ package io.flowtree.jobs;
 import io.flowtree.job.AbstractJobFactory;
 import io.flowtree.job.Job;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
+import io.flowtree.jobs.agent.Phase;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.KeyUtils;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
@@ -147,11 +149,21 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private int maxPostCompletionPasses = CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES;
 
     /**
-     * Name of the {@link io.flowtree.jobs.agent.AgentRunner} used to dispatch
-     * sessions for jobs created by this factory. Defaults to
-     * {@link AgentRunnerRegistry#CLAUDE}.
+     * Legacy single-runner name for jobs created by this factory. Mirrored to
+     * {@link #defaultRunner}; retained for source compatibility with pre-Phase-2
+     * callers that did not understand the per-phase map.
      */
     private String runnerName = AgentRunnerRegistry.CLAUDE;
+
+    /**
+     * Default {@link io.flowtree.jobs.agent.AgentRunner} for jobs created by
+     * this factory; takes effect when {@link #runnerByPhase} has no entry for
+     * the dispatched phase. Defaults to {@link AgentRunnerRegistry#CLAUDE}.
+     */
+    private String defaultRunner = AgentRunnerRegistry.CLAUDE;
+
+    /** Per-phase runner overrides propagated to jobs created by this factory. */
+    private final Map<Phase, String> runnerByPhase = new EnumMap<>(Phase.class);
 
     /**
      * Default constructor for deserialization.
@@ -837,7 +849,9 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
 
     /**
      * Returns the name of the agent runner used to dispatch sessions for jobs
-     * created by this factory.
+     * created by this factory when no per-phase override applies.
+     *
+     * <p>Equivalent to {@link #getDefaultRunner()}; retained as a legacy alias.</p>
      *
      * @return the runner identifier; defaults to
      *         {@link AgentRunnerRegistry#CLAUDE}
@@ -845,7 +859,11 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     public String getRunnerName() { return runnerName; }
 
     /**
-     * Sets the agent runner name applied to jobs created by this factory.
+     * Sets the agent runner name applied to jobs created by this factory when
+     * no per-phase override applies.
+     *
+     * <p>Equivalent to {@link #setDefaultRunner(String)}; retained as a legacy
+     * alias so pre-Phase-2 callers continue to work unchanged.</p>
      *
      * @param runnerName a registered runner identifier; {@code null}/empty
      *                   resets to the Claude runner
@@ -854,16 +872,81 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     public void setRunnerName(String runnerName) {
         if (runnerName == null || runnerName.isEmpty()) {
             this.runnerName = AgentRunnerRegistry.CLAUDE;
-            set("runner", null);
+            this.defaultRunner = AgentRunnerRegistry.CLAUDE;
+            set("defaultRunner", null);
             return;
         }
         AgentRunnerRegistry.validateName(runnerName);
         this.runnerName = runnerName;
+        this.defaultRunner = runnerName;
         if (AgentRunnerRegistry.CLAUDE.equals(runnerName)) {
-            set("runner", null);
+            set("defaultRunner", null);
         } else {
-            set("runner", runnerName);
+            set("defaultRunner", runnerName);
         }
+    }
+
+    /**
+     * Returns the default runner applied to jobs created by this factory.
+     *
+     * @return the runner identifier; defaults to {@link AgentRunnerRegistry#CLAUDE}
+     */
+    public String getDefaultRunner() { return defaultRunner; }
+
+    /**
+     * Sets the default runner applied to jobs created by this factory.
+     * Validated against {@link AgentRunnerRegistry#available()}.
+     *
+     * @param runnerName a registered runner identifier; {@code null}/empty
+     *                   resets to the Claude runner
+     * @throws IllegalArgumentException when the runner is not registered
+     */
+    public void setDefaultRunner(String runnerName) {
+        setRunnerName(runnerName);
+    }
+
+    /**
+     * Returns the runner used for {@code phase} on jobs created by this
+     * factory. Falls back to {@link #getDefaultRunner()} when no override is
+     * set.
+     */
+    public String getRunnerForPhase(Phase phase) {
+        if (phase == null) return defaultRunner;
+        return runnerByPhase.getOrDefault(phase, defaultRunner);
+    }
+
+    /**
+     * Sets the per-phase runner override for jobs created by this factory.
+     * Passing {@code null}/empty clears the override.
+     *
+     * @param phase      the phase to configure; must not be {@code null}
+     * @param runnerName a registered runner identifier or {@code null}/empty
+     *                   to clear the override
+     * @throws IllegalArgumentException when {@code phase} is {@code null} or
+     *                                  {@code runnerName} is not registered
+     */
+    public void setRunnerForPhase(Phase phase, String runnerName) {
+        if (phase == null) throw new IllegalArgumentException("phase must not be null");
+        if (runnerName == null || runnerName.isEmpty()) {
+            runnerByPhase.remove(phase);
+        } else {
+            AgentRunnerRegistry.validateName(runnerName);
+            runnerByPhase.put(phase, runnerName);
+        }
+        if (runnerByPhase.isEmpty()) {
+            set("runners", null);
+        } else {
+            set("runners", Phase.encodeRunnerMap(runnerByPhase));
+        }
+    }
+
+    /**
+     * Returns an immutable snapshot of the per-phase runner overrides.
+     *
+     * @return the override map; empty when no overrides are set
+     */
+    public Map<Phase, String> getRunnerByPhase() {
+        return new EnumMap<>(runnerByPhase);
     }
 
     /**
@@ -1056,8 +1139,11 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             job.setRequiredLabel(entry.getKey(), entry.getValue());
         }
 
-        if (runnerName != null && !AgentRunnerRegistry.CLAUDE.equals(runnerName)) {
-            job.setRunnerName(runnerName);
+        if (defaultRunner != null && !AgentRunnerRegistry.CLAUDE.equals(defaultRunner)) {
+            job.setDefaultRunner(defaultRunner);
+        }
+        for (Map.Entry<Phase, String> e : runnerByPhase.entrySet()) {
+            job.setRunnerForPhase(e.getKey(), e.getValue());
         }
 
         return job;
@@ -1133,9 +1219,24 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             case "enforceChanges":
                 break;
             case "runner":
-                this.runnerName = (value == null || value.isEmpty())
-                        ? AgentRunnerRegistry.CLAUDE
-                        : value;
+                // Legacy single-runner key; honored only when no explicit
+                // defaultRunner has been decoded yet.
+                if (AgentRunnerRegistry.CLAUDE.equals(defaultRunner)) {
+                    String legacy = (value == null || value.isEmpty())
+                            ? AgentRunnerRegistry.CLAUDE : value;
+                    this.runnerName = legacy;
+                    this.defaultRunner = legacy;
+                }
+                break;
+            case "defaultRunner":
+                String resolvedDefault = (value == null || value.isEmpty())
+                        ? AgentRunnerRegistry.CLAUDE : value;
+                this.runnerName = resolvedDefault;
+                this.defaultRunner = resolvedDefault;
+                break;
+            case "runners":
+                runnerByPhase.clear();
+                runnerByPhase.putAll(Phase.decodeRunnerMap(value, this::warn));
                 break;
             default:
                 setEnforcementFlag(key, value);

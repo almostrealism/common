@@ -84,10 +84,10 @@ class DeduplicationRule extends SetComparisonRule {
     @Override
     public String buildCorrectionPrompt(CodingAgentJob job) {
         List<String> newMethods = job.extractNewMethodNames();
-        List<String> capped = newMethods.size() > CodingAgentJob.MAX_DEDUP_METHODS
-                ? newMethods.subList(0, CodingAgentJob.MAX_DEDUP_METHODS) : newMethods;
+        List<String> capped = newMethods.size() > DeduplicationSpawner.MAX_DEDUP_METHODS
+                ? newMethods.subList(0, DeduplicationSpawner.MAX_DEDUP_METHODS) : newMethods;
         return buildDeduplicationPrompt(capped,
-                newMethods.size() > CodingAgentJob.MAX_DEDUP_METHODS, newMethods.size());
+                newMethods.size() > DeduplicationSpawner.MAX_DEDUP_METHODS, newMethods.size());
     }
 
     /**

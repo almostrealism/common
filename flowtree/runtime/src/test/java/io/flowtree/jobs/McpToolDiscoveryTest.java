@@ -381,6 +381,12 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			submitParams.contains("max_post_completion_passes"));
 		assertTrue("workstream_submit_task must declare delay_seconds in signature",
 			submitParams.contains("delay_seconds"));
+		assertTrue("workstream_submit_task must declare runners in signature so per-phase"
+			+ " agent runner selection can be passed through",
+			submitParams.contains("runners"));
+		assertTrue("workstream_submit_task must declare default_runner in signature so"
+			+ " operators can set the default runner without enumerating phases",
+			submitParams.contains("default_runner"));
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");

@@ -12,7 +12,8 @@ Read this section before reading the rest — the design below describes the
 
 - `io.flowtree.jobs.agent.AgentRunner` interface + companion types
   (`AgentRunRequest`, `AgentRunResult`, `AgentCapabilities`,
-  `AgentRunnerRegistry`).
+  `AgentRunnerRegistry`) — now in the dedicated `flowtree/agents/` Maven
+  module.
 - `ClaudeCodeRunner` (implements `AgentRunner`) — owns subprocess
   construction, command-line assembly, NDJSON parsing, model/effort
   validation. The orchestrator no longer mentions `claude`,
@@ -21,13 +22,30 @@ Read this section before reading the rest — the design below describes the
 - The job dispatches its agent session through
   `AgentRunnerRegistry.get(runnerName)`; the registry currently knows only
   `"claude"`.
-- The job and factory carry a `runnerName` field with wire-format support
-  (`::runner:=<name>`, gated on non-default value). Validated against
-  `AgentRunnerRegistry.available()`.
+- The job and factory carry both the legacy `runnerName` field and a
+  per-phase `Map<Phase, String> runnerByPhase` with wire-format support
+  (`::defaultRunner:=<name>` and `::runners:=<csv>`, gated on non-default
+  values). All values are validated against
+  `AgentRunnerRegistry.available()`. Legacy `::runner:=<name>` continues
+  to be accepted on deserialization.
+- The `Phase` enum (`PRIMARY`, `DEDUPLICATION`,
+  `ORGANIZATIONAL_PLACEMENT`, `ENFORCE_CHANGES`,
+  `MAVEN_DEPENDENCY_PROTECTION`, `POST_COMPLETION`, `COMMIT_MESSAGE`,
+  `GIT_TAMPERING_RESTART`) lives in `flowtree/agents/` next to
+  `AgentRunner`, with canonical kebab-case wire names. The orchestrator
+  resolves the current phase from the existing `currentActivity` field —
+  no new session state was needed.
 - The completion event carries `runnerName` via `withRunnerName(...)`.
+- **Phase 2 (per-phase selection through public surfaces) is done.**
+  `Workstream` / `WorkstreamConfig` accept `defaultRunner` and a
+  `runners:` map under each workstream entry. `FlowTreeApiEndpoint`
+  parses the `runners` object on `POST /submit`, validates phase keys
+  and runner names, and applies precedence
+  (per-job > workstream per-phase > workstream default > controller
+  default > `"claude"`). The `workstream_submit_task` MCP tool gains
+  `runners: str` (JSON object) and `default_runner: str` parameters.
 
-### Deviations from the original plan (important — these change the work
-required for Phases 2-4)
+### Deviations from the original plan
 
 1. **The job class was renamed.** Plan §2.1 explicitly recommended *keeping*
    `ClaudeCodeJob` for wire-format and call-site reasons. Implementation
@@ -40,26 +58,15 @@ required for Phases 2-4)
    under the old class discriminator will fail to deserialize on the new
    build. **Deployment requires draining in-flight jobs first** (or
    accepting their loss).
-2. **One runner per job, not per phase.** Plan §2.2 specified a
-   `Map<Phase, String> runnerByPhase` with a `Phase` enum covering
-   `PRIMARY`, the six rule phases, and `GIT_TAMPERING_RESTART`.
-   Implementation has a single `runnerName` field on the job/factory; every
-   phase (primary, enforcement rules, git-tampering restart) uses the same
-   runner. The `Phase` enum was not introduced. Per-phase selection from
-   Phase 2 of the plan must be added on top of this — it is not a "wire it
-   to the API" step, it is "add the map first, then wire it."
+2. **(resolved) Per-phase selection has landed.** The original Phase 1
+   ship had only a single `runnerName` field. Phase 2 added the
+   `runnerByPhase` map with the full `Phase` enum (`PRIMARY`, six rule
+   phases, `GIT_TAMPERING_RESTART`). The legacy `runnerName` field is
+   preserved as a back-compat default and is bidirectionally synced with
+   `defaultRunner`.
 
 ### What has NOT landed
 
-- **Phase 2 (per-job/per-workstream selection through public surfaces) is
-  not done.** None of these reference `runner`:
-  - `flowtree/runtime/src/main/java/io/flowtree/slack/Workstream.java`
-  - `flowtree/runtime/src/main/java/io/flowtree/slack/WorkstreamConfig.java`
-  - `flowtree/runtime/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java`
-  - `tools/mcp/manager/server.py` (`workstream_submit_task` has no
-    `runner` / `default_runner` parameter)
-  Even though `CodingAgentJob` accepts `runnerName`, no submission surface
-  lets an operator set it.
 - **Phase 3 (opencode runner) is not done.** No
   `OpencodeRunner.java`/`OpencodeBinaryLocator`/`OpencodeOutputParser`
   exist. `AgentRunnerRegistry` registers only `CLAUDE`. The agent image
@@ -86,21 +93,11 @@ In rough order; each step is a separate PR.
    *class name* is a different question — verify how a queued
    `ClaudeCodeJob` spec is dispatched). Document the chosen path before
    touching anything else.
-2. **Decide: stay single-runner-per-job or introduce per-phase.** If
-   per-phase, introduce the `Phase` enum and `runnerByPhase` map first,
-   keeping `runnerName` as a back-compat default. If single-runner is
-   accepted, update §2.2, §6, and §7 of this plan to match and shrink the
-   Phase 2 work accordingly.
-3. **Phase 2 — submission-surface plumbing.** Once step 2 is settled, wire
-   `runner` (and optionally `runners`) through `WorkstreamConfig`,
-   `Workstream`, `FlowTreeApiEndpoint.handleSubmit`, and
-   `workstream_submit_task`. Precedence per plan §6.5. Validate against
-   `AgentRunnerRegistry.available()` at submit time.
-4. **Phase 3 — opencode runner.** Implement `OpencodeRunner` and friends;
+2. **Phase 3 — opencode runner.** Implement `OpencodeRunner` and friends;
    register in `AgentRunnerRegistry`; add opencode binary install to
    `flowtree/runtime/agent/Dockerfile`; gate behind `AgentRunnerNotAvailableException`
    for executors lacking the binary. Smoke test `AgentRunnerSmokeIT`.
-5. **Phase 4 — recipes doc.** Once at least two runners are usable in
+3. **Phase 4 — recipes doc.** Once at least two runners are usable in
    production, write `docs/operations/PLUGGABLE_AGENTS_RECIPES.md` per
    §9 Phase 4.
 

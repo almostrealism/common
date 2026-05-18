@@ -548,6 +548,92 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         payload = mock_post.call_args[0][1]
         self.assertNotIn("delaySeconds", payload)
 
+    @patch.object(server, "_controller_post")
+    def test_submit_runners_forwarded_as_object(self, mock_post):
+        """runners JSON string is parsed and forwarded as a nested object."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-runners"}
+        server.workstream_submit_task(
+            prompt="Task",
+            runners='{"primary":"claude","deduplication":"opencode"}',
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {
+            "primary": "claude", "deduplication": "opencode"})
+
+    @patch.object(server, "_controller_post")
+    def test_submit_default_runner_merged_into_runners(self, mock_post):
+        """default_runner alone is forwarded as runners={"default": <value>}."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-default-runner"}
+        server.workstream_submit_task(prompt="Task", default_runner="opencode")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {"default": "opencode"})
+
+    @patch.object(server, "_controller_post")
+    def test_submit_runners_default_wins_over_default_runner(self, mock_post):
+        """When both runners["default"] and default_runner are set, the
+        explicit runners["default"] is authoritative."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-precedence"}
+        server.workstream_submit_task(
+            prompt="Task",
+            runners='{"default":"claude"}',
+            default_runner="opencode",
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {"default": "claude"})
+
+    @patch.object(server, "_controller_post")
+    def test_submit_runners_omitted_by_default(self, mock_post):
+        """No runners argument means no runners key in the payload."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-norunners"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("runners", payload)
+
+    def test_submit_runners_rejects_unknown_phase(self):
+        """Unknown phase names in runners are rejected client-side with 400."""
+        _grant_all_scopes()
+        result = server.workstream_submit_task(
+            prompt="Task",
+            runners='{"unknown-phase":"claude"}',
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("Unknown phase", result["error"])
+        self.assertIn("unknown-phase", result["error"])
+
+    def test_submit_runners_rejects_non_object_json(self):
+        """runners must be a JSON object, not an array or scalar."""
+        _grant_all_scopes()
+        result = server.workstream_submit_task(
+            prompt="Task",
+            runners='["claude"]',
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("JSON object", result["error"])
+
+    def test_submit_runners_rejects_invalid_json(self):
+        """runners must be valid JSON."""
+        _grant_all_scopes()
+        result = server.workstream_submit_task(
+            prompt="Task",
+            runners="not-valid-json",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("JSON object", result["error"])
+
+    def test_submit_runners_rejects_non_string_value(self):
+        """Runner values must be non-empty strings."""
+        _grant_all_scopes()
+        result = server.workstream_submit_task(
+            prompt="Task",
+            runners='{"primary":""}',
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("non-empty string", result["error"])
+
 
 class TestWorkstreamSubmitSelfCollision(unittest.TestCase):
     """workstream_submit_task must not let an agent submit work to its

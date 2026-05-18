@@ -1281,6 +1281,76 @@ def _check_model(model: str) -> Optional[dict]:
     return None
 
 
+_KNOWN_PHASE_WIRE_NAMES = (
+    "primary",
+    "deduplication",
+    "organizational-placement",
+    "enforce-changes",
+    "maven-dependency-protection",
+    "post-completion",
+    "commit-message",
+    "git-tampering-restart",
+)
+
+
+def _parse_runners_json(runners: str) -> "tuple[Optional[dict], Optional[dict]]":
+    """Parse and validate the ``runners`` JSON argument to ``workstream_submit_task``.
+
+    The argument is a JSON object string whose keys are phase wire names
+    (e.g. ``"primary"``, ``"deduplication"``) and whose values are runner
+    identifiers (e.g. ``"claude"``, ``"opencode"``). An optional ``"default"``
+    key acts as a fallback for unspecified phases. All values must be strings.
+
+    Unknown phase keys are rejected client-side so the caller gets an
+    immediate error instead of a 400 from the controller.
+
+    Args:
+        runners: A JSON object string, or empty to indicate no overrides.
+
+    Returns:
+        A tuple ``(parsed_dict, error_dict)``. On success, ``parsed_dict`` is
+        the decoded mapping (possibly empty) and ``error_dict`` is ``None``.
+        On failure, ``parsed_dict`` is ``None`` and ``error_dict`` carries an
+        ``ok=False`` payload suitable for returning to the MCP caller.
+    """
+    if not runners:
+        return {}, None
+    import json as _json
+    try:
+        parsed = _json.loads(runners)
+    except ValueError as e:
+        return None, {
+            "ok": False,
+            "error": "runners must be a JSON object: " + str(e),
+        }
+    if not isinstance(parsed, dict):
+        return None, {
+            "ok": False,
+            "error": "runners must be a JSON object mapping phase names to runner names",
+        }
+    valid_keys = set(_KNOWN_PHASE_WIRE_NAMES) | {"default"}
+    cleaned: dict = {}
+    for key, value in parsed.items():
+        if key not in valid_keys:
+            return None, {
+                "ok": False,
+                "error": (
+                    "Unknown phase key in runners: '" + str(key) + "'. "
+                    "Allowed phase keys: " + ", ".join(sorted(valid_keys))
+                ),
+            }
+        if not isinstance(value, str) or not value:
+            return None, {
+                "ok": False,
+                "error": (
+                    "Runner value for phase '" + str(key)
+                    + "' must be a non-empty string"
+                ),
+            }
+        cleaned[key] = value
+    return cleaned, None
+
+
 def _parse_required_labels(required_labels: str) -> dict:
     """Parse a comma-separated key:value string into a labels dict.
 
@@ -1360,6 +1430,8 @@ def workstream_submit_task(
     post_completion_timeout_seconds: int = 0,
     max_post_completion_passes: int = 0,
     delay_seconds: int = 0,
+    runners: str = "",
+    default_runner: str = "",
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -1452,6 +1524,26 @@ def workstream_submit_task(
             but stays in a pending state until the delay elapses. Workers will
             not pick it up until then. Cancellation works normally during the
             pending period. 0 (default) means dispatch immediately.
+        runners: Per-phase agent runner overrides as a JSON object string. Keys
+            are phase wire names (``"primary"``, ``"deduplication"``,
+            ``"organizational-placement"``, ``"enforce-changes"``,
+            ``"maven-dependency-protection"``, ``"post-completion"``,
+            ``"commit-message"``, ``"git-tampering-restart"``) plus an optional
+            ``"default"``. Values are runner identifiers such as ``"claude"``
+            or ``"opencode"``. Unspecified phases inherit ``"default"``, which
+            in turn falls back to the workstream default and then the
+            controller default. Example::
+
+                '{"primary":"claude","deduplication":"opencode",
+                  "commit-message":"opencode"}'
+
+            Empty (default) inherits the workstream-level runner configuration.
+            Unknown phase names are rejected client-side with a clear error.
+        default_runner: Convenience shortcut to set the default runner for
+            every phase without enumerating them in ``runners``. Equivalent to
+            passing ``{"default": "<runner>"}`` in ``runners``; when both are
+            supplied the ``"default"`` entry inside ``runners`` wins. Empty
+            (default) inherits the workstream-level default.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -1467,10 +1559,13 @@ def workstream_submit_task(
         workstream_id=workstream_id, target_branch=target_branch,
         repo_url=repo_url, description=description, started_after=started_after,
         deduplication_mode=deduplication_mode,
-        model=model, effort=effort,
+        model=model, effort=effort, default_runner=default_runner,
     )
     if err:
         return err
+    parsed_runners, runners_err = _parse_runners_json(runners)
+    if runners_err:
+        return runners_err
     err = _check_effort(effort)
     if err:
         return err
@@ -1583,6 +1678,14 @@ def workstream_submit_task(
         payload["maxPostCompletionPasses"] = max_post_completion_passes
     if delay_seconds > 0:
         payload["delaySeconds"] = delay_seconds
+    # Merge default_runner into the runners object so the controller sees a
+    # single representation. The "default" key inside an explicit ``runners``
+    # value wins over default_runner because the explicit form is unambiguous.
+    runners_payload = dict(parsed_runners) if parsed_runners else {}
+    if default_runner and "default" not in runners_payload:
+        runners_payload["default"] = default_runner
+    if runners_payload:
+        payload["runners"] = runners_payload
 
     result = _controller_post("/api/submit", payload)
 

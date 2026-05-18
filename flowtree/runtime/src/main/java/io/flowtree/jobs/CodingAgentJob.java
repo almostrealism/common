@@ -22,10 +22,8 @@ import io.flowtree.jobs.agent.AgentRunResult;
 import io.flowtree.jobs.agent.AgentRunner;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
 import io.flowtree.jobs.agent.ClaudeCodeRunner;
+import io.flowtree.jobs.agent.Phase;
 import org.almostrealism.util.KeyUtils;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.File;
 import java.io.IOException;
@@ -34,6 +32,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -181,16 +180,25 @@ public class CodingAgentJob extends GitManagedJob {
     /** Additional enforcement rules from {@link #addEnforcementRule}; built-ins are created in {@link #buildActiveRules()}. */
     private final List<EnforcementRule> customEnforcementRules = new ArrayList<>();
 
-    /** Name of the {@link AgentRunner} used to dispatch sessions. */
+    /**
+     * Legacy single-runner field retained for backwards source compatibility.
+     *
+     * <p>Mirrors {@link #defaultRunner}. {@link #setRunnerName(String)} updates
+     * the default runner so that pre-Phase-2 callers continue to work without
+     * any awareness of the per-phase map.</p>
+     */
     private String runnerName = AgentRunnerRegistry.CLAUDE;
+
+    /** Default {@link AgentRunner} name used when a phase has no explicit override. */
+    private String defaultRunner = AgentRunnerRegistry.CLAUDE;
+
+    /** Per-phase {@link AgentRunner} overrides; empty when only the default applies. */
+    private final Map<Phase, String> runnerByPhase = new EnumMap<>(Phase.class);
 
     /** Builder used to assemble the MCP tool configuration JSON for Claude Code. */
     private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
     /** Downloads pushed MCP tool source files before each agent launch. */
     private final ManagedToolsDownloader toolsDownloader = new ManagedToolsDownloader(mcpConfigBuilder);
-    /** JSON mapper used to parse structured output from Claude Code. */
-    private static final ObjectMapper outputMapper = new ObjectMapper();
-
     /** The Claude Code session identifier assigned during execution. */
     private String sessionId;
     /** Raw text output produced by the Claude Code process. */
@@ -615,7 +623,11 @@ public class CodingAgentJob extends GitManagedJob {
 
     /**
      * Returns the name of the {@link AgentRunner} dispatching this job's
-     * sessions. Defaults to {@link AgentRunnerRegistry#CLAUDE}.
+     * sessions when no per-phase override is set. Defaults to
+     * {@link AgentRunnerRegistry#CLAUDE}.
+     *
+     * <p>Equivalent to {@link #getDefaultRunner()}; retained as a legacy alias
+     * so that pre-Phase-2 callers continue to compile.</p>
      *
      * @return the runner identifier
      */
@@ -623,9 +635,13 @@ public class CodingAgentJob extends GitManagedJob {
 
     /**
      * Sets the name of the {@link AgentRunner} that will dispatch this job's
-     * sessions. The value is validated against
-     * {@link AgentRunnerRegistry#available()} so misconfiguration fails at the
-     * caller rather than during dispatch.
+     * sessions when no per-phase override is configured. The value is
+     * validated against {@link AgentRunnerRegistry#available()} so
+     * misconfiguration fails at the caller rather than during dispatch.
+     *
+     * <p>Equivalent to {@link #setDefaultRunner(String)}; retained as a legacy
+     * alias. Updating one updates the other so {@link #getRunnerForPhase}
+     * falls back consistently.</p>
      *
      * @param runnerName a registered runner identifier (e.g.
      *                   {@link AgentRunnerRegistry#CLAUDE}); {@code null} or empty
@@ -635,10 +651,75 @@ public class CodingAgentJob extends GitManagedJob {
     public void setRunnerName(String runnerName) {
         if (runnerName == null || runnerName.isEmpty()) {
             this.runnerName = AgentRunnerRegistry.CLAUDE;
+            this.defaultRunner = AgentRunnerRegistry.CLAUDE;
             return;
         }
         AgentRunnerRegistry.validateName(runnerName);
         this.runnerName = runnerName;
+        this.defaultRunner = runnerName;
+    }
+
+    /**
+     * Returns the default runner used when {@link #getRunnerForPhase(Phase)}
+     * has no explicit override for a phase.
+     *
+     * @return the default runner identifier, never {@code null}
+     */
+    public String getDefaultRunner() { return defaultRunner; }
+
+    /**
+     * Sets the default runner used when {@link #getRunnerForPhase(Phase)} has
+     * no explicit override for a phase. Validated against
+     * {@link AgentRunnerRegistry#available()}.
+     *
+     * @param runnerName a registered runner identifier; {@code null}/empty
+     *                   resets to {@link AgentRunnerRegistry#CLAUDE}
+     * @throws IllegalArgumentException when the runner is not registered
+     */
+    public void setDefaultRunner(String runnerName) {
+        setRunnerName(runnerName);
+    }
+
+    /**
+     * Returns the {@link AgentRunner} name to use for {@code phase}. Falls
+     * back to {@link #getDefaultRunner()} when no override is set.
+     *
+     * @param phase the lifecycle phase being dispatched
+     * @return the runner identifier; never {@code null}
+     */
+    public String getRunnerForPhase(Phase phase) {
+        if (phase == null) return defaultRunner;
+        return runnerByPhase.getOrDefault(phase, defaultRunner);
+    }
+
+    /**
+     * Sets the runner used for {@code phase}, overriding the default. Passing
+     * a {@code null}/empty runner clears any existing override and lets the
+     * default take effect.
+     *
+     * @param phase      the phase to configure
+     * @param runnerName a registered runner identifier, or {@code null}/empty
+     *                   to clear the override
+     * @throws IllegalArgumentException when {@code phase} is {@code null} or
+     *                                  {@code runnerName} is not registered
+     */
+    public void setRunnerForPhase(Phase phase, String runnerName) {
+        if (phase == null) throw new IllegalArgumentException("phase must not be null");
+        if (runnerName == null || runnerName.isEmpty()) {
+            runnerByPhase.remove(phase);
+            return;
+        }
+        AgentRunnerRegistry.validateName(runnerName);
+        runnerByPhase.put(phase, runnerName);
+    }
+
+    /**
+     * Returns an immutable snapshot of the per-phase runner overrides.
+     *
+     * @return the override map; empty when no overrides are set
+     */
+    public Map<Phase, String> getRunnerByPhase() {
+        return new EnumMap<>(runnerByPhase);
     }
 
     /**
@@ -842,7 +923,15 @@ public class CodingAgentJob extends GitManagedJob {
                             try { savedForRerun = Files.readString(rerunCommitFile, StandardCharsets.UTF_8); }
                             catch (IOException e) { warn("Could not save commit.txt: " + e.getMessage()); }
                         }
-                        executeSingleRun();
+                        // Tag the activity so per-phase runner routing applies even though
+                        // there is no separate correction prompt for this rule.
+                        String previousActivity = currentActivity;
+                        currentActivity = rule.getName();
+                        try {
+                            executeSingleRun();
+                        } finally {
+                            currentActivity = previousActivity;
+                        }
                         // Only restore old commit.txt if the rerun did not write a new one;
                         // when the rerun makes the actual code changes its message is authoritative.
                         boolean rerunWroteCommit = rerunCommitFile != null && Files.exists(rerunCommitFile);
@@ -928,12 +1017,21 @@ public class CodingAgentJob extends GitManagedJob {
         // the warning in the restarted session's prompt.
         gitTamperingViolation = violation;
 
-        // Re-run the session.  The prompt will now include a stern warning
-        // about the violation and the consequences of repeating it.
-        executeSingleRun();
-
-        // Clear the violation so it doesn't persist into further retries.
-        gitTamperingViolation = null;
+        // Tag the restart with the GIT_TAMPERING_RESTART phase so the
+        // per-phase runner map can route it to a different runner than the
+        // primary work (e.g., a more conservative agent that won't repeat
+        // the tampering).
+        String previousActivity = currentActivity;
+        currentActivity = Phase.GIT_TAMPERING_RESTART.wireName();
+        try {
+            // Re-run the session. The prompt will now include a stern warning
+            // about the violation and the consequences of repeating it.
+            executeSingleRun();
+        } finally {
+            currentActivity = previousActivity;
+            // Clear the violation so it doesn't persist into further retries.
+            gitTamperingViolation = null;
+        }
 
         return true;
     }
@@ -959,7 +1057,8 @@ public class CodingAgentJob extends GitManagedJob {
         String outputFile = "claude-output/" + KeyUtils.generateKey() + ".json";
         Path outputCapturePath = Path.of(outputFile);
 
-        AgentRunner runner = resolveRunner();
+        Phase currentPhase = resolveCurrentPhase();
+        AgentRunner runner = resolveRunner(currentPhase);
         toolsDownloader.ensurePushedTools(pushedToolsConfig);
         configureMcpBuilder();
         String mcpConfigJson = mcpConfigBuilder.buildMcpConfig();
@@ -1005,15 +1104,49 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Resolves the {@link AgentRunner} to use for the current session.
+     * Resolves the {@link AgentRunner} to use for {@code phase}.
      *
-     * <p>Phase 1 always returns the Claude Code runner. Phase 2 will switch
-     * here based on the current rule / phase identifier.</p>
+     * <p>Looks up the phase override via {@link #getRunnerForPhase(Phase)} and
+     * resolves the resulting name through {@link AgentRunnerRegistry}.</p>
      *
+     * @param phase the lifecycle phase being dispatched; may be {@code null}
+     *              in which case the default runner is used
      * @return the runner, never {@code null}
      */
-    AgentRunner resolveRunner() {
-        return AgentRunnerRegistry.get(runnerName != null ? runnerName : AgentRunnerRegistry.CLAUDE);
+    AgentRunner resolveRunner(Phase phase) {
+        String name = getRunnerForPhase(phase);
+        return AgentRunnerRegistry.get(name != null ? name : AgentRunnerRegistry.CLAUDE);
+    }
+
+    /**
+     * Identifies which {@link Phase} is currently being dispatched.
+     *
+     * <p>Reads {@link #currentActivity} (already populated by
+     * {@link #runCorrectionSession(String, String)} or
+     * {@link #onGitTampering()}). Returns {@link Phase#PRIMARY} for the
+     * initial session and falls back to {@link Phase#PRIMARY} for any
+     * activity tag that does not correspond to a known phase.</p>
+     *
+     * @return the resolved phase, never {@code null}
+     */
+    Phase resolveCurrentPhase() {
+        if (currentActivity == null || currentActivity.isEmpty()) {
+            return Phase.PRIMARY;
+        }
+        // currentActivity uses either the rule getName() value (e.g.
+        // "no-maven-dependency-changes") or a phase wire name from the
+        // git-tampering restart path. Try the rule mapping first, then the
+        // wire-name lookup, then fall back to PRIMARY so an unrecognised tag
+        // never breaks dispatch.
+        Phase ruleMatch = Phase.fromRuleName(currentActivity);
+        if (ruleMatch != null) {
+            return ruleMatch;
+        }
+        try {
+            return Phase.fromWireName(currentActivity);
+        } catch (IllegalArgumentException e) {
+            return Phase.PRIMARY;
+        }
     }
 
     /**
@@ -1113,67 +1246,6 @@ public class CodingAgentJob extends GitManagedJob {
         return false;
     }
 
-    /**
-     * Returns {@code true} if the agent's changes modify {@code <dependency>} entries
-     * in any {@code pom.xml} files when compared against the base branch.
-     */
-    boolean hasMavenDependencyChanges() {
-        String workDir = getWorkingDirectory();
-        String baseBranch = getBaseBranch() != null ? getBaseBranch() : "master";
-
-        try {
-            // Use a large unified context so that opening <dependency> tags always
-            // appear in the hunk even when the changed line is deep inside a long block.
-            ProcessBuilder pb = new ProcessBuilder(
-                    GitOperations.resolveGitCommand(),
-                    "diff", "--unified=50", "origin/" + baseBranch, "--", "**/pom.xml", "pom.xml");
-            if (workDir != null) pb.directory(new File(workDir));
-            pb.redirectErrorStream(true);
-            GitOperations.augmentPath(pb);
-            Process p = pb.start();
-            String diff = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            int exitCode = p.waitFor();
-
-            if (exitCode != 0) {
-                warn("Maven dependency check: git diff exited with code " + exitCode
-                    + " — treating as violation (fail closed)");
-                return true;
-            }
-
-            // Track whether the current context is inside a <dependency> block so that
-            // modifications to child elements (e.g. <version>, <groupId>) are detected
-            // even when the <dependency> opening tag itself is not on a changed line.
-            boolean inDependencyBlock = false;
-            for (String line : diff.split("\n")) {
-                if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")) {
-                    continue;
-                }
-
-                String content = line.length() > 0 ? line.substring(1).trim() : "";
-                boolean opensBlock = content.contains("<dependency>") || content.contains("<dependency ");
-                boolean closesBlock = content.contains("</dependency>");
-
-                if (opensBlock) {
-                    inDependencyBlock = true;
-                }
-
-                if ((line.startsWith("+") || line.startsWith("-")) && (inDependencyBlock || opensBlock)) {
-                    return true;
-                }
-
-                if (closesBlock) {
-                    inDependencyBlock = false;
-                }
-            }
-        } catch (IOException e) {
-            warn("Maven dependency check: failed to diff pom.xml files: " + e.getMessage());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            warn("Maven dependency check: failed to diff pom.xml files: " + e.getMessage());
-        }
-        return false;
-    }
-
     @Override
     protected JobCompletionEvent createEvent(Exception error) {
         if (error != null) return CodingAgentJobEvent.failed(getTaskId(), getTaskString(), error.getMessage(), error);
@@ -1202,9 +1274,6 @@ public class CodingAgentJob extends GitManagedJob {
         }
     }
 
-    /** Maximum number of method names included in a single deduplication prompt. */
-    static final int MAX_DEDUP_METHODS = 50;
-
     @Override
     protected boolean validateChanges() throws Exception {
         // Test-hiding audit (only when protect-test-files is enabled)
@@ -1216,7 +1285,8 @@ public class CodingAgentJob extends GitManagedJob {
         // Note: DEDUP_LOCAL is handled inline by DeduplicationRule in the enforcement
         // framework (runEnforcementRules), which runs in doWork() before the commit.
         if (DEDUP_SPAWN.equals(deduplicationMode)) {
-            submitDeduplicationSpawnJob();
+            DeduplicationSpawner.submitSpawnJob(extractNewMethodNames(),
+                    resolveWorkstreamUrl(), this::postJson, this::log, this::warn);
         }
 
         return true;
@@ -1260,68 +1330,6 @@ public class CodingAgentJob extends GitManagedJob {
         return true;
     }
 
-    /**
-     * Posts a deduplication job to the same workstream via the controller API.
-     * Only called when {@link #deduplicationMode} is {@link #DEDUP_SPAWN}.
-     *
-     * <p>The {@link #DEDUP_LOCAL} mode is handled by {@link DeduplicationRule}
-     * inside the enforcement framework ({@link #runEnforcementRules()}), which
-     * runs inline before the commit is finalised.</p>
-     */
-    private void submitDeduplicationSpawnJob() {
-        List<String> newMethods = extractNewMethodNames();
-        if (newMethods.isEmpty()) {
-            log("Deduplication scan: no new Java methods detected");
-            return;
-        }
-
-        log("Deduplication scan: found " + newMethods.size() + " new method(s) -- spawning follow-up job");
-        List<String> capped = newMethods.size() > MAX_DEDUP_METHODS
-                ? newMethods.subList(0, MAX_DEDUP_METHODS) : newMethods;
-        boolean truncated = newMethods.size() > MAX_DEDUP_METHODS;
-        spawnDeduplicationJob(
-                DeduplicationRule.buildDeduplicationPrompt(capped, truncated, newMethods.size()),
-                newMethods.size());
-    }
-
-    /**
-     * Posts a deduplication job to the same workstream via the controller API.
-     *
-     * <p>This is fire-and-forget: errors are logged but do not affect the
-     * outcome of the current job.  Requires a workstream URL to be configured.</p>
-     *
-     * @param dedupPrompt the deduplication prompt
-     * @param methodCount the total number of new methods detected
-     */
-    private void spawnDeduplicationJob(String dedupPrompt, int methodCount) {
-        String wsUrl = resolveWorkstreamUrl();
-        if (wsUrl == null || wsUrl.isEmpty()) {
-            warn("Deduplication mode is 'spawn' but no workstream URL is configured -- skipping");
-            return;
-        }
-
-        String controllerBase = extractControllerBaseUrl(wsUrl);
-        String workstreamId = extractWorkstreamId(wsUrl);
-        if (controllerBase == null || workstreamId == null) {
-            warn("Cannot parse workstream URL for deduplication job: " + wsUrl);
-            return;
-        }
-
-        try {
-            ObjectNode payload = outputMapper.createObjectNode();
-            payload.put("prompt", dedupPrompt);
-            payload.put("workstreamId", workstreamId);
-            payload.put("description", "Deduplication audit: " + methodCount + " new method(s)");
-            payload.put("automated", true);
-            String json = outputMapper.writeValueAsString(payload);
-
-            log("Spawning deduplication job on workstream " + workstreamId);
-            postJson(controllerBase + "/api/submit", json);
-        } catch (Exception e) {
-            warn("Failed to spawn deduplication job: " + e.getMessage());
-        }
-    }
-
     /** Returns new Java method names introduced since the base branch. */
     List<String> extractNewMethodNames() {
         String base = getBaseBranch() != null ? getBaseBranch() : "master";
@@ -1334,31 +1342,6 @@ public class CodingAgentJob extends GitManagedJob {
         return GitOperations.extractNewFilePaths(getWorkingDirectory(), base, this::warn);
     }
 
-    /**
-     * Extracts the controller base URL (scheme + host + port) from a workstream URL.
-     *
-     * @param workstreamUrl the full workstream URL
-     * @return the controller base URL, or {@code null} if the URL cannot be parsed
-     */
-    static String extractControllerBaseUrl(String workstreamUrl) {
-        int idx = workstreamUrl.indexOf("/api/workstreams/");
-        if (idx < 0) return null;
-        return workstreamUrl.substring(0, idx);
-    }
-
-    /**
-     * Extracts the workstream identifier from a workstream URL.
-     *
-     * @param workstreamUrl the full workstream URL
-     * @return the workstream ID, or {@code null} if the URL cannot be parsed
-     */
-    static String extractWorkstreamId(String workstreamUrl) {
-        int start = workstreamUrl.indexOf("/api/workstreams/");
-        if (start < 0) return null;
-        start += "/api/workstreams/".length();
-        int end = workstreamUrl.indexOf("/", start);
-        return end < 0 ? workstreamUrl.substring(start) : workstreamUrl.substring(start, end);
-    }
 
     /**
      * Returns how the commit message was produced ({@code "agent"}, {@code "prompt_fallback"},
@@ -1485,11 +1468,15 @@ public class CodingAgentJob extends GitManagedJob {
         }
         // Only emit the runner name when it differs from the registry default,
         // so wire-format snapshots of Phase 1 jobs match the pre-refactor output.
-        if (runnerName != null && !AgentRunnerRegistry.CLAUDE.equals(runnerName)) {
-            sb.append("::runner:=").append(runnerName);
+        if (defaultRunner != null && !AgentRunnerRegistry.CLAUDE.equals(defaultRunner)) {
+            sb.append("::defaultRunner:=").append(defaultRunner);
+        }
+        if (!runnerByPhase.isEmpty()) {
+            sb.append("::runners:=").append(Phase.encodeRunnerMap(runnerByPhase));
         }
         return sb.toString();
     }
+
 
     @Override
     public void set(String key, String value) {
@@ -1557,7 +1544,19 @@ public class CodingAgentJob extends GitManagedJob {
                 catch (NumberFormatException e) { this.maxPostCompletionPasses = DEFAULT_MAX_POST_COMPLETION_PASSES; }
                 break;
             case "runner":
+                // Legacy single-runner key. Honored when no defaultRunner/runners
+                // key supersedes it; consumed silently if defaultRunner is also
+                // present (the wire format guarantees that key precedence).
+                if (AgentRunnerRegistry.CLAUDE.equals(defaultRunner)) {
+                    setRunnerName(value);
+                }
+                break;
+            case "defaultRunner":
                 setRunnerName(value);
+                break;
+            case "runners":
+                runnerByPhase.clear();
+                runnerByPhase.putAll(Phase.decodeRunnerMap(value, this::warn));
                 break;
             default:
                 // Delegate to parent for git-related properties
