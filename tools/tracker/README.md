@@ -13,7 +13,7 @@ The service is a Python/Starlette REST API backed by SQLite, deployed alongside
 ### Start via docker-compose
 
 ```bash
-cd flowtree/core/controller
+cd flowtree/runtime/controller
 docker-compose up --build ar-tracker
 ```
 
@@ -329,5 +329,5 @@ cd tools/mcp/manager
 python -m pytest test_server.py -v -k "Tracker"
 
 # Java MCP discovery test
-mvn test -pl flowtree/core -Dtest=McpToolDiscoveryTest
+mvn test -pl flowtree/runtime -Dtest=McpToolDiscoveryTest
 ```

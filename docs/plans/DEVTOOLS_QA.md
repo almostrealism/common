@@ -29,7 +29,7 @@ Changes delivered by the coding agent sessions on this branch:
 2. **`engine/ml/CLAUDE.md`** — brief echo of the rule (ML-specific: do not run the full
    ML suite, target the test class for the changed file, run `pytest` for Python changes).
 
-3. **`flowtree/core/src/main/java/io/flowtree/jobs/InstructionPromptBuilder.java`** — added
+3. **`flowtree/runtime/src/main/java/io/flowtree/jobs/InstructionPromptBuilder.java`** — added
    the test-verification rule as an unconditional section in the generated system prompt,
    inserted between the Branch Awareness section and the Budget section so it is visible
    to every coding agent job regardless of which `CLAUDE.md` the agent reads first.

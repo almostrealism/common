@@ -161,11 +161,11 @@ without authentication (for trusted LAN use). A warning is logged on startup.
 
 ### Docker Compose (recommended)
 
-ar-manager is defined as a service in `flowtree/core/controller/docker-compose.yml` alongside
+ar-manager is defined as a service in `flowtree/runtime/controller/docker-compose.yml` alongside
 ar-memory and the FlowTree controller:
 
 ```bash
-docker compose -f flowtree/core/controller/docker-compose.yml up -d
+docker compose -f flowtree/runtime/controller/docker-compose.yml up -d
 ```
 
 Place `manager-tokens.json` in `/Users/Shared/flowtree/manager/` on the host.
@@ -190,7 +190,7 @@ other external clients.
    go to **DNS → Enable HTTPS** and then **Access controls → Enable Funnel**.
    Funnel requires a Tailscale account on the Personal or Team plan.
 
-3. **The controller stack running** (`./flowtree/core/rebuild.sh` from the repo root).
+3. **The controller stack running** (`./flowtree/runtime/rebuild.sh` from the repo root).
    ar-manager depends on `flowtree-controller` and `ar-memory` being up.
 
 #### Setup
@@ -232,12 +232,12 @@ curl https://my-host.taild1234.ts.net/_health
 #### Re-running after a reboot
 
 Tailscale Funnel survives reboots automatically once configured. The Docker
-container does not — run `./flowtree/core/rebuild.sh` (or `docker compose ... up -d`)
+container does not — run `./flowtree/runtime/rebuild.sh` (or `docker compose ... up -d`)
 to bring it back. The funnel itself does not need to be re-configured.
 
 ```bash
 # Bring the stack back up after a reboot
-./flowtree/core/rebuild.sh
+./flowtree/runtime/rebuild.sh
 
 # Confirm funnel is still active
 tailscale funnel status

@@ -63,7 +63,7 @@ per-agent cursors; each poll carries `since=<seq>`.
 
 ### Controller: the inbox store
 
-**New class:** `flowtree/core/src/main/java/io/flowtree/slack/JobMessageInbox.java`.
+**New class:** `flowtree/runtime/src/main/java/io/flowtree/slack/JobMessageInbox.java`.
 
 **Storage:** on-disk append-only log rooted at `dataDir/job-messages/`, one
 file per job: `<jobId>.ndjson`. Each line is one message JSON object.
@@ -119,7 +119,7 @@ URL's jobId does not match the token's jobId.
 
 ### Agent wrapper: the poller
 
-**Where it lives:** `flowtree/core/src/main/java/io/flowtree/jobs/JobInboxPoller.java`.
+**Where it lives:** `flowtree/runtime/src/main/java/io/flowtree/jobs/JobInboxPoller.java`.
 Owned and lifecycle-managed by `ClaudeCodeJob`. One poller per job.
 
 **Thread model:** a dedicated daemon thread started immediately after the

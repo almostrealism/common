@@ -71,8 +71,10 @@
 		<!-- Workflow Orchestration -->
 		<module>flowtree/graphpersist</module>
 		<module>flowtree/api</module>
+		<module>flowtree/base</module>
 		<module>flowtree/python</module>
-		<module>flowtree/core</module>
+		<module>flowtree/agents</module>
+		<module>flowtree/runtime</module>
 
 		<!-- Standalone -->
 		<module>tools</module>

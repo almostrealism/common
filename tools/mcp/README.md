@@ -99,7 +99,7 @@ For FlowTree jobs to have ar-manager access, set these environment variables on 
 | `AR_MANAGER_URL` | Controller | URL of the ar-manager service (default: `http://ar-manager:8010`) |
 | `AR_MANAGER_SHARED_SECRET` | Controller + ar-manager | Shared secret for HMAC token generation. Generate with `openssl rand -base64 32` |
 
-See `flowtree/core/src/main/resources/workstreams-example.yaml` for full configuration reference.
+See `flowtree/runtime/src/main/resources/workstreams-example.yaml` for full configuration reference.
 
 ## Servers
 
@@ -123,15 +123,15 @@ See `flowtree/core/src/main/resources/workstreams-example.yaml` for full configu
 ## Docker Infrastructure
 
 ar-memory, the FlowTree controller, and ar-manager run as Docker services
-defined in `flowtree/core/controller/docker-compose.yml`:
+defined in `flowtree/runtime/controller/docker-compose.yml`:
 
 ```bash
 # Pre-build the controller JAR (from repo root)
-mvn package -pl flowtree/core -am -DskipTests
-mvn dependency:copy-dependencies -pl flowtree/core -DoutputDirectory=flowtree/core/target/dependency
+mvn package -pl flowtree/runtime -am -DskipTests
+mvn dependency:copy-dependencies -pl flowtree/runtime -DoutputDirectory=flowtree/runtime/target/dependency
 
 # Start all services
-docker compose -f flowtree/core/controller/docker-compose.yml up -d
+docker compose -f flowtree/runtime/controller/docker-compose.yml up -d
 ```
 
 **Host directories:**
@@ -139,7 +139,7 @@ docker compose -f flowtree/core/controller/docker-compose.yml up -d
 - `/Users/Shared/flowtree/manager/` — `manager-tokens.json`
 - `/Users/Shared/flowtree/memory-data/` — SQLite DB and FAISS indices
 
-See `flowtree/core/controller/docker-compose.yml` for full configuration.
+See `flowtree/runtime/controller/docker-compose.yml` for full configuration.
 
 ## Installation
 

@@ -108,11 +108,11 @@ public class PlanningDocumentReferenceDetector extends PolicyViolationDetector {
 			// API endpoint javadoc that documents a planningDocument request field
 			// (workstreams accept a path to a planning document; the example body
 			// uses a representative path, not a reader pointer).
-			"flowtree/core/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java",
+			"flowtree/runtime/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java",
 			// Runtime instruction string that tells agents the directory convention
 			// for new documents (planning docs go under docs/plans/, etc.). The
 			// reference describes WHERE planning docs live, not WHICH one to read.
-			"flowtree/core/src/main/java/io/flowtree/jobs/OrganizationalPlacementRule.java");
+			"flowtree/runtime/src/main/java/io/flowtree/jobs/OrganizationalPlacementRule.java");
 
 	/**
 	 * Creates a detector that will scan source files under the given directory.

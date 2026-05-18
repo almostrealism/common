@@ -61,20 +61,26 @@ run in the build job. They depend on engine-layer modules but nothing in the
 named layers depends on them.
 
 ```
-flowtree/api         → utils
+flowtree/api          → utils
+flowtree/base         → io
 flowtree/graphpersist → utils
-flowtree/python      → flowtree/api
-flowtree/core        → flowtree/api, flowtree/python, flowtree/graphpersist, utils-http
-tools                → ml
+flowtree/agents       → flowtree/base, meta
+flowtree/python       → flowtree/api
+flowtree/runtime      → flowtree/api, flowtree/base, flowtree/agents, flowtree/python, flowtree/graphpersist, utils-http
+tools                 → ml
 ```
 
-(Artifact IDs: `ar-flowtree-core`, `ar-flowtreeapi`, `ar-flowtree-python`, `ar-graphpersist`.)
+(Artifact IDs: `ar-flowtreeapi`, `ar-flowtree-base`, `ar-flowtree-agents`, `ar-flowtree-python`, `ar-flowtree-runtime`, `ar-graphpersist`.)
 
 **Critical facts:**
-- `flowtree/core` CONSUMES engine-layer modules. No named layer depends on the flowtree family.
+- `flowtree/runtime` CONSUMES engine-layer modules. No named layer depends on the flowtree family.
 - `tools` CONSUMES `ml` (engine layer). Tools tests run in `code-policy-check`
   and `test-timeout-check`, not in any layer-gated job.
-- `flowtree/graphpersist` and `flowtree/api` are only consumed by the flowtree family.
+- `flowtree/api`, `flowtree/base`, `flowtree/agents`, `flowtree/graphpersist`, and `flowtree/python` are only consumed by the flowtree family.
+- `flowtree/agents` holds the `AgentRunner` abstraction + `ClaudeCodeRunner`; the runtime
+  depends on it (not the reverse), and the registry's hard-wired `ClaudeCodeRunner::new`
+  default is now in this module — runners that need flowtree/runtime types must
+  register themselves via `AgentRunnerRegistry.register(...)` from a higher module.
 
 ---
 
@@ -105,7 +111,7 @@ and does not upload coverage.
 
 ### What the `test-flowtree` job covers
 
-Runs `mvn test -pl flowtree/core` and uploads JaCoCo coverage as `coverage-flowtree`.
+Runs `mvn test -pl flowtree/runtime` and uploads JaCoCo coverage as `coverage-flowtree`.
 Gated on the same validation prerequisites as the `test` matrix
 (`code-policy-check`, `test-timeout-check`, `duplicate-code-check`,
 `test-integrity-check`) and runs in parallel with `test`. Extracted from `build`
@@ -174,8 +180,8 @@ it tolerates missing artifacts when test jobs are skipped.
 Always grep ALL pom.xml files for `ar-<module-name>` to find every consumer.
 
 **Mistake: Confusing dependency direction.**
-`flowtree/core` depends on `flowtree/api` (core is the consumer).
-`flowtree/api` does NOT depend on `flowtree/core`.
+`flowtree/runtime` depends on `flowtree/api` (core is the consumer).
+`flowtree/api` does NOT depend on `flowtree/runtime`.
 
 **Mistake: Adding a layer flag for a standalone module.**
 `flowtree/` and `tools/` are not layers. Their tests run in

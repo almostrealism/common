@@ -197,7 +197,8 @@ common/
 │   music, spatial, compose
 │
 ├── flowtree/                          — Workflow Orchestration
-│   core, api, python, graphpersist
+│   api, base, agents, python,
+│   graphpersist, runtime
 │
 ├── tools/                             — Dev Tools & MCP Servers
 ├── docs/                              — Documentation

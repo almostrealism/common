@@ -63,9 +63,11 @@ canonical name used in `<dependency>` blocks across all `pom.xml` files.
 | `studio/compose` | `ar-compose` | Layer 6 — Studio |
 | `studio/experiments` | `ar-experiments` | Layer 6 — Studio |
 | `flowtree/api` | `ar-flowtreeapi` | Standalone |
+| `flowtree/base` | `ar-flowtree-base` | Standalone |
+| `flowtree/agents` | `ar-flowtree-agents` | Standalone |
 | `flowtree/graphpersist` | `ar-graphpersist` | Standalone |
 | `flowtree/python` | `ar-flowtree-python` | Standalone |
-| `flowtree/core` | `ar-flowtree-core` | Standalone |
+| `flowtree/runtime` | `ar-flowtree-runtime` | Standalone |
 | `tools` | `ar-tools` | Standalone |
 
 ---
@@ -79,8 +81,9 @@ hierarchy — nothing in layers 1-6 depends on any standalone module.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  STANDALONE  flowtree/api · flowtree/graphpersist ·                 │
-│              flowtree/python · flowtree/core · tools                 │
+│  STANDALONE  flowtree/api · flowtree/base · flowtree/agents ·       │
+│              flowtree/graphpersist · flowtree/python ·              │
+│              flowtree/runtime · tools                                │
 │              (depend on engine-layer modules; nothing in L1-6        │
 │               depends on them)                                       │
 └────────────────────────────┬────────────────────────────────────────┘
@@ -301,7 +304,7 @@ both consumed by the studio layer.
 **ar-utils-http** (`engine/utils-http`)
 HTTP client and REST integration. Depends on `ar-utils`. This is the thinnest engine
 module — it adds HTTP transport capability on top of the general utility layer. It
-is consumed by `ar-flowtree-core` in the standalone tier.
+is consumed by `ar-flowtree-runtime` in the standalone tier.
 
 ---
 
@@ -373,31 +376,48 @@ Standalone modules depend on engine-layer modules but are not part of the Layer 
 hierarchy. Nothing in Layers 1-6 depends on any standalone module.
 
 ```
-ar-flowtreeapi      →  ar-utils
-ar-graphpersist     →  ar-utils
-ar-flowtree-python  →  ar-flowtreeapi
-ar-flowtree-core    →  ar-flowtreeapi, ar-flowtree-python, ar-graphpersist, ar-utils-http
-ar-tools            →  ar-ml
+ar-flowtreeapi       →  ar-utils
+ar-flowtree-base     →  ar-io
+ar-graphpersist      →  ar-utils
+ar-flowtree-agents   →  ar-flowtree-base, ar-meta
+ar-flowtree-python   →  ar-flowtreeapi
+ar-flowtree-runtime  →  ar-flowtreeapi, ar-flowtree-base, ar-flowtree-agents,
+                        ar-flowtree-python, ar-graphpersist, ar-utils-http
+ar-tools             →  ar-ml
 ```
 
 **ar-flowtreeapi** (`flowtree/api`)
 FlowTree API abstractions. Depends on `ar-utils`. This module defines the interfaces
 and contracts of the FlowTree workflow system without implementing the runtime.
 
+**ar-flowtree-base** (`flowtree/base`)
+Cross-cutting helpers (`JsonFieldExtractor`, `GitOperations`) consumed by both
+`flowtree/agents` and `flowtree/runtime`. Depends only on `ar-io` (for
+`ConsoleFeatures`). Pulled down from the runtime so the agent-runner abstraction
+does not have to depend on the runtime.
+
 **ar-graphpersist** (`flowtree/graphpersist`)
 Database persistence and NFS/SSH integration. Depends on `ar-utils`. Provides
-storage infrastructure for computation graphs and model state, used by `ar-flowtree-core`.
+storage infrastructure for computation graphs and model state, used by `ar-flowtree-runtime`.
+
+**ar-flowtree-agents** (`flowtree/agents`)
+The pluggable agent-runner SPI: `AgentRunner`, `AgentRunnerRegistry`,
+`ClaudeCodeRunner`, plus the subprocess plumbing (`AgentProcessRunner`,
+`AgentInactivityMonitor`). Depends on `ar-flowtree-base` (for `GitOperations` /
+`JsonFieldExtractor`) and `ar-meta` (for `Named`). The runtime consumes this
+module — never the reverse.
 
 **ar-flowtree-python** (`flowtree/python`)
 Python bindings for FlowTree. Depends on `ar-flowtreeapi` for the contract it
 exposes to Python clients.
 
-**ar-flowtree-core** (`flowtree/core`)
+**ar-flowtree-runtime** (`flowtree/runtime`)
 Distributed workflow orchestration and job runner. Depends on `ar-flowtreeapi`
-(the API contract), `ar-flowtree-python` (Python binding integration),
-`ar-graphpersist` (persistence), and `ar-utils-http` (HTTP communication).
-`ar-flowtree-core` is the top of the standalone hierarchy — it has the most dependencies
-and no consumers within this project.
+(the API contract), `ar-flowtree-base` (helpers), `ar-flowtree-agents`
+(runners), `ar-flowtree-python` (Python binding integration), `ar-graphpersist`
+(persistence), and `ar-utils-http` (HTTP communication). `ar-flowtree-runtime`
+is the top of the standalone hierarchy — it has the most dependencies and no
+consumers within this project.
 
 **ar-tools** (`tools`)
 Development tooling and MCP servers. Depends on `ar-ml` for ML capabilities exposed
@@ -413,9 +433,9 @@ determined by following the chain.
 
 | Module | Direct consumers (depended on by) |
 |---|---|
-| `ar-meta` | `ar-relation`, `ar-io` |
+| `ar-meta` | `ar-relation`, `ar-io`, `ar-flowtree-agents` |
 | `ar-relation` | `ar-code` |
-| `ar-io` | `ar-code` |
+| `ar-io` | `ar-code`, `ar-flowtree-base` |
 | `ar-code` | `ar-collect` |
 | `ar-collect` | `ar-hardware` |
 | `ar-hardware` | `ar-algebra` |
@@ -434,7 +454,7 @@ determined by following the chain.
 | `ar-render` | *(no named-layer consumers — leaf node)* |
 | `ar-ml` | `ar-ml-djl`, `ar-ml-onnx`, `ar-ml-script`, `ar-compose`, `ar-tools` |
 | `ar-audio` | `ar-music`, `ar-compose` |
-| `ar-utils-http` | `ar-flowtree-core` |
+| `ar-utils-http` | `ar-flowtree-runtime` |
 | `ar-ml-djl` | `ar-experiments` |
 | `ar-ml-onnx` | `ar-experiments` |
 | `ar-ml-script` | `ar-experiments` |
@@ -442,10 +462,12 @@ determined by following the chain.
 | `ar-compose` | `ar-spatial`, `ar-experiments` |
 | `ar-spatial` | *(no consumers — leaf node)* |
 | `ar-experiments` | *(no consumers — leaf node)* |
-| `ar-flowtreeapi` | `ar-flowtree-python`, `ar-flowtree-core` |
-| `ar-graphpersist` | `ar-flowtree-core` |
-| `ar-flowtree-python` | `ar-flowtree-core` |
-| `ar-flowtree-core` | *(no consumers — top of standalone tree)* |
+| `ar-flowtreeapi` | `ar-flowtree-python`, `ar-flowtree-runtime` |
+| `ar-flowtree-base` | `ar-flowtree-agents`, `ar-flowtree-runtime` |
+| `ar-flowtree-agents` | `ar-flowtree-runtime` |
+| `ar-graphpersist` | `ar-flowtree-runtime` |
+| `ar-flowtree-python` | `ar-flowtree-runtime` |
+| `ar-flowtree-runtime` | *(no consumers — top of standalone tree)* |
 | `ar-tools` | *(no consumers — standalone leaf)* |
 
 ---
@@ -492,9 +514,9 @@ base/collect/pom.xml listing ar-algebra
 → ar-collect is Layer 1, ar-algebra is Layer 2; this is upward
 
 # VIOLATION: Standalone depending on Studio
-flowtree/core/pom.xml listing ar-compose
+flowtree/runtime/pom.xml listing ar-compose
 → Standalone must not depend on Studio (Layer 6) unless it is genuinely above it;
-  the right approach is for flowtree/core to declare ar-ml or ar-audio directly if needed
+  the right approach is for flowtree/runtime to declare ar-ml or ar-audio directly if needed
 ```
 
 ### Detecting a potential violation
@@ -522,7 +544,7 @@ The distinction is:
 - **Standalone**: independently deployable systems; not intended to be consumed by any named layer
 
 Concretely, `ar-ml-djl` is extern because `ar-experiments` (Layer 6) depends on it.
-If `ar-flowtree-core` were consumed by any module in Layers 1-6, it would need to be
+If `ar-flowtree-runtime` were consumed by any module in Layers 1-6, it would need to be
 classified into a layer. It isn't, so it remains standalone.
 
 ### The flowtree internal hierarchy
@@ -532,16 +554,19 @@ The standalone modules are not flat — they have their own internal dependency 
 ```
 ar-utils          (Layer 4 — Engine)
 ar-utils-http     (Layer 4 — Engine)
+ar-io             (Layer 1 — Base)
+ar-meta           (Layer 1 — Base)
         │
-        ├──► ar-flowtreeapi      ──► ar-flowtree-python ──┐
-        │                                                  │
-        └──► ar-graphpersist ────────────────────────────► ar-flowtree-core
+        ├──► ar-flowtreeapi      ──► ar-flowtree-python ─────────┐
+        ├──► ar-flowtree-base    ──► ar-flowtree-agents ─────────┤
+        └──► ar-graphpersist ────────────────────────────────────► ar-flowtree-runtime
 ```
 
-`ar-flowtree-core` is the apex. It integrates everything: the API contract
-(`ar-flowtreeapi`), Python bindings (`ar-flowtree-python`), persistence
+`ar-flowtree-runtime` is the apex. It integrates everything: the API contract
+(`ar-flowtreeapi`), shared helpers (`ar-flowtree-base`), the agent-runner SPI
+(`ar-flowtree-agents`), Python bindings (`ar-flowtree-python`), persistence
 (`ar-graphpersist`), and HTTP transport (`ar-utils-http`). Changes to any of
-these propagate to `ar-flowtree-core`.
+these propagate to `ar-flowtree-runtime`.
 
 ### tools: a standalone utility module
 
@@ -605,7 +630,7 @@ unless a consumer is added:
 - `ar-music` — leaf in Layer 6; pattern-based music composition
 - `ar-spatial` — leaf in Layer 6; spatial audio visualization
 - `ar-experiments` — leaf in Layer 6; integration experiments
-- `ar-flowtree-core` — top of standalone tree; no consumers in this project
+- `ar-flowtree-runtime` — top of standalone tree; no consumers in this project
 - `ar-tools` — standalone leaf; no consumers in this project
 
 ### Practical impact matrix
@@ -629,7 +654,7 @@ ar-compose              ~10% of modules (spatial, experiments)
 ar-render               ~0% named-layer consumers
 ar-music, ar-spatial    ~0% consumers
 ar-experiments          ~0% consumers
-ar-flowtree-core        ~0% consumers
+ar-flowtree-runtime        ~0% consumers
 ar-tools                ~0% consumers
 ```
 
@@ -739,21 +764,21 @@ wrong claim, the correct claim, and the evidence that settles it.
 
 **Wrong.** This reverses the direction.
 
-**Correct:** `ar-flowtreeapi` is consumed **by** `ar-flowtree-core`.
+**Correct:** `ar-flowtreeapi` is consumed **by** `ar-flowtree-runtime`.
 
-Evidence: `flowtree/core/pom.xml` lists `ar-flowtreeapi` as a dependency.
-`flowtree/api/pom.xml` does NOT list `ar-flowtree-core` as a dependency.
+Evidence: `flowtree/runtime/pom.xml` lists `ar-flowtreeapi` as a dependency.
+`flowtree/api/pom.xml` does NOT list `ar-flowtree-runtime` as a dependency.
 
 ### Confusion 2: "engine/utils depends on flowtree"
 
 **Wrong.** This would violate the architectural invariant (Layer 4 cannot depend on
 Standalone).
 
-**Correct:** `ar-flowtree-core` depends on `ar-utils` (via `ar-utils-http` and the
+**Correct:** `ar-flowtree-runtime` depends on `ar-utils` (via `ar-utils-http` and the
 `ar-flowtreeapi` → `ar-utils` chain).
 
 Evidence: `engine/utils/pom.xml` has no reference to `ar-flowtreeapi` or
-`ar-flowtree-core`. `flowtree/api/pom.xml` lists `ar-utils`. `flowtree/core/pom.xml` lists
+`ar-flowtree-runtime`. `flowtree/api/pom.xml` lists `ar-utils`. `flowtree/runtime/pom.xml` lists
 `ar-utils-http`.
 
 ### Confusion 3: "ar-render is high impact"
@@ -796,8 +821,9 @@ CI jobs with completely separate test sets.
 ### Confusion 8: "the standalone modules are part of Layer 5"
 
 **Wrong.** Layer 5 is the extern tier (`ar-ml-djl`, `ar-ml-onnx`, `ar-ml-script`).
-The standalone modules (`ar-flowtreeapi`, `ar-graphpersist`, `ar-flowtree-python`,
-`ar-flowtree-core`, `ar-tools`) are not part of any numbered layer. They are architecturally
+The standalone modules (`ar-flowtreeapi`, `ar-flowtree-base`, `ar-flowtree-agents`,
+`ar-graphpersist`, `ar-flowtree-python`, `ar-flowtree-runtime`, `ar-tools`) are not part
+of any numbered layer. They are architecturally
 above the engine layer but are independently deployable subsystems, not part of the
 Layer 1-6 hierarchy.
 
@@ -916,7 +942,8 @@ for module in ar-meta ar-relation ar-io ar-code ar-collect ar-hardware \
               ar-optimize ar-render ar-ml ar-audio ar-utils ar-utils-http \
               ar-ml-djl ar-ml-onnx ar-ml-script \
               ar-music ar-spatial ar-compose ar-experiments \
-              ar-flowtreeapi ar-graphpersist ar-flowtree-python ar-flowtree-core ar-tools; do
+              ar-flowtreeapi ar-flowtree-base ar-flowtree-agents \
+              ar-graphpersist ar-flowtree-python ar-flowtree-runtime ar-tools; do
     consumers=$(grep -rl "$module" $(find . -name pom.xml) 2>/dev/null | \
                 grep -v '/target/' | tr '\n' ',' | sed 's/,$//')
     echo "$module consumed by: ${consumers:-(nothing)}"
@@ -1032,10 +1059,13 @@ LAYER 6 (Studio)
   ar-experiments  ← ar-compose, ar-ml-onnx, ar-ml-djl, ar-ml-script, ar-utils
 
 STANDALONE
-  ar-flowtreeapi      ← ar-utils
-  ar-graphpersist     ← ar-utils
-  ar-flowtree-python  ← ar-flowtreeapi
-  ar-flowtree-core    ← ar-flowtreeapi, ar-flowtree-python, ar-graphpersist, ar-utils-http
+  ar-flowtreeapi       ← ar-utils
+  ar-flowtree-base     ← ar-io
+  ar-graphpersist      ← ar-utils
+  ar-flowtree-agents   ← ar-flowtree-base, ar-meta
+  ar-flowtree-python   ← ar-flowtreeapi
+  ar-flowtree-runtime  ← ar-flowtreeapi, ar-flowtree-base, ar-flowtree-agents,
+                          ar-flowtree-python, ar-graphpersist, ar-utils-http
   ar-tools            ← ar-ml
 ```
 

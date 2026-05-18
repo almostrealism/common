@@ -86,13 +86,15 @@ Layer 6 — Studio:
 
 Standalone (above engine layer, not part of any named layer):
     flowtree/api         → engine/utils
+    flowtree/base        → base/io
     flowtree/graphpersist → engine/utils
+    flowtree/agents      → flowtree/base, base/meta
     flowtree/python      → flowtree/api
-    flowtree/core        → flowtree/api, flowtree/python, flowtree/graphpersist, engine/utils-http
+    flowtree/runtime     → flowtree/api, flowtree/base, flowtree/agents, flowtree/python, flowtree/graphpersist, engine/utils-http
     tools                → engine/ml
 ```
 
-Artifact IDs: `ar-flowtree-core`, `ar-flowtreeapi`, `ar-flowtree-python`, `ar-graphpersist`.
+Artifact IDs: `ar-flowtreeapi`, `ar-flowtree-base`, `ar-flowtree-agents`, `ar-flowtree-python`, `ar-flowtree-runtime`, `ar-graphpersist`.
 
 ### What "standalone" means
 
@@ -108,7 +110,7 @@ This means layer-gated jobs (`test`, `test-media`) are correctly skipped when on
 No module in the named layers (base through studio) depends on any standalone module. Specifically:
 
 - Nothing in base/compute/domain/engine/extern/studio depends on anything under `flowtree/` or on `tools`.
-- `flowtree/core` depends on the engine layer — the flowtree family sits _above_ the engine layer, not alongside it.
+- `flowtree/runtime` depends on the engine layer — the flowtree family sits _above_ the engine layer, not alongside it.
 
 This is verified in both directions using `pom.xml` inspection (see [Dependency Direction Convention](#dependency-direction-convention)).
 
@@ -162,9 +164,11 @@ studio/experiments→ studio/compose, extern/ml-onnx, extern/ml-djl, extern/ml-s
 
 # Standalone
 flowtree/api         → engine/utils
+flowtree/base        → base/io
 flowtree/graphpersist → engine/utils
+flowtree/agents      → flowtree/base, base/meta
 flowtree/python      → flowtree/api
-flowtree/core        → flowtree/api, flowtree/python, flowtree/graphpersist, engine/utils-http
+flowtree/runtime     → flowtree/api, flowtree/base, flowtree/agents, flowtree/python, flowtree/graphpersist, engine/utils-http
 tools                → engine/ml
 ```
 
@@ -257,7 +261,7 @@ On the `master` branch and on force-rebuild triggers, the job bypasses the per-d
    - Builds every Maven module in the monorepo
    - Skips tests to keep the build step fast
    - Installs artifacts to local Maven cache for downstream steps
-4. **Run flowtree tests** — `mvn test -pl flowtree/core`
+4. **Run flowtree tests** — `mvn test -pl flowtree/runtime`
    - Runs the flowtree test suite explicitly
    - Runs unconditionally (not gated on any layer flag) because flowtree changes only set `code_changed`, not any layer flag
 5. **Collect JaCoCo coverage** — `find . -path "*/target/jacoco.exec"`
@@ -552,9 +556,9 @@ This is one of the most common sources of confusion and errors when working with
 
 ### What this means concretely
 
-- `flowtree/core → flowtree/api` means `flowtree/core` DEPENDS ON `flowtree/api`
-- `flowtree/api` does NOT depend on `flowtree/core`
-- `flowtree/core` depends on the engine layer — the flowtree family sits ABOVE the engine layer
+- `flowtree/runtime → flowtree/api` means `flowtree/runtime` DEPENDS ON `flowtree/api`
+- `flowtree/api` does NOT depend on `flowtree/runtime`
+- `flowtree/runtime` depends on the engine layer — the flowtree family sits ABOVE the engine layer
 - Nothing in the named layers (base/compute/domain/engine/extern/studio) depends on anything under `flowtree/`
 
 ### How to verify dependency direction
@@ -562,8 +566,8 @@ This is one of the most common sources of confusion and errors when working with
 Never make a claim about dependency direction from a single grep. Always check both directions:
 
 ```bash
-# Does flowtree/core depend on engine/utils?
-grep 'ar-utils' flowtree/core/pom.xml
+# Does flowtree/runtime depend on engine/utils?
+grep 'ar-utils' flowtree/runtime/pom.xml
 # → yes (flowtree → engine/utils via transitive flowtreeapi)
 
 # Does engine/utils depend on flowtree?
@@ -769,7 +773,7 @@ run: |
 **Cause**: Flowtree tests are not in the `build` job (or were accidentally moved to a layer-gated job).
 
 **Diagnosis**:
-1. Check whether `mvn test -pl flowtree/core` appears in the `build` job
+1. Check whether `mvn test -pl flowtree/runtime` appears in the `build` job
 2. Check whether any layer-gated job (e.g., `test`) runs flowtree tests that should be in `build`
 
 **Fix**: Flowtree tests MUST remain in the `build` job. The `build` job runs whenever `code_changed=true`, which covers flowtree-only branches. No layer-gated job will run on a flowtree-only branch.
@@ -885,9 +889,9 @@ Understanding why past fixes were made prevents re-introducing the same bugs.
 
 ### `coverage-flowtree` artifact from build job (added 2026-04)
 
-**Problem**: Flowtree has its own test suite that runs inside the `build` job (`mvn test -pl flowtree/core`). Without collecting and uploading JaCoCo `.exec` files from this test run, flowtree code was invisible to Qodana coverage analysis. The coverage report showed flowtree modules as uncovered, despite tests running.
+**Problem**: Flowtree has its own test suite that runs inside the `build` job (`mvn test -pl flowtree/runtime`). Without collecting and uploading JaCoCo `.exec` files from this test run, flowtree code was invisible to Qodana coverage analysis. The coverage report showed flowtree modules as uncovered, despite tests running.
 
-**Fix**: After `mvn test -pl flowtree/core`, collect `.exec` files with `find . -path "*/target/jacoco.exec"` and upload them as `coverage-flowtree`. Added `build` to `analysis.needs` to ensure analysis waits for this artifact.
+**Fix**: After `mvn test -pl flowtree/runtime`, collect `.exec` files with `find . -path "*/target/jacoco.exec"` and upload them as `coverage-flowtree`. Added `build` to `analysis.needs` to ensure analysis waits for this artifact.
 
 **Lesson**: Every test execution that produces JaCoCo data must have a corresponding upload step. Simply running tests is not enough — the data must be captured and surfaced to the analysis job.
 
@@ -909,7 +913,7 @@ Understanding why past fixes were made prevents re-introducing the same bugs.
 
 **Problem**: Flowtree tests were originally in a layer-gated job (or simply not running in CI). On flowtree-only branches, no layer flag was set, so all layer-gated test jobs were skipped, and flowtree tests were never executed.
 
-**Fix**: Move `mvn test -pl flowtree/core` into the `build` job, which runs on every `code_changed=true`. Flowtree-only branches set `code_changed=true`, so `build` always runs and flowtree tests are always executed.
+**Fix**: Move `mvn test -pl flowtree/runtime` into the `build` job, which runs on every `code_changed=true`. Flowtree-only branches set `code_changed=true`, so `build` always runs and flowtree tests are always executed.
 
 **Lesson**: Standalone modules (those without a layer flag) must have their tests in a job that runs on `code_changed`, not in a layer-gated job.
 

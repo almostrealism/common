@@ -148,7 +148,7 @@
          │  HTTPS via Tailscale Funnel
          ▼
 ┌────────────────────────────────────────────────────────┐
-│  Controller Stack  (flowtree/core/controller/docker-compose) │
+│  Controller Stack  (flowtree/runtime/controller/docker-compose) │
 │                                                        │
 │  ┌──────────────────────┐   ┌──────────────────────┐  │
 │  │  flowtree-controller  │   │      ar-manager       │  │
@@ -165,7 +165,7 @@
               │  outbound TCP :7766
               ▼
 ┌────────────────────────────────────────────────────────┐
-│  Agent Pool  (flowtree/core/agent/docker-compose)           │
+│  Agent Pool  (flowtree/runtime/agent/docker-compose)           │
 │                                                        │
 │  ┌───────────┐   ┌───────────┐   ┌───────────┐        │
 │  │  agent-1  │   │  agent-2  │   │  agent-N  │        │
@@ -310,8 +310,8 @@ sudo chown -R "$(whoami)" /Users/Shared/flowtree</code></pre>
 
                 <h3>3a. Workstreams configuration</h3>
                 <p>Copy the example file and edit it:</p>
-                <pre><code>cp flowtree/core/src/main/resources/workstreams-example.yaml \
-   /Users/Shared/flowtree/core/controller/workstreams.yaml</code></pre>
+                <pre><code>cp flowtree/runtime/src/main/resources/workstreams-example.yaml \
+   /Users/Shared/flowtree/runtime/controller/workstreams.yaml</code></pre>
 
                 <p>At minimum, configure one workstream. Key fields:</p>
                 <table>
@@ -350,12 +350,12 @@ sudo chown -R "$(whoami)" /Users/Shared/flowtree</code></pre>
                 </h2>
 
                 <p>Run from the repository root:</p>
-                <pre><code>./flowtree/core/rebuild.sh</code></pre>
+                <pre><code>./flowtree/runtime/rebuild.sh</code></pre>
 
                 <p>This script:</p>
                 <ol>
                     <li>Generates the ar-manager shared secret (first run only)</li>
-                    <li>Runs <code>mvn package -pl flowtree/core -am -DskipTests</code></li>
+                    <li>Runs <code>mvn package -pl flowtree/runtime -am -DskipTests</code></li>
                     <li>Copies transitive dependencies to <code>target/dependency/</code></li>
                     <li>Builds and starts <code>flowtree-controller</code>,
                         <code>ar-memory</code>, and <code>ar-manager</code> via
@@ -363,7 +363,7 @@ sudo chown -R "$(whoami)" /Users/Shared/flowtree</code></pre>
                 </ol>
 
                 <h3>Verify all three services are running</h3>
-                <pre><code>docker compose -f flowtree/core/controller/docker-compose.yml ps</code></pre>
+                <pre><code>docker compose -f flowtree/runtime/controller/docker-compose.yml ps</code></pre>
 
                 <p>Expected output:</p>
                 <pre><code>NAME                  STATUS          PORTS
@@ -378,8 +378,8 @@ curl http://localhost:8010/_health         # ar-manager</code></pre>
 
                 <div class="tip">
                     <strong>Rebuilding a single service</strong> after a code change:
-                    <pre><code>./flowtree/core/rebuild.sh flowtree-controller
-./flowtree/core/rebuild.sh ar-manager</code></pre>
+                    <pre><code>./flowtree/runtime/rebuild.sh flowtree-controller
+./flowtree/runtime/rebuild.sh ar-manager</code></pre>
                 </div>
             </section>
 
@@ -460,9 +460,9 @@ AR_MANAGER_TOKEN_FILE=/Users/Shared/flowtree/manager/manager-tokens.json \
                 no inbound firewall rules are needed on the agent machine.</p>
 
                 <h3>6a. Configure the agent environment</h3>
-                <pre><code>cp flowtree/core/agent/.env.example flowtree/core/agent/.env</code></pre>
+                <pre><code>cp flowtree/runtime/agent/.env.example flowtree/runtime/agent/.env</code></pre>
 
-                <p>Edit <code>flowtree/core/agent/.env</code>:</p>
+                <p>Edit <code>flowtree/runtime/agent/.env</code>:</p>
                 <pre><code>FLOWTREE_ROOT_HOST=my-studio.taild1234.ts.net   # controller hostname
 FLOWTREE_ROOT_PORT=7766                         # default, change if needed
 CLAUDE_CODE_OAUTH_TOKEN=&lt;token from claude setup-token&gt;
@@ -472,14 +472,14 @@ AGENT_COUNT=2                                   # number of parallel agents
 SSH_KEY_DIR=~/.ssh                              # SSH key for git push</code></pre>
 
                 <h3>6b. Start the pool</h3>
-                <pre><code>./flowtree/core/rebuild.sh --agents-only</code></pre>
+                <pre><code>./flowtree/runtime/rebuild.sh --agents-only</code></pre>
 
                 <p>Or, to build both stacks together in one command:</p>
-                <pre><code>./flowtree/core/rebuild.sh --agents</code></pre>
+                <pre><code>./flowtree/runtime/rebuild.sh --agents</code></pre>
 
                 <h3>6c. Verify agents are connected</h3>
-                <pre><code>docker compose -f flowtree/core/agent/docker-compose.yml ps
-docker compose -f flowtree/core/agent/docker-compose.yml logs -f</code></pre>
+                <pre><code>docker compose -f flowtree/runtime/agent/docker-compose.yml ps
+docker compose -f flowtree/runtime/agent/docker-compose.yml logs -f</code></pre>
 
                 <p>Look for log lines like:</p>
                 <pre><code>FlowTree Agent starting
@@ -489,7 +489,7 @@ NodeGroup: startPersistentHost connecting to my-studio.taild1234.ts.net:7766</co
 
                 <div class="tip">
                     <strong>Scale up or down</strong> without rebuilding:
-                    <pre><code>AGENT_COUNT=4 docker compose -f flowtree/core/agent/docker-compose.yml up -d --scale agent=4</code></pre>
+                    <pre><code>AGENT_COUNT=4 docker compose -f flowtree/runtime/agent/docker-compose.yml up -d --scale agent=4</code></pre>
                 </div>
             </section>
 
@@ -550,7 +550,7 @@ curl -H "Authorization: Bearer armt_your_token" \
   "https://my-studio.taild1234.ts.net/api/workstreams/ws-myproject/status"
 
 # Watch agent logs in real time
-docker compose -f flowtree/core/agent/docker-compose.yml logs -f</code></pre>
+docker compose -f flowtree/runtime/agent/docker-compose.yml logs -f</code></pre>
             </section>
 
             <!-- ── Step 8: Surviving reboots ─────────────────────────── -->
@@ -564,20 +564,20 @@ docker compose -f flowtree/core/agent/docker-compose.yml logs -f</code></pre>
                 Docker containers do not — they need to be restarted. The simplest
                 approach is a single command:</p>
 
-                <pre><code>./flowtree/core/rebuild.sh --agents</code></pre>
+                <pre><code>./flowtree/runtime/rebuild.sh --agents</code></pre>
 
                 <p>This rebuilds nothing if the jars are already compiled and the images
                 are already built — Docker's layer cache means it completes in seconds.
                 To skip the Maven build entirely when you have not changed Java code:</p>
 
-                <pre><code>docker compose -f flowtree/core/controller/docker-compose.yml up -d
-docker compose -f flowtree/core/agent/docker-compose.yml up -d</code></pre>
+                <pre><code>docker compose -f flowtree/runtime/controller/docker-compose.yml up -d
+docker compose -f flowtree/runtime/agent/docker-compose.yml up -d</code></pre>
 
                 <h3>Optional: launch on login (macOS)</h3>
                 <p>A launchd plist for ar-manager is provided at
                 <code>tools/mcp/manager/com.almostrealism.ar-manager.plist</code>.
                 For the full stack, a simple approach is a login item that runs
-                <code>./flowtree/core/rebuild.sh --agents</code> from the repository root.</p>
+                <code>./flowtree/runtime/rebuild.sh --agents</code> from the repository root.</p>
 
                 <div class="info">
                     <strong>Verify funnel is still active after reboot:</strong>
@@ -607,7 +607,7 @@ curl https://my-studio.taild1234.ts.net/_health</code></pre>
                         <tr>
                             <td><code>/_health</code> returns 502 from public URL</td>
                             <td>ar-manager container stopped after reboot</td>
-                            <td><code>./flowtree/core/rebuild.sh</code></td>
+                            <td><code>./flowtree/runtime/rebuild.sh</code></td>
                         </tr>
                         <tr>
                             <td>Jobs submitted but agents never pick them up</td>
@@ -645,12 +645,12 @@ curl https://my-studio.taild1234.ts.net/_health</code></pre>
 
                 <h3>Useful log commands</h3>
                 <pre><code># Controller stack
-docker compose -f flowtree/core/controller/docker-compose.yml logs -f flowtree-controller
-docker compose -f flowtree/core/controller/docker-compose.yml logs -f ar-manager
-docker compose -f flowtree/core/controller/docker-compose.yml logs -f ar-memory
+docker compose -f flowtree/runtime/controller/docker-compose.yml logs -f flowtree-controller
+docker compose -f flowtree/runtime/controller/docker-compose.yml logs -f ar-manager
+docker compose -f flowtree/runtime/controller/docker-compose.yml logs -f ar-memory
 
 # Agent pool
-docker compose -f flowtree/core/agent/docker-compose.yml logs -f</code></pre>
+docker compose -f flowtree/runtime/agent/docker-compose.yml logs -f</code></pre>
             </section>
 
             <!-- ── Navigation ────────────────────────────────────────── -->
@@ -659,13 +659,13 @@ docker compose -f flowtree/core/agent/docker-compose.yml logs -f</code></pre>
                 <ul>
                     <li><a href="../modules/flowtree.html">FlowTree Module Reference</a>
                         — Node/NodeGroup internals, relay mechanism, label routing</li>
-                    <li><a href="../../flowtree/core/docs/coding-agent.md">Coding Agent Guide</a>
+                    <li><a href="../../flowtree/runtime/docs/coding-agent.md">Coding Agent Guide</a>
                         — ClaudeCodeJob options, git management, deduplication modes</li>
-                    <li><a href="../../flowtree/core/docs/ci-integration.md">CI Integration Guide</a>
+                    <li><a href="../../flowtree/runtime/docs/ci-integration.md">CI Integration Guide</a>
                         — Auto-resolve failures, verify-completion workflow</li>
                     <li><a href="../../tools/mcp/manager/README.md">ar-manager Reference</a>
                         — Full tool list, scopes, token management, reverse proxy config</li>
-                    <li><a href="../../flowtree/core/docs/agent-pool.md">Agent Pool Documentation</a>
+                    <li><a href="../../flowtree/runtime/docs/agent-pool.md">Agent Pool Documentation</a>
                         — Scaling, labels, bare-metal setup</li>
                 </ul>
             </section>

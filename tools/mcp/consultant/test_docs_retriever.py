@@ -1,7 +1,7 @@
 """Tests for the documentation index in ar-consultant's DocsRetriever.
 
 The most important assertion this file makes: queries for phrases that
-appear in standalone (non-Maven-layer) docs — flowtree/core/docs, tools/mcp,
+appear in standalone (non-Maven-layer) docs — flowtree/runtime/docs, tools/mcp,
 docs/tutorials — return at least one result. A regression that drops
 those roots from the index reproduces the failure mode this test exists
 to prevent: agents asking the consultant about pushed tools, workspace
@@ -41,24 +41,24 @@ class TestStandaloneDocCoverage(unittest.TestCase):
         )
 
     def test_pushed_tools_topic_is_indexed(self):
-        self._assertHasHitIn("registerPushedTools", "flowtree/core/docs/")
+        self._assertHasHitIn("registerPushedTools", "flowtree/runtime/docs/")
 
     def test_managed_tools_downloader_is_indexed(self):
-        self._assertHasHitIn("ManagedToolsDownloader", "flowtree/core/docs/")
+        self._assertHasHitIn("ManagedToolsDownloader", "flowtree/runtime/docs/")
 
     def test_armt_tmp_token_is_indexed(self):
-        self._assertHasHitIn("armt_tmp", "flowtree/core/docs/")
+        self._assertHasHitIn("armt_tmp", "flowtree/runtime/docs/")
 
     def test_secret_render_file_is_indexed(self):
-        # Hit may come from flowtree/core/docs or tools/mcp — either is fine.
+        # Hit may come from flowtree/runtime/docs or tools/mcp — either is fine.
         hits = self.retriever.search("secret_render_file", max_results=5)
         self.assertTrue(
             any(
-                h["file"].startswith("flowtree/core/docs/")
+                h["file"].startswith("flowtree/runtime/docs/")
                 or h["file"].startswith("tools/mcp/")
                 for h in hits
             ),
-            f"Expected a hit in flowtree/core/docs/ or tools/mcp/; got "
+            f"Expected a hit in flowtree/runtime/docs/ or tools/mcp/; got "
             f"{[h['file'] for h in hits]}",
         )
 
@@ -111,11 +111,11 @@ class TestFileLists(unittest.TestCase):
     def test_markdown_files_includes_flowtree_docs(self):
         readmes, others = self.retriever._markdown_files()
         files = self._file_set(readmes) | self._file_set(others)
-        self.assertIn("flowtree/core/docs/architecture.md", files)
+        self.assertIn("flowtree/runtime/docs/architecture.md", files)
         self.assertIn("tools/mcp/SECRETS.md", files)
         # README split rule: flowtree's README belongs in the readmes bucket.
         readme_files = self._file_set(readmes)
-        self.assertIn("flowtree/core/README.md", readme_files)
+        self.assertIn("flowtree/runtime/README.md", readme_files)
 
     def test_html_files_includes_tutorials(self):
         files = self._file_set(self.retriever._html_files())
@@ -123,7 +123,7 @@ class TestFileLists(unittest.TestCase):
 
     def test_all_doc_files_includes_standalone_roots(self):
         files = self._file_set(self.retriever._all_doc_files())
-        self.assertIn("flowtree/core/docs/claude-code-job.md", files)
+        self.assertIn("flowtree/runtime/docs/claude-code-job.md", files)
         self.assertIn("docs/tutorials/09-workspace-secrets.html", files)
 
 

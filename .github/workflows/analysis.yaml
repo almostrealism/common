@@ -637,7 +637,7 @@ jobs:
 
       - name: Flowtree Tests
         run: |
-          mvn test -pl flowtree/core \
+          mvn test -pl flowtree/runtime \
            -DAR_TEST_PROFILE=pipeline
 
       - name: Collect Coverage Data

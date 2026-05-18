@@ -37,10 +37,10 @@ accessed by ar-consultant and ar-manager through the shared
 
 ### Docker (recommended)
 
-ar-memory is defined as a service in `flowtree/core/controller/docker-compose.yml`:
+ar-memory is defined as a service in `flowtree/runtime/controller/docker-compose.yml`:
 
 ```bash
-docker compose -f flowtree/core/controller/docker-compose.yml up -d ar-memory
+docker compose -f flowtree/runtime/controller/docker-compose.yml up -d ar-memory
 ```
 
 Data persists at `/Users/Shared/flowtree/memory-data/` on the host.

@@ -156,7 +156,7 @@ MODULES = {
     "utils": {"badge": "Application", "desc": "Testing framework"},
     "flowtree": {"badge": "Infrastructure",
                  "desc": "Distributed job dispatch, ClaudeCodeJob, MCP wiring, pushed tools",
-                 "path": "flowtree/core"},
+                 "path": "flowtree/runtime"},
 }
 
 
@@ -167,8 +167,8 @@ MODULES = {
 # *.html, individual files are appended directly. Non-existent paths are
 # silently skipped so a partial checkout doesn't fail the tool.
 STANDALONE_MD_ROOTS = [
-    "flowtree/core/README.md",
-    "flowtree/core/docs",
+    "flowtree/runtime/README.md",
+    "flowtree/runtime/docs",
     "tools/mcp/README.md",
     "tools/mcp/CLAUDE.md",
     "tools/mcp/SECRETS.md",
