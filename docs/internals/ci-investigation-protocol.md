@@ -44,7 +44,7 @@ Error: Process completed with exit code 1.
 ```
 
 **Root cause chain**:
-1. Only non-layer-flagged directories changed (flowtree/, flowtreeapi/, graphpersist/, tools/)
+1. Only non-layer-flagged directories changed (anywhere under flowtree/ or tools/)
 2. No named-layer flag was set (`base_changed`, `compute_changed`, etc. all false)
 3. Both `test` and `test-media` were skipped (gated on layer flags)
 4. No `coverage-group-*` or `coverage-media` artifacts were uploaded
@@ -389,9 +389,7 @@ and tags `["CI", "pipeline", "post-mortem"]`.
 | engine/ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | extern/ | ✓ | — | ✓ | ✓ | ✓ |
 | studio/ | ✓ | — | ✓ | ✓ | ✓ |
-| flowtree/ | ✓ | — | — | ✓ | ✓ |
-| flowtreeapi/ | ✓ | — | — | ✓ | ✓ |
-| graphpersist/ | ✓ | — | — | ✓ | ✓ |
+| flowtree/ (any subdir) | ✓ | — | — | ✓ | ✓ |
 | tools/ | ✓ | — | — | ✓ | ✓ |
 
 ✓ = runs, — = skipped

@@ -77,9 +77,9 @@ and `flowtree/runtime` but have no flowtree-specific runtime dependencies:
 - `io.flowtree.jobs.GitOperations` — wraps `git`/`ssh` subprocess execution with PATH
   augmentation for headless environments.
 
-These were originally in `flowtree/core` but were pulled down so the agent-runner
-abstraction (which `ClaudeCodeRunner` consumes both of) does not have to depend on the
-runtime.
+These were originally part of `flowtree/runtime` (formerly `flowtree/core`, then the
+single flowtree module) but were pulled down so the agent-runner abstraction (which
+`ClaudeCodeRunner` consumes both of) does not have to depend on the runtime.
 
 #### Who depends on it
 - `ar-flowtree-agents` — `ClaudeCodeRunner` uses both helpers

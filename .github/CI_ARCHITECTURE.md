@@ -786,7 +786,7 @@ run: |
 
 **Diagnosis**:
 1. Examine the detection loop in the `changes` job
-2. Check whether any of the flowtree directories (`flowtree/`, `flowtreeapi/`, etc.) are being matched by a layer detection rule intended for a different directory
+2. Check whether any of the flowtree subdirectories (`flowtree/api`, `flowtree/base`, `flowtree/agents`, `flowtree/python`, `flowtree/graphpersist`, `flowtree/runtime`) are being matched by a layer detection rule intended for a different directory
 3. Common cause: an overly broad directory prefix match (e.g., `flowtree/` matching a rule intended for a different `fl*` pattern)
 
 **Fix**: Correct the detection loop pattern to not match flowtree directories with layer flags.
