@@ -135,7 +135,12 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
         assertEquals(0, b.translateMcpServers("{}").size());
     }
 
-    /** Built-in tool names become per-tool allow entries; mcp__ entries become per-server grants. */
+    /**
+     * Built-in tool names become per-tool allow entries; each MCP server with
+     * any allowed tool becomes a single {@code "allow"} action string —
+     * opencode 1.x's PermissionActionConfig does not support per-tool
+     * granularity on MCP servers, only a single action per server.
+     */
     @Test(timeout = 5000)
     public void translateAllowlistHandlesBuiltinsAndMcp() {
         OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
@@ -150,12 +155,10 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
         assertFalse(tools.has("Write"));
 
         JsonNode mcp = permission.path("mcp");
-        assertTrue(mcp.path("ar-manager").isArray());
-        assertEquals(2, mcp.path("ar-manager").size());
-        assertEquals("memory_store", mcp.path("ar-manager").get(0).asText());
-        assertEquals("memory_recall", mcp.path("ar-manager").get(1).asText());
-        assertEquals(1, mcp.path("ar-build-validator").size());
-        assertEquals("start_validation", mcp.path("ar-build-validator").get(0).asText());
+        assertEquals("allow", mcp.path("ar-manager").asText());
+        assertEquals("allow", mcp.path("ar-build-validator").asText());
+        // Two distinct ar-manager tool entries collapse to a single per-server allow.
+        assertEquals(2, mcp.size());
     }
 
     /** Empty allowlist input yields an empty permission block. */
@@ -189,7 +192,7 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
         assertTrue(root.path("provider").path("local").path("models").has("custom-model"));
         assertTrue(root.path("mcp").has("ar-manager"));
         assertEquals("allow", root.path("permission").path("tools").path("Read").asText());
-        assertTrue(root.path("permission").path("mcp").path("ar-manager").isArray());
+        assertEquals("allow", root.path("permission").path("mcp").path("ar-manager").asText());
     }
 
     /** When the canonical {@code {"mcpServers":{}}} shape is empty, no top-level {@code mcp} block is emitted. */

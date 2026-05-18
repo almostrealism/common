@@ -25,8 +25,10 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -264,12 +266,16 @@ final class OpencodeConfigBuilder {
      *   <li>{@code tools}: built-in tool toggles for {@code Read}, {@code Edit},
      *       {@code Bash}, {@code Glob}, {@code Grep}, {@code Write}. Each entry
      *       is set to {@code "allow"} when the CSV lists it.</li>
-     *   <li>{@code mcp}: per-server tool grants for every
-     *       {@code mcp__server__tool} entry, grouped by server.</li>
+     *   <li>{@code mcp}: per-server allow markers for every server that has at
+     *       least one {@code mcp__server__tool} entry. Each value is the
+     *       opencode {@code PermissionActionConfig} string {@code "allow"} —
+     *       opencode 1.x does not support per-tool granularity on MCP servers,
+     *       only a single action per server. Per-tool gating still happens via
+     *       Claude Code's {@code --allowedTools} list; opencode's filtering
+     *       happens at the registered-server level.</li>
      * </ul>
      *
-     * <p>Unknown entries are ignored. The exact opencode field names are
-     * evolving; this method is the single point of change.</p>
+     * <p>Unknown entries are ignored.</p>
      *
      * @param csv the orchestrator's CSV allowlist (may be null/empty)
      * @return the opencode permission block; empty when no tools were granted
@@ -281,7 +287,7 @@ final class OpencodeConfigBuilder {
         }
         List<String> entries = splitCsv(csv);
         ObjectNode tools = MAPPER.createObjectNode();
-        Map<String, ArrayNode> mcpGrants = new LinkedHashMap<>();
+        Set<String> mcpServers = new LinkedHashSet<>();
         for (String entry : entries) {
             String value = entry.trim();
             if (value.isEmpty()) continue;
@@ -291,21 +297,18 @@ final class OpencodeConfigBuilder {
             }
             if (value.startsWith("mcp__")) {
                 String[] parts = value.split("__", 3);
-                if (parts.length >= 3 && !parts[1].isEmpty()) {
-                    ArrayNode arr = mcpGrants.computeIfAbsent(parts[1], k -> MAPPER.createArrayNode());
-                    arr.add(parts[2]);
-                } else if (parts.length == 2 && !parts[1].isEmpty()) {
-                    mcpGrants.computeIfAbsent(parts[1], k -> MAPPER.createArrayNode()).add("*");
+                if (parts.length >= 2 && !parts[1].isEmpty()) {
+                    mcpServers.add(parts[1]);
                 }
             }
         }
         if (tools.size() > 0) {
             out.set("tools", tools);
         }
-        if (!mcpGrants.isEmpty()) {
+        if (!mcpServers.isEmpty()) {
             ObjectNode mcp = out.putObject("mcp");
-            for (Map.Entry<String, ArrayNode> e : mcpGrants.entrySet()) {
-                mcp.set(e.getKey(), e.getValue());
+            for (String server : mcpServers) {
+                mcp.put(server, "allow");
             }
         }
         return out;
