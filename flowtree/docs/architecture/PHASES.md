@@ -101,6 +101,22 @@ the default behavior (it inherits `PRIMARY`'s runner if unset).
 
 ---
 
+## `DEDUPLICATION` and local-model routing
+
+The `DEDUPLICATION` phase is a natural candidate for routing to the
+`OpencodeRunner` backed by a local llama.cpp inference server instead of
+Claude Code. Deduplication is a structured, rule-following task — identify
+and remove any duplicate methods introduced by the primary phase — that does
+not require cloud-scale reasoning. Routing it to a local model such as
+Qwen3-235B-A22B-Instruct-2507 (currently served from `mac-studio:8084`)
+eliminates the Claude API cost for that phase while keeping the primary and
+other enforcement phases on the cloud model. To enable this, set the
+`deduplication` wire name to `"opencode"` in the per-workstream or per-job
+runner map and point `OPENCODE_PROVIDER_URL` at the llama.cpp endpoint; the
+routing precedence ladder handles the rest without any further configuration.
+
+---
+
 ## Telemetry
 
 Every completed job emits a `CodingAgentJobEvent` whose payload includes:
