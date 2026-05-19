@@ -35,32 +35,37 @@ import java.util.function.Consumer;
  */
 public enum Phase {
     /** Primary work — the initial agent session that runs the user's prompt. */
-    PRIMARY("primary"),
+    PRIMARY("primary", "Primary work — the initial agent session that runs the user's prompt."),
     /** Deduplication audit session. */
-    DEDUPLICATION("deduplication"),
+    DEDUPLICATION("deduplication", "Deduplication audit session."),
     /** Organizational placement review session. */
-    ORGANIZATIONAL_PLACEMENT("organizational-placement"),
+    ORGANIZATIONAL_PLACEMENT("organizational-placement", "Organizational placement review session."),
     /** Retry of the primary prompt triggered by {@code EnforceChangesRule}. */
-    ENFORCE_CHANGES("enforce-changes"),
+    ENFORCE_CHANGES("enforce-changes", "Retry of the primary prompt triggered by EnforceChangesRule."),
     /** Correction session triggered when Maven dependency changes are detected. */
-    MAVEN_DEPENDENCY_PROTECTION("maven-dependency-protection"),
+    MAVEN_DEPENDENCY_PROTECTION("maven-dependency-protection", "Correction session triggered when Maven dependency changes are detected."),
     /** Correction session triggered by a non-zero post-completion command exit. */
-    POST_COMPLETION("post-completion"),
+    POST_COMPLETION("post-completion", "Correction session triggered by a non-zero post-completion command exit."),
     /** Correction session for missing or invalid {@code commit.txt}. */
-    COMMIT_MESSAGE("commit-message"),
+    COMMIT_MESSAGE("commit-message", "Correction session for missing or invalid commit.txt."),
     /** Restart triggered when the agent tampered with git state. */
-    GIT_TAMPERING_RESTART("git-tampering-restart");
+    GIT_TAMPERING_RESTART("git-tampering-restart", "Restart triggered when the agent tampered with git state.");
 
     /** Canonical kebab-case identifier used on the wire. */
     private final String wireName;
 
+    /** Short human-readable description of this phase. */
+    private final String description;
+
     /**
-     * Constructs a phase with the given wire identifier.
+     * Constructs a phase with the given wire identifier and description.
      *
-     * @param wireName the canonical kebab-case identifier
+     * @param wireName    the canonical kebab-case identifier
+     * @param description the short human-readable description
      */
-    Phase(String wireName) {
+    Phase(String wireName, String description) {
         this.wireName = wireName;
+        this.description = description;
     }
 
     /**
@@ -71,6 +76,15 @@ public enum Phase {
      */
     public String wireName() {
         return wireName;
+    }
+
+    /**
+     * Returns a short human-readable description of this phase.
+     *
+     * @return the description; never {@code null}
+     */
+    public String description() {
+        return description;
     }
 
     /**

@@ -23,6 +23,9 @@ import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
+import io.flowtree.jobs.agent.AgentCapabilities;
+import io.flowtree.jobs.agent.AgentRunnerRegistry;
+import io.flowtree.jobs.agent.Phase;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -65,51 +68,24 @@ import java.util.regex.Pattern;
  * <h2>URL Pattern</h2>
  * <table>
  *   <tr><th>Method</th><th>Path</th><th>Body</th><th>Description</th></tr>
- *   <tr><td>POST</td><td>/api/workstreams/{id}/messages</td>
- *       <td>{@code {"text":"..."}}</td>
- *       <td>Post a message to the workstream's channel</td></tr>
- *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}/messages</td>
- *       <td>{@code {"text":"..."}}</td>
- *       <td>Post a message to the job's thread</td></tr>
- *   <tr><td>POST</td><td>/api/workstreams/{id}/submit</td>
- *       <td>{@code {"prompt":"..."}}</td>
- *       <td>Submit a new job to connected agents</td></tr>
- *   <tr><td>POST</td><td>/api/submit</td>
- *       <td>{@code {"prompt":"...","targetBranch":"..."}}</td>
- *       <td>Submit a job, resolving the workstream from the request body</td></tr>
- *   <tr><td>POST</td><td>/api/workstreams</td>
- *       <td>{@code {"defaultBranch":"...","baseBranch":"...","planningDocument":"..."}}</td>
- *       <td>Register a new workstream (auto-creates Slack channel)</td></tr>
- *   <tr><td>POST</td><td>/api/workstreams/{id}/update</td>
- *       <td>{@code {"channelId":"...","channelName":"..."}}</td>
- *       <td>Update an existing workstream</td></tr>
- *   <tr><td>POST</td><td>/api/workstreams/{id}</td>
- *       <td>{@code {"jobId":"...","status":"..."}}</td>
- *       <td>Receive a status event for the workstream</td></tr>
- *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}</td>
- *       <td>{@code {"jobId":"...","status":"..."}}</td>
- *       <td>Receive a job status event</td></tr>
- *   <tr><td>GET</td><td>/api/github/proxy?url=...</td><td>--</td>
- *       <td>Proxy a GET request to the GitHub API</td></tr>
- *   <tr><td>POST</td><td>/api/github/proxy?url=...</td>
- *       <td><i>raw JSON payload</i></td>
- *       <td>Proxy a POST request to the GitHub API</td></tr>
- *   <tr><td>PUT</td><td>/api/github/proxy?url=...</td>
- *       <td><i>raw JSON payload</i></td>
- *       <td>Proxy a PUT request to the GitHub API</td></tr>
- *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td>
- *       <td>List all registered workstreams with capabilities</td></tr>
- *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs</td><td>--</td>
- *       <td>List recent jobs for a workstream (newest first); optional {@code limit} query param</td></tr>
- *   <tr><td>GET</td><td>/api/jobs/{jobId}</td><td>--</td>
- *       <td>Look up a specific job event by ID</td></tr>
- *   <tr><td>GET</td><td>/api/config/accept-automated-jobs</td><td>--</td>
- *       <td>Check whether automated job submissions are accepted</td></tr>
- *   <tr><td>POST</td><td>/api/config/accept-automated-jobs</td>
- *       <td>{@code {"accept":true}}</td>
- *       <td>Enable or disable automated job submissions</td></tr>
- *   <tr><td>GET</td><td>/api/health</td><td>--</td>
- *       <td>Health check; response includes {@code server_time} (ISO-8601 UTC)</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/messages</td><td>{@code {"text":"..."}}</td><td>Post a message to the workstream's channel</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}/messages</td><td>{@code {"text":"..."}}</td><td>Post a message to the job's thread</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/submit</td><td>{@code {"prompt":"..."}}</td><td>Submit a new job to connected agents</td></tr>
+ *   <tr><td>POST</td><td>/api/submit</td><td>{@code {"prompt":"...","targetBranch":"..."}}</td><td>Submit a job, resolving the workstream from the request body</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams</td><td>{@code {"defaultBranch":"...","baseBranch":"...","planningDocument":"..."}}</td><td>Register a new workstream (auto-creates Slack channel)</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/update</td><td>{@code {"channelId":"...","channelName":"..."}}</td><td>Update an existing workstream</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}</td><td>{@code {"jobId":"...","status":"..."}}</td><td>Receive a status event for the workstream</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}</td><td>{@code {"jobId":"...","status":"..."}}</td><td>Receive a job status event</td></tr>
+ *   <tr><td>GET</td><td>/api/github/proxy?url=...</td><td>--</td><td>Proxy a GET request to the GitHub API</td></tr>
+ *   <tr><td>POST</td><td>/api/github/proxy?url=...</td><td><i>raw JSON payload</i></td><td>Proxy a POST request to the GitHub API</td></tr>
+ *   <tr><td>PUT</td><td>/api/github/proxy?url=...</td><td><i>raw JSON payload</i></td><td>Proxy a PUT request to the GitHub API</td></tr>
+ *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td><td>List all registered workstreams with capabilities</td></tr>
+ *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs</td><td>--</td><td>List recent jobs for a workstream; optional {@code limit} query param</td></tr>
+ *   <tr><td>GET</td><td>/api/jobs/{jobId}</td><td>--</td><td>Look up a specific job event by ID</td></tr>
+ *   <tr><td>GET</td><td>/api/config/accept-automated-jobs</td><td>--</td><td>Check whether automated job submissions are accepted</td></tr>
+ *   <tr><td>POST</td><td>/api/config/accept-automated-jobs</td><td>{@code {"accept":true}}</td><td>Enable or disable automated job submissions</td></tr>
+ *   <tr><td>GET</td><td>/api/health</td><td>--</td><td>Health check; response includes {@code server_time} (ISO-8601 UTC)</td></tr>
+ *   <tr><td>GET</td><td>/api/agents</td><td>--</td><td>Enumerate available runners, phases, model names, and the built-in default runner</td></tr>
  * </table>
  *
  * @author Michael Murray
@@ -365,6 +341,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return newFixedLengthResponse(Response.Status.OK,
                     "application/json",
                     "{\"status\":\"ok\",\"server_time\":\"" + serverTime + "\"}");
+        }
+
+        if (Method.GET.equals(method) && "/api/agents".equals(uri)) {
+            return handleGetAgents();
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/stats")) {
@@ -1548,6 +1528,48 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", json.toString());
+    }
+
+    /**
+     * Handles {@code GET /api/agents}; returns JSON with runners, phases, models, and defaultRunner.
+     */
+    private Response handleGetAgents() {
+        StringBuilder j = new StringBuilder("{\"runners\":[");
+        String sc = "";
+        for (String n : AgentRunnerRegistry.available()) {
+            AgentCapabilities c = AgentRunnerRegistry.get(n).capabilities();
+            j.append(sc).append("{\"name\":").append(escapeJsonValue(n))
+             .append(",\"capabilities\":{\"reportsCost\":").append(c.reportsCost())
+             .append(",\"reportsTurns\":").append(c.reportsTurns())
+             .append(",\"supportsEffortLevel\":").append(c.supportsEffortLevel())
+             .append(",\"supportsMaxBudget\":").append(c.supportsMaxBudget())
+             .append(",\"supportsMcpHttpTransport\":").append(c.supportsMcpHttpTransport())
+             .append(",\"supportsMcpStdioTransport\":").append(c.supportsMcpStdioTransport())
+             .append(",\"supportsPermissionDenialReporting\":").append(c.supportsPermissionDenialReporting())
+             .append(",\"supportedModels\":[");
+            String sm = "";
+            for (String m : c.supportedModels()) {
+                j.append(sm).append(escapeJsonValue(m));
+                sm = ",";
+            }
+            j.append("]}}");
+            sc = ",";
+        }
+        j.append("],\"phases\":[");
+        String sp = "";
+        for (Phase p : Phase.values()) {
+            j.append(sp).append("{\"wireName\":").append(escapeJsonValue(p.wireName()))
+             .append(",\"description\":").append(escapeJsonValue(p.description())).append("}");
+            sp = ",";
+        }
+        j.append("],\"models\":[");
+        String se = "";
+        for (String m : CodingAgentJob.VALID_MODELS) {
+            j.append(se).append(escapeJsonValue(m));
+            se = ",";
+        }
+        j.append("],\"defaultRunner\":").append(escapeJsonValue(AgentRunnerRegistry.CLAUDE)).append("}");
+        return newFixedLengthResponse(Response.Status.OK, "application/json", j.toString());
     }
 
     /**
