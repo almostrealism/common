@@ -161,7 +161,12 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
         assertEquals(2, mcp.size());
     }
 
-    /** Empty allowlist input yields an empty permission block. */
+    /**
+     * Empty allowlist input yields an empty permission block. The always-on
+     * {@code external_directory} grant is added by {@link OpencodeConfigBuilder#buildConfigJson},
+     * not by {@link OpencodeConfigBuilder#translateAllowlist}, so it must not
+     * leak into the bare translator output.
+     */
     @Test(timeout = 5000)
     public void translateAllowlistHandlesEmptyInput() {
         OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
@@ -193,6 +198,9 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
         assertTrue(root.path("mcp").has("ar-manager"));
         assertEquals("allow", root.path("permission").path("tools").path("Read").asText());
         assertEquals("allow", root.path("permission").path("mcp").path("ar-manager").asText());
+        // external_directory is always granted in the full build so headless
+        // runs don't hang on opencode's interactive permission prompt.
+        assertEquals("allow", root.path("permission").path("external_directory").asText());
     }
 
     /** When the canonical {@code {"mcpServers":{}}} shape is empty, no top-level {@code mcp} block is emitted. */

@@ -93,6 +93,33 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 cmd.contains("--config"));
         Assert.assertFalse("opencode 1.x renamed --output-format to --format",
                 cmd.contains("--output-format"));
+        Assert.assertFalse("no working directory set -- --dir must be absent",
+                cmd.contains("--dir"));
+        Assert.assertEquals("do the thing", cmd.get(cmd.size() - 1));
+    }
+
+    /**
+     * When the request supplies a working directory, the command line includes
+     * {@code --dir <absolute-path>} so opencode pins the session root to the
+     * repo clone instead of walking up to the user's home directory.
+     */
+    @Test(timeout = 5000)
+    public void buildCommandLineIncludesDirWhenWorkingDirectorySet() {
+        OpencodeRunner runner = new OpencodeRunner();
+        Path workDir = Paths.get("/workspace/project/almostrealism-common");
+        AgentRunRequest req = AgentRunRequest.builder()
+                .prompt("do the thing")
+                .allowedTools("Read,Edit")
+                .mcpConfigJson("{\"mcpServers\":{}}")
+                .model("qwen3-coder")
+                .workingDirectory(workDir)
+                .build();
+        Path configPath = Paths.get("/tmp/opencode-config.json");
+
+        List<String> cmd = runner.buildCommandLine(
+                FAKE_BINARY, req, configPath, "local/qwen3-coder");
+
+        assertFlagFollows(cmd, "--dir", workDir.toString());
         Assert.assertEquals("do the thing", cmd.get(cmd.size() - 1));
     }
 

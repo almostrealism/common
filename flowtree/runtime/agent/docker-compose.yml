@@ -60,6 +60,12 @@ services:
       - OPENCODE_PROVIDER_URL=${OPENCODE_PROVIDER_URL:-}
       - OPENCODE_API_KEY=${OPENCODE_API_KEY:-}
       - OPENCODE_DEFAULT_MODEL=${OPENCODE_DEFAULT_MODEL:-}
+      # ar-consultant inside the agent container reads this to know which
+      # llama.cpp endpoint to call. Leave unset to fall back to the consultant's
+      # default (host.docker.internal:8084 inside containers); set to the same
+      # endpoint as OPENCODE_PROVIDER_URL minus the trailing `/v1` to share
+      # the opencode model.
+      - AR_CONSULTANT_LLAMACPP_URL=${AR_CONSULTANT_LLAMACPP_URL:-}
     # Lets containers resolve `mac-studio` to its Tailscale IP. The short
     # MagicDNS name does not propagate into Docker Desktop's embedded DNS
     # resolver — confirmed by `getent hosts mac-studio` failing inside a

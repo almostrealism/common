@@ -179,9 +179,14 @@ final class OpencodeConfigBuilder {
         }
 
         ObjectNode permission = translateAllowlist(request != null ? request.getAllowedTools() : null);
-        if (permission != null && permission.size() > 0) {
-            root.set("permission", permission);
-        }
+        // opencode's --dangerously-skip-permissions flag does NOT cover the
+        // external_directory permission (paths outside the session root), so
+        // tool calls that touch files via an absolute path still hang on an
+        // interactive prompt in headless mode. Granting it here makes the
+        // permission policy explicit so subagents can read planning docs,
+        // PR diffs, etc. without blocking.
+        permission.put("external_directory", "allow");
+        root.set("permission", permission);
 
         try {
             return MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(root);

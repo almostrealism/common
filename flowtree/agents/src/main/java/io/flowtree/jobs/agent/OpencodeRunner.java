@@ -203,6 +203,17 @@ public class OpencodeRunner implements AgentRunner {
         command.add("--format");
         command.add("json");
         command.add("--dangerously-skip-permissions");
+        // opencode walks UP from the subprocess cwd looking for a project
+        // root and falls back to the user's home directory when none is
+        // found, producing a "global" projectID with every absolute file
+        // path treated as external_directory. Pin the session root to the
+        // request's working directory so the repo clone IS the project
+        // root and subagents inherit it.
+        Path workDir = request.getWorkingDirectory();
+        if (workDir != null) {
+            command.add("--dir");
+            command.add(workDir.toAbsolutePath().toString());
+        }
         command.add(request.getPrompt() != null ? request.getPrompt() : "");
         return command;
     }
