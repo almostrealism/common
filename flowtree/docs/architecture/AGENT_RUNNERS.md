@@ -192,3 +192,77 @@ runner and what it looked for. The orchestrator does **not** silently
 fall back to a different runner: a per-phase runner selection is an
 operator decision, and substituting a different runner would hide the
 cost/behavior differences that motivated the choice.
+
+---
+
+## Configuring runners
+
+Runner selection follows a three-level precedence ladder (highest to lowest):
+
+1. **Per-job override** — the `runners` / `defaultRunner` fields in the
+   job submission payload, forwarded from `workstream_submit_task`'s
+   `runners` and `default_runner` parameters.
+2. **Workstream default** — the `runners` / `defaultRunner` fields stored
+   in the workstream's configuration, set via `workstream_register` or
+   `workstream_update_config`'s `runners` and `default_runner` parameters.
+3. **Built-in default** — `"claude"` (`AgentRunnerRegistry.CLAUDE`).
+
+`SubmissionRunnerResolver` in `flowtree/runtime` implements this ladder.
+Never bypass it: the three levels exist so operators can set a workstream
+policy without touching job payloads, and individual jobs can still
+override the policy when needed.
+
+### Discovering available options
+
+Call the `agent_options` MCP tool (read-only; no write scope required) to
+enumerate:
+
+- **`runners`** — available runner names and their `AgentCapabilities` flags.
+  Use the `name` field as the value in the `runners` JSON object.
+- **`phases`** — the eight phase wire names (`"primary"`, `"deduplication"`,
+  `"organizational-placement"`, `"enforce-changes"`,
+  `"maven-dependency-protection"`, `"post-completion"`,
+  `"commit-message"`, `"git-tampering-restart"`) and their descriptions.
+  Use these as keys in the `runners` JSON object.
+- **`models`** — accepted model aliases and full identifiers.
+- **`defaultRunner`** — the current built-in default (`"claude"`).
+
+The `agent_options` tool proxies `GET /api/agents` on the controller.
+
+### Setting a workstream-level default
+
+```python
+# Route all phases to opencode by default for this workstream
+workstream_update_config(
+    workstream_id="ws-abc123",
+    default_runner="opencode",
+)
+
+# Or specify per-phase overrides
+workstream_update_config(
+    workstream_id="ws-abc123",
+    runners='{"primary":"opencode","deduplication":"opencode"}',
+)
+```
+
+### Overriding at job-submission time
+
+```python
+# Use opencode for primary work, claude for all enforcement phases
+workstream_submit_task(
+    workstream_id="ws-abc123",
+    prompt="...",
+    default_runner="opencode",
+)
+
+# Or fine-grained per-phase control
+workstream_submit_task(
+    workstream_id="ws-abc123",
+    prompt="...",
+    runners='{"primary":"opencode","deduplication":"claude"}',
+)
+```
+
+The `runners` JSON object may contain any subset of phase wire names plus
+the optional `"default"` key. An explicit `runners["default"]` wins over
+the separate `default_runner` parameter when both are supplied.

@@ -1057,6 +1057,35 @@ def controller_health() -> dict:
 
 
 @mcp.tool()
+def agent_options() -> dict:
+    """Return available agent runners, phases, model names, and the default runner.
+
+    Queries the controller's ``/api/agents`` endpoint and returns the
+    complete set of options needed to configure per-workstream or per-job
+    runner selection.
+
+    Use this tool before calling ``workstream_register``,
+    ``workstream_update_config``, or ``workstream_submit_task`` with
+    ``runners`` or ``default_runner`` parameters to discover valid runner
+    names and phase wire names.
+
+    Returns:
+        Dictionary with:
+        - ``runners``: list of runner objects, each with ``name`` and
+          ``capabilities`` (boolean flags + ``supportedModels`` list).
+        - ``phases``: list of phase objects, each with ``wireName`` and
+          ``description``. These are the valid keys for the ``runners``
+          JSON object accepted by submit/register/update tools.
+        - ``models``: list of accepted model identifiers (aliases and full
+          IDs) that may be passed as the ``model`` parameter.
+        - ``defaultRunner``: the built-in fallback runner name (``"claude"``).
+    """
+    _require_scope("read")
+    _audit("agent_options")
+    return _controller_get("/api/agents")
+
+
+@mcp.tool()
 def controller_update_config(
     accept_automated_jobs: str = "",
 ) -> dict:
@@ -1722,6 +1751,8 @@ def workstream_register(
     plan_commit_message: str = "",
     model: str = "",
     effort: str = "",
+    runners: str = "",
+    default_runner: str = "",
 ) -> dict:
     """Register a new workstream for a branch/repo combination.
 
@@ -1780,6 +1811,16 @@ def workstream_register(
             workstream. Must be one of ``"low"``, ``"medium"``, ``"high"``,
             ``"xhigh"``, ``"max"``. Empty string leaves the workstream with
             no default.
+        runners: JSON object mapping phase wire names to runner identifiers
+            (e.g. ``'{"primary":"opencode","deduplication":"opencode"}``).
+            An optional ``"default"`` key sets the fallback for unspecified
+            phases. Use ``agent_options`` to discover available runner names
+            and phase wire names. Empty string leaves workstream with no
+            per-phase runner configuration.
+        default_runner: Convenience shortcut equivalent to
+            ``runners='{"default": "<value>"}'``. The explicit
+            ``runners["default"]`` wins when both are supplied. Empty
+            string leaves the workstream default runner unconfigured.
 
     Returns:
         Dictionary with workstreamId and channel info on success. When
@@ -1797,7 +1838,7 @@ def workstream_register(
         repo_url=repo_url, planning_document=planning_document,
         channel_name=channel_name, slack_workspace_id=slack_workspace_id,
         plan_path=plan_path, plan_commit_message=plan_commit_message,
-        model=model, effort=effort,
+        model=model, effort=effort, default_runner=default_runner,
     )
     if err:
         return err
@@ -1807,6 +1848,9 @@ def workstream_register(
     err = _check_model(model)
     if err:
         return err
+    parsed_runners, runners_err = _parse_runners_json(runners)
+    if runners_err:
+        return runners_err
     # plan_content and plan_instructions describe two different follow-up
     # actions; the caller must pick one. Reject ambiguous requests up front.
     if plan_content and plan_instructions:
@@ -1860,6 +1904,11 @@ def workstream_register(
         payload["model"] = model
     if effort:
         payload["effort"] = effort
+    runners_payload = dict(parsed_runners) if parsed_runners else {}
+    if default_runner and "default" not in runners_payload:
+        runners_payload["default"] = default_runner
+    if runners_payload:
+        payload["runners"] = runners_payload
 
     result = _controller_post("/api/workstreams", payload)
 
@@ -2035,6 +2084,8 @@ def workstream_update_config(
     dependent_repos: str = "",
     model: str = "",
     effort: str = "",
+    runners: str = "",
+    default_runner: str = "",
 ) -> dict:
     """Update configuration for an existing workstream.
 
@@ -2064,6 +2115,16 @@ def workstream_update_config(
         effort: New default Claude Code effort/thinking level for the
             workstream. Must be one of ``"low"``, ``"medium"``, ``"high"``,
             ``"xhigh"``, ``"max"``.
+        runners: JSON object mapping phase wire names to runner identifiers
+            (e.g. ``'{"primary":"opencode","deduplication":"opencode"}``).
+            An optional ``"default"`` key sets the fallback for unspecified
+            phases. Use ``agent_options`` to discover available runner names
+            and phase wire names. Empty string leaves per-phase configuration
+            unchanged.
+        default_runner: Convenience shortcut equivalent to
+            ``runners='{"default": "<value>"}'``. The explicit
+            ``runners["default"]`` wins when both are supplied. Empty
+            string leaves the workstream default runner unchanged.
 
     Returns:
         Dictionary confirming the update.
@@ -2073,7 +2134,7 @@ def workstream_update_config(
         workstream_id=workstream_id, default_branch=default_branch,
         base_branch=base_branch, repo_url=repo_url,
         planning_document=planning_document, channel_name=channel_name,
-        model=model, effort=effort,
+        model=model, effort=effort, default_runner=default_runner,
     )
     if err:
         return err
@@ -2083,6 +2144,9 @@ def workstream_update_config(
     err = _check_model(model)
     if err:
         return err
+    parsed_runners, runners_err = _parse_runners_json(runners)
+    if runners_err:
+        return runners_err
     _require_workstream_in_scope(workstream_id)
     _audit("workstream_update_config", workstream_id=workstream_id)
 
@@ -2109,6 +2173,11 @@ def workstream_update_config(
         payload["model"] = model
     if effort:
         payload["effort"] = effort
+    runners_payload = dict(parsed_runners) if parsed_runners else {}
+    if default_runner and "default" not in runners_payload:
+        runners_payload["default"] = default_runner
+    if runners_payload:
+        payload["runners"] = runners_payload
 
     if not payload:
         return {
@@ -2117,7 +2186,7 @@ def workstream_update_config(
             "next_steps": [
                 "Specify fields to update: default_branch, base_branch, "
                 "repo_url, planning_document, channel_name, required_labels, "
-                "dependent_repos, model, or effort",
+                "dependent_repos, model, effort, runners, or default_runner",
             ],
         }
 

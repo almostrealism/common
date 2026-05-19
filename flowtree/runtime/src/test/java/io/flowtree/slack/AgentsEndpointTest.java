@@ -1,0 +1,208 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.flowtree.slack;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import fi.iki.elonen.NanoHTTPD;
+import io.flowtree.jobs.agent.AgentRunnerRegistry;
+import io.flowtree.jobs.agent.Phase;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+
+/**
+ * Integration tests for the {@code GET /api/agents} endpoint in
+ * {@link FlowTreeApiEndpoint}.
+ *
+ * <p>Each test spins up a NanoHTTPD endpoint on an ephemeral port and makes
+ * a real HTTP GET request to {@code /api/agents}, then verifies the response
+ * shape, runner list contents, phase list size, and presence of capability flags.</p>
+ */
+public class AgentsEndpointTest extends TestSuiteBase {
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private FlowTreeApiEndpoint endpoint;
+    private int port;
+
+    @Before
+    public void setUp() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+        port = endpoint.getListeningPort();
+    }
+
+    @After
+    public void tearDown() {
+        if (endpoint != null) endpoint.stop();
+    }
+
+    @Test(timeout = 10000)
+    public void testResponseIsValidJson() throws Exception {
+        HttpURLConnection conn = openGet("/api/agents");
+        assertEquals(200, conn.getResponseCode());
+        assertTrue("Content-Type must start with application/json",
+                conn.getContentType().startsWith("application/json"));
+        String body = readBody(conn);
+        assertNotNull("Response body must not be null", body);
+        assertFalse("Response body must not be empty", body.isEmpty());
+        JsonNode root = MAPPER.readTree(body);
+        assertTrue("Response must be a JSON object", root.isObject());
+    }
+
+    @Test(timeout = 10000)
+    public void testResponseContainsTopLevelFields() throws Exception {
+        JsonNode root = getAgentsJson();
+        assertTrue("Response must contain 'runners' field", root.has("runners"));
+        assertTrue("Response must contain 'phases' field", root.has("phases"));
+        assertTrue("Response must contain 'models' field", root.has("models"));
+        assertTrue("Response must contain 'defaultRunner' field", root.has("defaultRunner"));
+    }
+
+    @Test(timeout = 10000)
+    public void testRunnersListContainsClaudeAndOpencode() throws Exception {
+        JsonNode root = getAgentsJson();
+        JsonNode runners = root.get("runners");
+        assertTrue("runners must be an array", runners.isArray());
+        assertTrue("runners must contain at least 2 entries", runners.size() >= 2);
+
+        boolean foundClaude = false;
+        boolean foundOpencode = false;
+        for (JsonNode runner : runners) {
+            String name = runner.get("name").asText();
+            if (AgentRunnerRegistry.CLAUDE.equals(name)) foundClaude = true;
+            if (AgentRunnerRegistry.OPENCODE.equals(name)) foundOpencode = true;
+        }
+        assertTrue("runners must contain 'claude'", foundClaude);
+        assertTrue("runners must contain 'opencode'", foundOpencode);
+    }
+
+    @Test(timeout = 10000)
+    public void testRunnersHaveCapabilityFlags() throws Exception {
+        JsonNode root = getAgentsJson();
+        for (JsonNode runner : root.get("runners")) {
+            String name = runner.get("name").asText();
+            assertTrue("Runner '" + name + "' must have 'capabilities' field",
+                    runner.has("capabilities"));
+            JsonNode caps = runner.get("capabilities");
+            assertTrue("capabilities must be an object for runner " + name, caps.isObject());
+            assertTrue("capabilities must have 'reportsCost' for runner " + name,
+                    caps.has("reportsCost"));
+            assertTrue("capabilities must have 'reportsTurns' for runner " + name,
+                    caps.has("reportsTurns"));
+            assertTrue("capabilities must have 'supportsEffortLevel' for runner " + name,
+                    caps.has("supportsEffortLevel"));
+            assertTrue("capabilities must have 'supportsMaxBudget' for runner " + name,
+                    caps.has("supportsMaxBudget"));
+            assertTrue("capabilities must have 'supportsMcpHttpTransport' for runner " + name,
+                    caps.has("supportsMcpHttpTransport"));
+            assertTrue("capabilities must have 'supportsMcpStdioTransport' for runner " + name,
+                    caps.has("supportsMcpStdioTransport"));
+            assertTrue("capabilities must have 'supportsPermissionDenialReporting' for runner " + name,
+                    caps.has("supportsPermissionDenialReporting"));
+            assertTrue("capabilities must have 'supportedModels' for runner " + name,
+                    caps.has("supportedModels"));
+            assertTrue("supportedModels must be an array for runner " + name,
+                    caps.get("supportedModels").isArray());
+        }
+    }
+
+    @Test(timeout = 10000)
+    public void testPhaseListHasAllPhases() throws Exception {
+        JsonNode root = getAgentsJson();
+        JsonNode phases = root.get("phases");
+        assertTrue("phases must be an array", phases.isArray());
+        assertEquals("phases must contain exactly " + Phase.values().length + " entries",
+                Phase.values().length, phases.size());
+    }
+
+    @Test(timeout = 10000)
+    public void testPhaseEntriesHaveWireNameAndDescription() throws Exception {
+        JsonNode root = getAgentsJson();
+        for (JsonNode phase : root.get("phases")) {
+            assertTrue("Each phase must have 'wireName'", phase.has("wireName"));
+            assertTrue("Each phase must have 'description'", phase.has("description"));
+            assertFalse("wireName must not be empty",
+                    phase.get("wireName").asText().isEmpty());
+            assertFalse("description must not be empty",
+                    phase.get("description").asText().isEmpty());
+        }
+    }
+
+    @Test(timeout = 10000)
+    public void testPhaseWireNamesMatchEnum() throws Exception {
+        JsonNode root = getAgentsJson();
+        for (Phase phase : Phase.values()) {
+            boolean found = false;
+            for (JsonNode phaseNode : root.get("phases")) {
+                if (phase.wireName().equals(phaseNode.get("wireName").asText())) {
+                    found = true;
+                    break;
+                }
+            }
+            assertTrue("Phase '" + phase.wireName() + "' must appear in the phases list", found);
+        }
+    }
+
+    @Test(timeout = 10000)
+    public void testDefaultRunnerIsClaude() throws Exception {
+        JsonNode root = getAgentsJson();
+        assertEquals(AgentRunnerRegistry.CLAUDE, root.get("defaultRunner").asText());
+    }
+
+    @Test(timeout = 10000)
+    public void testModelsListIsNonEmpty() throws Exception {
+        JsonNode root = getAgentsJson();
+        JsonNode models = root.get("models");
+        assertTrue("models must be an array", models.isArray());
+        assertTrue("models must be non-empty", models.size() > 0);
+    }
+
+    // ----------------------------------------------------------------
+    // Helpers
+    // ----------------------------------------------------------------
+
+    private JsonNode getAgentsJson() throws Exception {
+        HttpURLConnection conn = openGet("/api/agents");
+        assertEquals(200, conn.getResponseCode());
+        return MAPPER.readTree(readBody(conn));
+    }
+
+    private HttpURLConnection openGet(String path) throws IOException {
+        HttpURLConnection conn = (HttpURLConnection) new URL(
+                "http://localhost:" + port + path).openConnection();
+        conn.setRequestMethod("GET");
+        return conn;
+    }
+
+    private static String readBody(HttpURLConnection conn) throws IOException {
+        return new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+    }
+}

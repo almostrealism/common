@@ -94,6 +94,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
     static final Set<String> AR_MANAGER_TOOL_NAMES = Collections.unmodifiableSet(
         new LinkedHashSet<>(Arrays.asList(
             "controller_health",
+            "agent_options",
             "send_message",
             "memory_recall",
             "memory_store",
