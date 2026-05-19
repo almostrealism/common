@@ -27,13 +27,17 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -49,11 +53,12 @@ public class AgentsEndpointTest extends TestSuiteBase {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private FlowTreeApiEndpoint endpoint;
+    private SlackNotifier notifier;
     private int port;
 
     @Before
     public void setUp() throws Exception {
-        SlackNotifier notifier = new SlackNotifier(null);
+        notifier = new SlackNotifier(null);
         endpoint = new FlowTreeApiEndpoint(0, notifier);
         endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
         port = endpoint.getListeningPort();
@@ -80,6 +85,8 @@ public class AgentsEndpointTest extends TestSuiteBase {
     @Test(timeout = 10000)
     public void testResponseContainsTopLevelFields() throws Exception {
         JsonNode root = getAgentsJson();
+        assertTrue("Response must contain 'ok' field", root.has("ok"));
+        assertTrue("'ok' must be true", root.get("ok").asBoolean());
         assertTrue("Response must contain 'runners' field", root.has("runners"));
         assertTrue("Response must contain 'phases' field", root.has("phases"));
         assertTrue("Response must contain 'models' field", root.has("models"));
@@ -144,25 +151,25 @@ public class AgentsEndpointTest extends TestSuiteBase {
     }
 
     @Test(timeout = 10000)
-    public void testPhaseEntriesHaveWireNameAndDescription() throws Exception {
+    public void testPhaseEntriesHaveNameAndDescription() throws Exception {
         JsonNode root = getAgentsJson();
         for (JsonNode phase : root.get("phases")) {
-            assertTrue("Each phase must have 'wireName'", phase.has("wireName"));
+            assertTrue("Each phase must have 'name'", phase.has("name"));
             assertTrue("Each phase must have 'description'", phase.has("description"));
-            assertFalse("wireName must not be empty",
-                    phase.get("wireName").asText().isEmpty());
+            assertFalse("name must not be empty",
+                    phase.get("name").asText().isEmpty());
             assertFalse("description must not be empty",
                     phase.get("description").asText().isEmpty());
         }
     }
 
     @Test(timeout = 10000)
-    public void testPhaseWireNamesMatchEnum() throws Exception {
+    public void testPhaseNamesMatchEnum() throws Exception {
         JsonNode root = getAgentsJson();
         for (Phase phase : Phase.values()) {
             boolean found = false;
             for (JsonNode phaseNode : root.get("phases")) {
-                if (phase.wireName().equals(phaseNode.get("wireName").asText())) {
+                if (phase.wireName().equals(phaseNode.get("name").asText())) {
                     found = true;
                     break;
                 }
@@ -186,6 +193,93 @@ public class AgentsEndpointTest extends TestSuiteBase {
     }
 
     // ----------------------------------------------------------------
+    // Register/update round-trip tests for runners configuration
+    // ----------------------------------------------------------------
+
+    @Test(timeout = 10000)
+    public void testRegisterPersistsPerPhaseRunners() throws Exception {
+        String body = "{\"defaultBranch\":\"feature/register-runners\","
+                + "\"channelName\":\"w-register-runners\","
+                + "\"runners\":{\"primary\":\"opencode\",\"deduplication\":\"opencode\"}}";
+        JsonNode response = postJson("/api/workstreams", body);
+        assertTrue(response.get("ok").asBoolean());
+        Workstream ws = lookupWorkstream(response.get("workstreamId").asText());
+        Map<String, String> runners = ws.getRunners();
+        assertEquals("opencode", runners.get("primary"));
+        assertEquals("opencode", runners.get("deduplication"));
+        assertNull("defaultRunner must remain unset", ws.getDefaultRunner());
+    }
+
+    @Test(timeout = 10000)
+    public void testRegisterPersistsDefaultRunnerViaRunnersDefaultKey() throws Exception {
+        String body = "{\"defaultBranch\":\"feature/register-default\","
+                + "\"channelName\":\"w-register-default\","
+                + "\"runners\":{\"default\":\"opencode\"}}";
+        JsonNode response = postJson("/api/workstreams", body);
+        assertTrue(response.get("ok").asBoolean());
+        Workstream ws = lookupWorkstream(response.get("workstreamId").asText());
+        assertEquals("opencode", ws.getDefaultRunner());
+        assertTrue("per-phase map must be empty when only 'default' was supplied",
+                ws.getRunners().isEmpty());
+    }
+
+    @Test(timeout = 10000)
+    public void testRegisterRejectsUnknownPhase() throws Exception {
+        String body = "{\"defaultBranch\":\"feature/register-bad-phase\","
+                + "\"channelName\":\"w-register-bad-phase\","
+                + "\"runners\":{\"not-a-phase\":\"claude\"}}";
+        HttpURLConnection conn = openPost("/api/workstreams", body);
+        assertEquals(400, conn.getResponseCode());
+        JsonNode response = MAPPER.readTree(readErrorBody(conn));
+        assertFalse(response.get("ok").asBoolean());
+        assertTrue(response.get("error").asText().contains("Unknown phase"));
+    }
+
+    @Test(timeout = 10000)
+    public void testRegisterRejectsUnknownRunner() throws Exception {
+        String body = "{\"defaultBranch\":\"feature/register-bad-runner\","
+                + "\"channelName\":\"w-register-bad-runner\","
+                + "\"runners\":{\"primary\":\"not-a-runner\"}}";
+        HttpURLConnection conn = openPost("/api/workstreams", body);
+        assertEquals(400, conn.getResponseCode());
+        JsonNode response = MAPPER.readTree(readErrorBody(conn));
+        assertFalse(response.get("ok").asBoolean());
+        assertTrue(response.get("error").asText().contains("Unknown runner"));
+    }
+
+    @Test(timeout = 10000)
+    public void testUpdateReplacesRunnersConfig() throws Exception {
+        Workstream ws = registerBareWorkstream("feature/update-runners", "w-update-runners");
+        ws.setDefaultRunner("claude");
+        ws.setRunners(Collections.singletonMap("primary", "claude"));
+
+        String body = "{\"runners\":{\"default\":\"opencode\","
+                + "\"deduplication\":\"opencode\"}}";
+        JsonNode response = postJson("/api/workstreams/" + ws.getWorkstreamId() + "/update", body);
+        assertTrue(response.get("ok").asBoolean());
+
+        assertEquals("opencode", ws.getDefaultRunner());
+        assertEquals("opencode", ws.getRunners().get("deduplication"));
+        assertFalse("primary mapping from before the update must be replaced, not merged",
+                ws.getRunners().containsKey("primary"));
+    }
+
+    @Test(timeout = 10000)
+    public void testUpdateWithoutRunnersLeavesConfigUntouched() throws Exception {
+        Workstream ws = registerBareWorkstream("feature/update-skip", "w-update-skip");
+        ws.setDefaultRunner("opencode");
+        ws.setRunners(Collections.singletonMap("primary", "opencode"));
+
+        // Update touching only the model field — runners config must survive.
+        String body = "{\"model\":\"sonnet\"}";
+        JsonNode response = postJson("/api/workstreams/" + ws.getWorkstreamId() + "/update", body);
+        assertTrue(response.get("ok").asBoolean());
+
+        assertEquals("opencode", ws.getDefaultRunner());
+        assertEquals("opencode", ws.getRunners().get("primary"));
+    }
+
+    // ----------------------------------------------------------------
     // Helpers
     // ----------------------------------------------------------------
 
@@ -195,6 +289,25 @@ public class AgentsEndpointTest extends TestSuiteBase {
         return MAPPER.readTree(readBody(conn));
     }
 
+    private JsonNode postJson(String path, String body) throws IOException {
+        HttpURLConnection conn = openPost(path, body);
+        assertEquals(200, conn.getResponseCode());
+        return MAPPER.readTree(readBody(conn));
+    }
+
+    private Workstream lookupWorkstream(String workstreamId) {
+        Workstream ws = notifier.getWorkstream(workstreamId);
+        assertNotNull("Workstream " + workstreamId + " must be registered on the notifier", ws);
+        return ws;
+    }
+
+    private Workstream registerBareWorkstream(String branch, String channelName) {
+        Workstream ws = new Workstream(null, channelName);
+        ws.setDefaultBranch(branch);
+        notifier.registerWorkstream(ws);
+        return ws;
+    }
+
     private HttpURLConnection openGet(String path) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) new URL(
                 "http://localhost:" + port + path).openConnection();
@@ -202,7 +315,23 @@ public class AgentsEndpointTest extends TestSuiteBase {
         return conn;
     }
 
+    private HttpURLConnection openPost(String path, String body) throws IOException {
+        HttpURLConnection conn = (HttpURLConnection) new URL(
+                "http://localhost:" + port + path).openConnection();
+        conn.setRequestMethod("POST");
+        conn.setDoOutput(true);
+        conn.setRequestProperty("Content-Type", "application/json");
+        try (OutputStream os = conn.getOutputStream()) {
+            os.write(body.getBytes(StandardCharsets.UTF_8));
+        }
+        return conn;
+    }
+
     private static String readBody(HttpURLConnection conn) throws IOException {
         return new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+    }
+
+    private static String readErrorBody(HttpURLConnection conn) throws IOException {
+        return new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
     }
 }

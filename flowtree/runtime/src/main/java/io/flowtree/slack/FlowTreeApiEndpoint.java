@@ -23,9 +23,6 @@ import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
-import io.flowtree.jobs.agent.AgentCapabilities;
-import io.flowtree.jobs.agent.AgentRunnerRegistry;
-import io.flowtree.jobs.agent.Phase;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -45,7 +42,6 @@ import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -135,6 +131,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /** Handles all {@code /api/stats} requests. */
     private StatsQueryHandler statsQueryHandler;
+
+    /** Handles {@code GET /api/agents} metadata requests. */
+    private final AgentsQueryHandler agentsQueryHandler = new AgentsQueryHandler();
 
     /**
      * Controls whether jobs that self-identify as automated (e.g., from CI
@@ -344,7 +343,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         if (Method.GET.equals(method) && "/api/agents".equals(uri)) {
-            return handleGetAgents();
+            return agentsQueryHandler.handle();
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/stats")) {
@@ -587,7 +586,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Escapes a string as a JSON string value (with surrounding quotes).
      */
-    private static String escapeJsonValue(String s) {
+    static String escapeJsonValue(String s) {
         StringBuilder sb = new StringBuilder(s.length() + 16);
         sb.append('"');
         for (int i = 0; i < s.length(); i++) {
@@ -623,8 +622,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * applied when a job omits them; an invalid {@code effort} value → 400.</p>
      *
      * @param session the HTTP session
-     * @return JSON response with {@code workstreamId}, {@code channelId},
-     *         and {@code channelName}
+     * @return JSON with {@code workstreamId}, {@code channelId}, {@code channelName}
      */
     private Response handleRegisterWorkstream(IHTTPSession session) {
         String body = readBody(session);
@@ -739,6 +737,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (err != null) return err;
         err = applyValidated(effort, workstream::setEffort);
         if (err != null) return err;
+        String runnersErr = SubmissionRunnerResolver.applyToWorkstream(
+                workstream, extractJsonObjectFields(body, "runners"));
+        if (runnersErr != null) return errorResponse(runnersErr);
 
         workstream.setPushToOrigin(true);
 
@@ -779,7 +780,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * <p>Supports updating any combination of: {@code channelId}, {@code channelName},
      * {@code defaultBranch}, {@code baseBranch}, {@code repoUrl},
      * {@code planningDocument}, {@code model}, {@code effort},
-     * {@code requiredLabels}, {@code dependentRepos}.</p>
+     * {@code requiredLabels}, {@code dependentRepos}, {@code runners}.</p>
      *
      * <p>{@code model} and {@code effort} are workstream-level defaults
      * applied to jobs that do not specify their own values.  Invalid
@@ -835,6 +836,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (err != null) return err;
         err = applyValidated(effort, workstream::setEffort);
         if (err != null) return err;
+        String runnersErr = SubmissionRunnerResolver.applyToWorkstream(
+                workstream, extractJsonObjectFields(body, "runners"));
+        if (runnersErr != null) return errorResponse(runnersErr);
         if (!requiredLabels.isEmpty()) {
             workstream.setRequiredLabels(requiredLabels);
         }
@@ -1528,48 +1532,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", json.toString());
-    }
-
-    /**
-     * Handles {@code GET /api/agents}; returns JSON with runners, phases, models, and defaultRunner.
-     */
-    private Response handleGetAgents() {
-        StringBuilder j = new StringBuilder("{\"runners\":[");
-        String sc = "";
-        for (String n : AgentRunnerRegistry.available()) {
-            AgentCapabilities c = AgentRunnerRegistry.get(n).capabilities();
-            j.append(sc).append("{\"name\":").append(escapeJsonValue(n))
-             .append(",\"capabilities\":{\"reportsCost\":").append(c.reportsCost())
-             .append(",\"reportsTurns\":").append(c.reportsTurns())
-             .append(",\"supportsEffortLevel\":").append(c.supportsEffortLevel())
-             .append(",\"supportsMaxBudget\":").append(c.supportsMaxBudget())
-             .append(",\"supportsMcpHttpTransport\":").append(c.supportsMcpHttpTransport())
-             .append(",\"supportsMcpStdioTransport\":").append(c.supportsMcpStdioTransport())
-             .append(",\"supportsPermissionDenialReporting\":").append(c.supportsPermissionDenialReporting())
-             .append(",\"supportedModels\":[");
-            String sm = "";
-            for (String m : c.supportedModels()) {
-                j.append(sm).append(escapeJsonValue(m));
-                sm = ",";
-            }
-            j.append("]}}");
-            sc = ",";
-        }
-        j.append("],\"phases\":[");
-        String sp = "";
-        for (Phase p : Phase.values()) {
-            j.append(sp).append("{\"wireName\":").append(escapeJsonValue(p.wireName()))
-             .append(",\"description\":").append(escapeJsonValue(p.description())).append("}");
-            sp = ",";
-        }
-        j.append("],\"models\":[");
-        String se = "";
-        for (String m : CodingAgentJob.VALID_MODELS) {
-            j.append(se).append(escapeJsonValue(m));
-            se = ",";
-        }
-        j.append("],\"defaultRunner\":").append(escapeJsonValue(AgentRunnerRegistry.CLAUDE)).append("}");
-        return newFixedLengthResponse(Response.Status.OK, "application/json", j.toString());
     }
 
     /**

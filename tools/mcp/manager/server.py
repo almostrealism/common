@@ -1071,11 +1071,13 @@ def agent_options() -> dict:
 
     Returns:
         Dictionary with:
+        - ``ok``: ``True`` on a successful read.
         - ``runners``: list of runner objects, each with ``name`` and
           ``capabilities`` (boolean flags + ``supportedModels`` list).
-        - ``phases``: list of phase objects, each with ``wireName`` and
-          ``description``. These are the valid keys for the ``runners``
-          JSON object accepted by submit/register/update tools.
+        - ``phases``: list of phase objects, each with ``name`` (the phase
+          wire identifier) and ``description``. The ``name`` values are
+          the valid keys for the ``runners`` JSON object accepted by
+          submit/register/update tools.
         - ``models``: list of accepted model identifiers (aliases and full
           IDs) that may be passed as the ``model`` parameter.
         - ``defaultRunner``: the built-in fallback runner name (``"claude"``).

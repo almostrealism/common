@@ -109,6 +109,7 @@ class TestAgentOptions(unittest.TestCase):
         """agent_options proxies the /api/agents response as-is."""
         _grant_all_scopes()
         mock_response = {
+            "ok": True,
             "runners": [
                 {
                     "name": "claude",
@@ -138,8 +139,8 @@ class TestAgentOptions(unittest.TestCase):
                 },
             ],
             "phases": [
-                {"wireName": "primary", "description": "Primary work."},
-                {"wireName": "deduplication", "description": "Deduplication audit."},
+                {"name": "primary", "description": "Primary work."},
+                {"name": "deduplication", "description": "Deduplication audit."},
             ],
             "models": ["sonnet", "opus", "haiku"],
             "defaultRunner": "claude",
@@ -147,13 +148,14 @@ class TestAgentOptions(unittest.TestCase):
         mock_get.return_value = mock_response
         result = server.agent_options()
         mock_get.assert_called_once_with("/api/agents")
+        self.assertTrue(result["ok"])
         self.assertEqual(result["defaultRunner"], "claude")
         self.assertEqual(len(result["runners"]), 2)
         runner_names = [r["name"] for r in result["runners"]]
         self.assertIn("claude", runner_names)
         self.assertIn("opencode", runner_names)
         self.assertEqual(len(result["phases"]), 2)
-        self.assertEqual(result["phases"][0]["wireName"], "primary")
+        self.assertEqual(result["phases"][0]["name"], "primary")
         self.assertIn("models", result)
 
     def test_requires_read_scope(self):
@@ -164,11 +166,12 @@ class TestAgentOptions(unittest.TestCase):
 
     @patch.object(server, "_controller_get")
     def test_phase_list_wired_correctly(self, mock_get):
-        """Phases list in response must contain wireName and description keys."""
+        """Phases list in response must contain name and description keys."""
         _grant_all_scopes()
         mock_get.return_value = {
+            "ok": True,
             "runners": [],
-            "phases": [{"wireName": "primary", "description": "Primary work."}],
+            "phases": [{"name": "primary", "description": "Primary work."}],
             "models": [],
             "defaultRunner": "claude",
         }
@@ -176,7 +179,7 @@ class TestAgentOptions(unittest.TestCase):
         phases = result.get("phases", [])
         self.assertTrue(len(phases) > 0)
         for phase in phases:
-            self.assertIn("wireName", phase)
+            self.assertIn("name", phase)
             self.assertIn("description", phase)
 
 
