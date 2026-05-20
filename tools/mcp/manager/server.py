@@ -1136,7 +1136,7 @@ def controller_update_config(
 
 
 @mcp.tool()
-def workstream_list() -> dict:
+def workstream_list(include_archived: bool = False) -> dict:
     """List all registered workstreams with their configuration and capabilities.
 
     Each workstream entry includes:
@@ -1149,16 +1149,27 @@ def workstream_list() -> dict:
     - pipelineCapable: whether Tier 2 pipeline tools will work
     - dependentRepos: list of additional repo URLs cloned alongside the
       primary repo (omitted if none configured)
+    - archived: ``true`` when the workstream has been archived (only
+      present when ``include_archived=True``; otherwise such entries
+      are filtered out entirely)
 
     Use this to discover workstreams and determine which tools are
     available for each one.
+
+    Args:
+        include_archived: When ``False`` (default) archived workstreams
+            are omitted from the response. Set ``True`` to include them;
+            each archived entry carries ``archived=true``.
 
     Returns:
         Dictionary with list of workstream summaries.
     """
     _require_scope("read")
-    _audit("workstream_list")
-    result = _controller_get("/api/workstreams")
+    _audit("workstream_list", include_archived=include_archived)
+    path = "/api/workstreams"
+    if include_archived:
+        path += "?includeArchived=true"
+    result = _controller_get(path)
 
     if isinstance(result, list):
         entries = _filter_workstreams_by_scope(result)
@@ -2210,6 +2221,151 @@ def workstream_update_config(
             "Use workstream_list to verify the workstream_id is correct",
         ])
 
+    return result
+
+
+@mcp.tool()
+def workstream_archive(
+    workstream_id: str,
+    archive_slack_channel: bool = True,
+) -> dict:
+    """Archive a workstream so it is hidden from default ``workstream_list``
+    responses. Archiving is reversible and non-destructive — historical job
+    records and memories remain queryable via ``workstream_context`` and
+    ``memory_recall`` when ``workstream_id`` is supplied explicitly.
+
+    The Slack channel bound to the workstream (if any) is archived via
+    ``conversations.archive`` by default; pass ``archive_slack_channel=False``
+    to leave it open. Slack archive failures are reported in the response but
+    do not block the workstream archive — the controller treats the
+    Slack-side effect as best-effort.
+
+    The call is rejected when one or more jobs on the workstream are still
+    active (``STARTED`` status); cancel them explicitly or wait for them to
+    complete before archiving. The response carries the active job IDs.
+
+    Args:
+        workstream_id: The workstream to archive (from ``workstream_list``).
+        archive_slack_channel: When ``True`` (default), also archive the
+            bound Slack channel. Slack channels cannot be programmatically
+            deleted, only archived; an archived channel after workstream
+            archive is the expected end state.
+
+    Returns:
+        Dictionary with ``ok``, ``workstreamId``, ``archivedAt``,
+        ``slackChannelArchived``, and optionally ``slackChannelArchiveError``.
+    """
+    _require_scope("write")
+    err = _check_short_strings(workstream_id=workstream_id)
+    if err:
+        return err
+    _require_workstream_in_scope(workstream_id)
+    _audit("workstream_archive", workstream_id=workstream_id,
+           archive_slack_channel=archive_slack_channel)
+    return _controller_post(
+        f"/api/workstreams/{quote(workstream_id, safe='')}/archive",
+        {"archiveSlackChannel": archive_slack_channel},
+    )
+
+
+@mcp.tool()
+def workstream_unarchive(workstream_id: str) -> dict:
+    """Clear the archived flag on a previously archived workstream so it
+    reappears in default ``workstream_list`` responses.
+
+    The Slack channel, if it was archived alongside the workstream, must be
+    unarchived manually from the Slack UI. Slack's ``conversations.unarchive``
+    is not invoked automatically because unarchive fires notification spam
+    to channel members.
+
+    Args:
+        workstream_id: The archived workstream to restore.
+
+    Returns:
+        Dictionary with ``ok`` and ``workstreamId``.
+    """
+    _require_scope("write")
+    err = _check_short_strings(workstream_id=workstream_id)
+    if err:
+        return err
+    _require_workstream_in_scope(workstream_id)
+    _audit("workstream_unarchive", workstream_id=workstream_id)
+    return _controller_post(
+        f"/api/workstreams/{quote(workstream_id, safe='')}/unarchive",
+        {},
+    )
+
+
+@mcp.tool()
+def workstream_delete(workstream_id: str, force: bool = False) -> dict:
+    """Delete a workstream config row permanently.
+
+    Two-step pattern: archive first (``workstream_archive``), then delete.
+    Deletion requires the workstream to be archived unless ``force=True``;
+    in either case the call is rejected when any job on the workstream is
+    still active (``STARTED`` status). Cancellation is always explicit —
+    ``force`` only bypasses the archive-first check.
+
+    Side effects:
+
+    - Tracker tasks linked to this workstream have their ``workstream_id``
+      cleared (ON DELETE SET NULL semantics applied client-side via the
+      ar-tracker API). The tasks themselves are NOT deleted. The count of
+      affected tasks is returned as ``deletedTrackerTasks``.
+    - The workstream config entry is removed from ``workstreams.yaml``.
+    - **Memories are not touched.** Memory rows remain queryable via
+      ``memory_recall`` when ``repo_url`` and ``branch`` are supplied
+      directly, since the workstream's repo+branch are still recorded on
+      each memory row. The workstream-to-repo/branch mapping is gone, so
+      ``workstream_context`` with the deleted ID will no longer resolve.
+    - The Slack channel is left as-is. If it was archived during the
+      ``workstream_archive`` step, it stays archived. Slack channels
+      cannot be programmatically deleted.
+    - The git branch on origin is NOT touched.
+
+    Args:
+        workstream_id: The workstream to delete (from ``workstream_list``).
+        force: When ``True``, bypass the archive-first requirement.
+            Active-job checks are NOT bypassed.
+
+    Returns:
+        Dictionary with ``ok``, ``workstreamId``, and
+        ``deletedTrackerTasks`` (the number of tracker tasks whose
+        ``workstream_id`` was cleared).
+    """
+    _require_scope("write")
+    err = _check_short_strings(workstream_id=workstream_id)
+    if err:
+        return err
+    _require_workstream_in_scope(workstream_id)
+    _audit("workstream_delete", workstream_id=workstream_id, force=force)
+
+    # The controller delete runs first so that a rejection (active jobs,
+    # archive-first requirement, unknown workstream) leaves the tracker
+    # linkage intact. Only on a successful delete do we clear tracker
+    # rows — that matches the ON DELETE SET NULL semantics described in
+    # the docstring and is reversible only by re-linking.
+    result = _controller_post(
+        f"/api/workstreams/{quote(workstream_id, safe='')}/delete",
+        {"force": force},
+    )
+    if not result.get("ok"):
+        return result
+
+    cleared = 0
+    tasks_result = _tracker_get(
+        f"/v1/tasks?{urlencode({'workstream_id': workstream_id, 'limit': 200, 'fields': 'headlines'})}"
+    )
+    if tasks_result.get("ok"):
+        for task in (tasks_result.get("tasks") or []):
+            task_id = task.get("id")
+            if not task_id:
+                continue
+            update = _tracker_put(f"/v1/tasks/{task_id}",
+                                  {"workstream_id": None})
+            if update.get("ok"):
+                cleared += 1
+    result["deletedTrackerTasks"] = cleared
     return result
 
 

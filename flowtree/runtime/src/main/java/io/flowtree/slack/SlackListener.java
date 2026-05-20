@@ -222,12 +222,8 @@ public class SlackListener implements ConsoleFeatures {
      */
     public void clearWorkstreams() {
         channelToWorkstream.clear();
-        if (notifier != null) {
-            notifier.clearWorkstreams();
-        }
-        for (SlackNotifier wsNotifier : notifiersByWorkspace.values()) {
-            wsNotifier.clearWorkstreams();
-        }
+        if (notifier != null) notifier.clearWorkstreams();
+        for (SlackNotifier wsNotifier : notifiersByWorkspace.values()) wsNotifier.clearWorkstreams();
     }
 
     /**
@@ -237,31 +233,33 @@ public class SlackListener implements ConsoleFeatures {
      * @param workstream the workstream to register
      */
     public void registerWorkstream(Workstream workstream) {
-        SlackNotifier wsNotifier = resolveNotifier(workstream.getSlackWorkspaceId());
-        wsNotifier.registerWorkstream(workstream);
+        resolveNotifier(workstream.getSlackWorkspaceId()).registerWorkstream(workstream);
         if (workstream.getChannelId() != null) {
-            String key = channelKey(workstream.getSlackWorkspaceId(), workstream.getChannelId());
-            channelToWorkstream.put(key, workstream);
+            channelToWorkstream.put(channelKey(workstream.getSlackWorkspaceId(),
+                    workstream.getChannelId()), workstream);
         }
         log("Registered workstream: " + workstream);
     }
 
     /**
      * Registers a workstream and persists the configuration to the YAML file.
-     *
-     * <p>This method is intended for programmatic registration via the HTTP API.
-     * It registers the workstream in memory, adds it to the configuration model,
-     * and persists the updated configuration to disk.</p>
+     * Intended for programmatic registration via the HTTP API.
      *
      * @param workstream the workstream to register and persist
      */
     public void registerAndPersistWorkstream(Workstream workstream) {
         registerWorkstream(workstream);
+        if (workstreamConfig != null) workstreamConfig.addWorkstream(workstream);
+        persistConfig();
+    }
 
-        if (workstreamConfig != null) {
-            workstreamConfig.addWorkstream(workstream);
-        }
-
+    /** Removes a workstream from the in-memory registry and persisted YAML config; does not touch Slack. */
+    public void unregisterAndPersistWorkstream(Workstream w) {
+        if (w == null) return;
+        String id = w.getWorkstreamId();
+        resolveNotifier(w.getSlackWorkspaceId()).removeWorkstream(id);
+        if (w.getChannelId() != null) channelToWorkstream.remove(channelKey(w.getSlackWorkspaceId(), w.getChannelId()));
+        if (workstreamConfig != null) workstreamConfig.getWorkstreams().removeIf(e -> id.equals(e.getWorkstreamId()));
         persistConfig();
     }
 

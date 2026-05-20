@@ -289,6 +289,12 @@ public class WorkstreamConfig {
          * {@link #defaultRunner}.
          */
         private Map<String, String> runners = new LinkedHashMap<>();
+        /**
+         * Whether this workstream is archived. Archived workstreams are
+         * hidden from default {@code workstream_list} responses but their
+         * job history and memories remain queryable.
+         */
+        private boolean archived;
 
         /** Returns the persistent workstream identifier. */
         public String getWorkstreamId() { return workstreamId; }
@@ -424,6 +430,11 @@ public class WorkstreamConfig {
             this.runners = runners != null ? new LinkedHashMap<>(runners) : new LinkedHashMap<>();
         }
 
+        /** Returns {@code true} when this workstream is archived. */
+        public boolean isArchived() { return archived; }
+        /** Sets the archived flag. */
+        public void setArchived(boolean archived) { this.archived = archived; }
+
         /**
          * Converts this entry to a {@link Workstream} instance.
          *
@@ -460,6 +471,7 @@ public class WorkstreamConfig {
             ws.setEffort(effort);
             ws.setDefaultRunner(defaultRunner);
             ws.setRunners(runners);
+            ws.setArchived(archived);
             return ws;
         }
     }
@@ -901,6 +913,7 @@ public class WorkstreamConfig {
         entry.setEffort(ws.getEffort());
         entry.setDefaultRunner(ws.getDefaultRunner());
         entry.setRunners(ws.getRunners());
+        entry.setArchived(ws.isArchived());
         workstreams.add(entry);
     }
 
@@ -940,6 +953,7 @@ public class WorkstreamConfig {
                     entry.setEffort(ws.getEffort());
                     entry.setDefaultRunner(ws.getDefaultRunner());
                     entry.setRunners(ws.getRunners());
+                    entry.setArchived(ws.isArchived());
                     found = true;
                     break;
                 }

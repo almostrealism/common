@@ -165,6 +165,14 @@ public class Workstream {
     /** Slack workspace ID (team ID) that this workstream is bound to; null for single-workspace mode. */
     private String slackWorkspaceId;
 
+    /**
+     * Whether this workstream is archived. Archived workstreams remain in the
+     * config (so historical job records and memories stay queryable) but are
+     * hidden from default list responses. Set via the archive MCP tools; not
+     * settable from the YAML loader.
+     */
+    private boolean archived;
+
     /** Default git user name for new workstreams. */
     public static final String DEFAULT_GIT_USER_NAME = "Flowtree Coding Agent";
 
@@ -506,6 +514,27 @@ public class Workstream {
     }
 
     /**
+     * Returns {@code true} when this workstream has been archived. Archived
+     * workstreams are hidden from default {@code workstream_list} responses
+     * but their job history and memories remain queryable.
+     */
+    public boolean isArchived() {
+        return archived;
+    }
+
+    /**
+     * Sets the archived flag for this workstream. Archiving does not delete
+     * any data — it only suppresses the workstream from default listings and
+     * blocks future {@code workstream_delete} calls until the flag is cleared
+     * (or {@code force=true} is passed).
+     *
+     * @param archived {@code true} to mark archived, {@code false} to restore
+     */
+    public void setArchived(boolean archived) {
+        this.archived = archived;
+    }
+
+    /**
      * Returns the default Claude Code model for this workstream, or
      * {@code null} when no default is set.
      */
@@ -666,6 +695,9 @@ public class Workstream {
         boolean pipelineCapable = repoUrl != null && !repoUrl.isEmpty();
         json.append(",\"hasPlanningDocument\":").append(planningDocument != null && !planningDocument.isEmpty());
         json.append(",\"pipelineCapable\":").append(pipelineCapable);
+        if (archived) {
+            json.append(",\"archived\":true");
+        }
 
         if (dependentRepos != null && !dependentRepos.isEmpty()) {
             json.append(",\"dependentRepos\":[");

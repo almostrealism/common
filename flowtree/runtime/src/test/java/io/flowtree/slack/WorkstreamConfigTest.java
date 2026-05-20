@@ -437,6 +437,50 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertFalse("unexpected effort: " + json, json.contains("\"effort\""));
     }
 
+    @Test(timeout = 10000)
+    public void testWorkstreamSummaryJsonEmitsArchivedFlagWhenSet() {
+        Workstream ws = new Workstream("C_A", "#archived");
+        ws.setArchived(true);
+        String json = ws.toSummaryJson();
+        assertTrue("expected archived flag: " + json,
+            json.contains("\"archived\":true"));
+    }
+
+    @Test(timeout = 10000)
+    public void testWorkstreamSummaryJsonOmitsArchivedWhenFalse() {
+        Workstream ws = new Workstream("C_A", "#live");
+        String json = ws.toSummaryJson();
+        assertFalse("unexpected archived field: " + json,
+            json.contains("\"archived\""));
+    }
+
+    @Test(timeout = 10000)
+    public void testYamlRoundTripsArchivedFlag() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - workstreamId: \"ws-arc\"\n"
+            + "    channelId: \"C_ARC\"\n"
+            + "    channelName: \"#arc\"\n"
+            + "    defaultBranch: \"feature/done\"\n"
+            + "    archived: true\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        assertTrue("entry must reflect archived=true", entry.isArchived());
+
+        Workstream ws = entry.toWorkstream();
+        assertTrue("workstream conversion must preserve archived", ws.isArchived());
+    }
+
+    @Test(timeout = 10000)
+    public void testAddWorkstreamCarriesArchivedFlag() {
+        WorkstreamConfig config = new WorkstreamConfig();
+        Workstream ws = new Workstream("C_ARC", "#arc");
+        ws.setArchived(true);
+        config.addWorkstream(ws);
+        assertTrue("addWorkstream must persist archived",
+            config.getWorkstreams().get(0).isArchived());
+    }
+
     // ── model/effort persistence in WorkstreamConfig ──────────────────────────
 
     @Test(timeout = 10000)

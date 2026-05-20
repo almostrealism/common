@@ -263,6 +263,147 @@ class TestWorkstreamList(unittest.TestCase):
         with self.assertRaises(PermissionError):
             server.workstream_list()
 
+    @patch.object(server, "_controller_get")
+    def test_include_archived_flag(self, mock_get):
+        _grant_all_scopes()
+        mock_get.return_value = [
+            {"workstreamId": "ws-1"},
+            {"workstreamId": "ws-2", "archived": True},
+        ]
+        result = server.workstream_list(include_archived=True)
+        mock_get.assert_called_once_with("/api/workstreams?includeArchived=true")
+        self.assertEqual(result["count"], 2)
+        archived = [w for w in result["workstreams"] if w.get("archived")]
+        self.assertEqual(len(archived), 1)
+        self.assertEqual(archived[0]["workstreamId"], "ws-2")
+
+
+class TestWorkstreamArchive(unittest.TestCase):
+
+    @patch.object(server, "_controller_post")
+    def test_archive_passes_slack_flag(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {
+            "ok": True, "workstreamId": "ws-archive",
+            "archivedAt": "2026-05-19T00:00:00Z",
+            "slackChannelArchived": True,
+        }
+        result = server.workstream_archive(workstream_id="ws-archive")
+        path, payload = mock_post.call_args[0][:2]
+        self.assertEqual(path, "/api/workstreams/ws-archive/archive")
+        self.assertEqual(payload, {"archiveSlackChannel": True})
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["slackChannelArchived"])
+
+    @patch.object(server, "_controller_post")
+    def test_archive_can_skip_slack(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-a"}
+        server.workstream_archive(
+            workstream_id="ws-a", archive_slack_channel=False)
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload, {"archiveSlackChannel": False})
+
+    @patch.object(server, "_controller_post")
+    def test_archive_surfaces_active_job_error(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {
+            "ok": False,
+            "error": "workstream has 2 active jobs; cancel or wait for completion"
+                     " before archiving. Active job IDs: job-a, job-b",
+        }
+        result = server.workstream_archive(workstream_id="ws-busy")
+        self.assertFalse(result["ok"])
+        self.assertIn("active job", result["error"])
+        self.assertIn("job-a", result["error"])
+
+    def test_archive_requires_write_scope(self):
+        _grant_scopes("read")
+        with self.assertRaises(PermissionError):
+            server.workstream_archive(workstream_id="ws-x")
+
+
+class TestWorkstreamUnarchive(unittest.TestCase):
+
+    @patch.object(server, "_controller_post")
+    def test_unarchive_posts_empty_body(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-restore"}
+        result = server.workstream_unarchive(workstream_id="ws-restore")
+        path, payload = mock_post.call_args[0][:2]
+        self.assertEqual(path, "/api/workstreams/ws-restore/unarchive")
+        self.assertEqual(payload, {})
+        self.assertTrue(result["ok"])
+
+    def test_unarchive_requires_write_scope(self):
+        _grant_scopes("read")
+        with self.assertRaises(PermissionError):
+            server.workstream_unarchive(workstream_id="ws-x")
+
+
+class TestWorkstreamDelete(unittest.TestCase):
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    @patch.object(server, "_controller_post")
+    def test_delete_clears_tracker_linkage(
+            self, mock_post, mock_tracker_get, mock_tracker_put):
+        _grant_all_scopes()
+        mock_tracker_get.return_value = {
+            "ok": True,
+            "tasks": [{"id": "task-1"}, {"id": "task-2"}],
+        }
+        mock_tracker_put.return_value = {"ok": True}
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-gone"}
+        result = server.workstream_delete(workstream_id="ws-gone")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["deletedTrackerTasks"], 2)
+        # Tracker tasks were cleared
+        clear_calls = mock_tracker_put.call_args_list
+        self.assertEqual(len(clear_calls), 2)
+        for call in clear_calls:
+            self.assertEqual(call.args[1], {"workstream_id": None})
+        # Controller endpoint was hit with force=False by default
+        path, payload = mock_post.call_args[0][:2]
+        self.assertEqual(path, "/api/workstreams/ws-gone/delete")
+        self.assertEqual(payload, {"force": False})
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    @patch.object(server, "_controller_post")
+    def test_delete_force_passes_through(
+            self, mock_post, mock_tracker_get, mock_tracker_put):
+        _grant_all_scopes()
+        mock_tracker_get.return_value = {"ok": True, "tasks": []}
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-x"}
+        server.workstream_delete(workstream_id="ws-x", force=True)
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload, {"force": True})
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    @patch.object(server, "_controller_post")
+    def test_delete_rejects_when_not_archived(
+            self, mock_post, mock_tracker_get, mock_tracker_put):
+        _grant_all_scopes()
+        mock_post.return_value = {
+            "ok": False,
+            "error": "Workstream ws-live is not archived. Archive it first"
+                     " (workstream_archive) or pass force=true to delete"
+                     " a live workstream.",
+        }
+        result = server.workstream_delete(workstream_id="ws-live")
+        self.assertFalse(result["ok"])
+        self.assertIn("Archive it first", result["error"])
+        # Tracker linkage is preserved when the controller refuses delete.
+        mock_tracker_get.assert_not_called()
+        mock_tracker_put.assert_not_called()
+
+    def test_delete_requires_write_scope(self):
+        _grant_scopes("read")
+        with self.assertRaises(PermissionError):
+            server.workstream_delete(workstream_id="ws-x")
+
 
 class TestWorkstreamGetStatus(unittest.TestCase):
 
@@ -2558,6 +2699,9 @@ class TestToolRegistration(unittest.TestCase):
             "workstream_submit_task",
             "workstream_register",
             "workstream_update_config",
+            "workstream_archive",
+            "workstream_unarchive",
+            "workstream_delete",
             "project_create_branch",
             "project_verify_branch",
             "project_commit_plan",
