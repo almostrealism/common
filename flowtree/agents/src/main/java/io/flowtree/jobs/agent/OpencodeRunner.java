@@ -21,9 +21,14 @@ import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.FileWriter;
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -110,9 +115,10 @@ public class OpencodeRunner implements AgentRunner {
 
         Path binary = ensureBinary();
         OpencodeConfigBuilder config = configBuilderSupplier.get();
+        String providerUrl = config.resolveProviderUrl();
+        probeProviderUrl(providerUrl, logger);
         String configJson = config.buildConfigJson(request);
         Path configPath = writeConfigFile(request, configJson, logger);
-        String providerUrl = config.resolveProviderUrl();
         String qualifiedModel = config.resolveQualifiedModel(request.getModel());
 
         List<String> command = buildCommandLine(binary, request, configPath, qualifiedModel);
@@ -261,6 +267,104 @@ public class OpencodeRunner implements AgentRunner {
             }
             return null;
         }
+    }
+
+    /**
+     * Probes the configured provider URL to confirm it is reachable before
+     * launching the opencode subprocess. Sends a HEAD request and accepts ANY
+     * HTTP response (including 4xx/5xx) as evidence the upstream is alive — the
+     * probe is checking TCP+HTTP layer health, not API correctness. Only
+     * connection refused, DNS failure, or read/connect timeout is treated as
+     * "down."
+     *
+     * <p>Without this probe, when the provider (e.g. a local llama-server) has
+     * crashed, opencode spawns successfully, blocks waiting for the upstream,
+     * and only fails when {@link io.flowtree.jobs.AgentInactivityMonitor} kills
+     * it after the inactivity window — burning the configured restart attempts
+     * in the process. Failing here returns control to the orchestrator in
+     * seconds instead of tens of minutes.</p>
+     *
+     * <p>Can be bypassed by setting the {@code OPENCODE_SKIP_PROVIDER_PROBE}
+     * environment variable to any truthy value ({@code 1}, {@code true}, etc.).
+     * The connect/read timeout is configurable via
+     * {@code OPENCODE_PROVIDER_PROBE_TIMEOUT_MS} (default 5000).</p>
+     *
+     * @param providerUrl resolved provider base URL (e.g. {@code http://mac-studio:8084/v1})
+     * @param logger      diagnostic sink
+     * @throws AgentRunnerNotAvailableException when the URL is malformed or
+     *                                          the provider is unreachable
+     */
+    void probeProviderUrl(String providerUrl, ConsoleFeatures logger) {
+        if (isProbeSkipped()) {
+            logger.log("Provider liveness probe skipped (OPENCODE_SKIP_PROVIDER_PROBE)");
+            return;
+        }
+        URI uri;
+        try {
+            uri = URI.create(providerUrl);
+        } catch (IllegalArgumentException e) {
+            throw new AgentRunnerNotAvailableException(
+                    "Invalid provider URL " + providerUrl + ": " + e.getMessage(), e);
+        }
+        Duration timeout = resolveProbeTimeout();
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(timeout)
+                .build();
+        HttpRequest httpRequest = HttpRequest.newBuilder(uri)
+                .method("HEAD", HttpRequest.BodyPublishers.noBody())
+                .timeout(timeout)
+                .build();
+        try {
+            HttpResponse<Void> response = client.send(
+                    httpRequest, HttpResponse.BodyHandlers.discarding());
+            logger.log("Provider liveness probe: " + providerUrl
+                    + " responded HTTP " + response.statusCode());
+        } catch (IOException e) {
+            throw new AgentRunnerNotAvailableException(
+                    "Provider URL " + providerUrl + " is unreachable: " + e.getMessage(), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new AgentRunnerNotAvailableException(
+                    "Provider liveness probe interrupted for " + providerUrl, e);
+        }
+    }
+
+    /**
+     * Reads the {@code OPENCODE_SKIP_PROVIDER_PROBE} environment variable and
+     * returns whether the probe should be skipped. Recognizes {@code 1},
+     * {@code true}, {@code yes} (case-insensitive) as truthy.
+     *
+     * @return {@code true} if the probe is disabled
+     */
+    private static boolean isProbeSkipped() {
+        String raw = System.getenv("OPENCODE_SKIP_PROVIDER_PROBE");
+        if (raw == null || raw.isEmpty()) {
+            return false;
+        }
+        String value = raw.trim().toLowerCase();
+        return value.equals("1") || value.equals("true") || value.equals("yes");
+    }
+
+    /**
+     * Returns the probe connect/read timeout configured via
+     * {@code OPENCODE_PROVIDER_PROBE_TIMEOUT_MS}, or 5 seconds when unset or
+     * unparseable.
+     *
+     * @return the probe timeout
+     */
+    private static Duration resolveProbeTimeout() {
+        String raw = System.getenv("OPENCODE_PROVIDER_PROBE_TIMEOUT_MS");
+        if (raw != null && !raw.isEmpty()) {
+            try {
+                long millis = Long.parseLong(raw.trim());
+                if (millis > 0) {
+                    return Duration.ofMillis(millis);
+                }
+            } catch (NumberFormatException ignored) {
+                // fall through to default
+            }
+        }
+        return Duration.ofSeconds(5);
     }
 
     /**

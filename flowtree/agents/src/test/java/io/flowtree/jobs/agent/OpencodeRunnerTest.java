@@ -16,11 +16,13 @@
 
 package io.flowtree.jobs.agent;
 
+import com.sun.net.httpserver.HttpServer;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
@@ -187,6 +189,49 @@ public class OpencodeRunnerTest extends TestSuiteBase {
         assertNotNull(runner.capabilities());
         assertFalse(locatorCalled[0]);
         assertFalse(configCalled[0]);
+    }
+
+    /**
+     * Provider liveness probe accepts any HTTP response — including 404 — as
+     * evidence the upstream is alive. The probe is checking TCP+HTTP
+     * reachability, not API correctness.
+     */
+    @Test(timeout = 5000)
+    public void probeProviderUrlAcceptsAnyHttpResponse() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        // Default handler returns 404; that's exactly what we want for HEAD on a
+        // server that has no registered context — proves the probe is alive-only.
+        server.start();
+        try {
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
+            new OpencodeRunner().probeProviderUrl(url, new ConsoleFeatures() {});
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * Probe failure when nothing is listening on the configured port surfaces as
+     * {@link AgentRunnerNotAvailableException}, allowing the orchestrator to
+     * fail fast instead of letting opencode hang to inactivity timeout.
+     */
+    @Test(timeout = 5000)
+    public void probeProviderUrlThrowsWhenUnreachable() throws Exception {
+        // Bind and immediately release a port to discover one that's free, then
+        // probe it. Race window is acceptable for a unit test.
+        HttpServer scratch = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        int freePort = scratch.getAddress().getPort();
+        scratch.stop(0);
+        String url = "http://127.0.0.1:" + freePort + "/v1";
+
+        try {
+            new OpencodeRunner().probeProviderUrl(url, new ConsoleFeatures() {});
+            throw new AssertionError("expected AgentRunnerNotAvailableException");
+        } catch (AgentRunnerNotAvailableException expected) {
+            assertNotNull(expected.getMessage());
+            assertTrue("message should name the URL: " + expected.getMessage(),
+                    expected.getMessage().contains(url));
+        }
     }
 
     /**
