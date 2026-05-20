@@ -117,19 +117,13 @@ public class WesternChromaticTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Tests that position() and scale.valueAt() are inverse operations,
-	 * excluding E7 which has a known bug.
+	 * Tests that position() and scale.valueAt() are inverse operations for all notes.
 	 */
 	@Test(timeout = 5000)
 	public void positionAndScaleInverse() {
 		Scale<WesternChromatic> scale = WesternChromatic.scale();
 
 		for (WesternChromatic note : WesternChromatic.values()) {
-			// Skip E7 due to known bug - E7.position() returns 70 instead of 79
-			if (note == WesternChromatic.E7) {
-				continue;
-			}
-
 			int pos = note.position();
 			WesternChromatic retrieved = scale.valueAt(pos);
 			Assert.assertEquals("valueAt(position()) should return same note for " + note,
@@ -138,21 +132,15 @@ public class WesternChromaticTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Documents the known bug where E7.position() returns 70 instead of 79.
+	 * Tests that E7.position() returns 79 (the correct chromatic position for E7).
 	 */
 	@Test(timeout = 5000)
-	public void e7BugDocumented() {
-		// This test documents the pre-existing bug
-		int actualPosition = WesternChromatic.E7.position();
-		int expectedPosition = 79; // What it should be
-
-		// Currently E7 returns 70 (same as G6)
-		Assert.assertEquals("E7 currently returns wrong position (pre-existing bug)", 70, actualPosition);
-		Assert.assertNotEquals("E7 should be 79 but is not (known bug)", expectedPosition, actualPosition);
+	public void e7IsPosition79() {
+		Assert.assertEquals("E7 should be chromatic position 79", 79, WesternChromatic.E7.position());
 	}
 
 	/**
-	 * Tests that most positions are unique (excluding E7 bug).
+	 * Tests that all 88 positions are unique.
 	 */
 	@Test(timeout = 5000)
 	public void uniquePositions() {
@@ -163,12 +151,10 @@ public class WesternChromaticTest extends TestSuiteBase {
 			int pos = note.position();
 			if (!positions.add(pos)) {
 				duplicateCount++;
-				// Currently E7 duplicates G6's position (70)
 			}
 		}
 
-		// Due to E7 bug, we have exactly 1 duplicate
-		Assert.assertEquals("Only E7 should have a duplicate position (known bug)", 1, duplicateCount);
+		Assert.assertEquals("All 88 notes should have unique positions", 0, duplicateCount);
 	}
 
 	/**
@@ -185,28 +171,19 @@ public class WesternChromaticTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Tests that consecutive notes (except at bug) have positions differing by 1.
+	 * Tests that consecutive notes in the scale have positions differing by exactly 1.
 	 */
 	@Test(timeout = 5000)
 	public void consecutivePositions() {
 		Scale<WesternChromatic> scale = WesternChromatic.scale();
 
-		int expectedDiscontinuities = 0;
 		for (int i = 0; i < scale.length() - 1; i++) {
 			WesternChromatic note = scale.valueAt(i);
 			WesternChromatic nextNote = scale.valueAt(i + 1);
-
 			int diff = nextNote.position() - note.position();
-
-			// Most should differ by 1, but E7 bug causes issues in octave 7
-			if (diff != 1) {
-				expectedDiscontinuities++;
-			}
+			Assert.assertEquals("Consecutive scale notes should differ by 1 position at index " + i,
+					1, diff);
 		}
-
-		// Due to E7 bug returning 70, there are discontinuities in octave 7
-		Assert.assertTrue("Position discontinuities should be limited to E7 bug area",
-				expectedDiscontinuities <= 3);
 	}
 
 	/**
