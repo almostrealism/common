@@ -56,6 +56,9 @@ public final class AgentProcessRunner {
      * to completion, applying an inactivity monitor that destroys the
      * process tree when no output appears within {@code inactivityTimeoutMillis}.
      *
+     * <p>Equivalent to calling {@link #runAttempt(ProcessBuilder, boolean, long, String, ConsoleFeatures)}
+     * with {@code useTmux=false}.</p>
+     *
      * @param pb                       fully configured process builder (command, env, dirs)
      * @param inactivityTimeoutMillis  stdout silence duration that triggers a kill
      * @param taskId                   task identifier used in the monitor thread name
@@ -66,6 +69,46 @@ public final class AgentProcessRunner {
                              long inactivityTimeoutMillis,
                              String taskId,
                              ConsoleFeatures logger) {
+        return runAttempt(pb, false, inactivityTimeoutMillis, taskId, logger);
+    }
+
+    /**
+     * Starts the configured {@link ProcessBuilder} and reads its merged stdout
+     * to completion, applying an inactivity monitor that kills the subprocess
+     * (and its descendants) when no output appears within
+     * {@code inactivityTimeoutMillis}.
+     *
+     * <p>When {@code useTmux} is {@code true}, the subprocess is launched
+     * inside a {@link TmuxSession} so the child receives a real controlling
+     * tty. The {@link ProcessBuilder} is treated as a parameter carrier in
+     * that case: its command, working directory, and environment are pulled
+     * off it and handed to the tmux session, but {@link ProcessBuilder#start()}
+     * is never called. The stdin and stdout/stderr redirections configured
+     * on the builder are ignored because tmux's pane provides its own.</p>
+     *
+     * @param pb                       fully configured process builder (command, env, dirs)
+     * @param useTmux                  if true, launch via {@link TmuxSession} for a real tty
+     * @param inactivityTimeoutMillis  stdout silence duration that triggers a kill
+     * @param taskId                   task identifier used in the monitor thread name
+     * @param logger                   target for {@code log}/{@code warn} messages
+     * @return the captured result; {@link Result#exitCode} is {@code -1} on I/O failure
+     */
+    public static Result runAttempt(ProcessBuilder pb,
+                             boolean useTmux,
+                             long inactivityTimeoutMillis,
+                             String taskId,
+                             ConsoleFeatures logger) {
+        if (useTmux) {
+            return runInTmux(pb, inactivityTimeoutMillis, taskId, logger);
+        }
+        return runInProcess(pb, inactivityTimeoutMillis, taskId, logger);
+    }
+
+    /** Runs the command directly as a child {@link Process}. */
+    private static Result runInProcess(ProcessBuilder pb,
+                                       long inactivityTimeoutMillis,
+                                       String taskId,
+                                       ConsoleFeatures logger) {
         StringBuilder out = new StringBuilder();
         AtomicBoolean killed = new AtomicBoolean(false);
         int exitCode = -1;
@@ -110,6 +153,69 @@ public final class AgentProcessRunner {
             }
         }
         return new Result(exitCode, out.toString(), killed.get());
+    }
+
+    /** Runs the command inside a {@link TmuxSession} so the child has a real tty. */
+    private static Result runInTmux(ProcessBuilder pb,
+                                    long inactivityTimeoutMillis,
+                                    String taskId,
+                                    ConsoleFeatures logger) {
+        StringBuilder out = new StringBuilder();
+        AtomicBoolean killed = new AtomicBoolean(false);
+        int exitCode = -1;
+        Thread monitor = null;
+        String sessionName = "agent-" + sanitizeSessionName(taskId);
+        try (TmuxSession session = TmuxSession.create(sessionName)) {
+            session.workingDirectory(pb.directory()).environment(pb.environment());
+            session.start(pb.command());
+            long pid = session.getPid();
+            logger.log("Process started (PID: " + pid + ") in tmux session " + session.getName());
+
+            AtomicLong lastOutputAt = new AtomicLong(System.currentTimeMillis());
+            monitor = new AgentInactivityMonitor(
+                    session::isAlive,
+                    session::close,
+                    lastOutputAt,
+                    inactivityTimeoutMillis,
+                    idleMillis -> {
+                        killed.set(true);
+                        logger.warn("No Claude output for " + (idleMillis / 1000)
+                                + "s -- killing tmux session " + session.getName()
+                                + " (PID " + pid + ")");
+                    },
+                    "claude-inactivity-monitor-" + taskId).start();
+
+            try (BufferedReader reader = session.captureOutput()) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    lastOutputAt.set(System.currentTimeMillis());
+                    out.append(line).append("\n");
+                    logger.log(line);
+                }
+            }
+
+            logger.log("Process output stream closed, waiting for exit...");
+            exitCode = session.waitFor(-1);
+            logger.log("Completed with exit code: " + exitCode);
+        } catch (IOException e) {
+            logIoOrKill(e, killed.get(), logger);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logIoOrKill(e, killed.get(), logger);
+        } finally {
+            if (monitor != null) {
+                monitor.interrupt();
+            }
+        }
+        return new Result(exitCode, out.toString(), killed.get());
+    }
+
+    /**
+     * Tmux session names cannot contain whitespace, periods, or colons.
+     * Task ids may contain such characters; replace them with hyphens.
+     */
+    private static String sanitizeSessionName(String taskId) {
+        return taskId.replaceAll("[\\s.:]+", "-");
     }
 
     /**

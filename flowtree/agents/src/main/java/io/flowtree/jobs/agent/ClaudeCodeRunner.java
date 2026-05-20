@@ -149,6 +149,7 @@ public class ClaudeCodeRunner implements AgentRunner {
 
         AgentProcessRunner.Result processResult = AgentProcessRunner.runAttempt(
                 pb,
+                true,
                 request.getInactivityTimeoutMillis(),
                 request.getTaskId(),
                 logger);
