@@ -1,0 +1,51 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "ar-docs": {
+      "type": "local",
+      "command": ["python3", "docs/mcp/server.py"],
+      "enabled": true
+    },
+    "ar-test-runner": {
+      "type": "local",
+      "command": ["python3", "tools/mcp/test-runner/server.py"],
+      "enabled": true
+    },
+    "ar-build-validator": {
+      "type": "local",
+      "command": ["python3", "tools/mcp/build-validator/server.py"],
+      "enabled": true
+    },
+    "ar-profile-analyzer": {
+      "type": "local",
+      "command": ["python3", "tools/mcp/profile-analyzer/server.py"],
+      "enabled": true
+    },
+    "ar-consultant": {
+      "type": "local",
+      "command": ["python3", "tools/mcp/consultant/server.py"],
+      "enabled": true
+    },
+    "ar-jmx": {
+      "type": "local",
+      "command": ["python3", "tools/mcp/jmx/server.py"],
+      "enabled": true
+    },
+    "ar-manager": {
+      "type": "local",
+      "command": ["python3", "tools/mcp/manager/server.py"],
+      "enabled": true,
+      "env": {
+        "AR_CONTROLLER_URL": "http://mac-studio:7780"
+      }
+    },
+    "onyx": {
+      "type": "local",
+      "command": ["/Users/Shared/flowtree/tools/OnyxMCP"],
+      "enabled": true,
+      "env": {
+        "ONYX_MCP_PORT": "19432"
+      }
+    }
+  }
+}
