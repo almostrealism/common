@@ -81,5 +81,12 @@ services:
       options:
         max-size: "20m"
         max-file: "5"
+    # Run an init process (tini) as PID 1 so subprocess grandchildren of the
+    # Java Server (claude/opencode CLIs and their python3/java/mvn helpers)
+    # get reaped instead of accumulating as <defunct> entries. Without this,
+    # AgentInactivityMonitor kills hung helper trees but the JVM (as PID 1)
+    # has no SIGCHLD reaper for orphaned grandchildren — flowtree-agent-2
+    # accumulated ~40 zombies in the 2026-05-20 incident.
+    init: true
     restart: unless-stopped
 
