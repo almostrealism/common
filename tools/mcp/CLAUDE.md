@@ -9,7 +9,7 @@ clients. This has happened with `dependent_repos`, `required_labels`,
 first attempt.**
 
 Before committing, verify all three requirements below. There is a test suite in
-`flowtree/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java` that catches violations.
+`flowtree/runtime/src/test/java/io/flowtree/jobs/McpToolDiscoveryTest.java` that catches violations.
 
 ---
 
@@ -87,6 +87,34 @@ Follow the pattern of `workstream_submit_task` (line ~911 of `server.py`) exactl
 
 ---
 
+## JSON-object parameters: `runners`, `requiredLabels`, etc.
+
+Several MCP tools (`workstream_submit_task`, `workstream_register`,
+`workstream_update_config`) accept structured data through string-typed
+parameters that the tool then parses locally:
+
+- `required_labels: str = ""` — a comma-separated `key:value` CSV.
+- `dependent_repos: str = ""` — a comma-separated list of git URLs.
+- `runners: str = ""` — a JSON object whose keys are
+  [`Phase`](../../flowtree/agents/src/main/java/io/flowtree/jobs/agent/Phase.java)
+  wire names (`"primary"`, `"deduplication"`, `"organizational-placement"`,
+  `"enforce-changes"`, `"maven-dependency-protection"`,
+  `"post-completion"`, `"commit-message"`, `"git-tampering-restart"`) plus
+  an optional `"default"` key. Values are runner identifiers
+  (`"claude"`, `"opencode"`, ...). The tool parses the string with
+  `json.loads`, validates phase names against the enum, and forwards the
+  decoded object to the controller via the `runners` field in the
+  submission payload.
+- `default_runner: str = ""` — convenience shortcut equivalent to
+  `runners='{"default": "<value>"}'`. The explicit `runners["default"]`
+  wins when both are supplied.
+
+When adding a new structured parameter, follow the pattern from
+`_parse_runners_json` in `tools/mcp/manager/server.py`: parse, validate
+locally, and return a 400-style `{"ok": False, "error": "..."}` dict on
+shape errors so the caller fails fast instead of waiting on a controller
+round-trip.
+
 ## The Exact Pattern to Follow
 
 Copy the structure of `workstream_submit_task` when adding a new tool:
@@ -126,7 +154,7 @@ After adding a new tool, verify it passes:
 
 ```bash
 cd /path/to/almostrealism-common
-mvn test -pl flowtree -Dtest=McpToolDiscoveryTest
+mvn test -pl flowtree/runtime -Dtest=McpToolDiscoveryTest
 ```
 
 The test `managerAllExpectedToolsAreRegisteredInServerPy` checks that every expected tool name
@@ -146,12 +174,12 @@ important tools are declared in the function signature (not hidden in the body).
 4. Add the tool name to the `expected` set in `McpToolDiscoveryTest.managerAllExpectedToolsAreRegisteredInServerPy`.
 5. Add parameter assertions to `McpToolDiscoveryTest.managerToolParametersAreProperlyDeclaredInSignatures` for any parameters that are not obvious (e.g., optional parameters that were historically missed).
 6. Add the tool name to the `expected` set in `TestToolRegistration.test_expected_tool_count` in `tools/mcp/manager/test_server.py`.
-7. **Update the agent allowlist in `flowtree/src/main/java/io/flowtree/jobs/McpConfigBuilder.java`.** Every new tool must be classified as either:
+7. **Update the agent allowlist in `flowtree/runtime/src/main/java/io/flowtree/jobs/McpConfigBuilder.java`.** Every new tool must be classified as either:
    - **Granted to agents:** add the bare tool name to `AR_MANAGER_TOOL_NAMES`. The Claude Code harness will then include `mcp__ar-manager__<name>` in the launched agent's `--allowedTools` list.
    - **Deliberately excluded:** add the tool name to `EXCLUDED_AR_MANAGER_TOOLS` (admin/orchestration tools, shared-state mutations, anything an autonomous coding agent should not invoke).
 
    The `allowlistCoversEveryArManagerTool` test in `McpConfigBuilderTest` fails when a tool exists in `server.py` but is in neither set, forcing this decision before merge. The historical failure mode was that new tools were registered on the server but never added to the harness allowlist, so the Claude Code subprocess silently blocked them — the test prevents that.
-8. Run `mvn test -pl flowtree -Dtest=McpToolDiscoveryTest,McpConfigBuilderTest` and confirm all tests pass.
+8. Run `mvn test -pl flowtree/runtime -Dtest=McpToolDiscoveryTest,McpConfigBuilderTest` and confirm all tests pass.
 9. Run `python -m pytest tools/mcp/manager/test_server.py` and confirm all tests pass.
 
 ---
@@ -163,7 +191,7 @@ pairs without exception**:
 
 - **`ar-secrets`** (stdio in the agent container) — `secret_list_names`,
   `secret_render_file`.  This is what coding agents launched by
-  `ClaudeCodeJob` must call; the rendered file lands on the agent's host.
+  `CodingAgentJob` must call; the rendered file lands on the agent's host.
 - **`ar-manager`** (HTTP on the controller) —
   `workspace_secret_list_names`, `workspace_secret_render_file`.  These
   exist for admin/Slack flows that run alongside the controller and are

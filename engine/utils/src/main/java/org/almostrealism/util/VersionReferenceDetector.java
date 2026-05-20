@@ -110,7 +110,7 @@ public class VersionReferenceDetector extends PolicyViolationDetector {
 	private static final List<String> ALLOWLISTED_PATH_FRAGMENTS = List.of(
 			// NFS protocol versions ("v3", "v4.1"). These are protocol versions
 			// of an external standard, not project release tags.
-			"graphpersist/src/main/java/io/almostrealism/nfs/NetworkFileSystemServer.java");
+			"flowtree/graphpersist/src/main/java/io/almostrealism/nfs/NetworkFileSystemServer.java");
 
 	/**
 	 * Creates a detector that will scan source files under the given directory.

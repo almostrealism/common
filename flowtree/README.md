@@ -1,226 +1,173 @@
 # FlowTree
 
-FlowTree is a distributed processing framework built on a decentralized peer-to-peer network. Each node in the network can accept, execute, and relay jobs to other nodes, enabling work to be distributed across an arbitrary number of machines without a central coordinator.
+FlowTree is the distributed coding-agent platform that drives this
+project's autonomous-development work. It is built around three pieces:
 
-## System Overview
+- A **controller stack** that accepts job submissions (from Slack, from
+  ar-manager MCP tools, from CI hooks, from the HTTP API), maintains the
+  list of workstreams, and dispatches work onto a peer-to-peer mesh.
+- An **agent pool** of containerized workers that connect outbound to the
+  controller, receive `CodingAgentJob` instances, and run a coding agent
+  (Claude Code or opencode, selectable per-phase) inside a private git
+  worktree.
+- The **ar-manager MCP server** that exposes FlowTree to those agents and
+  to external callers (Claude mobile, CI pipelines, Claude Code IDE
+  integrations) via a unified MCP tool surface.
 
-A full FlowTree deployment has two parts — a **controller stack** running on a server and an **agent pool** running wherever compute is available. The controller coordinates job dispatch and integrates with external services; the agents do the actual work.
-
-```
-  External triggers
-  (Slack, CI, API)
-         │
-         ▼
-┌────────────────────────────────────────────────────────┐
-│  Controller Stack  (flowtree/controller/docker-compose) │
-│                                                        │
-│  ┌─────────────────────┐    ┌──────────────────────┐  │
-│  │  flowtree-controller │    │      ar-manager       │  │
-│  │                     │◄───│   (MCP bridge)        │  │
-│  │  :7766  peer port   │    │   :8010               │  │
-│  │  :7780  HTTP API    │    │                       │  │
-│  └──────────┬──────────┘    └──────────────────────┘  │
-│             │                          │               │
-│             │               ┌──────────▼─────────┐    │
-│             │               │      ar-memory      │    │
-│             │               │   (vector store)    │    │
-│             │               │   :8020             │    │
-│             │               └─────────────────────┘    │
-└─────────────┼──────────────────────────────────────────┘
-              │ outbound :7766
-              ▼
-┌────────────────────────────────────────────────────────┐
-│  Agent Pool  (flowtree/agent/docker-compose)           │
-│                                                        │
-│  ┌───────────┐   ┌───────────┐   ┌───────────┐        │
-│  │  agent-1  │   │  agent-2  │   │  agent-N  │        │
-│  │  Claude   │   │  Claude   │   │  Claude   │        │
-│  │  Code CLI │   │  Code CLI │   │  Code CLI │        │
-│  └───────────┘   └───────────┘   └───────────┘        │
-└────────────────────────────────────────────────────────┘
-```
-
-### Component Roles
-
-| Component | Location | Role |
-|-----------|----------|------|
-| `flowtree-controller` | `flowtree/controller/Dockerfile` | Java server that accepts agent connections (:7766), exposes a low-level job submission API (:7780), integrates with Slack, and dispatches `ClaudeCodeJob` instances to agents |
-| **`ar-manager`** | `tools/mcp/manager/` | **Preferred entrypoint.** Python MCP server that exposes FlowTree to Claude Code agents, Claude mobile, CI pipelines, and any other HTTP client. Handles authentication, rate limiting, GitHub integration, and memory. |
-| `ar-memory` | `tools/mcp/memory/` | Semantic vector store that persists agent memories and decisions across sessions |
-| Agent containers | `flowtree/agent/` | Each agent connects outbound to the controller, receives `ClaudeCodeJob` instances, and executes Claude Code prompts inside a Docker container with its own git workspace |
-
-### ar-manager is the preferred entrypoint
-
-**Do not call the FlowTree controller API (port 7780) directly** except for
-low-level diagnostics. Everything that submits jobs, registers workstreams, or
-queries status should go through ar-manager:
-
-- **Claude mobile / external AI** — configure ar-manager's public Tailscale
-  Funnel URL as a remote MCP server.
-- **Claude Code agents** — MCP tools (`workstream_submit_task`,
-  `workstream_get_status`, etc.) are served by ar-manager.
-- **CI pipelines** — `tools/ci/submit-agent-job.sh` calls ar-manager's HTTP
-  API, not the controller directly.
-- **Slack** — the controller listens to Slack for interactive use, but
-  programmatic submission should still go through ar-manager.
-
-The controller's port 7780 API exists for ar-manager and the Slack integration
-to use internally. Bypassing ar-manager means losing authentication, rate
-limiting, GitHub integration, and memory tooling.
-
-See the [ar-manager README](../tools/mcp/manager/README.md) for setup
-instructions, including how to expose it publicly via Tailscale Funnel.
-
-Agents connect **out** to the controller — the controller never initiates
-connections to agents. Agents can therefore run behind NAT or on ephemeral
-machines with no inbound firewall rules required.
+A coding job is one prompt that the agent should turn into a commit on a
+branch. The orchestrator runs the prompt, then runs a series of
+**enforcement-rule** correction sessions (deduplication audit,
+organizational placement, post-completion command, commit-message
+recovery, ...), each of which can independently route to a different
+runner. The result is a committed branch, a structured completion event,
+and a per-runner cost / turn rollup that downstream tooling consumes.
 
 ---
 
-## Running the Controller Stack
-
-### Prerequisites
-
-- Docker with Compose v2
-- Java 17 + Maven (for the build step)
-- `/Users/Shared/flowtree/controller/workstreams.yaml` — workstream configuration
-- `/Users/Shared/flowtree/secrets/` — token files (auto-generated on first run)
-
-### Start everything
-
-```bash
-./flowtree/rebuild.sh
-```
-
-This script (run from the repo root):
-1. Generates an `ar-manager` shared secret if one doesn't exist
-2. Runs `mvn package` on the flowtree module
-3. Builds and starts `flowtree-controller`, `ar-memory`, and `ar-manager` via Docker Compose
-
-### Rebuild a single service
-
-```bash
-./flowtree/rebuild.sh flowtree-controller   # just the controller
-./flowtree/rebuild.sh ar-manager            # just the manager
-```
-
-### Start the agent pool too
-
-```bash
-./flowtree/rebuild.sh --agents        # controller stack + agent pool
-./flowtree/rebuild.sh --agents-only   # agent pool only (controller already running)
-```
-
-### Manual compose commands
-
-```bash
-# Start
-docker compose -f flowtree/controller/docker-compose.yml up -d
-
-# View logs
-docker compose -f flowtree/controller/docker-compose.yml logs -f flowtree-controller
-
-# Stop
-docker compose -f flowtree/controller/docker-compose.yml down
-```
-
-### Workstream configuration
-
-Workstreams are defined in `/Users/Shared/flowtree/controller/workstreams.yaml`. Each workstream maps a Slack channel (or API endpoint) to a git repository and branch. See `flowtree/src/main/resources/workstreams-example.yaml` for the full reference.
-
----
-
-## Running the Agent Pool
-
-See [Agent Pool](docs/agent-pool.md) for full details.
-
-```bash
-# Docker (recommended)
-./flowtree/rebuild.sh --agents-only
-
-# Or directly
-cd flowtree/agent && ./start.sh
-```
-
-Agents read `FLOWTREE_ROOT_HOST` to find the controller and connect outbound on port 7766.
-
-### Start a single agent (bare metal)
-
-```bash
-./bin/start-agent.sh
-```
-
-Requires Java 17, Maven, Node.js, and the Claude Code CLI installed locally.
-
----
-
-## Core Architecture
-
-A FlowTree network consists of **Servers** and **Nodes**:
-
-- A **Server** listens for peer connections and manages a **NodeGroup** — a collection of Nodes that process jobs locally.
-- Each **Node** maintains peer connections to Nodes on other Servers, forming a mesh network. Nodes relay jobs to peers based on activity ratings and queue depth, naturally load-balancing work across the network.
-- Jobs are created by **JobFactory** instances and distributed through the network. When a Node finishes a job, it picks up the next one from its queue or receives relayed work from a peer.
-
-```
-Server A (port 7766)         Server B (port 7766)
-  NodeGroup                    NodeGroup
-    Node 0 <--- peer ----------> Node 0
-    Node 1 <--- peer ----------> Node 1
-    Node 2 <--- peer ----------> Node 2
-```
-
-Servers discover each other through explicit connection (host + port) or through peer-list exchange. The network self-organizes: Nodes adjust their sleep intervals based on activity, request new connections when under-connected, and relay excess jobs to less busy peers.
-
-### Key Classes
-
-| Class | Role |
-|-------|------|
-| `Server` | Accepts peer connections, manages a `NodeGroup`, routes jobs |
-| `NodeGroup` | Collection of `Node` instances sharing a `JobFactory` |
-| `Node` | Processes one job at a time, relays excess work to peers |
-| `FlowTreeController` | Entry point for the controller; integrates Slack and the HTTP API |
-| `ClaudeCodeJob` | Executes a Claude Code prompt, commits results to git |
-| `GitManagedJob` | Base class; handles branch setup, commit, push, and workspace locking |
-
----
-
-## Capabilities
-
-- **[Coding Agent Integration](docs/coding-agent.md)** — Execute Claude Code prompts as distributed jobs, with automatic git management for committing and pushing changes.
-- **[Slack Integration](docs/slack-integration.md)** — Operate coding agents through Slack, with real-time status updates and bidirectional messaging via MCP tools. Includes dynamic workstream registration with auto-created private Slack channels.
-- **[CI Integration](docs/ci-integration.md)** — Auto-resolve CI failures and implement plan goals via the verify-completion workflow, with workstream registration, prompt generation, and quality gates.
-- **[Node Relay and Job Routing](docs/node-relay.md)** — How jobs move through the network: server vs. peer connections, the relay loop, label-based routing, and the controller's relay Node. **Read this before modifying Node, NodeGroup, or Connection.**
-- **[Agent Pool](docs/agent-pool.md)** — Self-contained Docker setup for running a scalable pool of agent nodes.
-- **[MCP Tools for Agent Jobs](../tools/mcp/README.md)** — Which MCP tools are available to coding agents, how they are delivered, and how to configure `workstreams.yaml`.
-
----
-
-## Module Structure
+## Submodule layout
 
 ```
 flowtree/
-  controller/               # Controller stack
-    Dockerfile
-    docker-compose.yml
-  agent/                    # Agent pool Docker Compose + Dockerfile
-    docker-compose.yml
-    Dockerfile
-    start.sh
-  bin/                      # Bare-metal startup scripts
-    start-agent.sh
-    start-controller.sh
-  conf/                     # Runtime properties
-    agent.properties
-  rebuild.sh                # One-command build + deploy script
-  docs/                     # Architecture and integration guides
-  src/main/java/io/flowtree/
-    Server.java             # Core server with peer networking
-    node/                   # Node, NodeGroup, Client, Proxy
-    msg/                    # Message, Connection, NodeProxy
-    jobs/                   # ClaudeCodeJob, GitManagedJob, ExternalProcessJob
-    slack/                  # FlowTreeController, SlackListener, SlackNotifier
-    job/                    # Job, JobFactory interfaces
-    fs/                     # Distributed file system
-    scheduler/              # Scheduled job support
+├── api/             # ar-flowtreeapi          — protocol & API abstractions
+├── base/            # ar-flowtree-base        — shared helpers (JsonFieldExtractor, GitOperations)
+├── agents/          # ar-flowtree-agents      — AgentRunner SPI + bundled runners (Claude, opencode)
+├── python/          # ar-flowtree-python      — Python bindings
+├── graphpersist/    # ar-graphpersist         — database persistence, NFS/SSH
+├── runtime/         # ar-flowtree-runtime     — controller, jobs, NodeGroup, Slack integration
+└── runtime/rebuild.sh  # one-command build + deploy for the controller stack and agent pool
 ```
+
+Internal dependency order:
+
+```
+api    base    graphpersist
+            ↓
+         agents       (uses base)
+            ↓
+         runtime      (uses api, base, agents, python, graphpersist)
+```
+
+Nothing in the `base/`, `compute/`, `domain/`, `engine/`, `extern/`, or
+`studio/` layers depends on `flowtree/`. The runtime module is the only
+flowtree module that pulls in engine-layer code (`ar-utils`,
+`ar-utils-http`).
+
+For the broader project layer map, see the top-level
+[CLAUDE.md](../CLAUDE.md).
+
+---
+
+## How a job flows through the system
+
+1. **Submission.** An external caller (Slack, an agent calling
+   `workstream_submit_task`, a CI script, a direct HTTP POST) hits
+   `ar-manager`, which forwards to the controller's
+   `POST /api/workstreams/{id}/submit`. The controller validates the
+   payload (including the per-phase runner map, see below) and creates a
+   `CodingAgentJob`.
+2. **Dispatch.** The job lands in the controller's `NodeGroup` and is
+   relayed to an agent over the peer mesh. The agent clones / fetches
+   the workstream's repo into a private worktree.
+3. **Primary phase.** The agent's `CodingAgentJob.executeSingleRun()`
+   resolves the runner for `Phase.PRIMARY` (see
+   [docs/architecture/PHASES.md](docs/architecture/PHASES.md)), builds
+   an `AgentRunRequest`, and invokes it. The runner spawns the
+   underlying CLI (`claude` or `opencode`) in the worktree.
+4. **Enforcement phases.** After the primary phase returns, the
+   orchestrator runs the active `EnforcementRule` list (deduplication,
+   organizational placement, post-completion command, ...), turning
+   each rule into another `AgentRunRequest` for the runner the operator
+   selected for that phase.
+5. **Completion.** The orchestrator stages the resulting commit, fires
+   a `CodingAgentJobEvent` (with `runnerStats` per runner and the
+   per-phase runner map), and either pushes the branch directly or
+   opens a PR depending on workstream config.
+
+### Where to look in code
+
+| Concern | Code |
+|---------|------|
+| Job lifecycle, enforcement-rule outer loop | `flowtree/runtime/src/main/java/io/flowtree/jobs/CodingAgentJob.java` |
+| Per-phase runner dispatch | `CodingAgentJob.executeSingleRun()` → `AgentRunnerRegistry.get(...)` |
+| `AgentRunner` SPI + bundled runners | `flowtree/agents/src/main/java/io/flowtree/jobs/agent/` |
+| MCP config + tool allowlist construction | `flowtree/runtime/src/main/java/io/flowtree/jobs/McpConfigBuilder.java` |
+| Job submission HTTP endpoint | `flowtree/runtime/src/main/java/io/flowtree/slack/FlowTreeApiEndpoint.java` |
+| Workstream config (`defaultRunner`, `runners`, ...) | `flowtree/runtime/src/main/java/io/flowtree/slack/{Workstream,WorkstreamConfig}.java` |
+| Slack integration | `flowtree/runtime/src/main/java/io/flowtree/slack/SlackListener.java`, `FlowTreeController.java` |
+| Controller config + secrets | `/Users/Shared/flowtree/controller/`, `/Users/Shared/flowtree/secrets/` (operator-managed) |
+
+---
+
+## Documentation
+
+### Pluggable agent runners (this branch's design)
+
+- [docs/architecture/AGENT_RUNNERS.md](docs/architecture/AGENT_RUNNERS.md)
+  — The `AgentRunner` SPI: `AgentRunRequest`, `AgentRunResult`,
+  `AgentCapabilities`, `AgentRunnerRegistry`. Where allowlist ownership
+  lives. How a runner that lacks a binary fails.
+- [docs/architecture/PHASES.md](docs/architecture/PHASES.md) — The phase
+  inventory, per-phase runner routing precedence ladder, wire-format keys
+  for the per-phase map, and the telemetry model on
+  `CodingAgentJobEvent`.
+- [docs/operations/SETUP.md](docs/operations/SETUP.md) — Operator setup
+  index: where workstreams, secrets, Slack, GitHub, and tracker
+  integration are configured.
+- [docs/operations/OPENCODE.md](docs/operations/OPENCODE.md) — Opencode
+  runner setup: environment variables, binary discovery, recommended
+  starter setup (`./flowtree/runtime/rebuild.sh --with-llm`), alternative
+  backends (llama.cpp, cloud).
+- [docs/operations/RECIPES.md](docs/operations/RECIPES.md) — Recommended
+  phase-mix recipes (All-Claude, Mixed-review, All-opencode) and how to
+  pick between them.
+
+### Runtime (controller + agent pool) detail
+
+- [runtime/README.md](runtime/README.md) — Controller-stack and
+  agent-pool deployment, ports, `rebuild.sh` usage, manual Docker
+  Compose commands.
+- [runtime/docs/](runtime/docs/) — Deeper runtime topics
+  (`agent-pool.md`, `coding-agent.md`, `slack-integration.md`,
+  `ci-integration.md`, `node-relay.md`, `git-operations.md`, ...).
+
+### Submodule READMEs
+
+- [agents/README.md](agents/README.md) — Per-module README for
+  `ar-flowtree-agents`, focused on operator-facing opencode env vars and
+  capabilities.
+- [api/](api/), [base/](base/), [python/](python/),
+  [graphpersist/](graphpersist/) — Each submodule directory has its own
+  pom + sources; see the parent [CLAUDE.md](../CLAUDE.md) for the
+  responsibilities of each.
+
+### External integrations (configuration pointers)
+
+- **Slack** — workstreams are mapped to Slack channels; tokens live
+  under `/Users/Shared/flowtree/secrets/`. See
+  [runtime/docs/slack-integration.md](runtime/docs/slack-integration.md).
+- **GitHub** — org and repo allowlists, PR-creation behavior, and
+  GitHub tokens are configured through `WorkstreamConfig` and the
+  ar-manager secret bundle. See
+  [runtime/docs/pull-request-detection.md](runtime/docs/pull-request-detection.md)
+  and [`tools/mcp/SECRETS.md`](../tools/mcp/SECRETS.md).
+- **Tracker** — project-board integration is exposed through the
+  ar-manager `tracker_*` MCP tools. See
+  [`tools/mcp/CLAUDE.md`](../tools/mcp/CLAUDE.md).
+- **Secrets** — the secret-file rendering tool and the controller secret
+  bundle layout are documented in
+  [`tools/mcp/SECRETS.md`](../tools/mcp/SECRETS.md).
+
+---
+
+## Where to start
+
+- **You're an operator bringing up a new host:** start at
+  [docs/operations/SETUP.md](docs/operations/SETUP.md).
+- **You're tuning costs by routing phases to a cheaper local model:**
+  start at [docs/operations/OPENCODE.md](docs/operations/OPENCODE.md)
+  and [docs/operations/RECIPES.md](docs/operations/RECIPES.md).
+- **You're adding a new agent runner:** start at
+  [docs/architecture/AGENT_RUNNERS.md](docs/architecture/AGENT_RUNNERS.md).
+- **You're modifying how the controller dispatches jobs:** start at
+  [runtime/README.md](runtime/README.md) and the design docs under
+  `runtime/docs/`.

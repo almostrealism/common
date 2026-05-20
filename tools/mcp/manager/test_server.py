@@ -101,6 +101,88 @@ class TestControllerHealth(unittest.TestCase):
             server.controller_health()
 
 
+class TestAgentOptions(unittest.TestCase):
+    """Tests for the agent_options tool."""
+
+    @patch.object(server, "_controller_get")
+    def test_returns_controller_response(self, mock_get):
+        """agent_options proxies the /api/agents response as-is."""
+        _grant_all_scopes()
+        mock_response = {
+            "ok": True,
+            "runners": [
+                {
+                    "name": "claude",
+                    "capabilities": {
+                        "reportsCost": True,
+                        "reportsTurns": True,
+                        "supportsEffortLevel": True,
+                        "supportsMaxBudget": True,
+                        "supportsMcpHttpTransport": True,
+                        "supportsMcpStdioTransport": True,
+                        "supportsPermissionDenialReporting": True,
+                        "supportedModels": ["sonnet", "opus"],
+                    },
+                },
+                {
+                    "name": "opencode",
+                    "capabilities": {
+                        "reportsCost": False,
+                        "reportsTurns": False,
+                        "supportsEffortLevel": False,
+                        "supportsMaxBudget": False,
+                        "supportsMcpHttpTransport": False,
+                        "supportsMcpStdioTransport": True,
+                        "supportsPermissionDenialReporting": False,
+                        "supportedModels": [],
+                    },
+                },
+            ],
+            "phases": [
+                {"name": "primary", "description": "Primary work."},
+                {"name": "deduplication", "description": "Deduplication audit."},
+            ],
+            "models": ["sonnet", "opus", "haiku"],
+            "defaultRunner": "claude",
+        }
+        mock_get.return_value = mock_response
+        result = server.agent_options()
+        mock_get.assert_called_once_with("/api/agents")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["defaultRunner"], "claude")
+        self.assertEqual(len(result["runners"]), 2)
+        runner_names = [r["name"] for r in result["runners"]]
+        self.assertIn("claude", runner_names)
+        self.assertIn("opencode", runner_names)
+        self.assertEqual(len(result["phases"]), 2)
+        self.assertEqual(result["phases"][0]["name"], "primary")
+        self.assertIn("models", result)
+
+    def test_requires_read_scope(self):
+        """agent_options must require at least read scope."""
+        _grant_scopes("write")
+        with self.assertRaises(PermissionError):
+            server.agent_options()
+
+    @patch.object(server, "_controller_get")
+    def test_phase_list_wired_correctly(self, mock_get):
+        """Phases list in response must contain name and description keys."""
+        _grant_all_scopes()
+        mock_get.return_value = {
+            "ok": True,
+            "runners": [],
+            "phases": [{"name": "primary", "description": "Primary work."}],
+            "models": [],
+            "defaultRunner": "claude",
+        }
+        result = server.agent_options()
+        phases = result.get("phases", [])
+        self.assertTrue(len(phases) > 0)
+        for phase in phases:
+            self.assertIn("name", phase)
+            self.assertIn("description", phase)
+
+
 class TestControllerUpdateConfig(unittest.TestCase):
 
     @patch.object(server, "_controller_get")
@@ -442,12 +524,12 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         mock_post.return_value = {"ok": True, "jobId": "job-pcc"}
         server.workstream_submit_task(
             prompt="Task",
-            post_completion_command="mvn -pl flowtree test -Dtest=FooTest",
+            post_completion_command="mvn -pl flowtree/runtime test -Dtest=FooTest",
         )
         payload = mock_post.call_args[0][1]
         self.assertEqual(
             payload["postCompletionCommand"],
-            "mvn -pl flowtree test -Dtest=FooTest",
+            "mvn -pl flowtree/runtime test -Dtest=FooTest",
         )
 
     @patch.object(server, "_controller_post")
@@ -485,6 +567,154 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         )
         payload = mock_post.call_args[0][1]
         self.assertNotIn("postCompletionTimeoutSeconds", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_max_post_completion_passes_forwarded(self, mock_post):
+        """max_post_completion_passes is forwarded to the controller payload."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-mpcp"}
+        server.workstream_submit_task(
+            prompt="Task",
+            post_completion_command="make test",
+            max_post_completion_passes=5,
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["maxPostCompletionPasses"], 5)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_max_post_completion_passes_omitted_by_default(self, mock_post):
+        """max_post_completion_passes must not appear in the payload when not set."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-mpcp-default"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("maxPostCompletionPasses", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_max_post_completion_passes_one(self, mock_post):
+        """max_post_completion_passes=1 is forwarded correctly."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-mpcp-one"}
+        server.workstream_submit_task(
+            prompt="Task",
+            post_completion_command="make test",
+            max_post_completion_passes=1,
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["maxPostCompletionPasses"], 1)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_delay_seconds_forwarded(self, mock_post):
+        """delay_seconds is forwarded to the controller payload as delaySeconds."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-delay"}
+        server.workstream_submit_task(prompt="Task", delay_seconds=30)
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["delaySeconds"], 30)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_delay_seconds_omitted_by_default(self, mock_post):
+        """delay_seconds must not appear in the payload when not specified."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-nodelay"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("delaySeconds", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_delay_seconds_zero_omitted(self, mock_post):
+        """delay_seconds=0 must not appear in the payload (immediate dispatch)."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-nodelay-zero"}
+        server.workstream_submit_task(prompt="Task", delay_seconds=0)
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("delaySeconds", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_runners_forwarded_as_object(self, mock_post):
+        """runners JSON string is parsed and forwarded as a nested object."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-runners"}
+        server.workstream_submit_task(
+            prompt="Task",
+            runners='{"primary":"claude","deduplication":"opencode"}',
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {
+            "primary": "claude", "deduplication": "opencode"})
+
+    @patch.object(server, "_controller_post")
+    def test_submit_default_runner_merged_into_runners(self, mock_post):
+        """default_runner alone is forwarded as runners={"default": <value>}."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-default-runner"}
+        server.workstream_submit_task(prompt="Task", default_runner="opencode")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {"default": "opencode"})
+
+    @patch.object(server, "_controller_post")
+    def test_submit_runners_default_wins_over_default_runner(self, mock_post):
+        """When both runners["default"] and default_runner are set, the
+        explicit runners["default"] is authoritative."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-precedence"}
+        server.workstream_submit_task(
+            prompt="Task",
+            runners='{"default":"claude"}',
+            default_runner="opencode",
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {"default": "claude"})
+
+    @patch.object(server, "_controller_post")
+    def test_submit_runners_omitted_by_default(self, mock_post):
+        """No runners argument means no runners key in the payload."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-norunners"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("runners", payload)
+
+    def test_submit_runners_rejects_unknown_phase(self):
+        """Unknown phase names in runners are rejected client-side with 400."""
+        _grant_all_scopes()
+        result = server.workstream_submit_task(
+            prompt="Task",
+            runners='{"unknown-phase":"claude"}',
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("Unknown phase", result["error"])
+        self.assertIn("unknown-phase", result["error"])
+
+    def test_submit_runners_rejects_non_object_json(self):
+        """runners must be a JSON object, not an array or scalar."""
+        _grant_all_scopes()
+        result = server.workstream_submit_task(
+            prompt="Task",
+            runners='["claude"]',
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("JSON object", result["error"])
+
+    def test_submit_runners_rejects_invalid_json(self):
+        """runners must be valid JSON."""
+        _grant_all_scopes()
+        result = server.workstream_submit_task(
+            prompt="Task",
+            runners="not-valid-json",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("JSON object", result["error"])
+
+    def test_submit_runners_rejects_non_string_value(self):
+        """Runner values must be non-empty strings."""
+        _grant_all_scopes()
+        result = server.workstream_submit_task(
+            prompt="Task",
+            runners='{"primary":""}',
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("non-empty string", result["error"])
 
 
 class TestWorkstreamSubmitSelfCollision(unittest.TestCase):
@@ -779,6 +1009,59 @@ class TestWorkstreamRegister(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("Invalid model", result["error"])
 
+    @patch.object(server, "_controller_post")
+    def test_register_runners_forwarded_as_object(self, mock_post):
+        """runners JSON string is parsed and forwarded as a nested object."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-runners"}
+        server.workstream_register(
+            default_branch="feature/x",
+            runners='{"primary":"opencode","deduplication":"opencode"}',
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {"primary": "opencode", "deduplication": "opencode"})
+
+    @patch.object(server, "_controller_post")
+    def test_register_default_runner_forwarded(self, mock_post):
+        """default_runner alone is forwarded as runners={"default": <value>}."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-dr"}
+        server.workstream_register(
+            default_branch="feature/x",
+            default_runner="opencode",
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {"default": "opencode"})
+
+    @patch.object(server, "_controller_post")
+    def test_register_runners_omitted_by_default(self, mock_post):
+        """No runners argument means no runners key in the payload."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-no-runners"}
+        server.workstream_register(default_branch="feature/x")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("runners", payload)
+
+    def test_register_runners_rejects_malformed_json(self):
+        """Malformed runners JSON yields ok=False without calling the controller."""
+        _grant_all_scopes()
+        result = server.workstream_register(
+            default_branch="feature/x",
+            runners="not-valid-json",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
+
+    def test_register_runners_rejects_unknown_phase(self):
+        """Unknown phase names in runners are rejected client-side."""
+        _grant_all_scopes()
+        result = server.workstream_register(
+            default_branch="feature/x",
+            runners='{"unknown-phase":"claude"}',
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
+
 
 class TestWorkstreamUpdateConfig(unittest.TestCase):
 
@@ -839,6 +1122,50 @@ class TestWorkstreamUpdateConfig(unittest.TestCase):
             workstream_id="ws-test", model="sonnet-4-6")
         self.assertFalse(result["ok"])
         self.assertIn("Invalid model", result["error"])
+
+    @patch.object(server, "_controller_post")
+    def test_update_runners_forwarded_as_object(self, mock_post):
+        """runners JSON string is parsed and forwarded as a nested object."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workstream_update_config(
+            workstream_id="ws-test",
+            runners='{"primary":"opencode"}',
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {"primary": "opencode"})
+
+    @patch.object(server, "_controller_post")
+    def test_update_default_runner_forwarded(self, mock_post):
+        """default_runner alone is forwarded as runners={"default": <value>}."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workstream_update_config(
+            workstream_id="ws-test",
+            default_runner="opencode",
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {"default": "opencode"})
+
+    def test_update_runners_rejects_malformed_json(self):
+        """Malformed runners JSON yields ok=False without calling the controller."""
+        _grant_all_scopes()
+        result = server.workstream_update_config(
+            workstream_id="ws-test",
+            runners="not-valid-json",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
+
+    def test_update_runners_rejects_unknown_phase(self):
+        """Unknown phase names in runners are rejected client-side."""
+        _grant_all_scopes()
+        result = server.workstream_update_config(
+            workstream_id="ws-test",
+            runners='{"unknown-phase":"claude"}',
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
 
 
 # -----------------------------------------------------------------------
@@ -2224,6 +2551,7 @@ class TestToolRegistration(unittest.TestCase):
         expected = {
             "controller_health",
             "controller_update_config",
+            "agent_options",
             "workstream_list",
             "workstream_get_status",
             "workstream_get_job",

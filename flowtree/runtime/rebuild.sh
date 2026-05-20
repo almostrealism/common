@@ -1,0 +1,332 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname "$0")/../.."
+
+SECRETS_DIR="/Users/Shared/flowtree/secrets"
+AGENT_ENV="flowtree/runtime/agent/.env"
+
+# ── Usage ──────────────────────────────────────────────────────────
+usage() {
+  cat <<'EOF'
+Usage: flowtree/runtime/rebuild.sh [services...] [--agents] [--with-llm]
+
+  No args        Rebuild all controller-stack containers
+  --agents       Also rebuild and restart the agent pool
+  --agents-only  Rebuild only the agent pool (skip controller stack)
+  --with-llm     Also start a local OpenAI-compatible LLM server (ollama)
+                 and pull the default model. Used by the OpencodeRunner.
+                 Override the model with LLM_MODEL (default: qwen3-coder:30b).
+                 Override the host port with LLM_PORT (default: 11434).
+  service names  Rebuild specific controller-stack services
+
+Examples:
+  flowtree/runtime/rebuild.sh                        # controller stack only
+  flowtree/runtime/rebuild.sh --agents               # controller stack + agents
+  flowtree/runtime/rebuild.sh --agents-only          # agents only
+  flowtree/runtime/rebuild.sh --agents --with-llm    # full stack + agents + local LLM
+  flowtree/runtime/rebuild.sh flowtree-controller    # just the controller service
+
+Environment variables consulted by --with-llm:
+  LLM_MODEL          ollama model identifier (default: qwen3-coder:30b)
+  LLM_PORT           host port the ollama server listens on (default: 11434)
+  OLLAMA_HOST_OVERRIDE   override the URL written into the agent .env
+                         (default: http://host.docker.internal:${LLM_PORT}/v1)
+EOF
+  exit 0
+}
+
+# ── Parse flags ────────────────────────────────────────────────────
+
+AGENTS=false
+AGENTS_ONLY=false
+WITH_LLM=false
+SERVICES=()
+
+for arg in "$@"; do
+  case "${arg}" in
+    --help|-h)      usage ;;
+    --agents)       AGENTS=true ;;
+    --agents-only)  AGENTS_ONLY=true ;;
+    --with-llm|--llm) WITH_LLM=true ;;
+    *)              SERVICES+=("${arg}") ;;
+  esac
+done
+
+# ── Shared secret ──────────────────────────────────────────────────
+
+if [ ! -f "$SECRETS_DIR/shared-secret" ]; then
+  echo "Generating ar-manager shared secret..."
+  mkdir -p "$SECRETS_DIR"
+  openssl rand -base64 32 > "$SECRETS_DIR/shared-secret"
+  chmod 600 "$SECRETS_DIR/shared-secret"
+  echo "Shared secret written to $SECRETS_DIR/shared-secret"
+fi
+
+# ── Maven build (needed by both controller and agent images) ───────
+
+NEEDS_BUILD=false
+
+if [ "${AGENTS_ONLY}" = true ] || [ "${AGENTS}" = true ]; then
+  NEEDS_BUILD=true
+elif [ ${#SERVICES[@]} -eq 0 ] || printf '%s\n' "${SERVICES[@]}" | grep -qwE "flowtree-controller|ar-manager"; then
+  NEEDS_BUILD=true
+fi
+
+if [ "${NEEDS_BUILD}" = true ]; then
+  echo "Building flowtree module..."
+  # Use `install` (not `package`) so each upstream module's freshly built jar
+  # lands in ~/.m2 before `dependency:copy-dependencies` pulls from there.
+  # `package` leaves the jars in each module's target/ dir but does not install
+  # them, so the dependency copy would pick up stale cached jars and the agent
+  # image would run with outdated transitive code.
+  mvn install -pl flowtree/runtime -am -DskipTests
+  # `dependency:copy-dependencies` with `-pl <module>` resolves
+  # -DoutputDirectory relative to the module's basedir, not the reactor cwd —
+  # passing `flowtree/runtime/target/dependency` would create
+  # `flowtree/runtime/flowtree/runtime/target/dependency/` and the
+  # controller/agent Dockerfile COPY would fail with "no such file or
+  # directory". Use an absolute path to pin it to the expected location.
+  mvn dependency:copy-dependencies -pl flowtree/runtime \
+      -DoutputDirectory="$(pwd)/flowtree/runtime/target/dependency"
+fi
+
+# ── Controller stack ───────────────────────────────────────────────
+#
+# `build --no-cache` followed by `up --force-recreate` is the only
+# reliable way to get a fresh deploy. Plain `up -d --build` reuses
+# cached COPY layers if Docker decides the source mtimes are
+# unchanged, which can silently ship a stale JAR or stale bundled
+# tool source. We hit exactly that bug shipping the ar-secrets
+# Python source — the rebuild "succeeded" but the running image was
+# the previous one. Always-fresh defaults are worth the few extra
+# seconds of cold build per deploy.
+
+if [ "${AGENTS_ONLY}" = false ]; then
+  if [ ${#SERVICES[@]} -eq 0 ]; then
+    echo "Rebuilding all controller-stack containers (no cache)..."
+    docker compose -f flowtree/runtime/controller/docker-compose.yml build --no-cache --pull
+    docker compose -f flowtree/runtime/controller/docker-compose.yml up -d --force-recreate
+  else
+    echo "Rebuilding (no cache): ${SERVICES[*]}"
+    docker compose -f flowtree/runtime/controller/docker-compose.yml build --no-cache --pull "${SERVICES[@]}"
+    docker compose -f flowtree/runtime/controller/docker-compose.yml up -d --force-recreate "${SERVICES[@]}"
+  fi
+fi
+
+# ── Local LLM server (opt-in via --with-llm) ───────────────────────
+#
+# Provisions an ollama daemon on the host and pulls a coding-capable
+# model. The agent containers reach it via host.docker.internal on
+# macOS / Windows Docker Desktop; on Linux you need to expose the host
+# differently (e.g. add `--add-host=host.docker.internal:host-gateway`
+# to the agent compose file or set OLLAMA_HOST_OVERRIDE to your LAN IP).
+#
+# All state lives under $HOME/.ollama (managed by ollama itself); this
+# script never writes to system-owned paths.
+
+LLM_MODEL="${LLM_MODEL:-qwen3-coder:30b}"
+LLM_PORT="${LLM_PORT:-11434}"
+
+if [ "${WITH_LLM}" = true ]; then
+  echo "── LLM server (--with-llm) ─────────────────────────────────"
+
+  if ! command -v ollama >/dev/null 2>&1; then
+    echo "ERROR: ollama is not installed or not on PATH."
+    echo "  Install from https://ollama.ai or pass --with-llm only on a"
+    echo "  machine that already has it. For llama.cpp or other"
+    echo "  OpenAI-compatible servers, omit --with-llm and set"
+    echo "  OPENCODE_PROVIDER_URL directly in flowtree/runtime/agent/.env."
+    exit 1
+  fi
+
+  # Probe whether something is already listening on the requested port.
+  # Tolerant: curl exits non-zero if no listener, which is what we want.
+  if curl -sS --max-time 2 "http://127.0.0.1:${LLM_PORT}/api/tags" >/dev/null 2>&1; then
+    echo "ollama already responding on :${LLM_PORT} — leaving it running"
+  else
+    echo "Starting ollama serve on :${LLM_PORT}..."
+    mkdir -p "${HOME}/.ollama"
+    OLLAMA_HOST="127.0.0.1:${LLM_PORT}" nohup ollama serve \
+        >"${HOME}/.ollama/server.log" 2>&1 &
+    # Wait for the server to become reachable. Short polls; ollama
+    # comes up in well under a second on a warm install.
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      if curl -sS --max-time 2 "http://127.0.0.1:${LLM_PORT}/api/tags" \
+          >/dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+    done
+    if ! curl -sS --max-time 2 "http://127.0.0.1:${LLM_PORT}/api/tags" \
+        >/dev/null 2>&1; then
+      echo "ERROR: ollama did not become reachable on :${LLM_PORT} within 10s."
+      echo "  Check ${HOME}/.ollama/server.log for details."
+      exit 1
+    fi
+    echo "ollama is up on :${LLM_PORT}"
+  fi
+
+  # Detect whether the requested model is already present. `ollama list`
+  # prints tab-separated NAME ... lines; grep tolerates the colon form.
+  if OLLAMA_HOST="127.0.0.1:${LLM_PORT}" ollama list 2>/dev/null \
+      | awk 'NR>1 {print $1}' \
+      | grep -Fxq "${LLM_MODEL}"; then
+    echo "Model already present: ${LLM_MODEL}"
+  else
+    echo "Pulling model: ${LLM_MODEL} (this can take several minutes for first run)..."
+    OLLAMA_HOST="127.0.0.1:${LLM_PORT}" ollama pull "${LLM_MODEL}"
+  fi
+
+  # Compute the URL that the *agent containers* should use to reach the
+  # host's ollama. On Docker Desktop (macOS / Windows) host.docker.internal
+  # is the well-known alias; on Linux it requires the
+  # --add-host=host.docker.internal:host-gateway compose option, so we
+  # let operators override the URL explicitly via OLLAMA_HOST_OVERRIDE.
+  OLLAMA_AGENT_URL="${OLLAMA_HOST_OVERRIDE:-http://host.docker.internal:${LLM_PORT}/v1}"
+  echo "Agent containers will use OPENCODE_PROVIDER_URL=${OLLAMA_AGENT_URL}"
+
+  # Persist OPENCODE_* values into the agent .env so subsequent runs
+  # without --with-llm still point at the same endpoint, and so the
+  # `. .env` load in the agent block below sees the freshly chosen
+  # URL even though the env block runs after this one. Existing keys
+  # are replaced in place; other operator-set values are preserved.
+  mkdir -p "$(dirname "${AGENT_ENV}")"
+  touch "${AGENT_ENV}"
+  set_env_var() {
+    local key="$1" value="$2"
+    if grep -q "^${key}=" "${AGENT_ENV}"; then
+      # macOS sed needs -i ''; Linux sed needs -i without arg. Use a
+      # rewrite-via-temp-file approach that works on both.
+      local tmp
+      tmp="$(mktemp)"
+      awk -v k="${key}" -v v="${value}" '
+        BEGIN { kp = k "=" }
+        index($0, kp) == 1 { print kp v; next }
+        { print }
+      ' "${AGENT_ENV}" > "${tmp}"
+      mv "${tmp}" "${AGENT_ENV}"
+    else
+      printf '%s=%s\n' "${key}" "${value}" >> "${AGENT_ENV}"
+    fi
+  }
+  set_env_var OPENCODE_PROVIDER_URL "${OLLAMA_AGENT_URL}"
+  set_env_var OPENCODE_DEFAULT_MODEL "${LLM_MODEL}"
+  set_env_var OPENCODE_API_KEY ""
+fi
+
+# ── Agent pool ─────────────────────────────────────────────────────
+
+if [ "${AGENTS}" = true ] || [ "${AGENTS_ONLY}" = true ]; then
+  # Load existing .env if present
+  if [ -f "${AGENT_ENV}" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "${AGENT_ENV}"
+    set +a
+  fi
+
+  # Validate required config — skip prompts if already set
+  if [ -z "${FLOWTREE_ROOT_HOST:-}" ]; then
+    read -rp "Controller host: " FLOWTREE_ROOT_HOST
+    if [ -z "${FLOWTREE_ROOT_HOST}" ]; then
+      echo "ERROR: Controller host is required."
+      exit 1
+    fi
+  else
+    echo "Using controller host: ${FLOWTREE_ROOT_HOST}"
+  fi
+
+  if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+    echo ""
+    echo "A Claude Code OAuth token is required."
+    echo "Generate one by running:  claude setup-token"
+    echo ""
+    read -rp "Claude Code OAuth token: " CLAUDE_CODE_OAUTH_TOKEN
+    if [ -z "${CLAUDE_CODE_OAUTH_TOKEN}" ]; then
+      echo "ERROR: Claude Code OAuth token is required."
+      exit 1
+    fi
+  else
+    echo "Using existing OAuth token"
+  fi
+
+  export FLOWTREE_ROOT_HOST CLAUDE_CODE_OAUTH_TOKEN
+
+  AGENT_COUNT="${AGENT_COUNT:-2}"
+  echo "Rebuilding ${AGENT_COUNT} agent container(s) (no cache)..."
+  docker compose -f flowtree/runtime/agent/docker-compose.yml build --no-cache --pull
+  docker compose -f flowtree/runtime/agent/docker-compose.yml up -d --force-recreate
+fi
+
+echo "Done."
+
+# ── Funnel health check (non-fatal) ───────────────────────────────
+#
+# Verifies that Tailscale Funnel is configured and that the public edge
+# completes a TLS handshake for the exposed ar-manager hostname. This is
+# purely informational — failures never block the script exit code. Seen
+# failure modes: Funnel config lost across daemon restart ("No serve
+# config"), and TLS handshake dropping at the public edge when the local
+# tailscaled is too outdated for the current edge protocol.
+
+check_funnel() {
+  # Prefer the Tailscale.app binary on macOS — a /usr/local/bin/tailscale
+  # shim sometimes exists but crashes with a Swift fatal error outside the
+  # app's sandbox. Fall back to PATH on other platforms.
+  local ts_bin=""
+  if [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; then
+    ts_bin="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+  elif command -v tailscale >/dev/null 2>&1; then
+    ts_bin="tailscale"
+  else
+    echo "Funnel check: SKIP — tailscale CLI not found"
+    return 0
+  fi
+
+  local status_output
+  status_output="$("${ts_bin}" funnel status 2>&1 || true)"
+
+  if echo "${status_output}" | grep -q "No serve config"; then
+    echo "Funnel check: DOWN — no serve config"
+    echo "  Controller stack is not publicly reachable."
+    echo "  To restore:  ${ts_bin} funnel --bg http://127.0.0.1:8010"
+    return 0
+  fi
+
+  local host url
+  url="$(echo "${status_output}" | grep -oE 'https://[^[:space:]/]+\.ts\.net' | head -1 || true)"
+  if [ -z "${url}" ]; then
+    echo "Funnel check: UNKNOWN — could not parse funnel status output"
+    return 0
+  fi
+  host="${url#https://}"
+
+  # Resolve via public DNS so we test the public edge, not MagicDNS.
+  local public_ip=""
+  if command -v dig >/dev/null 2>&1; then
+    public_ip="$(dig +short +time=3 @1.1.1.1 "${host}" 2>/dev/null | head -1 || true)"
+  fi
+
+  local code
+  if [ -n "${public_ip}" ]; then
+    code="$(curl -sS -o /dev/null -w '%{http_code}' \
+      --resolve "${host}:443:${public_ip}" \
+      --connect-timeout 5 --max-time 10 \
+      "${url}/" 2>/dev/null || echo "000")"
+  else
+    # Fall back to the default path (may use MagicDNS inside the tailnet).
+    code="$(curl -sS -o /dev/null -w '%{http_code}' \
+      --connect-timeout 5 --max-time 10 \
+      "${url}/" 2>/dev/null || echo "000")"
+  fi
+
+  if [ "${code}" = "000" ]; then
+    echo "Funnel check: DOWN — ${url} did not respond at the public edge"
+    echo "  Consider: updating the Tailscale app, or toggling funnel off/on."
+  else
+    echo "Funnel check: UP — ${url} responded with HTTP ${code}"
+  fi
+}
+
+check_funnel || true

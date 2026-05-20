@@ -155,7 +155,8 @@ MODULES = {
     "render": {"badge": "Application", "desc": "Ray tracing engine"},
     "utils": {"badge": "Application", "desc": "Testing framework"},
     "flowtree": {"badge": "Infrastructure",
-                 "desc": "Distributed job dispatch, ClaudeCodeJob, MCP wiring, pushed tools"},
+                 "desc": "Distributed job dispatch, ClaudeCodeJob, MCP wiring, pushed tools",
+                 "path": "flowtree/runtime"},
 }
 
 
@@ -166,8 +167,8 @@ MODULES = {
 # *.html, individual files are appended directly. Non-existent paths are
 # silently skipped so a partial checkout doesn't fail the tool.
 STANDALONE_MD_ROOTS = [
-    "flowtree/README.md",
-    "flowtree/docs",
+    "flowtree/runtime/README.md",
+    "flowtree/runtime/docs",
     "tools/mcp/README.md",
     "tools/mcp/CLAUDE.md",
     "tools/mcp/SECRETS.md",
@@ -539,9 +540,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             return [TextContent(type="text", text=f"Unknown module '{module}'. Available: {available}")]
 
         # Try HTML first, then README, then docs directory
+        module_dir = MODULES[module].get("path", module)
         module_html = MODULES_DIR / f"{module}.html"
-        module_readme = COMMON_DIR / module / "README.md"
-        module_docs_dir = COMMON_DIR / module / "docs"
+        module_readme = COMMON_DIR / module_dir / "README.md"
+        module_docs_dir = COMMON_DIR / module_dir / "docs"
 
         content = ""
         if module_html.exists():

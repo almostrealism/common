@@ -9,7 +9,7 @@ signatures (skipping all implementation bodies). Useful for understanding
 a class at a glance without reading thousands of lines of implementation.
 
 Examples:
-  ar-class-outline flowtree/src/main/java/io/flowtree/jobs/ClaudeCodeJob.java
+  ar-class-outline flowtree/core/src/main/java/io/flowtree/jobs/ClaudeCodeJob.java
   ar-class-outline $(ar-find-symbol MyClass --files | head -1)
 """
 

@@ -56,7 +56,12 @@
 
 ### Standalone
 - [tools](tools/README.md): MCP servers, profiling UI
-- [flowtree](flowtree/README.md): Workflow orchestration
+- [flowtree/runtime](flowtree/runtime/README.md): Workflow orchestration — controller, jobs, NodeGroup, Slack integration
+- [flowtree/api](flowtree/api/pom.xml): Protocol and API abstractions (`ar-flowtreeapi`)
+- [flowtree/base](flowtree/base/pom.xml): Shared helpers — `JsonFieldExtractor`, `GitOperations` (`ar-flowtree-base`)
+- [flowtree/agents](flowtree/agents/pom.xml): Pluggable agent-runner SPI + `ClaudeCodeRunner` (`ar-flowtree-agents`)
+- [flowtree/python](flowtree/python/pom.xml): Python bindings (`ar-flowtree-python`)
+- [flowtree/graphpersist](flowtree/graphpersist/pom.xml): Database persistence, NFS/SSH (`ar-graphpersist`)
 
 ## Internals Documentation
 

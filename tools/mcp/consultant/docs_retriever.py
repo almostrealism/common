@@ -97,8 +97,8 @@ MODULE_PATHS = {
 # *.md inside is included); HTML entries are individual files OR
 # directories (in which case *.html inside is included).
 STANDALONE_MD_ROOTS = [
-    "flowtree/README.md",
-    "flowtree/docs",
+    "flowtree/runtime/README.md",
+    "flowtree/runtime/docs",
     "tools/mcp/README.md",
     "tools/mcp/CLAUDE.md",
     "tools/mcp/SECRETS.md",

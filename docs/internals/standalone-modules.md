@@ -1,7 +1,8 @@
 # Standalone Modules Reference
 
 This document covers the standalone modules in the Almost Realism Common codebase:
-`flowtreeapi`, `graphpersist`, `flowtree-python`, `flowtree`, and `tools`.
+the flowtree family (`flowtree/api`, `flowtree/base`, `flowtree/agents`, `flowtree/python`,
+`flowtree/graphpersist`, `flowtree/runtime`) and `tools`.
 
 These modules sit architecturally above the engine layer (Layer 4) but are not part of
 any named layer (Layers 1-6). They have their own lifecycle, CI treatment, and deployment
@@ -25,10 +26,10 @@ create a new layer flag for it in the CI pipeline.
 
 ## Module Reference
 
-### `flowtreeapi` — FlowTree API and Protocol Abstractions
+### `flowtree/api` — FlowTree API and Protocol Abstractions
 
 **Artifact ID**: `ar-flowtreeapi`
-**Directory**: `flowtree/api/` or `flowtreeapi/`
+**Directory**: `flowtree/api/`
 **Depends on**: `ar-utils` (engine layer — Layer 4)
 
 #### What it does
@@ -39,32 +40,108 @@ system. It contains:
 - Node/cluster abstractions
 - The `NodeGroup` and `WorkTree` interfaces
 
-It does NOT contain FlowTree runtime logic — those live in `flowtree` itself.
+It does NOT contain FlowTree runtime logic — that lives in `flowtree/runtime` itself.
 
 #### Who depends on it
 - `ar-flowtree-python` — Python binding layer depends on the API abstractions
-- `ar-flowtree` — The main FlowTree runtime implements and uses these APIs
+- `ar-flowtree-runtime` — The main FlowTree runtime implements and uses these APIs
 
 #### Dependency direction (critical)
 ```
-ar-flowtree       →  ar-flowtreeapi   (flowtree DEPENDS ON flowtreeapi)
-ar-flowtreeapi    →  ar-utils          (flowtreeapi depends on engine utils)
+ar-flowtree-runtime  →  ar-flowtreeapi   (flowtree/runtime DEPENDS ON flowtree/api)
+ar-flowtreeapi    →  ar-utils          (flowtree/api depends on engine utils)
 ```
 
-**WRONG**: "flowtreeapi depends on flowtree" — this reverses the direction.
+**WRONG**: "flowtree/api depends on flowtree/runtime" — this reverses the direction.
 **WRONG**: "ar-utils depends on flowtreeapi" — this inverts the architectural hierarchy.
 
 #### CI treatment
-- Tests run as part of `mvn test -pl flowtree` in the `build` job
-- No separate layer flag (`flowtreeapi_changed`) exists — changes there set `code_changed=true` only
-- The `build` job always runs flowtree tests (which transitively covers flowtreeapi)
+- Tests run as part of `mvn test -pl flowtree/runtime` in the `build` job
+- No separate layer flag exists — changes set `code_changed=true` only
+- The `build` job always runs flowtree tests (which transitively covers flowtree/api)
 
 ---
 
-### `graphpersist` — Graph Persistence and Storage
+### `flowtree/base` — Shared FlowTree Helpers
+
+**Artifact ID**: `ar-flowtree-base`
+**Directory**: `flowtree/base/`
+**Depends on**: `ar-io` (engine layer — Layer 1, for `ConsoleFeatures`), Jackson databind
+
+#### What it does
+`flowtree/base` holds cross-cutting helpers that need to be visible to both `flowtree/agents`
+and `flowtree/runtime` but have no flowtree-specific runtime dependencies:
+
+- `io.flowtree.JsonFieldExtractor` — small, side-effect-free utility for pulling typed
+  fields out of Claude Code's NDJSON output and similar payloads.
+- `io.flowtree.jobs.GitOperations` — wraps `git`/`ssh` subprocess execution with PATH
+  augmentation for headless environments.
+
+These were originally part of `flowtree/runtime` (formerly `flowtree/core`, then the
+single flowtree module) but were pulled down so the agent-runner abstraction (which
+`ClaudeCodeRunner` consumes both of) does not have to depend on the runtime.
+
+#### Who depends on it
+- `ar-flowtree-agents` — `ClaudeCodeRunner` uses both helpers
+- `ar-flowtree-runtime` — `GitOperations` has many callers (`GitManagedJob`,
+  `GitRepositorySetup`, `ExternalProcessJob`, `FileStager`, …); `JsonFieldExtractor` is
+  used by Slack/HTTP handlers
+
+#### CI treatment
+Same as the other flowtree-family modules: no separate layer flag, tested as part of
+`flowtree/runtime` in the `build` job.
+
+---
+
+### `flowtree/agents` — Agent Runner Abstraction
+
+**Artifact ID**: `ar-flowtree-agents`
+**Directory**: `flowtree/agents/`
+**Depends on**: `ar-flowtree-base`, `ar-meta` (Layer 1, for `Named`)
+
+#### What it does
+`flowtree/agents` is the SPI for pluggable coding-agent backends. It contains:
+
+- `io.flowtree.jobs.agent.AgentRunner` — interface every runner implements
+- `io.flowtree.jobs.agent.AgentRunRequest` / `AgentRunResult` / `AgentCapabilities` —
+  data carriers exchanged with runners
+- `io.flowtree.jobs.agent.AgentRunnerRegistry` — process-wide name→supplier map
+- `io.flowtree.jobs.agent.ClaudeCodeRunner` — the bundled default runner that drives the
+  Claude Code CLI as a subprocess
+- `io.flowtree.jobs.AgentProcessRunner` / `AgentInactivityMonitor` — subprocess plumbing
+  consumed only by runners
+
+Pulling these out of `flowtree/runtime` lets new runners (e.g. for OpenCode, Aider, etc.)
+register themselves without touching the controller's classpath. See
+[`flowtree/docs/architecture/AGENT_RUNNERS.md`](../../flowtree/docs/architecture/AGENT_RUNNERS.md)
+for the SPI design and
+[`flowtree/docs/architecture/PHASES.md`](../../flowtree/docs/architecture/PHASES.md)
+for the per-phase routing model.
+
+#### Who depends on it
+- `ar-flowtree-runtime` — `CodingAgentJob`, `CodingAgentJobFactory`, `CodingAgentJobEvent`
+  reference `AgentRunner`, `AgentRunnerRegistry`, and constants from `ClaudeCodeRunner`
+
+#### Dependency direction (critical)
+```
+ar-flowtree-runtime  →  ar-flowtree-agents   (runtime DEPENDS ON agents)
+ar-flowtree-agents   →  ar-flowtree-base     (agents DEPENDS ON base)
+ar-flowtree-agents   →  ar-meta              (for Named)
+```
+
+`ar-flowtree-agents` does NOT depend on `ar-flowtree-runtime`. Any runner that needs
+runtime types (e.g. a future runner that posts directly to Slack) must live in
+`flowtree/runtime` and register itself with `AgentRunnerRegistry.register(...)`.
+
+#### CI treatment
+Same as flowtree/base.
+
+---
+
+### `flowtree/graphpersist` — Graph Persistence and Storage
 
 **Artifact ID**: `ar-graphpersist`
-**Directory**: `graphpersist/`
+**Directory**: `flowtree/graphpersist/`
 **Depends on**: `ar-utils` (engine layer — Layer 4)
 
 #### What it does
@@ -76,26 +153,26 @@ and associated data. It provides:
 - Storage abstraction interfaces so the rest of the system is backend-agnostic
 
 #### Who depends on it
-- `ar-flowtree` — FlowTree uses graphpersist to store job results, checkpoints, and model weights
+- `ar-flowtree-runtime` — FlowTree uses graphpersist to store job results, checkpoints, and model weights
 
 #### Dependency direction
 ```
-ar-graphpersist  →  ar-utils     (graphpersist depends on engine utils)
-ar-flowtree      →  ar-graphpersist  (flowtree depends on graphpersist)
+ar-graphpersist  →  ar-utils         (graphpersist depends on engine utils)
+ar-flowtree-runtime →  ar-graphpersist  (flowtree/runtime depends on graphpersist)
 ```
 
 Nothing in the named layers depends on graphpersist. The named layers do not know about
 persistence backends.
 
 #### CI treatment
-Same as flowtreeapi: no separate layer flag, tested as part of `flowtree` in the `build` job.
+Same as flowtree/api: no separate layer flag, tested as part of `flowtree/runtime` in the `build` job.
 
 ---
 
-### `flowtree-python` — Python Bindings for FlowTree
+### `flowtree/python` — Python Bindings for FlowTree
 
 **Artifact ID**: `ar-flowtree-python`
-**Directory**: `flowtree-python/`
+**Directory**: `flowtree/python/`
 **Depends on**: `ar-flowtreeapi`
 
 #### What it does
@@ -106,12 +183,12 @@ to, query, and interact with a FlowTree cluster. This enables:
 - Integration with Python ML tooling (PyTorch, HuggingFace, etc.) on the submission side
 
 #### Who depends on it
-- `ar-flowtree` — the main FlowTree runtime includes flowtree-python as part of its distribution
+- `ar-flowtree-runtime` — the main FlowTree runtime includes flowtree/python as part of its distribution
 
 #### Dependency direction
 ```
-ar-flowtree-python  →  ar-flowtreeapi  (python bindings depend on the API)
-ar-flowtree         →  ar-flowtree-python  (runtime includes the python bindings)
+ar-flowtree-python  →  ar-flowtreeapi      (python bindings depend on the API)
+ar-flowtree-runtime    →  ar-flowtree-python  (runtime includes the python bindings)
 ```
 
 #### CI treatment
@@ -119,10 +196,10 @@ Same as other flowtree-family modules: no separate flag, tested in `build`.
 
 ---
 
-### `flowtree` — FlowTree Distributed Workflow Engine
+### `flowtree/runtime` — FlowTree Distributed Workflow Engine
 
-**Artifact ID**: `ar-flowtree`
-**Directory**: `flowtree/`
+**Artifact ID**: `ar-flowtree-runtime`
+**Directory**: `flowtree/runtime/`
 **Depends on**: `ar-flowtreeapi`, `ar-flowtree-python`, `ar-graphpersist`, `ar-utils-http`
 
 This is the top of the standalone module hierarchy. It depends on all other standalone modules
@@ -135,7 +212,7 @@ compute stack. It enables:
 - `ClaudeCodeJob` — an AI-powered job type that uses Claude Code to implement tasks
 - `ExternalProcessJob` — run arbitrary shell commands as distributed tasks
 - Workstream management (groups of related jobs)
-- Agent pool management with Docker Compose (`flowtree/agent/`)
+- Agent pool management with Docker Compose (`flowtree/runtime/agent/`)
 - MCP server integration for controller management (`tools/mcp/manager/`)
 
 #### Key classes
@@ -155,15 +232,15 @@ When `DEDUP_LOCAL` runs, it saves and restores `commit.txt` around the dedup inv
 so that the primary work's commit message is preserved (not overwritten by the dedup agent's message).
 
 #### Docker deployment
-Agents are deployed via `flowtree/agent/docker-compose.yml`. Key design decisions:
+Agents are deployed via `flowtree/runtime/agent/docker-compose.yml`. Key design decisions:
 - Each agent gets its own **anonymous** volume for `/workspace/project` (no sharing between agents — build artifacts from different agents would conflict)
 - Each agent gets its own **anonymous** volume for `/home/agent/.m2` (Maven cache is per-agent)
 - Only read-only mounts are shared: SSH keys, model files, audio samples
 - Named writable volumes are strictly prohibited (causes cross-agent build artifact contamination)
 
 #### CI treatment
-- **Changes to `flowtree/` set `code_changed=true` only** — no layer flag exists
-- Tests run via `mvn test -pl flowtree` inside the `build` job
+- **Changes anywhere under `flowtree/` set `code_changed=true` only** — no layer flag exists
+- Tests run via `mvn test -pl flowtree/runtime` inside the `build` job
 - Coverage uploaded as `coverage-flowtree` artifact
 - The `analysis` job waits on `build` to get this coverage
 
@@ -212,10 +289,12 @@ appropriate home for tools tests.
 
 | Module | Layer Flag | Tests Run In | Coverage Artifact |
 |--------|------------|--------------|-------------------|
-| flowtreeapi | none | `build` (via flowtree) | `coverage-flowtree` |
-| graphpersist | none | `build` (via flowtree) | `coverage-flowtree` |
-| flowtree-python | none | `build` (via flowtree) | `coverage-flowtree` |
-| flowtree | none | `build` | `coverage-flowtree` |
+| flowtree/api | none | `build` (via flowtree/runtime) | `coverage-flowtree` |
+| flowtree/base | none | `build` (via flowtree/runtime) | `coverage-flowtree` |
+| flowtree/agents | none | `build` (via flowtree/runtime) | `coverage-flowtree` |
+| flowtree/graphpersist | none | `build` (via flowtree/runtime) | `coverage-flowtree` |
+| flowtree/python | none | `build` (via flowtree/runtime) | `coverage-flowtree` |
+| flowtree/runtime | none | `build` | `coverage-flowtree` |
 | tools | none | `code-policy-check` | none (not in coverage merge) |
 
 All of the above set `code_changed=true` when changed, triggering `build`, `code-policy-check`,
@@ -250,14 +329,14 @@ Always check BOTH directions:
 1. What does X depend on? (X's pom.xml dependencies)
 2. What depends on X? (grep all pom.xml files for X's artifact ID)
 
-A module being standalone does NOT mean nothing uses it. `ar-flowtree` uses all other
+A module being standalone does NOT mean nothing uses it. `ar-flowtree-runtime` uses all other
 standalone modules. Only after checking the consumer graph can you conclude a module is
 truly a leaf.
 
 ### DO NOT confuse standalone with isolated
 
 Standalone means "not depended on by named layers." It does NOT mean the module is
-independent of everything. `ar-flowtree` has a rich dependency graph — it just happens
+independent of everything. `ar-flowtree-runtime` has a rich dependency graph — it just happens
 to be at the top of the standalone tree.
 
 ---
@@ -267,7 +346,7 @@ to be at the top of the standalone tree.
 ```
 Named Layers (Layers 1-6)          Standalone Modules
 ══════════════════════              ══════════════════
-                                   ar-flowtree
+                                   ar-flowtree-runtime
                                    ├── ar-flowtreeapi ──┐
                                    ├── ar-flowtree-python──┘  (ar-flowtreeapi)
                                    ├── ar-graphpersist ─────── ar-utils (Layer 4)
@@ -281,7 +360,7 @@ Layer 2 — Compute   ar-ml ──────── ar-tools (Standalone)
 Layer 1 — Base
 ```
 
-Arrows point FROM consumer TO dependency (i.e., `ar-flowtree → ar-utils` means flowtree
+Arrows point FROM consumer TO dependency (i.e., `ar-flowtree-runtime → ar-utils` means flowtree
 depends on utils, not the other way around).
 
 ---
@@ -312,5 +391,5 @@ structure affects the entire build order, dependency resolution, and CI pipeline
 - `.github/CI_ARCHITECTURE.md` — Comprehensive CI job reference
 - `docs/internals/module-dependency-architecture.md` — Full dependency graph with verification commands
 - `docs/internals/ci-investigation-protocol.md` — Step-by-step CI investigation guide
-- `flowtree/agent/docker-compose.yml` — Agent deployment configuration
+- `flowtree/runtime/agent/docker-compose.yml` — Agent deployment configuration
 - `tools/mcp/manager/server.py` — Manager MCP server implementation
