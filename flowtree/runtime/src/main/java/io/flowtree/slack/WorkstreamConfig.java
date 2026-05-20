@@ -278,6 +278,17 @@ public class WorkstreamConfig {
         private String model;
         /** Default Claude Code effort/thinking level applied to jobs in this workstream. */
         private String effort;
+        /**
+         * Default {@link io.flowtree.jobs.agent.AgentRunner} applied to jobs
+         * in this workstream when no per-phase or per-job override is set.
+         */
+        private String defaultRunner;
+        /**
+         * Per-phase runner overrides keyed by phase wire name (e.g.
+         * {@code primary}, {@code deduplication}). Phases not listed inherit
+         * {@link #defaultRunner}.
+         */
+        private Map<String, String> runners = new LinkedHashMap<>();
 
         /** Returns the persistent workstream identifier. */
         public String getWorkstreamId() { return workstreamId; }
@@ -401,6 +412,18 @@ public class WorkstreamConfig {
         /** Sets the default Claude Code effort/thinking level for jobs in this workstream. */
         public void setEffort(String effort) { this.effort = effort; }
 
+        /** Returns the default agent runner for jobs in this workstream, or {@code null}. */
+        public String getDefaultRunner() { return defaultRunner; }
+        /** Sets the default agent runner for jobs in this workstream. */
+        public void setDefaultRunner(String defaultRunner) { this.defaultRunner = defaultRunner; }
+
+        /** Returns the per-phase runner override map (keyed by phase wire name); never {@code null}. */
+        public Map<String, String> getRunners() { return runners; }
+        /** Replaces the per-phase runner override map; {@code null} is treated as empty. */
+        public void setRunners(Map<String, String> runners) {
+            this.runners = runners != null ? new LinkedHashMap<>(runners) : new LinkedHashMap<>();
+        }
+
         /**
          * Converts this entry to a {@link Workstream} instance.
          *
@@ -435,6 +458,8 @@ public class WorkstreamConfig {
             ws.setSlackWorkspaceId(slackWorkspaceId);
             ws.setModel(model);
             ws.setEffort(effort);
+            ws.setDefaultRunner(defaultRunner);
+            ws.setRunners(runners);
             return ws;
         }
     }
@@ -874,6 +899,8 @@ public class WorkstreamConfig {
         entry.setSlackWorkspaceId(ws.getSlackWorkspaceId());
         entry.setModel(ws.getModel());
         entry.setEffort(ws.getEffort());
+        entry.setDefaultRunner(ws.getDefaultRunner());
+        entry.setRunners(ws.getRunners());
         workstreams.add(entry);
     }
 
@@ -911,6 +938,8 @@ public class WorkstreamConfig {
                     entry.setSlackWorkspaceId(ws.getSlackWorkspaceId());
                     entry.setModel(ws.getModel());
                     entry.setEffort(ws.getEffort());
+                    entry.setDefaultRunner(ws.getDefaultRunner());
+                    entry.setRunners(ws.getRunners());
                     found = true;
                     break;
                 }

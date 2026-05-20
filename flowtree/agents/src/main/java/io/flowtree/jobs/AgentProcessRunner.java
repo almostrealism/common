@@ -16,12 +16,16 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.jobs.agent.AgentRunRequest;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -106,6 +110,48 @@ public final class AgentProcessRunner {
             }
         }
         return new Result(exitCode, out.toString(), killed.get());
+    }
+
+    /**
+     * Applies the runner-agnostic portions of {@code request} to {@code pb}:
+     * working directory, supplied environment overrides, the
+     * {@code AR_AGENT_ACTIVITY} env var, the augmented {@code PATH}, merged
+     * stderr-into-stdout, and {@code /dev/null} stdin.
+     *
+     * <p>This boilerplate is identical for every subprocess-backed runner;
+     * factoring it here prevents drift between {@code ClaudeCodeRunner} and
+     * {@code OpencodeRunner} without inventing a CLI-agent base class.</p>
+     *
+     * @param pb      the configured process builder (already has its command)
+     * @param request the run request
+     */
+    public static void applyRequestToProcessBuilder(ProcessBuilder pb, AgentRunRequest request) {
+        Path workDir = request.getWorkingDirectory();
+        if (workDir != null) {
+            pb.directory(workDir.toFile());
+        }
+
+        Map<String, String> env = request.getEnvironment();
+        if (env != null && !env.isEmpty()) {
+            for (Map.Entry<String, String> entry : env.entrySet()) {
+                if (entry.getValue() == null) {
+                    pb.environment().remove(entry.getKey());
+                } else {
+                    pb.environment().put(entry.getKey(), entry.getValue());
+                }
+            }
+        }
+
+        String activity = request.getActivityTag();
+        if (activity != null && !activity.isEmpty()) {
+            pb.environment().put("AR_AGENT_ACTIVITY", activity);
+        } else {
+            pb.environment().remove("AR_AGENT_ACTIVITY");
+        }
+        GitOperations.augmentPath(pb);
+
+        pb.redirectErrorStream(true);
+        pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
     }
 
     /** Logs the read-loop exception either as a benign post-kill notice or a real error, per {@code killed}. */

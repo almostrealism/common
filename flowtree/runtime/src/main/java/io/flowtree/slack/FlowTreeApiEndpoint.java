@@ -42,7 +42,6 @@ import java.time.ZoneId;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -65,51 +64,24 @@ import java.util.regex.Pattern;
  * <h2>URL Pattern</h2>
  * <table>
  *   <tr><th>Method</th><th>Path</th><th>Body</th><th>Description</th></tr>
- *   <tr><td>POST</td><td>/api/workstreams/{id}/messages</td>
- *       <td>{@code {"text":"..."}}</td>
- *       <td>Post a message to the workstream's channel</td></tr>
- *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}/messages</td>
- *       <td>{@code {"text":"..."}}</td>
- *       <td>Post a message to the job's thread</td></tr>
- *   <tr><td>POST</td><td>/api/workstreams/{id}/submit</td>
- *       <td>{@code {"prompt":"..."}}</td>
- *       <td>Submit a new job to connected agents</td></tr>
- *   <tr><td>POST</td><td>/api/submit</td>
- *       <td>{@code {"prompt":"...","targetBranch":"..."}}</td>
- *       <td>Submit a job, resolving the workstream from the request body</td></tr>
- *   <tr><td>POST</td><td>/api/workstreams</td>
- *       <td>{@code {"defaultBranch":"...","baseBranch":"...","planningDocument":"..."}}</td>
- *       <td>Register a new workstream (auto-creates Slack channel)</td></tr>
- *   <tr><td>POST</td><td>/api/workstreams/{id}/update</td>
- *       <td>{@code {"channelId":"...","channelName":"..."}}</td>
- *       <td>Update an existing workstream</td></tr>
- *   <tr><td>POST</td><td>/api/workstreams/{id}</td>
- *       <td>{@code {"jobId":"...","status":"..."}}</td>
- *       <td>Receive a status event for the workstream</td></tr>
- *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}</td>
- *       <td>{@code {"jobId":"...","status":"..."}}</td>
- *       <td>Receive a job status event</td></tr>
- *   <tr><td>GET</td><td>/api/github/proxy?url=...</td><td>--</td>
- *       <td>Proxy a GET request to the GitHub API</td></tr>
- *   <tr><td>POST</td><td>/api/github/proxy?url=...</td>
- *       <td><i>raw JSON payload</i></td>
- *       <td>Proxy a POST request to the GitHub API</td></tr>
- *   <tr><td>PUT</td><td>/api/github/proxy?url=...</td>
- *       <td><i>raw JSON payload</i></td>
- *       <td>Proxy a PUT request to the GitHub API</td></tr>
- *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td>
- *       <td>List all registered workstreams with capabilities</td></tr>
- *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs</td><td>--</td>
- *       <td>List recent jobs for a workstream (newest first); optional {@code limit} query param</td></tr>
- *   <tr><td>GET</td><td>/api/jobs/{jobId}</td><td>--</td>
- *       <td>Look up a specific job event by ID</td></tr>
- *   <tr><td>GET</td><td>/api/config/accept-automated-jobs</td><td>--</td>
- *       <td>Check whether automated job submissions are accepted</td></tr>
- *   <tr><td>POST</td><td>/api/config/accept-automated-jobs</td>
- *       <td>{@code {"accept":true}}</td>
- *       <td>Enable or disable automated job submissions</td></tr>
- *   <tr><td>GET</td><td>/api/health</td><td>--</td>
- *       <td>Health check; response includes {@code server_time} (ISO-8601 UTC)</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/messages</td><td>{@code {"text":"..."}}</td><td>Post a message to the workstream's channel</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}/messages</td><td>{@code {"text":"..."}}</td><td>Post a message to the job's thread</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/submit</td><td>{@code {"prompt":"..."}}</td><td>Submit a new job to connected agents</td></tr>
+ *   <tr><td>POST</td><td>/api/submit</td><td>{@code {"prompt":"...","targetBranch":"..."}}</td><td>Submit a job, resolving the workstream from the request body</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams</td><td>{@code {"defaultBranch":"...","baseBranch":"...","planningDocument":"..."}}</td><td>Register a new workstream (auto-creates Slack channel)</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/update</td><td>{@code {"channelId":"...","channelName":"..."}}</td><td>Update an existing workstream</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}</td><td>{@code {"jobId":"...","status":"..."}}</td><td>Receive a status event for the workstream</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}</td><td>{@code {"jobId":"...","status":"..."}}</td><td>Receive a job status event</td></tr>
+ *   <tr><td>GET</td><td>/api/github/proxy?url=...</td><td>--</td><td>Proxy a GET request to the GitHub API</td></tr>
+ *   <tr><td>POST</td><td>/api/github/proxy?url=...</td><td><i>raw JSON payload</i></td><td>Proxy a POST request to the GitHub API</td></tr>
+ *   <tr><td>PUT</td><td>/api/github/proxy?url=...</td><td><i>raw JSON payload</i></td><td>Proxy a PUT request to the GitHub API</td></tr>
+ *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td><td>List all registered workstreams with capabilities</td></tr>
+ *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs</td><td>--</td><td>List recent jobs for a workstream; optional {@code limit} query param</td></tr>
+ *   <tr><td>GET</td><td>/api/jobs/{jobId}</td><td>--</td><td>Look up a specific job event by ID</td></tr>
+ *   <tr><td>GET</td><td>/api/config/accept-automated-jobs</td><td>--</td><td>Check whether automated job submissions are accepted</td></tr>
+ *   <tr><td>POST</td><td>/api/config/accept-automated-jobs</td><td>{@code {"accept":true}}</td><td>Enable or disable automated job submissions</td></tr>
+ *   <tr><td>GET</td><td>/api/health</td><td>--</td><td>Health check; response includes {@code server_time} (ISO-8601 UTC)</td></tr>
+ *   <tr><td>GET</td><td>/api/agents</td><td>--</td><td>Enumerate available runners, phases, model names, and the built-in default runner</td></tr>
  * </table>
  *
  * @author Michael Murray
@@ -159,6 +131,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /** Handles all {@code /api/stats} requests. */
     private StatsQueryHandler statsQueryHandler;
+
+    /** Handles {@code GET /api/agents} metadata requests. */
+    private final AgentsQueryHandler agentsQueryHandler = new AgentsQueryHandler();
 
     /**
      * Controls whether jobs that self-identify as automated (e.g., from CI
@@ -365,6 +340,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return newFixedLengthResponse(Response.Status.OK,
                     "application/json",
                     "{\"status\":\"ok\",\"server_time\":\"" + serverTime + "\"}");
+        }
+
+        if (Method.GET.equals(method) && "/api/agents".equals(uri)) {
+            return agentsQueryHandler.handle();
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/stats")) {
@@ -607,7 +586,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Escapes a string as a JSON string value (with surrounding quotes).
      */
-    private static String escapeJsonValue(String s) {
+    static String escapeJsonValue(String s) {
         StringBuilder sb = new StringBuilder(s.length() + 16);
         sb.append('"');
         for (int i = 0; i < s.length(); i++) {
@@ -643,8 +622,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * applied when a job omits them; an invalid {@code effort} value → 400.</p>
      *
      * @param session the HTTP session
-     * @return JSON response with {@code workstreamId}, {@code channelId},
-     *         and {@code channelName}
+     * @return JSON with {@code workstreamId}, {@code channelId}, {@code channelName}
      */
     private Response handleRegisterWorkstream(IHTTPSession session) {
         String body = readBody(session);
@@ -759,6 +737,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (err != null) return err;
         err = applyValidated(effort, workstream::setEffort);
         if (err != null) return err;
+        String runnersErr = SubmissionRunnerResolver.applyToWorkstream(
+                workstream, extractJsonObjectFields(body, "runners"));
+        if (runnersErr != null) return errorResponse(runnersErr);
 
         workstream.setPushToOrigin(true);
 
@@ -799,7 +780,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * <p>Supports updating any combination of: {@code channelId}, {@code channelName},
      * {@code defaultBranch}, {@code baseBranch}, {@code repoUrl},
      * {@code planningDocument}, {@code model}, {@code effort},
-     * {@code requiredLabels}, {@code dependentRepos}.</p>
+     * {@code requiredLabels}, {@code dependentRepos}, {@code runners}.</p>
      *
      * <p>{@code model} and {@code effort} are workstream-level defaults
      * applied to jobs that do not specify their own values.  Invalid
@@ -855,6 +836,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (err != null) return err;
         err = applyValidated(effort, workstream::setEffort);
         if (err != null) return err;
+        String runnersErr = SubmissionRunnerResolver.applyToWorkstream(
+                workstream, extractJsonObjectFields(body, "runners"));
+        if (runnersErr != null) return errorResponse(runnersErr);
         if (!requiredLabels.isEmpty()) {
             workstream.setRequiredLabels(requiredLabels);
         }
@@ -1132,6 +1116,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
             factory.setRequiredLabel(entry.getKey(), entry.getValue());
         }
+
+        SubmissionRunnerResolver runnerResolver = SubmissionRunnerResolver.resolve(
+                extractJsonObjectFields(body, "runners"),
+                workstream.getDefaultRunner(), workstream.getRunners());
+        if (runnerResolver.error() != null) return errorResponse(runnerResolver.error());
+        runnerResolver.applyTo(factory);
 
         // Auto-create PR on successful completion
         if (autoCreatePr) {
@@ -1568,33 +1558,4 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         return githubProxyHandler.handle(session, method, this::readBody, this::errorResponse);
     }
 
-    /**
-     * Context stored at job submission time for auto-creating a pull request
-     * when the job completes successfully.
-     */
-    private static class AutoPrContext {
-        /** URL of the git repository for which a pull request should be created. */
-        final String repoUrl;
-        /** Base branch against which the pull request will be opened. */
-        final String baseBranch;
-        /** GitHub organisation name, used to look up the API access token. */
-        final String githubOrg;
-        /** Human-readable description of the job, used as the PR title/body. */
-        final String description;
-
-        /**
-         * Constructs a new {@link AutoPrContext}.
-         *
-         * @param repoUrl     URL of the git repository
-         * @param baseBranch  base branch for the pull request
-         * @param githubOrg   GitHub organisation name
-         * @param description human-readable job description
-         */
-        AutoPrContext(String repoUrl, String baseBranch, String githubOrg, String description) {
-            this.repoUrl = repoUrl;
-            this.baseBranch = baseBranch;
-            this.githubOrg = githubOrg;
-            this.description = description;
-        }
-    }
 }

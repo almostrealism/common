@@ -232,13 +232,13 @@ class LlamaCppBackend(InferenceBackend):
 
     Environment variables:
         AR_CONSULTANT_LLAMACPP_URL  - Server base URL
-                                      (default: http://host.docker.internal:8083 in containers,
-                                       http://localhost:8083 on the host)
+                                      (default: http://host.docker.internal:8084 in containers,
+                                       http://localhost:8084 on the host)
     """
 
-    CONTAINER_BASE_URL = "http://host.docker.internal:8083"
-    HOST_BASE_URL = "http://localhost:8083"
-    REMOTE_HOST_BASE_URL = "http://mac-studio:8083"
+    CONTAINER_BASE_URL = "http://host.docker.internal:8084"
+    HOST_BASE_URL = "http://localhost:8084"
+    REMOTE_HOST_BASE_URL = "http://mac-studio:8084"
 
     def __init__(self, base_url: Optional[str] = None):
         self._in_container = (

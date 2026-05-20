@@ -49,6 +49,33 @@ services:
       - GIT_USER_NAME=${GIT_USER_NAME:-FlowTree Agent}
       - GIT_USER_EMAIL=${GIT_USER_EMAIL:-agent@flowtree.io}
       - MAVEN_OPTS=${AGENT_JVM_OPTS:--Xmx2048m}
+      # Optional: configures the OpencodeRunner. Unset values leave the
+      # runner on its compiled-in defaults (which point at
+      # http://localhost:11434/v1 inside the container — almost certainly
+      # not what you want unless ollama is itself running in the agent
+      # container). Set OPENCODE_PROVIDER_URL to the host-reachable URL of
+      # your OpenAI-compatible inference server; on macOS / Windows
+      # Docker Desktop, http://host.docker.internal:<port>/v1 reaches the
+      # host's ollama / llama.cpp.
+      - OPENCODE_PROVIDER_URL=${OPENCODE_PROVIDER_URL:-}
+      - OPENCODE_API_KEY=${OPENCODE_API_KEY:-}
+      - OPENCODE_DEFAULT_MODEL=${OPENCODE_DEFAULT_MODEL:-}
+      # ar-consultant inside the agent container reads this to know which
+      # llama.cpp endpoint to call. Leave unset to fall back to the consultant's
+      # default (host.docker.internal:8084 inside containers); set to the same
+      # endpoint as OPENCODE_PROVIDER_URL minus the trailing `/v1` to share
+      # the opencode model.
+      - AR_CONSULTANT_LLAMACPP_URL=${AR_CONSULTANT_LLAMACPP_URL:-}
+    # Lets containers resolve `mac-studio` to its Tailscale IP. The short
+    # MagicDNS name does not propagate into Docker Desktop's embedded DNS
+    # resolver — confirmed by `getent hosts mac-studio` failing inside a
+    # running agent container while the FQDN `mac-studio.taild0f87.ts.net`
+    # succeeds. Pinning the address keeps OPENCODE_PROVIDER_URL stable as
+    # `http://mac-studio:<port>/v1` regardless of which tailnet peer hosts
+    # the agent. Update the IP if mac-studio's Tailscale address ever
+    # changes (rare — it's a stable per-machine assignment).
+    extra_hosts:
+      - "mac-studio:100.126.249.28"
     logging:
       driver: json-file
       options:

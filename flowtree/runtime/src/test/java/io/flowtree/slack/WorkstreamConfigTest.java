@@ -510,4 +510,62 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals("sonnet", entry.getModel());
         assertEquals("high", entry.getEffort());
     }
+
+    /**
+     * Workstream YAML must accept ``defaultRunner`` and a per-phase
+     * ``runners`` map and round-trip both through {@link Workstream}.
+     */
+    @Test(timeout = 10000)
+    public void testYamlRunnerConfigurationRoundTrips() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - channelId: \"C-runners\"\n"
+            + "    defaultBranch: \"feature/with-runners\"\n"
+            + "    defaultRunner: \"opencode\"\n"
+            + "    runners:\n"
+            + "      primary: \"claude\"\n"
+            + "      deduplication: \"opencode\"\n"
+            + "      commit-message: \"claude\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        assertEquals("opencode", entry.getDefaultRunner());
+        assertEquals("claude", entry.getRunners().get("primary"));
+        assertEquals("opencode", entry.getRunners().get("deduplication"));
+        assertEquals("claude", entry.getRunners().get("commit-message"));
+
+        // Convert to runtime Workstream — values propagate.
+        Workstream ws = config.toWorkstreams().get(0);
+        assertEquals("opencode", ws.getDefaultRunner());
+        assertEquals("opencode", ws.getRunners().get("deduplication"));
+
+        // Save and reload — the runners section survives a YAML round-trip.
+        File tempFile = File.createTempFile("workstream-config-runners", ".yaml");
+        tempFile.deleteOnExit();
+        config.saveToYaml(tempFile);
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        WorkstreamConfig.WorkstreamEntry rEntry = reloaded.getWorkstreams().get(0);
+        assertEquals("opencode", rEntry.getDefaultRunner());
+        assertEquals("opencode", rEntry.getRunners().get("deduplication"));
+    }
+
+    /**
+     * Workstream YAML without a ``runners`` section continues to load —
+     * default runner is null and the per-phase map is empty.
+     */
+    @Test(timeout = 10000)
+    public void testYamlWithoutRunnersConfigurationLoadsCleanly() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - channelId: \"C-no-runners\"\n"
+            + "    defaultBranch: \"feature/no-runners\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        assertNull(entry.getDefaultRunner());
+        assertTrue("runners map must default to empty",
+                entry.getRunners().isEmpty());
+
+        Workstream ws = config.toWorkstreams().get(0);
+        assertNull(ws.getDefaultRunner());
+        assertTrue(ws.getRunners().isEmpty());
+    }
 }

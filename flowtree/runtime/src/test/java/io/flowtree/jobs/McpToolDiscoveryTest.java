@@ -270,6 +270,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		Set<String> expected = new HashSet<>(Arrays.asList(
 			"controller_health",
 			"controller_update_config",
+			"agent_options",
 			"workstream_list",
 			"workstream_get_status",
 			"workstream_get_job",
@@ -381,6 +382,12 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			submitParams.contains("max_post_completion_passes"));
 		assertTrue("workstream_submit_task must declare delay_seconds in signature",
 			submitParams.contains("delay_seconds"));
+		assertTrue("workstream_submit_task must declare runners in signature so per-phase"
+			+ " agent runner selection can be passed through",
+			submitParams.contains("runners"));
+		assertTrue("workstream_submit_task must declare default_runner in signature so"
+			+ " operators can set the default runner without enumerating phases",
+			submitParams.contains("default_runner"));
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
@@ -388,6 +395,12 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			registerParams.contains("model"));
 		assertTrue("workstream_register must declare effort in signature",
 			registerParams.contains("effort"));
+		assertTrue("workstream_register must declare runners in signature so per-phase"
+			+ " agent runner selection can be set at workstream level",
+			registerParams.contains("runners"));
+		assertTrue("workstream_register must declare default_runner in signature so"
+			+ " operators can set the default runner for all phases",
+			registerParams.contains("default_runner"));
 
 		List<String> updateConfigParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
@@ -395,6 +408,12 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			updateConfigParams.contains("model"));
 		assertTrue("workstream_update_config must declare effort in signature",
 			updateConfigParams.contains("effort"));
+		assertTrue("workstream_update_config must declare runners in signature so per-phase"
+			+ " agent runner selection can be updated at workstream level",
+			updateConfigParams.contains("runners"));
+		assertTrue("workstream_update_config must declare default_runner in signature so"
+			+ " operators can update the default runner for all phases",
+			updateConfigParams.contains("default_runner"));
 
 		List<String> memoryRecallParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "memory_recall");

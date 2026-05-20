@@ -16,6 +16,11 @@
 
 package io.flowtree.jobs;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.function.Consumer;
+
 /**
  * Enforcement rule that prevents {@code <dependency>} changes in Maven
  * {@code pom.xml} files. Active when {@link CodingAgentJob#isEnforceMavenDependencies()}
@@ -26,7 +31,6 @@ package io.flowtree.jobs;
  * properties, etc.) are not affected.</p>
  *
  * @author Michael Murray
- * @see CodingAgentJob#hasMavenDependencyChanges()
  * @see EnforcementRule
  */
 class MavenDependencyProtectionRule implements EnforcementRule {
@@ -36,7 +40,62 @@ class MavenDependencyProtectionRule implements EnforcementRule {
 
     @Override
     public boolean isViolated(CodingAgentJob job) {
-        return job.hasMavenDependencyChanges();
+        String baseBranch = job.getBaseBranch() != null ? job.getBaseBranch() : "master";
+        return hasDependencyDiff(job.getWorkingDirectory(), baseBranch, job::warn);
+    }
+
+    /**
+     * Returns {@code true} when {@code git diff} of {@code origin/<baseBranch>}
+     * against the working directory shows any {@code <dependency>} additions,
+     * removals, or modifications across any {@code pom.xml} file.
+     *
+     * <p>Failures (non-zero exit, IO errors) are reported via {@code warn} and
+     * treated as violations so the rule fails closed.</p>
+     *
+     * @param workDir    the working directory; {@code null} uses the JVM cwd
+     * @param baseBranch the base branch to diff against
+     * @param warn       sink for warning lines
+     * @return {@code true} when a dependency change is detected (or the diff failed)
+     */
+    static boolean hasDependencyDiff(String workDir, String baseBranch, Consumer<String> warn) {
+        try {
+            // Large unified context: ensures opening <dependency> tags appear in
+            // the hunk even when the change is deep inside a long block.
+            ProcessBuilder pb = new ProcessBuilder(
+                    GitOperations.resolveGitCommand(),
+                    "diff", "--unified=50", "origin/" + baseBranch, "--", "**/pom.xml", "pom.xml");
+            if (workDir != null) pb.directory(new File(workDir));
+            pb.redirectErrorStream(true);
+            GitOperations.augmentPath(pb);
+            Process p = pb.start();
+            String diff = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            int exitCode = p.waitFor();
+            if (exitCode != 0) {
+                warn.accept("Maven dependency check: git diff exited with code "
+                        + exitCode + " — treating as violation (fail closed)");
+                return true;
+            }
+            boolean inDependencyBlock = false;
+            for (String line : diff.split("\n")) {
+                if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")) continue;
+                String content = line.length() > 0 ? line.substring(1).trim() : "";
+                boolean opensBlock = content.contains("<dependency>") || content.contains("<dependency ");
+                boolean closesBlock = content.contains("</dependency>");
+                if (opensBlock) inDependencyBlock = true;
+                if ((line.startsWith("+") || line.startsWith("-")) && (inDependencyBlock || opensBlock)) {
+                    return true;
+                }
+                if (closesBlock) inDependencyBlock = false;
+            }
+        } catch (IOException e) {
+            warn.accept("Maven dependency check: failed to diff pom.xml files: " + e.getMessage());
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warn.accept("Maven dependency check: failed to diff pom.xml files: " + e.getMessage());
+            return true;
+        }
+        return false;
     }
 
     @Override

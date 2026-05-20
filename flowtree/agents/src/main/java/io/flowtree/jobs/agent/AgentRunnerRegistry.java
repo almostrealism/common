@@ -36,12 +36,16 @@ public final class AgentRunnerRegistry {
     /** Canonical name for the Claude Code runner. */
     public static final String CLAUDE = "claude";
 
+    /** Canonical name for the opencode runner. */
+    public static final String OPENCODE = "opencode";
+
     /** Map of registered runner names to their factory suppliers. */
     private static final Map<String, Supplier<AgentRunner>> FACTORIES =
             Collections.synchronizedMap(new LinkedHashMap<>());
 
     static {
         FACTORIES.put(CLAUDE, ClaudeCodeRunner::new);
+        FACTORIES.put(OPENCODE, OpencodeRunner::new);
     }
 
     /** Static-only; not instantiable. */

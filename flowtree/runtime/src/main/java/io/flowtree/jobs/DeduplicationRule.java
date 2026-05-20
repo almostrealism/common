@@ -84,10 +84,10 @@ class DeduplicationRule extends SetComparisonRule {
     @Override
     public String buildCorrectionPrompt(CodingAgentJob job) {
         List<String> newMethods = job.extractNewMethodNames();
-        List<String> capped = newMethods.size() > CodingAgentJob.MAX_DEDUP_METHODS
-                ? newMethods.subList(0, CodingAgentJob.MAX_DEDUP_METHODS) : newMethods;
+        List<String> capped = newMethods.size() > DeduplicationSpawner.MAX_DEDUP_METHODS
+                ? newMethods.subList(0, DeduplicationSpawner.MAX_DEDUP_METHODS) : newMethods;
         return buildDeduplicationPrompt(capped,
-                newMethods.size() > CodingAgentJob.MAX_DEDUP_METHODS, newMethods.size());
+                newMethods.size() > DeduplicationSpawner.MAX_DEDUP_METHODS, newMethods.size());
     }
 
     /**
@@ -103,8 +103,10 @@ class DeduplicationRule extends SetComparisonRule {
                                            int totalCount) {
         StringBuilder sb = new StringBuilder();
         sb.append("DEDUPLICATION AUDIT — MANDATORY PRE-COMMIT REVIEW\n\n");
-        sb.append("A prior agent session has committed changes that introduce the ");
-        sb.append("following new methods");
+        sb.append("This branch has new commits relative to its base branch. Those ");
+        sb.append("commits add or substantially modify some Java files, and inside ");
+        sb.append("those files they introduce new methods. The methods listed below ");
+        sb.append("are the names of those new methods");
         if (truncated) {
             sb.append(" (showing ").append(methodNames.size())
               .append(" of ").append(totalCount).append(" total)");
@@ -114,39 +116,78 @@ class DeduplicationRule extends SetComparisonRule {
             sb.append("  - ").append(name).append("\n");
         }
         sb.append("\n");
-        sb.append("Your job is to determine whether any of these methods duplicate ");
-        sb.append("functionality that already exists elsewhere in the codebase. ");
-        sb.append("This is a mandatory review step — do not skip it and do not ");
-        sb.append("conclude quickly that a method is unique without actually searching.\n\n");
-        sb.append("CRITICAL ASSUMPTION: For every method in the list above, you MUST ");
-        sb.append("assume it is a clone of an existing method until you have proven ");
-        sb.append("otherwise. This is not a pessimistic assumption — it is statistically ");
-        sb.append("accurate. The majority of methods introduced by agent sessions are ");
-        sb.append("duplicates of functionality that already exists elsewhere. The agent ");
-        sb.append("re-implemented things it could not find by search. The clone may not ");
-        sb.append("be an exact copy: it may be renamed, slightly generalised, or placed ");
-        sb.append("in a different class — but it performs the same operation on the same ");
-        sb.append("data.\n\n");
-        sb.append("For each method:\n");
-        sb.append("1. Search the codebase for methods that perform the same logical ");
-        sb.append("operation. Use Grep to search by keyword, not just by name.\n");
-        sb.append("2. If a duplicate exists: remove the new method entirely and replace ");
-        sb.append("all call sites with the existing method.\n");
-        sb.append("3. Only after a thorough search may you conclude a method is ");
-        sb.append("genuinely new.\n\n");
-        sb.append("IMPORTANT — editing rules:\n");
-        sb.append("- Use the Edit tool to remove duplicate methods surgically. ");
-        sb.append("Remove only the duplicate method body and its declaration; ");
-        sb.append("preserve all other changes in the file.\n");
-        sb.append("- NEVER use git restore, git checkout --, git reset, or any ");
-        sb.append("other git command to revert a file. Those commands discard ALL ");
-        sb.append("changes in that file, not just the duplicate method, and will ");
-        sb.append("destroy work that must be preserved.\n\n");
-        sb.append("Do not rationalise keeping a duplicate because it is 'slightly ");
-        sb.append("different'. Slight differences are how duplicates hide. If the ");
-        sb.append("logical purpose is the same, merge them. The codebase already has ");
-        sb.append("too many near-identical copies of the same logic; every one you ");
-        sb.append("remove improves maintainability for every future session.");
+        sb.append("YOUR TASK\n");
+        sb.append("Determine whether any of these NEW methods duplicate a method ");
+        sb.append("that ALREADY EXISTED in the codebase BEFORE this branch. If you ");
+        sb.append("find a real duplicate, remove the new one and call the existing ");
+        sb.append("one instead. If you find none, say so explicitly.\n\n");
+
+        sb.append("DEFINITION OF A DUPLICATE\n");
+        sb.append("A duplicate exists when ALL of the following are true:\n");
+        sb.append("  (a) Another method exists somewhere in the repository that ");
+        sb.append("performs the same operation on the same kind of data.\n");
+        sb.append("  (b) That other method is defined in a file that was NOT added ");
+        sb.append("by this branch and was NOT substantially modified by this branch.\n");
+        sb.append("  (c) The two methods are clearly redundant — not just superficially ");
+        sb.append("similar.\n\n");
+        sb.append("If a method on the list above appears to 'already exist' in a file ");
+        sb.append("that THIS branch added or substantially modified, that is NOT a ");
+        sb.append("duplicate. That is just the file where the method was introduced. ");
+        sb.append("A method cannot be a duplicate of itself.\n\n");
+
+        sb.append("HOW TO TELL WHAT IS NEW ON THIS BRANCH\n");
+        sb.append("Before flagging anything, you MUST run these commands and read ");
+        sb.append("their output:\n\n");
+        sb.append("  git fetch origin\n");
+        sb.append("  git diff origin/master...HEAD --name-only   # files changed on this branch\n");
+        sb.append("  git log origin/master..HEAD --oneline       # commits on this branch\n\n");
+        sb.append("Any file in the `git diff origin/master...HEAD --name-only` output ");
+        sb.append("is part of this branch's work. Methods defined there are candidates ");
+        sb.append("for the audit, not candidates to be the 'pre-existing duplicate'.\n\n");
+        sb.append("To inspect a pre-branch version of a file, use:\n");
+        sb.append("  git show origin/master:<path>\n\n");
+
+        sb.append("PROCEDURE FOR EACH METHOD\n");
+        sb.append("1. Locate the file on HEAD that defines the method. Confirm the ");
+        sb.append("file IS in `git diff origin/master...HEAD --name-only` — if not, ");
+        sb.append("this method was not introduced by this branch and should not be ");
+        sb.append("on the list; skip it.\n");
+        sb.append("2. Search the rest of the repository (Grep by behaviour, not just ");
+        sb.append("by name) for a candidate match.\n");
+        sb.append("3. For each candidate match, check whether its file appears in ");
+        sb.append("`git diff origin/master...HEAD --name-only`. If it does, it is ");
+        sb.append("ALSO new on this branch — and unless the two methods are clearly ");
+        sb.append("redundant clones of each other added in the same set of commits, ");
+        sb.append("they are not a duplicate of each other; skip.\n");
+        sb.append("4. If a candidate is in a file that is NOT in that diff list, ");
+        sb.append("read both methods and judge whether they truly perform the same ");
+        sb.append("operation. If yes, you have a real duplicate.\n\n");
+
+        sb.append("EVIDENCE REQUIRED TO FLAG A DUPLICATE\n");
+        sb.append("Before reporting a duplicate, you MUST cite:\n");
+        sb.append("  - file:line of the new method on HEAD\n");
+        sb.append("  - file:line of the pre-existing candidate\n");
+        sb.append("  - one sentence on why they perform the same operation\n");
+        sb.append("If you cannot produce all three, you do not have a duplicate. ");
+        sb.append("Do not flag anything that you cannot back with these citations.\n\n");
+
+        sb.append("EDITING RULES (only when a real duplicate is proven)\n");
+        sb.append("- Use the Edit tool to remove the new method body and its ");
+        sb.append("declaration surgically. Preserve every other change in the file.\n");
+        sb.append("- Update call sites of the removed method to call the pre-existing ");
+        sb.append("one.\n");
+        sb.append("- NEVER use git restore, git checkout --, git reset, or any other ");
+        sb.append("git command that reverts a file. Those discard all changes in the ");
+        sb.append("file, not just the duplicate method, and destroy work that must ");
+        sb.append("be preserved.\n\n");
+
+        sb.append("OUTPUT\n");
+        sb.append("If you find no duplicates after a thorough audit, say so. ");
+        sb.append("Briefly note what you checked (the diff list, the candidates you ");
+        sb.append("considered) so a reviewer can see the audit happened. ");
+        sb.append("Do not invent duplicates to satisfy the framing of this prompt. ");
+        sb.append("A correctly empty result (\"no duplicates found\") is the right ");
+        sb.append("answer when the new methods are genuinely new.");
         return sb.toString();
     }
 }

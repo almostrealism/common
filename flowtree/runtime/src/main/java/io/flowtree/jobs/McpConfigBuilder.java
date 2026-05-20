@@ -94,6 +94,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
     static final Set<String> AR_MANAGER_TOOL_NAMES = Collections.unmodifiableSet(
         new LinkedHashSet<>(Arrays.asList(
             "controller_health",
+            "agent_options",
             "send_message",
             "memory_recall",
             "memory_store",
@@ -513,9 +514,9 @@ public class McpConfigBuilder implements ConsoleFeatures {
     public void applyAgentEnvironment(Map<String, String> env, String wsUrl) {
         if (wsUrl != null && !wsUrl.isEmpty()) {
             env.put("AR_WORKSTREAM_URL", wsUrl);
-            String base = CodingAgentJob.extractControllerBaseUrl(wsUrl);
+            String base = DeduplicationSpawner.extractControllerBaseUrl(wsUrl);
             if (base != null) env.put("AR_CONTROLLER_URL", base);
-            String wid = CodingAgentJob.extractWorkstreamId(wsUrl);
+            String wid = DeduplicationSpawner.extractWorkstreamId(wsUrl);
             if (wid != null) env.put("AR_WORKSTREAM_ID", wid);
         }
         if (arManagerToken != null && !arManagerToken.isEmpty()) {
