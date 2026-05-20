@@ -1451,6 +1451,68 @@ def _parse_activities_param(include_activities) -> str:
     return stripped or "primary"
 
 
+# ---------------------------------------------------------------------------
+# Commit-language linter for workstream_submit_task
+# ---------------------------------------------------------------------------
+
+# Each entry is (compiled_pattern, human_readable_reason).  Patterns are
+# checked case-insensitively against each line of the submitted prompt.
+# re is already imported at the top of this file.
+_COMMIT_SEQUENCING_PATTERNS = [
+    (re.compile(r"\bcommit\s+\d+\b", re.IGNORECASE),
+     "commit-number phrase (e.g. \"Commit 1\", \"commit 2\")"),
+    (re.compile(r"\bfirst\s+commit\b", re.IGNORECASE),
+     '"first commit" phrase'),
+    (re.compile(r"\bnext\s+commit\b", re.IGNORECASE),
+     '"next commit" phrase'),
+    (re.compile(r"\bfinal\s+commit\b", re.IGNORECASE),
+     '"final commit" phrase'),
+    (re.compile(r"\bas\s+(?:its\s+own|separate|individual)\s+commits?\b", re.IGNORECASE),
+     '"as separate/individual commits" phrase'),
+    (re.compile(r"\b(?:in|across|over)\s+\d+\s+commits?\b", re.IGNORECASE),
+     '"in/across/over N commits" phrase'),
+    (re.compile(
+        r"\b(?:your|the)\s+commit\s+message\s+(?:should|will|must)\b", re.IGNORECASE),
+     '"commit message should/will/must" phrase'),
+    (re.compile(
+        r"\bcommit\s+(?:this|that|each|the)\s+(?:as|with|before)\b", re.IGNORECASE),
+     '"commit this/that/each/the as/with/before" phrase'),
+    (re.compile(
+        r"\bcommit\s+(?:between|after|before)\s+(?:each|every)\b", re.IGNORECASE),
+     '"commit between/after/before each/every" phrase'),
+]
+
+# Minimum prompt length below which the linter is skipped (false-positive
+# ratio is too high on very short strings and they almost never contain the
+# multi-word phrases we are looking for).
+_COMMIT_LINTER_MIN_LEN = 50
+
+
+def _lint_prompt_for_commit_sequencing(prompt: str) -> list:
+    """Scan ``prompt`` for forbidden commit-sequencing phrases.
+
+    Returns a list of ``(line_number, snippet, reason)`` tuples — one per
+    matched line (first matching pattern wins per line).  Returns an empty
+    list when the prompt is short (< 50 chars) or contains no matches.
+
+    This function is pure (no I/O) and intentionally best-effort: it may
+    produce false positives for prompts that quote commit messages or use
+    the word "commit" in an unrelated context.  Callers that need to bypass
+    the check should pass ``allow_commit_language=True`` to
+    ``workstream_submit_task``.
+    """
+    if len(prompt) < _COMMIT_LINTER_MIN_LEN:
+        return []
+    violations = []
+    for lineno, line in enumerate(prompt.splitlines(), 1):
+        for pattern, reason in _COMMIT_SEQUENCING_PATTERNS:
+            if pattern.search(line):
+                snippet = line.strip()[:120]
+                violations.append((lineno, snippet, reason))
+                break  # one violation entry per line, first pattern wins
+    return violations
+
+
 @mcp.tool()
 def workstream_submit_task(
     prompt: str,
@@ -1474,6 +1536,7 @@ def workstream_submit_task(
     delay_seconds: int = 0,
     runners: str = "",
     default_runner: str = "",
+    allow_commit_language: bool = False,
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -1586,6 +1649,14 @@ def workstream_submit_task(
             passing ``{"default": "<runner>"}`` in ``runners``; when both are
             supplied the ``"default"`` entry inside ``runners`` wins. Empty
             (default) inherits the workstream-level default.
+        allow_commit_language: Escape hatch for the commit-language linter.
+            By default (``False``), the prompt is scanned for phrases that
+            imply the agent controls git commits (e.g. "Commit 1: do X",
+            "commit this before starting") and the submission is rejected if
+            any are found. Set to ``True`` only when the prompt legitimately
+            contains such language (e.g. quoting an existing commit message or
+            convention) and restructuring is not feasible. Most callers should
+            restructure the prompt instead of opting out.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -1614,6 +1685,31 @@ def workstream_submit_task(
     err = _check_model(model)
     if err:
         return err
+    # Commit-language linter -- rejects prompts that imply the agent controls
+    # git commits (e.g. "Commit 1: do X, Commit 2: do Y").  Bypassed when the
+    # caller explicitly opts out via allow_commit_language=True.
+    if not allow_commit_language:
+        linter_hits = _lint_prompt_for_commit_sequencing(prompt)
+        if linter_hits:
+            lines = []
+            for lineno, snippet, reason in linter_hits:
+                lines.append(
+                    "  Line {}: {}\n    > {}".format(lineno, reason, snippet))
+            return {
+                "ok": False,
+                "error": (
+                    "Prompt contains language implying the agent controls git commits. "
+                    "The agent edits the working tree; the harness commits whatever's "
+                    "there in a single commit at session end. The agent cannot sequence "
+                    "commits, name them, or split work across multiple commits.\n\n"
+                    "Forbidden phrases found:\n"
+                    + "\n".join(lines)
+                    + "\n\nRewrite the prompt to describe the final state of the working "
+                    "tree, not a sequence of commits. If you are quoting a commit message "
+                    "convention or have a legitimate use of this language, pass "
+                    "allow_commit_language=True to bypass this check."
+                ),
+            }
     # Self-submission protection. When this tool is called from inside a
     # running ClaudeCodeJob (the agent has been issued a temporary token
     # whose payload binds it to a specific workstream), the agent must

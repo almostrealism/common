@@ -858,6 +858,160 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertIn("non-empty string", result["error"])
 
 
+class TestSubmitCommitLanguageLinter(unittest.TestCase):
+    """Server-side linter rejects prompts that imply the agent controls
+    git commits.  allow_commit_language=True bypasses the linter.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def tearDown(self):
+        server._request_workspace_scopes.set(None)
+        if hasattr(server._thread_local, "workspace_scopes"):
+            del server._thread_local.workspace_scopes
+
+    def _bad_prompt(self, text):
+        """Submit a prompt that should be rejected; return the result."""
+        return server.workstream_submit_task(prompt=text)
+
+    def _good_prompt(self, text):
+        """Submit a prompt with allow_commit_language=True; should not be
+        rejected by the linter (the controller call is not mocked so it
+        will return an ok=False from the network, but the linter itself
+        must not have rejected it — confirmed by checking the error message
+        does not mention 'commit-language' or 'sequence of commits').
+        """
+        result = server.workstream_submit_task(
+            prompt=text, allow_commit_language=True)
+        # The network will fail (no mock), but linter must not have fired.
+        error = result.get("error", "")
+        self.assertNotIn("sequence of commits", error,
+                         "allow_commit_language=True should bypass the linter")
+
+    # -- Forbidden patterns ---------------------------------------------------
+
+    def test_rejects_commit_number_phrase(self):
+        result = self._bad_prompt(
+            "Do the following: Commit 1: set up the schema. "
+            "Commit 2: add the service layer.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+        self.assertIn("commit-number phrase", result["error"])
+
+    def test_rejects_first_commit_phrase(self):
+        result = self._bad_prompt(
+            "In the first commit add the migration file, "
+            "then write the test.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+        self.assertIn("first commit", result["error"])
+
+    def test_rejects_next_commit_phrase(self):
+        result = self._bad_prompt(
+            "After the setup is done, in the next commit "
+            "wire up the controller.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+        self.assertIn("next commit", result["error"])
+
+    def test_rejects_final_commit_phrase(self):
+        result = self._bad_prompt(
+            "The final commit should include the documentation update.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+        self.assertIn("final commit", result["error"])
+
+    def test_rejects_as_separate_commits_phrase(self):
+        result = self._bad_prompt(
+            "Please land each layer as separate commits so reviewers "
+            "can examine them independently.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+        self.assertIn("separate", result["error"])
+
+    def test_rejects_in_n_commits_phrase(self):
+        result = self._bad_prompt(
+            "Please land the whole feature in 3 commits with clear boundaries.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+
+    def test_rejects_commit_message_should_phrase(self):
+        result = self._bad_prompt(
+            "When you are done, your commit message should summarize "
+            "the entire changeset.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+
+    def test_rejects_commit_this_before_phrase(self):
+        result = self._bad_prompt(
+            "Commit this before starting on the second part of the task.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+
+    def test_rejects_commit_between_each_phrase(self):
+        result = self._bad_prompt(
+            "Please commit between each major change so the diff is small.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+
+    # -- Rejection message quality --------------------------------------------
+
+    def test_rejection_message_names_the_phrase_and_line(self):
+        result = self._bad_prompt(
+            "Here is the plan:\n"
+            "Commit 1: implement the parser.\n"
+            "Commit 2: add tests.\n")
+        self.assertFalse(result["ok"])
+        error = result["error"]
+        self.assertIn("Line 2", error)
+        self.assertIn("commit-number phrase", error)
+
+    # -- Escape hatch ---------------------------------------------------------
+
+    @patch.object(server, "_controller_post")
+    def test_allow_commit_language_bypasses_linter(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "j1"}
+        result = server.workstream_submit_task(
+            prompt="Commit 1: do X. Commit 2: do Y.",
+            allow_commit_language=True,
+        )
+        self.assertTrue(result["ok"],
+                        "allow_commit_language=True must bypass the linter")
+        mock_post.assert_called_once()
+
+    # -- Short-prompt exemption -----------------------------------------------
+
+    @patch.object(server, "_controller_post")
+    def test_short_prompt_skips_linter(self, mock_post):
+        """Prompts shorter than 50 chars are too brief for the linter to run."""
+        mock_post.return_value = {"ok": True, "jobId": "j2"}
+        # "Commit 1: fix" is only 14 chars — well under the threshold.
+        result = server.workstream_submit_task(prompt="Commit 1: fix")
+        # The linter must not fire; the call goes to the controller.
+        mock_post.assert_called_once()
+        self.assertTrue(result["ok"])
+
+    # -- False-positive guard -------------------------------------------------
+
+    @patch.object(server, "_controller_post")
+    def test_does_not_reject_commit_message_convention_reference(self, mock_post):
+        """A prompt that references the existing commit message convention
+        (e.g. for documentation purposes) should not be flagged.
+        """
+        mock_post.return_value = {"ok": True, "jobId": "j3"}
+        prompt = (
+            "Update the CONTRIBUTING guide to explain that the existing "
+            "commit message convention follows the Angular format: "
+            "<type>(<scope>): <subject>.  Add examples of good and bad "
+            "commit subject lines so contributors know what to write."
+        )
+        result = server.workstream_submit_task(prompt=prompt)
+        self.assertTrue(result["ok"],
+                        "Normal English references to commit conventions "
+                        "should not be rejected by the linter")
+
+
 class TestWorkstreamSubmitSelfCollision(unittest.TestCase):
     """workstream_submit_task must not let an agent submit work to its
     own workstream — concurrent commits on the same branch break the

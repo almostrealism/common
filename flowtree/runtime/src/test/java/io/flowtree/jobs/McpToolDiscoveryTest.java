@@ -391,6 +391,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_submit_task must declare default_runner in signature so"
 			+ " operators can set the default runner without enumerating phases",
 			submitParams.contains("default_runner"));
+		assertTrue("workstream_submit_task must declare allow_commit_language in signature"
+			+ " so callers can opt out of the commit-language linter when needed",
+			submitParams.contains("allow_commit_language"));
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
