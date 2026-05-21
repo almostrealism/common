@@ -59,6 +59,31 @@ workstreams:
 Per-job overrides still apply; this just changes the workstream-level
 fallback.
 
+### As workspace defaults
+
+When the same recipe applies to many workstreams in the same Slack
+workspace, hoist it onto the `slackWorkspaces[]` entry instead of repeating
+it on every workstream:
+
+```yaml
+slackWorkspaces:
+  - workspaceId: "T0123456789"
+    botToken: "xoxb-..."
+    appToken: "xapp-..."
+    defaultRunner: claude
+    runners:
+      commit-message: opencode
+      organizational-placement: opencode
+```
+
+Every workstream whose `slackWorkspaceId` matches this entry inherits the
+defaults. Workstream-level config still wins — if a workstream sets its
+own `defaultRunner`, the workspace's per-phase entries are ignored for
+that workstream (per [PHASES.md](../architecture/PHASES.md)). There is
+currently no MCP tool to set workspace-level runner config; edit
+`workstreams.yaml` and reload the controller. A future
+`workspace_update_config` tool would close this ergonomic gap.
+
 ---
 
 ## Picking a recipe

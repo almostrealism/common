@@ -163,7 +163,7 @@ final class WorkstreamLifecycleHandler {
         String body = readBody.apply(session);
         if (body != null && body.length() > MAX_REQUEST_BODY_LOG) {
             log.accept("Unarchive request body exceeded "
-                    + MAX_REQUEST_BODY_LOG + " chars; ignoring trailing bytes");
+                    + MAX_REQUEST_BODY_LOG + " chars; discarding contents");
         }
         SlackNotifier ownerNotifier = notifiers.notifierFor(workstreamId);
         Workstream workstream = ownerNotifier != null
@@ -187,9 +187,11 @@ final class WorkstreamLifecycleHandler {
      * regardless of {@code force} when any job on the workstream is still
      * active.
      *
-     * <p>This endpoint does not touch tracker tasks or memories. The
-     * MCP tool layer clears tracker task linkage before calling the
-     * controller; memories remain queryable by repo URL + branch.</p>
+     * <p>This endpoint does not touch tracker tasks or memories. The MCP
+     * tool layer clears tracker task linkage <em>after</em> a successful
+     * controller delete (so a controller-side rejection — active jobs,
+     * archive-first — leaves the tracker linkage intact). Memories remain
+     * queryable by repo URL + branch.</p>
      *
      * @param session      the HTTP session (body may carry {@code force})
      * @param workstreamId the workstream to delete

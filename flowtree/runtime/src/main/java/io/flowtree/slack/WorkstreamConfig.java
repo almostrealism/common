@@ -21,6 +21,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.flowtree.jobs.CodingAgentJob;
+import io.flowtree.jobs.agent.Phase;
 
 import java.io.File;
 import java.io.IOException;
@@ -127,6 +128,23 @@ public class WorkstreamConfig {
         private Map<String, GitHubOrgEntry> githubOrgs = new LinkedHashMap<>();
         /** Secrets declared as available to workstreams in this workspace. */
         private List<WorkspaceSecretEntry> secrets = new ArrayList<>();
+        /**
+         * Workspace-level default {@link io.flowtree.jobs.agent.AgentRunner}
+         * applied to workstreams in this workspace when neither the workstream
+         * itself nor the per-job override sets one. Sits between the
+         * workstream default and the controller default in the routing
+         * ladder. Optional; {@code null} omits the field from serialized YAML.
+         */
+        private String defaultRunner;
+        /**
+         * Workspace-level per-phase runner overrides keyed by phase wire name
+         * (e.g. {@code primary}, {@code commit-message}). Consulted by the
+         * resolver only when the workstream has no per-phase entry for the
+         * same phase <em>and</em> no workstream-level {@code defaultRunner};
+         * see {@link SubmissionRunnerResolver} for the full ladder. Optional;
+         * an empty map is omitted from serialized YAML.
+         */
+        private Map<String, String> runners = new LinkedHashMap<>();
 
         /** Returns the Slack team ID (T...). */
         public String getWorkspaceId() { return workspaceId; }
@@ -200,6 +218,20 @@ public class WorkstreamConfig {
         /** Sets the list of secrets declared for this workspace. */
         public void setSecrets(List<WorkspaceSecretEntry> secrets) {
             this.secrets = secrets != null ? secrets : new ArrayList<>();
+        }
+
+        /** Returns the workspace-level default agent runner, or {@code null} when none is configured. */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public String getDefaultRunner() { return defaultRunner; }
+        /** Sets the workspace-level default agent runner. */
+        public void setDefaultRunner(String defaultRunner) { this.defaultRunner = defaultRunner; }
+
+        /** Returns the workspace-level per-phase runner overrides (keyed by phase wire name); never {@code null}. */
+        @JsonInclude(JsonInclude.Include.NON_EMPTY)
+        public Map<String, String> getRunners() { return runners; }
+        /** Replaces the workspace-level per-phase runner override map; {@code null} is treated as empty. */
+        public void setRunners(Map<String, String> runners) {
+            this.runners = runners != null ? new LinkedHashMap<>(runners) : new LinkedHashMap<>();
         }
     }
 
@@ -761,7 +793,9 @@ public class WorkstreamConfig {
      */
     public static WorkstreamConfig loadFromYaml(File file) throws IOException {
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-        return mapper.readValue(file, WorkstreamConfig.class);
+        WorkstreamConfig config = mapper.readValue(file, WorkstreamConfig.class);
+        config.validateWorkspaceRunners();
+        return config;
     }
 
     /**
@@ -773,7 +807,9 @@ public class WorkstreamConfig {
      */
     public static WorkstreamConfig loadFromYaml(InputStream inputStream) throws IOException {
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-        return mapper.readValue(inputStream, WorkstreamConfig.class);
+        WorkstreamConfig config = mapper.readValue(inputStream, WorkstreamConfig.class);
+        config.validateWorkspaceRunners();
+        return config;
     }
 
     /**
@@ -785,7 +821,9 @@ public class WorkstreamConfig {
      */
     public static WorkstreamConfig loadFromYamlString(String yaml) throws IOException {
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-        return mapper.readValue(yaml, WorkstreamConfig.class);
+        WorkstreamConfig config = mapper.readValue(yaml, WorkstreamConfig.class);
+        config.validateWorkspaceRunners();
+        return config;
     }
 
     /**
@@ -797,7 +835,9 @@ public class WorkstreamConfig {
      */
     public static WorkstreamConfig loadFromJson(File file) throws IOException {
         ObjectMapper mapper = new ObjectMapper();
-        return mapper.readValue(file, WorkstreamConfig.class);
+        WorkstreamConfig config = mapper.readValue(file, WorkstreamConfig.class);
+        config.validateWorkspaceRunners();
+        return config;
     }
 
     /**
@@ -809,7 +849,74 @@ public class WorkstreamConfig {
      */
     public static WorkstreamConfig loadFromJsonString(String json) throws IOException {
         ObjectMapper mapper = new ObjectMapper();
-        return mapper.readValue(json, WorkstreamConfig.class);
+        WorkstreamConfig config = mapper.readValue(json, WorkstreamConfig.class);
+        config.validateWorkspaceRunners();
+        return config;
+    }
+
+    /**
+     * Returns the {@link SlackWorkspaceEntry} matching the given Slack
+     * workspace (team) ID, or {@code null} when no entry has been configured
+     * with that ID. The lookup is linear over {@link #slackWorkspaces} —
+     * acceptable because the list is small (one entry per Slack workspace
+     * connected to the controller).
+     *
+     * @param workspaceId the Slack team ID (e.g. {@code "T0123456789"});
+     *                    {@code null} or empty always returns {@code null}
+     * @return the matching entry, or {@code null} when no match
+     */
+    public SlackWorkspaceEntry findSlackWorkspace(String workspaceId) {
+        if (workspaceId == null || workspaceId.isEmpty()) return null;
+        if (slackWorkspaces == null) return null;
+        for (SlackWorkspaceEntry entry : slackWorkspaces) {
+            if (workspaceId.equals(entry.getWorkspaceId())) return entry;
+        }
+        return null;
+    }
+
+    /**
+     * Validates the workspace-level runner configuration. Unknown phase keys
+     * in any {@code slackWorkspaces[].runners} map are rejected with a clear
+     * message naming the offending workspace; the rest of the config is left
+     * intact. Called automatically after every {@code loadFromYaml*} /
+     * {@code loadFromJson*}.
+     *
+     * <p>Workstream-level {@code runners} maps are <strong>not</strong>
+     * validated here; bad keys there are silently skipped by
+     * {@link SubmissionRunnerResolver} at submission time so a single mistyped
+     * workstream cannot brick the entire controller. Workspace-level entries
+     * apply to many workstreams at once, so the same forgiveness would
+     * silently mis-route every workstream sharing the workspace — the
+     * stricter load-time check is the safer default.</p>
+     *
+     * @throws IOException when any workspace runner map references an unknown
+     *                     phase wire name
+     */
+    public void validateWorkspaceRunners() throws IOException {
+        if (slackWorkspaces == null) return;
+        for (SlackWorkspaceEntry entry : slackWorkspaces) {
+            Map<String, String> entryRunners = entry.getRunners();
+            if (entryRunners == null || entryRunners.isEmpty()) continue;
+            String label = entry.getWorkspaceId() != null
+                    ? entry.getWorkspaceId() : entry.getName();
+            for (String phaseKey : entryRunners.keySet()) {
+                try {
+                    Phase.fromWireName(phaseKey);
+                } catch (IllegalArgumentException ex) {
+                    StringBuilder known = new StringBuilder("[");
+                    for (Phase p : Phase.values()) {
+                        if (known.length() > 1) known.append(", ");
+                        known.append(p.wireName());
+                    }
+                    known.append("]");
+                    throw new IOException("Unknown phase '" + phaseKey
+                            + "' in slackWorkspaces["
+                            + (label != null ? label : "<unnamed>")
+                            + "].runners; expected one of "
+                            + known);
+                }
+            }
+        }
     }
 
     /**

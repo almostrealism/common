@@ -197,7 +197,7 @@ cost/behavior differences that motivated the choice.
 
 ## Configuring runners
 
-Runner selection follows a three-level precedence ladder (highest to lowest):
+Runner selection follows a four-level precedence ladder (highest to lowest):
 
 1. **Per-job override** — the `runners` / `defaultRunner` fields in the
    job submission payload, forwarded from `workstream_submit_task`'s
@@ -205,12 +205,16 @@ Runner selection follows a three-level precedence ladder (highest to lowest):
 2. **Workstream default** — the `runners` / `defaultRunner` fields stored
    in the workstream's configuration, set via `workstream_register` or
    `workstream_update_config`'s `runners` and `default_runner` parameters.
-3. **Built-in default** — `"claude"` (`AgentRunnerRegistry.CLAUDE`).
+3. **Workspace default** — the `runners` / `defaultRunner` fields on a
+   `slackWorkspaces[]` entry in `workstreams.yaml`. Every workstream with
+   `slackWorkspaceId` pointing at that entry inherits this default unless
+   it sets its own.
+4. **Built-in default** — `"claude"` (`AgentRunnerRegistry.CLAUDE`).
 
 `SubmissionRunnerResolver` in `flowtree/runtime` implements this ladder.
-Never bypass it: the three levels exist so operators can set a workstream
-policy without touching job payloads, and individual jobs can still
-override the policy when needed.
+Never bypass it: the four levels exist so operators can set a workspace
+policy once across many workstreams, narrow it on individual workstreams,
+and still override on individual jobs.
 
 ### Discovering available options
 
@@ -245,6 +249,40 @@ workstream_update_config(
     runners='{"primary":"opencode","deduplication":"opencode"}',
 )
 ```
+
+### Setting a workspace-level default
+
+A workspace-level default applies to every workstream whose
+`slackWorkspaceId` matches the workspace's `workspaceId`. Useful when an
+operator runs many workstreams in the same workspace and wants the same
+defaults across all of them — e.g. "use opencode for `commit-message` and
+`organizational-placement` everywhere in this org". Workspaces in
+higher-risk orgs simply leave these fields unset and inherit the controller
+default.
+
+There is currently no MCP tool to set workspace-level runner config; the
+fields must be edited into `workstreams.yaml` directly and the controller
+reloaded. This is the **known ergonomic gap** — a future
+`workspace_update_config` MCP tool would close it. Until then, the YAML
+form is:
+
+```yaml
+slackWorkspaces:
+  - workspaceId: "T0123456789"
+    name: "team-alpha"
+    botToken: "xoxb-..."
+    appToken: "xapp-..."
+    defaultRunner: "claude"
+    runners:
+      commit-message: "opencode"
+      organizational-placement: "opencode"
+```
+
+Unknown phase keys in `slackWorkspaces[].runners` are rejected at load
+time with a clear error naming the offending workspace; the resolver does
+not silently route around them. Workstream-level config fully shadows the
+workspace it belongs to — when a workstream sets `defaultRunner`, the
+workspace's per-phase entries are skipped for that workstream.
 
 ### Overriding at job-submission time
 

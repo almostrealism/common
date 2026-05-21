@@ -1241,6 +1241,7 @@ public class FlowTreeController implements ConsoleFeatures {
                     apiEndpoint.setOrgToWorkspaceId(orgToWorkspace);
                     log("Loaded workspace mapping for " + orgToWorkspace.size() + " org(s)");
                 }
+                apiEndpoint.setSlackWorkspaceLookup(loadedConfig::findSlackWorkspace);
             }
 
             // Configure memory server URL for message storage

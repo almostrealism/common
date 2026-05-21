@@ -2448,19 +2448,38 @@ def workstream_delete(workstream_id: str, force: bool = False) -> dict:
     if not result.get("ok"):
         return result
 
+    # /v1/tasks caps `limit` at 200, so a workstream with more than 200
+    # linked tasks needs paging. After we PUT workstream_id=None on a task
+    # it no longer matches the filter, so we just keep re-querying until the
+    # filter returns no tasks. The MAX_TRACKER_CLEAR_BATCHES cap prevents an
+    # unexpected server response (e.g. failed updates) from spinning forever.
     cleared = 0
-    tasks_result = _tracker_get(
-        f"/v1/tasks?{urlencode({'workstream_id': workstream_id, 'limit': 200, 'fields': 'headlines'})}"
-    )
-    if tasks_result.get("ok"):
-        for task in (tasks_result.get("tasks") or []):
+    seen_ids = set()
+    MAX_TRACKER_CLEAR_BATCHES = 200
+    for _ in range(MAX_TRACKER_CLEAR_BATCHES):
+        tasks_result = _tracker_get(
+            f"/v1/tasks?{urlencode({'workstream_id': workstream_id, 'limit': 200, 'fields': 'headlines'})}"
+        )
+        if not tasks_result.get("ok"):
+            break
+        batch = tasks_result.get("tasks") or []
+        if not batch:
+            break
+        progress = False
+        for task in batch:
             task_id = task.get("id")
-            if not task_id:
+            if not task_id or task_id in seen_ids:
                 continue
+            seen_ids.add(task_id)
             update = _tracker_put(f"/v1/tasks/{task_id}",
                                   {"workstream_id": None})
             if update.get("ok"):
                 cleared += 1
+                progress = True
+        if not progress:
+            # Every task in the batch failed to update — repeating would
+            # just stall on the same rows. Surface what we cleared so far.
+            break
     result["deletedTrackerTasks"] = cleared
     return result
 

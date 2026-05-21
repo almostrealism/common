@@ -10,6 +10,7 @@ import json
 import os
 import sys
 import unittest
+from unittest import mock
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError, URLError
 
@@ -876,17 +877,23 @@ class TestSubmitCommitLanguageLinter(unittest.TestCase):
         return server.workstream_submit_task(prompt=text)
 
     def _good_prompt(self, text):
-        """Submit a prompt with allow_commit_language=True; should not be
-        rejected by the linter (the controller call is not mocked so it
-        will return an ok=False from the network, but the linter itself
-        must not have rejected it — confirmed by checking the error message
-        does not mention 'commit-language' or 'sequence of commits').
+        """Submit a prompt with allow_commit_language=True and assert the
+        linter did not fire. The controller HTTP call is mocked here so the
+        test does not depend on CONTROLLER_URL reachability — without the
+        mock urlopen would attempt a real network round-trip and pollute the
+        observable error with a transport-level failure, making the linter
+        assertion racy/slow on offline runners.
         """
-        result = server.workstream_submit_task(
-            prompt=text, allow_commit_language=True)
-        # The network will fail (no mock), but linter must not have fired.
+        with mock.patch.object(server, "_controller_post",
+                               return_value={"ok": True, "taskId": "test"}):
+            result = server.workstream_submit_task(
+                prompt=text, allow_commit_language=True)
+        # Linter must not have fired — the mocked controller call is the
+        # only thing that should have responded.
         error = result.get("error", "")
         self.assertNotIn("sequence of commits", error,
+                         "allow_commit_language=True should bypass the linter")
+        self.assertNotIn("commit-language", error,
                          "allow_commit_language=True should bypass the linter")
 
     # -- Forbidden patterns ---------------------------------------------------

@@ -612,4 +612,145 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertNull(ws.getDefaultRunner());
         assertTrue(ws.getRunners().isEmpty());
     }
+
+    /**
+     * A workspace entry with both {@code defaultRunner} and {@code runners}
+     * set round-trips identically through YAML, both fields populated on
+     * reload.
+     */
+    @Test(timeout = 10000)
+    public void testYamlWorkspaceRunnerConfigurationRoundTrips() throws IOException {
+        String yaml = "slackWorkspaces:\n"
+            + "  - workspaceId: \"T-RUNNERS\"\n"
+            + "    name: \"team-runners\"\n"
+            + "    botToken: \"xoxb-test\"\n"
+            + "    appToken: \"xapp-test\"\n"
+            + "    defaultRunner: \"opencode\"\n"
+            + "    runners:\n"
+            + "      primary: \"claude\"\n"
+            + "      commit-message: \"opencode\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.SlackWorkspaceEntry entry =
+                config.findSlackWorkspace("T-RUNNERS");
+        assertNotNull(entry);
+        assertEquals("opencode", entry.getDefaultRunner());
+        assertEquals("claude", entry.getRunners().get("primary"));
+        assertEquals("opencode", entry.getRunners().get("commit-message"));
+
+        File tempFile = File.createTempFile("workspace-runners", ".yaml");
+        tempFile.deleteOnExit();
+        config.saveToYaml(tempFile);
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        WorkstreamConfig.SlackWorkspaceEntry rEntry =
+                reloaded.findSlackWorkspace("T-RUNNERS");
+        assertNotNull(rEntry);
+        assertEquals("opencode", rEntry.getDefaultRunner());
+        assertEquals("claude", rEntry.getRunners().get("primary"));
+        assertEquals("opencode", rEntry.getRunners().get("commit-message"));
+    }
+
+    /**
+     * A workspace entry with only {@code defaultRunner} set (no per-phase
+     * map) round-trips: defaultRunner survives, runners map remains empty.
+     */
+    @Test(timeout = 10000)
+    public void testYamlWorkspaceWithDefaultRunnerOnly() throws IOException {
+        String yaml = "slackWorkspaces:\n"
+            + "  - workspaceId: \"T-DEF\"\n"
+            + "    botToken: \"xoxb\"\n"
+            + "    appToken: \"xapp\"\n"
+            + "    defaultRunner: \"opencode\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.SlackWorkspaceEntry entry =
+                config.findSlackWorkspace("T-DEF");
+        assertNotNull(entry);
+        assertEquals("opencode", entry.getDefaultRunner());
+        assertTrue("runners must default to empty when omitted",
+                entry.getRunners().isEmpty());
+
+        File tempFile = File.createTempFile("workspace-default-only", ".yaml");
+        tempFile.deleteOnExit();
+        config.saveToYaml(tempFile);
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        WorkstreamConfig.SlackWorkspaceEntry rEntry =
+                reloaded.findSlackWorkspace("T-DEF");
+        assertNotNull(rEntry);
+        assertEquals("opencode", rEntry.getDefaultRunner());
+        assertTrue(rEntry.getRunners().isEmpty());
+    }
+
+    /**
+     * A workspace entry with neither workspace-level field set still
+     * round-trips — neither field appears in the reloaded YAML and the
+     * reloaded entry's getters return the unset values.
+     */
+    @Test(timeout = 10000)
+    public void testYamlWorkspaceWithoutRunnerFields() throws IOException {
+        String yaml = "slackWorkspaces:\n"
+            + "  - workspaceId: \"T-PLAIN\"\n"
+            + "    botToken: \"xoxb\"\n"
+            + "    appToken: \"xapp\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.SlackWorkspaceEntry entry =
+                config.findSlackWorkspace("T-PLAIN");
+        assertNotNull(entry);
+        assertNull(entry.getDefaultRunner());
+        assertTrue(entry.getRunners().isEmpty());
+
+        File tempFile = File.createTempFile("workspace-no-runner", ".yaml");
+        tempFile.deleteOnExit();
+        config.saveToYaml(tempFile);
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        WorkstreamConfig.SlackWorkspaceEntry rEntry =
+                reloaded.findSlackWorkspace("T-PLAIN");
+        assertNotNull(rEntry);
+        assertNull(rEntry.getDefaultRunner());
+        assertTrue(rEntry.getRunners().isEmpty());
+    }
+
+    /**
+     * Unknown phase keys in a workspace's {@code runners} map fail at load
+     * time with a clear error naming the offending workspace.
+     */
+    @Test(timeout = 10000)
+    public void testYamlWorkspaceUnknownPhaseFailsAtLoad() {
+        String yaml = "slackWorkspaces:\n"
+            + "  - workspaceId: \"T-BAD\"\n"
+            + "    botToken: \"xoxb\"\n"
+            + "    appToken: \"xapp\"\n"
+            + "    runners:\n"
+            + "      not-a-phase: \"claude\"\n";
+
+        try {
+            WorkstreamConfig.loadFromYamlString(yaml);
+            fail("Expected IOException for unknown phase in workspace runners");
+        } catch (IOException ex) {
+            assertTrue("error must mention the bad phase key: " + ex.getMessage(),
+                    ex.getMessage().contains("not-a-phase"));
+            assertTrue("error must mention the offending workspace: "
+                            + ex.getMessage(),
+                    ex.getMessage().contains("T-BAD"));
+        }
+    }
+
+    /**
+     * {@link WorkstreamConfig#findSlackWorkspace(String)} returns
+     * {@code null} for unknown IDs, empty strings, and {@code null}.
+     */
+    @Test(timeout = 10000)
+    public void testFindSlackWorkspaceMissesReturnNull() throws IOException {
+        String yaml = "slackWorkspaces:\n"
+            + "  - workspaceId: \"T-KNOWN\"\n"
+            + "    botToken: \"xoxb\"\n"
+            + "    appToken: \"xapp\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertNotNull(config.findSlackWorkspace("T-KNOWN"));
+        assertNull(config.findSlackWorkspace("T-OTHER"));
+        assertNull(config.findSlackWorkspace(""));
+        assertNull(config.findSlackWorkspace(null));
+    }
 }

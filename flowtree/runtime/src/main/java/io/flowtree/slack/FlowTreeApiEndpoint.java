@@ -50,6 +50,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -125,6 +126,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     private Map<String, String> orgToWorkspaceId = new HashMap<>();
 
+    /** Resolves a Slack workspace ID to its entry for the workspace runner layer. */
+    private Function<String, WorkstreamConfig.SlackWorkspaceEntry> slackWorkspaceLookup = id -> null;
     /** Tracks which jobs should have a PR auto-created on success. */
     private final Map<String, AutoPrContext> autoCreatePrJobs = new HashMap<>();
 
@@ -242,6 +245,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     public void setOrgToWorkspaceId(Map<String, String> orgToWorkspaceId) {
         this.orgToWorkspaceId = orgToWorkspaceId != null
                 ? new HashMap<>(orgToWorkspaceId) : new HashMap<>();
+    }
+
+    /** Sets the workspace lookup feeding the workspace layer of {@link SubmissionRunnerResolver}; {@code null} disables it. */
+    public void setSlackWorkspaceLookup(Function<String, WorkstreamConfig.SlackWorkspaceEntry> lookup) {
+        this.slackWorkspaceLookup = lookup != null ? lookup : id -> null;
     }
 
     /**
@@ -1131,9 +1139,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setRequiredLabel(entry.getKey(), entry.getValue());
         }
 
+        String wsId = workstream.getSlackWorkspaceId();
+        WorkstreamConfig.SlackWorkspaceEntry wsEntry = (wsId != null && !wsId.isEmpty()) ? slackWorkspaceLookup.apply(wsId) : null;
+        if (wsId != null && !wsId.isEmpty() && wsEntry == null) log("submitWorkspaceMissing slackWorkspaceId=" + wsId);
         SubmissionRunnerResolver runnerResolver = SubmissionRunnerResolver.resolve(
                 extractJsonObjectFields(body, "runners"),
-                workstream.getDefaultRunner(), workstream.getRunners());
+                workstream.getDefaultRunner(), workstream.getRunners(),
+                wsEntry != null ? wsEntry.getDefaultRunner() : null, wsEntry != null ? wsEntry.getRunners() : null);
         if (runnerResolver.error() != null) return errorResponse(runnerResolver.error());
         runnerResolver.applyTo(factory);
 
