@@ -525,6 +525,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (threadTs != null) {
             resultTs = targetNotifier.postMessageInThread(workstream.getChannelId(), text, threadTs);
         } else {
+            if (jobId != null) warn("send_message_no_thread_ts workstream_id=" + workstreamId
+                    + " job_id=" + jobId + " activity=" + (activity != null ? activity : ""));
             resultTs = targetNotifier.postMessage(workstream.getChannelId(), text);
         }
 
@@ -543,7 +545,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Stores a message in the ar-memory server's "messages" namespace.
      * A non-empty {@code activity} is appended as an {@code activity:<value>} tag.
-     *
      * @param activity enforcement phase name, or null/empty for primary work
      * @return null on success, or an error description on failure
      */

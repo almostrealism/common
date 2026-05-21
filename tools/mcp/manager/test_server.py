@@ -2571,6 +2571,41 @@ class TestPerRequestTokenDecoding(unittest.TestCase):
         self.assertIsNone(ws)
         self.assertIsNone(job)
 
+    # ------------------------------------------------------------------
+    # Reason-string accuracy tests (Copilot review comment, PR #237)
+    # _decode_current_request_token_full() must return "no_request" when
+    # there is no live MCP request, and "no_context" only when the MCP
+    # context itself is unavailable.
+    # ------------------------------------------------------------------
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_full_decode_reason_no_context_when_get_context_raises(self):
+        # mcp.get_context() raises → no MCP context at all → "no_context"
+        with patch.object(server.mcp, "get_context",
+                          side_effect=LookupError("no context")):
+            _, _, _, reason = server._decode_current_request_token_full()
+        self.assertEqual(reason, "no_context")
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_full_decode_reason_no_request_when_request_context_none(self):
+        # Context exists but request_context is None → no active request → "no_request"
+        fake_ctx = MagicMock()
+        fake_ctx.request_context = None
+        with patch.object(server.mcp, "get_context", return_value=fake_ctx):
+            _, _, _, reason = server._decode_current_request_token_full()
+        self.assertEqual(reason, "no_request")
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_full_decode_reason_no_request_when_request_context_raises(self):
+        # request_context property raises ValueError (e.g. unit-test context)
+        # → no active request → "no_request"
+        fake_ctx = MagicMock()
+        type(fake_ctx).request_context = mock.PropertyMock(
+            side_effect=ValueError("Context is not available outside of a request"))
+        with patch.object(server.mcp, "get_context", return_value=fake_ctx):
+            _, _, _, reason = server._decode_current_request_token_full()
+        self.assertEqual(reason, "no_request")
+
     @patch.object(server, "SHARED_SECRET", "test-secret")
     def test_decode_returns_none_for_static_token_bearer(self):
         # A non-HMAC bearer (e.g. a static long-lived admin token) is
