@@ -22,6 +22,7 @@ import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.AgentProcessRunner;
 import io.flowtree.jobs.TmuxSession;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import java.io.FileWriter;
 import java.io.IOException;
@@ -148,10 +149,13 @@ public class ClaudeCodeRunner implements AgentRunner {
         logger.log("Working directory: "
                 + (workDir != null ? workDir.toString() : System.getProperty("user.dir")));
 
-        boolean useTmux = TmuxSession.isAvailable();
-        if (!useTmux) {
-            logger.warn("tmux not available on PATH; falling back to direct process launch."
-                    + " Interactive-only auth modes will not work in this configuration.");
+        // Tmux is opt-in via AR_AGENT_USE_TMUX=enabled. Default is off so deployments
+        // do not flip launch backends on merge without an explicit operator decision.
+        boolean tmuxRequested = SystemUtils.isEnabled("AR_AGENT_USE_TMUX").orElse(false);
+        boolean useTmux = tmuxRequested && TmuxSession.isAvailable();
+        if (tmuxRequested && !useTmux) {
+            logger.warn("AR_AGENT_USE_TMUX is enabled but tmux is not on PATH;"
+                    + " falling back to direct process launch.");
         }
         AgentProcessRunner.Result processResult = AgentProcessRunner.runAttempt(
                 pb,

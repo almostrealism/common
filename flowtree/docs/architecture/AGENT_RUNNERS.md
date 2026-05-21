@@ -192,9 +192,22 @@ it the same way.
 | Direct `Process` | `useTmux=false` (default) | A direct child of the JVM. `stdin` is redirected from `/dev/null`; `stdout`/`stderr` are merged into a single pipe that the runner reads line-by-line. |
 | `TmuxSession` | `useTmux=true` | The child is launched inside a `tmux` session (one pane per attempt). The pane is connected to a real pty; pane output is captured by `tmux pipe-pane` into a tail log that the runner reads line-by-line. |
 
-`ClaudeCodeRunner` opts in to the tmux backend; `OpencodeRunner` uses the
-direct-process backend. The choice is per-call — flip the `useTmux` flag at
-the `runAttempt` call site.
+`ClaudeCodeRunner` selects the backend at runtime based on the
+`AR_AGENT_USE_TMUX` env var:
+
+- Unset (the default) → direct `Process`. Live deployments behave exactly
+  as before the tmux work landed.
+- `enabled` and `tmux` is on `PATH` → `TmuxSession`.
+- `enabled` but `tmux` is missing → direct `Process`, with a one-line
+  warning in the job log so the misconfiguration is visible.
+- `disabled` → direct `Process`.
+- Any other value → a startup error from `SystemUtils.isEnabled` (the
+  helper intentionally rejects boolean synonyms like `true`/`false` to
+  prevent silent misconfiguration).
+
+`OpencodeRunner` uses the direct-process backend unconditionally. The
+choice is per-call — `runAttempt` exposes a `useTmux` boolean and any
+caller may flip it independently.
 
 ### Why a tty matters
 
