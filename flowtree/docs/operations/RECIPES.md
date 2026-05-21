@@ -44,6 +44,7 @@ Claude, only the review pass is delegated):
   "default_runner": "claude",
   "runners": {
     "primary": "opencode",
+    "review": "opencode",
     "enforce-changes": "opencode",
     "post-completion": "opencode"
   }

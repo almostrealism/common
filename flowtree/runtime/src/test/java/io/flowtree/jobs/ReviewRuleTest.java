@@ -30,8 +30,8 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * Unit tests for {@link ReviewRule}, the encode/decode round-trip of the
- * review configuration fields on {@link CodingAgentJob}/
- * {@link CodingAgentJobFactory}, and the {@link Phase#REVIEW} wire mappings.
+ * review configuration fields on {@link CodingAgentJob}
+ * and {@link CodingAgentJobFactory}, and the {@link Phase#REVIEW} wire mappings.
  */
 public class ReviewRuleTest extends TestSuiteBase {
 

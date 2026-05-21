@@ -1109,7 +1109,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (maxDeduplicationPasses > 0) {
             factory.setMaxDeduplicationPasses(maxDeduplicationPasses);
         }
-        if (body.contains("\"reviewEnabled\""))
+        if (extractJsonHasField(body, "reviewEnabled"))
             factory.setReviewEnabled(extractJsonBooleanField(body, "reviewEnabled"));
         int maxReviewPasses = extractJsonIntField(body, "maxReviewPasses");
         if (maxReviewPasses > 0) factory.setMaxReviewPasses(maxReviewPasses);
@@ -1381,6 +1381,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String json = "{\"ok\":false,\"error\":\"" + JsonFieldExtractor.escapeJson(message) + "\"}";
         return newFixedLengthResponse(Response.Status.BAD_REQUEST,
                 "application/json", json);
+    }
+
+    /**
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#hasField(String, String)}.
+     */
+    static boolean extractJsonHasField(String json, String field) {
+        return JsonFieldExtractor.hasField(json, field);
     }
 
     /**

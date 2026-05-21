@@ -97,9 +97,10 @@ data through string-typed parameters that the tool then parses locally:
 - `dependent_repos: str = ""` — a comma-separated list of git URLs.
 - `runners: str = ""` — a JSON object whose keys are
   [`Phase`](../../flowtree/agents/src/main/java/io/flowtree/jobs/agent/Phase.java)
-  wire names (`"primary"`, `"deduplication"`, `"organizational-placement"`,
-  `"enforce-changes"`, `"maven-dependency-protection"`,
-  `"post-completion"`, `"commit-message"`, `"git-tampering-restart"`) plus
+  wire names (`"primary"`, `"review"`, `"deduplication"`,
+  `"organizational-placement"`, `"enforce-changes"`,
+  `"maven-dependency-protection"`, `"post-completion"`, `"commit-message"`,
+  `"git-tampering-restart"`) plus
   an optional `"default"` key. Values are runner identifiers
   (`"claude"`, `"opencode"`, ...). The tool parses the string with
   `json.loads`, validates phase names against the enum, and forwards the

@@ -1444,6 +1444,7 @@ def _check_model(model: str) -> Optional[dict]:
 
 _KNOWN_PHASE_WIRE_NAMES = (
     "primary",
+    "review",
     "deduplication",
     "organizational-placement",
     "enforce-changes",
@@ -1764,11 +1765,11 @@ def workstream_submit_task(
             not pick it up until then. Cancellation works normally during the
             pending period. 0 (default) means dispatch immediately.
         runners: Per-phase agent runner overrides as a JSON object string. Keys
-            are phase wire names (``"primary"``, ``"deduplication"``,
-            ``"organizational-placement"``, ``"enforce-changes"``,
-            ``"maven-dependency-protection"``, ``"post-completion"``,
-            ``"commit-message"``, ``"git-tampering-restart"``) plus an optional
-            ``"default"``. Values are runner identifiers such as ``"claude"``
+            are phase wire names (``"primary"``, ``"review"``,
+            ``"deduplication"``, ``"organizational-placement"``,
+            ``"enforce-changes"``, ``"maven-dependency-protection"``,
+            ``"post-completion"``, ``"commit-message"``,
+            ``"git-tampering-restart"``) plus an optional ``"default"``. Values are runner identifiers such as ``"claude"``
             or ``"opencode"``. Unspecified phases inherit ``"default"``, which
             in turn falls back to the workstream default and then the
             controller default. Example::
