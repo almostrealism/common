@@ -97,7 +97,7 @@ public class SlackTokens {
 	 * @return a {@link SlackTokens} instance
 	 * @throws IOException if {@code tokensFile} is set but cannot be read
 	 */
-	public static SlackTokens from(WorkstreamConfig.SlackWorkspaceEntry entry) throws IOException {
+	public static SlackTokens from(WorkstreamConfig.WorkspaceEntry entry) throws IOException {
 		if (entry.getTokensFile() != null && !entry.getTokensFile().isEmpty()) {
 			return loadFromFile(new File(entry.getTokensFile()));
 		}

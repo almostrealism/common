@@ -197,7 +197,7 @@ cost/behavior differences that motivated the choice.
 
 ## Configuring runners
 
-Runner selection follows a three-level precedence ladder (highest to lowest):
+Runner selection follows a four-level precedence ladder (highest to lowest):
 
 1. **Per-job override** — the `runners` / `defaultRunner` fields in the
    job submission payload, forwarded from `workstream_submit_task`'s
@@ -205,12 +205,16 @@ Runner selection follows a three-level precedence ladder (highest to lowest):
 2. **Workstream default** — the `runners` / `defaultRunner` fields stored
    in the workstream's configuration, set via `workstream_register` or
    `workstream_update_config`'s `runners` and `default_runner` parameters.
-3. **Built-in default** — `"claude"` (`AgentRunnerRegistry.CLAUDE`).
+3. **Workspace default** — the `runners` / `defaultRunner` fields on a
+   `workspaces[]` (or legacy `slackWorkspaces[]`) entry in
+   `workstreams.yaml`. Every workstream whose `workspaceId` matches the
+   workspace's `id` inherits this default unless it sets its own.
+4. **Built-in default** — `"claude"` (`AgentRunnerRegistry.CLAUDE`).
 
 `SubmissionRunnerResolver` in `flowtree/runtime` implements this ladder.
-Never bypass it: the three levels exist so operators can set a workstream
-policy without touching job payloads, and individual jobs can still
-override the policy when needed.
+Never bypass it: the four levels exist so operators can set a workspace
+policy once across many workstreams, narrow it on individual workstreams,
+and still override on individual jobs.
 
 ### Discovering available options
 
@@ -245,6 +249,105 @@ workstream_update_config(
     runners='{"primary":"opencode","deduplication":"opencode"}',
 )
 ```
+
+### Setting a workspace-level default
+
+A workspace-level default applies to every workstream whose
+`workspaceId` matches the workspace's `id`. Useful when an operator runs
+many workstreams in the same workspace and wants the same defaults
+across all of them — e.g. "use opencode for `commit-message` and
+`organizational-placement` everywhere in this org". Workspaces in
+higher-risk orgs simply leave these fields unset and inherit the controller
+default.
+
+**Preferred path: `workspace_update_config` MCP tool.** Mirrors
+`workstream_update_config` in shape but is keyed on the workspace's
+operator-chosen `id`. Discover IDs via the `workspaceId` field returned
+by `workstream_list` (the legacy `slackWorkspaceId` alias is still
+emitted for backward compatibility). The change is persisted back to
+`workstreams.yaml` so it survives a controller restart.
+
+```python
+workspace_update_config(
+    workspace_id="almostrealism",
+    default_runner="claude",
+    runners='{"commit-message":"opencode","organizational-placement":"opencode"}',
+    # name="team-alpha",
+    # default_channel="C0987654321",
+)
+```
+
+The legacy parameter name `slack_workspace_id` is still accepted as a
+deprecated alias for `workspace_id`.
+
+The tool exposes `default_runner`, `runners`, `name`, `default_channel`,
+`new_id`, and `slack_team_id`. **Credential and ACL fields**
+(`tokensFile`, `botToken`, `appToken`, `githubOrgs`,
+`channelOwnerUserId`) are deliberately NOT settable here — those must
+be edited in the YAML directly so the change can be code-reviewed
+before it lands.
+
+#### Renaming a workspace
+
+Workspaces created from a legacy `slackWorkspaces:` entry start out with
+their Slack team ID as the workspace ID. To migrate to a friendlier
+operator-chosen ID, pass `new_id`:
+
+```python
+workspace_update_config(
+    workspace_id="T0123456789",
+    new_id="almostrealism",
+)
+```
+
+Every workstream that referenced the old ID is updated atomically. The
+workspace's Slack team binding (`slackTeamId`) survives the rename, so
+channel routing keeps working.
+
+#### Unbinding a workspace from Slack
+
+Pass an explicit empty string for `slack_team_id` to clear the Slack
+connection. After clearing, channel/notifier operations on this
+workspace skip cleanly.
+
+```python
+workspace_update_config(
+    workspace_id="almostrealism",
+    slack_team_id="",
+)
+```
+
+Pass a non-empty `slack_team_id` to point the workspace at a different
+Slack team.
+
+**Fallback path: edit `workstreams.yaml` directly.** The MCP tool only
+covers the fields above; everything else (tokens, GitHub orgs, secrets
+list) is still YAML-only. The on-disk shape:
+
+```yaml
+workspaces:
+  - id: "almostrealism"           # operator-chosen workspace identifier
+    slackTeamId: "T0123456789"    # optional; omit for no Slack integration
+    name: "team-alpha"
+    botToken: "xoxb-..."
+    appToken: "xapp-..."
+    defaultRunner: "claude"
+    runners:
+      commit-message: "opencode"
+      organizational-placement: "opencode"
+```
+
+The legacy `slackWorkspaces:` top-level key is still loaded; each entry
+auto-migrates so its `id` doubles as its `slackTeamId`, preserving
+existing channel routing. Both keys may appear in the same file during
+the migration window — entries from both are merged into the same
+workspace list.
+
+Unknown phase keys in `workspaces[].runners` are rejected at load
+time with a clear error naming the offending workspace; the resolver does
+not silently route around them. Workstream-level config fully shadows the
+workspace it belongs to — when a workstream sets `defaultRunner`, the
+workspace's per-phase entries are skipped for that workstream.
 
 ### Overriding at job-submission time
 

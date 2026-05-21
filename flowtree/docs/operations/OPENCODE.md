@@ -24,9 +24,18 @@ model locally:
 ```
 
 This rebuilds the agent image (with the opencode binary baked in) and
-also starts an ollama daemon on the host, pulls the default model
-(`qwen3-coder:30b`), and configures the agent containers to talk to it
-via `OPENCODE_PROVIDER_URL`.
+also starts an ollama daemon on the host, pulls the model named by
+`LLM_MODEL` (defaults to a coder-tuned 30B variant — override
+`LLM_MODEL` at invocation to pull something else), and writes
+`OPENCODE_PROVIDER_URL` into the agent `.env` so the agent containers
+talk to it.
+
+`OPENCODE_DEFAULT_MODEL` is **not** written automatically. ollama
+dispatches by model name, so jobs submitted without an explicit model
+field would otherwise be sent to the runner's compiled-in `default`
+alias — which ollama does not recognise. The script prints the exact
+line to add to `.env` after pulling; do so before submitting jobs that
+omit the model field. (llama.cpp users don't need this — see below.)
 
 The `--with-llm` flag is opt-in. Operators on hardware that cannot
 sustain a 30B-parameter model should omit it and point
@@ -47,7 +56,7 @@ its own host) — there are no per-workstream overrides.
 | `OPENCODE_BIN` | (unset) | Absolute path to the `opencode` binary. Takes precedence over every other discovery rule. |
 | `OPENCODE_PROVIDER_URL` | `http://localhost:11434/v1` | OpenAI-compatible endpoint URL. |
 | `OPENCODE_API_KEY` | empty | API key for the provider. Local llama.cpp / ollama do not require one. |
-| `OPENCODE_DEFAULT_MODEL` | (unset; falls back to `qwen3-coder-30b`) | Model name used when the submitted job does not specify one. |
+| `OPENCODE_DEFAULT_MODEL` | (unset; falls back to the literal alias `default`) | Model name used when the submitted job does not specify one. The `default` alias is fine with llama.cpp's `llama-server` (it ignores the model field on the wire and serves whichever GGUF was loaded); ollama and hosted providers dispatch by name and **require** an explicit value here. |
 | `OPENCODE_CONFIG` | (set automatically at launch) | Path to the synthesized config file. Set by the runner before launching the opencode subprocess; operators do not need to configure this. |
 
 ### Binary discovery order
@@ -64,37 +73,51 @@ was checked.
 
 ## Picking a backend
 
-### ollama (default; what `--with-llm` provisions)
+### llama.cpp server (what AR primarily uses)
 
-```sh
-ollama serve                          # listens on http://localhost:11434
-ollama pull qwen3-coder:30b
-export OPENCODE_PROVIDER_URL=http://localhost:11434/v1
-# OPENCODE_API_KEY: leave unset.
-export OPENCODE_DEFAULT_MODEL=qwen3-coder:30b
-```
-
-To swap the default model, override `LLM_MODEL` when invoking
-`rebuild.sh --with-llm` (the script `ollama pull`s whatever you set).
-
-### llama.cpp server
-
-`--with-llm` does **not** provision llama.cpp. To use it, install and
-run it yourself, then point the runner at it:
+`llama-server` serves whichever GGUF was loaded at launch and ignores the
+`model` field on incoming requests, so the runner's compiled-in `default`
+alias is sufficient — no `OPENCODE_DEFAULT_MODEL` needed.
 
 ```sh
 ./llama-server -m /path/to/model.gguf --port 8080 --api-key ""
 export OPENCODE_PROVIDER_URL=http://localhost:8080/v1
 # OPENCODE_API_KEY: leave unset (or set to whatever --api-key was given).
-export OPENCODE_DEFAULT_MODEL=qwen3-coder-30b
+# OPENCODE_DEFAULT_MODEL: leave unset — the runner's "default" alias works.
 ```
 
+For the AR-managed Qwen3 setup on `mac-studio`, see
+[`tools/bin/llama.sh`](../../../tools/bin/llama.sh) and the
+[launchd plist](../../../tools/launchd/com.almostrealism.llama-server.plist).
+
+### ollama (what `--with-llm` provisions)
+
+ollama dispatches by model name, so `OPENCODE_DEFAULT_MODEL` is **required**.
+`rebuild.sh --with-llm` writes `OPENCODE_PROVIDER_URL` automatically but
+deliberately leaves `OPENCODE_DEFAULT_MODEL` for the operator — see the
+note in the quick-start above.
+
+```sh
+ollama serve                          # listens on http://localhost:11434
+ollama pull <model-tag>
+export OPENCODE_PROVIDER_URL=http://localhost:11434/v1
+# OPENCODE_API_KEY: leave unset.
+export OPENCODE_DEFAULT_MODEL=<model-tag>      # required for ollama
+```
+
+To swap the pulled model, override `LLM_MODEL` when invoking
+`rebuild.sh --with-llm` (the script `ollama pull`s whatever you set, and
+prints the matching `OPENCODE_DEFAULT_MODEL=…` line to copy into `.env`).
+
 ### Cloud OpenAI-compatible provider
+
+Hosted providers dispatch by model name, so `OPENCODE_DEFAULT_MODEL` is
+**required** — set it to whichever model identifier the provider documents.
 
 ```sh
 export OPENCODE_PROVIDER_URL=https://api.openai.com/v1
 export OPENCODE_API_KEY=sk-...
-export OPENCODE_DEFAULT_MODEL=gpt-4o-mini
+export OPENCODE_DEFAULT_MODEL=<provider-model-id>   # required for hosted
 ```
 
 ---
