@@ -35,7 +35,8 @@ import static org.junit.Assert.assertTrue;
 /**
  * Tests for {@link SubmissionRunnerResolver}. Verifies the runner
  * precedence ladder applied at submission time:
- * per-job > workstream per-phase > workstream default > {@code "claude"}.
+ * per-job &gt; workstream per-phase &gt; workstream default &gt;
+ * workspace per-phase &gt; workspace default &gt; {@code "claude"}.
  */
 public class SubmissionRunnerResolverTest extends TestSuiteBase {
 
@@ -144,6 +145,157 @@ public class SubmissionRunnerResolverTest extends TestSuiteBase {
         ws.put("primary", TEST_RUNNER);
         SubmissionRunnerResolver r = SubmissionRunnerResolver.resolve(
                 new LinkedHashMap<>(), null, ws);
+        assertNull(r.error());
+        CodingAgentJobFactory f = new CodingAgentJobFactory("p");
+        r.applyTo(f);
+        assertEquals(TEST_RUNNER, f.getRunnerForPhase(Phase.PRIMARY));
+    }
+
+    // --- Workspace-layer precedence cases ----------------------------------
+
+    /**
+     * Case 1 of the precedence ladder: per-job override wins over a
+     * workstream per-phase entry pointing at a different runner.
+     */
+    @Test(timeout = 5000)
+    public void perJobOverrideBeatsWorkstreamPerPhase() {
+        Map<String, String> req = new LinkedHashMap<>();
+        req.put("primary", TEST_RUNNER);
+        Map<String, String> wsRunners = new LinkedHashMap<>();
+        wsRunners.put("primary", AgentRunnerRegistry.CLAUDE);
+        SubmissionRunnerResolver r = SubmissionRunnerResolver.resolve(
+                req, null, wsRunners, null, null);
+        assertNull(r.error());
+        CodingAgentJobFactory f = new CodingAgentJobFactory("p");
+        r.applyTo(f);
+        assertEquals(TEST_RUNNER, f.getRunnerForPhase(Phase.PRIMARY));
+    }
+
+    /**
+     * Case 2: workstream per-phase beats the workstream default for that
+     * phase only; other phases still use the workstream default.
+     */
+    @Test(timeout = 5000)
+    public void workstreamPerPhaseBeatsWorkstreamDefault() {
+        Map<String, String> wsRunners = new LinkedHashMap<>();
+        wsRunners.put("deduplication", TEST_RUNNER);
+        SubmissionRunnerResolver r = SubmissionRunnerResolver.resolve(
+                new LinkedHashMap<>(), AgentRunnerRegistry.CLAUDE, wsRunners,
+                null, null);
+        assertNull(r.error());
+        CodingAgentJobFactory f = new CodingAgentJobFactory("p");
+        r.applyTo(f);
+        assertEquals(TEST_RUNNER, f.getRunnerForPhase(Phase.DEDUPLICATION));
+        assertEquals(AgentRunnerRegistry.CLAUDE,
+                f.getRunnerForPhase(Phase.PRIMARY));
+    }
+
+    /**
+     * Case 3: workstream default beats a workspace per-phase entry for that
+     * phase. The workstream default shadows the workspace layer entirely.
+     */
+    @Test(timeout = 5000)
+    public void workstreamDefaultBeatsWorkspacePerPhase() {
+        Map<String, String> workspaceRunners = new LinkedHashMap<>();
+        workspaceRunners.put("primary", TEST_RUNNER);
+        SubmissionRunnerResolver r = SubmissionRunnerResolver.resolve(
+                new LinkedHashMap<>(), AgentRunnerRegistry.CLAUDE,
+                new LinkedHashMap<>(), null, workspaceRunners);
+        assertNull(r.error());
+        CodingAgentJobFactory f = new CodingAgentJobFactory("p");
+        r.applyTo(f);
+        // Workstream defaultRunner=claude wins over workspace runners[primary]=TEST_RUNNER.
+        assertEquals(AgentRunnerRegistry.CLAUDE,
+                f.getRunnerForPhase(Phase.PRIMARY));
+    }
+
+    /**
+     * Case 4: workspace per-phase beats the workspace default for the phase
+     * it covers; other phases still use the workspace default.
+     */
+    @Test(timeout = 5000)
+    public void workspacePerPhaseBeatsWorkspaceDefault() {
+        Map<String, String> workspaceRunners = new LinkedHashMap<>();
+        workspaceRunners.put("primary", TEST_RUNNER);
+        SubmissionRunnerResolver r = SubmissionRunnerResolver.resolve(
+                new LinkedHashMap<>(), null, new LinkedHashMap<>(),
+                AgentRunnerRegistry.CLAUDE, workspaceRunners);
+        assertNull(r.error());
+        CodingAgentJobFactory f = new CodingAgentJobFactory("p");
+        r.applyTo(f);
+        assertEquals(TEST_RUNNER, f.getRunnerForPhase(Phase.PRIMARY));
+        assertEquals(AgentRunnerRegistry.CLAUDE,
+                f.getRunnerForPhase(Phase.DEDUPLICATION));
+    }
+
+    /**
+     * Case 5: workspace default beats the controller default ("claude") and
+     * applies to every phase when nothing higher is set.
+     */
+    @Test(timeout = 5000)
+    public void workspaceDefaultBeatsControllerDefault() {
+        SubmissionRunnerResolver r = SubmissionRunnerResolver.resolve(
+                new LinkedHashMap<>(), null, new LinkedHashMap<>(),
+                TEST_RUNNER, new LinkedHashMap<>());
+        assertNull(r.error());
+        CodingAgentJobFactory f = new CodingAgentJobFactory("p");
+        r.applyTo(f);
+        assertEquals(TEST_RUNNER, f.getDefaultRunner());
+        assertEquals(TEST_RUNNER, f.getRunnerForPhase(Phase.PRIMARY));
+    }
+
+    /**
+     * Case 6: with every layer absent, the controller default ("claude")
+     * is the floor.
+     */
+    @Test(timeout = 5000)
+    public void controllerDefaultIsTheFloor() {
+        SubmissionRunnerResolver r = SubmissionRunnerResolver.resolve(
+                new LinkedHashMap<>(), null, new LinkedHashMap<>(),
+                null, new LinkedHashMap<>());
+        assertNull(r.error());
+        CodingAgentJobFactory f = new CodingAgentJobFactory("p");
+        r.applyTo(f);
+        assertEquals(AgentRunnerRegistry.CLAUDE, f.getDefaultRunner());
+    }
+
+    /**
+     * The middle of the ladder can be missing without breaking the layers
+     * above and below. Per-job override jumps past empty workstream + empty
+     * workspace defaults directly to the controller default for unrelated
+     * phases.
+     */
+    @Test(timeout = 5000)
+    public void missingMiddleLayersFallThroughCleanly() {
+        Map<String, String> req = new LinkedHashMap<>();
+        req.put("primary", TEST_RUNNER);
+        SubmissionRunnerResolver r = SubmissionRunnerResolver.resolve(
+                req, null, new LinkedHashMap<>(), null, new LinkedHashMap<>());
+        assertNull(r.error());
+        CodingAgentJobFactory f = new CodingAgentJobFactory("p");
+        r.applyTo(f);
+        assertEquals(TEST_RUNNER, f.getRunnerForPhase(Phase.PRIMARY));
+        assertEquals(AgentRunnerRegistry.CLAUDE,
+                f.getRunnerForPhase(Phase.DEDUPLICATION));
+    }
+
+    /**
+     * Unknown phase wire names in the workspace runner map are skipped, not
+     * fatal, mirroring the workstream-side treatment. Workspace-level config
+     * already validates phase keys at load time
+     * ({@link WorkstreamConfig#validateWorkspaceRunners()}); this guard
+     * exists for the rare case of a workspace that was loaded by a newer
+     * controller and rolled back to a controller that doesn't recognise the
+     * phase.
+     */
+    @Test(timeout = 5000)
+    public void unknownPhaseInWorkspaceMapIsSkippedNotFatal() {
+        Map<String, String> workspaceRunners = new LinkedHashMap<>();
+        workspaceRunners.put("future-phase", TEST_RUNNER);
+        workspaceRunners.put("primary", TEST_RUNNER);
+        SubmissionRunnerResolver r = SubmissionRunnerResolver.resolve(
+                new LinkedHashMap<>(), null, new LinkedHashMap<>(),
+                null, workspaceRunners);
         assertNull(r.error());
         CodingAgentJobFactory f = new CodingAgentJobFactory("p");
         r.applyTo(f);

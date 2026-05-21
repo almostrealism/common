@@ -90,8 +90,8 @@ Follow the pattern of `workstream_submit_task` (line ~911 of `server.py`) exactl
 ## JSON-object parameters: `runners`, `requiredLabels`, etc.
 
 Several MCP tools (`workstream_submit_task`, `workstream_register`,
-`workstream_update_config`) accept structured data through string-typed
-parameters that the tool then parses locally:
+`workstream_update_config`, `workspace_update_config`) accept structured
+data through string-typed parameters that the tool then parses locally:
 
 - `required_labels: str = ""` — a comma-separated `key:value` CSV.
 - `dependent_repos: str = ""` — a comma-separated list of git URLs.

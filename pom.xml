@@ -126,6 +126,15 @@
 				<configuration>
 					<!-- Timeout in seconds for forked test processes (4 hour default) -->
 					<forkedProcessTimeoutInSeconds>14400</forkedProcessTimeoutInSeconds>
+					<!--
+					Multi-module post-completion checks pass -Dtest=A,B,C across modules
+					where each named class lives in only one module. Without this flag
+					surefire fails the module that contains none of them. The
+					-DfailIfNoTests=false flag the harness already passes is a separate
+					switch from failIfNoTests, which covers the no-tests-at-all case.
+					Override per-invocation with -Dsurefire.failIfNoSpecifiedTests=true.
+					-->
+					<failIfNoSpecifiedTests>false</failIfNoSpecifiedTests>
 				</configuration>
 			</plugin>
 			<plugin>

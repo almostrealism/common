@@ -84,9 +84,9 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
         assertEquals(OpencodeConfigBuilder.FALLBACK_MODEL, b.resolveModel(null));
         assertEquals(OpencodeConfigBuilder.FALLBACK_MODEL, b.resolveModel(""));
 
-        env.put(OpencodeConfigBuilder.ENV_DEFAULT_MODEL, "llama3");
+        env.put(OpencodeConfigBuilder.ENV_DEFAULT_MODEL, "env-override");
         OpencodeConfigBuilder withEnv = new OpencodeConfigBuilder(env::get);
-        assertEquals("llama3", withEnv.resolveModel(null));
+        assertEquals("env-override", withEnv.resolveModel(null));
         assertEquals("requested-model", withEnv.resolveModel("requested-model"));
     }
 
@@ -95,7 +95,7 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
     public void resolveQualifiedModelPrefixesProvider() {
         OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
         assertEquals("local/" + OpencodeConfigBuilder.FALLBACK_MODEL, b.resolveQualifiedModel(null));
-        assertEquals("local/qwen-2-7b", b.resolveQualifiedModel("qwen-2-7b"));
+        assertEquals("local/requested-model", b.resolveQualifiedModel("requested-model"));
     }
 
     /** HTTP MCP servers become opencode {@code type=remote} entries with headers preserved. */

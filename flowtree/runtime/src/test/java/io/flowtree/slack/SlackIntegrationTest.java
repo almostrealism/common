@@ -1488,7 +1488,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     // -------------------------------------------------------------------------
 
     @Test(timeout = 10000)
-    public void testSlackWorkspaceEntryYamlRoundTrip() throws IOException {
+    public void testWorkspaceEntryYamlRoundTrip() throws IOException {
         String yaml = "slackWorkspaces:\n" +
                       "  - workspaceId: \"T0123456789\"\n" +
                       "    name: \"my-org\"\n" +
@@ -1503,8 +1503,10 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertNotNull(config.getSlackWorkspaces());
         assertEquals(1, config.getSlackWorkspaces().size());
 
-        WorkstreamConfig.SlackWorkspaceEntry entry = config.getSlackWorkspaces().get(0);
-        assertEquals("T0123456789", entry.getWorkspaceId());
+        WorkstreamConfig.WorkspaceEntry entry = config.getSlackWorkspaces().get(0);
+        assertEquals("T0123456789", entry.getId());
+        // Legacy slackWorkspaces entries auto-migrate so slackTeamId mirrors the original ID.
+        assertEquals("T0123456789", entry.getSlackTeamId());
         assertEquals("my-org", entry.getName());
         assertEquals("xoxb-test", entry.getBotToken());
         assertEquals("xapp-test", entry.getAppToken());
@@ -1531,15 +1533,15 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         assertEquals(2, config.getSlackWorkspaces().size());
 
-        WorkstreamConfig.SlackWorkspaceEntry ws1 = config.getSlackWorkspaces().get(0);
-        assertEquals("T111", ws1.getWorkspaceId());
+        WorkstreamConfig.WorkspaceEntry ws1 = config.getSlackWorkspaces().get(0);
+        assertEquals("T111", ws1.getId());
         assertEquals("workspace-one", ws1.getName());
         assertEquals("xoxb-one", ws1.getBotToken());
         assertNotNull(ws1.getGithubOrgs());
         assertEquals("ghp_one", ws1.getGithubOrgs().get("my-org").getToken());
 
-        WorkstreamConfig.SlackWorkspaceEntry ws2 = config.getSlackWorkspaces().get(1);
-        assertEquals("T222", ws2.getWorkspaceId());
+        WorkstreamConfig.WorkspaceEntry ws2 = config.getSlackWorkspaces().get(1);
+        assertEquals("T222", ws2.getId());
         assertEquals("/config/slack-tokens.json", ws2.getTokensFile());
     }
 
@@ -1566,7 +1568,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         // Regular workstreams still parse correctly; no slackWorkspaceId assigned
         assertEquals(1, config.getWorkstreams().size());
         assertEquals("C0123456789", config.getWorkstreams().get(0).getChannelId());
-        assertNull(config.getWorkstreams().get(0).getSlackWorkspaceId());
+        assertNull(config.getWorkstreams().get(0).getWorkspaceId());
     }
 
     @Test(timeout = 10000)
@@ -1590,22 +1592,22 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         WorkstreamConfig.WorkstreamEntry entryWithId = config.getWorkstreams().get(0);
         assertEquals("C001", entryWithId.getChannelId());
-        assertEquals("T111", entryWithId.getSlackWorkspaceId());
+        assertEquals("T111", entryWithId.getWorkspaceId());
 
         WorkstreamConfig.WorkstreamEntry entryWithoutId = config.getWorkstreams().get(1);
         assertEquals("C002", entryWithoutId.getChannelId());
-        assertNull(entryWithoutId.getSlackWorkspaceId());
+        assertNull(entryWithoutId.getWorkspaceId());
 
         // Verify toWorkstream() propagates slackWorkspaceId
         List<Workstream> workstreams = config.toWorkstreams();
-        assertEquals("T111", workstreams.get(0).getSlackWorkspaceId());
-        assertNull(workstreams.get(1).getSlackWorkspaceId());
+        assertEquals("T111", workstreams.get(0).getWorkspaceId());
+        assertNull(workstreams.get(1).getWorkspaceId());
     }
 
     @Test(timeout = 10000)
     public void testSlackTokensFromEntryInlineTokens() throws IOException {
-        WorkstreamConfig.SlackWorkspaceEntry entry = new WorkstreamConfig.SlackWorkspaceEntry();
-        entry.setWorkspaceId("T999");
+        WorkstreamConfig.WorkspaceEntry entry = new WorkstreamConfig.WorkspaceEntry();
+        entry.setId("T999");
         entry.setBotToken("xoxb-inline-bot");
         entry.setAppToken("xapp-inline-app");
 
@@ -1622,8 +1624,8 @@ public class SlackIntegrationTest extends TestSuiteBase {
         Files.write(tempFile.toPath(),
                 "{ \"botToken\": \"xoxb-from-file\", \"appToken\": \"xapp-from-file\" }".getBytes());
 
-        WorkstreamConfig.SlackWorkspaceEntry entry = new WorkstreamConfig.SlackWorkspaceEntry();
-        entry.setWorkspaceId("T888");
+        WorkstreamConfig.WorkspaceEntry entry = new WorkstreamConfig.WorkspaceEntry();
+        entry.setId("T888");
         entry.setTokensFile(tempFile.getAbsolutePath());
         entry.setBotToken("xoxb-should-be-ignored");
 
@@ -1635,7 +1637,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     }
 
     @Test(timeout = 10000)
-    public void testSlackWorkspaceEntryUnknownFieldsIgnored() throws IOException {
+    public void testWorkspaceEntryUnknownFieldsIgnored() throws IOException {
         String yaml = "slackWorkspaces:\n" +
                       "  - workspaceId: \"T777\"\n" +
                       "    botToken: \"xoxb-777\"\n" +
@@ -1644,7 +1646,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         // Should not throw
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        assertEquals("T777", config.getSlackWorkspaces().get(0).getWorkspaceId());
+        assertEquals("T777", config.getSlackWorkspaces().get(0).getId());
     }
 
     @Test(timeout = 10000)
@@ -1652,17 +1654,17 @@ public class SlackIntegrationTest extends TestSuiteBase {
         WorkstreamConfig config = new WorkstreamConfig();
 
         Workstream ws = new Workstream("ws-1", "C001", "#channel-one");
-        ws.setSlackWorkspaceId("T111");
+        ws.setWorkspaceId("T111");
         ws.setDefaultBranch("main");
 
         config.addWorkstream(ws);
         assertEquals(1, config.getWorkstreams().size());
-        assertEquals("T111", config.getWorkstreams().get(0).getSlackWorkspaceId());
+        assertEquals("T111", config.getWorkstreams().get(0).getWorkspaceId());
 
         // Update via syncFromWorkstreams
-        ws.setSlackWorkspaceId("T222");
+        ws.setWorkspaceId("T222");
         config.syncFromWorkstreams(List.of(ws));
-        assertEquals("T222", config.getWorkstreams().get(0).getSlackWorkspaceId());
+        assertEquals("T222", config.getWorkstreams().get(0).getWorkspaceId());
     }
 
     // -------------------------------------------------------------------------
@@ -1709,7 +1711,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         Workstream ws = new Workstream("ws-multi", "C_MULTI", "#multi");
         ws.setDefaultBranch("main");
-        ws.setSlackWorkspaceId("T111");
+        ws.setWorkspaceId("T111");
         listener.registerWorkstream(ws);
 
         // Composite key lookup: handleMessage with workspaceId=T111 should find it.
@@ -1734,12 +1736,12 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         Workstream wsA = new Workstream("ws-a", "C_SHARED", "#shared-a");
         wsA.setDefaultBranch("main");
-        wsA.setSlackWorkspaceId("T111");
+        wsA.setWorkspaceId("T111");
         listener.registerWorkstream(wsA);
 
         Workstream wsB = new Workstream("ws-b", "C_SHARED", "#shared-b");
         wsB.setDefaultBranch("develop");
-        wsB.setSlackWorkspaceId("T222");
+        wsB.setWorkspaceId("T222");
         listener.registerWorkstream(wsB);
 
         // Both workstreams are registered (two separate map entries)
@@ -1778,7 +1780,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         // Workstream should be created and keyed under T999:C_SETUP_WS
         boolean foundWithWorkspace = listener.getWorkstreams().values().stream()
-                .anyMatch(w -> "T999".equals(w.getSlackWorkspaceId())
+                .anyMatch(w -> "T999".equals(w.getWorkspaceId())
                         && "C_SETUP_WS".equals(w.getChannelId()));
         assertTrue("Setup must store slackWorkspaceId on new workstream", foundWithWorkspace);
     }
@@ -1795,12 +1797,12 @@ public class SlackIntegrationTest extends TestSuiteBase {
         // Register two workstreams: one in T111, one in T222
         Workstream wsA = new Workstream("ws-act-a", "C_ACT_A", "#act-a");
         wsA.setDefaultBranch("main");
-        wsA.setSlackWorkspaceId("T111");
+        wsA.setWorkspaceId("T111");
         listener.registerWorkstream(wsA);
 
         Workstream wsB = new Workstream("ws-act-b", "C_ACT_B", "#act-b");
         wsB.setDefaultBranch("develop");
-        wsB.setSlackWorkspaceId("T222");
+        wsB.setWorkspaceId("T222");
         listener.registerWorkstream(wsB);
 
         // /flowtree active with workspaceId=T111 should not throw
@@ -1828,7 +1830,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         // Register a workstream in T_SPECIAL
         Workstream ws = new Workstream("ws-special", "C_SPECIAL", "#special");
-        ws.setSlackWorkspaceId("T_SPECIAL");
+        ws.setWorkspaceId("T_SPECIAL");
         ws.setDefaultBranch("main");
         listener.registerWorkstream(ws);
 

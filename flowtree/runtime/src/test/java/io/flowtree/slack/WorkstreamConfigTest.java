@@ -237,15 +237,19 @@ public class WorkstreamConfigTest extends TestSuiteBase {
 
         // slackWorkspaces must survive the round-trip
         assertEquals(1, reloaded.getSlackWorkspaces().size());
-        WorkstreamConfig.SlackWorkspaceEntry ws = reloaded.getSlackWorkspaces().get(0);
-        assertEquals("T111", ws.getWorkspaceId());
+        WorkstreamConfig.WorkspaceEntry ws = reloaded.getSlackWorkspaces().get(0);
+        assertEquals("T111", ws.getId());
+        // Legacy slackWorkspaces entries auto-migrate so slackTeamId mirrors
+        // the original workspace ID — preserving channel routing after the
+        // load + save round-trip.
+        assertEquals("T111", ws.getSlackTeamId());
         assertEquals("primary", ws.getName());
         assertEquals("xoxb-one", ws.getBotToken());
         assertEquals("xapp-one", ws.getAppToken());
 
         // slackWorkspaceId on workstream entries must survive the round-trip
         assertEquals(1, reloaded.getWorkstreams().size());
-        assertEquals("T111", reloaded.getWorkstreams().get(0).getSlackWorkspaceId());
+        assertEquals("T111", reloaded.getWorkstreams().get(0).getWorkspaceId());
     }
 
     @Test(timeout = 10000)
@@ -280,8 +284,11 @@ public class WorkstreamConfigTest extends TestSuiteBase {
 
         // Verify the migrated structure loads correctly
         assertEquals(1, config.getSlackWorkspaces().size());
-        WorkstreamConfig.SlackWorkspaceEntry migratedWs = config.getSlackWorkspaces().get(0);
-        assertEquals("T111", migratedWs.getWorkspaceId());
+        WorkstreamConfig.WorkspaceEntry migratedWs = config.getSlackWorkspaces().get(0);
+        assertEquals("T111", migratedWs.getId());
+        // Legacy migration also populates slackTeamId from the YAML
+        // workspaceId so existing Slack routing continues to work.
+        assertEquals("T111", migratedWs.getSlackTeamId());
         assertEquals("primary", migratedWs.getName());
         assertEquals("/config/slack-tokens.json", migratedWs.getTokensFile());
         assertNotNull("githubOrgs should be parsed from migrated YAML", migratedWs.getGithubOrgs());
@@ -290,14 +297,14 @@ public class WorkstreamConfigTest extends TestSuiteBase {
 
         // All workstreams must have slackWorkspaceId
         for (WorkstreamConfig.WorkstreamEntry entry : config.getWorkstreams()) {
-            assertEquals("T111", entry.getSlackWorkspaceId());
+            assertEquals("T111", entry.getWorkspaceId());
         }
 
         // Convert to runtime workstreams and verify slackWorkspaceId propagates
         List<Workstream> workstreams = config.toWorkstreams();
         assertEquals(3, workstreams.size());
         for (Workstream ws : workstreams) {
-            assertEquals("T111", ws.getSlackWorkspaceId());
+            assertEquals("T111", ws.getWorkspaceId());
         }
     }
 
@@ -314,7 +321,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
                 + "  tokensFile: /t.json\n"
                 + "  channelOwnerUserId: U0222\n";
         WorkstreamConfig cfg = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.SlackWorkspaceEntry ws = cfg.getSlackWorkspaces().get(0);
+        WorkstreamConfig.WorkspaceEntry ws = cfg.getSlackWorkspaces().get(0);
         assertEquals(List.of("U0222"), ws.effectiveChannelOwnerUserIds());
     }
 
@@ -337,7 +344,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
                 + "  - U0BBB\n"
                 + "  - U0CCC\n";
         WorkstreamConfig cfg = WorkstreamConfig.loadFromYamlString(wsYaml);
-        WorkstreamConfig.SlackWorkspaceEntry ws = cfg.getSlackWorkspaces().get(0);
+        WorkstreamConfig.WorkspaceEntry ws = cfg.getSlackWorkspaces().get(0);
         assertEquals(List.of("U0BBB", "U0CCC"), ws.effectiveChannelOwnerUserIds());
     }
 
@@ -435,6 +442,50 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         String json = ws.toSummaryJson();
         assertFalse("unexpected model: " + json, json.contains("\"model\""));
         assertFalse("unexpected effort: " + json, json.contains("\"effort\""));
+    }
+
+    @Test(timeout = 10000)
+    public void testWorkstreamSummaryJsonEmitsArchivedFlagWhenSet() {
+        Workstream ws = new Workstream("C_A", "#archived");
+        ws.setArchived(true);
+        String json = ws.toSummaryJson();
+        assertTrue("expected archived flag: " + json,
+            json.contains("\"archived\":true"));
+    }
+
+    @Test(timeout = 10000)
+    public void testWorkstreamSummaryJsonOmitsArchivedWhenFalse() {
+        Workstream ws = new Workstream("C_A", "#live");
+        String json = ws.toSummaryJson();
+        assertFalse("unexpected archived field: " + json,
+            json.contains("\"archived\""));
+    }
+
+    @Test(timeout = 10000)
+    public void testYamlRoundTripsArchivedFlag() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - workstreamId: \"ws-arc\"\n"
+            + "    channelId: \"C_ARC\"\n"
+            + "    channelName: \"#arc\"\n"
+            + "    defaultBranch: \"feature/done\"\n"
+            + "    archived: true\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        assertTrue("entry must reflect archived=true", entry.isArchived());
+
+        Workstream ws = entry.toWorkstream();
+        assertTrue("workstream conversion must preserve archived", ws.isArchived());
+    }
+
+    @Test(timeout = 10000)
+    public void testAddWorkstreamCarriesArchivedFlag() {
+        WorkstreamConfig config = new WorkstreamConfig();
+        Workstream ws = new Workstream("C_ARC", "#arc");
+        ws.setArchived(true);
+        config.addWorkstream(ws);
+        assertTrue("addWorkstream must persist archived",
+            config.getWorkstreams().get(0).isArchived());
     }
 
     // ── model/effort persistence in WorkstreamConfig ──────────────────────────
@@ -567,5 +618,298 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         Workstream ws = config.toWorkstreams().get(0);
         assertNull(ws.getDefaultRunner());
         assertTrue(ws.getRunners().isEmpty());
+    }
+
+    /**
+     * A workspace entry with both {@code defaultRunner} and {@code runners}
+     * set round-trips identically through YAML, both fields populated on
+     * reload.
+     */
+    @Test(timeout = 10000)
+    public void testYamlWorkspaceRunnerConfigurationRoundTrips() throws IOException {
+        String yaml = "slackWorkspaces:\n"
+            + "  - workspaceId: \"T-RUNNERS\"\n"
+            + "    name: \"team-runners\"\n"
+            + "    botToken: \"xoxb-test\"\n"
+            + "    appToken: \"xapp-test\"\n"
+            + "    defaultRunner: \"opencode\"\n"
+            + "    runners:\n"
+            + "      primary: \"claude\"\n"
+            + "      commit-message: \"opencode\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.WorkspaceEntry entry =
+                config.findSlackWorkspace("T-RUNNERS");
+        assertNotNull(entry);
+        assertEquals("opencode", entry.getDefaultRunner());
+        assertEquals("claude", entry.getRunners().get("primary"));
+        assertEquals("opencode", entry.getRunners().get("commit-message"));
+
+        File tempFile = File.createTempFile("workspace-runners", ".yaml");
+        tempFile.deleteOnExit();
+        config.saveToYaml(tempFile);
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        WorkstreamConfig.WorkspaceEntry rEntry =
+                reloaded.findSlackWorkspace("T-RUNNERS");
+        assertNotNull(rEntry);
+        assertEquals("opencode", rEntry.getDefaultRunner());
+        assertEquals("claude", rEntry.getRunners().get("primary"));
+        assertEquals("opencode", rEntry.getRunners().get("commit-message"));
+    }
+
+    /**
+     * A workspace entry with only {@code defaultRunner} set (no per-phase
+     * map) round-trips: defaultRunner survives, runners map remains empty.
+     */
+    @Test(timeout = 10000)
+    public void testYamlWorkspaceWithDefaultRunnerOnly() throws IOException {
+        String yaml = "slackWorkspaces:\n"
+            + "  - workspaceId: \"T-DEF\"\n"
+            + "    botToken: \"xoxb\"\n"
+            + "    appToken: \"xapp\"\n"
+            + "    defaultRunner: \"opencode\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.WorkspaceEntry entry =
+                config.findSlackWorkspace("T-DEF");
+        assertNotNull(entry);
+        assertEquals("opencode", entry.getDefaultRunner());
+        assertTrue("runners must default to empty when omitted",
+                entry.getRunners().isEmpty());
+
+        File tempFile = File.createTempFile("workspace-default-only", ".yaml");
+        tempFile.deleteOnExit();
+        config.saveToYaml(tempFile);
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        WorkstreamConfig.WorkspaceEntry rEntry =
+                reloaded.findSlackWorkspace("T-DEF");
+        assertNotNull(rEntry);
+        assertEquals("opencode", rEntry.getDefaultRunner());
+        assertTrue(rEntry.getRunners().isEmpty());
+    }
+
+    /**
+     * A workspace entry with neither workspace-level field set still
+     * round-trips — neither field appears in the reloaded YAML and the
+     * reloaded entry's getters return the unset values.
+     */
+    @Test(timeout = 10000)
+    public void testYamlWorkspaceWithoutRunnerFields() throws IOException {
+        String yaml = "slackWorkspaces:\n"
+            + "  - workspaceId: \"T-PLAIN\"\n"
+            + "    botToken: \"xoxb\"\n"
+            + "    appToken: \"xapp\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.WorkspaceEntry entry =
+                config.findSlackWorkspace("T-PLAIN");
+        assertNotNull(entry);
+        assertNull(entry.getDefaultRunner());
+        assertTrue(entry.getRunners().isEmpty());
+
+        File tempFile = File.createTempFile("workspace-no-runner", ".yaml");
+        tempFile.deleteOnExit();
+        config.saveToYaml(tempFile);
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        WorkstreamConfig.WorkspaceEntry rEntry =
+                reloaded.findSlackWorkspace("T-PLAIN");
+        assertNotNull(rEntry);
+        assertNull(rEntry.getDefaultRunner());
+        assertTrue(rEntry.getRunners().isEmpty());
+    }
+
+    /**
+     * Unknown phase keys in a workspace's {@code runners} map fail at load
+     * time with a clear error naming the offending workspace.
+     */
+    @Test(timeout = 10000)
+    public void testYamlWorkspaceUnknownPhaseFailsAtLoad() {
+        String yaml = "slackWorkspaces:\n"
+            + "  - workspaceId: \"T-BAD\"\n"
+            + "    botToken: \"xoxb\"\n"
+            + "    appToken: \"xapp\"\n"
+            + "    runners:\n"
+            + "      not-a-phase: \"claude\"\n";
+
+        try {
+            WorkstreamConfig.loadFromYamlString(yaml);
+            fail("Expected IOException for unknown phase in workspace runners");
+        } catch (IOException ex) {
+            assertTrue("error must mention the bad phase key: " + ex.getMessage(),
+                    ex.getMessage().contains("not-a-phase"));
+            assertTrue("error must mention the offending workspace: "
+                            + ex.getMessage(),
+                    ex.getMessage().contains("T-BAD"));
+        }
+    }
+
+    /**
+     * {@link WorkstreamConfig#findSlackWorkspace(String)} returns
+     * {@code null} for unknown IDs, empty strings, and {@code null}.
+     */
+    @Test(timeout = 10000)
+    public void testFindSlackWorkspaceMissesReturnNull() throws IOException {
+        String yaml = "slackWorkspaces:\n"
+            + "  - workspaceId: \"T-KNOWN\"\n"
+            + "    botToken: \"xoxb\"\n"
+            + "    appToken: \"xapp\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertNotNull(config.findSlackWorkspace("T-KNOWN"));
+        assertNull(config.findSlackWorkspace("T-OTHER"));
+        assertNull(config.findSlackWorkspace(""));
+        assertNull(config.findSlackWorkspace(null));
+    }
+
+    // ------------------------------------------------------------------
+    // Workspace/Slack decoupling: new YAML shape + auto-migration tests
+    // ------------------------------------------------------------------
+
+    /**
+     * The new {@code workspaces:} top-level key loads with an operator-chosen
+     * {@code id} and an explicit, distinct {@code slackTeamId}.
+     */
+    @Test(timeout = 10000)
+    public void testNewWorkspacesYamlShape() throws IOException {
+        String yaml = "workspaces:\n"
+            + "  - id: \"almostrealism\"\n"
+            + "    slackTeamId: \"T0123456789\"\n"
+            + "    name: \"Almost Realism\"\n"
+            + "    botToken: \"xoxb\"\n"
+            + "    appToken: \"xapp\"\n"
+            + "workstreams:\n"
+            + "  - channelId: \"C001\"\n"
+            + "    channelName: \"#alpha\"\n"
+            + "    workspaceId: \"almostrealism\"\n"
+            + "    defaultBranch: \"main\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertEquals(1, config.getWorkspaces().size());
+        WorkstreamConfig.WorkspaceEntry ws = config.getWorkspaces().get(0);
+        assertEquals("almostrealism", ws.getId());
+        assertEquals("T0123456789", ws.getSlackTeamId());
+        assertEquals(1, config.getWorkstreams().size());
+        assertEquals("almostrealism",
+                config.getWorkstreams().get(0).getWorkspaceId());
+    }
+
+    /**
+     * A workspace declared under the new {@code workspaces:} key without a
+     * {@code slackTeamId} has no Slack integration. It still resolves
+     * normally for lookups.
+     */
+    @Test(timeout = 10000)
+    public void testNewWorkspacesYamlWithoutSlackTeamId() throws IOException {
+        String yaml = "workspaces:\n"
+            + "  - id: \"local-only\"\n"
+            + "    name: \"Local Dev\"\n"
+            + "workstreams: []\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.WorkspaceEntry ws =
+                config.findWorkspace("local-only");
+        assertNotNull(ws);
+        assertNull("slackTeamId must be absent when no Slack integration",
+                ws.getSlackTeamId());
+    }
+
+    /**
+     * When both {@code slackWorkspaces:} (legacy) and {@code workspaces:}
+     * (new) are present, entries from both keys merge into the unified
+     * workspace list.
+     */
+    @Test(timeout = 10000)
+    public void testMixedLegacyAndNewWorkspacesYaml() throws IOException {
+        String yaml = "slackWorkspaces:\n"
+            + "  - workspaceId: \"T-LEGACY\"\n"
+            + "    botToken: \"xoxb-legacy\"\n"
+            + "    appToken: \"xapp-legacy\"\n"
+            + "workspaces:\n"
+            + "  - id: \"new-style\"\n"
+            + "    name: \"New Style\"\n"
+            + "workstreams: []\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertEquals(2, config.getWorkspaces().size());
+        assertNotNull(config.findWorkspace("T-LEGACY"));
+        assertNotNull(config.findWorkspace("new-style"));
+        // Legacy entries auto-migrate slackTeamId from id.
+        assertEquals("T-LEGACY",
+                config.findWorkspace("T-LEGACY").getSlackTeamId());
+        // New-style entries without slackTeamId stay absent.
+        assertNull(config.findWorkspace("new-style").getSlackTeamId());
+    }
+
+    /**
+     * A workstream's {@code slackWorkspaceId} legacy field is accepted as a
+     * deserialization alias for {@code workspaceId} so existing configs
+     * continue to load unchanged.
+     */
+    @Test(timeout = 10000)
+    public void testWorkstreamSlackWorkspaceIdAliasOnLoad() throws IOException {
+        String yaml = "workspaces:\n"
+            + "  - id: \"ws-renamed\"\n"
+            + "workstreams:\n"
+            + "  - channelId: \"C002\"\n"
+            + "    channelName: \"#beta\"\n"
+            + "    slackWorkspaceId: \"ws-renamed\"\n"
+            + "    defaultBranch: \"main\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertEquals(1, config.getWorkstreams().size());
+        assertEquals("ws-renamed",
+                config.getWorkstreams().get(0).getWorkspaceId());
+    }
+
+    /**
+     * Renaming a workspace via {@link WorkstreamConfig#renameWorkspace}
+     * updates every workstream that referenced the old ID.
+     */
+    @Test(timeout = 10000)
+    public void testRenameWorkspaceUpdatesReferencingWorkstreams()
+            throws IOException {
+        String yaml = "workspaces:\n"
+            + "  - id: \"T0123456789\"\n"
+            + "    slackTeamId: \"T0123456789\"\n"
+            + "workstreams:\n"
+            + "  - channelId: \"C001\"\n"
+            + "    channelName: \"#alpha\"\n"
+            + "    workspaceId: \"T0123456789\"\n"
+            + "    defaultBranch: \"main\"\n"
+            + "  - channelId: \"C002\"\n"
+            + "    channelName: \"#beta\"\n"
+            + "    workspaceId: \"T0123456789\"\n"
+            + "    defaultBranch: \"main\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertTrue(config.renameWorkspace("T0123456789", "almostrealism"));
+        assertNotNull(config.findWorkspace("almostrealism"));
+        assertNull(config.findWorkspace("T0123456789"));
+        // Slack team binding is preserved across the rename.
+        assertEquals("T0123456789",
+                config.findWorkspace("almostrealism").getSlackTeamId());
+        for (WorkstreamConfig.WorkstreamEntry entry : config.getWorkstreams()) {
+            assertEquals("almostrealism", entry.getWorkspaceId());
+        }
+    }
+
+    /**
+     * Renaming a workspace to an ID already in use throws
+     * {@link IllegalArgumentException} so the caller can surface a 400.
+     */
+    @Test(timeout = 10000)
+    public void testRenameWorkspaceCollisionRejected() throws IOException {
+        String yaml = "workspaces:\n"
+            + "  - id: \"a\"\n"
+            + "  - id: \"b\"\n"
+            + "workstreams: []\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        try {
+            config.renameWorkspace("a", "b");
+            fail("Expected IllegalArgumentException for ID collision");
+        } catch (IllegalArgumentException ex) {
+            // expected
+        }
     }
 }

@@ -162,8 +162,24 @@ public class Workstream {
     /** Default Node labels applied to jobs when no job-level labels are specified. */
     private Map<String, String> requiredLabels;
 
-    /** Slack workspace ID (team ID) that this workstream is bound to; null for single-workspace mode. */
-    private String slackWorkspaceId;
+    /**
+     * Workspace ID this workstream is bound to. Operator-chosen — when the
+     * workspace was migrated from a legacy {@code slackWorkspaces:} entry the
+     * ID equals the original Slack team ID; otherwise it is whatever ID the
+     * operator chose. {@code null} for single-workspace (legacy) mode.
+     */
+    private String workspaceId;
+
+    /**
+     * Whether this workstream is archived. Archived workstreams remain in the
+     * config (so historical job records and memories stay queryable) but are
+     * hidden from default list responses. Persisted by
+     * {@link WorkstreamConfig.WorkstreamEntry#toWorkstream()} and the inverse
+     * sync path, so editing {@code archived: true} into a workstream's YAML
+     * entry brings it back hidden on the next controller load. The archive /
+     * unarchive MCP tools are the intended runtime entry points.
+     */
+    private boolean archived;
 
     /** Default git user name for new workstreams. */
     public static final String DEFAULT_GIT_USER_NAME = "Flowtree Coding Agent";
@@ -488,21 +504,46 @@ public class Workstream {
     }
 
     /**
-     * Returns the Slack workspace ID (team ID, e.g. "T0123456789") that this workstream
-     * is bound to.  When {@code null}, the workstream belongs to the first (or only)
-     * workspace connection, maintaining backward compatibility with single-workspace mode.
+     * Returns the workspace ID this workstream is bound to. When {@code null},
+     * the workstream belongs to the first (or only) workspace, maintaining
+     * backward compatibility with single-workspace mode. For workspaces
+     * migrated from the legacy {@code slackWorkspaces:} key the ID equals the
+     * Slack team ID; for renamed or freshly-created workspaces it is an
+     * operator-chosen identifier and the Slack team ID (when present) lives
+     * on the workspace entry's {@code slackTeamId} field.
      */
-    public String getSlackWorkspaceId() {
-        return slackWorkspaceId;
+    public String getWorkspaceId() {
+        return workspaceId;
     }
 
     /**
-     * Sets the Slack workspace ID for this workstream.
+     * Sets the workspace ID for this workstream.
      *
-     * @param slackWorkspaceId the Slack team ID (T...) or {@code null} for default workspace
+     * @param workspaceId the operator-chosen workspace ID, or {@code null}
      */
-    public void setSlackWorkspaceId(String slackWorkspaceId) {
-        this.slackWorkspaceId = slackWorkspaceId;
+    public void setWorkspaceId(String workspaceId) {
+        this.workspaceId = workspaceId;
+    }
+
+    /**
+     * Returns {@code true} when this workstream has been archived. Archived
+     * workstreams are hidden from default {@code workstream_list} responses
+     * but their job history and memories remain queryable.
+     */
+    public boolean isArchived() {
+        return archived;
+    }
+
+    /**
+     * Sets the archived flag for this workstream. Archiving does not delete
+     * any data — it only suppresses the workstream from default listings and
+     * blocks future {@code workstream_delete} calls until the flag is cleared
+     * (or {@code force=true} is passed).
+     *
+     * @param archived {@code true} to mark archived, {@code false} to restore
+     */
+    public void setArchived(boolean archived) {
+        this.archived = archived;
     }
 
     /**
@@ -650,8 +691,11 @@ public class Workstream {
         if (githubOrg != null) {
             json.append(",\"githubOrg\":\"").append(escapeForJson(githubOrg)).append("\"");
         }
-        if (slackWorkspaceId != null) {
-            json.append(",\"slackWorkspaceId\":\"").append(escapeForJson(slackWorkspaceId)).append("\"");
+        if (workspaceId != null) {
+            json.append(",\"workspaceId\":\"").append(escapeForJson(workspaceId)).append("\"");
+            // Legacy alias retained so older clients that read this field by
+            // its previous name continue to work; remove in a future release.
+            json.append(",\"slackWorkspaceId\":\"").append(escapeForJson(workspaceId)).append("\"");
         }
         if (planningDocument != null && !planningDocument.isEmpty()) {
             json.append(",\"planningDocument\":\"").append(escapeForJson(planningDocument)).append("\"");
@@ -666,6 +710,9 @@ public class Workstream {
         boolean pipelineCapable = repoUrl != null && !repoUrl.isEmpty();
         json.append(",\"hasPlanningDocument\":").append(planningDocument != null && !planningDocument.isEmpty());
         json.append(",\"pipelineCapable\":").append(pipelineCapable);
+        if (archived) {
+            json.append(",\"archived\":true");
+        }
 
         if (dependentRepos != null && !dependentRepos.isEmpty()) {
             json.append(",\"dependentRepos\":[");
