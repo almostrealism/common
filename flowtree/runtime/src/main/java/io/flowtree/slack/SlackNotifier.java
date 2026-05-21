@@ -799,11 +799,29 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * Returns the Slack thread timestamp for a job, if one has been established.
      * This is the timestamp of the submission message posted when the job was queued.
      *
+     * <p>The in-memory {@code jobThreadTs} map is the fast path; it is
+     * populated by {@link #onJobSubmitted(String, JobCompletionEvent, String)}
+     * (or its single-argument overload) and removed by
+     * {@link #onJobCompleted(String, JobCompletionEvent)} once the
+     * completion message has been posted. When the in-memory entry is
+     * absent (job already completed, controller restarted, or the
+     * submission message arrived from a peer node), this method falls
+     * back to {@link JobStatsStore#getJobSlackTs(String)} so a late
+     * {@code send_message} call from an enforcement-phase agent still
+     * lands inside the original job thread instead of at the top of the
+     * channel.</p>
+     *
      * @param jobId the job ID
      * @return the thread timestamp, or null if no thread exists for this job
      */
     public String getThreadTs(String jobId) {
-        return jobId != null ? jobThreadTs.get(jobId) : null;
+        if (jobId == null) return null;
+        String ts = jobThreadTs.get(jobId);
+        if (ts != null) return ts;
+        if (statsStore != null) {
+            return statsStore.getJobSlackTs(jobId);
+        }
+        return null;
     }
 
     /**

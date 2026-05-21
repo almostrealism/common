@@ -253,12 +253,22 @@ def _require_workspace(workspace_id: Optional[str]) -> None:
             + (workspace_id if workspace_id else "<unknown>")
         )
 
-def _decode_current_request_token() -> tuple[Optional[str], Optional[str]]:
-    """Decode the Bearer token of the in-flight MCP tool call's HTTP request.
+def _decode_current_request_token_full(
+) -> tuple[Optional[str], Optional[str], Optional[str], str]:
+    """Decode the Bearer token of the in-flight MCP tool call's HTTP request
+    and return diagnostic detail.
 
-    Returns ``(workstream_id, job_id)`` on a valid HMAC temp token, or
-    ``(None, None)`` on absent/invalid bearer, a static token, or any
-    lookup failure.
+    Returns ``(workstream_id, job_id, label, reason)`` where:
+      * ``workstream_id`` and ``job_id`` are the values from a valid HMAC
+        temp token, or ``None`` when decoding does not succeed.
+      * ``label`` is the audit label for the temp token (``tmp:ws/job``),
+        or ``None`` on any failure path.
+      * ``reason`` is a short identifier describing which path was taken
+        — ``"ok"`` on success, otherwise one of
+        ``"no_context"``, ``"no_request"``, ``"no_auth_header"``,
+        ``"non_bearer_scheme"``, ``"not_temp_token"`` — for diagnostic
+        logging. This is the only return slot meant for an operator to
+        read; the body of the token is never echoed.
 
     The auth middleware also writes the decoded ``(workstream_id, job_id)``
     into a :class:`contextvars.ContextVar` plus a :mod:`threading` local —
@@ -279,34 +289,57 @@ def _decode_current_request_token() -> tuple[Optional[str], Optional[str]]:
     via ``ServerMessageMetadata`` into the dispatch-time ``RequestContext``
     (accessible via :meth:`FastMCP.get_context`), so every tool call sees
     the bearer that the client actually sent on that call.
+
+    A diagnostic 0de652686 fix landed for this in ``feature/pluggable-agents``
+    but the production symptom (``send_message`` from an ``opencode``-driven
+    enforcement phase landing at the top of the Slack channel rather than
+    in the job's thread) recurred. The investigation could reproduce the
+    success case end-to-end but not the failure, so this function carries
+    the diagnostic ``reason`` slot so the next opencode job lands the
+    evidence in the controller log on its own.
     """
     try:
         ctx = mcp.get_context()
     except (LookupError, AttributeError):
-        return None, None
+        return None, None, None, "no_context"
     # ``Context.request_context`` raises ``ValueError`` when invoked
     # outside of a live MCP request (e.g. unit tests that call the tool
     # function directly). Treat that as "no request" and fall back.
     try:
         request_context = ctx.request_context
     except (LookupError, ValueError, AttributeError):
-        return None, None
+        return None, None, None, "no_request"
     if request_context is None:
-        return None, None
+        return None, None, None, "no_request"
     request = getattr(request_context, "request", None)
     if request is None:
-        return None, None
+        return None, None, None, "no_request"
     try:
         auth_header = request.headers.get("authorization", "")
     except Exception:
-        return None, None
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return None, None
+        return None, None, None, "no_auth_header"
+    if not auth_header:
+        return None, None, None, "no_auth_header"
+    # RFC 7235 declares the scheme name case-insensitive; opencode and
+    # Claude Code both emit "Bearer " but a proxy could lowercase the
+    # value en route, so match either casing rather than failing closed
+    # on a cosmetic difference.
+    if not (auth_header.startswith("Bearer ") or auth_header.startswith("bearer ")):
+        return None, None, None, "non_bearer_scheme"
     token_value = auth_header[7:].strip()
     result = _validate_temp_token(token_value)
     if result is None:
-        return None, None
-    _, _, ws_id, job_id = result
+        return None, None, None, "not_temp_token"
+    _, label, ws_id, job_id = result
+    return ws_id, job_id, label, "ok"
+
+
+def _decode_current_request_token() -> tuple[Optional[str], Optional[str]]:
+    """Backwards-compatible 2-tuple wrapper around
+    :func:`_decode_current_request_token_full`. New callers that want the
+    diagnostic ``reason`` should use the full variant directly.
+    """
+    ws_id, job_id, _, _ = _decode_current_request_token_full()
     return ws_id, job_id
 
 
@@ -615,6 +648,20 @@ class BearerAuthMiddleware:
                     _set_scopes(scopes, label)
                     _set_workspace_scopes([workspace_id] if workspace_id else None)
                     _set_token_context(ws_id, job_id)
+                    # One line per HTTP request carrying a valid temp
+                    # token. Pair with send_message_resolved /
+                    # send_message_missing_job_id from the tool handler
+                    # to determine whether the per-request decode in the
+                    # handler saw the same (ws, job) that the middleware
+                    # observed here.
+                    audit_log.info(
+                        "temp_token_request "
+                        "method=%s path=%s "
+                        "workstream_id=%s job_id=%s workspace_id=%s",
+                        scope.get("method", ""),
+                        scope.get("path", ""),
+                        ws_id or "", job_id or "",
+                        workspace_id or "")
                     await self.app(scope, receive, send)
                     return
 
@@ -3839,9 +3886,72 @@ def send_message(
     """
     _require_scope("write")
 
-    effective_ws = workstream_id or _get_token_workstream_id() or ""
-    effective_job = job_id or _get_token_job_id() or ""
+    # Resolve (workstream, job) from explicit args first, then from the
+    # in-flight HTTP request's bearer, then from the auth-middleware's
+    # ContextVar/thread-local. Emit a structured diagnostic *before* the
+    # routing decision so a production failure (e.g. opencode-driven
+    # phase posting top-of-channel instead of in the job's thread) leaves
+    # enough evidence in the controller log to pinpoint which source
+    # supplied the empty job_id without further speculation. The
+    # diagnostic does not echo any token body, only the four-way
+    # provenance and the decode reason. See
+    # :func:`_decode_current_request_token_full` for the reason vocabulary.
+    per_req_ws, per_req_job, per_req_label, per_req_reason = (
+        _decode_current_request_token_full())
+    ctx_ws = _request_workstream_id.get(None)
+    ctx_job = _request_job_id.get(None)
+    tl_ws = getattr(_thread_local, "workstream_id", None)
+    tl_job = getattr(_thread_local, "job_id", None)
+
+    # Reuse the already-decoded per_req_ws/per_req_job and the already-read
+    # ctx_* / tl_* values rather than calling _get_token_workstream_id() /
+    # _get_token_job_id(), which would each invoke _decode_current_request_token_full()
+    # a second time. The resolution order is identical: explicit arg wins, then
+    # per-request bearer, then ContextVar, then thread-local.
+    effective_ws = workstream_id or per_req_ws or ctx_ws or tl_ws or ""
+    effective_job = job_id or per_req_job or ctx_job or tl_job or ""
     effective_activity = (activity or os.environ.get("AR_AGENT_ACTIVITY", "")).strip()
+
+    if effective_ws and not effective_job:
+        # The exact production failure mode: a workstream is resolved
+        # but the job_id binding has been lost, so the controller URL
+        # falls back to the workstream-level /messages endpoint and
+        # the message lands at the top of the Slack channel rather
+        # than inside the job's thread. Surface every source we
+        # examined so a single log line says which one failed.
+        audit_log.warning(
+            "send_message_missing_job_id "
+            "explicit_workstream_id=%s explicit_job_id=%s "
+            "per_request_workstream_id=%s per_request_job_id=%s "
+            "per_request_label=%s per_request_decode_reason=%s "
+            "contextvar_workstream_id=%s contextvar_job_id=%s "
+            "thread_local_workstream_id=%s thread_local_job_id=%s "
+            "effective_workstream_id=%s effective_job_id=%s "
+            "activity=%s",
+            workstream_id or "", job_id or "",
+            per_req_ws or "", per_req_job or "",
+            per_req_label or "", per_req_reason,
+            ctx_ws or "", ctx_job or "",
+            tl_ws or "", tl_job or "",
+            effective_ws, effective_job,
+            effective_activity or "")
+    else:
+        audit_log.info(
+            "send_message_resolved "
+            "explicit_workstream_id=%s explicit_job_id=%s "
+            "per_request_workstream_id=%s per_request_job_id=%s "
+            "per_request_decode_reason=%s "
+            "contextvar_workstream_id=%s contextvar_job_id=%s "
+            "thread_local_workstream_id=%s thread_local_job_id=%s "
+            "effective_workstream_id=%s effective_job_id=%s "
+            "activity=%s",
+            workstream_id or "", job_id or "",
+            per_req_ws or "", per_req_job or "",
+            per_req_reason,
+            ctx_ws or "", ctx_job or "",
+            tl_ws or "", tl_job or "",
+            effective_ws, effective_job,
+            effective_activity or "")
 
     if not effective_ws:
         return {"ok": False, "error": "workstream_id is required (pass explicitly or use a job token)"}

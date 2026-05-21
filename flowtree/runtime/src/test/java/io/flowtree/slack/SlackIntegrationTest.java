@@ -44,6 +44,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.junit.Assert;
+
 import static org.junit.Assert.*;
 
 /**
@@ -2198,6 +2200,72 @@ public class SlackIntegrationTest extends TestSuiteBase {
         } finally {
             endpoint.stop();
         }
+    }
+
+    /**
+     * Regression for the opencode {@code send_message} threading bug
+     * recurrence. After {@link SlackNotifier#onJobCompleted} the
+     * in-memory {@code jobThreadTs} entry is cleared, so a
+     * late-arriving message (an enforcement-phase agent flushing a
+     * final tool call) used to fall through to a top-of-channel post
+     * even when the URL correctly addressed
+     * {@code /jobs/{jobId}/messages}.
+     *
+     * <p>This test exercises the real
+     * {@link JobStatsStore#getJobSlackTs} fallback through a temp HSQLDB
+     * file — no mocks of the bug surface — and asserts that
+     * {@link SlackNotifier#getThreadTs} returns the persisted timestamp
+     * after the in-memory entry has been removed.</p>
+     */
+    @Test(timeout = 10000)
+    public void testGetThreadTsFallsBackToStatsStoreAfterJobCompletion()
+            throws Exception {
+        File tempDir = Files.createTempDirectory("thread-ts-fallback").toFile();
+        tempDir.deleteOnExit();
+        String dbPath = new File(tempDir, "stats").getAbsolutePath();
+
+        JobStatsStore store = new JobStatsStore(dbPath);
+        store.initialize();
+        try {
+            // Seed the job row + slack_message_ts the way SlackNotifier
+            // would in production (recordJobStarted creates the row,
+            // updateJobSlackTs records the submission message ts).
+            store.recordJobStarted("job-A", "ws-A", "demo", Instant.now());
+            store.updateJobSlackTs("job-A", "1700000000.000001");
+
+            // Direct lookup against the persisted store.
+            Assert.assertEquals("Persisted slack_message_ts must be readable",
+                    "1700000000.000001", store.getJobSlackTs("job-A"));
+
+            // SlackNotifier with no in-memory submission entry for
+            // job-A (simulates the post-onJobCompleted state where
+            // jobThreadTs has already been emptied by remove()).
+            SlackNotifier notifier = new SlackNotifier(null);
+            notifier.setStatsStore(store);
+            Assert.assertEquals("getThreadTs must fall back to the durable store"
+                    + " when the in-memory map has no entry for the jobId",
+                    "1700000000.000001", notifier.getThreadTs("job-A"));
+
+            // No statsStore-side row for a different job → null
+            // (unchanged behaviour, no spurious thread routing).
+            assertNull("Unknown job IDs must remain null",
+                    notifier.getThreadTs("job-Unknown"));
+            assertNull("Null jobId must remain null", notifier.getThreadTs(null));
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * The {@link SlackNotifier#getThreadTs} fallback must remain a no-op
+     * when no {@link JobStatsStore} is attached, matching the historical
+     * single-source behaviour for deployments that do not run the
+     * stats database.
+     */
+    @Test(timeout = 10000)
+    public void testGetThreadTsReturnsNullWhenNoStoreAndNoInMemoryEntry() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        assertNull(notifier.getThreadTs("job-Z"));
     }
 }
 
