@@ -2448,6 +2448,188 @@ class TestSendMessageActivity(unittest.TestCase):
 
 
 # -----------------------------------------------------------------------
+# Per-request token decoding (FastMCP stateful-transport workaround)
+# -----------------------------------------------------------------------
+
+
+class TestPerRequestTokenDecoding(unittest.TestCase):
+    """Regression tests for the fix that decodes the Bearer token directly
+    from the current MCP tool call's HTTP request rather than relying on
+    a ContextVar/threading.local set by the auth middleware.
+
+    The opencode runner exposed a defect in the contextvar/thread-local
+    mechanism: under FastMCP's streamable-HTTP **stateful** transport,
+    tool handlers run on a long-lived "session task" whose context was
+    captured at session creation time and is not updated by subsequent
+    per-request auth middleware passes. The thread-local fallback is
+    racy across concurrent requests on a single event-loop thread. The
+    result was that ``send_message`` from an opencode session saw an
+    empty workstream/job context and either errored out or landed
+    messages at the top level of the workspace's Slack channel instead
+    of inside the job thread.
+
+    The fix decodes the Bearer token from the current request directly
+    via ``mcp.get_context().request_context.request.headers``. This
+    class verifies the decode helper and the upstream getters honour
+    the per-request value.
+    """
+
+    def setUp(self):
+        # Clear any leftover ContextVar / thread-local state so we are
+        # testing the per-request path in isolation.
+        server._request_workstream_id.set(None)
+        server._request_job_id.set(None)
+        if hasattr(server._thread_local, "workstream_id"):
+            del server._thread_local.workstream_id
+        if hasattr(server._thread_local, "job_id"):
+            del server._thread_local.job_id
+
+    def tearDown(self):
+        server._request_workstream_id.set(None)
+        server._request_job_id.set(None)
+        if hasattr(server._thread_local, "workstream_id"):
+            del server._thread_local.workstream_id
+        if hasattr(server._thread_local, "job_id"):
+            del server._thread_local.job_id
+
+    @staticmethod
+    def _fake_context_with_bearer(token_value):
+        """Return a stand-in for ``mcp.get_context()`` whose
+        ``request_context.request.headers`` reports the given Bearer
+        token (or no auth header at all when ``token_value`` is None).
+        """
+        headers = {}
+        if token_value is not None:
+            headers["authorization"] = "Bearer " + token_value
+
+        fake_request = MagicMock()
+        fake_request.headers = headers
+
+        fake_request_context = MagicMock()
+        fake_request_context.request = fake_request
+
+        fake_ctx = MagicMock()
+        fake_ctx.request_context = fake_request_context
+        return fake_ctx
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_decode_returns_workstream_and_job_from_temp_token(self):
+        token = server._mint_temp_token("ws-A", "job-A", ttl_seconds=60)
+        self.assertIsNotNone(token)
+        with patch.object(server.mcp, "get_context",
+                          return_value=self._fake_context_with_bearer(token)):
+            ws, job = server._decode_current_request_token()
+        self.assertEqual(ws, "ws-A")
+        self.assertEqual(job, "job-A")
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_decode_returns_none_when_no_bearer_header(self):
+        with patch.object(server.mcp, "get_context",
+                          return_value=self._fake_context_with_bearer(None)):
+            ws, job = server._decode_current_request_token()
+        self.assertIsNone(ws)
+        self.assertIsNone(job)
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_decode_returns_none_when_no_request_context(self):
+        fake_ctx = MagicMock()
+        fake_ctx.request_context = None
+        with patch.object(server.mcp, "get_context", return_value=fake_ctx):
+            ws, job = server._decode_current_request_token()
+        self.assertIsNone(ws)
+        self.assertIsNone(job)
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_decode_returns_none_for_static_token_bearer(self):
+        # A non-HMAC bearer (e.g. a static long-lived admin token) is
+        # not an ``armt_tmp_`` token; the decode helper must reject it.
+        with patch.object(server.mcp, "get_context",
+                          return_value=self._fake_context_with_bearer(
+                              "static-admin-token")):
+            ws, job = server._decode_current_request_token()
+        self.assertIsNone(ws)
+        self.assertIsNone(job)
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_decode_returns_none_when_get_context_lookup_errors(self):
+        with patch.object(server.mcp, "get_context",
+                          side_effect=LookupError("no active request")):
+            ws, job = server._decode_current_request_token()
+        self.assertIsNone(ws)
+        self.assertIsNone(job)
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_decode_returns_none_when_request_context_property_raises(self):
+        # ``FastMCP.Context.request_context`` raises ValueError when the
+        # tool is invoked outside of a live MCP request (e.g. unit tests
+        # that call the function directly). The decoder must treat that
+        # as "no request" rather than crashing the tool.
+        fake_ctx = MagicMock()
+        type(fake_ctx).request_context = mock.PropertyMock(
+            side_effect=ValueError("Context is not available outside of a request"))
+        with patch.object(server.mcp, "get_context", return_value=fake_ctx):
+            ws, job = server._decode_current_request_token()
+        self.assertIsNone(ws)
+        self.assertIsNone(job)
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_token_getters_prefer_per_request_value_over_contextvar(self):
+        # Simulate the FastMCP stateful-transport hazard: the session
+        # task's ContextVar/thread-local were captured from a prior
+        # request bound to a different workstream/job, but the actual
+        # current HTTP request carries a temp token for ws-CURRENT.
+        server._set_token_context("ws-STALE", "job-STALE")
+        token = server._mint_temp_token("ws-CURRENT", "job-CURRENT", ttl_seconds=60)
+        with patch.object(server.mcp, "get_context",
+                          return_value=self._fake_context_with_bearer(token)):
+            self.assertEqual(server._get_token_workstream_id(), "ws-CURRENT")
+            self.assertEqual(server._get_token_job_id(), "job-CURRENT")
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_token_getters_fall_back_when_no_request(self):
+        # When there is no active MCP request context, the legacy
+        # ContextVar/thread-local fallback still applies. This keeps
+        # in-process tests and stdio-transport callers working.
+        server._set_token_context("ws-FALLBACK", "job-FALLBACK")
+        with patch.object(server.mcp, "get_context",
+                          side_effect=LookupError("no active request")):
+            self.assertEqual(server._get_token_workstream_id(), "ws-FALLBACK")
+            self.assertEqual(server._get_token_job_id(), "job-FALLBACK")
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    @patch.object(server, "_controller_post")
+    def test_send_message_uses_per_request_token_for_thread_routing(
+            self, mock_post):
+        """The end-to-end regression test for opencode's threading bug.
+
+        With the session task carrying stale ContextVar state (as
+        happens in FastMCP stateful streamable-HTTP transport),
+        ``send_message`` must still post into the *current* request's
+        job thread — derived from the Bearer token attached to the
+        in-flight HTTP request — not the stale session-task context.
+        """
+        _grant_all_scopes()
+        # Stale session-task context (the FastMCP hazard).
+        server._set_token_context("ws-STALE", "job-STALE")
+        # Current HTTP request carries a temp token for ws-A / job-7.
+        token = server._mint_temp_token("ws-A", "job-7", ttl_seconds=60)
+        mock_post.return_value = {"ok": True}
+        with patch.object(server.mcp, "get_context",
+                          return_value=self._fake_context_with_bearer(token)):
+            result = server.send_message(text="Hello from opencode")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_post.assert_called_once()
+        called_path = mock_post.call_args[0][0]
+        # Must route to /api/workstreams/ws-A/jobs/job-7/messages — NOT
+        # to /api/workstreams/ws-STALE/... and NOT to the workstream-
+        # level ``/messages`` endpoint (which would land at the top of
+        # the channel).
+        self.assertIn("/api/workstreams/ws-A/jobs/job-7/messages",
+                      called_path)
+        self.assertNotIn("ws-STALE", called_path)
+
+
+# -----------------------------------------------------------------------
 # workstream_context activity filtering
 # -----------------------------------------------------------------------
 

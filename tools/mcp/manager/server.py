@@ -253,13 +253,78 @@ def _require_workspace(workspace_id: Optional[str]) -> None:
             + (workspace_id if workspace_id else "<unknown>")
         )
 
+def _decode_current_request_token() -> tuple[Optional[str], Optional[str]]:
+    """Decode the Bearer token of the in-flight MCP tool call's HTTP request.
+
+    Returns ``(workstream_id, job_id)`` on a valid HMAC temp token, or
+    ``(None, None)`` on absent/invalid bearer, a static token, or any
+    lookup failure.
+
+    The auth middleware also writes the decoded ``(workstream_id, job_id)``
+    into a :class:`contextvars.ContextVar` plus a :mod:`threading` local —
+    both intended to be read back by :func:`_get_token_workstream_id` and
+    :func:`_get_token_job_id` from inside tool handlers. That mechanism is
+    not reliable under FastMCP's streamable-HTTP **stateful** transport.
+    In stateful mode, the per-session "server task" that dispatches tool
+    handlers inherits its context from whichever HTTP request created the
+    session (the MCP ``initialize`` call). Subsequent HTTP requests on the
+    same session set the ContextVar on a *different* asyncio task — the
+    server task continues running in its original context. The
+    :mod:`threading` local is racy across concurrent requests on a single
+    event-loop thread for the same reason.
+
+    Decoding the token directly from the current request's HTTP
+    ``Authorization`` header sidesteps this entirely: the lowlevel MCP
+    server propagates the originating :class:`starlette.requests.Request`
+    via ``ServerMessageMetadata`` into the dispatch-time ``RequestContext``
+    (accessible via :meth:`FastMCP.get_context`), so every tool call sees
+    the bearer that the client actually sent on that call.
+    """
+    try:
+        ctx = mcp.get_context()
+    except (LookupError, AttributeError):
+        return None, None
+    # ``Context.request_context`` raises ``ValueError`` when invoked
+    # outside of a live MCP request (e.g. unit tests that call the tool
+    # function directly). Treat that as "no request" and fall back.
+    try:
+        request_context = ctx.request_context
+    except (LookupError, ValueError, AttributeError):
+        return None, None
+    if request_context is None:
+        return None, None
+    request = getattr(request_context, "request", None)
+    if request is None:
+        return None, None
+    try:
+        auth_header = request.headers.get("authorization", "")
+    except Exception:
+        return None, None
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None, None
+    token_value = auth_header[7:].strip()
+    result = _validate_temp_token(token_value)
+    if result is None:
+        return None, None
+    _, _, ws_id, job_id = result
+    return ws_id, job_id
+
+
 def _get_token_workstream_id() -> Optional[str]:
+    # Prefer per-request decoding (see _decode_current_request_token for
+    # why ContextVars/thread-locals are unreliable in FastMCP stateful mode).
+    req_ws, _ = _decode_current_request_token()
+    if req_ws:
+        return req_ws
     ws = _request_workstream_id.get(None)
     if ws is not None:
         return ws
     return getattr(_thread_local, "workstream_id", None)
 
 def _get_token_job_id() -> Optional[str]:
+    _, req_job = _decode_current_request_token()
+    if req_job:
+        return req_job
     jid = _request_job_id.get(None)
     if jid is not None:
         return jid
