@@ -42,7 +42,12 @@ import java.util.function.Function;
  *   <li><b>API key</b> from {@code OPENCODE_API_KEY} (default empty; local
  *       servers do not require auth).</li>
  *   <li><b>Model</b> from the request, falling back to
- *       {@code OPENCODE_DEFAULT_MODEL} and ultimately {@code qwen3-coder-30b}.</li>
+ *       {@code OPENCODE_DEFAULT_MODEL} and ultimately the literal string
+ *       {@code "default"}. Local OpenAI-compatible servers (notably
+ *       llama.cpp's {@code llama-server}) ignore the model field on the
+ *       wire and serve whichever GGUF was loaded, so a stable, model-agnostic
+ *       alias removes the need to revise this code every time the operator
+ *       swaps weights.</li>
  *   <li><b>MCP servers</b> translated from the orchestrator's canonical
  *       {@code {"mcpServers":{...}}} JSON.</li>
  *   <li><b>Permissions / allowlist</b> translated from the orchestrator's CSV
@@ -59,8 +64,15 @@ final class OpencodeConfigBuilder {
     /** Default OpenAI-compatible endpoint URL when {@link #ENV_PROVIDER_URL} is unset. */
     static final String DEFAULT_PROVIDER_URL = "http://localhost:11434/v1";
 
-    /** Default model name when neither the request nor {@link #ENV_DEFAULT_MODEL} supplies one. */
-    static final String FALLBACK_MODEL = "qwen3-coder-30b";
+    /**
+     * Default model name when neither the request nor {@link #ENV_DEFAULT_MODEL}
+     * supplies one. The literal string {@code "default"} is used deliberately
+     * so that the project does not embed a specific model identifier in code;
+     * local OpenAI-compatible providers (llama.cpp's {@code llama-server})
+     * ignore the model field on the wire and respond with whichever GGUF was
+     * loaded at launch.
+     */
+    static final String FALLBACK_MODEL = "default";
 
     /** Conventional logical identifier used for the local provider in opencode's config. */
     static final String PROVIDER_ID = "local";
@@ -143,7 +155,7 @@ final class OpencodeConfigBuilder {
      * {@code provider/model} form.
      *
      * @param requestModel the model from {@link AgentRunRequest#getModel()}
-     * @return the qualified identifier (e.g. {@code "local/qwen3-coder-30b"})
+     * @return the qualified identifier (e.g. {@code "local/default"})
      */
     String resolveQualifiedModel(String requestModel) {
         return PROVIDER_ID + "/" + resolveModel(requestModel);

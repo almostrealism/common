@@ -30,7 +30,7 @@ overrides.
 | `OPENCODE_BIN` | (unset) | Absolute path to the `opencode` binary. Takes precedence over every other discovery rule. |
 | `OPENCODE_PROVIDER_URL` | `http://localhost:11434/v1` | OpenAI-compatible endpoint URL. |
 | `OPENCODE_API_KEY` | empty | API key for the provider. Local llama.cpp/ollama do not require one. |
-| `OPENCODE_DEFAULT_MODEL` | (unset; falls back to `qwen3-coder-30b`) | Model name used when the submitted job does not specify one. |
+| `OPENCODE_DEFAULT_MODEL` | (unset; falls back to the literal alias `default`) | Model name used when the submitted job does not specify one. The `default` alias is fine with llama.cpp's `llama-server` (it serves whichever GGUF was loaded, ignoring the model field on the wire); ollama and hosted providers dispatch by name and **require** an explicit value here. |
 
 ### Binary discovery order
 
@@ -46,33 +46,43 @@ checked.
 
 ## Recommended setup
 
-### ollama (default)
+### llama.cpp server (recommended)
 
-```sh
-# On the agent host:
-ollama serve                          # listens on http://localhost:11434
-ollama pull qwen3-coder:30b
-export OPENCODE_PROVIDER_URL=http://localhost:11434/v1
-# OPENCODE_API_KEY: leave unset.
-export OPENCODE_DEFAULT_MODEL=qwen3-coder:30b
-```
-
-### llama.cpp server
+`llama-server` serves whichever GGUF was loaded at launch regardless of the
+`model` field on incoming requests, so the runner's compiled-in `default`
+alias is sufficient — no `OPENCODE_DEFAULT_MODEL` needed.
 
 ```sh
 # On the agent host:
 ./llama-server -m /path/to/model.gguf --port 8080 --api-key ""
 export OPENCODE_PROVIDER_URL=http://localhost:8080/v1
 # OPENCODE_API_KEY: leave unset (or set to whatever --api-key was given).
-export OPENCODE_DEFAULT_MODEL=qwen3-coder-30b
+# OPENCODE_DEFAULT_MODEL: leave unset — the runner's "default" alias works.
 ```
 
-### Cloud provider (also works)
+### ollama
+
+ollama dispatches by model name, so `OPENCODE_DEFAULT_MODEL` is **required**
+— set it to the exact tag you pulled.
+
+```sh
+# On the agent host:
+ollama serve                          # listens on http://localhost:11434
+ollama pull <model-tag>
+export OPENCODE_PROVIDER_URL=http://localhost:11434/v1
+# OPENCODE_API_KEY: leave unset.
+export OPENCODE_DEFAULT_MODEL=<model-tag>      # required for ollama
+```
+
+### Cloud OpenAI-compatible provider
+
+Hosted providers dispatch by model name, so `OPENCODE_DEFAULT_MODEL` is
+**required** — set it to whichever model identifier the provider documents.
 
 ```sh
 export OPENCODE_PROVIDER_URL=https://api.openai.com/v1
 export OPENCODE_API_KEY=sk-...
-export OPENCODE_DEFAULT_MODEL=gpt-4o-mini
+export OPENCODE_DEFAULT_MODEL=<provider-model-id>   # required for hosted
 ```
 
 ---

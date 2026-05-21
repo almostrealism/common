@@ -78,16 +78,16 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 .prompt("do the thing")
                 .allowedTools("Read,Edit")
                 .mcpConfigJson("{\"mcpServers\":{}}")
-                .model("qwen3-coder")
+                .model("default")
                 .build();
         Path configPath = Paths.get("/tmp/opencode-config.json");
 
         List<String> cmd = runner.buildCommandLine(
-                FAKE_BINARY, req, configPath, "local/qwen3-coder");
+                FAKE_BINARY, req, configPath, "local/default");
 
         Assert.assertEquals(FAKE_BINARY.toString(), cmd.get(0));
         Assert.assertEquals("run", cmd.get(1));
-        assertFlagFollows(cmd, "--model", "local/qwen3-coder");
+        assertFlagFollows(cmd, "--model", "local/default");
         assertFlagFollows(cmd, "--format", "json");
         assertTrue("--dangerously-skip-permissions must be present for headless runs",
                 cmd.contains("--dangerously-skip-permissions"));
@@ -113,13 +113,13 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 .prompt("do the thing")
                 .allowedTools("Read,Edit")
                 .mcpConfigJson("{\"mcpServers\":{}}")
-                .model("qwen3-coder")
+                .model("default")
                 .workingDirectory(workDir)
                 .build();
         Path configPath = Paths.get("/tmp/opencode-config.json");
 
         List<String> cmd = runner.buildCommandLine(
-                FAKE_BINARY, req, configPath, "local/qwen3-coder");
+                FAKE_BINARY, req, configPath, "local/default");
 
         assertFlagFollows(cmd, "--dir", workDir.toString());
         Assert.assertEquals("do the thing", cmd.get(cmd.size() - 1));
@@ -152,9 +152,9 @@ public class OpencodeRunnerTest extends TestSuiteBase {
     @Test(timeout = 5000)
     public void qualifiedModelFallsBackToEnvOrDefault() {
         Map<String, String> env = new HashMap<>();
-        env.put(OpencodeConfigBuilder.ENV_DEFAULT_MODEL, "llama3");
+        env.put(OpencodeConfigBuilder.ENV_DEFAULT_MODEL, "env-override");
         OpencodeConfigBuilder builder = new OpencodeConfigBuilder(env::get);
-        Assert.assertEquals("local/llama3", builder.resolveQualifiedModel(null));
+        Assert.assertEquals("local/env-override", builder.resolveQualifiedModel(null));
 
         Map<String, String> noEnv = new HashMap<>();
         OpencodeConfigBuilder fallback = new OpencodeConfigBuilder(noEnv::get);
