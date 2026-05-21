@@ -1108,6 +1108,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (maxDeduplicationPasses > 0) {
             factory.setMaxDeduplicationPasses(maxDeduplicationPasses);
         }
+        if (body.contains("\"reviewEnabled\""))
+            factory.setReviewEnabled(extractJsonBooleanField(body, "reviewEnabled"));
+        int maxReviewPasses = extractJsonIntField(body, "maxReviewPasses");
+        if (maxReviewPasses > 0) factory.setMaxReviewPasses(maxReviewPasses);
         if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
             factory.setPostCompletionCommand(postCompletionCommand);
             if (postCompletionWorkingDir != null && !postCompletionWorkingDir.isEmpty()) {

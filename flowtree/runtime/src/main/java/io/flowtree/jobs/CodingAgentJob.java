@@ -104,6 +104,8 @@ public class CodingAgentJob extends GitManagedJob {
     /** Default per-job deduplication pass cap; override via {@link #setMaxDeduplicationPasses(int)}. */
     public static final int DEFAULT_MAX_DEDUP_PASSES = 2;
 
+    /** Default per-job review pass cap; override via {@link #setMaxReviewPasses(int)}. */
+    public static final int DEFAULT_MAX_REVIEW_PASSES = ReviewRule.DEFAULT_MAX_PASSES;
     /** Default per-job post-completion pass cap; override via {@link #setMaxPostCompletionPasses(int)}. */
     public static final int DEFAULT_MAX_POST_COMPLETION_PASSES = PostCompletionCommandRule.DEFAULT_MAX_PASSES;
 
@@ -162,6 +164,13 @@ public class CodingAgentJob extends GitManagedJob {
 
     /** When {@code true} (the default), new files are reviewed for correct module placement. */
     private boolean enforceOrganizationalPlacement = true;
+
+    /** When {@code true} (the default), a second-pass review session runs after primary work. */
+    private boolean reviewEnabled = true;
+    /** Per-job cap on review passes; passed to {@link ReviewRule}. */
+    private int maxReviewPasses = DEFAULT_MAX_REVIEW_PASSES;
+    /** Active {@link ReviewRule} instance after {@link #buildActiveRules()} runs; owns review telemetry. */
+    private ReviewRule activeReviewRule;
 
     /** Shell command run after the agent completes; non-empty activates {@link PostCompletionCommandRule}. */
     private String postCompletionCommand;
@@ -591,6 +600,19 @@ public class CodingAgentJob extends GitManagedJob {
         this.enforceOrganizationalPlacement = enforceOrganizationalPlacement;
     }
 
+    /** Returns whether the {@link ReviewRule} (second-pass sanity check) is active; default {@code true}. */
+    public boolean isReviewEnabled() { return reviewEnabled; }
+    /** Sets whether the {@link ReviewRule} is active for this job; {@code false} to skip the review phase. */
+    public void setReviewEnabled(boolean reviewEnabled) { this.reviewEnabled = reviewEnabled; }
+    /** Returns the per-job review pass cap; defaults to {@link #DEFAULT_MAX_REVIEW_PASSES}. */
+    public int getMaxReviewPasses() { return maxReviewPasses; }
+    /** Sets the per-job review pass cap; must be positive. */
+    public void setMaxReviewPasses(int maxReviewPasses) {
+        if (maxReviewPasses <= 0)
+            throw new IllegalArgumentException("maxReviewPasses must be positive, got: " + maxReviewPasses);
+        this.maxReviewPasses = maxReviewPasses;
+    }
+
     /** Returns the post-completion command; non-empty activates {@link PostCompletionCommandRule}. */
     public String getPostCompletionCommand() { return postCompletionCommand; }
 
@@ -738,6 +760,15 @@ public class CodingAgentJob extends GitManagedJob {
         customEnforcementRules.add(rule);
     }
 
+    /** Number of files modified during the most recent review session. */
+    public int getReviewFilesModified() { return activeReviewRule != null ? activeReviewRule.getFilesModified() : 0; }
+    /** Number of {@code memory_store} calls observed during the most recent review session. */
+    public int getReviewMemoriesStored() { return activeReviewRule != null ? activeReviewRule.getMemoriesStored() : 0; }
+    /** Whether the most recent review session exited with code 0. */
+    public boolean isReviewExitedCleanly() { return activeReviewRule != null && activeReviewRule.isExitedCleanly(); }
+    /** Whether at least one review session ran during this job. */
+    public boolean isReviewRan() { return activeReviewRule != null && activeReviewRule.hasRun(); }
+
     /**
      * Returns the Claude Code session ID from the last execution.
      * Can be used to resume the session later.
@@ -847,6 +878,8 @@ public class CodingAgentJob extends GitManagedJob {
         if (enforceChanges) {
             rules.add(new EnforceChangesRule());
         }
+        activeReviewRule = reviewEnabled ? new ReviewRule(maxReviewPasses) : null;
+        if (activeReviewRule != null) rules.add(activeReviewRule);
         if (DEDUP_LOCAL.equals(deduplicationMode)) {
             rules.add(new DeduplicationRule(maxDeduplicationPasses));
         }
@@ -987,9 +1020,12 @@ public class CodingAgentJob extends GitManagedJob {
             try { savedCommitMessage = Files.readString(savedCommitFile, StandardCharsets.UTF_8); }
             catch (IOException e) { warn("Could not read commit.txt: " + e.getMessage()); }
         }
+        boolean reviewing = "review".equals(activity) && activeReviewRule != null;
+        if (reviewing) activeReviewRule.captureBefore(this);
         try {
             this.prompt = correctionPrompt;
             executeSingleRun();
+            if (reviewing) activeReviewRule.recordOutcome(this);
         } finally {
             this.prompt = originalPrompt;
             this.currentActivity = previousActivity;
@@ -1271,6 +1307,10 @@ public class CodingAgentJob extends GitManagedJob {
             }
             ccEvent.withRunnerName(runnerName);
             if (postCompletionCapHit) ccEvent.withPostCompletionCapHit(true);
+            if (activeReviewRule != null && activeReviewRule.hasRun()) {
+                ccEvent.withReviewInfo(true, activeReviewRule.getFilesModified(),
+                        activeReviewRule.getMemoriesStored(), activeReviewRule.isExitedCleanly());
+            }
         }
     }
 
@@ -1341,7 +1381,6 @@ public class CodingAgentJob extends GitManagedJob {
         String base = getBaseBranch() != null ? getBaseBranch() : "master";
         return GitOperations.extractNewFilePaths(getWorkingDirectory(), base, this::warn);
     }
-
 
     /**
      * Returns how the commit message was produced ({@code "agent"}, {@code "prompt_fallback"},
@@ -1455,6 +1494,9 @@ public class CodingAgentJob extends GitManagedJob {
         if (!enforceOrganizationalPlacement) {
             sb.append("::enforceOrgPlacement:=false");
         }
+        if (!reviewEnabled) sb.append("::reviewEnabled:=false");
+        if (maxReviewPasses != DEFAULT_MAX_REVIEW_PASSES)
+            sb.append("::maxReviewPasses:=").append(maxReviewPasses);
         if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
             sb.append("::postCmd:=").append(base64Encode(postCompletionCommand));
             if (postCompletionWorkingDir != null) {
@@ -1529,6 +1571,13 @@ public class CodingAgentJob extends GitManagedJob {
                 break;
             case "enforceOrgPlacement":
                 this.enforceOrganizationalPlacement = Boolean.parseBoolean(value);
+                break;
+            case "reviewEnabled":
+                this.reviewEnabled = Boolean.parseBoolean(value);
+                break;
+            case "maxReviewPasses":
+                try { int p = Integer.parseInt(value); this.maxReviewPasses = p > 0 ? p : DEFAULT_MAX_REVIEW_PASSES; }
+                catch (NumberFormatException e) { this.maxReviewPasses = DEFAULT_MAX_REVIEW_PASSES; }
                 break;
             case "postCmd":
                 this.postCompletionCommand = base64Decode(value);

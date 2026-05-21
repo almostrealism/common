@@ -1600,6 +1600,8 @@ def workstream_submit_task(
     required_labels: str = "",
     deduplication_mode: str = "",
     max_deduplication_passes: int = 0,
+    review_enabled: bool = True,
+    max_review_passes: int = 0,
     model: str = "",
     effort: str = "",
     post_completion_command: str = "",
@@ -1662,6 +1664,19 @@ def workstream_submit_task(
             duplication. Set higher (e.g. 5) for first-time large feature work
             where thoroughness matters. Has no effect when
             ``deduplication_mode="none"``.
+        review_enabled: When ``True`` (the default), a second-pass review
+            session runs after the primary phase. The reviewer is told to
+            make surgical fixes only when unambiguous and to defer
+            anything substantial via a ``review-followup`` memory plus an
+            inline ``TODO(review):`` code comment. Route the review phase
+            to a cheaper runner (e.g. opencode against a local model)
+            with ``runners='{"review":"opencode"}'``. Set to ``False`` to
+            skip the review phase entirely for this job.
+        max_review_passes: Maximum number of review correction sessions per
+            job. 0 (default) uses the server-side default of 1. The review
+            rule is single-pass by design; raising this only matters if
+            you want the same reviewer to see its own changes on a second
+            pass, which is rarely useful.
         model: Claude Code model alias (e.g. ``"sonnet"``, ``"opus"``,
             ``"haiku"``) or full identifier (e.g. ``"claude-sonnet-4-6"``)
             for this job. Empty string falls back to the workstream default,
@@ -1876,6 +1891,10 @@ def workstream_submit_task(
         payload["deduplicationMode"] = deduplication_mode
     if max_deduplication_passes > 0:
         payload["maxDeduplicationPasses"] = max_deduplication_passes
+    if not review_enabled:
+        payload["reviewEnabled"] = False
+    if max_review_passes > 0:
+        payload["maxReviewPasses"] = max_review_passes
     if model:
         payload["model"] = model
     if effort:

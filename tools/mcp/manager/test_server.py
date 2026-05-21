@@ -633,6 +633,38 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertEqual(payload["maxDeduplicationPasses"], 1)
 
     @patch.object(server, "_controller_post")
+    def test_submit_max_review_passes_forwarded(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-rp1"}
+        server.workstream_submit_task(prompt="Task", max_review_passes=3)
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["maxReviewPasses"], 3)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_max_review_passes_omitted_by_default(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-rp2"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("maxReviewPasses", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_review_enabled_omitted_when_true(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-rp3"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("reviewEnabled", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_review_enabled_false_forwarded(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-rp4"}
+        server.workstream_submit_task(prompt="Task", review_enabled=False)
+        payload = mock_post.call_args[0][1]
+        self.assertIs(payload["reviewEnabled"], False)
+
+    @patch.object(server, "_controller_post")
     def test_submit_preserves_job_id_in_next_steps(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {

@@ -124,6 +124,18 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private boolean enforceOrganizationalPlacement = true;
 
     /**
+     * When {@code true} (the default), jobs created by this factory activate the
+     * {@link ReviewRule} (second-pass sanity check by a separate runner).
+     */
+    private boolean reviewEnabled = true;
+
+    /**
+     * Per-job cap on review passes propagated to jobs created by this factory.
+     * Defaults to {@link CodingAgentJob#DEFAULT_MAX_REVIEW_PASSES}.
+     */
+    private int maxReviewPasses = CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES;
+
+    /**
      * Shell command run after the agent's primary work to verify the result.
      * Propagated to jobs via {@link CodingAgentJob#setPostCompletionCommand(String)}.
      * Empty or {@code null} disables the post-completion check.
@@ -739,6 +751,50 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
+     * Returns whether the {@link ReviewRule} (second-pass sanity check) is active
+     * for jobs created by this factory.
+     *
+     * @return {@code true} when review is enabled (the default)
+     */
+    public boolean isReviewEnabled() {
+        return reviewEnabled;
+    }
+
+    /**
+     * Sets whether the {@link ReviewRule} is active for jobs created by this factory.
+     *
+     * @param reviewEnabled {@code false} to disable the review phase
+     */
+    public void setReviewEnabled(boolean reviewEnabled) {
+        this.reviewEnabled = reviewEnabled;
+        set("reviewEnabled", String.valueOf(reviewEnabled));
+    }
+
+    /**
+     * Returns the maximum number of review passes for jobs created by this factory.
+     *
+     * @return the pass cap; defaults to {@link CodingAgentJob#DEFAULT_MAX_REVIEW_PASSES}
+     */
+    public int getMaxReviewPasses() {
+        return maxReviewPasses;
+    }
+
+    /**
+     * Sets the maximum number of review passes for jobs created by this factory.
+     *
+     * @param maxReviewPasses cap on review sessions per job; must be positive
+     * @throws IllegalArgumentException if the value is not positive
+     */
+    public void setMaxReviewPasses(int maxReviewPasses) {
+        if (maxReviewPasses <= 0) {
+            throw new IllegalArgumentException(
+                    "maxReviewPasses must be positive, got: " + maxReviewPasses);
+        }
+        this.maxReviewPasses = maxReviewPasses;
+        set("maxReviewPasses", String.valueOf(maxReviewPasses));
+    }
+
+    /**
      * Returns the post-completion command for jobs created by this factory.
      *
      * <p>When non-empty, the command is run after the agent's primary work.
@@ -1112,6 +1168,8 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         job.setMaxDeduplicationPasses(maxDeduplicationPasses);
         job.setEnforceMavenDependencies(enforceMavenDependencies);
         job.setEnforceOrganizationalPlacement(enforceOrganizationalPlacement);
+        job.setReviewEnabled(reviewEnabled);
+        job.setMaxReviewPasses(maxReviewPasses);
         if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
             job.setPostCompletionCommand(postCompletionCommand);
             if (postCompletionWorkingDir != null) {
@@ -1277,6 +1335,22 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 return;
             case "enforceOrgPlacement":
                 this.enforceOrganizationalPlacement = Boolean.parseBoolean(value);
+                return;
+            case "reviewEnabled":
+                this.reviewEnabled = Boolean.parseBoolean(value);
+                return;
+            case "maxReviewPasses":
+                if (value == null || value.isEmpty()) {
+                    this.maxReviewPasses = CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES;
+                } else {
+                    try {
+                        int parsed = Integer.parseInt(value);
+                        this.maxReviewPasses = (parsed > 0)
+                                ? parsed : CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES;
+                    } catch (NumberFormatException e) {
+                        this.maxReviewPasses = CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES;
+                    }
+                }
                 return;
             case "postCmd":
                 this.postCompletionCommand = GitManagedJob.base64Decode(value);

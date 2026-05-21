@@ -369,4 +369,43 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     public boolean isPostCompletionCapHit() {
         return postCompletionCapHit;
     }
+
+    /** Number of files modified during the review phase ({@code 0} when the phase did not run). */
+    private int reviewFilesModified;
+    /** Number of {@code memory_store} calls observed during the review phase. */
+    private int reviewMemoriesStored;
+    /** {@code true} when the review session ran AND exited with code 0. */
+    private boolean reviewExitedCleanly;
+    /** {@code true} when at least one review session ran during this job. */
+    private boolean reviewRan;
+
+    /**
+     * Records review-phase telemetry on this event.
+     *
+     * @param ran           whether the review phase ran at all
+     * @param filesModified number of files modified during the review session
+     * @param memoriesStored number of {@code memory_store} calls during the review session
+     * @param exitedCleanly whether the review session exited with code 0
+     * @return this event for chaining
+     */
+    public CodingAgentJobEvent withReviewInfo(boolean ran, int filesModified,
+                                              int memoriesStored, boolean exitedCleanly) {
+        this.reviewRan = ran;
+        this.reviewFilesModified = filesModified;
+        this.reviewMemoriesStored = memoriesStored;
+        this.reviewExitedCleanly = exitedCleanly;
+        return this;
+    }
+
+    /** Returns the number of files modified during the review phase. */
+    public int getReviewFilesModified() { return reviewFilesModified; }
+
+    /** Returns the number of {@code memory_store} calls observed during the review phase. */
+    public int getReviewMemoriesStored() { return reviewMemoriesStored; }
+
+    /** Returns whether the review session exited cleanly (and ran at all). */
+    public boolean isReviewExitedCleanly() { return reviewExitedCleanly; }
+
+    /** Returns whether the review phase ran at any point during this job. */
+    public boolean isReviewRan() { return reviewRan; }
 }

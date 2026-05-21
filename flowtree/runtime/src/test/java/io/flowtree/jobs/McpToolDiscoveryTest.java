@@ -379,6 +379,12 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			submitParams.contains("post_completion_command"));
 		assertTrue("workstream_submit_task must declare max_deduplication_passes in signature",
 			submitParams.contains("max_deduplication_passes"));
+		assertTrue("workstream_submit_task must declare max_review_passes in signature"
+			+ " so callers can override the default per-job review pass cap",
+			submitParams.contains("max_review_passes"));
+		assertTrue("workstream_submit_task must declare review_enabled in signature"
+			+ " so callers can opt out of the review phase",
+			submitParams.contains("review_enabled"));
 		assertTrue("workstream_submit_task must declare repo_url in signature so callers can"
 			+ " disambiguate target_branch when multiple workstreams share the same branch",
 			submitParams.contains("repo_url"));

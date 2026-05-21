@@ -13,16 +13,29 @@ opencode-specific operator setup, see [OPENCODE.md](OPENCODE.md).
 
 ## The recipes
 
-| Recipe | primary | dedup | placement | enforce-changes | maven-deps | post-completion | commit-message | git-tampering-restart | When to use |
-|--------|---------|-------|-----------|-----------------|------------|-----------------|----------------|------------------------|-------------|
-| **All-Claude** (default) | claude | claude | claude | claude | claude | claude | claude | claude | Reproduces pre-branch behavior. Use when correctness matters more than cost and you have not yet vetted opencode on the workstream's repos. |
-| **Mixed-review** | opencode | claude | claude | opencode | claude | opencode | claude | claude | Run primary on the cheaper local backend; keep Claude on phases that have proven, load-tested prompts (dedup, placement, maven-dep, commit-message). Good first opencode rollout. |
-| **All-opencode** | opencode | opencode | opencode | opencode | opencode | opencode | opencode | opencode | Workstreams cost-sensitive enough to accept opencode's best-effort cost reporting and the slight quality drop on dedup/placement audits. The simplest way to get the lowest possible bill. |
+| Recipe | primary | review | dedup | placement | enforce-changes | maven-deps | post-completion | commit-message | git-tampering-restart | When to use |
+|--------|---------|--------|-------|-----------|-----------------|------------|-----------------|----------------|------------------------|-------------|
+| **All-Claude** (default) | claude | claude | claude | claude | claude | claude | claude | claude | claude | Reproduces pre-branch behavior. Use when correctness matters more than cost and you have not yet vetted opencode on the workstream's repos. |
+| **Cheap-second-pass** (recommended) | claude | opencode | claude | claude | claude | claude | claude | claude | claude | Keep the expensive primary work on Claude but route the review pass to opencode/local. Cheap insurance against simple mistakes that doesn't risk the primary diff. |
+| **Mixed-review** | opencode | opencode | claude | claude | opencode | claude | opencode | claude | claude | Run primary on the cheaper local backend; keep Claude on phases that have proven, load-tested prompts (dedup, placement, maven-dep, commit-message). Good first opencode rollout. |
+| **All-opencode** | opencode | opencode | opencode | opencode | opencode | opencode | opencode | opencode | opencode | Workstreams cost-sensitive enough to accept opencode's best-effort cost reporting and the slight quality drop on dedup/placement audits. The simplest way to get the lowest possible bill. |
 
 ### As a `workstream_submit_task` payload
 
 **All-Claude** — omit `runners` and `default_runner`; the controller falls
 through to `"claude"` by default.
+
+**Cheap-second-pass** (the recommended starting point — primary stays on
+Claude, only the review pass is delegated):
+
+```json
+{
+  "default_runner": "claude",
+  "runners": {
+    "review": "opencode"
+  }
+}
+```
 
 **Mixed-review:**
 
@@ -142,6 +155,40 @@ Three questions, in order:
 
 If none of those constraints bind, **All-opencode** is the right starting
 point.
+
+---
+
+## Review-pass follow-up: finding deferred items
+
+The review phase deliberately biases toward filing memories instead of
+making edits. Each deferred item is stored with the tag
+`review-followup` (plus `workstream:<id>` when the reviewer can resolve
+the current workstream). To find what has been flagged:
+
+```python
+memory_recall(
+    query="reviewer notes",
+    namespace="default",
+    tags=["review-followup"],
+)
+```
+
+Or scope to a single workstream via `workstream_context` filtered by
+namespace and branch. The corresponding in-code breadcrumb is the
+`TODO(review):` comment the reviewer leaves at the relevant location —
+those survive in the PR review and are searchable across the repo.
+
+A common pattern is to have the next primary-phase session on the same
+workstream call `memory_recall(tags=["review-followup"])` near the start
+of its work and incorporate the deferred items into its plan.
+
+### Disabling the review phase
+
+Pass `review_enabled=false` to `workstream_submit_task` (per-job),
+set `reviewEnabled: false` in workstream or workspace config, or call
+`setReviewEnabled(false)` on the Java side. There is no `"none"` sentinel
+in the runners map — disabling is always done via the boolean, matching
+the convention established by `enforceOrganizationalPlacement`.
 
 ---
 
