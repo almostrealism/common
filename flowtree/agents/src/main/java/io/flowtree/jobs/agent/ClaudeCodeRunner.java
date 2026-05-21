@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.AgentProcessRunner;
+import io.flowtree.jobs.TmuxSession;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.FileWriter;
@@ -147,9 +148,14 @@ public class ClaudeCodeRunner implements AgentRunner {
         logger.log("Working directory: "
                 + (workDir != null ? workDir.toString() : System.getProperty("user.dir")));
 
+        boolean useTmux = TmuxSession.isAvailable();
+        if (!useTmux) {
+            logger.warn("tmux not available on PATH; falling back to direct process launch."
+                    + " Interactive-only auth modes will not work in this configuration.");
+        }
         AgentProcessRunner.Result processResult = AgentProcessRunner.runAttempt(
                 pb,
-                true,
+                useTmux,
                 request.getInactivityTimeoutMillis(),
                 request.getTaskId(),
                 logger);

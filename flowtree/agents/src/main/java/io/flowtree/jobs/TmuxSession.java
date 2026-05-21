@@ -23,7 +23,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.InterruptedIOException;
 import java.io.RandomAccessFile;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -172,6 +171,41 @@ public final class TmuxSession implements AutoCloseable {
         return new TmuxSession(sessionName);
     }
 
+    /** Cached result of the one-shot {@code tmux -V} probe. {@code null} until first call. */
+    private static volatile Boolean availableCache;
+
+    /**
+     * Returns true when {@code tmux} is on the {@code PATH} and responds to
+     * {@code tmux -V}. The result is cached for the lifetime of the JVM, so
+     * subsequent calls are free.
+     *
+     * <p>Callers that opt in to tmux-backed launches should check this and
+     * gracefully fall back to direct subprocess launches when tmux is
+     * unavailable (e.g. minimal CI containers or non-Linux hosts).</p>
+     *
+     * @return true when {@code tmux -V} exits 0
+     */
+    public static boolean isAvailable() {
+        Boolean cached = availableCache;
+        if (cached != null) return cached;
+        boolean ok = probeTmux();
+        availableCache = ok;
+        return ok;
+    }
+
+    /** Runs {@code tmux -V} and returns true on exit 0. Any failure is treated as unavailable. */
+    private static boolean probeTmux() {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(TMUX, "-V");
+            pb.redirectErrorStream(true);
+            pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
+            Process p = pb.start();
+            return p.waitFor() == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /** Returns the tmux session name. */
     public String getName() {
         return sessionName;
@@ -259,21 +293,37 @@ public final class TmuxSession implements AutoCloseable {
         newSession.add(wrapperScript.toString());
 
         runOrFail(newSession);
-        runOrFail(List.of(TMUX, "pipe-pane", "-t", target(),
-                "cat >> " + shellQuote(outputLog.toString())));
-        runOrFail(List.of(TMUX, "wait-for", "-S", readySignal));
 
+        // The session now exists on the tmux server. If any subsequent
+        // step throws, kill it so we don't leak a detached session whose
+        // wrapper script is blocked on the ready signal.
+        boolean handedOff = false;
         try {
-            String pidStr = runCapture(List.of(TMUX, "display-message", "-t", target(),
-                    "-p", "#{pane_pid}")).trim();
-            if (!pidStr.isEmpty()) {
-                panePid = Long.parseLong(pidStr);
-            }
-        } catch (Exception ignored) {
-            // pane_pid lookup is best effort
-        }
+            runOrFail(List.of(TMUX, "pipe-pane", "-t", target(),
+                    "cat >> " + shellQuote(outputLog.toString())));
+            runOrFail(List.of(TMUX, "wait-for", "-S", readySignal));
 
-        started = true;
+            try {
+                String pidStr = runCapture(List.of(TMUX, "display-message", "-t", target(),
+                        "-p", "#{pane_pid}")).trim();
+                if (!pidStr.isEmpty()) {
+                    panePid = Long.parseLong(pidStr);
+                }
+            } catch (Exception ignored) {
+                // pane_pid lookup is best effort
+            }
+
+            started = true;
+            handedOff = true;
+        } finally {
+            if (!handedOff) {
+                try {
+                    runSilent(List.of(TMUX, "kill-session", "-t", target()));
+                } catch (IOException ignored) {
+                    // best-effort cleanup of the orphaned session
+                }
+            }
+        }
     }
 
     /**
@@ -555,11 +605,7 @@ public final class TmuxSession implements AutoCloseable {
         @Override
         public void close() throws IOException {
             closed = true;
-            try {
-                raf.close();
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
+            raf.close();
         }
     }
 }

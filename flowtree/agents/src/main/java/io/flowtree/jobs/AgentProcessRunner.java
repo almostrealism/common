@@ -26,6 +26,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -166,7 +167,14 @@ public final class AgentProcessRunner {
         Thread monitor = null;
         String sessionName = "agent-" + sanitizeSessionName(taskId);
         try (TmuxSession session = TmuxSession.create(sessionName)) {
-            session.workingDirectory(pb.directory()).environment(pb.environment());
+            Map<String, String> env = pb.environment();
+            // Defensive defaults: the child sees a real tty under tmux. Many CLIs
+            // respond by emitting ANSI escapes, spinners, and color codes that
+            // would corrupt structured output. Set these only when the caller
+            // hasn't already specified a value.
+            env.putIfAbsent("TERM", "dumb");
+            env.putIfAbsent("NO_COLOR", "1");
+            session.workingDirectory(pb.directory()).environment(env);
             session.start(pb.command());
             long pid = session.getPid();
             logger.log("Process started (PID: " + pid + ") in tmux session " + session.getName());
@@ -213,9 +221,18 @@ public final class AgentProcessRunner {
     /**
      * Tmux session names cannot contain whitespace, periods, or colons.
      * Task ids may contain such characters; replace them with hyphens.
+     * A null or empty task id falls back to a short random suffix so the
+     * resulting session name is always unique and valid.
      */
     private static String sanitizeSessionName(String taskId) {
-        return taskId.replaceAll("[\\s.:]+", "-");
+        if (taskId == null || taskId.isEmpty()) {
+            return UUID.randomUUID().toString().substring(0, 8);
+        }
+        String sanitized = taskId.replaceAll("[\\s.:]+", "-");
+        if (sanitized.isEmpty()) {
+            return UUID.randomUUID().toString().substring(0, 8);
+        }
+        return sanitized;
     }
 
     /**
