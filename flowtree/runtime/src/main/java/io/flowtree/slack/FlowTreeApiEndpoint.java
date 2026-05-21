@@ -423,7 +423,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             if ("/api/workstreams".equals(uri)) {
                 return handleRegisterWorkstream(session);
             }
-
+            { Response wsResp = new WorkspaceConfigHandler(slackWorkspaceLookup, listener, this::readBody, this::errorResponse, this::log).handleIfMatches(uri, session); if (wsResp != null) return wsResp; }
             Matcher m = WORKSTREAM_PATTERN.matcher(uri);
             if (m.matches()) {
                 String workstreamId = m.group(1);

@@ -147,6 +147,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
             // Workstream admin
             "workstream_register",
             "workstream_update_config",
+            "workspace_update_config",
             "workstream_archive",
             "workstream_unarchive",
             "workstream_delete",

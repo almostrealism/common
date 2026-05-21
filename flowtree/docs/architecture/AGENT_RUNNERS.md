@@ -260,11 +260,32 @@ defaults across all of them — e.g. "use opencode for `commit-message` and
 higher-risk orgs simply leave these fields unset and inherit the controller
 default.
 
-There is currently no MCP tool to set workspace-level runner config; the
-fields must be edited into `workstreams.yaml` directly and the controller
-reloaded. This is the **known ergonomic gap** — a future
-`workspace_update_config` MCP tool would close it. Until then, the YAML
-form is:
+**Preferred path: `workspace_update_config` MCP tool.** Mirrors
+`workstream_update_config` in shape but is keyed on the Slack workspace
+(team) ID — discover IDs via the `slackWorkspaceId` field returned by
+`workstream_list`. The change is persisted back to `workstreams.yaml`
+so it survives a controller restart.
+
+```python
+workspace_update_config(
+    slack_workspace_id="T0123456789",
+    default_runner="claude",
+    runners='{"commit-message":"opencode","organizational-placement":"opencode"}',
+    # name="team-alpha",
+    # default_channel="C0987654321",
+)
+```
+
+The tool exposes `default_runner`, `runners`, `name`, and
+`default_channel`. **Credential and ACL fields**
+(`tokensFile`, `botToken`, `appToken`, `githubOrgs`,
+`channelOwnerUserId`) are deliberately NOT settable here — those must
+be edited in the YAML directly so the change can be code-reviewed
+before it lands.
+
+**Fallback path: edit `workstreams.yaml` directly.** The MCP tool only
+covers the four fields above; everything else (tokens, GitHub orgs,
+secrets list) is still YAML-only. The on-disk shape:
 
 ```yaml
 slackWorkspaces:

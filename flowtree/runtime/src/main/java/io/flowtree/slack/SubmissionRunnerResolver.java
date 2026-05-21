@@ -258,6 +258,53 @@ final class SubmissionRunnerResolver {
     }
 
     /**
+     * Applies a parsed {@code runners} object to a workspace as its
+     * persistent runner configuration. The {@code "default"} key, when
+     * present, becomes
+     * {@link WorkstreamConfig.SlackWorkspaceEntry#setDefaultRunner(String)};
+     * remaining keys (which must be valid {@link Phase} wire names) replace
+     * the workspace's per-phase map.
+     *
+     * <p>An empty or {@code null} {@code requestRunners} leaves the workspace
+     * untouched so callers can update unrelated fields without disturbing
+     * existing runner config.</p>
+     *
+     * @param entry          the workspace entry to mutate
+     * @param requestRunners the parsed {@code runners} object from the body,
+     *                       or {@code null}
+     * @return {@code null} on success, or a 400-able error message on
+     *         unknown phase name or unknown runner name
+     */
+    static String applyToWorkspace(WorkstreamConfig.SlackWorkspaceEntry entry,
+                                   Map<String, String> requestRunners) {
+        if (requestRunners == null || requestRunners.isEmpty()) return null;
+        String newDefault = null;
+        Map<String, String> phaseMap = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : requestRunners.entrySet()) {
+            String key = e.getKey();
+            String value = e.getValue();
+            if (value == null || value.isEmpty()) continue;
+            if (!AgentRunnerRegistry.available().contains(value)) {
+                return "Unknown runner: '" + value + "'. Available: "
+                        + AgentRunnerRegistry.available();
+            }
+            if ("default".equals(key)) {
+                newDefault = value;
+            } else {
+                try {
+                    Phase.fromWireName(key);
+                } catch (IllegalArgumentException ex) {
+                    return "Unknown phase in runners: '" + key + "'";
+                }
+                phaseMap.put(key, value);
+            }
+        }
+        if (newDefault != null) entry.setDefaultRunner(newDefault);
+        entry.setRunners(phaseMap);
+        return null;
+    }
+
+    /**
      * Applies the resolved configuration to the given factory. No-ops when the
      * effective default and every phase entry already match
      * {@link AgentRunnerRegistry#CLAUDE}, so byte-identical wire format is

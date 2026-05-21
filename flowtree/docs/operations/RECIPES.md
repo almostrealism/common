@@ -79,10 +79,24 @@ slackWorkspaces:
 Every workstream whose `slackWorkspaceId` matches this entry inherits the
 defaults. Workstream-level config still wins — if a workstream sets its
 own `defaultRunner`, the workspace's per-phase entries are ignored for
-that workstream (per [PHASES.md](../architecture/PHASES.md)). There is
-currently no MCP tool to set workspace-level runner config; edit
-`workstreams.yaml` and reload the controller. A future
-`workspace_update_config` tool would close this ergonomic gap.
+that workstream (per [PHASES.md](../architecture/PHASES.md)).
+
+The preferred path to set these defaults is the `workspace_update_config`
+MCP tool — discover the workspace ID via the `slackWorkspaceId` field on
+each `workstream_list` entry:
+
+```python
+workspace_update_config(
+    slack_workspace_id="T0123456789",
+    default_runner="claude",
+    runners='{"commit-message":"opencode","organizational-placement":"opencode"}',
+)
+```
+
+The tool only covers `default_runner`, `runners`, `name`, and
+`default_channel`. Credentials (`tokensFile`, `botToken`, `appToken`)
+and ACL fields (`githubOrgs`, `channelOwnerUserId`) remain YAML-only —
+edit `workstreams.yaml` and reload the controller for those.
 
 ---
 

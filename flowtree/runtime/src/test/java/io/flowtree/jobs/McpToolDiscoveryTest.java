@@ -277,6 +277,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"workstream_submit_task",
 			"workstream_register",
 			"workstream_update_config",
+			"workspace_update_config",
 			"workstream_archive",
 			"workstream_unarchive",
 			"workstream_delete",
@@ -420,6 +421,19 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_update_config must declare default_runner in signature so"
 			+ " operators can update the default runner for all phases",
 			updateConfigParams.contains("default_runner"));
+
+		List<String> workspaceUpdateParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workspace_update_config");
+		assertTrue("workspace_update_config must declare slack_workspace_id in signature",
+			workspaceUpdateParams.contains("slack_workspace_id"));
+		assertTrue("workspace_update_config must declare default_runner in signature",
+			workspaceUpdateParams.contains("default_runner"));
+		assertTrue("workspace_update_config must declare runners in signature",
+			workspaceUpdateParams.contains("runners"));
+		assertTrue("workspace_update_config must declare name in signature",
+			workspaceUpdateParams.contains("name"));
+		assertTrue("workspace_update_config must declare default_channel in signature",
+			workspaceUpdateParams.contains("default_channel"));
 
 		List<String> memoryRecallParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "memory_recall");

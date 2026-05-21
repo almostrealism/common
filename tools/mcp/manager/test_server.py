@@ -1470,6 +1470,104 @@ class TestWorkstreamUpdateConfig(unittest.TestCase):
         self.assertIn("error", result)
 
 
+class TestWorkspaceUpdateConfig(unittest.TestCase):
+
+    @patch.object(server, "_controller_post")
+    def test_update_name_and_default_channel(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        result = server.workspace_update_config(
+            slack_workspace_id="T0123456789",
+            name="Acme Inc",
+            default_channel="C9999",
+        )
+        call_path = mock_post.call_args[0][0]
+        self.assertIn("T0123456789", call_path)
+        self.assertIn("/config", call_path)
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["name"], "Acme Inc")
+        self.assertEqual(payload["defaultChannel"], "C9999")
+        self.assertTrue(result["ok"])
+
+    @patch.object(server, "_controller_post")
+    def test_update_runners_forwarded_as_object(self, mock_post):
+        """runners JSON string is parsed and forwarded as a nested object."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            slack_workspace_id="T0123456789",
+            runners='{"primary":"opencode"}',
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {"primary": "opencode"})
+
+    @patch.object(server, "_controller_post")
+    def test_update_default_runner_forwarded(self, mock_post):
+        """default_runner alone is forwarded as runners={"default": <value>}."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            slack_workspace_id="T0123456789",
+            default_runner="opencode",
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {"default": "opencode"})
+
+    @patch.object(server, "_controller_post")
+    def test_explicit_default_in_runners_wins(self, mock_post):
+        """When both runners[default] and default_runner are supplied, runners wins."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            slack_workspace_id="T0123456789",
+            runners='{"default":"opencode"}',
+            default_runner="claude",
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {"default": "opencode"})
+
+    def test_no_fields_returns_error(self):
+        _grant_all_scopes()
+        result = server.workspace_update_config(slack_workspace_id="T0123456789")
+        self.assertFalse(result["ok"])
+        self.assertIn("No fields to update", result["error"])
+
+    def test_update_runners_rejects_malformed_json(self):
+        """Malformed runners JSON yields ok=False without calling the controller."""
+        _grant_all_scopes()
+        result = server.workspace_update_config(
+            slack_workspace_id="T0123456789",
+            runners="not-valid-json",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
+
+    def test_update_runners_rejects_unknown_phase(self):
+        """Unknown phase names in runners are rejected client-side."""
+        _grant_all_scopes()
+        result = server.workspace_update_config(
+            slack_workspace_id="T0123456789",
+            runners='{"unknown-phase":"claude"}',
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
+
+    @patch.object(server, "_controller_post")
+    def test_empty_string_fields_do_not_change_payload(self, mock_post):
+        """Empty-string optional fields are omitted from the controller payload."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            slack_workspace_id="T0123456789",
+            name="Acme",
+            default_channel="",
+            default_runner="",
+            runners="",
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload, {"name": "Acme"})
+
+
 # -----------------------------------------------------------------------
 # Tier 2: Pipeline tools
 # -----------------------------------------------------------------------
@@ -2860,6 +2958,7 @@ class TestToolRegistration(unittest.TestCase):
             "workstream_submit_task",
             "workstream_register",
             "workstream_update_config",
+            "workspace_update_config",
             "workstream_archive",
             "workstream_unarchive",
             "workstream_delete",

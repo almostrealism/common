@@ -2321,6 +2321,114 @@ def workstream_update_config(
 
 
 @mcp.tool()
+def workspace_update_config(
+    slack_workspace_id: str,
+    default_runner: str = "",
+    runners: str = "",
+    name: str = "",
+    default_channel: str = "",
+) -> dict:
+    """Update workspace-level configuration on a Slack workspace entry.
+
+    Mirrors :func:`workstream_update_config` in shape but keyed on the
+    Slack workspace (team) ID instead of a workstream ID. Operators
+    discover workspace IDs via :func:`workstream_list` — each entry's
+    ``slackWorkspaceId`` field is the value to pass here.
+
+    Only the fields you supply are written; an empty string leaves the
+    corresponding field unchanged. The change is persisted back to the
+    workstreams YAML so it survives a controller restart.
+
+    For security, the following workspace fields are **NOT** settable via
+    this tool and must be edited in the YAML directly:
+
+    * ``tokensFile``, ``botToken``, ``appToken`` — Slack credentials.
+    * ``githubOrgs`` — controls which GitHub orgs the workspace can
+      issue tokens for.
+    * ``channelOwnerUserId`` / ``channelOwnerUserIds`` — administrative
+      auto-invite ownership.
+
+    Args:
+        slack_workspace_id: Slack team ID (e.g. ``"T0123456789"``) of the
+            workspace to update. Returned by ``workstream_list`` under
+            each workstream's ``slackWorkspaceId`` field.
+        default_runner: New workspace-level default agent runner applied
+            to workstreams in this workspace when neither the workstream
+            nor the per-job override sets one. Use ``agent_options`` to
+            discover valid runner names. Convenience shortcut equivalent
+            to ``runners='{"default": "<value>"}'``; the explicit
+            ``runners["default"]`` wins when both are supplied.
+        runners: JSON object mapping phase wire names to runner
+            identifiers (e.g.
+            ``'{"primary":"opencode","deduplication":"opencode"}'``).
+            An optional ``"default"`` key sets the workspace-level
+            default. Use ``agent_options`` to discover available phase
+            wire names. Empty string leaves the per-phase map
+            unchanged.
+        name: New human-readable workspace label (used in logs and
+            diagnostics). Low-risk operational field.
+        default_channel: New fallback Slack channel ID for messages
+            published in workstreams that have no channel of their own
+            resolved. Low-risk operational field.
+
+    Returns:
+        dict with ``ok=True`` and the updated workspace fields, or
+        ``ok=False`` with an error.
+    """
+    _require_scope("write")
+    err = _check_short_strings(
+        slack_workspace_id=slack_workspace_id,
+        default_runner=default_runner,
+        name=name,
+        default_channel=default_channel,
+    )
+    if err:
+        return err
+    parsed_runners, runners_err = _parse_runners_json(runners)
+    if runners_err:
+        return runners_err
+    _audit("workspace_update_config", slack_workspace_id=slack_workspace_id)
+
+    payload = {}
+    if name:
+        payload["name"] = name
+    if default_channel:
+        payload["defaultChannel"] = default_channel
+    runners_payload = dict(parsed_runners) if parsed_runners else {}
+    if default_runner and "default" not in runners_payload:
+        runners_payload["default"] = default_runner
+    if runners_payload:
+        payload["runners"] = runners_payload
+
+    if not payload:
+        return {
+            "ok": False,
+            "error": "No fields to update. Provide at least one field.",
+            "next_steps": [
+                "Specify fields to update: default_runner, runners, "
+                "name, or default_channel",
+            ],
+        }
+
+    result = _controller_post(
+        f"/api/workspaces/{quote(slack_workspace_id, safe='')}/config",
+        payload,
+    )
+
+    if result.get("ok"):
+        result["next_steps"] = [
+            "Use workstream_list to verify workstreams now reflect the "
+            "updated workspace defaults",
+        ]
+    else:
+        result.setdefault("next_steps", [
+            "Use workstream_list to confirm the slack_workspace_id is correct",
+        ])
+
+    return result
+
+
+@mcp.tool()
 def workstream_archive(
     workstream_id: str,
     archive_slack_channel: bool = True,

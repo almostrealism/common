@@ -49,6 +49,7 @@ is a thin orchestration facade that:
 | `workstream_submit_task` | submit | Submit a coding task prompt |
 | `workstream_register` | write | Register a new workstream |
 | `workstream_update_config` | write | Update workstream settings |
+| `workspace_update_config` | write | Update workspace-level config (name, default channel, runner defaults) |
 | `send_message` | write | Send a Slack message |
 
 ### Tier 2: Pipeline-capable workstreams only
