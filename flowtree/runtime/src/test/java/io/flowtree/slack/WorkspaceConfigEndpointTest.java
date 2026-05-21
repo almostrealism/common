@@ -53,7 +53,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
     private static final String WORKSPACE_ID = "T1234567890";
 
     /** The configured workspace entry under test; mutated by the endpoint. */
-    private WorkstreamConfig.SlackWorkspaceEntry workspaceEntry;
+    private WorkstreamConfig.WorkspaceEntry workspaceEntry;
     /** Loaded config used to back the workspace lookup and persistence. */
     private WorkstreamConfig config;
     /** YAML file backing the listener's persistence; tests verify content lands here. */
@@ -68,8 +68,9 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
     @Before
     public void setUp() throws Exception {
         config = new WorkstreamConfig();
-        workspaceEntry = new WorkstreamConfig.SlackWorkspaceEntry();
-        workspaceEntry.setWorkspaceId(WORKSPACE_ID);
+        workspaceEntry = new WorkstreamConfig.WorkspaceEntry();
+        workspaceEntry.setId(WORKSPACE_ID);
+        workspaceEntry.setSlackTeamId(WORKSPACE_ID);
         workspaceEntry.setName("Initial Name");
         workspaceEntry.setDefaultChannel("C-initial");
         config.getSlackWorkspaces().add(workspaceEntry);
@@ -84,7 +85,8 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
 
         endpoint = new FlowTreeApiEndpoint(0, notifier);
         endpoint.setListener(listener);
-        endpoint.setSlackWorkspaceLookup(config::findSlackWorkspace);
+        endpoint.setWorkspaceLookup(config::findSlackWorkspace);
+        endpoint.setWorkspaceRenameHook(config::renameWorkspace);
         endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
         port = endpoint.getListeningPort();
     }
@@ -134,7 +136,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         assertEquals(404, conn.getResponseCode());
         JsonNode response = MAPPER.readTree(readErrorBody(conn));
         assertFalse(response.get("ok").asBoolean());
-        assertTrue(response.get("error").asText().contains("Unknown Slack workspace"));
+        assertTrue(response.get("error").asText().contains("Unknown workspace"));
     }
 
     @Test(timeout = 10000)
@@ -181,7 +183,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         // legacy single-element list fields may be omitted; we only check
         // the fields we set.
         WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(configFile);
-        WorkstreamConfig.SlackWorkspaceEntry reloadedEntry =
+        WorkstreamConfig.WorkspaceEntry reloadedEntry =
                 reloaded.findSlackWorkspace(WORKSPACE_ID);
         assertNotNull(reloadedEntry);
         assertEquals("Persisted Name", reloadedEntry.getName());
@@ -214,6 +216,51 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         assertEquals("Echoed", response.get("name").asText());
         assertEquals("opencode", response.get("defaultRunner").asText());
         assertEquals("opencode", response.get("runners").get("primary").asText());
+    }
+
+    @Test(timeout = 10000)
+    public void testRenameWorkspaceViaNewId() throws Exception {
+        // Seed a workstream that references the workspace by its current ID.
+        Workstream ws = new Workstream("ws-1", "C-x", "#x");
+        ws.setWorkspaceId(WORKSPACE_ID);
+        WorkstreamConfig.WorkstreamEntry wsEntry =
+                new WorkstreamConfig.WorkstreamEntry();
+        wsEntry.setChannelId("C-x");
+        wsEntry.setChannelName("#x");
+        wsEntry.setWorkspaceId(WORKSPACE_ID);
+        wsEntry.setDefaultBranch("main");
+        config.getWorkstreams().add(wsEntry);
+
+        JsonNode response = postJson("/api/workspaces/" + WORKSPACE_ID + "/config",
+                "{\"newId\":\"almostrealism\"}");
+        assertTrue(response.get("ok").asBoolean());
+        assertEquals("almostrealism", response.get("workspaceId").asText());
+
+        // Workspace ID changed; referencing workstreams updated.
+        assertNotNull(config.findWorkspace("almostrealism"));
+        assertNull(config.findWorkspace(WORKSPACE_ID));
+        assertEquals("almostrealism",
+                config.getWorkstreams().get(0).getWorkspaceId());
+        // Slack team binding survives the rename.
+        assertEquals(WORKSPACE_ID,
+                config.findWorkspace("almostrealism").getSlackTeamId());
+    }
+
+    @Test(timeout = 10000)
+    public void testSlackTeamIdEmptyClearsConnection() throws Exception {
+        assertEquals(WORKSPACE_ID, workspaceEntry.getSlackTeamId());
+        JsonNode response = postJson("/api/workspaces/" + WORKSPACE_ID + "/config",
+                "{\"slackTeamId\":\"\"}");
+        assertTrue(response.get("ok").asBoolean());
+        assertNull(workspaceEntry.getSlackTeamId());
+    }
+
+    @Test(timeout = 10000)
+    public void testSlackTeamIdNonEmptyRebinds() throws Exception {
+        JsonNode response = postJson("/api/workspaces/" + WORKSPACE_ID + "/config",
+                "{\"slackTeamId\":\"TZZZZ\"}");
+        assertTrue(response.get("ok").asBoolean());
+        assertEquals("TZZZZ", workspaceEntry.getSlackTeamId());
     }
 
     // ----------------------------------------------------------------

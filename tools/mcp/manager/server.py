@@ -767,7 +767,10 @@ def _build_maps_from_workstreams(entries: list) -> tuple:
         if not isinstance(ws, dict):
             continue
         wid = ws.get("workstreamId")
-        workspace_id = ws.get("slackWorkspaceId")
+        # Prefer the new workspaceId field; fall back to the legacy alias
+        # so we stay compatible with older controllers that still emit
+        # only slackWorkspaceId on the workstream list.
+        workspace_id = ws.get("workspaceId") or ws.get("slackWorkspaceId")
         if wid:
             ws_map[wid] = workspace_id
         org = _extract_owner_repo(ws.get("repoUrl") or "")
@@ -904,9 +907,12 @@ def _require_workstream_in_scope(workstream_id: str) -> None:
 
 
 def _filter_workstreams_by_scope(entries: list) -> list:
-    """Return only those workstream-dict entries whose slackWorkspaceId is
+    """Return only those workstream-dict entries whose workspaceId is
     permitted by the current request's workspace scope. Unscoped callers
     see everything; scoped callers see only in-scope workstreams.
+    Accepts the legacy ``slackWorkspaceId`` field for backward
+    compatibility with controllers that have not yet started emitting
+    ``workspaceId``.
     """
     scopes = _get_workspace_scopes()
     if not scopes:
@@ -914,7 +920,8 @@ def _filter_workstreams_by_scope(entries: list) -> list:
     filtered = []
     for ws in entries:
         if isinstance(ws, dict):
-            if ws.get("slackWorkspaceId") in scopes:
+            wsid = ws.get("workspaceId") or ws.get("slackWorkspaceId")
+            if wsid in scopes:
                 filtered.append(ws)
     return filtered
 
@@ -1002,7 +1009,7 @@ def _find_workstream(workstream_id: str) -> Optional[dict]:
         for ws in result:
             if ws.get("workstreamId") == workstream_id:
                 if _get_workspace_scopes() and not _is_workspace_allowed(
-                        ws.get("slackWorkspaceId")):
+                        ws.get("workspaceId") or ws.get("slackWorkspaceId")):
                     return None
                 return ws
     return None
@@ -1853,7 +1860,7 @@ def workstream_register(
     channel_name: str = "",
     required_labels: str = "",
     dependent_repos: str = "",
-    slack_workspace_id: str = "",
+    workspace_id: str = "",
     plan_content: str = "",
     plan_instructions: str = "",
     plan_path: str = "",
@@ -1862,6 +1869,7 @@ def workstream_register(
     effort: str = "",
     runners: str = "",
     default_runner: str = "",
+    slack_workspace_id: str = "",
 ) -> dict:
     """Register a new workstream for a branch/repo combination.
 
@@ -1887,11 +1895,14 @@ def workstream_register(
             (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
             Also accepts a JSON array string. Dependent repos follow the same
             branch lifecycle as the primary repo (create/checkout/pull/commit/push).
-        slack_workspace_id: Slack workspace (team) ID to register this
-            workstream under. When omitted, unscoped (superadmin) tokens
-            allow the controller to derive the target workspace from the
-            GitHub org in ``repo_url``. Callers using tokens scoped to
-            specific workspaces must pass this parameter explicitly.
+        workspace_id: Workspace ID (operator-chosen identifier) to
+            register this workstream under. When omitted, unscoped
+            (superadmin) tokens allow the controller to derive the
+            target workspace from the GitHub org in ``repo_url``.
+            Callers using tokens scoped to specific workspaces must
+            pass this parameter explicitly.
+        slack_workspace_id: Deprecated alias for ``workspace_id``;
+            accepted for backward compatibility with older callers.
         plan_content: Literal markdown content of a planning document to
             commit directly to the new workstream's branch immediately after
             registration. Mutually exclusive with ``plan_instructions``.
@@ -1942,10 +1953,16 @@ def workstream_register(
         - ``error`` and ``fallback_instructions``: only when ``mode=="failed"``.
     """
     _require_scope("write")
+    # slack_workspace_id is the legacy name; the new canonical name is
+    # workspace_id. Accept either, preferring the new name.
+    if not workspace_id and slack_workspace_id:
+        audit_log.debug("workstream_register: slack_workspace_id is a "
+                        "deprecated alias for workspace_id")
+        workspace_id = slack_workspace_id
     err = _check_short_strings(
         default_branch=default_branch, base_branch=base_branch,
         repo_url=repo_url, planning_document=planning_document,
-        channel_name=channel_name, slack_workspace_id=slack_workspace_id,
+        channel_name=channel_name, workspace_id=workspace_id,
         plan_path=plan_path, plan_commit_message=plan_commit_message,
         model=model, effort=effort, default_runner=default_runner,
     )
@@ -1974,21 +1991,21 @@ def workstream_register(
     if err:
         return err
     # Scope enforcement: scoped callers must name a workspace they own.
-    # An explicit slack_workspace_id wins. Otherwise we refuse rather than
+    # An explicit workspace_id wins. Otherwise we refuse rather than
     # rely on the controller's repoUrl-derivation path, because allowing
     # the caller to rely on controller-side derivation would open a
     # scope-bypass if repoUrl is omitted or spoofed.
     if _get_workspace_scopes():
-        if slack_workspace_id:
-            _require_workspace(slack_workspace_id)
+        if workspace_id:
+            _require_workspace(workspace_id)
         else:
             raise PermissionError(
-                "Scoped tokens must pass slack_workspace_id when registering "
+                "Scoped tokens must pass workspace_id when registering "
                 "a workstream — repoUrl-based derivation is only available "
                 "to unscoped (superadmin) tokens."
             )
     _audit("workstream_register", default_branch=default_branch,
-           slack_workspace_id=slack_workspace_id)
+           workspace_id=workspace_id)
 
     payload = {"defaultBranch": default_branch}
     if base_branch:
@@ -1999,8 +2016,12 @@ def workstream_register(
         payload["planningDocument"] = planning_document
     if channel_name:
         payload["channelName"] = channel_name
-    if slack_workspace_id:
-        payload["slackWorkspaceId"] = slack_workspace_id
+    if workspace_id:
+        # Send both names: the controller accepts either, and the legacy
+        # field name is kept so older controllers without the rename
+        # continue to honour the registration.
+        payload["workspaceId"] = workspace_id
+        payload["slackWorkspaceId"] = workspace_id
     if required_labels:
         labels_map = _parse_required_labels(required_labels)
         if labels_map:
@@ -2320,24 +2341,37 @@ def workstream_update_config(
     return result
 
 
+# Sentinel for "argument not supplied" on workspace_update_config
+# parameters whose empty-string value carries meaning distinct from
+# absence (e.g. ``slack_team_id=""`` explicitly clears the Slack
+# connection, while omitting ``slack_team_id`` leaves it unchanged).
+_WORKSPACE_UNSET = "\0__workspace_unset__\0"
+
+
 @mcp.tool()
 def workspace_update_config(
-    slack_workspace_id: str,
+    workspace_id: str = "",
     default_runner: str = "",
     runners: str = "",
     name: str = "",
     default_channel: str = "",
+    new_id: str = "",
+    slack_team_id: str = _WORKSPACE_UNSET,
+    slack_workspace_id: str = "",
 ) -> dict:
-    """Update workspace-level configuration on a Slack workspace entry.
+    """Update workspace-level configuration on a workspace entry.
 
-    Mirrors :func:`workstream_update_config` in shape but keyed on the
-    Slack workspace (team) ID instead of a workstream ID. Operators
-    discover workspace IDs via :func:`workstream_list` — each entry's
-    ``slackWorkspaceId`` field is the value to pass here.
+    A workspace is the operator's organisational unit. Its ``id`` is
+    operator-chosen and independent of any Slack team ID; when a Slack
+    connection is configured the team ID lives on the ``slackTeamId``
+    field. This tool can rename a workspace, retarget its Slack
+    connection, and update non-credential operational fields.
 
     Only the fields you supply are written; an empty string leaves the
-    corresponding field unchanged. The change is persisted back to the
-    workstreams YAML so it survives a controller restart.
+    corresponding field unchanged (except ``slack_team_id``, where an
+    explicit empty string clears the Slack connection — see below).
+    Changes are persisted back to the workstreams YAML so they survive a
+    controller restart.
 
     For security, the following workspace fields are **NOT** settable via
     this tool and must be edited in the YAML directly:
@@ -2349,9 +2383,11 @@ def workspace_update_config(
       auto-invite ownership.
 
     Args:
-        slack_workspace_id: Slack team ID (e.g. ``"T0123456789"``) of the
-            workspace to update. Returned by ``workstream_list`` under
-            each workstream's ``slackWorkspaceId`` field.
+        workspace_id: Operator-chosen workspace identifier (e.g.
+            ``"almostrealism"``) of the workspace to update. For
+            workspaces migrated from a legacy ``slackWorkspaces:`` YAML
+            entry this is the Slack team ID until the workspace is
+            renamed via ``new_id``. Required.
         default_runner: New workspace-level default agent runner applied
             to workstreams in this workspace when neither the workstream
             nor the per-job override sets one. Use ``agent_options`` to
@@ -2370,30 +2406,68 @@ def workspace_update_config(
         default_channel: New fallback Slack channel ID for messages
             published in workstreams that have no channel of their own
             resolved. Low-risk operational field.
+        new_id: Rename the workspace to this new operator-chosen ID.
+            Every workstream that referenced the old ID is rewritten to
+            the new ID atomically. Use this to migrate a workspace from
+            its initial Slack-team-ID-as-ID form to a friendlier name
+            (e.g. ``workspace_update_config(workspace_id="T0123456789",
+            new_id="almostrealism")``). Empty string leaves the ID
+            unchanged.
+        slack_team_id: Set or clear the Slack team ID this workspace
+            routes messages to. Pass a non-empty value to (re)bind the
+            workspace to that Slack team; pass an explicit empty string
+            (``""``) to clear the Slack connection so channel/notifier
+            operations skip cleanly. Omit the argument entirely to leave
+            the existing value unchanged.
+        slack_workspace_id: Deprecated alias for ``workspace_id``.
+            Accepted for backward compatibility with older callers.
 
     Returns:
         dict with ``ok=True`` and the updated workspace fields, or
         ``ok=False`` with an error.
     """
     _require_scope("write")
+    # Resolve the workspace identifier, accepting the legacy alias.
+    if not workspace_id and slack_workspace_id:
+        audit_log.debug("workspace_update_config: slack_workspace_id is a "
+                        "deprecated alias for workspace_id")
+        workspace_id = slack_workspace_id
+    if not workspace_id:
+        return {
+            "ok": False,
+            "error": "workspace_id is required",
+            "next_steps": [
+                "Pass workspace_id (the operator-chosen workspace ID)",
+            ],
+        }
+    slack_team_id_provided = slack_team_id != _WORKSPACE_UNSET
+    if not slack_team_id_provided:
+        slack_team_id = ""
     err = _check_short_strings(
-        slack_workspace_id=slack_workspace_id,
+        workspace_id=workspace_id,
         default_runner=default_runner,
         name=name,
         default_channel=default_channel,
+        new_id=new_id,
+        slack_team_id=slack_team_id,
     )
     if err:
         return err
     parsed_runners, runners_err = _parse_runners_json(runners)
     if runners_err:
         return runners_err
-    _audit("workspace_update_config", slack_workspace_id=slack_workspace_id)
+    _audit("workspace_update_config", workspace_id=workspace_id)
 
     payload = {}
     if name:
         payload["name"] = name
     if default_channel:
         payload["defaultChannel"] = default_channel
+    if new_id and new_id != workspace_id:
+        payload["newId"] = new_id
+    if slack_team_id_provided:
+        # Empty string clears; non-empty (re)binds. Either case is a write.
+        payload["slackTeamId"] = slack_team_id
     runners_payload = dict(parsed_runners) if parsed_runners else {}
     if default_runner and "default" not in runners_payload:
         runners_payload["default"] = default_runner
@@ -2406,12 +2480,12 @@ def workspace_update_config(
             "error": "No fields to update. Provide at least one field.",
             "next_steps": [
                 "Specify fields to update: default_runner, runners, "
-                "name, or default_channel",
+                "name, default_channel, new_id, or slack_team_id",
             ],
         }
 
     result = _controller_post(
-        f"/api/workspaces/{quote(slack_workspace_id, safe='')}/config",
+        f"/api/workspaces/{quote(workspace_id, safe='')}/config",
         payload,
     )
 
@@ -2422,7 +2496,7 @@ def workspace_update_config(
         ]
     else:
         result.setdefault("next_steps", [
-            "Use workstream_list to confirm the slack_workspace_id is correct",
+            "Use workstream_list to confirm the workspace_id is correct",
         ])
 
     return result

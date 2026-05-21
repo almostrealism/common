@@ -22,6 +22,7 @@ import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.JsonFieldExtractor;
 
 import java.util.Map;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -30,7 +31,7 @@ import java.util.function.Function;
  * for {@link FlowTreeApiEndpoint}.
  *
  * <p>The endpoint exposes a deliberately narrow set of {@link
- * WorkstreamConfig.SlackWorkspaceEntry} fields:</p>
+ * WorkstreamConfig.WorkspaceEntry} fields:</p>
  * <ul>
  *   <li>{@code name} — human-readable label.</li>
  *   <li>{@code defaultChannel} — fallback Slack channel ID.</li>
@@ -56,8 +57,16 @@ import java.util.function.Function;
  */
 final class WorkspaceConfigHandler {
 
-    /** Resolves a Slack workspace (team) ID to its config entry, or {@code null}. */
-    private final Function<String, WorkstreamConfig.SlackWorkspaceEntry> workspaceLookup;
+    /** Resolves a workspace ID to its config entry, or {@code null}. */
+    private final Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup;
+    /**
+     * Renames a workspace: applies {@code (oldId, newId)} to the loaded
+     * config. Returns {@code true} on success, {@code false} when the old ID
+     * was not found, or throws {@link IllegalArgumentException} if the new ID
+     * collides. {@code null} when no rename hook is wired and the handler
+     * should respond 400 to rename attempts.
+     */
+    private final BiFunction<String, String, Boolean> renameWorkspace;
     /** Slack listener used to persist YAML edits after each mutation; may be {@code null}. */
     private final SlackListener listener;
     /** Reads the POST body from a NanoHTTPD session; reused from the parent endpoint. */
@@ -68,7 +77,8 @@ final class WorkspaceConfigHandler {
     private final Consumer<String> log;
 
     /**
-     * Constructs a new handler.
+     * Constructs a new handler without a rename hook. Used in tests and in
+     * paths that do not need to rename workspaces.
      *
      * @param workspaceLookup workspace-ID to entry function; never {@code null}
      * @param listener        Slack listener for YAML persistence (may be {@code null})
@@ -76,12 +86,35 @@ final class WorkspaceConfigHandler {
      * @param errorResponse   400-error response factory
      * @param log             log line consumer
      */
-    WorkspaceConfigHandler(Function<String, WorkstreamConfig.SlackWorkspaceEntry> workspaceLookup,
+    WorkspaceConfigHandler(Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup,
+                           SlackListener listener,
+                           Function<IHTTPSession, String> readBody,
+                           Function<String, Response> errorResponse,
+                           Consumer<String> log) {
+        this(workspaceLookup, null, listener, readBody, errorResponse, log);
+    }
+
+    /**
+     * Constructs a new handler with a rename hook so the {@code newId} body
+     * field can rename the workspace and update every workstream that
+     * referenced the old ID.
+     *
+     * @param workspaceLookup workspace-ID to entry function; never {@code null}
+     * @param renameWorkspace optional rename callback; {@code null} disables
+     *                        rename attempts via this handler
+     * @param listener        Slack listener for YAML persistence (may be {@code null})
+     * @param readBody        body reader supplied by the parent endpoint
+     * @param errorResponse   400-error response factory
+     * @param log             log line consumer
+     */
+    WorkspaceConfigHandler(Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup,
+                           BiFunction<String, String, Boolean> renameWorkspace,
                            SlackListener listener,
                            Function<IHTTPSession, String> readBody,
                            Function<String, Response> errorResponse,
                            Consumer<String> log) {
         this.workspaceLookup = workspaceLookup;
+        this.renameWorkspace = renameWorkspace;
         this.listener = listener;
         this.readBody = readBody;
         this.errorResponse = errorResponse;
@@ -124,9 +157,9 @@ final class WorkspaceConfigHandler {
             return errorResponse.apply("Failed to read request body");
         }
 
-        WorkstreamConfig.SlackWorkspaceEntry entry = workspaceLookup.apply(workspaceId);
+        WorkstreamConfig.WorkspaceEntry entry = workspaceLookup.apply(workspaceId);
         if (entry == null) {
-            String json = "{\"ok\":false,\"error\":\"Unknown Slack workspace: "
+            String json = "{\"ok\":false,\"error\":\"Unknown workspace: "
                     + JsonFieldExtractor.escapeJson(workspaceId) + "\"}";
             return NanoHTTPD.newFixedLengthResponse(Response.Status.NOT_FOUND,
                     "application/json", json);
@@ -134,6 +167,12 @@ final class WorkspaceConfigHandler {
 
         String name = JsonFieldExtractor.extractString(body, "name");
         String defaultChannel = JsonFieldExtractor.extractString(body, "defaultChannel");
+        String newId = JsonFieldExtractor.extractString(body, "newId");
+        // slackTeamId is special: the body may set it to an empty string to
+        // clear the Slack connection. Detect the difference between "absent"
+        // and "empty-string" by checking key presence in the JSON.
+        boolean slackTeamIdPresent = body.contains("\"slackTeamId\"");
+        String slackTeamId = JsonFieldExtractor.extractString(body, "slackTeamId");
         Map<String, String> runnersObj = JsonFieldExtractor.extractStringObject(body, "runners");
 
         String runnersErr = SubmissionRunnerResolver.applyToWorkspace(entry, runnersObj);
@@ -145,17 +184,48 @@ final class WorkspaceConfigHandler {
         if (defaultChannel != null && !defaultChannel.isEmpty()) {
             entry.setDefaultChannel(defaultChannel);
         }
+        if (slackTeamIdPresent) {
+            // Empty string clears the connection; non-empty sets it.
+            entry.setSlackTeamId(slackTeamId == null ? null : slackTeamId);
+        }
+
+        // Handle the rename last so that the response can emit the final ID.
+        String resolvedId = workspaceId;
+        if (newId != null && !newId.isEmpty() && !newId.equals(workspaceId)) {
+            if (renameWorkspace == null) {
+                return errorResponse.apply(
+                        "Workspace rename is not enabled on this controller");
+            }
+            try {
+                Boolean ok = renameWorkspace.apply(workspaceId, newId);
+                if (ok == null || !ok) {
+                    return errorResponse.apply(
+                            "Could not rename workspace '" + workspaceId
+                                    + "' to '" + newId + "'");
+                }
+                resolvedId = newId;
+            } catch (IllegalArgumentException ex) {
+                return errorResponse.apply(ex.getMessage());
+            }
+        }
 
         if (listener != null) {
             listener.persistConfig();
         }
 
-        log.accept("Updated workspace config via API: " + workspaceId);
+        log.accept("Updated workspace config via API: " + resolvedId
+                + (resolvedId.equals(workspaceId) ? ""
+                        : " (renamed from " + workspaceId + ")"));
 
         StringBuilder json = new StringBuilder();
         json.append("{\"ok\":true,\"workspaceId\":\"")
-                .append(JsonFieldExtractor.escapeJson(workspaceId))
+                .append(JsonFieldExtractor.escapeJson(resolvedId))
                 .append("\"");
+        if (entry.getSlackTeamId() != null) {
+            json.append(",\"slackTeamId\":\"")
+                    .append(JsonFieldExtractor.escapeJson(entry.getSlackTeamId()))
+                    .append("\"");
+        }
         if (entry.getName() != null) {
             json.append(",\"name\":\"")
                     .append(JsonFieldExtractor.escapeJson(entry.getName()))

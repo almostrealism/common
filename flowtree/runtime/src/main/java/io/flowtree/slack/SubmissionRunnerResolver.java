@@ -34,9 +34,9 @@ import java.util.Map;
  *   <li>Workstream per-phase map ({@link Workstream#getRunners()})</li>
  *   <li>Workstream default ({@link Workstream#getDefaultRunner()})</li>
  *   <li>Workspace per-phase map
- *       ({@link WorkstreamConfig.SlackWorkspaceEntry#getRunners()})</li>
+ *       ({@link WorkstreamConfig.WorkspaceEntry#getRunners()})</li>
  *   <li>Workspace default
- *       ({@link WorkstreamConfig.SlackWorkspaceEntry#getDefaultRunner()})</li>
+ *       ({@link WorkstreamConfig.WorkspaceEntry#getDefaultRunner()})</li>
  *   <li>Controller default ({@code "claude"})</li>
  * </ol>
  *
@@ -44,8 +44,8 @@ import java.util.Map;
  * workstream has no per-phase entry for the phase <em>and</em> the
  * workstream has no {@code defaultRunner} set — workstream-level config
  * fully shadows the workspace it belongs to. A workstream with no
- * {@code slackWorkspaceId} (or whose {@code slackWorkspaceId} does not match
- * any configured workspace) skips the workspace lookup and falls through to
+ * {@code workspaceId} (or whose {@code workspaceId} does not match any
+ * configured workspace) skips the workspace lookup and falls through to
  * the controller default.</p>
  */
 final class SubmissionRunnerResolver {
@@ -261,7 +261,7 @@ final class SubmissionRunnerResolver {
      * Applies a parsed {@code runners} object to a workspace as its
      * persistent runner configuration. The {@code "default"} key, when
      * present, becomes
-     * {@link WorkstreamConfig.SlackWorkspaceEntry#setDefaultRunner(String)};
+     * {@link WorkstreamConfig.WorkspaceEntry#setDefaultRunner(String)};
      * remaining keys (which must be valid {@link Phase} wire names) replace
      * the workspace's per-phase map.
      *
@@ -275,7 +275,7 @@ final class SubmissionRunnerResolver {
      * @return {@code null} on success, or a 400-able error message on
      *         unknown phase name or unknown runner name
      */
-    static String applyToWorkspace(WorkstreamConfig.SlackWorkspaceEntry entry,
+    static String applyToWorkspace(WorkstreamConfig.WorkspaceEntry entry,
                                    Map<String, String> requestRunners) {
         if (requestRunners == null || requestRunners.isEmpty()) return null;
         String newDefault = null;

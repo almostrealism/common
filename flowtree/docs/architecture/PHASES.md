@@ -48,17 +48,17 @@ A runner is resolved per phase from this ladder, top-to-bottom:
 2. per-job default         (CodingAgentJob.defaultRunner)
 3. workstream per-phase    (Workstream.runners[phase])
 4. workstream default      (Workstream.defaultRunner)
-5. workspace per-phase     (SlackWorkspaceEntry.runners[phase])
-6. workspace default       (SlackWorkspaceEntry.defaultRunner)
+5. workspace per-phase     (WorkspaceEntry.runners[phase])
+6. workspace default       (WorkspaceEntry.defaultRunner)
 7. controller default      (controller config)
 8. "claude"                (compiled-in fallback)
 ```
 
 The workspace layer (levels 5 and 6) is consulted when the workstream's
-`slackWorkspaceId` matches a configured `slackWorkspaces[]` entry. A
-workstream with no `slackWorkspaceId` — or one whose ID does not match any
-configured workspace — skips the workspace layer cleanly and falls through
-to the controller default. Workstream-level config fully shadows the
+`workspaceId` matches a configured `workspaces[]` (or legacy
+`slackWorkspaces[]`) entry. A workstream with no `workspaceId` — or one
+whose ID does not match any configured workspace — skips the workspace
+layer cleanly and falls through to the controller default. Workstream-level config fully shadows the
 workspace it belongs to: if the workstream sets `defaultRunner`, the
 workspace's per-phase entries are ignored (the workstream default would
 have applied to every otherwise-unmapped phase anyway).

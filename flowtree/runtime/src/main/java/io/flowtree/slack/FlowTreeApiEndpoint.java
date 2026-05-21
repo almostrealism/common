@@ -49,6 +49,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -118,16 +119,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /** Maps GitHub organisation names to their API access tokens. */
     private Map<String, String> githubOrgTokens = new HashMap<>();
 
-    /**
-     * Maps GitHub organisation names to the Slack workspace ID that owns them,
-     * as derived from {@code slackWorkspaces[].githubOrgs} in the YAML config.
-     * Used to route newly-registered workstreams to the correct workspace when
-     * the caller does not supply an explicit {@code slackWorkspaceId}.
-     */
+    /** Maps GitHub org names to the workspace ID that owns them; used by registration routing. */
     private Map<String, String> orgToWorkspaceId = new HashMap<>();
 
     /** Resolves a Slack workspace ID to its entry for the workspace runner layer. */
-    private Function<String, WorkstreamConfig.SlackWorkspaceEntry> slackWorkspaceLookup = id -> null;
+    private Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup = id -> null;
     /** Tracks which jobs should have a PR auto-created on success. */
     private final Map<String, AutoPrContext> autoCreatePrJobs = new HashMap<>();
 
@@ -202,23 +198,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         this.secretsHandler = new SecretsRequestHandler(notifiers);
     }
 
-    /**
-     * Sets the FlowTree {@link Server} used for job submission.
-     *
-     * @param server the server accepting inbound agent connections
-     */
-    public void setServer(Server server) {
-        this.server = server;
-    }
+    /** Sets the FlowTree server used for job submission. */
+    public void setServer(Server server) { this.server = server; }
 
-    /**
-     * Sets the {@link SlackListener} used for job creation.
-     *
-     * @param listener the listener that manages workstream-to-job mapping
-     */
-    public void setListener(SlackListener listener) {
-        this.listener = listener;
-    }
+    /** Sets the SlackListener used for job creation. */
+    public void setListener(SlackListener listener) { this.listener = listener; }
 
     /**
      * Sets per-organization GitHub tokens for the proxy endpoint.
@@ -248,9 +232,14 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /** Sets the workspace lookup feeding the workspace layer of {@link SubmissionRunnerResolver}; {@code null} disables it. */
-    public void setSlackWorkspaceLookup(Function<String, WorkstreamConfig.SlackWorkspaceEntry> lookup) {
-        this.slackWorkspaceLookup = lookup != null ? lookup : id -> null;
+    public void setWorkspaceLookup(Function<String, WorkstreamConfig.WorkspaceEntry> lookup) {
+        this.workspaceLookup = lookup != null ? lookup : id -> null;
     }
+
+    /** Rename hook for {@code newId} on workspace config; {@code null} disables. */
+    private BiFunction<String, String, Boolean> workspaceRenameHook;
+    /** Sets the workspace rename hook. */
+    public void setWorkspaceRenameHook(BiFunction<String, String, Boolean> hook) { this.workspaceRenameHook = hook; }
 
     /**
      * Sets the base URL of the ar-memory HTTP server used for
@@ -423,7 +412,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             if ("/api/workstreams".equals(uri)) {
                 return handleRegisterWorkstream(session);
             }
-            { Response wsResp = new WorkspaceConfigHandler(slackWorkspaceLookup, listener, this::readBody, this::errorResponse, this::log).handleIfMatches(uri, session); if (wsResp != null) return wsResp; }
+            { Response wsResp = new WorkspaceConfigHandler(workspaceLookup, workspaceRenameHook, listener, this::readBody, this::errorResponse, this::log).handleIfMatches(uri, session); if (wsResp != null) return wsResp; }
             Matcher m = WORKSTREAM_PATTERN.matcher(uri);
             if (m.matches()) {
                 String workstreamId = m.group(1);
@@ -670,7 +659,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 return errorResponse("Could not derive a valid channel name from defaultBranch: " + defaultBranch);
             }
         }
-        String explicitWorkspaceId = extractJsonField(body, "slackWorkspaceId");
+        String explicitWorkspaceId = extractJsonField(body, "workspaceId");
+        if (explicitWorkspaceId == null || explicitWorkspaceId.isEmpty()) {
+            explicitWorkspaceId = extractJsonField(body, "slackWorkspaceId"); // legacy alias
+        }
         String model = extractJsonField(body, "model");
         String effort = extractJsonField(body, "effort");
         Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
@@ -769,7 +761,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // routes to the correct per-workspace notifier and so subsequent
         // API calls can identify the owning workspace.
         if (targetWorkspaceId != null && !targetWorkspaceId.isEmpty()) {
-            workstream.setSlackWorkspaceId(targetWorkspaceId);
+            workstream.setWorkspaceId(targetWorkspaceId);
         }
 
         if (listener != null) {
@@ -1139,8 +1131,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setRequiredLabel(entry.getKey(), entry.getValue());
         }
 
-        String wsId = workstream.getSlackWorkspaceId();
-        WorkstreamConfig.SlackWorkspaceEntry wsEntry = (wsId != null && !wsId.isEmpty()) ? slackWorkspaceLookup.apply(wsId) : null;
+        String wsId = workstream.getWorkspaceId();
+        WorkstreamConfig.WorkspaceEntry wsEntry = (wsId != null && !wsId.isEmpty()) ? workspaceLookup.apply(wsId) : null;
         if (wsId != null && !wsId.isEmpty() && wsEntry == null) log("submitWorkspaceMissing slackWorkspaceId=" + wsId);
         SubmissionRunnerResolver runnerResolver = SubmissionRunnerResolver.resolve(
                 extractJsonObjectFields(body, "runners"),

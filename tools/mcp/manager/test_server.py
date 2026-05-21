@@ -1613,6 +1613,79 @@ class TestWorkspaceUpdateConfig(unittest.TestCase):
         payload = mock_post.call_args[0][1]
         self.assertEqual(payload, {"name": "Acme"})
 
+    @patch.object(server, "_controller_post")
+    def test_accepts_new_workspace_id_param(self, mock_post):
+        """The canonical workspace_id parameter routes the same as the legacy alias."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            workspace_id="almostrealism", name="Acme")
+        call_path = mock_post.call_args[0][0]
+        self.assertIn("almostrealism", call_path)
+
+    @patch.object(server, "_controller_post")
+    def test_new_id_forwarded_as_newId_payload(self, mock_post):
+        """Supplying new_id forwards a newId field to the controller."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            workspace_id="T0123456789", new_id="almostrealism")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["newId"], "almostrealism")
+
+    @patch.object(server, "_controller_post")
+    def test_new_id_equal_to_workspace_id_is_omitted(self, mock_post):
+        """new_id matching the existing id is a no-op and is omitted from the payload."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            workspace_id="almostrealism",
+            new_id="almostrealism",
+            name="Acme")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("newId", payload)
+        self.assertEqual(payload["name"], "Acme")
+
+    @patch.object(server, "_controller_post")
+    def test_slack_team_id_set_to_nonempty_forwards(self, mock_post):
+        """A non-empty slack_team_id binds the workspace to that Slack team."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            workspace_id="almostrealism", slack_team_id="T0123456789")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["slackTeamId"], "T0123456789")
+
+    @patch.object(server, "_controller_post")
+    def test_slack_team_id_explicit_empty_clears(self, mock_post):
+        """An explicit empty string for slack_team_id clears the Slack binding."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            workspace_id="almostrealism", slack_team_id="")
+        payload = mock_post.call_args[0][1]
+        # slackTeamId is present (so the controller knows to clear it),
+        # but its value is the empty string.
+        self.assertIn("slackTeamId", payload)
+        self.assertEqual(payload["slackTeamId"], "")
+
+    @patch.object(server, "_controller_post")
+    def test_slack_team_id_omitted_leaves_payload_unset(self, mock_post):
+        """Omitting slack_team_id leaves the field absent from the payload."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            workspace_id="almostrealism", name="Acme")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("slackTeamId", payload)
+
+    def test_missing_workspace_id_returns_error(self):
+        """Calling with neither workspace_id nor slack_workspace_id returns an error."""
+        _grant_all_scopes()
+        result = server.workspace_update_config(name="Acme")
+        self.assertFalse(result["ok"])
+        self.assertIn("workspace_id", result["error"])
+
 
 # -----------------------------------------------------------------------
 # Tier 2: Pipeline tools
@@ -3735,6 +3808,28 @@ class TestWorkstreamRegisterScope(unittest.TestCase):
         self.assertTrue(result["ok"])
         args, _ = mock_post.call_args
         self.assertNotIn("slackWorkspaceId", args[1])
+
+    @patch.object(server, "_controller_post")
+    def test_workspace_id_param_routes_like_legacy(self, mock_post):
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        _set_workspaces("almostrealism")
+        server.workstream_register(
+            default_branch="feature/x", workspace_id="almostrealism")
+        args, _ = mock_post.call_args
+        self.assertEqual("/api/workstreams", args[0])
+        # Both names go on the wire for cross-version compatibility.
+        self.assertEqual("almostrealism", args[1]["workspaceId"])
+        self.assertEqual("almostrealism", args[1]["slackWorkspaceId"])
+
+    @patch.object(server, "_controller_post")
+    def test_legacy_slack_workspace_id_alias_still_accepted(self, mock_post):
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        _set_workspaces("TAAA")
+        server.workstream_register(
+            default_branch="feature/x", slack_workspace_id="TAAA")
+        args, _ = mock_post.call_args
+        self.assertEqual("TAAA", args[1]["workspaceId"])
+        self.assertEqual("TAAA", args[1]["slackWorkspaceId"])
 
 
 class TestBearerAuthWorkspaceScopes(unittest.TestCase):

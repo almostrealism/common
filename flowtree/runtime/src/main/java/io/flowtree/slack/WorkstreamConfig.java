@@ -16,8 +16,11 @@
 
 package io.flowtree.slack;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.flowtree.jobs.CodingAgentJob;
@@ -28,9 +31,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -83,25 +88,46 @@ public class WorkstreamConfig {
     private Map<String, GitHubOrgEntry> githubOrgs = new LinkedHashMap<>();
     /** Ordered list of workstream configuration entries. */
     private List<WorkstreamEntry> workstreams = new ArrayList<>();
-    /** Per-workspace Slack configuration entries; empty list uses legacy single-token mode. */
-    private List<SlackWorkspaceEntry> slackWorkspaces = new ArrayList<>();
+    /**
+     * Workspace configuration entries (operator-chosen IDs, optional Slack
+     * connection). Populated from the {@code workspaces:} top-level YAML key
+     * and — for backward compatibility — also from the legacy
+     * {@code slackWorkspaces:} key (which is migrated on load so each legacy
+     * entry's {@code id} doubles as its {@code slackTeamId}).
+     */
+    private List<WorkspaceEntry> workspaces = new ArrayList<>();
 
     /**
-     * Configuration entry for a Slack workspace connection.
+     * Configuration entry for a workspace — the operator's organizational
+     * unit, optionally connected to a Slack team.
      *
-     * <p>Each entry defines the bot/app token pair for one Slack team. Workstreams
-     * that reference this workspace by {@code slackWorkspaceId} are served by its
-     * connection. If the list is empty, the controller falls back to the legacy
-     * single-token resolution path via {@link SlackTokens#resolve(java.io.File)}.</p>
+     * <p>The {@code id} field is operator-chosen and is the identifier
+     * referenced by {@link WorkstreamEntry#getWorkspaceId()}. The optional
+     * {@code slackTeamId} field carries the Slack team ID (e.g.
+     * {@code "T0123456789"}) when the workspace is connected to Slack;
+     * when absent the workspace has no Slack integration and channel/notifier
+     * operations skip cleanly. Legacy {@code slackWorkspaces:} entries are
+     * auto-migrated on load so {@code id == slackTeamId}.</p>
      *
-     * <p>Tokens may be supplied inline ({@code botToken}/{@code appToken} fields) or
-     * via a JSON file ({@code tokensFile}). When {@code tokensFile} is set it takes
-     * priority over the inline fields.</p>
+     * <p>Slack-credential fields ({@code tokensFile}/{@code botToken}/
+     * {@code appToken}) only have effect when {@code slackTeamId} is set.</p>
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class SlackWorkspaceEntry {
-        /** Slack team ID (T...) uniquely identifying this workspace. */
-        private String workspaceId;
+    public static class WorkspaceEntry {
+        /**
+         * Operator-chosen workspace identifier. For legacy {@code slackWorkspaces:}
+         * entries the YAML key {@code workspaceId} is accepted via
+         * {@link JsonAlias} and double-loaded as both {@code id} and
+         * {@code slackTeamId} so that older configs continue to resolve.
+         */
+        @JsonAlias({"workspaceId"})
+        private String id;
+        /**
+         * Optional Slack team ID (e.g. {@code "T0123456789"}) identifying the
+         * Slack workspace this entry routes to. {@code null} when this
+         * workspace has no Slack connection.
+         */
+        private String slackTeamId;
         /** Human-readable label for this workspace (used in logs and diagnostics). */
         private String name;
         /** Path to a JSON file with {@code botToken} and {@code appToken}. */
@@ -146,10 +172,25 @@ public class WorkstreamConfig {
          */
         private Map<String, String> runners = new LinkedHashMap<>();
 
-        /** Returns the Slack team ID (T...). */
-        public String getWorkspaceId() { return workspaceId; }
-        /** Sets the Slack team ID. */
-        public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
+        /** Returns the operator-chosen workspace ID. */
+        public String getId() { return id; }
+        /** Sets the operator-chosen workspace ID. */
+        public void setId(String id) { this.id = id; }
+
+        /**
+         * Returns the Slack team ID this workspace is connected to, or
+         * {@code null} when the workspace has no Slack integration.
+         */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public String getSlackTeamId() { return slackTeamId; }
+        /**
+         * Sets the Slack team ID for this workspace. Pass {@code null} or
+         * empty to clear the Slack connection — channel-routing operations
+         * will then skip this workspace cleanly.
+         */
+        public void setSlackTeamId(String slackTeamId) {
+            this.slackTeamId = (slackTeamId == null || slackTeamId.isEmpty()) ? null : slackTeamId;
+        }
 
         /** Returns the human-readable workspace label. */
         public String getName() { return name; }
@@ -304,8 +345,14 @@ public class WorkstreamConfig {
         private List<String> dependentRepos;
         /** Node labels that jobs submitted to this workstream must match by default. */
         private Map<String, String> requiredLabels;
-        /** The Slack workspace ID (team ID) this workstream is bound to. */
-        private String slackWorkspaceId;
+        /**
+         * The workspace ID this workstream is bound to. Accepts the legacy
+         * YAML key {@code slackWorkspaceId} via {@link JsonAlias} so existing
+         * configs continue to load; the field now holds an operator-chosen
+         * workspace ID rather than a Slack team ID.
+         */
+        @JsonAlias({"slackWorkspaceId"})
+        private String workspaceId;
         /** Default Claude Code model alias or full name applied to jobs in this workstream. */
         private String model;
         /** Default Claude Code effort/thinking level applied to jobs in this workstream. */
@@ -432,13 +479,15 @@ public class WorkstreamConfig {
         public void setRequiredLabels(Map<String, String> requiredLabels) { this.requiredLabels = requiredLabels; }
 
         /**
-         * Returns the Slack workspace ID (team ID, e.g. "T0123456789") that this
-         * workstream is assigned to.  When absent, the workstream is assigned to the
-         * first (or only) workspace connection in the {@code slackWorkspaces} list.
+         * Returns the workspace ID this workstream is assigned to. Accepts
+         * the legacy YAML alias {@code slackWorkspaceId} on load; the value is
+         * now an operator-chosen workspace ID, not necessarily a Slack team
+         * ID. When absent, the workstream is assigned to the first (or only)
+         * workspace connection in the {@code workspaces} list.
          */
-        public String getSlackWorkspaceId() { return slackWorkspaceId; }
-        /** Sets the Slack workspace ID for this workstream. */
-        public void setSlackWorkspaceId(String slackWorkspaceId) { this.slackWorkspaceId = slackWorkspaceId; }
+        public String getWorkspaceId() { return workspaceId; }
+        /** Sets the workspace ID for this workstream. */
+        public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
 
         /** Returns the default Claude Code model for jobs in this workstream, or {@code null}. */
         public String getModel() { return model; }
@@ -498,7 +547,7 @@ public class WorkstreamConfig {
             ws.setGithubOrg(githubOrg);
             ws.setDependentRepos(dependentRepos);
             ws.setRequiredLabels(requiredLabels);
-            ws.setSlackWorkspaceId(slackWorkspaceId);
+            ws.setWorkspaceId(workspaceId);
             ws.setModel(model);
             ws.setEffort(effort);
             ws.setDefaultRunner(defaultRunner);
@@ -727,8 +776,8 @@ public class WorkstreamConfig {
                 }
             }
         }
-        if (slackWorkspaces != null) {
-            for (SlackWorkspaceEntry wsEntry : slackWorkspaces) {
+        if (workspaces != null) {
+            for (WorkspaceEntry wsEntry : workspaces) {
                 if (wsEntry.getGithubOrgs() == null) continue;
                 for (Map.Entry<String, GitHubOrgEntry> entry : wsEntry.getGithubOrgs().entrySet()) {
                     String token = entry.getValue().getToken();
@@ -742,11 +791,11 @@ public class WorkstreamConfig {
     }
 
     /**
-     * Returns a map from GitHub org name to the Slack workspace ID that owns it.
-     * Only orgs that are declared inside a workspace's {@code githubOrgs} section
-     * produce a mapping; globally-declared orgs (top-level {@code githubOrgs})
-     * are excluded because the multi-workspace schema treats top-level orgs as
-     * unscoped fallbacks.
+     * Returns a map from GitHub org name to the workspace ID that owns it.
+     * Only orgs that are declared inside a workspace's {@code githubOrgs}
+     * section produce a mapping; globally-declared orgs (top-level
+     * {@code githubOrgs}) are excluded because the multi-workspace schema
+     * treats top-level orgs as unscoped fallbacks.
      *
      * <p>When the same org is declared under multiple workspaces the last
      * workspace wins, matching the merge order of {@link #mergedGithubOrgTokens()}.</p>
@@ -755,11 +804,11 @@ public class WorkstreamConfig {
      */
     public Map<String, String> orgToWorkspaceId() {
         Map<String, String> mapping = new LinkedHashMap<>();
-        if (slackWorkspaces != null) {
-            for (SlackWorkspaceEntry wsEntry : slackWorkspaces) {
+        if (workspaces != null) {
+            for (WorkspaceEntry wsEntry : workspaces) {
                 if (wsEntry.getGithubOrgs() == null) continue;
                 for (String org : wsEntry.getGithubOrgs().keySet()) {
-                    mapping.put(org, wsEntry.getWorkspaceId());
+                    mapping.put(org, wsEntry.getId());
                 }
             }
         }
@@ -772,16 +821,77 @@ public class WorkstreamConfig {
     public void setWorkstreams(List<WorkstreamEntry> workstreams) { this.workstreams = workstreams; }
 
     /**
-     * Returns the list of Slack workspace connection entries.
+     * Returns the list of workspace configuration entries.
      *
-     * <p>When this list is non-empty the controller creates one Bolt {@code App} and
-     * {@code SocketModeApp} per entry. When empty the controller falls back to the
-     * legacy single-token resolution path.</p>
+     * <p>When this list is non-empty the controller creates one Bolt {@code App}
+     * and {@code SocketModeApp} per entry that has a {@code slackTeamId} set.
+     * Entries without a {@code slackTeamId} have no Slack connection and skip
+     * channel/notifier operations cleanly. When the list is empty the
+     * controller falls back to the legacy single-token resolution path.</p>
      */
-    public List<SlackWorkspaceEntry> getSlackWorkspaces() { return slackWorkspaces; }
-    /** Sets the list of Slack workspace connection entries. */
-    public void setSlackWorkspaces(List<SlackWorkspaceEntry> slackWorkspaces) {
-        this.slackWorkspaces = slackWorkspaces != null ? slackWorkspaces : new ArrayList<>();
+    @JsonProperty("workspaces")
+    public List<WorkspaceEntry> getWorkspaces() { return workspaces; }
+
+    /**
+     * Sets the list of workspace configuration entries. Used by Jackson when
+     * deserializing the {@code workspaces:} YAML key. Merges with any
+     * entries already present (e.g. those previously added by the legacy
+     * {@code slackWorkspaces:} setter) so that both YAML keys can appear in
+     * the same file during the migration window. Entries with the same
+     * {@code id} as a pre-existing entry are skipped on the assumption that
+     * the existing entry is the authoritative one.
+     */
+    @JsonProperty("workspaces")
+    public void setWorkspaces(List<WorkspaceEntry> workspaces) {
+        if (workspaces == null) {
+            this.workspaces = new ArrayList<>();
+            return;
+        }
+        if (this.workspaces == null || this.workspaces.isEmpty()) {
+            this.workspaces = new ArrayList<>(workspaces);
+            return;
+        }
+        Set<String> existing = new HashSet<>();
+        for (WorkspaceEntry e : this.workspaces) {
+            if (e.getId() != null) existing.add(e.getId());
+        }
+        for (WorkspaceEntry e : workspaces) {
+            if (e.getId() == null || !existing.contains(e.getId())) {
+                this.workspaces.add(e);
+            }
+        }
+    }
+
+    /**
+     * Returns the workspace entries as a "Slack workspaces" view for callers
+     * that still iterate the legacy projection (each entry treated as a Slack
+     * workspace connection). Identical to {@link #getWorkspaces()} for now;
+     * preserved so older callers compile.
+     */
+    @JsonIgnore
+    public List<WorkspaceEntry> getSlackWorkspaces() { return workspaces; }
+
+    /**
+     * Accepts the legacy {@code slackWorkspaces:} YAML key and merges its
+     * entries into the unified {@link #workspaces} list. Each legacy entry is
+     * migrated on the fly so that its operator-chosen {@code id} doubles as
+     * its {@code slackTeamId} — this preserves the historical invariant that
+     * the workspace identifier IS the Slack team ID, while letting operators
+     * later rename the workspace via the {@code workspace_update_config} MCP
+     * tool without losing the Slack connection.
+     *
+     * @param legacy parsed entries from the legacy YAML key; never serialized back
+     */
+    @JsonProperty("slackWorkspaces")
+    public void setSlackWorkspaces(List<WorkspaceEntry> legacy) {
+        if (legacy == null || legacy.isEmpty()) return;
+        for (WorkspaceEntry entry : legacy) {
+            if ((entry.getSlackTeamId() == null || entry.getSlackTeamId().isEmpty())
+                    && entry.getId() != null && !entry.getId().isEmpty()) {
+                entry.setSlackTeamId(entry.getId());
+            }
+            workspaces.add(entry);
+        }
     }
 
     /**
@@ -855,23 +965,70 @@ public class WorkstreamConfig {
     }
 
     /**
-     * Returns the {@link SlackWorkspaceEntry} matching the given Slack
-     * workspace (team) ID, or {@code null} when no entry has been configured
-     * with that ID. The lookup is linear over {@link #slackWorkspaces} —
-     * acceptable because the list is small (one entry per Slack workspace
-     * connected to the controller).
+     * Returns the {@link WorkspaceEntry} matching the given workspace ID, or
+     * {@code null} when no entry has been configured with that ID. The lookup
+     * is linear over {@link #workspaces} — acceptable because the list is
+     * small (one entry per workspace).
      *
-     * @param workspaceId the Slack team ID (e.g. {@code "T0123456789"});
-     *                    {@code null} or empty always returns {@code null}
+     * @param id the operator-chosen workspace ID (or, for legacy entries that
+     *           have not been renamed, the Slack team ID); {@code null} or
+     *           empty always returns {@code null}
      * @return the matching entry, or {@code null} when no match
      */
-    public SlackWorkspaceEntry findSlackWorkspace(String workspaceId) {
-        if (workspaceId == null || workspaceId.isEmpty()) return null;
-        if (slackWorkspaces == null) return null;
-        for (SlackWorkspaceEntry entry : slackWorkspaces) {
-            if (workspaceId.equals(entry.getWorkspaceId())) return entry;
+    public WorkspaceEntry findWorkspace(String id) {
+        if (id == null || id.isEmpty()) return null;
+        if (workspaces == null) return null;
+        for (WorkspaceEntry entry : workspaces) {
+            if (id.equals(entry.getId())) return entry;
         }
         return null;
+    }
+
+    /**
+     * Backward-compatible alias for {@link #findWorkspace(String)}. Retained so
+     * callers (including external scripts and the test suite) that have not
+     * migrated to the new name continue to compile.
+     *
+     * @param id the workspace ID
+     * @return the matching entry, or {@code null}
+     */
+    public WorkspaceEntry findSlackWorkspace(String id) {
+        return findWorkspace(id);
+    }
+
+    /**
+     * Renames a workspace, updating every workstream that referenced the old
+     * ID. Used by the {@code workspace_update_config} MCP tool when an
+     * operator passes a new {@code new_id}. The Slack-team-ID connection
+     * (when set) is preserved unchanged so renaming a workspace from
+     * {@code "T0123456789"} to {@code "almostrealism"} does not disrupt
+     * channel routing.
+     *
+     * @param oldId current workspace ID; must match an existing entry
+     * @param newId new workspace ID; must not collide with another entry
+     * @return {@code true} when the rename happened, {@code false} when the
+     *         old ID was not found
+     * @throws IllegalArgumentException when {@code newId} collides with an
+     *         existing different workspace
+     */
+    public boolean renameWorkspace(String oldId, String newId) {
+        if (oldId == null || oldId.isEmpty() || newId == null || newId.isEmpty()) {
+            return false;
+        }
+        if (oldId.equals(newId)) return true;
+        WorkspaceEntry target = findWorkspace(oldId);
+        if (target == null) return false;
+        if (findWorkspace(newId) != null) {
+            throw new IllegalArgumentException("Workspace ID '" + newId
+                    + "' is already taken");
+        }
+        target.setId(newId);
+        for (WorkstreamEntry entry : workstreams) {
+            if (oldId.equals(entry.getWorkspaceId())) {
+                entry.setWorkspaceId(newId);
+            }
+        }
+        return true;
     }
 
     /**
@@ -893,12 +1050,12 @@ public class WorkstreamConfig {
      *                     phase wire name
      */
     public void validateWorkspaceRunners() throws IOException {
-        if (slackWorkspaces == null) return;
-        for (SlackWorkspaceEntry entry : slackWorkspaces) {
+        if (workspaces == null) return;
+        for (WorkspaceEntry entry : workspaces) {
             Map<String, String> entryRunners = entry.getRunners();
             if (entryRunners == null || entryRunners.isEmpty()) continue;
-            String label = entry.getWorkspaceId() != null
-                    ? entry.getWorkspaceId() : entry.getName();
+            String label = entry.getId() != null
+                    ? entry.getId() : entry.getName();
             for (String phaseKey : entryRunners.keySet()) {
                 try {
                     Phase.fromWireName(phaseKey);
@@ -910,7 +1067,7 @@ public class WorkstreamConfig {
                     }
                     known.append("]");
                     throw new IOException("Unknown phase '" + phaseKey
-                            + "' in slackWorkspaces["
+                            + "' in workspaces["
                             + (label != null ? label : "<unnamed>")
                             + "].runners; expected one of "
                             + known);
@@ -1015,7 +1172,7 @@ public class WorkstreamConfig {
         entry.setGithubOrg(ws.getGithubOrg());
         entry.setDependentRepos(ws.getDependentRepos());
         entry.setRequiredLabels(ws.getRequiredLabels());
-        entry.setSlackWorkspaceId(ws.getSlackWorkspaceId());
+        entry.setWorkspaceId(ws.getWorkspaceId());
         entry.setModel(ws.getModel());
         entry.setEffort(ws.getEffort());
         entry.setDefaultRunner(ws.getDefaultRunner());
@@ -1055,7 +1212,7 @@ public class WorkstreamConfig {
                     entry.setGithubOrg(ws.getGithubOrg());
                     entry.setDependentRepos(ws.getDependentRepos());
                     entry.setRequiredLabels(ws.getRequiredLabels());
-                    entry.setSlackWorkspaceId(ws.getSlackWorkspaceId());
+                    entry.setWorkspaceId(ws.getWorkspaceId());
                     entry.setModel(ws.getModel());
                     entry.setEffort(ws.getEffort());
                     entry.setDefaultRunner(ws.getDefaultRunner());
