@@ -183,6 +183,111 @@ it the same way.
 
 ---
 
+## Subprocess launch backends
+
+`AgentProcessRunner.runAttempt` has two launch backends:
+
+| Backend | Selected by | Where the child runs |
+|---------|-------------|----------------------|
+| Direct `Process` | `useTmux=false` (default) | A direct child of the JVM. `stdin` is redirected from `/dev/null`; `stdout`/`stderr` are merged into a single pipe that the runner reads line-by-line. |
+| `TmuxSession` | `useTmux=true` | The child is launched inside a `tmux` session (one pane per attempt). The pane is connected to a real pty; pane output is captured by `tmux pipe-pane` into a tail log that the runner reads line-by-line. |
+
+`ClaudeCodeRunner` selects the backend at runtime based on the
+`AR_AGENT_USE_TMUX` env var:
+
+- Unset (the default) → direct `Process`. Live deployments behave exactly
+  as before the tmux work landed.
+- `enabled` and `tmux` is on `PATH` → `TmuxSession`.
+- `enabled` but `tmux` is missing → direct `Process`, with a one-line
+  warning in the job log so the misconfiguration is visible.
+- `disabled` → direct `Process`.
+- Any other value → a startup error from `SystemUtils.isEnabled` (the
+  helper intentionally rejects boolean synonyms like `true`/`false` to
+  prevent silent misconfiguration).
+
+`OpencodeRunner` uses the direct-process backend unconditionally. The
+choice is per-call — `runAttempt` exposes a `useTmux` boolean and any
+caller may flip it independently.
+
+### Why a tty matters
+
+The Claude Code CLI behaves differently when launched as a non-interactive
+subprocess versus when it has a controlling terminal. Some authentication
+modes — specifically the OAuth-token flow that the agent containers ship
+with — require an interactive context to validate the session. Without a
+tty the process exits with an auth error before producing structured
+output. The tmux-backed launch path exists to give the child a real pty
+without requiring a human attached to the terminal.
+
+### Behavioral consequences of `useTmux=true`
+
+1. **The reported PID is the bash wrapper, not the agent binary.** Each
+   tmux session runs a small wrapper that synchronizes with the JVM, runs
+   the agent command, and records its exit code. The PID in the runner's
+   `Process started (PID: …)` log line is the wrapper's; the agent binary
+   is its child.
+2. **The kill signal is `SIGHUP`, not `SIGKILL`.** The inactivity
+   watchdog and the lifecycle `close()` call kill the session via
+   `tmux kill-session`, which sends `SIGHUP` to the pane's process group.
+   `claude` and `opencode` both respond to that the same way they respond
+   to a `Ctrl-C`. Anything that catches `SIGHUP` and refuses to exit will
+   leak.
+3. **Tmux sessions outlive the JVM if the JVM dies abnormally.** The
+   `tmux` server is a separate process. A clean `close()` (try-with-
+   resources on the `TmuxSession`) tears the session down; a `kill -9` on
+   the JVM leaves it running. Operators should periodically prune stale
+   `agent-*` sessions: `tmux ls 2>/dev/null | grep '^agent-' | cut -d:
+   -f1 | xargs -r -I{} tmux kill-session -t {}`.
+4. **`TERM` and `NO_COLOR` are forced.** Before the session starts,
+   `runInTmux` sets `TERM=dumb` and `NO_COLOR=1` on the environment
+   passed to tmux if they are not already present. This suppresses ANSI
+   color codes, spinners, and other tty-conditional decoration that
+   would corrupt the runner's NDJSON parsing. A caller that genuinely
+   wants tty-conditional output (for example, a future runner that
+   parses ANSI escapes itself) can pre-set these vars in
+   `AgentRunRequest.environment` and the defaults will not overwrite
+   them.
+5. **The full inherited environment is forwarded via `tmux -e`.**
+   Tmux's session-level environment overrides take precedence over the
+   server's cached environment. This is how `HOME`,
+   `CLAUDE_CODE_OAUTH_TOKEN`, MCP-related vars, and
+   `AR_AGENT_ACTIVITY` reach the child correctly when the tmux server
+   was started by some other process at boot.
+
+### Operator login workflow (for `ClaudeCodeRunner`)
+
+`ClaudeCodeRunner` does not perform login. It relies on credentials that
+already exist on disk inside the agent container — by convention under
+`~/.claude/`. For container deployments the recommended procedure is:
+
+1. Mount `~/.claude/` as a persistent volume on the agent container so
+   credentials survive container restarts.
+2. After the first `rebuild.sh --agents` run, exec into the container and
+   run `claude login` once:
+
+   ```sh
+   docker exec -it <agent-container> claude login
+   ```
+
+   `claude` prints a URL and a verification code. The operator opens the
+   URL in their own browser, pastes the code, and the CLI writes
+   credentials to the mounted `~/.claude/` volume.
+3. Subsequent `ClaudeCodeJob` runs read those credentials and need no
+   further interaction.
+
+This is the only step that genuinely requires a human; everything after
+the credentials are cached runs unattended. The same one-time login also
+satisfies any policy that disallows headless-token use for interactive
+sessions, because the cached credentials are obtained through the
+operator's authenticated browser session, not from a long-lived token in
+the container environment.
+
+If a job ever fails with an auth error, the remedy is the same as
+day-one: exec in and run `claude login` again. The doc index for this
+procedure lives in [../operations/SETUP.md](../operations/SETUP.md).
+
+---
+
 ## When a runner is unavailable
 
 If a runner's underlying binary is missing on the executor, the runner

@@ -52,7 +52,28 @@ is documented in [OPENCODE.md](OPENCODE.md).
 5. Run `./flowtree/runtime/rebuild.sh --agents-only`. The script prompts for the
    controller host and a Claude Code OAuth token on first run; subsequent
    runs reuse the saved `.env`.
-6. (Optional) Configure Tailscale Funnel for public access to ar-manager.
+6. (Optional, only if enabling the tmux launch backend) Log the agent
+   containers in to Claude. By default `ClaudeCodeRunner` uses the direct
+   `ProcessBuilder` launch path and relies on the headless OAuth token
+   provided via `.env`; no extra step is needed.
+
+   To switch to the tmux-backed launch (see
+   [../architecture/AGENT_RUNNERS.md § Subprocess launch backends](../architecture/AGENT_RUNNERS.md#subprocess-launch-backends)),
+   set `AR_AGENT_USE_TMUX=enabled` in `flowtree/runtime/agent/.env` and
+   bounce the container. That mode requires interactively cached
+   credentials, not a long-lived headless token, so for each agent
+   container run:
+
+   ```sh
+   docker exec -it <agent-container> claude login
+   ```
+
+   `claude` prints a URL and a verification code; open the URL in your
+   browser, paste the code, and the CLI writes credentials under
+   `~/.claude/`. Mount that directory as a persistent volume so the
+   credentials survive container restarts. Subsequent jobs run
+   unattended. Re-run the login if a job ever fails with an auth error.
+7. (Optional) Configure Tailscale Funnel for public access to ar-manager.
    The `rebuild.sh` Funnel check at the end of every run reports up/down
    status and prints the command to restore service. See
    [runtime/README.md](../../runtime/README.md) for context.
