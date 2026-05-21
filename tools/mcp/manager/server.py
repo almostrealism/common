@@ -308,9 +308,9 @@ def _decode_current_request_token_full(
     try:
         request_context = ctx.request_context
     except (LookupError, ValueError, AttributeError):
-        return None, None, None, "no_context"
+        return None, None, None, "no_request"
     if request_context is None:
-        return None, None, None, "no_context"
+        return None, None, None, "no_request"
     request = getattr(request_context, "request", None)
     if request is None:
         return None, None, None, "no_request"
@@ -3903,8 +3903,13 @@ def send_message(
     tl_ws = getattr(_thread_local, "workstream_id", None)
     tl_job = getattr(_thread_local, "job_id", None)
 
-    effective_ws = workstream_id or _get_token_workstream_id() or ""
-    effective_job = job_id or _get_token_job_id() or ""
+    # Reuse the already-decoded per_req_ws/per_req_job and the already-read
+    # ctx_* / tl_* values rather than calling _get_token_workstream_id() /
+    # _get_token_job_id(), which would each invoke _decode_current_request_token_full()
+    # a second time. The resolution order is identical: explicit arg wins, then
+    # per-request bearer, then ContextVar, then thread-local.
+    effective_ws = workstream_id or per_req_ws or ctx_ws or tl_ws or ""
+    effective_job = job_id or per_req_job or ctx_job or tl_job or ""
     effective_activity = (activity or os.environ.get("AR_AGENT_ACTIVITY", "")).strip()
 
     if effective_ws and not effective_job:
