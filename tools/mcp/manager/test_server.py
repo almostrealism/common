@@ -10,6 +10,7 @@ import json
 import os
 import sys
 import unittest
+from unittest import mock
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError, URLError
 
@@ -262,6 +263,193 @@ class TestWorkstreamList(unittest.TestCase):
         _grant_scopes("write")
         with self.assertRaises(PermissionError):
             server.workstream_list()
+
+    @patch.object(server, "_controller_get")
+    def test_include_archived_flag(self, mock_get):
+        _grant_all_scopes()
+        mock_get.return_value = [
+            {"workstreamId": "ws-1"},
+            {"workstreamId": "ws-2", "archived": True},
+        ]
+        result = server.workstream_list(include_archived=True)
+        mock_get.assert_called_once_with("/api/workstreams?includeArchived=true")
+        self.assertEqual(result["count"], 2)
+        archived = [w for w in result["workstreams"] if w.get("archived")]
+        self.assertEqual(len(archived), 1)
+        self.assertEqual(archived[0]["workstreamId"], "ws-2")
+
+
+class TestWorkstreamArchive(unittest.TestCase):
+
+    @patch.object(server, "_controller_post")
+    def test_archive_passes_slack_flag(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {
+            "ok": True, "workstreamId": "ws-archive",
+            "archivedAt": "2026-05-19T00:00:00Z",
+            "slackChannelArchived": True,
+        }
+        result = server.workstream_archive(workstream_id="ws-archive")
+        path, payload = mock_post.call_args[0][:2]
+        self.assertEqual(path, "/api/workstreams/ws-archive/archive")
+        self.assertEqual(payload, {"archiveSlackChannel": True})
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["slackChannelArchived"])
+
+    @patch.object(server, "_controller_post")
+    def test_archive_can_skip_slack(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-a"}
+        server.workstream_archive(
+            workstream_id="ws-a", archive_slack_channel=False)
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload, {"archiveSlackChannel": False})
+
+    @patch.object(server, "_controller_post")
+    def test_archive_surfaces_active_job_error(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {
+            "ok": False,
+            "error": "workstream has 2 active jobs; cancel or wait for completion"
+                     " before archiving. Active job IDs: job-a, job-b",
+        }
+        result = server.workstream_archive(workstream_id="ws-busy")
+        self.assertFalse(result["ok"])
+        self.assertIn("active job", result["error"])
+        self.assertIn("job-a", result["error"])
+
+    def test_archive_requires_write_scope(self):
+        _grant_scopes("read")
+        with self.assertRaises(PermissionError):
+            server.workstream_archive(workstream_id="ws-x")
+
+
+class TestWorkstreamUnarchive(unittest.TestCase):
+
+    @patch.object(server, "_controller_post")
+    def test_unarchive_posts_empty_body(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-restore"}
+        result = server.workstream_unarchive(workstream_id="ws-restore")
+        path, payload = mock_post.call_args[0][:2]
+        self.assertEqual(path, "/api/workstreams/ws-restore/unarchive")
+        self.assertEqual(payload, {})
+        self.assertTrue(result["ok"])
+
+    def test_unarchive_requires_write_scope(self):
+        _grant_scopes("read")
+        with self.assertRaises(PermissionError):
+            server.workstream_unarchive(workstream_id="ws-x")
+
+
+class TestWorkstreamDelete(unittest.TestCase):
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    @patch.object(server, "_controller_post")
+    def test_delete_clears_tracker_linkage(
+            self, mock_post, mock_tracker_get, mock_tracker_put):
+        _grant_all_scopes()
+        # First call returns two tasks; second call returns empty (tasks are gone).
+        mock_tracker_get.side_effect = [
+            {"ok": True, "tasks": [{"id": "task-1"}, {"id": "task-2"}]},
+            {"ok": True, "tasks": []},
+        ]
+        mock_tracker_put.return_value = {"ok": True}
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-gone"}
+        result = server.workstream_delete(workstream_id="ws-gone")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["deletedTrackerTasks"], 2)
+        self.assertNotIn("trackerCleanupWarning", result)
+        # Tracker tasks were cleared
+        clear_calls = mock_tracker_put.call_args_list
+        self.assertEqual(len(clear_calls), 2)
+        for call in clear_calls:
+            self.assertEqual(call.args[1], {"workstream_id": None})
+        # Controller endpoint was hit with force=False by default
+        path, payload = mock_post.call_args[0][:2]
+        self.assertEqual(path, "/api/workstreams/ws-gone/delete")
+        self.assertEqual(payload, {"force": False})
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    @patch.object(server, "_controller_post")
+    def test_delete_force_passes_through(
+            self, mock_post, mock_tracker_get, mock_tracker_put):
+        _grant_all_scopes()
+        mock_tracker_get.return_value = {"ok": True, "tasks": []}
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-x"}
+        server.workstream_delete(workstream_id="ws-x", force=True)
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload, {"force": True})
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    @patch.object(server, "_controller_post")
+    def test_delete_rejects_when_not_archived(
+            self, mock_post, mock_tracker_get, mock_tracker_put):
+        _grant_all_scopes()
+        mock_post.return_value = {
+            "ok": False,
+            "error": "Workstream ws-live is not archived. Archive it first"
+                     " (workstream_archive) or pass force=true to delete"
+                     " a live workstream.",
+        }
+        result = server.workstream_delete(workstream_id="ws-live")
+        self.assertFalse(result["ok"])
+        self.assertIn("Archive it first", result["error"])
+        # Tracker linkage is preserved when the controller refuses delete.
+        mock_tracker_get.assert_not_called()
+        mock_tracker_put.assert_not_called()
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    @patch.object(server, "_controller_post")
+    def test_delete_surfaces_warning_on_tracker_query_failure(
+            self, mock_post, mock_tracker_get, mock_tracker_put):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-x"}
+        mock_tracker_get.return_value = {"ok": False, "error": "tracker down"}
+        result = server.workstream_delete(workstream_id="ws-x")
+        self.assertTrue(result["ok"])
+        self.assertIn("trackerCleanupWarning", result)
+        self.assertIn("tracker query failed", result["trackerCleanupWarning"])
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    @patch.object(server, "_controller_post")
+    def test_delete_surfaces_warning_on_tracker_update_stall(
+            self, mock_post, mock_tracker_get, mock_tracker_put):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-y"}
+        mock_tracker_get.return_value = {"ok": True, "tasks": [{"id": "task-stuck"}]}
+        mock_tracker_put.return_value = {"ok": False, "error": "read-only"}
+        result = server.workstream_delete(workstream_id="ws-y")
+        self.assertTrue(result["ok"])
+        self.assertIn("trackerCleanupWarning", result)
+        self.assertIn("stalled", result["trackerCleanupWarning"])
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    @patch.object(server, "_controller_post")
+    def test_delete_no_warning_on_clean_success(
+            self, mock_post, mock_tracker_get, mock_tracker_put):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-clean"}
+        mock_tracker_get.side_effect = [
+            {"ok": True, "tasks": [{"id": "task-a"}, {"id": "task-b"}]},
+            {"ok": True, "tasks": []},
+        ]
+        mock_tracker_put.return_value = {"ok": True}
+        result = server.workstream_delete(workstream_id="ws-clean")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["deletedTrackerTasks"], 2)
+        self.assertNotIn("trackerCleanupWarning", result)
+
+    def test_delete_requires_write_scope(self):
+        _grant_scopes("read")
+        with self.assertRaises(PermissionError):
+            server.workstream_delete(workstream_id="ws-x")
 
 
 class TestWorkstreamGetStatus(unittest.TestCase):
@@ -717,6 +905,166 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertIn("non-empty string", result["error"])
 
 
+class TestSubmitCommitLanguageLinter(unittest.TestCase):
+    """Server-side linter rejects prompts that imply the agent controls
+    git commits.  allow_commit_language=True bypasses the linter.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def tearDown(self):
+        server._request_workspace_scopes.set(None)
+        if hasattr(server._thread_local, "workspace_scopes"):
+            del server._thread_local.workspace_scopes
+
+    def _bad_prompt(self, text):
+        """Submit a prompt that should be rejected; return the result."""
+        return server.workstream_submit_task(prompt=text)
+
+    def _good_prompt(self, text):
+        """Submit a prompt with allow_commit_language=True and assert the
+        linter did not fire. The controller HTTP call is mocked here so the
+        test does not depend on CONTROLLER_URL reachability — without the
+        mock urlopen would attempt a real network round-trip and pollute the
+        observable error with a transport-level failure, making the linter
+        assertion racy/slow on offline runners.
+        """
+        with mock.patch.object(server, "_controller_post",
+                               return_value={"ok": True, "taskId": "test"}):
+            result = server.workstream_submit_task(
+                prompt=text, allow_commit_language=True)
+        # Linter must not have fired — the mocked controller call is the
+        # only thing that should have responded.
+        error = result.get("error", "")
+        self.assertNotIn("sequence of commits", error,
+                         "allow_commit_language=True should bypass the linter")
+        self.assertNotIn("commit-language", error,
+                         "allow_commit_language=True should bypass the linter")
+
+    # -- Forbidden patterns ---------------------------------------------------
+
+    def test_rejects_commit_number_phrase(self):
+        result = self._bad_prompt(
+            "Do the following: Commit 1: set up the schema. "
+            "Commit 2: add the service layer.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+        self.assertIn("commit-number phrase", result["error"])
+
+    def test_rejects_first_commit_phrase(self):
+        result = self._bad_prompt(
+            "In the first commit add the migration file, "
+            "then write the test.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+        self.assertIn("first commit", result["error"])
+
+    def test_rejects_next_commit_phrase(self):
+        result = self._bad_prompt(
+            "After the setup is done, in the next commit "
+            "wire up the controller.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+        self.assertIn("next commit", result["error"])
+
+    def test_rejects_final_commit_phrase(self):
+        result = self._bad_prompt(
+            "The final commit should include the documentation update.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+        self.assertIn("final commit", result["error"])
+
+    def test_rejects_as_separate_commits_phrase(self):
+        result = self._bad_prompt(
+            "Please land each layer as separate commits so reviewers "
+            "can examine them independently.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+        self.assertIn("separate", result["error"])
+
+    def test_rejects_in_n_commits_phrase(self):
+        result = self._bad_prompt(
+            "Please land the whole feature in 3 commits with clear boundaries.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+
+    def test_rejects_commit_message_should_phrase(self):
+        result = self._bad_prompt(
+            "When you are done, your commit message should summarize "
+            "the entire changeset.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+
+    def test_rejects_commit_this_before_phrase(self):
+        result = self._bad_prompt(
+            "Commit this before starting on the second part of the task.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+
+    def test_rejects_commit_between_each_phrase(self):
+        result = self._bad_prompt(
+            "Please commit between each major change so the diff is small.")
+        self.assertFalse(result["ok"])
+        self.assertIn("sequence of commits", result["error"])
+
+    # -- Rejection message quality --------------------------------------------
+
+    def test_rejection_message_names_the_phrase_and_line(self):
+        result = self._bad_prompt(
+            "Here is the plan:\n"
+            "Commit 1: implement the parser.\n"
+            "Commit 2: add tests.\n")
+        self.assertFalse(result["ok"])
+        error = result["error"]
+        self.assertIn("Line 2", error)
+        self.assertIn("commit-number phrase", error)
+
+    # -- Escape hatch ---------------------------------------------------------
+
+    @patch.object(server, "_controller_post")
+    def test_allow_commit_language_bypasses_linter(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "j1"}
+        result = server.workstream_submit_task(
+            prompt="Commit 1: do X. Commit 2: do Y.",
+            allow_commit_language=True,
+        )
+        self.assertTrue(result["ok"],
+                        "allow_commit_language=True must bypass the linter")
+        mock_post.assert_called_once()
+
+    # -- Short-prompt exemption -----------------------------------------------
+
+    @patch.object(server, "_controller_post")
+    def test_short_prompt_skips_linter(self, mock_post):
+        """Prompts shorter than 50 chars are too brief for the linter to run."""
+        mock_post.return_value = {"ok": True, "jobId": "j2"}
+        # "Commit 1: fix" is only 14 chars — well under the threshold.
+        result = server.workstream_submit_task(prompt="Commit 1: fix")
+        # The linter must not fire; the call goes to the controller.
+        mock_post.assert_called_once()
+        self.assertTrue(result["ok"])
+
+    # -- False-positive guard -------------------------------------------------
+
+    @patch.object(server, "_controller_post")
+    def test_does_not_reject_commit_message_convention_reference(self, mock_post):
+        """A prompt that references the existing commit message convention
+        (e.g. for documentation purposes) should not be flagged.
+        """
+        mock_post.return_value = {"ok": True, "jobId": "j3"}
+        prompt = (
+            "Update the CONTRIBUTING guide to explain that the existing "
+            "commit message convention follows the Angular format: "
+            "<type>(<scope>): <subject>.  Add examples of good and bad "
+            "commit subject lines so contributors know what to write."
+        )
+        result = server.workstream_submit_task(prompt=prompt)
+        self.assertTrue(result["ok"],
+                        "Normal English references to commit conventions "
+                        "should not be rejected by the linter")
+
+
 class TestWorkstreamSubmitSelfCollision(unittest.TestCase):
     """workstream_submit_task must not let an agent submit work to its
     own workstream — concurrent commits on the same branch break the
@@ -1166,6 +1514,177 @@ class TestWorkstreamUpdateConfig(unittest.TestCase):
         )
         self.assertFalse(result["ok"])
         self.assertIn("error", result)
+
+
+class TestWorkspaceUpdateConfig(unittest.TestCase):
+
+    @patch.object(server, "_controller_post")
+    def test_update_name_and_default_channel(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        result = server.workspace_update_config(
+            slack_workspace_id="T0123456789",
+            name="Acme Inc",
+            default_channel="C9999",
+        )
+        call_path = mock_post.call_args[0][0]
+        self.assertIn("T0123456789", call_path)
+        self.assertIn("/config", call_path)
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["name"], "Acme Inc")
+        self.assertEqual(payload["defaultChannel"], "C9999")
+        self.assertTrue(result["ok"])
+
+    @patch.object(server, "_controller_post")
+    def test_update_runners_forwarded_as_object(self, mock_post):
+        """runners JSON string is parsed and forwarded as a nested object."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            slack_workspace_id="T0123456789",
+            runners='{"primary":"opencode"}',
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {"primary": "opencode"})
+
+    @patch.object(server, "_controller_post")
+    def test_update_default_runner_forwarded(self, mock_post):
+        """default_runner alone is forwarded as runners={"default": <value>}."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            slack_workspace_id="T0123456789",
+            default_runner="opencode",
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {"default": "opencode"})
+
+    @patch.object(server, "_controller_post")
+    def test_explicit_default_in_runners_wins(self, mock_post):
+        """When both runners[default] and default_runner are supplied, runners wins."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            slack_workspace_id="T0123456789",
+            runners='{"default":"opencode"}',
+            default_runner="claude",
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {"default": "opencode"})
+
+    def test_no_fields_returns_error(self):
+        _grant_all_scopes()
+        result = server.workspace_update_config(slack_workspace_id="T0123456789")
+        self.assertFalse(result["ok"])
+        self.assertIn("No fields to update", result["error"])
+
+    def test_update_runners_rejects_malformed_json(self):
+        """Malformed runners JSON yields ok=False without calling the controller."""
+        _grant_all_scopes()
+        result = server.workspace_update_config(
+            slack_workspace_id="T0123456789",
+            runners="not-valid-json",
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
+
+    def test_update_runners_rejects_unknown_phase(self):
+        """Unknown phase names in runners are rejected client-side."""
+        _grant_all_scopes()
+        result = server.workspace_update_config(
+            slack_workspace_id="T0123456789",
+            runners='{"unknown-phase":"claude"}',
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("error", result)
+
+    @patch.object(server, "_controller_post")
+    def test_empty_string_fields_do_not_change_payload(self, mock_post):
+        """Empty-string optional fields are omitted from the controller payload."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            slack_workspace_id="T0123456789",
+            name="Acme",
+            default_channel="",
+            default_runner="",
+            runners="",
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload, {"name": "Acme"})
+
+    @patch.object(server, "_controller_post")
+    def test_accepts_new_workspace_id_param(self, mock_post):
+        """The canonical workspace_id parameter routes the same as the legacy alias."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            workspace_id="almostrealism", name="Acme")
+        call_path = mock_post.call_args[0][0]
+        self.assertIn("almostrealism", call_path)
+
+    @patch.object(server, "_controller_post")
+    def test_new_id_forwarded_as_newId_payload(self, mock_post):
+        """Supplying new_id forwards a newId field to the controller."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            workspace_id="T0123456789", new_id="almostrealism")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["newId"], "almostrealism")
+
+    @patch.object(server, "_controller_post")
+    def test_new_id_equal_to_workspace_id_is_omitted(self, mock_post):
+        """new_id matching the existing id is a no-op and is omitted from the payload."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            workspace_id="almostrealism",
+            new_id="almostrealism",
+            name="Acme")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("newId", payload)
+        self.assertEqual(payload["name"], "Acme")
+
+    @patch.object(server, "_controller_post")
+    def test_slack_team_id_set_to_nonempty_forwards(self, mock_post):
+        """A non-empty slack_team_id binds the workspace to that Slack team."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            workspace_id="almostrealism", slack_team_id="T0123456789")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["slackTeamId"], "T0123456789")
+
+    @patch.object(server, "_controller_post")
+    def test_slack_team_id_explicit_empty_clears(self, mock_post):
+        """An explicit empty string for slack_team_id clears the Slack binding."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            workspace_id="almostrealism", slack_team_id="")
+        payload = mock_post.call_args[0][1]
+        # slackTeamId is present (so the controller knows to clear it),
+        # but its value is the empty string.
+        self.assertIn("slackTeamId", payload)
+        self.assertEqual(payload["slackTeamId"], "")
+
+    @patch.object(server, "_controller_post")
+    def test_slack_team_id_omitted_leaves_payload_unset(self, mock_post):
+        """Omitting slack_team_id leaves the field absent from the payload."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workspace_update_config(
+            workspace_id="almostrealism", name="Acme")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("slackTeamId", payload)
+
+    def test_missing_workspace_id_returns_error(self):
+        """Calling with neither workspace_id nor slack_workspace_id returns an error."""
+        _grant_all_scopes()
+        result = server.workspace_update_config(name="Acme")
+        self.assertFalse(result["ok"])
+        self.assertIn("workspace_id", result["error"])
 
 
 # -----------------------------------------------------------------------
@@ -1929,6 +2448,188 @@ class TestSendMessageActivity(unittest.TestCase):
 
 
 # -----------------------------------------------------------------------
+# Per-request token decoding (FastMCP stateful-transport workaround)
+# -----------------------------------------------------------------------
+
+
+class TestPerRequestTokenDecoding(unittest.TestCase):
+    """Regression tests for the fix that decodes the Bearer token directly
+    from the current MCP tool call's HTTP request rather than relying on
+    a ContextVar/threading.local set by the auth middleware.
+
+    The opencode runner exposed a defect in the contextvar/thread-local
+    mechanism: under FastMCP's streamable-HTTP **stateful** transport,
+    tool handlers run on a long-lived "session task" whose context was
+    captured at session creation time and is not updated by subsequent
+    per-request auth middleware passes. The thread-local fallback is
+    racy across concurrent requests on a single event-loop thread. The
+    result was that ``send_message`` from an opencode session saw an
+    empty workstream/job context and either errored out or landed
+    messages at the top level of the workspace's Slack channel instead
+    of inside the job thread.
+
+    The fix decodes the Bearer token from the current request directly
+    via ``mcp.get_context().request_context.request.headers``. This
+    class verifies the decode helper and the upstream getters honour
+    the per-request value.
+    """
+
+    def setUp(self):
+        # Clear any leftover ContextVar / thread-local state so we are
+        # testing the per-request path in isolation.
+        server._request_workstream_id.set(None)
+        server._request_job_id.set(None)
+        if hasattr(server._thread_local, "workstream_id"):
+            del server._thread_local.workstream_id
+        if hasattr(server._thread_local, "job_id"):
+            del server._thread_local.job_id
+
+    def tearDown(self):
+        server._request_workstream_id.set(None)
+        server._request_job_id.set(None)
+        if hasattr(server._thread_local, "workstream_id"):
+            del server._thread_local.workstream_id
+        if hasattr(server._thread_local, "job_id"):
+            del server._thread_local.job_id
+
+    @staticmethod
+    def _fake_context_with_bearer(token_value):
+        """Return a stand-in for ``mcp.get_context()`` whose
+        ``request_context.request.headers`` reports the given Bearer
+        token (or no auth header at all when ``token_value`` is None).
+        """
+        headers = {}
+        if token_value is not None:
+            headers["authorization"] = "Bearer " + token_value
+
+        fake_request = MagicMock()
+        fake_request.headers = headers
+
+        fake_request_context = MagicMock()
+        fake_request_context.request = fake_request
+
+        fake_ctx = MagicMock()
+        fake_ctx.request_context = fake_request_context
+        return fake_ctx
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_decode_returns_workstream_and_job_from_temp_token(self):
+        token = server._mint_temp_token("ws-A", "job-A", ttl_seconds=60)
+        self.assertIsNotNone(token)
+        with patch.object(server.mcp, "get_context",
+                          return_value=self._fake_context_with_bearer(token)):
+            ws, job = server._decode_current_request_token()
+        self.assertEqual(ws, "ws-A")
+        self.assertEqual(job, "job-A")
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_decode_returns_none_when_no_bearer_header(self):
+        with patch.object(server.mcp, "get_context",
+                          return_value=self._fake_context_with_bearer(None)):
+            ws, job = server._decode_current_request_token()
+        self.assertIsNone(ws)
+        self.assertIsNone(job)
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_decode_returns_none_when_no_request_context(self):
+        fake_ctx = MagicMock()
+        fake_ctx.request_context = None
+        with patch.object(server.mcp, "get_context", return_value=fake_ctx):
+            ws, job = server._decode_current_request_token()
+        self.assertIsNone(ws)
+        self.assertIsNone(job)
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_decode_returns_none_for_static_token_bearer(self):
+        # A non-HMAC bearer (e.g. a static long-lived admin token) is
+        # not an ``armt_tmp_`` token; the decode helper must reject it.
+        with patch.object(server.mcp, "get_context",
+                          return_value=self._fake_context_with_bearer(
+                              "static-admin-token")):
+            ws, job = server._decode_current_request_token()
+        self.assertIsNone(ws)
+        self.assertIsNone(job)
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_decode_returns_none_when_get_context_lookup_errors(self):
+        with patch.object(server.mcp, "get_context",
+                          side_effect=LookupError("no active request")):
+            ws, job = server._decode_current_request_token()
+        self.assertIsNone(ws)
+        self.assertIsNone(job)
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_decode_returns_none_when_request_context_property_raises(self):
+        # ``FastMCP.Context.request_context`` raises ValueError when the
+        # tool is invoked outside of a live MCP request (e.g. unit tests
+        # that call the function directly). The decoder must treat that
+        # as "no request" rather than crashing the tool.
+        fake_ctx = MagicMock()
+        type(fake_ctx).request_context = mock.PropertyMock(
+            side_effect=ValueError("Context is not available outside of a request"))
+        with patch.object(server.mcp, "get_context", return_value=fake_ctx):
+            ws, job = server._decode_current_request_token()
+        self.assertIsNone(ws)
+        self.assertIsNone(job)
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_token_getters_prefer_per_request_value_over_contextvar(self):
+        # Simulate the FastMCP stateful-transport hazard: the session
+        # task's ContextVar/thread-local were captured from a prior
+        # request bound to a different workstream/job, but the actual
+        # current HTTP request carries a temp token for ws-CURRENT.
+        server._set_token_context("ws-STALE", "job-STALE")
+        token = server._mint_temp_token("ws-CURRENT", "job-CURRENT", ttl_seconds=60)
+        with patch.object(server.mcp, "get_context",
+                          return_value=self._fake_context_with_bearer(token)):
+            self.assertEqual(server._get_token_workstream_id(), "ws-CURRENT")
+            self.assertEqual(server._get_token_job_id(), "job-CURRENT")
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    def test_token_getters_fall_back_when_no_request(self):
+        # When there is no active MCP request context, the legacy
+        # ContextVar/thread-local fallback still applies. This keeps
+        # in-process tests and stdio-transport callers working.
+        server._set_token_context("ws-FALLBACK", "job-FALLBACK")
+        with patch.object(server.mcp, "get_context",
+                          side_effect=LookupError("no active request")):
+            self.assertEqual(server._get_token_workstream_id(), "ws-FALLBACK")
+            self.assertEqual(server._get_token_job_id(), "job-FALLBACK")
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    @patch.object(server, "_controller_post")
+    def test_send_message_uses_per_request_token_for_thread_routing(
+            self, mock_post):
+        """The end-to-end regression test for opencode's threading bug.
+
+        With the session task carrying stale ContextVar state (as
+        happens in FastMCP stateful streamable-HTTP transport),
+        ``send_message`` must still post into the *current* request's
+        job thread — derived from the Bearer token attached to the
+        in-flight HTTP request — not the stale session-task context.
+        """
+        _grant_all_scopes()
+        # Stale session-task context (the FastMCP hazard).
+        server._set_token_context("ws-STALE", "job-STALE")
+        # Current HTTP request carries a temp token for ws-A / job-7.
+        token = server._mint_temp_token("ws-A", "job-7", ttl_seconds=60)
+        mock_post.return_value = {"ok": True}
+        with patch.object(server.mcp, "get_context",
+                          return_value=self._fake_context_with_bearer(token)):
+            result = server.send_message(text="Hello from opencode")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_post.assert_called_once()
+        called_path = mock_post.call_args[0][0]
+        # Must route to /api/workstreams/ws-A/jobs/job-7/messages — NOT
+        # to /api/workstreams/ws-STALE/... and NOT to the workstream-
+        # level ``/messages`` endpoint (which would land at the top of
+        # the channel).
+        self.assertIn("/api/workstreams/ws-A/jobs/job-7/messages",
+                      called_path)
+        self.assertNotIn("ws-STALE", called_path)
+
+
+# -----------------------------------------------------------------------
 # workstream_context activity filtering
 # -----------------------------------------------------------------------
 
@@ -2558,6 +3259,10 @@ class TestToolRegistration(unittest.TestCase):
             "workstream_submit_task",
             "workstream_register",
             "workstream_update_config",
+            "workspace_update_config",
+            "workstream_archive",
+            "workstream_unarchive",
+            "workstream_delete",
             "project_create_branch",
             "project_verify_branch",
             "project_commit_plan",
@@ -3285,6 +3990,28 @@ class TestWorkstreamRegisterScope(unittest.TestCase):
         self.assertTrue(result["ok"])
         args, _ = mock_post.call_args
         self.assertNotIn("slackWorkspaceId", args[1])
+
+    @patch.object(server, "_controller_post")
+    def test_workspace_id_param_routes_like_legacy(self, mock_post):
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        _set_workspaces("almostrealism")
+        server.workstream_register(
+            default_branch="feature/x", workspace_id="almostrealism")
+        args, _ = mock_post.call_args
+        self.assertEqual("/api/workstreams", args[0])
+        # Both names go on the wire for cross-version compatibility.
+        self.assertEqual("almostrealism", args[1]["workspaceId"])
+        self.assertEqual("almostrealism", args[1]["slackWorkspaceId"])
+
+    @patch.object(server, "_controller_post")
+    def test_legacy_slack_workspace_id_alias_still_accepted(self, mock_post):
+        mock_post.return_value = {"ok": True, "workstreamId": "w-1"}
+        _set_workspaces("TAAA")
+        server.workstream_register(
+            default_branch="feature/x", slack_workspace_id="TAAA")
+        args, _ = mock_post.call_args
+        self.assertEqual("TAAA", args[1]["workspaceId"])
+        self.assertEqual("TAAA", args[1]["slackWorkspaceId"])
 
 
 class TestBearerAuthWorkspaceScopes(unittest.TestCase):

@@ -277,6 +277,10 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"workstream_submit_task",
 			"workstream_register",
 			"workstream_update_config",
+			"workspace_update_config",
+			"workstream_archive",
+			"workstream_unarchive",
+			"workstream_delete",
 			"project_create_branch",
 			"project_verify_branch",
 			"project_commit_plan",
@@ -388,6 +392,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_submit_task must declare default_runner in signature so"
 			+ " operators can set the default runner without enumerating phases",
 			submitParams.contains("default_runner"));
+		assertTrue("workstream_submit_task must declare allow_commit_language in signature"
+			+ " so callers can opt out of the commit-language linter when needed",
+			submitParams.contains("allow_commit_language"));
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
@@ -414,6 +421,35 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_update_config must declare default_runner in signature so"
 			+ " operators can update the default runner for all phases",
 			updateConfigParams.contains("default_runner"));
+
+		List<String> workspaceUpdateParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workspace_update_config");
+		assertTrue("workspace_update_config must declare workspace_id in signature",
+			workspaceUpdateParams.contains("workspace_id"));
+		assertTrue("workspace_update_config must declare slack_workspace_id in signature"
+			+ " (deprecated alias for workspace_id, retained for backward compatibility)",
+			workspaceUpdateParams.contains("slack_workspace_id"));
+		assertTrue("workspace_update_config must declare new_id in signature so"
+			+ " operators can rename a workspace to a friendlier ID",
+			workspaceUpdateParams.contains("new_id"));
+		assertTrue("workspace_update_config must declare slack_team_id in signature so"
+			+ " operators can set or clear the Slack team binding",
+			workspaceUpdateParams.contains("slack_team_id"));
+		assertTrue("workspace_update_config must declare default_runner in signature",
+			workspaceUpdateParams.contains("default_runner"));
+		assertTrue("workspace_update_config must declare runners in signature",
+			workspaceUpdateParams.contains("runners"));
+		assertTrue("workspace_update_config must declare name in signature",
+			workspaceUpdateParams.contains("name"));
+		assertTrue("workspace_update_config must declare default_channel in signature",
+			workspaceUpdateParams.contains("default_channel"));
+
+		assertTrue("workstream_register must declare workspace_id in signature so"
+			+ " operators can route a new workstream to a specific workspace",
+			registerParams.contains("workspace_id"));
+		assertTrue("workstream_register must declare slack_workspace_id in signature"
+			+ " (deprecated alias for workspace_id, retained for backward compatibility)",
+			registerParams.contains("slack_workspace_id"));
 
 		List<String> memoryRecallParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "memory_recall");

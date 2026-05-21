@@ -253,13 +253,78 @@ def _require_workspace(workspace_id: Optional[str]) -> None:
             + (workspace_id if workspace_id else "<unknown>")
         )
 
+def _decode_current_request_token() -> tuple[Optional[str], Optional[str]]:
+    """Decode the Bearer token of the in-flight MCP tool call's HTTP request.
+
+    Returns ``(workstream_id, job_id)`` on a valid HMAC temp token, or
+    ``(None, None)`` on absent/invalid bearer, a static token, or any
+    lookup failure.
+
+    The auth middleware also writes the decoded ``(workstream_id, job_id)``
+    into a :class:`contextvars.ContextVar` plus a :mod:`threading` local —
+    both intended to be read back by :func:`_get_token_workstream_id` and
+    :func:`_get_token_job_id` from inside tool handlers. That mechanism is
+    not reliable under FastMCP's streamable-HTTP **stateful** transport.
+    In stateful mode, the per-session "server task" that dispatches tool
+    handlers inherits its context from whichever HTTP request created the
+    session (the MCP ``initialize`` call). Subsequent HTTP requests on the
+    same session set the ContextVar on a *different* asyncio task — the
+    server task continues running in its original context. The
+    :mod:`threading` local is racy across concurrent requests on a single
+    event-loop thread for the same reason.
+
+    Decoding the token directly from the current request's HTTP
+    ``Authorization`` header sidesteps this entirely: the lowlevel MCP
+    server propagates the originating :class:`starlette.requests.Request`
+    via ``ServerMessageMetadata`` into the dispatch-time ``RequestContext``
+    (accessible via :meth:`FastMCP.get_context`), so every tool call sees
+    the bearer that the client actually sent on that call.
+    """
+    try:
+        ctx = mcp.get_context()
+    except (LookupError, AttributeError):
+        return None, None
+    # ``Context.request_context`` raises ``ValueError`` when invoked
+    # outside of a live MCP request (e.g. unit tests that call the tool
+    # function directly). Treat that as "no request" and fall back.
+    try:
+        request_context = ctx.request_context
+    except (LookupError, ValueError, AttributeError):
+        return None, None
+    if request_context is None:
+        return None, None
+    request = getattr(request_context, "request", None)
+    if request is None:
+        return None, None
+    try:
+        auth_header = request.headers.get("authorization", "")
+    except Exception:
+        return None, None
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None, None
+    token_value = auth_header[7:].strip()
+    result = _validate_temp_token(token_value)
+    if result is None:
+        return None, None
+    _, _, ws_id, job_id = result
+    return ws_id, job_id
+
+
 def _get_token_workstream_id() -> Optional[str]:
+    # Prefer per-request decoding (see _decode_current_request_token for
+    # why ContextVars/thread-locals are unreliable in FastMCP stateful mode).
+    req_ws, _ = _decode_current_request_token()
+    if req_ws:
+        return req_ws
     ws = _request_workstream_id.get(None)
     if ws is not None:
         return ws
     return getattr(_thread_local, "workstream_id", None)
 
 def _get_token_job_id() -> Optional[str]:
+    _, req_job = _decode_current_request_token()
+    if req_job:
+        return req_job
     jid = _request_job_id.get(None)
     if jid is not None:
         return jid
@@ -767,7 +832,10 @@ def _build_maps_from_workstreams(entries: list) -> tuple:
         if not isinstance(ws, dict):
             continue
         wid = ws.get("workstreamId")
-        workspace_id = ws.get("slackWorkspaceId")
+        # Prefer the new workspaceId field; fall back to the legacy alias
+        # so we stay compatible with older controllers that still emit
+        # only slackWorkspaceId on the workstream list.
+        workspace_id = ws.get("workspaceId") or ws.get("slackWorkspaceId")
         if wid:
             ws_map[wid] = workspace_id
         org = _extract_owner_repo(ws.get("repoUrl") or "")
@@ -904,9 +972,12 @@ def _require_workstream_in_scope(workstream_id: str) -> None:
 
 
 def _filter_workstreams_by_scope(entries: list) -> list:
-    """Return only those workstream-dict entries whose slackWorkspaceId is
+    """Return only those workstream-dict entries whose workspaceId is
     permitted by the current request's workspace scope. Unscoped callers
     see everything; scoped callers see only in-scope workstreams.
+    Accepts the legacy ``slackWorkspaceId`` field for backward
+    compatibility with controllers that have not yet started emitting
+    ``workspaceId``.
     """
     scopes = _get_workspace_scopes()
     if not scopes:
@@ -914,7 +985,8 @@ def _filter_workstreams_by_scope(entries: list) -> list:
     filtered = []
     for ws in entries:
         if isinstance(ws, dict):
-            if ws.get("slackWorkspaceId") in scopes:
+            wsid = ws.get("workspaceId") or ws.get("slackWorkspaceId")
+            if wsid in scopes:
                 filtered.append(ws)
     return filtered
 
@@ -1002,7 +1074,7 @@ def _find_workstream(workstream_id: str) -> Optional[dict]:
         for ws in result:
             if ws.get("workstreamId") == workstream_id:
                 if _get_workspace_scopes() and not _is_workspace_allowed(
-                        ws.get("slackWorkspaceId")):
+                        ws.get("workspaceId") or ws.get("slackWorkspaceId")):
                     return None
                 return ws
     return None
@@ -1136,7 +1208,7 @@ def controller_update_config(
 
 
 @mcp.tool()
-def workstream_list() -> dict:
+def workstream_list(include_archived: bool = False) -> dict:
     """List all registered workstreams with their configuration and capabilities.
 
     Each workstream entry includes:
@@ -1149,16 +1221,27 @@ def workstream_list() -> dict:
     - pipelineCapable: whether Tier 2 pipeline tools will work
     - dependentRepos: list of additional repo URLs cloned alongside the
       primary repo (omitted if none configured)
+    - archived: ``true`` when the workstream has been archived (only
+      present when ``include_archived=True``; otherwise such entries
+      are filtered out entirely)
 
     Use this to discover workstreams and determine which tools are
     available for each one.
+
+    Args:
+        include_archived: When ``False`` (default) archived workstreams
+            are omitted from the response. Set ``True`` to include them;
+            each archived entry carries ``archived=true``.
 
     Returns:
         Dictionary with list of workstream summaries.
     """
     _require_scope("read")
-    _audit("workstream_list")
-    result = _controller_get("/api/workstreams")
+    _audit("workstream_list", include_archived=include_archived)
+    path = "/api/workstreams"
+    if include_archived:
+        path += "?includeArchived=true"
+    result = _controller_get(path)
 
     if isinstance(result, list):
         entries = _filter_workstreams_by_scope(result)
@@ -1440,6 +1523,68 @@ def _parse_activities_param(include_activities) -> str:
     return stripped or "primary"
 
 
+# ---------------------------------------------------------------------------
+# Commit-language linter for workstream_submit_task
+# ---------------------------------------------------------------------------
+
+# Each entry is (compiled_pattern, human_readable_reason).  Patterns are
+# checked case-insensitively against each line of the submitted prompt.
+# re is already imported at the top of this file.
+_COMMIT_SEQUENCING_PATTERNS = [
+    (re.compile(r"\bcommit\s+\d+\b", re.IGNORECASE),
+     "commit-number phrase (e.g. \"Commit 1\", \"commit 2\")"),
+    (re.compile(r"\bfirst\s+commit\b", re.IGNORECASE),
+     '"first commit" phrase'),
+    (re.compile(r"\bnext\s+commit\b", re.IGNORECASE),
+     '"next commit" phrase'),
+    (re.compile(r"\bfinal\s+commit\b", re.IGNORECASE),
+     '"final commit" phrase'),
+    (re.compile(r"\bas\s+(?:its\s+own|separate|individual)\s+commits?\b", re.IGNORECASE),
+     '"as separate/individual commits" phrase'),
+    (re.compile(r"\b(?:in|across|over)\s+\d+\s+commits?\b", re.IGNORECASE),
+     '"in/across/over N commits" phrase'),
+    (re.compile(
+        r"\b(?:your|the)\s+commit\s+message\s+(?:should|will|must)\b", re.IGNORECASE),
+     '"commit message should/will/must" phrase'),
+    (re.compile(
+        r"\bcommit\s+(?:this|that|each|the)\s+(?:as|with|before)\b", re.IGNORECASE),
+     '"commit this/that/each/the as/with/before" phrase'),
+    (re.compile(
+        r"\bcommit\s+(?:between|after|before)\s+(?:each|every)\b", re.IGNORECASE),
+     '"commit between/after/before each/every" phrase'),
+]
+
+# Minimum prompt length below which the linter is skipped (false-positive
+# ratio is too high on very short strings and they almost never contain the
+# multi-word phrases we are looking for).
+_COMMIT_LINTER_MIN_LEN = 50
+
+
+def _lint_prompt_for_commit_sequencing(prompt: str) -> list:
+    """Scan ``prompt`` for forbidden commit-sequencing phrases.
+
+    Returns a list of ``(line_number, snippet, reason)`` tuples — one per
+    matched line (first matching pattern wins per line).  Returns an empty
+    list when the prompt is short (< 50 chars) or contains no matches.
+
+    This function is pure (no I/O) and intentionally best-effort: it may
+    produce false positives for prompts that quote commit messages or use
+    the word "commit" in an unrelated context.  Callers that need to bypass
+    the check should pass ``allow_commit_language=True`` to
+    ``workstream_submit_task``.
+    """
+    if len(prompt) < _COMMIT_LINTER_MIN_LEN:
+        return []
+    violations = []
+    for lineno, line in enumerate(prompt.splitlines(), 1):
+        for pattern, reason in _COMMIT_SEQUENCING_PATTERNS:
+            if pattern.search(line):
+                snippet = line.strip()[:120]
+                violations.append((lineno, snippet, reason))
+                break  # one violation entry per line, first pattern wins
+    return violations
+
+
 @mcp.tool()
 def workstream_submit_task(
     prompt: str,
@@ -1463,6 +1608,7 @@ def workstream_submit_task(
     delay_seconds: int = 0,
     runners: str = "",
     default_runner: str = "",
+    allow_commit_language: bool = False,
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -1575,6 +1721,14 @@ def workstream_submit_task(
             passing ``{"default": "<runner>"}`` in ``runners``; when both are
             supplied the ``"default"`` entry inside ``runners`` wins. Empty
             (default) inherits the workstream-level default.
+        allow_commit_language: Escape hatch for the commit-language linter.
+            By default (``False``), the prompt is scanned for phrases that
+            imply the agent controls git commits (e.g. "Commit 1: do X",
+            "commit this before starting") and the submission is rejected if
+            any are found. Set to ``True`` only when the prompt legitimately
+            contains such language (e.g. quoting an existing commit message or
+            convention) and restructuring is not feasible. Most callers should
+            restructure the prompt instead of opting out.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -1603,6 +1757,31 @@ def workstream_submit_task(
     err = _check_model(model)
     if err:
         return err
+    # Commit-language linter -- rejects prompts that imply the agent controls
+    # git commits (e.g. "Commit 1: do X, Commit 2: do Y").  Bypassed when the
+    # caller explicitly opts out via allow_commit_language=True.
+    if not allow_commit_language:
+        linter_hits = _lint_prompt_for_commit_sequencing(prompt)
+        if linter_hits:
+            lines = []
+            for lineno, snippet, reason in linter_hits:
+                lines.append(
+                    "  Line {}: {}\n    > {}".format(lineno, reason, snippet))
+            return {
+                "ok": False,
+                "error": (
+                    "Prompt contains language implying the agent controls git commits. "
+                    "The agent edits the working tree; the harness commits whatever's "
+                    "there in a single commit at session end. The agent cannot sequence "
+                    "commits, name them, or split work across multiple commits.\n\n"
+                    "Forbidden phrases found:\n"
+                    + "\n".join(lines)
+                    + "\n\nRewrite the prompt to describe the final state of the working "
+                    "tree, not a sequence of commits. If you are quoting a commit message "
+                    "convention or have a legitimate use of this language, pass "
+                    "allow_commit_language=True to bypass this check."
+                ),
+            }
     # Self-submission protection. When this tool is called from inside a
     # running ClaudeCodeJob (the agent has been issued a temporary token
     # whose payload binds it to a specific workstream), the agent must
@@ -1746,7 +1925,7 @@ def workstream_register(
     channel_name: str = "",
     required_labels: str = "",
     dependent_repos: str = "",
-    slack_workspace_id: str = "",
+    workspace_id: str = "",
     plan_content: str = "",
     plan_instructions: str = "",
     plan_path: str = "",
@@ -1755,6 +1934,7 @@ def workstream_register(
     effort: str = "",
     runners: str = "",
     default_runner: str = "",
+    slack_workspace_id: str = "",
 ) -> dict:
     """Register a new workstream for a branch/repo combination.
 
@@ -1780,11 +1960,14 @@ def workstream_register(
             (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
             Also accepts a JSON array string. Dependent repos follow the same
             branch lifecycle as the primary repo (create/checkout/pull/commit/push).
-        slack_workspace_id: Slack workspace (team) ID to register this
-            workstream under. When omitted, unscoped (superadmin) tokens
-            allow the controller to derive the target workspace from the
-            GitHub org in ``repo_url``. Callers using tokens scoped to
-            specific workspaces must pass this parameter explicitly.
+        workspace_id: Workspace ID (operator-chosen identifier) to
+            register this workstream under. When omitted, unscoped
+            (superadmin) tokens allow the controller to derive the
+            target workspace from the GitHub org in ``repo_url``.
+            Callers using tokens scoped to specific workspaces must
+            pass this parameter explicitly.
+        slack_workspace_id: Deprecated alias for ``workspace_id``;
+            accepted for backward compatibility with older callers.
         plan_content: Literal markdown content of a planning document to
             commit directly to the new workstream's branch immediately after
             registration. Mutually exclusive with ``plan_instructions``.
@@ -1835,10 +2018,16 @@ def workstream_register(
         - ``error`` and ``fallback_instructions``: only when ``mode=="failed"``.
     """
     _require_scope("write")
+    # slack_workspace_id is the legacy name; the new canonical name is
+    # workspace_id. Accept either, preferring the new name.
+    if not workspace_id and slack_workspace_id:
+        audit_log.debug("workstream_register: slack_workspace_id is a "
+                        "deprecated alias for workspace_id")
+        workspace_id = slack_workspace_id
     err = _check_short_strings(
         default_branch=default_branch, base_branch=base_branch,
         repo_url=repo_url, planning_document=planning_document,
-        channel_name=channel_name, slack_workspace_id=slack_workspace_id,
+        channel_name=channel_name, workspace_id=workspace_id,
         plan_path=plan_path, plan_commit_message=plan_commit_message,
         model=model, effort=effort, default_runner=default_runner,
     )
@@ -1867,21 +2056,21 @@ def workstream_register(
     if err:
         return err
     # Scope enforcement: scoped callers must name a workspace they own.
-    # An explicit slack_workspace_id wins. Otherwise we refuse rather than
+    # An explicit workspace_id wins. Otherwise we refuse rather than
     # rely on the controller's repoUrl-derivation path, because allowing
     # the caller to rely on controller-side derivation would open a
     # scope-bypass if repoUrl is omitted or spoofed.
     if _get_workspace_scopes():
-        if slack_workspace_id:
-            _require_workspace(slack_workspace_id)
+        if workspace_id:
+            _require_workspace(workspace_id)
         else:
             raise PermissionError(
-                "Scoped tokens must pass slack_workspace_id when registering "
+                "Scoped tokens must pass workspace_id when registering "
                 "a workstream — repoUrl-based derivation is only available "
                 "to unscoped (superadmin) tokens."
             )
     _audit("workstream_register", default_branch=default_branch,
-           slack_workspace_id=slack_workspace_id)
+           workspace_id=workspace_id)
 
     payload = {"defaultBranch": default_branch}
     if base_branch:
@@ -1892,8 +2081,12 @@ def workstream_register(
         payload["planningDocument"] = planning_document
     if channel_name:
         payload["channelName"] = channel_name
-    if slack_workspace_id:
-        payload["slackWorkspaceId"] = slack_workspace_id
+    if workspace_id:
+        # Send both names: the controller accepts either, and the legacy
+        # field name is kept so older controllers without the rename
+        # continue to honour the registration.
+        payload["workspaceId"] = workspace_id
+        payload["slackWorkspaceId"] = workspace_id
     if required_labels:
         labels_map = _parse_required_labels(required_labels)
         if labels_map:
@@ -2210,6 +2403,353 @@ def workstream_update_config(
             "Use workstream_list to verify the workstream_id is correct",
         ])
 
+    return result
+
+
+# Sentinel for "argument not supplied" on workspace_update_config
+# parameters whose empty-string value carries meaning distinct from
+# absence (e.g. ``slack_team_id=""`` explicitly clears the Slack
+# connection, while omitting ``slack_team_id`` leaves it unchanged).
+_WORKSPACE_UNSET = "\0__workspace_unset__\0"
+
+
+@mcp.tool()
+def workspace_update_config(
+    workspace_id: str = "",
+    default_runner: str = "",
+    runners: str = "",
+    name: str = "",
+    default_channel: str = "",
+    new_id: str = "",
+    slack_team_id: str = _WORKSPACE_UNSET,
+    slack_workspace_id: str = "",
+) -> dict:
+    """Update workspace-level configuration on a workspace entry.
+
+    A workspace is the operator's organisational unit. Its ``id`` is
+    operator-chosen and independent of any Slack team ID; when a Slack
+    connection is configured the team ID lives on the ``slackTeamId``
+    field. This tool can rename a workspace, retarget its Slack
+    connection, and update non-credential operational fields.
+
+    Only the fields you supply are written; an empty string leaves the
+    corresponding field unchanged (except ``slack_team_id``, where an
+    explicit empty string clears the Slack connection — see below).
+    Changes are persisted back to the workstreams YAML so they survive a
+    controller restart.
+
+    For security, the following workspace fields are **NOT** settable via
+    this tool and must be edited in the YAML directly:
+
+    * ``tokensFile``, ``botToken``, ``appToken`` — Slack credentials.
+    * ``githubOrgs`` — controls which GitHub orgs the workspace can
+      issue tokens for.
+    * ``channelOwnerUserId`` / ``channelOwnerUserIds`` — administrative
+      auto-invite ownership.
+
+    Args:
+        workspace_id: Operator-chosen workspace identifier (e.g.
+            ``"almostrealism"``) of the workspace to update. For
+            workspaces migrated from a legacy ``slackWorkspaces:`` YAML
+            entry this is the Slack team ID until the workspace is
+            renamed via ``new_id``. Required.
+        default_runner: New workspace-level default agent runner applied
+            to workstreams in this workspace when neither the workstream
+            nor the per-job override sets one. Use ``agent_options`` to
+            discover valid runner names. Convenience shortcut equivalent
+            to ``runners='{"default": "<value>"}'``; the explicit
+            ``runners["default"]`` wins when both are supplied.
+        runners: JSON object mapping phase wire names to runner
+            identifiers (e.g.
+            ``'{"primary":"opencode","deduplication":"opencode"}'``).
+            An optional ``"default"`` key sets the workspace-level
+            default. Use ``agent_options`` to discover available phase
+            wire names. Empty string leaves the per-phase map
+            unchanged.
+        name: New human-readable workspace label (used in logs and
+            diagnostics). Low-risk operational field.
+        default_channel: New fallback Slack channel ID for messages
+            published in workstreams that have no channel of their own
+            resolved. Low-risk operational field.
+        new_id: Rename the workspace to this new operator-chosen ID.
+            Every workstream that referenced the old ID is rewritten to
+            the new ID atomically. Use this to migrate a workspace from
+            its initial Slack-team-ID-as-ID form to a friendlier name
+            (e.g. ``workspace_update_config(workspace_id="T0123456789",
+            new_id="almostrealism")``). Empty string leaves the ID
+            unchanged.
+        slack_team_id: Set or clear the Slack team ID this workspace
+            routes messages to. Pass a non-empty value to (re)bind the
+            workspace to that Slack team; pass an explicit empty string
+            (``""``) to clear the Slack connection so channel/notifier
+            operations skip cleanly. Omit the argument entirely to leave
+            the existing value unchanged.
+        slack_workspace_id: Deprecated alias for ``workspace_id``.
+            Accepted for backward compatibility with older callers.
+
+    Returns:
+        dict with ``ok=True`` and the updated workspace fields, or
+        ``ok=False`` with an error.
+    """
+    _require_scope("write")
+    # Resolve the workspace identifier, accepting the legacy alias.
+    if not workspace_id and slack_workspace_id:
+        audit_log.debug("workspace_update_config: slack_workspace_id is a "
+                        "deprecated alias for workspace_id")
+        workspace_id = slack_workspace_id
+    if not workspace_id:
+        return {
+            "ok": False,
+            "error": "workspace_id is required",
+            "next_steps": [
+                "Pass workspace_id (the operator-chosen workspace ID)",
+            ],
+        }
+    slack_team_id_provided = slack_team_id != _WORKSPACE_UNSET
+    if not slack_team_id_provided:
+        slack_team_id = ""
+    err = _check_short_strings(
+        workspace_id=workspace_id,
+        default_runner=default_runner,
+        name=name,
+        default_channel=default_channel,
+        new_id=new_id,
+        slack_team_id=slack_team_id,
+    )
+    if err:
+        return err
+    parsed_runners, runners_err = _parse_runners_json(runners)
+    if runners_err:
+        return runners_err
+    _audit("workspace_update_config", workspace_id=workspace_id)
+
+    payload = {}
+    if name:
+        payload["name"] = name
+    if default_channel:
+        payload["defaultChannel"] = default_channel
+    if new_id and new_id != workspace_id:
+        payload["newId"] = new_id
+    if slack_team_id_provided:
+        # Empty string clears; non-empty (re)binds. Either case is a write.
+        payload["slackTeamId"] = slack_team_id
+    runners_payload = dict(parsed_runners) if parsed_runners else {}
+    if default_runner and "default" not in runners_payload:
+        runners_payload["default"] = default_runner
+    if runners_payload:
+        payload["runners"] = runners_payload
+
+    if not payload:
+        return {
+            "ok": False,
+            "error": "No fields to update. Provide at least one field.",
+            "next_steps": [
+                "Specify fields to update: default_runner, runners, "
+                "name, default_channel, new_id, or slack_team_id",
+            ],
+        }
+
+    result = _controller_post(
+        f"/api/workspaces/{quote(workspace_id, safe='')}/config",
+        payload,
+    )
+
+    if result.get("ok"):
+        result["next_steps"] = [
+            "Use workstream_list to verify workstreams now reflect the "
+            "updated workspace defaults",
+        ]
+    else:
+        result.setdefault("next_steps", [
+            "Use workstream_list to confirm the workspace_id is correct",
+        ])
+
+    return result
+
+
+@mcp.tool()
+def workstream_archive(
+    workstream_id: str,
+    archive_slack_channel: bool = True,
+) -> dict:
+    """Archive a workstream so it is hidden from default ``workstream_list``
+    responses. Archiving is reversible and non-destructive — historical job
+    records and memories remain queryable via ``workstream_context`` and
+    ``memory_recall`` when ``workstream_id`` is supplied explicitly.
+
+    The Slack channel bound to the workstream (if any) is archived via
+    ``conversations.archive`` by default; pass ``archive_slack_channel=False``
+    to leave it open. Slack archive failures are reported in the response but
+    do not block the workstream archive — the controller treats the
+    Slack-side effect as best-effort.
+
+    The call is rejected when one or more jobs on the workstream are still
+    active (``STARTED`` status); cancel them explicitly or wait for them to
+    complete before archiving. The response carries the active job IDs.
+
+    Args:
+        workstream_id: The workstream to archive (from ``workstream_list``).
+        archive_slack_channel: When ``True`` (default), also archive the
+            bound Slack channel. Slack channels cannot be programmatically
+            deleted, only archived; an archived channel after workstream
+            archive is the expected end state.
+
+    Returns:
+        Dictionary with ``ok``, ``workstreamId``, ``archivedAt``,
+        ``slackChannelArchived``, and optionally ``slackChannelArchiveError``.
+    """
+    _require_scope("write")
+    err = _check_short_strings(workstream_id=workstream_id)
+    if err:
+        return err
+    _require_workstream_in_scope(workstream_id)
+    _audit("workstream_archive", workstream_id=workstream_id,
+           archive_slack_channel=archive_slack_channel)
+    return _controller_post(
+        f"/api/workstreams/{quote(workstream_id, safe='')}/archive",
+        {"archiveSlackChannel": archive_slack_channel},
+    )
+
+
+@mcp.tool()
+def workstream_unarchive(workstream_id: str) -> dict:
+    """Clear the archived flag on a previously archived workstream so it
+    reappears in default ``workstream_list`` responses.
+
+    The Slack channel, if it was archived alongside the workstream, must be
+    unarchived manually from the Slack UI. Slack's ``conversations.unarchive``
+    is not invoked automatically because unarchive fires notification spam
+    to channel members.
+
+    Args:
+        workstream_id: The archived workstream to restore.
+
+    Returns:
+        Dictionary with ``ok`` and ``workstreamId``.
+    """
+    _require_scope("write")
+    err = _check_short_strings(workstream_id=workstream_id)
+    if err:
+        return err
+    _require_workstream_in_scope(workstream_id)
+    _audit("workstream_unarchive", workstream_id=workstream_id)
+    return _controller_post(
+        f"/api/workstreams/{quote(workstream_id, safe='')}/unarchive",
+        {},
+    )
+
+
+@mcp.tool()
+def workstream_delete(workstream_id: str, force: bool = False) -> dict:
+    """Delete a workstream config row permanently.
+
+    Two-step pattern: archive first (``workstream_archive``), then delete.
+    Deletion requires the workstream to be archived unless ``force=True``;
+    in either case the call is rejected when any job on the workstream is
+    still active (``STARTED`` status). Cancellation is always explicit —
+    ``force`` only bypasses the archive-first check.
+
+    Side effects:
+
+    - Tracker tasks linked to this workstream have their ``workstream_id``
+      cleared (ON DELETE SET NULL semantics applied client-side via the
+      ar-tracker API). The tasks themselves are NOT deleted. The count of
+      affected tasks is returned as ``deletedTrackerTasks``.
+    - The workstream config entry is removed from ``workstreams.yaml``.
+    - **Memories are not touched.** Memory rows remain queryable via
+      ``memory_recall`` when ``repo_url`` and ``branch`` are supplied
+      directly, since the workstream's repo+branch are still recorded on
+      each memory row. The workstream-to-repo/branch mapping is gone, so
+      ``workstream_context`` with the deleted ID will no longer resolve.
+    - The Slack channel is left as-is. If it was archived during the
+      ``workstream_archive`` step, it stays archived. Slack channels
+      cannot be programmatically deleted.
+    - The git branch on origin is NOT touched.
+
+    Args:
+        workstream_id: The workstream to delete (from ``workstream_list``).
+        force: When ``True``, bypass the archive-first requirement.
+            Active-job checks are NOT bypassed.
+
+    Returns:
+        Dictionary with ``ok``, ``workstreamId``, and
+        ``deletedTrackerTasks`` (the number of tracker tasks whose
+        ``workstream_id`` was cleared). If tracker cleanup was interrupted
+        by a query or update failure, ``trackerCleanupWarning`` is also
+        present with a human-readable description; ``ok`` remains ``True``
+        because the workstream itself was deleted successfully.
+    """
+    _require_scope("write")
+    err = _check_short_strings(workstream_id=workstream_id)
+    if err:
+        return err
+    _require_workstream_in_scope(workstream_id)
+    _audit("workstream_delete", workstream_id=workstream_id, force=force)
+
+    # The controller delete runs first so that a rejection (active jobs,
+    # archive-first requirement, unknown workstream) leaves the tracker
+    # linkage intact. Only on a successful delete do we clear tracker
+    # rows — that matches the ON DELETE SET NULL semantics described in
+    # the docstring and is reversible only by re-linking.
+    result = _controller_post(
+        f"/api/workstreams/{quote(workstream_id, safe='')}/delete",
+        {"force": force},
+    )
+    if not result.get("ok"):
+        return result
+
+    # /v1/tasks caps `limit` at 200, so a workstream with more than 200
+    # linked tasks needs paging. After we PUT workstream_id=None on a task
+    # it no longer matches the filter, so we just keep re-querying until the
+    # filter returns no tasks. The MAX_TRACKER_CLEAR_BATCHES cap prevents an
+    # unexpected server response (e.g. failed updates) from spinning forever.
+    cleared = 0
+    seen_ids = set()
+    MAX_TRACKER_CLEAR_BATCHES = 200
+    tracker_warning = None
+    for _ in range(MAX_TRACKER_CLEAR_BATCHES):
+        tasks_result = _tracker_get(
+            f"/v1/tasks?{urlencode({'workstream_id': workstream_id, 'limit': 200, 'fields': 'headlines'})}"
+        )
+        if not tasks_result.get("ok"):
+            tracker_warning = (
+                "tracker query failed during cleanup; "
+                + str(cleared) + " task(s) unlinked before failure"
+            )
+            break
+        batch = tasks_result.get("tasks") or []
+        if not batch:
+            break
+        progress = False
+        new_in_batch = 0
+        for task in batch:
+            task_id = task.get("id")
+            if not task_id or task_id in seen_ids:
+                continue
+            new_in_batch += 1
+            seen_ids.add(task_id)
+            update = _tracker_put(f"/v1/tasks/{task_id}",
+                                  {"workstream_id": None})
+            if update.get("ok"):
+                cleared += 1
+                progress = True
+        if not progress:
+            if new_in_batch > 0:
+                # New tasks appeared but none could be updated — stall.
+                tracker_warning = (
+                    "tracker update stalled; "
+                    + str(cleared) + " task(s) unlinked before stall"
+                )
+            break
+    else:
+        # Loop exhausted without emptying the task list.
+        tracker_warning = (
+            "tracker cleanup hit batch limit; "
+            + str(cleared) + " task(s) unlinked"
+        )
+    result["deletedTrackerTasks"] = cleared
+    if tracker_warning is not None:
+        result["trackerCleanupWarning"] = tracker_warning
     return result
 
 

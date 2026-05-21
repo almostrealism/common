@@ -27,10 +27,26 @@ import java.util.Map;
  * Helper that resolves per-phase agent runner configuration for a submitted
  * coding job and applies it to a {@link CodingAgentJobFactory}.
  *
- * <p>Precedence (highest to lowest): per-job override → workstream per-phase
- * map → workstream default → {@code "claude"}. The per-job {@code runners}
- * JSON object may carry an optional {@code "default"} key whose value
- * supersedes the workstream default for that job.</p>
+ * <p>Precedence (highest to lowest):</p>
+ * <ol>
+ *   <li>Per-job override (the {@code runners} JSON object on the submission;
+ *       may also carry an optional {@code "default"} key)</li>
+ *   <li>Workstream per-phase map ({@link Workstream#getRunners()})</li>
+ *   <li>Workstream default ({@link Workstream#getDefaultRunner()})</li>
+ *   <li>Workspace per-phase map
+ *       ({@link WorkstreamConfig.WorkspaceEntry#getRunners()})</li>
+ *   <li>Workspace default
+ *       ({@link WorkstreamConfig.WorkspaceEntry#getDefaultRunner()})</li>
+ *   <li>Controller default ({@code "claude"})</li>
+ * </ol>
+ *
+ * <p>The workspace layer (levels 4 and 5) is consulted only when the
+ * workstream has no per-phase entry for the phase <em>and</em> the
+ * workstream has no {@code defaultRunner} set — workstream-level config
+ * fully shadows the workspace it belongs to. A workstream with no
+ * {@code workspaceId} (or whose {@code workspaceId} does not match any
+ * configured workspace) skips the workspace lookup and falls through to
+ * the controller default.</p>
  */
 final class SubmissionRunnerResolver {
 
@@ -56,8 +72,9 @@ final class SubmissionRunnerResolver {
 
     /**
      * Resolves runner configuration from a submission body and workstream
-     * defaults. Returns a resolver whose {@link #error()} is non-null on
-     * validation failure; otherwise call {@link #applyTo(CodingAgentJobFactory)}.
+     * defaults, without consulting a workspace layer. Equivalent to calling
+     * {@link #resolve(Map, String, Map, String, Map)} with {@code null}
+     * workspace fields. Preserved for callers that have no workspace context.
      *
      * @param requestRunners parsed {@code "runners"} object from the request body
      *                       (keys: phase wire names plus optional {@code "default"})
@@ -69,16 +86,61 @@ final class SubmissionRunnerResolver {
     static SubmissionRunnerResolver resolve(Map<String, String> requestRunners,
                                             String workstreamDefault,
                                             Map<String, String> workstreamRunners) {
+        return resolve(requestRunners, workstreamDefault, workstreamRunners,
+                null, null);
+    }
+
+    /**
+     * Resolves runner configuration from a submission body, workstream
+     * defaults, and workspace defaults. Returns a resolver whose
+     * {@link #error()} is non-null on validation failure; otherwise call
+     * {@link #applyTo(CodingAgentJobFactory)}.
+     *
+     * <p>The workspace layer is only consulted for a phase when (a) the
+     * workstream has no per-phase entry for that phase, and (b) the
+     * workstream has no {@code defaultRunner} set (which would otherwise
+     * apply to every otherwise-unmapped phase). Workspace per-phase entries
+     * referencing unknown phase wire names are skipped; the strict load-time
+     * validation in {@link WorkstreamConfig#validateWorkspaceRunners()}
+     * already rejects them, and this skip is the same defensive treatment
+     * the resolver applies to workstream-side entries.</p>
+     *
+     * @param requestRunners    parsed {@code "runners"} object from the request body
+     *                          (keys: phase wire names plus optional {@code "default"})
+     * @param workstreamDefault the workstream's default runner, or {@code null}
+     * @param workstreamRunners the workstream's per-phase map, keyed by phase
+     *                          wire name; may be {@code null} or empty
+     * @param workspaceDefault  the owning workspace's default runner, or
+     *                          {@code null} when no workspace is configured
+     *                          or no default is set
+     * @param workspaceRunners  the owning workspace's per-phase map; may be
+     *                          {@code null} or empty
+     * @return a fresh resolver
+     */
+    static SubmissionRunnerResolver resolve(Map<String, String> requestRunners,
+                                            String workstreamDefault,
+                                            Map<String, String> workstreamRunners,
+                                            String workspaceDefault,
+                                            Map<String, String> workspaceRunners) {
         Map<String, String> req = requestRunners != null ? requestRunners : new LinkedHashMap<>();
         Map<String, String> wsMap = workstreamRunners != null ? workstreamRunners : new LinkedHashMap<>();
+        Map<String, String> workspaceMap = workspaceRunners != null
+                ? workspaceRunners : new LinkedHashMap<>();
+        boolean hasWorkstreamDefault =
+                workstreamDefault != null && !workstreamDefault.isEmpty();
+        boolean hasWorkspaceDefault =
+                workspaceDefault != null && !workspaceDefault.isEmpty();
 
-        // 1. Resolve effective default: request "default" > workstream default > "claude".
+        // 1. Resolve effective default: request "default" > workstream default
+        //    > workspace default > controller default ("claude").
         String requestedDefault = req.get("default");
         String effectiveDefault;
         if (requestedDefault != null && !requestedDefault.isEmpty()) {
             effectiveDefault = requestedDefault;
-        } else if (workstreamDefault != null && !workstreamDefault.isEmpty()) {
+        } else if (hasWorkstreamDefault) {
             effectiveDefault = workstreamDefault;
+        } else if (hasWorkspaceDefault) {
+            effectiveDefault = workspaceDefault;
         } else {
             effectiveDefault = AgentRunnerRegistry.CLAUDE;
         }
@@ -87,8 +149,8 @@ final class SubmissionRunnerResolver {
                     + AgentRunnerRegistry.available());
         }
 
-        // 2. Walk every phase, picking req[phase] then ws[phase], converting
-        //    string phase names to Phase via fromWireName.
+        // 2. Walk every phase, picking req[phase] then ws[phase], then
+        //    (only when the workstream has no defaultRunner) workspace[phase].
         Map<Phase, String> phases = new LinkedHashMap<>();
         for (Map.Entry<String, String> e : req.entrySet()) {
             if ("default".equals(e.getKey())) continue;
@@ -119,6 +181,26 @@ final class SubmissionRunnerResolver {
             if (previous == null && !AgentRunnerRegistry.available().contains(runner)) {
                 return fail("Unknown runner: '" + runner + "'. Available: "
                         + AgentRunnerRegistry.available());
+            }
+        }
+        // Workspace per-phase entries fall below the workstream default —
+        // when the workstream sets a default, every phase not in the
+        // workstream's per-phase map already resolves to that default, so the
+        // workspace's per-phase entries must not override it.
+        if (!hasWorkstreamDefault) {
+            for (Map.Entry<String, String> e : workspaceMap.entrySet()) {
+                String runner = e.getValue();
+                if (runner == null || runner.isEmpty()) continue;
+                Phase phase;
+                try { phase = Phase.fromWireName(e.getKey()); }
+                catch (IllegalArgumentException ex) {
+                    continue;
+                }
+                String previous = phases.putIfAbsent(phase, runner);
+                if (previous == null && !AgentRunnerRegistry.available().contains(runner)) {
+                    return fail("Unknown runner: '" + runner + "'. Available: "
+                            + AgentRunnerRegistry.available());
+                }
             }
         }
         return new SubmissionRunnerResolver(null, effectiveDefault, phases);
@@ -172,6 +254,53 @@ final class SubmissionRunnerResolver {
         }
         if (newDefault != null) workstream.setDefaultRunner(newDefault);
         workstream.setRunners(phaseMap);
+        return null;
+    }
+
+    /**
+     * Applies a parsed {@code runners} object to a workspace as its
+     * persistent runner configuration. The {@code "default"} key, when
+     * present, becomes
+     * {@link WorkstreamConfig.WorkspaceEntry#setDefaultRunner(String)};
+     * remaining keys (which must be valid {@link Phase} wire names) replace
+     * the workspace's per-phase map.
+     *
+     * <p>An empty or {@code null} {@code requestRunners} leaves the workspace
+     * untouched so callers can update unrelated fields without disturbing
+     * existing runner config.</p>
+     *
+     * @param entry          the workspace entry to mutate
+     * @param requestRunners the parsed {@code runners} object from the body,
+     *                       or {@code null}
+     * @return {@code null} on success, or a 400-able error message on
+     *         unknown phase name or unknown runner name
+     */
+    static String applyToWorkspace(WorkstreamConfig.WorkspaceEntry entry,
+                                   Map<String, String> requestRunners) {
+        if (requestRunners == null || requestRunners.isEmpty()) return null;
+        String newDefault = null;
+        Map<String, String> phaseMap = new LinkedHashMap<>();
+        for (Map.Entry<String, String> e : requestRunners.entrySet()) {
+            String key = e.getKey();
+            String value = e.getValue();
+            if (value == null || value.isEmpty()) continue;
+            if (!AgentRunnerRegistry.available().contains(value)) {
+                return "Unknown runner: '" + value + "'. Available: "
+                        + AgentRunnerRegistry.available();
+            }
+            if ("default".equals(key)) {
+                newDefault = value;
+            } else {
+                try {
+                    Phase.fromWireName(key);
+                } catch (IllegalArgumentException ex) {
+                    return "Unknown phase in runners: '" + key + "'";
+                }
+                phaseMap.put(key, value);
+            }
+        }
+        if (newDefault != null) entry.setDefaultRunner(newDefault);
+        entry.setRunners(phaseMap);
         return null;
     }
 

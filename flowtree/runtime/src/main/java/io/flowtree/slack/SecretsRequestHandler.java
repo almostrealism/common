@@ -189,7 +189,7 @@ class SecretsRequestHandler implements ConsoleFeatures {
                         + " workstream_id=" + workstreamId + " result=UNKNOWN_WORKSTREAM");
                 return secretForbidden("Unknown workstream: " + workstreamId);
             }
-            String resolvedWorkspaceId = workstream.getSlackWorkspaceId();
+            String resolvedWorkspaceId = workstream.getWorkspaceId();
 
             if (Method.GET.equals(method) && secretName == null) {
                 return handleListSecretNames(resolvedWorkspaceId);

@@ -211,8 +211,19 @@ if [ "${WITH_LLM}" = true ]; then
     fi
   }
   set_env_var OPENCODE_PROVIDER_URL "${OLLAMA_AGENT_URL}"
-  set_env_var OPENCODE_DEFAULT_MODEL "${LLM_MODEL}"
   set_env_var OPENCODE_API_KEY ""
+  # We intentionally do NOT write OPENCODE_DEFAULT_MODEL. The OpencodeRunner
+  # falls back to the literal alias "default", which works with llama.cpp
+  # (it ignores the model field on the wire) but NOT with ollama, which
+  # dispatches by name. Operators using the ollama path provisioned here
+  # must add the matching key to ${AGENT_ENV} themselves, e.g.
+  #     OPENCODE_DEFAULT_MODEL=${LLM_MODEL}
+  # See flowtree/docs/operations/OPENCODE.md for context.
+  echo ""
+  echo "NOTE: ollama dispatches by model name, but OPENCODE_DEFAULT_MODEL was"
+  echo "      NOT written automatically. Add the following line to ${AGENT_ENV}"
+  echo "      so jobs without an explicit model field reach this ollama pull:"
+  echo "          OPENCODE_DEFAULT_MODEL=${LLM_MODEL}"
 fi
 
 # ── Agent pool ─────────────────────────────────────────────────────

@@ -136,6 +136,18 @@ final class NotifierRegistry {
     }
 
     /**
+     * Returns the job IDs of any active ({@link JobCompletionEvent.Status#STARTED})
+     * jobs on the given workstream, searching across every notifier.
+     *
+     * @param workstreamId the workstream identifier
+     * @return a (possibly empty) list of active job IDs
+     */
+    List<String> getActiveJobIds(String workstreamId) {
+        SlackNotifier owner = notifierFor(workstreamId);
+        return owner != null ? owner.getActiveJobIds(workstreamId) : new ArrayList<>();
+    }
+
+    /**
      * Returns the workstream ID that owns the given job, searching all
      * notifiers. Returns {@code null} if no workstream claims this job.
      */

@@ -49,7 +49,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -70,12 +72,13 @@ import java.util.regex.Pattern;
  *   <tr><td>POST</td><td>/api/submit</td><td>{@code {"prompt":"...","targetBranch":"..."}}</td><td>Submit a job, resolving the workstream from the request body</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams</td><td>{@code {"defaultBranch":"...","baseBranch":"...","planningDocument":"..."}}</td><td>Register a new workstream (auto-creates Slack channel)</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/update</td><td>{@code {"channelId":"...","channelName":"..."}}</td><td>Update an existing workstream</td></tr>
+ *   <tr><td>POST</td><td>/api/workstreams/{id}/archive|/unarchive|/delete</td><td>{@code {"archiveSlackChannel":true}} or {@code {"force":false}}</td><td>Archive, unarchive, or delete a workstream — see {@link WorkstreamLifecycleHandler}</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}</td><td>{@code {"jobId":"...","status":"..."}}</td><td>Receive a status event for the workstream</td></tr>
  *   <tr><td>POST</td><td>/api/workstreams/{id}/jobs/{jobId}</td><td>{@code {"jobId":"...","status":"..."}}</td><td>Receive a job status event</td></tr>
  *   <tr><td>GET</td><td>/api/github/proxy?url=...</td><td>--</td><td>Proxy a GET request to the GitHub API</td></tr>
  *   <tr><td>POST</td><td>/api/github/proxy?url=...</td><td><i>raw JSON payload</i></td><td>Proxy a POST request to the GitHub API</td></tr>
  *   <tr><td>PUT</td><td>/api/github/proxy?url=...</td><td><i>raw JSON payload</i></td><td>Proxy a PUT request to the GitHub API</td></tr>
- *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td><td>List all registered workstreams with capabilities</td></tr>
+ *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td><td>List registered workstreams (archived hidden unless {@code ?includeArchived=true})</td></tr>
  *   <tr><td>GET</td><td>/api/workstreams/{id}/jobs</td><td>--</td><td>List recent jobs for a workstream; optional {@code limit} query param</td></tr>
  *   <tr><td>GET</td><td>/api/jobs/{jobId}</td><td>--</td><td>Look up a specific job event by ID</td></tr>
  *   <tr><td>GET</td><td>/api/config/accept-automated-jobs</td><td>--</td><td>Check whether automated job submissions are accepted</td></tr>
@@ -92,9 +95,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /** Default port for the API endpoint. */
     public static final int DEFAULT_PORT = 7780;
-    /** Matches /api/workstreams/{wsId} with optional /jobs/{jobId} and optional /messages, /submit, or /update suffix. */
+    /**
+     * Matches {@code /api/workstreams/{wsId}} with optional {@code /jobs/{jobId}}
+     * and optional action suffix ({@code /messages}, {@code /submit},
+     * {@code /update}, {@code /archive}, {@code /unarchive}, {@code /delete}).
+     */
     private static final Pattern WORKSTREAM_PATTERN = Pattern.compile(
-        "/api/workstreams/([^/]+)(?:/jobs/([^/]+))?(/messages|/submit|/update)?"
+        "/api/workstreams/([^/]+)(?:/jobs/([^/]+))?(/messages|/submit|/update|/archive|/unarchive|/delete)?"
     );
 
     /**
@@ -112,14 +119,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /** Maps GitHub organisation names to their API access tokens. */
     private Map<String, String> githubOrgTokens = new HashMap<>();
 
-    /**
-     * Maps GitHub organisation names to the Slack workspace ID that owns them,
-     * as derived from {@code slackWorkspaces[].githubOrgs} in the YAML config.
-     * Used to route newly-registered workstreams to the correct workspace when
-     * the caller does not supply an explicit {@code slackWorkspaceId}.
-     */
+    /** Maps GitHub org names to the workspace ID that owns them; used by registration routing. */
     private Map<String, String> orgToWorkspaceId = new HashMap<>();
 
+    /** Resolves a Slack workspace ID to its entry for the workspace runner layer. */
+    private Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup = id -> null;
     /** Tracks which jobs should have a PR auto-created on success. */
     private final Map<String, AutoPrContext> autoCreatePrJobs = new HashMap<>();
 
@@ -194,23 +198,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         this.secretsHandler = new SecretsRequestHandler(notifiers);
     }
 
-    /**
-     * Sets the FlowTree {@link Server} used for job submission.
-     *
-     * @param server the server accepting inbound agent connections
-     */
-    public void setServer(Server server) {
-        this.server = server;
-    }
+    /** Sets the FlowTree server used for job submission. */
+    public void setServer(Server server) { this.server = server; }
 
-    /**
-     * Sets the {@link SlackListener} used for job creation.
-     *
-     * @param listener the listener that manages workstream-to-job mapping
-     */
-    public void setListener(SlackListener listener) {
-        this.listener = listener;
-    }
+    /** Sets the SlackListener used for job creation. */
+    public void setListener(SlackListener listener) { this.listener = listener; }
 
     /**
      * Sets per-organization GitHub tokens for the proxy endpoint.
@@ -238,6 +230,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         this.orgToWorkspaceId = orgToWorkspaceId != null
                 ? new HashMap<>(orgToWorkspaceId) : new HashMap<>();
     }
+
+    /** Sets the workspace lookup feeding the workspace layer of {@link SubmissionRunnerResolver}; {@code null} disables it. */
+    public void setWorkspaceLookup(Function<String, WorkstreamConfig.WorkspaceEntry> lookup) {
+        this.workspaceLookup = lookup != null ? lookup : id -> null;
+    }
+
+    /** Rename hook for {@code newId} on workspace config; {@code null} disables. */
+    private BiFunction<String, String, Boolean> workspaceRenameHook;
+    /** Sets the workspace rename hook. */
+    public void setWorkspaceRenameHook(BiFunction<String, String, Boolean> hook) { this.workspaceRenameHook = hook; }
 
     /**
      * Sets the base URL of the ar-memory HTTP server used for
@@ -351,7 +353,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         if (Method.GET.equals(method) && "/api/workstreams".equals(uri)) {
-            return handleListWorkstreams();
+            boolean includeArchived = "true".equalsIgnoreCase(
+                    session.getParameters().getOrDefault("includeArchived",
+                            List.of("false")).get(0));
+            return handleListWorkstreams(includeArchived);
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/workstreams/") && uri.endsWith("/jobs")) {
@@ -407,7 +412,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             if ("/api/workstreams".equals(uri)) {
                 return handleRegisterWorkstream(session);
             }
-
+            Response workspaceConfigResp = workspaceConfigHandler().handleIfMatches(uri, session);
+            if (workspaceConfigResp != null) return workspaceConfigResp;
             Matcher m = WORKSTREAM_PATTERN.matcher(uri);
             if (m.matches()) {
                 String workstreamId = m.group(1);
@@ -420,6 +426,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     return handleSubmit(session, workstreamId);
                 } else if ("/update".equals(suffix)) {
                     return handleUpdateWorkstream(session, workstreamId);
+                } else if ("/archive".equals(suffix)) {
+                    return lifecycleHandler().handleArchive(session, workstreamId);
+                } else if ("/unarchive".equals(suffix)) {
+                    return lifecycleHandler().handleUnarchive(session, workstreamId);
+                } else if ("/delete".equals(suffix)) {
+                    return lifecycleHandler().handleDelete(session, workstreamId);
                 } else {
                     return handleStatusEvent(session, workstreamId);
                 }
@@ -648,7 +660,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 return errorResponse("Could not derive a valid channel name from defaultBranch: " + defaultBranch);
             }
         }
-        String explicitWorkspaceId = extractJsonField(body, "slackWorkspaceId");
+        String explicitWorkspaceId = extractJsonField(body, "workspaceId");
+        if (explicitWorkspaceId == null || explicitWorkspaceId.isEmpty()) {
+            explicitWorkspaceId = extractJsonField(body, "slackWorkspaceId"); // legacy alias
+        }
         String model = extractJsonField(body, "model");
         String effort = extractJsonField(body, "effort");
         Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
@@ -747,7 +762,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // routes to the correct per-workspace notifier and so subsequent
         // API calls can identify the owning workspace.
         if (targetWorkspaceId != null && !targetWorkspaceId.isEmpty()) {
-            workstream.setSlackWorkspaceId(targetWorkspaceId);
+            workstream.setWorkspaceId(targetWorkspaceId);
         }
 
         if (listener != null) {
@@ -1117,9 +1132,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setRequiredLabel(entry.getKey(), entry.getValue());
         }
 
+        String wsId = workstream.getWorkspaceId();
+        WorkstreamConfig.WorkspaceEntry wsEntry = (wsId != null && !wsId.isEmpty()) ? workspaceLookup.apply(wsId) : null;
+        if (wsId != null && !wsId.isEmpty() && wsEntry == null) log("submitWorkspaceMissing workspaceId=" + wsId);
         SubmissionRunnerResolver runnerResolver = SubmissionRunnerResolver.resolve(
                 extractJsonObjectFields(body, "runners"),
-                workstream.getDefaultRunner(), workstream.getRunners());
+                workstream.getDefaultRunner(), workstream.getRunners(),
+                wsEntry != null ? wsEntry.getDefaultRunner() : null, wsEntry != null ? wsEntry.getRunners() : null);
         if (runnerResolver.error() != null) return errorResponse(runnerResolver.error());
         runnerResolver.applyTo(factory);
 
@@ -1516,22 +1535,41 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * Handles {@code GET /api/workstreams}. Returns a JSON array of all
      * registered workstreams with their configuration and capabilities.
      *
+     * <p>By default, workstreams flagged as archived are omitted. Pass
+     * {@code ?includeArchived=true} to include them; archived entries
+     * carry an {@code "archived": true} field in the response.</p>
+     *
+     * @param includeArchived when {@code false} archived workstreams are skipped
      * @return an HTTP 200 response containing a JSON array of workstream objects
      */
-    private Response handleListWorkstreams() {
+    private Response handleListWorkstreams(boolean includeArchived) {
         Map<String, Workstream> workstreams = notifiers.allWorkstreams();
-
         StringBuilder json = new StringBuilder("[");
         boolean first = true;
         for (Workstream ws : workstreams.values()) {
+            if (!includeArchived && ws.isArchived()) continue;
             if (!first) json.append(",");
             first = false;
             json.append(ws.toSummaryJson());
         }
         json.append("]");
-
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", json.toString());
+    }
+
+    /**
+     * Builds the archive/unarchive/delete handler bound to this endpoint's
+     * notifiers and listener. See {@link WorkstreamLifecycleHandler}.
+     */
+    private WorkstreamLifecycleHandler lifecycleHandler() {
+        return new WorkstreamLifecycleHandler(notifiers, listener, this::readBody,
+                this::errorResponse, this::log);
+    }
+
+    /** Builds the {@code /api/workspaces/{id}/config} handler bound to this endpoint. */
+    private WorkspaceConfigHandler workspaceConfigHandler() {
+        return new WorkspaceConfigHandler(workspaceLookup, workspaceRenameHook,
+                listener, this::readBody, this::errorResponse, this::log);
     }
 
     /**

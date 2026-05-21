@@ -449,6 +449,45 @@ public class SkyTntMidiTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Verifies that {@link SkyTntMidi#generateFromEvents} returns events whose
+	 * {@code tick} fields are absolute (measured from time 0 of the full sequence,
+	 * not from the start of the generated portion).
+	 *
+	 * <p>Given a prompt whose last event starts at tick 480 (one beat at
+	 * {@link SkyTntMidi#DEFAULT_TICKS_PER_BEAT}), every returned event must have
+	 * {@code tick >= 480}.  Before the fix, detokenize reset {@code accumulatedTime1}
+	 * to 0 for the generated rows, so events could have ticks near 0; after the fix,
+	 * the accumulated state from the prompt carries through, making all ticks absolute.</p>
+	 */
+	@Test(timeout = 60000)
+	public void generateFromEventsReturnsAbsoluteTicks() {
+		if (skipLongTests) return;
+
+		SkyTntMidi model = buildSyntheticModel(new Random(61), new Random(63));
+
+		List<MidiNoteEvent> prompt = new ArrayList<>();
+		prompt.add(MidiNoteEvent.note(0, 0, 0, 60, 80, 240));
+		prompt.add(MidiNoteEvent.note(480, 0, 0, 62, 80, 240));
+
+		List<MidiNoteEvent> generated = model.generateFromEvents(
+				prompt, 8,
+				SkyTntMidi.DEFAULT_TEMPERATURE,
+				SkyTntMidi.DEFAULT_TOP_P,
+				SkyTntMidi.DEFAULT_TOP_K,
+				SkyTntMidi.DEFAULT_TICKS_PER_BEAT);
+
+		Assert.assertFalse(
+				"generateFromEvents should produce at least one event",
+				generated.isEmpty());
+		for (MidiNoteEvent event : generated) {
+			Assert.assertTrue(
+					"Generated event at tick " + event.getTick() +
+							" must have absolute tick >= 480 (the last prompt event tick)",
+					event.getTick() >= 480);
+		}
+	}
+
 	// -----------------------------------------------------------------------
 	//  Helpers
 	// -----------------------------------------------------------------------

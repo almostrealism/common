@@ -375,7 +375,9 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 * @param topP           nucleus sampling threshold
 	 * @param topK           top-k limit (0 = disabled)
 	 * @param ticksPerBeat   MIDI PPQ resolution for timing quantization
-	 * @return newly generated MIDI events (does not include prompt events)
+	 * @return newly generated MIDI events (does not include prompt events); {@code tick} fields
+	 *         are measured from time 0 of the full sequence (prompt + generated).
+	 *         Caller can locate the prompt/generated boundary at the last tick of the prompt's events.
 	 */
 	public List<MidiNoteEvent> generateFromEvents(List<MidiNoteEvent> promptEvents,
 													int maxNewEvents, double temperature,
@@ -389,8 +391,14 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 * restricting generated events to a subset of MIDI track IDs.
 	 *
 	 * <p>Converts the events to tokens (with BOS), generates up to
-	 * {@code maxNewEvents} additional events, detokenizes the generated portion,
-	 * and returns only the newly generated events (not the prompt events).</p>
+	 * {@code maxNewEvents} additional events, detokenizes the full token sequence
+	 * (prompt + generated), and returns only the newly generated events (not the
+	 * prompt events).</p>
+	 *
+	 * <p>The {@code tick} field of every returned event is measured from <em>time 0
+	 * of the full sequence</em> (i.e., from the beginning of the prompt, not from the
+	 * start of the generated portion).  Callers can locate the prompt/generated boundary
+	 * at the last tick value in the prompt events.</p>
 	 *
 	 * <p>When {@code allowedTrackIds} is non-null, generated events are constrained
 	 * to the supplied track IDs (see
@@ -407,7 +415,8 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	 * @param allowedTrackIds when non-null, restricts generated events to the
 	 *                        specified track IDs (0–127). {@code null} means
 	 *                        no filter. Empty array is rejected.
-	 * @return newly generated MIDI events (does not include prompt events)
+	 * @return newly generated MIDI events (does not include prompt events); {@code tick}
+	 *         fields are absolute (measured from time 0 of the full sequence)
 	 * @throws IllegalArgumentException if {@code allowedTrackIds} is a zero-length array
 	 *         or contains a value outside the valid range [0, 127]
 	 */
@@ -421,14 +430,18 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		int[][] fullSequence = generate(promptTokens, maxNewEvents, temperature, topP, topK,
 				allowedTrackIds);
 
-		// Detokenize only the newly generated rows (excluding prompt)
-		int generatedLen = fullSequence.length - promptLen;
-		if (generatedLen <= 0) {
+		if (fullSequence.length <= promptLen) {
 			return new ArrayList<>();
 		}
 
-		int[][] generatedTokens = Arrays.copyOfRange(fullSequence, promptLen, fullSequence.length);
-		return tokenizer.detokenize(generatedTokens, ticksPerBeat);
+		// Detokenize the full sequence so that the accumulated time1 state from the prompt
+		// is carried through to the generated rows, producing absolute ticks throughout.
+		List<MidiNoteEvent> allEvents = tokenizer.detokenize(fullSequence, ticksPerBeat);
+		int promptEventCount = promptEvents.size();
+		if (allEvents.size() <= promptEventCount) {
+			return new ArrayList<>();
+		}
+		return new ArrayList<>(allEvents.subList(promptEventCount, allEvents.size()));
 	}
 
 	// -----------------------------------------------------------------------

@@ -59,6 +59,62 @@ workstreams:
 Per-job overrides still apply; this just changes the workstream-level
 fallback.
 
+### As workspace defaults
+
+When the same recipe applies to many workstreams in the same workspace,
+hoist it onto the `workspaces[]` entry instead of repeating it on every
+workstream:
+
+```yaml
+workspaces:
+  - id: "almostrealism"
+    slackTeamId: "T0123456789"     # optional Slack binding
+    botToken: "xoxb-..."
+    appToken: "xapp-..."
+    defaultRunner: claude
+    runners:
+      commit-message: opencode
+      organizational-placement: opencode
+```
+
+Every workstream whose `workspaceId` matches this entry inherits the
+defaults. Workstream-level config still wins — if a workstream sets its
+own `defaultRunner`, the workspace's per-phase entries are ignored for
+that workstream (per [PHASES.md](../architecture/PHASES.md)).
+
+The legacy `slackWorkspaces:` top-level key is still accepted; each
+legacy entry's `workspaceId` doubles as both its workspace `id` and its
+`slackTeamId` on load.
+
+The preferred path to set these defaults is the `workspace_update_config`
+MCP tool — discover the workspace ID via the `workspaceId` field on
+each `workstream_list` entry (the legacy `slackWorkspaceId` field is
+still emitted for backward compatibility):
+
+```python
+workspace_update_config(
+    workspace_id="almostrealism",
+    default_runner="claude",
+    runners='{"commit-message":"opencode","organizational-placement":"opencode"}',
+)
+```
+
+To migrate from the initial Slack-team-ID-as-ID form to a friendlier
+operator-chosen name, pass `new_id`:
+
+```python
+workspace_update_config(
+    workspace_id="T0123456789",
+    new_id="almostrealism",
+)
+```
+
+The tool covers `default_runner`, `runners`, `name`, `default_channel`,
+`new_id`, and `slack_team_id`. Credentials (`tokensFile`, `botToken`,
+`appToken`) and ACL fields (`githubOrgs`, `channelOwnerUserId`) remain
+YAML-only — edit `workstreams.yaml` and reload the controller for
+those.
+
 ---
 
 ## Picking a recipe

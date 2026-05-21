@@ -222,12 +222,8 @@ public class SlackListener implements ConsoleFeatures {
      */
     public void clearWorkstreams() {
         channelToWorkstream.clear();
-        if (notifier != null) {
-            notifier.clearWorkstreams();
-        }
-        for (SlackNotifier wsNotifier : notifiersByWorkspace.values()) {
-            wsNotifier.clearWorkstreams();
-        }
+        if (notifier != null) notifier.clearWorkstreams();
+        for (SlackNotifier wsNotifier : notifiersByWorkspace.values()) wsNotifier.clearWorkstreams();
     }
 
     /**
@@ -237,31 +233,35 @@ public class SlackListener implements ConsoleFeatures {
      * @param workstream the workstream to register
      */
     public void registerWorkstream(Workstream workstream) {
-        SlackNotifier wsNotifier = resolveNotifier(workstream.getSlackWorkspaceId());
-        wsNotifier.registerWorkstream(workstream);
+        resolveNotifier(workstream.getWorkspaceId()).registerWorkstream(workstream);
         if (workstream.getChannelId() != null) {
-            String key = channelKey(workstream.getSlackWorkspaceId(), workstream.getChannelId());
-            channelToWorkstream.put(key, workstream);
+            channelToWorkstream.put(channelKey(workstream.getWorkspaceId(),
+                    workstream.getChannelId()), workstream);
         }
         log("Registered workstream: " + workstream);
     }
 
     /**
      * Registers a workstream and persists the configuration to the YAML file.
-     *
-     * <p>This method is intended for programmatic registration via the HTTP API.
-     * It registers the workstream in memory, adds it to the configuration model,
-     * and persists the updated configuration to disk.</p>
+     * Intended for programmatic registration via the HTTP API.
      *
      * @param workstream the workstream to register and persist
      */
     public void registerAndPersistWorkstream(Workstream workstream) {
         registerWorkstream(workstream);
+        if (workstreamConfig != null) workstreamConfig.addWorkstream(workstream);
+        persistConfig();
+    }
 
-        if (workstreamConfig != null) {
-            workstreamConfig.addWorkstream(workstream);
-        }
-
+    /** Removes a workstream from all notifiers and {@link #channelToWorkstream} entries
+     *  and from the persisted YAML config; does not touch Slack. */
+    public void unregisterAndPersistWorkstream(Workstream w) {
+        if (w == null) return;
+        String id = w.getWorkstreamId();
+        if (notifier != null) notifier.removeWorkstream(id);
+        for (SlackNotifier wsNotifier : notifiersByWorkspace.values()) wsNotifier.removeWorkstream(id);
+        channelToWorkstream.values().removeIf(ws -> id.equals(ws.getWorkstreamId()));
+        if (workstreamConfig != null) workstreamConfig.getWorkstreams().removeIf(e -> id.equals(e.getWorkstreamId()));
         persistConfig();
     }
 
@@ -425,7 +425,7 @@ public class SlackListener implements ConsoleFeatures {
      */
     private boolean handleCommand(Workstream workstream, String command, String args,
                                    String messageTs, String threadTs) {
-        SlackNotifier wsNotifier = resolveNotifier(workstream.getSlackWorkspaceId());
+        SlackNotifier wsNotifier = resolveNotifier(workstream.getWorkspaceId());
         switch (command.toLowerCase()) {
             case "status":
                 handleStatusCommand(workstream, wsNotifier);
@@ -512,7 +512,7 @@ public class SlackListener implements ConsoleFeatures {
      */
     private boolean submitJob(Workstream workstream, String prompt, String messageTs, String threadTs,
                               Map<String, String> requiredLabels) {
-        SlackNotifier wsNotifier = resolveNotifier(workstream.getSlackWorkspaceId());
+        SlackNotifier wsNotifier = resolveNotifier(workstream.getWorkspaceId());
 
         if (server == null) {
             warn("No FlowTree server configured");
@@ -798,7 +798,7 @@ public class SlackListener implements ConsoleFeatures {
                 ws.setWorkingDirectory(location);
             }
             ws.setDefaultBranch(branch);
-            ws.setSlackWorkspaceId(workspaceId);
+            ws.setWorkspaceId(workspaceId);
             registerWorkstream(ws);
 
             if (workstreamConfig != null) {
@@ -1058,7 +1058,7 @@ public class SlackListener implements ConsoleFeatures {
             return;
         }
 
-        SlackNotifier wsNotifier = resolveNotifier(ws.getSlackWorkspaceId());
+        SlackNotifier wsNotifier = resolveNotifier(ws.getWorkspaceId());
         Map<String, JobCompletionEvent> jobs = wsNotifier.getRecentJobs(ws.getWorkstreamId());
         if (jobs == null || jobs.isEmpty()) {
             ctx.respond(":clipboard: No recent jobs for this workstream.");
@@ -1324,8 +1324,8 @@ public class SlackListener implements ConsoleFeatures {
             // In multi-workspace mode, only include workstreams for this workspace
             // (or workstreams without a workspace ID for backward compatibility)
             if (workspaceId == null
-                    || ws.getSlackWorkspaceId() == null
-                    || workspaceId.equals(ws.getSlackWorkspaceId())) {
+                    || ws.getWorkspaceId() == null
+                    || workspaceId.equals(ws.getWorkspaceId())) {
                 wsById.put(ws.getWorkstreamId(), ws);
             }
         }
@@ -1363,7 +1363,7 @@ public class SlackListener implements ConsoleFeatures {
                 sb.append("  :link: Recent: ");
                 int linkCount = 0;
                 // Use workspace-specific notifier for permalink API calls
-                SlackNotifier wsNotifier = resolveNotifier(ws.getSlackWorkspaceId());
+                SlackNotifier wsNotifier = resolveNotifier(ws.getWorkspaceId());
                 for (String[] jobEntry : activity.recentJobs) {
                     String slackTs = jobEntry[1];
                     if (slackTs != null && !slackTs.isEmpty()) {

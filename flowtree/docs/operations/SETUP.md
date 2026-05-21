@@ -35,7 +35,7 @@ is documented in [OPENCODE.md](OPENCODE.md).
 | Tracker / project board integration | `tools/mcp/manager/server.py` (`tracker_*` MCP tools) | [`tools/mcp/CLAUDE.md`](../../../tools/mcp/CLAUDE.md) |
 | Agent container env (`FLOWTREE_ROOT_HOST`, `CLAUDE_CODE_OAUTH_TOKEN`) | `flowtree/runtime/agent/.env` (created interactively on first `rebuild.sh --agents` run) | [`runtime/README.md § Running the Agent Pool`](../../runtime/README.md#running-the-agent-pool) |
 | MCP tool inventory pushed to agents (`AR_MANAGER_TOOL_NAMES`) | controller env / `WorkstreamConfig` | [`tools/mcp/CLAUDE.md`](../../../tools/mcp/CLAUDE.md) |
-| Per-phase agent runner selection | per-job (`workstream_submit_task`), workstream defaults (`WorkstreamConfig`), or controller default | [../architecture/PHASES.md](../architecture/PHASES.md), [RECIPES.md](RECIPES.md) |
+| Per-phase agent runner selection | per-job (`workstream_submit_task`), workstream defaults (`WorkstreamConfig.workstreams[]`), workspace defaults (`WorkstreamConfig.workspaces[]` — legacy `slackWorkspaces[]` is also accepted), or controller default | [../architecture/PHASES.md](../architecture/PHASES.md), [RECIPES.md](RECIPES.md) |
 
 ---
 
