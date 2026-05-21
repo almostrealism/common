@@ -412,7 +412,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             if ("/api/workstreams".equals(uri)) {
                 return handleRegisterWorkstream(session);
             }
-            { Response wsResp = new WorkspaceConfigHandler(workspaceLookup, workspaceRenameHook, listener, this::readBody, this::errorResponse, this::log).handleIfMatches(uri, session); if (wsResp != null) return wsResp; }
+            Response workspaceConfigResp = workspaceConfigHandler().handleIfMatches(uri, session);
+            if (workspaceConfigResp != null) return workspaceConfigResp;
             Matcher m = WORKSTREAM_PATTERN.matcher(uri);
             if (m.matches()) {
                 String workstreamId = m.group(1);
@@ -1133,7 +1134,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         String wsId = workstream.getWorkspaceId();
         WorkstreamConfig.WorkspaceEntry wsEntry = (wsId != null && !wsId.isEmpty()) ? workspaceLookup.apply(wsId) : null;
-        if (wsId != null && !wsId.isEmpty() && wsEntry == null) log("submitWorkspaceMissing slackWorkspaceId=" + wsId);
+        if (wsId != null && !wsId.isEmpty() && wsEntry == null) log("submitWorkspaceMissing workspaceId=" + wsId);
         SubmissionRunnerResolver runnerResolver = SubmissionRunnerResolver.resolve(
                 extractJsonObjectFields(body, "runners"),
                 workstream.getDefaultRunner(), workstream.getRunners(),
@@ -1563,6 +1564,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private WorkstreamLifecycleHandler lifecycleHandler() {
         return new WorkstreamLifecycleHandler(notifiers, listener, this::readBody,
                 this::errorResponse, this::log);
+    }
+
+    /** Builds the {@code /api/workspaces/{id}/config} handler bound to this endpoint. */
+    private WorkspaceConfigHandler workspaceConfigHandler() {
+        return new WorkspaceConfigHandler(workspaceLookup, workspaceRenameHook,
+                listener, this::readBody, this::errorResponse, this::log);
     }
 
     /**

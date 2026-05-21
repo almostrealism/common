@@ -148,7 +148,11 @@ final class WorkspaceConfigHandler {
      * Handles {@code POST /api/workspaces/{id}/config}.
      *
      * @param session     the HTTP session
-     * @param workspaceId the Slack workspace (team) ID from the URL path
+     * @param workspaceId the operator-chosen workspace id from the URL path
+     *                    (the value of {@code WorkspaceEntry.id} — note that
+     *                    this is distinct from the Slack team id, which lives
+     *                    on the entry as {@code slackTeamId} and may differ
+     *                    or be absent entirely)
      * @return JSON response confirming the update, or a 4xx with an error
      */
     Response handle(IHTTPSession session, String workspaceId) {

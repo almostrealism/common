@@ -640,7 +640,14 @@ public class FlowTreeController implements ConsoleFeatures {
         workspaceConnections.clear();
         for (WorkstreamConfig.WorkspaceEntry wsEntry : entries) {
             if (wsEntry.getSlackTeamId() == null || wsEntry.getSlackTeamId().isEmpty()) {
-                log("Workspace " + wsEntry.getId() + " has no slackTeamId — skipping Slack connection");
+                // No Slack integration — register a no-op connection so
+                // multi-workspace routing stays active and start() does not
+                // fall back to single-workspace mode via defaultConnection.
+                WorkspaceConnection noopConn = new WorkspaceConnection(wsEntry.getId(), null, null);
+                if (wsEntry.getDefaultChannel() != null) noopConn.notifier.setDefaultChannelId(wsEntry.getDefaultChannel());
+                if (statsStore != null) noopConn.notifier.setStatsStore(statsStore);
+                workspaceConnections.put(wsEntry.getId(), noopConn);
+                log("Workspace " + wsEntry.getId() + " has no slackTeamId — registered no-op connection");
                 continue;
             }
             try {

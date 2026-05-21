@@ -880,17 +880,32 @@ public class WorkstreamConfig {
      * later rename the workspace via the {@code workspace_update_config} MCP
      * tool without losing the Slack connection.
      *
+     * <p>De-duplicates by {@code id} against any entries already present in
+     * {@link #workspaces}. Jackson invokes the setters in the order the keys
+     * appear in the YAML file, so when a file lists both {@code workspaces:}
+     * and {@code slackWorkspaces:} the canonical {@code workspaces:} entries
+     * win regardless of which key comes first; legacy entries that share an
+     * id with a canonical entry are silently dropped.</p>
+     *
      * @param legacy parsed entries from the legacy YAML key; never serialized back
      */
     @JsonProperty("slackWorkspaces")
     public void setSlackWorkspaces(List<WorkspaceEntry> legacy) {
         if (legacy == null || legacy.isEmpty()) return;
+        Set<String> existing = new HashSet<>();
+        for (WorkspaceEntry e : workspaces) {
+            if (e.getId() != null) existing.add(e.getId());
+        }
         for (WorkspaceEntry entry : legacy) {
             if ((entry.getSlackTeamId() == null || entry.getSlackTeamId().isEmpty())
                     && entry.getId() != null && !entry.getId().isEmpty()) {
                 entry.setSlackTeamId(entry.getId());
             }
+            if (entry.getId() != null && existing.contains(entry.getId())) {
+                continue;
+            }
             workspaces.add(entry);
+            if (entry.getId() != null) existing.add(entry.getId());
         }
     }
 

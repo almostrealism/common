@@ -104,7 +104,7 @@ final class WorkstreamLifecycleHandler {
         if (workstream == null) {
             return errorResponse.apply("Unknown workstream: " + workstreamId);
         }
-        Response activeErr = rejectIfActiveJobs(workstreamId, "archive");
+        Response activeErr = rejectIfActiveJobs(workstreamId, "archiving");
         if (activeErr != null) return activeErr;
 
         String body = readBody.apply(session);
@@ -210,7 +210,7 @@ final class WorkstreamLifecycleHandler {
                     + " is not archived. Archive it first (workstream_archive)"
                     + " or pass force=true to delete a live workstream.");
         }
-        Response activeErr = rejectIfActiveJobs(workstreamId, "delete");
+        Response activeErr = rejectIfActiveJobs(workstreamId, "deleting");
         if (activeErr != null) return activeErr;
 
         if (listener != null) {
@@ -231,9 +231,12 @@ final class WorkstreamLifecycleHandler {
      * when the workstream is safe to mutate destructively.
      *
      * @param workstreamId the workstream to check
-     * @param verb         the action being attempted, used in the message
+     * @param gerund       the action being attempted in gerund form
+     *                     (e.g. {@code "archiving"}, {@code "deleting"});
+     *                     spliced verbatim into the user-facing error
+     *                     message after "before "
      */
-    private Response rejectIfActiveJobs(String workstreamId, String verb) {
+    private Response rejectIfActiveJobs(String workstreamId, String gerund) {
         List<String> activeJobs = notifiers.getActiveJobIds(workstreamId);
         if (activeJobs.isEmpty()) return null;
         StringBuilder ids = new StringBuilder();
@@ -243,7 +246,7 @@ final class WorkstreamLifecycleHandler {
         }
         return errorResponse.apply("workstream has " + activeJobs.size()
                 + " active job" + (activeJobs.size() == 1 ? "" : "s")
-                + "; cancel or wait for completion before " + verb
-                + "ing. Active job IDs: " + ids);
+                + "; cancel or wait for completion before " + gerund
+                + ". Active job IDs: " + ids);
     }
 }
