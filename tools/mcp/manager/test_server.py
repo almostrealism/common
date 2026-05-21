@@ -350,15 +350,17 @@ class TestWorkstreamDelete(unittest.TestCase):
     def test_delete_clears_tracker_linkage(
             self, mock_post, mock_tracker_get, mock_tracker_put):
         _grant_all_scopes()
-        mock_tracker_get.return_value = {
-            "ok": True,
-            "tasks": [{"id": "task-1"}, {"id": "task-2"}],
-        }
+        # First call returns two tasks; second call returns empty (tasks are gone).
+        mock_tracker_get.side_effect = [
+            {"ok": True, "tasks": [{"id": "task-1"}, {"id": "task-2"}]},
+            {"ok": True, "tasks": []},
+        ]
         mock_tracker_put.return_value = {"ok": True}
         mock_post.return_value = {"ok": True, "workstreamId": "ws-gone"}
         result = server.workstream_delete(workstream_id="ws-gone")
         self.assertTrue(result["ok"])
         self.assertEqual(result["deletedTrackerTasks"], 2)
+        self.assertNotIn("trackerCleanupWarning", result)
         # Tracker tasks were cleared
         clear_calls = mock_tracker_put.call_args_list
         self.assertEqual(len(clear_calls), 2)
@@ -399,6 +401,50 @@ class TestWorkstreamDelete(unittest.TestCase):
         # Tracker linkage is preserved when the controller refuses delete.
         mock_tracker_get.assert_not_called()
         mock_tracker_put.assert_not_called()
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    @patch.object(server, "_controller_post")
+    def test_delete_surfaces_warning_on_tracker_query_failure(
+            self, mock_post, mock_tracker_get, mock_tracker_put):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-x"}
+        mock_tracker_get.return_value = {"ok": False, "error": "tracker down"}
+        result = server.workstream_delete(workstream_id="ws-x")
+        self.assertTrue(result["ok"])
+        self.assertIn("trackerCleanupWarning", result)
+        self.assertIn("tracker query failed", result["trackerCleanupWarning"])
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    @patch.object(server, "_controller_post")
+    def test_delete_surfaces_warning_on_tracker_update_stall(
+            self, mock_post, mock_tracker_get, mock_tracker_put):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-y"}
+        mock_tracker_get.return_value = {"ok": True, "tasks": [{"id": "task-stuck"}]}
+        mock_tracker_put.return_value = {"ok": False, "error": "read-only"}
+        result = server.workstream_delete(workstream_id="ws-y")
+        self.assertTrue(result["ok"])
+        self.assertIn("trackerCleanupWarning", result)
+        self.assertIn("stalled", result["trackerCleanupWarning"])
+
+    @patch.object(server, "_tracker_put")
+    @patch.object(server, "_tracker_get")
+    @patch.object(server, "_controller_post")
+    def test_delete_no_warning_on_clean_success(
+            self, mock_post, mock_tracker_get, mock_tracker_put):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "workstreamId": "ws-clean"}
+        mock_tracker_get.side_effect = [
+            {"ok": True, "tasks": [{"id": "task-a"}, {"id": "task-b"}]},
+            {"ok": True, "tasks": []},
+        ]
+        mock_tracker_put.return_value = {"ok": True}
+        result = server.workstream_delete(workstream_id="ws-clean")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["deletedTrackerTasks"], 2)
+        self.assertNotIn("trackerCleanupWarning", result)
 
     def test_delete_requires_write_scope(self):
         _grant_scopes("read")

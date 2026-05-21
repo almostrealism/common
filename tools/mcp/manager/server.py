@@ -2535,7 +2535,10 @@ def workstream_delete(workstream_id: str, force: bool = False) -> dict:
     Returns:
         Dictionary with ``ok``, ``workstreamId``, and
         ``deletedTrackerTasks`` (the number of tracker tasks whose
-        ``workstream_id`` was cleared).
+        ``workstream_id`` was cleared). If tracker cleanup was interrupted
+        by a query or update failure, ``trackerCleanupWarning`` is also
+        present with a human-readable description; ``ok`` remains ``True``
+        because the workstream itself was deleted successfully.
     """
     _require_scope("write")
     err = _check_short_strings(workstream_id=workstream_id)
@@ -2564,20 +2567,27 @@ def workstream_delete(workstream_id: str, force: bool = False) -> dict:
     cleared = 0
     seen_ids = set()
     MAX_TRACKER_CLEAR_BATCHES = 200
+    tracker_warning = None
     for _ in range(MAX_TRACKER_CLEAR_BATCHES):
         tasks_result = _tracker_get(
             f"/v1/tasks?{urlencode({'workstream_id': workstream_id, 'limit': 200, 'fields': 'headlines'})}"
         )
         if not tasks_result.get("ok"):
+            tracker_warning = (
+                "tracker query failed during cleanup; "
+                + str(cleared) + " task(s) unlinked before failure"
+            )
             break
         batch = tasks_result.get("tasks") or []
         if not batch:
             break
         progress = False
+        new_in_batch = 0
         for task in batch:
             task_id = task.get("id")
             if not task_id or task_id in seen_ids:
                 continue
+            new_in_batch += 1
             seen_ids.add(task_id)
             update = _tracker_put(f"/v1/tasks/{task_id}",
                                   {"workstream_id": None})
@@ -2585,10 +2595,22 @@ def workstream_delete(workstream_id: str, force: bool = False) -> dict:
                 cleared += 1
                 progress = True
         if not progress:
-            # Every task in the batch failed to update — repeating would
-            # just stall on the same rows. Surface what we cleared so far.
+            if new_in_batch > 0:
+                # New tasks appeared but none could be updated — stall.
+                tracker_warning = (
+                    "tracker update stalled; "
+                    + str(cleared) + " task(s) unlinked before stall"
+                )
             break
+    else:
+        # Loop exhausted without emptying the task list.
+        tracker_warning = (
+            "tracker cleanup hit batch limit; "
+            + str(cleared) + " task(s) unlinked"
+        )
     result["deletedTrackerTasks"] = cleared
+    if tracker_warning is not None:
+        result["trackerCleanupWarning"] = tracker_warning
     return result
 
 

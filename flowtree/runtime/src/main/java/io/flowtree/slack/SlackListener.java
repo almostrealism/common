@@ -253,12 +253,14 @@ public class SlackListener implements ConsoleFeatures {
         persistConfig();
     }
 
-    /** Removes a workstream from the in-memory registry and persisted YAML config; does not touch Slack. */
+    /** Removes a workstream from all notifiers and {@link #channelToWorkstream} entries
+     *  and from the persisted YAML config; does not touch Slack. */
     public void unregisterAndPersistWorkstream(Workstream w) {
         if (w == null) return;
         String id = w.getWorkstreamId();
-        resolveNotifier(w.getSlackWorkspaceId()).removeWorkstream(id);
-        if (w.getChannelId() != null) channelToWorkstream.remove(channelKey(w.getSlackWorkspaceId(), w.getChannelId()));
+        if (notifier != null) notifier.removeWorkstream(id);
+        for (SlackNotifier wsNotifier : notifiersByWorkspace.values()) wsNotifier.removeWorkstream(id);
+        channelToWorkstream.values().removeIf(ws -> id.equals(ws.getWorkstreamId()));
         if (workstreamConfig != null) workstreamConfig.getWorkstreams().removeIf(e -> id.equals(e.getWorkstreamId()));
         persistConfig();
     }

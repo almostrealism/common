@@ -118,7 +118,7 @@ public class WorkstreamLifecycleEndpointTest extends TestSuiteBase {
         assertTrue(result.get("ok").asBoolean());
         // The notifier was constructed without a bot token, so even though
         // archive_slack_channel defaults to true the Slack call returns
-        // an "no Slack client configured" error path.
+        // a "no Slack client configured" error path.
         assertFalse(result.get("slackChannelArchived").asBoolean());
     }
 
