@@ -134,8 +134,10 @@ fallback.
 
 The richer per-phase shape is available as `defaultPhaseConfig` plus
 `phaseConfigs`; the legacy `defaultRunner` and `runners` keys are kept
-for backwards compatibility but are deprecated and not re-emitted on
-save. When both forms set the same field the new form wins.
+for backwards compatibility and are still re-emitted on save when set
+(since the new shape and the legacy shape live side-by-side on
+`WorkstreamEntry`). When both forms set the same field the new form
+wins at resolution time.
 
 ```yaml
 workstreams:

@@ -634,16 +634,15 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         factory.setMaxTurns(maxTurns > 0 ? maxTurns : workstream.getMaxTurns());
         factory.setMaxBudgetUsd(maxBudgetUsd > 0 ? maxBudgetUsd : workstream.getMaxBudgetUsd());
 
-        // Model and effort: per-request override beats workstream default,
-        // workstream default beats CLI default.  Effort is validated by the
-        // factory setter; surface the failure as a 400 instead of a 500.
-        String effectiveModel = (requestModel != null && !requestModel.isEmpty())
-                ? requestModel : workstream.getModel();
-        Response err = applyValidated(effectiveModel, factory::setModel);
+        // Per-request model/effort go into the job factory's legacy fields
+        // for early 400 validation. Workstream-level model/effort are NOT
+        // bridged here — they flow through workstream.getPhaseConfigBundle()
+        // below and reach the factory via PhaseConfigResolver.applyTo(),
+        // which keeps the per-phase precedence ladder intact instead of
+        // promoting workstream defaults into the job-level default.
+        Response err = applyValidated(requestModel, factory::setModel);
         if (err != null) return err;
-        String effectiveEffort = (requestEffort != null && !requestEffort.isEmpty())
-                ? requestEffort : workstream.getEffort();
-        err = applyValidated(effectiveEffort, factory::setEffort);
+        err = applyValidated(requestEffort, factory::setEffort);
         if (err != null) return err;
 
         String effectiveBranch = targetBranch != null ? targetBranch : workstream.getDefaultBranch();
@@ -752,11 +751,18 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // resolved bundle is applied on top of the SubmissionRunnerResolver
         // result, so model and effort overrides propagate to the factory
         // without overwriting runner choices already applied above.
+        //
+        // Only pass the per-request model/effort here — promoting
+        // workstream.getModel() / workstream.getEffort() into the job-level
+        // default would shadow workstream / workspace per-phase entries
+        // (which sit BELOW the job default in the precedence ladder).
+        // Workstream defaults are supplied separately via workstreamBundle
+        // below, so PhaseConfigResolver.resolve() can apply them
+        // field-by-field at their correct layer.
         PhaseConfigBundle requestBundle =
                 PhaseConfigResolver.bundleFromRequest(body,
                         extractJsonObjectFields(body, "runners"),
-                        requestModel != null && !requestModel.isEmpty() ? requestModel : workstream.getModel(),
-                        requestEffort != null && !requestEffort.isEmpty() ? requestEffort : workstream.getEffort());
+                        requestModel, requestEffort);
         PhaseConfigBundle workstreamBundle = workstream.getPhaseConfigBundle();
         PhaseConfigBundle workspaceBundle = wsEntry != null
                 ? wsEntry.toPhaseConfigBundle()

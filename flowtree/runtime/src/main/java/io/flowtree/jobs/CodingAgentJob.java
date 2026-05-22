@@ -1216,11 +1216,14 @@ public class CodingAgentJob extends GitManagedJob {
     /**
      * Resolves the {@link AgentRunner} to use for {@code phase}.
      *
-     * <p>Looks up the phase override via {@link #getRunnerForPhase(Phase)} and
-     * resolves the resulting name through {@link AgentRunnerRegistry}.</p>
+     * <p>Consults {@link #resolveEffectivePhaseConfig(Phase)} first (per-phase
+     * bundle override overlaid on the bundle default, which itself layers the
+     * legacy {@code defaultRunner} field). When the resolved {@link PhaseConfig}
+     * carries no runner, falls back to {@link #getRunnerForPhase(Phase)}. The
+     * name is then resolved through {@link AgentRunnerRegistry}, defaulting
+     * to {@link AgentRunnerRegistry#CLAUDE}.</p>
      *
      * @param phase the lifecycle phase being dispatched; may be {@code null}
-     *              in which case the default runner is used
      * @return the runner, never {@code null}
      */
     AgentRunner resolveRunner(Phase phase) {
@@ -1562,15 +1565,20 @@ public class CodingAgentJob extends GitManagedJob {
 
     /**
      * Replaces the per-phase runner overrides with the decoded contents of
-     * {@code wireValue}. Called by {@link CodingAgentJobCodec} when handling
-     * the {@code runners} wire key.
-     *
-     * @param wireValue the encoded runner map as produced by
-     *                  {@link Phase#encodeRunnerMap(Map)}
+     * {@code wireValue}. Called by {@link CodingAgentJobCodec} for the
+     * {@code runners} wire key. Syncs both {@link #runnerByPhase} and
+     * {@link #phaseConfigBundle} so {@link #resolveRunner(Phase)} sees them.
      */
     void applyRunnerMap(String wireValue) {
         runnerByPhase.clear();
-        runnerByPhase.putAll(Phase.decodeRunnerMap(wireValue, this::warn));
+        Map<Phase, String> decoded = Phase.decodeRunnerMap(wireValue, this::warn);
+        runnerByPhase.putAll(decoded);
+        for (Map.Entry<Phase, String> entry : decoded.entrySet()) {
+            PhaseConfig existing = phaseConfigBundle.phaseConfigs().get(entry.getKey());
+            PhaseConfig updated = (existing != null ? existing : PhaseConfig.EMPTY)
+                    .withRunner(entry.getValue());
+            phaseConfigBundle = phaseConfigBundle.withPhase(entry.getKey(), updated);
+        }
     }
 
     /**
