@@ -14,9 +14,11 @@ Usage:
 
 The model_dir argument can be:
   - A local directory containing model.safetensors (e.g. a downloaded HuggingFace repo)
-  - A HuggingFace model ID (e.g. skytnt/midi-model-tv2o-medium) — the script will look for
-    model.safetensors in the HuggingFace cache, or you can pre-download with:
-      python -c "from huggingface_hub import snapshot_download; snapshot_download('skytnt/midi-model-tv2o-medium')"
+  - A path to a model.safetensors file directly
+  - A HuggingFace model ID (e.g. skytnt/midi-model-tv2o-medium) — the script will
+    download it on demand into the HuggingFace cache (~/.cache/huggingface/hub by
+    default, or $HF_HOME/hub if set) and use the snapshot path automatically.
+    Requires the huggingface_hub package: pip install huggingface_hub
 
 Output structure (flat directory, loaded by StateDictionary.java):
     output_dir/
@@ -300,6 +302,49 @@ def extract_weights(state, output_dir):
     print(f"\nExtraction complete. {len(state)} tensors written to {output_dir}")
 
 
+def resolve_safetensors(model_dir):
+    """
+    Resolve the model_dir argument to a concrete model.safetensors path.
+
+    Accepts a local directory (containing model.safetensors), a path to the
+    safetensors file itself, or a HuggingFace model ID such as
+    ``skytnt/midi-model-tv2o-medium``.  In the HF-ID case the model is
+    downloaded into the HuggingFace cache via ``snapshot_download`` if it is
+    not already present and the path inside the snapshot is returned.
+    """
+    path = Path(model_dir)
+    if path.is_file():
+        return path
+    if path.is_dir():
+        candidate = path / "model.safetensors"
+        if candidate.exists():
+            return candidate
+        print(f"Error: model.safetensors not found in {path}")
+        sys.exit(1)
+
+    # Treat as a HuggingFace model ID and download on demand.
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError:
+        print(f"Error: '{model_dir}' is not a local path and huggingface_hub "
+              "is not installed.")
+        print("Install with: pip install huggingface_hub")
+        sys.exit(1)
+
+    print(f"Downloading {model_dir} from HuggingFace Hub "
+          "(allow_patterns=['model.safetensors', '*.json'])...")
+    snapshot_dir = Path(snapshot_download(
+        repo_id=model_dir,
+        allow_patterns=["model.safetensors", "*.json"]))
+    print(f"  cached at: {snapshot_dir}")
+    candidate = snapshot_dir / "model.safetensors"
+    if not candidate.exists():
+        print(f"Error: snapshot_download succeeded but no model.safetensors "
+              f"found under {snapshot_dir}")
+        sys.exit(1)
+    return candidate
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Extract SkyTNT midi-model weights from safetensors to AR protobuf format")
@@ -311,17 +356,7 @@ def main():
 
     args = parser.parse_args()
 
-    # Locate model.safetensors
-    model_dir = Path(args.model_dir)
-    safetensors_path = model_dir / "model.safetensors"
-
-    if not safetensors_path.exists():
-        # Try treating as a HuggingFace cache path
-        print(f"model.safetensors not found at {safetensors_path}")
-        print("Hint: download the model first with:")
-        print(f"  python -c \"from huggingface_hub import snapshot_download; "
-              f"snapshot_download('{args.model_dir}')\"")
-        sys.exit(1)
+    safetensors_path = resolve_safetensors(args.model_dir)
 
     print(f"Loading weights from: {safetensors_path}")
     state = load_safetensors(safetensors_path)
