@@ -70,11 +70,6 @@
         <property name="checks" value="FileLength"/>
         <property name="files" value="AttentionFeatures\.java"/>
     </module>
-    <!-- LayerFeatures.java grew past 1800 lines when Javadoc was added -->
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="FileLength"/>
-        <property name="files" value="LayerFeatures\.java"/>
-    </module>
     <!-- CodingAgentJob.java grew past 1600 lines when the REVIEW phase was added; the
          file already housed every enforcement-rule activation, encode/decode, and
          per-phase telemetry path, so it was at 1580/1600 on master before this work.
@@ -82,12 +77,6 @@
     <module name="SuppressionSingleFilter">
         <property name="checks" value="FileLength"/>
         <property name="files" value="CodingAgentJob\.java"/>
-    </module>
-    <!-- FlowTreeApiEndpoint.java similarly went over 1600 when the REVIEW phase
-         submission fields were added; was 1599/1600 on master. -->
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="FileLength"/>
-        <property name="files" value="FlowTreeApiEndpoint\.java"/>
     </module>
 
     <!-- Console.java is the logging system itself — it must write to System.out/err

@@ -51,12 +51,12 @@ services:
       - MAVEN_OPTS=${AGENT_JVM_OPTS:--Xmx2048m}
       # Optional: configures the OpencodeRunner. Unset values leave the
       # runner on its compiled-in defaults (which point at
-      # http://localhost:11434/v1 inside the container — almost certainly
-      # not what you want unless ollama is itself running in the agent
-      # container). Set OPENCODE_PROVIDER_URL to the host-reachable URL of
-      # your OpenAI-compatible inference server; on macOS / Windows
+      # http://localhost:8084/v1 inside the container — almost certainly
+      # not what you want unless llama-server is itself running in the
+      # agent container). Set OPENCODE_PROVIDER_URL to the host-reachable
+      # URL of your OpenAI-compatible inference server; on macOS / Windows
       # Docker Desktop, http://host.docker.internal:<port>/v1 reaches the
-      # host's ollama / llama.cpp.
+      # host's llama.cpp / ollama.
       - OPENCODE_PROVIDER_URL=${OPENCODE_PROVIDER_URL:-}
       - OPENCODE_API_KEY=${OPENCODE_API_KEY:-}
       - OPENCODE_DEFAULT_MODEL=${OPENCODE_DEFAULT_MODEL:-}
