@@ -23,6 +23,8 @@ import io.flowtree.jobs.agent.AgentRunner;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
 import io.flowtree.jobs.agent.ClaudeCodeRunner;
 import io.flowtree.jobs.agent.Phase;
+import io.flowtree.jobs.agent.PhaseConfig;
+import io.flowtree.jobs.agent.PhaseConfigBundle;
 import org.almostrealism.util.KeyUtils;
 
 import java.io.File;
@@ -203,6 +205,15 @@ public class CodingAgentJob extends GitManagedJob {
 
     /** Per-phase {@link AgentRunner} overrides; empty when only the default applies. */
     private final Map<Phase, String> runnerByPhase = new EnumMap<>(Phase.class);
+
+    /**
+     * Unified per-phase configuration bundle holding the default
+     * {@link PhaseConfig} plus per-phase overrides for runner / model /
+     * effort. Kept in lockstep with the legacy {@link #defaultRunner},
+     * {@link #runnerByPhase}, {@link #model}, and {@link #effort} fields by
+     * the corresponding setters so legacy callers continue to work.
+     */
+    private PhaseConfigBundle phaseConfigBundle = PhaseConfigBundle.EMPTY;
 
     /** Builder used to assemble the MCP tool configuration JSON for Claude Code. */
     private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
@@ -402,12 +413,17 @@ public class CodingAgentJob extends GitManagedJob {
      * @throws IllegalArgumentException if not a recognised identifier
      */
     public void setModel(String model) {
-        if (model == null || model.isEmpty()) { this.model = null; return; }
+        if (model == null || model.isEmpty()) {
+            this.model = null;
+            this.phaseConfigBundle = phaseConfigBundle.withDefaultModel(null);
+            return;
+        }
         if (!VALID_MODELS.contains(model)) {
             throw new IllegalArgumentException("Invalid model '" + model
                     + "'. Must be one of " + VALID_MODELS);
         }
         this.model = model;
+        this.phaseConfigBundle = phaseConfigBundle.withDefaultModel(model);
     }
 
     /** Returns the effort/thinking level, or {@code null} to use the CLI default. */
@@ -420,12 +436,17 @@ public class CodingAgentJob extends GitManagedJob {
      * @throws IllegalArgumentException if not a valid level
      */
     public void setEffort(String effort) {
-        if (effort == null || effort.isEmpty()) { this.effort = null; return; }
+        if (effort == null || effort.isEmpty()) {
+            this.effort = null;
+            this.phaseConfigBundle = phaseConfigBundle.withDefaultEffort(null);
+            return;
+        }
         if (!VALID_EFFORT_LEVELS.contains(effort)) {
             throw new IllegalArgumentException("Invalid effort level '" + effort
                     + "'. Must be one of " + VALID_EFFORT_LEVELS);
         }
         this.effort = effort;
+        this.phaseConfigBundle = phaseConfigBundle.withDefaultEffort(effort);
     }
 
     /** Returns the ar-manager HTTP URL. */
@@ -671,14 +692,15 @@ public class CodingAgentJob extends GitManagedJob {
      * @throws IllegalArgumentException when the runner is not registered
      */
     public void setRunnerName(String runnerName) {
-        if (runnerName == null || runnerName.isEmpty()) {
-            this.runnerName = AgentRunnerRegistry.CLAUDE;
-            this.defaultRunner = AgentRunnerRegistry.CLAUDE;
-            return;
+        String resolved = (runnerName == null || runnerName.isEmpty())
+                ? AgentRunnerRegistry.CLAUDE : runnerName;
+        if (runnerName != null && !runnerName.isEmpty()) {
+            AgentRunnerRegistry.validateName(runnerName);
         }
-        AgentRunnerRegistry.validateName(runnerName);
-        this.runnerName = runnerName;
-        this.defaultRunner = runnerName;
+        this.runnerName = resolved;
+        this.defaultRunner = resolved;
+        this.phaseConfigBundle = phaseConfigBundle.withDefaultRunner(
+                (runnerName == null || runnerName.isEmpty()) ? null : runnerName);
     }
 
     /**
@@ -690,16 +712,17 @@ public class CodingAgentJob extends GitManagedJob {
     public String getDefaultRunner() { return defaultRunner; }
 
     /**
-     * Sets the default runner used when {@link #getRunnerForPhase(Phase)} has
-     * no explicit override for a phase. Validated against
-     * {@link AgentRunnerRegistry#available()}.
+     * Alias for {@link #setRunnerName(String)} that emphasises this is the
+     * default runner applied when {@link #getRunnerForPhase(Phase)} has no
+     * explicit override.
      *
      * @param runnerName a registered runner identifier; {@code null}/empty
      *                   resets to {@link AgentRunnerRegistry#CLAUDE}
      * @throws IllegalArgumentException when the runner is not registered
      */
     public void setDefaultRunner(String runnerName) {
-        setRunnerName(runnerName);
+        String name = (runnerName == null) ? null : runnerName.trim();
+        setRunnerName(name);
     }
 
     /**
@@ -729,10 +752,18 @@ public class CodingAgentJob extends GitManagedJob {
         if (phase == null) throw new IllegalArgumentException("phase must not be null");
         if (runnerName == null || runnerName.isEmpty()) {
             runnerByPhase.remove(phase);
+            PhaseConfig existing = phaseConfigBundle.phaseConfigs().get(phase);
+            if (existing != null) {
+                phaseConfigBundle = phaseConfigBundle.withPhase(phase, existing.withRunner(null));
+            }
             return;
         }
         AgentRunnerRegistry.validateName(runnerName);
         runnerByPhase.put(phase, runnerName);
+        PhaseConfig existing = phaseConfigBundle.phaseConfigs().get(phase);
+        PhaseConfig updated = (existing != null ? existing : PhaseConfig.EMPTY)
+                .withRunner(runnerName);
+        phaseConfigBundle = phaseConfigBundle.withPhase(phase, updated);
     }
 
     /**
@@ -742,6 +773,49 @@ public class CodingAgentJob extends GitManagedJob {
      */
     public Map<Phase, String> getRunnerByPhase() {
         return new EnumMap<>(runnerByPhase);
+    }
+
+    /**
+     * Returns the unified per-phase configuration bundle for this job.
+     *
+     * <p>Reflects the latest state of {@code defaultRunner},
+     * {@code runnerByPhase}, {@code model}, and {@code effort}; legacy
+     * setters keep it in sync. Phase 2 callers (the orchestrator's
+     * per-phase {@link AgentRunRequest} builder) read directly from this
+     * bundle.</p>
+     *
+     * @return the bundle, never {@code null}
+     */
+    public PhaseConfigBundle getPhaseConfigBundle() {
+        return phaseConfigBundle;
+    }
+
+    /**
+     * Replaces the per-phase configuration bundle. Updates the legacy
+     * fields ({@link #defaultRunner}, {@link #runnerByPhase},
+     * {@link #model}, {@link #effort}) to reflect the new bundle so that
+     * legacy callers continue to see consistent state.
+     *
+     * @param bundle the new bundle; {@code null} resets to
+     *               {@link PhaseConfigBundle#EMPTY}
+     */
+    public void setPhaseConfigBundle(PhaseConfigBundle bundle) {
+        this.phaseConfigBundle = bundle != null ? bundle : PhaseConfigBundle.EMPTY;
+        PhaseConfig def = phaseConfigBundle.defaultPhaseConfig();
+        // Resync legacy fields, bypassing the bundle update path that the
+        // public setters would otherwise trigger.
+        String r = def.runner();
+        this.defaultRunner = (r != null && !r.isEmpty()) ? r : AgentRunnerRegistry.CLAUDE;
+        this.runnerName = this.defaultRunner;
+        this.model = def.model();
+        this.effort = def.effort();
+        this.runnerByPhase.clear();
+        for (Map.Entry<Phase, PhaseConfig> e : phaseConfigBundle.phaseConfigs().entrySet()) {
+            String phaseRunner = e.getValue().runner();
+            if (phaseRunner != null && !phaseRunner.isEmpty()) {
+                this.runnerByPhase.put(e.getKey(), phaseRunner);
+            }
+        }
     }
 
     /**
@@ -1150,7 +1224,8 @@ public class CodingAgentJob extends GitManagedJob {
      * @return the runner, never {@code null}
      */
     AgentRunner resolveRunner(Phase phase) {
-        String name = getRunnerForPhase(phase);
+        String name = resolveEffectivePhaseConfig(phase).runner();
+        if (name == null || name.isEmpty()) name = getRunnerForPhase(phase);
         return AgentRunnerRegistry.get(name != null ? name : AgentRunnerRegistry.CLAUDE);
     }
 
@@ -1189,6 +1264,12 @@ public class CodingAgentJob extends GitManagedJob {
      * Builds the {@link AgentRunRequest} for the current session, snapshotting
      * the instruction prompt and the orchestrator-owned MCP and tool policy.
      *
+     * <p>Reads per-phase model and effort from {@link #phaseConfigBundle} via
+     * {@link #resolveEffectivePhaseConfig(Phase)} so that mixed-phase jobs
+     * dispatch each phase with its own resolved {@code (model, effort)}
+     * pair. Runner selection still goes through {@link #resolveRunner(Phase)}
+     * in {@link #executeSingleRun()}.</p>
+     *
      * <p>Package-private for tests.</p>
      *
      * @param composedAllowedTools allowed-tools CSV including ar-manager and
@@ -1213,14 +1294,18 @@ public class CodingAgentJob extends GitManagedJob {
 
         Path workDir = getWorkingDirectory() != null
                 ? Path.of(getWorkingDirectory()) : null;
+        // Resolve per-phase model/effort from the bundle, falling back to
+        // the legacy single-value fields for anything the bundle leaves null.
+        PhaseConfig effective = phaseConfigBundle.forPhase(resolveCurrentPhase())
+                .overlayOn(new PhaseConfig(defaultRunner, model, effort));
         return AgentRunRequest.builder()
                 .prompt(buildInstructionPrompt())
                 .workingDirectory(workDir)
                 .allowedTools(composedAllowedTools)
                 .mcpConfigJson(mcpConfigJson)
                 .environment(env)
-                .model(model)
-                .effort(effort)
+                .model(effective.model())
+                .effort(effective.effort())
                 .maxTurns(maxTurns)
                 .maxBudgetUsd(maxBudgetUsd)
                 .inactivityTimeoutMillis(inactivityTimeoutMillis)
@@ -1230,6 +1315,12 @@ public class CodingAgentJob extends GitManagedJob {
                 .activityTag(currentActivity)
                 .outputCapturePath(outputCapturePath)
                 .build();
+    }
+
+    /** Effective {@link PhaseConfig} for {@code phase}: bundle overlay over the legacy fields. */
+    PhaseConfig resolveEffectivePhaseConfig(Phase phase) {
+        return phaseConfigBundle.forPhase(phase)
+                .overlayOn(new PhaseConfig(defaultRunner, model, effort));
     }
 
     /**

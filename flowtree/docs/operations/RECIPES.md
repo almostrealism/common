@@ -59,6 +59,65 @@ Claude, only the review pass is delegated):
 }
 ```
 
+### Per-phase `(runner, model, effort)` via `phase_configs`
+
+The unified `phase_configs` parameter on `workstream_submit_task` lets a
+single submission set `runner`, `model`, and `effort` independently for
+every phase. The legacy `runners` / `default_runner` / `model` / `effort`
+parameters are still accepted as a convenience for runner-only flows; the
+new shape supersedes them when both are supplied.
+
+**Cheap-review-with-strong-claude** (claude opus on review with maximum
+effort; everything else runs on the lighter sonnet at low effort):
+
+```json
+{
+  "default_phase_config": {
+    "runner": "claude",
+    "model": "claude-sonnet-4-6",
+    "effort": "low"
+  },
+  "phase_configs": {
+    "review": {
+      "model": "claude-opus-4-7",
+      "effort": "high"
+    },
+    "primary": {
+      "model": "claude-opus-4-7",
+      "effort": "high"
+    }
+  }
+}
+```
+
+**Mixed-runner-with-models** (opencode handles primary, claude handles
+review and audits with explicit model + effort per audit phase):
+
+```json
+{
+  "default_phase_config": {
+    "runner": "claude",
+    "model": "claude-sonnet-4-6"
+  },
+  "phase_configs": {
+    "primary": {
+      "runner": "opencode",
+      "model": "qwen3-coder-30b"
+    },
+    "review": {
+      "model": "claude-opus-4-7",
+      "effort": "high"
+    },
+    "deduplication": {"effort": "medium"},
+    "commit-message":  {"effort": "low"}
+  }
+}
+```
+
+Effort values resolve to whatever level the runner supports — values
+passed to a runner that does not implement effort (e.g. opencode) are
+silently ignored at runtime, not rejected at submission.
+
 ### As workstream defaults
 
 ```yaml
@@ -73,6 +132,27 @@ workstreams:
 Per-job overrides still apply; this just changes the workstream-level
 fallback.
 
+The richer per-phase shape is available as `defaultPhaseConfig` plus
+`phaseConfigs`; the legacy `defaultRunner` and `runners` keys are kept
+for backwards compatibility but are deprecated and not re-emitted on
+save. When both forms set the same field the new form wins.
+
+```yaml
+workstreams:
+  - workstreamId: ws-frugal
+    defaultPhaseConfig:
+      runner: claude
+      model: claude-sonnet-4-6
+      effort: low
+    phaseConfigs:
+      review:
+        model: claude-opus-4-7
+        effort: high
+      primary:
+        model: claude-opus-4-7
+        effort: high
+```
+
 ### As workspace defaults
 
 When the same recipe applies to many workstreams in the same workspace,
@@ -85,6 +165,21 @@ workspaces:
     slackTeamId: "T0123456789"     # optional Slack binding
     botToken: "xoxb-..."
     appToken: "xapp-..."
+    defaultPhaseConfig:
+      runner: claude
+      model: claude-sonnet-4-6
+    phaseConfigs:
+      commit-message:
+        runner: opencode
+        model: qwen3-coder-30b
+      organizational-placement:
+        runner: opencode
+        model: qwen3-coder-30b
+      review:
+        model: claude-opus-4-7
+        effort: high
+    # Legacy form — still accepted, but the per-phase shape above wins
+    # field-by-field when both are present:
     defaultRunner: claude
     runners:
       commit-message: opencode

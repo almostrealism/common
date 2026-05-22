@@ -25,6 +25,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.agent.Phase;
+import io.flowtree.jobs.agent.PhaseConfig;
+import io.flowtree.jobs.agent.PhaseConfigBundle;
 
 import java.io.File;
 import java.io.IOException;
@@ -172,6 +174,24 @@ public class WorkstreamConfig {
          */
         private Map<String, String> runners = new LinkedHashMap<>();
 
+        /**
+         * Workspace-level default {@link PhaseConfig} for the unified
+         * per-phase config ladder. Optional; {@code null} omits the field
+         * from serialized YAML. New form — supersedes the legacy
+         * {@link #defaultRunner} for runner selection, and is the only
+         * source of workspace-level {@code model} / {@code effort}.
+         */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        private PhaseConfig defaultPhaseConfig;
+        /**
+         * Workspace-level per-phase {@link PhaseConfig} overrides keyed by
+         * phase wire name (e.g. {@code review}). Supersedes the legacy
+         * {@link #runners} map. Optional; an empty map is omitted from
+         * serialized YAML.
+         */
+        @JsonInclude(JsonInclude.Include.NON_EMPTY)
+        private Map<String, PhaseConfig> phaseConfigs = new LinkedHashMap<>();
+
         /** Returns the operator-chosen workspace ID. */
         public String getId() { return id; }
         /** Sets the operator-chosen workspace ID. */
@@ -274,6 +294,34 @@ public class WorkstreamConfig {
         public void setRunners(Map<String, String> runners) {
             this.runners = runners != null ? new LinkedHashMap<>(runners) : new LinkedHashMap<>();
         }
+
+        /** Returns the workspace-level default {@link PhaseConfig}, or {@code null}. */
+        public PhaseConfig getDefaultPhaseConfig() { return defaultPhaseConfig; }
+        /** Sets the workspace-level default {@link PhaseConfig}. */
+        public void setDefaultPhaseConfig(PhaseConfig defaultPhaseConfig) {
+            this.defaultPhaseConfig = defaultPhaseConfig;
+        }
+
+        /** Returns the workspace-level per-phase {@link PhaseConfig} overrides; never {@code null}. */
+        public Map<String, PhaseConfig> getPhaseConfigs() { return phaseConfigs; }
+        /** Replaces the workspace-level per-phase {@link PhaseConfig} overrides. */
+        public void setPhaseConfigs(Map<String, PhaseConfig> phaseConfigs) {
+            this.phaseConfigs = phaseConfigs != null ? new LinkedHashMap<>(phaseConfigs) : new LinkedHashMap<>();
+        }
+
+        /**
+         * Builds the effective {@link PhaseConfigBundle} for this workspace,
+         * merging the new {@code defaultPhaseConfig}/{@code phaseConfigs}
+         * fields with the legacy {@code defaultRunner}/{@code runners} fields.
+         * The new fields take precedence field-by-field when both are
+         * supplied; legacy fields fill in {@code null} positions.
+         *
+         * @return the merged bundle; never {@code null}
+         */
+        public PhaseConfigBundle toPhaseConfigBundle() {
+            return WorkstreamConfig.mergeBundle(defaultRunner, runners,
+                    defaultPhaseConfig, phaseConfigs);
+        }
     }
 
     /**
@@ -368,6 +416,20 @@ public class WorkstreamConfig {
          * {@link #defaultRunner}.
          */
         private Map<String, String> runners = new LinkedHashMap<>();
+        /**
+         * Workstream-level default {@link PhaseConfig}; new form for the
+         * unified per-phase config ladder. Optional; {@code null} omits the
+         * field from serialized YAML.
+         */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        private PhaseConfig defaultPhaseConfig;
+        /**
+         * Workstream-level per-phase {@link PhaseConfig} overrides keyed by
+         * phase wire name. Optional; an empty map is omitted from
+         * serialized YAML.
+         */
+        @JsonInclude(JsonInclude.Include.NON_EMPTY)
+        private Map<String, PhaseConfig> phaseConfigs = new LinkedHashMap<>();
         /**
          * Whether this workstream is archived. Archived workstreams are
          * hidden from default {@code workstream_list} responses but their
@@ -511,6 +573,44 @@ public class WorkstreamConfig {
             this.runners = runners != null ? new LinkedHashMap<>(runners) : new LinkedHashMap<>();
         }
 
+        /** Returns the workstream-level default {@link PhaseConfig}, or {@code null}. */
+        public PhaseConfig getDefaultPhaseConfig() { return defaultPhaseConfig; }
+        /** Sets the workstream-level default {@link PhaseConfig}. */
+        public void setDefaultPhaseConfig(PhaseConfig defaultPhaseConfig) {
+            this.defaultPhaseConfig = defaultPhaseConfig;
+        }
+
+        /** Returns the workstream-level per-phase {@link PhaseConfig} overrides; never {@code null}. */
+        public Map<String, PhaseConfig> getPhaseConfigs() { return phaseConfigs; }
+        /** Replaces the workstream-level per-phase {@link PhaseConfig} overrides. */
+        public void setPhaseConfigs(Map<String, PhaseConfig> phaseConfigs) {
+            this.phaseConfigs = phaseConfigs != null ? new LinkedHashMap<>(phaseConfigs) : new LinkedHashMap<>();
+        }
+
+        /**
+         * Builds the effective {@link PhaseConfigBundle} for this workstream
+         * entry, merging the new fields with the legacy
+         * {@code defaultRunner}/{@code runners}/{@code model}/{@code effort}
+         * fields. The new fields take precedence field-by-field.
+         *
+         * @return the merged bundle; never {@code null}
+         */
+        public PhaseConfigBundle toPhaseConfigBundle() {
+            PhaseConfigBundle bundle = WorkstreamConfig.mergeBundle(
+                    defaultRunner, runners, defaultPhaseConfig, phaseConfigs);
+            // Legacy workstream-level model/effort populate the bundle's
+            // default field. New defaultPhaseConfig wins when both are
+            // supplied (handled by mergeBundle).
+            PhaseConfig def = bundle.defaultPhaseConfig();
+            String mergedModel = def.model() != null ? def.model() : model;
+            String mergedEffort = def.effort() != null ? def.effort() : effort;
+            if (mergedModel != def.model() || mergedEffort != def.effort()) {
+                bundle = bundle.withDefault(new PhaseConfig(
+                        def.runner(), mergedModel, mergedEffort));
+            }
+            return bundle;
+        }
+
         /** Returns {@code true} when this workstream is archived. */
         public boolean isArchived() { return archived; }
         /** Sets the archived flag. */
@@ -552,6 +652,15 @@ public class WorkstreamConfig {
             ws.setEffort(effort);
             ws.setDefaultRunner(defaultRunner);
             ws.setRunners(runners);
+            // Layer the new bundle fields on top of the legacy values just
+            // applied above. The bundle setter rewrites all four legacy
+            // fields, so any model / effort / runner present in the bundle
+            // wins over the legacy values (matching the documented "new
+            // wins" precedence on YAML load).
+            PhaseConfigBundle bundle = toPhaseConfigBundle();
+            if (!bundle.isEmpty()) {
+                ws.setPhaseConfigBundle(bundle);
+            }
             ws.setArchived(archived);
             return ws;
         }
@@ -1192,8 +1301,42 @@ public class WorkstreamConfig {
         entry.setEffort(ws.getEffort());
         entry.setDefaultRunner(ws.getDefaultRunner());
         entry.setRunners(ws.getRunners());
+        applyBundleToEntry(entry, ws.getPhaseConfigBundle());
         entry.setArchived(ws.isArchived());
         workstreams.add(entry);
+    }
+
+    /**
+     * Copies the per-phase entries of {@code bundle} (model and effort,
+     * specifically — runner values are already mirrored to the legacy
+     * {@code runners} map) onto {@code entry}'s new {@code phaseConfigs}
+     * field so they round-trip through YAML serialization.
+     */
+    private static void applyBundleToEntry(WorkstreamEntry entry, PhaseConfigBundle bundle) {
+        if (bundle == null || bundle.phaseConfigs().isEmpty()) {
+            entry.setPhaseConfigs(new LinkedHashMap<>());
+            entry.setDefaultPhaseConfig(null);
+            return;
+        }
+        Map<String, PhaseConfig> phaseConfigs = new LinkedHashMap<>();
+        for (Map.Entry<Phase, PhaseConfig> e : bundle.phaseConfigs().entrySet()) {
+            // Only emit per-phase entries that carry model or effort —
+            // runner-only entries are already represented in the legacy
+            // runners map.
+            PhaseConfig pc = e.getValue();
+            if (pc.model() != null || pc.effort() != null) {
+                phaseConfigs.put(e.getKey().wireName(), pc);
+            }
+        }
+        entry.setPhaseConfigs(phaseConfigs);
+        // Default carries fields that are not represented elsewhere on the
+        // entry; skip when redundant with model/effort/defaultRunner.
+        PhaseConfig def = bundle.defaultPhaseConfig();
+        if (def != null && !def.isEmpty()) {
+            entry.setDefaultPhaseConfig(def);
+        } else {
+            entry.setDefaultPhaseConfig(null);
+        }
     }
 
     /**
@@ -1232,6 +1375,7 @@ public class WorkstreamConfig {
                     entry.setEffort(ws.getEffort());
                     entry.setDefaultRunner(ws.getDefaultRunner());
                     entry.setRunners(ws.getRunners());
+                    applyBundleToEntry(entry, ws.getPhaseConfigBundle());
                     entry.setArchived(ws.isArchived());
                     found = true;
                     break;
@@ -1241,6 +1385,52 @@ public class WorkstreamConfig {
                 addWorkstream(ws);
             }
         }
+    }
+
+    /**
+     * Merges legacy {@code defaultRunner} / {@code runners} fields with the
+     * new {@code defaultPhaseConfig} / {@code phaseConfigs} fields into a
+     * single {@link PhaseConfigBundle}. New fields take precedence
+     * field-by-field — when both forms set the same field, the new form
+     * wins; the legacy form fills in any field the new form leaves null.
+     *
+     * @param legacyDefaultRunner the legacy single-runner default, or {@code null}
+     * @param legacyRunners       the legacy per-phase runner map, keyed by
+     *                            phase wire name; may be {@code null}
+     * @param newDefault          the new default {@link PhaseConfig}, or {@code null}
+     * @param newPhaseConfigs     the new per-phase {@link PhaseConfig} map,
+     *                            keyed by phase wire name; may be {@code null}
+     * @return the merged bundle; never {@code null}
+     */
+    static PhaseConfigBundle mergeBundle(String legacyDefaultRunner,
+                                         Map<String, String> legacyRunners,
+                                         PhaseConfig newDefault,
+                                         Map<String, PhaseConfig> newPhaseConfigs) {
+        PhaseConfigBundle bundle = PhaseConfigBundle.fromLegacyRunners(
+                legacyDefaultRunner, legacyRunners);
+        if (newDefault != null && !newDefault.isEmpty()) {
+            // New default overlays the legacy-derived default field-by-field
+            // (new wins; legacy fills in missing fields).
+            bundle = bundle.withDefault(
+                    newDefault.overlayOn(bundle.defaultPhaseConfig()));
+        }
+        if (newPhaseConfigs != null && !newPhaseConfigs.isEmpty()) {
+            for (Map.Entry<String, PhaseConfig> e : newPhaseConfigs.entrySet()) {
+                if (e.getValue() == null || e.getValue().isEmpty()) continue;
+                Phase phase;
+                try {
+                    phase = Phase.fromWireName(e.getKey());
+                } catch (IllegalArgumentException ex) {
+                    continue;
+                }
+                PhaseConfig existing = bundle.phaseConfigs().get(phase);
+                PhaseConfig merged = existing == null
+                        ? e.getValue()
+                        : e.getValue().overlayOn(existing);
+                bundle = bundle.withPhase(phase, merged);
+            }
+        }
+        return bundle;
     }
 
     /**

@@ -181,6 +181,8 @@ final class WorkspaceConfigHandler {
 
         String runnersErr = SubmissionRunnerResolver.applyToWorkspace(entry, runnersObj);
         if (runnersErr != null) return errorResponse.apply(runnersErr);
+        String phaseConfigErr = PhaseConfigResolver.applyToWorkspace(entry, body);
+        if (phaseConfigErr != null) return errorResponse.apply(phaseConfigErr);
 
         if (name != null && !name.isEmpty()) {
             entry.setName(name);

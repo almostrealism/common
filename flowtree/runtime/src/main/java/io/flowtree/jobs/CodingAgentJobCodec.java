@@ -217,15 +217,16 @@ final class CodingAgentJobCodec {
 
     /**
      * Parses {@code value} as a positive {@code int}; returns {@code fallback}
-     * when the value cannot be parsed or is not positive. Used by capped-pass
-     * settings whose wire representations must round-trip through legacy
-     * encodings that may contain absent or invalid integers.
+     * when the value is {@code null}, empty, unparseable, or not positive. Used
+     * by capped-pass settings whose wire representations must round-trip through
+     * legacy encodings that may contain absent or invalid integers.
      *
-     * @param value    the wire-format value
+     * @param value    the wire-format value (may be {@code null} or empty)
      * @param fallback the default returned on parse failure or non-positive input
      * @return the parsed positive int, or {@code fallback}
      */
-    private static int parsePositiveOrDefault(String value, int fallback) {
+    static int parsePositiveOrDefault(String value, int fallback) {
+        if (value == null || value.isEmpty()) return fallback;
         try {
             int parsed = Integer.parseInt(value);
             return parsed > 0 ? parsed : fallback;

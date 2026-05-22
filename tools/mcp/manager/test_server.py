@@ -936,6 +936,79 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("non-empty string", result["error"])
 
+    @patch.object(server, "_controller_post")
+    def test_submit_default_phase_config_forwarded(self, mock_post):
+        """default_phase_config JSON is parsed and forwarded as a nested object."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-default-pc"}
+        server.workstream_submit_task(
+            prompt="Task",
+            default_phase_config='{"runner":"claude","model":"opus","effort":"high"}',
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["defaultPhaseConfig"],
+                         {"runner": "claude", "model": "opus", "effort": "high"})
+
+    @patch.object(server, "_controller_post")
+    def test_submit_phase_configs_forwarded(self, mock_post):
+        """phase_configs JSON is parsed and forwarded as a nested object map."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-pc"}
+        server.workstream_submit_task(
+            prompt="Task",
+            phase_configs='{"review":{"model":"opus","effort":"high"},'
+                          '"commit-message":{"runner":"opencode"}}',
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["phaseConfigs"], {
+            "review": {"model": "opus", "effort": "high"},
+            "commit-message": {"runner": "opencode"},
+        })
+
+    def test_submit_phase_configs_rejects_unknown_phase(self):
+        """Unknown phase names in phase_configs are rejected client-side."""
+        _grant_all_scopes()
+        result = server.workstream_submit_task(
+            prompt="Task",
+            phase_configs='{"future-phase":{"model":"opus"}}',
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("future-phase", result["error"])
+
+    def test_submit_default_phase_config_rejects_unknown_key(self):
+        """Unknown keys in default_phase_config are rejected client-side."""
+        _grant_all_scopes()
+        result = server.workstream_submit_task(
+            prompt="Task",
+            default_phase_config='{"bogus":"value"}',
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("bogus", result["error"])
+
+    @patch.object(server, "_controller_post")
+    def test_submit_phase_configs_and_legacy_runners_coexist(self, mock_post):
+        """Legacy runners and new phase_configs forms can be supplied together."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-coexist"}
+        server.workstream_submit_task(
+            prompt="Task",
+            runners='{"primary":"opencode"}',
+            phase_configs='{"review":{"effort":"high"}}',
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {"primary": "opencode"})
+        self.assertEqual(payload["phaseConfigs"], {"review": {"effort": "high"}})
+
+    @patch.object(server, "_controller_post")
+    def test_submit_phase_configs_omitted_by_default(self, mock_post):
+        """No phase_configs argument means no defaultPhaseConfig/phaseConfigs keys."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-noPC"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("defaultPhaseConfig", payload)
+        self.assertNotIn("phaseConfigs", payload)
+
 
 class TestSubmitCommitLanguageLinter(unittest.TestCase):
     """Server-side linter rejects prompts that imply the agent controls

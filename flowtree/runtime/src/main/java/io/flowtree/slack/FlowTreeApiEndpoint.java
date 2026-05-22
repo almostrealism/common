@@ -23,6 +23,7 @@ import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
+import io.flowtree.jobs.agent.PhaseConfigBundle;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -743,6 +744,27 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 wsEntry != null ? wsEntry.getDefaultRunner() : null, wsEntry != null ? wsEntry.getRunners() : null);
         if (runnerResolver.error() != null) return errorResponse(runnerResolver.error());
         runnerResolver.applyTo(factory);
+
+        // Unified per-phase config (defaultPhaseConfig + phaseConfigs).
+        // Builds a request-level bundle from the body's new JSON fields plus
+        // the legacy runners / model / effort, then layers workstream and
+        // workspace bundles through the PhaseConfigResolver ladder. The
+        // resolved bundle is applied on top of the SubmissionRunnerResolver
+        // result, so model and effort overrides propagate to the factory
+        // without overwriting runner choices already applied above.
+        PhaseConfigBundle requestBundle =
+                PhaseConfigResolver.bundleFromRequest(body,
+                        extractJsonObjectFields(body, "runners"),
+                        requestModel != null && !requestModel.isEmpty() ? requestModel : workstream.getModel(),
+                        requestEffort != null && !requestEffort.isEmpty() ? requestEffort : workstream.getEffort());
+        PhaseConfigBundle workstreamBundle = workstream.getPhaseConfigBundle();
+        PhaseConfigBundle workspaceBundle = wsEntry != null
+                ? wsEntry.toPhaseConfigBundle()
+                : PhaseConfigBundle.EMPTY;
+        PhaseConfigResolver pcResolver = PhaseConfigResolver.resolve(
+                requestBundle, workstreamBundle, workspaceBundle);
+        if (pcResolver.error() != null) return errorResponse(pcResolver.error());
+        pcResolver.applyTo(factory);
 
         // Auto-create PR on successful completion
         if (autoCreatePr) {

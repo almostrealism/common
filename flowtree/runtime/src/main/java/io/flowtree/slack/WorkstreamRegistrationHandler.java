@@ -220,6 +220,8 @@ final class WorkstreamRegistrationHandler {
         String runnersErr = SubmissionRunnerResolver.applyToWorkstream(
                 workstream, JsonFieldExtractor.extractStringObject(body, "runners"));
         if (runnersErr != null) return errorResponse.apply(runnersErr);
+        String phaseConfigErr = PhaseConfigResolver.applyToWorkstream(workstream, body);
+        if (phaseConfigErr != null) return errorResponse.apply(phaseConfigErr);
 
         workstream.setPushToOrigin(true);
 
@@ -319,6 +321,8 @@ final class WorkstreamRegistrationHandler {
         String runnersErr = SubmissionRunnerResolver.applyToWorkstream(
                 workstream, JsonFieldExtractor.extractStringObject(body, "runners"));
         if (runnersErr != null) return errorResponse.apply(runnersErr);
+        String phaseConfigErr = PhaseConfigResolver.applyToWorkstream(workstream, body);
+        if (phaseConfigErr != null) return errorResponse.apply(phaseConfigErr);
         if (!requiredLabels.isEmpty()) {
             workstream.setRequiredLabels(requiredLabels);
         }
