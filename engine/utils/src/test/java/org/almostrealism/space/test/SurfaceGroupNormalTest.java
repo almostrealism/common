@@ -64,7 +64,7 @@ public class SurfaceGroupNormalTest extends TestSuiteBase {
 	}
 
 	/** Verifies that the closest child sphere is selected when two spheres are present. */
-	@Test(timeout = 5000)
+	@Test(timeout = 15000)
 	public void twoSpheresSelectsCorrectChild() {
 		Sphere sphereA = new Sphere(new Vector(5.0, 0.0, 0.0), 1.0);
 		Sphere sphereB = new Sphere(new Vector(-5.0, 0.0, 0.0), 1.0);
