@@ -685,6 +685,14 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	private OperationProfile profile;
 	/** Compute requirements specifying which backend(s) this list should be executed on. */
 	private List<ComputeRequirement> requirements;
+	/**
+	 * Marks an instance as already produced by the {@link #enableAutomaticOptimization}
+	 * branch of {@link #get(OperationProfile)}. When set, {@code get(profile)} skips
+	 * the {@code optimize().get()} call, preventing infinite recursion when the
+	 * optimization strategy declines to isolate and returns a structurally equivalent
+	 * non-uniform list.
+	 */
+	private boolean autoOptimized;
 
 	/**
 	 * Creates an empty operation list with no description.
@@ -837,8 +845,12 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				((OperationProfileNode) profile).addChild(getMetadata());
 			}
 
-			if (enableAutomaticOptimization && !isUniform()) {
-				return optimize().get();
+			if (!autoOptimized && enableAutomaticOptimization && !isUniform()) {
+				Supplier<Runnable> opt = optimize();
+				if (opt instanceof OperationList && opt != this) {
+					((OperationList) opt).autoOptimized = true;
+				}
+				return opt.get();
 			} else if (isComputation() && (enableNonUniformCompilation || isUniform())) {
 				AcceleratedOperation op = (AcceleratedOperation) compileRunnable(this);
 				op.setFunctionName(functionName);
