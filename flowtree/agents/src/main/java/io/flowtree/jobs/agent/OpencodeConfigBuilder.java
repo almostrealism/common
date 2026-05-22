@@ -37,8 +37,9 @@ import java.util.function.Function;
  * <p>The config combines four inputs:</p>
  * <ul>
  *   <li><b>Provider URL</b> from {@code OPENCODE_PROVIDER_URL} (default
- *       {@code http://localhost:11434/v1} — ollama's OpenAI-compatible
- *       endpoint).</li>
+ *       {@code http://localhost:8084/v1} — the llama.cpp
+ *       {@code llama-server} endpoint launched by
+ *       {@code tools/bin/llama.sh}).</li>
  *   <li><b>API key</b> from {@code OPENCODE_API_KEY} (default empty; local
  *       servers do not require auth).</li>
  *   <li><b>Model</b> from the request, falling back to
@@ -62,7 +63,7 @@ import java.util.function.Function;
 final class OpencodeConfigBuilder {
 
     /** Default OpenAI-compatible endpoint URL when {@link #ENV_PROVIDER_URL} is unset. */
-    static final String DEFAULT_PROVIDER_URL = "http://localhost:11434/v1";
+    static final String DEFAULT_PROVIDER_URL = "http://localhost:8084/v1";
 
     /**
      * Default model name when neither the request nor {@link #ENV_DEFAULT_MODEL}

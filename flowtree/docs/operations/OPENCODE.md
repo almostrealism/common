@@ -54,7 +54,7 @@ its own host) — there are no per-workstream overrides.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `OPENCODE_BIN` | (unset) | Absolute path to the `opencode` binary. Takes precedence over every other discovery rule. |
-| `OPENCODE_PROVIDER_URL` | `http://localhost:11434/v1` | OpenAI-compatible endpoint URL. |
+| `OPENCODE_PROVIDER_URL` | `http://localhost:8084/v1` | OpenAI-compatible endpoint URL. The default targets the llama.cpp `llama-server` launched by `tools/bin/llama.sh`; set this when pointing at ollama (`:11434/v1`) or a remote host. |
 | `OPENCODE_API_KEY` | empty | API key for the provider. Local llama.cpp / ollama do not require one. |
 | `OPENCODE_DEFAULT_MODEL` | (unset; falls back to the literal alias `default`) | Model name used when the submitted job does not specify one. The `default` alias is fine with llama.cpp's `llama-server` (it ignores the model field on the wire and serves whichever GGUF was loaded); ollama and hosted providers dispatch by name and **require** an explicit value here. |
 | `OPENCODE_CONFIG` | (set automatically at launch) | Path to the synthesized config file. Set by the runner before launching the opencode subprocess; operators do not need to configure this. |
