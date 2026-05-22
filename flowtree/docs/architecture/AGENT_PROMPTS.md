@@ -133,3 +133,31 @@ When you edit a prompt in `io.flowtree.jobs`:
 4. If you find an analogous problem in a sibling rule but cannot fix it in
    the current change (scope), file a memory tagged
    `prompt-improvement-followup` so it does not get lost.
+
+---
+
+## Completed follow-up items
+
+The following items were originally noted as follow-up from the
+`feature/agent-prompts` deduplication pass and have since been addressed.
+
+### OrganizationalPlacementRule — P1 applied
+
+`OrganizationalPlacementRule.buildCorrectionPrompt` previously framed the
+audit as "review the new files your branch introduced." This policed only
+the diff, not the area being touched — the same escape hatch that motivated
+P1 in the dedup audit. Added principle 5 ("EXISTING files your branch
+substantially modifies are also in scope") and updated the closing
+instruction to cover both new and modified files. Tested in
+`OrganizationalPlacementRulePromptTest`.
+
+### MavenDependencyProtectionRule — design need visibility
+
+`MavenDependencyProtectionRule.buildCorrectionPrompt` was purely
+prohibitive: it told agents to revert dependency changes but gave no
+guidance about why the change was attempted or what alternative to use.
+Added an "EXPLAIN THE UNDERLYING NEED" section that asks agents to document
+(a) the goal that drove the change, (b) an alternative if one exists, and
+(c) an explicit flag if no dependency-free path is apparent. This surfaces
+design needs in the commit notes rather than silently discarding them.
+Tested in `MavenDependencyProtectionRulePromptTest`.

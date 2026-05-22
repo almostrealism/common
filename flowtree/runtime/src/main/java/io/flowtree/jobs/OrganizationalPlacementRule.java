@@ -32,6 +32,7 @@ import java.util.List;
  *
  * @author Michael Murray
  * @see CodingAgentJob#extractNewFilePaths()
+ * @see OrganizationalPlacementRule#buildOrganizationalPlacementPrompt(List)
  * @see SetComparisonRule
  * @see EnforcementRule
  */
@@ -47,11 +48,20 @@ class OrganizationalPlacementRule extends SetComparisonRule {
 
     @Override
     public String buildCorrectionPrompt(CodingAgentJob job) {
-        List<String> newFiles = job.extractNewFilePaths();
+        return buildOrganizationalPlacementPrompt(job.extractNewFilePaths());
+    }
+
+    /**
+     * Builds the organizational placement prompt sent to the follow-up agent session.
+     *
+     * @param newFilePaths the list of new file paths introduced by the branch
+     * @return the full prompt string
+     */
+    static String buildOrganizationalPlacementPrompt(List<String> newFilePaths) {
         StringBuilder sb = new StringBuilder();
         sb.append("ORGANIZATIONAL PLACEMENT REVIEW\n\n");
         sb.append("Your branch has introduced the following new files:\n\n");
-        for (String file : newFiles) {
+        for (String file : newFilePaths) {
             sb.append("  ").append(file).append("\n");
         }
         sb.append("\nPlease review the placement of each file against these principles:\n\n");
@@ -66,7 +76,14 @@ class OrganizationalPlacementRule extends SetComparisonRule {
         sb.append("4. Documents should be where they will be found: planning documents in ");
         sb.append("docs/plans/, API documentation near the code it describes, tutorials in ");
         sb.append("docs/internals/.\n\n");
-        sb.append("If the placement of every listed file is already correct, do not move anything. ");
+        sb.append("5. EXISTING files your branch substantially modifies are also in scope. ");
+        sb.append("If you are touching a class whose current placement is already wrong — ");
+        sb.append("it belongs in a lower or different module — moving it is in scope. ");
+        sb.append("\"The file pre-dated my branch\" is not a reason to leave it in the ");
+        sb.append("wrong place. You are in this area now; fix it now (subject to the ");
+        sb.append("circular-dependency constraint in principle 3).\n\n");
+        sb.append("If the placement of every listed file, and every existing file your ");
+        sb.append("branch substantially modifies, is already correct, do not move anything. ");
         sb.append("If any file should be moved, move it now using the Bash tool (git mv) and update ");
         sb.append("all import statements that reference the old location.");
         return sb.toString();
