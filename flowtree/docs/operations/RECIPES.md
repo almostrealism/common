@@ -198,17 +198,30 @@ legacy entry's `workspaceId` doubles as both its workspace `id` and its
 `slackTeamId` on load.
 
 The preferred path to set these defaults is the `workspace_update_config`
-MCP tool — discover the workspace ID via the `workspaceId` field on
-each `workstream_list` entry (the legacy `slackWorkspaceId` field is
-still emitted for backward compatibility):
+MCP tool (parallel tools exist for workstreams: `workstream_register`,
+`workstream_update_config`, and per-job `workstream_submit_task`).
+Discover the workspace ID via the `workspaceId` field on each
+`workstream_list` entry (the legacy `slackWorkspaceId` field is still
+emitted for backward compatibility):
 
 ```python
 workspace_update_config(
     workspace_id="almostrealism",
-    default_runner="claude",
-    runners='{"commit-message":"opencode","organizational-placement":"opencode"}',
+    default_phase_config='{"runner":"claude","model":"claude-sonnet-4-6"}',
+    phase_configs='''{
+      "commit-message": {"runner":"opencode","model":"qwen3-coder-30b"},
+      "organizational-placement": {"runner":"opencode","model":"qwen3-coder-30b"},
+      "review": {"model":"claude-opus-4-7","effort":"high"}
+    }''',
 )
 ```
+
+The legacy `default_runner` / `runners` / `model` / `effort` parameters
+remain accepted as deprecated aliases — they map into the same bundle
+on the controller. When both shapes are supplied to the same tool the
+new `default_phase_config` / `phase_configs` shape wins field-by-field
+per the precedence rules in
+[../../docs/plans/UNIFIED_PHASE_CONFIG.md](../../docs/plans/UNIFIED_PHASE_CONFIG.md).
 
 To migrate from the initial Slack-team-ID-as-ID form to a friendlier
 operator-chosen name, pass `new_id`:
@@ -220,11 +233,11 @@ workspace_update_config(
 )
 ```
 
-The tool covers `default_runner`, `runners`, `name`, `default_channel`,
-`new_id`, and `slack_team_id`. Credentials (`tokensFile`, `botToken`,
-`appToken`) and ACL fields (`githubOrgs`, `channelOwnerUserId`) remain
-YAML-only — edit `workstreams.yaml` and reload the controller for
-those.
+The tool covers `default_phase_config`, `phase_configs`,
+`default_runner`, `runners`, `name`, `default_channel`, `new_id`, and
+`slack_team_id`. Credentials (`tokensFile`, `botToken`, `appToken`) and
+ACL fields (`githubOrgs`, `channelOwnerUserId`) remain YAML-only —
+edit `workstreams.yaml` and reload the controller for those.
 
 ---
 

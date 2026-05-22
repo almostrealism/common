@@ -109,12 +109,28 @@ data through string-typed parameters that the tool then parses locally:
 - `default_runner: str = ""` — convenience shortcut equivalent to
   `runners='{"default": "<value>"}'`. The explicit `runners["default"]`
   wins when both are supplied.
+- `default_phase_config: str = ""` — JSON object with optional
+  `runner` / `model` / `effort` keys. Sets the container's default
+  `PhaseConfig` (the `defaultPhaseConfig` of the bundle described in
+  `docs/plans/UNIFIED_PHASE_CONFIG.md`). Wins field-by-field over the
+  legacy `default_runner` / `model` / `effort` shortcuts when both are
+  supplied. Parsed by `_parse_default_phase_config_json`, which checks
+  runners against the known set and efforts against
+  `VALID_EFFORT_LEVELS`.
+- `phase_configs: str = ""` — JSON object mapping phase wire names to
+  `{runner, model, effort}` triples. Wins field-by-field over the
+  legacy `runners` map when both are supplied. Parsed by
+  `_parse_phase_configs_json` with the same per-field validation as
+  `default_phase_config`.
 
 When adding a new structured parameter, follow the pattern from
-`_parse_runners_json` in `tools/mcp/manager/server.py`: parse, validate
-locally, and return a 400-style `{"ok": False, "error": "..."}` dict on
-shape errors so the caller fails fast instead of waiting on a controller
-round-trip.
+`_parse_runners_json` and `_parse_default_phase_config_json` in
+`tools/mcp/manager/server.py`: parse, validate locally (phase keys,
+runners against `_KNOWN_RUNNER_NAMES`, efforts against
+`VALID_EFFORT_LEVELS`, opaque fields like `model` passed through to the
+controller), and return a 400-style `{"ok": False, "error": "..."}`
+dict on shape errors so the caller fails fast instead of waiting on a
+controller round-trip.
 
 ## The Exact Pattern to Follow
 
