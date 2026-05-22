@@ -57,11 +57,12 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
         assertEquals("http://10.0.0.5:11434/v1", b.resolveProviderUrl());
     }
 
-    /** Without {@code OPENCODE_PROVIDER_URL}, the builder uses the ollama default. */
+    /** Without {@code OPENCODE_PROVIDER_URL}, the builder uses the llama.cpp default. */
     @Test(timeout = 5000)
-    public void resolveProviderUrlDefaultsToOllama() {
+    public void resolveProviderUrlDefaultsToLlamaCpp() {
         OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
         assertEquals(OpencodeConfigBuilder.DEFAULT_PROVIDER_URL, b.resolveProviderUrl());
+        assertEquals("http://localhost:8084/v1", b.resolveProviderUrl());
     }
 
     /** API key resolution honors {@code OPENCODE_API_KEY}; empty by default. */

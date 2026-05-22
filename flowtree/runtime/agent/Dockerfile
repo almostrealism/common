@@ -82,7 +82,8 @@ RUN npm install -g @anthropic-ai/claude-code
 # Used by the OpencodeRunner (flowtree/agents) when a job phase routes to
 # the "opencode" runner. The CLI itself is provider-agnostic; the local
 # inference server lives outside the container and is reached via
-# OPENCODE_PROVIDER_URL (default: http://localhost:11434/v1).
+# OPENCODE_PROVIDER_URL (default: http://localhost:8084/v1, the llama.cpp
+# llama-server launched by tools/bin/llama.sh).
 RUN npm install -g opencode-ai
 
 # ── Playwright MCP + Firefox browser ────────────────────────────────
