@@ -23,7 +23,6 @@ declare -A EXEMPT_FILES
 EXEMPT_FILES["compute/algebra/src/main/java/org/almostrealism/collect/CollectionFeatures.java"]=3738
 EXEMPT_FILES["base/code/src/main/java/io/almostrealism/expression/Expression.java"]=2094
 EXEMPT_FILES["engine/ml/src/main/java/org/almostrealism/ml/AttentionFeatures.java"]=2084
-EXEMPT_FILES["domain/graph/src/main/java/org/almostrealism/layers/LayerFeatures.java"]=2006
 
 
 FAILED=0
