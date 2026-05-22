@@ -108,6 +108,9 @@ class ReviewRule implements EnforcementRule {
     @Override
     public boolean isViolated(CodingAgentJob job) {
         if (alreadyRan) return false;
+        // Without a configured working directory there is no real working tree
+        // to review; falling through would inspect the JVM's PWD instead.
+        if (job.getWorkingDirectory() == null) return false;
         if (!job.extractNewFilePaths().isEmpty()) return true;
         return job.hasUncommittedChanges();
     }

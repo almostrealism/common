@@ -27,10 +27,6 @@ EXEMPT_FILES=(
     "compute/algebra/src/main/java/org/almostrealism/collect/CollectionFeatures.java|3738"
     "base/code/src/main/java/io/almostrealism/expression/Expression.java|2094"
     "engine/ml/src/main/java/org/almostrealism/ml/AttentionFeatures.java|2084"
-
-    # Exemption added with the REVIEW phase. CodingAgentJob was already at 99%
-    # of the 1600-line cap on master; the new phase needed field/getter/encode plumbing.
-    "flowtree/runtime/src/main/java/io/flowtree/jobs/CodingAgentJob.java|1640"
 )
 
 

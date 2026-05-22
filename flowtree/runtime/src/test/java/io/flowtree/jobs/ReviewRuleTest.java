@@ -44,6 +44,7 @@ public class ReviewRuleTest extends TestSuiteBase {
 			super("t1", "p");
 			this.newFiles = newFiles;
 			this.dirty = dirty;
+			setWorkingDirectory("/tmp/review-rule-test-stub");
 		}
 
 		@Override

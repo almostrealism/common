@@ -1456,161 +1456,30 @@ public class CodingAgentJob extends GitManagedJob {
 
     @Override
     public String encode() {
-        StringBuilder sb = new StringBuilder();
-        sb.append(super.encode());
-        sb.append("::prompt:=").append(base64Encode(prompt));
-        sb.append("::tools:=").append(base64Encode(allowedTools));
-        sb.append("::maxTurns:=").append(maxTurns);
-        sb.append("::maxBudget:=").append(maxBudgetUsd);
-        if (model != null) {
-            sb.append("::model:=").append(model);
-        }
-        if (effort != null) {
-            sb.append("::effort:=").append(effort);
-        }
-        if (arManagerUrl != null) {
-            sb.append("::arManagerUrl:=").append(base64Encode(arManagerUrl));
-        }
-        if (arManagerToken != null) {
-            sb.append("::arManagerToken:=").append(base64Encode(arManagerToken));
-        }
-        if (pushedToolsConfig != null) {
-            sb.append("::pushedTools:=").append(base64Encode(pushedToolsConfig));
-        }
-        if (planningDocument != null) {
-            sb.append("::planDoc:=").append(base64Encode(planningDocument));
-        }
-        sb.append("::protectTests:=").append(isProtectTestFiles());
-        sb.append("::enforceChanges:=").append(enforceChanges);
-        if (deduplicationMode != null) {
-            sb.append("::dedupMode:=").append(deduplicationMode);
-        }
-        if (maxDeduplicationPasses != DEFAULT_MAX_DEDUP_PASSES) {
-            sb.append("::maxDedupPasses:=").append(maxDeduplicationPasses);
-        }
-        if (enforceMavenDependencies) {
-            sb.append("::enforceMavenDeps:=true");
-        }
-        if (!enforceOrganizationalPlacement) {
-            sb.append("::enforceOrgPlacement:=false");
-        }
-        if (!reviewEnabled) sb.append("::reviewEnabled:=false");
-        if (maxReviewPasses != DEFAULT_MAX_REVIEW_PASSES)
-            sb.append("::maxReviewPasses:=").append(maxReviewPasses);
-        if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
-            sb.append("::postCmd:=").append(base64Encode(postCompletionCommand));
-            if (postCompletionWorkingDir != null) {
-                sb.append("::postCmdDir:=").append(base64Encode(postCompletionWorkingDir));
-            }
-            if (postCompletionTimeoutSeconds != PostCompletionCommandRule.DEFAULT_TIMEOUT_SECONDS) {
-                sb.append("::postCmdTimeout:=").append(postCompletionTimeoutSeconds);
-            }
-            if (maxPostCompletionPasses != DEFAULT_MAX_POST_COMPLETION_PASSES)
-                sb.append("::maxPostCmdPasses:=").append(maxPostCompletionPasses);
-        }
-        // Only emit the runner name when it differs from the registry default,
-        // so wire-format snapshots of Phase 1 jobs match the pre-refactor output.
-        if (defaultRunner != null && !AgentRunnerRegistry.CLAUDE.equals(defaultRunner)) {
-            sb.append("::defaultRunner:=").append(defaultRunner);
-        }
-        if (!runnerByPhase.isEmpty()) {
-            sb.append("::runners:=").append(Phase.encodeRunnerMap(runnerByPhase));
-        }
+        StringBuilder sb = new StringBuilder(super.encode());
+        CodingAgentJobCodec.appendEncoded(sb, this);
         return sb.toString();
     }
 
 
     @Override
     public void set(String key, String value) {
-        switch (key) {
-            case "prompt":
-                this.prompt = base64Decode(value);
-                break;
-            case "tools":
-                this.allowedTools = base64Decode(value);
-                break;
-            case "maxTurns":
-                this.maxTurns = Integer.parseInt(value);
-                break;
-            case "maxBudget":
-                this.maxBudgetUsd = Double.parseDouble(value);
-                break;
-            case "model":
-                setModel(value);
-                break;
-            case "effort":
-                setEffort(value);
-                break;
-            case "arManagerUrl":
-                this.arManagerUrl = base64Decode(value);
-                break;
-            case "arManagerToken":
-                this.arManagerToken = base64Decode(value);
-                break;
-            case "pushedTools":
-                this.pushedToolsConfig = base64Decode(value);
-                break;
-            case "planDoc":
-                this.planningDocument = base64Decode(value);
-                break;
-            case "protectTests":
-                setProtectTestFiles(Boolean.parseBoolean(value));
-                break;
-            case "enforceChanges":
-                this.enforceChanges = Boolean.parseBoolean(value);
-                break;
-            case "dedupMode":
-                this.deduplicationMode = value;
-                break;
-            case "maxDedupPasses":
-                try { int p = Integer.parseInt(value); this.maxDeduplicationPasses = p > 0 ? p : DEFAULT_MAX_DEDUP_PASSES; }
-                catch (NumberFormatException e) { this.maxDeduplicationPasses = DEFAULT_MAX_DEDUP_PASSES; }
-                break;
-            case "enforceMavenDeps":
-                this.enforceMavenDependencies = Boolean.parseBoolean(value);
-                break;
-            case "enforceOrgPlacement":
-                this.enforceOrganizationalPlacement = Boolean.parseBoolean(value);
-                break;
-            case "reviewEnabled":
-                this.reviewEnabled = Boolean.parseBoolean(value);
-                break;
-            case "maxReviewPasses":
-                try { int p = Integer.parseInt(value); this.maxReviewPasses = p > 0 ? p : DEFAULT_MAX_REVIEW_PASSES; }
-                catch (NumberFormatException e) { this.maxReviewPasses = DEFAULT_MAX_REVIEW_PASSES; }
-                break;
-            case "postCmd":
-                this.postCompletionCommand = base64Decode(value);
-                break;
-            case "postCmdDir":
-                this.postCompletionWorkingDir = base64Decode(value);
-                break;
-            case "postCmdTimeout":
-                this.postCompletionTimeoutSeconds = Integer.parseInt(value);
-                break;
-            case "maxPostCmdPasses":
-                try { int p = Integer.parseInt(value); this.maxPostCompletionPasses = p > 0 ? p : DEFAULT_MAX_POST_COMPLETION_PASSES; }
-                catch (NumberFormatException e) { this.maxPostCompletionPasses = DEFAULT_MAX_POST_COMPLETION_PASSES; }
-                break;
-            case "runner":
-                // Legacy single-runner key. Honored when no defaultRunner/runners
-                // key supersedes it; consumed silently if defaultRunner is also
-                // present (the wire format guarantees that key precedence).
-                if (AgentRunnerRegistry.CLAUDE.equals(defaultRunner)) {
-                    setRunnerName(value);
-                }
-                break;
-            case "defaultRunner":
-                setRunnerName(value);
-                break;
-            case "runners":
-                runnerByPhase.clear();
-                runnerByPhase.putAll(Phase.decodeRunnerMap(value, this::warn));
-                break;
-            default:
-                // Delegate to parent for git-related properties
-                super.set(key, value);
+        if (!CodingAgentJobCodec.applySetting(this, key, value)) {
+            super.set(key, value);
         }
+    }
+
+    /**
+     * Replaces the per-phase runner overrides with the decoded contents of
+     * {@code wireValue}. Called by {@link CodingAgentJobCodec} when handling
+     * the {@code runners} wire key.
+     *
+     * @param wireValue the encoded runner map as produced by
+     *                  {@link Phase#encodeRunnerMap(Map)}
+     */
+    void applyRunnerMap(String wireValue) {
+        runnerByPhase.clear();
+        runnerByPhase.putAll(Phase.decodeRunnerMap(wireValue, this::warn));
     }
 
     /**
