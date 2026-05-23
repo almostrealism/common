@@ -170,60 +170,6 @@ public class Conditional<T extends Number> extends Expression<T> {
 	}
 
 	/**
-	 * Creates a Conditional expression that remains as a Conditional and is not
-	 * converted to a {@link Mask} expression, even during expression simplification.
-	 * This is useful for projection matrix computations where the Conditional must
-	 * not be treated as a masked expression during simplification.
-	 *
-	 * @param condition The boolean condition
-	 * @param positive The value when condition is true
-	 * @param negative The value when condition is false
-	 * @return A Conditional expression (never a Mask)
-	 */
-	public static Expression<Double> direct(Expression<Boolean> condition,
-											Expression<Double> positive,
-											Expression<Double> negative) {
-		Optional<Boolean> cond = condition.booleanValue();
-		if (cond.isPresent()) {
-			return cond.get() ? positive : negative;
-		}
-
-		return new DirectConditional(condition, positive, negative);
-	}
-
-	/**
-	 * A Conditional that preserves itself through simplification without being
-	 * converted to a {@link Mask}. Overrides {@link #recreate(List)} to bypass
-	 * the {@link Conditional#create(Expression, Expression, Expression)} factory
-	 * which converts conditionals with zero negative branches to Mask expressions.
-	 */
-	private static class DirectConditional extends Conditional<Double> {
-		/**
-		 * @param condition the boolean guard expression
-		 * @param positive  the branch used when the condition is true
-		 * @param negative  the branch used when the condition is false
-		 */
-		DirectConditional(Expression<Boolean> condition,
-						  Expression<Double> positive, Expression<Double> negative) {
-			super(Double.class, condition, positive, negative);
-		}
-
-		@Override
-		public Expression<Double> recreate(List<Expression<?>> children) {
-			if (children.size() != 3) throw new UnsupportedOperationException();
-			Optional<Boolean> cond = ((Expression<Boolean>) children.get(0)).booleanValue();
-			if (cond.isPresent()) {
-				return (Expression<Double>) (cond.get() ? children.get(1) : children.get(2));
-			}
-
-			return new DirectConditional(
-					(Expression<Boolean>) children.get(0),
-					(Expression<Double>) children.get(1),
-					(Expression<Double>) children.get(2));
-		}
-	}
-
-	/**
 	 * Constructs a conditional expression, applying constant-folding and structural
 	 * optimizations before returning the result.
 	 *

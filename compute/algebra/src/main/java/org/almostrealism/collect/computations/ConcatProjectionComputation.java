@@ -154,9 +154,9 @@ public class ConcatProjectionComputation extends TraversableExpressionComputatio
 
 				Expression<?> scaleExpr = new DoubleConstant(localScales[seg]);
 
-				Expression<?> value = Conditional.direct(
+				Expression<?> value = Conditional.of(
 						targetIdx.eq(expectedTargetIdx),
-						(Expression<Double>) scaleExpr,
+						scaleExpr,
 						new IntegerConstant(0).toDouble());
 
 				if (seg == numSegments - 1) {

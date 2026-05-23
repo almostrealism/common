@@ -156,7 +156,7 @@ public class SubsetProjectionComputation extends TraversableExpressionComputatio
 			Expression<?> expectedInputIdx = localInputShape.index(expectedInputPos);
 
 			// Return 1.0 if inputIdx matches expectedInputIdx, 0.0 otherwise
-			return Conditional.direct(inputIdx.eq(expectedInputIdx),
+			return Conditional.of(inputIdx.eq(expectedInputIdx),
 					new IntegerConstant(1).toDouble(),
 					new IntegerConstant(0).toDouble());
 		});
