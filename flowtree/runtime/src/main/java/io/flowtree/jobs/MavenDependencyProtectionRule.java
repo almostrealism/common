@@ -41,7 +41,7 @@ class MavenDependencyProtectionRule implements EnforcementRule {
 
     @Override
     public boolean isViolated(CodingAgentJob job) {
-        String baseBranch = job.getBaseBranch() != null ? job.getBaseBranch() : "master";
+        String baseBranch = normalizeBaseBranch(job.getBaseBranch());
         return hasDependencyDiff(job.getWorkingDirectory(), baseBranch, job::warn);
     }
 
@@ -101,8 +101,22 @@ class MavenDependencyProtectionRule implements EnforcementRule {
 
     @Override
     public String buildCorrectionPrompt(CodingAgentJob job) {
-        String baseBranch = job.getBaseBranch() != null ? job.getBaseBranch() : "master";
-        return buildCorrectionPromptText(baseBranch);
+        return buildCorrectionPromptText(normalizeBaseBranch(job.getBaseBranch()));
+    }
+
+    /**
+     * Normalizes the configured base branch name.
+     *
+     * @param baseBranch the configured base branch, possibly {@code null} or blank
+     * @return the trimmed branch name, or {@code "master"} when blank
+     */
+    static String normalizeBaseBranch(String baseBranch) {
+        if (baseBranch == null) {
+            return "master";
+        }
+
+        String normalized = baseBranch.trim();
+        return normalized.isEmpty() ? "master" : normalized;
     }
 
     /**

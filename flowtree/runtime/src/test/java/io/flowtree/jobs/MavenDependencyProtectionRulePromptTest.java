@@ -79,7 +79,7 @@ public class MavenDependencyProtectionRulePromptTest extends TestSuiteBase {
     // ── New: explain the underlying need ─────────────────────────────────────
 
     @Test(timeout = 30000)
-    public void promptIncludesExplainUnderyingNeedSection() {
+    public void promptIncludesExplainUnderlyingNeedSection() {
         String text = prompt();
         assertTrue("Prompt should include an 'EXPLAIN THE UNDERLYING NEED' section",
                 text.contains("EXPLAIN THE UNDERLYING NEED"));
@@ -117,5 +117,13 @@ public class MavenDependencyProtectionRulePromptTest extends TestSuiteBase {
         assertFalse("Prompt must not still reference 'master' when a different "
                         + "base branch was supplied",
                 text.contains("origin/master"));
+    }
+
+    @Test(timeout = 30000)
+    public void promptDefaultsToMasterForBlankBaseBranch() {
+        String text = MavenDependencyProtectionRule.buildCorrectionPromptText(
+                MavenDependencyProtectionRule.normalizeBaseBranch("   "));
+        assertTrue("Prompt should fall back to master when base branch is blank",
+                text.contains("git diff origin/master"));
     }
 }
