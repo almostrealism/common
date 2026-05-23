@@ -822,10 +822,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             log("Submitted job via API: " + factory.getTaskId());
         }
 
-        String json = "{\"ok\":true,\"jobId\":\"" + factory.getTaskId()
-            + "\",\"workstreamId\":\"" + workstreamId + "\"}";
+        StringBuilder json = new StringBuilder();
+        json.append("{\"ok\":true,\"jobId\":\"")
+                .append(factory.getTaskId())
+                .append("\",\"workstreamId\":\"")
+                .append(workstreamId)
+                .append("\"");
+        PhaseConfigBundle resolvedBundle = pcResolver.resolvedBundle();
+        PhaseConfigResolver.appendBundleJson(json, resolvedBundle);
+        json.append("}");
         return newFixedLengthResponse(Response.Status.OK,
-                "application/json", json);
+                "application/json", json.toString());
     }
 
     /**

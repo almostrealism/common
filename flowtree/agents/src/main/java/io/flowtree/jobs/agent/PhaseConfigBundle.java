@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs.agent;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -65,7 +67,12 @@ public record PhaseConfigBundle(PhaseConfig defaultPhaseConfig,
      * Returns {@code true} when both the default and every per-phase entry
      * are {@linkplain PhaseConfig#isEmpty() empty} — the bundle contributes
      * nothing to resolution.
+     *
+     * <p>{@code @JsonIgnore} keeps this derived predicate out of the YAML
+     * / JSON wire form (see the analogous note on
+     * {@link PhaseConfig#isEmpty()}).</p>
      */
+    @JsonIgnore
     public boolean isEmpty() {
         if (!defaultPhaseConfig.isEmpty()) return false;
         for (PhaseConfig config : phaseConfigs.values()) {

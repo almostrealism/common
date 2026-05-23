@@ -37,6 +37,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -604,7 +605,8 @@ public class WorkstreamConfig {
             PhaseConfig def = bundle.defaultPhaseConfig();
             String mergedModel = def.model() != null ? def.model() : model;
             String mergedEffort = def.effort() != null ? def.effort() : effort;
-            if (mergedModel != def.model() || mergedEffort != def.effort()) {
+            if (!Objects.equals(mergedModel, def.model())
+                    || !Objects.equals(mergedEffort, def.effort())) {
                 bundle = bundle.withDefault(new PhaseConfig(
                         def.runner(), mergedModel, mergedEffort));
             }

@@ -18,6 +18,7 @@ package io.flowtree.slack;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
 import io.flowtree.jobs.agent.ClaudeCodeRunner;
@@ -415,13 +416,22 @@ public final class PhaseConfigResolver {
      * on the workstream's current bundle so that legacy {@code defaultRunner}
      * / {@code runners} / {@code model} / {@code effort} setters applied
      * earlier in the same request are preserved field-by-field when the new
-     * shape does not set them. Validates the merged bundle via
-     * {@link #resolve(PhaseConfigBundle, PhaseConfigBundle, PhaseConfigBundle)}.
+     * shape does not set them.
+     *
+     * <p>Validation is intentionally limited to syntax-level checks (runner
+     * names against {@link AgentRunnerRegistry#available()}, effort values
+     * against {@link ClaudeCodeRunner#VALID_EFFORT_LEVELS}) so that a
+     * workstream that intentionally sets only {@code model} or {@code effort}
+     * — expecting {@code runner} to fall through from a higher precedence
+     * level — is not rejected here. Model-vs-runner compatibility is
+     * deferred to {@link #resolve(PhaseConfigBundle, PhaseConfigBundle,
+     * PhaseConfigBundle)} at submission time, when the full request /
+     * workstream / workspace ladder is available.</p>
      *
      * @param workstream the workstream to mutate; must not be {@code null}
      * @param body       the raw request body JSON; may be {@code null} or empty
      * @return {@code null} on success; an error message suitable for a 400
-     *         response when the body's bundle fails validation
+     *         response when the body's bundle fails syntax validation
      */
     public static String applyToWorkstream(Workstream workstream, String body) {
         if (workstream == null || body == null || body.isEmpty()) return null;
@@ -429,8 +439,8 @@ public final class PhaseConfigResolver {
         if (bodyOnly == null || bodyOnly.isEmpty()) return null;
         PhaseConfigBundle existing = workstream.getPhaseConfigBundle();
         PhaseConfigBundle merged = mergeOverlay(bodyOnly, existing);
-        PhaseConfigResolver r = resolve(merged, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
-        if (r.error() != null) return r.error();
+        String syntaxErr = validateSyntax(merged);
+        if (syntaxErr != null) return syntaxErr;
         workstream.setPhaseConfigBundle(merged);
         return null;
     }
@@ -440,11 +450,13 @@ public final class PhaseConfigResolver {
      * JSON fields from {@code body} to {@code entry}, overlaying them on the
      * workspace entry's existing fields. Mirrors
      * {@link #applyToWorkstream(Workstream, String)} for the workspace-level
-     * container.
+     * container — including the syntax-only validation rule that lets a
+     * workspace set {@code model}-only overrides which pair with a
+     * {@code runner} inherited from a workstream or job.
      *
      * @param entry the workspace entry to mutate; must not be {@code null}
      * @param body  the raw request body JSON; may be {@code null} or empty
-     * @return {@code null} on success; an error message on validation failure
+     * @return {@code null} on success; an error message on syntax-validation failure
      */
     public static String applyToWorkspace(WorkstreamConfig.WorkspaceEntry entry, String body) {
         if (entry == null || body == null || body.isEmpty()) return null;
@@ -452,8 +464,8 @@ public final class PhaseConfigResolver {
         if (bodyOnly == null || bodyOnly.isEmpty()) return null;
         PhaseConfigBundle existing = entry.toPhaseConfigBundle();
         PhaseConfigBundle merged = mergeOverlay(bodyOnly, existing);
-        PhaseConfigResolver r = resolve(merged, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
-        if (r.error() != null) return r.error();
+        String syntaxErr = validateSyntax(merged);
+        if (syntaxErr != null) return syntaxErr;
         // Write the merged result back as the new-shape fields, leaving the
         // legacy defaultRunner / runners fields untouched.
         entry.setDefaultPhaseConfig(merged.defaultPhaseConfig().isEmpty()
@@ -464,6 +476,90 @@ public final class PhaseConfigResolver {
         }
         entry.setPhaseConfigs(phaseMap);
         return null;
+    }
+
+    /**
+     * Syntax-only validation of a single bundle for the workspace and
+     * workstream {@code applyTo*} helpers. Validates runner names and
+     * effort values without resolving missing runners to the controller
+     * default — the way {@link #resolve(PhaseConfigBundle, PhaseConfigBundle,
+     * PhaseConfigBundle)} does — so a level that intentionally sets only
+     * {@code model} or {@code effort} (expecting {@code runner} to fall
+     * through the ladder) is not rejected as "invalid model for runner
+     * 'claude'".
+     */
+    private static String validateSyntax(PhaseConfigBundle bundle) {
+        if (bundle == null || bundle.isEmpty()) return null;
+        String err = validateRunners(bundle);
+        if (err != null) return err;
+        err = validateEffort(bundle);
+        if (err != null) return err;
+        return null;
+    }
+
+    /**
+     * Appends the {@code defaultPhaseConfig} and {@code phaseConfigs} JSON
+     * fragments to {@code json} for the non-empty parts of {@code bundle}.
+     * Each emitted object contains only the non-null fields of the
+     * underlying {@link PhaseConfig}. Both fragments lead with a comma so
+     * they can be appended to an existing JSON object that already has at
+     * least one prior field.
+     *
+     * @param json   the target string builder; must not be {@code null}
+     * @param bundle the bundle to serialise; {@code null} or empty appends
+     *               nothing
+     */
+    // TODO(review): leading-comma contract is fragile for future callers — consider a hasPriorFields flag or Jackson serialisation.
+    public static void appendBundleJson(StringBuilder json, PhaseConfigBundle bundle) {
+        if (bundle == null || bundle.isEmpty()) return;
+        PhaseConfig def = bundle.defaultPhaseConfig();
+        if (def != null && !def.isEmpty()) {
+            json.append(",\"defaultPhaseConfig\":");
+            appendPhaseConfigJson(json, def);
+        }
+        Map<Phase, PhaseConfig> phases = bundle.phaseConfigs();
+        if (phases == null || phases.isEmpty()) return;
+        StringBuilder inner = new StringBuilder();
+        boolean first = true;
+        for (Map.Entry<Phase, PhaseConfig> e : phases.entrySet()) {
+            PhaseConfig pc = e.getValue();
+            if (pc == null || pc.isEmpty()) continue;
+            if (!first) inner.append(",");
+            first = false;
+            inner.append("\"")
+                    .append(JsonFieldExtractor.escapeJson(e.getKey().wireName()))
+                    .append("\":");
+            appendPhaseConfigJson(inner, pc);
+        }
+        if (inner.length() > 0) {
+            json.append(",\"phaseConfigs\":{").append(inner).append("}");
+        }
+    }
+
+    /** Appends a single {@link PhaseConfig} as a JSON object, emitting only non-null fields. */
+    private static void appendPhaseConfigJson(StringBuilder json, PhaseConfig pc) {
+        json.append("{");
+        boolean first = true;
+        if (pc.runner() != null) {
+            json.append("\"runner\":\"")
+                    .append(JsonFieldExtractor.escapeJson(pc.runner()))
+                    .append("\"");
+            first = false;
+        }
+        if (pc.model() != null) {
+            if (!first) json.append(",");
+            json.append("\"model\":\"")
+                    .append(JsonFieldExtractor.escapeJson(pc.model()))
+                    .append("\"");
+            first = false;
+        }
+        if (pc.effort() != null) {
+            if (!first) json.append(",");
+            json.append("\"effort\":\"")
+                    .append(JsonFieldExtractor.escapeJson(pc.effort()))
+                    .append("\"");
+        }
+        json.append("}");
     }
 
     /**

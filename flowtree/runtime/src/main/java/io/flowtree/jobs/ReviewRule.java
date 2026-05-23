@@ -35,13 +35,15 @@ import java.util.Set;
  * comment. The prompt (built by {@link ReviewPromptBuilder}) makes this
  * bias explicit.</p>
  *
- * <p>Single-pass exit condition. Unlike {@link DeduplicationRule} /
+ * <p>Pass-cap exit condition. Unlike {@link DeduplicationRule} /
  * {@link OrganizationalPlacementRule} (which extend {@link SetComparisonRule}
- * and loop until the item set stabilises), this rule is one-shot.
- * {@link #onCorrectionAttempted(CodingAgentJob)} sets an internal flag and
- * the next {@link #isViolated(CodingAgentJob)} call short-circuits to
- * {@code false}. The outer enforcement loop still re-runs dedup and
- * placement against anything the review pass changed.</p>
+ * and loop until the item set stabilises), this rule runs a bounded number
+ * of times per job: {@link #onCorrectionAttempted(CodingAgentJob)}
+ * increments an attempt counter and {@link #isViolated(CodingAgentJob)}
+ * short-circuits to {@code false} once the counter reaches the configured
+ * {@code maxPasses} (default {@link #DEFAULT_MAX_PASSES}). The outer
+ * enforcement loop still re-runs dedup and placement against anything the
+ * review pass changed.</p>
  *
  * <p>The rule also owns the per-job review telemetry (files modified,
  * memory_store calls, clean exit) so the orchestrator does not need a
@@ -61,8 +63,8 @@ class ReviewRule implements EnforcementRule {
     /** Maximum number of correction sessions allowed per job. */
     private final int maxPasses;
 
-    /** Flips to {@code true} after the first correction attempt so subsequent checks exit. */
-    private boolean alreadyRan;
+    /** Count of correction sessions that have completed; capped by {@link #maxPasses}. */
+    private int attempts;
 
     /** "Before" snapshot of changed files captured immediately before the review session. */
     private Set<String> beforeSnapshot;
@@ -107,7 +109,7 @@ class ReviewRule implements EnforcementRule {
 
     @Override
     public boolean isViolated(CodingAgentJob job) {
-        if (alreadyRan) return false;
+        if (attempts >= maxPasses) return false;
         // Without a configured working directory there is no real working tree
         // to review; falling through would inspect the JVM's PWD instead.
         if (job.getWorkingDirectory() == null) return false;
@@ -122,7 +124,7 @@ class ReviewRule implements EnforcementRule {
 
     @Override
     public void onCorrectionAttempted(CodingAgentJob job) {
-        alreadyRan = true;
+        attempts++;
     }
 
     /**

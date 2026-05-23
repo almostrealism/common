@@ -105,9 +105,28 @@ public class ReviewRuleTest extends TestSuiteBase {
 		StubJob job = new StubJob(List.of("foo/Bar.java"), true);
 		assertTrue(rule.isViolated(job));
 		rule.onCorrectionAttempted(job);
-		// One-shot contract: after one correction attempt the rule reports satisfied
-		// regardless of whether the working tree still has changes.
+		// Default maxPasses is 1, so after one correction attempt the rule
+		// reports satisfied regardless of whether the working tree still
+		// has changes.
 		assertFalse(rule.isViolated(job));
+	}
+
+	@Test(timeout = 30000)
+	public void isViolatedRespectsMaxPassesAboveOne() {
+		ReviewRule rule = new ReviewRule(3);
+		StubJob job = new StubJob(List.of("foo/Bar.java"), true);
+		// Pass 1: violated, attempt, still violated.
+		assertTrue(rule.isViolated(job));
+		rule.onCorrectionAttempted(job);
+		assertTrue("Rule must remain violated until maxPasses attempts have completed",
+				rule.isViolated(job));
+		// Pass 2: attempt, still violated.
+		rule.onCorrectionAttempted(job);
+		assertTrue(rule.isViolated(job));
+		// Pass 3: attempt, now exhausted.
+		rule.onCorrectionAttempted(job);
+		assertFalse("Rule must short-circuit once maxPasses attempts have completed",
+				rule.isViolated(job));
 	}
 
 	@Test(timeout = 30000)

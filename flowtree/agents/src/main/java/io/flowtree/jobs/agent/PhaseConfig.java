@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs.agent;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 /**
  * Per-phase configuration triple of {@code (runner, model, effort)} used by
  * the unified per-phase precedence ladder.
@@ -41,7 +43,14 @@ public record PhaseConfig(String runner, String model, String effort) {
     /**
      * Returns {@code true} when every field is {@code null}, meaning this
      * level contributes nothing to the resolved configuration.
+     *
+     * <p>{@code @JsonIgnore} keeps this derived predicate out of the YAML
+     * / JSON wire form Jackson generates for {@link PhaseConfig}. Without
+     * the annotation Jackson treats {@code isEmpty()} as a bean property
+     * and writes an extra {@code empty: true|false} field that fails
+     * deserialisation on reload (the record has no matching setter).</p>
      */
+    @JsonIgnore
     public boolean isEmpty() {
         return runner == null && model == null && effort == null;
     }

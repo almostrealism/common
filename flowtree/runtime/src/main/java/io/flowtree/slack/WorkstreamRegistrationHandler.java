@@ -20,6 +20,7 @@ import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.JsonFieldExtractor;
+import io.flowtree.jobs.agent.PhaseConfigBundle;
 
 import java.util.List;
 import java.util.Map;
@@ -250,6 +251,8 @@ final class WorkstreamRegistrationHandler {
         if (channelName != null) {
             json.append(",\"channelName\":\"").append(JsonFieldExtractor.escapeJson(channelName)).append("\"");
         }
+        PhaseConfigBundle registeredBundle = workstream.getPhaseConfigBundle();
+        PhaseConfigResolver.appendBundleJson(json, registeredBundle);
         json.append("}");
 
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
@@ -336,8 +339,15 @@ final class WorkstreamRegistrationHandler {
 
         log.accept("Updated workstream via API: " + workstreamId);
 
+        StringBuilder json = new StringBuilder();
+        json.append("{\"ok\":true,\"workstreamId\":\"")
+                .append(JsonFieldExtractor.escapeJson(workstreamId))
+                .append("\"");
+        PhaseConfigBundle updatedBundle = workstream.getPhaseConfigBundle();
+        PhaseConfigResolver.appendBundleJson(json, updatedBundle);
+        json.append("}");
+
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
-                "application/json",
-                "{\"ok\":true,\"workstreamId\":\"" + JsonFieldExtractor.escapeJson(workstreamId) + "\"}");
+                "application/json", json.toString());
     }
 }
