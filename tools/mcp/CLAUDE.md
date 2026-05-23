@@ -110,18 +110,23 @@ data through string-typed parameters that the tool then parses locally:
   `runners='{"default": "<value>"}'`. The explicit `runners["default"]`
   wins when both are supplied.
 - `default_phase_config: str = ""` — JSON object with optional
-  `runner` / `model` / `effort` keys. Sets the container's default
-  `PhaseConfig` (the `defaultPhaseConfig` of the bundle described in
-  `docs/plans/UNIFIED_PHASE_CONFIG.md`). Wins field-by-field over the
+  `runner` / `model` / `effort` / `provider` keys. Sets the container's
+  default `PhaseConfig` (the `defaultPhaseConfig` of the bundle described
+  in `docs/plans/UNIFIED_PHASE_CONFIG.md`). Wins field-by-field over the
   legacy `default_runner` / `model` / `effort` shortcuts when both are
   supplied. Parsed by `_parse_default_phase_config_json`, which checks
-  runners against the known set and efforts against
-  `VALID_EFFORT_LEVELS`.
+  runners against the known set and efforts against `VALID_EFFORT_LEVELS`;
+  `provider` is opaque and passed through to the controller unchanged.
+  Example: `'{"runner": "opencode", "model": "qwen3-coder:exacto",
+  "effort": "medium", "provider": "openrouter"}'`
 - `phase_configs: str = ""` — JSON object mapping phase wire names to
-  `{runner, model, effort}` triples. Wins field-by-field over the
-  legacy `runners` map when both are supplied. Parsed by
-  `_parse_phase_configs_json` with the same per-field validation as
-  `default_phase_config`.
+  objects with `runner`, `model`, `effort`, and `provider` keys (all
+  optional). Wins field-by-field over the legacy `runners` map when both
+  are supplied. Parsed by `_parse_phase_configs_json` with the same
+  per-field validation as `default_phase_config`. Example:
+  `'{"primary": {"runner": "opencode", "model": "claude-sonnet-4-6",
+  "effort": "high", "provider": "anthropic"},
+  "deduplication": {"runner": "opencode", "provider": "openrouter"}}'`
 
 When adding a new structured parameter, follow the pattern from
 `_parse_runners_json` and `_parse_default_phase_config_json` in

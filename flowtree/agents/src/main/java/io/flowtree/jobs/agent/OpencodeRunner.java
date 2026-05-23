@@ -78,25 +78,33 @@ public class OpencodeRunner implements AgentRunner {
         // Local provider: uses OPENCODE_PROVIDER_URL env var, default ollama/llama.cpp
         PROVIDER_MAP.put("local", new ProviderConfig(
                 OpencodeConfigBuilder.DEFAULT_PROVIDER_URL,
-                null,  // no secret required
-                false  // no cost reporting
+                null,   // no workspace secret required
+                null,   // no provider-specific env var
+                false   // local-model cost is meaningless
         ));
         // OpenRouter provider: uses OpenRouter endpoint with workspace secret
         PROVIDER_MAP.put("openrouter", new ProviderConfig(
                 "https://openrouter.ai/api/v1",
                 "openrouter-api-key",
-                true  // OpenRouter reports cost
+                "OPENROUTER_API_KEY",
+                true    // OpenRouter reports cost
         ));
         // Anthropic provider: uses Anthropic OpenAI-compatible endpoint
         PROVIDER_MAP.put("anthropic", new ProviderConfig(
                 "https://api.anthropic.com/v1",
                 "anthropic-api-key",
-                true  // Anthropic reports cost
+                "ANTHROPIC_API_KEY",
+                true    // Anthropic reports cost
         ));
     }
 
-    /** Provider configuration: URL, secret name (or null), and cost reporting flag. */
-    private record ProviderConfig(String url, String secretName, boolean reportsCost) {}
+    /**
+     * Provider configuration: base URL, workspace secret name (or null), provider-specific
+     * environment variable name (or null), and cost reporting flag. This record is the
+     * single source of truth for per-provider connection details; both the runner and the
+     * config builder receive values from here rather than duplicating the mapping.
+     */
+    private record ProviderConfig(String url, String secretName, String envVarName, boolean reportsCost) {}
 
     /** Constructs a runner with the default locator and config builder. */
     public OpencodeRunner() {
@@ -177,14 +185,10 @@ public class OpencodeRunner implements AgentRunner {
      * @return the resolved provider identifier
      */
     private String resolveProvider(AgentRunRequest request) {
-        String provider = request.getProvider();
-        if (provider == null || provider.isEmpty()) {
-            String runnerDefault = defaultProvider();
-            if (runnerDefault != null && !runnerDefault.isEmpty()) {
-                return runnerDefault;
-            }
-        }
-        return (provider != null && !provider.isEmpty()) ? provider : "local";
+        String p = request.getProvider();
+        if (p != null && !p.isEmpty()) return p;
+        String d = defaultProvider();
+        return (d != null && !d.isEmpty()) ? d : "local";
     }
 
     @Override
@@ -203,7 +207,8 @@ public class OpencodeRunner implements AgentRunner {
         OpencodeConfigBuilder config = configBuilderSupplier.get();
         String providerUrl = config.resolveProviderUrl(providerConfig.url());
         probeProviderUrl(providerUrl, logger);
-        String configJson = config.buildConfigJson(request, provider, secretLookup);
+        String configJson = config.buildConfigJson(request, provider, providerUrl,
+                providerConfig.secretName(), providerConfig.envVarName(), secretLookup);
         Path configPath = writeConfigFile(request, configJson, logger);
         String qualifiedModel = config.resolveQualifiedModel(provider, request.getModel());
 

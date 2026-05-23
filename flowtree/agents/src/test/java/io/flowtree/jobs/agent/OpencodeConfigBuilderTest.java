@@ -259,9 +259,9 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
     }
 
     /**
-     * API key resolution: workspace secret is consulted for openrouter when no
-     * override env var is set; env-var fallback ({@code OPENROUTER_API_KEY}) is used
-     * when the secret lookup returns null.
+     * API key resolution: workspace secret is consulted when a secret name is supplied;
+     * the name comes from {@code OpencodeRunner.PROVIDER_MAP} and is passed directly
+     * rather than re-derived here.
      */
     @Test(timeout = 5000)
     public void resolveApiKeyUsesWorkspaceSecretForOpenrouter() {
@@ -269,7 +269,7 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
         OpencodeConfigBuilder b = new OpencodeConfigBuilder(env::get);
 
         // Secret lookup that returns the workspace secret.
-        String key = b.resolveApiKey("openrouter", name -> {
+        String key = b.resolveApiKey("openrouter-api-key", "OPENROUTER_API_KEY", name -> {
             assertEquals("openrouter-api-key", name);
             return "ws-secret-key-123";
         });
@@ -286,13 +286,15 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
         env.put("OPENROUTER_API_KEY", "or-key-from-env");
         OpencodeConfigBuilder b = new OpencodeConfigBuilder(env::get);
 
-        String key = b.resolveApiKey("openrouter", name -> null);
+        String key = b.resolveApiKey("openrouter-api-key", "OPENROUTER_API_KEY", name -> null);
         assertEquals("or-key-from-env", key);
     }
 
     /**
      * Full config build for openrouter: the provider node is keyed {@code "openrouter"},
      * the baseURL is the OpenRouter endpoint, and the model is prefixed {@code openrouter/}.
+     * The resolved URL, secret name, and env var name come from {@code OpencodeRunner.PROVIDER_MAP};
+     * the test passes them explicitly to verify the builder uses them unchanged.
      */
     @Test(timeout = 5000)
     public void buildConfigJsonForOpenrouter() throws Exception {
@@ -305,8 +307,11 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
                 .mcpConfigJson("{\"mcpServers\":{}}")
                 .build();
 
-        // Simulate a workspace secret that provides the API key.
-        String json = b.buildConfigJson(req, "openrouter", name -> "or-secret-key");
+        // Simulate a workspace secret that provides the API key. URL, secretName, and envVarName
+        // mirror what OpencodeRunner.PROVIDER_MAP holds for "openrouter".
+        String json = b.buildConfigJson(req, "openrouter",
+                "https://openrouter.ai/api/v1", "openrouter-api-key", "OPENROUTER_API_KEY",
+                name -> "or-secret-key");
         JsonNode root = MAPPER.readTree(json);
 
         assertEquals("openrouter/qwen/qwen3-coder:exacto", root.path("model").asText());
