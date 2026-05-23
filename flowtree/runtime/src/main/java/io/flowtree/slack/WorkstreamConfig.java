@@ -1344,49 +1344,77 @@ public class WorkstreamConfig {
     /**
      * Synchronizes the configuration entries from the in-memory workstream state.
      *
-     * <p>Updates existing entries that match by channel ID and adds any new
-     * workstreams that are not yet represented in the config. This ensures
-     * that runtime changes (via {@code /flowtree config}) are persisted.</p>
+     * <p>For each active workstream, locates the matching entry via
+     * {@link #findEntryToSync} (workstreamId first, channelId as fallback) and
+     * updates its mutable fields; otherwise adds a new entry via
+     * {@link #addWorkstream}. Matching by ID prevents the duplicate-entry
+     * defect where a {@code /flowtree setup} call wrote an entry with a null
+     * {@code channelId} and a later sync — after Slack assigned the channel —
+     * could not find that entry by channel and appended a second entry with
+     * the same workstreamId.</p>
      *
      * @param activeWorkstreams the current in-memory workstreams
      */
     public void syncFromWorkstreams(Collection<Workstream> activeWorkstreams) {
         for (Workstream ws : activeWorkstreams) {
-            boolean found = false;
-            for (WorkstreamEntry entry : workstreams) {
-                if (ws.getChannelId().equals(entry.getChannelId())) {
-                    entry.setWorkstreamId(ws.getWorkstreamId());
-                    entry.setChannelName(ws.getChannelName());
-                    entry.setDefaultBranch(ws.getDefaultBranch());
-                    entry.setBaseBranch(ws.getBaseBranch());
-                    entry.setPushToOrigin(ws.isPushToOrigin());
-                    entry.setWorkingDirectory(ws.getWorkingDirectory());
-                    entry.setRepoUrl(ws.getRepoUrl());
-                    entry.setAllowedTools(ws.getAllowedTools());
-                    entry.setMaxTurns(ws.getMaxTurns());
-                    entry.setMaxBudgetUsd(ws.getMaxBudgetUsd());
-                    entry.setGitUserName(ws.getGitUserName());
-                    entry.setGitUserEmail(ws.getGitUserEmail());
-                    entry.setEnv(ws.getEnv());
-                    entry.setPlanningDocument(ws.getPlanningDocument());
-                    entry.setGithubOrg(ws.getGithubOrg());
-                    entry.setDependentRepos(ws.getDependentRepos());
-                    entry.setRequiredLabels(ws.getRequiredLabels());
-                    entry.setWorkspaceId(ws.getWorkspaceId());
-                    entry.setModel(ws.getModel());
-                    entry.setEffort(ws.getEffort());
-                    entry.setDefaultRunner(ws.getDefaultRunner());
-                    entry.setRunners(ws.getRunners());
-                    applyBundleToEntry(entry, ws.getPhaseConfigBundle());
-                    entry.setArchived(ws.isArchived());
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
+            WorkstreamEntry entry = findEntryToSync(ws);
+            if (entry == null) {
                 addWorkstream(ws);
+                continue;
+            }
+            entry.setWorkstreamId(ws.getWorkstreamId());
+            entry.setChannelId(ws.getChannelId());
+            entry.setChannelName(ws.getChannelName());
+            entry.setDefaultBranch(ws.getDefaultBranch());
+            entry.setBaseBranch(ws.getBaseBranch());
+            entry.setPushToOrigin(ws.isPushToOrigin());
+            entry.setWorkingDirectory(ws.getWorkingDirectory());
+            entry.setRepoUrl(ws.getRepoUrl());
+            entry.setAllowedTools(ws.getAllowedTools());
+            entry.setMaxTurns(ws.getMaxTurns());
+            entry.setMaxBudgetUsd(ws.getMaxBudgetUsd());
+            entry.setGitUserName(ws.getGitUserName());
+            entry.setGitUserEmail(ws.getGitUserEmail());
+            entry.setEnv(ws.getEnv());
+            entry.setPlanningDocument(ws.getPlanningDocument());
+            entry.setGithubOrg(ws.getGithubOrg());
+            entry.setDependentRepos(ws.getDependentRepos());
+            entry.setRequiredLabels(ws.getRequiredLabels());
+            // workspaceId is intentionally NOT synced from the live Workstream:
+            // renameWorkspace mutates the entry in place, but live Workstream
+            // objects in SlackListener.channelToWorkstream still hold the
+            // pre-rename value. Overwriting here would revert the rename.
+            entry.setModel(ws.getModel());
+            entry.setEffort(ws.getEffort());
+            entry.setDefaultRunner(ws.getDefaultRunner());
+            entry.setRunners(ws.getRunners());
+            applyBundleToEntry(entry, ws.getPhaseConfigBundle());
+            entry.setArchived(ws.isArchived());
+        }
+    }
+
+    /**
+     * Locates the {@link WorkstreamEntry} that should receive sync updates for
+     * the given live {@link Workstream}. Matching by {@code workstreamId} is
+     * preferred; {@code channelId} is a fallback for legacy entries created
+     * before IDs were universal.
+     *
+     * @param ws the active workstream being synced
+     * @return the matching entry, or {@code null} when no entry exists yet
+     */
+    private WorkstreamEntry findEntryToSync(Workstream ws) {
+        String id = ws.getWorkstreamId();
+        if (id != null) {
+            for (WorkstreamEntry e : workstreams) {
+                if (id.equals(e.getWorkstreamId())) return e;
             }
         }
+        String chan = ws.getChannelId();
+        if (chan == null) return null;
+        for (WorkstreamEntry e : workstreams) {
+            if (chan.equals(e.getChannelId())) return e;
+        }
+        return null;
     }
 
     /**

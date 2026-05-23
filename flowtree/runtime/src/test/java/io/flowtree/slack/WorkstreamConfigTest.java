@@ -22,6 +22,7 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.*;
@@ -981,6 +982,69 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         for (WorkstreamConfig.WorkstreamEntry entry : config.getWorkstreams()) {
             assertEquals("almostrealism", entry.getWorkspaceId());
         }
+    }
+
+    /**
+     * Regression test for the duplicate-entry defect:
+     * {@link WorkstreamConfig#syncFromWorkstreams} used to match entries by
+     * channelId only, so a workstream first persisted with a null channelId
+     * (e.g. by /flowtree setup before Slack returned the channel) and later
+     * synced after the channelId was assigned could not be located by channel
+     * and produced a second entry sharing the same workstreamId.
+     */
+    @Test(timeout = 10000)
+    public void testSyncDoesNotDuplicateWhenChannelIdAppearsLate()
+            throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - workstreamId: \"ws-1\"\n"
+            + "    channelName: \"#late-channel\"\n"
+            + "    defaultBranch: \"main\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertNull(config.getWorkstreams().get(0).getChannelId());
+
+        // Simulate the live Workstream getting its channelId assigned after
+        // Slack created the channel.
+        Workstream live = config.toWorkstreams().get(0);
+        live.setChannelId("C0LATEONE");
+
+        config.syncFromWorkstreams(Collections.singletonList(live));
+
+        assertEquals("expected exactly one entry per workstreamId",
+                1, config.getWorkstreams().size());
+        assertEquals("C0LATEONE",
+                config.getWorkstreams().get(0).getChannelId());
+    }
+
+    /**
+     * Regression test for the rename-revert bug: after
+     * {@link WorkstreamConfig#renameWorkspace} updates every entry's
+     * {@code workspaceId}, a subsequent
+     * {@link WorkstreamConfig#syncFromWorkstreams} call with the still-old
+     * live {@link Workstream} objects must NOT clobber the entries back to
+     * the pre-rename ID.
+     */
+    @Test(timeout = 10000)
+    public void testSyncFromWorkstreamsDoesNotRevertRename() throws IOException {
+        String yaml = "workspaces:\n"
+            + "  - id: \"T0123456789\"\n"
+            + "    slackTeamId: \"T0123456789\"\n"
+            + "workstreams:\n"
+            + "  - channelId: \"C001\"\n"
+            + "    channelName: \"#alpha\"\n"
+            + "    workspaceId: \"T0123456789\"\n"
+            + "    defaultBranch: \"main\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        List<Workstream> liveWorkstreams = config.toWorkstreams();
+        assertTrue(config.renameWorkspace("T0123456789", "almostrealism"));
+
+        // Simulate persistConfig()'s sync step while the live Workstream
+        // object still holds the pre-rename workspaceId.
+        config.syncFromWorkstreams(liveWorkstreams);
+
+        assertEquals("almostrealism",
+                config.getWorkstreams().get(0).getWorkspaceId());
     }
 
     /**
