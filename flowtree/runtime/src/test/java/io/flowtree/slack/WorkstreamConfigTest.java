@@ -16,6 +16,9 @@
 
 package io.flowtree.slack;
 
+import io.flowtree.jobs.agent.Phase;
+import io.flowtree.jobs.agent.PhaseConfig;
+import io.flowtree.jobs.agent.PhaseConfigBundle;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -982,6 +985,41 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         for (WorkstreamConfig.WorkstreamEntry entry : config.getWorkstreams()) {
             assertEquals("almostrealism", entry.getWorkspaceId());
         }
+    }
+
+    /**
+     * Regression test for the lost-provider defect: a workspace-level
+     * {@code phaseConfigs.primary.provider} entry must survive YAML
+     * deserialization into the {@link WorkstreamConfig.WorkspaceEntry}
+     * and emerge from {@link WorkstreamConfig.WorkspaceEntry#toPhaseConfigBundle()}
+     * in the per-phase entry where the resolver can read it. Without this,
+     * agents fall back to the runner's default provider (e.g. opencode →
+     * "local"), bypassing the configured openrouter/anthropic route.
+     */
+    @Test(timeout = 10000)
+    public void testWorkspacePrimaryProviderSurvivesYamlLoad() throws IOException {
+        String yaml = "workspaces:\n"
+            + "  - id: \"almostrealism\"\n"
+            + "    slackTeamId: \"T0123456789\"\n"
+            + "    defaultPhaseConfig:\n"
+            + "      runner: \"claude\"\n"
+            + "      model: \"sonnet\"\n"
+            + "      effort: \"medium\"\n"
+            + "    phaseConfigs:\n"
+            + "      primary:\n"
+            + "        runner: \"opencode\"\n"
+            + "        model: \"qwen/qwen3-coder:exacto\"\n"
+            + "        provider: \"openrouter\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.WorkspaceEntry ws = config.findWorkspace("almostrealism");
+        assertNotNull(ws);
+
+        PhaseConfigBundle bundle = ws.toPhaseConfigBundle();
+        PhaseConfig primary = bundle.forPhase(Phase.PRIMARY);
+        assertEquals("opencode", primary.runner());
+        assertEquals("qwen/qwen3-coder:exacto", primary.model());
+        assertEquals("openrouter", primary.provider());
     }
 
     /**

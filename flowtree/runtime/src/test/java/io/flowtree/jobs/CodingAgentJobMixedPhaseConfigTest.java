@@ -175,6 +175,44 @@ public class CodingAgentJobMixedPhaseConfigTest extends TestSuiteBase {
         Assert.assertEquals(AgentRunnerRegistry.CLAUDE,   coding.resolveRunner(Phase.DEDUPLICATION).getName());
     }
 
+    /**
+     * Regression test for the per-phase wire-format loss:
+     * {@link CodingAgentJobFactory#setPhaseConfigBundle} used to emit only
+     * {@code defaultRunner}, {@code model}, {@code effort}, and the
+     * runner-per-phase map. Per-phase {@code model} and {@code provider}
+     * were dropped on the wire, so a workspace configured with
+     * {@code phaseConfigs.primary = (opencode, qwen3-coder, openrouter)}
+     * routed PRIMARY jobs through opencode but with provider=local and
+     * model=&lt;default&gt; on the receiving agent.
+     */
+    @Test(timeout = 5000)
+    public void factoryWireRoundTripPreservesPerPhaseProviderAndModel() {
+        PhaseConfig def = new PhaseConfig(AgentRunnerRegistry.CLAUDE, MODEL_SONNET, EFFORT_MEDIUM);
+        Map<Phase, PhaseConfig> phases = new EnumMap<>(Phase.class);
+        phases.put(Phase.PRIMARY, new PhaseConfig(
+                AgentRunnerRegistry.OPENCODE, "qwen/qwen3-coder:exacto",
+                null, "openrouter"));
+        PhaseConfigBundle source = new PhaseConfigBundle(def, phases);
+
+        CodingAgentJobFactory sender = new CodingAgentJobFactory();
+        sender.setPhaseConfigBundle(source);
+
+        // Simulate wire transport: encode on the sender, decode into a
+        // fresh factory by feeding each ::key:=value pair back through set().
+        String encoded = sender.encode();
+        CodingAgentJobFactory receiver = new CodingAgentJobFactory();
+        for (String entry : encoded.split("::")) {
+            int sep = entry.indexOf(":=");
+            if (sep <= 0) continue;
+            receiver.set(entry.substring(0, sep), entry.substring(sep + 2));
+        }
+
+        PhaseConfig restored = receiver.getPhaseConfigBundle().forPhase(Phase.PRIMARY);
+        Assert.assertEquals(AgentRunnerRegistry.OPENCODE, restored.runner());
+        Assert.assertEquals("qwen/qwen3-coder:exacto", restored.model());
+        Assert.assertEquals("openrouter", restored.provider());
+    }
+
     /** Asserts the resolver returns the expected triple for {@code phase}. */
     private static void assertResolved(PhaseConfigResolver r, Phase phase,
                                        String expectedRunner, String expectedModel,
