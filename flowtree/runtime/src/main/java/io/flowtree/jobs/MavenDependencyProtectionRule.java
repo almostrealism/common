@@ -16,6 +16,11 @@
 
 package io.flowtree.jobs;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.util.function.Consumer;
+
 /**
  * Enforcement rule that prevents {@code <dependency>} changes in Maven
  * {@code pom.xml} files. Active when {@link CodingAgentJob#isEnforceMavenDependencies()}
@@ -26,7 +31,7 @@ package io.flowtree.jobs;
  * properties, etc.) are not affected.</p>
  *
  * @author Michael Murray
- * @see CodingAgentJob#hasMavenDependencyChanges()
+ * @see MavenDependencyProtectionRule#buildCorrectionPromptText(String)
  * @see EnforcementRule
  */
 class MavenDependencyProtectionRule implements EnforcementRule {
@@ -36,12 +41,91 @@ class MavenDependencyProtectionRule implements EnforcementRule {
 
     @Override
     public boolean isViolated(CodingAgentJob job) {
-        return job.hasMavenDependencyChanges();
+        String baseBranch = normalizeBaseBranch(job.getBaseBranch());
+        return hasDependencyDiff(job.getWorkingDirectory(), baseBranch, job::warn);
+    }
+
+    /**
+     * Returns {@code true} when {@code git diff} of {@code origin/<baseBranch>}
+     * against the working directory shows any {@code <dependency>} additions,
+     * removals, or modifications across any {@code pom.xml} file.
+     *
+     * <p>Failures (non-zero exit, IO errors) are reported via {@code warn} and
+     * treated as violations so the rule fails closed.</p>
+     *
+     * @param workDir    the working directory; {@code null} uses the JVM cwd
+     * @param baseBranch the base branch to diff against
+     * @param warn       sink for warning lines
+     * @return {@code true} when a dependency change is detected (or the diff failed)
+     */
+    static boolean hasDependencyDiff(String workDir, String baseBranch, Consumer<String> warn) {
+        try {
+            // Large unified context: ensures opening <dependency> tags appear in
+            // the hunk even when the change is deep inside a long block.
+            ProcessBuilder pb = new ProcessBuilder(
+                    GitOperations.resolveGitCommand(),
+                    "diff", "--unified=50", "origin/" + baseBranch, "--", "**/pom.xml", "pom.xml");
+            if (workDir != null) pb.directory(new File(workDir));
+            pb.redirectErrorStream(true);
+            GitOperations.augmentPath(pb);
+            Process p = pb.start();
+            String diff = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            int exitCode = p.waitFor();
+            if (exitCode != 0) {
+                warn.accept("Maven dependency check: git diff exited with code "
+                        + exitCode + " — treating as violation (fail closed)");
+                return true;
+            }
+            boolean inDependencyBlock = false;
+            for (String line : diff.split("\n")) {
+                if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")) continue;
+                String content = line.length() > 0 ? line.substring(1).trim() : "";
+                boolean opensBlock = content.contains("<dependency>") || content.contains("<dependency ");
+                boolean closesBlock = content.contains("</dependency>");
+                if (opensBlock) inDependencyBlock = true;
+                if ((line.startsWith("+") || line.startsWith("-")) && (inDependencyBlock || opensBlock)) {
+                    return true;
+                }
+                if (closesBlock) inDependencyBlock = false;
+            }
+        } catch (IOException e) {
+            warn.accept("Maven dependency check: failed to diff pom.xml files: " + e.getMessage());
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warn.accept("Maven dependency check: failed to diff pom.xml files: " + e.getMessage());
+            return true;
+        }
+        return false;
     }
 
     @Override
     public String buildCorrectionPrompt(CodingAgentJob job) {
-        String baseBranch = job.getBaseBranch() != null ? job.getBaseBranch() : "master";
+        return buildCorrectionPromptText(normalizeBaseBranch(job.getBaseBranch()));
+    }
+
+    /**
+     * Normalizes the configured base branch name.
+     *
+     * @param baseBranch the configured base branch, possibly {@code null} or blank
+     * @return the trimmed branch name, or {@code "master"} when blank
+     */
+    static String normalizeBaseBranch(String baseBranch) {
+        if (baseBranch == null) {
+            return "master";
+        }
+
+        String normalized = baseBranch.trim();
+        return normalized.isEmpty() ? "master" : normalized;
+    }
+
+    /**
+     * Builds the correction prompt for Maven dependency violations.
+     *
+     * @param baseBranch the base branch to diff against (e.g. {@code "master"})
+     * @return the full prompt string
+     */
+    static String buildCorrectionPromptText(String baseBranch) {
         StringBuilder sb = new StringBuilder();
         sb.append("MAVEN DEPENDENCY PROTECTION RULE VIOLATION\n\n");
         sb.append("Your changes to one or more pom.xml files add, remove, or modify ");
@@ -60,7 +144,19 @@ class MavenDependencyProtectionRule implements EnforcementRule {
         sb.append("tool to remove only the <dependency> changes.\n\n");
         sb.append("You MAY keep all non-dependency changes to pom.xml files ");
         sb.append("(plugin configuration, properties, build settings, etc.). ");
-        sb.append("Only <dependency> additions, removals, and modifications must be undone.");
+        sb.append("Only <dependency> additions, removals, and modifications must be undone.\n\n");
+        sb.append("EXPLAIN THE UNDERLYING NEED\n");
+        sb.append("After reverting the <dependency> changes, include in your completion ");
+        sb.append("notes:\n");
+        sb.append("  (a) What goal drove the dependency change — what code consolidation, ");
+        sb.append("import, or new feature required the new dependency?\n");
+        sb.append("  (b) Whether the same goal can be expressed without adding the ");
+        sb.append("dependency. If an alternative exists (e.g., the needed type is already ");
+        sb.append("reachable through a transitive dependency or a different abstraction), ");
+        sb.append("describe it briefly.\n");
+        sb.append("  (c) If no dependency-free path is apparent, say so explicitly. This ");
+        sb.append("flags the area for human review rather than silently discarding the ");
+        sb.append("underlying design need in the commit history.");
         return sb.toString();
     }
 }

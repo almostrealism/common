@@ -98,24 +98,24 @@ public class CodingAgentJobDeduplicationTest extends TestSuiteBase {
 	public void extractControllerBaseUrl_typicalUrl() {
 		String url = "http://0.0.0.0:7700/api/workstreams/ws-1/jobs/job-abc";
 		assertEquals("http://0.0.0.0:7700",
-				CodingAgentJob.extractControllerBaseUrl(url));
+				DeduplicationSpawner.extractControllerBaseUrl(url));
 	}
 
 	@Test(timeout = 30000)
 	public void extractControllerBaseUrl_hostOnly() {
 		String url = "http://controller.local/api/workstreams/mystream/jobs/j1";
 		assertEquals("http://controller.local",
-				CodingAgentJob.extractControllerBaseUrl(url));
+				DeduplicationSpawner.extractControllerBaseUrl(url));
 	}
 
 	@Test(timeout = 30000)
 	public void extractControllerBaseUrl_noWorkstreamsSegment_returnsNull() {
-		assertNull(CodingAgentJob.extractControllerBaseUrl("http://host:7700/api/submit"));
+		assertNull(DeduplicationSpawner.extractControllerBaseUrl("http://host:7700/api/submit"));
 	}
 
 	@Test(timeout = 30000)
 	public void extractControllerBaseUrl_emptyString_returnsNull() {
-		assertNull(CodingAgentJob.extractControllerBaseUrl(""));
+		assertNull(DeduplicationSpawner.extractControllerBaseUrl(""));
 	}
 
 	// ── extractWorkstreamId ──────────────────────────────────────────────────
@@ -123,23 +123,23 @@ public class CodingAgentJobDeduplicationTest extends TestSuiteBase {
 	@Test(timeout = 30000)
 	public void extractWorkstreamId_typicalUrl() {
 		String url = "http://0.0.0.0:7700/api/workstreams/ws-1/jobs/job-abc";
-		assertEquals("ws-1", CodingAgentJob.extractWorkstreamId(url));
+		assertEquals("ws-1", DeduplicationSpawner.extractWorkstreamId(url));
 	}
 
 	@Test(timeout = 30000)
 	public void extractWorkstreamId_noJobsSegment() {
 		// URL has workstream but no /jobs/... suffix
 		String url = "http://host/api/workstreams/mystream";
-		assertEquals("mystream", CodingAgentJob.extractWorkstreamId(url));
+		assertEquals("mystream", DeduplicationSpawner.extractWorkstreamId(url));
 	}
 
 	@Test(timeout = 30000)
 	public void extractWorkstreamId_noWorkstreamsSegment_returnsNull() {
-		assertNull(CodingAgentJob.extractWorkstreamId("http://host:7700/api/submit"));
+		assertNull(DeduplicationSpawner.extractWorkstreamId("http://host:7700/api/submit"));
 	}
 
 	@Test(timeout = 30000)
 	public void extractWorkstreamId_emptyString_returnsNull() {
-		assertNull(CodingAgentJob.extractWorkstreamId(""));
+		assertNull(DeduplicationSpawner.extractWorkstreamId(""));
 	}
 }

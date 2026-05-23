@@ -113,7 +113,10 @@ Same as the other flowtree-family modules: no separate layer flag, tested as par
 
 Pulling these out of `flowtree/runtime` lets new runners (e.g. for OpenCode, Aider, etc.)
 register themselves without touching the controller's classpath. See
-`docs/plans/PLUGGABLE_AGENTS.md` for the broader plan.
+[`flowtree/docs/architecture/AGENT_RUNNERS.md`](../../flowtree/docs/architecture/AGENT_RUNNERS.md)
+for the SPI design and
+[`flowtree/docs/architecture/PHASES.md`](../../flowtree/docs/architecture/PHASES.md)
+for the per-phase routing model.
 
 #### Who depends on it
 - `ar-flowtree-runtime` — `CodingAgentJob`, `CodingAgentJobFactory`, `CodingAgentJobEvent`

@@ -21,6 +21,7 @@ import com.slack.api.methods.MethodsClient;
 import com.slack.api.methods.SlackApiException;
 import com.slack.api.methods.response.chat.ChatGetPermalinkResponse;
 import com.slack.api.methods.response.chat.ChatPostMessageResponse;
+import com.slack.api.methods.response.conversations.ConversationsArchiveResponse;
 import com.slack.api.methods.response.conversations.ConversationsCreateResponse;
 import com.slack.api.methods.response.conversations.ConversationsInviteResponse;
 import com.slack.api.methods.response.conversations.ConversationsListResponse;
@@ -129,6 +130,17 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
+     * Removes a single workstream from this notifier by ID.
+     *
+     * @param workstreamId the workstream identifier to remove
+     * @return the removed workstream, or {@code null} when no such workstream
+     *         was registered
+     */
+    public Workstream removeWorkstream(String workstreamId) {
+        return workstreams.remove(workstreamId);
+    }
+
+    /**
      * Returns the workstream for a given ID.
      *
      * @param workstreamId the workstream identifier
@@ -194,6 +206,47 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
 
         return null;
+    }
+
+    /**
+     * Archives a Slack channel via the {@code conversations.archive} API.
+     *
+     * <p>The channel remains visible in the Slack workspace's archive list
+     * but is hidden from default channel pickers. Archiving is a soft
+     * delete — the channel can be unarchived manually from the Slack UI.
+     * Slack does not expose a programmatic delete operation.</p>
+     *
+     * @param channelId the Slack channel ID to archive
+     * @return {@code null} on success, or an error string describing why
+     *         the archive failed
+     */
+    public String archiveChannel(String channelId) {
+        if (client == null) {
+            log("No bot token - channel '" + channelId + "' would be archived");
+            return "no Slack client configured";
+        }
+        if (channelId == null || channelId.isEmpty()) {
+            return "missing channel id";
+        }
+        try {
+            ConversationsArchiveResponse response = client.conversationsArchive(req -> req
+                .channel(channelId)
+            );
+            if (response.isOk()) {
+                log("Archived Slack channel " + channelId);
+                return null;
+            }
+            String err = response.getError();
+            if ("already_archived".equals(err)) {
+                log("Slack channel " + channelId + " is already archived");
+                return null;
+            }
+            warn("Failed to archive channel " + channelId + ": " + err);
+            return err != null ? err : "unknown Slack error";
+        } catch (IOException | SlackApiException e) {
+            warn("Error archiving channel " + channelId + ": " + e.getMessage());
+            return e.getMessage();
+        }
     }
 
     /**
@@ -746,11 +799,29 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * Returns the Slack thread timestamp for a job, if one has been established.
      * This is the timestamp of the submission message posted when the job was queued.
      *
+     * <p>The in-memory {@code jobThreadTs} map is the fast path; it is
+     * populated by {@link #onJobSubmitted(String, JobCompletionEvent, String)}
+     * (or its single-argument overload) and removed by
+     * {@link #onJobCompleted(String, JobCompletionEvent)} once the
+     * completion message has been posted. When the in-memory entry is
+     * absent (job already completed, controller restarted, or the
+     * submission message arrived from a peer node), this method falls
+     * back to {@link JobStatsStore#getJobSlackTs(String)} so a late
+     * {@code send_message} call from an enforcement-phase agent still
+     * lands inside the original job thread instead of at the top of the
+     * channel.</p>
+     *
      * @param jobId the job ID
      * @return the thread timestamp, or null if no thread exists for this job
      */
     public String getThreadTs(String jobId) {
-        return jobId != null ? jobThreadTs.get(jobId) : null;
+        if (jobId == null) return null;
+        String ts = jobThreadTs.get(jobId);
+        if (ts != null) return ts;
+        if (statsStore != null) {
+            return statsStore.getJobSlackTs(jobId);
+        }
+        return null;
     }
 
     /**
@@ -840,6 +911,37 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         Map<String, JobCompletionEvent> jobs = jobHistory.get(workstreamId);
         if (jobs == null) return Collections.emptyMap();
         return Collections.unmodifiableMap(jobs);
+    }
+
+    /**
+     * Returns the job IDs of jobs that are still active (status =
+     * {@link JobCompletionEvent.Status#STARTED}) for the given workstream.
+     *
+     * <p>The controller tracks job lifecycle through a single non-terminal
+     * status ({@code STARTED}); everything else ({@code SUCCESS},
+     * {@code FAILED}, {@code CANCELLED}, {@code DEGRADED}) is terminal. A
+     * workstream is "busy" for archive/delete purposes when at least one of
+     * its recorded jobs is in the {@code STARTED} state.</p>
+     *
+     * <p>The persistent store, when configured, is queried first. The
+     * in-memory job history is used as a fallback.</p>
+     *
+     * @param workstreamId the workstream identifier
+     * @return a (possibly empty) list of active job IDs
+     */
+    public List<String> getActiveJobIds(String workstreamId) {
+        List<String> active = new ArrayList<>();
+        if (workstreamId == null) return active;
+        List<JobCompletionEvent> recent = statsStore != null
+                ? statsStore.getRecentJobs(workstreamId, MAX_JOB_HISTORY)
+                : new ArrayList<>(jobHistory.getOrDefault(workstreamId,
+                        Collections.emptyMap()).values());
+        for (JobCompletionEvent event : recent) {
+            if (event.getStatus() == JobCompletionEvent.Status.STARTED) {
+                active.add(event.getJobId());
+            }
+        }
+        return active;
     }
 
     /**
