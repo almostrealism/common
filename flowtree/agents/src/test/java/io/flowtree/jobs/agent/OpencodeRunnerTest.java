@@ -242,6 +242,86 @@ public class OpencodeRunnerTest extends TestSuiteBase {
     }
 
     /**
+     * Cloud providers (openrouter, anthropic) require a resolvable API key
+     * before opencode is invoked. Without this guard the builder silently
+     * omits the {@code apiKey} field, opencode launches anyway, and the
+     * upstream returns 401 — symptom: zero token usage on the provider
+     * account, with a cryptic-looking 401 buried in the agent output. The
+     * runner now fails up front with the specific names it tried.
+     */
+    @Test(timeout = 5000)
+    public void runThrowsWhenCloudProviderHasNoApiKey() {
+        // Inject a locator that resolves opencode via OPENCODE_BIN to a stub
+        // path the predicate marks executable, so ensureBinary() succeeds and
+        // the run() flow advances to the API-key precheck under test.
+        OpencodeRunner runner = new OpencodeRunner(
+                () -> new OpencodeBinaryLocator(
+                        name -> "OPENCODE_BIN".equals(name) ? FAKE_BINARY.toString() : null,
+                        name -> "/home/agent",
+                        p -> p.equals(FAKE_BINARY)),
+                () -> new OpencodeConfigBuilder(new HashMap<String, String>()::get));
+        // No secret lookup wired and no env var set => empty key.
+
+        AgentRunRequest req = AgentRunRequest.builder()
+                .prompt("p")
+                .allowedTools("Read")
+                .mcpConfigJson("{\"mcpServers\":{}}")
+                .provider("openrouter")
+                .build();
+
+        try {
+            runner.run(req, new ConsoleFeatures() {});
+            throw new AssertionError("expected fail-loud for missing openrouter key");
+        } catch (IllegalStateException expected) {
+            String msg = expected.getMessage();
+            assertNotNull(msg);
+            assertTrue("message names the provider: " + msg, msg.contains("openrouter"));
+            assertTrue("message names the workspace secret: " + msg,
+                    msg.contains("openrouter-api-key"));
+            assertTrue("message names the provider env var: " + msg,
+                    msg.contains("OPENROUTER_API_KEY"));
+            assertTrue("message names the generic env var: " + msg,
+                    msg.contains(OpencodeConfigBuilder.ENV_API_KEY));
+        }
+    }
+
+    /**
+     * The API-key precheck only fires for non-local providers. A run that
+     * targets {@code local} (the default) must NOT fail just because no key
+     * is available — local llama-server endpoints are typically keyless.
+     */
+    @Test(timeout = 5000)
+    public void localProviderDoesNotRequireApiKey() {
+        OpencodeRunner runner = new OpencodeRunner(
+                () -> new OpencodeBinaryLocator(
+                        name -> "OPENCODE_BIN".equals(name) ? FAKE_BINARY.toString() : null,
+                        name -> "/home/agent",
+                        p -> p.equals(FAKE_BINARY)),
+                () -> new OpencodeConfigBuilder(new HashMap<String, String>()::get));
+
+        AgentRunRequest req = AgentRunRequest.builder()
+                .prompt("p")
+                .allowedTools("Read")
+                .mcpConfigJson("{\"mcpServers\":{}}")
+                // no explicit provider => defaults to local
+                .build();
+
+        try {
+            runner.run(req, new ConsoleFeatures() {});
+        } catch (IllegalStateException unexpected) {
+            if (unexpected.getMessage() != null
+                    && unexpected.getMessage().startsWith("No API key")) {
+                throw new AssertionError(
+                        "API-key precheck must not fire for local provider: "
+                                + unexpected.getMessage());
+            }
+        } catch (Exception laterFailure) {
+            // Probe / process launch / etc. is allowed to fail — the test
+            // only asserts that the precheck did NOT trip.
+        }
+    }
+
+    /**
      * Provider liveness probe accepts any HTTP response — including 404 — as
      * evidence the upstream is alive. The probe is checking TCP+HTTP
      * reachability, not API correctness.

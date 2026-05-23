@@ -65,6 +65,35 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
         assertEquals("http://localhost:8084/v1", b.resolveProviderUrl());
     }
 
+    /**
+     * Regression test: {@code OPENCODE_PROVIDER_URL} must not redirect cloud
+     * providers (openrouter, anthropic) back to the local agent endpoint.
+     * Without this, an agent container that sets the env var to reach its
+     * local llama-server silently redirects every workspace primary phase
+     * configured for {@code provider: openrouter} to local — which is what
+     * left openrouter showing zero tokens despite the workspace being
+     * configured to route there.
+     */
+    @Test(timeout = 5000)
+    public void resolveProviderUrlEnvOverrideIsLocalOnly() {
+        Map<String, String> env = new HashMap<>();
+        env.put(OpencodeConfigBuilder.ENV_PROVIDER_URL, "http://mac-studio:8084/v1");
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(env::get);
+
+        // local provider: env override wins (legacy behavior).
+        assertEquals("http://mac-studio:8084/v1",
+                b.resolveProviderUrl("local", "http://anything/v1"));
+        // null/empty provider treated as local for backwards compatibility.
+        assertEquals("http://mac-studio:8084/v1",
+                b.resolveProviderUrl(null, "http://anything/v1"));
+
+        // openrouter / anthropic: canonical URL stays, env override ignored.
+        assertEquals("https://openrouter.ai/api/v1",
+                b.resolveProviderUrl("openrouter", "https://openrouter.ai/api/v1"));
+        assertEquals("https://api.anthropic.com/v1",
+                b.resolveProviderUrl("anthropic", "https://api.anthropic.com/v1"));
+    }
+
     /** API key resolution honors {@code OPENCODE_API_KEY}; empty by default. */
     @Test(timeout = 5000)
     public void resolveApiKeyReadsEnvOrEmpty() {

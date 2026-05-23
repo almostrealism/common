@@ -125,13 +125,41 @@ final class OpencodeConfigBuilder {
      * Resolves the provider URL from {@link #ENV_PROVIDER_URL}, falling back to
      * {@code defaultUrl} when the variable is absent or empty.
      *
+     * <p>Backwards-compatible single-argument form. Assumes the {@link #PROVIDER_ID
+     * local} provider — the env override applies and {@code defaultUrl} is the
+     * local llama-server endpoint. For non-local providers use
+     * {@link #resolveProviderUrl(String, String)} so the canonical cloud URL
+     * is not clobbered by a local-only env override.</p>
+     *
      * @param defaultUrl the default URL to use when {@link #ENV_PROVIDER_URL} is not set
      * @return the OpenAI-compatible endpoint URL
      */
     String resolveProviderUrl(String defaultUrl) {
-        String value = envLookup.apply(ENV_PROVIDER_URL);
-        if (value != null && !value.isEmpty()) {
-            return value;
+        return resolveProviderUrl(PROVIDER_ID, defaultUrl);
+    }
+
+    /**
+     * Resolves the provider URL for {@code provider}. The {@link #ENV_PROVIDER_URL}
+     * override applies only to the {@link #PROVIDER_ID local} provider — its name
+     * dates to a time when the agent only spoke to local llama-server / Ollama
+     * instances, and applying it to {@code openrouter} or {@code anthropic} would
+     * silently redirect cloud traffic back to whatever the agent container points
+     * at locally (the original symptom of this bug: {@code Provider: openrouter}
+     * paired with {@code Provider URL: http://mac-studio:8084/v1}).
+     *
+     * @param provider   the provider name, or {@code null}/empty for the local default
+     * @param defaultUrl the canonical URL for {@code provider} (e.g. the entry
+     *                   from {@code OpencodeRunner.PROVIDER_MAP})
+     * @return the OpenAI-compatible endpoint URL
+     */
+    String resolveProviderUrl(String provider, String defaultUrl) {
+        boolean isLocal = provider == null || provider.isEmpty()
+                || PROVIDER_ID.equals(provider);
+        if (isLocal) {
+            String value = envLookup.apply(ENV_PROVIDER_URL);
+            if (value != null && !value.isEmpty()) {
+                return value;
+            }
         }
         return defaultUrl;
     }

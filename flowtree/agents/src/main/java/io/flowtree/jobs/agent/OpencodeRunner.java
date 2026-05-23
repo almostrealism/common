@@ -97,7 +97,7 @@ public class OpencodeRunner implements AgentRunner {
     private static final Map<String, ProviderConfig> PROVIDER_MAP = new LinkedHashMap<>();
     static {
         // Local provider: uses OPENCODE_PROVIDER_URL env var, default ollama/llama.cpp
-        PROVIDER_MAP.put("local", new ProviderConfig(
+        PROVIDER_MAP.put(OpencodeConfigBuilder.PROVIDER_ID, new ProviderConfig(
                 OpencodeConfigBuilder.DEFAULT_PROVIDER_URL,
                 null,   // no workspace secret required
                 null,   // no provider-specific env var
@@ -183,7 +183,7 @@ public class OpencodeRunner implements AgentRunner {
 
     @Override
     public String defaultProvider() {
-        return "local";
+        return OpencodeConfigBuilder.PROVIDER_ID;
     }
 
     /**
@@ -198,8 +198,45 @@ public class OpencodeRunner implements AgentRunner {
     }
 
     /**
+     * Pre-flight check: cloud providers (anything other than
+     * {@link OpencodeConfigBuilder#PROVIDER_ID local}) require a resolvable API
+     * key before opencode is invoked. The builder silently omits the
+     * {@code apiKey} field when {@link OpencodeConfigBuilder#resolveApiKey}
+     * returns empty, which lets opencode launch and post requests that the
+     * upstream provider rejects with 401 — slow, opaque failure mode whose
+     * symptom (zero token usage on the provider account) is easy to misread
+     * as "the runner is still hitting the local endpoint." Failing here, with
+     * the specific names that were tried, makes that misconfiguration
+     * impossible to confuse with anything else.
+     *
+     * @param config         the builder used to resolve the key
+     * @param provider       the resolved provider identifier
+     * @param providerConfig the matching {@link ProviderConfig} from
+     *                       {@link #PROVIDER_MAP}
+     * @param secretLookup   the workspace secret lookup function in effect
+     * @throws IllegalStateException when no API key can be resolved from
+     *         {@link OpencodeConfigBuilder#ENV_API_KEY}, the workspace
+     *         secret named in {@code providerConfig}, or the provider-specific
+     *         env var named in {@code providerConfig}
+     */
+    private void requireApiKeyForCloudProvider(OpencodeConfigBuilder config,
+                                               String provider,
+                                               ProviderConfig providerConfig,
+                                               Function<String, String> secretLookup) {
+        if (OpencodeConfigBuilder.PROVIDER_ID.equals(provider)) return;
+        String key = config.resolveApiKey(providerConfig.secretName(),
+                providerConfig.envVarName(), secretLookup);
+        if (!key.isEmpty()) return;
+        throw new IllegalStateException(
+                "No API key available for provider '" + provider + "'. Tried: "
+                        + OpencodeConfigBuilder.ENV_API_KEY + " env var, workspace secret '"
+                        + providerConfig.secretName() + "', and "
+                        + providerConfig.envVarName() + " env var.");
+    }
+
+    /**
      * Resolves the provider to use: request provider takes priority, then
-     * runner's defaultProvider(), falling back to "local".
+     * runner's defaultProvider(), falling back to {@link OpencodeConfigBuilder#PROVIDER_ID}.
      *
      * @param request the run request
      * @return the resolved provider identifier
@@ -208,7 +245,7 @@ public class OpencodeRunner implements AgentRunner {
         String p = request.getProvider();
         if (p != null && !p.isEmpty()) return p;
         String d = defaultProvider();
-        return (d != null && !d.isEmpty()) ? d : "local";
+        return (d != null && !d.isEmpty()) ? d : OpencodeConfigBuilder.PROVIDER_ID;
     }
 
     @Override
@@ -225,11 +262,16 @@ public class OpencodeRunner implements AgentRunner {
 
         Path binary = ensureBinary();
         OpencodeConfigBuilder config = configBuilderSupplier.get();
-        String providerUrl = config.resolveProviderUrl(providerConfig.url());
-        probeProviderUrl(providerUrl, logger);
         Function<String, String> effectiveSecretLookup = secretLookup != null
                 ? secretLookup
                 : controllerSecretLookup(request, logger);
+        // Validate API key BEFORE the URL probe so misconfiguration fails
+        // fast with a clear message instead of letting the probe block on
+        // network I/O only to be followed by an opaque 401 from the upstream.
+        requireApiKeyForCloudProvider(config, provider, providerConfig,
+                effectiveSecretLookup);
+        String providerUrl = config.resolveProviderUrl(provider, providerConfig.url());
+        probeProviderUrl(providerUrl, logger);
         String configJson = config.buildConfigJson(request, provider, providerUrl,
                 providerConfig.secretName(), providerConfig.envVarName(),
                 effectiveSecretLookup);
