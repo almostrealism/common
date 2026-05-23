@@ -76,6 +76,23 @@ public class OpencodeRunner implements AgentRunner {
     /** Workspace secret accessor; overridable for tests. */
     private Function<String, String> secretLookup;
 
+    /**
+     * Shared JSON mapper for parsing secret-lookup payloads. {@link ObjectMapper}
+     * is thread-safe once configured; reusing a single instance avoids the
+     * per-call allocation cost.
+     */
+    private static final ObjectMapper SECRET_PAYLOAD_MAPPER = new ObjectMapper();
+
+    /**
+     * Shared HTTP client for the secret-lookup endpoint. The JDK
+     * {@link HttpClient} is thread-safe and pools connections internally;
+     * reusing a single instance avoids repeated TLS setup across secret
+     * fetches within a JVM lifetime.
+     */
+    private static final HttpClient SECRET_HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
+
     /** Known providers and their configuration. */
     private static final Map<String, ProviderConfig> PROVIDER_MAP = new LinkedHashMap<>();
     static {
@@ -392,7 +409,8 @@ public class OpencodeRunner implements AgentRunner {
      * <p>Can be bypassed by setting the {@code OPENCODE_SKIP_PROVIDER_PROBE}
      * environment variable to any truthy value ({@code 1}, {@code true}, etc.).
      * The connect/read timeout is configurable via
-     * {@code OPENCODE_PROVIDER_PROBE_TIMEOUT_MS} (default 5000).</p>
+     * {@code OPENCODE_PROVIDER_PROBE_TIMEOUT_MS}; see
+     * {@link #resolveProbeTimeout()} for the default.</p>
      *
      * @param providerUrl resolved provider base URL (e.g. {@code http://mac-studio:8084/v1})
      * @param logger      diagnostic sink
@@ -513,16 +531,13 @@ public class OpencodeRunner implements AgentRunner {
             logger.warn("Invalid controller URL for secret fetch: " + e.getMessage());
             return null;
         }
-        HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(5))
-                .build();
         HttpRequest httpRequest = HttpRequest.newBuilder(uri)
                 .GET()
                 .header("Authorization", "Bearer " + managerToken)
                 .timeout(Duration.ofSeconds(10))
                 .build();
         try {
-            HttpResponse<String> response = client.send(
+            HttpResponse<String> response = SECRET_HTTP_CLIENT.send(
                     httpRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             int status = response.statusCode();
             if (status < 200 || status >= 300) {
@@ -557,7 +572,7 @@ public class OpencodeRunner implements AgentRunner {
     static String extractSecretValueFromPayload(String body, String secretName) {
         if (body == null || body.isEmpty()) return null;
         try {
-            JsonNode root = new ObjectMapper().readTree(body);
+            JsonNode root = SECRET_PAYLOAD_MAPPER.readTree(body);
             JsonNode payload = root.get("payload");
             if (payload == null || !payload.isObject()) return null;
             JsonNode direct = payload.get(secretName);
@@ -660,6 +675,12 @@ public class OpencodeRunner implements AgentRunner {
                         PosixFilePermissions.fromString("rw-------"));
             } catch (UnsupportedOperationException ignored) {
                 // Not a POSIX filesystem; default permissions apply
+            } catch (IOException e) {
+                // Best-effort hardening: if chmod fails (e.g., filesystem refuses
+                // POSIX bits), continue with whatever permissions the OS produced
+                // rather than aborting the run.
+                logger.warn("Failed to restrict opencode config file permissions: "
+                        + e.getMessage());
             }
             Files.writeString(file, json, StandardCharsets.UTF_8);
             return file;

@@ -57,7 +57,7 @@ its own host) — there are no per-workstream overrides.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `OPENCODE_BIN` | (unset) | Absolute path to the `opencode` binary. Takes precedence over every other discovery rule. |
-| `OPENCODE_PROVIDER_URL` | `http://localhost:8084/v1` | OpenAI-compatible endpoint URL for the **`local`** provider only. Cloud providers (`openrouter`, `anthropic`) ignore this — their base URLs come from `PROVIDER_MAP`. See [PROVIDERS.md](PROVIDERS.md). |
+| `OPENCODE_PROVIDER_URL` | `http://localhost:8084/v1` | OpenAI-compatible endpoint URL. When set, overrides the per-provider default for **every** provider — useful for pointing `openrouter`/`anthropic` at a private proxy, in addition to its primary role of selecting the local model server's address. When unset, each provider falls back to its built-in default from `PROVIDER_MAP`. See [PROVIDERS.md](PROVIDERS.md). |
 | `OPENCODE_API_KEY` | empty | Legacy override that pins a specific API key regardless of provider. Useful for one-off testing. For production cloud-provider setup, prefer the workspace-secret path documented in [PROVIDERS.md](PROVIDERS.md). |
 | `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` | empty | Per-provider env-var fallbacks, consulted when `OPENCODE_API_KEY` and the workspace secret are both empty. See [PROVIDERS.md](PROVIDERS.md). |
 | `OPENCODE_DEFAULT_MODEL` | (unset; falls back to the literal alias `default`) | Model name used when the submitted job does not specify one. The `default` alias is fine with llama.cpp's `llama-server` (it ignores the model field on the wire and serves whichever GGUF was loaded); ollama and hosted providers dispatch by name and **require** an explicit value here. |

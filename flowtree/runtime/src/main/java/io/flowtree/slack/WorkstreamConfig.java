@@ -1322,11 +1322,12 @@ public class WorkstreamConfig {
         }
         Map<String, PhaseConfig> phaseConfigs = new LinkedHashMap<>();
         for (Map.Entry<Phase, PhaseConfig> e : bundle.phaseConfigs().entrySet()) {
-            // Only emit per-phase entries that carry model or effort —
+            // Emit any per-phase entry that carries a non-runner field —
             // runner-only entries are already represented in the legacy
-            // runners map.
+            // runners map, but model/effort/provider have no legacy mirror
+            // and must round-trip through phaseConfigs to survive sync.
             PhaseConfig pc = e.getValue();
-            if (pc.model() != null || pc.effort() != null) {
+            if (pc.model() != null || pc.effort() != null || pc.provider() != null) {
                 phaseConfigs.put(e.getKey().wireName(), pc);
             }
         }
