@@ -50,13 +50,18 @@ final class DeduplicationSpawner {
      * affect the calling job's outcome.</p>
      *
      * @param newMethods    method names that may need deduplication
+     * @param baseBranch    the configured base branch (e.g. {@code "master"},
+     *                      {@code "main"}); threaded into the spawned prompt so
+     *                      its diff/log/show commands reference the same ref
+     *                      that produced {@code newMethods}
      * @param workstreamUrl the workstream URL of the calling job; {@code null}
      *                      or empty results in a warning and no submission
      * @param postJson      transport callback that POSTs the JSON payload
      * @param log           sink for informational lines
      * @param warn          sink for warning lines
      */
-    static void submitSpawnJob(List<String> newMethods, String workstreamUrl,
+    static void submitSpawnJob(List<String> newMethods, String baseBranch,
+                               String workstreamUrl,
                                JsonPoster postJson,
                                Consumer<String> log, Consumer<String> warn) {
         if (newMethods.isEmpty()) {
@@ -69,7 +74,8 @@ final class DeduplicationSpawner {
         List<String> capped = newMethods.size() > MAX_DEDUP_METHODS
                 ? newMethods.subList(0, MAX_DEDUP_METHODS) : newMethods;
         boolean truncated = newMethods.size() > MAX_DEDUP_METHODS;
-        String prompt = DeduplicationRule.buildDeduplicationPrompt(capped, truncated, newMethods.size());
+        String prompt = DeduplicationRule.buildDeduplicationPrompt(capped, truncated,
+                newMethods.size(), baseBranch);
 
         if (workstreamUrl == null || workstreamUrl.isEmpty()) {
             warn.accept("Deduplication mode is 'spawn' but no workstream URL is configured -- skipping");
