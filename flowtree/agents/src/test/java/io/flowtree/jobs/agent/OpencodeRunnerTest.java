@@ -23,6 +23,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
@@ -281,6 +282,148 @@ public class OpencodeRunnerTest extends TestSuiteBase {
             assertTrue("message should name the URL: " + expected.getMessage(),
                     expected.getMessage().contains(url));
         }
+    }
+
+    // --- Workspace-secret resolution via controller HTTP --------------------
+
+    /**
+     * The payload extractor returns the value keyed by the secret name when
+     * present — the canonical case for a secret declared as
+     * {@code {"openrouter-api-key": "sk-or-..."}} in {@code workstreams.yaml}.
+     */
+    @Test(timeout = 5000)
+    public void extractSecretValueReadsDirectKey() {
+        String body = "{\"name\":\"openrouter-api-key\","
+                + "\"workspace_id\":\"T01\","
+                + "\"payload\":{\"openrouter-api-key\":\"sk-or-v1-abc\"}}";
+        Assert.assertEquals("sk-or-v1-abc",
+                OpencodeRunner.extractSecretValueFromPayload(body, "openrouter-api-key"));
+    }
+
+    /**
+     * When the payload key does not match the secret name but contains exactly
+     * one value, that single value is returned — accommodates operators who
+     * store a one-key payload like {@code {"value": "sk-..."}}.
+     */
+    @Test(timeout = 5000)
+    public void extractSecretValueFallsBackToSingleValuePayload() {
+        String body = "{\"name\":\"openrouter-api-key\","
+                + "\"workspace_id\":\"T01\","
+                + "\"payload\":{\"value\":\"sk-or-v1-xyz\"}}";
+        Assert.assertEquals("sk-or-v1-xyz",
+                OpencodeRunner.extractSecretValueFromPayload(body, "openrouter-api-key"));
+    }
+
+    /**
+     * A multi-key payload that contains neither the secret-name key nor a
+     * single-value key yields {@code null}, so the caller falls through to
+     * the env-var path rather than guessing which value to use.
+     */
+    @Test(timeout = 5000)
+    public void extractSecretValueReturnsNullForAmbiguousMultiKeyPayload() {
+        String body = "{\"name\":\"openrouter-api-key\","
+                + "\"payload\":{\"a\":\"1\",\"b\":\"2\"}}";
+        Assert.assertNull(
+                OpencodeRunner.extractSecretValueFromPayload(body, "openrouter-api-key"));
+    }
+
+    /**
+     * Empty body, missing payload, malformed JSON — every degenerate input
+     * resolves to {@code null} so the caller falls back to the env-var path.
+     */
+    @Test(timeout = 5000)
+    public void extractSecretValueReturnsNullForDegenerateInputs() {
+        Assert.assertNull(OpencodeRunner.extractSecretValueFromPayload(null, "k"));
+        Assert.assertNull(OpencodeRunner.extractSecretValueFromPayload("", "k"));
+        Assert.assertNull(OpencodeRunner.extractSecretValueFromPayload("{}", "k"));
+        Assert.assertNull(OpencodeRunner.extractSecretValueFromPayload(
+                "{\"payload\":\"not-an-object\"}", "k"));
+        Assert.assertNull(OpencodeRunner.extractSecretValueFromPayload(
+                "this is not json", "k"));
+    }
+
+    /**
+     * End-to-end: when AR_CONTROLLER_URL/AR_WORKSTREAM_ID/AR_MANAGER_TOKEN are
+     * present in the request environment and the controller responds with the
+     * documented payload shape, the OpencodeRunner's auto-built secret lookup
+     * fetches the value and threads it through to
+     * {@link OpencodeConfigBuilder#resolveApiKey}.
+     */
+    @Test(timeout = 10000)
+    public void controllerSecretLookupFetchesSecretFromHttpEndpoint() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        final String[] receivedAuth = new String[1];
+        final String[] receivedPath = new String[1];
+        server.createContext("/api/secrets/openrouter-api-key", exchange -> {
+            receivedAuth[0] = exchange.getRequestHeaders().getFirst("Authorization");
+            receivedPath[0] = exchange.getRequestURI().toString();
+            String body = "{\"name\":\"openrouter-api-key\","
+                    + "\"workspace_id\":\"T01\","
+                    + "\"payload\":{\"openrouter-api-key\":\"sk-or-v1-from-http\"}}";
+            byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+        server.start();
+        try {
+            String controllerUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+            Map<String, String> env = new HashMap<>();
+            env.put("AR_CONTROLLER_URL", controllerUrl);
+            env.put("AR_WORKSTREAM_ID", "ws-test-1");
+            env.put("AR_MANAGER_TOKEN", "armt_tmp_fake-bearer");
+
+            Map<String, String> configEnv = new HashMap<>();
+            OpencodeConfigBuilder builder = new OpencodeConfigBuilder(configEnv::get);
+
+            // Drive the same code path run() would use to construct a lookup
+            // and pass it into the config builder.
+            AgentRunRequest req = AgentRunRequest.builder()
+                    .prompt("p")
+                    .allowedTools("Read")
+                    .mcpConfigJson("{\"mcpServers\":{}}")
+                    .provider("openrouter")
+                    .environment(env)
+                    .build();
+
+            String json = builder.buildConfigJson(req, "openrouter",
+                    "https://openrouter.ai/api/v1",
+                    "openrouter-api-key",
+                    "OPENROUTER_API_KEY",
+                    OpencodeRunner.controllerSecretLookup(req,
+                            new ConsoleFeatures() {}));
+
+            assertTrue("config should embed the fetched apiKey: " + json,
+                    json.contains("sk-or-v1-from-http"));
+            assertNotNull("controller should have received an Authorization header",
+                    receivedAuth[0]);
+            assertTrue("Authorization header should carry the bearer token: " + receivedAuth[0],
+                    receivedAuth[0].startsWith("Bearer armt_tmp_"));
+            assertTrue("URI should carry workstream_id query: " + receivedPath[0],
+                    receivedPath[0].contains("workstream_id=ws-test-1"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * When AR_CONTROLLER_URL/AR_WORKSTREAM_ID/AR_MANAGER_TOKEN are absent from
+     * the request environment, the controller-lookup function yields
+     * {@code null} so callers fall through to the provider-specific env var
+     * (e.g. {@code OPENROUTER_API_KEY}). This is the local-dev path where
+     * there is no controller to call back to.
+     */
+    @Test(timeout = 5000)
+    public void controllerSecretLookupReturnsNullWhenEnvVarsMissing() {
+        AgentRunRequest req = AgentRunRequest.builder()
+                .prompt("p")
+                .allowedTools("Read")
+                .mcpConfigJson("{\"mcpServers\":{}}")
+                .environment(new HashMap<>())
+                .build();
+        Assert.assertNull(OpencodeRunner.controllerSecretLookup(
+                req, new ConsoleFeatures() {}).apply("openrouter-api-key"));
     }
 
     /**

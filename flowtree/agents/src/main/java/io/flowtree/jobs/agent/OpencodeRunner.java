@@ -16,12 +16,15 @@
 
 package io.flowtree.jobs.agent;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.jobs.AgentProcessRunner;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -207,8 +210,12 @@ public class OpencodeRunner implements AgentRunner {
         OpencodeConfigBuilder config = configBuilderSupplier.get();
         String providerUrl = config.resolveProviderUrl(providerConfig.url());
         probeProviderUrl(providerUrl, logger);
+        Function<String, String> effectiveSecretLookup = secretLookup != null
+                ? secretLookup
+                : controllerSecretLookup(request, logger);
         String configJson = config.buildConfigJson(request, provider, providerUrl,
-                providerConfig.secretName(), providerConfig.envVarName(), secretLookup);
+                providerConfig.secretName(), providerConfig.envVarName(),
+                effectiveSecretLookup);
         Path configPath = writeConfigFile(request, configJson, logger);
         String qualifiedModel = config.resolveQualifiedModel(provider, request.getModel());
 
@@ -424,6 +431,148 @@ public class OpencodeRunner implements AgentRunner {
             Thread.currentThread().interrupt();
             throw new AgentRunnerNotAvailableException(
                     "Provider liveness probe interrupted for " + providerUrl, e);
+        }
+    }
+
+    /**
+     * Builds a workspace-secret lookup function that resolves a secret name by
+     * calling the FlowTree controller's {@code /api/secrets/{name}} endpoint.
+     *
+     * <p>This is the default lookup used when no explicit {@link #setSecretLookup}
+     * has been wired in. It reads {@code AR_CONTROLLER_URL},
+     * {@code AR_WORKSTREAM_ID}, and {@code AR_MANAGER_TOKEN} from
+     * {@link AgentRunRequest#getEnvironment()} — the same env values the
+     * controller already places on the agent context for {@code ar-secrets}
+     * (see {@code McpConfigBuilder.applyAgentEnvironment}). When any of those
+     * three is missing the returned function always yields {@code null}, so
+     * {@link OpencodeConfigBuilder#resolveApiKey} cleanly falls through to the
+     * provider-specific environment variable.</p>
+     *
+     * <p>The secret value is extracted from the response payload's value keyed
+     * by {@code secretName} (so a payload like
+     * {@code {"openrouter-api-key": "sk-or-..."}} matches the configured secret
+     * name in {@code OpencodeRunner.PROVIDER_MAP}). When the payload contains
+     * exactly one key, that single value is returned instead, accommodating
+     * operators who prefer {@code {"value": "sk-..."}}.</p>
+     *
+     * <p>Network failures and non-2xx responses are logged at warn level and
+     * yield {@code null}, never throw — the caller will fall through to the
+     * env-var path so a transient controller outage doesn't fail-fast the
+     * subprocess launch.</p>
+     *
+     * @param request the agent-run request whose environment carries the
+     *                controller URL / workstream ID / bearer token
+     * @param logger  diagnostic sink
+     * @return a {@code name -> value} function backed by the controller endpoint
+     */
+    static Function<String, String> controllerSecretLookup(
+            AgentRunRequest request, ConsoleFeatures logger) {
+        Map<String, String> env = request.getEnvironment();
+        if (env == null) return name -> null;
+        String controllerUrl = env.get("AR_CONTROLLER_URL");
+        String workstreamId = env.get("AR_WORKSTREAM_ID");
+        String managerToken = env.get("AR_MANAGER_TOKEN");
+        if (controllerUrl == null || controllerUrl.isEmpty()
+                || workstreamId == null || workstreamId.isEmpty()
+                || managerToken == null || managerToken.isEmpty()) {
+            return name -> null;
+        }
+        String base = controllerUrl.endsWith("/")
+                ? controllerUrl.substring(0, controllerUrl.length() - 1)
+                : controllerUrl;
+        return secretName -> fetchSecretValue(
+                base, workstreamId, managerToken, secretName, logger);
+    }
+
+    /**
+     * Performs the single secret fetch behind {@link #controllerSecretLookup}.
+     * Issues {@code GET /api/secrets/{name}?workstream_id=...} with a
+     * {@code Bearer} authorisation header and parses the JSON response for the
+     * payload value. Returns {@code null} on any failure path.
+     *
+     * @param controllerBaseUrl the controller base URL (no trailing slash)
+     * @param workstreamId      the requesting workstream ID
+     * @param managerToken      the {@code armt_tmp_...} bearer token
+     * @param secretName        the secret to fetch
+     * @param logger            diagnostic sink
+     * @return the resolved value, or {@code null} when missing/unfetched
+     */
+    private static String fetchSecretValue(String controllerBaseUrl,
+                                           String workstreamId,
+                                           String managerToken,
+                                           String secretName,
+                                           ConsoleFeatures logger) {
+        if (secretName == null || secretName.isEmpty()) return null;
+        String encodedName = URLEncoder.encode(secretName, StandardCharsets.UTF_8);
+        String encodedWs = URLEncoder.encode(workstreamId, StandardCharsets.UTF_8);
+        URI uri;
+        try {
+            uri = URI.create(controllerBaseUrl + "/api/secrets/" + encodedName
+                    + "?workstream_id=" + encodedWs);
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid controller URL for secret fetch: " + e.getMessage());
+            return null;
+        }
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .build();
+        HttpRequest httpRequest = HttpRequest.newBuilder(uri)
+                .GET()
+                .header("Authorization", "Bearer " + managerToken)
+                .timeout(Duration.ofSeconds(10))
+                .build();
+        try {
+            HttpResponse<String> response = client.send(
+                    httpRequest, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            int status = response.statusCode();
+            if (status < 200 || status >= 300) {
+                if (status != 404) {
+                    logger.warn("Secret fetch HTTP " + status + " for " + secretName);
+                }
+                return null;
+            }
+            return extractSecretValueFromPayload(response.body(), secretName);
+        } catch (IOException e) {
+            logger.warn("Secret fetch failed for " + secretName + ": " + e.getMessage());
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.warn("Secret fetch interrupted for " + secretName);
+            return null;
+        }
+    }
+
+    /**
+     * Parses the {@code /api/secrets/{name}} response body and pulls a value
+     * out of the {@code payload} object. Looks for the key matching
+     * {@code secretName} first; when absent, falls back to the single value
+     * when the payload has exactly one key. Returns {@code null} for any
+     * unrecognised shape — the caller treats {@code null} as "secret missing"
+     * and proceeds to the env-var fallback.
+     *
+     * @param body       the raw JSON response body
+     * @param secretName the secret name (also used as the preferred payload key)
+     * @return the resolved value or {@code null}
+     */
+    static String extractSecretValueFromPayload(String body, String secretName) {
+        if (body == null || body.isEmpty()) return null;
+        try {
+            JsonNode root = new ObjectMapper().readTree(body);
+            JsonNode payload = root.get("payload");
+            if (payload == null || !payload.isObject()) return null;
+            JsonNode direct = payload.get(secretName);
+            if (direct != null && direct.isTextual() && !direct.asText().isEmpty()) {
+                return direct.asText();
+            }
+            if (payload.size() == 1) {
+                JsonNode only = payload.fields().next().getValue();
+                if (only.isTextual() && !only.asText().isEmpty()) {
+                    return only.asText();
+                }
+            }
+            return null;
+        } catch (IOException e) {
+            return null;
         }
     }
 
