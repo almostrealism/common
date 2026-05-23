@@ -43,7 +43,7 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
     private static String prompt() {
         return DeduplicationRule.buildDeduplicationPrompt(
                 Collections.singletonList("FooHandler.truncate(String, int)"),
-                false, 1);
+                false, 1, "master");
     }
 
     // ── New wording: the audit must improve code reuse ───────────────────────
@@ -150,8 +150,40 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void promptIndicatesTruncationWhenCapped() {
         List<String> capped = Arrays.asList("A.a()", "B.b()", "C.c()");
-        String text = DeduplicationRule.buildDeduplicationPrompt(capped, true, 42);
+        String text = DeduplicationRule.buildDeduplicationPrompt(capped, true, 42, "master");
         assertTrue("Prompt should disclose how many of the total methods are shown",
                 text.contains("showing 3 of 42 total"));
+    }
+
+    // ── Base branch threading ────────────────────────────────────────────────
+
+    @Test(timeout = 30000)
+    public void promptUsesConfiguredBaseBranchInDiffCommand() {
+        String text = DeduplicationRule.buildDeduplicationPrompt(
+                Collections.singletonList("X.y()"), false, 1, "main");
+        assertTrue("Prompt should reference origin/main when base branch is main",
+                text.contains("git diff origin/main...HEAD --name-only"));
+        assertTrue("Prompt should reference origin/main in the log command",
+                text.contains("git log origin/main..HEAD --oneline"));
+        assertTrue("Prompt should reference origin/main in git show example",
+                text.contains("git show origin/main:<path>"));
+        assertFalse("Prompt must not hard-code origin/master when base branch differs",
+                text.contains("origin/master"));
+    }
+
+    @Test(timeout = 30000)
+    public void promptFallsBackToMasterWhenBaseBranchNull() {
+        String text = DeduplicationRule.buildDeduplicationPrompt(
+                Collections.singletonList("X.y()"), false, 1, null);
+        assertTrue("Null base branch should resolve to origin/master",
+                text.contains("git diff origin/master...HEAD --name-only"));
+    }
+
+    @Test(timeout = 30000)
+    public void promptFallsBackToMasterWhenBaseBranchBlank() {
+        String text = DeduplicationRule.buildDeduplicationPrompt(
+                Collections.singletonList("X.y()"), false, 1, "  ");
+        assertTrue("Blank base branch should resolve to origin/master",
+                text.contains("git diff origin/master...HEAD --name-only"));
     }
 }

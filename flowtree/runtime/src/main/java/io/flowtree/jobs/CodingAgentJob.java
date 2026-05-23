@@ -1286,6 +1286,7 @@ public class CodingAgentJob extends GitManagedJob {
         // framework (runEnforcementRules), which runs in doWork() before the commit.
         if (DEDUP_SPAWN.equals(deduplicationMode)) {
             DeduplicationSpawner.submitSpawnJob(extractNewMethodNames(),
+                    getBaseBranch(),
                     resolveWorkstreamUrl(), this::postJson, this::log, this::warn);
         }
 

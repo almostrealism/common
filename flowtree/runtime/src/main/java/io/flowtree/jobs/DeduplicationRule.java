@@ -37,7 +37,7 @@ import java.util.List;
  *
  * @author Michael Murray
  * @see CodingAgentJob#extractNewMethodNames()
- * @see DeduplicationRule#buildDeduplicationPrompt(List, boolean, int)
+ * @see DeduplicationRule#buildDeduplicationPrompt(List, boolean, int, String)
  * @see SetComparisonRule
  * @see EnforcementRule
  */
@@ -87,7 +87,9 @@ class DeduplicationRule extends SetComparisonRule {
         List<String> capped = newMethods.size() > DeduplicationSpawner.MAX_DEDUP_METHODS
                 ? newMethods.subList(0, DeduplicationSpawner.MAX_DEDUP_METHODS) : newMethods;
         return buildDeduplicationPrompt(capped,
-                newMethods.size() > DeduplicationSpawner.MAX_DEDUP_METHODS, newMethods.size());
+                newMethods.size() > DeduplicationSpawner.MAX_DEDUP_METHODS,
+                newMethods.size(),
+                job.getBaseBranch());
     }
 
     /**
@@ -96,11 +98,20 @@ class DeduplicationRule extends SetComparisonRule {
      * @param methodNames the (possibly capped) list of new method names
      * @param truncated   {@code true} if the list was capped due to size
      * @param totalCount  the total number of methods found (before capping)
+     * @param baseBranch  the configured base branch (e.g. {@code "master"},
+     *                    {@code "main"}); {@code null} or blank falls back to
+     *                    {@code "master"}. Must match the ref used by
+     *                    {@link CodingAgentJob#extractNewMethodNames()} so the
+     *                    diff/log commands the prompt cites resolve the same
+     *                    method set that produced {@code methodNames}.
      * @return the full prompt string
      */
     static String buildDeduplicationPrompt(List<String> methodNames,
                                            boolean truncated,
-                                           int totalCount) {
+                                           int totalCount,
+                                           String baseBranch) {
+        String baseRef = "origin/"
+                + (baseBranch == null || baseBranch.isBlank() ? "master" : baseBranch);
         StringBuilder sb = new StringBuilder();
         sb.append("DEDUPLICATION AUDIT — MANDATORY PRE-COMMIT REVIEW\n\n");
         sb.append("This branch has new commits relative to its base branch. Those ");
@@ -209,19 +220,19 @@ class DeduplicationRule extends SetComparisonRule {
         sb.append("Before consolidating anything, run these commands and read the ");
         sb.append("output so you know which files your branch is responsible for:\n\n");
         sb.append("  git fetch origin\n");
-        sb.append("  git diff origin/master...HEAD --name-only   # files changed on this branch\n");
-        sb.append("  git log origin/master..HEAD --oneline       # commits on this branch\n\n");
+        sb.append("  git diff ").append(baseRef).append("...HEAD --name-only   # files changed on this branch\n");
+        sb.append("  git log ").append(baseRef).append("..HEAD --oneline       # commits on this branch\n\n");
         sb.append("Files in that diff are the work this audit is about. Methods you ");
         sb.append("are introducing, moving, or modifying inside those files are the ");
         sb.append("audit subjects. Equivalent copies elsewhere — whether in branch-");
         sb.append("modified files or in untouched files that are RELATED — are in ");
         sb.append("scope to consolidate.\n\n");
         sb.append("To inspect a pre-branch version of a file, use:\n");
-        sb.append("  git show origin/master:<path>\n\n");
+        sb.append("  git show ").append(baseRef).append(":<path>\n\n");
 
         sb.append("PROCEDURE FOR EACH METHOD\n");
         sb.append("1. Locate the file on HEAD that defines the method. Confirm the ");
-        sb.append("file IS in `git diff origin/master...HEAD --name-only` — if not, ");
+        sb.append("file IS in `git diff ").append(baseRef).append("...HEAD --name-only` — if not, ");
         sb.append("the method was not introduced by this branch and should not be on ");
         sb.append("the list; skip it.\n");
         sb.append("2. Search the rest of the repository (Grep by behaviour, not just ");
