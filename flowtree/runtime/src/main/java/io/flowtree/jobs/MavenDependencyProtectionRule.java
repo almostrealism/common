@@ -31,6 +31,7 @@ import java.util.function.Consumer;
  * properties, etc.) are not affected.</p>
  *
  * @author Michael Murray
+ * @see MavenDependencyProtectionRule#buildCorrectionPromptText(String)
  * @see EnforcementRule
  */
 class MavenDependencyProtectionRule implements EnforcementRule {
@@ -40,7 +41,7 @@ class MavenDependencyProtectionRule implements EnforcementRule {
 
     @Override
     public boolean isViolated(CodingAgentJob job) {
-        String baseBranch = job.getBaseBranch() != null ? job.getBaseBranch() : "master";
+        String baseBranch = normalizeBaseBranch(job.getBaseBranch());
         return hasDependencyDiff(job.getWorkingDirectory(), baseBranch, job::warn);
     }
 
@@ -100,7 +101,31 @@ class MavenDependencyProtectionRule implements EnforcementRule {
 
     @Override
     public String buildCorrectionPrompt(CodingAgentJob job) {
-        String baseBranch = job.getBaseBranch() != null ? job.getBaseBranch() : "master";
+        return buildCorrectionPromptText(normalizeBaseBranch(job.getBaseBranch()));
+    }
+
+    /**
+     * Normalizes the configured base branch name.
+     *
+     * @param baseBranch the configured base branch, possibly {@code null} or blank
+     * @return the trimmed branch name, or {@code "master"} when blank
+     */
+    static String normalizeBaseBranch(String baseBranch) {
+        if (baseBranch == null) {
+            return "master";
+        }
+
+        String normalized = baseBranch.trim();
+        return normalized.isEmpty() ? "master" : normalized;
+    }
+
+    /**
+     * Builds the correction prompt for Maven dependency violations.
+     *
+     * @param baseBranch the base branch to diff against (e.g. {@code "master"})
+     * @return the full prompt string
+     */
+    static String buildCorrectionPromptText(String baseBranch) {
         StringBuilder sb = new StringBuilder();
         sb.append("MAVEN DEPENDENCY PROTECTION RULE VIOLATION\n\n");
         sb.append("Your changes to one or more pom.xml files add, remove, or modify ");
@@ -119,7 +144,19 @@ class MavenDependencyProtectionRule implements EnforcementRule {
         sb.append("tool to remove only the <dependency> changes.\n\n");
         sb.append("You MAY keep all non-dependency changes to pom.xml files ");
         sb.append("(plugin configuration, properties, build settings, etc.). ");
-        sb.append("Only <dependency> additions, removals, and modifications must be undone.");
+        sb.append("Only <dependency> additions, removals, and modifications must be undone.\n\n");
+        sb.append("EXPLAIN THE UNDERLYING NEED\n");
+        sb.append("After reverting the <dependency> changes, include in your completion ");
+        sb.append("notes:\n");
+        sb.append("  (a) What goal drove the dependency change — what code consolidation, ");
+        sb.append("import, or new feature required the new dependency?\n");
+        sb.append("  (b) Whether the same goal can be expressed without adding the ");
+        sb.append("dependency. If an alternative exists (e.g., the needed type is already ");
+        sb.append("reachable through a transitive dependency or a different abstraction), ");
+        sb.append("describe it briefly.\n");
+        sb.append("  (c) If no dependency-free path is apparent, say so explicitly. This ");
+        sb.append("flags the area for human review rather than silently discarding the ");
+        sb.append("underlying design need in the commit history.");
         return sb.toString();
     }
 }
