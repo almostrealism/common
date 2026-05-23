@@ -51,13 +51,13 @@ public interface AgentRunner extends Named {
      */
     AgentRunResult run(AgentRunRequest request, ConsoleFeatures logger);
 
-/**
- * Declares which optional capabilities this runner faithfully reports.
-      * The orchestrator and telemetry layer use this to decide whether to
-      * surface a value (such as cost or turn count) or mark it as not-reported.
-      *
-      * @return the capability set; never {@code null}
-      */
+    /**
+     * Declares which optional capabilities this runner faithfully reports.
+     * The orchestrator and telemetry layer use this to decide whether to
+     * surface a value (such as cost or turn count) or mark it as not-reported.
+     *
+     * @return the capability set; never {@code null}
+     */
     AgentCapabilities capabilities();
 
     /**

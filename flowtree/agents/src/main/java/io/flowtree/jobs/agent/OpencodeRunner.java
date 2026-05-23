@@ -61,7 +61,7 @@ public class OpencodeRunner implements AgentRunner {
     /** Canonical runner name used on the wire and registered with {@link AgentRunnerRegistry}. */
     public static final String NAME = "opencode";
 
-/** Discovery helper for the opencode binary. */
+    /** Discovery helper for the opencode binary. */
     private final Supplier<OpencodeBinaryLocator> locatorSupplier;
     /** Config builder used to synthesize the JSON config file. */
     private final Supplier<OpencodeConfigBuilder> configBuilderSupplier;

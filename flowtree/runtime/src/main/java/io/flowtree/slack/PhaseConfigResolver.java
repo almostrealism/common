@@ -188,6 +188,14 @@ public final class PhaseConfigResolver {
             if (modelErr != null) return fail(modelErr);
         }
 
+        // Validate provider-runner compatibility.
+        String providerErr = validateProviderForRunner(resolvedDefault, "default");
+        if (providerErr != null) return fail(providerErr);
+        for (Map.Entry<Phase, PhaseConfig> e : phases.entrySet()) {
+            providerErr = validateProviderForRunner(e.getValue(), e.getKey().wireName());
+            if (providerErr != null) return fail(providerErr);
+        }
+
         PhaseConfigBundle resolved = new PhaseConfigBundle(resolvedDefault, phases);
         return new PhaseConfigResolver(null, resolved, req, ws, wsp);
     }
@@ -389,6 +397,30 @@ public final class PhaseConfigResolver {
         if (!supported.contains(model)) {
             return "Invalid model '" + model + "' for runner '" + runner
                     + "' (phase " + phaseLabel + "). Must be one of " + supported;
+        }
+        return null;
+    }
+
+    /**
+     * Validates provider compatibility with the resolved runner for {@code config}.
+     * Currently only the {@code "claude"} runner enforces provider restrictions:
+     * claude only supports the {@code "anthropic"} provider; using any other
+     * provider with claude is not supported and fails with a clear error.
+     *
+     * <p>The {@code "opencode"} runner accepts any provider in its known set
+     * ({@code local}, {@code openrouter}, {@code anthropic}) without client-side
+     * validation — unknown providers will fail at run time with an explicit message.</p>
+     */
+    private static String validateProviderForRunner(PhaseConfig config, String phaseLabel) {
+        String provider = config.provider();
+        if (provider == null || provider.isEmpty()) return null;
+        String runner = config.runner();
+        if (runner == null || runner.isEmpty()) return null;
+        if (AgentRunnerRegistry.CLAUDE.equals(runner)
+                && !"anthropic".equals(provider)) {
+            return "runner='claude' only supports provider='anthropic'"
+                    + " (phase " + phaseLabel + "); got provider='" + provider + "'."
+                    + " Use runner='opencode' for other providers.";
         }
         return null;
     }

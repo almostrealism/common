@@ -243,6 +243,93 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         assertEquals("medium", review.effort());
     }
 
+    // --- Provider-axis validation ---------------------------------------------
+
+    /**
+     * Provider field flows through the precedence ladder and is available on
+     * the resolved {@link PhaseConfig}. The opencode runner accepts any provider.
+     */
+    @Test(timeout = 5000)
+    public void providerFlowsThroughLadder() {
+        PhaseConfigBundle req = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, null, null, "openrouter"), null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(req, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNull("opencode + openrouter should be valid", r.error());
+        assertEquals("openrouter", r.forPhase(Phase.PRIMARY).provider());
+    }
+
+    /**
+     * A per-phase provider override wins over the default provider, independently
+     * of runner and model resolution.
+     */
+    @Test(timeout = 5000)
+    public void perPhaseProviderBeatsDefault() {
+        PhaseConfigBundle req = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, null, null, "local"),
+                Phase.REVIEW,
+                new PhaseConfig(null, null, null, "openrouter"));
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(req, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        assertEquals("local", r.forPhase(Phase.PRIMARY).provider());
+        assertEquals("openrouter", r.forPhase(Phase.REVIEW).provider());
+    }
+
+    /**
+     * {@code runner=claude} with a non-anthropic provider must fail with a clear
+     * error message. Using claude against openrouter is not supported in this pass.
+     */
+    @Test(timeout = 5000)
+    public void claudeWithNonAnthropicProviderFails() {
+        PhaseConfigBundle req = bundle(
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null, "openrouter"), null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(req, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNotNull("claude + openrouter should fail validation", r.error());
+        assertTrue("error should mention claude", r.error().contains("claude"));
+        assertTrue("error should mention anthropic", r.error().contains("anthropic"));
+        assertTrue("error should mention openrouter", r.error().contains("openrouter"));
+    }
+
+    /**
+     * {@code runner=claude} with {@code provider=anthropic} is explicitly permitted
+     * since that is the only supported combination.
+     */
+    @Test(timeout = 5000)
+    public void claudeWithAnthropicProviderIsAllowed() {
+        PhaseConfigBundle req = bundle(
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null, "anthropic"), null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(req, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNull("claude + anthropic should be valid", r.error());
+        assertEquals("anthropic", r.forPhase(Phase.PRIMARY).provider());
+    }
+
+    /**
+     * Per-phase provider=openrouter rejection still triggers even when the
+     * default provider is acceptable.
+     */
+    @Test(timeout = 5000)
+    public void perPhaseClaudeWithOpenrouterFails() {
+        PhaseConfigBundle req = bundle(
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null, "anthropic"),
+                Phase.REVIEW,
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null, "openrouter"));
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(req, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNotNull("per-phase claude + openrouter should fail", r.error());
+        assertTrue(r.error().contains("review"));
+    }
+
+    /**
+     * When no provider is set, the resolver does not impose one — it stays
+     * {@code null} and the runner applies its own default.
+     */
+    @Test(timeout = 5000)
+    public void noProviderStaysNull() {
+        PhaseConfigBundle req = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, null, null), null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(req, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        assertNull("provider should remain null when not configured", r.forPhase(Phase.PRIMARY).provider());
+    }
+
     // --- resolveLegacyRunners convenience overload ----------------------------
 
     @Test(timeout = 5000)

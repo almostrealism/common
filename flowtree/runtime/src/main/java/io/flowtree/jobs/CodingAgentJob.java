@@ -1309,6 +1309,7 @@ public class CodingAgentJob extends GitManagedJob {
                 .environment(env)
                 .model(effective.model())
                 .effort(effective.effort())
+                .provider(effective.provider())
                 .maxTurns(maxTurns)
                 .maxBudgetUsd(maxBudgetUsd)
                 .inactivityTimeoutMillis(inactivityTimeoutMillis)

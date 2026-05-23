@@ -191,6 +191,53 @@ public class OpencodeRunnerTest extends TestSuiteBase {
         assertFalse(configCalled[0]);
     }
 
+    // --- Provider-axis: routing and default provider --------------------------
+
+    /**
+     * The default provider for the opencode runner is {@code "local"} (llama.cpp /
+     * ollama on the same host). When no explicit provider is set in the request,
+     * the runner should use the local provider.
+     */
+    @Test(timeout = 5000)
+    public void defaultProviderIsLocal() {
+        assertEquals("local", new OpencodeRunner().defaultProvider());
+    }
+
+    /**
+     * Capabilities advertise the three known providers.
+     */
+    @Test(timeout = 5000)
+    public void capabilitiesAdvertiseSupportedProviders() {
+        AgentCapabilities cap = new OpencodeRunner().capabilities();
+        assertTrue("local should be in supported providers", cap.supportedProviders().contains("local"));
+        assertTrue("openrouter should be in supported providers", cap.supportedProviders().contains("openrouter"));
+        assertTrue("anthropic should be in supported providers", cap.supportedProviders().contains("anthropic"));
+    }
+
+    /**
+     * Requesting an unknown provider produces a clear {@link IllegalArgumentException}
+     * that names the unknown provider and lists the available ones. This fails before
+     * any subprocess is launched so the error arrives immediately.
+     */
+    @Test(timeout = 5000)
+    public void runThrowsForUnknownProvider() {
+        OpencodeRunner runner = new OpencodeRunner();
+        AgentRunRequest req = AgentRunRequest.builder()
+                .prompt("p")
+                .allowedTools("Read")
+                .mcpConfigJson("{\"mcpServers\":{}}")
+                .provider("unknown-provider-xyz")
+                .build();
+        try {
+            runner.run(req, new ConsoleFeatures() {});
+            throw new AssertionError("expected exception for unknown provider");
+        } catch (IllegalArgumentException expected) {
+            assertNotNull(expected.getMessage());
+            assertTrue("message should name the bad provider: " + expected.getMessage(),
+                    expected.getMessage().contains("unknown-provider-xyz"));
+        }
+    }
+
     /**
      * Provider liveness probe accepts any HTTP response — including 404 — as
      * evidence the upstream is alive. The probe is checking TCP+HTTP

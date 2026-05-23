@@ -1583,15 +1583,17 @@ def _validate_phase_config_field(context: str, field: str, value: str) -> Option
 
     ``runner`` is checked against the known set of registered runner
     identifiers ([[_KNOWN_RUNNER_NAMES]]); ``effort`` is checked against
-    [[VALID_EFFORT_LEVELS]]. ``provider`` is validated against the known
-    provider names for the resolved runner. ``model`` is passed through —
-    the controller validates per-phase models against the resolved runner's
-    supportedModels at submission time.
+    [[VALID_EFFORT_LEVELS]]. Both ``model`` and ``provider`` are passed
+    through without client-side validation — the controller validates models
+    against the runner's supportedModels and rejects incompatible
+    provider/runner combinations (e.g. runner=claude with provider!=anthropic)
+    at submission time.
 
     Args:
         context: ``"default_phase_config"`` or ``"phase_configs['name']"``
             — used to build a human-readable error message.
-        field: One of ``"runner"`` / ``"model"`` / ``"effort"`` / ``"provider"``.
+        field: One of ``"runner"`` / ``"model"`` / ``"effort"`` / ``"provider"``
+            — only ``runner`` and ``effort`` are validated client-side.
         value: The non-empty string that the caller supplied.
 
     Returns:

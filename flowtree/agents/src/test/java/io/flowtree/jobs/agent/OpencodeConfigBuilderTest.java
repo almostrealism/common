@@ -215,4 +215,107 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
         JsonNode root = MAPPER.readTree(b.buildConfigJson(req));
         assertFalse("empty mcp block should be omitted", root.has("mcp"));
     }
+
+    // --- Provider-axis: openrouter URL, key, and config JSON ------------------
+
+    /**
+     * Qualified model prefixes the correct provider when one is supplied.
+     * This is the OpenRouter headline use case: {@code openrouter/qwen3-coder:exacto}.
+     */
+    @Test(timeout = 5000)
+    public void resolveQualifiedModelUsesExplicitProvider() {
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
+        assertEquals("openrouter/qwen3-coder:exacto",
+                b.resolveQualifiedModel("openrouter", "qwen3-coder:exacto"));
+        assertEquals("anthropic/claude-sonnet-4-6",
+                b.resolveQualifiedModel("anthropic", "claude-sonnet-4-6"));
+    }
+
+    /**
+     * When the override env var is not set, {@link OpencodeConfigBuilder#resolveProviderUrl}
+     * with a default URL returns that default unchanged. This proves the openrouter
+     * default URL is used when there is no manual override.
+     */
+    @Test(timeout = 5000)
+    public void resolveProviderUrlUsesDefaultWhenEnvNotSet() {
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
+        assertEquals("https://openrouter.ai/api/v1",
+                b.resolveProviderUrl("https://openrouter.ai/api/v1"));
+        assertEquals("https://api.anthropic.com/v1",
+                b.resolveProviderUrl("https://api.anthropic.com/v1"));
+    }
+
+    /**
+     * When {@code OPENCODE_PROVIDER_URL} is set, it overrides the provider-specific
+     * default so operators can point at a custom upstream.
+     */
+    @Test(timeout = 5000)
+    public void resolveProviderUrlEnvOverrideTakesPrecedence() {
+        Map<String, String> env = new HashMap<>();
+        env.put(OpencodeConfigBuilder.ENV_PROVIDER_URL, "http://custom:9000/v1");
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(env::get);
+        assertEquals("http://custom:9000/v1",
+                b.resolveProviderUrl("https://openrouter.ai/api/v1"));
+    }
+
+    /**
+     * API key resolution: workspace secret is consulted for openrouter when no
+     * override env var is set; env-var fallback ({@code OPENROUTER_API_KEY}) is used
+     * when the secret lookup returns null.
+     */
+    @Test(timeout = 5000)
+    public void resolveApiKeyUsesWorkspaceSecretForOpenrouter() {
+        Map<String, String> env = new HashMap<>();
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(env::get);
+
+        // Secret lookup that returns the workspace secret.
+        String key = b.resolveApiKey("openrouter", name -> {
+            assertEquals("openrouter-api-key", name);
+            return "ws-secret-key-123";
+        });
+        assertEquals("ws-secret-key-123", key);
+    }
+
+    /**
+     * When neither the generic API-key env var nor the workspace secret is set,
+     * the provider-specific env var ({@code OPENROUTER_API_KEY}) is used as fallback.
+     */
+    @Test(timeout = 5000)
+    public void resolveApiKeyFallsBackToProviderEnvVar() {
+        Map<String, String> env = new HashMap<>();
+        env.put("OPENROUTER_API_KEY", "or-key-from-env");
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(env::get);
+
+        String key = b.resolveApiKey("openrouter", name -> null);
+        assertEquals("or-key-from-env", key);
+    }
+
+    /**
+     * Full config build for openrouter: the provider node is keyed {@code "openrouter"},
+     * the baseURL is the OpenRouter endpoint, and the model is prefixed {@code openrouter/}.
+     */
+    @Test(timeout = 5000)
+    public void buildConfigJsonForOpenrouter() throws Exception {
+        Map<String, String> env = new HashMap<>();
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(env::get);
+
+        AgentRunRequest req = AgentRunRequest.builder()
+                .model("qwen/qwen3-coder:exacto")
+                .allowedTools("Read")
+                .mcpConfigJson("{\"mcpServers\":{}}")
+                .build();
+
+        // Simulate a workspace secret that provides the API key.
+        String json = b.buildConfigJson(req, "openrouter", name -> "or-secret-key");
+        JsonNode root = MAPPER.readTree(json);
+
+        assertEquals("openrouter/qwen/qwen3-coder:exacto", root.path("model").asText());
+        JsonNode providerNode = root.path("provider").path("openrouter");
+        assertFalse("provider.openrouter should be present", providerNode.isMissingNode());
+        assertEquals("https://openrouter.ai/api/v1",
+                providerNode.path("options").path("baseURL").asText());
+        assertEquals("or-secret-key",
+                providerNode.path("options").path("apiKey").asText());
+        assertTrue(providerNode.path("models").has("qwen/qwen3-coder:exacto"));
+    }
 }
