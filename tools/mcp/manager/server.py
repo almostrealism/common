@@ -1552,7 +1552,7 @@ def _parse_default_phase_config_json(default_phase_config: str) -> "tuple[Option
     if not isinstance(parsed, dict):
         return None, {
             "ok": False,
-            "error": "default_phase_config must be a JSON object with runner/model/effort/provider keys",
+            "error": "default_phase_config must be a JSON object with optional runner/model/effort/provider keys",
         }
     allowed = {"runner", "model", "effort", "provider"}
     cleaned: dict = {}
@@ -1645,7 +1645,7 @@ def _parse_phase_configs_json(phase_configs: str) -> "tuple[Optional[dict], Opti
     if not isinstance(parsed, dict):
         return None, {
             "ok": False,
-            "error": "phase_configs must be a JSON object mapping phase names to {runner,model,effort,provider} quadruples",
+            "error": "phase_configs must be a JSON object mapping phase names to objects with optional runner/model/effort/provider keys",
         }
     valid_phase_keys = set(_KNOWN_PHASE_WIRE_NAMES)
     allowed_inner = {"runner", "model", "effort", "provider"}

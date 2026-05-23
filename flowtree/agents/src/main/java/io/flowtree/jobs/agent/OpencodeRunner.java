@@ -28,6 +28,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -148,9 +149,8 @@ public class OpencodeRunner implements AgentRunner {
 
     @Override
     public AgentCapabilities capabilities() {
-        Set<String> providers = Set.of("local", "openrouter", "anthropic");
         return new AgentCapabilities(
-                false,  // reportsCost — local-model cost is meaningless; mark N/A
+                true,   // reportsCost — cloud providers (openrouter, anthropic) report cost
                 true,   // reportsTurns — best effort, can be wrong
                 false,  // supportsEffortLevel
                 false,  // supportsMaxBudget
@@ -158,7 +158,7 @@ public class OpencodeRunner implements AgentRunner {
                 true,   // supportsMcpStdioTransport
                 false,  // supportsPermissionDenialReporting (until proven)
                 Set.of(),
-                providers);
+                Set.copyOf(PROVIDER_MAP.keySet()));
     }
 
     @Override
@@ -236,41 +236,45 @@ public class OpencodeRunner implements AgentRunner {
         logger.log("Working directory: "
                 + (workDir != null ? workDir.toString() : System.getProperty("user.dir")));
 
-        long start = System.currentTimeMillis();
-        AgentProcessRunner.Result processResult = AgentProcessRunner.runAttempt(
-                pb,
-                request.getInactivityTimeoutMillis(),
-                request.getTaskId(),
-                logger);
-        long durationMs = System.currentTimeMillis() - start;
+        try {
+            long start = System.currentTimeMillis();
+            AgentProcessRunner.Result processResult = AgentProcessRunner.runAttempt(
+                    pb,
+                    request.getInactivityTimeoutMillis(),
+                    request.getTaskId(),
+                    logger);
+            long durationMs = System.currentTimeMillis() - start;
 
-        String rawOutput = processResult.output();
-        if (request.getOutputCapturePath() != null) {
-            try (FileWriter writer = new FileWriter(request.getOutputCapturePath().toFile(), true)) {
-                writer.write(rawOutput);
-            } catch (IOException e) {
-                logger.warn("Failed to save opencode output to "
-                        + request.getOutputCapturePath() + ": " + e.getMessage());
+            String rawOutput = processResult.output();
+            if (request.getOutputCapturePath() != null) {
+                try (FileWriter writer = new FileWriter(request.getOutputCapturePath().toFile(), true)) {
+                    writer.write(rawOutput);
+                } catch (IOException e) {
+                    logger.warn("Failed to save opencode output to "
+                            + request.getOutputCapturePath() + ": " + e.getMessage());
+                }
             }
-        }
 
-        Map<String, String> metadata = new LinkedHashMap<>();
-        metadata.put("opencode_binary_path", binary.toString());
-        if (binaryVersion != null) {
-            metadata.put("opencode_version", binaryVersion);
-        }
-        metadata.put("provider", provider);
-        metadata.put("provider_url", providerUrl);
-        metadata.put("model", qualifiedModel);
+            Map<String, String> metadata = new LinkedHashMap<>();
+            metadata.put("opencode_binary_path", binary.toString());
+            if (binaryVersion != null) {
+                metadata.put("opencode_version", binaryVersion);
+            }
+            metadata.put("provider", provider);
+            metadata.put("provider_url", providerUrl);
+            metadata.put("model", qualifiedModel);
 
-        return OpencodeOutputParser.parse(
-                rawOutput,
-                processResult.exitCode(),
-                processResult.killedForInactivity(),
-                durationMs,
-                metadata,
-                logger,
-                providerConfig.reportsCost());
+            return OpencodeOutputParser.parse(
+                    rawOutput,
+                    processResult.exitCode(),
+                    processResult.killedForInactivity(),
+                    durationMs,
+                    metadata,
+                    logger,
+                    providerConfig.reportsCost());
+        } finally {
+            deleteConfigFile(configPath, logger);
+        }
     }
 
     /**
@@ -500,12 +504,41 @@ public class OpencodeRunner implements AgentRunner {
                 dir = Files.createTempDirectory("opencode-config-");
             }
             Path file = Files.createTempFile(dir, "opencode-config-", ".json");
+            try {
+                // Restrict to owner read/write only so API keys written next are not
+                // world-readable on POSIX filesystems. Non-POSIX systems skip silently.
+                Files.setPosixFilePermissions(file,
+                        PosixFilePermissions.fromString("rw-------"));
+            } catch (UnsupportedOperationException ignored) {
+                // Not a POSIX filesystem; default permissions apply
+            }
             Files.writeString(file, json, StandardCharsets.UTF_8);
             return file;
         } catch (IOException e) {
             logger.warn("Failed to write opencode config file: " + e.getMessage());
             throw new AgentRunnerNotAvailableException(
                     "Failed to write opencode config file", e);
+        }
+    }
+
+    /**
+     * Deletes the synthesized config file after the subprocess exits. When the
+     * file lives inside a directory whose name starts with {@code "opencode-config-"}
+     * (i.e., a temp directory created by this runner), the directory is also removed.
+     *
+     * @param configFile the config file path returned by {@link #writeConfigFile}
+     * @param logger     diagnostic sink for deletion warnings
+     */
+    private void deleteConfigFile(Path configFile, ConsoleFeatures logger) {
+        try {
+            Files.deleteIfExists(configFile);
+            Path dir = configFile.getParent();
+            if (dir != null && dir.getFileName() != null
+                    && dir.getFileName().toString().startsWith("opencode-config-")) {
+                Files.deleteIfExists(dir);
+            }
+        } catch (IOException e) {
+            logger.warn("Failed to delete opencode config file: " + e.getMessage());
         }
     }
 

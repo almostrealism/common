@@ -47,7 +47,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
     @Test(timeout = 5000)
     public void capabilitiesAdvertiseOpencodeFeatures() {
         AgentCapabilities cap = new OpencodeRunner().capabilities();
-        assertFalse("local-model cost reporting is meaningless", cap.reportsCost());
+        assertTrue("cloud providers (openrouter, anthropic) report cost", cap.reportsCost());
         assertTrue("turn counts are best-effort", cap.reportsTurns());
         assertFalse("no effort concept", cap.supportsEffortLevel());
         assertFalse("no native budget", cap.supportsMaxBudget());
@@ -55,6 +55,8 @@ public class OpencodeRunnerTest extends TestSuiteBase {
         assertTrue("MCP stdio supported", cap.supportsMcpStdioTransport());
         assertFalse("denial reporting unproven", cap.supportsPermissionDenialReporting());
         Assert.assertEquals("trust the provider's model set", Set.of(), cap.supportedModels());
+        Assert.assertEquals("providers derived from PROVIDER_MAP",
+                Set.of("local", "openrouter", "anthropic"), cap.supportedProviders());
     }
 
     /** The registry knows the opencode name and produces opencode runners. */

@@ -16,7 +16,6 @@
 
 package io.flowtree.jobs.agent;
 
-import java.util.Collections;
 import java.util.Set;
 
 /**
@@ -50,16 +49,13 @@ public record AgentCapabilities(
         Set<String> supportedProviders) {
 
     /**
-     * Canonical compact constructor that defensively copies the supported-model set
-     * and substitutes an empty set for {@code null}.
+     * Canonical compact constructor that defensively copies the supported-model and
+     * supported-provider sets (via {@link Set#copyOf}), preventing mutation through
+     * the caller's original reference, and substitutes an empty set for {@code null}.
      */
     public AgentCapabilities {
-        supportedModels = supportedModels == null
-                ? Collections.emptySet()
-                : Collections.unmodifiableSet(supportedModels);
-        supportedProviders = supportedProviders == null
-                ? Collections.emptySet()
-                : Collections.unmodifiableSet(supportedProviders);
+        supportedModels = supportedModels == null ? Set.of() : Set.copyOf(supportedModels);
+        supportedProviders = supportedProviders == null ? Set.of() : Set.copyOf(supportedProviders);
     }
 
     /**
@@ -86,6 +82,6 @@ public record AgentCapabilities(
                              Set<String> supportedModels) {
         this(reportsCost, reportsTurns, supportsEffortLevel, supportsMaxBudget,
                 supportsMcpHttpTransport, supportsMcpStdioTransport,
-                supportsPermissionDenialReporting, supportedModels, Collections.emptySet());
+                supportsPermissionDenialReporting, supportedModels, Set.of());
     }
 }

@@ -122,10 +122,10 @@ final class OpencodeConfigBuilder {
     }
 
     /**
-     * Resolves the provider URL from {@link #ENV_PROVIDER_URL}, provider-specific
-     * environment variable, or returns the default for the provider.
+     * Resolves the provider URL from {@link #ENV_PROVIDER_URL}, falling back to
+     * {@code defaultUrl} when the variable is absent or empty.
      *
-     * @param defaultUrl the default URL to use if no provider-specific URL is set
+     * @param defaultUrl the default URL to use when {@link #ENV_PROVIDER_URL} is not set
      * @return the OpenAI-compatible endpoint URL
      */
     String resolveProviderUrl(String defaultUrl) {

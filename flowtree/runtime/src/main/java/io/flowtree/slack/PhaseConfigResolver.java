@@ -407,9 +407,9 @@ public final class PhaseConfigResolver {
      * claude only supports the {@code "anthropic"} provider; using any other
      * provider with claude is not supported and fails with a clear error.
      *
-     * <p>The {@code "opencode"} runner accepts any provider in its known set
-     * ({@code local}, {@code openrouter}, {@code anthropic}) without client-side
-     * validation — unknown providers will fail at run time with an explicit message.</p>
+     * <p>The {@code "opencode"} runner is not validated here. Provider validation
+     * for opencode happens at run time inside the runner itself, where it checks the
+     * provider against its known set and fails with an explicit error if unrecognised.</p>
      */
     private static String validateProviderForRunner(PhaseConfig config, String phaseLabel) {
         String provider = config.provider();
