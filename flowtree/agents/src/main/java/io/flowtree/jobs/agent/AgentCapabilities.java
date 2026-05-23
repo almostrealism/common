@@ -36,6 +36,7 @@ import java.util.Set;
  * @param supportsMcpStdioTransport         whether the runner supports stdio MCP servers
  * @param supportsPermissionDenialReporting whether the runner reports tool-permission denials
  * @param supportedModels                   set of recognised model identifiers; empty means unconstrained
+ * @param supportedProviders                set of recognised provider identifiers; empty means unconstrained
  */
 public record AgentCapabilities(
         boolean reportsCost,
@@ -45,7 +46,8 @@ public record AgentCapabilities(
         boolean supportsMcpHttpTransport,
         boolean supportsMcpStdioTransport,
         boolean supportsPermissionDenialReporting,
-        Set<String> supportedModels) {
+        Set<String> supportedModels,
+        Set<String> supportedProviders) {
 
     /**
      * Canonical compact constructor that defensively copies the supported-model set
@@ -55,5 +57,35 @@ public record AgentCapabilities(
         supportedModels = supportedModels == null
                 ? Collections.emptySet()
                 : Collections.unmodifiableSet(supportedModels);
+        supportedProviders = supportedProviders == null
+                ? Collections.emptySet()
+                : Collections.unmodifiableSet(supportedProviders);
+    }
+
+    /**
+     * Backwards-compatible eight-argument constructor that defaults
+     * {@code supportedProviders} to the empty set. Used by tests and call
+     * sites from before the provider-axis was added.
+     *
+     * @param reportsCost                       whether the runner emits a USD cost figure
+     * @param reportsTurns                      whether the runner emits an agentic-turn count
+     * @param supportsEffortLevel               whether the runner accepts a thinking/effort level
+     * @param supportsMaxBudget                 whether the runner accepts a USD budget cap
+     * @param supportsMcpHttpTransport          whether the runner supports HTTP-transport MCP servers
+     * @param supportsMcpStdioTransport         whether the runner supports stdio MCP servers
+     * @param supportsPermissionDenialReporting whether the runner reports tool-permission denials
+     * @param supportedModels                   set of recognised model identifiers
+     */
+    public AgentCapabilities(boolean reportsCost,
+                             boolean reportsTurns,
+                             boolean supportsEffortLevel,
+                             boolean supportsMaxBudget,
+                             boolean supportsMcpHttpTransport,
+                             boolean supportsMcpStdioTransport,
+                             boolean supportsPermissionDenialReporting,
+                             Set<String> supportedModels) {
+        this(reportsCost, reportsTurns, supportsEffortLevel, supportsMaxBudget,
+                supportsMcpHttpTransport, supportsMcpStdioTransport,
+                supportsPermissionDenialReporting, supportedModels, Collections.emptySet());
     }
 }

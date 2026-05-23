@@ -112,25 +112,101 @@ final class OpencodeConfigBuilder {
     }
 
     /**
-     * Resolves the provider URL from {@link #ENV_PROVIDER_URL} or returns
-     * {@link #DEFAULT_PROVIDER_URL}.
+     * Backwards-compatible no-argument form. Returns the live provider URL,
+     * defaulting to the local llama-server endpoint when no override is set.
      *
      * @return the OpenAI-compatible endpoint URL
      */
     String resolveProviderUrl() {
-        String value = envLookup.apply(ENV_PROVIDER_URL);
-        return (value == null || value.isEmpty()) ? DEFAULT_PROVIDER_URL : value;
+        return resolveProviderUrl(DEFAULT_PROVIDER_URL);
     }
 
     /**
-     * Resolves the API key from {@link #ENV_API_KEY} or returns the empty
-     * string. Local llama.cpp/ollama servers do not require auth.
+     * Resolves the provider URL from {@link #ENV_PROVIDER_URL}, provider-specific
+     * environment variable, or returns the default for the provider.
+     *
+     * @param defaultUrl the default URL to use if no provider-specific URL is set
+     * @return the OpenAI-compatible endpoint URL
+     */
+    String resolveProviderUrl(String defaultUrl) {
+        String value = envLookup.apply(ENV_PROVIDER_URL);
+        if (value != null && !value.isEmpty()) {
+            return value;
+        }
+        return defaultUrl;
+    }
+
+    /**
+     * Backwards-compatible no-argument form. Reads the API key from the
+     * legacy {@link #ENV_API_KEY} only (no provider-specific fallback).
      *
      * @return the API key string (possibly empty)
      */
     String resolveApiKey() {
         String value = envLookup.apply(ENV_API_KEY);
         return value == null ? "" : value;
+    }
+
+    /**
+     * Resolves the API key from {@link #ENV_API_KEY}, workspace secret, or
+     * provider-specific environment variable.
+     *
+     * @param provider     provider identifier (local, openrouter, anthropic)
+     * @param secretLookup optional workspace secret lookup function
+     * @return the API key string (possibly empty)
+     */
+    String resolveApiKey(String provider, Function<String, String> secretLookup) {
+        String value = envLookup.apply(ENV_API_KEY);
+        if (value != null && !value.isEmpty()) {
+            return value;
+        }
+        if (secretLookup != null) {
+            String secretName = resolveSecretName(provider);
+            if (secretName != null) {
+                String secretValue = secretLookup.apply(secretName);
+                if (secretValue != null && !secretValue.isEmpty()) {
+                    return secretValue;
+                }
+            }
+        }
+        String envVar = resolveEnvVar(provider);
+        if (envVar != null) {
+            String envValue = envLookup.apply(envVar);
+            if (envValue != null && !envValue.isEmpty()) {
+                return envValue;
+            }
+        }
+        return "";
+    }
+
+    /**
+     * Resolves the workspace secret name for the given provider.
+     *
+     * @param provider provider identifier
+     * @return the secret name, or null if no secret is required
+     */
+    private String resolveSecretName(String provider) {
+        if ("openrouter".equals(provider)) {
+            return "openrouter-api-key";
+        } else if ("anthropic".equals(provider)) {
+            return "anthropic-api-key";
+        }
+        return null;
+    }
+
+    /**
+     * Resolves the environment variable for the given provider.
+     *
+     * @param provider provider identifier
+     * @return the environment variable name, or null if none exists
+     */
+    private String resolveEnvVar(String provider) {
+        if ("openrouter".equals(provider)) {
+            return "OPENROUTER_API_KEY";
+        } else if ("anthropic".equals(provider)) {
+            return "ANTHROPIC_API_KEY";
+        }
+        return null;
     }
 
     /**
@@ -152,39 +228,73 @@ final class OpencodeConfigBuilder {
     }
 
     /**
-     * Returns the qualified model identifier in opencode's
-     * {@code provider/model} form.
+     * Backwards-compatible single-argument form. Uses the default provider
+     * id ({@link #PROVIDER_ID}, "local") when no provider is supplied.
      *
      * @param requestModel the model from {@link AgentRunRequest#getModel()}
      * @return the qualified identifier (e.g. {@code "local/default"})
      */
     String resolveQualifiedModel(String requestModel) {
-        return PROVIDER_ID + "/" + resolveModel(requestModel);
+        return resolveQualifiedModel(null, requestModel);
+    }
+
+    /**
+     * Returns the qualified model identifier in opencode's
+     * {@code provider/model} form.
+     *
+     * @param provider     provider identifier (local, openrouter, anthropic)
+     * @param requestModel the model from {@link AgentRunRequest#getModel()}
+     * @return the qualified identifier (e.g. {@code "openrouter/qwen3-coder:exacto"})
+     */
+    String resolveQualifiedModel(String provider, String requestModel) {
+        String effectiveProvider = (provider == null || provider.isEmpty()) ? PROVIDER_ID : provider;
+        return effectiveProvider + "/" + resolveModel(requestModel);
+    }
+
+    /**
+     * Backwards-compatible single-argument form. Builds the opencode config
+     * with the default provider id ({@link #PROVIDER_ID}, "local") and no
+     * workspace secret lookup.
+     *
+     * @param request the agent-run request
+     * @return a pretty-printed JSON document
+     */
+    String buildConfigJson(AgentRunRequest request) {
+        return buildConfigJson(request, null, null);
     }
 
     /**
      * Builds the complete opencode config JSON for {@code request}.
      *
      * @param request the agent-run request
+     * @param provider provider identifier (local, openrouter, anthropic)
+     * @param secretLookup optional workspace secret lookup function
      * @return a pretty-printed JSON document suitable for writing to a temp file
      */
-    String buildConfigJson(AgentRunRequest request) {
+    String buildConfigJson(AgentRunRequest request, String provider, Function<String, String> secretLookup) {
         ObjectNode root = MAPPER.createObjectNode();
         root.put("$schema", "https://opencode.ai/config.json");
 
+        String effectiveProvider = (provider == null || provider.isEmpty()) ? PROVIDER_ID : provider;
         ObjectNode providers = root.putObject("provider");
-        ObjectNode local = providers.putObject(PROVIDER_ID);
-        local.put("npm", "@ai-sdk/openai-compatible");
-        ObjectNode options = local.putObject("options");
-        options.put("baseURL", resolveProviderUrl());
-        String key = resolveApiKey();
+        ObjectNode providerNode = providers.putObject(effectiveProvider);
+        providerNode.put("npm", "@ai-sdk/openai-compatible");
+        ObjectNode options = providerNode.putObject("options");
+        
+        String defaultUrl = effectiveProvider.equals("local") 
+            ? DEFAULT_PROVIDER_URL 
+            : resolveProviderUrlForProvider(effectiveProvider);
+        options.put("baseURL", resolveProviderUrl(defaultUrl));
+        
+        String key = resolveApiKey(effectiveProvider, secretLookup);
         if (!key.isEmpty()) {
             options.put("apiKey", key);
         }
-        ObjectNode models = local.putObject("models");
+        
+        ObjectNode models = providerNode.putObject("models");
         String modelName = resolveModel(request != null ? request.getModel() : null);
         models.putObject(modelName);
-        root.put("model", PROVIDER_ID + "/" + modelName);
+        root.put("model", effectiveProvider + "/" + modelName);
 
         ObjectNode mcp = translateMcpServers(request != null ? request.getMcpConfigJson() : null);
         if (mcp != null && mcp.size() > 0) {
@@ -206,6 +316,21 @@ final class OpencodeConfigBuilder {
         } catch (Exception e) {
             throw new IllegalStateException("Failed to serialise opencode config", e);
         }
+    }
+
+    /**
+     * Returns the default provider URL for the given provider.
+     *
+     * @param provider provider identifier
+     * @return the default URL for that provider
+     */
+    private String resolveProviderUrlForProvider(String provider) {
+        if ("openrouter".equals(provider)) {
+            return "https://openrouter.ai/api/v1";
+        } else if ("anthropic".equals(provider)) {
+            return "https://api.anthropic.com/v1";
+        }
+        return DEFAULT_PROVIDER_URL;
     }
 
     /**

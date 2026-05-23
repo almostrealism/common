@@ -294,7 +294,8 @@ public final class PhaseConfigResolver {
         String runner = textOrNull(node.get("runner"));
         String model = textOrNull(node.get("model"));
         String effort = textOrNull(node.get("effort"));
-        return new PhaseConfig(runner, model, effort);
+        String provider = textOrNull(node.get("provider"));
+        return new PhaseConfig(runner, model, effort, provider);
     }
 
     /** Returns the textual value of {@code node}, or {@code null} when missing/empty. */
@@ -557,6 +558,13 @@ public final class PhaseConfigResolver {
             if (!first) json.append(",");
             json.append("\"effort\":\"")
                     .append(JsonFieldExtractor.escapeJson(pc.effort()))
+                    .append("\"");
+            first = false;
+        }
+        if (pc.provider() != null) {
+            if (!first) json.append(",");
+            json.append("\"provider\":\"")
+                    .append(JsonFieldExtractor.escapeJson(pc.provider()))
                     .append("\"");
         }
         json.append("}");

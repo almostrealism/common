@@ -48,6 +48,8 @@ public final class AgentRunRequest {
     private final String model;
     /** Requested effort/thinking level; {@code null} means runner default. */
     private final String effort;
+    /** Requested provider identifier; {@code null} means runner default. */
+    private final String provider;
     /** Maximum number of agentic turns; {@code 0} means runner default. */
     private final int maxTurns;
     /** Maximum USD budget; {@code <= 0} means unlimited. */
@@ -76,6 +78,7 @@ public final class AgentRunRequest {
                 : Collections.unmodifiableMap(new LinkedHashMap<>(b.environment));
         this.model = b.model;
         this.effort = b.effort;
+        this.provider = b.provider;
         this.maxTurns = b.maxTurns;
         this.maxBudgetUsd = b.maxBudgetUsd;
         this.inactivityTimeoutMillis = b.inactivityTimeoutMillis;
@@ -114,6 +117,9 @@ public final class AgentRunRequest {
 
     /** Returns the requested effort/thinking level; {@code null} uses the runner default. */
     public String getEffort() { return effort; }
+
+    /** Returns the requested provider identifier; {@code null} uses the runner default. */
+    public String getProvider() { return provider; }
 
     /** Returns the maximum number of agentic turns; {@code 0} means runner default. */
     public int getMaxTurns() { return maxTurns; }
@@ -163,6 +169,8 @@ public final class AgentRunRequest {
         private String model;
         /** Pending effort level; see {@link AgentRunRequest#getEffort()}. */
         private String effort;
+        /** Pending provider identifier; see {@link AgentRunRequest#getProvider()}. */
+        private String provider;
         /** Pending agentic-turn cap; see {@link AgentRunRequest#getMaxTurns()}. */
         private int maxTurns;
         /** Pending USD budget cap; see {@link AgentRunRequest#getMaxBudgetUsd()}. */
@@ -197,6 +205,8 @@ public final class AgentRunRequest {
         public Builder model(String model) { this.model = model; return this; }
         /** Sets the requested effort level. */
         public Builder effort(String effort) { this.effort = effort; return this; }
+        /** Sets the requested provider. */
+        public Builder provider(String provider) { this.provider = provider; return this; }
         /** Sets the maximum number of agentic turns. */
         public Builder maxTurns(int maxTurns) { this.maxTurns = maxTurns; return this; }
         /** Sets the maximum USD budget. */

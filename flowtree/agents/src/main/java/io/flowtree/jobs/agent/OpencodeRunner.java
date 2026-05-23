@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -60,21 +61,59 @@ public class OpencodeRunner implements AgentRunner {
     /** Canonical runner name used on the wire and registered with {@link AgentRunnerRegistry}. */
     public static final String NAME = "opencode";
 
-    /** Discovery helper for the opencode binary. */
+/** Discovery helper for the opencode binary. */
     private final Supplier<OpencodeBinaryLocator> locatorSupplier;
-
     /** Config builder used to synthesize the JSON config file. */
     private final Supplier<OpencodeConfigBuilder> configBuilderSupplier;
-
     /** Lazily resolved path to the opencode binary; null until first use. */
     private Path binaryPath;
-
     /** Lazily resolved opencode version string; null until probed. */
     private String binaryVersion;
+    /** Workspace secret accessor; overridable for tests. */
+    private Function<String, String> secretLookup;
+
+    /** Known providers and their configuration. */
+    private static final Map<String, ProviderConfig> PROVIDER_MAP = new LinkedHashMap<>();
+    static {
+        // Local provider: uses OPENCODE_PROVIDER_URL env var, default ollama/llama.cpp
+        PROVIDER_MAP.put("local", new ProviderConfig(
+                OpencodeConfigBuilder.DEFAULT_PROVIDER_URL,
+                null,  // no secret required
+                false  // no cost reporting
+        ));
+        // OpenRouter provider: uses OpenRouter endpoint with workspace secret
+        PROVIDER_MAP.put("openrouter", new ProviderConfig(
+                "https://openrouter.ai/api/v1",
+                "openrouter-api-key",
+                true  // OpenRouter reports cost
+        ));
+        // Anthropic provider: uses Anthropic OpenAI-compatible endpoint
+        PROVIDER_MAP.put("anthropic", new ProviderConfig(
+                "https://api.anthropic.com/v1",
+                "anthropic-api-key",
+                true  // Anthropic reports cost
+        ));
+    }
+
+    /** Provider configuration: URL, secret name (or null), and cost reporting flag. */
+    private record ProviderConfig(String url, String secretName, boolean reportsCost) {}
 
     /** Constructs a runner with the default locator and config builder. */
     public OpencodeRunner() {
-        this(OpencodeBinaryLocator::new, OpencodeConfigBuilder::new);
+        this(OpencodeBinaryLocator::new, OpencodeConfigBuilder::new, null);
+    }
+
+    /**
+     * Backwards-compatible two-argument constructor used by tests and call
+     * sites from before the workspace-secret lookup was added. Delegates to
+     * the three-argument form with a {@code null} secret lookup.
+     *
+     * @param locatorSupplier       produces a binary locator on demand
+     * @param configBuilderSupplier produces a config builder on demand
+     */
+    OpencodeRunner(Supplier<OpencodeBinaryLocator> locatorSupplier,
+                   Supplier<OpencodeConfigBuilder> configBuilderSupplier) {
+        this(locatorSupplier, configBuilderSupplier, null);
     }
 
     /**
@@ -83,11 +122,15 @@ public class OpencodeRunner implements AgentRunner {
      *
      * @param locatorSupplier        produces a binary locator on demand
      * @param configBuilderSupplier  produces a config builder on demand
+     * @param secretLookup           optional workspace secret lookup; when null,
+     *                               reads from System.getenv as fallback
      */
     OpencodeRunner(Supplier<OpencodeBinaryLocator> locatorSupplier,
-                   Supplier<OpencodeConfigBuilder> configBuilderSupplier) {
+                   Supplier<OpencodeConfigBuilder> configBuilderSupplier,
+                   Function<String, String> secretLookup) {
         this.locatorSupplier = locatorSupplier;
         this.configBuilderSupplier = configBuilderSupplier;
+        this.secretLookup = secretLookup;
     }
 
     @Override
@@ -97,6 +140,7 @@ public class OpencodeRunner implements AgentRunner {
 
     @Override
     public AgentCapabilities capabilities() {
+        Set<String> providers = Set.of("local", "openrouter", "anthropic");
         return new AgentCapabilities(
                 false,  // reportsCost — local-model cost is meaningless; mark N/A
                 true,   // reportsTurns — best effort, can be wrong
@@ -105,7 +149,42 @@ public class OpencodeRunner implements AgentRunner {
                 true,   // supportsMcpHttpTransport
                 true,   // supportsMcpStdioTransport
                 false,  // supportsPermissionDenialReporting (until proven)
-                Set.of());
+                Set.of(),
+                providers);
+    }
+
+    @Override
+    public String defaultProvider() {
+        return "local";
+    }
+
+    /**
+     * Sets the workspace secret lookup function. This is used to fetch
+     * API keys from the workspace secrets store.
+     *
+     * @param secretLookup function that takes a secret name and returns
+     *                     the secret value, or null if not found
+     */
+    public void setSecretLookup(Function<String, String> secretLookup) {
+        this.secretLookup = secretLookup;
+    }
+
+    /**
+     * Resolves the provider to use: request provider takes priority, then
+     * runner's defaultProvider(), falling back to "local".
+     *
+     * @param request the run request
+     * @return the resolved provider identifier
+     */
+    private String resolveProvider(AgentRunRequest request) {
+        String provider = request.getProvider();
+        if (provider == null || provider.isEmpty()) {
+            String runnerDefault = defaultProvider();
+            if (runnerDefault != null && !runnerDefault.isEmpty()) {
+                return runnerDefault;
+            }
+        }
+        return (provider != null && !provider.isEmpty()) ? provider : "local";
     }
 
     @Override
@@ -113,18 +192,26 @@ public class OpencodeRunner implements AgentRunner {
         if (request == null) throw new IllegalArgumentException("request must not be null");
         if (logger == null) throw new IllegalArgumentException("logger must not be null");
 
+        String provider = resolveProvider(request);
+        ProviderConfig providerConfig = PROVIDER_MAP.get(provider);
+        if (providerConfig == null) {
+            throw new IllegalArgumentException("Unknown provider: " + provider
+                    + " (available: " + PROVIDER_MAP.keySet() + ")");
+        }
+
         Path binary = ensureBinary();
         OpencodeConfigBuilder config = configBuilderSupplier.get();
-        String providerUrl = config.resolveProviderUrl();
+        String providerUrl = config.resolveProviderUrl(providerConfig.url());
         probeProviderUrl(providerUrl, logger);
-        String configJson = config.buildConfigJson(request);
+        String configJson = config.buildConfigJson(request, provider, secretLookup);
         Path configPath = writeConfigFile(request, configJson, logger);
-        String qualifiedModel = config.resolveQualifiedModel(request.getModel());
+        String qualifiedModel = config.resolveQualifiedModel(provider, request.getModel());
 
         List<String> command = buildCommandLine(binary, request, configPath, qualifiedModel);
 
         logger.log("Starting opencode session");
         logger.log("Tools: " + request.getAllowedTools());
+        logger.log("Provider: " + provider);
         logger.log("Provider URL: " + providerUrl);
         logger.log("Model: " + qualifiedModel);
         if (request.getInactivityRestartAttempt() > 0) {
@@ -167,6 +254,7 @@ public class OpencodeRunner implements AgentRunner {
         if (binaryVersion != null) {
             metadata.put("opencode_version", binaryVersion);
         }
+        metadata.put("provider", provider);
         metadata.put("provider_url", providerUrl);
         metadata.put("model", qualifiedModel);
 
@@ -176,7 +264,8 @@ public class OpencodeRunner implements AgentRunner {
                 processResult.killedForInactivity(),
                 durationMs,
                 metadata,
-                logger);
+                logger,
+                providerConfig.reportsCost());
     }
 
     /**
@@ -346,25 +435,43 @@ public class OpencodeRunner implements AgentRunner {
     }
 
     /**
-     * Returns the probe connect/read timeout configured via
-     * {@code OPENCODE_PROVIDER_PROBE_TIMEOUT_MS}, or 5 seconds when unset or
-     * unparseable.
+     * Returns the probe connect/read timeout. Configurable via the JVM system
+     * property {@code opencode.provider.probe.timeout.ms} (preferred for tests)
+     * or the environment variable {@code OPENCODE_PROVIDER_PROBE_TIMEOUT_MS}.
+     * Defaults to {@value #DEFAULT_PROBE_TIMEOUT_MS} milliseconds when neither
+     * is set or both are unparseable.
      *
      * @return the probe timeout
      */
     private static Duration resolveProbeTimeout() {
-        String raw = System.getenv("OPENCODE_PROVIDER_PROBE_TIMEOUT_MS");
-        if (raw != null && !raw.isEmpty()) {
-            try {
-                long millis = Long.parseLong(raw.trim());
-                if (millis > 0) {
-                    return Duration.ofMillis(millis);
-                }
-            } catch (NumberFormatException ignored) {
-                // fall through to default
-            }
+        String prop = System.getProperty("opencode.provider.probe.timeout.ms");
+        Duration parsed = parseMillis(prop);
+        if (parsed != null) return parsed;
+        parsed = parseMillis(System.getenv("OPENCODE_PROVIDER_PROBE_TIMEOUT_MS"));
+        if (parsed != null) return parsed;
+        return Duration.ofMillis(DEFAULT_PROBE_TIMEOUT_MS);
+    }
+
+    /**
+     * Default probe connect/read timeout when no override is configured.
+     * Two seconds is long enough to accommodate a slow upstream while still
+     * giving the orchestrator a quick failure signal when the provider is
+     * unreachable (vs. waiting on the inactivity watchdog).
+     */
+    private static final long DEFAULT_PROBE_TIMEOUT_MS = 2000L;
+
+    /**
+     * Parses a millisecond duration string, returning {@code null} when blank
+     * or unparseable.
+     */
+    private static Duration parseMillis(String raw) {
+        if (raw == null || raw.isEmpty()) return null;
+        try {
+            long millis = Long.parseLong(raw.trim());
+            return millis > 0 ? Duration.ofMillis(millis) : null;
+        } catch (NumberFormatException e) {
+            return null;
         }
-        return Duration.ofSeconds(5);
     }
 
     /**

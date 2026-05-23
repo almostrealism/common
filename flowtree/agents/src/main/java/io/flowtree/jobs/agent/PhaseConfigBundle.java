@@ -125,6 +125,11 @@ public record PhaseConfigBundle(PhaseConfig defaultPhaseConfig,
         return withDefault(defaultPhaseConfig.withEffort(effort));
     }
 
+    /** Convenience: replaces only the default provider; preserves runner, model, and effort. */
+    public PhaseConfigBundle withDefaultProvider(String provider) {
+        return withDefault(defaultPhaseConfig.withProvider(provider));
+    }
+
     /**
      * Returns a copy of this bundle with the per-phase entry for
      * {@code phase} set to {@code config}. Passing {@code null} clears
@@ -163,7 +168,7 @@ public record PhaseConfigBundle(PhaseConfig defaultPhaseConfig,
                                                      Map<String, String> runnerByPhase) {
         PhaseConfig def = new PhaseConfig(
                 (defaultRunner == null || defaultRunner.isEmpty()) ? null : defaultRunner,
-                null, null);
+                null, null, null);
         Map<Phase, PhaseConfig> phases = new EnumMap<>(Phase.class);
         if (runnerByPhase != null) {
             for (Map.Entry<String, String> e : runnerByPhase.entrySet()) {
@@ -175,7 +180,7 @@ public record PhaseConfigBundle(PhaseConfig defaultPhaseConfig,
                 } catch (IllegalArgumentException ex) {
                     continue;
                 }
-                phases.put(phase, new PhaseConfig(runner, null, null));
+                phases.put(phase, new PhaseConfig(runner, null, null, null));
             }
         }
         return new PhaseConfigBundle(def, phases);
