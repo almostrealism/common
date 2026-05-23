@@ -53,7 +53,7 @@ import java.util.function.Supplier;
  * @see LayerFeatures
  * @author Michael Murray
  */
-public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learning, Nameable {
+public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learning, Tracking, Nameable {
 	/**
 	 * Flag to enable memory-copy-based input/output recording.
 	 * When false, assignment-based recording is used instead.
@@ -273,6 +273,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	 * @param inputTracking whether to enable input tracking for this layer
 	 * @throws IllegalStateException if the layer has not been initialized via {@link #init}
 	 */
+	@Override
 	public void setInputTracking(boolean inputTracking) {
 		if (this.output == null) {
 			throw new IllegalStateException("Layer has not been initialized");

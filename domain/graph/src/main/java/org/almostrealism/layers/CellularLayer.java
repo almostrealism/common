@@ -68,7 +68,7 @@ import org.almostrealism.model.Block;
  * <p>The primary implementation, {@link DefaultCellularLayer}, supports configurable
  * input tracking. When enabled (the default for training), the layer copies its input
  * into a buffer for backpropagation. When disabled (inference mode), this copy is
- * eliminated for better performance. See {@link DefaultCellularLayer#setInputTracking(boolean)}.</p>
+ * eliminated for better performance. See {@link Tracking#setInputTracking(boolean)}.</p>
  *
  * @see Layer
  * @see Block

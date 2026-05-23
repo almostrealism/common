@@ -31,6 +31,7 @@ import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.layers.LayerRoutingFeatures;
 import org.almostrealism.layers.Learning;
 import org.almostrealism.layers.ParameterUpdate;
+import org.almostrealism.layers.Tracking;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -61,7 +62,7 @@ import java.util.stream.IntStream;
  * @see DefaultBlock
  * @author Michael Murray
  */
-public class SequentialBlock implements Block, Learning, LayerRoutingFeatures {
+public class SequentialBlock implements Block, Learning, Tracking, LayerRoutingFeatures {
 	/** When {@code true}, logs a warning when a block with no backward cell is added. */
 	public static boolean enableWarnings = false;
 
@@ -134,6 +135,19 @@ public class SequentialBlock implements Block, Learning, LayerRoutingFeatures {
 		blocks.forEach(b -> {
 			if (b instanceof Learning)
 				((Learning) b).setParameterUpdate(update);
+		});
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Propagates the setting to every child block that implements {@link Tracking}.</p>
+	 */
+	@Override
+	public void setInputTracking(boolean inputTracking) {
+		blocks.forEach(b -> {
+			if (b instanceof Tracking)
+				((Tracking) b).setInputTracking(inputTracking);
 		});
 	}
 
