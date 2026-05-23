@@ -1,0 +1,187 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.flowtree.jobs.agent;
+
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Test;
+
+import java.util.EnumMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
+/**
+ * Tests for {@link PhaseConfigBundle}. Covers bundle construction, the
+ * {@code forPhase} per-level overlay rule, and conversions to/from the
+ * legacy runner map shape.
+ */
+public class PhaseConfigBundleTest extends TestSuiteBase {
+
+    @Test(timeout = 5000)
+    public void emptyBundleIsEmpty() {
+        assertTrue(PhaseConfigBundle.EMPTY.isEmpty());
+        assertTrue(PhaseConfigBundle.EMPTY.defaultPhaseConfig().isEmpty());
+        assertTrue(PhaseConfigBundle.EMPTY.phaseConfigs().isEmpty());
+    }
+
+    @Test(timeout = 5000)
+    public void nullDefaultNormalisesToEmpty() {
+        PhaseConfigBundle b = new PhaseConfigBundle(null, null);
+        assertSame(PhaseConfig.EMPTY, b.defaultPhaseConfig());
+        assertTrue(b.phaseConfigs().isEmpty());
+    }
+
+    @Test(timeout = 5000)
+    public void forPhaseReturnsDefaultWhenNoOverride() {
+        PhaseConfig def = new PhaseConfig("claude", "opus", "high");
+        PhaseConfigBundle b = new PhaseConfigBundle(def, null);
+        assertEquals(def, b.forPhase(Phase.PRIMARY));
+        assertEquals(def, b.forPhase(Phase.REVIEW));
+    }
+
+    @Test(timeout = 5000)
+    public void forPhaseNullArgumentReturnsDefault() {
+        PhaseConfig def = new PhaseConfig("claude", "opus", "high");
+        PhaseConfigBundle b = new PhaseConfigBundle(def, null);
+        assertEquals(def, b.forPhase(null));
+    }
+
+    @Test(timeout = 5000)
+    public void forPhaseOverlaysOverrideOnDefault() {
+        PhaseConfig def = new PhaseConfig("claude", "opus", "high");
+        Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
+        overrides.put(Phase.REVIEW, new PhaseConfig(null, "sonnet", null));
+        PhaseConfigBundle b = new PhaseConfigBundle(def, overrides);
+        PhaseConfig review = b.forPhase(Phase.REVIEW);
+        assertEquals("claude", review.runner());
+        assertEquals("sonnet", review.model());
+        assertEquals("high", review.effort());
+        // Other phases still inherit default.
+        assertEquals(def, b.forPhase(Phase.PRIMARY));
+    }
+
+    @Test(timeout = 5000)
+    public void withDefaultReplacesDefaultPreservingOverrides() {
+        Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
+        overrides.put(Phase.REVIEW, new PhaseConfig("opencode", null, null));
+        PhaseConfigBundle b = new PhaseConfigBundle(PhaseConfig.EMPTY, overrides);
+        PhaseConfigBundle updated = b.withDefault(new PhaseConfig("claude", "opus", null));
+        assertEquals("claude", updated.defaultPhaseConfig().runner());
+        assertEquals("opus", updated.defaultPhaseConfig().model());
+        assertEquals("opencode", updated.phaseConfigs().get(Phase.REVIEW).runner());
+    }
+
+    @Test(timeout = 5000)
+    public void withPhaseAddsEntry() {
+        PhaseConfigBundle b = PhaseConfigBundle.EMPTY
+                .withPhase(Phase.COMMIT_MESSAGE, new PhaseConfig("opencode", null, null));
+        assertEquals(1, b.phaseConfigs().size());
+        assertEquals("opencode", b.phaseConfigs().get(Phase.COMMIT_MESSAGE).runner());
+    }
+
+    @Test(timeout = 5000)
+    public void withPhaseNullClearsEntry() {
+        Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
+        overrides.put(Phase.REVIEW, new PhaseConfig("opencode", null, null));
+        PhaseConfigBundle b = new PhaseConfigBundle(PhaseConfig.EMPTY, overrides);
+        PhaseConfigBundle updated = b.withPhase(Phase.REVIEW, null);
+        assertTrue(updated.phaseConfigs().isEmpty());
+    }
+
+    @Test(timeout = 5000)
+    public void withPhaseRejectsNullPhase() {
+        try {
+            PhaseConfigBundle.EMPTY.withPhase(null, new PhaseConfig("claude", null, null));
+            fail("expected IllegalArgumentException");
+        } catch (IllegalArgumentException ex) {
+            // expected
+        }
+    }
+
+    @Test(timeout = 5000)
+    public void fromLegacyRunnersBuildsRunnerOnlyBundle() {
+        Map<String, String> runners = new LinkedHashMap<>();
+        runners.put("review", "opencode");
+        PhaseConfigBundle b = PhaseConfigBundle.fromLegacyRunners("claude", runners);
+        assertEquals("claude", b.defaultPhaseConfig().runner());
+        assertNull(b.defaultPhaseConfig().model());
+        assertNull(b.defaultPhaseConfig().effort());
+        PhaseConfig review = b.phaseConfigs().get(Phase.REVIEW);
+        assertNotNull(review);
+        assertEquals("opencode", review.runner());
+        assertNull(review.model());
+        assertNull(review.effort());
+    }
+
+    @Test(timeout = 5000)
+    public void fromLegacyRunnersHandlesNullDefault() {
+        PhaseConfigBundle b = PhaseConfigBundle.fromLegacyRunners(null, null);
+        assertTrue(b.isEmpty());
+    }
+
+    @Test(timeout = 5000)
+    public void fromLegacyRunnersSkipsUnknownPhase() {
+        Map<String, String> runners = new LinkedHashMap<>();
+        runners.put("nonsense-phase", "opencode");
+        runners.put("review", "opencode");
+        PhaseConfigBundle b = PhaseConfigBundle.fromLegacyRunners(null, runners);
+        assertEquals(1, b.phaseConfigs().size());
+        assertEquals("opencode", b.phaseConfigs().get(Phase.REVIEW).runner());
+    }
+
+    @Test(timeout = 5000)
+    public void toLegacyRunnerMapExposesRunnerOnly() {
+        Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
+        overrides.put(Phase.REVIEW, new PhaseConfig("opencode", "qwen3-coder-30b", "high"));
+        PhaseConfigBundle b = new PhaseConfigBundle(PhaseConfig.EMPTY, overrides);
+        Map<String, String> legacy = b.toLegacyRunnerMap();
+        assertEquals(1, legacy.size());
+        assertEquals("opencode", legacy.get("review"));
+    }
+
+    @Test(timeout = 5000)
+    public void toLegacyRunnerMapSkipsEntriesWithoutRunner() {
+        Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
+        overrides.put(Phase.REVIEW, new PhaseConfig(null, "opus", "high"));
+        PhaseConfigBundle b = new PhaseConfigBundle(PhaseConfig.EMPTY, overrides);
+        assertTrue(b.toLegacyRunnerMap().isEmpty());
+    }
+
+    @Test(timeout = 5000)
+    public void emptyBundleIgnoresEmptyConfigsInIsEmpty() {
+        Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
+        overrides.put(Phase.REVIEW, PhaseConfig.EMPTY);
+        PhaseConfigBundle b = new PhaseConfigBundle(PhaseConfig.EMPTY, overrides);
+        // Constructor preserves all-empty entries; isEmpty checks they're truly empty.
+        assertTrue(b.isEmpty());
+    }
+
+    @Test(timeout = 5000)
+    public void nonEmptyOverrideIsNotEmpty() {
+        Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
+        overrides.put(Phase.REVIEW, new PhaseConfig("opencode", null, null));
+        PhaseConfigBundle b = new PhaseConfigBundle(PhaseConfig.EMPTY, overrides);
+        assertFalse(b.isEmpty());
+    }
+}

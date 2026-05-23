@@ -379,6 +379,12 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			submitParams.contains("post_completion_command"));
 		assertTrue("workstream_submit_task must declare max_deduplication_passes in signature",
 			submitParams.contains("max_deduplication_passes"));
+		assertTrue("workstream_submit_task must declare max_review_passes in signature"
+			+ " so callers can override the default per-job review pass cap",
+			submitParams.contains("max_review_passes"));
+		assertTrue("workstream_submit_task must declare review_enabled in signature"
+			+ " so callers can opt out of the review phase",
+			submitParams.contains("review_enabled"));
 		assertTrue("workstream_submit_task must declare repo_url in signature so callers can"
 			+ " disambiguate target_branch when multiple workstreams share the same branch",
 			submitParams.contains("repo_url"));
@@ -392,6 +398,13 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_submit_task must declare default_runner in signature so"
 			+ " operators can set the default runner without enumerating phases",
 			submitParams.contains("default_runner"));
+		assertTrue("workstream_submit_task must declare default_phase_config in"
+			+ " signature so per-phase (runner, model, effort) defaults can be set"
+			+ " per the UNIFIED_PHASE_CONFIG plan",
+			submitParams.contains("default_phase_config"));
+		assertTrue("workstream_submit_task must declare phase_configs in signature"
+			+ " so per-phase (runner, model, effort) overrides can be passed in",
+			submitParams.contains("phase_configs"));
 		assertTrue("workstream_submit_task must declare allow_commit_language in signature"
 			+ " so callers can opt out of the commit-language linter when needed",
 			submitParams.contains("allow_commit_language"));
@@ -408,6 +421,14 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_register must declare default_runner in signature so"
 			+ " operators can set the default runner for all phases",
 			registerParams.contains("default_runner"));
+		assertTrue("workstream_register must declare default_phase_config in signature"
+			+ " so per-phase (runner, model, effort) defaults can be set at"
+			+ " workstream level",
+			registerParams.contains("default_phase_config"));
+		assertTrue("workstream_register must declare phase_configs in signature"
+			+ " so per-phase (runner, model, effort) overrides can be set at"
+			+ " workstream level",
+			registerParams.contains("phase_configs"));
 
 		List<String> updateConfigParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
@@ -421,6 +442,13 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_update_config must declare default_runner in signature so"
 			+ " operators can update the default runner for all phases",
 			updateConfigParams.contains("default_runner"));
+		assertTrue("workstream_update_config must declare default_phase_config in"
+			+ " signature so the workstream-level (runner, model, effort)"
+			+ " default can be updated",
+			updateConfigParams.contains("default_phase_config"));
+		assertTrue("workstream_update_config must declare phase_configs in signature"
+			+ " so the workstream-level per-phase overrides can be updated",
+			updateConfigParams.contains("phase_configs"));
 
 		List<String> workspaceUpdateParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workspace_update_config");
@@ -439,6 +467,13 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			workspaceUpdateParams.contains("default_runner"));
 		assertTrue("workspace_update_config must declare runners in signature",
 			workspaceUpdateParams.contains("runners"));
+		assertTrue("workspace_update_config must declare default_phase_config in"
+			+ " signature so the workspace-level (runner, model, effort)"
+			+ " default can be set",
+			workspaceUpdateParams.contains("default_phase_config"));
+		assertTrue("workspace_update_config must declare phase_configs in signature"
+			+ " so workspace-level per-phase overrides can be set",
+			workspaceUpdateParams.contains("phase_configs"));
 		assertTrue("workspace_update_config must declare name in signature",
 			workspaceUpdateParams.contains("name"));
 		assertTrue("workspace_update_config must declare default_channel in signature",

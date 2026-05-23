@@ -263,6 +263,83 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         assertEquals("TZZZZ", workspaceEntry.getSlackTeamId());
     }
 
+    @Test(timeout = 10000)
+    public void testPhaseConfigsPersistToDiskAndSurviveReload() throws Exception {
+        // Exercise the full round-trip: POST defaultPhaseConfig + phaseConfigs,
+        // confirm the live in-memory entry has them, then re-load the YAML
+        // file from disk and confirm the new-shape fields survived.
+        JsonNode response = postJson("/api/workspaces/" + WORKSPACE_ID + "/config",
+                "{\"defaultPhaseConfig\":{\"runner\":\"claude\","
+                + "\"model\":\"claude-opus-4-7\",\"effort\":\"high\"},"
+                + "\"phaseConfigs\":{\"review\":{\"runner\":\"claude\","
+                + "\"model\":\"claude-haiku-4-5-20251001\"}}}");
+        assertTrue(response.get("ok").asBoolean());
+        // In-memory state.
+        assertNotNull(workspaceEntry.getDefaultPhaseConfig());
+        assertEquals("claude", workspaceEntry.getDefaultPhaseConfig().runner());
+        assertEquals("claude-opus-4-7", workspaceEntry.getDefaultPhaseConfig().model());
+        assertEquals("high", workspaceEntry.getDefaultPhaseConfig().effort());
+        assertNotNull(workspaceEntry.getPhaseConfigs().get("review"));
+        assertEquals("claude-haiku-4-5-20251001",
+                workspaceEntry.getPhaseConfigs().get("review").model());
+
+        // Reload from disk: this is the actual persistence check.  The
+        // gap-fix sessions only verified in-memory state, which would pass
+        // even if persistConfig() dropped the new fields on the floor.
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(configFile);
+        WorkstreamConfig.WorkspaceEntry reloadedEntry =
+                reloaded.findSlackWorkspace(WORKSPACE_ID);
+        assertNotNull(reloadedEntry);
+        assertNotNull("defaultPhaseConfig must survive YAML round-trip",
+                reloadedEntry.getDefaultPhaseConfig());
+        assertEquals("claude", reloadedEntry.getDefaultPhaseConfig().runner());
+        assertEquals("claude-opus-4-7", reloadedEntry.getDefaultPhaseConfig().model());
+        assertEquals("high", reloadedEntry.getDefaultPhaseConfig().effort());
+        assertNotNull("phaseConfigs[review] must survive YAML round-trip",
+                reloadedEntry.getPhaseConfigs().get("review"));
+        assertEquals("claude",
+                reloadedEntry.getPhaseConfigs().get("review").runner());
+        assertEquals("claude-haiku-4-5-20251001",
+                reloadedEntry.getPhaseConfigs().get("review").model());
+    }
+
+    @Test(timeout = 10000)
+    public void testResponseEchoesPhaseConfigFields() throws Exception {
+        JsonNode response = postJson("/api/workspaces/" + WORKSPACE_ID + "/config",
+                "{\"defaultPhaseConfig\":{\"runner\":\"claude\",\"effort\":\"high\"},"
+                + "\"phaseConfigs\":{\"review\":{\"runner\":\"claude\","
+                + "\"model\":\"claude-haiku-4-5-20251001\"}}}");
+        assertTrue(response.get("ok").asBoolean());
+        // The response must echo the new-shape fields so operators can see
+        // what they just set (gap from the legacy-only echo behaviour).
+        assertNotNull("Response must echo defaultPhaseConfig",
+                response.get("defaultPhaseConfig"));
+        assertEquals("claude",
+                response.get("defaultPhaseConfig").get("runner").asText());
+        assertEquals("high",
+                response.get("defaultPhaseConfig").get("effort").asText());
+        assertNotNull("Response must echo phaseConfigs",
+                response.get("phaseConfigs"));
+        assertEquals("claude-haiku-4-5-20251001",
+                response.get("phaseConfigs").get("review").get("model").asText());
+    }
+
+    @Test(timeout = 10000)
+    public void testPhaseConfigModelOnlyOverrideIsAcceptedAtWorkspaceLevel() throws Exception {
+        // Reviewer feedback (PR #238): the workspace endpoint must accept a
+        // model-only override that pairs with a runner inherited from
+        // workstream/job. Pre-fix this returned 400 because applyToWorkspace
+        // forced the missing runner to resolve to "claude" and then
+        // validated the (resolved-runner, requested-model) pair eagerly.
+        JsonNode response = postJson("/api/workspaces/" + WORKSPACE_ID + "/config",
+                "{\"phaseConfigs\":{\"review\":{\"model\":\"qwen3-coder-30b\"}}}");
+        assertTrue(response.get("ok").asBoolean());
+        assertEquals("qwen3-coder-30b",
+                workspaceEntry.getPhaseConfigs().get("review").model());
+        assertNull("runner stays null so the resolver can fall through",
+                workspaceEntry.getPhaseConfigs().get("review").runner());
+    }
+
     // ----------------------------------------------------------------
     // Helpers
     // ----------------------------------------------------------------
