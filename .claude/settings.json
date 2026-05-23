@@ -159,6 +159,16 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/file-length-advisory.sh",
+            "description": "Warn when a just-read source file (java/py/ts/etc.) is within 100 lines of the 1500 soft limit — refactor signal, not a compaction target"
+          }
+        ]
+      },
+      {
         "matcher": "Write",
         "hooks": [
           {
