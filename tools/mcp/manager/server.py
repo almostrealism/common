@@ -1444,6 +1444,7 @@ def _check_model(model: str) -> Optional[dict]:
 
 _KNOWN_PHASE_WIRE_NAMES = (
     "primary",
+    "review",
     "deduplication",
     "organizational-placement",
     "enforce-changes",
@@ -1451,6 +1452,17 @@ _KNOWN_PHASE_WIRE_NAMES = (
     "post-completion",
     "commit-message",
     "git-tampering-restart",
+)
+
+
+# Runner identifiers mirrored from
+# ``io.flowtree.jobs.agent.AgentRunnerRegistry`` on the Java side. New
+# runners are registered there; this list must be updated alongside.
+# Client-side validation here gives the caller an immediate error; the
+# controller is the source of truth and rejects unknowns too.
+_KNOWN_RUNNER_NAMES = (
+    "claude",
+    "opencode",
 )
 
 
@@ -1509,6 +1521,169 @@ def _parse_runners_json(runners: str) -> "tuple[Optional[dict], Optional[dict]]"
                 ),
             }
         cleaned[key] = value
+    return cleaned, None
+
+
+def _parse_default_phase_config_json(default_phase_config: str) -> "tuple[Optional[dict], Optional[dict]]":
+    """Parse and validate the ``default_phase_config`` JSON argument.
+
+    The argument is a JSON object string with optional keys ``runner``,
+    ``model``, ``effort``. Unknown keys are rejected.
+
+    Args:
+        default_phase_config: A JSON object string, or empty for none.
+
+    Returns:
+        A tuple ``(parsed_dict, error_dict)``. On success, ``parsed_dict``
+        is the decoded mapping (possibly empty) and ``error_dict`` is
+        ``None``. On failure, ``parsed_dict`` is ``None`` and
+        ``error_dict`` carries an ``ok=False`` payload.
+    """
+    if not default_phase_config:
+        return {}, None
+    import json as _json
+    try:
+        parsed = _json.loads(default_phase_config)
+    except ValueError as e:
+        return None, {
+            "ok": False,
+            "error": "default_phase_config must be a JSON object: " + str(e),
+        }
+    if not isinstance(parsed, dict):
+        return None, {
+            "ok": False,
+            "error": "default_phase_config must be a JSON object with runner/model/effort keys",
+        }
+    allowed = {"runner", "model", "effort"}
+    cleaned: dict = {}
+    for key, value in parsed.items():
+        if key not in allowed:
+            return None, {
+                "ok": False,
+                "error": ("Unknown key in default_phase_config: '"
+                          + str(key) + "'. Allowed: runner, model, effort"),
+            }
+        if value is None:
+            continue
+        if not isinstance(value, str) or not value:
+            return None, {
+                "ok": False,
+                "error": ("default_phase_config." + str(key)
+                          + " must be a non-empty string"),
+            }
+        err = _validate_phase_config_field("default_phase_config", key, value)
+        if err is not None:
+            return None, err
+        cleaned[key] = value
+    return cleaned, None
+
+
+def _validate_phase_config_field(context: str, field: str, value: str) -> Optional[dict]:
+    """Validate a single ``{runner, model, effort}`` field value.
+
+    ``runner`` is checked against the known set of registered runner
+    identifiers ([[_KNOWN_RUNNER_NAMES]]); ``effort`` is checked against
+    [[VALID_EFFORT_LEVELS]]. ``model`` is passed through — the controller
+    validates per-phase models against the resolved runner's supported
+    set at submission time.
+
+    Args:
+        context: ``"default_phase_config"`` or ``"phase_configs['name']"``
+            — used to build a human-readable error message.
+        field: One of ``"runner"`` / ``"model"`` / ``"effort"``.
+        value: The non-empty string that the caller supplied.
+
+    Returns:
+        ``None`` when the value is valid; otherwise a 400-style
+        ``{"ok": False, "error": ...}`` dict.
+    """
+    if field == "runner" and value not in _KNOWN_RUNNER_NAMES:
+        return {
+            "ok": False,
+            "error": (context + ".runner='" + value + "' is not a known runner. "
+                      "Allowed: " + ", ".join(_KNOWN_RUNNER_NAMES)
+                      + ". Use agent_options to list runners on the controller."),
+        }
+    if field == "effort" and value not in VALID_EFFORT_LEVELS:
+        return {
+            "ok": False,
+            "error": (context + ".effort='" + value + "' is not a valid effort level. "
+                      "Allowed: " + ", ".join(VALID_EFFORT_LEVELS)),
+        }
+    return None
+
+
+def _parse_phase_configs_json(phase_configs: str) -> "tuple[Optional[dict], Optional[dict]]":
+    """Parse and validate the ``phase_configs`` JSON argument.
+
+    The argument is a JSON object whose keys are phase wire names
+    (``"primary"``, ``"review"``, ``"deduplication"``, ...) and whose
+    values are nested JSON objects with optional ``runner`` / ``model`` /
+    ``effort`` fields. Unknown phase keys are rejected client-side so the
+    caller gets an immediate error.
+
+    Args:
+        phase_configs: A JSON object string, or empty for none.
+
+    Returns:
+        A tuple ``(parsed_dict, error_dict)`` matching the pattern of
+        ``_parse_runners_json``.
+    """
+    if not phase_configs:
+        return {}, None
+    import json as _json
+    try:
+        parsed = _json.loads(phase_configs)
+    except ValueError as e:
+        return None, {
+            "ok": False,
+            "error": "phase_configs must be a JSON object: " + str(e),
+        }
+    if not isinstance(parsed, dict):
+        return None, {
+            "ok": False,
+            "error": "phase_configs must be a JSON object mapping phase names to {runner,model,effort} triples",
+        }
+    valid_phase_keys = set(_KNOWN_PHASE_WIRE_NAMES)
+    allowed_inner = {"runner", "model", "effort"}
+    cleaned: dict = {}
+    for key, inner in parsed.items():
+        if key not in valid_phase_keys:
+            return None, {
+                "ok": False,
+                "error": ("Unknown phase key in phase_configs: '" + str(key)
+                          + "'. Allowed phase keys: "
+                          + ", ".join(sorted(valid_phase_keys))),
+            }
+        if not isinstance(inner, dict):
+            return None, {
+                "ok": False,
+                "error": ("phase_configs['" + str(key)
+                          + "'] must be an object with runner/model/effort keys"),
+            }
+        inner_cleaned: dict = {}
+        for inner_key, value in inner.items():
+            if inner_key not in allowed_inner:
+                return None, {
+                    "ok": False,
+                    "error": ("Unknown key in phase_configs['" + str(key) + "']: '"
+                              + str(inner_key) + "'. Allowed: runner, model, effort"),
+                }
+            if value is None:
+                continue
+            if not isinstance(value, str) or not value:
+                return None, {
+                    "ok": False,
+                    "error": ("phase_configs['" + str(key) + "']."
+                              + str(inner_key) + " must be a non-empty string"),
+                }
+            err = _validate_phase_config_field(
+                "phase_configs['" + str(key) + "']", inner_key, value)
+            if err is not None:
+                return None, err
+            inner_cleaned[inner_key] = value
+        if inner_cleaned:
+            cleaned[key] = inner_cleaned
     return cleaned, None
 
 
@@ -1647,6 +1822,8 @@ def workstream_submit_task(
     required_labels: str = "",
     deduplication_mode: str = "",
     max_deduplication_passes: int = 0,
+    review_enabled: bool = True,
+    max_review_passes: int = 0,
     model: str = "",
     effort: str = "",
     post_completion_command: str = "",
@@ -1655,6 +1832,8 @@ def workstream_submit_task(
     delay_seconds: int = 0,
     runners: str = "",
     default_runner: str = "",
+    default_phase_config: str = "",
+    phase_configs: str = "",
     allow_commit_language: bool = False,
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
@@ -1709,6 +1888,19 @@ def workstream_submit_task(
             duplication. Set higher (e.g. 5) for first-time large feature work
             where thoroughness matters. Has no effect when
             ``deduplication_mode="none"``.
+        review_enabled: When ``True`` (the default), a second-pass review
+            session runs after the primary phase. The reviewer is told to
+            make surgical fixes only when unambiguous and to defer
+            anything substantial via a ``review-followup`` memory plus an
+            inline ``TODO(review):`` code comment. Route the review phase
+            to a cheaper runner (e.g. opencode against a local model)
+            with ``runners='{"review":"opencode"}'``. Set to ``False`` to
+            skip the review phase entirely for this job.
+        max_review_passes: Maximum number of review correction sessions per
+            job. 0 (default) uses the server-side default of 1. The review
+            rule is single-pass by design; raising this only matters if
+            you want the same reviewer to see its own changes on a second
+            pass, which is rarely useful.
         model: Claude Code model alias (e.g. ``"sonnet"``, ``"opus"``,
             ``"haiku"``) or full identifier (e.g. ``"claude-sonnet-4-6"``)
             for this job. Empty string falls back to the workstream default,
@@ -1749,11 +1941,11 @@ def workstream_submit_task(
             not pick it up until then. Cancellation works normally during the
             pending period. 0 (default) means dispatch immediately.
         runners: Per-phase agent runner overrides as a JSON object string. Keys
-            are phase wire names (``"primary"``, ``"deduplication"``,
-            ``"organizational-placement"``, ``"enforce-changes"``,
-            ``"maven-dependency-protection"``, ``"post-completion"``,
-            ``"commit-message"``, ``"git-tampering-restart"``) plus an optional
-            ``"default"``. Values are runner identifiers such as ``"claude"``
+            are phase wire names (``"primary"``, ``"review"``,
+            ``"deduplication"``, ``"organizational-placement"``,
+            ``"enforce-changes"``, ``"maven-dependency-protection"``,
+            ``"post-completion"``, ``"commit-message"``,
+            ``"git-tampering-restart"``) plus an optional ``"default"``. Values are runner identifiers such as ``"claude"``
             or ``"opencode"``. Unspecified phases inherit ``"default"``, which
             in turn falls back to the workstream default and then the
             controller default. Example::
@@ -1768,6 +1960,31 @@ def workstream_submit_task(
             passing ``{"default": "<runner>"}`` in ``runners``; when both are
             supplied the ``"default"`` entry inside ``runners`` wins. Empty
             (default) inherits the workstream-level default.
+        default_phase_config: Per-phase default configuration as a JSON object
+            string with optional ``runner`` / ``model`` / ``effort`` keys.
+            Applies to every phase that does not have a dedicated entry in
+            ``phase_configs``. Empty (default) inherits the workstream-level
+            default. **Precedence:** wins field-by-field over the legacy
+            ``default_runner`` / ``model`` / ``effort`` parameters when both
+            are supplied. Example: passing
+            ``default_phase_config='{"runner":"claude"}'`` together with
+            ``default_runner="opencode"`` resolves the job-level default
+            runner to ``claude``; the legacy ``default_runner`` is ignored
+            because the new shape supplied a runner.
+        phase_configs: Per-phase configuration overrides as a JSON object
+            whose keys are phase wire names and whose values are
+            ``{runner, model, effort}`` triples. Example::
+
+                '{"review": {"model": "claude-opus-4-7", "effort": "high"},
+                  "commit-message": {"runner": "opencode"}}'
+
+            **Precedence:** wins field-by-field over the legacy ``runners``
+            map when both are supplied. Example: passing
+            ``phase_configs='{"review":{"runner":"claude"}}'`` together with
+            ``runners='{"review":"opencode"}'`` routes the review phase to
+            ``claude``; the legacy ``runners`` entry for ``review`` is
+            ignored. Empty (default) inherits the workstream-level
+            configuration.
         allow_commit_language: Escape hatch for the commit-language linter.
             By default (``False``), the prompt is scanned for phrases that
             imply the agent controls git commits (e.g. "Commit 1: do X",
@@ -1798,6 +2015,12 @@ def workstream_submit_task(
     parsed_runners, runners_err = _parse_runners_json(runners)
     if runners_err:
         return runners_err
+    parsed_default_phase_config, default_pc_err = _parse_default_phase_config_json(default_phase_config)
+    if default_pc_err:
+        return default_pc_err
+    parsed_phase_configs, phase_configs_err = _parse_phase_configs_json(phase_configs)
+    if phase_configs_err:
+        return phase_configs_err
     err = _check_effort(effort)
     if err:
         return err
@@ -1923,6 +2146,10 @@ def workstream_submit_task(
         payload["deduplicationMode"] = deduplication_mode
     if max_deduplication_passes > 0:
         payload["maxDeduplicationPasses"] = max_deduplication_passes
+    if not review_enabled:
+        payload["reviewEnabled"] = False
+    if max_review_passes > 0:
+        payload["maxReviewPasses"] = max_review_passes
     if model:
         payload["model"] = model
     if effort:
@@ -1943,6 +2170,11 @@ def workstream_submit_task(
         runners_payload["default"] = default_runner
     if runners_payload:
         payload["runners"] = runners_payload
+    # New unified per-phase configuration. Forwarded under camelCase keys.
+    if parsed_default_phase_config:
+        payload["defaultPhaseConfig"] = parsed_default_phase_config
+    if parsed_phase_configs:
+        payload["phaseConfigs"] = parsed_phase_configs
 
     result = _controller_post("/api/submit", payload)
 
@@ -1981,6 +2213,8 @@ def workstream_register(
     effort: str = "",
     runners: str = "",
     default_runner: str = "",
+    default_phase_config: str = "",
+    phase_configs: str = "",
     slack_workspace_id: str = "",
 ) -> dict:
     """Register a new workstream for a branch/repo combination.
@@ -2053,6 +2287,21 @@ def workstream_register(
             ``runners='{"default": "<value>"}'``. The explicit
             ``runners["default"]`` wins when both are supplied. Empty
             string leaves the workstream default runner unconfigured.
+        default_phase_config: Per-phase default configuration as a JSON
+            object with optional ``runner`` / ``model`` / ``effort`` keys.
+            **Precedence:** supersedes the legacy ``default_runner`` /
+            ``model`` / ``effort`` shortcuts field-by-field when both are
+            supplied — e.g. ``default_phase_config='{"model":"opus"}'``
+            with ``model="sonnet"`` registers the workstream default as
+            ``opus``.
+        phase_configs: Per-phase overrides as a JSON object whose keys
+            are phase wire names and whose values are
+            ``{runner, model, effort}`` triples. **Precedence:**
+            supersedes the legacy ``runners`` map field-by-field when both
+            are supplied — e.g.
+            ``phase_configs='{"review":{"runner":"claude"}}'`` with
+            ``runners='{"review":"opencode"}'`` makes the workstream route
+            the review phase to ``claude``.
 
     Returns:
         Dictionary with workstreamId and channel info on success. When
@@ -2089,6 +2338,12 @@ def workstream_register(
     parsed_runners, runners_err = _parse_runners_json(runners)
     if runners_err:
         return runners_err
+    parsed_default_phase_config, default_pc_err = _parse_default_phase_config_json(default_phase_config)
+    if default_pc_err:
+        return default_pc_err
+    parsed_phase_configs, phase_configs_err = _parse_phase_configs_json(phase_configs)
+    if phase_configs_err:
+        return phase_configs_err
     # plan_content and plan_instructions describe two different follow-up
     # actions; the caller must pick one. Reject ambiguous requests up front.
     if plan_content and plan_instructions:
@@ -2151,6 +2406,10 @@ def workstream_register(
         runners_payload["default"] = default_runner
     if runners_payload:
         payload["runners"] = runners_payload
+    if parsed_default_phase_config:
+        payload["defaultPhaseConfig"] = parsed_default_phase_config
+    if parsed_phase_configs:
+        payload["phaseConfigs"] = parsed_phase_configs
 
     result = _controller_post("/api/workstreams", payload)
 
@@ -2328,6 +2587,8 @@ def workstream_update_config(
     effort: str = "",
     runners: str = "",
     default_runner: str = "",
+    default_phase_config: str = "",
+    phase_configs: str = "",
 ) -> dict:
     """Update configuration for an existing workstream.
 
@@ -2367,6 +2628,19 @@ def workstream_update_config(
             ``runners='{"default": "<value>"}'``. The explicit
             ``runners["default"]`` wins when both are supplied. Empty
             string leaves the workstream default runner unchanged.
+        default_phase_config: New per-phase default configuration as a
+            JSON object with optional ``runner`` / ``model`` / ``effort``
+            keys. Empty leaves it unchanged. **Precedence:** wins
+            field-by-field over the legacy ``default_runner`` / ``model``
+            / ``effort`` shortcuts when both are supplied — e.g.
+            ``default_phase_config='{"runner":"claude"}'`` together with
+            ``default_runner="opencode"`` updates the workstream default
+            runner to ``claude``.
+        phase_configs: New per-phase overrides as a JSON object whose
+            keys are phase wire names and whose values are
+            ``{runner, model, effort}`` triples. Empty leaves unchanged.
+            **Precedence:** wins field-by-field over the legacy
+            ``runners`` map when both are supplied.
 
     Returns:
         Dictionary confirming the update.
@@ -2389,6 +2663,12 @@ def workstream_update_config(
     parsed_runners, runners_err = _parse_runners_json(runners)
     if runners_err:
         return runners_err
+    parsed_default_phase_config, default_pc_err = _parse_default_phase_config_json(default_phase_config)
+    if default_pc_err:
+        return default_pc_err
+    parsed_phase_configs, phase_configs_err = _parse_phase_configs_json(phase_configs)
+    if phase_configs_err:
+        return phase_configs_err
     _require_workstream_in_scope(workstream_id)
     _audit("workstream_update_config", workstream_id=workstream_id)
 
@@ -2420,6 +2700,10 @@ def workstream_update_config(
         runners_payload["default"] = default_runner
     if runners_payload:
         payload["runners"] = runners_payload
+    if parsed_default_phase_config:
+        payload["defaultPhaseConfig"] = parsed_default_phase_config
+    if parsed_phase_configs:
+        payload["phaseConfigs"] = parsed_phase_configs
 
     if not payload:
         return {
@@ -2428,7 +2712,8 @@ def workstream_update_config(
             "next_steps": [
                 "Specify fields to update: default_branch, base_branch, "
                 "repo_url, planning_document, channel_name, required_labels, "
-                "dependent_repos, model, effort, runners, or default_runner",
+                "dependent_repos, model, effort, runners, default_runner, "
+                "default_phase_config, or phase_configs",
             ],
         }
 
@@ -2465,6 +2750,8 @@ def workspace_update_config(
     workspace_id: str = "",
     default_runner: str = "",
     runners: str = "",
+    default_phase_config: str = "",
+    phase_configs: str = "",
     name: str = "",
     default_channel: str = "",
     new_id: str = "",
@@ -2513,6 +2800,18 @@ def workspace_update_config(
             default. Use ``agent_options`` to discover available phase
             wire names. Empty string leaves the per-phase map
             unchanged.
+        default_phase_config: New workspace-level default
+            ``{runner, model, effort}`` triple as a JSON object. Empty
+            leaves it unchanged. **Precedence:** wins field-by-field over
+            the legacy ``default_runner`` shortcut when both are supplied
+            — e.g. ``default_phase_config='{"runner":"claude"}'`` together
+            with ``default_runner="opencode"`` records ``claude`` as the
+            workspace default runner.
+        phase_configs: New workspace-level per-phase overrides as a JSON
+            object whose keys are phase wire names and whose values are
+            ``{runner, model, effort}`` triples. Empty leaves the per-phase
+            map unchanged. **Precedence:** wins field-by-field over the
+            legacy ``runners`` map when both are supplied.
         name: New human-readable workspace label (used in logs and
             diagnostics). Low-risk operational field.
         default_channel: New fallback Slack channel ID for messages
@@ -2568,6 +2867,12 @@ def workspace_update_config(
     parsed_runners, runners_err = _parse_runners_json(runners)
     if runners_err:
         return runners_err
+    parsed_default_phase_config, default_pc_err = _parse_default_phase_config_json(default_phase_config)
+    if default_pc_err:
+        return default_pc_err
+    parsed_phase_configs, phase_configs_err = _parse_phase_configs_json(phase_configs)
+    if phase_configs_err:
+        return phase_configs_err
     _audit("workspace_update_config", workspace_id=workspace_id)
 
     payload = {}
@@ -2585,6 +2890,10 @@ def workspace_update_config(
         runners_payload["default"] = default_runner
     if runners_payload:
         payload["runners"] = runners_payload
+    if parsed_default_phase_config:
+        payload["defaultPhaseConfig"] = parsed_default_phase_config
+    if parsed_phase_configs:
+        payload["phaseConfigs"] = parsed_phase_configs
 
     if not payload:
         return {
@@ -2592,7 +2901,8 @@ def workspace_update_config(
             "error": "No fields to update. Provide at least one field.",
             "next_steps": [
                 "Specify fields to update: default_runner, runners, "
-                "name, default_channel, new_id, or slack_team_id",
+                "default_phase_config, phase_configs, name, default_channel, "
+                "new_id, or slack_team_id",
             ],
         }
 

@@ -719,6 +719,96 @@ public class WorkstreamConfigTest extends TestSuiteBase {
     }
 
     /**
+     * Workspace {@code defaultPhaseConfig} and {@code phaseConfigs} fields
+     * survive a YAML save / reload cycle. This is the persistence check
+     * the gap-fix sessions did not perform — in-memory mocks would pass
+     * even if Jackson silently dropped the new fields on serialisation.
+     */
+    @Test(timeout = 10000)
+    public void testYamlWorkspacePhaseConfigsRoundTrip() throws IOException {
+        String yaml = "slackWorkspaces:\n"
+            + "  - workspaceId: \"T-PC\"\n"
+            + "    botToken: \"xoxb\"\n"
+            + "    appToken: \"xapp\"\n"
+            + "    defaultPhaseConfig:\n"
+            + "      runner: \"claude\"\n"
+            + "      model: \"claude-opus-4-7\"\n"
+            + "      effort: \"high\"\n"
+            + "    phaseConfigs:\n"
+            + "      review:\n"
+            + "        runner: \"claude\"\n"
+            + "        model: \"claude-haiku-4-5-20251001\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.WorkspaceEntry entry =
+                config.findSlackWorkspace("T-PC");
+        assertNotNull(entry);
+        assertNotNull(entry.getDefaultPhaseConfig());
+        assertEquals("claude", entry.getDefaultPhaseConfig().runner());
+        assertEquals("claude-opus-4-7", entry.getDefaultPhaseConfig().model());
+        assertEquals("high", entry.getDefaultPhaseConfig().effort());
+        assertEquals("claude-haiku-4-5-20251001",
+                entry.getPhaseConfigs().get("review").model());
+
+        File tempFile = File.createTempFile("workspace-phase-configs", ".yaml");
+        tempFile.deleteOnExit();
+        config.saveToYaml(tempFile);
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        WorkstreamConfig.WorkspaceEntry rEntry =
+                reloaded.findSlackWorkspace("T-PC");
+        assertNotNull(rEntry);
+        assertNotNull("defaultPhaseConfig must survive round-trip",
+                rEntry.getDefaultPhaseConfig());
+        assertEquals("claude", rEntry.getDefaultPhaseConfig().runner());
+        assertEquals("claude-opus-4-7", rEntry.getDefaultPhaseConfig().model());
+        assertEquals("high", rEntry.getDefaultPhaseConfig().effort());
+        assertNotNull("phaseConfigs[review] must survive round-trip",
+                rEntry.getPhaseConfigs().get("review"));
+        assertEquals("claude-haiku-4-5-20251001",
+                rEntry.getPhaseConfigs().get("review").model());
+    }
+
+    /**
+     * Workstream-level {@code defaultPhaseConfig} and {@code phaseConfigs}
+     * fields survive a YAML save / reload cycle.
+     */
+    @Test(timeout = 10000)
+    public void testYamlWorkstreamPhaseConfigsRoundTrip() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - channelId: \"C-PC\"\n"
+            + "    defaultBranch: \"main\"\n"
+            + "    defaultPhaseConfig:\n"
+            + "      runner: \"claude\"\n"
+            + "      model: \"claude-opus-4-7\"\n"
+            + "      effort: \"high\"\n"
+            + "    phaseConfigs:\n"
+            + "      review:\n"
+            + "        runner: \"claude\"\n"
+            + "        model: \"claude-haiku-4-5-20251001\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        assertNotNull(entry.getDefaultPhaseConfig());
+        assertEquals("claude-opus-4-7", entry.getDefaultPhaseConfig().model());
+        assertEquals("claude-haiku-4-5-20251001",
+                entry.getPhaseConfigs().get("review").model());
+
+        File tempFile = File.createTempFile("workstream-phase-configs", ".yaml");
+        tempFile.deleteOnExit();
+        config.saveToYaml(tempFile);
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        WorkstreamConfig.WorkstreamEntry rEntry =
+                reloaded.getWorkstreams().get(0);
+        assertNotNull("defaultPhaseConfig must survive round-trip",
+                rEntry.getDefaultPhaseConfig());
+        assertEquals("claude-opus-4-7", rEntry.getDefaultPhaseConfig().model());
+        assertNotNull("phaseConfigs[review] must survive round-trip",
+                rEntry.getPhaseConfigs().get("review"));
+        assertEquals("claude-haiku-4-5-20251001",
+                rEntry.getPhaseConfigs().get("review").model());
+    }
+
+    /**
      * Unknown phase keys in a workspace's {@code runners} map fail at load
      * time with a clear error naming the offending workspace.
      */

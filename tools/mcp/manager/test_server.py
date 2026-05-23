@@ -633,6 +633,38 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertEqual(payload["maxDeduplicationPasses"], 1)
 
     @patch.object(server, "_controller_post")
+    def test_submit_max_review_passes_forwarded(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-rp1"}
+        server.workstream_submit_task(prompt="Task", max_review_passes=3)
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["maxReviewPasses"], 3)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_max_review_passes_omitted_by_default(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-rp2"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("maxReviewPasses", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_review_enabled_omitted_when_true(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-rp3"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("reviewEnabled", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_review_enabled_false_forwarded(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-rp4"}
+        server.workstream_submit_task(prompt="Task", review_enabled=False)
+        payload = mock_post.call_args[0][1]
+        self.assertIs(payload["reviewEnabled"], False)
+
+    @patch.object(server, "_controller_post")
     def test_submit_preserves_job_id_in_next_steps(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {
@@ -903,6 +935,79 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         )
         self.assertFalse(result["ok"])
         self.assertIn("non-empty string", result["error"])
+
+    @patch.object(server, "_controller_post")
+    def test_submit_default_phase_config_forwarded(self, mock_post):
+        """default_phase_config JSON is parsed and forwarded as a nested object."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-default-pc"}
+        server.workstream_submit_task(
+            prompt="Task",
+            default_phase_config='{"runner":"claude","model":"opus","effort":"high"}',
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["defaultPhaseConfig"],
+                         {"runner": "claude", "model": "opus", "effort": "high"})
+
+    @patch.object(server, "_controller_post")
+    def test_submit_phase_configs_forwarded(self, mock_post):
+        """phase_configs JSON is parsed and forwarded as a nested object map."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-pc"}
+        server.workstream_submit_task(
+            prompt="Task",
+            phase_configs='{"review":{"model":"opus","effort":"high"},'
+                          '"commit-message":{"runner":"opencode"}}',
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["phaseConfigs"], {
+            "review": {"model": "opus", "effort": "high"},
+            "commit-message": {"runner": "opencode"},
+        })
+
+    def test_submit_phase_configs_rejects_unknown_phase(self):
+        """Unknown phase names in phase_configs are rejected client-side."""
+        _grant_all_scopes()
+        result = server.workstream_submit_task(
+            prompt="Task",
+            phase_configs='{"future-phase":{"model":"opus"}}',
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("future-phase", result["error"])
+
+    def test_submit_default_phase_config_rejects_unknown_key(self):
+        """Unknown keys in default_phase_config are rejected client-side."""
+        _grant_all_scopes()
+        result = server.workstream_submit_task(
+            prompt="Task",
+            default_phase_config='{"bogus":"value"}',
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("bogus", result["error"])
+
+    @patch.object(server, "_controller_post")
+    def test_submit_phase_configs_and_legacy_runners_coexist(self, mock_post):
+        """Legacy runners and new phase_configs forms can be supplied together."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-coexist"}
+        server.workstream_submit_task(
+            prompt="Task",
+            runners='{"primary":"opencode"}',
+            phase_configs='{"review":{"effort":"high"}}',
+        )
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["runners"], {"primary": "opencode"})
+        self.assertEqual(payload["phaseConfigs"], {"review": {"effort": "high"}})
+
+    @patch.object(server, "_controller_post")
+    def test_submit_phase_configs_omitted_by_default(self, mock_post):
+        """No phase_configs argument means no defaultPhaseConfig/phaseConfigs keys."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-noPC"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("defaultPhaseConfig", payload)
+        self.assertNotIn("phaseConfigs", payload)
 
 
 class TestSubmitCommitLanguageLinter(unittest.TestCase):
@@ -1685,6 +1790,234 @@ class TestWorkspaceUpdateConfig(unittest.TestCase):
         result = server.workspace_update_config(name="Acme")
         self.assertFalse(result["ok"])
         self.assertIn("workspace_id", result["error"])
+
+
+class TestPhaseConfigParameters(unittest.TestCase):
+    """End-to-end coverage of ``default_phase_config`` and ``phase_configs``
+    across all four MCP entry points (``workstream_submit_task``,
+    ``workstream_register``, ``workstream_update_config``,
+    ``workspace_update_config``).
+
+    The four tools share the same parser pair
+    (``_parse_default_phase_config_json`` / ``_parse_phase_configs_json``)
+    so the validation behaviour is uniform. These tests pin that
+    behaviour at the entry-point level so a future refactor that splits
+    the parsers per-tool cannot silently regress one of them.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def _invoke(self, tool, **kwargs):
+        """Dispatch ``tool`` (one of the four entry point names) with the
+        smallest required positional args plus ``kwargs``. Hides the
+        per-tool boilerplate so the test bodies focus on the new
+        parameters."""
+        if tool == "submit":
+            return server.workstream_submit_task(prompt="Task", **kwargs)
+        if tool == "register":
+            return server.workstream_register(default_branch="feature/x", **kwargs)
+        if tool == "update":
+            return server.workstream_update_config(workstream_id="ws-test", **kwargs)
+        if tool == "workspace":
+            return server.workspace_update_config(
+                workspace_id="almostrealism", **kwargs)
+        raise AssertionError("unknown tool: " + tool)
+
+    def _payload(self, mock_post):
+        return mock_post.call_args[0][1]
+
+    # ---- default_phase_config only ----------------------------------------
+
+    @patch.object(server, "_controller_post")
+    def test_default_phase_config_forwarded_for_all_tools(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "j", "workstreamId": "w"}
+        for tool in ("submit", "register", "update", "workspace"):
+            mock_post.reset_mock()
+            self._invoke(
+                tool,
+                default_phase_config='{"runner":"claude","model":"opus","effort":"high"}')
+            payload = self._payload(mock_post)
+            self.assertEqual(
+                payload["defaultPhaseConfig"],
+                {"runner": "claude", "model": "opus", "effort": "high"},
+                "tool=" + tool)
+
+    # ---- phase_configs only -----------------------------------------------
+
+    @patch.object(server, "_controller_post")
+    def test_phase_configs_forwarded_for_all_tools(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "j", "workstreamId": "w"}
+        for tool in ("submit", "register", "update", "workspace"):
+            mock_post.reset_mock()
+            self._invoke(
+                tool,
+                phase_configs='{"review":{"model":"opus","effort":"high"},'
+                              '"commit-message":{"runner":"opencode"}}')
+            payload = self._payload(mock_post)
+            self.assertEqual(payload["phaseConfigs"], {
+                "review": {"model": "opus", "effort": "high"},
+                "commit-message": {"runner": "opencode"},
+            }, "tool=" + tool)
+
+    # ---- both supplied ----------------------------------------------------
+
+    @patch.object(server, "_controller_post")
+    def test_both_parameters_forwarded_for_all_tools(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "j", "workstreamId": "w"}
+        for tool in ("submit", "register", "update", "workspace"):
+            mock_post.reset_mock()
+            self._invoke(
+                tool,
+                default_phase_config='{"runner":"claude","model":"opus"}',
+                phase_configs='{"review":{"effort":"high"}}')
+            payload = self._payload(mock_post)
+            self.assertEqual(payload["defaultPhaseConfig"],
+                             {"runner": "claude", "model": "opus"},
+                             "tool=" + tool)
+            self.assertEqual(payload["phaseConfigs"],
+                             {"review": {"effort": "high"}}, "tool=" + tool)
+
+    # ---- empty strings leave fields unchanged -----------------------------
+
+    @patch.object(server, "_controller_post")
+    def test_empty_strings_omit_fields_for_all_tools(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "j", "workstreamId": "w"}
+        for tool in ("submit", "register", "update", "workspace"):
+            mock_post.reset_mock()
+            # workspace_update_config requires at least one writable field
+            # before it forwards a payload, so we pair the empty
+            # phase-config args with ``name`` to keep the call valid.
+            extra = {"name": "Acme"} if tool == "workspace" else {}
+            if tool == "update":
+                extra = {"default_branch": "feature/x"}
+            self._invoke(
+                tool,
+                default_phase_config="",
+                phase_configs="",
+                **extra)
+            payload = self._payload(mock_post)
+            self.assertNotIn("defaultPhaseConfig", payload, "tool=" + tool)
+            self.assertNotIn("phaseConfigs", payload, "tool=" + tool)
+
+    # ---- malformed JSON ---------------------------------------------------
+
+    def test_default_phase_config_rejects_malformed_json_for_all_tools(self):
+        for tool in ("submit", "register", "update", "workspace"):
+            result = self._invoke(tool, default_phase_config="not-valid-json")
+            self.assertFalse(result["ok"], "tool=" + tool)
+            self.assertIn("JSON object", result["error"], "tool=" + tool)
+
+    def test_phase_configs_rejects_malformed_json_for_all_tools(self):
+        for tool in ("submit", "register", "update", "workspace"):
+            result = self._invoke(tool, phase_configs="not-valid-json")
+            self.assertFalse(result["ok"], "tool=" + tool)
+            self.assertIn("JSON object", result["error"], "tool=" + tool)
+
+    def test_default_phase_config_rejects_non_object_for_all_tools(self):
+        for tool in ("submit", "register", "update", "workspace"):
+            result = self._invoke(tool, default_phase_config='["a","b"]')
+            self.assertFalse(result["ok"], "tool=" + tool)
+
+    # ---- unknown phase wire name ------------------------------------------
+
+    def test_phase_configs_rejects_unknown_phase_for_all_tools(self):
+        for tool in ("submit", "register", "update", "workspace"):
+            result = self._invoke(
+                tool, phase_configs='{"future-phase":{"runner":"claude"}}')
+            self.assertFalse(result["ok"], "tool=" + tool)
+            self.assertIn("future-phase", result["error"], "tool=" + tool)
+
+    # ---- unknown runner name ----------------------------------------------
+
+    def test_default_phase_config_rejects_unknown_runner_for_all_tools(self):
+        for tool in ("submit", "register", "update", "workspace"):
+            result = self._invoke(
+                tool, default_phase_config='{"runner":"not-a-runner"}')
+            self.assertFalse(result["ok"], "tool=" + tool)
+            self.assertIn("not-a-runner", result["error"], "tool=" + tool)
+            self.assertIn("agent_options", result["error"], "tool=" + tool)
+
+    def test_phase_configs_rejects_unknown_runner_for_all_tools(self):
+        for tool in ("submit", "register", "update", "workspace"):
+            result = self._invoke(
+                tool,
+                phase_configs='{"review":{"runner":"not-a-runner"}}')
+            self.assertFalse(result["ok"], "tool=" + tool)
+            self.assertIn("not-a-runner", result["error"], "tool=" + tool)
+
+    # ---- unknown effort value ---------------------------------------------
+
+    def test_default_phase_config_rejects_unknown_effort_for_all_tools(self):
+        for tool in ("submit", "register", "update", "workspace"):
+            result = self._invoke(
+                tool, default_phase_config='{"effort":"extreme"}')
+            self.assertFalse(result["ok"], "tool=" + tool)
+            self.assertIn("extreme", result["error"], "tool=" + tool)
+
+    def test_phase_configs_rejects_unknown_effort_for_all_tools(self):
+        for tool in ("submit", "register", "update", "workspace"):
+            result = self._invoke(
+                tool, phase_configs='{"review":{"effort":"extreme"}}')
+            self.assertFalse(result["ok"], "tool=" + tool)
+            self.assertIn("extreme", result["error"], "tool=" + tool)
+
+    # ---- unknown inner key ------------------------------------------------
+
+    def test_default_phase_config_rejects_unknown_inner_key_for_all_tools(self):
+        for tool in ("submit", "register", "update", "workspace"):
+            result = self._invoke(
+                tool, default_phase_config='{"bogus":"value"}')
+            self.assertFalse(result["ok"], "tool=" + tool)
+            self.assertIn("bogus", result["error"], "tool=" + tool)
+
+    # ---- legacy + new precedence ------------------------------------------
+
+    @patch.object(server, "_controller_post")
+    def test_new_default_phase_config_coexists_with_legacy_default_runner(
+            self, mock_post):
+        """When the caller supplies both ``default_phase_config`` (new) and
+        ``default_runner`` (legacy), both shapes are forwarded to the
+        controller. The controller resolves precedence per
+        ``PhaseConfigResolver``: the new ``defaultPhaseConfig`` wins
+        field-by-field over the legacy ``runners["default"]``.
+
+        Verifying both arrived intact (rather than asserting one was
+        dropped) keeps the client honest about what it forwards and
+        leaves precedence enforcement on the single source of truth
+        (the resolver), where it belongs.
+        """
+        mock_post.return_value = {"ok": True, "jobId": "j", "workstreamId": "w"}
+        for tool in ("submit", "register", "update", "workspace"):
+            mock_post.reset_mock()
+            self._invoke(
+                tool,
+                default_phase_config='{"runner":"claude"}',
+                default_runner="opencode")
+            payload = self._payload(mock_post)
+            self.assertEqual(payload["defaultPhaseConfig"],
+                             {"runner": "claude"}, "tool=" + tool)
+            self.assertEqual(payload["runners"], {"default": "opencode"},
+                             "tool=" + tool)
+
+    @patch.object(server, "_controller_post")
+    def test_new_phase_configs_coexists_with_legacy_runners(self, mock_post):
+        """Same coexistence rule but for the per-phase shape: the new
+        ``phaseConfigs`` and the legacy ``runners`` map both reach the
+        controller. Precedence (new > legacy, field-by-field) is the
+        controller's job."""
+        mock_post.return_value = {"ok": True, "jobId": "j", "workstreamId": "w"}
+        for tool in ("submit", "register", "update", "workspace"):
+            mock_post.reset_mock()
+            self._invoke(
+                tool,
+                phase_configs='{"review":{"runner":"claude"}}',
+                runners='{"review":"opencode"}')
+            payload = self._payload(mock_post)
+            self.assertEqual(payload["phaseConfigs"],
+                             {"review": {"runner": "claude"}}, "tool=" + tool)
+            self.assertEqual(payload["runners"], {"review": "opencode"},
+                             "tool=" + tool)
 
 
 # -----------------------------------------------------------------------

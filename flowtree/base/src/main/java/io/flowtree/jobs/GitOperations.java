@@ -728,6 +728,57 @@ public class GitOperations implements ConsoleFeatures {
     }
 
     /**
+     * Captures the unified diff of every change introduced on the branch
+     * relative to {@code origin/<baseBranch>}, plus any uncommitted working
+     * tree modifications. Used by reviewers that need to inspect the full
+     * branch-vs-base delta in a single string.
+     *
+     * @param workDir    the working directory, or {@code null}
+     * @param baseBranch the base branch name (e.g. {@code "master"})
+     * @param warn       consumer for warning messages
+     * @return the captured diff text; never {@code null}, possibly empty
+     */
+    public static String captureBranchDiff(String workDir, String baseBranch,
+                                           Consumer<String> warn) {
+        StringBuilder out = new StringBuilder();
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    resolveGitCommand(), "diff", "origin/" + baseBranch + "...HEAD");
+            if (workDir != null) pb.directory(new File(workDir));
+            pb.redirectErrorStream(true);
+            augmentPath(pb);
+            Process p = pb.start();
+            out.append(new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
+            p.waitFor();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warn.accept("Review diff: failed to diff branch vs base: " + e.getMessage());
+        } catch (IOException e) {
+            warn.accept("Review diff: failed to diff branch vs base: " + e.getMessage());
+        }
+        try {
+            ProcessBuilder pb = new ProcessBuilder(resolveGitCommand(), "diff", "HEAD");
+            if (workDir != null) pb.directory(new File(workDir));
+            pb.redirectErrorStream(true);
+            augmentPath(pb);
+            Process p = pb.start();
+            String workingDiff = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            p.waitFor();
+            if (workingDiff != null && !workingDiff.isEmpty()) {
+                if (out.length() > 0) out.append('\n');
+                out.append("--- working tree (uncommitted) ---\n");
+                out.append(workingDiff);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            warn.accept("Review diff: failed to diff working tree: " + e.getMessage());
+        } catch (IOException e) {
+            warn.accept("Review diff: failed to diff working tree: " + e.getMessage());
+        }
+        return out.toString();
+    }
+
+    /**
      * Returns the paths of files that are new on the branch since the base branch,
      * combining tracked newly-added files with untracked files. Excludes scratch
      * paths ({@code claude-output/}, {@code .claude/}, {@code target/}, etc.).

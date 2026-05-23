@@ -36,12 +36,14 @@ import java.util.function.Consumer;
 public enum Phase {
     /** Primary work — the initial agent session that runs the user's prompt. */
     PRIMARY("primary", "Primary work — the initial agent session that runs the user's prompt."),
+    /** Retry of the primary prompt triggered by {@code EnforceChangesRule}. */
+    ENFORCE_CHANGES("enforce-changes", "Retry of the primary prompt triggered by EnforceChangesRule."),
+    /** Review session — second-pass sanity check by a different runner. */
+    REVIEW("review", "Review session — second-pass sanity check by a different runner."),
     /** Deduplication audit session. */
     DEDUPLICATION("deduplication", "Deduplication audit session."),
     /** Organizational placement review session. */
     ORGANIZATIONAL_PLACEMENT("organizational-placement", "Organizational placement review session."),
-    /** Retry of the primary prompt triggered by {@code EnforceChangesRule}. */
-    ENFORCE_CHANGES("enforce-changes", "Retry of the primary prompt triggered by EnforceChangesRule."),
     /** Correction session triggered when Maven dependency changes are detected. */
     MAVEN_DEPENDENCY_PROTECTION("maven-dependency-protection", "Correction session triggered when Maven dependency changes are detected."),
     /** Correction session triggered by a non-zero post-completion command exit. */
@@ -181,6 +183,7 @@ public enum Phase {
         }
         switch (ruleName) {
             case "enforce-changes":            return ENFORCE_CHANGES;
+            case "review":                     return REVIEW;
             case "deduplication":              return DEDUPLICATION;
             case "organizational-placement":   return ORGANIZATIONAL_PLACEMENT;
             case "no-maven-dependency-changes":return MAVEN_DEPENDENCY_PROTECTION;

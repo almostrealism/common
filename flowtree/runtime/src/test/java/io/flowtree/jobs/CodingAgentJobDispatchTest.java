@@ -242,6 +242,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         // Every rule name must resolve to a Phase so dispatch can route the
         // correction session to the operator-configured runner.
         assertEquals(Phase.ENFORCE_CHANGES, Phase.fromRuleName("enforce-changes"));
+        assertEquals(Phase.REVIEW, Phase.fromRuleName("review"));
         assertEquals(Phase.DEDUPLICATION, Phase.fromRuleName("deduplication"));
         assertEquals(Phase.ORGANIZATIONAL_PLACEMENT,
                 Phase.fromRuleName("organizational-placement"));
@@ -250,6 +251,41 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         assertEquals(Phase.POST_COMPLETION,
                 Phase.fromRuleName("post-completion-command"));
         assertEquals(Phase.COMMIT_MESSAGE, Phase.fromRuleName("commit-message"));
+    }
+
+    @Test(timeout = 10000)
+    public void reviewPhaseRoutesToConfiguredRunner() {
+        CodingAgentJob job = new CodingAgentJob("t-rv", "p");
+        job.setRunnerForPhase(Phase.REVIEW, RECORDING_RUNNER);
+        assertEquals(RECORDING_RUNNER, job.resolveRunner(Phase.REVIEW).getName());
+        // Other phases still fall back to default.
+        assertEquals(AgentRunnerRegistry.CLAUDE,
+                job.resolveRunner(Phase.PRIMARY).getName());
+    }
+
+    @Test(timeout = 10000)
+    public void reviewPhaseInheritsDefaultRunner() {
+        CodingAgentJob job = new CodingAgentJob("t-rv", "p");
+        // No per-phase override — must inherit the (default) Claude runner.
+        assertEquals(AgentRunnerRegistry.CLAUDE,
+                job.resolveRunner(Phase.REVIEW).getName());
+    }
+
+    @Test(timeout = 10000)
+    public void reviewPhaseOrderedBetweenEnforceChangesAndDeduplication() {
+        // The declaration order of Phase governs encode/decode iteration, so
+        // verify the REVIEW phase appears between ENFORCE_CHANGES and
+        // DEDUPLICATION — matching the runtime execution order documented in
+        // PHASES.md.
+        Phase[] values = Phase.values();
+        int ec = -1, rv = -1, dd = -1;
+        for (int i = 0; i < values.length; i++) {
+            if (values[i] == Phase.ENFORCE_CHANGES) ec = i;
+            if (values[i] == Phase.REVIEW) rv = i;
+            if (values[i] == Phase.DEDUPLICATION) dd = i;
+        }
+        assertTrue("ENFORCE_CHANGES must be declared before REVIEW", ec >= 0 && ec < rv);
+        assertTrue("REVIEW must be declared before DEDUPLICATION", rv < dd);
     }
 
     @Test(timeout = 10000)

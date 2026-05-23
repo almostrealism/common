@@ -23,23 +23,15 @@ import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
+import io.flowtree.jobs.agent.PhaseConfigBundle;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.DayOfWeek;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneId;
-import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -220,7 +212,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /**
      * Sets the GitHub-org → Slack-workspace mapping used by
-     * {@link #handleRegisterWorkstream} to derive the target workspace from
+     * {@link WorkstreamRegistrationHandler#handleRegister} to derive the target workspace from
      * the submitted {@code repoUrl} when no explicit {@code slackWorkspaceId}
      * is provided.
      *
@@ -410,7 +402,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             }
 
             if ("/api/workstreams".equals(uri)) {
-                return handleRegisterWorkstream(session);
+                return workstreamRegistrationHandler().handleRegister(session);
             }
             Response workspaceConfigResp = workspaceConfigHandler().handleIfMatches(uri, session);
             if (workspaceConfigResp != null) return workspaceConfigResp;
@@ -421,11 +413,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 String suffix = m.group(3);      // /messages, /submit, or null
 
                 if ("/messages".equals(suffix)) {
-                    return handleMessage(session, workstreamId, jobId);
+                    return messageEndpointHandler().handle(session, workstreamId, jobId);
                 } else if ("/submit".equals(suffix)) {
                     return handleSubmit(session, workstreamId);
                 } else if ("/update".equals(suffix)) {
-                    return handleUpdateWorkstream(session, workstreamId);
+                    return workstreamRegistrationHandler().handleUpdate(session, workstreamId);
                 } else if ("/archive".equals(suffix)) {
                     return lifecycleHandler().handleArchive(session, workstreamId);
                 } else if ("/unarchive".equals(suffix)) {
@@ -477,400 +469,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
     }
 
-    /**
-     * Handles POST to {@code /api/workstreams/{id}/messages} or
-     * {@code /api/workstreams/{id}/jobs/{jobId}/messages}.
-     * An optional {@code activity} field in the body is stored as an
-     * {@code activity:<value>} tag for enforcement-phase filtering.
-     */
-    private Response handleMessage(IHTTPSession session, String workstreamId, String jobId) {
-        String body = readBody(session);
-        if (body == null) {
-            return errorResponse("Failed to read request body");
-        }
-
-        String text = extractJsonField(body, "text");
-        if (text == null || text.isEmpty()) {
-            return errorResponse("Missing required field: text");
-        }
-
-        String activity = extractJsonField(body, "activity");
-        SlackNotifier targetNotifier = notifiers.notifierFor(workstreamId);
-        Workstream workstream = targetNotifier != null
-                ? targetNotifier.getWorkstream(workstreamId) : null;
-        if (workstream == null) {
-            return errorResponse("Unknown workstream: " + workstreamId);
-        }
-
-        log("Message [" + workstreamId + (jobId != null ? "/" + jobId : "") + "]: " + truncate(text, 80));
-
-        // Store as memory — hard error if memory server is configured but fails,
-        // warning if memory server is not configured at all (minimal deployment)
-        String repoUrl = workstream.getRepoUrl();
-        String branch = workstream.getDefaultBranch();
-        String storeError = storeMessageAsMemory(text, repoUrl, branch, activity);
-        if (storeError != null) {
-            if (memoryServerUrl != null && !memoryServerUrl.isEmpty()) {
-                // Memory server is configured but storage failed — hard error
-                warn("Failed to store message as memory: " + storeError);
-                return errorResponse("Failed to store message: " + storeError);
-            }
-            // Memory server not configured — warn but continue
-            log("Message not archived (memory server not configured): " + storeError);
-        }
-
-        // Secondary: forward to notification channel (best-effort)
-        String threadTs = jobId != null ? targetNotifier.getThreadTs(jobId) : null;
-        String resultTs;
-        if (threadTs != null) {
-            resultTs = targetNotifier.postMessageInThread(workstream.getChannelId(), text, threadTs);
-        } else {
-            if (jobId != null) warn("send_message_no_thread_ts workstream_id=" + workstreamId
-                    + " job_id=" + jobId + " activity=" + (activity != null ? activity : ""));
-            resultTs = targetNotifier.postMessage(workstream.getChannelId(), text);
-        }
-
-        if (resultTs == null) {
-            log("Message received for workstream " + workstreamId
-                + " but no notification channel is configured");
-        }
-
-        return newFixedLengthResponse(Response.Status.OK,
-                "application/json",
-                resultTs != null
-                    ? "{\"ok\":true}"
-                    : "{\"ok\":true,\"warning\":\"no notification channel configured\"}");
-    }
-
-    /**
-     * Stores a message in the ar-memory server's "messages" namespace.
-     * A non-empty {@code activity} is appended as an {@code activity:<value>} tag.
-     * @param activity enforcement phase name, or null/empty for primary work
-     * @return null on success, or an error description on failure
-     */
-    private String storeMessageAsMemory(String text, String repoUrl, String branch, String activity) {
-        if (memoryServerUrl == null || memoryServerUrl.isEmpty()) {
-            return "memory server URL not configured";
-        }
-        if (repoUrl == null || repoUrl.isEmpty() || branch == null || branch.isEmpty()) {
-            return "workstream missing repoUrl or defaultBranch";
-        }
-        String tagsJson = (activity != null && !activity.isEmpty())
-            ? "[\"message\"," + escapeJsonValue("activity:" + activity) + "]"
-            : "[\"message\"]";
-
-        String url = memoryServerUrl.replaceAll("/+$", "") + "/api/memory/store";
-        String payload = "{\"content\":" + escapeJsonValue(text)
-            + ",\"repo_url\":" + escapeJsonValue(repoUrl)
-            + ",\"branch\":" + escapeJsonValue(branch)
-            + ",\"namespace\":\"messages\""
-            + ",\"tags\":" + tagsJson
-            + ",\"source\":\"ar-manager\"}";
-        try {
-            HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-            conn.setDoOutput(true);
-            conn.setConnectTimeout(5000);
-            conn.setReadTimeout(10000);
-
-            try (OutputStream os = conn.getOutputStream()) {
-                os.write(payload.getBytes(StandardCharsets.UTF_8));
-            }
-
-            int status = conn.getResponseCode();
-            if (status >= 200 && status < 300) {
-                return null; // success
-            }
-
-            // Read error body
-            try (InputStream is = conn.getErrorStream()) {
-                if (is != null) {
-                    String errBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-                    return "memory server returned " + status + ": " + truncate(errBody, 200);
-                }
-            }
-            return "memory server returned " + status;
-        } catch (IOException e) {
-            return "memory server unreachable: " + e.getMessage();
-        }
-    }
-
-    /**
-     * Escapes a string as a JSON string value (with surrounding quotes).
-     */
-    static String escapeJsonValue(String s) {
-        StringBuilder sb = new StringBuilder(s.length() + 16);
-        sb.append('"');
-        for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            switch (c) {
-                case '"': sb.append("\\\""); break;
-                case '\\': sb.append("\\\\"); break;
-                case '\n': sb.append("\\n"); break;
-                case '\r': sb.append("\\r"); break;
-                case '\t': sb.append("\\t"); break;
-                default:
-                    if (c < 0x20) {
-                        sb.append(String.format("\\u%04x", (int) c));
-                    } else {
-                        sb.append(c);
-                    }
-            }
-        }
-        sb.append('"');
-        return sb.toString();
-    }
-
-    /**
-     * Handles {@code POST /api/workstreams} to register a new workstream.
-     *
-     * <p>All fields are optional except {@code defaultBranch}. When
-     * {@code channelName} is absent the controller derives one from the
-     * last path component of {@code defaultBranch} (e.g. {@code "feature/foo"}
-     * → {@code "w-foo"}) and appends a numeric suffix if the name collides
-     * with an existing workstream. Supply {@code channelName} to override.</p>
-     *
-     * <p>{@code model} and {@code effort} are workstream-level defaults
-     * applied when a job omits them; an invalid {@code effort} value → 400.</p>
-     *
-     * @param session the HTTP session
-     * @return JSON with {@code workstreamId}, {@code channelId}, {@code channelName}
-     */
-    private Response handleRegisterWorkstream(IHTTPSession session) {
-        String body = readBody(session);
-        if (body == null) {
-            return errorResponse("Failed to read request body");
-        }
-
-        String defaultBranch = extractJsonField(body, "defaultBranch");
-        if (defaultBranch == null || defaultBranch.isEmpty()) {
-            return errorResponse("Missing required field: defaultBranch");
-        }
-
-        String baseBranch = extractJsonField(body, "baseBranch");
-        String repoUrl = extractJsonField(body, "repoUrl");
-        String planningDocument = extractJsonField(body, "planningDocument");
-        String channelName = extractJsonField(body, "channelName");
-        if (channelName == null || channelName.isEmpty()) {
-            if (defaultBranch.endsWith("/")) {
-                return errorResponse("defaultBranch is malformed: ends with '/'");
-            }
-            channelName = SlackNotifier.autoChannelName(defaultBranch, notifiers.allWorkstreams().values());
-            if (channelName == null) {
-                return errorResponse("Could not derive a valid channel name from defaultBranch: " + defaultBranch);
-            }
-        }
-        String explicitWorkspaceId = extractJsonField(body, "workspaceId");
-        if (explicitWorkspaceId == null || explicitWorkspaceId.isEmpty()) {
-            explicitWorkspaceId = extractJsonField(body, "slackWorkspaceId"); // legacy alias
-        }
-        String model = extractJsonField(body, "model");
-        String effort = extractJsonField(body, "effort");
-        Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
-        List<String> dependentRepos = extractJsonArrayField(body, "dependentRepos");
-
-        // Resolve the target Slack workspace: explicit slackWorkspaceId wins,
-        // then a workspace derived from the repoUrl's GitHub org, then (in
-        // legacy single-workspace mode) null / the primary notifier. In
-        // multi-workspace mode failing to resolve a workspace is a 400 — the
-        // alternative is silently placing the workstream in the wrong Slack.
-        String targetWorkspaceId = explicitWorkspaceId;
-        if ((targetWorkspaceId == null || targetWorkspaceId.isEmpty()) && repoUrl != null) {
-            String org = GitHubProxyHandler.extractOrgFromRepoUrl(repoUrl);
-            if (org != null) {
-                targetWorkspaceId = orgToWorkspaceId.get(org);
-            }
-        }
-        if ((targetWorkspaceId == null || targetWorkspaceId.isEmpty())
-                && notifiers.isMultiWorkspace()) {
-            return errorResponse("Could not determine target Slack workspace. Supply"
-                    + " slackWorkspaceId in the request body, or a repoUrl whose"
-                    + " GitHub org matches a workspace in the controller config.");
-        }
-        if (targetWorkspaceId != null && !targetWorkspaceId.isEmpty()
-                && notifiers.isMultiWorkspace()
-                && !notifiers.notifiersByWorkspace().containsKey(targetWorkspaceId)) {
-            return errorResponse("Unknown Slack workspace: " + targetWorkspaceId);
-        }
-
-        SlackNotifier targetNotifier = notifiers.notifierForWorkspace(targetWorkspaceId);
-
-        // Check for an existing workstream with the same branch and repo
-        // across every workspace so callers don't race-create duplicates if
-        // the workspace derivation ever differs between calls.
-        Workstream existing = notifiers.findByBranchAndRepo(defaultBranch, repoUrl);
-        if (existing != null) {
-            log("Workstream already exists for branch " + defaultBranch
-                + ": " + existing.getWorkstreamId() + " — returning existing");
-
-            StringBuilder json = new StringBuilder();
-            json.append("{\"ok\":true,\"existing\":true");
-            json.append(",\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(existing.getWorkstreamId())).append("\"");
-            json.append("}");
-
-            return newFixedLengthResponse(Response.Status.OK,
-                    "application/json", json.toString());
-        }
-
-        // Auto-create Slack channel if a name is provided — must be created
-        // on the target workspace's notifier so the channel lives in the
-        // right Slack.
-        String channelId = null;
-        if (channelName != null && !channelName.isEmpty()) {
-            channelId = targetNotifier.createChannel(channelName);
-        }
-
-        Workstream workstream;
-        if (channelId != null) {
-            workstream = new Workstream(channelId, "#" + channelName);
-        } else {
-            workstream = new Workstream(null, channelName);
-        }
-
-        workstream.setDefaultBranch(defaultBranch);
-
-        if (baseBranch != null && !baseBranch.isEmpty()) {
-            workstream.setBaseBranch(baseBranch);
-        }
-
-        if (repoUrl != null && !repoUrl.isEmpty()) {
-            workstream.setRepoUrl(repoUrl);
-        }
-
-        if (planningDocument != null && !planningDocument.isEmpty()) {
-            workstream.setPlanningDocument(planningDocument);
-        }
-
-        if (!requiredLabels.isEmpty()) {
-            workstream.setRequiredLabels(requiredLabels);
-        }
-
-        if (dependentRepos != null && !dependentRepos.isEmpty()) {
-            workstream.setDependentRepos(dependentRepos);
-        }
-        Response err = applyValidated(model, workstream::setModel);
-        if (err != null) return err;
-        err = applyValidated(effort, workstream::setEffort);
-        if (err != null) return err;
-        String runnersErr = SubmissionRunnerResolver.applyToWorkstream(
-                workstream, extractJsonObjectFields(body, "runners"));
-        if (runnersErr != null) return errorResponse(runnersErr);
-
-        workstream.setPushToOrigin(true);
-
-        // Stamp the workspace assignment so listener.registerWorkstream()
-        // routes to the correct per-workspace notifier and so subsequent
-        // API calls can identify the owning workspace.
-        if (targetWorkspaceId != null && !targetWorkspaceId.isEmpty()) {
-            workstream.setWorkspaceId(targetWorkspaceId);
-        }
-
-        if (listener != null) {
-            listener.registerAndPersistWorkstream(workstream);
-        } else {
-            targetNotifier.registerWorkstream(workstream);
-        }
-
-        log("Registered workstream via API: " + workstream.getWorkstreamId()
-            + " (branch=" + defaultBranch + ", channel=" + channelName + ")");
-
-        StringBuilder json = new StringBuilder();
-        json.append("{\"ok\":true");
-        json.append(",\"workstreamId\":\"").append(JsonFieldExtractor.escapeJson(workstream.getWorkstreamId())).append("\"");
-        if (channelId != null) {
-            json.append(",\"channelId\":\"").append(JsonFieldExtractor.escapeJson(channelId)).append("\"");
-        }
-        if (channelName != null) {
-            json.append(",\"channelName\":\"").append(JsonFieldExtractor.escapeJson(channelName)).append("\"");
-        }
-        json.append("}");
-
-        return newFixedLengthResponse(Response.Status.OK,
-                "application/json", json.toString());
-    }
-
-    /**
-     * Handles {@code POST /api/workstreams/{id}/update} to update an existing workstream.
-     *
-     * <p>Supports updating any combination of: {@code channelId}, {@code channelName},
-     * {@code defaultBranch}, {@code baseBranch}, {@code repoUrl},
-     * {@code planningDocument}, {@code model}, {@code effort},
-     * {@code requiredLabels}, {@code dependentRepos}, {@code runners}.</p>
-     *
-     * <p>{@code model} and {@code effort} are workstream-level defaults
-     * applied to jobs that do not specify their own values.  Invalid
-     * {@code effort} values produce a 400 response.</p>
-     *
-     * @param session      the HTTP session
-     * @param workstreamId the workstream identifier from the URL path
-     * @return JSON response confirming the update
-     */
-    private Response handleUpdateWorkstream(IHTTPSession session, String workstreamId) {
-        String body = readBody(session);
-        if (body == null) {
-            return errorResponse("Failed to read request body");
-        }
-
-        SlackNotifier ownerNotifier = notifiers.notifierFor(workstreamId);
-        Workstream workstream = ownerNotifier != null
-                ? ownerNotifier.getWorkstream(workstreamId) : null;
-        if (workstream == null) {
-            return errorResponse("Unknown workstream: " + workstreamId);
-        }
-
-        String channelId = extractJsonField(body, "channelId");
-        String channelName = extractJsonField(body, "channelName");
-        String defaultBranch = extractJsonField(body, "defaultBranch");
-        String baseBranch = extractJsonField(body, "baseBranch");
-        String repoUrl = extractJsonField(body, "repoUrl");
-        String planningDocument = extractJsonField(body, "planningDocument");
-        String model = extractJsonField(body, "model");
-        String effort = extractJsonField(body, "effort");
-        Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
-        List<String> dependentRepos = extractJsonArrayField(body, "dependentRepos");
-
-        if (channelId != null && !channelId.isEmpty()) {
-            workstream.setChannelId(channelId);
-        }
-        if (channelName != null && !channelName.isEmpty()) {
-            workstream.setChannelName(channelName);
-        }
-        if (defaultBranch != null && !defaultBranch.isEmpty()) {
-            workstream.setDefaultBranch(defaultBranch);
-        }
-        if (baseBranch != null && !baseBranch.isEmpty()) {
-            workstream.setBaseBranch(baseBranch);
-        }
-        if (repoUrl != null && !repoUrl.isEmpty()) {
-            workstream.setRepoUrl(repoUrl);
-        }
-        if (planningDocument != null && !planningDocument.isEmpty()) {
-            workstream.setPlanningDocument(planningDocument);
-        }
-        Response err = applyValidated(model, workstream::setModel);
-        if (err != null) return err;
-        err = applyValidated(effort, workstream::setEffort);
-        if (err != null) return err;
-        String runnersErr = SubmissionRunnerResolver.applyToWorkstream(
-                workstream, extractJsonObjectFields(body, "runners"));
-        if (runnersErr != null) return errorResponse(runnersErr);
-        if (!requiredLabels.isEmpty()) {
-            workstream.setRequiredLabels(requiredLabels);
-        }
-        if (dependentRepos != null && !dependentRepos.isEmpty()) {
-            workstream.setDependentRepos(dependentRepos);
-        }
-
-        if (listener != null) {
-            listener.registerAndPersistWorkstream(workstream);
-        }
-
-        log("Updated workstream via API: " + workstreamId);
-
-        return newFixedLengthResponse(Response.Status.OK,
-                "application/json", "{\"ok\":true,\"workstreamId\":\"" + JsonFieldExtractor.escapeJson(workstreamId) + "\"}");
-    }
 
     /**
      * Handles {@code POST /api/workstreams/{id}/submit} for programmatic job submission.
@@ -1036,16 +634,15 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         factory.setMaxTurns(maxTurns > 0 ? maxTurns : workstream.getMaxTurns());
         factory.setMaxBudgetUsd(maxBudgetUsd > 0 ? maxBudgetUsd : workstream.getMaxBudgetUsd());
 
-        // Model and effort: per-request override beats workstream default,
-        // workstream default beats CLI default.  Effort is validated by the
-        // factory setter; surface the failure as a 400 instead of a 500.
-        String effectiveModel = (requestModel != null && !requestModel.isEmpty())
-                ? requestModel : workstream.getModel();
-        Response err = applyValidated(effectiveModel, factory::setModel);
+        // Per-request model/effort go into the job factory's legacy fields
+        // for early 400 validation. Workstream-level model/effort are NOT
+        // bridged here — they flow through workstream.getPhaseConfigBundle()
+        // below and reach the factory via PhaseConfigResolver.applyTo(),
+        // which keeps the per-phase precedence ladder intact instead of
+        // promoting workstream defaults into the job-level default.
+        Response err = applyValidated(requestModel, factory::setModel);
         if (err != null) return err;
-        String effectiveEffort = (requestEffort != null && !requestEffort.isEmpty())
-                ? requestEffort : workstream.getEffort();
-        err = applyValidated(effectiveEffort, factory::setEffort);
+        err = applyValidated(requestEffort, factory::setEffort);
         if (err != null) return err;
 
         String effectiveBranch = targetBranch != null ? targetBranch : workstream.getDefaultBranch();
@@ -1109,6 +706,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (maxDeduplicationPasses > 0) {
             factory.setMaxDeduplicationPasses(maxDeduplicationPasses);
         }
+        if (extractJsonHasField(body, "reviewEnabled"))
+            factory.setReviewEnabled(extractJsonBooleanField(body, "reviewEnabled"));
+        int maxReviewPasses = extractJsonIntField(body, "maxReviewPasses");
+        if (maxReviewPasses > 0) factory.setMaxReviewPasses(maxReviewPasses);
         if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
             factory.setPostCompletionCommand(postCompletionCommand);
             if (postCompletionWorkingDir != null && !postCompletionWorkingDir.isEmpty()) {
@@ -1142,6 +743,34 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 wsEntry != null ? wsEntry.getDefaultRunner() : null, wsEntry != null ? wsEntry.getRunners() : null);
         if (runnerResolver.error() != null) return errorResponse(runnerResolver.error());
         runnerResolver.applyTo(factory);
+
+        // Unified per-phase config (defaultPhaseConfig + phaseConfigs).
+        // Builds a request-level bundle from the body's new JSON fields plus
+        // the legacy runners / model / effort, then layers workstream and
+        // workspace bundles through the PhaseConfigResolver ladder. The
+        // resolved bundle is applied on top of the SubmissionRunnerResolver
+        // result, so model and effort overrides propagate to the factory
+        // without overwriting runner choices already applied above.
+        //
+        // Only pass the per-request model/effort here — promoting
+        // workstream.getModel() / workstream.getEffort() into the job-level
+        // default would shadow workstream / workspace per-phase entries
+        // (which sit BELOW the job default in the precedence ladder).
+        // Workstream defaults are supplied separately via workstreamBundle
+        // below, so PhaseConfigResolver.resolve() can apply them
+        // field-by-field at their correct layer.
+        PhaseConfigBundle requestBundle =
+                PhaseConfigResolver.bundleFromRequest(body,
+                        extractJsonObjectFields(body, "runners"),
+                        requestModel, requestEffort);
+        PhaseConfigBundle workstreamBundle = workstream.getPhaseConfigBundle();
+        PhaseConfigBundle workspaceBundle = wsEntry != null
+                ? wsEntry.toPhaseConfigBundle()
+                : PhaseConfigBundle.EMPTY;
+        PhaseConfigResolver pcResolver = PhaseConfigResolver.resolve(
+                requestBundle, workstreamBundle, workspaceBundle);
+        if (pcResolver.error() != null) return errorResponse(pcResolver.error());
+        pcResolver.applyTo(factory);
 
         // Auto-create PR on successful completion
         if (autoCreatePr) {
@@ -1193,10 +822,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             log("Submitted job via API: " + factory.getTaskId());
         }
 
-        String json = "{\"ok\":true,\"jobId\":\"" + factory.getTaskId()
-            + "\",\"workstreamId\":\"" + workstreamId + "\"}";
+        StringBuilder json = new StringBuilder();
+        json.append("{\"ok\":true,\"jobId\":\"")
+                .append(factory.getTaskId())
+                .append("\",\"workstreamId\":\"")
+                .append(workstreamId)
+                .append("\"");
+        PhaseConfigBundle resolvedBundle = pcResolver.resolvedBundle();
+        PhaseConfigResolver.appendBundleJson(json, resolvedBundle);
+        json.append("}");
         return newFixedLengthResponse(Response.Status.OK,
-                "application/json", json);
+                "application/json", json.toString());
     }
 
     /**
@@ -1356,18 +992,36 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Applies {@code value} to {@code setter} and converts any
      * {@link IllegalArgumentException} thrown by the setter into a 400
-     * {@code errorResponse} so request handlers can short-circuit with a
-     * single {@code return}.  Returns {@code null} (no error) when the value
-     * is empty or successfully applied.
+     * response built by {@code errorBuilder} so request handlers can
+     * short-circuit with a single {@code return}.  Returns {@code null}
+     * (no error) when the value is empty or successfully applied.
+     *
+     * @param value        the candidate value, or {@code null}/empty for a no-op
+     * @param setter       the setter to invoke on the candidate value
+     * @param errorBuilder factory that wraps a message into a 400 response
+     * @return an error response, or {@code null} on success
      */
-    private Response applyValidated(String value, Consumer<String> setter) {
+    static Response applyValidated(String value, Consumer<String> setter,
+                                   Function<String, Response> errorBuilder) {
         if (value == null || value.isEmpty()) return null;
         try {
             setter.accept(value);
             return null;
         } catch (IllegalArgumentException e) {
-            return errorResponse(e.getMessage());
+            return errorBuilder.apply(e.getMessage());
         }
+    }
+
+    /**
+     * Convenience overload of {@link #applyValidated(String, Consumer, Function)}
+     * that uses this endpoint's own 400-response factory.
+     *
+     * @param value  the candidate value
+     * @param setter the setter to invoke on the candidate value
+     * @return an error response, or {@code null} on success
+     */
+    private Response applyValidated(String value, Consumer<String> setter) {
+        return applyValidated(value, setter, this::errorResponse);
     }
 
     /**
@@ -1377,6 +1031,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String json = "{\"ok\":false,\"error\":\"" + JsonFieldExtractor.escapeJson(message) + "\"}";
         return newFixedLengthResponse(Response.Status.BAD_REQUEST,
                 "application/json", json);
+    }
+
+    /**
+     * Delegates to {@link io.flowtree.JsonFieldExtractor#hasField(String, String)}.
+     */
+    static boolean extractJsonHasField(String json, String field) {
+        return JsonFieldExtractor.hasField(json, field);
     }
 
     /**
@@ -1429,17 +1090,34 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Truncates a string to at most {@code maxLength} characters, appending
-     * {@code "..."} when the string is shortened.
+     * Escapes a string as a JSON string value (with surrounding quotes).
+     * Shared by every handler in this package so the JSON shape produced by
+     * one endpoint is identical to the next.
      *
-     * @param s          the string to truncate, or {@code null}
-     * @param maxLength  maximum number of characters to retain (including ellipsis)
-     * @return           the (possibly truncated) string, never {@code null}
+     * @param s the string to escape
+     * @return the JSON-escaped quoted string
      */
-    private static String truncate(String s, int maxLength) {
-        if (s == null) return "";
-        if (s.length() <= maxLength) return s;
-        return s.substring(0, maxLength - 3) + "...";
+    static String escapeJsonValue(String s) {
+        StringBuilder sb = new StringBuilder(s.length() + 16);
+        sb.append('"');
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"': sb.append("\\\""); break;
+                case '\\': sb.append("\\\\"); break;
+                case '\n': sb.append("\\n"); break;
+                case '\r': sb.append("\\r"); break;
+                case '\t': sb.append("\\t"); break;
+                default:
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+            }
+        }
+        sb.append('"');
+        return sb.toString();
     }
 
     /**
@@ -1570,6 +1248,30 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /** Builds the {@code /api/workspaces/{id}/config} handler bound to this endpoint. */
     private WorkspaceConfigHandler workspaceConfigHandler() {
         return new WorkspaceConfigHandler(workspaceLookup, workspaceRenameHook,
+                listener, this::readBody, this::errorResponse, this::log);
+    }
+
+    /**
+     * Builds the workstream-message endpoint handler bound to this endpoint.
+     * See {@link MessageEndpointHandler}.
+     *
+     * @return a fresh handler reflecting the current memory-server URL and
+     *         notifier registry
+     */
+    private MessageEndpointHandler messageEndpointHandler() {
+        return new MessageEndpointHandler(notifiers, memoryServerUrl,
+                this::readBody, this::errorResponse, this::log, this::warn);
+    }
+
+    /**
+     * Builds the workstream registration/update endpoint handler bound to this endpoint.
+     * See {@link WorkstreamRegistrationHandler}.
+     *
+     * @return a fresh handler reflecting the current notifier registry,
+     *         org-to-workspace map, and listener
+     */
+    private WorkstreamRegistrationHandler workstreamRegistrationHandler() {
+        return new WorkstreamRegistrationHandler(notifiers, orgToWorkspaceId,
                 listener, this::readBody, this::errorResponse, this::log);
     }
 

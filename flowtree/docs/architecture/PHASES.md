@@ -19,9 +19,10 @@ For the runner SPI itself, see [AGENT_RUNNERS.md](AGENT_RUNNERS.md).
 | Phase | Wire name | When it runs |
 |-------|-----------|--------------|
 | `PRIMARY` | `primary` | Initial `executeSingleRun()` in `doWork()` — the prompt the operator submitted. |
+| `ENFORCE_CHANGES` | `enforce-changes` | `EnforceChangesRule` — re-runs the primary prompt if no production code changed. |
+| `REVIEW` | `review` | `ReviewRule` — one-shot second-pass review of the primary diff (default-on); makes small surgical fixes and defers the rest. |
 | `DEDUPLICATION` | `deduplication` | `DeduplicationRule` correction, when local dedup mode is on. |
 | `ORGANIZATIONAL_PLACEMENT` | `organizational-placement` | `OrganizationalPlacementRule` correction (default-on). |
-| `ENFORCE_CHANGES` | `enforce-changes` | `EnforceChangesRule` — re-runs the primary prompt if no production code changed. |
 | `MAVEN_DEPENDENCY_PROTECTION` | `maven-dependency-protection` | `MavenDependencyProtectionRule` correction. |
 | `POST_COMPLETION` | `post-completion` | `PostCompletionCommandRule` correction with the script's output. |
 | `COMMIT_MESSAGE` | `commit-message` | `CommitMessageRule` — always the last enforcement phase. |
@@ -125,6 +126,94 @@ other enforcement phases on the cloud model. To enable this, set the
 `deduplication` wire name to `"opencode"` in the per-workstream or per-job
 runner map and point `OPENCODE_PROVIDER_URL` at the llama.cpp endpoint; the
 routing precedence ladder handles the rest without any further configuration.
+
+The same argument applies to `REVIEW`. The review phase exists to give a
+cheaper/faster second-pass reviewer a chance to make small surgical fixes
+before the rest of the enforcement pipeline runs; the prompt is engineered
+with a strong "defer rather than edit" bias so a weaker model can do
+useful work without risking bad edits. The recommended deployment is:
+
+```json
+{ "runners": { "review": "opencode" } }
+```
+
+at workspace level. Every job picked up by that workspace then routes its
+primary work to the cloud model and its review pass to the local model.
+
+---
+
+## `REVIEW`: the second-pass review phase
+
+`REVIEW` is enabled by default on every job. It sits between
+`ENFORCE_CHANGES` and `DEDUPLICATION`, so the working tree it sees has
+at least one round of "did the agent actually produce changes" applied,
+and any small fixes it makes are still subject to the standard
+deduplication and organizational-placement checks via the outer
+correction loop.
+
+The phase is one-shot: `ReviewRule.isViolated()` returns `true` the first
+time it sees new or modified files on the branch, the framework runs one
+correction session for it, and after `onCorrectionAttempted()` fires the
+rule reports satisfied for the rest of the job. The outer
+`runEnforcementRules()` loop is responsible for re-walking dedup and
+placement against whatever the review pass changed; review itself does
+not loop.
+
+The review prompt (`ReviewPromptBuilder`) is engineered around a single
+philosophy: **make simple fixes, defer substantial issues**. The reviewer
+is told:
+
+- Categories of fix it may make directly: typos in strings/comments/docs;
+  obvious missing imports; trivial one-line guard clauses; unambiguous
+  one-line bug fixes; a single missing test method on a newly-introduced
+  method.
+- Categories of fix it must defer: architectural concerns; cross-cutting
+  changes; performance concerns; style or naming concerns; anything that
+  requires reading code outside the diff to evaluate.
+- "When in doubt, defer" — the bias toward filing a memory plus a TODO
+  comment over making a wrong edit is explicit in the prompt.
+
+When the reviewer chooses to defer, the prompt directs it to do two
+things at the relevant code location:
+
+1. Call `memory_store` with tags including `review-followup` and
+   `workstream:<workstream-id>` so the next primary-phase session can
+   discover the deferred items via `memory_recall`.
+2. Leave an inline `TODO(review):` comment so reviewers reading the PR
+   can see what was flagged without searching the memory store.
+
+To find deferred items later, an operator (or the next primary-phase
+session) can call `memory_recall` with `tags=["review-followup"]` or
+`workstream_context` with namespace/branch filtering. The
+`TODO(review):` comment is the in-code breadcrumb.
+
+### Configuration surface
+
+| Layer | How to enable/disable | How to choose the runner |
+|-------|------------------------|---------------------------|
+| Per job | `setReviewEnabled(false)` or `review_enabled=false` on the MCP submit | `setRunnerForPhase(Phase.REVIEW, "...")` |
+| Per workstream | `reviewEnabled: false` in workstream config | `runners: {"review": "..."}` |
+| Per workspace | `reviewEnabled: false` in workspace config | `runners: {"review": "..."}` |
+| Globally | (No global default — disable per workspace.) | Controller default. |
+
+The pass cap is `1` by default. Operators who want the review phase to
+make more than one correction attempt set `max_review_passes` (MCP) or
+`setMaxReviewPasses(int)` (Java); the framework caps the inner correction
+loop at that value.
+
+### Disabling the review phase entirely
+
+We follow the convention already used by
+`setEnforceOrganizationalPlacement(false)`: there is no `"none"` sentinel
+in the runner map. To skip review, set the boolean:
+
+- `setReviewEnabled(false)` on `CodingAgentJob` / `CodingAgentJobFactory`
+- `review_enabled=false` on `workstream_submit_task`
+- `reviewEnabled: false` in workspace or workstream config
+
+This keeps the runner-map vocabulary uncluttered and lets the workspace
+or workstream still configure a review runner for the (uncommon) case
+where review is re-enabled later.
 
 ---
 

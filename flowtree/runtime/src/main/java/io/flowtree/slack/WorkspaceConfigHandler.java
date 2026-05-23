@@ -20,6 +20,7 @@ import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.JsonFieldExtractor;
+import io.flowtree.jobs.agent.PhaseConfigBundle;
 
 import java.util.Map;
 import java.util.function.BiFunction;
@@ -181,6 +182,8 @@ final class WorkspaceConfigHandler {
 
         String runnersErr = SubmissionRunnerResolver.applyToWorkspace(entry, runnersObj);
         if (runnersErr != null) return errorResponse.apply(runnersErr);
+        String phaseConfigErr = PhaseConfigResolver.applyToWorkspace(entry, body);
+        if (phaseConfigErr != null) return errorResponse.apply(phaseConfigErr);
 
         if (name != null && !name.isEmpty()) {
             entry.setName(name);
@@ -259,6 +262,8 @@ final class WorkspaceConfigHandler {
             }
             json.append("}");
         }
+        PhaseConfigBundle bundle = entry.toPhaseConfigBundle();
+        PhaseConfigResolver.appendBundleJson(json, bundle);
         json.append("}");
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
                 "application/json", json.toString());
