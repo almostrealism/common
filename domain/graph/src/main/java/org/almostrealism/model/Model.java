@@ -28,6 +28,7 @@ import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.Learning;
 import org.almostrealism.layers.ParameterUpdate;
+import org.almostrealism.layers.Tracking;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -95,7 +96,7 @@ import java.util.stream.Stream;
  * @see SequentialBlock
  * @author Michael Murray
  */
-public class Model implements Setup, Destroyable, CodeFeatures {
+public class Model implements Setup, Destroyable, Tracking, CodeFeatures {
 	/** The sequential chain of blocks that constitutes this model's forward path. */
 	private SequentialBlock blocks;
 	/** Auxiliary input blocks whose outputs are injected at specific points in the forward path. */
@@ -150,6 +151,18 @@ public class Model implements Setup, Destroyable, CodeFeatures {
 	public void setParameterUpdate(ParameterUpdate<PackedCollection> update) {
 		this.parameterUpdate = update;
 		blocks.setParameterUpdate(update);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Propagates the setting to the main sequential chain and to every auxiliary input
+	 * block that implements {@link Tracking}.</p>
+	 */
+	@Override
+	public void setInputTracking(boolean inputTracking) {
+		blocks.setInputTracking(inputTracking);
+		Tracking.propagate(inputs, inputTracking);
 	}
 
 	/**
