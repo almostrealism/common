@@ -1138,6 +1138,28 @@ public class WorkstreamConfig {
      *         existing different workspace
      */
     public boolean renameWorkspace(String oldId, String newId) {
+        return renameWorkspace(oldId, newId, null);
+    }
+
+    /**
+     * Renames a workspace and propagates the new ID to live {@link Workstream}
+     * instances in addition to the persisted entries. Callers that hold live
+     * {@code Workstream} objects (e.g. {@code SlackListener.channelToWorkstream})
+     * MUST use this overload so that a subsequent
+     * {@link #syncFromWorkstreams(Collection)} does not see a stale workspaceId
+     * on the live object and revert the rename.
+     *
+     * @param oldId current workspace ID; must match an existing entry
+     * @param newId new workspace ID; must not collide with another entry
+     * @param liveWorkstreams live workstream objects to update in place; may
+     *        be {@code null} when the caller manages no live state
+     * @return {@code true} when the rename happened, {@code false} when the
+     *         old ID was not found
+     * @throws IllegalArgumentException when {@code newId} collides with an
+     *         existing different workspace
+     */
+    public boolean renameWorkspace(String oldId, String newId,
+                                   Collection<Workstream> liveWorkstreams) {
         if (oldId == null || oldId.isEmpty() || newId == null || newId.isEmpty()) {
             return false;
         }
@@ -1152,6 +1174,13 @@ public class WorkstreamConfig {
         for (WorkstreamEntry entry : workstreams) {
             if (oldId.equals(entry.getWorkspaceId())) {
                 entry.setWorkspaceId(newId);
+            }
+        }
+        if (liveWorkstreams != null) {
+            for (Workstream ws : liveWorkstreams) {
+                if (oldId.equals(ws.getWorkspaceId())) {
+                    ws.setWorkspaceId(newId);
+                }
             }
         }
         return true;
@@ -1381,10 +1410,7 @@ public class WorkstreamConfig {
             entry.setGithubOrg(ws.getGithubOrg());
             entry.setDependentRepos(ws.getDependentRepos());
             entry.setRequiredLabels(ws.getRequiredLabels());
-            // workspaceId is intentionally NOT synced from the live Workstream:
-            // renameWorkspace mutates the entry in place, but live Workstream
-            // objects in SlackListener.channelToWorkstream still hold the
-            // pre-rename value. Overwriting here would revert the rename.
+            entry.setWorkspaceId(ws.getWorkspaceId());
             entry.setModel(ws.getModel());
             entry.setEffort(ws.getEffort());
             entry.setDefaultRunner(ws.getDefaultRunner());

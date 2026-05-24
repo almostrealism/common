@@ -1055,12 +1055,12 @@ public class WorkstreamConfigTest extends TestSuiteBase {
     }
 
     /**
-     * Regression test for the rename-revert bug: after
-     * {@link WorkstreamConfig#renameWorkspace} updates every entry's
-     * {@code workspaceId}, a subsequent
-     * {@link WorkstreamConfig#syncFromWorkstreams} call with the still-old
-     * live {@link Workstream} objects must NOT clobber the entries back to
-     * the pre-rename ID.
+     * Regression test for the rename-revert bug: when callers use the
+     * 3-arg {@link WorkstreamConfig#renameWorkspace(String, String,
+     * java.util.Collection)} overload to propagate the new workspaceId to
+     * live {@link Workstream} instances at rename time, a subsequent
+     * {@link WorkstreamConfig#syncFromWorkstreams} call must NOT revert the
+     * entries to the pre-rename ID.
      */
     @Test(timeout = 10000)
     public void testSyncFromWorkstreamsDoesNotRevertRename() throws IOException {
@@ -1075,10 +1075,10 @@ public class WorkstreamConfigTest extends TestSuiteBase {
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
         List<Workstream> liveWorkstreams = config.toWorkstreams();
-        assertTrue(config.renameWorkspace("T0123456789", "almostrealism"));
+        assertTrue(config.renameWorkspace("T0123456789", "almostrealism",
+                liveWorkstreams));
 
-        // Simulate persistConfig()'s sync step while the live Workstream
-        // object still holds the pre-rename workspaceId.
+        // Live workstreams now carry the new ID, so the sync step is safe.
         config.syncFromWorkstreams(liveWorkstreams);
 
         assertEquals("almostrealism",
