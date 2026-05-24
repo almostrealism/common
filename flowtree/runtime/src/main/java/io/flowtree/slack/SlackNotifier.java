@@ -719,8 +719,8 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             String broadcastParam = replyBroadcast ? ",\"reply_broadcast\":true" : "";
             messageCallback.accept("{\"channel\":\"" + effectiveChannel +
                                    "\",\"thread_ts\":\"" + JsonFieldExtractor.escapeJson(threadTs) +
-                                   broadcastParam +
-                                   "\",\"text\":\"" + JsonFieldExtractor.escapeJson(text) + "\"}");
+                                   "\"" + broadcastParam +
+                                   ",\"text\":\"" + JsonFieldExtractor.escapeJson(text) + "\"}");
         }
 
         if (client == null) {

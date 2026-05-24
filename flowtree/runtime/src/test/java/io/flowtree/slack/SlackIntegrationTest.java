@@ -2301,9 +2301,10 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         assertEquals(1, messages.size());
         String message = messages.get(0);
-        assertTrue("Message should contain reply_broadcast:true",
-            message.contains("\"reply_broadcast\":true"));
-        assertTrue("Message should contain thread_ts", message.contains("\"thread_ts\""));
+        assertTrue("Message should have reply_broadcast=true",
+            JsonFieldExtractor.extractBoolean(message, "reply_broadcast"));
+        assertNotNull("Message should have thread_ts field",
+            JsonFieldExtractor.extractString(message, "thread_ts"));
         assertTrue("Message should contain PR URL", message.contains("https://github.com/test/repo/pull/123"));
     }
 
@@ -2335,9 +2336,10 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         assertEquals(1, messages.size());
         String message = messages.get(0);
-        assertFalse("Status message should NOT contain reply_broadcast",
-            message.contains("\"reply_broadcast\":true"));
-        assertTrue("Status message should contain thread_ts", message.contains("\"thread_ts\""));
+        assertFalse("Status message should NOT have reply_broadcast=true",
+            JsonFieldExtractor.extractBoolean(message, "reply_broadcast"));
+        assertNotNull("Status message should have thread_ts field",
+            JsonFieldExtractor.extractString(message, "thread_ts"));
     }
 
     /**
@@ -2356,7 +2358,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         assertEquals(1, messages.size());
         String message = messages.get(0);
-        assertFalse("Default should NOT broadcast", message.contains("\"reply_broadcast\":true"));
+        assertFalse("Default should NOT broadcast", JsonFieldExtractor.extractBoolean(message, "reply_broadcast"));
     }
 }
 
