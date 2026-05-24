@@ -2267,5 +2267,98 @@ public class SlackIntegrationTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         assertNull(notifier.getThreadTs("job-Z"));
     }
+
+    /**
+     * Tests that the completion message uses reply_broadcast: true when
+     * posted to a thread, ensuring it appears both in the thread and in
+     * the channel's main view (Slack's "Also send to channel" feature).
+     */
+    @Test(timeout = 10000)
+    public void testCompletionMessageBroadcastsToChannel() {
+        List<String> messages = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json -> {
+            messages.add(json);
+        });
+
+        Workstream workstream = new Workstream("C123", "#test");
+        workstream.setDefaultBranch("feature/test");
+        notifier.registerWorkstream(workstream);
+
+        // Submit a job to create a thread
+        JobCompletionEvent startEvent = JobCompletionEvent.started("job-broadcast", "Test task");
+        notifier.onJobSubmitted(workstream.getWorkstreamId(), startEvent);
+
+        // Clear messages from submission
+        messages.clear();
+
+        // Complete the job with PR URL
+        JobCompletionEvent completeEvent = JobCompletionEvent.success("job-broadcast", "Test task");
+        completeEvent.withGitInfo("feature/test", "abc1234567890",
+            List.of("test.py"), List.of(), true);
+        completeEvent.withPullRequestUrl("https://github.com/test/repo/pull/123");
+        notifier.onJobCompleted(workstream.getWorkstreamId(), completeEvent);
+
+        assertEquals(1, messages.size());
+        String message = messages.get(0);
+        assertTrue("Message should have reply_broadcast=true",
+            JsonFieldExtractor.extractBoolean(message, "reply_broadcast"));
+        assertNotNull("Message should have thread_ts field",
+            JsonFieldExtractor.extractString(message, "thread_ts"));
+        assertTrue("Message should contain PR URL", message.contains("https://github.com/test/repo/pull/123"));
+    }
+
+    /**
+     * Tests that status messages (onJobStarted) do NOT use reply_broadcast,
+     * ensuring they only appear in the thread, not broadcast to the channel.
+     */
+    @Test(timeout = 10000)
+    public void testStatusMessageDoesNotBroadcast() {
+        List<String> messages = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json -> {
+            messages.add(json);
+        });
+
+        Workstream workstream = new Workstream("C123", "#test");
+        workstream.setDefaultBranch("feature/test");
+        notifier.registerWorkstream(workstream);
+
+        // Submit a job to create a thread
+        JobCompletionEvent startEvent = JobCompletionEvent.started("job-status", "Test task");
+        notifier.onJobSubmitted(workstream.getWorkstreamId(), startEvent);
+
+        // Clear messages from submission
+        messages.clear();
+
+        // Start the job
+        notifier.onJobStarted(workstream.getWorkstreamId(), startEvent);
+
+        assertEquals(1, messages.size());
+        String message = messages.get(0);
+        assertFalse("Status message should NOT have reply_broadcast=true",
+            JsonFieldExtractor.extractBoolean(message, "reply_broadcast"));
+        assertNotNull("Status message should have thread_ts field",
+            JsonFieldExtractor.extractString(message, "thread_ts"));
+    }
+
+    /**
+     * Tests that the old postMessageInThread API (without replyBroadcast param)
+     * defaults to replyBroadcast: false (no broadcast).
+     */
+    @Test(timeout = 10000)
+    public void testPostMessageInThreadDefaultIsNoBroadcast() {
+        List<String> messages = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json -> {
+            messages.add(json);
+        });
+
+        notifier.postMessageInThread("C123", "test message", "thread123");
+
+        assertEquals(1, messages.size());
+        String message = messages.get(0);
+        assertFalse("Default should NOT broadcast", JsonFieldExtractor.extractBoolean(message, "reply_broadcast"));
+    }
 }
 
