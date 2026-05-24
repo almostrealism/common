@@ -39,6 +39,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -105,6 +106,70 @@ class SecretsRequestHandler implements ConsoleFeatures {
     void setSecretsCache(
             Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> cache) {
         this.secretsCache = cache != null ? cache : new HashMap<>();
+    }
+
+    /**
+     * Returns an in-process secret-lookup function bound to a single workspace.
+     *
+     * <p>The returned function maps a secret name (e.g. {@code "openrouter-api-key"})
+     * to the corresponding string value, reading the JSON payload file declared
+     * for that secret in {@code workstreams.yaml}. The lookup convention is:
+     * the payload's value for the key matching the secret name is returned when
+     * present; otherwise, when the payload contains exactly one key, that single
+     * value is returned (lets operators store {@code {"value": "sk-..."}} without
+     * matching the name). Any other shape yields {@code null}.</p>
+     *
+     * <p>This entry point is intended for in-JVM callers on the controller
+     * (e.g. an admin tool resolving a provider API key for a colocated
+     * subprocess). Out-of-process callers continue to use the HTTP secrets
+     * endpoints exclusively. Returned values must NEVER be logged, echoed
+     * in tool output, or persisted outside the subprocess they configure;
+     * the controller emits a {@code secret_access} audit line for every
+     * retrieve but deliberately never records the payload itself.</p>
+     *
+     * @param workspaceId the workspace that owns the secrets to look up
+     * @return a name → value function; missing-secret lookups return {@code null}
+     */
+    Function<String, String> workspaceSecretLookup(String workspaceId) {
+        return secretName -> readSecretValue(workspaceId, secretName);
+    }
+
+    /**
+     * Resolves a single secret value, used by {@link #workspaceSecretLookup}.
+     * Returns {@code null} when the workspace, the secret, or the file is
+     * missing or unreadable. Errors are logged via {@link #warn} rather than
+     * thrown so the caller can fall back to env-var resolution.
+     *
+     * @param workspaceId the workspace owning the secret
+     * @param secretName  the declared secret name
+     * @return the resolved value, or {@code null}
+     */
+    private String readSecretValue(String workspaceId, String secretName) {
+        if (workspaceId == null || workspaceId.isEmpty()
+                || secretName == null || secretName.isEmpty()) {
+            return null;
+        }
+        Map<String, WorkstreamConfig.WorkspaceSecretEntry> wsSecrets =
+                secretsCache.get(workspaceId);
+        if (wsSecrets == null) return null;
+        WorkstreamConfig.WorkspaceSecretEntry entry = wsSecrets.get(secretName);
+        if (entry == null) return null;
+        Map<String, String> payload;
+        try {
+            payload = readSecretPayload(entry.getFile());
+        } catch (IOException e) {
+            warn("Failed to read secret file for in-process lookup of "
+                    + secretName + ": " + e.getMessage());
+            return null;
+        }
+        if (payload == null || payload.isEmpty()) return null;
+        String direct = payload.get(secretName);
+        if (direct != null && !direct.isEmpty()) return direct;
+        if (payload.size() == 1) {
+            String singleton = payload.values().iterator().next();
+            if (singleton != null && !singleton.isEmpty()) return singleton;
+        }
+        return null;
     }
 
     /**

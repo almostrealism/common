@@ -1528,7 +1528,7 @@ def _parse_default_phase_config_json(default_phase_config: str) -> "tuple[Option
     """Parse and validate the ``default_phase_config`` JSON argument.
 
     The argument is a JSON object string with optional keys ``runner``,
-    ``model``, ``effort``. Unknown keys are rejected.
+    ``model``, ``effort``, ``provider``. Unknown keys are rejected.
 
     Args:
         default_phase_config: A JSON object string, or empty for none.
@@ -1552,16 +1552,16 @@ def _parse_default_phase_config_json(default_phase_config: str) -> "tuple[Option
     if not isinstance(parsed, dict):
         return None, {
             "ok": False,
-            "error": "default_phase_config must be a JSON object with runner/model/effort keys",
+            "error": "default_phase_config must be a JSON object with optional runner/model/effort/provider keys",
         }
-    allowed = {"runner", "model", "effort"}
+    allowed = {"runner", "model", "effort", "provider"}
     cleaned: dict = {}
     for key, value in parsed.items():
         if key not in allowed:
             return None, {
                 "ok": False,
                 "error": ("Unknown key in default_phase_config: '"
-                          + str(key) + "'. Allowed: runner, model, effort"),
+                          + str(key) + "'. Allowed: runner, model, effort, provider"),
             }
         if value is None:
             continue
@@ -1579,18 +1579,21 @@ def _parse_default_phase_config_json(default_phase_config: str) -> "tuple[Option
 
 
 def _validate_phase_config_field(context: str, field: str, value: str) -> Optional[dict]:
-    """Validate a single ``{runner, model, effort}`` field value.
+    """Validate a single ``{runner, model, effort, provider}`` field value.
 
     ``runner`` is checked against the known set of registered runner
     identifiers ([[_KNOWN_RUNNER_NAMES]]); ``effort`` is checked against
-    [[VALID_EFFORT_LEVELS]]. ``model`` is passed through — the controller
-    validates per-phase models against the resolved runner's supported
-    set at submission time.
+    [[VALID_EFFORT_LEVELS]]. Both ``model`` and ``provider`` are passed
+    through without client-side validation — the controller validates models
+    against the runner's supportedModels and rejects incompatible
+    provider/runner combinations (e.g. runner=claude with provider!=anthropic)
+    at submission time.
 
     Args:
         context: ``"default_phase_config"`` or ``"phase_configs['name']"``
             — used to build a human-readable error message.
-        field: One of ``"runner"`` / ``"model"`` / ``"effort"``.
+        field: One of ``"runner"`` / ``"model"`` / ``"effort"`` / ``"provider"``
+            — only ``runner`` and ``effort`` are validated client-side.
         value: The non-empty string that the caller supplied.
 
     Returns:
@@ -1619,8 +1622,8 @@ def _parse_phase_configs_json(phase_configs: str) -> "tuple[Optional[dict], Opti
     The argument is a JSON object whose keys are phase wire names
     (``"primary"``, ``"review"``, ``"deduplication"``, ...) and whose
     values are nested JSON objects with optional ``runner`` / ``model`` /
-    ``effort`` fields. Unknown phase keys are rejected client-side so the
-    caller gets an immediate error.
+    ``effort`` / ``provider`` fields. Unknown phase keys are rejected
+    client-side so the caller gets an immediate error.
 
     Args:
         phase_configs: A JSON object string, or empty for none.
@@ -1642,10 +1645,10 @@ def _parse_phase_configs_json(phase_configs: str) -> "tuple[Optional[dict], Opti
     if not isinstance(parsed, dict):
         return None, {
             "ok": False,
-            "error": "phase_configs must be a JSON object mapping phase names to {runner,model,effort} triples",
+            "error": "phase_configs must be a JSON object mapping phase names to objects with optional runner/model/effort/provider keys",
         }
     valid_phase_keys = set(_KNOWN_PHASE_WIRE_NAMES)
-    allowed_inner = {"runner", "model", "effort"}
+    allowed_inner = {"runner", "model", "effort", "provider"}
     cleaned: dict = {}
     for key, inner in parsed.items():
         if key not in valid_phase_keys:
@@ -1659,7 +1662,7 @@ def _parse_phase_configs_json(phase_configs: str) -> "tuple[Optional[dict], Opti
             return None, {
                 "ok": False,
                 "error": ("phase_configs['" + str(key)
-                          + "'] must be an object with runner/model/effort keys"),
+                          + "'] must be an object with runner/model/effort/provider keys"),
             }
         inner_cleaned: dict = {}
         for inner_key, value in inner.items():
@@ -1667,7 +1670,7 @@ def _parse_phase_configs_json(phase_configs: str) -> "tuple[Optional[dict], Opti
                 return None, {
                     "ok": False,
                     "error": ("Unknown key in phase_configs['" + str(key) + "']: '"
-                              + str(inner_key) + "'. Allowed: runner, model, effort"),
+                              + str(inner_key) + "'. Allowed: runner, model, effort, provider"),
                 }
             if value is None:
                 continue

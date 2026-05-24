@@ -1075,6 +1075,12 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         } else {
             set("runners", Phase.encodeRunnerMap(runnerByPhase));
         }
+        // Persist the full bundle separately. The legacy keys above only
+        // preserve runner identity per phase; per-phase model / effort /
+        // provider — and the default provider — are otherwise dropped on
+        // the wire and re-defaulted on the receiving side.
+        set("phaseConfigBundle", CodingAgentJobCodec.encodePhaseConfigBundle(
+                this.phaseConfigBundle));
     }
 
     /**
@@ -1375,6 +1381,15 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             case "runners":
                 runnerByPhase.clear();
                 runnerByPhase.putAll(Phase.decodeRunnerMap(value, this::warn));
+                break;
+            case "phaseConfigBundle":
+                // Assign the field directly: setPhaseConfigBundle would
+                // re-emit set("phaseConfigBundle", ...) and recurse. The
+                // legacy keys above already carry runner/model/effort and
+                // arrive in their own set() calls; the bundle here just
+                // restores per-phase model/effort/provider.
+                this.phaseConfigBundle =
+                        CodingAgentJobCodec.decodePhaseConfigBundle(value);
                 break;
             default:
                 setEnforcementFlag(key, value);

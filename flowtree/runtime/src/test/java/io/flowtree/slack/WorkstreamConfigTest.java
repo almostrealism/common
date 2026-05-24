@@ -16,12 +16,16 @@
 
 package io.flowtree.slack;
 
+import io.flowtree.jobs.agent.Phase;
+import io.flowtree.jobs.agent.PhaseConfig;
+import io.flowtree.jobs.agent.PhaseConfigBundle;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.*;
@@ -981,6 +985,104 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         for (WorkstreamConfig.WorkstreamEntry entry : config.getWorkstreams()) {
             assertEquals("almostrealism", entry.getWorkspaceId());
         }
+    }
+
+    /**
+     * Regression test for the lost-provider defect: a workspace-level
+     * {@code phaseConfigs.primary.provider} entry must survive YAML
+     * deserialization into the {@link WorkstreamConfig.WorkspaceEntry}
+     * and emerge from {@link WorkstreamConfig.WorkspaceEntry#toPhaseConfigBundle()}
+     * in the per-phase entry where the resolver can read it. Without this,
+     * agents fall back to the runner's default provider (e.g. opencode →
+     * "local"), bypassing the configured openrouter/anthropic route.
+     */
+    @Test(timeout = 10000)
+    public void testWorkspacePrimaryProviderSurvivesYamlLoad() throws IOException {
+        String yaml = "workspaces:\n"
+            + "  - id: \"almostrealism\"\n"
+            + "    slackTeamId: \"T0123456789\"\n"
+            + "    defaultPhaseConfig:\n"
+            + "      runner: \"claude\"\n"
+            + "      model: \"sonnet\"\n"
+            + "      effort: \"medium\"\n"
+            + "    phaseConfigs:\n"
+            + "      primary:\n"
+            + "        runner: \"opencode\"\n"
+            + "        model: \"qwen/qwen3-coder:exacto\"\n"
+            + "        provider: \"openrouter\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.WorkspaceEntry ws = config.findWorkspace("almostrealism");
+        assertNotNull(ws);
+
+        PhaseConfigBundle bundle = ws.toPhaseConfigBundle();
+        PhaseConfig primary = bundle.forPhase(Phase.PRIMARY);
+        assertEquals("opencode", primary.runner());
+        assertEquals("qwen/qwen3-coder:exacto", primary.model());
+        assertEquals("openrouter", primary.provider());
+    }
+
+    /**
+     * Regression test for the duplicate-entry defect:
+     * {@link WorkstreamConfig#syncFromWorkstreams} used to match entries by
+     * channelId only, so a workstream first persisted with a null channelId
+     * (e.g. by /flowtree setup before Slack returned the channel) and later
+     * synced after the channelId was assigned could not be located by channel
+     * and produced a second entry sharing the same workstreamId.
+     */
+    @Test(timeout = 10000)
+    public void testSyncDoesNotDuplicateWhenChannelIdAppearsLate()
+            throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - workstreamId: \"ws-1\"\n"
+            + "    channelName: \"#late-channel\"\n"
+            + "    defaultBranch: \"main\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertNull(config.getWorkstreams().get(0).getChannelId());
+
+        // Simulate the live Workstream getting its channelId assigned after
+        // Slack created the channel.
+        Workstream live = config.toWorkstreams().get(0);
+        live.setChannelId("C0LATEONE");
+
+        config.syncFromWorkstreams(Collections.singletonList(live));
+
+        assertEquals("expected exactly one entry per workstreamId",
+                1, config.getWorkstreams().size());
+        assertEquals("C0LATEONE",
+                config.getWorkstreams().get(0).getChannelId());
+    }
+
+    /**
+     * Regression test for the rename-revert bug: when callers use the
+     * 3-arg {@link WorkstreamConfig#renameWorkspace(String, String,
+     * java.util.Collection)} overload to propagate the new workspaceId to
+     * live {@link Workstream} instances at rename time, a subsequent
+     * {@link WorkstreamConfig#syncFromWorkstreams} call must NOT revert the
+     * entries to the pre-rename ID.
+     */
+    @Test(timeout = 10000)
+    public void testSyncFromWorkstreamsDoesNotRevertRename() throws IOException {
+        String yaml = "workspaces:\n"
+            + "  - id: \"T0123456789\"\n"
+            + "    slackTeamId: \"T0123456789\"\n"
+            + "workstreams:\n"
+            + "  - channelId: \"C001\"\n"
+            + "    channelName: \"#alpha\"\n"
+            + "    workspaceId: \"T0123456789\"\n"
+            + "    defaultBranch: \"main\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        List<Workstream> liveWorkstreams = config.toWorkstreams();
+        assertTrue(config.renameWorkspace("T0123456789", "almostrealism",
+                liveWorkstreams));
+
+        // Live workstreams now carry the new ID, so the sync step is safe.
+        config.syncFromWorkstreams(liveWorkstreams);
+
+        assertEquals("almostrealism",
+                config.getWorkstreams().get(0).getWorkspaceId());
     }
 
     /**

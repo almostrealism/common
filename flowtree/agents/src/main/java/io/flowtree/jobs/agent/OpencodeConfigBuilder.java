@@ -112,25 +112,98 @@ final class OpencodeConfigBuilder {
     }
 
     /**
-     * Resolves the provider URL from {@link #ENV_PROVIDER_URL} or returns
-     * {@link #DEFAULT_PROVIDER_URL}.
+     * Backwards-compatible no-argument form. Returns the live provider URL,
+     * defaulting to the local llama-server endpoint when no override is set.
      *
      * @return the OpenAI-compatible endpoint URL
      */
     String resolveProviderUrl() {
-        String value = envLookup.apply(ENV_PROVIDER_URL);
-        return (value == null || value.isEmpty()) ? DEFAULT_PROVIDER_URL : value;
+        return resolveProviderUrl(DEFAULT_PROVIDER_URL);
     }
 
     /**
-     * Resolves the API key from {@link #ENV_API_KEY} or returns the empty
-     * string. Local llama.cpp/ollama servers do not require auth.
+     * Resolves the provider URL from {@link #ENV_PROVIDER_URL}, falling back to
+     * {@code defaultUrl} when the variable is absent or empty.
+     *
+     * <p>Backwards-compatible single-argument form. Assumes the {@link #PROVIDER_ID
+     * local} provider — the env override applies and {@code defaultUrl} is the
+     * local llama-server endpoint. For non-local providers use
+     * {@link #resolveProviderUrl(String, String)} so the canonical cloud URL
+     * is not clobbered by a local-only env override.</p>
+     *
+     * @param defaultUrl the default URL to use when {@link #ENV_PROVIDER_URL} is not set
+     * @return the OpenAI-compatible endpoint URL
+     */
+    String resolveProviderUrl(String defaultUrl) {
+        return resolveProviderUrl(PROVIDER_ID, defaultUrl);
+    }
+
+    /**
+     * Resolves the provider URL for {@code provider}. The {@link #ENV_PROVIDER_URL}
+     * override applies only to the {@link #PROVIDER_ID local} provider — its name
+     * dates to a time when the agent only spoke to local llama-server / Ollama
+     * instances, and applying it to {@code openrouter} or {@code anthropic} would
+     * silently redirect cloud traffic back to whatever the agent container points
+     * at locally (the original symptom of this bug: {@code Provider: openrouter}
+     * paired with {@code Provider URL: http://mac-studio:8084/v1}).
+     *
+     * @param provider   the provider name, or {@code null}/empty for the local default
+     * @param defaultUrl the canonical URL for {@code provider} (e.g. the entry
+     *                   from {@code OpencodeRunner.PROVIDER_MAP})
+     * @return the OpenAI-compatible endpoint URL
+     */
+    String resolveProviderUrl(String provider, String defaultUrl) {
+        boolean isLocal = provider == null || provider.isEmpty()
+                || PROVIDER_ID.equals(provider);
+        if (isLocal) {
+            String value = envLookup.apply(ENV_PROVIDER_URL);
+            if (value != null && !value.isEmpty()) {
+                return value;
+            }
+        }
+        return defaultUrl;
+    }
+
+    /**
+     * Backwards-compatible no-argument form. Reads the API key from the
+     * legacy {@link #ENV_API_KEY} only (no provider-specific fallback).
      *
      * @return the API key string (possibly empty)
      */
     String resolveApiKey() {
         String value = envLookup.apply(ENV_API_KEY);
         return value == null ? "" : value;
+    }
+
+    /**
+     * Resolves the API key from {@link #ENV_API_KEY}, a workspace secret, or a
+     * provider-specific environment variable. The secret name and env var name come
+     * from {@code OpencodeRunner.PROVIDER_MAP} — the canonical table — so this method
+     * never re-encodes the per-provider mapping itself.
+     *
+     * @param secretName   workspace secret name for this provider, or null if none
+     * @param envVarName   provider-specific environment variable name, or null if none
+     * @param secretLookup optional workspace secret lookup function
+     * @return the API key string (possibly empty)
+     */
+    String resolveApiKey(String secretName, String envVarName, Function<String, String> secretLookup) {
+        String value = envLookup.apply(ENV_API_KEY);
+        if (value != null && !value.isEmpty()) {
+            return value;
+        }
+        if (secretLookup != null && secretName != null) {
+            String secretValue = secretLookup.apply(secretName);
+            if (secretValue != null && !secretValue.isEmpty()) {
+                return secretValue;
+            }
+        }
+        if (envVarName != null) {
+            String envValue = envLookup.apply(envVarName);
+            if (envValue != null && !envValue.isEmpty()) {
+                return envValue;
+            }
+        }
+        return "";
     }
 
     /**
@@ -152,39 +225,83 @@ final class OpencodeConfigBuilder {
     }
 
     /**
-     * Returns the qualified model identifier in opencode's
-     * {@code provider/model} form.
+     * Backwards-compatible single-argument form. Uses the default provider
+     * id ({@link #PROVIDER_ID}, "local") when no provider is supplied.
      *
      * @param requestModel the model from {@link AgentRunRequest#getModel()}
      * @return the qualified identifier (e.g. {@code "local/default"})
      */
     String resolveQualifiedModel(String requestModel) {
-        return PROVIDER_ID + "/" + resolveModel(requestModel);
+        return resolveQualifiedModel(null, requestModel);
+    }
+
+    /**
+     * Returns the qualified model identifier in opencode's
+     * {@code provider/model} form.
+     *
+     * @param provider     provider identifier (local, openrouter, anthropic)
+     * @param requestModel the model from {@link AgentRunRequest#getModel()}
+     * @return the qualified identifier (e.g. {@code "openrouter/qwen3-coder:exacto"})
+     */
+    String resolveQualifiedModel(String provider, String requestModel) {
+        String effectiveProvider = (provider == null || provider.isEmpty()) ? PROVIDER_ID : provider;
+        return effectiveProvider + "/" + resolveModel(requestModel);
+    }
+
+    /**
+     * Backwards-compatible single-argument form. Builds the opencode config
+     * using the local provider with its default URL (subject to the
+     * {@link #ENV_PROVIDER_URL} override) and no workspace secret lookup.
+     *
+     * @param request the agent-run request
+     * @return a pretty-printed JSON document
+     */
+    String buildConfigJson(AgentRunRequest request) {
+        String resolvedUrl = resolveProviderUrl(DEFAULT_PROVIDER_URL);
+        return buildConfigJson(request, PROVIDER_ID, resolvedUrl, null, null, null);
     }
 
     /**
      * Builds the complete opencode config JSON for {@code request}.
      *
-     * @param request the agent-run request
+     * <p>The provider URL and secret details are supplied by the caller rather
+     * than re-derived here. {@code OpencodeRunner.PROVIDER_MAP} is the single
+     * source of truth for per-provider connection details; the runner resolves
+     * those values and passes them in, ensuring this method never encodes a
+     * parallel copy of the provider table.</p>
+     *
+     * @param request             the agent-run request
+     * @param provider            provider identifier (local, openrouter, anthropic)
+     * @param resolvedProviderUrl the URL to use as the OpenAI-compatible base URL,
+     *                            already resolved by the caller (env override applied)
+     * @param secretName          workspace secret name for this provider, or null
+     * @param envVarName          provider-specific environment variable name, or null
+     * @param secretLookup        optional workspace secret lookup function
      * @return a pretty-printed JSON document suitable for writing to a temp file
      */
-    String buildConfigJson(AgentRunRequest request) {
+    String buildConfigJson(AgentRunRequest request, String provider, String resolvedProviderUrl,
+                           String secretName, String envVarName,
+                           Function<String, String> secretLookup) {
         ObjectNode root = MAPPER.createObjectNode();
         root.put("$schema", "https://opencode.ai/config.json");
 
+        String effectiveProvider = (provider == null || provider.isEmpty()) ? PROVIDER_ID : provider;
         ObjectNode providers = root.putObject("provider");
-        ObjectNode local = providers.putObject(PROVIDER_ID);
-        local.put("npm", "@ai-sdk/openai-compatible");
-        ObjectNode options = local.putObject("options");
-        options.put("baseURL", resolveProviderUrl());
-        String key = resolveApiKey();
+        ObjectNode providerNode = providers.putObject(effectiveProvider);
+        providerNode.put("npm", "@ai-sdk/openai-compatible");
+        ObjectNode options = providerNode.putObject("options");
+
+        options.put("baseURL", resolvedProviderUrl != null ? resolvedProviderUrl : DEFAULT_PROVIDER_URL);
+
+        String key = resolveApiKey(secretName, envVarName, secretLookup);
         if (!key.isEmpty()) {
             options.put("apiKey", key);
         }
-        ObjectNode models = local.putObject("models");
+
+        ObjectNode models = providerNode.putObject("models");
         String modelName = resolveModel(request != null ? request.getModel() : null);
         models.putObject(modelName);
-        root.put("model", PROVIDER_ID + "/" + modelName);
+        root.put("model", effectiveProvider + "/" + modelName);
 
         ObjectNode mcp = translateMcpServers(request != null ? request.getMcpConfigJson() : null);
         if (mcp != null && mcp.size() > 0) {

@@ -1241,7 +1241,7 @@ public class FlowTreeController implements ConsoleFeatures {
                     log("Loaded workspace mapping for " + orgToWorkspace.size() + " org(s)");
                 }
                 apiEndpoint.setWorkspaceLookup(loadedConfig::findWorkspace);
-                apiEndpoint.setWorkspaceRenameHook(loadedConfig::renameWorkspace);
+                apiEndpoint.setWorkspaceRenameHook((oldId, newId) -> loadedConfig.renameWorkspace(oldId, newId, listener.getWorkstreams().values()));
             }
 
             // Configure memory server URL for message storage

@@ -19,13 +19,13 @@ package io.flowtree.jobs.agent;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 /**
- * Per-phase configuration triple of {@code (runner, model, effort)} used by
- * the unified per-phase precedence ladder.
+ * Per-phase configuration quadruple of {@code (runner, model, effort, provider)}
+ * used by the unified per-phase precedence ladder.
  *
  * <p>Each field is independently nullable. A {@code null} value means
  * "this level has nothing to say about this field" — the resolver falls
  * through to the next precedence level for that field independently of
- * the other two. See {@link PhaseConfigBundle} for the per-container
+ * the other fields. See {@link PhaseConfigBundle} for the per-container
  * holder and {@code PhaseConfigResolver} for the seven-level ladder.</p>
  *
  * @param runner the {@link AgentRunner} identifier (e.g. {@code "claude"}),
@@ -34,11 +34,26 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
  *               or {@code null} to inherit
  * @param effort the effort level (e.g. {@code "high"}), or {@code null} to
  *               inherit
+ * @param provider the provider identifier (e.g. {@code "openrouter"}),
+ *                 or {@code null} to use the runner's default
  */
-public record PhaseConfig(String runner, String model, String effort) {
+public record PhaseConfig(String runner, String model, String effort, String provider) {
 
     /** Sentinel: nothing configured at this level. */
-    public static final PhaseConfig EMPTY = new PhaseConfig(null, null, null);
+    public static final PhaseConfig EMPTY = new PhaseConfig(null, null, null, null);
+
+    /**
+     * Convenience constructor for the legacy three-field form, prior to the
+     * addition of the {@code provider} axis. The provider is set to {@code null},
+     * which means the resolver will use the runner's default provider.
+     *
+     * @param runner the {@link AgentRunner} identifier, or {@code null} to inherit
+     * @param model  the model identifier, or {@code null} to inherit
+     * @param effort the effort level, or {@code null} to inherit
+     */
+    public PhaseConfig(String runner, String model, String effort) {
+        this(runner, model, effort, null);
+    }
 
     /**
      * Returns {@code true} when every field is {@code null}, meaning this
@@ -52,17 +67,17 @@ public record PhaseConfig(String runner, String model, String effort) {
      */
     @JsonIgnore
     public boolean isEmpty() {
-        return runner == null && model == null && effort == null;
+        return runner == null && model == null && effort == null && provider == null;
     }
 
     /**
-     * Returns a copy with the runner replaced; preserves model and effort.
+     * Returns a copy with the runner replaced; preserves model, effort, and provider.
      *
      * @param r the new runner identifier, may be {@code null}
      * @return a new {@link PhaseConfig}
      */
     public PhaseConfig withRunner(String r) {
-        return new PhaseConfig(r, model, effort);
+        return new PhaseConfig(r, model, effort, provider);
     }
 
     /**
@@ -72,17 +87,27 @@ public record PhaseConfig(String runner, String model, String effort) {
      * @return a new {@link PhaseConfig}
      */
     public PhaseConfig withModel(String m) {
-        return new PhaseConfig(runner, m, effort);
+        return new PhaseConfig(runner, m, effort, provider);
     }
 
     /**
-     * Returns a copy with the effort replaced; preserves runner and model.
+     * Returns a copy with the effort replaced; preserves runner, model, and provider.
      *
      * @param e the new effort level, may be {@code null}
      * @return a new {@link PhaseConfig}
      */
     public PhaseConfig withEffort(String e) {
-        return new PhaseConfig(runner, model, e);
+        return new PhaseConfig(runner, model, e, provider);
+    }
+
+    /**
+     * Returns a copy with the provider replaced; preserves runner, model, and effort.
+     *
+     * @param p the new provider identifier, may be {@code null}
+     * @return a new {@link PhaseConfig}
+     */
+    public PhaseConfig withProvider(String p) {
+        return new PhaseConfig(runner, model, effort, p);
     }
 
     /**
@@ -99,6 +124,7 @@ public record PhaseConfig(String runner, String model, String effort) {
         return new PhaseConfig(
                 runner != null ? runner : other.runner,
                 model != null ? model : other.model,
-                effort != null ? effort : other.effort);
+                effort != null ? effort : other.effort,
+                provider != null ? provider : other.provider);
     }
 }

@@ -1138,6 +1138,28 @@ public class WorkstreamConfig {
      *         existing different workspace
      */
     public boolean renameWorkspace(String oldId, String newId) {
+        return renameWorkspace(oldId, newId, null);
+    }
+
+    /**
+     * Renames a workspace and propagates the new ID to live {@link Workstream}
+     * instances in addition to the persisted entries. Callers that hold live
+     * {@code Workstream} objects (e.g. {@code SlackListener.channelToWorkstream})
+     * MUST use this overload so that a subsequent
+     * {@link #syncFromWorkstreams(Collection)} does not see a stale workspaceId
+     * on the live object and revert the rename.
+     *
+     * @param oldId current workspace ID; must match an existing entry
+     * @param newId new workspace ID; must not collide with another entry
+     * @param liveWorkstreams live workstream objects to update in place; may
+     *        be {@code null} when the caller manages no live state
+     * @return {@code true} when the rename happened, {@code false} when the
+     *         old ID was not found
+     * @throws IllegalArgumentException when {@code newId} collides with an
+     *         existing different workspace
+     */
+    public boolean renameWorkspace(String oldId, String newId,
+                                   Collection<Workstream> liveWorkstreams) {
         if (oldId == null || oldId.isEmpty() || newId == null || newId.isEmpty()) {
             return false;
         }
@@ -1152,6 +1174,13 @@ public class WorkstreamConfig {
         for (WorkstreamEntry entry : workstreams) {
             if (oldId.equals(entry.getWorkspaceId())) {
                 entry.setWorkspaceId(newId);
+            }
+        }
+        if (liveWorkstreams != null) {
+            for (Workstream ws : liveWorkstreams) {
+                if (oldId.equals(ws.getWorkspaceId())) {
+                    ws.setWorkspaceId(newId);
+                }
             }
         }
         return true;
@@ -1322,11 +1351,12 @@ public class WorkstreamConfig {
         }
         Map<String, PhaseConfig> phaseConfigs = new LinkedHashMap<>();
         for (Map.Entry<Phase, PhaseConfig> e : bundle.phaseConfigs().entrySet()) {
-            // Only emit per-phase entries that carry model or effort —
+            // Emit any per-phase entry that carries a non-runner field —
             // runner-only entries are already represented in the legacy
-            // runners map.
+            // runners map, but model/effort/provider have no legacy mirror
+            // and must round-trip through phaseConfigs to survive sync.
             PhaseConfig pc = e.getValue();
-            if (pc.model() != null || pc.effort() != null) {
+            if (pc.model() != null || pc.effort() != null || pc.provider() != null) {
                 phaseConfigs.put(e.getKey().wireName(), pc);
             }
         }
@@ -1344,49 +1374,74 @@ public class WorkstreamConfig {
     /**
      * Synchronizes the configuration entries from the in-memory workstream state.
      *
-     * <p>Updates existing entries that match by channel ID and adds any new
-     * workstreams that are not yet represented in the config. This ensures
-     * that runtime changes (via {@code /flowtree config}) are persisted.</p>
+     * <p>For each active workstream, locates the matching entry via
+     * {@link #findEntryToSync} (workstreamId first, channelId as fallback) and
+     * updates its mutable fields; otherwise adds a new entry via
+     * {@link #addWorkstream}. Matching by ID prevents the duplicate-entry
+     * defect where a {@code /flowtree setup} call wrote an entry with a null
+     * {@code channelId} and a later sync — after Slack assigned the channel —
+     * could not find that entry by channel and appended a second entry with
+     * the same workstreamId.</p>
      *
      * @param activeWorkstreams the current in-memory workstreams
      */
     public void syncFromWorkstreams(Collection<Workstream> activeWorkstreams) {
         for (Workstream ws : activeWorkstreams) {
-            boolean found = false;
-            for (WorkstreamEntry entry : workstreams) {
-                if (ws.getChannelId().equals(entry.getChannelId())) {
-                    entry.setWorkstreamId(ws.getWorkstreamId());
-                    entry.setChannelName(ws.getChannelName());
-                    entry.setDefaultBranch(ws.getDefaultBranch());
-                    entry.setBaseBranch(ws.getBaseBranch());
-                    entry.setPushToOrigin(ws.isPushToOrigin());
-                    entry.setWorkingDirectory(ws.getWorkingDirectory());
-                    entry.setRepoUrl(ws.getRepoUrl());
-                    entry.setAllowedTools(ws.getAllowedTools());
-                    entry.setMaxTurns(ws.getMaxTurns());
-                    entry.setMaxBudgetUsd(ws.getMaxBudgetUsd());
-                    entry.setGitUserName(ws.getGitUserName());
-                    entry.setGitUserEmail(ws.getGitUserEmail());
-                    entry.setEnv(ws.getEnv());
-                    entry.setPlanningDocument(ws.getPlanningDocument());
-                    entry.setGithubOrg(ws.getGithubOrg());
-                    entry.setDependentRepos(ws.getDependentRepos());
-                    entry.setRequiredLabels(ws.getRequiredLabels());
-                    entry.setWorkspaceId(ws.getWorkspaceId());
-                    entry.setModel(ws.getModel());
-                    entry.setEffort(ws.getEffort());
-                    entry.setDefaultRunner(ws.getDefaultRunner());
-                    entry.setRunners(ws.getRunners());
-                    applyBundleToEntry(entry, ws.getPhaseConfigBundle());
-                    entry.setArchived(ws.isArchived());
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
+            WorkstreamEntry entry = findEntryToSync(ws);
+            if (entry == null) {
                 addWorkstream(ws);
+                continue;
+            }
+            entry.setWorkstreamId(ws.getWorkstreamId());
+            entry.setChannelId(ws.getChannelId());
+            entry.setChannelName(ws.getChannelName());
+            entry.setDefaultBranch(ws.getDefaultBranch());
+            entry.setBaseBranch(ws.getBaseBranch());
+            entry.setPushToOrigin(ws.isPushToOrigin());
+            entry.setWorkingDirectory(ws.getWorkingDirectory());
+            entry.setRepoUrl(ws.getRepoUrl());
+            entry.setAllowedTools(ws.getAllowedTools());
+            entry.setMaxTurns(ws.getMaxTurns());
+            entry.setMaxBudgetUsd(ws.getMaxBudgetUsd());
+            entry.setGitUserName(ws.getGitUserName());
+            entry.setGitUserEmail(ws.getGitUserEmail());
+            entry.setEnv(ws.getEnv());
+            entry.setPlanningDocument(ws.getPlanningDocument());
+            entry.setGithubOrg(ws.getGithubOrg());
+            entry.setDependentRepos(ws.getDependentRepos());
+            entry.setRequiredLabels(ws.getRequiredLabels());
+            entry.setWorkspaceId(ws.getWorkspaceId());
+            entry.setModel(ws.getModel());
+            entry.setEffort(ws.getEffort());
+            entry.setDefaultRunner(ws.getDefaultRunner());
+            entry.setRunners(ws.getRunners());
+            applyBundleToEntry(entry, ws.getPhaseConfigBundle());
+            entry.setArchived(ws.isArchived());
+        }
+    }
+
+    /**
+     * Locates the {@link WorkstreamEntry} that should receive sync updates for
+     * the given live {@link Workstream}. Matching by {@code workstreamId} is
+     * preferred; {@code channelId} is a fallback for legacy entries created
+     * before IDs were universal.
+     *
+     * @param ws the active workstream being synced
+     * @return the matching entry, or {@code null} when no entry exists yet
+     */
+    private WorkstreamEntry findEntryToSync(Workstream ws) {
+        String id = ws.getWorkstreamId();
+        if (id != null) {
+            for (WorkstreamEntry e : workstreams) {
+                if (id.equals(e.getWorkstreamId())) return e;
             }
         }
+        String chan = ws.getChannelId();
+        if (chan == null) return null;
+        for (WorkstreamEntry e : workstreams) {
+            if (chan.equals(e.getChannelId())) return e;
+        }
+        return null;
     }
 
     /**
