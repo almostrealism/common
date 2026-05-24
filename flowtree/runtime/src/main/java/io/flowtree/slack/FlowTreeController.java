@@ -93,12 +93,10 @@ import java.util.function.BiConsumer;
 public class FlowTreeController implements ConsoleFeatures {
 
     /**
-     * Runtime state for a single Slack workspace connection.
-     *
-     * <p>Each entry holds the tokens, Bolt {@link App}, {@link SocketModeApp}, and
-     * {@link SlackNotifier} for one Slack team. In single-workspace mode only
+     * Runtime state for a single Slack workspace connection (tokens, Bolt app,
+     * SocketModeApp, notifier). In single-workspace mode only
      * {@link #defaultConnection} is populated; in multi-workspace mode
-     * {@link #workspaceConnections} holds one entry per {@code slackWorkspaces} entry.</p>
+     * {@link #workspaceConnections} holds one entry per workspace.
      */
     public static class WorkspaceConnection {
         /** Slack team ID (T...) identifying this workspace. */
@@ -231,21 +229,11 @@ public class FlowTreeController implements ConsoleFeatures {
         this.running = new AtomicBoolean(false);
     }
 
-    /**
-     * Returns the port used by the HTTP API endpoint.
-     */
-    public int getApiPort() {
-        return apiPort;
-    }
+    /** Returns the port used by the HTTP API endpoint. */
+    public int getApiPort() { return apiPort; }
 
-    /**
-     * Sets the port for the HTTP API endpoint. Must be called before {@link #start()}.
-     *
-     * @param apiPort the port number (0 for ephemeral)
-     */
-    public void setApiPort(int apiPort) {
-        this.apiPort = apiPort;
-    }
+    /** Sets the HTTP API endpoint port; must be called before {@link #start()}. */
+    public void setApiPort(int apiPort) { this.apiPort = apiPort; }
 
     /**
      * Returns the port the FlowTree server listens on for agent connections.
@@ -300,8 +288,8 @@ public class FlowTreeController implements ConsoleFeatures {
 
         // Populate per-workspace connections from slackWorkspaces list before registering
         // workstreams so that notifiersByWorkspace is ready when registerWorkstream() is called.
-        if (config.getSlackWorkspaces() != null && !config.getSlackWorkspaces().isEmpty()) {
-            buildWorkspaceConnections(config.getSlackWorkspaces());
+        if (config.getWorkspaces() != null && !config.getWorkspaces().isEmpty()) {
+            buildWorkspaceConnections(config.getWorkspaces());
         }
 
         for (Workstream workstream : config.toWorkstreams()) {
@@ -405,13 +393,13 @@ public class FlowTreeController implements ConsoleFeatures {
      */
     private void buildSecretsCache(WorkstreamConfig config) {
         Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> cache = new HashMap<>();
-        if (config.getSlackWorkspaces() == null) {
+        if (config.getWorkspaces() == null) {
             this.secretsCache = cache;
             return;
         }
-        for (WorkstreamConfig.SlackWorkspaceEntry wsEntry : config.getSlackWorkspaces()) {
+        for (WorkstreamConfig.WorkspaceEntry wsEntry : config.getWorkspaces()) {
             if (wsEntry.getSecrets() == null || wsEntry.getSecrets().isEmpty()) continue;
-            String workspaceId = wsEntry.getWorkspaceId();
+            String workspaceId = wsEntry.getId();
             Map<String, WorkstreamConfig.WorkspaceSecretEntry> byName = new HashMap<>();
             for (WorkstreamConfig.WorkspaceSecretEntry entry : wsEntry.getSecrets()) {
                 if (entry.getName() == null || entry.getFile() == null) continue;
@@ -510,8 +498,8 @@ public class FlowTreeController implements ConsoleFeatures {
 
             // Rebuild workspace connections before re-registering workstreams so that
             // notifiersByWorkspace is populated when registerWorkstream() runs.
-            if (config.getSlackWorkspaces() != null && !config.getSlackWorkspaces().isEmpty()) {
-                buildWorkspaceConnections(config.getSlackWorkspaces());
+            if (config.getWorkspaces() != null && !config.getWorkspaces().isEmpty()) {
+                buildWorkspaceConnections(config.getWorkspaces());
                 log("Rebuilt " + workspaceConnections.size() + " workspace connection(s)");
             }
 
@@ -648,13 +636,24 @@ public class FlowTreeController implements ConsoleFeatures {
      *
      * @param entries the Slack workspace entries from the YAML configuration
      */
-    private void buildWorkspaceConnections(List<WorkstreamConfig.SlackWorkspaceEntry> entries) {
+    private void buildWorkspaceConnections(List<WorkstreamConfig.WorkspaceEntry> entries) {
         workspaceConnections.clear();
-        for (WorkstreamConfig.SlackWorkspaceEntry wsEntry : entries) {
+        for (WorkstreamConfig.WorkspaceEntry wsEntry : entries) {
+            if (wsEntry.getSlackTeamId() == null || wsEntry.getSlackTeamId().isEmpty()) {
+                // No Slack integration — register a no-op connection so
+                // multi-workspace routing stays active and start() does not
+                // fall back to single-workspace mode via defaultConnection.
+                WorkspaceConnection noopConn = new WorkspaceConnection(wsEntry.getId(), null, null);
+                if (wsEntry.getDefaultChannel() != null) noopConn.notifier.setDefaultChannelId(wsEntry.getDefaultChannel());
+                if (statsStore != null) noopConn.notifier.setStatsStore(statsStore);
+                workspaceConnections.put(wsEntry.getId(), noopConn);
+                log("Workspace " + wsEntry.getId() + " has no slackTeamId — registered no-op connection");
+                continue;
+            }
             try {
                 SlackTokens tokens = SlackTokens.from(wsEntry);
                 WorkspaceConnection conn = new WorkspaceConnection(
-                        wsEntry.getWorkspaceId(), tokens.getBotToken(), tokens.getAppToken());
+                        wsEntry.getId(), tokens.getBotToken(), tokens.getAppToken());
                 // Apply the effective invite list (plural wins, singular for legacy).
                 if (!wsEntry.effectiveChannelOwnerUserIds().isEmpty()) {
                     conn.notifier.setChannelOwnerUserIds(wsEntry.effectiveChannelOwnerUserIds());
@@ -663,17 +662,17 @@ public class FlowTreeController implements ConsoleFeatures {
                     conn.notifier.setDefaultChannelId(wsEntry.getDefaultChannel());
                 }
                 if (statsStore != null) conn.notifier.setStatsStore(statsStore);
-                workspaceConnections.put(wsEntry.getWorkspaceId(), conn);
-                log("Configured workspace connection: " + wsEntry.getWorkspaceId()
+                workspaceConnections.put(wsEntry.getId(), conn);
+                log("Configured workspace connection: " + wsEntry.getId()
                         + (wsEntry.getName() != null ? " (" + wsEntry.getName() + ")" : ""));
             } catch (IOException e) {
-                warn("Failed to load tokens for workspace " + wsEntry.getWorkspaceId()
+                warn("Failed to load tokens for workspace " + wsEntry.getId()
                         + ": " + e.getMessage() + " — registering with no-op notifier to prevent"
                         + " cross-workspace fallback");
                 WorkspaceConnection conn = new WorkspaceConnection(
-                        wsEntry.getWorkspaceId(), null, null);
+                        wsEntry.getId(), null, null);
                 if (statsStore != null) conn.notifier.setStatsStore(statsStore);
-                workspaceConnections.put(wsEntry.getWorkspaceId(), conn);
+                workspaceConnections.put(wsEntry.getId(), conn);
             }
         }
         if (!workspaceConnections.isEmpty()) {
@@ -1241,6 +1240,8 @@ public class FlowTreeController implements ConsoleFeatures {
                     apiEndpoint.setOrgToWorkspaceId(orgToWorkspace);
                     log("Loaded workspace mapping for " + orgToWorkspace.size() + " org(s)");
                 }
+                apiEndpoint.setWorkspaceLookup(loadedConfig::findWorkspace);
+                apiEndpoint.setWorkspaceRenameHook(loadedConfig::renameWorkspace);
             }
 
             // Configure memory server URL for message storage

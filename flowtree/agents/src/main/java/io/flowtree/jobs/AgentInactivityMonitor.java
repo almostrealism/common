@@ -17,27 +17,36 @@
 package io.flowtree.jobs;
 
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import java.util.function.LongConsumer;
 
 /**
- * Watches a {@link Process} for stdout silence and destroys it (and its
- * descendants) when no output has been observed for a configured duration.
+ * Watches a subprocess for stdout silence and terminates it when no output
+ * has been observed for a configured duration.
  *
  * <p>The owning code updates an {@link AtomicLong} clock on every output line
- * received from the process; the monitor wakes periodically and destroys the
- * process if the clock has not advanced within the timeout.  This protects
- * against subprocesses that spawn shell loops which fail to terminate
- * (a recurring failure mode for autonomous coding agents).</p>
+ * received from the process; the monitor wakes periodically and runs the
+ * configured kill action if the clock has not advanced within the timeout.
+ * This protects against subprocesses that spawn shell loops which fail to
+ * terminate (a recurring failure mode for autonomous coding agents).</p>
+ *
+ * <p>The monitor is decoupled from any particular process abstraction: it
+ * is given a {@link BooleanSupplier} that reports whether the subprocess is
+ * still alive and a {@link Runnable} that terminates it. This lets the same
+ * monitor watch a raw {@link Process} or a {@link TmuxSession}.</p>
  */
 final class AgentInactivityMonitor {
 
-    /** The process being watched. */
-    private final Process process;
+    /** Reports whether the watched subprocess is still alive. */
+    private final BooleanSupplier alive;
+
+    /** Action that terminates the watched subprocess and its children. */
+    private final Runnable killAction;
 
     /** Clock updated by the owner on every line of stdout. */
     private final AtomicLong lastOutputAt;
 
-    /** Wall-clock duration of stdout silence after which {@link #process} is killed. */
+    /** Wall-clock duration of stdout silence after which the kill action runs. */
     private final long inactivityTimeoutMillis;
 
     /** Polling interval; never less than 5 seconds, never more than 60 seconds. */
@@ -50,7 +59,9 @@ final class AgentInactivityMonitor {
     private final String threadName;
 
     /**
-     * Creates a monitor for {@code process}.
+     * Convenience constructor that adapts a {@link Process} to the generic
+     * alive/kill contract: alive is {@code process.isAlive()} and kill
+     * destroys the process and its descendants forcibly.
      *
      * @param process                  the subprocess to observe
      * @param lastOutputAt             clock updated by the read loop on every output line
@@ -59,11 +70,36 @@ final class AgentInactivityMonitor {
      * @param threadName               name for the daemon monitor thread
      */
     AgentInactivityMonitor(Process process,
-                             AtomicLong lastOutputAt,
-                             long inactivityTimeoutMillis,
-                             LongConsumer onTimeout,
-                             String threadName) {
-        this.process = process;
+                           AtomicLong lastOutputAt,
+                           long inactivityTimeoutMillis,
+                           LongConsumer onTimeout,
+                           String threadName) {
+        this(process::isAlive,
+             () -> {
+                 process.descendants().forEach(ProcessHandle::destroyForcibly);
+                 process.destroyForcibly();
+             },
+             lastOutputAt, inactivityTimeoutMillis, onTimeout, threadName);
+    }
+
+    /**
+     * Creates a monitor with explicit alive-check and kill action.
+     *
+     * @param alive                    reports whether the subprocess is still running
+     * @param killAction               terminates the subprocess (called once when the timeout fires)
+     * @param lastOutputAt             clock updated by the read loop on every output line
+     * @param inactivityTimeoutMillis  duration of stdout silence that triggers a kill
+     * @param onTimeout                callback invoked with the observed idle ms when firing
+     * @param threadName               name for the daemon monitor thread
+     */
+    AgentInactivityMonitor(BooleanSupplier alive,
+                           Runnable killAction,
+                           AtomicLong lastOutputAt,
+                           long inactivityTimeoutMillis,
+                           LongConsumer onTimeout,
+                           String threadName) {
+        this.alive = alive;
+        this.killAction = killAction;
         this.lastOutputAt = lastOutputAt;
         this.inactivityTimeoutMillis = inactivityTimeoutMillis;
         this.checkIntervalMillis = Math.min(60_000L,
@@ -76,7 +112,7 @@ final class AgentInactivityMonitor {
      * Starts the monitor as a daemon thread and returns its handle.
      *
      * <p>Interrupt the returned thread to stop the monitor without firing.
-     * The monitor also exits naturally when {@link #process} is no longer alive.</p>
+     * The monitor also exits naturally when the subprocess is no longer alive.</p>
      *
      * @return the monitor thread (already started)
      */
@@ -89,7 +125,7 @@ final class AgentInactivityMonitor {
 
     /** Monitor body invoked on the daemon thread; exits when the process dies or the timeout fires. */
     private void run() {
-        while (process.isAlive()) {
+        while (alive.getAsBoolean()) {
             try {
                 Thread.sleep(checkIntervalMillis);
             } catch (InterruptedException ie) {
@@ -98,8 +134,7 @@ final class AgentInactivityMonitor {
             long idle = System.currentTimeMillis() - lastOutputAt.get();
             if (idle >= inactivityTimeoutMillis) {
                 onTimeout.accept(idle);
-                process.descendants().forEach(ProcessHandle::destroyForcibly);
-                process.destroyForcibly();
+                killAction.run();
                 return;
             }
         }

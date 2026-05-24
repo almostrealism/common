@@ -396,7 +396,7 @@ public enum WesternChromatic implements KeyPosition<WesternChromatic> {
 			case DS7:
 				return 78;
 			case E7:
-				return 70;
+				return 79;
 			case F7:
 				return 80;
 			case FS7:

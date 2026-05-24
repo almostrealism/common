@@ -20,10 +20,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.AgentProcessRunner;
-import io.flowtree.jobs.GitOperations;
+import io.flowtree.jobs.TmuxSession;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
-import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -31,7 +31,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -143,39 +142,24 @@ public class ClaudeCodeRunner implements AgentRunner {
         }
 
         ProcessBuilder pb = new ProcessBuilder(command);
+        AgentProcessRunner.applyRequestToProcessBuilder(pb, request);
+
         Path workDir = request.getWorkingDirectory();
-        if (workDir != null) {
-            pb.directory(workDir.toFile());
-        }
-
-        Map<String, String> env = request.getEnvironment();
-        if (env != null && !env.isEmpty()) {
-            for (Map.Entry<String, String> entry : env.entrySet()) {
-                if (entry.getValue() == null) {
-                    pb.environment().remove(entry.getKey());
-                } else {
-                    pb.environment().put(entry.getKey(), entry.getValue());
-                }
-            }
-        }
-
-        String activity = request.getActivityTag();
-        if (activity != null && !activity.isEmpty()) {
-            pb.environment().put("AR_AGENT_ACTIVITY", activity);
-        } else {
-            pb.environment().remove("AR_AGENT_ACTIVITY");
-        }
-        GitOperations.augmentPath(pb);
-
         logger.log("Command: " + String.join(" ", command));
         logger.log("Working directory: "
                 + (workDir != null ? workDir.toString() : System.getProperty("user.dir")));
 
-        pb.redirectErrorStream(true);
-        pb.redirectInput(ProcessBuilder.Redirect.from(new File("/dev/null")));
-
+        // Tmux is opt-in via AR_AGENT_USE_TMUX=enabled. Default is off so deployments
+        // do not flip launch backends on merge without an explicit operator decision.
+        boolean tmuxRequested = SystemUtils.isEnabled("AR_AGENT_USE_TMUX").orElse(false);
+        boolean useTmux = tmuxRequested && TmuxSession.isAvailable();
+        if (tmuxRequested && !useTmux) {
+            logger.warn("AR_AGENT_USE_TMUX is enabled but tmux is not on PATH;"
+                    + " falling back to direct process launch.");
+        }
         AgentProcessRunner.Result processResult = AgentProcessRunner.runAttempt(
                 pb,
+                useTmux,
                 request.getInactivityTimeoutMillis(),
                 request.getTaskId(),
                 logger);

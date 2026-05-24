@@ -21,6 +21,7 @@ import io.flowtree.jobs.agent.AgentRunRequest;
 import io.flowtree.jobs.agent.AgentRunResult;
 import io.flowtree.jobs.agent.AgentRunner;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
+import io.flowtree.jobs.agent.Phase;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
@@ -70,15 +71,26 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
     public void resolveRunnerHonoursRunnerName() {
         CodingAgentJob job = new CodingAgentJob("t-1", "p");
         job.setRunnerName(RECORDING_RUNNER);
-        AgentRunner resolved = job.resolveRunner();
+        AgentRunner resolved = job.resolveRunner(Phase.PRIMARY);
         assertEquals(RECORDING_RUNNER, resolved.getName());
     }
 
     @Test(timeout = 10000)
     public void resolveRunnerDefaultsToClaude() {
         CodingAgentJob job = new CodingAgentJob("t-1", "p");
-        AgentRunner resolved = job.resolveRunner();
+        AgentRunner resolved = job.resolveRunner(Phase.PRIMARY);
         assertEquals(AgentRunnerRegistry.CLAUDE, resolved.getName());
+    }
+
+    @Test(timeout = 10000)
+    public void resolveRunnerHonoursPerPhaseOverride() {
+        CodingAgentJob job = new CodingAgentJob("t-1", "p");
+        job.setRunnerForPhase(Phase.DEDUPLICATION, RECORDING_RUNNER);
+        assertEquals(RECORDING_RUNNER,
+                job.resolveRunner(Phase.DEDUPLICATION).getName());
+        // Other phases still fall back to default.
+        assertEquals(AgentRunnerRegistry.CLAUDE,
+                job.resolveRunner(Phase.PRIMARY).getName());
     }
 
     @Test(timeout = 10000)
@@ -145,12 +157,22 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         CodingAgentJob original = new CodingAgentJob("t-4", "p");
         original.setRunnerName(RECORDING_RUNNER);
         String encoded = original.encode();
-        assertTrue("runner key missing in encoded form: " + encoded,
-                encoded.contains("::runner:=" + RECORDING_RUNNER));
+        assertTrue("defaultRunner key missing in encoded form: " + encoded,
+                encoded.contains("::defaultRunner:=" + RECORDING_RUNNER));
 
         CodingAgentJob roundTrip = new CodingAgentJob();
-        roundTrip.set("runner", RECORDING_RUNNER);
+        roundTrip.set("defaultRunner", RECORDING_RUNNER);
         assertEquals(RECORDING_RUNNER, roundTrip.getRunnerName());
+    }
+
+    @Test(timeout = 10000)
+    public void legacyRunnerKeySetsDefaultRunner() {
+        // Phase-2 deserialization must continue to accept the legacy
+        // ``::runner:=<name>`` key emitted by pre-Phase-2 jobs.
+        CodingAgentJob restored = new CodingAgentJob();
+        restored.set("runner", RECORDING_RUNNER);
+        assertEquals(RECORDING_RUNNER, restored.getDefaultRunner());
+        assertEquals(RECORDING_RUNNER, restored.getRunnerName());
     }
 
     @Test(timeout = 10000)
@@ -158,7 +180,112 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         CodingAgentJob job = new CodingAgentJob("t-5", "p");
         String encoded = job.encode();
         assertFalse("default runner should not be serialised: " + encoded,
+                encoded.contains("::defaultRunner:="));
+        assertFalse("legacy runner key should not be re-emitted: " + encoded,
                 encoded.contains("::runner:="));
+        assertFalse("runners map should not be serialised when empty: " + encoded,
+                encoded.contains("::runners:="));
+    }
+
+    @Test(timeout = 10000)
+    public void perPhaseRunnerMapRoundTrips() {
+        CodingAgentJob original = new CodingAgentJob("t-rp", "p");
+        original.setRunnerForPhase(Phase.PRIMARY, RECORDING_RUNNER);
+        original.setRunnerForPhase(Phase.DEDUPLICATION, RECORDING_RUNNER);
+        String encoded = original.encode();
+        assertTrue("runners key missing in encoded form: " + encoded,
+                encoded.contains("::runners:="));
+
+        CodingAgentJob restored = GitManagedJobSerializationTest.roundTrip(original);
+        assertEquals(RECORDING_RUNNER, restored.getRunnerForPhase(Phase.PRIMARY));
+        assertEquals(RECORDING_RUNNER, restored.getRunnerForPhase(Phase.DEDUPLICATION));
+        // Phases not in the map fall back to default ("claude").
+        assertEquals(AgentRunnerRegistry.CLAUDE,
+                restored.getRunnerForPhase(Phase.COMMIT_MESSAGE));
+    }
+
+    @Test(timeout = 10000)
+    public void runnersKeyAndDefaultRunnerCoexistOnTheWire() {
+        CodingAgentJob original = new CodingAgentJob("t-coexist", "p");
+        original.setDefaultRunner(RECORDING_RUNNER);
+        original.setRunnerForPhase(Phase.DEDUPLICATION, AgentRunnerRegistry.CLAUDE);
+        CodingAgentJob restored = GitManagedJobSerializationTest.roundTrip(original);
+        assertEquals(RECORDING_RUNNER, restored.getDefaultRunner());
+        assertEquals(AgentRunnerRegistry.CLAUDE,
+                restored.getRunnerForPhase(Phase.DEDUPLICATION));
+        // Unset phase still falls through to defaultRunner.
+        assertEquals(RECORDING_RUNNER,
+                restored.getRunnerForPhase(Phase.ORGANIZATIONAL_PLACEMENT));
+    }
+
+    @Test(timeout = 10000)
+    public void runnersAndLegacyRunnerKeyTogetherPrefersExplicitDefault() {
+        // When both legacy ``runner`` and new ``defaultRunner`` are present
+        // (mixed-producer wire format), the explicit ``defaultRunner`` wins.
+        CodingAgentJob restored = new CodingAgentJob();
+        restored.set("defaultRunner", RECORDING_RUNNER);
+        restored.set("runner", AgentRunnerRegistry.CLAUDE);
+        assertEquals(RECORDING_RUNNER, restored.getDefaultRunner());
+    }
+
+    @Test(timeout = 10000)
+    public void unknownPhaseInRunnersIsSkippedRatherThanFailing() {
+        // A future producer must not be able to brick a current consumer.
+        CodingAgentJob restored = new CodingAgentJob();
+        restored.set("runners", "primary=" + RECORDING_RUNNER
+                + ",future-phase=opencode");
+        assertEquals(RECORDING_RUNNER, restored.getRunnerForPhase(Phase.PRIMARY));
+    }
+
+    @Test(timeout = 10000)
+    public void resolveCurrentPhaseRoundTripsForEveryRuleName() {
+        // Every rule name must resolve to a Phase so dispatch can route the
+        // correction session to the operator-configured runner.
+        assertEquals(Phase.ENFORCE_CHANGES, Phase.fromRuleName("enforce-changes"));
+        assertEquals(Phase.REVIEW, Phase.fromRuleName("review"));
+        assertEquals(Phase.DEDUPLICATION, Phase.fromRuleName("deduplication"));
+        assertEquals(Phase.ORGANIZATIONAL_PLACEMENT,
+                Phase.fromRuleName("organizational-placement"));
+        assertEquals(Phase.MAVEN_DEPENDENCY_PROTECTION,
+                Phase.fromRuleName("no-maven-dependency-changes"));
+        assertEquals(Phase.POST_COMPLETION,
+                Phase.fromRuleName("post-completion-command"));
+        assertEquals(Phase.COMMIT_MESSAGE, Phase.fromRuleName("commit-message"));
+    }
+
+    @Test(timeout = 10000)
+    public void reviewPhaseRoutesToConfiguredRunner() {
+        CodingAgentJob job = new CodingAgentJob("t-rv", "p");
+        job.setRunnerForPhase(Phase.REVIEW, RECORDING_RUNNER);
+        assertEquals(RECORDING_RUNNER, job.resolveRunner(Phase.REVIEW).getName());
+        // Other phases still fall back to default.
+        assertEquals(AgentRunnerRegistry.CLAUDE,
+                job.resolveRunner(Phase.PRIMARY).getName());
+    }
+
+    @Test(timeout = 10000)
+    public void reviewPhaseInheritsDefaultRunner() {
+        CodingAgentJob job = new CodingAgentJob("t-rv", "p");
+        // No per-phase override — must inherit the (default) Claude runner.
+        assertEquals(AgentRunnerRegistry.CLAUDE,
+                job.resolveRunner(Phase.REVIEW).getName());
+    }
+
+    @Test(timeout = 10000)
+    public void reviewPhaseOrderedBetweenEnforceChangesAndDeduplication() {
+        // The declaration order of Phase governs encode/decode iteration, so
+        // verify the REVIEW phase appears between ENFORCE_CHANGES and
+        // DEDUPLICATION — matching the runtime execution order documented in
+        // PHASES.md.
+        Phase[] values = Phase.values();
+        int ec = -1, rv = -1, dd = -1;
+        for (int i = 0; i < values.length; i++) {
+            if (values[i] == Phase.ENFORCE_CHANGES) ec = i;
+            if (values[i] == Phase.REVIEW) rv = i;
+            if (values[i] == Phase.DEDUPLICATION) dd = i;
+        }
+        assertTrue("ENFORCE_CHANGES must be declared before REVIEW", ec >= 0 && ec < rv);
+        assertTrue("REVIEW must be declared before DEDUPLICATION", rv < dd);
     }
 
     @Test(timeout = 10000)

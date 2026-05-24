@@ -1,0 +1,258 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.flowtree.slack;
+
+import io.flowtree.jobs.CodingAgentJobFactory;
+import io.flowtree.jobs.agent.AgentRunnerRegistry;
+import io.flowtree.jobs.agent.Phase;
+import io.flowtree.jobs.agent.PhaseConfig;
+import io.flowtree.jobs.agent.PhaseConfigBundle;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.util.EnumMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+
+/**
+ * Tests for {@link PhaseConfigResolver}. Walks the seven-level precedence
+ * ladder for each of {@code runner}, {@code model}, {@code effort} —
+ * independently and combined — and documents the behavioural change
+ * relative to {@link SubmissionRunnerResolver}.
+ */
+public class PhaseConfigResolverTest extends TestSuiteBase {
+
+    /** Registered alongside {@code "claude"} for tests that need a second runner. */
+    private static final String TEST_RUNNER = "phase-config-resolver-test-runner";
+
+    @Before
+    public void registerTestRunner() {
+        AgentRunnerRegistry.register(TEST_RUNNER, () -> null);
+    }
+
+    private static PhaseConfigBundle bundle(PhaseConfig def, Phase phase, PhaseConfig override) {
+        Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
+        if (phase != null && override != null) overrides.put(phase, override);
+        return new PhaseConfigBundle(def == null ? PhaseConfig.EMPTY : def, overrides);
+    }
+
+    // --- Runner resolution (mirror SubmissionRunnerResolverTest cases) -------
+
+    @Test(timeout = 5000)
+    public void allEmptyResolvesToControllerDefault() {
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        PhaseConfig resolved = r.forPhase(Phase.PRIMARY);
+        assertEquals(AgentRunnerRegistry.CLAUDE, resolved.runner());
+        assertNull(resolved.model());
+        assertNull(resolved.effort());
+    }
+
+    @Test(timeout = 5000)
+    public void jobOverrideBeatsAllOtherLevels() {
+        PhaseConfigBundle job = bundle(null, Phase.PRIMARY,
+                new PhaseConfig(TEST_RUNNER, null, null));
+        PhaseConfigBundle ws = bundle(new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null), null, null);
+        PhaseConfigBundle wsp = bundle(new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null), null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(job, ws, wsp);
+        assertNull(r.error());
+        assertEquals(TEST_RUNNER, r.forPhase(Phase.PRIMARY).runner());
+    }
+
+    @Test(timeout = 5000)
+    public void jobDefaultBeatsWorkstreamOverride() {
+        PhaseConfigBundle job = bundle(new PhaseConfig(TEST_RUNNER, null, null), null, null);
+        PhaseConfigBundle ws = bundle(null, Phase.PRIMARY,
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null));
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(job, ws, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        assertEquals(TEST_RUNNER, r.forPhase(Phase.PRIMARY).runner());
+    }
+
+    @Test(timeout = 5000)
+    public void workstreamOverrideBeatsWorkstreamDefault() {
+        PhaseConfigBundle ws = bundle(new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null),
+                Phase.REVIEW, new PhaseConfig(TEST_RUNNER, null, null));
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        assertEquals(TEST_RUNNER, r.forPhase(Phase.REVIEW).runner());
+        assertEquals(AgentRunnerRegistry.CLAUDE, r.forPhase(Phase.PRIMARY).runner());
+    }
+
+    @Test(timeout = 5000)
+    public void workstreamDefaultBeatsWorkspaceDefault() {
+        PhaseConfigBundle ws = bundle(new PhaseConfig(TEST_RUNNER, null, null), null, null);
+        PhaseConfigBundle wsp = bundle(new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null), null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, wsp);
+        assertNull(r.error());
+        assertEquals(TEST_RUNNER, r.forPhase(Phase.PRIMARY).runner());
+    }
+
+    @Test(timeout = 5000)
+    public void workspaceOverrideBeatsWorkspaceDefault() {
+        PhaseConfigBundle wsp = bundle(new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null),
+                Phase.REVIEW, new PhaseConfig(TEST_RUNNER, null, null));
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY, wsp);
+        assertNull(r.error());
+        assertEquals(TEST_RUNNER, r.forPhase(Phase.REVIEW).runner());
+        assertEquals(AgentRunnerRegistry.CLAUDE, r.forPhase(Phase.PRIMARY).runner());
+    }
+
+    // --- Model resolution -----------------------------------------------------
+
+    @Test(timeout = 5000)
+    public void modelResolvesFromWorkstreamDefault() {
+        PhaseConfigBundle ws = bundle(new PhaseConfig(null, "claude-opus-4-7", null), null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        assertEquals("claude-opus-4-7", r.forPhase(Phase.PRIMARY).model());
+    }
+
+    @Test(timeout = 5000)
+    public void modelPerPhaseOverrideBeatsDefault() {
+        PhaseConfigBundle job = bundle(new PhaseConfig(null, "claude-opus-4-7", null),
+                Phase.REVIEW, new PhaseConfig(null, "claude-sonnet-4-6", null));
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                job, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        assertEquals("claude-sonnet-4-6", r.forPhase(Phase.REVIEW).model());
+        assertEquals("claude-opus-4-7", r.forPhase(Phase.PRIMARY).model());
+    }
+
+    // --- Effort resolution ----------------------------------------------------
+
+    @Test(timeout = 5000)
+    public void effortPerPhaseOverrideBeatsDefault() {
+        PhaseConfigBundle job = bundle(new PhaseConfig(null, null, "high"),
+                Phase.COMMIT_MESSAGE, new PhaseConfig(null, null, "low"));
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                job, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        assertEquals("low", r.forPhase(Phase.COMMIT_MESSAGE).effort());
+        assertEquals("high", r.forPhase(Phase.PRIMARY).effort());
+    }
+
+    // --- Independent per-field fall-through -----------------------------------
+
+    @Test(timeout = 5000)
+    public void independentFieldsFallThroughIndependently() {
+        // Job sets effort only, workstream sets runner only, workspace sets model only.
+        PhaseConfigBundle job = bundle(new PhaseConfig(null, null, "high"), null, null);
+        PhaseConfigBundle ws = bundle(new PhaseConfig(TEST_RUNNER, null, null), null, null);
+        PhaseConfigBundle wsp = bundle(new PhaseConfig(null, "claude-opus-4-7", null), null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(job, ws, wsp);
+        assertNull(r.error());
+        PhaseConfig resolved = r.forPhase(Phase.PRIMARY);
+        assertEquals(TEST_RUNNER, resolved.runner());
+        assertEquals("claude-opus-4-7", resolved.model());
+        assertEquals("high", resolved.effort());
+    }
+
+    /**
+     * Documents the behavioural change relative to the legacy
+     * {@link SubmissionRunnerResolver}. Under the legacy resolver, a
+     * workstream {@code defaultRunner} fully shadowed any workspace
+     * per-phase entry. Under {@link PhaseConfigResolver}, each field
+     * falls through independently: a workstream default that sets only
+     * {@code runner} must NOT block {@code model} on a workspace per-phase
+     * entry.
+     */
+    @Test(timeout = 5000)
+    public void workspacePerPhaseNoLongerShadowedByWorkstreamDefault() {
+        PhaseConfigBundle ws = bundle(new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null), null, null);
+        PhaseConfigBundle wsp = bundle(null, Phase.REVIEW,
+                new PhaseConfig(null, "claude-sonnet-4-6", "high"));
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, ws, wsp);
+        assertNull(r.error());
+        PhaseConfig review = r.forPhase(Phase.REVIEW);
+        // Under the new ladder, workspace per-phase model/effort flow through
+        // even though the workstream sets a default runner.
+        assertEquals(AgentRunnerRegistry.CLAUDE, review.runner());
+        assertEquals("claude-sonnet-4-6", review.model());
+        assertEquals("high", review.effort());
+    }
+
+    // --- Validation -----------------------------------------------------------
+
+    @Test(timeout = 5000)
+    public void unknownRunnerReturnsError() {
+        PhaseConfigBundle job = bundle(new PhaseConfig("no-such-runner", null, null), null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                job, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNotNull(r.error());
+        assertTrue("error mentions runner: " + r.error(),
+                r.error().contains("no-such-runner"));
+    }
+
+    @Test(timeout = 5000)
+    public void invalidEffortReturnsError() {
+        PhaseConfigBundle job = bundle(new PhaseConfig(null, null, "nonsense"), null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                job, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNotNull(r.error());
+        assertTrue("error mentions effort: " + r.error(),
+                r.error().toLowerCase().contains("effort"));
+    }
+
+    // --- applyTo --------------------------------------------------------------
+
+    @Test(timeout = 5000)
+    public void applyToFactoryPopulatesBundle() {
+        PhaseConfigBundle job = bundle(new PhaseConfig(null, "claude-opus-4-7", "high"),
+                Phase.REVIEW, new PhaseConfig(null, "claude-sonnet-4-6", "medium"));
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                job, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        CodingAgentJobFactory factory = new CodingAgentJobFactory("p");
+        r.applyTo(factory);
+        PhaseConfigBundle applied = factory.getPhaseConfigBundle();
+        // Default carries the resolved model + effort plus the controller default runner.
+        assertEquals("claude-opus-4-7", applied.defaultPhaseConfig().model());
+        assertEquals("high", applied.defaultPhaseConfig().effort());
+        assertEquals(AgentRunnerRegistry.CLAUDE, applied.defaultPhaseConfig().runner());
+        // REVIEW entry has its own model + effort.
+        PhaseConfig review = applied.phaseConfigs().get(Phase.REVIEW);
+        assertNotNull(review);
+        assertEquals("claude-sonnet-4-6", review.model());
+        assertEquals("medium", review.effort());
+    }
+
+    // --- resolveLegacyRunners convenience overload ----------------------------
+
+    @Test(timeout = 5000)
+    public void resolveLegacyRunnersMirrorsRunnerOnlyLadder() {
+        Map<String, String> requestRunners = new LinkedHashMap<>();
+        requestRunners.put("review", TEST_RUNNER);
+        PhaseConfigResolver r = PhaseConfigResolver.resolveLegacyRunners(
+                requestRunners, AgentRunnerRegistry.CLAUDE, null, null, null);
+        assertNull(r.error());
+        assertEquals(TEST_RUNNER, r.forPhase(Phase.REVIEW).runner());
+        assertEquals(AgentRunnerRegistry.CLAUDE, r.forPhase(Phase.PRIMARY).runner());
+    }
+}

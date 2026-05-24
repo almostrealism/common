@@ -388,6 +388,7 @@ public class InstructionPromptBuilder {
      * </ol>
      * <ol>
      *   <li>Opening paragraph (autonomous agent context)</li>
+     *   <li>Git workflow reminder (always) — agent does not control commits</li>
      *   <li>Communication (when workstream URL is set)</li>
      *   <li>Permission Denials (when workstream URL is set)</li>
      *   <li>Non-Code Requests (when workstream URL is set)</li>
@@ -490,6 +491,18 @@ public class InstructionPromptBuilder {
         sb.append("You are working autonomously as a coding agent. ");
         sb.append("There is no TTY and no interactive session --do not attempt to wait ");
         sb.append("for user input or interactive chat responses.\n\n");
+
+        // Git workflow reminder -- injected before caller-supplied prompt text so
+        // every agent runner sees this regardless of which runner handles the job.
+        sb.append("**Note on git workflow.** You edit the working tree; the harness ");
+        sb.append("commits whatever's there in a single commit at the end of your session. ");
+        sb.append("You cannot sequence commits, name them, or split work across multiple ");
+        sb.append("commits — every change you make lands in one commit at session end. ");
+        sb.append("If the prompt below describes work as \"commit 1 / commit 2 / commit 3,\" ");
+        sb.append("treat that as describing logically separate phases of work that you should ");
+        sb.append("still perform — but understand that they will all end up in a single final ");
+        sb.append("commit, and your job is to leave the working tree in a state that reflects ");
+        sb.append("all of those phases together.\n\n");
 
         // Messaging instructions - only when a workstream URL is configured
         if (workstreamUrl != null && !workstreamUrl.isEmpty()) {

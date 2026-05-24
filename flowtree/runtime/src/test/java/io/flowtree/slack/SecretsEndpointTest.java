@@ -110,11 +110,11 @@ public class SecretsEndpointTest extends TestSuiteBase {
         // Workstream registered on notifier for workspace-A
         SlackNotifier notifier = new SlackNotifier(null);
         Workstream workstreamA = new Workstream(WORKSTREAM_A, "C_TEST_A", "#test-channel");
-        workstreamA.setSlackWorkspaceId(WORKSPACE_A);
+        workstreamA.setWorkspaceId(WORKSPACE_A);
         notifier.registerWorkstream(workstreamA);
 
         Workstream workstreamB = new Workstream(WORKSTREAM_B, "C_TEST_B", "#test-channel-b");
-        workstreamB.setSlackWorkspaceId(WORKSPACE_B);
+        workstreamB.setWorkspaceId(WORKSPACE_B);
         notifier.registerWorkstream(workstreamB);
 
         endpoint = new FlowTreeApiEndpoint(0, notifier);
@@ -283,7 +283,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         endpoint.stop();
         SlackNotifier notifier = new SlackNotifier(null);
         Workstream ws = new Workstream(WORKSTREAM_A, "C_TEST_A", "#test");
-        ws.setSlackWorkspaceId(WORKSPACE_A);
+        ws.setWorkspaceId(WORKSPACE_A);
         notifier.registerWorkstream(ws);
 
         WorkstreamConfig.WorkspaceSecretEntry existEntry = new WorkstreamConfig.WorkspaceSecretEntry();
