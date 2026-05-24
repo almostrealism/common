@@ -178,8 +178,8 @@ public class LayerTrackingTest extends TestSuiteBase {
 		log("Speedup: " + String.format("%.1f", speedup) + "%");
 
 		try {
-			trainingProfile.save("utils/results/layer-tracking-training.xml");
-			inferenceProfile.save("utils/results/layer-tracking-inference.xml");
+			trainingProfile.save("results/layer-tracking-training.xml");
+			inferenceProfile.save("results/layer-tracking-inference.xml");
 		} catch (Exception e) {
 			log("Could not save profiles: " + e.getMessage());
 		}

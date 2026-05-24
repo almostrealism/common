@@ -49,7 +49,7 @@ one-time compilation overhead during warmup).
 
 > **Retrospective (2026-04-29):** This objective is complete. `DefaultCellularLayer`
 > now has `setInputTracking(boolean)`, which allocates or destroys the input buffer
-> on demand. `CompiledModel.compile(model, false, ...)` calls `configureTracking()`
+> on demand. `CompiledModel.compile(model, false, ...)` calls `model.setInputTracking(false)`
 > to disable input tracking across all layers before optimizing the forward graph.
 > The entry cell uses a runtime `this.input == null` check so no cell rebuild is
 > needed. The feature is validated by `LayerTrackingTest` (4 tests: correctness,
@@ -174,7 +174,7 @@ that the downstream attention dot-product must read through.~~
 
 | Priority | Improvement | Original Cost | Status |
 |----------|-------------|---------------|--------|
-| 1 | ~~Eliminate inference-mode copy ops~~ | 17.8% | ✅ Complete (`setInputTracking`, `configureTracking`) |
+| 1 | ~~Eliminate inference-mode copy ops~~ | 17.8% | ✅ Complete (`setInputTracking`, `model.setInputTracking(false)`) |
 | 2 | Batch assignments / reduce op count | 7.8% + overhead | ⏳ Outstanding |
 | 3 | Optimize dense matmul kernel | 12.6% | ⏳ Outstanding |
 | 4 | Fuse SwiGLU gate operations | 7.3% + 2.2% | ⏳ Outstanding |
@@ -235,7 +235,7 @@ sections for citations.
 **Objective 1 (copy overhead):** Implemented on this branch. `DefaultCellularLayer`
 gains `setInputTracking(boolean)` (line 325,
 `domain/graph/src/main/java/org/almostrealism/layers/DefaultCellularLayer.java`),
-and `CompiledModel` gains `configureTracking()` (line 353,
+and `CompiledModel` calls `model.setInputTracking(false)` (line 297,
 `domain/graph/src/main/java/org/almostrealism/model/CompiledModel.java`).
 `LayerTrackingTest` (4 tests, `engine/utils/src/test/java/`) validates correctness
 and operation-count reduction. `Qwen3VocabProjectionTest` and

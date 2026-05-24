@@ -63,7 +63,7 @@ Because the optimizer evaluates the lambda at optimization time, it only sees th
 1. Updates the `inputTrackingEnabled` flag
 2. Allocates or destroys the input buffer as needed
 
-The entry cell's lambda checks `this.input` at evaluation time, so no cell rebuild is needed. This must be called **before** the computation graph is optimized. `CompiledModel.compile()` ensures this by calling `configureTracking()` before `forward.flatten().optimize()`.
+The entry cell's lambda checks `this.input` at evaluation time, so no cell rebuild is needed. This must be called **before** the computation graph is optimized. `CompiledModel.compile()` ensures this by calling `model.setInputTracking(false)` before `forward.flatten().optimize()`.
 
 ## Performance Impact
 

@@ -162,10 +162,7 @@ public class Model implements Setup, Destroyable, Tracking, CodeFeatures {
 	@Override
 	public void setInputTracking(boolean inputTracking) {
 		blocks.setInputTracking(inputTracking);
-		inputs.forEach(b -> {
-			if (b instanceof Tracking)
-				((Tracking) b).setInputTracking(inputTracking);
-		});
+		Tracking.propagate(inputs, inputTracking);
 	}
 
 	/**

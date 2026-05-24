@@ -142,10 +142,7 @@ public class BranchBlock implements Block, Tracking {
 	 */
 	@Override
 	public void setInputTracking(boolean inputTracking) {
-		children.forEach(c -> {
-			if (c instanceof Tracking)
-				((Tracking) c).setInputTracking(inputTracking);
-		});
+		Tracking.propagate(children, inputTracking);
 	}
 
 	/**

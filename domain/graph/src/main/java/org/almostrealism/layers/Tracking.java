@@ -41,4 +41,21 @@ public interface Tracking {
 	 * @param inputTracking whether to enable input tracking
 	 */
 	void setInputTracking(boolean inputTracking);
+
+	/**
+	 * Fans out the tracking toggle to every element in {@code items} that
+	 * implements {@link Tracking}. Composite blocks ({@code SequentialBlock},
+	 * {@code BranchBlock}, {@code Model}) use this instead of duplicating the
+	 * iterate-and-cast pattern.
+	 *
+	 * @param items    the child elements to receive the toggle
+	 * @param enabled  whether to enable input tracking
+	 */
+	static void propagate(Iterable<?> items, boolean enabled) {
+		for (Object item : items) {
+			if (item instanceof Tracking) {
+				((Tracking) item).setInputTracking(enabled);
+			}
+		}
+	}
 }

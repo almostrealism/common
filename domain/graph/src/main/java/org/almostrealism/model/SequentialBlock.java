@@ -145,10 +145,7 @@ public class SequentialBlock implements Block, Learning, Tracking, LayerRoutingF
 	 */
 	@Override
 	public void setInputTracking(boolean inputTracking) {
-		blocks.forEach(b -> {
-			if (b instanceof Tracking)
-				((Tracking) b).setInputTracking(inputTracking);
-		});
+		Tracking.propagate(blocks, inputTracking);
 	}
 
 	/**

@@ -288,6 +288,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		if (inputTracking && this.input == null) {
 			this.input = new PackedCollection(this.inputShape);
 		} else if (!inputTracking && this.input != null) {
+			// TODO(review): BackPropagationCell captures this buffer at layer creation; destroying it here can leave the backward cell referencing a freed PackedCollection if tracking is re-enabled.
 			this.input.destroy();
 			this.input = null;
 		}

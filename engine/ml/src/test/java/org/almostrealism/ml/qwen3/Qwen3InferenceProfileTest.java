@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
+import java.util.function.Consumer;
 
 /**
  * Profiling test for Qwen3 model inference performance. Builds a reduced-config
@@ -29,14 +30,15 @@ import java.util.Random;
  */
 public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleFeatures {
 
-	private static final String RESULTS_DIR = "ml/results";
+	private static final String RESULTS_DIR = "results";
 	private static final String PROFILE_PATH = RESULTS_DIR + "/qwen3_inference_profile.xml";
 	private static final String LOG_PATH = RESULTS_DIR + "/qwen3_inference_profile.txt";
 
 	@Test(timeout = 300000)
 	public void profileInference() throws IOException {
 		new File(RESULTS_DIR).mkdirs();
-		Console.root().addListener(OutputFeatures.fileOutput(LOG_PATH));
+		Consumer<String> listener = OutputFeatures.fileOutput(LOG_PATH);
+		Console.root().addListener(listener);
 
 		log("=== Qwen3 Inference Profile Test ===");
 
@@ -113,6 +115,10 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 			log(String.format("Tokens per second: %.1f", 1000.0 / avgMs));
 		} finally {
 			Hardware.getLocalHardware().clearProfile();
+			Console.root().removeListener(listener);
+			if (compiledModel != null) {
+				compiledModel.destroy();
+			}
 		}
 
 		// Save profile XML
