@@ -608,7 +608,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         String threadTs = event.getJobId() != null ? jobThreadTs.remove(event.getJobId()) : null;
 
         if (threadTs != null) {
-            postMessageInThread(workstream.getChannelId(), message, threadTs);
+            postMessageInThread(workstream.getChannelId(), message, threadTs, true);
         } else {
             postMessage(workstream.getChannelId(), message);
         }
@@ -640,7 +640,10 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         if (client == null) {
             log("No bot token - message would be posted to " + effectiveChannel + ":");
             log(text);
-            return null;
+            // Return a synthetic ts when a test callback is registered so that
+            // callers (e.g. onJobSubmitted) can store it in jobThreadTs and the
+            // threading path is exercised in unit tests.
+            return messageCallback != null ? "test-ts-" + System.nanoTime() : null;
         }
 
         try {
@@ -655,11 +658,11 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 return response.getTs();
             } else {
                 warn("Failed to post message to " + effectiveChannel + ": " + response.getError());
-                return postToFallbackChannel(effectiveChannel, text, null);
+                return postToFallbackChannel(effectiveChannel, text, null, false);
             }
         } catch (IOException | SlackApiException e) {
             warn("Error posting message to " + effectiveChannel + ": " + e.getMessage());
-            return postToFallbackChannel(effectiveChannel, text, null);
+            return postToFallbackChannel(effectiveChannel, text, null, false);
         }
     }
 
@@ -692,6 +695,20 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @return the reply message timestamp, or null on failure
      */
     public String postMessageInThread(String channelId, String text, String threadTs) {
+        return postMessageInThread(channelId, text, threadTs, false);
+    }
+
+    /**
+     * Posts a message as a thread reply under an existing message.
+     *
+     * @param channelId     the Slack channel ID
+     * @param text          the message text (supports Slack mrkdwn formatting)
+     * @param threadTs      the timestamp of the parent message to reply under
+     * @param replyBroadcast if true, also broadcast the message to the channel
+     *                       (Slack's "Also send to channel" feature)
+     * @return the reply message timestamp, or null on failure
+     */
+    public String postMessageInThread(String channelId, String text, String threadTs, boolean replyBroadcast) {
         String effectiveChannel = resolveChannel(channelId);
         if (effectiveChannel == null) {
             log("No channel ID and no default channel - skipping thread reply");
@@ -699,9 +716,11 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
 
         if (messageCallback != null) {
+            String broadcastParam = replyBroadcast ? ",\"reply_broadcast\":true" : "";
             messageCallback.accept("{\"channel\":\"" + effectiveChannel +
                                    "\",\"thread_ts\":\"" + JsonFieldExtractor.escapeJson(threadTs) +
-                                   "\",\"text\":\"" + JsonFieldExtractor.escapeJson(text) + "\"}");
+                                   "\"" + broadcastParam +
+                                   ",\"text\":\"" + JsonFieldExtractor.escapeJson(text) + "\"}");
         }
 
         if (client == null) {
@@ -716,6 +735,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 .channel(effectiveChannel)
                 .text(text)
                 .threadTs(threadTs)
+                .replyBroadcast(replyBroadcast)
                 .unfurlLinks(false)
                 .unfurlMedia(false)
             );
@@ -724,11 +744,11 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 return response.getTs();
             } else {
                 warn("Failed to post thread reply to " + effectiveChannel + ": " + response.getError());
-                return postToFallbackChannel(effectiveChannel, text, null);
+                return postToFallbackChannel(effectiveChannel, text, null, replyBroadcast);
             }
         } catch (IOException | SlackApiException e) {
             warn("Error posting thread reply to " + effectiveChannel + ": " + e.getMessage());
-            return postToFallbackChannel(effectiveChannel, text, null);
+            return postToFallbackChannel(effectiveChannel, text, null, replyBroadcast);
         }
     }
 
@@ -754,9 +774,11 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @param failedChannel the channel that failed
      * @param text          the message text
      * @param threadTs      the thread timestamp (may be null for top-level messages)
+     * @param replyBroadcast if true, also broadcast the message to the channel
+     *                       (used only for completion messages)
      * @return the message timestamp from the fallback post, or null
      */
-    private String postToFallbackChannel(String failedChannel, String text, String threadTs) {
+    private String postToFallbackChannel(String failedChannel, String text, String threadTs, boolean replyBroadcast) {
         if (defaultChannelId == null || defaultChannelId.isEmpty()
                 || defaultChannelId.equals(failedChannel)) {
             return null;
@@ -771,6 +793,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                     .channel(defaultChannelId)
                     .text(text)
                     .threadTs(threadTs)
+                    .replyBroadcast(replyBroadcast)
                     .unfurlLinks(false)
                     .unfurlMedia(false)
                 );

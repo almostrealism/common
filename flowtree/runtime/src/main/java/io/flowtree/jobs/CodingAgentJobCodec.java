@@ -16,8 +16,12 @@
 
 package io.flowtree.jobs;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
 import io.flowtree.jobs.agent.Phase;
+import io.flowtree.jobs.agent.PhaseConfigBundle;
 
 import java.util.Map;
 
@@ -37,8 +41,55 @@ import java.util.Map;
  */
 final class CodingAgentJobCodec {
 
+    /**
+     * Shared mapper for {@link PhaseConfigBundle} JSON serialization. NON_NULL
+     * keeps wire bytes minimal — every {@link io.flowtree.jobs.agent.PhaseConfig}
+     * field is independently nullable, and most jobs leave most fields unset.
+     */
+    private static final ObjectMapper BUNDLE_MAPPER = new ObjectMapper()
+            .setSerializationInclusion(JsonInclude.Include.NON_NULL);
+
     /** Prevents instantiation; this class only exposes static helpers. */
     private CodingAgentJobCodec() {
+    }
+
+    /**
+     * Serializes a {@link PhaseConfigBundle} to a Base64-wrapped JSON string
+     * for transport in the {@code phaseConfigBundle} wire-format slot.
+     * Returns {@code null} when the bundle is {@code null} or empty so callers
+     * can skip emitting the key entirely.
+     *
+     * @param bundle the bundle to serialize; may be {@code null} or empty
+     * @return Base64 of the JSON form, or {@code null} when there is nothing
+     *         worth sending
+     */
+    static String encodePhaseConfigBundle(PhaseConfigBundle bundle) {
+        if (bundle == null || bundle.isEmpty()) return null;
+        try {
+            return GitManagedJob.base64Encode(BUNDLE_MAPPER.writeValueAsString(bundle));
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Could not encode PhaseConfigBundle", e);
+        }
+    }
+
+    /**
+     * Reverses {@link #encodePhaseConfigBundle(PhaseConfigBundle)}. Returns
+     * {@link PhaseConfigBundle#EMPTY} for null/empty input so legacy wire
+     * payloads (which never set the key) decode without throwing.
+     *
+     * @param value Base64-wrapped JSON produced by
+     *              {@link #encodePhaseConfigBundle(PhaseConfigBundle)}, or
+     *              {@code null}/empty
+     * @return the deserialized bundle, never {@code null}
+     */
+    static PhaseConfigBundle decodePhaseConfigBundle(String value) {
+        if (value == null || value.isEmpty()) return PhaseConfigBundle.EMPTY;
+        try {
+            return BUNDLE_MAPPER.readValue(
+                    GitManagedJob.base64Decode(value), PhaseConfigBundle.class);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Could not decode PhaseConfigBundle", e);
+        }
     }
 
     /**
@@ -114,6 +165,16 @@ final class CodingAgentJobCodec {
         Map<Phase, String> runners = job.getRunnerByPhase();
         if (!runners.isEmpty()) {
             sb.append("::runners:=").append(Phase.encodeRunnerMap(runners));
+        }
+        // Carry the full per-phase bundle separately so per-phase model,
+        // effort, and provider survive the wire round-trip — the legacy
+        // keys above only preserve runner identity per phase, which silently
+        // demotes opencode+openrouter+qwen3-coder to opencode+local+<default>
+        // on the agent. Old agents ignore the unknown key; new agents prefer
+        // it on decode and overwrite the legacy fields with consistent values.
+        String bundleWire = encodePhaseConfigBundle(job.getPhaseConfigBundle());
+        if (bundleWire != null) {
+            sb.append("::phaseConfigBundle:=").append(bundleWire);
         }
     }
 
@@ -209,6 +270,12 @@ final class CodingAgentJobCodec {
                 return true;
             case "runners":
                 job.applyRunnerMap(value);
+                return true;
+            case "phaseConfigBundle":
+                // Bundle carries per-phase model/effort/provider that legacy
+                // wire keys cannot represent. setPhaseConfigBundle re-syncs
+                // the legacy fields, so it is safe regardless of arrival order.
+                job.setPhaseConfigBundle(decodePhaseConfigBundle(value));
                 return true;
             default:
                 return false;

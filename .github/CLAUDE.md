@@ -88,19 +88,22 @@ tools                 → ml
 
 The `changes` job detects which top-level directories changed and sets flags:
 
-| Flag               | Directory | Jobs gated on it                |
-|--------------------|-----------|----------------------------------|
-| `base_changed`     | `base/`   | `test`                           |
-| `compute_changed`  | `compute/`| `test`                           |
-| `domain_changed`   | `domain/` | `test`                           |
-| `engine_changed`   | `engine/` | `test`, `test-media`             |
-| `extern_changed`   | `extern/` | `test-media`                     |
-| `studio_changed`   | `studio/` | `test-media`                     |
+| Flag               | Directory                  | Jobs gated on it                |
+|--------------------|----------------------------|----------------------------------|
+| `base_changed`     | `base/`                    | `test`                           |
+| `compute_changed`  | `compute/`                 | `test`                           |
+| `domain_changed`   | `domain/`                  | `test`                           |
+| `engine_changed`   | `engine/`                  | `test`, `test-media`             |
+| `extern_changed`   | `extern/`                  | `test-media`                     |
+| `studio_changed`   | `studio/`                  | `test-media`                     |
+| `python_changed`   | any `*.py` + `tools/mcp/requirements.txt` | `python-tests`    |
 
-**No flag exists for `flowtree/` or `tools/`.**
+**No flag exists for `flowtree/` or `tools/` Java code.**
 Changes to those directories set `code_changed=true` (triggering the build) but
 no layer flag — so all layer-gated test jobs are skipped. This is intentional:
 flowtree tests always run in the `test-flowtree` job regardless of what changed.
+The `python_changed` flag is a path-based (not layer-based) flag that gates
+`python-tests`; Python sources are not part of the layered Java module graph.
 
 ### What the `build` job covers
 
@@ -171,6 +174,10 @@ it tolerates missing artifacts when test jobs are skipped.
 - The `set_all_flags_true` shortcut and the detection loop must list exactly
   the same set of layer names. Keep them in sync.
 - Never add a flag that no job consumes — dead flags confuse future agents.
+- Non-layer path-based flags (e.g., `python_changed`) follow the same
+  contract: detection must run in the `pull_request` branch, `set_all_flags_true`
+  must include the flag, and any job gated on the flag must AND it with
+  `code_changed == 'true'` so docs-only PRs still skip everything.
 
 ---
 

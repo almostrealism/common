@@ -54,9 +54,19 @@ public interface AgentRunner extends Named {
     /**
      * Declares which optional capabilities this runner faithfully reports.
      * The orchestrator and telemetry layer use this to decide whether to
-     * surface a value or mark it as not-reported.
+     * surface a value (such as cost or turn count) or mark it as not-reported.
      *
      * @return the capability set; never {@code null}
      */
     AgentCapabilities capabilities();
+
+    /**
+     * Returns the default provider identifier for this runner when no explicit
+     * provider is configured. This is the provider the runner uses when
+     * {@link AgentRunRequest#getProvider()} returns {@code null}.
+     *
+     * @return the default provider name, or {@code null} if the runner does
+     *         not support providers (should not happen for modern runners)
+     */
+    default String defaultProvider() { return null; }
 }

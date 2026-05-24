@@ -95,6 +95,7 @@ public class ClaudeCodeRunner implements AgentRunner {
     @Override
     public AgentCapabilities capabilities() {
         Set<String> models = new LinkedHashSet<>(VALID_MODELS);
+        Set<String> providers = Set.of("anthropic");
         return new AgentCapabilities(
                 true,   // reportsCost
                 true,   // reportsTurns
@@ -103,7 +104,13 @@ public class ClaudeCodeRunner implements AgentRunner {
                 true,   // supportsMcpHttpTransport
                 true,   // supportsMcpStdioTransport
                 true,   // supportsPermissionDenialReporting
-                models);
+                models,
+                providers);
+    }
+
+    @Override
+    public String defaultProvider() {
+        return "anthropic";
     }
 
     /**

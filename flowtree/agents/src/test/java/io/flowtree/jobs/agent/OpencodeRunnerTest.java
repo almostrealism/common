@@ -23,6 +23,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
@@ -47,7 +48,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
     @Test(timeout = 5000)
     public void capabilitiesAdvertiseOpencodeFeatures() {
         AgentCapabilities cap = new OpencodeRunner().capabilities();
-        assertFalse("local-model cost reporting is meaningless", cap.reportsCost());
+        assertTrue("cloud providers (openrouter, anthropic) report cost", cap.reportsCost());
         assertTrue("turn counts are best-effort", cap.reportsTurns());
         assertFalse("no effort concept", cap.supportsEffortLevel());
         assertFalse("no native budget", cap.supportsMaxBudget());
@@ -55,6 +56,8 @@ public class OpencodeRunnerTest extends TestSuiteBase {
         assertTrue("MCP stdio supported", cap.supportsMcpStdioTransport());
         assertFalse("denial reporting unproven", cap.supportsPermissionDenialReporting());
         Assert.assertEquals("trust the provider's model set", Set.of(), cap.supportedModels());
+        Assert.assertEquals("providers derived from PROVIDER_MAP",
+                Set.of("local", "openrouter", "anthropic"), cap.supportedProviders());
     }
 
     /** The registry knows the opencode name and produces opencode runners. */
@@ -191,6 +194,133 @@ public class OpencodeRunnerTest extends TestSuiteBase {
         assertFalse(configCalled[0]);
     }
 
+    // --- Provider-axis: routing and default provider --------------------------
+
+    /**
+     * The default provider for the opencode runner is {@code "local"} (llama.cpp /
+     * ollama on the same host). When no explicit provider is set in the request,
+     * the runner should use the local provider.
+     */
+    @Test(timeout = 5000)
+    public void defaultProviderIsLocal() {
+        assertEquals("local", new OpencodeRunner().defaultProvider());
+    }
+
+    /**
+     * Capabilities advertise the three known providers.
+     */
+    @Test(timeout = 5000)
+    public void capabilitiesAdvertiseSupportedProviders() {
+        AgentCapabilities cap = new OpencodeRunner().capabilities();
+        assertTrue("local should be in supported providers", cap.supportedProviders().contains("local"));
+        assertTrue("openrouter should be in supported providers", cap.supportedProviders().contains("openrouter"));
+        assertTrue("anthropic should be in supported providers", cap.supportedProviders().contains("anthropic"));
+    }
+
+    /**
+     * Requesting an unknown provider produces a clear {@link IllegalArgumentException}
+     * that names the unknown provider and lists the available ones. This fails before
+     * any subprocess is launched so the error arrives immediately.
+     */
+    @Test(timeout = 5000)
+    public void runThrowsForUnknownProvider() {
+        OpencodeRunner runner = new OpencodeRunner();
+        AgentRunRequest req = AgentRunRequest.builder()
+                .prompt("p")
+                .allowedTools("Read")
+                .mcpConfigJson("{\"mcpServers\":{}}")
+                .provider("unknown-provider-xyz")
+                .build();
+        try {
+            runner.run(req, new ConsoleFeatures() {});
+            throw new AssertionError("expected exception for unknown provider");
+        } catch (IllegalArgumentException expected) {
+            assertNotNull(expected.getMessage());
+            assertTrue("message should name the bad provider: " + expected.getMessage(),
+                    expected.getMessage().contains("unknown-provider-xyz"));
+        }
+    }
+
+    /**
+     * Cloud providers (openrouter, anthropic) require a resolvable API key
+     * before opencode is invoked. Without this guard the builder silently
+     * omits the {@code apiKey} field, opencode launches anyway, and the
+     * upstream returns 401 — symptom: zero token usage on the provider
+     * account, with a cryptic-looking 401 buried in the agent output. The
+     * runner now fails up front with the specific names it tried.
+     */
+    @Test(timeout = 5000)
+    public void runThrowsWhenCloudProviderHasNoApiKey() {
+        // Inject a locator that resolves opencode via OPENCODE_BIN to a stub
+        // path the predicate marks executable, so ensureBinary() succeeds and
+        // the run() flow advances to the API-key precheck under test.
+        OpencodeRunner runner = new OpencodeRunner(
+                () -> new OpencodeBinaryLocator(
+                        name -> "OPENCODE_BIN".equals(name) ? FAKE_BINARY.toString() : null,
+                        name -> "/home/agent",
+                        p -> p.equals(FAKE_BINARY)),
+                () -> new OpencodeConfigBuilder(new HashMap<String, String>()::get));
+        // No secret lookup wired and no env var set => empty key.
+
+        AgentRunRequest req = AgentRunRequest.builder()
+                .prompt("p")
+                .allowedTools("Read")
+                .mcpConfigJson("{\"mcpServers\":{}}")
+                .provider("openrouter")
+                .build();
+
+        try {
+            runner.run(req, new ConsoleFeatures() {});
+            throw new AssertionError("expected fail-loud for missing openrouter key");
+        } catch (IllegalStateException expected) {
+            String msg = expected.getMessage();
+            assertNotNull(msg);
+            assertTrue("message names the provider: " + msg, msg.contains("openrouter"));
+            assertTrue("message names the workspace secret: " + msg,
+                    msg.contains("openrouter-api-key"));
+            assertTrue("message names the provider env var: " + msg,
+                    msg.contains("OPENROUTER_API_KEY"));
+            assertTrue("message names the generic env var: " + msg,
+                    msg.contains(OpencodeConfigBuilder.ENV_API_KEY));
+        }
+    }
+
+    /**
+     * The API-key precheck only fires for non-local providers. A run that
+     * targets {@code local} (the default) must NOT fail just because no key
+     * is available — local llama-server endpoints are typically keyless.
+     */
+    @Test(timeout = 5000)
+    public void localProviderDoesNotRequireApiKey() {
+        OpencodeRunner runner = new OpencodeRunner(
+                () -> new OpencodeBinaryLocator(
+                        name -> "OPENCODE_BIN".equals(name) ? FAKE_BINARY.toString() : null,
+                        name -> "/home/agent",
+                        p -> p.equals(FAKE_BINARY)),
+                () -> new OpencodeConfigBuilder(new HashMap<String, String>()::get));
+
+        AgentRunRequest req = AgentRunRequest.builder()
+                .prompt("p")
+                .allowedTools("Read")
+                .mcpConfigJson("{\"mcpServers\":{}}")
+                // no explicit provider => defaults to local
+                .build();
+
+        try {
+            runner.run(req, new ConsoleFeatures() {});
+        } catch (IllegalStateException unexpected) {
+            if (unexpected.getMessage() != null
+                    && unexpected.getMessage().startsWith("No API key")) {
+                throw new AssertionError(
+                        "API-key precheck must not fire for local provider: "
+                                + unexpected.getMessage());
+            }
+        } catch (Exception laterFailure) {
+            // Probe / process launch / etc. is allowed to fail — the test
+            // only asserts that the precheck did NOT trip.
+        }
+    }
+
     /**
      * Provider liveness probe accepts any HTTP response — including 404 — as
      * evidence the upstream is alive. The probe is checking TCP+HTTP
@@ -232,6 +362,148 @@ public class OpencodeRunnerTest extends TestSuiteBase {
             assertTrue("message should name the URL: " + expected.getMessage(),
                     expected.getMessage().contains(url));
         }
+    }
+
+    // --- Workspace-secret resolution via controller HTTP --------------------
+
+    /**
+     * The payload extractor returns the value keyed by the secret name when
+     * present — the canonical case for a secret declared as
+     * {@code {"openrouter-api-key": "sk-or-..."}} in {@code workstreams.yaml}.
+     */
+    @Test(timeout = 5000)
+    public void extractSecretValueReadsDirectKey() {
+        String body = "{\"name\":\"openrouter-api-key\","
+                + "\"workspace_id\":\"T01\","
+                + "\"payload\":{\"openrouter-api-key\":\"sk-or-v1-abc\"}}";
+        Assert.assertEquals("sk-or-v1-abc",
+                OpencodeRunner.extractSecretValueFromPayload(body, "openrouter-api-key"));
+    }
+
+    /**
+     * When the payload key does not match the secret name but contains exactly
+     * one value, that single value is returned — accommodates operators who
+     * store a one-key payload like {@code {"value": "sk-..."}}.
+     */
+    @Test(timeout = 5000)
+    public void extractSecretValueFallsBackToSingleValuePayload() {
+        String body = "{\"name\":\"openrouter-api-key\","
+                + "\"workspace_id\":\"T01\","
+                + "\"payload\":{\"value\":\"sk-or-v1-xyz\"}}";
+        Assert.assertEquals("sk-or-v1-xyz",
+                OpencodeRunner.extractSecretValueFromPayload(body, "openrouter-api-key"));
+    }
+
+    /**
+     * A multi-key payload that contains neither the secret-name key nor a
+     * single-value key yields {@code null}, so the caller falls through to
+     * the env-var path rather than guessing which value to use.
+     */
+    @Test(timeout = 5000)
+    public void extractSecretValueReturnsNullForAmbiguousMultiKeyPayload() {
+        String body = "{\"name\":\"openrouter-api-key\","
+                + "\"payload\":{\"a\":\"1\",\"b\":\"2\"}}";
+        Assert.assertNull(
+                OpencodeRunner.extractSecretValueFromPayload(body, "openrouter-api-key"));
+    }
+
+    /**
+     * Empty body, missing payload, malformed JSON — every degenerate input
+     * resolves to {@code null} so the caller falls back to the env-var path.
+     */
+    @Test(timeout = 5000)
+    public void extractSecretValueReturnsNullForDegenerateInputs() {
+        Assert.assertNull(OpencodeRunner.extractSecretValueFromPayload(null, "k"));
+        Assert.assertNull(OpencodeRunner.extractSecretValueFromPayload("", "k"));
+        Assert.assertNull(OpencodeRunner.extractSecretValueFromPayload("{}", "k"));
+        Assert.assertNull(OpencodeRunner.extractSecretValueFromPayload(
+                "{\"payload\":\"not-an-object\"}", "k"));
+        Assert.assertNull(OpencodeRunner.extractSecretValueFromPayload(
+                "this is not json", "k"));
+    }
+
+    /**
+     * End-to-end: when AR_CONTROLLER_URL/AR_WORKSTREAM_ID/AR_MANAGER_TOKEN are
+     * present in the request environment and the controller responds with the
+     * documented payload shape, the OpencodeRunner's auto-built secret lookup
+     * fetches the value and threads it through to
+     * {@link OpencodeConfigBuilder#resolveApiKey}.
+     */
+    @Test(timeout = 10000)
+    public void controllerSecretLookupFetchesSecretFromHttpEndpoint() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        final String[] receivedAuth = new String[1];
+        final String[] receivedPath = new String[1];
+        server.createContext("/api/secrets/openrouter-api-key", exchange -> {
+            receivedAuth[0] = exchange.getRequestHeaders().getFirst("Authorization");
+            receivedPath[0] = exchange.getRequestURI().toString();
+            String body = "{\"name\":\"openrouter-api-key\","
+                    + "\"workspace_id\":\"T01\","
+                    + "\"payload\":{\"openrouter-api-key\":\"sk-or-v1-from-http\"}}";
+            byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+        server.start();
+        try {
+            String controllerUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+            Map<String, String> env = new HashMap<>();
+            env.put("AR_CONTROLLER_URL", controllerUrl);
+            env.put("AR_WORKSTREAM_ID", "ws-test-1");
+            env.put("AR_MANAGER_TOKEN", "armt_tmp_fake-bearer");
+
+            Map<String, String> configEnv = new HashMap<>();
+            OpencodeConfigBuilder builder = new OpencodeConfigBuilder(configEnv::get);
+
+            // Drive the same code path run() would use to construct a lookup
+            // and pass it into the config builder.
+            AgentRunRequest req = AgentRunRequest.builder()
+                    .prompt("p")
+                    .allowedTools("Read")
+                    .mcpConfigJson("{\"mcpServers\":{}}")
+                    .provider("openrouter")
+                    .environment(env)
+                    .build();
+
+            String json = builder.buildConfigJson(req, "openrouter",
+                    "https://openrouter.ai/api/v1",
+                    "openrouter-api-key",
+                    "OPENROUTER_API_KEY",
+                    OpencodeRunner.controllerSecretLookup(req,
+                            new ConsoleFeatures() {}));
+
+            assertTrue("config should embed the fetched apiKey: " + json,
+                    json.contains("sk-or-v1-from-http"));
+            assertNotNull("controller should have received an Authorization header",
+                    receivedAuth[0]);
+            assertTrue("Authorization header should carry the bearer token: " + receivedAuth[0],
+                    receivedAuth[0].startsWith("Bearer armt_tmp_"));
+            assertTrue("URI should carry workstream_id query: " + receivedPath[0],
+                    receivedPath[0].contains("workstream_id=ws-test-1"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * When AR_CONTROLLER_URL/AR_WORKSTREAM_ID/AR_MANAGER_TOKEN are absent from
+     * the request environment, the controller-lookup function yields
+     * {@code null} so callers fall through to the provider-specific env var
+     * (e.g. {@code OPENROUTER_API_KEY}). This is the local-dev path where
+     * there is no controller to call back to.
+     */
+    @Test(timeout = 5000)
+    public void controllerSecretLookupReturnsNullWhenEnvVarsMissing() {
+        AgentRunRequest req = AgentRunRequest.builder()
+                .prompt("p")
+                .allowedTools("Read")
+                .mcpConfigJson("{\"mcpServers\":{}}")
+                .environment(new HashMap<>())
+                .build();
+        Assert.assertNull(OpencodeRunner.controllerSecretLookup(
+                req, new ConsoleFeatures() {}).apply("openrouter-api-key"));
     }
 
     /**

@@ -188,6 +188,14 @@ public final class PhaseConfigResolver {
             if (modelErr != null) return fail(modelErr);
         }
 
+        // Validate provider-runner compatibility.
+        String providerErr = validateProviderForRunner(resolvedDefault, "default");
+        if (providerErr != null) return fail(providerErr);
+        for (Map.Entry<Phase, PhaseConfig> e : phases.entrySet()) {
+            providerErr = validateProviderForRunner(e.getValue(), e.getKey().wireName());
+            if (providerErr != null) return fail(providerErr);
+        }
+
         PhaseConfigBundle resolved = new PhaseConfigBundle(resolvedDefault, phases);
         return new PhaseConfigResolver(null, resolved, req, ws, wsp);
     }
@@ -294,7 +302,8 @@ public final class PhaseConfigResolver {
         String runner = textOrNull(node.get("runner"));
         String model = textOrNull(node.get("model"));
         String effort = textOrNull(node.get("effort"));
-        return new PhaseConfig(runner, model, effort);
+        String provider = textOrNull(node.get("provider"));
+        return new PhaseConfig(runner, model, effort, provider);
     }
 
     /** Returns the textual value of {@code node}, or {@code null} when missing/empty. */
@@ -388,6 +397,30 @@ public final class PhaseConfigResolver {
         if (!supported.contains(model)) {
             return "Invalid model '" + model + "' for runner '" + runner
                     + "' (phase " + phaseLabel + "). Must be one of " + supported;
+        }
+        return null;
+    }
+
+    /**
+     * Validates provider compatibility with the resolved runner for {@code config}.
+     * Currently only the {@code "claude"} runner enforces provider restrictions:
+     * claude only supports the {@code "anthropic"} provider; using any other
+     * provider with claude is not supported and fails with a clear error.
+     *
+     * <p>The {@code "opencode"} runner is not validated here. Provider validation
+     * for opencode happens at run time inside the runner itself, where it checks the
+     * provider against its known set and fails with an explicit error if unrecognised.</p>
+     */
+    private static String validateProviderForRunner(PhaseConfig config, String phaseLabel) {
+        String provider = config.provider();
+        if (provider == null || provider.isEmpty()) return null;
+        String runner = config.runner();
+        if (runner == null || runner.isEmpty()) return null;
+        if (AgentRunnerRegistry.CLAUDE.equals(runner)
+                && !"anthropic".equals(provider)) {
+            return "runner='claude' only supports provider='anthropic'"
+                    + " (phase " + phaseLabel + "); got provider='" + provider + "'."
+                    + " Use runner='opencode' for other providers.";
         }
         return null;
     }
@@ -557,6 +590,13 @@ public final class PhaseConfigResolver {
             if (!first) json.append(",");
             json.append("\"effort\":\"")
                     .append(JsonFieldExtractor.escapeJson(pc.effort()))
+                    .append("\"");
+            first = false;
+        }
+        if (pc.provider() != null) {
+            if (!first) json.append(",");
+            json.append("\"provider\":\"")
+                    .append(JsonFieldExtractor.escapeJson(pc.provider()))
                     .append("\"");
         }
         json.append("}");

@@ -54,6 +54,29 @@ final class OpencodeOutputParser {
     private OpencodeOutputParser() {}
 
     /**
+     * Backwards-compatible overload that defaults {@code reportsCost} to {@code false}.
+     * Used by tests and callers from before the provider-axis change introduced
+     * provider-aware cost reporting.
+     *
+     * @param rawOutput            captured stdout from opencode
+     * @param exitCode             process exit code
+     * @param killedForInactivity  whether the inactivity watchdog fired
+     * @param measuredDurationMs   wall-clock duration measured by the runner
+     * @param runnerMetadata       metadata key-values the runner wants to surface
+     * @param logger               diagnostic sink; may be null
+     * @return the populated result
+     */
+    static AgentRunResult parse(String rawOutput,
+                                int exitCode,
+                                boolean killedForInactivity,
+                                long measuredDurationMs,
+                                Map<String, String> runnerMetadata,
+                                ConsoleFeatures logger) {
+        return parse(rawOutput, exitCode, killedForInactivity, measuredDurationMs,
+                runnerMetadata, logger, false);
+    }
+
+    /**
      * Parses {@code rawOutput} into an {@link AgentRunResult}.
      *
      * <p>Behaviour:</p>
@@ -66,9 +89,10 @@ final class OpencodeOutputParser {
      *   <li>{@code numTurns} is taken from {@code steps} or {@code iterations}
      *       on the final JSON object, else counted from assistant entries in
      *       the transcript, else 0.</li>
-     *   <li>{@code costUsd} is always 0 — see {@link OpencodeRunner}.</li>
+     *   <li>{@code costUsd} is extracted from {@code usage.cost} when
+     *       {@code reportsCost} is true and the field is present; otherwise 0.</li>
      *   <li>{@code stopReason} is taken from the final object's
-     *       {@code stopReason}, {@code finish_reason}, or {@code reason} key,
+     *       {@code stopReason}, {@code stop_reason}, {@code finish_reason}, or {@code reason} key,
      *       falling back to success/error_unknown by exit code.</li>
      *   <li>The result's {@code rawOutput} field holds the full captured stdout,
      *       matching the contract used by {@link ClaudeCodeRunner}. The final
@@ -84,6 +108,7 @@ final class OpencodeOutputParser {
      * @param measuredDurationMs   wall-clock duration measured by the runner
      * @param runnerMetadata       metadata key-values the runner wants to surface
      * @param logger               diagnostic sink for unknown fields; may be null
+     * @param reportsCost          whether the provider reports cost in usage.cost
      * @return the populated result
      */
     static AgentRunResult parse(String rawOutput,
@@ -91,7 +116,8 @@ final class OpencodeOutputParser {
                                 boolean killedForInactivity,
                                 long measuredDurationMs,
                                 Map<String, String> runnerMetadata,
-                                ConsoleFeatures logger) {
+                                ConsoleFeatures logger,
+                                boolean reportsCost) {
         String responseText = "";
         String sessionId = null;
         int numTurns = 0;
@@ -156,6 +182,17 @@ final class OpencodeOutputParser {
             numTurns = countAssistantTurns(rawOutput);
         }
 
+        double costUsd = 0.0;
+        if (reportsCost && root != null) {
+            JsonNode usage = firstNode(root, "usage");
+            if (usage != null) {
+                JsonNode costNode = firstNode(usage, "cost");
+                if (costNode != null && costNode.isNumber()) {
+                    costUsd = costNode.asDouble(0.0);
+                }
+            }
+        }
+
         Map<String, String> meta = runnerMetadata == null
                 ? new LinkedHashMap<>()
                 : new LinkedHashMap<>(runnerMetadata);
@@ -171,7 +208,7 @@ final class OpencodeOutputParser {
                 measuredDurationMs,
                 0L,
                 numTurns,
-                0.0,
+                costUsd,
                 stopReason,
                 isError,
                 denied,

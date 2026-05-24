@@ -222,6 +222,47 @@ public class OpencodeOutputParserTest extends TestSuiteBase {
         assertEquals(OpencodeOutputParser.STOP_ERROR_UNKNOWN, result.stopReason());
     }
 
+    // --- Provider-aware cost extraction (OpenRouter) --------------------------
+
+    /**
+     * When {@code reportsCost=true} and a {@code usage.cost} field is present,
+     * the parsed result carries that cost. This is the OpenRouter case — the
+     * provider returns accumulated cost in each session's usage block.
+     */
+    @Test(timeout = 5000)
+    public void extractsCostFromUsageWhenReportsCostTrue() {
+        String output = "{\"session_id\":\"s1\",\"steps\":3,\"stopReason\":\"success\","
+                + "\"usage\":{\"cost\":0.0042,\"input_tokens\":500,\"output_tokens\":80}}";
+        AgentRunResult result = OpencodeOutputParser.parse(
+                output, 0, false, 100L, Collections.emptyMap(), SILENT, true);
+        assertEquals(0.0042, result.costUsd(), 1e-9);
+    }
+
+    /**
+     * When {@code reportsCost=false}, the cost field in usage is ignored and
+     * costUsd stays 0.0. This is the local/llama.cpp case.
+     */
+    @Test(timeout = 5000)
+    public void ignoresCostFromUsageWhenReportsCostFalse() {
+        String output = "{\"session_id\":\"s1\",\"steps\":3,\"stopReason\":\"success\","
+                + "\"usage\":{\"cost\":99.99,\"input_tokens\":500,\"output_tokens\":80}}";
+        AgentRunResult result = OpencodeOutputParser.parse(
+                output, 0, false, 100L, Collections.emptyMap(), SILENT, false);
+        assertEquals(0.0, result.costUsd(), 1e-9);
+    }
+
+    /**
+     * When the usage block is absent and {@code reportsCost=true}, cost defaults to 0.0
+     * without throwing.
+     */
+    @Test(timeout = 5000)
+    public void costDefaultsToZeroWhenUsageAbsent() {
+        String output = "{\"session_id\":\"s1\",\"steps\":2,\"stopReason\":\"success\"}";
+        AgentRunResult result = OpencodeOutputParser.parse(
+                output, 0, false, 50L, Collections.emptyMap(), SILENT, true);
+        assertEquals(0.0, result.costUsd(), 1e-9);
+    }
+
     /** When no step_start events appear but text events carry messageIDs, count those. */
     @Test(timeout = 5000)
     public void countsDistinctMessageIdsWhenStepStartAbsent() {

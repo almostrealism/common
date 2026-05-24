@@ -10,7 +10,10 @@ the primary work.
 For the runner SPI and how phases pick their runner, see
 [../architecture/AGENT_RUNNERS.md](../architecture/AGENT_RUNNERS.md) and
 [../architecture/PHASES.md](../architecture/PHASES.md). For recommended
-phase mixes, see [RECIPES.md](RECIPES.md).
+phase mixes, see [RECIPES.md](RECIPES.md). For the provider axis —
+the three known providers (`local`, `openrouter`, `anthropic`), how
+API keys resolve, and how to wire up OpenRouter or Anthropic as a
+FlowTree workspace secret — see [PROVIDERS.md](PROVIDERS.md).
 
 ---
 
@@ -54,8 +57,9 @@ its own host) — there are no per-workstream overrides.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `OPENCODE_BIN` | (unset) | Absolute path to the `opencode` binary. Takes precedence over every other discovery rule. |
-| `OPENCODE_PROVIDER_URL` | `http://localhost:8084/v1` | OpenAI-compatible endpoint URL. The default targets the llama.cpp `llama-server` launched by `tools/bin/llama.sh`; set this when pointing at ollama (`:11434/v1`) or a remote host. |
-| `OPENCODE_API_KEY` | empty | API key for the provider. Local llama.cpp / ollama do not require one. |
+| `OPENCODE_PROVIDER_URL` | `http://localhost:8084/v1` | OpenAI-compatible endpoint URL. When set, overrides the per-provider default for **every** provider — useful for pointing `openrouter`/`anthropic` at a private proxy, in addition to its primary role of selecting the local model server's address. When unset, each provider falls back to its built-in default from `PROVIDER_MAP`. See [PROVIDERS.md](PROVIDERS.md). |
+| `OPENCODE_API_KEY` | empty | Legacy override that pins a specific API key regardless of provider. Useful for one-off testing. For production cloud-provider setup, prefer the workspace-secret path documented in [PROVIDERS.md](PROVIDERS.md). |
+| `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` | empty | Per-provider env-var fallbacks, consulted when `OPENCODE_API_KEY` and the workspace secret are both empty. See [PROVIDERS.md](PROVIDERS.md). |
 | `OPENCODE_DEFAULT_MODEL` | (unset; falls back to the literal alias `default`) | Model name used when the submitted job does not specify one. The `default` alias is fine with llama.cpp's `llama-server` (it ignores the model field on the wire and serves whichever GGUF was loaded); ollama and hosted providers dispatch by name and **require** an explicit value here. |
 | `OPENCODE_CONFIG` | (set automatically at launch) | Path to the synthesized config file. Set by the runner before launching the opencode subprocess; operators do not need to configure this. |
 
@@ -109,16 +113,16 @@ To swap the pulled model, override `LLM_MODEL` when invoking
 `rebuild.sh --with-llm` (the script `ollama pull`s whatever you set, and
 prints the matching `OPENCODE_DEFAULT_MODEL=…` line to copy into `.env`).
 
-### Cloud OpenAI-compatible provider
+### Cloud providers (OpenRouter, Anthropic)
 
-Hosted providers dispatch by model name, so `OPENCODE_DEFAULT_MODEL` is
-**required** — set it to whichever model identifier the provider documents.
-
-```sh
-export OPENCODE_PROVIDER_URL=https://api.openai.com/v1
-export OPENCODE_API_KEY=sk-...
-export OPENCODE_DEFAULT_MODEL=<provider-model-id>   # required for hosted
-```
+Cloud providers are first-class — pick `provider: openrouter` or
+`provider: anthropic` on submission and the runner uses the matching
+entry in `OpencodeRunner.PROVIDER_MAP` (base URL, secret name, env-var
+fallback). The recommended setup wires the API key as a FlowTree
+workspace secret so the agent host doesn't need any env vars at all;
+see [PROVIDERS.md](PROVIDERS.md) for the worked example. For one-off
+testing, exporting `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` (or the
+legacy `OPENCODE_API_KEY`) on the agent host is sufficient.
 
 ---
 
@@ -147,8 +151,11 @@ phase-mix recipes.
 
 `OpencodeRunner.capabilities()` declares:
 
-- `reportsCost = false` — local-model cost is meaningless; downstream
-  telemetry treats opencode-runner cost as N/A rather than zero.
+- `reportsCost = true` — cloud providers (`openrouter`, `anthropic`)
+  report a per-request bill that the output parser surfaces; the
+  per-provider `reportsCost` flag in `PROVIDER_MAP` selects whether the
+  parser trusts that field. The `local` provider's cost is meaningless
+  so the parser skips it for that provider.
 - `reportsTurns = true` — best-effort, extracted from the output's `steps`
   or `iterations` field, with a fallback to counting assistant transcript
   entries.
@@ -159,9 +166,13 @@ phase-mix recipes.
 - `supportsPermissionDenialReporting = false`
 - `supportedModels = {}` — empty; the runner trusts the provider to
   validate model names.
+- `supportedProviders = {local, openrouter, anthropic}` — sourced
+  directly from `PROVIDER_MAP.keySet()` so the capability and the
+  routing logic cannot drift.
 
 These flags drive the telemetry-side `RunnerStats.costReported` /
 `turnsReported` fields and the top-level `unmeasuredCostRunners` list on
-the completion event. A workstream that routes any phase to opencode
-should expect "cost reported by this job is not the total cost" — that
-is the trade-off behind the runner.
+the completion event. A workstream that routes any phase to opencode +
+`local` should expect "cost reported by this job is not the total cost";
+phases routed to `openrouter` or `anthropic` will include the upstream
+cost in the report.
