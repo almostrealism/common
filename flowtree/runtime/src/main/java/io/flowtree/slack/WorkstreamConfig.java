@@ -40,6 +40,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
  * Configuration for Slack workstreams, loadable from YAML or JSON files.
@@ -163,16 +164,25 @@ public class WorkstreamConfig {
          * itself nor the per-job override sets one. Sits between the
          * workstream default and the controller default in the routing
          * ladder. Optional; {@code null} omits the field from serialized YAML.
+         *
+         * <p>Legacy field: still accepted on load and auto-migrated into
+         * {@link #defaultPhaseConfig}, but never written back — serialization
+         * is write-only so a save-then-load cycle drops it in favour of the
+         * per-phase shape.</p>
          */
+        @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
         private String defaultRunner;
         /**
          * Workspace-level per-phase runner overrides keyed by phase wire name
          * (e.g. {@code primary}, {@code commit-message}). Consulted by the
          * resolver only when the workstream has no per-phase entry for the
          * same phase <em>and</em> no workstream-level {@code defaultRunner};
-         * see {@link SubmissionRunnerResolver} for the full ladder. Optional;
-         * an empty map is omitted from serialized YAML.
+         * see {@link SubmissionRunnerResolver} for the full ladder.
+         *
+         * <p>Legacy field: accepted on load and auto-migrated into
+         * {@link #phaseConfigs}, but write-only for serialization.</p>
          */
+        @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
         private Map<String, String> runners = new LinkedHashMap<>();
 
         /**
@@ -320,7 +330,7 @@ public class WorkstreamConfig {
          * @return the merged bundle; never {@code null}
          */
         public PhaseConfigBundle toPhaseConfigBundle() {
-            return WorkstreamConfig.mergeBundle(defaultRunner, runners,
+            return PhaseConfigBundle.mergeLegacyWithNew(defaultRunner, runners,
                     defaultPhaseConfig, phaseConfigs);
         }
     }
@@ -402,20 +412,36 @@ public class WorkstreamConfig {
          */
         @JsonAlias({"slackWorkspaceId"})
         private String workspaceId;
-        /** Default Claude Code model alias or full name applied to jobs in this workstream. */
+        /**
+         * Default Claude Code model alias or full name applied to jobs in this
+         * workstream. Legacy field: accepted on load and auto-migrated into
+         * {@link #defaultPhaseConfig}, but write-only for serialization.
+         */
+        @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
         private String model;
-        /** Default Claude Code effort/thinking level applied to jobs in this workstream. */
+        /**
+         * Default Claude Code effort/thinking level applied to jobs in this
+         * workstream. Legacy field: accepted on load and auto-migrated into
+         * {@link #defaultPhaseConfig}, but write-only for serialization.
+         */
+        @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
         private String effort;
         /**
          * Default {@link io.flowtree.jobs.agent.AgentRunner} applied to jobs
          * in this workstream when no per-phase or per-job override is set.
+         * Legacy field: accepted on load and auto-migrated into
+         * {@link #defaultPhaseConfig}, but write-only for serialization.
          */
+        @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
         private String defaultRunner;
         /**
          * Per-phase runner overrides keyed by phase wire name (e.g.
          * {@code primary}, {@code deduplication}). Phases not listed inherit
-         * {@link #defaultRunner}.
+         * {@link #defaultRunner}. Legacy field: accepted on load and
+         * auto-migrated into {@link #phaseConfigs}, but write-only for
+         * serialization.
          */
+        @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
         private Map<String, String> runners = new LinkedHashMap<>();
         /**
          * Workstream-level default {@link PhaseConfig}; new form for the
@@ -597,11 +623,11 @@ public class WorkstreamConfig {
          * @return the merged bundle; never {@code null}
          */
         public PhaseConfigBundle toPhaseConfigBundle() {
-            PhaseConfigBundle bundle = WorkstreamConfig.mergeBundle(
+            PhaseConfigBundle bundle = PhaseConfigBundle.mergeLegacyWithNew(
                     defaultRunner, runners, defaultPhaseConfig, phaseConfigs);
             // Legacy workstream-level model/effort populate the bundle's
             // default field. New defaultPhaseConfig wins when both are
-            // supplied (handled by mergeBundle).
+            // supplied (handled by mergeLegacyWithNew).
             PhaseConfig def = bundle.defaultPhaseConfig();
             String mergedModel = def.model() != null ? def.model() : model;
             String mergedEffort = def.effort() != null ? def.effort() : effort;
@@ -1283,6 +1309,50 @@ public class WorkstreamConfig {
     }
 
     /**
+     * Returns INFO-level deprecation messages for any legacy configuration
+     * fields still present in the loaded configuration. The legacy fields
+     * ({@code model}, {@code effort}, {@code defaultRunner}, {@code runners})
+     * are accepted on load and auto-migrated into the per-phase shape
+     * ({@code defaultPhaseConfig} / {@code phaseConfigs}) by
+     * {@link WorkstreamEntry#toPhaseConfigBundle()} and
+     * {@link WorkspaceEntry#toPhaseConfigBundle()}, but are never written
+     * back — a save-then-load cycle drops them. Operators should migrate
+     * their YAML to the per-phase shape.
+     *
+     * @return one message per entry that still carries a legacy field; empty
+     *         when the configuration is already fully migrated
+     */
+    public List<String> legacyConfigWarnings() {
+        List<String> warnings = new ArrayList<>();
+        for (WorkstreamEntry entry : workstreams) {
+            List<String> fields = new ArrayList<>();
+            if (entry.getModel() != null && !entry.getModel().isEmpty()) fields.add("model");
+            if (entry.getEffort() != null && !entry.getEffort().isEmpty()) fields.add("effort");
+            if (entry.getDefaultRunner() != null && !entry.getDefaultRunner().isEmpty()) fields.add("defaultRunner");
+            if (entry.getRunners() != null && !entry.getRunners().isEmpty()) fields.add("runners");
+            if (!fields.isEmpty()) {
+                String id = entry.getWorkstreamId() != null
+                        ? entry.getWorkstreamId() : entry.getChannelName();
+                warnings.add("Workstream '" + id + "' uses deprecated config field(s) " + fields
+                        + "; auto-migrated to defaultPhaseConfig/phaseConfigs and dropped on next save."
+                        + " Migrate the YAML to the per-phase shape to silence this notice.");
+            }
+        }
+        if (workspaces != null) {
+            for (WorkspaceEntry entry : workspaces) {
+                List<String> fields = new ArrayList<>();
+                if (entry.getDefaultRunner() != null && !entry.getDefaultRunner().isEmpty()) fields.add("defaultRunner");
+                if (entry.getRunners() != null && !entry.getRunners().isEmpty()) fields.add("runners");
+                if (!fields.isEmpty()) {
+                    warnings.add("Workspace '" + entry.getId() + "' uses deprecated config field(s) " + fields
+                            + "; auto-migrated to defaultPhaseConfig/phaseConfigs and dropped on next save.");
+                }
+            }
+        }
+        return warnings;
+    }
+
+    /**
      * Populates missing workstream IDs with randomly generated UUIDs.
      *
      * @return true if any IDs were generated, indicating the config should be saved
@@ -1338,37 +1408,49 @@ public class WorkstreamConfig {
     }
 
     /**
-     * Copies the per-phase entries of {@code bundle} (model and effort,
-     * specifically — runner values are already mirrored to the legacy
-     * {@code runners} map) onto {@code entry}'s new {@code phaseConfigs}
-     * field so they round-trip through YAML serialization.
+     * Copies every non-empty per-phase entry of {@code bundle} — runner,
+     * model, effort, and provider alike — onto {@code entry}'s new
+     * {@code phaseConfigs} field so the full configuration round-trips through
+     * YAML serialization. The legacy {@code runners} map is write-only and is
+     * no longer serialized, so per-phase runner values must be carried by
+     * {@code phaseConfigs} rather than mirrored to {@code runners}.
      */
     private static void applyBundleToEntry(WorkstreamEntry entry, PhaseConfigBundle bundle) {
-        if (bundle == null || bundle.phaseConfigs().isEmpty()) {
-            entry.setPhaseConfigs(new LinkedHashMap<>());
-            entry.setDefaultPhaseConfig(null);
-            return;
-        }
+        applyBundleToFields(bundle, entry::setDefaultPhaseConfig, entry::setPhaseConfigs);
+    }
+
+    /**
+     * Writes the contents of {@code bundle} into a container's new
+     * {@code defaultPhaseConfig} / {@code phaseConfigs} fields via the
+     * supplied setters. Every non-empty per-phase entry is emitted; the
+     * bundle default is written when non-empty and cleared otherwise.
+     *
+     * <p>Unlike a phase-only copy, a bundle that carries only a default —
+     * e.g. a model-only workstream or a {@code defaultRunner}-only workspace
+     * with no per-phase overrides — still has that default persisted. This
+     * matters under write-only legacy serialization: the default is the only
+     * place a migrated {@code model} / {@code effort} / {@code defaultRunner}
+     * survives once the legacy fields stop being written.</p>
+     *
+     * @param bundle          the bundle to copy; {@code null} clears both fields
+     * @param setDefault      receives the bundle's default, or {@code null}
+     * @param setPhaseConfigs receives the per-phase map (never {@code null})
+     */
+    private static void applyBundleToFields(PhaseConfigBundle bundle,
+                                            Consumer<PhaseConfig> setDefault,
+                                            Consumer<Map<String, PhaseConfig>> setPhaseConfigs) {
         Map<String, PhaseConfig> phaseConfigs = new LinkedHashMap<>();
-        for (Map.Entry<Phase, PhaseConfig> e : bundle.phaseConfigs().entrySet()) {
-            // Emit any per-phase entry that carries a non-runner field —
-            // runner-only entries are already represented in the legacy
-            // runners map, but model/effort/provider have no legacy mirror
-            // and must round-trip through phaseConfigs to survive sync.
-            PhaseConfig pc = e.getValue();
-            if (pc.model() != null || pc.effort() != null || pc.provider() != null) {
-                phaseConfigs.put(e.getKey().wireName(), pc);
+        if (bundle != null) {
+            for (Map.Entry<Phase, PhaseConfig> e : bundle.phaseConfigs().entrySet()) {
+                PhaseConfig pc = e.getValue();
+                if (!pc.isEmpty()) {
+                    phaseConfigs.put(e.getKey().wireName(), pc);
+                }
             }
         }
-        entry.setPhaseConfigs(phaseConfigs);
-        // Default carries fields that are not represented elsewhere on the
-        // entry; skip when redundant with model/effort/defaultRunner.
-        PhaseConfig def = bundle.defaultPhaseConfig();
-        if (def != null && !def.isEmpty()) {
-            entry.setDefaultPhaseConfig(def);
-        } else {
-            entry.setDefaultPhaseConfig(null);
-        }
+        setPhaseConfigs.accept(phaseConfigs);
+        PhaseConfig def = bundle != null ? bundle.defaultPhaseConfig() : null;
+        setDefault.accept(def != null && !def.isEmpty() ? def : null);
     }
 
     /**
@@ -1445,52 +1527,6 @@ public class WorkstreamConfig {
     }
 
     /**
-     * Merges legacy {@code defaultRunner} / {@code runners} fields with the
-     * new {@code defaultPhaseConfig} / {@code phaseConfigs} fields into a
-     * single {@link PhaseConfigBundle}. New fields take precedence
-     * field-by-field — when both forms set the same field, the new form
-     * wins; the legacy form fills in any field the new form leaves null.
-     *
-     * @param legacyDefaultRunner the legacy single-runner default, or {@code null}
-     * @param legacyRunners       the legacy per-phase runner map, keyed by
-     *                            phase wire name; may be {@code null}
-     * @param newDefault          the new default {@link PhaseConfig}, or {@code null}
-     * @param newPhaseConfigs     the new per-phase {@link PhaseConfig} map,
-     *                            keyed by phase wire name; may be {@code null}
-     * @return the merged bundle; never {@code null}
-     */
-    static PhaseConfigBundle mergeBundle(String legacyDefaultRunner,
-                                         Map<String, String> legacyRunners,
-                                         PhaseConfig newDefault,
-                                         Map<String, PhaseConfig> newPhaseConfigs) {
-        PhaseConfigBundle bundle = PhaseConfigBundle.fromLegacyRunners(
-                legacyDefaultRunner, legacyRunners);
-        if (newDefault != null && !newDefault.isEmpty()) {
-            // New default overlays the legacy-derived default field-by-field
-            // (new wins; legacy fills in missing fields).
-            bundle = bundle.withDefault(
-                    newDefault.overlayOn(bundle.defaultPhaseConfig()));
-        }
-        if (newPhaseConfigs != null && !newPhaseConfigs.isEmpty()) {
-            for (Map.Entry<String, PhaseConfig> e : newPhaseConfigs.entrySet()) {
-                if (e.getValue() == null || e.getValue().isEmpty()) continue;
-                Phase phase;
-                try {
-                    phase = Phase.fromWireName(e.getKey());
-                } catch (IllegalArgumentException ex) {
-                    continue;
-                }
-                PhaseConfig existing = bundle.phaseConfigs().get(phase);
-                PhaseConfig merged = existing == null
-                        ? e.getValue()
-                        : e.getValue().overlayOn(existing);
-                bundle = bundle.withPhase(phase, merged);
-            }
-        }
-        return bundle;
-    }
-
-    /**
      * Writes the configuration back to a YAML file.
      *
      * <p>Uses {@link JsonInclude.Include#NON_EMPTY} to omit null fields
@@ -1500,8 +1536,49 @@ public class WorkstreamConfig {
      * @throws IOException if the file cannot be written
      */
     public void saveToYaml(File file) throws IOException {
+        migrateLegacyConfigToPhaseConfig();
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
         mapper.setSerializationInclusion(JsonInclude.Include.NON_EMPTY);
         mapper.writeValue(file, this);
+    }
+
+    /**
+     * Folds every container's legacy configuration fields
+     * ({@code model} / {@code effort} / {@code defaultRunner} /
+     * {@code runners}) into the new per-phase shape
+     * ({@code defaultPhaseConfig} / {@code phaseConfigs}) and clears the
+     * legacy fields.
+     *
+     * <p>Called by {@link #saveToYaml(File)} so that persisted YAML only ever
+     * contains the new shape: a save-then-load cycle migrates legacy YAML in
+     * place without losing data. The fold reads {@link
+     * WorkstreamEntry#toPhaseConfigBundle()} /
+     * {@link WorkspaceEntry#toPhaseConfigBundle()}, which already merge the
+     * legacy and new fields field-by-field (new wins), so any value present
+     * in either form survives. Idempotent: a container already in the new
+     * shape is left unchanged.</p>
+     *
+     * <p>This is the only migration trigger. Loading legacy YAML leaves the
+     * legacy fields readable (so the controller keeps functioning across a
+     * restart on an unmigrated file); the rewrite to the new shape happens
+     * the next time the configuration is written back.</p>
+     */
+    void migrateLegacyConfigToPhaseConfig() {
+        for (WorkstreamEntry entry : workstreams) {
+            applyBundleToFields(entry.toPhaseConfigBundle(),
+                    entry::setDefaultPhaseConfig, entry::setPhaseConfigs);
+            entry.setModel(null);
+            entry.setEffort(null);
+            entry.setDefaultRunner(null);
+            entry.setRunners(null);
+        }
+        if (workspaces != null) {
+            for (WorkspaceEntry entry : workspaces) {
+                applyBundleToFields(entry.toPhaseConfigBundle(),
+                        entry::setDefaultPhaseConfig, entry::setPhaseConfigs);
+                entry.setDefaultRunner(null);
+                entry.setRunners(null);
+            }
+        }
     }
 }

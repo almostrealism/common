@@ -34,16 +34,20 @@ import java.util.function.Function;
  *
  * <p>Both endpoints share the same field surface ({@code defaultBranch},
  * {@code baseBranch}, {@code repoUrl}, {@code planningDocument},
- * {@code channelName}, {@code model}, {@code effort},
- * {@code requiredLabels}, {@code dependentRepos}, {@code runners}).
+ * {@code channelName}, {@code requiredLabels}, {@code dependentRepos},
+ * {@code defaultPhaseConfig}, {@code phaseConfigs}).
  * Registration additionally derives the target Slack workspace from
  * {@code slackWorkspaceId}, the GitHub org of {@code repoUrl}, or the
  * primary notifier in single-workspace mode, then auto-creates a Slack
  * channel on that workspace.</p>
  *
- * <p>Runner overrides are delegated to {@link SubmissionRunnerResolver}
- * so the same wire format applies to workstream registration, workstream
- * update, and per-job submission.</p>
+ * <p>Runner / model / effort configuration is supplied exclusively through
+ * the per-phase shape ({@code defaultPhaseConfig} / {@code phaseConfigs}),
+ * applied via {@link PhaseConfigResolver#applyToWorkstream}. The legacy
+ * top-level {@code model} / {@code effort} / {@code runners} /
+ * {@code defaultRunner} fields are no longer accepted: a request carrying
+ * any of them is rejected with a 400 by
+ * {@link PhaseConfigResolver#rejectLegacyRequestFields(String)}.</p>
  *
  * @author Michael Murray
  * @see FlowTreeApiEndpoint
@@ -96,8 +100,10 @@ final class WorkstreamRegistrationHandler {
      * → {@code "w-foo"}) and appends a numeric suffix if the name collides
      * with an existing workstream. Supply {@code channelName} to override.</p>
      *
-     * <p>{@code model} and {@code effort} are workstream-level defaults
-     * applied when a job omits them; an invalid {@code effort} value → 400.</p>
+     * <p>Runner / model / effort defaults are configured through
+     * {@code defaultPhaseConfig} / {@code phaseConfigs}; the legacy
+     * {@code model} / {@code effort} / {@code runners} / {@code defaultRunner}
+     * fields are rejected with a 400.</p>
      *
      * @param session the HTTP session
      * @return JSON with {@code workstreamId}, {@code channelId}, {@code channelName}
@@ -107,6 +113,8 @@ final class WorkstreamRegistrationHandler {
         if (body == null) {
             return errorResponse.apply("Failed to read request body");
         }
+        String legacyErr = PhaseConfigResolver.rejectLegacyRequestFields(body);
+        if (legacyErr != null) return errorResponse.apply(legacyErr);
 
         String defaultBranch = JsonFieldExtractor.extractString(body, "defaultBranch");
         if (defaultBranch == null || defaultBranch.isEmpty()) {
@@ -130,8 +138,6 @@ final class WorkstreamRegistrationHandler {
         if (explicitWorkspaceId == null || explicitWorkspaceId.isEmpty()) {
             explicitWorkspaceId = JsonFieldExtractor.extractString(body, "slackWorkspaceId"); // legacy alias
         }
-        String model = JsonFieldExtractor.extractString(body, "model");
-        String effort = JsonFieldExtractor.extractString(body, "effort");
         Map<String, String> requiredLabels = JsonFieldExtractor.extractStringObject(body, "requiredLabels");
         List<String> dependentRepos = JsonFieldExtractor.extractStringArray(body, "dependentRepos");
 
@@ -214,13 +220,6 @@ final class WorkstreamRegistrationHandler {
         if (dependentRepos != null && !dependentRepos.isEmpty()) {
             workstream.setDependentRepos(dependentRepos);
         }
-        Response err = FlowTreeApiEndpoint.applyValidated(model, workstream::setModel, errorResponse);
-        if (err != null) return err;
-        err = FlowTreeApiEndpoint.applyValidated(effort, workstream::setEffort, errorResponse);
-        if (err != null) return err;
-        String runnersErr = SubmissionRunnerResolver.applyToWorkstream(
-                workstream, JsonFieldExtractor.extractStringObject(body, "runners"));
-        if (runnersErr != null) return errorResponse.apply(runnersErr);
         String phaseConfigErr = PhaseConfigResolver.applyToWorkstream(workstream, body);
         if (phaseConfigErr != null) return errorResponse.apply(phaseConfigErr);
 
@@ -264,12 +263,13 @@ final class WorkstreamRegistrationHandler {
      *
      * <p>Supports updating any combination of: {@code channelId}, {@code channelName},
      * {@code defaultBranch}, {@code baseBranch}, {@code repoUrl},
-     * {@code planningDocument}, {@code model}, {@code effort},
-     * {@code requiredLabels}, {@code dependentRepos}, {@code runners}.</p>
+     * {@code planningDocument}, {@code requiredLabels}, {@code dependentRepos},
+     * {@code defaultPhaseConfig}, {@code phaseConfigs}.</p>
      *
-     * <p>{@code model} and {@code effort} are workstream-level defaults
-     * applied to jobs that do not specify their own values.  Invalid
-     * {@code effort} values produce a 400 response.</p>
+     * <p>Runner / model / effort defaults are configured through
+     * {@code defaultPhaseConfig} / {@code phaseConfigs}; the legacy
+     * {@code model} / {@code effort} / {@code runners} / {@code defaultRunner}
+     * fields are rejected with a 400.</p>
      *
      * @param session      the HTTP session
      * @param workstreamId the workstream identifier from the URL path
@@ -280,6 +280,8 @@ final class WorkstreamRegistrationHandler {
         if (body == null) {
             return errorResponse.apply("Failed to read request body");
         }
+        String legacyErr = PhaseConfigResolver.rejectLegacyRequestFields(body);
+        if (legacyErr != null) return errorResponse.apply(legacyErr);
 
         SlackNotifier ownerNotifier = notifiers.notifierFor(workstreamId);
         Workstream workstream = ownerNotifier != null
@@ -294,8 +296,6 @@ final class WorkstreamRegistrationHandler {
         String baseBranch = JsonFieldExtractor.extractString(body, "baseBranch");
         String repoUrl = JsonFieldExtractor.extractString(body, "repoUrl");
         String planningDocument = JsonFieldExtractor.extractString(body, "planningDocument");
-        String model = JsonFieldExtractor.extractString(body, "model");
-        String effort = JsonFieldExtractor.extractString(body, "effort");
         Map<String, String> requiredLabels = JsonFieldExtractor.extractStringObject(body, "requiredLabels");
         List<String> dependentRepos = JsonFieldExtractor.extractStringArray(body, "dependentRepos");
 
@@ -317,13 +317,6 @@ final class WorkstreamRegistrationHandler {
         if (planningDocument != null && !planningDocument.isEmpty()) {
             workstream.setPlanningDocument(planningDocument);
         }
-        Response err = FlowTreeApiEndpoint.applyValidated(model, workstream::setModel, errorResponse);
-        if (err != null) return err;
-        err = FlowTreeApiEndpoint.applyValidated(effort, workstream::setEffort, errorResponse);
-        if (err != null) return err;
-        String runnersErr = SubmissionRunnerResolver.applyToWorkstream(
-                workstream, JsonFieldExtractor.extractStringObject(body, "runners"));
-        if (runnersErr != null) return errorResponse.apply(runnersErr);
         String phaseConfigErr = PhaseConfigResolver.applyToWorkstream(workstream, body);
         if (phaseConfigErr != null) return errorResponse.apply(phaseConfigErr);
         if (!requiredLabels.isEmpty()) {
