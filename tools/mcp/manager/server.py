@@ -6239,8 +6239,10 @@ if __name__ == "__main__":
             # existing bearer token.
             from oauth import OAuthMiddleware
             issuer_url = os.environ.get("AR_MANAGER_ISSUER_URL")
+            oauth_state_file = os.environ.get("AR_MANAGER_OAUTH_STATE_FILE")
             app = BearerAuthMiddleware(app, tokens)
-            app = OAuthMiddleware(app, tokens, issuer_url=issuer_url)
+            app = OAuthMiddleware(app, tokens, issuer_url=issuer_url,
+                                  state_file=oauth_state_file)
             app = RateLimitMiddleware(app, requests_per_minute=RATE_LIMIT)
             app = HealthMiddleware(app)
 
