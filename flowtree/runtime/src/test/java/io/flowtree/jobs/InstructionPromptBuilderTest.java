@@ -289,4 +289,60 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 		assertTrue("Feedback section should precede the user request marker",
 			feedbackIdx < requestIdx);
 	}
+
+	// ── Git workflow reminder ────────────────────────────────────────────────
+
+	@Test(timeout = 30000)
+	public void gitWorkflowReminderAppearsInEveryPrompt() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("Do some work")
+			.build();
+		assertTrue("Git workflow reminder must appear in every prompt",
+			result.contains("Note on git workflow"));
+		assertTrue("Reminder must state commits land in a single commit",
+			result.contains("single commit"));
+	}
+
+	@Test(timeout = 30000)
+	public void gitWorkflowReminderAppearsWithWorkstreamUrl() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("Do some work")
+			.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1")
+			.build();
+		assertTrue("Git workflow reminder must appear when workstream URL is set",
+			result.contains("Note on git workflow"));
+	}
+
+	@Test(timeout = 30000)
+	public void gitWorkflowReminderAppearsInCorrectionSession() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("rule correction prompt")
+			.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1")
+			.setCorrectionSession(true)
+			.build();
+		assertTrue("Git workflow reminder must appear in correction sessions too",
+			result.contains("Note on git workflow"));
+	}
+
+	@Test(timeout = 30000)
+	public void gitWorkflowReminderAppearsBeforeUserRequestMarker() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("task body")
+			.build();
+		int reminderIdx = result.indexOf("Note on git workflow");
+		int requestIdx = result.indexOf("--- BEGIN USER REQUEST ---");
+		assertTrue("Git workflow reminder should appear in the prompt", reminderIdx >= 0);
+		assertTrue("User request marker should appear in the prompt", requestIdx >= 0);
+		assertTrue("Git workflow reminder should precede the user request marker",
+			reminderIdx < requestIdx);
+	}
+
+	@Test(timeout = 30000)
+	public void gitWorkflowReminderExplainsMultiPhaseTreatment() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.build();
+		assertTrue("Reminder must explain that multi-phase prompts still work",
+			result.contains("logically separate phases"));
+	}
 }

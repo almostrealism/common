@@ -576,6 +576,44 @@ public class JobStatsStore implements ConsoleFeatures {
     }
 
     /**
+     * Returns the persisted Slack message timestamp for {@code jobId}, or
+     * {@code null} when none has been recorded.
+     *
+     * <p>This is the durable counterpart to
+     * {@link SlackNotifier#getThreadTs(String)}'s in-memory lookup. The
+     * in-memory map is cleared by
+     * {@link SlackNotifier#onJobCompleted(String, JobCompletionEvent)} once
+     * the completion message has been posted; a late-arriving
+     * {@code send_message} call (e.g. an enforcement-phase agent that
+     * flushes its last tool call after the controller has already moved
+     * on) would otherwise fall back to posting at the top of the channel
+     * instead of inside the job's thread. Callers that want the message
+     * to land in the original thread regardless of lifecycle ordering
+     * should consult this method as a fallback.</p>
+     *
+     * @param jobId the job identifier (must not be {@code null})
+     * @return the previously-recorded Slack message timestamp, or
+     *         {@code null} when no row exists, no {@code slack_message_ts}
+     *         has been recorded for it, or the store is unavailable
+     */
+    public synchronized String getJobSlackTs(String jobId) {
+        if (connection == null || jobId == null) return null;
+        String sql = "SELECT slack_message_ts FROM job_timing WHERE job_id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, jobId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String ts = rs.getString(1);
+                    if (ts != null && !ts.isEmpty()) return ts;
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to read slack_message_ts for job " + jobId + ": " + e.getMessage());
+        }
+        return null;
+    }
+
+    /**
      * Returns per-workstream job activity for jobs completed on or after {@code since}.
      *
      * <p>Only workstreams with at least one completed job in the window are returned.

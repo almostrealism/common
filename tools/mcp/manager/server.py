@@ -253,13 +253,111 @@ def _require_workspace(workspace_id: Optional[str]) -> None:
             + (workspace_id if workspace_id else "<unknown>")
         )
 
+def _decode_current_request_token_full(
+) -> tuple[Optional[str], Optional[str], Optional[str], str]:
+    """Decode the Bearer token of the in-flight MCP tool call's HTTP request
+    and return diagnostic detail.
+
+    Returns ``(workstream_id, job_id, label, reason)`` where:
+      * ``workstream_id`` and ``job_id`` are the values from a valid HMAC
+        temp token, or ``None`` when decoding does not succeed.
+      * ``label`` is the audit label for the temp token (``tmp:ws/job``),
+        or ``None`` on any failure path.
+      * ``reason`` is a short identifier describing which path was taken
+        — ``"ok"`` on success, otherwise one of
+        ``"no_context"``, ``"no_request"``, ``"no_auth_header"``,
+        ``"non_bearer_scheme"``, ``"not_temp_token"`` — for diagnostic
+        logging. This is the only return slot meant for an operator to
+        read; the body of the token is never echoed.
+
+    The auth middleware also writes the decoded ``(workstream_id, job_id)``
+    into a :class:`contextvars.ContextVar` plus a :mod:`threading` local —
+    both intended to be read back by :func:`_get_token_workstream_id` and
+    :func:`_get_token_job_id` from inside tool handlers. That mechanism is
+    not reliable under FastMCP's streamable-HTTP **stateful** transport.
+    In stateful mode, the per-session "server task" that dispatches tool
+    handlers inherits its context from whichever HTTP request created the
+    session (the MCP ``initialize`` call). Subsequent HTTP requests on the
+    same session set the ContextVar on a *different* asyncio task — the
+    server task continues running in its original context. The
+    :mod:`threading` local is racy across concurrent requests on a single
+    event-loop thread for the same reason.
+
+    Decoding the token directly from the current request's HTTP
+    ``Authorization`` header sidesteps this entirely: the lowlevel MCP
+    server propagates the originating :class:`starlette.requests.Request`
+    via ``ServerMessageMetadata`` into the dispatch-time ``RequestContext``
+    (accessible via :meth:`FastMCP.get_context`), so every tool call sees
+    the bearer that the client actually sent on that call.
+
+    A diagnostic 0de652686 fix landed for this in ``feature/pluggable-agents``
+    but the production symptom (``send_message`` from an ``opencode``-driven
+    enforcement phase landing at the top of the Slack channel rather than
+    in the job's thread) recurred. The investigation could reproduce the
+    success case end-to-end but not the failure, so this function carries
+    the diagnostic ``reason`` slot so the next opencode job lands the
+    evidence in the controller log on its own.
+    """
+    try:
+        ctx = mcp.get_context()
+    except (LookupError, AttributeError):
+        return None, None, None, "no_context"
+    # ``Context.request_context`` raises ``ValueError`` when invoked
+    # outside of a live MCP request (e.g. unit tests that call the tool
+    # function directly). Treat that as "no request" and fall back.
+    try:
+        request_context = ctx.request_context
+    except (LookupError, ValueError, AttributeError):
+        return None, None, None, "no_request"
+    if request_context is None:
+        return None, None, None, "no_request"
+    request = getattr(request_context, "request", None)
+    if request is None:
+        return None, None, None, "no_request"
+    try:
+        auth_header = request.headers.get("authorization", "")
+    except Exception:
+        return None, None, None, "no_auth_header"
+    if not auth_header:
+        return None, None, None, "no_auth_header"
+    # RFC 7235 declares the scheme name case-insensitive; opencode and
+    # Claude Code both emit "Bearer " but a proxy could lowercase the
+    # value en route, so match either casing rather than failing closed
+    # on a cosmetic difference.
+    if not (auth_header.startswith("Bearer ") or auth_header.startswith("bearer ")):
+        return None, None, None, "non_bearer_scheme"
+    token_value = auth_header[7:].strip()
+    result = _validate_temp_token(token_value)
+    if result is None:
+        return None, None, None, "not_temp_token"
+    _, label, ws_id, job_id = result
+    return ws_id, job_id, label, "ok"
+
+
+def _decode_current_request_token() -> tuple[Optional[str], Optional[str]]:
+    """Backwards-compatible 2-tuple wrapper around
+    :func:`_decode_current_request_token_full`. New callers that want the
+    diagnostic ``reason`` should use the full variant directly.
+    """
+    ws_id, job_id, _, _ = _decode_current_request_token_full()
+    return ws_id, job_id
+
+
 def _get_token_workstream_id() -> Optional[str]:
+    # Prefer per-request decoding (see _decode_current_request_token for
+    # why ContextVars/thread-locals are unreliable in FastMCP stateful mode).
+    req_ws, _ = _decode_current_request_token()
+    if req_ws:
+        return req_ws
     ws = _request_workstream_id.get(None)
     if ws is not None:
         return ws
     return getattr(_thread_local, "workstream_id", None)
 
 def _get_token_job_id() -> Optional[str]:
+    _, req_job = _decode_current_request_token()
+    if req_job:
+        return req_job
     jid = _request_job_id.get(None)
     if jid is not None:
         return jid
@@ -550,6 +648,20 @@ class BearerAuthMiddleware:
                     _set_scopes(scopes, label)
                     _set_workspace_scopes([workspace_id] if workspace_id else None)
                     _set_token_context(ws_id, job_id)
+                    # One line per HTTP request carrying a valid temp
+                    # token. Pair with send_message_resolved /
+                    # send_message_missing_job_id from the tool handler
+                    # to determine whether the per-request decode in the
+                    # handler saw the same (ws, job) that the middleware
+                    # observed here.
+                    audit_log.info(
+                        "temp_token_request "
+                        "method=%s path=%s "
+                        "workstream_id=%s job_id=%s workspace_id=%s",
+                        scope.get("method", ""),
+                        scope.get("path", ""),
+                        ws_id or "", job_id or "",
+                        workspace_id or "")
                     await self.app(scope, receive, send)
                     return
 
@@ -767,7 +879,10 @@ def _build_maps_from_workstreams(entries: list) -> tuple:
         if not isinstance(ws, dict):
             continue
         wid = ws.get("workstreamId")
-        workspace_id = ws.get("slackWorkspaceId")
+        # Prefer the new workspaceId field; fall back to the legacy alias
+        # so we stay compatible with older controllers that still emit
+        # only slackWorkspaceId on the workstream list.
+        workspace_id = ws.get("workspaceId") or ws.get("slackWorkspaceId")
         if wid:
             ws_map[wid] = workspace_id
         org = _extract_owner_repo(ws.get("repoUrl") or "")
@@ -904,9 +1019,12 @@ def _require_workstream_in_scope(workstream_id: str) -> None:
 
 
 def _filter_workstreams_by_scope(entries: list) -> list:
-    """Return only those workstream-dict entries whose slackWorkspaceId is
+    """Return only those workstream-dict entries whose workspaceId is
     permitted by the current request's workspace scope. Unscoped callers
     see everything; scoped callers see only in-scope workstreams.
+    Accepts the legacy ``slackWorkspaceId`` field for backward
+    compatibility with controllers that have not yet started emitting
+    ``workspaceId``.
     """
     scopes = _get_workspace_scopes()
     if not scopes:
@@ -914,7 +1032,8 @@ def _filter_workstreams_by_scope(entries: list) -> list:
     filtered = []
     for ws in entries:
         if isinstance(ws, dict):
-            if ws.get("slackWorkspaceId") in scopes:
+            wsid = ws.get("workspaceId") or ws.get("slackWorkspaceId")
+            if wsid in scopes:
                 filtered.append(ws)
     return filtered
 
@@ -1002,7 +1121,7 @@ def _find_workstream(workstream_id: str) -> Optional[dict]:
         for ws in result:
             if ws.get("workstreamId") == workstream_id:
                 if _get_workspace_scopes() and not _is_workspace_allowed(
-                        ws.get("slackWorkspaceId")):
+                        ws.get("workspaceId") or ws.get("slackWorkspaceId")):
                     return None
                 return ws
     return None
@@ -1057,6 +1176,37 @@ def controller_health() -> dict:
 
 
 @mcp.tool()
+def agent_options() -> dict:
+    """Return available agent runners, phases, model names, and the default runner.
+
+    Queries the controller's ``/api/agents`` endpoint and returns the
+    complete set of options needed to configure per-workstream or per-job
+    runner selection.
+
+    Use this tool before calling ``workstream_register``,
+    ``workstream_update_config``, or ``workstream_submit_task`` with
+    ``runners`` or ``default_runner`` parameters to discover valid runner
+    names and phase wire names.
+
+    Returns:
+        Dictionary with:
+        - ``ok``: ``True`` on a successful read.
+        - ``runners``: list of runner objects, each with ``name`` and
+          ``capabilities`` (boolean flags + ``supportedModels`` list).
+        - ``phases``: list of phase objects, each with ``name`` (the phase
+          wire identifier) and ``description``. The ``name`` values are
+          the valid keys for the ``runners`` JSON object accepted by
+          submit/register/update tools.
+        - ``models``: list of accepted model identifiers (aliases and full
+          IDs) that may be passed as the ``model`` parameter.
+        - ``defaultRunner``: the built-in fallback runner name (``"claude"``).
+    """
+    _require_scope("read")
+    _audit("agent_options")
+    return _controller_get("/api/agents")
+
+
+@mcp.tool()
 def controller_update_config(
     accept_automated_jobs: str = "",
 ) -> dict:
@@ -1105,7 +1255,7 @@ def controller_update_config(
 
 
 @mcp.tool()
-def workstream_list() -> dict:
+def workstream_list(include_archived: bool = False) -> dict:
     """List all registered workstreams with their configuration and capabilities.
 
     Each workstream entry includes:
@@ -1118,16 +1268,27 @@ def workstream_list() -> dict:
     - pipelineCapable: whether Tier 2 pipeline tools will work
     - dependentRepos: list of additional repo URLs cloned alongside the
       primary repo (omitted if none configured)
+    - archived: ``true`` when the workstream has been archived (only
+      present when ``include_archived=True``; otherwise such entries
+      are filtered out entirely)
 
     Use this to discover workstreams and determine which tools are
     available for each one.
+
+    Args:
+        include_archived: When ``False`` (default) archived workstreams
+            are omitted from the response. Set ``True`` to include them;
+            each archived entry carries ``archived=true``.
 
     Returns:
         Dictionary with list of workstream summaries.
     """
     _require_scope("read")
-    _audit("workstream_list")
-    result = _controller_get("/api/workstreams")
+    _audit("workstream_list", include_archived=include_archived)
+    path = "/api/workstreams"
+    if include_archived:
+        path += "?includeArchived=true"
+    result = _controller_get(path)
 
     if isinstance(result, list):
         entries = _filter_workstreams_by_scope(result)
@@ -1281,6 +1442,254 @@ def _check_model(model: str) -> Optional[dict]:
     return None
 
 
+_KNOWN_PHASE_WIRE_NAMES = (
+    "primary",
+    "review",
+    "deduplication",
+    "organizational-placement",
+    "enforce-changes",
+    "maven-dependency-protection",
+    "post-completion",
+    "commit-message",
+    "git-tampering-restart",
+)
+
+
+# Runner identifiers mirrored from
+# ``io.flowtree.jobs.agent.AgentRunnerRegistry`` on the Java side. New
+# runners are registered there; this list must be updated alongside.
+# Client-side validation here gives the caller an immediate error; the
+# controller is the source of truth and rejects unknowns too.
+_KNOWN_RUNNER_NAMES = (
+    "claude",
+    "opencode",
+)
+
+
+def _parse_runners_json(runners: str) -> "tuple[Optional[dict], Optional[dict]]":
+    """Parse and validate the ``runners`` JSON argument to ``workstream_submit_task``.
+
+    The argument is a JSON object string whose keys are phase wire names
+    (e.g. ``"primary"``, ``"deduplication"``) and whose values are runner
+    identifiers (e.g. ``"claude"``, ``"opencode"``). An optional ``"default"``
+    key acts as a fallback for unspecified phases. All values must be strings.
+
+    Unknown phase keys are rejected client-side so the caller gets an
+    immediate error instead of a 400 from the controller.
+
+    Args:
+        runners: A JSON object string, or empty to indicate no overrides.
+
+    Returns:
+        A tuple ``(parsed_dict, error_dict)``. On success, ``parsed_dict`` is
+        the decoded mapping (possibly empty) and ``error_dict`` is ``None``.
+        On failure, ``parsed_dict`` is ``None`` and ``error_dict`` carries an
+        ``ok=False`` payload suitable for returning to the MCP caller.
+    """
+    if not runners:
+        return {}, None
+    import json as _json
+    try:
+        parsed = _json.loads(runners)
+    except ValueError as e:
+        return None, {
+            "ok": False,
+            "error": "runners must be a JSON object: " + str(e),
+        }
+    if not isinstance(parsed, dict):
+        return None, {
+            "ok": False,
+            "error": "runners must be a JSON object mapping phase names to runner names",
+        }
+    valid_keys = set(_KNOWN_PHASE_WIRE_NAMES) | {"default"}
+    cleaned: dict = {}
+    for key, value in parsed.items():
+        if key not in valid_keys:
+            return None, {
+                "ok": False,
+                "error": (
+                    "Unknown phase key in runners: '" + str(key) + "'. "
+                    "Allowed phase keys: " + ", ".join(sorted(valid_keys))
+                ),
+            }
+        if not isinstance(value, str) or not value:
+            return None, {
+                "ok": False,
+                "error": (
+                    "Runner value for phase '" + str(key)
+                    + "' must be a non-empty string"
+                ),
+            }
+        cleaned[key] = value
+    return cleaned, None
+
+
+def _parse_default_phase_config_json(default_phase_config: str) -> "tuple[Optional[dict], Optional[dict]]":
+    """Parse and validate the ``default_phase_config`` JSON argument.
+
+    The argument is a JSON object string with optional keys ``runner``,
+    ``model``, ``effort``, ``provider``. Unknown keys are rejected.
+
+    Args:
+        default_phase_config: A JSON object string, or empty for none.
+
+    Returns:
+        A tuple ``(parsed_dict, error_dict)``. On success, ``parsed_dict``
+        is the decoded mapping (possibly empty) and ``error_dict`` is
+        ``None``. On failure, ``parsed_dict`` is ``None`` and
+        ``error_dict`` carries an ``ok=False`` payload.
+    """
+    if not default_phase_config:
+        return {}, None
+    import json as _json
+    try:
+        parsed = _json.loads(default_phase_config)
+    except ValueError as e:
+        return None, {
+            "ok": False,
+            "error": "default_phase_config must be a JSON object: " + str(e),
+        }
+    if not isinstance(parsed, dict):
+        return None, {
+            "ok": False,
+            "error": "default_phase_config must be a JSON object with optional runner/model/effort/provider keys",
+        }
+    allowed = {"runner", "model", "effort", "provider"}
+    cleaned: dict = {}
+    for key, value in parsed.items():
+        if key not in allowed:
+            return None, {
+                "ok": False,
+                "error": ("Unknown key in default_phase_config: '"
+                          + str(key) + "'. Allowed: runner, model, effort, provider"),
+            }
+        if value is None:
+            continue
+        if not isinstance(value, str) or not value:
+            return None, {
+                "ok": False,
+                "error": ("default_phase_config." + str(key)
+                          + " must be a non-empty string"),
+            }
+        err = _validate_phase_config_field("default_phase_config", key, value)
+        if err is not None:
+            return None, err
+        cleaned[key] = value
+    return cleaned, None
+
+
+def _validate_phase_config_field(context: str, field: str, value: str) -> Optional[dict]:
+    """Validate a single ``{runner, model, effort, provider}`` field value.
+
+    ``runner`` is checked against the known set of registered runner
+    identifiers ([[_KNOWN_RUNNER_NAMES]]); ``effort`` is checked against
+    [[VALID_EFFORT_LEVELS]]. Both ``model`` and ``provider`` are passed
+    through without client-side validation — the controller validates models
+    against the runner's supportedModels and rejects incompatible
+    provider/runner combinations (e.g. runner=claude with provider!=anthropic)
+    at submission time.
+
+    Args:
+        context: ``"default_phase_config"`` or ``"phase_configs['name']"``
+            — used to build a human-readable error message.
+        field: One of ``"runner"`` / ``"model"`` / ``"effort"`` / ``"provider"``
+            — only ``runner`` and ``effort`` are validated client-side.
+        value: The non-empty string that the caller supplied.
+
+    Returns:
+        ``None`` when the value is valid; otherwise a 400-style
+        ``{"ok": False, "error": ...}`` dict.
+    """
+    if field == "runner" and value not in _KNOWN_RUNNER_NAMES:
+        return {
+            "ok": False,
+            "error": (context + ".runner='" + value + "' is not a known runner. "
+                      "Allowed: " + ", ".join(_KNOWN_RUNNER_NAMES)
+                      + ". Use agent_options to list runners on the controller."),
+        }
+    if field == "effort" and value not in VALID_EFFORT_LEVELS:
+        return {
+            "ok": False,
+            "error": (context + ".effort='" + value + "' is not a valid effort level. "
+                      "Allowed: " + ", ".join(VALID_EFFORT_LEVELS)),
+        }
+    return None
+
+
+def _parse_phase_configs_json(phase_configs: str) -> "tuple[Optional[dict], Optional[dict]]":
+    """Parse and validate the ``phase_configs`` JSON argument.
+
+    The argument is a JSON object whose keys are phase wire names
+    (``"primary"``, ``"review"``, ``"deduplication"``, ...) and whose
+    values are nested JSON objects with optional ``runner`` / ``model`` /
+    ``effort`` / ``provider`` fields. Unknown phase keys are rejected
+    client-side so the caller gets an immediate error.
+
+    Args:
+        phase_configs: A JSON object string, or empty for none.
+
+    Returns:
+        A tuple ``(parsed_dict, error_dict)`` matching the pattern of
+        ``_parse_runners_json``.
+    """
+    if not phase_configs:
+        return {}, None
+    import json as _json
+    try:
+        parsed = _json.loads(phase_configs)
+    except ValueError as e:
+        return None, {
+            "ok": False,
+            "error": "phase_configs must be a JSON object: " + str(e),
+        }
+    if not isinstance(parsed, dict):
+        return None, {
+            "ok": False,
+            "error": "phase_configs must be a JSON object mapping phase names to objects with optional runner/model/effort/provider keys",
+        }
+    valid_phase_keys = set(_KNOWN_PHASE_WIRE_NAMES)
+    allowed_inner = {"runner", "model", "effort", "provider"}
+    cleaned: dict = {}
+    for key, inner in parsed.items():
+        if key not in valid_phase_keys:
+            return None, {
+                "ok": False,
+                "error": ("Unknown phase key in phase_configs: '" + str(key)
+                          + "'. Allowed phase keys: "
+                          + ", ".join(sorted(valid_phase_keys))),
+            }
+        if not isinstance(inner, dict):
+            return None, {
+                "ok": False,
+                "error": ("phase_configs['" + str(key)
+                          + "'] must be an object with runner/model/effort/provider keys"),
+            }
+        inner_cleaned: dict = {}
+        for inner_key, value in inner.items():
+            if inner_key not in allowed_inner:
+                return None, {
+                    "ok": False,
+                    "error": ("Unknown key in phase_configs['" + str(key) + "']: '"
+                              + str(inner_key) + "'. Allowed: runner, model, effort, provider"),
+                }
+            if value is None:
+                continue
+            if not isinstance(value, str) or not value:
+                return None, {
+                    "ok": False,
+                    "error": ("phase_configs['" + str(key) + "']."
+                              + str(inner_key) + " must be a non-empty string"),
+                }
+            err = _validate_phase_config_field(
+                "phase_configs['" + str(key) + "']", inner_key, value)
+            if err is not None:
+                return None, err
+            inner_cleaned[inner_key] = value
+        if inner_cleaned:
+            cleaned[key] = inner_cleaned
+    return cleaned, None
+
+
 def _parse_required_labels(required_labels: str) -> dict:
     """Parse a comma-separated key:value string into a labels dict.
 
@@ -1339,6 +1748,68 @@ def _parse_activities_param(include_activities) -> str:
     return stripped or "primary"
 
 
+# ---------------------------------------------------------------------------
+# Commit-language linter for workstream_submit_task
+# ---------------------------------------------------------------------------
+
+# Each entry is (compiled_pattern, human_readable_reason).  Patterns are
+# checked case-insensitively against each line of the submitted prompt.
+# re is already imported at the top of this file.
+_COMMIT_SEQUENCING_PATTERNS = [
+    (re.compile(r"\bcommit\s+\d+\b", re.IGNORECASE),
+     "commit-number phrase (e.g. \"Commit 1\", \"commit 2\")"),
+    (re.compile(r"\bfirst\s+commit\b", re.IGNORECASE),
+     '"first commit" phrase'),
+    (re.compile(r"\bnext\s+commit\b", re.IGNORECASE),
+     '"next commit" phrase'),
+    (re.compile(r"\bfinal\s+commit\b", re.IGNORECASE),
+     '"final commit" phrase'),
+    (re.compile(r"\bas\s+(?:its\s+own|separate|individual)\s+commits?\b", re.IGNORECASE),
+     '"as separate/individual commits" phrase'),
+    (re.compile(r"\b(?:in|across|over)\s+\d+\s+commits?\b", re.IGNORECASE),
+     '"in/across/over N commits" phrase'),
+    (re.compile(
+        r"\b(?:your|the)\s+commit\s+message\s+(?:should|will|must)\b", re.IGNORECASE),
+     '"commit message should/will/must" phrase'),
+    (re.compile(
+        r"\bcommit\s+(?:this|that|each|the)\s+(?:as|with|before)\b", re.IGNORECASE),
+     '"commit this/that/each/the as/with/before" phrase'),
+    (re.compile(
+        r"\bcommit\s+(?:between|after|before)\s+(?:each|every)\b", re.IGNORECASE),
+     '"commit between/after/before each/every" phrase'),
+]
+
+# Minimum prompt length below which the linter is skipped (false-positive
+# ratio is too high on very short strings and they almost never contain the
+# multi-word phrases we are looking for).
+_COMMIT_LINTER_MIN_LEN = 50
+
+
+def _lint_prompt_for_commit_sequencing(prompt: str) -> list:
+    """Scan ``prompt`` for forbidden commit-sequencing phrases.
+
+    Returns a list of ``(line_number, snippet, reason)`` tuples — one per
+    matched line (first matching pattern wins per line).  Returns an empty
+    list when the prompt is short (< 50 chars) or contains no matches.
+
+    This function is pure (no I/O) and intentionally best-effort: it may
+    produce false positives for prompts that quote commit messages or use
+    the word "commit" in an unrelated context.  Callers that need to bypass
+    the check should pass ``allow_commit_language=True`` to
+    ``workstream_submit_task``.
+    """
+    if len(prompt) < _COMMIT_LINTER_MIN_LEN:
+        return []
+    violations = []
+    for lineno, line in enumerate(prompt.splitlines(), 1):
+        for pattern, reason in _COMMIT_SEQUENCING_PATTERNS:
+            if pattern.search(line):
+                snippet = line.strip()[:120]
+                violations.append((lineno, snippet, reason))
+                break  # one violation entry per line, first pattern wins
+    return violations
+
+
 @mcp.tool()
 def workstream_submit_task(
     prompt: str,
@@ -1354,12 +1825,19 @@ def workstream_submit_task(
     required_labels: str = "",
     deduplication_mode: str = "",
     max_deduplication_passes: int = 0,
+    review_enabled: bool = True,
+    max_review_passes: int = 0,
     model: str = "",
     effort: str = "",
     post_completion_command: str = "",
     post_completion_timeout_seconds: int = 0,
     max_post_completion_passes: int = 0,
     delay_seconds: int = 0,
+    runners: str = "",
+    default_runner: str = "",
+    default_phase_config: str = "",
+    phase_configs: str = "",
+    allow_commit_language: bool = False,
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -1413,6 +1891,19 @@ def workstream_submit_task(
             duplication. Set higher (e.g. 5) for first-time large feature work
             where thoroughness matters. Has no effect when
             ``deduplication_mode="none"``.
+        review_enabled: When ``True`` (the default), a second-pass review
+            session runs after the primary phase. The reviewer is told to
+            make surgical fixes only when unambiguous and to defer
+            anything substantial via a ``review-followup`` memory plus an
+            inline ``TODO(review):`` code comment. Route the review phase
+            to a cheaper runner (e.g. opencode against a local model)
+            with ``runners='{"review":"opencode"}'``. Set to ``False`` to
+            skip the review phase entirely for this job.
+        max_review_passes: Maximum number of review correction sessions per
+            job. 0 (default) uses the server-side default of 1. The review
+            rule is single-pass by design; raising this only matters if
+            you want the same reviewer to see its own changes on a second
+            pass, which is rarely useful.
         model: Claude Code model alias (e.g. ``"sonnet"``, ``"opus"``,
             ``"haiku"``) or full identifier (e.g. ``"claude-sonnet-4-6"``)
             for this job. Empty string falls back to the workstream default,
@@ -1452,6 +1943,59 @@ def workstream_submit_task(
             but stays in a pending state until the delay elapses. Workers will
             not pick it up until then. Cancellation works normally during the
             pending period. 0 (default) means dispatch immediately.
+        runners: Per-phase agent runner overrides as a JSON object string. Keys
+            are phase wire names (``"primary"``, ``"review"``,
+            ``"deduplication"``, ``"organizational-placement"``,
+            ``"enforce-changes"``, ``"maven-dependency-protection"``,
+            ``"post-completion"``, ``"commit-message"``,
+            ``"git-tampering-restart"``) plus an optional ``"default"``. Values are runner identifiers such as ``"claude"``
+            or ``"opencode"``. Unspecified phases inherit ``"default"``, which
+            in turn falls back to the workstream default and then the
+            controller default. Example::
+
+                '{"primary":"claude","deduplication":"opencode",
+                  "commit-message":"opencode"}'
+
+            Empty (default) inherits the workstream-level runner configuration.
+            Unknown phase names are rejected client-side with a clear error.
+        default_runner: Convenience shortcut to set the default runner for
+            every phase without enumerating them in ``runners``. Equivalent to
+            passing ``{"default": "<runner>"}`` in ``runners``; when both are
+            supplied the ``"default"`` entry inside ``runners`` wins. Empty
+            (default) inherits the workstream-level default.
+        default_phase_config: Per-phase default configuration as a JSON object
+            string with optional ``runner`` / ``model`` / ``effort`` keys.
+            Applies to every phase that does not have a dedicated entry in
+            ``phase_configs``. Empty (default) inherits the workstream-level
+            default. **Precedence:** wins field-by-field over the legacy
+            ``default_runner`` / ``model`` / ``effort`` parameters when both
+            are supplied. Example: passing
+            ``default_phase_config='{"runner":"claude"}'`` together with
+            ``default_runner="opencode"`` resolves the job-level default
+            runner to ``claude``; the legacy ``default_runner`` is ignored
+            because the new shape supplied a runner.
+        phase_configs: Per-phase configuration overrides as a JSON object
+            whose keys are phase wire names and whose values are
+            ``{runner, model, effort}`` triples. Example::
+
+                '{"review": {"model": "claude-opus-4-7", "effort": "high"},
+                  "commit-message": {"runner": "opencode"}}'
+
+            **Precedence:** wins field-by-field over the legacy ``runners``
+            map when both are supplied. Example: passing
+            ``phase_configs='{"review":{"runner":"claude"}}'`` together with
+            ``runners='{"review":"opencode"}'`` routes the review phase to
+            ``claude``; the legacy ``runners`` entry for ``review`` is
+            ignored. Empty (default) inherits the workstream-level
+            configuration.
+        allow_commit_language: Escape hatch for the commit-language linter.
+            By default (``False``), the prompt is scanned for phrases that
+            imply the agent controls git commits (e.g. "Commit 1: do X",
+            "commit this before starting") and the submission is rejected if
+            any are found. Set to ``True`` only when the prompt legitimately
+            contains such language (e.g. quoting an existing commit message or
+            convention) and restructuring is not feasible. Most callers should
+            restructure the prompt instead of opting out.
 
     Returns:
         Dictionary with job_id and workstream_id on success.
@@ -1467,16 +2011,50 @@ def workstream_submit_task(
         workstream_id=workstream_id, target_branch=target_branch,
         repo_url=repo_url, description=description, started_after=started_after,
         deduplication_mode=deduplication_mode,
-        model=model, effort=effort,
+        model=model, effort=effort, default_runner=default_runner,
     )
     if err:
         return err
+    parsed_runners, runners_err = _parse_runners_json(runners)
+    if runners_err:
+        return runners_err
+    parsed_default_phase_config, default_pc_err = _parse_default_phase_config_json(default_phase_config)
+    if default_pc_err:
+        return default_pc_err
+    parsed_phase_configs, phase_configs_err = _parse_phase_configs_json(phase_configs)
+    if phase_configs_err:
+        return phase_configs_err
     err = _check_effort(effort)
     if err:
         return err
     err = _check_model(model)
     if err:
         return err
+    # Commit-language linter -- rejects prompts that imply the agent controls
+    # git commits (e.g. "Commit 1: do X, Commit 2: do Y").  Bypassed when the
+    # caller explicitly opts out via allow_commit_language=True.
+    if not allow_commit_language:
+        linter_hits = _lint_prompt_for_commit_sequencing(prompt)
+        if linter_hits:
+            lines = []
+            for lineno, snippet, reason in linter_hits:
+                lines.append(
+                    "  Line {}: {}\n    > {}".format(lineno, reason, snippet))
+            return {
+                "ok": False,
+                "error": (
+                    "Prompt contains language implying the agent controls git commits. "
+                    "The agent edits the working tree; the harness commits whatever's "
+                    "there in a single commit at session end. The agent cannot sequence "
+                    "commits, name them, or split work across multiple commits.\n\n"
+                    "Forbidden phrases found:\n"
+                    + "\n".join(lines)
+                    + "\n\nRewrite the prompt to describe the final state of the working "
+                    "tree, not a sequence of commits. If you are quoting a commit message "
+                    "convention or have a legitimate use of this language, pass "
+                    "allow_commit_language=True to bypass this check."
+                ),
+            }
     # Self-submission protection. When this tool is called from inside a
     # running ClaudeCodeJob (the agent has been issued a temporary token
     # whose payload binds it to a specific workstream), the agent must
@@ -1571,6 +2149,10 @@ def workstream_submit_task(
         payload["deduplicationMode"] = deduplication_mode
     if max_deduplication_passes > 0:
         payload["maxDeduplicationPasses"] = max_deduplication_passes
+    if not review_enabled:
+        payload["reviewEnabled"] = False
+    if max_review_passes > 0:
+        payload["maxReviewPasses"] = max_review_passes
     if model:
         payload["model"] = model
     if effort:
@@ -1583,6 +2165,19 @@ def workstream_submit_task(
         payload["maxPostCompletionPasses"] = max_post_completion_passes
     if delay_seconds > 0:
         payload["delaySeconds"] = delay_seconds
+    # Merge default_runner into the runners object so the controller sees a
+    # single representation. The "default" key inside an explicit ``runners``
+    # value wins over default_runner because the explicit form is unambiguous.
+    runners_payload = dict(parsed_runners) if parsed_runners else {}
+    if default_runner and "default" not in runners_payload:
+        runners_payload["default"] = default_runner
+    if runners_payload:
+        payload["runners"] = runners_payload
+    # New unified per-phase configuration. Forwarded under camelCase keys.
+    if parsed_default_phase_config:
+        payload["defaultPhaseConfig"] = parsed_default_phase_config
+    if parsed_phase_configs:
+        payload["phaseConfigs"] = parsed_phase_configs
 
     result = _controller_post("/api/submit", payload)
 
@@ -1612,13 +2207,18 @@ def workstream_register(
     channel_name: str = "",
     required_labels: str = "",
     dependent_repos: str = "",
-    slack_workspace_id: str = "",
+    workspace_id: str = "",
     plan_content: str = "",
     plan_instructions: str = "",
     plan_path: str = "",
     plan_commit_message: str = "",
     model: str = "",
     effort: str = "",
+    runners: str = "",
+    default_runner: str = "",
+    default_phase_config: str = "",
+    phase_configs: str = "",
+    slack_workspace_id: str = "",
 ) -> dict:
     """Register a new workstream for a branch/repo combination.
 
@@ -1644,11 +2244,14 @@ def workstream_register(
             (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
             Also accepts a JSON array string. Dependent repos follow the same
             branch lifecycle as the primary repo (create/checkout/pull/commit/push).
-        slack_workspace_id: Slack workspace (team) ID to register this
-            workstream under. When omitted, unscoped (superadmin) tokens
-            allow the controller to derive the target workspace from the
-            GitHub org in ``repo_url``. Callers using tokens scoped to
-            specific workspaces must pass this parameter explicitly.
+        workspace_id: Workspace ID (operator-chosen identifier) to
+            register this workstream under. When omitted, unscoped
+            (superadmin) tokens allow the controller to derive the
+            target workspace from the GitHub org in ``repo_url``.
+            Callers using tokens scoped to specific workspaces must
+            pass this parameter explicitly.
+        slack_workspace_id: Deprecated alias for ``workspace_id``;
+            accepted for backward compatibility with older callers.
         plan_content: Literal markdown content of a planning document to
             commit directly to the new workstream's branch immediately after
             registration. Mutually exclusive with ``plan_instructions``.
@@ -1677,6 +2280,31 @@ def workstream_register(
             workstream. Must be one of ``"low"``, ``"medium"``, ``"high"``,
             ``"xhigh"``, ``"max"``. Empty string leaves the workstream with
             no default.
+        runners: JSON object mapping phase wire names to runner identifiers
+            (e.g. ``'{"primary":"opencode","deduplication":"opencode"}``).
+            An optional ``"default"`` key sets the fallback for unspecified
+            phases. Use ``agent_options`` to discover available runner names
+            and phase wire names. Empty string leaves workstream with no
+            per-phase runner configuration.
+        default_runner: Convenience shortcut equivalent to
+            ``runners='{"default": "<value>"}'``. The explicit
+            ``runners["default"]`` wins when both are supplied. Empty
+            string leaves the workstream default runner unconfigured.
+        default_phase_config: Per-phase default configuration as a JSON
+            object with optional ``runner`` / ``model`` / ``effort`` keys.
+            **Precedence:** supersedes the legacy ``default_runner`` /
+            ``model`` / ``effort`` shortcuts field-by-field when both are
+            supplied — e.g. ``default_phase_config='{"model":"opus"}'``
+            with ``model="sonnet"`` registers the workstream default as
+            ``opus``.
+        phase_configs: Per-phase overrides as a JSON object whose keys
+            are phase wire names and whose values are
+            ``{runner, model, effort}`` triples. **Precedence:**
+            supersedes the legacy ``runners`` map field-by-field when both
+            are supplied — e.g.
+            ``phase_configs='{"review":{"runner":"claude"}}'`` with
+            ``runners='{"review":"opencode"}'`` makes the workstream route
+            the review phase to ``claude``.
 
     Returns:
         Dictionary with workstreamId and channel info on success. When
@@ -1689,12 +2317,18 @@ def workstream_register(
         - ``error`` and ``fallback_instructions``: only when ``mode=="failed"``.
     """
     _require_scope("write")
+    # slack_workspace_id is the legacy name; the new canonical name is
+    # workspace_id. Accept either, preferring the new name.
+    if not workspace_id and slack_workspace_id:
+        audit_log.debug("workstream_register: slack_workspace_id is a "
+                        "deprecated alias for workspace_id")
+        workspace_id = slack_workspace_id
     err = _check_short_strings(
         default_branch=default_branch, base_branch=base_branch,
         repo_url=repo_url, planning_document=planning_document,
-        channel_name=channel_name, slack_workspace_id=slack_workspace_id,
+        channel_name=channel_name, workspace_id=workspace_id,
         plan_path=plan_path, plan_commit_message=plan_commit_message,
-        model=model, effort=effort,
+        model=model, effort=effort, default_runner=default_runner,
     )
     if err:
         return err
@@ -1704,6 +2338,15 @@ def workstream_register(
     err = _check_model(model)
     if err:
         return err
+    parsed_runners, runners_err = _parse_runners_json(runners)
+    if runners_err:
+        return runners_err
+    parsed_default_phase_config, default_pc_err = _parse_default_phase_config_json(default_phase_config)
+    if default_pc_err:
+        return default_pc_err
+    parsed_phase_configs, phase_configs_err = _parse_phase_configs_json(phase_configs)
+    if phase_configs_err:
+        return phase_configs_err
     # plan_content and plan_instructions describe two different follow-up
     # actions; the caller must pick one. Reject ambiguous requests up front.
     if plan_content and plan_instructions:
@@ -1718,21 +2361,21 @@ def workstream_register(
     if err:
         return err
     # Scope enforcement: scoped callers must name a workspace they own.
-    # An explicit slack_workspace_id wins. Otherwise we refuse rather than
+    # An explicit workspace_id wins. Otherwise we refuse rather than
     # rely on the controller's repoUrl-derivation path, because allowing
     # the caller to rely on controller-side derivation would open a
     # scope-bypass if repoUrl is omitted or spoofed.
     if _get_workspace_scopes():
-        if slack_workspace_id:
-            _require_workspace(slack_workspace_id)
+        if workspace_id:
+            _require_workspace(workspace_id)
         else:
             raise PermissionError(
-                "Scoped tokens must pass slack_workspace_id when registering "
+                "Scoped tokens must pass workspace_id when registering "
                 "a workstream — repoUrl-based derivation is only available "
                 "to unscoped (superadmin) tokens."
             )
     _audit("workstream_register", default_branch=default_branch,
-           slack_workspace_id=slack_workspace_id)
+           workspace_id=workspace_id)
 
     payload = {"defaultBranch": default_branch}
     if base_branch:
@@ -1743,8 +2386,12 @@ def workstream_register(
         payload["planningDocument"] = planning_document
     if channel_name:
         payload["channelName"] = channel_name
-    if slack_workspace_id:
-        payload["slackWorkspaceId"] = slack_workspace_id
+    if workspace_id:
+        # Send both names: the controller accepts either, and the legacy
+        # field name is kept so older controllers without the rename
+        # continue to honour the registration.
+        payload["workspaceId"] = workspace_id
+        payload["slackWorkspaceId"] = workspace_id
     if required_labels:
         labels_map = _parse_required_labels(required_labels)
         if labels_map:
@@ -1757,6 +2404,15 @@ def workstream_register(
         payload["model"] = model
     if effort:
         payload["effort"] = effort
+    runners_payload = dict(parsed_runners) if parsed_runners else {}
+    if default_runner and "default" not in runners_payload:
+        runners_payload["default"] = default_runner
+    if runners_payload:
+        payload["runners"] = runners_payload
+    if parsed_default_phase_config:
+        payload["defaultPhaseConfig"] = parsed_default_phase_config
+    if parsed_phase_configs:
+        payload["phaseConfigs"] = parsed_phase_configs
 
     result = _controller_post("/api/workstreams", payload)
 
@@ -1932,6 +2588,10 @@ def workstream_update_config(
     dependent_repos: str = "",
     model: str = "",
     effort: str = "",
+    runners: str = "",
+    default_runner: str = "",
+    default_phase_config: str = "",
+    phase_configs: str = "",
 ) -> dict:
     """Update configuration for an existing workstream.
 
@@ -1961,6 +2621,29 @@ def workstream_update_config(
         effort: New default Claude Code effort/thinking level for the
             workstream. Must be one of ``"low"``, ``"medium"``, ``"high"``,
             ``"xhigh"``, ``"max"``.
+        runners: JSON object mapping phase wire names to runner identifiers
+            (e.g. ``'{"primary":"opencode","deduplication":"opencode"}``).
+            An optional ``"default"`` key sets the fallback for unspecified
+            phases. Use ``agent_options`` to discover available runner names
+            and phase wire names. Empty string leaves per-phase configuration
+            unchanged.
+        default_runner: Convenience shortcut equivalent to
+            ``runners='{"default": "<value>"}'``. The explicit
+            ``runners["default"]`` wins when both are supplied. Empty
+            string leaves the workstream default runner unchanged.
+        default_phase_config: New per-phase default configuration as a
+            JSON object with optional ``runner`` / ``model`` / ``effort``
+            keys. Empty leaves it unchanged. **Precedence:** wins
+            field-by-field over the legacy ``default_runner`` / ``model``
+            / ``effort`` shortcuts when both are supplied — e.g.
+            ``default_phase_config='{"runner":"claude"}'`` together with
+            ``default_runner="opencode"`` updates the workstream default
+            runner to ``claude``.
+        phase_configs: New per-phase overrides as a JSON object whose
+            keys are phase wire names and whose values are
+            ``{runner, model, effort}`` triples. Empty leaves unchanged.
+            **Precedence:** wins field-by-field over the legacy
+            ``runners`` map when both are supplied.
 
     Returns:
         Dictionary confirming the update.
@@ -1970,7 +2653,7 @@ def workstream_update_config(
         workstream_id=workstream_id, default_branch=default_branch,
         base_branch=base_branch, repo_url=repo_url,
         planning_document=planning_document, channel_name=channel_name,
-        model=model, effort=effort,
+        model=model, effort=effort, default_runner=default_runner,
     )
     if err:
         return err
@@ -1980,6 +2663,15 @@ def workstream_update_config(
     err = _check_model(model)
     if err:
         return err
+    parsed_runners, runners_err = _parse_runners_json(runners)
+    if runners_err:
+        return runners_err
+    parsed_default_phase_config, default_pc_err = _parse_default_phase_config_json(default_phase_config)
+    if default_pc_err:
+        return default_pc_err
+    parsed_phase_configs, phase_configs_err = _parse_phase_configs_json(phase_configs)
+    if phase_configs_err:
+        return phase_configs_err
     _require_workstream_in_scope(workstream_id)
     _audit("workstream_update_config", workstream_id=workstream_id)
 
@@ -2006,6 +2698,15 @@ def workstream_update_config(
         payload["model"] = model
     if effort:
         payload["effort"] = effort
+    runners_payload = dict(parsed_runners) if parsed_runners else {}
+    if default_runner and "default" not in runners_payload:
+        runners_payload["default"] = default_runner
+    if runners_payload:
+        payload["runners"] = runners_payload
+    if parsed_default_phase_config:
+        payload["defaultPhaseConfig"] = parsed_default_phase_config
+    if parsed_phase_configs:
+        payload["phaseConfigs"] = parsed_phase_configs
 
     if not payload:
         return {
@@ -2014,7 +2715,8 @@ def workstream_update_config(
             "next_steps": [
                 "Specify fields to update: default_branch, base_branch, "
                 "repo_url, planning_document, channel_name, required_labels, "
-                "dependent_repos, model, or effort",
+                "dependent_repos, model, effort, runners, default_runner, "
+                "default_phase_config, or phase_configs",
             ],
         }
 
@@ -2036,6 +2738,378 @@ def workstream_update_config(
             "Use workstream_list to verify the workstream_id is correct",
         ])
 
+    return result
+
+
+# Sentinel for "argument not supplied" on workspace_update_config
+# parameters whose empty-string value carries meaning distinct from
+# absence (e.g. ``slack_team_id=""`` explicitly clears the Slack
+# connection, while omitting ``slack_team_id`` leaves it unchanged).
+_WORKSPACE_UNSET = "\0__workspace_unset__\0"
+
+
+@mcp.tool()
+def workspace_update_config(
+    workspace_id: str = "",
+    default_runner: str = "",
+    runners: str = "",
+    default_phase_config: str = "",
+    phase_configs: str = "",
+    name: str = "",
+    default_channel: str = "",
+    new_id: str = "",
+    slack_team_id: str = _WORKSPACE_UNSET,
+    slack_workspace_id: str = "",
+) -> dict:
+    """Update workspace-level configuration on a workspace entry.
+
+    A workspace is the operator's organisational unit. Its ``id`` is
+    operator-chosen and independent of any Slack team ID; when a Slack
+    connection is configured the team ID lives on the ``slackTeamId``
+    field. This tool can rename a workspace, retarget its Slack
+    connection, and update non-credential operational fields.
+
+    Only the fields you supply are written; an empty string leaves the
+    corresponding field unchanged (except ``slack_team_id``, where an
+    explicit empty string clears the Slack connection — see below).
+    Changes are persisted back to the workstreams YAML so they survive a
+    controller restart.
+
+    For security, the following workspace fields are **NOT** settable via
+    this tool and must be edited in the YAML directly:
+
+    * ``tokensFile``, ``botToken``, ``appToken`` — Slack credentials.
+    * ``githubOrgs`` — controls which GitHub orgs the workspace can
+      issue tokens for.
+    * ``channelOwnerUserId`` / ``channelOwnerUserIds`` — administrative
+      auto-invite ownership.
+
+    Args:
+        workspace_id: Operator-chosen workspace identifier (e.g.
+            ``"almostrealism"``) of the workspace to update. For
+            workspaces migrated from a legacy ``slackWorkspaces:`` YAML
+            entry this is the Slack team ID until the workspace is
+            renamed via ``new_id``. Required.
+        default_runner: New workspace-level default agent runner applied
+            to workstreams in this workspace when neither the workstream
+            nor the per-job override sets one. Use ``agent_options`` to
+            discover valid runner names. Convenience shortcut equivalent
+            to ``runners='{"default": "<value>"}'``; the explicit
+            ``runners["default"]`` wins when both are supplied.
+        runners: JSON object mapping phase wire names to runner
+            identifiers (e.g.
+            ``'{"primary":"opencode","deduplication":"opencode"}'``).
+            An optional ``"default"`` key sets the workspace-level
+            default. Use ``agent_options`` to discover available phase
+            wire names. Empty string leaves the per-phase map
+            unchanged.
+        default_phase_config: New workspace-level default
+            ``{runner, model, effort}`` triple as a JSON object. Empty
+            leaves it unchanged. **Precedence:** wins field-by-field over
+            the legacy ``default_runner`` shortcut when both are supplied
+            — e.g. ``default_phase_config='{"runner":"claude"}'`` together
+            with ``default_runner="opencode"`` records ``claude`` as the
+            workspace default runner.
+        phase_configs: New workspace-level per-phase overrides as a JSON
+            object whose keys are phase wire names and whose values are
+            ``{runner, model, effort}`` triples. Empty leaves the per-phase
+            map unchanged. **Precedence:** wins field-by-field over the
+            legacy ``runners`` map when both are supplied.
+        name: New human-readable workspace label (used in logs and
+            diagnostics). Low-risk operational field.
+        default_channel: New fallback Slack channel ID for messages
+            published in workstreams that have no channel of their own
+            resolved. Low-risk operational field.
+        new_id: Rename the workspace to this new operator-chosen ID.
+            Every workstream that referenced the old ID is rewritten to
+            the new ID atomically. Use this to migrate a workspace from
+            its initial Slack-team-ID-as-ID form to a friendlier name
+            (e.g. ``workspace_update_config(workspace_id="T0123456789",
+            new_id="almostrealism")``). Empty string leaves the ID
+            unchanged.
+        slack_team_id: Set or clear the Slack team ID this workspace
+            routes messages to. Pass a non-empty value to (re)bind the
+            workspace to that Slack team; pass an explicit empty string
+            (``""``) to clear the Slack connection so channel/notifier
+            operations skip cleanly. Omit the argument entirely to leave
+            the existing value unchanged.
+        slack_workspace_id: Deprecated alias for ``workspace_id``.
+            Accepted for backward compatibility with older callers.
+
+    Returns:
+        dict with ``ok=True`` and the updated workspace fields, or
+        ``ok=False`` with an error.
+    """
+    _require_scope("write")
+    # Resolve the workspace identifier, accepting the legacy alias.
+    if not workspace_id and slack_workspace_id:
+        audit_log.debug("workspace_update_config: slack_workspace_id is a "
+                        "deprecated alias for workspace_id")
+        workspace_id = slack_workspace_id
+    if not workspace_id:
+        return {
+            "ok": False,
+            "error": "workspace_id is required",
+            "next_steps": [
+                "Pass workspace_id (the operator-chosen workspace ID)",
+            ],
+        }
+    slack_team_id_provided = slack_team_id != _WORKSPACE_UNSET
+    if not slack_team_id_provided:
+        slack_team_id = ""
+    err = _check_short_strings(
+        workspace_id=workspace_id,
+        default_runner=default_runner,
+        name=name,
+        default_channel=default_channel,
+        new_id=new_id,
+        slack_team_id=slack_team_id,
+    )
+    if err:
+        return err
+    parsed_runners, runners_err = _parse_runners_json(runners)
+    if runners_err:
+        return runners_err
+    parsed_default_phase_config, default_pc_err = _parse_default_phase_config_json(default_phase_config)
+    if default_pc_err:
+        return default_pc_err
+    parsed_phase_configs, phase_configs_err = _parse_phase_configs_json(phase_configs)
+    if phase_configs_err:
+        return phase_configs_err
+    _audit("workspace_update_config", workspace_id=workspace_id)
+
+    payload = {}
+    if name:
+        payload["name"] = name
+    if default_channel:
+        payload["defaultChannel"] = default_channel
+    if new_id and new_id != workspace_id:
+        payload["newId"] = new_id
+    if slack_team_id_provided:
+        # Empty string clears; non-empty (re)binds. Either case is a write.
+        payload["slackTeamId"] = slack_team_id
+    runners_payload = dict(parsed_runners) if parsed_runners else {}
+    if default_runner and "default" not in runners_payload:
+        runners_payload["default"] = default_runner
+    if runners_payload:
+        payload["runners"] = runners_payload
+    if parsed_default_phase_config:
+        payload["defaultPhaseConfig"] = parsed_default_phase_config
+    if parsed_phase_configs:
+        payload["phaseConfigs"] = parsed_phase_configs
+
+    if not payload:
+        return {
+            "ok": False,
+            "error": "No fields to update. Provide at least one field.",
+            "next_steps": [
+                "Specify fields to update: default_runner, runners, "
+                "default_phase_config, phase_configs, name, default_channel, "
+                "new_id, or slack_team_id",
+            ],
+        }
+
+    result = _controller_post(
+        f"/api/workspaces/{quote(workspace_id, safe='')}/config",
+        payload,
+    )
+
+    if result.get("ok"):
+        result["next_steps"] = [
+            "Use workstream_list to verify workstreams now reflect the "
+            "updated workspace defaults",
+        ]
+    else:
+        result.setdefault("next_steps", [
+            "Use workstream_list to confirm the workspace_id is correct",
+        ])
+
+    return result
+
+
+@mcp.tool()
+def workstream_archive(
+    workstream_id: str,
+    archive_slack_channel: bool = True,
+) -> dict:
+    """Archive a workstream so it is hidden from default ``workstream_list``
+    responses. Archiving is reversible and non-destructive — historical job
+    records and memories remain queryable via ``workstream_context`` and
+    ``memory_recall`` when ``workstream_id`` is supplied explicitly.
+
+    The Slack channel bound to the workstream (if any) is archived via
+    ``conversations.archive`` by default; pass ``archive_slack_channel=False``
+    to leave it open. Slack archive failures are reported in the response but
+    do not block the workstream archive — the controller treats the
+    Slack-side effect as best-effort.
+
+    The call is rejected when one or more jobs on the workstream are still
+    active (``STARTED`` status); cancel them explicitly or wait for them to
+    complete before archiving. The response carries the active job IDs.
+
+    Args:
+        workstream_id: The workstream to archive (from ``workstream_list``).
+        archive_slack_channel: When ``True`` (default), also archive the
+            bound Slack channel. Slack channels cannot be programmatically
+            deleted, only archived; an archived channel after workstream
+            archive is the expected end state.
+
+    Returns:
+        Dictionary with ``ok``, ``workstreamId``, ``archivedAt``,
+        ``slackChannelArchived``, and optionally ``slackChannelArchiveError``.
+    """
+    _require_scope("write")
+    err = _check_short_strings(workstream_id=workstream_id)
+    if err:
+        return err
+    _require_workstream_in_scope(workstream_id)
+    _audit("workstream_archive", workstream_id=workstream_id,
+           archive_slack_channel=archive_slack_channel)
+    return _controller_post(
+        f"/api/workstreams/{quote(workstream_id, safe='')}/archive",
+        {"archiveSlackChannel": archive_slack_channel},
+    )
+
+
+@mcp.tool()
+def workstream_unarchive(workstream_id: str) -> dict:
+    """Clear the archived flag on a previously archived workstream so it
+    reappears in default ``workstream_list`` responses.
+
+    The Slack channel, if it was archived alongside the workstream, must be
+    unarchived manually from the Slack UI. Slack's ``conversations.unarchive``
+    is not invoked automatically because unarchive fires notification spam
+    to channel members.
+
+    Args:
+        workstream_id: The archived workstream to restore.
+
+    Returns:
+        Dictionary with ``ok`` and ``workstreamId``.
+    """
+    _require_scope("write")
+    err = _check_short_strings(workstream_id=workstream_id)
+    if err:
+        return err
+    _require_workstream_in_scope(workstream_id)
+    _audit("workstream_unarchive", workstream_id=workstream_id)
+    return _controller_post(
+        f"/api/workstreams/{quote(workstream_id, safe='')}/unarchive",
+        {},
+    )
+
+
+@mcp.tool()
+def workstream_delete(workstream_id: str, force: bool = False) -> dict:
+    """Delete a workstream config row permanently.
+
+    Two-step pattern: archive first (``workstream_archive``), then delete.
+    Deletion requires the workstream to be archived unless ``force=True``;
+    in either case the call is rejected when any job on the workstream is
+    still active (``STARTED`` status). Cancellation is always explicit —
+    ``force`` only bypasses the archive-first check.
+
+    Side effects:
+
+    - Tracker tasks linked to this workstream have their ``workstream_id``
+      cleared (ON DELETE SET NULL semantics applied client-side via the
+      ar-tracker API). The tasks themselves are NOT deleted. The count of
+      affected tasks is returned as ``deletedTrackerTasks``.
+    - The workstream config entry is removed from ``workstreams.yaml``.
+    - **Memories are not touched.** Memory rows remain queryable via
+      ``memory_recall`` when ``repo_url`` and ``branch`` are supplied
+      directly, since the workstream's repo+branch are still recorded on
+      each memory row. The workstream-to-repo/branch mapping is gone, so
+      ``workstream_context`` with the deleted ID will no longer resolve.
+    - The Slack channel is left as-is. If it was archived during the
+      ``workstream_archive`` step, it stays archived. Slack channels
+      cannot be programmatically deleted.
+    - The git branch on origin is NOT touched.
+
+    Args:
+        workstream_id: The workstream to delete (from ``workstream_list``).
+        force: When ``True``, bypass the archive-first requirement.
+            Active-job checks are NOT bypassed.
+
+    Returns:
+        Dictionary with ``ok``, ``workstreamId``, and
+        ``deletedTrackerTasks`` (the number of tracker tasks whose
+        ``workstream_id`` was cleared). If tracker cleanup was interrupted
+        by a query or update failure, ``trackerCleanupWarning`` is also
+        present with a human-readable description; ``ok`` remains ``True``
+        because the workstream itself was deleted successfully.
+    """
+    _require_scope("write")
+    err = _check_short_strings(workstream_id=workstream_id)
+    if err:
+        return err
+    _require_workstream_in_scope(workstream_id)
+    _audit("workstream_delete", workstream_id=workstream_id, force=force)
+
+    # The controller delete runs first so that a rejection (active jobs,
+    # archive-first requirement, unknown workstream) leaves the tracker
+    # linkage intact. Only on a successful delete do we clear tracker
+    # rows — that matches the ON DELETE SET NULL semantics described in
+    # the docstring and is reversible only by re-linking.
+    result = _controller_post(
+        f"/api/workstreams/{quote(workstream_id, safe='')}/delete",
+        {"force": force},
+    )
+    if not result.get("ok"):
+        return result
+
+    # /v1/tasks caps `limit` at 200, so a workstream with more than 200
+    # linked tasks needs paging. After we PUT workstream_id=None on a task
+    # it no longer matches the filter, so we just keep re-querying until the
+    # filter returns no tasks. The MAX_TRACKER_CLEAR_BATCHES cap prevents an
+    # unexpected server response (e.g. failed updates) from spinning forever.
+    cleared = 0
+    seen_ids = set()
+    MAX_TRACKER_CLEAR_BATCHES = 200
+    tracker_warning = None
+    for _ in range(MAX_TRACKER_CLEAR_BATCHES):
+        tasks_result = _tracker_get(
+            f"/v1/tasks?{urlencode({'workstream_id': workstream_id, 'limit': 200, 'fields': 'headlines'})}"
+        )
+        if not tasks_result.get("ok"):
+            tracker_warning = (
+                "tracker query failed during cleanup; "
+                + str(cleared) + " task(s) unlinked before failure"
+            )
+            break
+        batch = tasks_result.get("tasks") or []
+        if not batch:
+            break
+        progress = False
+        new_in_batch = 0
+        for task in batch:
+            task_id = task.get("id")
+            if not task_id or task_id in seen_ids:
+                continue
+            new_in_batch += 1
+            seen_ids.add(task_id)
+            update = _tracker_put(f"/v1/tasks/{task_id}",
+                                  {"workstream_id": None})
+            if update.get("ok"):
+                cleared += 1
+                progress = True
+        if not progress:
+            if new_in_batch > 0:
+                # New tasks appeared but none could be updated — stall.
+                tracker_warning = (
+                    "tracker update stalled; "
+                    + str(cleared) + " task(s) unlinked before stall"
+                )
+            break
+    else:
+        # Loop exhausted without emptying the task list.
+        tracker_warning = (
+            "tracker cleanup hit batch limit; "
+            + str(cleared) + " task(s) unlinked"
+        )
+    result["deletedTrackerTasks"] = cleared
+    if tracker_warning is not None:
+        result["trackerCleanupWarning"] = tracker_warning
     return result
 
 
@@ -3125,9 +4199,72 @@ def send_message(
     """
     _require_scope("write")
 
-    effective_ws = workstream_id or _get_token_workstream_id() or ""
-    effective_job = job_id or _get_token_job_id() or ""
+    # Resolve (workstream, job) from explicit args first, then from the
+    # in-flight HTTP request's bearer, then from the auth-middleware's
+    # ContextVar/thread-local. Emit a structured diagnostic *before* the
+    # routing decision so a production failure (e.g. opencode-driven
+    # phase posting top-of-channel instead of in the job's thread) leaves
+    # enough evidence in the controller log to pinpoint which source
+    # supplied the empty job_id without further speculation. The
+    # diagnostic does not echo any token body, only the four-way
+    # provenance and the decode reason. See
+    # :func:`_decode_current_request_token_full` for the reason vocabulary.
+    per_req_ws, per_req_job, per_req_label, per_req_reason = (
+        _decode_current_request_token_full())
+    ctx_ws = _request_workstream_id.get(None)
+    ctx_job = _request_job_id.get(None)
+    tl_ws = getattr(_thread_local, "workstream_id", None)
+    tl_job = getattr(_thread_local, "job_id", None)
+
+    # Reuse the already-decoded per_req_ws/per_req_job and the already-read
+    # ctx_* / tl_* values rather than calling _get_token_workstream_id() /
+    # _get_token_job_id(), which would each invoke _decode_current_request_token_full()
+    # a second time. The resolution order is identical: explicit arg wins, then
+    # per-request bearer, then ContextVar, then thread-local.
+    effective_ws = workstream_id or per_req_ws or ctx_ws or tl_ws or ""
+    effective_job = job_id or per_req_job or ctx_job or tl_job or ""
     effective_activity = (activity or os.environ.get("AR_AGENT_ACTIVITY", "")).strip()
+
+    if effective_ws and not effective_job:
+        # The exact production failure mode: a workstream is resolved
+        # but the job_id binding has been lost, so the controller URL
+        # falls back to the workstream-level /messages endpoint and
+        # the message lands at the top of the Slack channel rather
+        # than inside the job's thread. Surface every source we
+        # examined so a single log line says which one failed.
+        audit_log.warning(
+            "send_message_missing_job_id "
+            "explicit_workstream_id=%s explicit_job_id=%s "
+            "per_request_workstream_id=%s per_request_job_id=%s "
+            "per_request_label=%s per_request_decode_reason=%s "
+            "contextvar_workstream_id=%s contextvar_job_id=%s "
+            "thread_local_workstream_id=%s thread_local_job_id=%s "
+            "effective_workstream_id=%s effective_job_id=%s "
+            "activity=%s",
+            workstream_id or "", job_id or "",
+            per_req_ws or "", per_req_job or "",
+            per_req_label or "", per_req_reason,
+            ctx_ws or "", ctx_job or "",
+            tl_ws or "", tl_job or "",
+            effective_ws, effective_job,
+            effective_activity or "")
+    else:
+        audit_log.info(
+            "send_message_resolved "
+            "explicit_workstream_id=%s explicit_job_id=%s "
+            "per_request_workstream_id=%s per_request_job_id=%s "
+            "per_request_decode_reason=%s "
+            "contextvar_workstream_id=%s contextvar_job_id=%s "
+            "thread_local_workstream_id=%s thread_local_job_id=%s "
+            "effective_workstream_id=%s effective_job_id=%s "
+            "activity=%s",
+            workstream_id or "", job_id or "",
+            per_req_ws or "", per_req_job or "",
+            per_req_reason,
+            ctx_ws or "", ctx_job or "",
+            tl_ws or "", tl_job or "",
+            effective_ws, effective_job,
+            effective_activity or "")
 
     if not effective_ws:
         return {"ok": False, "error": "workstream_id is required (pass explicitly or use a job token)"}

@@ -10,11 +10,11 @@
       - FileLength           : Java source files are capped at 1600 lines.  Files
                                larger than this are a sign that a class is doing
                                too much and should be split into focused collaborators.
-                               Eleven legacy files exceed this limit and are individually
-                               exempted via SuppressionSingleFilter (see below).  Those
-                               files are tracked by scripts/check-exempt-file-lengths.sh,
-                               which enforces that they do not grow beyond their current
-                               sizes.
+                               A small set of legacy files exceeds this limit and is
+                               individually exempted via SuppressionSingleFilter (see
+                               below).  Those files are tracked by
+                               scripts/check-exempt-file-lengths.sh, which enforces
+                               that they do not grow beyond their current sizes.
       - JavadocPackage       : every package needs a package-info.java with Javadoc
       - MissingJavadocType   : every type declaration needs a Javadoc comment
       - MissingJavadocMethod : every method and constructor needs a Javadoc comment
@@ -43,10 +43,10 @@
          sign that a class is doing too much and should be split into focused
          collaborators.  The limit was lowered from 1800 to 1600 to reduce
          the amount of context agents must read to understand a class.
-         Eleven legacy files exceed this limit and are individually exempted
-         via SuppressionSingleFilter (see below).  All are tracked by
-         scripts/check-exempt-file-lengths.sh, which enforces that they do
-         not grow beyond their sizes at the time of exemption. -->
+         A small set of legacy files exceeds this limit and is individually
+         exempted via SuppressionSingleFilter (see below).  All are tracked
+         by scripts/check-exempt-file-lengths.sh, which enforces that they
+         do not grow beyond their sizes at the time of exemption. -->
     <module name="FileLength">
         <property name="max" value="1600"/>
     </module>
@@ -70,12 +70,6 @@
         <property name="checks" value="FileLength"/>
         <property name="files" value="AttentionFeatures\.java"/>
     </module>
-    <!-- LayerFeatures.java grew past 1800 lines when Javadoc was added -->
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="FileLength"/>
-        <property name="files" value="LayerFeatures\.java"/>
-    </module>
-
     <!-- Console.java is the logging system itself — it must write to System.out/err
          directly to deliver output.  The DirectSystemOut rule is suppressed for it. -->
     <module name="SuppressionSingleFilter">

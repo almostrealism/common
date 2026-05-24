@@ -16,20 +16,25 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Map of path-relative-to-repo-root -> max allowed line count at time of exemption
-declare -A EXEMPT_FILES
-
-# Pre-existing exemptions (exceeded 1800-line limit before the cap was lowered to 1600)
-EXEMPT_FILES["compute/algebra/src/main/java/org/almostrealism/collect/CollectionFeatures.java"]=3738
-EXEMPT_FILES["base/code/src/main/java/io/almostrealism/expression/Expression.java"]=2094
-EXEMPT_FILES["engine/ml/src/main/java/org/almostrealism/ml/AttentionFeatures.java"]=2084
-EXEMPT_FILES["domain/graph/src/main/java/org/almostrealism/layers/LayerFeatures.java"]=2006
+# List of "path-relative-to-repo-root|max-allowed-line-count" entries.
+# Using a parallel list (instead of `declare -A`) so this works on bash 3.x,
+# which is the default shell on macOS.
+#
+# To update a limit after a legitimate reduction: lower the MAX value below.
+# Never raise a MAX value without a corresponding reduction plan.
+EXEMPT_FILES=(
+    # Pre-existing exemptions (exceeded 1800-line limit before the cap was lowered to 1600)
+    "compute/algebra/src/main/java/org/almostrealism/collect/CollectionFeatures.java|3738"
+    "base/code/src/main/java/io/almostrealism/expression/Expression.java|2094"
+    "engine/ml/src/main/java/org/almostrealism/ml/AttentionFeatures.java|2084"
+)
 
 
 FAILED=0
 
-for REL_PATH in "${!EXEMPT_FILES[@]}"; do
-    MAX="${EXEMPT_FILES[$REL_PATH]}"
+for ENTRY in "${EXEMPT_FILES[@]}"; do
+    REL_PATH="${ENTRY%%|*}"
+    MAX="${ENTRY##*|}"
     ABS_PATH="$REPO_ROOT/$REL_PATH"
 
     if [ ! -f "$ABS_PATH" ]; then

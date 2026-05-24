@@ -44,6 +44,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
+import org.junit.Assert;
+
 import static org.junit.Assert.*;
 
 /**
@@ -1488,7 +1490,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     // -------------------------------------------------------------------------
 
     @Test(timeout = 10000)
-    public void testSlackWorkspaceEntryYamlRoundTrip() throws IOException {
+    public void testWorkspaceEntryYamlRoundTrip() throws IOException {
         String yaml = "slackWorkspaces:\n" +
                       "  - workspaceId: \"T0123456789\"\n" +
                       "    name: \"my-org\"\n" +
@@ -1503,8 +1505,10 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertNotNull(config.getSlackWorkspaces());
         assertEquals(1, config.getSlackWorkspaces().size());
 
-        WorkstreamConfig.SlackWorkspaceEntry entry = config.getSlackWorkspaces().get(0);
-        assertEquals("T0123456789", entry.getWorkspaceId());
+        WorkstreamConfig.WorkspaceEntry entry = config.getSlackWorkspaces().get(0);
+        assertEquals("T0123456789", entry.getId());
+        // Legacy slackWorkspaces entries auto-migrate so slackTeamId mirrors the original ID.
+        assertEquals("T0123456789", entry.getSlackTeamId());
         assertEquals("my-org", entry.getName());
         assertEquals("xoxb-test", entry.getBotToken());
         assertEquals("xapp-test", entry.getAppToken());
@@ -1531,15 +1535,15 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         assertEquals(2, config.getSlackWorkspaces().size());
 
-        WorkstreamConfig.SlackWorkspaceEntry ws1 = config.getSlackWorkspaces().get(0);
-        assertEquals("T111", ws1.getWorkspaceId());
+        WorkstreamConfig.WorkspaceEntry ws1 = config.getSlackWorkspaces().get(0);
+        assertEquals("T111", ws1.getId());
         assertEquals("workspace-one", ws1.getName());
         assertEquals("xoxb-one", ws1.getBotToken());
         assertNotNull(ws1.getGithubOrgs());
         assertEquals("ghp_one", ws1.getGithubOrgs().get("my-org").getToken());
 
-        WorkstreamConfig.SlackWorkspaceEntry ws2 = config.getSlackWorkspaces().get(1);
-        assertEquals("T222", ws2.getWorkspaceId());
+        WorkstreamConfig.WorkspaceEntry ws2 = config.getSlackWorkspaces().get(1);
+        assertEquals("T222", ws2.getId());
         assertEquals("/config/slack-tokens.json", ws2.getTokensFile());
     }
 
@@ -1566,7 +1570,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         // Regular workstreams still parse correctly; no slackWorkspaceId assigned
         assertEquals(1, config.getWorkstreams().size());
         assertEquals("C0123456789", config.getWorkstreams().get(0).getChannelId());
-        assertNull(config.getWorkstreams().get(0).getSlackWorkspaceId());
+        assertNull(config.getWorkstreams().get(0).getWorkspaceId());
     }
 
     @Test(timeout = 10000)
@@ -1590,22 +1594,22 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         WorkstreamConfig.WorkstreamEntry entryWithId = config.getWorkstreams().get(0);
         assertEquals("C001", entryWithId.getChannelId());
-        assertEquals("T111", entryWithId.getSlackWorkspaceId());
+        assertEquals("T111", entryWithId.getWorkspaceId());
 
         WorkstreamConfig.WorkstreamEntry entryWithoutId = config.getWorkstreams().get(1);
         assertEquals("C002", entryWithoutId.getChannelId());
-        assertNull(entryWithoutId.getSlackWorkspaceId());
+        assertNull(entryWithoutId.getWorkspaceId());
 
         // Verify toWorkstream() propagates slackWorkspaceId
         List<Workstream> workstreams = config.toWorkstreams();
-        assertEquals("T111", workstreams.get(0).getSlackWorkspaceId());
-        assertNull(workstreams.get(1).getSlackWorkspaceId());
+        assertEquals("T111", workstreams.get(0).getWorkspaceId());
+        assertNull(workstreams.get(1).getWorkspaceId());
     }
 
     @Test(timeout = 10000)
     public void testSlackTokensFromEntryInlineTokens() throws IOException {
-        WorkstreamConfig.SlackWorkspaceEntry entry = new WorkstreamConfig.SlackWorkspaceEntry();
-        entry.setWorkspaceId("T999");
+        WorkstreamConfig.WorkspaceEntry entry = new WorkstreamConfig.WorkspaceEntry();
+        entry.setId("T999");
         entry.setBotToken("xoxb-inline-bot");
         entry.setAppToken("xapp-inline-app");
 
@@ -1622,8 +1626,8 @@ public class SlackIntegrationTest extends TestSuiteBase {
         Files.write(tempFile.toPath(),
                 "{ \"botToken\": \"xoxb-from-file\", \"appToken\": \"xapp-from-file\" }".getBytes());
 
-        WorkstreamConfig.SlackWorkspaceEntry entry = new WorkstreamConfig.SlackWorkspaceEntry();
-        entry.setWorkspaceId("T888");
+        WorkstreamConfig.WorkspaceEntry entry = new WorkstreamConfig.WorkspaceEntry();
+        entry.setId("T888");
         entry.setTokensFile(tempFile.getAbsolutePath());
         entry.setBotToken("xoxb-should-be-ignored");
 
@@ -1635,7 +1639,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     }
 
     @Test(timeout = 10000)
-    public void testSlackWorkspaceEntryUnknownFieldsIgnored() throws IOException {
+    public void testWorkspaceEntryUnknownFieldsIgnored() throws IOException {
         String yaml = "slackWorkspaces:\n" +
                       "  - workspaceId: \"T777\"\n" +
                       "    botToken: \"xoxb-777\"\n" +
@@ -1644,7 +1648,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         // Should not throw
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        assertEquals("T777", config.getSlackWorkspaces().get(0).getWorkspaceId());
+        assertEquals("T777", config.getSlackWorkspaces().get(0).getId());
     }
 
     @Test(timeout = 10000)
@@ -1652,17 +1656,17 @@ public class SlackIntegrationTest extends TestSuiteBase {
         WorkstreamConfig config = new WorkstreamConfig();
 
         Workstream ws = new Workstream("ws-1", "C001", "#channel-one");
-        ws.setSlackWorkspaceId("T111");
+        ws.setWorkspaceId("T111");
         ws.setDefaultBranch("main");
 
         config.addWorkstream(ws);
         assertEquals(1, config.getWorkstreams().size());
-        assertEquals("T111", config.getWorkstreams().get(0).getSlackWorkspaceId());
+        assertEquals("T111", config.getWorkstreams().get(0).getWorkspaceId());
 
         // Update via syncFromWorkstreams
-        ws.setSlackWorkspaceId("T222");
+        ws.setWorkspaceId("T222");
         config.syncFromWorkstreams(List.of(ws));
-        assertEquals("T222", config.getWorkstreams().get(0).getSlackWorkspaceId());
+        assertEquals("T222", config.getWorkstreams().get(0).getWorkspaceId());
     }
 
     // -------------------------------------------------------------------------
@@ -1709,7 +1713,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         Workstream ws = new Workstream("ws-multi", "C_MULTI", "#multi");
         ws.setDefaultBranch("main");
-        ws.setSlackWorkspaceId("T111");
+        ws.setWorkspaceId("T111");
         listener.registerWorkstream(ws);
 
         // Composite key lookup: handleMessage with workspaceId=T111 should find it.
@@ -1734,12 +1738,12 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         Workstream wsA = new Workstream("ws-a", "C_SHARED", "#shared-a");
         wsA.setDefaultBranch("main");
-        wsA.setSlackWorkspaceId("T111");
+        wsA.setWorkspaceId("T111");
         listener.registerWorkstream(wsA);
 
         Workstream wsB = new Workstream("ws-b", "C_SHARED", "#shared-b");
         wsB.setDefaultBranch("develop");
-        wsB.setSlackWorkspaceId("T222");
+        wsB.setWorkspaceId("T222");
         listener.registerWorkstream(wsB);
 
         // Both workstreams are registered (two separate map entries)
@@ -1778,7 +1782,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         // Workstream should be created and keyed under T999:C_SETUP_WS
         boolean foundWithWorkspace = listener.getWorkstreams().values().stream()
-                .anyMatch(w -> "T999".equals(w.getSlackWorkspaceId())
+                .anyMatch(w -> "T999".equals(w.getWorkspaceId())
                         && "C_SETUP_WS".equals(w.getChannelId()));
         assertTrue("Setup must store slackWorkspaceId on new workstream", foundWithWorkspace);
     }
@@ -1795,12 +1799,12 @@ public class SlackIntegrationTest extends TestSuiteBase {
         // Register two workstreams: one in T111, one in T222
         Workstream wsA = new Workstream("ws-act-a", "C_ACT_A", "#act-a");
         wsA.setDefaultBranch("main");
-        wsA.setSlackWorkspaceId("T111");
+        wsA.setWorkspaceId("T111");
         listener.registerWorkstream(wsA);
 
         Workstream wsB = new Workstream("ws-act-b", "C_ACT_B", "#act-b");
         wsB.setDefaultBranch("develop");
-        wsB.setSlackWorkspaceId("T222");
+        wsB.setWorkspaceId("T222");
         listener.registerWorkstream(wsB);
 
         // /flowtree active with workspaceId=T111 should not throw
@@ -1828,7 +1832,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         // Register a workstream in T_SPECIAL
         Workstream ws = new Workstream("ws-special", "C_SPECIAL", "#special");
-        ws.setSlackWorkspaceId("T_SPECIAL");
+        ws.setWorkspaceId("T_SPECIAL");
         ws.setDefaultBranch("main");
         listener.registerWorkstream(ws);
 
@@ -2196,6 +2200,165 @@ public class SlackIntegrationTest extends TestSuiteBase {
         } finally {
             endpoint.stop();
         }
+    }
+
+    /**
+     * Regression for the opencode {@code send_message} threading bug
+     * recurrence. After {@link SlackNotifier#onJobCompleted} the
+     * in-memory {@code jobThreadTs} entry is cleared, so a
+     * late-arriving message (an enforcement-phase agent flushing a
+     * final tool call) used to fall through to a top-of-channel post
+     * even when the URL correctly addressed
+     * {@code /jobs/{jobId}/messages}.
+     *
+     * <p>This test exercises the real
+     * {@link JobStatsStore#getJobSlackTs} fallback through a temp HSQLDB
+     * file — no mocks of the bug surface — and asserts that
+     * {@link SlackNotifier#getThreadTs} returns the persisted timestamp
+     * after the in-memory entry has been removed.</p>
+     */
+    @Test(timeout = 10000)
+    public void testGetThreadTsFallsBackToStatsStoreAfterJobCompletion()
+            throws Exception {
+        File tempDir = Files.createTempDirectory("thread-ts-fallback").toFile();
+        tempDir.deleteOnExit();
+        String dbPath = new File(tempDir, "stats").getAbsolutePath();
+
+        JobStatsStore store = new JobStatsStore(dbPath);
+        store.initialize();
+        try {
+            // Seed the job row + slack_message_ts the way SlackNotifier
+            // would in production (recordJobStarted creates the row,
+            // updateJobSlackTs records the submission message ts).
+            store.recordJobStarted("job-A", "ws-A", "demo", Instant.now());
+            store.updateJobSlackTs("job-A", "1700000000.000001");
+
+            // Direct lookup against the persisted store.
+            Assert.assertEquals("Persisted slack_message_ts must be readable",
+                    "1700000000.000001", store.getJobSlackTs("job-A"));
+
+            // SlackNotifier with no in-memory submission entry for
+            // job-A (simulates the post-onJobCompleted state where
+            // jobThreadTs has already been emptied by remove()).
+            SlackNotifier notifier = new SlackNotifier(null);
+            notifier.setStatsStore(store);
+            Assert.assertEquals("getThreadTs must fall back to the durable store"
+                    + " when the in-memory map has no entry for the jobId",
+                    "1700000000.000001", notifier.getThreadTs("job-A"));
+
+            // No statsStore-side row for a different job → null
+            // (unchanged behaviour, no spurious thread routing).
+            assertNull("Unknown job IDs must remain null",
+                    notifier.getThreadTs("job-Unknown"));
+            assertNull("Null jobId must remain null", notifier.getThreadTs(null));
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * The {@link SlackNotifier#getThreadTs} fallback must remain a no-op
+     * when no {@link JobStatsStore} is attached, matching the historical
+     * single-source behaviour for deployments that do not run the
+     * stats database.
+     */
+    @Test(timeout = 10000)
+    public void testGetThreadTsReturnsNullWhenNoStoreAndNoInMemoryEntry() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        assertNull(notifier.getThreadTs("job-Z"));
+    }
+
+    /**
+     * Tests that the completion message uses reply_broadcast: true when
+     * posted to a thread, ensuring it appears both in the thread and in
+     * the channel's main view (Slack's "Also send to channel" feature).
+     */
+    @Test(timeout = 10000)
+    public void testCompletionMessageBroadcastsToChannel() {
+        List<String> messages = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json -> {
+            messages.add(json);
+        });
+
+        Workstream workstream = new Workstream("C123", "#test");
+        workstream.setDefaultBranch("feature/test");
+        notifier.registerWorkstream(workstream);
+
+        // Submit a job to create a thread
+        JobCompletionEvent startEvent = JobCompletionEvent.started("job-broadcast", "Test task");
+        notifier.onJobSubmitted(workstream.getWorkstreamId(), startEvent);
+
+        // Clear messages from submission
+        messages.clear();
+
+        // Complete the job with PR URL
+        JobCompletionEvent completeEvent = JobCompletionEvent.success("job-broadcast", "Test task");
+        completeEvent.withGitInfo("feature/test", "abc1234567890",
+            List.of("test.py"), List.of(), true);
+        completeEvent.withPullRequestUrl("https://github.com/test/repo/pull/123");
+        notifier.onJobCompleted(workstream.getWorkstreamId(), completeEvent);
+
+        assertEquals(1, messages.size());
+        String message = messages.get(0);
+        assertTrue("Message should have reply_broadcast=true",
+            JsonFieldExtractor.extractBoolean(message, "reply_broadcast"));
+        assertNotNull("Message should have thread_ts field",
+            JsonFieldExtractor.extractString(message, "thread_ts"));
+        assertTrue("Message should contain PR URL", message.contains("https://github.com/test/repo/pull/123"));
+    }
+
+    /**
+     * Tests that status messages (onJobStarted) do NOT use reply_broadcast,
+     * ensuring they only appear in the thread, not broadcast to the channel.
+     */
+    @Test(timeout = 10000)
+    public void testStatusMessageDoesNotBroadcast() {
+        List<String> messages = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json -> {
+            messages.add(json);
+        });
+
+        Workstream workstream = new Workstream("C123", "#test");
+        workstream.setDefaultBranch("feature/test");
+        notifier.registerWorkstream(workstream);
+
+        // Submit a job to create a thread
+        JobCompletionEvent startEvent = JobCompletionEvent.started("job-status", "Test task");
+        notifier.onJobSubmitted(workstream.getWorkstreamId(), startEvent);
+
+        // Clear messages from submission
+        messages.clear();
+
+        // Start the job
+        notifier.onJobStarted(workstream.getWorkstreamId(), startEvent);
+
+        assertEquals(1, messages.size());
+        String message = messages.get(0);
+        assertFalse("Status message should NOT have reply_broadcast=true",
+            JsonFieldExtractor.extractBoolean(message, "reply_broadcast"));
+        assertNotNull("Status message should have thread_ts field",
+            JsonFieldExtractor.extractString(message, "thread_ts"));
+    }
+
+    /**
+     * Tests that the old postMessageInThread API (without replyBroadcast param)
+     * defaults to replyBroadcast: false (no broadcast).
+     */
+    @Test(timeout = 10000)
+    public void testPostMessageInThreadDefaultIsNoBroadcast() {
+        List<String> messages = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json -> {
+            messages.add(json);
+        });
+
+        notifier.postMessageInThread("C123", "test message", "thread123");
+
+        assertEquals(1, messages.size());
+        String message = messages.get(0);
+        assertFalse("Default should NOT broadcast", JsonFieldExtractor.extractBoolean(message, "reply_broadcast"));
     }
 }
 

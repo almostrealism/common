@@ -87,6 +87,56 @@ Follow the pattern of `workstream_submit_task` (line ~911 of `server.py`) exactl
 
 ---
 
+## JSON-object parameters: `runners`, `requiredLabels`, etc.
+
+Several MCP tools (`workstream_submit_task`, `workstream_register`,
+`workstream_update_config`, `workspace_update_config`) accept structured
+data through string-typed parameters that the tool then parses locally:
+
+- `required_labels: str = ""` — a comma-separated `key:value` CSV.
+- `dependent_repos: str = ""` — a comma-separated list of git URLs.
+- `runners: str = ""` — a JSON object whose keys are
+  [`Phase`](../../flowtree/agents/src/main/java/io/flowtree/jobs/agent/Phase.java)
+  wire names (`"primary"`, `"review"`, `"deduplication"`,
+  `"organizational-placement"`, `"enforce-changes"`,
+  `"maven-dependency-protection"`, `"post-completion"`, `"commit-message"`,
+  `"git-tampering-restart"`) plus
+  an optional `"default"` key. Values are runner identifiers
+  (`"claude"`, `"opencode"`, ...). The tool parses the string with
+  `json.loads`, validates phase names against the enum, and forwards the
+  decoded object to the controller via the `runners` field in the
+  submission payload.
+- `default_runner: str = ""` — convenience shortcut equivalent to
+  `runners='{"default": "<value>"}'`. The explicit `runners["default"]`
+  wins when both are supplied.
+- `default_phase_config: str = ""` — JSON object with optional
+  `runner` / `model` / `effort` / `provider` keys. Sets the container's
+  default `PhaseConfig` (the `defaultPhaseConfig` of the bundle described
+  in `docs/plans/UNIFIED_PHASE_CONFIG.md`). Wins field-by-field over the
+  legacy `default_runner` / `model` / `effort` shortcuts when both are
+  supplied. Parsed by `_parse_default_phase_config_json`, which checks
+  runners against the known set and efforts against `VALID_EFFORT_LEVELS`;
+  `provider` is opaque and passed through to the controller unchanged.
+  Example: `'{"runner": "opencode", "model": "qwen3-coder:exacto",
+  "effort": "medium", "provider": "openrouter"}'`
+- `phase_configs: str = ""` — JSON object mapping phase wire names to
+  objects with `runner`, `model`, `effort`, and `provider` keys (all
+  optional). Wins field-by-field over the legacy `runners` map when both
+  are supplied. Parsed by `_parse_phase_configs_json` with the same
+  per-field validation as `default_phase_config`. Example:
+  `'{"primary": {"runner": "opencode", "model": "claude-sonnet-4-6",
+  "effort": "high", "provider": "anthropic"},
+  "deduplication": {"runner": "opencode", "provider": "openrouter"}}'`
+
+When adding a new structured parameter, follow the pattern from
+`_parse_runners_json` and `_parse_default_phase_config_json` in
+`tools/mcp/manager/server.py`: parse, validate locally (phase keys,
+runners against `_KNOWN_RUNNER_NAMES`, efforts against
+`VALID_EFFORT_LEVELS`, opaque fields like `model` passed through to the
+controller), and return a 400-style `{"ok": False, "error": "..."}`
+dict on shape errors so the caller fails fast instead of waiting on a
+controller round-trip.
+
 ## The Exact Pattern to Follow
 
 Copy the structure of `workstream_submit_task` when adding a new tool:

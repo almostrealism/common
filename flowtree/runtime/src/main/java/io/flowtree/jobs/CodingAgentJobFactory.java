@@ -19,10 +19,14 @@ package io.flowtree.jobs;
 import io.flowtree.job.AbstractJobFactory;
 import io.flowtree.job.Job;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
+import io.flowtree.jobs.agent.Phase;
+import io.flowtree.jobs.agent.PhaseConfig;
+import io.flowtree.jobs.agent.PhaseConfigBundle;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.KeyUtils;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
@@ -122,6 +126,18 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private boolean enforceOrganizationalPlacement = true;
 
     /**
+     * When {@code true} (the default), jobs created by this factory activate the
+     * {@link ReviewRule} (second-pass sanity check by a separate runner).
+     */
+    private boolean reviewEnabled = true;
+
+    /**
+     * Per-job cap on review passes propagated to jobs created by this factory.
+     * Defaults to {@link CodingAgentJob#DEFAULT_MAX_REVIEW_PASSES}.
+     */
+    private int maxReviewPasses = CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES;
+
+    /**
      * Shell command run after the agent's primary work to verify the result.
      * Propagated to jobs via {@link CodingAgentJob#setPostCompletionCommand(String)}.
      * Empty or {@code null} disables the post-completion check.
@@ -147,11 +163,28 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private int maxPostCompletionPasses = CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES;
 
     /**
-     * Name of the {@link io.flowtree.jobs.agent.AgentRunner} used to dispatch
-     * sessions for jobs created by this factory. Defaults to
-     * {@link AgentRunnerRegistry#CLAUDE}.
+     * Legacy single-runner name for jobs created by this factory. Mirrored to
+     * {@link #defaultRunner}; retained for source compatibility with pre-Phase-2
+     * callers that did not understand the per-phase map.
      */
     private String runnerName = AgentRunnerRegistry.CLAUDE;
+
+    /**
+     * Default {@link io.flowtree.jobs.agent.AgentRunner} for jobs created by
+     * this factory; takes effect when {@link #runnerByPhase} has no entry for
+     * the dispatched phase. Defaults to {@link AgentRunnerRegistry#CLAUDE}.
+     */
+    private String defaultRunner = AgentRunnerRegistry.CLAUDE;
+
+    /** Per-phase runner overrides propagated to jobs created by this factory. */
+    private final Map<Phase, String> runnerByPhase = new EnumMap<>(Phase.class);
+
+    /**
+     * Unified per-phase configuration bundle propagated to jobs created by
+     * this factory. Kept in sync with the legacy {@link #defaultRunner},
+     * {@link #runnerByPhase}, {@link #model}, and {@link #effort} fields.
+     */
+    private PhaseConfigBundle phaseConfigBundle = PhaseConfigBundle.EMPTY;
 
     /**
      * Default constructor for deserialization.
@@ -382,6 +415,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         if (model == null || model.isEmpty()) {
             this.model = null;
             set("model", null);
+            this.phaseConfigBundle = phaseConfigBundle.withDefaultModel(null);
             return;
         }
         if (!CodingAgentJob.VALID_MODELS.contains(model)) {
@@ -390,6 +424,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         }
         this.model = model;
         set("model", model);
+        this.phaseConfigBundle = phaseConfigBundle.withDefaultModel(model);
     }
 
     /**
@@ -416,6 +451,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         if (effort == null || effort.isEmpty()) {
             this.effort = null;
             set("effort", null);
+            this.phaseConfigBundle = phaseConfigBundle.withDefaultEffort(null);
             return;
         }
         if (!CodingAgentJob.VALID_EFFORT_LEVELS.contains(effort)) {
@@ -425,6 +461,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         }
         this.effort = effort;
         set("effort", effort);
+        this.phaseConfigBundle = phaseConfigBundle.withDefaultEffort(effort);
     }
 
     /**
@@ -727,6 +764,50 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
+     * Returns whether the {@link ReviewRule} (second-pass sanity check) is active
+     * for jobs created by this factory.
+     *
+     * @return {@code true} when review is enabled (the default)
+     */
+    public boolean isReviewEnabled() {
+        return reviewEnabled;
+    }
+
+    /**
+     * Sets whether the {@link ReviewRule} is active for jobs created by this factory.
+     *
+     * @param reviewEnabled {@code false} to disable the review phase
+     */
+    public void setReviewEnabled(boolean reviewEnabled) {
+        this.reviewEnabled = reviewEnabled;
+        set("reviewEnabled", String.valueOf(reviewEnabled));
+    }
+
+    /**
+     * Returns the maximum number of review passes for jobs created by this factory.
+     *
+     * @return the pass cap; defaults to {@link CodingAgentJob#DEFAULT_MAX_REVIEW_PASSES}
+     */
+    public int getMaxReviewPasses() {
+        return maxReviewPasses;
+    }
+
+    /**
+     * Sets the maximum number of review passes for jobs created by this factory.
+     *
+     * @param maxReviewPasses cap on review sessions per job; must be positive
+     * @throws IllegalArgumentException if the value is not positive
+     */
+    public void setMaxReviewPasses(int maxReviewPasses) {
+        if (maxReviewPasses <= 0) {
+            throw new IllegalArgumentException(
+                    "maxReviewPasses must be positive, got: " + maxReviewPasses);
+        }
+        this.maxReviewPasses = maxReviewPasses;
+        set("maxReviewPasses", String.valueOf(maxReviewPasses));
+    }
+
+    /**
      * Returns the post-completion command for jobs created by this factory.
      *
      * <p>When non-empty, the command is run after the agent's primary work.
@@ -837,7 +918,9 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
 
     /**
      * Returns the name of the agent runner used to dispatch sessions for jobs
-     * created by this factory.
+     * created by this factory when no per-phase override applies.
+     *
+     * <p>Equivalent to {@link #getDefaultRunner()}; retained as a legacy alias.</p>
      *
      * @return the runner identifier; defaults to
      *         {@link AgentRunnerRegistry#CLAUDE}
@@ -845,7 +928,11 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     public String getRunnerName() { return runnerName; }
 
     /**
-     * Sets the agent runner name applied to jobs created by this factory.
+     * Sets the agent runner name applied to jobs created by this factory when
+     * no per-phase override applies.
+     *
+     * <p>Equivalent to {@link #setDefaultRunner(String)}; retained as a legacy
+     * alias so pre-Phase-2 callers continue to work unchanged.</p>
      *
      * @param runnerName a registered runner identifier; {@code null}/empty
      *                   resets to the Claude runner
@@ -854,16 +941,146 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     public void setRunnerName(String runnerName) {
         if (runnerName == null || runnerName.isEmpty()) {
             this.runnerName = AgentRunnerRegistry.CLAUDE;
-            set("runner", null);
+            this.defaultRunner = AgentRunnerRegistry.CLAUDE;
+            set("defaultRunner", null);
+            this.phaseConfigBundle = phaseConfigBundle.withDefaultRunner(null);
             return;
         }
         AgentRunnerRegistry.validateName(runnerName);
         this.runnerName = runnerName;
+        this.defaultRunner = runnerName;
         if (AgentRunnerRegistry.CLAUDE.equals(runnerName)) {
-            set("runner", null);
+            set("defaultRunner", null);
         } else {
-            set("runner", runnerName);
+            set("defaultRunner", runnerName);
         }
+        this.phaseConfigBundle = phaseConfigBundle.withDefaultRunner(runnerName);
+    }
+
+    /**
+     * Returns the default runner applied to jobs created by this factory.
+     *
+     * @return the runner identifier; defaults to {@link AgentRunnerRegistry#CLAUDE}
+     */
+    public String getDefaultRunner() { return defaultRunner; }
+
+    /**
+     * Sets the default runner applied to jobs created by this factory.
+     * Validated against {@link AgentRunnerRegistry#available()}.
+     *
+     * @param runnerName a registered runner identifier; {@code null}/empty
+     *                   resets to the Claude runner
+     * @throws IllegalArgumentException when the runner is not registered
+     */
+    public void setDefaultRunner(String runnerName) {
+        setRunnerName(runnerName);
+    }
+
+    /**
+     * Returns the runner used for {@code phase} on jobs created by this
+     * factory. Falls back to {@link #getDefaultRunner()} when no override is
+     * set.
+     */
+    public String getRunnerForPhase(Phase phase) {
+        if (phase == null) return defaultRunner;
+        return runnerByPhase.getOrDefault(phase, defaultRunner);
+    }
+
+    /**
+     * Sets the per-phase runner override for jobs created by this factory.
+     * Passing {@code null}/empty clears the override.
+     *
+     * @param phase      the phase to configure; must not be {@code null}
+     * @param runnerName a registered runner identifier or {@code null}/empty
+     *                   to clear the override
+     * @throws IllegalArgumentException when {@code phase} is {@code null} or
+     *                                  {@code runnerName} is not registered
+     */
+    public void setRunnerForPhase(Phase phase, String runnerName) {
+        if (phase == null) throw new IllegalArgumentException("phase must not be null");
+        if (runnerName == null || runnerName.isEmpty()) {
+            runnerByPhase.remove(phase);
+            PhaseConfig existing = phaseConfigBundle.phaseConfigs().get(phase);
+            if (existing != null) {
+                phaseConfigBundle = phaseConfigBundle.withPhase(phase, existing.withRunner(null));
+            }
+        } else {
+            AgentRunnerRegistry.validateName(runnerName);
+            runnerByPhase.put(phase, runnerName);
+            PhaseConfig existing = phaseConfigBundle.phaseConfigs().get(phase);
+            PhaseConfig updated = (existing != null ? existing : PhaseConfig.EMPTY)
+                    .withRunner(runnerName);
+            phaseConfigBundle = phaseConfigBundle.withPhase(phase, updated);
+        }
+        if (runnerByPhase.isEmpty()) {
+            set("runners", null);
+        } else {
+            set("runners", Phase.encodeRunnerMap(runnerByPhase));
+        }
+    }
+
+    /**
+     * Returns an immutable snapshot of the per-phase runner overrides.
+     *
+     * @return the override map; empty when no overrides are set
+     */
+    public Map<Phase, String> getRunnerByPhase() {
+        return new EnumMap<>(runnerByPhase);
+    }
+
+    /**
+     * Returns the unified per-phase configuration bundle propagated to jobs
+     * created by this factory.
+     *
+     * @return the bundle, never {@code null}
+     */
+    public PhaseConfigBundle getPhaseConfigBundle() {
+        return phaseConfigBundle;
+    }
+
+    /**
+     * Replaces the per-phase configuration bundle. Updates the legacy
+     * {@code defaultRunner}, {@code runnerByPhase}, {@code model}, and
+     * {@code effort} fields to match so legacy callers continue to see
+     * consistent state.
+     *
+     * @param bundle the new bundle; {@code null} resets to
+     *               {@link PhaseConfigBundle#EMPTY}
+     */
+    public void setPhaseConfigBundle(PhaseConfigBundle bundle) {
+        this.phaseConfigBundle = bundle != null ? bundle : PhaseConfigBundle.EMPTY;
+        PhaseConfig def = phaseConfigBundle.defaultPhaseConfig();
+        String r = def.runner();
+        this.defaultRunner = (r != null && !r.isEmpty()) ? r : AgentRunnerRegistry.CLAUDE;
+        this.runnerName = this.defaultRunner;
+        this.model = def.model();
+        this.effort = def.effort();
+        // Update serialised property keys so the wire format stays current.
+        if (AgentRunnerRegistry.CLAUDE.equals(this.defaultRunner)) {
+            set("defaultRunner", null);
+        } else {
+            set("defaultRunner", this.defaultRunner);
+        }
+        if (this.model != null) set("model", this.model); else set("model", null);
+        if (this.effort != null) set("effort", this.effort); else set("effort", null);
+        runnerByPhase.clear();
+        for (Map.Entry<Phase, PhaseConfig> e : phaseConfigBundle.phaseConfigs().entrySet()) {
+            String phaseRunner = e.getValue().runner();
+            if (phaseRunner != null && !phaseRunner.isEmpty()) {
+                runnerByPhase.put(e.getKey(), phaseRunner);
+            }
+        }
+        if (runnerByPhase.isEmpty()) {
+            set("runners", null);
+        } else {
+            set("runners", Phase.encodeRunnerMap(runnerByPhase));
+        }
+        // Persist the full bundle separately. The legacy keys above only
+        // preserve runner identity per phase; per-phase model / effort /
+        // provider — and the default provider — are otherwise dropped on
+        // the wire and re-defaulted on the receiving side.
+        set("phaseConfigBundle", CodingAgentJobCodec.encodePhaseConfigBundle(
+                this.phaseConfigBundle));
     }
 
     /**
@@ -1029,6 +1246,8 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         job.setMaxDeduplicationPasses(maxDeduplicationPasses);
         job.setEnforceMavenDependencies(enforceMavenDependencies);
         job.setEnforceOrganizationalPlacement(enforceOrganizationalPlacement);
+        job.setReviewEnabled(reviewEnabled);
+        job.setMaxReviewPasses(maxReviewPasses);
         if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
             job.setPostCompletionCommand(postCompletionCommand);
             if (postCompletionWorkingDir != null) {
@@ -1056,8 +1275,19 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             job.setRequiredLabel(entry.getKey(), entry.getValue());
         }
 
-        if (runnerName != null && !AgentRunnerRegistry.CLAUDE.equals(runnerName)) {
-            job.setRunnerName(runnerName);
+        if (defaultRunner != null && !AgentRunnerRegistry.CLAUDE.equals(defaultRunner)) {
+            job.setDefaultRunner(defaultRunner);
+        }
+        for (Map.Entry<Phase, String> e : runnerByPhase.entrySet()) {
+            job.setRunnerForPhase(e.getKey(), e.getValue());
+        }
+
+        // Propagate the full per-phase config bundle so per-phase model and
+        // effort overrides reach the job. setPhaseConfigBundle() re-derives
+        // the legacy fields from the bundle, which overwrites the runner
+        // sync above with the same values plus model/effort.
+        if (!phaseConfigBundle.isEmpty()) {
+            job.setPhaseConfigBundle(phaseConfigBundle);
         }
 
         return job;
@@ -1133,9 +1363,33 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             case "enforceChanges":
                 break;
             case "runner":
-                this.runnerName = (value == null || value.isEmpty())
-                        ? AgentRunnerRegistry.CLAUDE
-                        : value;
+                // Legacy single-runner key; honored only when no explicit
+                // defaultRunner has been decoded yet.
+                if (AgentRunnerRegistry.CLAUDE.equals(defaultRunner)) {
+                    String legacy = (value == null || value.isEmpty())
+                            ? AgentRunnerRegistry.CLAUDE : value;
+                    this.runnerName = legacy;
+                    this.defaultRunner = legacy;
+                }
+                break;
+            case "defaultRunner":
+                String resolvedDefault = (value == null || value.isEmpty())
+                        ? AgentRunnerRegistry.CLAUDE : value;
+                this.runnerName = resolvedDefault;
+                this.defaultRunner = resolvedDefault;
+                break;
+            case "runners":
+                runnerByPhase.clear();
+                runnerByPhase.putAll(Phase.decodeRunnerMap(value, this::warn));
+                break;
+            case "phaseConfigBundle":
+                // Assign the field directly: setPhaseConfigBundle would
+                // re-emit set("phaseConfigBundle", ...) and recurse. The
+                // legacy keys above already carry runner/model/effort and
+                // arrive in their own set() calls; the bundle here just
+                // restores per-phase model/effort/provider.
+                this.phaseConfigBundle =
+                        CodingAgentJobCodec.decodePhaseConfigBundle(value);
                 break;
             default:
                 setEnforcementFlag(key, value);
@@ -1159,23 +1413,21 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 this.deduplicationMode = value;
                 return;
             case "maxDedupPasses":
-                if (value == null || value.isEmpty()) {
-                    this.maxDeduplicationPasses = CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES;
-                } else {
-                    try {
-                        int parsed = Integer.parseInt(value);
-                        this.maxDeduplicationPasses = (parsed > 0)
-                                ? parsed : CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES;
-                    } catch (NumberFormatException e) {
-                        this.maxDeduplicationPasses = CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES;
-                    }
-                }
+                this.maxDeduplicationPasses = CodingAgentJobCodec.parsePositiveOrDefault(
+                        value, CodingAgentJob.DEFAULT_MAX_DEDUP_PASSES);
                 return;
             case "enforceMavenDeps":
                 this.enforceMavenDependencies = Boolean.parseBoolean(value);
                 return;
             case "enforceOrgPlacement":
                 this.enforceOrganizationalPlacement = Boolean.parseBoolean(value);
+                return;
+            case "reviewEnabled":
+                this.reviewEnabled = Boolean.parseBoolean(value);
+                return;
+            case "maxReviewPasses":
+                this.maxReviewPasses = CodingAgentJobCodec.parsePositiveOrDefault(
+                        value, CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES);
                 return;
             case "postCmd":
                 this.postCompletionCommand = GitManagedJob.base64Decode(value);
@@ -1189,17 +1441,8 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                         : Integer.parseInt(value);
                 return;
             case "maxPostCmdPasses":
-                if (value == null || value.isEmpty()) {
-                    this.maxPostCompletionPasses = CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES;
-                } else {
-                    try {
-                        int parsed = Integer.parseInt(value);
-                        this.maxPostCompletionPasses = (parsed > 0)
-                                ? parsed : CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES;
-                    } catch (NumberFormatException e) {
-                        this.maxPostCompletionPasses = CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES;
-                    }
-                }
+                this.maxPostCompletionPasses = CodingAgentJobCodec.parsePositiveOrDefault(
+                        value, CodingAgentJob.DEFAULT_MAX_POST_COMPLETION_PASSES);
                 return;
             default:
                 // Unknown key; already stored in properties map by AbstractJobFactory.set().

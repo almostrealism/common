@@ -16,20 +16,29 @@
 
 package io.flowtree.slack;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.flowtree.jobs.CodingAgentJob;
+import io.flowtree.jobs.agent.Phase;
+import io.flowtree.jobs.agent.PhaseConfig;
+import io.flowtree.jobs.agent.PhaseConfigBundle;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -82,25 +91,46 @@ public class WorkstreamConfig {
     private Map<String, GitHubOrgEntry> githubOrgs = new LinkedHashMap<>();
     /** Ordered list of workstream configuration entries. */
     private List<WorkstreamEntry> workstreams = new ArrayList<>();
-    /** Per-workspace Slack configuration entries; empty list uses legacy single-token mode. */
-    private List<SlackWorkspaceEntry> slackWorkspaces = new ArrayList<>();
+    /**
+     * Workspace configuration entries (operator-chosen IDs, optional Slack
+     * connection). Populated from the {@code workspaces:} top-level YAML key
+     * and — for backward compatibility — also from the legacy
+     * {@code slackWorkspaces:} key (which is migrated on load so each legacy
+     * entry's {@code id} doubles as its {@code slackTeamId}).
+     */
+    private List<WorkspaceEntry> workspaces = new ArrayList<>();
 
     /**
-     * Configuration entry for a Slack workspace connection.
+     * Configuration entry for a workspace — the operator's organizational
+     * unit, optionally connected to a Slack team.
      *
-     * <p>Each entry defines the bot/app token pair for one Slack team. Workstreams
-     * that reference this workspace by {@code slackWorkspaceId} are served by its
-     * connection. If the list is empty, the controller falls back to the legacy
-     * single-token resolution path via {@link SlackTokens#resolve(java.io.File)}.</p>
+     * <p>The {@code id} field is operator-chosen and is the identifier
+     * referenced by {@link WorkstreamEntry#getWorkspaceId()}. The optional
+     * {@code slackTeamId} field carries the Slack team ID (e.g.
+     * {@code "T0123456789"}) when the workspace is connected to Slack;
+     * when absent the workspace has no Slack integration and channel/notifier
+     * operations skip cleanly. Legacy {@code slackWorkspaces:} entries are
+     * auto-migrated on load so {@code id == slackTeamId}.</p>
      *
-     * <p>Tokens may be supplied inline ({@code botToken}/{@code appToken} fields) or
-     * via a JSON file ({@code tokensFile}). When {@code tokensFile} is set it takes
-     * priority over the inline fields.</p>
+     * <p>Slack-credential fields ({@code tokensFile}/{@code botToken}/
+     * {@code appToken}) only have effect when {@code slackTeamId} is set.</p>
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class SlackWorkspaceEntry {
-        /** Slack team ID (T...) uniquely identifying this workspace. */
-        private String workspaceId;
+    public static class WorkspaceEntry {
+        /**
+         * Operator-chosen workspace identifier. For legacy {@code slackWorkspaces:}
+         * entries the YAML key {@code workspaceId} is accepted via
+         * {@link JsonAlias} and double-loaded as both {@code id} and
+         * {@code slackTeamId} so that older configs continue to resolve.
+         */
+        @JsonAlias({"workspaceId"})
+        private String id;
+        /**
+         * Optional Slack team ID (e.g. {@code "T0123456789"}) identifying the
+         * Slack workspace this entry routes to. {@code null} when this
+         * workspace has no Slack connection.
+         */
+        private String slackTeamId;
         /** Human-readable label for this workspace (used in logs and diagnostics). */
         private String name;
         /** Path to a JSON file with {@code botToken} and {@code appToken}. */
@@ -127,11 +157,61 @@ public class WorkstreamConfig {
         private Map<String, GitHubOrgEntry> githubOrgs = new LinkedHashMap<>();
         /** Secrets declared as available to workstreams in this workspace. */
         private List<WorkspaceSecretEntry> secrets = new ArrayList<>();
+        /**
+         * Workspace-level default {@link io.flowtree.jobs.agent.AgentRunner}
+         * applied to workstreams in this workspace when neither the workstream
+         * itself nor the per-job override sets one. Sits between the
+         * workstream default and the controller default in the routing
+         * ladder. Optional; {@code null} omits the field from serialized YAML.
+         */
+        private String defaultRunner;
+        /**
+         * Workspace-level per-phase runner overrides keyed by phase wire name
+         * (e.g. {@code primary}, {@code commit-message}). Consulted by the
+         * resolver only when the workstream has no per-phase entry for the
+         * same phase <em>and</em> no workstream-level {@code defaultRunner};
+         * see {@link SubmissionRunnerResolver} for the full ladder. Optional;
+         * an empty map is omitted from serialized YAML.
+         */
+        private Map<String, String> runners = new LinkedHashMap<>();
 
-        /** Returns the Slack team ID (T...). */
-        public String getWorkspaceId() { return workspaceId; }
-        /** Sets the Slack team ID. */
-        public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
+        /**
+         * Workspace-level default {@link PhaseConfig} for the unified
+         * per-phase config ladder. Optional; {@code null} omits the field
+         * from serialized YAML. New form — supersedes the legacy
+         * {@link #defaultRunner} for runner selection, and is the only
+         * source of workspace-level {@code model} / {@code effort}.
+         */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        private PhaseConfig defaultPhaseConfig;
+        /**
+         * Workspace-level per-phase {@link PhaseConfig} overrides keyed by
+         * phase wire name (e.g. {@code review}). Supersedes the legacy
+         * {@link #runners} map. Optional; an empty map is omitted from
+         * serialized YAML.
+         */
+        @JsonInclude(JsonInclude.Include.NON_EMPTY)
+        private Map<String, PhaseConfig> phaseConfigs = new LinkedHashMap<>();
+
+        /** Returns the operator-chosen workspace ID. */
+        public String getId() { return id; }
+        /** Sets the operator-chosen workspace ID. */
+        public void setId(String id) { this.id = id; }
+
+        /**
+         * Returns the Slack team ID this workspace is connected to, or
+         * {@code null} when the workspace has no Slack integration.
+         */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public String getSlackTeamId() { return slackTeamId; }
+        /**
+         * Sets the Slack team ID for this workspace. Pass {@code null} or
+         * empty to clear the Slack connection — channel-routing operations
+         * will then skip this workspace cleanly.
+         */
+        public void setSlackTeamId(String slackTeamId) {
+            this.slackTeamId = (slackTeamId == null || slackTeamId.isEmpty()) ? null : slackTeamId;
+        }
 
         /** Returns the human-readable workspace label. */
         public String getName() { return name; }
@@ -200,6 +280,48 @@ public class WorkstreamConfig {
         /** Sets the list of secrets declared for this workspace. */
         public void setSecrets(List<WorkspaceSecretEntry> secrets) {
             this.secrets = secrets != null ? secrets : new ArrayList<>();
+        }
+
+        /** Returns the workspace-level default agent runner, or {@code null} when none is configured. */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public String getDefaultRunner() { return defaultRunner; }
+        /** Sets the workspace-level default agent runner. */
+        public void setDefaultRunner(String defaultRunner) { this.defaultRunner = defaultRunner; }
+
+        /** Returns the workspace-level per-phase runner overrides (keyed by phase wire name); never {@code null}. */
+        @JsonInclude(JsonInclude.Include.NON_EMPTY)
+        public Map<String, String> getRunners() { return runners; }
+        /** Replaces the workspace-level per-phase runner override map; {@code null} is treated as empty. */
+        public void setRunners(Map<String, String> runners) {
+            this.runners = runners != null ? new LinkedHashMap<>(runners) : new LinkedHashMap<>();
+        }
+
+        /** Returns the workspace-level default {@link PhaseConfig}, or {@code null}. */
+        public PhaseConfig getDefaultPhaseConfig() { return defaultPhaseConfig; }
+        /** Sets the workspace-level default {@link PhaseConfig}. */
+        public void setDefaultPhaseConfig(PhaseConfig defaultPhaseConfig) {
+            this.defaultPhaseConfig = defaultPhaseConfig;
+        }
+
+        /** Returns the workspace-level per-phase {@link PhaseConfig} overrides; never {@code null}. */
+        public Map<String, PhaseConfig> getPhaseConfigs() { return phaseConfigs; }
+        /** Replaces the workspace-level per-phase {@link PhaseConfig} overrides. */
+        public void setPhaseConfigs(Map<String, PhaseConfig> phaseConfigs) {
+            this.phaseConfigs = phaseConfigs != null ? new LinkedHashMap<>(phaseConfigs) : new LinkedHashMap<>();
+        }
+
+        /**
+         * Builds the effective {@link PhaseConfigBundle} for this workspace,
+         * merging the new {@code defaultPhaseConfig}/{@code phaseConfigs}
+         * fields with the legacy {@code defaultRunner}/{@code runners} fields.
+         * The new fields take precedence field-by-field when both are
+         * supplied; legacy fields fill in {@code null} positions.
+         *
+         * @return the merged bundle; never {@code null}
+         */
+        public PhaseConfigBundle toPhaseConfigBundle() {
+            return WorkstreamConfig.mergeBundle(defaultRunner, runners,
+                    defaultPhaseConfig, phaseConfigs);
         }
     }
 
@@ -272,12 +394,49 @@ public class WorkstreamConfig {
         private List<String> dependentRepos;
         /** Node labels that jobs submitted to this workstream must match by default. */
         private Map<String, String> requiredLabels;
-        /** The Slack workspace ID (team ID) this workstream is bound to. */
-        private String slackWorkspaceId;
+        /**
+         * The workspace ID this workstream is bound to. Accepts the legacy
+         * YAML key {@code slackWorkspaceId} via {@link JsonAlias} so existing
+         * configs continue to load; the field now holds an operator-chosen
+         * workspace ID rather than a Slack team ID.
+         */
+        @JsonAlias({"slackWorkspaceId"})
+        private String workspaceId;
         /** Default Claude Code model alias or full name applied to jobs in this workstream. */
         private String model;
         /** Default Claude Code effort/thinking level applied to jobs in this workstream. */
         private String effort;
+        /**
+         * Default {@link io.flowtree.jobs.agent.AgentRunner} applied to jobs
+         * in this workstream when no per-phase or per-job override is set.
+         */
+        private String defaultRunner;
+        /**
+         * Per-phase runner overrides keyed by phase wire name (e.g.
+         * {@code primary}, {@code deduplication}). Phases not listed inherit
+         * {@link #defaultRunner}.
+         */
+        private Map<String, String> runners = new LinkedHashMap<>();
+        /**
+         * Workstream-level default {@link PhaseConfig}; new form for the
+         * unified per-phase config ladder. Optional; {@code null} omits the
+         * field from serialized YAML.
+         */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        private PhaseConfig defaultPhaseConfig;
+        /**
+         * Workstream-level per-phase {@link PhaseConfig} overrides keyed by
+         * phase wire name. Optional; an empty map is omitted from
+         * serialized YAML.
+         */
+        @JsonInclude(JsonInclude.Include.NON_EMPTY)
+        private Map<String, PhaseConfig> phaseConfigs = new LinkedHashMap<>();
+        /**
+         * Whether this workstream is archived. Archived workstreams are
+         * hidden from default {@code workstream_list} responses but their
+         * job history and memories remain queryable.
+         */
+        private boolean archived;
 
         /** Returns the persistent workstream identifier. */
         public String getWorkstreamId() { return workstreamId; }
@@ -383,13 +542,15 @@ public class WorkstreamConfig {
         public void setRequiredLabels(Map<String, String> requiredLabels) { this.requiredLabels = requiredLabels; }
 
         /**
-         * Returns the Slack workspace ID (team ID, e.g. "T0123456789") that this
-         * workstream is assigned to.  When absent, the workstream is assigned to the
-         * first (or only) workspace connection in the {@code slackWorkspaces} list.
+         * Returns the workspace ID this workstream is assigned to. Accepts
+         * the legacy YAML alias {@code slackWorkspaceId} on load; the value is
+         * now an operator-chosen workspace ID, not necessarily a Slack team
+         * ID. When absent, the workstream is assigned to the first (or only)
+         * workspace connection in the {@code workspaces} list.
          */
-        public String getSlackWorkspaceId() { return slackWorkspaceId; }
-        /** Sets the Slack workspace ID for this workstream. */
-        public void setSlackWorkspaceId(String slackWorkspaceId) { this.slackWorkspaceId = slackWorkspaceId; }
+        public String getWorkspaceId() { return workspaceId; }
+        /** Sets the workspace ID for this workstream. */
+        public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
 
         /** Returns the default Claude Code model for jobs in this workstream, or {@code null}. */
         public String getModel() { return model; }
@@ -400,6 +561,62 @@ public class WorkstreamConfig {
         public String getEffort() { return effort; }
         /** Sets the default Claude Code effort/thinking level for jobs in this workstream. */
         public void setEffort(String effort) { this.effort = effort; }
+
+        /** Returns the default agent runner for jobs in this workstream, or {@code null}. */
+        public String getDefaultRunner() { return defaultRunner; }
+        /** Sets the default agent runner for jobs in this workstream. */
+        public void setDefaultRunner(String defaultRunner) { this.defaultRunner = defaultRunner; }
+
+        /** Returns the per-phase runner override map (keyed by phase wire name); never {@code null}. */
+        public Map<String, String> getRunners() { return runners; }
+        /** Replaces the per-phase runner override map; {@code null} is treated as empty. */
+        public void setRunners(Map<String, String> runners) {
+            this.runners = runners != null ? new LinkedHashMap<>(runners) : new LinkedHashMap<>();
+        }
+
+        /** Returns the workstream-level default {@link PhaseConfig}, or {@code null}. */
+        public PhaseConfig getDefaultPhaseConfig() { return defaultPhaseConfig; }
+        /** Sets the workstream-level default {@link PhaseConfig}. */
+        public void setDefaultPhaseConfig(PhaseConfig defaultPhaseConfig) {
+            this.defaultPhaseConfig = defaultPhaseConfig;
+        }
+
+        /** Returns the workstream-level per-phase {@link PhaseConfig} overrides; never {@code null}. */
+        public Map<String, PhaseConfig> getPhaseConfigs() { return phaseConfigs; }
+        /** Replaces the workstream-level per-phase {@link PhaseConfig} overrides. */
+        public void setPhaseConfigs(Map<String, PhaseConfig> phaseConfigs) {
+            this.phaseConfigs = phaseConfigs != null ? new LinkedHashMap<>(phaseConfigs) : new LinkedHashMap<>();
+        }
+
+        /**
+         * Builds the effective {@link PhaseConfigBundle} for this workstream
+         * entry, merging the new fields with the legacy
+         * {@code defaultRunner}/{@code runners}/{@code model}/{@code effort}
+         * fields. The new fields take precedence field-by-field.
+         *
+         * @return the merged bundle; never {@code null}
+         */
+        public PhaseConfigBundle toPhaseConfigBundle() {
+            PhaseConfigBundle bundle = WorkstreamConfig.mergeBundle(
+                    defaultRunner, runners, defaultPhaseConfig, phaseConfigs);
+            // Legacy workstream-level model/effort populate the bundle's
+            // default field. New defaultPhaseConfig wins when both are
+            // supplied (handled by mergeBundle).
+            PhaseConfig def = bundle.defaultPhaseConfig();
+            String mergedModel = def.model() != null ? def.model() : model;
+            String mergedEffort = def.effort() != null ? def.effort() : effort;
+            if (!Objects.equals(mergedModel, def.model())
+                    || !Objects.equals(mergedEffort, def.effort())) {
+                bundle = bundle.withDefault(new PhaseConfig(
+                        def.runner(), mergedModel, mergedEffort));
+            }
+            return bundle;
+        }
+
+        /** Returns {@code true} when this workstream is archived. */
+        public boolean isArchived() { return archived; }
+        /** Sets the archived flag. */
+        public void setArchived(boolean archived) { this.archived = archived; }
 
         /**
          * Converts this entry to a {@link Workstream} instance.
@@ -432,9 +649,21 @@ public class WorkstreamConfig {
             ws.setGithubOrg(githubOrg);
             ws.setDependentRepos(dependentRepos);
             ws.setRequiredLabels(requiredLabels);
-            ws.setSlackWorkspaceId(slackWorkspaceId);
+            ws.setWorkspaceId(workspaceId);
             ws.setModel(model);
             ws.setEffort(effort);
+            ws.setDefaultRunner(defaultRunner);
+            ws.setRunners(runners);
+            // Layer the new bundle fields on top of the legacy values just
+            // applied above. The bundle setter rewrites all four legacy
+            // fields, so any model / effort / runner present in the bundle
+            // wins over the legacy values (matching the documented "new
+            // wins" precedence on YAML load).
+            PhaseConfigBundle bundle = toPhaseConfigBundle();
+            if (!bundle.isEmpty()) {
+                ws.setPhaseConfigBundle(bundle);
+            }
+            ws.setArchived(archived);
             return ws;
         }
     }
@@ -658,8 +887,8 @@ public class WorkstreamConfig {
                 }
             }
         }
-        if (slackWorkspaces != null) {
-            for (SlackWorkspaceEntry wsEntry : slackWorkspaces) {
+        if (workspaces != null) {
+            for (WorkspaceEntry wsEntry : workspaces) {
                 if (wsEntry.getGithubOrgs() == null) continue;
                 for (Map.Entry<String, GitHubOrgEntry> entry : wsEntry.getGithubOrgs().entrySet()) {
                     String token = entry.getValue().getToken();
@@ -673,11 +902,11 @@ public class WorkstreamConfig {
     }
 
     /**
-     * Returns a map from GitHub org name to the Slack workspace ID that owns it.
-     * Only orgs that are declared inside a workspace's {@code githubOrgs} section
-     * produce a mapping; globally-declared orgs (top-level {@code githubOrgs})
-     * are excluded because the multi-workspace schema treats top-level orgs as
-     * unscoped fallbacks.
+     * Returns a map from GitHub org name to the workspace ID that owns it.
+     * Only orgs that are declared inside a workspace's {@code githubOrgs}
+     * section produce a mapping; globally-declared orgs (top-level
+     * {@code githubOrgs}) are excluded because the multi-workspace schema
+     * treats top-level orgs as unscoped fallbacks.
      *
      * <p>When the same org is declared under multiple workspaces the last
      * workspace wins, matching the merge order of {@link #mergedGithubOrgTokens()}.</p>
@@ -686,11 +915,11 @@ public class WorkstreamConfig {
      */
     public Map<String, String> orgToWorkspaceId() {
         Map<String, String> mapping = new LinkedHashMap<>();
-        if (slackWorkspaces != null) {
-            for (SlackWorkspaceEntry wsEntry : slackWorkspaces) {
+        if (workspaces != null) {
+            for (WorkspaceEntry wsEntry : workspaces) {
                 if (wsEntry.getGithubOrgs() == null) continue;
                 for (String org : wsEntry.getGithubOrgs().keySet()) {
-                    mapping.put(org, wsEntry.getWorkspaceId());
+                    mapping.put(org, wsEntry.getId());
                 }
             }
         }
@@ -703,16 +932,92 @@ public class WorkstreamConfig {
     public void setWorkstreams(List<WorkstreamEntry> workstreams) { this.workstreams = workstreams; }
 
     /**
-     * Returns the list of Slack workspace connection entries.
+     * Returns the list of workspace configuration entries.
      *
-     * <p>When this list is non-empty the controller creates one Bolt {@code App} and
-     * {@code SocketModeApp} per entry. When empty the controller falls back to the
-     * legacy single-token resolution path.</p>
+     * <p>When this list is non-empty the controller creates one Bolt {@code App}
+     * and {@code SocketModeApp} per entry that has a {@code slackTeamId} set.
+     * Entries without a {@code slackTeamId} have no Slack connection and skip
+     * channel/notifier operations cleanly. When the list is empty the
+     * controller falls back to the legacy single-token resolution path.</p>
      */
-    public List<SlackWorkspaceEntry> getSlackWorkspaces() { return slackWorkspaces; }
-    /** Sets the list of Slack workspace connection entries. */
-    public void setSlackWorkspaces(List<SlackWorkspaceEntry> slackWorkspaces) {
-        this.slackWorkspaces = slackWorkspaces != null ? slackWorkspaces : new ArrayList<>();
+    @JsonProperty("workspaces")
+    public List<WorkspaceEntry> getWorkspaces() { return workspaces; }
+
+    /**
+     * Sets the list of workspace configuration entries. Used by Jackson when
+     * deserializing the {@code workspaces:} YAML key. Merges with any
+     * entries already present (e.g. those previously added by the legacy
+     * {@code slackWorkspaces:} setter) so that both YAML keys can appear in
+     * the same file during the migration window. Entries with the same
+     * {@code id} as a pre-existing entry are skipped on the assumption that
+     * the existing entry is the authoritative one.
+     */
+    @JsonProperty("workspaces")
+    public void setWorkspaces(List<WorkspaceEntry> workspaces) {
+        if (workspaces == null) {
+            this.workspaces = new ArrayList<>();
+            return;
+        }
+        if (this.workspaces == null || this.workspaces.isEmpty()) {
+            this.workspaces = new ArrayList<>(workspaces);
+            return;
+        }
+        Set<String> existing = new HashSet<>();
+        for (WorkspaceEntry e : this.workspaces) {
+            if (e.getId() != null) existing.add(e.getId());
+        }
+        for (WorkspaceEntry e : workspaces) {
+            if (e.getId() == null || !existing.contains(e.getId())) {
+                this.workspaces.add(e);
+            }
+        }
+    }
+
+    /**
+     * Returns the workspace entries as a "Slack workspaces" view for callers
+     * that still iterate the legacy projection (each entry treated as a Slack
+     * workspace connection). Identical to {@link #getWorkspaces()} for now;
+     * preserved so older callers compile.
+     */
+    @JsonIgnore
+    public List<WorkspaceEntry> getSlackWorkspaces() { return workspaces; }
+
+    /**
+     * Accepts the legacy {@code slackWorkspaces:} YAML key and merges its
+     * entries into the unified {@link #workspaces} list. Each legacy entry is
+     * migrated on the fly so that its operator-chosen {@code id} doubles as
+     * its {@code slackTeamId} — this preserves the historical invariant that
+     * the workspace identifier IS the Slack team ID, while letting operators
+     * later rename the workspace via the {@code workspace_update_config} MCP
+     * tool without losing the Slack connection.
+     *
+     * <p>De-duplicates by {@code id} against any entries already present in
+     * {@link #workspaces}. Jackson invokes the setters in the order the keys
+     * appear in the YAML file, so when a file lists both {@code workspaces:}
+     * and {@code slackWorkspaces:} the canonical {@code workspaces:} entries
+     * win regardless of which key comes first; legacy entries that share an
+     * id with a canonical entry are silently dropped.</p>
+     *
+     * @param legacy parsed entries from the legacy YAML key; never serialized back
+     */
+    @JsonProperty("slackWorkspaces")
+    public void setSlackWorkspaces(List<WorkspaceEntry> legacy) {
+        if (legacy == null || legacy.isEmpty()) return;
+        Set<String> existing = new HashSet<>();
+        for (WorkspaceEntry e : workspaces) {
+            if (e.getId() != null) existing.add(e.getId());
+        }
+        for (WorkspaceEntry entry : legacy) {
+            if ((entry.getSlackTeamId() == null || entry.getSlackTeamId().isEmpty())
+                    && entry.getId() != null && !entry.getId().isEmpty()) {
+                entry.setSlackTeamId(entry.getId());
+            }
+            if (entry.getId() != null && existing.contains(entry.getId())) {
+                continue;
+            }
+            workspaces.add(entry);
+            if (entry.getId() != null) existing.add(entry.getId());
+        }
     }
 
     /**
@@ -724,7 +1029,9 @@ public class WorkstreamConfig {
      */
     public static WorkstreamConfig loadFromYaml(File file) throws IOException {
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-        return mapper.readValue(file, WorkstreamConfig.class);
+        WorkstreamConfig config = mapper.readValue(file, WorkstreamConfig.class);
+        config.validateWorkspaceRunners();
+        return config;
     }
 
     /**
@@ -736,7 +1043,9 @@ public class WorkstreamConfig {
      */
     public static WorkstreamConfig loadFromYaml(InputStream inputStream) throws IOException {
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-        return mapper.readValue(inputStream, WorkstreamConfig.class);
+        WorkstreamConfig config = mapper.readValue(inputStream, WorkstreamConfig.class);
+        config.validateWorkspaceRunners();
+        return config;
     }
 
     /**
@@ -748,7 +1057,9 @@ public class WorkstreamConfig {
      */
     public static WorkstreamConfig loadFromYamlString(String yaml) throws IOException {
         ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
-        return mapper.readValue(yaml, WorkstreamConfig.class);
+        WorkstreamConfig config = mapper.readValue(yaml, WorkstreamConfig.class);
+        config.validateWorkspaceRunners();
+        return config;
     }
 
     /**
@@ -760,7 +1071,9 @@ public class WorkstreamConfig {
      */
     public static WorkstreamConfig loadFromJson(File file) throws IOException {
         ObjectMapper mapper = new ObjectMapper();
-        return mapper.readValue(file, WorkstreamConfig.class);
+        WorkstreamConfig config = mapper.readValue(file, WorkstreamConfig.class);
+        config.validateWorkspaceRunners();
+        return config;
     }
 
     /**
@@ -772,7 +1085,150 @@ public class WorkstreamConfig {
      */
     public static WorkstreamConfig loadFromJsonString(String json) throws IOException {
         ObjectMapper mapper = new ObjectMapper();
-        return mapper.readValue(json, WorkstreamConfig.class);
+        WorkstreamConfig config = mapper.readValue(json, WorkstreamConfig.class);
+        config.validateWorkspaceRunners();
+        return config;
+    }
+
+    /**
+     * Returns the {@link WorkspaceEntry} matching the given workspace ID, or
+     * {@code null} when no entry has been configured with that ID. The lookup
+     * is linear over {@link #workspaces} — acceptable because the list is
+     * small (one entry per workspace).
+     *
+     * @param id the operator-chosen workspace ID (or, for legacy entries that
+     *           have not been renamed, the Slack team ID); {@code null} or
+     *           empty always returns {@code null}
+     * @return the matching entry, or {@code null} when no match
+     */
+    public WorkspaceEntry findWorkspace(String id) {
+        if (id == null || id.isEmpty()) return null;
+        if (workspaces == null) return null;
+        for (WorkspaceEntry entry : workspaces) {
+            if (id.equals(entry.getId())) return entry;
+        }
+        return null;
+    }
+
+    /**
+     * Backward-compatible alias for {@link #findWorkspace(String)}. Retained so
+     * callers (including external scripts and the test suite) that have not
+     * migrated to the new name continue to compile.
+     *
+     * @param id the workspace ID
+     * @return the matching entry, or {@code null}
+     */
+    public WorkspaceEntry findSlackWorkspace(String id) {
+        return findWorkspace(id);
+    }
+
+    /**
+     * Renames a workspace, updating every workstream that referenced the old
+     * ID. Used by the {@code workspace_update_config} MCP tool when an
+     * operator passes a new {@code new_id}. The Slack-team-ID connection
+     * (when set) is preserved unchanged so renaming a workspace from
+     * {@code "T0123456789"} to {@code "almostrealism"} does not disrupt
+     * channel routing.
+     *
+     * @param oldId current workspace ID; must match an existing entry
+     * @param newId new workspace ID; must not collide with another entry
+     * @return {@code true} when the rename happened, {@code false} when the
+     *         old ID was not found
+     * @throws IllegalArgumentException when {@code newId} collides with an
+     *         existing different workspace
+     */
+    public boolean renameWorkspace(String oldId, String newId) {
+        return renameWorkspace(oldId, newId, null);
+    }
+
+    /**
+     * Renames a workspace and propagates the new ID to live {@link Workstream}
+     * instances in addition to the persisted entries. Callers that hold live
+     * {@code Workstream} objects (e.g. {@code SlackListener.channelToWorkstream})
+     * MUST use this overload so that a subsequent
+     * {@link #syncFromWorkstreams(Collection)} does not see a stale workspaceId
+     * on the live object and revert the rename.
+     *
+     * @param oldId current workspace ID; must match an existing entry
+     * @param newId new workspace ID; must not collide with another entry
+     * @param liveWorkstreams live workstream objects to update in place; may
+     *        be {@code null} when the caller manages no live state
+     * @return {@code true} when the rename happened, {@code false} when the
+     *         old ID was not found
+     * @throws IllegalArgumentException when {@code newId} collides with an
+     *         existing different workspace
+     */
+    public boolean renameWorkspace(String oldId, String newId,
+                                   Collection<Workstream> liveWorkstreams) {
+        if (oldId == null || oldId.isEmpty() || newId == null || newId.isEmpty()) {
+            return false;
+        }
+        if (oldId.equals(newId)) return true;
+        WorkspaceEntry target = findWorkspace(oldId);
+        if (target == null) return false;
+        if (findWorkspace(newId) != null) {
+            throw new IllegalArgumentException("Workspace ID '" + newId
+                    + "' is already taken");
+        }
+        target.setId(newId);
+        for (WorkstreamEntry entry : workstreams) {
+            if (oldId.equals(entry.getWorkspaceId())) {
+                entry.setWorkspaceId(newId);
+            }
+        }
+        if (liveWorkstreams != null) {
+            for (Workstream ws : liveWorkstreams) {
+                if (oldId.equals(ws.getWorkspaceId())) {
+                    ws.setWorkspaceId(newId);
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Validates the workspace-level runner configuration. Unknown phase keys
+     * in any {@code slackWorkspaces[].runners} map are rejected with a clear
+     * message naming the offending workspace; the rest of the config is left
+     * intact. Called automatically after every {@code loadFromYaml*} /
+     * {@code loadFromJson*}.
+     *
+     * <p>Workstream-level {@code runners} maps are <strong>not</strong>
+     * validated here; bad keys there are silently skipped by
+     * {@link SubmissionRunnerResolver} at submission time so a single mistyped
+     * workstream cannot brick the entire controller. Workspace-level entries
+     * apply to many workstreams at once, so the same forgiveness would
+     * silently mis-route every workstream sharing the workspace — the
+     * stricter load-time check is the safer default.</p>
+     *
+     * @throws IOException when any workspace runner map references an unknown
+     *                     phase wire name
+     */
+    public void validateWorkspaceRunners() throws IOException {
+        if (workspaces == null) return;
+        for (WorkspaceEntry entry : workspaces) {
+            Map<String, String> entryRunners = entry.getRunners();
+            if (entryRunners == null || entryRunners.isEmpty()) continue;
+            String label = entry.getId() != null
+                    ? entry.getId() : entry.getName();
+            for (String phaseKey : entryRunners.keySet()) {
+                try {
+                    Phase.fromWireName(phaseKey);
+                } catch (IllegalArgumentException ex) {
+                    StringBuilder known = new StringBuilder("[");
+                    for (Phase p : Phase.values()) {
+                        if (known.length() > 1) known.append(", ");
+                        known.append(p.wireName());
+                    }
+                    known.append("]");
+                    throw new IOException("Unknown phase '" + phaseKey
+                            + "' in workspaces["
+                            + (label != null ? label : "<unnamed>")
+                            + "].runners; expected one of "
+                            + known);
+                }
+            }
+        }
     }
 
     /**
@@ -871,54 +1327,167 @@ public class WorkstreamConfig {
         entry.setGithubOrg(ws.getGithubOrg());
         entry.setDependentRepos(ws.getDependentRepos());
         entry.setRequiredLabels(ws.getRequiredLabels());
-        entry.setSlackWorkspaceId(ws.getSlackWorkspaceId());
+        entry.setWorkspaceId(ws.getWorkspaceId());
         entry.setModel(ws.getModel());
         entry.setEffort(ws.getEffort());
+        entry.setDefaultRunner(ws.getDefaultRunner());
+        entry.setRunners(ws.getRunners());
+        applyBundleToEntry(entry, ws.getPhaseConfigBundle());
+        entry.setArchived(ws.isArchived());
         workstreams.add(entry);
+    }
+
+    /**
+     * Copies the per-phase entries of {@code bundle} (model and effort,
+     * specifically — runner values are already mirrored to the legacy
+     * {@code runners} map) onto {@code entry}'s new {@code phaseConfigs}
+     * field so they round-trip through YAML serialization.
+     */
+    private static void applyBundleToEntry(WorkstreamEntry entry, PhaseConfigBundle bundle) {
+        if (bundle == null || bundle.phaseConfigs().isEmpty()) {
+            entry.setPhaseConfigs(new LinkedHashMap<>());
+            entry.setDefaultPhaseConfig(null);
+            return;
+        }
+        Map<String, PhaseConfig> phaseConfigs = new LinkedHashMap<>();
+        for (Map.Entry<Phase, PhaseConfig> e : bundle.phaseConfigs().entrySet()) {
+            // Emit any per-phase entry that carries a non-runner field —
+            // runner-only entries are already represented in the legacy
+            // runners map, but model/effort/provider have no legacy mirror
+            // and must round-trip through phaseConfigs to survive sync.
+            PhaseConfig pc = e.getValue();
+            if (pc.model() != null || pc.effort() != null || pc.provider() != null) {
+                phaseConfigs.put(e.getKey().wireName(), pc);
+            }
+        }
+        entry.setPhaseConfigs(phaseConfigs);
+        // Default carries fields that are not represented elsewhere on the
+        // entry; skip when redundant with model/effort/defaultRunner.
+        PhaseConfig def = bundle.defaultPhaseConfig();
+        if (def != null && !def.isEmpty()) {
+            entry.setDefaultPhaseConfig(def);
+        } else {
+            entry.setDefaultPhaseConfig(null);
+        }
     }
 
     /**
      * Synchronizes the configuration entries from the in-memory workstream state.
      *
-     * <p>Updates existing entries that match by channel ID and adds any new
-     * workstreams that are not yet represented in the config. This ensures
-     * that runtime changes (via {@code /flowtree config}) are persisted.</p>
+     * <p>For each active workstream, locates the matching entry via
+     * {@link #findEntryToSync} (workstreamId first, channelId as fallback) and
+     * updates its mutable fields; otherwise adds a new entry via
+     * {@link #addWorkstream}. Matching by ID prevents the duplicate-entry
+     * defect where a {@code /flowtree setup} call wrote an entry with a null
+     * {@code channelId} and a later sync — after Slack assigned the channel —
+     * could not find that entry by channel and appended a second entry with
+     * the same workstreamId.</p>
      *
      * @param activeWorkstreams the current in-memory workstreams
      */
     public void syncFromWorkstreams(Collection<Workstream> activeWorkstreams) {
         for (Workstream ws : activeWorkstreams) {
-            boolean found = false;
-            for (WorkstreamEntry entry : workstreams) {
-                if (ws.getChannelId().equals(entry.getChannelId())) {
-                    entry.setWorkstreamId(ws.getWorkstreamId());
-                    entry.setChannelName(ws.getChannelName());
-                    entry.setDefaultBranch(ws.getDefaultBranch());
-                    entry.setBaseBranch(ws.getBaseBranch());
-                    entry.setPushToOrigin(ws.isPushToOrigin());
-                    entry.setWorkingDirectory(ws.getWorkingDirectory());
-                    entry.setRepoUrl(ws.getRepoUrl());
-                    entry.setAllowedTools(ws.getAllowedTools());
-                    entry.setMaxTurns(ws.getMaxTurns());
-                    entry.setMaxBudgetUsd(ws.getMaxBudgetUsd());
-                    entry.setGitUserName(ws.getGitUserName());
-                    entry.setGitUserEmail(ws.getGitUserEmail());
-                    entry.setEnv(ws.getEnv());
-                    entry.setPlanningDocument(ws.getPlanningDocument());
-                    entry.setGithubOrg(ws.getGithubOrg());
-                    entry.setDependentRepos(ws.getDependentRepos());
-                    entry.setRequiredLabels(ws.getRequiredLabels());
-                    entry.setSlackWorkspaceId(ws.getSlackWorkspaceId());
-                    entry.setModel(ws.getModel());
-                    entry.setEffort(ws.getEffort());
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
+            WorkstreamEntry entry = findEntryToSync(ws);
+            if (entry == null) {
                 addWorkstream(ws);
+                continue;
+            }
+            entry.setWorkstreamId(ws.getWorkstreamId());
+            entry.setChannelId(ws.getChannelId());
+            entry.setChannelName(ws.getChannelName());
+            entry.setDefaultBranch(ws.getDefaultBranch());
+            entry.setBaseBranch(ws.getBaseBranch());
+            entry.setPushToOrigin(ws.isPushToOrigin());
+            entry.setWorkingDirectory(ws.getWorkingDirectory());
+            entry.setRepoUrl(ws.getRepoUrl());
+            entry.setAllowedTools(ws.getAllowedTools());
+            entry.setMaxTurns(ws.getMaxTurns());
+            entry.setMaxBudgetUsd(ws.getMaxBudgetUsd());
+            entry.setGitUserName(ws.getGitUserName());
+            entry.setGitUserEmail(ws.getGitUserEmail());
+            entry.setEnv(ws.getEnv());
+            entry.setPlanningDocument(ws.getPlanningDocument());
+            entry.setGithubOrg(ws.getGithubOrg());
+            entry.setDependentRepos(ws.getDependentRepos());
+            entry.setRequiredLabels(ws.getRequiredLabels());
+            entry.setWorkspaceId(ws.getWorkspaceId());
+            entry.setModel(ws.getModel());
+            entry.setEffort(ws.getEffort());
+            entry.setDefaultRunner(ws.getDefaultRunner());
+            entry.setRunners(ws.getRunners());
+            applyBundleToEntry(entry, ws.getPhaseConfigBundle());
+            entry.setArchived(ws.isArchived());
+        }
+    }
+
+    /**
+     * Locates the {@link WorkstreamEntry} that should receive sync updates for
+     * the given live {@link Workstream}. Matching by {@code workstreamId} is
+     * preferred; {@code channelId} is a fallback for legacy entries created
+     * before IDs were universal.
+     *
+     * @param ws the active workstream being synced
+     * @return the matching entry, or {@code null} when no entry exists yet
+     */
+    private WorkstreamEntry findEntryToSync(Workstream ws) {
+        String id = ws.getWorkstreamId();
+        if (id != null) {
+            for (WorkstreamEntry e : workstreams) {
+                if (id.equals(e.getWorkstreamId())) return e;
             }
         }
+        String chan = ws.getChannelId();
+        if (chan == null) return null;
+        for (WorkstreamEntry e : workstreams) {
+            if (chan.equals(e.getChannelId())) return e;
+        }
+        return null;
+    }
+
+    /**
+     * Merges legacy {@code defaultRunner} / {@code runners} fields with the
+     * new {@code defaultPhaseConfig} / {@code phaseConfigs} fields into a
+     * single {@link PhaseConfigBundle}. New fields take precedence
+     * field-by-field — when both forms set the same field, the new form
+     * wins; the legacy form fills in any field the new form leaves null.
+     *
+     * @param legacyDefaultRunner the legacy single-runner default, or {@code null}
+     * @param legacyRunners       the legacy per-phase runner map, keyed by
+     *                            phase wire name; may be {@code null}
+     * @param newDefault          the new default {@link PhaseConfig}, or {@code null}
+     * @param newPhaseConfigs     the new per-phase {@link PhaseConfig} map,
+     *                            keyed by phase wire name; may be {@code null}
+     * @return the merged bundle; never {@code null}
+     */
+    static PhaseConfigBundle mergeBundle(String legacyDefaultRunner,
+                                         Map<String, String> legacyRunners,
+                                         PhaseConfig newDefault,
+                                         Map<String, PhaseConfig> newPhaseConfigs) {
+        PhaseConfigBundle bundle = PhaseConfigBundle.fromLegacyRunners(
+                legacyDefaultRunner, legacyRunners);
+        if (newDefault != null && !newDefault.isEmpty()) {
+            // New default overlays the legacy-derived default field-by-field
+            // (new wins; legacy fills in missing fields).
+            bundle = bundle.withDefault(
+                    newDefault.overlayOn(bundle.defaultPhaseConfig()));
+        }
+        if (newPhaseConfigs != null && !newPhaseConfigs.isEmpty()) {
+            for (Map.Entry<String, PhaseConfig> e : newPhaseConfigs.entrySet()) {
+                if (e.getValue() == null || e.getValue().isEmpty()) continue;
+                Phase phase;
+                try {
+                    phase = Phase.fromWireName(e.getKey());
+                } catch (IllegalArgumentException ex) {
+                    continue;
+                }
+                PhaseConfig existing = bundle.phaseConfigs().get(phase);
+                PhaseConfig merged = existing == null
+                        ? e.getValue()
+                        : e.getValue().overlayOn(existing);
+                bundle = bundle.withPhase(phase, merged);
+            }
+        }
+        return bundle;
     }
 
     /**

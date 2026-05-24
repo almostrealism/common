@@ -55,6 +55,31 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
+	 * Returns {@code true} when the JSON object contains the named field at the
+	 * top level, {@code false} when the field is absent or the input cannot be
+	 * parsed as a JSON object.
+	 *
+	 * <p>Unlike {@link #extractBoolean(String, String)}, which returns
+	 * {@code false} for both an absent field and an explicit {@code false} value,
+	 * this method distinguishes between the two cases so callers can decide
+	 * whether to apply a field-absent default vs. an explicit override.</p>
+	 *
+	 * @param json  the JSON string
+	 * @param field the field name
+	 * @return {@code true} if and only if the top-level JSON object contains {@code field}
+	 */
+	public static boolean hasField(String json, String field) {
+		if (json == null) return false;
+		try {
+			ObjectMapper mapper = new ObjectMapper();
+			JsonNode root = mapper.readTree(json);
+			return root != null && root.has(field);
+		} catch (Exception e) {
+			return false;
+		}
+	}
+
+	/**
 	 * Extracts a string field from a JSON string.
 	 * Handles JSON escape sequences including Unicode escapes.
 	 *
