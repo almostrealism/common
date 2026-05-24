@@ -594,6 +594,42 @@ public class JobStatsStore implements ConsoleFeatures {
     }
 
     /**
+     * Sums per-runner cost grouped by workstream over the given window in a
+     * single query, avoiding N+1 queries when rendering all-workstream stats.
+     *
+     * @param startInstant inclusive window start
+     * @param endInstant   exclusive window end
+     * @return map of workstream ID to (runner → summed USD cost), ordered by runner cost descending within each workstream
+     */
+    private Map<String, Map<String, Double>> queryCostByRunnerPerWorkstream(
+            Instant startInstant, Instant endInstant) {
+        Map<String, Map<String, Double>> result = new LinkedHashMap<>();
+        if (connection == null) return result;
+
+        String sql = "SELECT t.workstream_id, rc.runner, "
+            + "COALESCE(SUM(rc.cost_usd), 0) AS runner_cost "
+            + "FROM job_runner_cost rc JOIN job_timing t ON rc.job_id = t.job_id "
+            + "WHERE t.started_at >= ? AND t.started_at < ? AND t.status <> 'STARTED' "
+            + "GROUP BY t.workstream_id, rc.runner "
+            + "ORDER BY t.workstream_id, runner_cost DESC";
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.from(startInstant));
+            ps.setTimestamp(2, Timestamp.from(endInstant));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String wsId = rs.getString("workstream_id");
+                    result.computeIfAbsent(wsId, k -> new LinkedHashMap<>())
+                          .put(rs.getString("runner"), rs.getDouble("runner_cost"));
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to query cost by runner per workstream: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
      * Formats a per-runner cost map compactly for inclusion in a stats line,
      * e.g. {@code " (claude $1.20, opencode $0.03)"}. Returns an empty string
      * when the map is empty so callers can append it unconditionally.
@@ -661,6 +697,16 @@ public class JobStatsStore implements ConsoleFeatures {
             }
         } catch (SQLException e) {
             warn("Failed to query weekly stats by workstream: " + e.getMessage());
+        }
+
+        // Populate per-runner cost for every workstream in one grouped query
+        Map<String, Map<String, Double>> runnerCosts =
+                queryCostByRunnerPerWorkstream(startInstant, endInstant);
+        for (Map.Entry<String, WeeklyStats> entry : result.entrySet()) {
+            Map<String, Double> runners = runnerCosts.get(entry.getKey());
+            if (runners != null && !runners.isEmpty()) {
+                entry.getValue().costByRunner = runners;
+            }
         }
 
         return result;

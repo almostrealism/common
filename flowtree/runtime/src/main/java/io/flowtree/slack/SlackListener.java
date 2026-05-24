@@ -941,7 +941,7 @@ public class SlackListener implements ConsoleFeatures {
 
         boolean submitted = submitJob(ws, args.trim(), null, null);
         if (submitted) {
-            ctx.respond(":arrow_forward: Task submitted: " + truncate(args.trim(), 100));
+            ctx.respond(":arrow_forward: Task submitted: " + SlackNotifier.truncate(args.trim(), 100));
         }
     }
 
@@ -1094,8 +1094,8 @@ public class SlackListener implements ConsoleFeatures {
                     emoji = ":grey_question:";
                     statusText = "";
             }
-            sb.append("   ").append(emoji).append(" `").append(truncate(entry.getKey(), 8)).append("` - ");
-            sb.append(truncate(event.getDescription(), 60)).append(statusText).append("\n");
+            sb.append("   ").append(emoji).append(" `").append(SlackNotifier.truncate(entry.getKey(), 8)).append("` - ");
+            sb.append(SlackNotifier.truncate(event.getDescription(), 60)).append(statusText).append("\n");
             count++;
         }
 
@@ -1535,21 +1535,6 @@ public class SlackListener implements ConsoleFeatures {
         } catch (IOException e) {
             warn("Failed to persist config: " + e.getMessage());
         }
-    }
-
-    /**
-     * Truncates a string to at most {@code maxLength} characters, appending
-     * {@code "..."} if the string was shortened. Returns an empty string for
-     * {@code null} input.
-     *
-     * @param s         the string to truncate (may be {@code null})
-     * @param maxLength the maximum length of the returned string, inclusive of the ellipsis
-     * @return the (possibly truncated) string, never {@code null}
-     */
-    private static String truncate(String s, int maxLength) {
-        if (s == null) return "";
-        if (s.length() <= maxLength) return s;
-        return s.substring(0, maxLength - 3) + "...";
     }
 
     /**

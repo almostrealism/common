@@ -1291,14 +1291,19 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
-     * Truncates a string to at most {@code maxLength} characters. Returns an
-     * empty string rather than {@code null} when the input is {@code null}.
+     * Truncates a string to at most {@code maxLength} characters, appending
+     * {@code "..."} when the string is shortened. Returns an empty string
+     * rather than {@code null} when the input is {@code null}.
      *
-     * @param s          the string to truncate
-     * @param maxLength  maximum number of characters to retain
+     * <p>Package-private so that other classes in this package
+     * ({@link MessageEndpointHandler}, {@link SlackListener}) can share the
+     * same implementation without duplicating it.
+     *
+     * @param s          the string to truncate, or {@code null}
+     * @param maxLength  maximum number of characters to retain (including ellipsis)
      * @return           the (possibly truncated) string, never {@code null}
      */
-    private static String truncate(String s, int maxLength) {
+    static String truncate(String s, int maxLength) {
         if (s == null) return "";
         if (s.length() <= maxLength) return s;
         return s.substring(0, maxLength - 3) + "...";

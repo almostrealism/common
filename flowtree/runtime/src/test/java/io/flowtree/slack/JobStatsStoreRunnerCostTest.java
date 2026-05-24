@@ -197,6 +197,37 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
     }
 
     @Test(timeout = 30000)
+    public void allWorkstreamsPathPopulatesCostByRunner() throws Exception {
+        JobStatsStore store = newStore();
+        try {
+            LocalDate monday = currentMonday();
+            Instant when = monday.atStartOfDay(ZoneOffset.UTC).toInstant().plusSeconds(3600);
+
+            recordCompletedJob(store, "job-ws1", "ws-one", when, 0.50);
+            recordCompletedJob(store, "job-ws2", "ws-two", when, 0.30);
+
+            Map<String, Double> runners1 = new LinkedHashMap<>();
+            runners1.put("claude", 0.45);
+            runners1.put("opencode", 0.05);
+            store.recordRunnerCosts("job-ws1", runners1);
+
+            Map<String, Double> runners2 = new LinkedHashMap<>();
+            runners2.put("claude", 0.30);
+            store.recordRunnerCosts("job-ws2", runners2);
+
+            Map<String, JobStatsStore.WeeklyStats> byWs = store.getWeeklyStatsByWorkstream(monday);
+            assertTrue("ws-one present", byWs.containsKey("ws-one"));
+            assertTrue("ws-two present", byWs.containsKey("ws-two"));
+
+            assertEquals("ws-one claude cost", 0.45, byWs.get("ws-one").costByRunner.get("claude"), 1e-9);
+            assertEquals("ws-one opencode cost", 0.05, byWs.get("ws-one").costByRunner.get("opencode"), 1e-9);
+            assertEquals("ws-two claude cost", 0.30, byWs.get("ws-two").costByRunner.get("claude"), 1e-9);
+        } finally {
+            store.close();
+        }
+    }
+
+    @Test(timeout = 30000)
     public void emptyBreakdownClearsExistingRows() throws Exception {
         JobStatsStore store = newStore();
         try {

@@ -425,6 +425,9 @@ public final class PhaseConfigResolver {
         return null;
     }
 
+    /** Shared Jackson mapper for request body parsing; thread-safe after construction. */
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
     /**
      * The legacy job/workstream/workspace-level configuration fields that are
      * no longer accepted on live HTTP requests. Each is replaced by per-phase
@@ -456,7 +459,7 @@ public final class PhaseConfigResolver {
         if (body == null || body.isEmpty()) return null;
         JsonNode root;
         try {
-            root = new ObjectMapper().readTree(body);
+            root = MAPPER.readTree(body);
         } catch (Exception ex) {
             // Malformed bodies are handled by the individual field extractors;
             // this guard only rejects well-formed bodies that use legacy keys.
