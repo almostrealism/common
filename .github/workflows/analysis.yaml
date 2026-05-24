@@ -34,6 +34,7 @@ jobs:
       engine_changed: ${{ steps.filter.outputs.engine_changed }}
       extern_changed: ${{ steps.filter.outputs.extern_changed }}
       studio_changed: ${{ steps.filter.outputs.studio_changed }}
+      python_changed: ${{ steps.filter.outputs.python_changed }}
     steps:
       - name: Record pipeline start time
         id: timing
@@ -50,6 +51,7 @@ jobs:
             for layer in base compute domain engine extern studio; do
               echo "${layer}_changed=true" >> "$GITHUB_OUTPUT"
             done
+            echo "python_changed=true" >> "$GITHUB_OUTPUT"
           }
 
           # workflow_dispatch always runs the full pipeline
@@ -105,6 +107,20 @@ jobs:
               echo "${layer}_changed=false" >> "$GITHUB_OUTPUT"
             fi
           done
+
+          # Python change detection. The python-tests job runs the unittest
+          # suites under tools/mcp/manager and tools/tests, which exercise
+          # the Python code under tools/. Gate the job on .py changes
+          # (anywhere) and on the pinned dependency file to avoid running
+          # the suite when only Java/CI/docs changed.
+          PY_FILES=$(git diff --name-only "$BASE" HEAD -- \
+            '*.py' 'tools/mcp/requirements.txt' || true)
+          if [ -n "$PY_FILES" ]; then
+            echo "python_changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Python sources changed — running python-tests"
+          else
+            echo "python_changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
   build:
     needs: changes
@@ -575,7 +591,7 @@ jobs:
   # when any test fails.
   python-tests:
     needs: changes
-    if: needs.changes.outputs.code_changed == 'true'
+    if: needs.changes.outputs.code_changed == 'true' && needs.changes.outputs.python_changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
