@@ -18,6 +18,7 @@ package io.flowtree.jobs;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Extension of {@link JobCompletionEvent} with Claude Code-specific fields.
@@ -69,6 +70,12 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
      * agent refactor.
      */
     private String runnerName;
+
+    /**
+     * Cumulative USD cost per runner name, summed across every phase invocation
+     * in this job. Empty for events emitted before per-runner cost tracking.
+     */
+    private Map<String, Double> costByRunner = Collections.emptyMap();
 
     /**
      * {@code true} when the post-completion command exhausted its per-job pass
@@ -355,6 +362,30 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     @Override
     public String getRunnerName() {
         return runnerName;
+    }
+
+    /**
+     * Sets the per-runner cost breakdown for this job.
+     *
+     * @param costByRunner map of runner name to cumulative USD cost; a
+     *                     {@code null} value is treated as an empty map
+     * @return this event for chaining
+     */
+    public CodingAgentJobEvent withCostByRunner(Map<String, Double> costByRunner) {
+        this.costByRunner = costByRunner != null
+                ? Map.copyOf(costByRunner) : Collections.emptyMap();
+        return this;
+    }
+
+    /**
+     * Returns the per-runner cost breakdown for this job.
+     *
+     * @return an immutable map of runner name to cumulative USD cost; empty
+     *         when not populated
+     */
+    @Override
+    public Map<String, Double> getCostByRunner() {
+        return costByRunner;
     }
 
     /**

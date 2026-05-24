@@ -30,6 +30,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -504,6 +505,22 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 .build();
         Assert.assertNull(OpencodeRunner.controllerSecretLookup(
                 req, new ConsoleFeatures() {}).apply("openrouter-api-key"));
+    }
+
+    /**
+     * opencode (notably qwen3-coder via OpenRouter and slower local providers)
+     * can spend many minutes generating a single response between NDJSON events
+     * during a long primary phase, so it must declare a larger inactivity
+     * window than the Claude-tuned
+     * {@link AgentRunner#DEFAULT_INACTIVITY_TIMEOUT_MILLIS default}.
+     */
+    @Test(timeout = 5000)
+    public void declaresLongerInactivityTimeoutThanDefault() {
+        long opencodeTimeout = new OpencodeRunner().defaultInactivityTimeoutMillis();
+        Assert.assertTrue("opencode must allow longer stdout silence than the default",
+                opencodeTimeout > AgentRunner.DEFAULT_INACTIVITY_TIMEOUT_MILLIS);
+        Assert.assertEquals("opencode inactivity window is 45 minutes",
+                TimeUnit.MINUTES.toMillis(45), opencodeTimeout);
     }
 
     /**

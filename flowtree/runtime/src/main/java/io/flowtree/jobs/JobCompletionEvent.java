@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Event object containing details about a job's completion.
@@ -293,6 +294,11 @@ public class JobCompletionEvent {
      * {@code null} for non-coding-agent jobs.
      */
     public String getRunnerName() { return null; }
+    /**
+     * Returns the per-runner USD cost breakdown for this job, or an empty map
+     * for non-coding-agent jobs and events that predate per-runner tracking.
+     */
+    public Map<String, Double> getCostByRunner() { return Collections.emptyMap(); }
 
     // ==================== Builder-pattern setters ====================
 
@@ -370,6 +376,11 @@ public class JobCompletionEvent {
         for (String t : getDeniedToolNames()) deniedArray.add(t);
         root.put("commitMessageSource", getCommitMessageSource());
         root.put("runnerName", getRunnerName());
+
+        ObjectNode costByRunnerNode = root.putObject("costByRunner");
+        for (Map.Entry<String, Double> e : getCostByRunner().entrySet()) {
+            costByRunnerNode.put(e.getKey(), e.getValue());
+        }
 
         try {
             return EVENT_MAPPER.writeValueAsString(root);

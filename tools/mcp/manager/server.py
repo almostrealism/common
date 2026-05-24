@@ -1325,7 +1325,11 @@ def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
 
     Returns:
         Dictionary with thisWeek and lastWeek aggregate stats (jobCount,
-        successCount, failedCount, totalCostUsd, totalTurns, etc.).
+        successCount, failedCount, totalCostUsd, totalTurns, etc.). Each
+        week's per-workstream stats also include a ``costByRunner`` object
+        mapping runner name to summed USD cost for the window, so the split
+        between (for example) claude and opencode spend is visible alongside
+        the ``totalCostUsd`` aggregate.
     """
     _require_scope("read")
     err = _check_short_strings(workstream_id=workstream_id, period=period)

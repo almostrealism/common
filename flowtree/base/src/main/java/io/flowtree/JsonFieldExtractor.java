@@ -24,6 +24,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Lightweight JSON field extraction utilities that avoid external library dependencies.
@@ -432,7 +433,64 @@ public final class JsonFieldExtractor {
 	 * @return a map of string key-value pairs, empty if not found
 	 */
 	public static Map<String, String> extractStringObject(String json, String field) {
-		Map<String, String> result = new LinkedHashMap<>();
+		return extractObject(json, field, value -> value.isTextual() ? value.asText() : null);
+	}
+
+	/**
+	 * Extracts a flat JSON object whose values are numbers, returning them as
+	 * a map of string key to {@link Double}. Both numeric values
+	 * ({@code {"claude": 0.42}}) and numeric strings ({@code {"claude": "0.42"}})
+	 * are accepted; values that are neither are skipped.
+	 *
+	 * @param json  the JSON string
+	 * @param field the field name whose value is the object to extract
+	 * @return a map of key to numeric value, empty if not found or unparseable
+	 */
+	public static Map<String, Double> extractDoubleObject(String json, String field) {
+		return extractObject(json, field, JsonFieldExtractor::numericValue);
+	}
+
+	/**
+	 * Interprets a JSON node as a {@link Double}, accepting both numeric nodes
+	 * ({@code 0.42}) and numeric string nodes ({@code "0.42"}). Returns
+	 * {@code null} for any other node so the caller skips it.
+	 *
+	 * @param value the JSON node to interpret
+	 * @return the numeric value, or {@code null} when the node is neither a
+	 *         number nor a numeric string
+	 */
+	private static Double numericValue(JsonNode value) {
+		if (value.isNumber()) {
+			return value.asDouble();
+		}
+		if (value.isTextual()) {
+			try {
+				return Double.parseDouble(value.asText());
+			} catch (NumberFormatException ignored) {
+				return null;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Extracts a flat JSON object into a map, applying {@code valueMapper} to
+	 * each member value. Members for which the mapper returns {@code null} are
+	 * skipped, so the mapper doubles as a filter. Shared scaffolding behind
+	 * {@link #extractStringObject(String, String)} and
+	 * {@link #extractDoubleObject(String, String)}.
+	 *
+	 * @param json        the JSON string
+	 * @param field       the field name whose value is the object to extract
+	 * @param valueMapper converts a member's value node to the map value, or
+	 *                    returns {@code null} to omit the member
+	 * @param <T>         the map value type
+	 * @return a map of key to mapped value, preserving member order; empty when
+	 *         the field is absent, not an object, or the JSON is unparseable
+	 */
+	private static <T> Map<String, T> extractObject(String json, String field,
+			Function<JsonNode, T> valueMapper) {
+		Map<String, T> result = new LinkedHashMap<>();
 		if (json == null) return result;
 
 		try {
@@ -444,12 +502,13 @@ public final class JsonFieldExtractor {
 			Iterator<Map.Entry<String, JsonNode>> fields = obj.fields();
 			while (fields.hasNext()) {
 				Map.Entry<String, JsonNode> entry = fields.next();
-				if (entry.getValue().isTextual()) {
-					result.put(entry.getKey(), entry.getValue().asText());
+				T value = valueMapper.apply(entry.getValue());
+				if (value != null) {
+					result.put(entry.getKey(), value);
 				}
 			}
 		} catch (Exception e) {
-			// Return empty map on parse failure
+			// Return whatever parsed before the failure
 		}
 
 		return result;
