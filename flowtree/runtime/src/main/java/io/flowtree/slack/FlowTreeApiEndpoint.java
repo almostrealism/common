@@ -631,6 +631,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setDescription(jobDescription);
         }
         factory.setAllowedTools(workstream.getAllowedTools());
+        factory.setAgentEnv(workstream.getAgentEnv());
         factory.setMaxTurns(maxTurns > 0 ? maxTurns : workstream.getMaxTurns());
         factory.setMaxBudgetUsd(maxBudgetUsd > 0 ? maxBudgetUsd : workstream.getMaxBudgetUsd());
 

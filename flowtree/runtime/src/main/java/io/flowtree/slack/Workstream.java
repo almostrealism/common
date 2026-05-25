@@ -162,6 +162,9 @@ public class Workstream {
     /** Per-workstream environment variables injected into pushed tool MCP stdio configs. */
     private Map<String, String> env;
 
+    /** Per-workstream environment variables set on the agent subprocess itself. */
+    private Map<String, String> agentEnv;
+
     /** Path to a planning document the agent consults for broader goal context. */
     private String planningDocument;
 
@@ -440,6 +443,27 @@ public class Workstream {
      */
     public void setEnv(Map<String, String> env) {
         this.env = env;
+    }
+
+    /**
+     * Returns per-workstream environment variables set directly on the agent
+     * subprocess. Unlike {@link #getEnv()} (which targets pushed-tool MCP
+     * stdio configs), these are inherited by every process the agent spawns,
+     * including project-local MCP servers declared in the repo.
+     *
+     * @return the agent-subprocess environment map, or {@code null} if unset
+     */
+    public Map<String, String> getAgentEnv() {
+        return agentEnv;
+    }
+
+    /**
+     * Sets per-workstream environment variables for the agent subprocess.
+     *
+     * @param agentEnv map of environment variable names to values
+     */
+    public void setAgentEnv(Map<String, String> agentEnv) {
+        this.agentEnv = agentEnv;
     }
 
     /**

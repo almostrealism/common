@@ -456,6 +456,56 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
+	 * Parses a flat JSON object of string key-value pairs from the root of the
+	 * given JSON. This is the root-level counterpart to
+	 * {@link #extractStringObject(String, String)}, which navigates to a named
+	 * field first.
+	 *
+	 * @param json a JSON object string such as {@code {"A":"1","B":"2"}}
+	 * @return a map of string key-value pairs, empty if {@code json} is null,
+	 *         not an object, or fails to parse
+	 */
+	public static Map<String, String> parseStringObject(String json) {
+		Map<String, String> result = new LinkedHashMap<>();
+		if (json == null) return result;
+
+		try {
+			ObjectMapper mapper = new ObjectMapper();
+			JsonNode root = mapper.readTree(json);
+			if (root == null || !root.isObject()) return result;
+
+			Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
+			while (fields.hasNext()) {
+				Map.Entry<String, JsonNode> entry = fields.next();
+				if (entry.getValue().isTextual()) {
+					result.put(entry.getKey(), entry.getValue().asText());
+				}
+			}
+		} catch (Exception e) {
+			// Return empty map on parse failure
+		}
+
+		return result;
+	}
+
+	/**
+	 * Serializes a flat map of string key-value pairs to a JSON object string.
+	 * The inverse of {@link #parseStringObject(String)}.
+	 *
+	 * @param map the map to serialize; null or empty yields {@code "{}"}
+	 * @return a JSON object string such as {@code {"A":"1","B":"2"}}
+	 */
+	public static String toJsonObject(Map<String, String> map) {
+		if (map == null || map.isEmpty()) return "{}";
+
+		try {
+			return new ObjectMapper().writeValueAsString(map);
+		} catch (Exception e) {
+			return "{}";
+		}
+	}
+
+	/**
 	 * Extracts the last JSON object line from newline-delimited JSON output
 	 * that matches the specified {@code "type"} value.
 	 *

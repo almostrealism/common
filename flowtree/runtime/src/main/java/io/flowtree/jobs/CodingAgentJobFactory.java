@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.job.AbstractJobFactory;
 import io.flowtree.job.Job;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
@@ -94,6 +95,9 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * declarations). Format matches {@code FlowTreeController.getPushedToolsConfig()}.
      */
     private String pushedToolsConfig;
+
+    /** JSON object of per-workstream env vars set on the agent subprocess; may be {@code null}. */
+    private String agentEnvJson;
 
     /** Optional planning document text to inject into the Claude Code system prompt. */
     private String planningDocument;
@@ -617,6 +621,22 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     public void setPushedToolsConfig(String pushedToolsConfig) {
         this.pushedToolsConfig = pushedToolsConfig;
         set("pushedToolsConfig", GitManagedJob.base64Encode(pushedToolsConfig));
+    }
+
+    /**
+     * Sets per-workstream environment variables to apply to the agent
+     * subprocess of each created job. Serialized as a JSON object so it
+     * survives wire encode/decode; propagated to the job at build time.
+     *
+     * @param agentEnv environment variable map; {@code null} or empty clears it
+     */
+    public void setAgentEnv(Map<String, String> agentEnv) {
+        if (agentEnv == null || agentEnv.isEmpty()) {
+            this.agentEnvJson = null;
+            return;
+        }
+        this.agentEnvJson = JsonFieldExtractor.toJsonObject(agentEnv);
+        set("agentEnv", GitManagedJob.base64Encode(this.agentEnvJson));
     }
 
     /**
@@ -1236,6 +1256,10 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             warn("no pushedToolsConfig to propagate to " + job.getTaskId());
         }
 
+        if (agentEnvJson != null) {
+            job.setAgentEnv(JsonFieldExtractor.parseStringObject(agentEnvJson));
+        }
+
         if (planningDocument != null) {
             job.setPlanningDocument(planningDocument);
         }
@@ -1356,6 +1380,9 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 break;
             case "pushedToolsConfig":
                 this.pushedToolsConfig = GitManagedJob.base64Decode(value);
+                break;
+            case "agentEnv":
+                this.agentEnvJson = GitManagedJob.base64Decode(value);
                 break;
             case "planDoc":
                 this.planningDocument = GitManagedJob.base64Decode(value);
