@@ -425,6 +425,57 @@ public final class PhaseConfigResolver {
         return null;
     }
 
+    /** Shared Jackson mapper for request body parsing; thread-safe after construction. */
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * The legacy job/workstream/workspace-level configuration fields that are
+     * no longer accepted on live HTTP requests. Each is replaced by per-phase
+     * configuration via {@code defaultPhaseConfig} / {@code phaseConfigs}.
+     */
+    private static final String[] REMOVED_REQUEST_FIELDS =
+            {"model", "effort", "runners", "defaultRunner"};
+
+    /**
+     * Returns a 400-able error message when {@code body} carries any removed
+     * legacy configuration field ({@code model}, {@code effort},
+     * {@code runners}, {@code defaultRunner}), or {@code null} when none are
+     * present. Callers must use {@code defaultPhaseConfig} (a single
+     * {@link PhaseConfig} applied as the default across phases) or
+     * {@code phaseConfigs} (a per-phase map) instead.
+     *
+     * <p>This guards the live HTTP request path only — it is a deliberate
+     * clean break so stale callers fail loudly rather than being silently
+     * translated. YAML on disk may still carry the legacy fields; that path
+     * is auto-migrated on load and is not affected by this check (see
+     * {@link WorkstreamConfig}).</p>
+     *
+     * @param body the raw request body JSON; {@code null} or empty returns
+     *             {@code null}
+     * @return an error message naming the first removed field present, or
+     *         {@code null} when the body uses only the supported shape
+     */
+    public static String rejectLegacyRequestFields(String body) {
+        if (body == null || body.isEmpty()) return null;
+        JsonNode root;
+        try {
+            root = MAPPER.readTree(body);
+        } catch (Exception ex) {
+            // Malformed bodies are handled by the individual field extractors;
+            // this guard only rejects well-formed bodies that use legacy keys.
+            return null;
+        }
+        if (root == null || !root.isObject()) return null;
+        for (String field : REMOVED_REQUEST_FIELDS) {
+            if (root.has(field)) {
+                return "The `" + field + "` field is no longer supported. Use "
+                        + "`defaultPhaseConfig` to set a default across all phases, "
+                        + "or `phaseConfigs` to set per-phase values.";
+            }
+        }
+        return null;
+    }
+
     /** Wraps an error message in a failed resolver. */
     private static PhaseConfigResolver fail(String message) {
         return new PhaseConfigResolver(message, null, null, null, null);

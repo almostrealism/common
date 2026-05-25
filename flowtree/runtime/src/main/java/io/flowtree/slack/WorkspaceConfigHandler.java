@@ -22,7 +22,6 @@ import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 
-import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -36,12 +35,15 @@ import java.util.function.Function;
  * <ul>
  *   <li>{@code name} — human-readable label.</li>
  *   <li>{@code defaultChannel} — fallback Slack channel ID.</li>
- *   <li>{@code runners} — JSON object keyed by phase wire name; an optional
- *       {@code "default"} key sets the workspace-level
- *       {@code defaultRunner}. Replaces (does not merge with) the existing
- *       per-phase map, mirroring the workstream behaviour in
- *       {@link SubmissionRunnerResolver#applyToWorkstream}.</li>
+ *   <li>{@code defaultPhaseConfig} / {@code phaseConfigs} — the per-phase
+ *       configuration shape (runner / model / effort / provider), overlaid
+ *       on the entry's existing bundle via
+ *       {@link PhaseConfigResolver#applyToWorkspace}.</li>
  * </ul>
+ *
+ * <p>The legacy {@code runners} / {@code defaultRunner} fields are no longer
+ * accepted; a request carrying any removed legacy field is rejected with a
+ * 400 by {@link PhaseConfigResolver#rejectLegacyRequestFields(String)}.</p>
  *
  * <p>Credential and ACL fields ({@code tokensFile}, {@code botToken},
  * {@code appToken}, {@code githubOrgs}, {@code channelOwnerUserId}) are
@@ -161,6 +163,8 @@ final class WorkspaceConfigHandler {
         if (body == null) {
             return errorResponse.apply("Failed to read request body");
         }
+        String legacyErr = PhaseConfigResolver.rejectLegacyRequestFields(body);
+        if (legacyErr != null) return errorResponse.apply(legacyErr);
 
         WorkstreamConfig.WorkspaceEntry entry = workspaceLookup.apply(workspaceId);
         if (entry == null) {
@@ -178,10 +182,7 @@ final class WorkspaceConfigHandler {
         // and "empty-string" by checking key presence in the JSON.
         boolean slackTeamIdPresent = body.contains("\"slackTeamId\"");
         String slackTeamId = JsonFieldExtractor.extractString(body, "slackTeamId");
-        Map<String, String> runnersObj = JsonFieldExtractor.extractStringObject(body, "runners");
 
-        String runnersErr = SubmissionRunnerResolver.applyToWorkspace(entry, runnersObj);
-        if (runnersErr != null) return errorResponse.apply(runnersErr);
         String phaseConfigErr = PhaseConfigResolver.applyToWorkspace(entry, body);
         if (phaseConfigErr != null) return errorResponse.apply(phaseConfigErr);
 
@@ -242,25 +243,6 @@ final class WorkspaceConfigHandler {
             json.append(",\"defaultChannel\":\"")
                     .append(JsonFieldExtractor.escapeJson(entry.getDefaultChannel()))
                     .append("\"");
-        }
-        if (entry.getDefaultRunner() != null) {
-            json.append(",\"defaultRunner\":\"")
-                    .append(JsonFieldExtractor.escapeJson(entry.getDefaultRunner()))
-                    .append("\"");
-        }
-        Map<String, String> entryRunners = entry.getRunners();
-        if (entryRunners != null && !entryRunners.isEmpty()) {
-            json.append(",\"runners\":{");
-            boolean first = true;
-            for (Map.Entry<String, String> e : entryRunners.entrySet()) {
-                if (!first) json.append(",");
-                first = false;
-                json.append("\"").append(JsonFieldExtractor.escapeJson(e.getKey()))
-                        .append("\":\"")
-                        .append(JsonFieldExtractor.escapeJson(e.getValue()))
-                        .append("\"");
-            }
-            json.append("}");
         }
         PhaseConfigBundle bundle = entry.toPhaseConfigBundle();
         PhaseConfigResolver.appendBundleJson(json, bundle);

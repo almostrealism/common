@@ -30,8 +30,6 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -107,25 +105,26 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
     }
 
     @Test(timeout = 10000)
-    public void testUpdateRunnersReplacesEntry() throws Exception {
-        Map<String, String> seed = new LinkedHashMap<>();
-        seed.put("primary", "claude");
-        workspaceEntry.setRunners(seed);
-
-        JsonNode response = postJson("/api/workspaces/" + WORKSPACE_ID + "/config",
+    public void testRejectsLegacyRunnersField() throws Exception {
+        HttpURLConnection conn = openPost("/api/workspaces/" + WORKSPACE_ID + "/config",
                 "{\"runners\":{\"deduplication\":\"opencode\"}}");
-        assertTrue(response.get("ok").asBoolean());
-        assertEquals("opencode", workspaceEntry.getRunners().get("deduplication"));
-        assertFalse("primary mapping must be replaced, not merged",
-                workspaceEntry.getRunners().containsKey("primary"));
+        assertEquals(400, conn.getResponseCode());
+        JsonNode response = MAPPER.readTree(readErrorBody(conn));
+        assertFalse(response.get("ok").asBoolean());
+        assertTrue("error must name the removed runners field and the replacement",
+                response.get("error").asText().contains("runners")
+                        && response.get("error").asText().contains("phaseConfigs"));
     }
 
     @Test(timeout = 10000)
-    public void testUpdateRunnersDefaultKey() throws Exception {
-        JsonNode response = postJson("/api/workspaces/" + WORKSPACE_ID + "/config",
-                "{\"runners\":{\"default\":\"opencode\"}}");
-        assertTrue(response.get("ok").asBoolean());
-        assertEquals("opencode", workspaceEntry.getDefaultRunner());
+    public void testRejectsLegacyDefaultRunnerField() throws Exception {
+        HttpURLConnection conn = openPost("/api/workspaces/" + WORKSPACE_ID + "/config",
+                "{\"defaultRunner\":\"opencode\"}");
+        assertEquals(400, conn.getResponseCode());
+        JsonNode response = MAPPER.readTree(readErrorBody(conn));
+        assertFalse(response.get("ok").asBoolean());
+        assertTrue("error must name the removed defaultRunner field",
+                response.get("error").asText().contains("defaultRunner"));
     }
 
     @Test(timeout = 10000)
@@ -140,21 +139,25 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
     }
 
     @Test(timeout = 10000)
-    public void testUpdateRejectsUnknownPhase() throws Exception {
-        HttpURLConnection conn = openPost(
-                "/api/workspaces/" + WORKSPACE_ID + "/config",
-                "{\"runners\":{\"not-a-phase\":\"claude\"}}");
-        assertEquals(400, conn.getResponseCode());
-        JsonNode response = MAPPER.readTree(readErrorBody(conn));
-        assertFalse(response.get("ok").asBoolean());
-        assertTrue(response.get("error").asText().contains("Unknown phase"));
+    public void testRejectsLegacyModelAndEffortFields() throws Exception {
+        for (String field : new String[] {"model", "effort"}) {
+            HttpURLConnection conn = openPost(
+                    "/api/workspaces/" + WORKSPACE_ID + "/config",
+                    "{\"" + field + "\":\"x\"}");
+            assertEquals("legacy " + field + " must be rejected with 400",
+                    400, conn.getResponseCode());
+            JsonNode response = MAPPER.readTree(readErrorBody(conn));
+            assertFalse(response.get("ok").asBoolean());
+            assertTrue("error must name the removed " + field + " field",
+                    response.get("error").asText().contains(field));
+        }
     }
 
     @Test(timeout = 10000)
     public void testUpdateRejectsUnknownRunner() throws Exception {
         HttpURLConnection conn = openPost(
                 "/api/workspaces/" + WORKSPACE_ID + "/config",
-                "{\"runners\":{\"primary\":\"not-a-runner\"}}");
+                "{\"phaseConfigs\":{\"primary\":{\"runner\":\"not-a-runner\"}}}");
         assertEquals(400, conn.getResponseCode());
         JsonNode response = MAPPER.readTree(readErrorBody(conn));
         assertFalse(response.get("ok").asBoolean());
@@ -175,21 +178,21 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
     public void testUpdatePersistsToDiskAndSurvivesReload() throws Exception {
         JsonNode response = postJson("/api/workspaces/" + WORKSPACE_ID + "/config",
                 "{\"name\":\"Persisted Name\",\"defaultChannel\":\"C-persisted\","
-                + "\"runners\":{\"default\":\"opencode\",\"primary\":\"opencode\"}}");
+                + "\"defaultPhaseConfig\":{\"runner\":\"opencode\"},"
+                + "\"phaseConfigs\":{\"primary\":{\"runner\":\"opencode\"}}}");
         assertTrue(response.get("ok").asBoolean());
 
         // Reload the file to confirm persistence rather than relying on the
-        // shared in-memory reference. Note saveToYaml uses NON_EMPTY so
-        // legacy single-element list fields may be omitted; we only check
-        // the fields we set.
+        // shared in-memory reference. The per-phase shape (not the removed
+        // legacy runner fields) is what survives the round-trip.
         WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(configFile);
         WorkstreamConfig.WorkspaceEntry reloadedEntry =
                 reloaded.findSlackWorkspace(WORKSPACE_ID);
         assertNotNull(reloadedEntry);
         assertEquals("Persisted Name", reloadedEntry.getName());
         assertEquals("C-persisted", reloadedEntry.getDefaultChannel());
-        assertEquals("opencode", reloadedEntry.getDefaultRunner());
-        assertEquals("opencode", reloadedEntry.getRunners().get("primary"));
+        assertEquals("opencode", reloadedEntry.getDefaultPhaseConfig().runner());
+        assertEquals("opencode", reloadedEntry.getPhaseConfigs().get("primary").runner());
     }
 
     @Test(timeout = 10000)
@@ -210,12 +213,12 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
     @Test(timeout = 10000)
     public void testResponseEchoesUpdatedFields() throws Exception {
         JsonNode response = postJson("/api/workspaces/" + WORKSPACE_ID + "/config",
-                "{\"name\":\"Echoed\",\"runners\":{\"default\":\"opencode\","
-                + "\"primary\":\"opencode\"}}");
+                "{\"name\":\"Echoed\",\"defaultPhaseConfig\":{\"runner\":\"opencode\"},"
+                + "\"phaseConfigs\":{\"primary\":{\"runner\":\"opencode\"}}}");
         assertEquals(WORKSPACE_ID, response.get("workspaceId").asText());
         assertEquals("Echoed", response.get("name").asText());
-        assertEquals("opencode", response.get("defaultRunner").asText());
-        assertEquals("opencode", response.get("runners").get("primary").asText());
+        assertEquals("opencode", response.get("defaultPhaseConfig").get("runner").asText());
+        assertEquals("opencode", response.get("phaseConfigs").get("primary").get("runner").asText());
     }
 
     @Test(timeout = 10000)

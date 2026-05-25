@@ -134,11 +134,12 @@ with a strong "defer rather than edit" bias so a weaker model can do
 useful work without risking bad edits. The recommended deployment is:
 
 ```json
-{ "runners": { "review": "opencode" } }
+{ "phase_configs": { "review": {"runner": "opencode"} } }
 ```
 
-at workspace level. Every job picked up by that workspace then routes its
-primary work to the cloud model and its review pass to the local model.
+at workspace level (via `workspace_update_config`'s `phase_configs`
+parameter). Every job picked up by that workspace then routes its primary
+work to the cloud model and its review pass to the local model.
 
 ---
 
@@ -191,9 +192,9 @@ session) can call `memory_recall` with `tags=["review-followup"]` or
 
 | Layer | How to enable/disable | How to choose the runner |
 |-------|------------------------|---------------------------|
-| Per job | `setReviewEnabled(false)` or `review_enabled=false` on the MCP submit | `setRunnerForPhase(Phase.REVIEW, "...")` |
-| Per workstream | `reviewEnabled: false` in workstream config | `runners: {"review": "..."}` |
-| Per workspace | `reviewEnabled: false` in workspace config | `runners: {"review": "..."}` |
+| Per job | `setReviewEnabled(false)` or `review_enabled=false` on the MCP submit | `phase_configs='{"review": {"runner": "..."}}'` |
+| Per workstream | `reviewEnabled: false` in workstream config | `phase_configs='{"review": {"runner": "..."}}'` |
+| Per workspace | `reviewEnabled: false` in workspace config | `phase_configs='{"review": {"runner": "..."}}'` |
 | Globally | (No global default — disable per workspace.) | Controller default. |
 
 The pass cap is `1` by default. Operators who want the review phase to

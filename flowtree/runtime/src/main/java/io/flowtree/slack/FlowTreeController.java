@@ -253,19 +253,15 @@ public class FlowTreeController implements ConsoleFeatures {
     }
 
     /**
-     * Loads workstream configuration from a YAML file.
-     *
-     * <p>If any workstream entries lack a {@code workstreamId}, one is
-     * auto-generated and the file is rewritten to persist the IDs.</p>
-     *
-     * @param configFile the YAML configuration file
-     * @throws IOException if the file cannot be read or parsed
+     * Logs INFO deprecation notices for legacy per-phase config fields,
+     * sanitizes invalid model/effort, generates missing workstream IDs, and
+     * persists the result (per-phase shape only) when anything changed.
+     * Shared by {@link #loadConfig(File)} and {@link #reloadConfig()}.
      */
-    public void loadConfig(File configFile) throws IOException {
-        this.configFile = configFile;
-        WorkstreamConfig config = WorkstreamConfig.loadFromYaml(configFile);
-        this.loadedConfig = config;
-
+    private void sanitizeAndPersist(WorkstreamConfig config) throws IOException {
+        for (String warning : config.legacyConfigWarnings()) {
+            log(warning);
+        }
         List<String> sanitizationWarnings = config.sanitize();
         for (String warning : sanitizationWarnings) {
             warn(warning);
@@ -280,6 +276,23 @@ public class FlowTreeController implements ConsoleFeatures {
                 log("Saved sanitized configuration to " + configFile.getName());
             }
         }
+    }
+
+    /**
+     * Loads workstream configuration from a YAML file.
+     *
+     * <p>If any workstream entries lack a {@code workstreamId}, one is
+     * auto-generated and the file is rewritten to persist the IDs.</p>
+     *
+     * @param configFile the YAML configuration file
+     * @throws IOException if the file cannot be read or parsed
+     */
+    public void loadConfig(File configFile) throws IOException {
+        this.configFile = configFile;
+        WorkstreamConfig config = WorkstreamConfig.loadFromYaml(configFile);
+        this.loadedConfig = config;
+
+        sanitizeAndPersist(config);
 
         // Pass global default workspace path to listener
         if (config.getDefaultWorkspacePath() != null) {
@@ -477,20 +490,7 @@ public class FlowTreeController implements ConsoleFeatures {
 
         try {
             WorkstreamConfig config = WorkstreamConfig.loadFromYaml(configFile);
-            List<String> sanitizationWarnings = config.sanitize();
-            for (String warning : sanitizationWarnings) {
-                warn(warning);
-            }
-            boolean idsAdded = config.ensureWorkstreamIds();
-            if (idsAdded || !sanitizationWarnings.isEmpty()) {
-                config.saveToYaml(configFile);
-                if (idsAdded) {
-                    log("Generated workstream IDs and saved to " + configFile.getName());
-                }
-                if (!sanitizationWarnings.isEmpty()) {
-                    log("Saved sanitized configuration to " + configFile.getName());
-                }
-            }
+            sanitizeAndPersist(config);
 
             if (config.getDefaultWorkspacePath() != null) {
                 listener.setDefaultWorkspacePath(config.getDefaultWorkspacePath());

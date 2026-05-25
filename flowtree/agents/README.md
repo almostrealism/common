@@ -91,16 +91,19 @@ export OPENCODE_DEFAULT_MODEL=<provider-model-id>   # required for hosted
 
 The orchestrator's per-phase runner selection (Phase 2 of the pluggable-agents
 plan) lets callers route specific phases to opencode via the
-`workstream_submit_task` MCP tool. Examples:
+`workstream_submit_task` MCP tool's `default_phase_config` / `phase_configs`
+parameters. (The legacy `default_runner` / `runners` parameters are no longer
+accepted.) Examples:
 
 - Everything on opencode:
   ```
-  default_runner=opencode
+  default_phase_config='{"runner":"opencode"}'
   ```
 - Mixed: primary on Claude, audits on opencode:
   ```
-  runners={"deduplication":"opencode","organizational-placement":"opencode",
-           "post-completion":"opencode","commit-message":"opencode"}
+  default_phase_config='{"runner":"claude"}'
+  phase_configs='{"deduplication":{"runner":"opencode"},"organizational-placement":{"runner":"opencode"},
+                  "post-completion":{"runner":"opencode"},"commit-message":{"runner":"opencode"}}'
   ```
 
 See [`flowtree/docs/architecture/PHASES.md`](../docs/architecture/PHASES.md) for

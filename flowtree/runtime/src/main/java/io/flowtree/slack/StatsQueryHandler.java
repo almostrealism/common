@@ -157,6 +157,15 @@ class StatsQueryHandler {
         json.append(",\"totalDurationMs\":").append(stats.totalDurationMs);
         json.append(",\"totalCostUsd\":").append(stats.totalCostUsd);
         json.append(",\"totalTurns\":").append(stats.totalTurns);
+        json.append(",\"costByRunner\":{");
+        boolean first = true;
+        for (Map.Entry<String, Double> entry : stats.costByRunner.entrySet()) {
+            if (!first) json.append(",");
+            first = false;
+            json.append(FlowTreeApiEndpoint.escapeJsonValue(entry.getKey())).append(":")
+                .append(entry.getValue() != null ? entry.getValue() : 0.0);
+        }
+        json.append("}");
         json.append("}");
     }
 
