@@ -1020,6 +1020,33 @@ public class CodingAgentJob extends GitManagedJob {
         }
     }
 
+    /**
+     * Resolves a completion-time push reconciliation conflict by running a
+     * focused conflict-resolution agent session.
+     *
+     * <p>Unlike {@link #onGitTampering()}, which restarts the full primary
+     * session, this runs a narrow {@code "resolve these markers, nothing else"}
+     * correction session via {@link #runCorrectionSession(String, String)} tagged
+     * with {@link Phase#PUSH_CONFLICT_RESOLUTION}. After this returns,
+     * {@link GitPushReconciler} verifies the markers are gone, stages the
+     * resolved files, and makes the merge commit.</p>
+     *
+     * @param repoPath        repository containing the conflict (primary working
+     *                        directory or a dependent repo sibling)
+     * @param conflictedFiles paths, relative to {@code repoPath}, left unmerged
+     * @return always {@code true}; the reconciler verifies the actual outcome
+     */
+    @Override
+    protected boolean onPushConflict(String repoPath, List<String> conflictedFiles) {
+        warn("Resolving push reconciliation conflict in " + repoPath
+                + " (" + conflictedFiles.size() + " file(s))");
+        harnessStatus().unusual("Push reconciliation conflict in " + repoPath
+                + " — running focused conflict-resolution session");
+        String correctionPrompt = PushConflictPromptBuilder.build(this, repoPath, conflictedFiles);
+        runCorrectionSession(correctionPrompt, Phase.PUSH_CONFLICT_RESOLUTION.wireName());
+        return true;
+    }
+
     @Override
     protected boolean onGitTampering() {
         String violation = getTamperingDescription();
