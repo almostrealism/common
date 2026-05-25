@@ -16,6 +16,9 @@
 
 package io.flowtree.jobs;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.agent.AgentRunResult;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
@@ -189,7 +192,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
     }
 
     @Test(timeout = 30000)
-    public void noEmDashInAnyFormattedMessage() {
+    public void emDashPreservedInFormattedMessages() {
         String emDash = "—";
 
         String exit = HarnessStatusReporter.formatPhaseExit(
@@ -197,26 +200,54 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
         String relaunch = HarnessStatusReporter.formatInactivity("opencode", 0, 3);
         String abandon = HarnessStatusReporter.formatInactivity("opencode", 3, 3);
 
-        assertFalse("phase-exit must not contain em-dash", exit.contains(emDash));
-        assertFalse("inactivity-relaunch must not contain em-dash", relaunch.contains(emDash));
-        assertFalse("inactivity-abandon must not contain em-dash", abandon.contains(emDash));
+        assertTrue("phase-exit must contain em-dash separator", exit.contains(emDash));
+        assertTrue("inactivity-relaunch must contain em-dash separator", relaunch.contains(emDash));
+        assertTrue("inactivity-abandon must contain em-dash separator", abandon.contains(emDash));
     }
 
     @Test(timeout = 30000)
-    public void prefixConstantsAreAsciiSafe() {
-        String[] prefixes = {
-            HarnessStatusReporter.SYSTEM_PREFIX,
-            HarnessStatusReporter.PHASE_ENTRY_EMOJI,
-            HarnessStatusReporter.PHASE_EXIT_EMOJI,
-            HarnessStatusReporter.INACTIVITY_EMOJI,
-            HarnessStatusReporter.UNUSUAL_EMOJI
-        };
-        for (String prefix : prefixes) {
-            for (char ch : prefix.toCharArray()) {
-                assertTrue("prefix constant must be ASCII-safe (no high codepoints): " + prefix,
-                        ch < 128);
-            }
-            assertFalse("prefix constant must be non-empty: " + prefix, prefix.isEmpty());
+    public void unicodeMarkersPreservedInFormattedMessages() {
+        String entry = HarnessStatusReporter.formatPhaseEntry(
+                Phase.PRIMARY, "claude",
+                new PhaseConfig("claude", "sonnet", "medium", "anthropic"));
+        String exit = HarnessStatusReporter.formatPhaseExit(
+                Phase.PRIMARY, successResult(31000, 0.05));
+        String relaunch = HarnessStatusReporter.formatInactivity("opencode", 0, 3);
+
+        assertTrue("phase-entry must lead with gear emoji",
+                entry.startsWith(HarnessStatusReporter.SYSTEM_PREFIX));
+        assertTrue("phase-entry must contain play-button emoji",
+                entry.contains(HarnessStatusReporter.PHASE_ENTRY_EMOJI));
+        assertTrue("phase-exit must contain stop-button emoji",
+                exit.contains(HarnessStatusReporter.PHASE_EXIT_EMOJI));
+        assertTrue("inactivity message must contain pause emoji",
+                relaunch.contains(HarnessStatusReporter.INACTIVITY_EMOJI));
+        assertTrue("SYSTEM_PREFIX must be non-empty non-ASCII Unicode",
+                !HarnessStatusReporter.SYSTEM_PREFIX.isEmpty()
+                && HarnessStatusReporter.SYSTEM_PREFIX.chars().anyMatch(c -> c > 127));
+    }
+
+    @Test(timeout = 30000)
+    public void jsonRoundTripPreservesUnicodeMarkers() {
+        ObjectMapper mapper = new ObjectMapper();
+
+        String phaseEntry = HarnessStatusReporter.formatPhaseEntry(
+                Phase.PRIMARY, "claude",
+                new PhaseConfig("claude", "sonnet", "medium", "anthropic"));
+        String phaseExit = HarnessStatusReporter.formatPhaseExit(
+                Phase.PRIMARY, successResult(90000, 0.07));
+
+        for (String original : new String[]{phaseEntry, phaseExit}) {
+            ObjectNode node = mapper.createObjectNode();
+            node.put("text", original);
+            String json = node.toString();
+
+            String extracted = JsonFieldExtractor.extractString(json, "text");
+            assertFalse("round-tripped JSON body must not contain U+FFFD replacement char",
+                    extracted != null && extracted.contains("�"));
+            assertTrue("round-trip through JSON must preserve Unicode markers exactly"
+                    + " — original=<" + original + "> extracted=<" + extracted + ">",
+                    original.equals(extracted));
         }
     }
 
