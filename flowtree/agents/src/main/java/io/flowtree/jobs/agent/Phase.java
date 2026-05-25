@@ -36,8 +36,8 @@ import java.util.function.Consumer;
 public enum Phase {
     /** Primary work — the initial agent session that runs the user's prompt. */
     PRIMARY("primary", "Primary work — the initial agent session that runs the user's prompt."),
-    /** Retry of the primary prompt triggered by {@code EnforceChangesRule}. */
-    ENFORCE_CHANGES("enforce-changes", "Retry of the primary prompt triggered by EnforceChangesRule."),
+    /** Retry of the primary prompt triggered by {@code EnforceChangesRule} (DEPRECATED). */
+    ENFORCE_CHANGES("enforce-changes", "Retry of the primary prompt triggered by EnforceChangesRule (DEPRECATED)."),
     /** Review session — second-pass sanity check by a different runner. */
     REVIEW("review", "Review session — second-pass sanity check by a different runner."),
     /** Deduplication audit session. */
