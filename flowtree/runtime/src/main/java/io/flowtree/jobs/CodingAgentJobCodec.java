@@ -19,6 +19,7 @@ package io.flowtree.jobs;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
@@ -120,6 +121,10 @@ final class CodingAgentJobCodec {
         if (job.getPushedToolsConfig() != null) {
             sb.append("::pushedTools:=").append(GitManagedJob.base64Encode(job.getPushedToolsConfig()));
         }
+        if (job.getAgentEnv() != null && !job.getAgentEnv().isEmpty()) {
+            sb.append("::agentEnv:=").append(
+                    GitManagedJob.base64Encode(JsonFieldExtractor.toJsonObject(job.getAgentEnv())));
+        }
         if (job.getPlanningDocument() != null) {
             sb.append("::planDoc:=").append(GitManagedJob.base64Encode(job.getPlanningDocument()));
         }
@@ -216,6 +221,9 @@ final class CodingAgentJobCodec {
                 return true;
             case "pushedTools":
                 job.setPushedToolsConfig(GitManagedJob.base64Decode(value));
+                return true;
+            case "agentEnv":
+                job.setAgentEnv(JsonFieldExtractor.parseStringObject(GitManagedJob.base64Decode(value)));
                 return true;
             case "planDoc":
                 job.setPlanningDocument(GitManagedJob.base64Decode(value));
