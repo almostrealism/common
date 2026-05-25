@@ -1136,7 +1136,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         try {
             HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(10000);
             conn.setDoOutput(true);

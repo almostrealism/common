@@ -81,42 +81,6 @@ public class CodingAgentJobPushedToolsTest {
         return (McpConfigBuilder) f.get(job);
     }
 
-    private static CodingAgentJobFactory roundTripFactory(CodingAgentJobFactory original) {
-        String encoded = original.encode();
-        CodingAgentJobFactory reconstructed = new CodingAgentJobFactory();
-        applyEncoded(reconstructed, encoded);
-        return reconstructed;
-    }
-
-    /**
-     * Applies an encoded wire string to a target by splitting on
-     * {@code "::"} and calling the target's {@code set(key, value)} for
-     * every {@code key:=value} segment, mirroring what the network layer
-     * does on the receiving node.
-     */
-    private static void applyEncoded(Object target, String encoded) {
-        // The first segment is the fully-qualified class name; remaining
-        // segments are "key:=value" pairs.
-        String[] parts = encoded.split("::");
-        Method set;
-        try {
-            set = target.getClass().getMethod("set", String.class, String.class);
-        } catch (NoSuchMethodException e) {
-            throw new RuntimeException(e);
-        }
-        for (int i = 1; i < parts.length; i++) {
-            String segment = parts[i];
-            int eq = segment.indexOf(":=");
-            if (eq < 0) continue;
-            String key = segment.substring(0, eq);
-            String value = segment.substring(eq + 2);
-            try {
-                set.invoke(target, key, value);
-            } catch (ReflectiveOperationException e) {
-                throw new RuntimeException(e);
-            }
-        }
-    }
 
     @Test(timeout = 30000)
     public void factorySetterStoresConfigAndExposesIt() {
@@ -130,7 +94,7 @@ public class CodingAgentJobPushedToolsTest {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("p");
         factory.setPushedToolsConfig(CTRL_CONFIG);
 
-        CodingAgentJobFactory reconstructed = roundTripFactory(factory);
+        CodingAgentJobFactory reconstructed = GitManagedJobSerializationTest.roundTripFactory(factory);
         Assert.assertEquals("pushedToolsConfig must survive factory wire round-trip",
                 CTRL_CONFIG, reconstructed.getPushedToolsConfig());
     }
@@ -167,7 +131,7 @@ public class CodingAgentJobPushedToolsTest {
 
         // Full wire round-trip: factory across the network, then the job
         // it produces across the network too.
-        CodingAgentJobFactory factoryAtAgent = roundTripFactory(factory);
+        CodingAgentJobFactory factoryAtAgent = GitManagedJobSerializationTest.roundTripFactory(factory);
         CodingAgentJob jobBeforeWire = (CodingAgentJob) factoryAtAgent.nextJob();
         CodingAgentJob job = GitManagedJobSerializationTest.roundTrip(jobBeforeWire);
 

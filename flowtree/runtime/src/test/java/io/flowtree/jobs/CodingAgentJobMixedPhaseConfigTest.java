@@ -197,15 +197,7 @@ public class CodingAgentJobMixedPhaseConfigTest extends TestSuiteBase {
         CodingAgentJobFactory sender = new CodingAgentJobFactory();
         sender.setPhaseConfigBundle(source);
 
-        // Simulate wire transport: encode on the sender, decode into a
-        // fresh factory by feeding each ::key:=value pair back through set().
-        String encoded = sender.encode();
-        CodingAgentJobFactory receiver = new CodingAgentJobFactory();
-        for (String entry : encoded.split("::")) {
-            int sep = entry.indexOf(":=");
-            if (sep <= 0) continue;
-            receiver.set(entry.substring(0, sep), entry.substring(sep + 2));
-        }
+        CodingAgentJobFactory receiver = GitManagedJobSerializationTest.roundTripFactory(sender);
 
         PhaseConfig restored = receiver.getPhaseConfigBundle().forPhase(Phase.PRIMARY);
         Assert.assertEquals(AgentRunnerRegistry.OPENCODE, restored.runner());

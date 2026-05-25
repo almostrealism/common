@@ -131,6 +131,9 @@ class EnforcementRunner implements ConsoleFeatures {
                     if (correctionPrompt != null) {
                         job.runCorrectionSession(correctionPrompt, rule.getName());
                     } else {
+                        // TODO(review): merge dropped origin/master's enforce-changes routing fix here;
+                        // master no longer sets currentActivity for enforce-changes (keeps PRIMARY routing,
+                        // since Phase.ENFORCE_CHANGES is now DEPRECATED) and updated the log message below.
                         // enforce-changes is the only rule that re-runs with the existing
                         // prompt; bumping enforcementAttempt for other rules would inflate
                         // the user-facing escalation messaging.
