@@ -17,15 +17,13 @@
 package io.flowtree.jobs;
 
 import io.flowtree.jobs.agent.AgentRunRequest;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
 
 /**
  * Exercises the per-workstream {@code agentEnv} wiring end-to-end: factory
@@ -37,7 +35,7 @@ import static org.junit.Assert.assertNull;
  * the agent process itself, so every process the agent spawns (including
  * project-local MCP servers) inherits it.</p>
  */
-public class CodingAgentJobAgentEnvTest {
+public class CodingAgentJobAgentEnvTest extends TestSuiteBase {
 
     private static Map<String, String> sampleEnv() {
         Map<String, String> env = new LinkedHashMap<>();
@@ -52,8 +50,8 @@ public class CodingAgentJobAgentEnvTest {
         factory.setAgentEnv(sampleEnv());
 
         CodingAgentJob job = (CodingAgentJob) factory.nextJob();
-        assertNotNull("Factory must produce a job", job);
-        assertEquals("Job must receive agentEnv from factory",
+        Assert.assertNotNull("Factory must produce a job", job);
+        Assert.assertEquals("Job must receive agentEnv from factory",
                 sampleEnv(), job.getAgentEnv());
     }
 
@@ -65,7 +63,7 @@ public class CodingAgentJobAgentEnvTest {
         CodingAgentJob.Factory reconstructed =
                 GitManagedJobSerializationTest.roundTripFactory(factory);
         CodingAgentJob job = (CodingAgentJob) reconstructed.nextJob();
-        assertEquals("agentEnv must survive the factory wire round-trip",
+        Assert.assertEquals("agentEnv must survive the factory wire round-trip",
                 sampleEnv(), job.getAgentEnv());
     }
 
@@ -75,7 +73,7 @@ public class CodingAgentJobAgentEnvTest {
         job.setAgentEnv(sampleEnv());
 
         CodingAgentJob reconstructed = GitManagedJobSerializationTest.roundTrip(job);
-        assertEquals("agentEnv must survive the job wire round-trip",
+        Assert.assertEquals("agentEnv must survive the job wire round-trip",
                 sampleEnv(), reconstructed.getAgentEnv());
     }
 
@@ -88,10 +86,10 @@ public class CodingAgentJobAgentEnvTest {
                 "Read,Edit", "{\"mcpServers\":{}}", Path.of("/tmp/x.json"), 0);
 
         Map<String, String> env = req.getEnvironment();
-        assertNotNull(env);
-        assertEquals("agentEnv must reach the agent subprocess environment",
+        Assert.assertNotNull(env);
+        Assert.assertEquals("agentEnv must reach the agent subprocess environment",
                 "tenant-a", env.get("TENANT_ID"));
-        assertEquals("secret-a", env.get("RUNTIME_SECRET_NAME"));
+        Assert.assertEquals("secret-a", env.get("RUNTIME_SECRET_NAME"));
     }
 
     @Test(timeout = 30000)
@@ -101,7 +99,7 @@ public class CodingAgentJobAgentEnvTest {
         AgentRunRequest req = job.buildRunRequest(
                 "Read,Edit", "{\"mcpServers\":{}}", Path.of("/tmp/x.json"), 0);
 
-        assertNull("Unset agentEnv stays null", job.getAgentEnv());
-        assertNotNull("Request still has an environment map", req.getEnvironment());
+        Assert.assertNull("Unset agentEnv stays null", job.getAgentEnv());
+        Assert.assertNotNull("Request still has an environment map", req.getEnvironment());
     }
 }

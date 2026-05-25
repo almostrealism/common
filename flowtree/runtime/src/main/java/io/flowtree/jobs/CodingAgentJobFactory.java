@@ -633,6 +633,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     public void setAgentEnv(Map<String, String> agentEnv) {
         if (agentEnv == null || agentEnv.isEmpty()) {
             this.agentEnvJson = null;
+            set("agentEnv", null);
             return;
         }
         this.agentEnvJson = JsonFieldExtractor.toJsonObject(agentEnv);

@@ -1,6 +1,6 @@
 # FlowTree Workstream Job Controls
 
-Status: Proposal — not yet started
+Status: §3 (per-workstream agentEnv injection) implemented; §1, §2, §4 proposed
 Owner: TBD
 
 ## TL;DR

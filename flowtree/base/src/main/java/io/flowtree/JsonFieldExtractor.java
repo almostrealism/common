@@ -477,11 +477,13 @@ public final class JsonFieldExtractor {
 	 * Extracts a flat JSON object into a map, applying {@code valueMapper} to
 	 * each member value. Members for which the mapper returns {@code null} are
 	 * skipped, so the mapper doubles as a filter. Shared scaffolding behind
-	 * {@link #extractStringObject(String, String)} and
-	 * {@link #extractDoubleObject(String, String)}.
+	 * {@link #extractStringObject(String, String)},
+	 * {@link #extractDoubleObject(String, String)}, and
+	 * {@link #parseStringObject(String)}.
 	 *
 	 * @param json        the JSON string
-	 * @param field       the field name whose value is the object to extract
+	 * @param field       the field name whose value is the object to extract;
+	 *                    {@code null} uses the root of {@code json} directly
 	 * @param valueMapper converts a member's value node to the map value, or
 	 *                    returns {@code null} to omit the member
 	 * @param <T>         the map value type
@@ -496,7 +498,7 @@ public final class JsonFieldExtractor {
 		try {
 			ObjectMapper mapper = new ObjectMapper();
 			JsonNode root = mapper.readTree(json);
-			JsonNode obj = root.get(field);
+			JsonNode obj = (field == null) ? root : root.get(field);
 			if (obj == null || !obj.isObject()) return result;
 
 			Iterator<Map.Entry<String, JsonNode>> fields = obj.fields();
@@ -525,26 +527,7 @@ public final class JsonFieldExtractor {
 	 *         not an object, or fails to parse
 	 */
 	public static Map<String, String> parseStringObject(String json) {
-		Map<String, String> result = new LinkedHashMap<>();
-		if (json == null) return result;
-
-		try {
-			ObjectMapper mapper = new ObjectMapper();
-			JsonNode root = mapper.readTree(json);
-			if (root == null || !root.isObject()) return result;
-
-			Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
-			while (fields.hasNext()) {
-				Map.Entry<String, JsonNode> entry = fields.next();
-				if (entry.getValue().isTextual()) {
-					result.put(entry.getKey(), entry.getValue().asText());
-				}
-			}
-		} catch (Exception e) {
-			// Return empty map on parse failure
-		}
-
-		return result;
+		return extractObject(json, null, value -> value.isTextual() ? value.asText() : null);
 	}
 
 	/**
