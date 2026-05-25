@@ -16,8 +16,9 @@
 
 package io.flowtree.jobs.agent;
 
+import static io.flowtree.JsonFieldExtractor.MAPPER;
+
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.jobs.AgentProcessRunner;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -75,13 +76,6 @@ public class OpencodeRunner implements AgentRunner {
     private String binaryVersion;
     /** Workspace secret accessor; overridable for tests. */
     private Function<String, String> secretLookup;
-
-    /**
-     * Shared JSON mapper for parsing secret-lookup payloads. {@link ObjectMapper}
-     * is thread-safe once configured; reusing a single instance avoids the
-     * per-call allocation cost.
-     */
-    private static final ObjectMapper SECRET_PAYLOAD_MAPPER = new ObjectMapper();
 
     /**
      * Shared HTTP client for the secret-lookup endpoint. The JDK
@@ -636,7 +630,7 @@ public class OpencodeRunner implements AgentRunner {
     static String extractSecretValueFromPayload(String body, String secretName) {
         if (body == null || body.isEmpty()) return null;
         try {
-            JsonNode root = SECRET_PAYLOAD_MAPPER.readTree(body);
+            JsonNode root = MAPPER.readTree(body);
             JsonNode payload = root.get("payload");
             if (payload == null || !payload.isObject()) return null;
             JsonNode direct = payload.get(secretName);

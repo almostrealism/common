@@ -16,7 +16,8 @@
 
 package io.flowtree.jobs.agent;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import static io.flowtree.JsonFieldExtractor.MAPPER;
+
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.almostrealism.io.ConsoleFeatures;
@@ -102,9 +103,6 @@ final class OpencodeTranscriptWriter {
 
     /** Environment variable that overrides the transcript directory. */
     static final String ENV_TRANSCRIPT_DIR = "OPENCODE_TRANSCRIPT_DIR";
-
-    /** Shared JSON mapper for building header and footer objects. */
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** UTC timestamp formatter used to build the filename prefix. */
     private static final DateTimeFormatter TIMESTAMP_FMT =

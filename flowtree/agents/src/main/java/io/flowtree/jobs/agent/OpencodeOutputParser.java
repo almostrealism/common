@@ -16,8 +16,9 @@
 
 package io.flowtree.jobs.agent;
 
+import static io.flowtree.JsonFieldExtractor.MAPPER;
+
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.JsonFieldExtractor;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -40,9 +41,6 @@ import java.util.Set;
  * defaults to zero and the {@code stopReason} reflects the exit code.</p>
  */
 final class OpencodeOutputParser {
-
-    /** Shared JSON mapper. */
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** Stop reason recorded on successful exit when the runner reports nothing better. */
     static final String STOP_SUCCESS = "success";

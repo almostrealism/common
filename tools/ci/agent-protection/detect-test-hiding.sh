@@ -391,8 +391,10 @@ for FILE in $MODIFIED_TEST_FILES; do
     fi
 
     # ── Pattern 2: Deleted assertion lines (net) ──
-    DELETED_ASSERTS=$(echo "$DIFF" | grep -cE '^\-.*\b(assert|Assert\.|assertEquals|assertTrue|assertFalse|assertNotNull|assertNull|assertThrows|fail\()' || true)
-    ADDED_ASSERTS=$(echo "$DIFF" | grep -cE '^\+.*\b(assert|Assert\.|assertEquals|assertTrue|assertFalse|assertNotNull|assertNull|assertThrows|fail\()' || true)
+    # Exclude comment lines (// single-line, /* block/javadoc, * continuation)
+    # to avoid false positives from prose use of "assert" in Javadoc comments.
+    DELETED_ASSERTS=$(echo "$DIFF" | grep -E '^\-' | grep -vE '^\-[[:space:]]*(//|/\*|\*)' | grep -cE '\b(assert|Assert\.|assertEquals|assertTrue|assertFalse|assertNotNull|assertNull|assertThrows|fail\()' || true)
+    ADDED_ASSERTS=$(echo "$DIFF" | grep -E '^\+' | grep -vE '^\+[[:space:]]*(//|/\*|\*)' | grep -cE '\b(assert|Assert\.|assertEquals|assertTrue|assertFalse|assertNotNull|assertNull|assertThrows|fail\()' || true)
     if [ "$DELETED_ASSERTS" -gt 0 ] && [ "$ADDED_ASSERTS" -lt "$DELETED_ASSERTS" ]; then
         NET_REMOVED=$((DELETED_ASSERTS - ADDED_ASSERTS))
         record_violation "$FILE" "NET_ASSERTIONS_REMOVED" \
