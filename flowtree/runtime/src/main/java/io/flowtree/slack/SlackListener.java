@@ -541,6 +541,7 @@ public class SlackListener implements ConsoleFeatures {
         // Create job factory with workstream settings
         CodingAgentJob.Factory factory = new CodingAgentJob.Factory(prompt);
         factory.setAllowedTools(workstream.getAllowedTools());
+        factory.setAgentEnv(workstream.getAgentEnv());
         factory.setMaxTurns(workstream.getMaxTurns());
         factory.setMaxBudgetUsd(workstream.getMaxBudgetUsd());
 

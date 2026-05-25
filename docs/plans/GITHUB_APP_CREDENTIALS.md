@@ -72,10 +72,10 @@ Add a top-level `githubApps:` map, parallel to `githubOrgs:`:
 
 ```yaml
 githubApps:
-  mosaic-runtime:                       # logical name, referenced by workstreams
+  my-runtime:                           # logical name, referenced by workstreams
     appId: "123456"
     installationId: "78901234"
-    privateKeySecret: "github-app-mosaic-runtime-key"   # ar-secrets secret name
+    privateKeySecret: "github-app-my-runtime-key"   # ar-secrets secret name
 ```
 
 The App private key is **never** written into `workstreams.yaml`. Only a
@@ -90,7 +90,7 @@ workstreams:
   - channelId: "C0123456789"
     defaultBranch: "main"
     repoUrl: "https://github.com/my-org/some-repo.git"
-    githubApp: "mosaic-runtime"         # use the App instead of githubOrg
+    githubApp: "my-runtime"             # use the App instead of githubOrg
     # scopeToRepo defaults to the repoUrl's repo when omitted.
     # scopeToRepos:                      # optional explicit list
     #   - "my-org/some-repo"

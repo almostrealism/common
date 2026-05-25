@@ -396,6 +396,8 @@ public class WorkstreamConfig {
         private String gitUserEmail;
         /** Per-workstream environment variables injected into pushed tool MCP configs. */
         private Map<String, String> env;
+        /** Per-workstream environment variables set on the agent subprocess itself. */
+        private Map<String, String> agentEnv;
         /** Optional path to a planning document the agent consults for context. */
         private String planningDocument;
         /** GitHub organization name for org-based token selection. */
@@ -538,6 +540,10 @@ public class WorkstreamConfig {
         public Map<String, String> getEnv() { return env; }
         /** Sets per-workstream environment variables for pushed tools. */
         public void setEnv(Map<String, String> env) { this.env = env; }
+        /** Returns per-workstream environment variables set on the agent subprocess. */
+        public Map<String, String> getAgentEnv() { return agentEnv; }
+        /** Sets per-workstream environment variables for the agent subprocess. */
+        public void setAgentEnv(Map<String, String> agentEnv) { this.agentEnv = agentEnv; }
 
         /** Returns the optional planning document path for broader goal context. */
         public String getPlanningDocument() { return planningDocument; }
@@ -671,6 +677,7 @@ public class WorkstreamConfig {
             ws.setGitUserName(gitUserName);
             ws.setGitUserEmail(gitUserEmail);
             ws.setEnv(env);
+            ws.setAgentEnv(agentEnv);
             ws.setPlanningDocument(planningDocument);
             ws.setGithubOrg(githubOrg);
             ws.setDependentRepos(dependentRepos);
