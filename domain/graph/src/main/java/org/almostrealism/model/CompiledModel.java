@@ -293,6 +293,11 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 			gradOut = null;
 		}
 
+		// TODO(review): inference compile mutates the shared Model (disables tracking) without restoring it; a later compile(true) on the same instance could leave backward cells wired to a destroyed input buffer.
+		if (!backprop) {
+			model.setInputTracking(false);
+		}
+
 		List<Cell<PackedCollection>> cells = model.forward();
 		OperationList forward = new OperationList("CompiledModel Forward");
 		for (int i = cells.size() - 1; i >= 0; i--) {

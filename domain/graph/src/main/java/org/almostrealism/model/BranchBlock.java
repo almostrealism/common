@@ -25,6 +25,7 @@ import org.almostrealism.graph.CellularPropagation;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.DefaultGradientPropagation;
+import org.almostrealism.layers.Tracking;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -47,7 +48,7 @@ import java.util.function.Supplier;
  * @see SequentialBlock
  * @author Michael Murray
  */
-public class BranchBlock implements Block {
+public class BranchBlock implements Block, Tracking {
 	/** The common input/output shape for this branch point. */
 	private final TraversalPolicy shape;
 
@@ -132,6 +133,16 @@ public class BranchBlock implements Block {
 	 */
 	public List<CellularPropagation<PackedCollection>> getChildren() {
 		return Collections.unmodifiableList(children);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Propagates the setting to every child branch that implements {@link Tracking}.</p>
+	 */
+	@Override
+	public void setInputTracking(boolean inputTracking) {
+		Tracking.propagate(children, inputTracking);
 	}
 
 	/**
