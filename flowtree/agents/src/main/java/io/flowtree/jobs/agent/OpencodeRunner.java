@@ -552,7 +552,7 @@ public class OpencodeRunner implements AgentRunner {
         Map<String, String> env = request.getEnvironment();
         if (env == null) return name -> null;
         String controllerUrl = env.get("AR_CONTROLLER_URL");
-        String workstreamId = env.get("AR_WORKSTREAM_ID");
+        String workstreamId = request.getWorkstreamId();
         String managerToken = env.get("AR_MANAGER_TOKEN");
         if (controllerUrl == null || controllerUrl.isEmpty()
                 || workstreamId == null || workstreamId.isEmpty()

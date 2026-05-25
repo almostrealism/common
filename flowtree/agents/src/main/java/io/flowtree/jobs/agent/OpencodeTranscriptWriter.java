@@ -24,6 +24,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -45,8 +46,8 @@ import java.util.function.Function;
  *       the full instruction prompt. This line is always well-formed JSON
  *       synthesised by the runner.</li>
  *   <li>The <em>event stream</em>: the raw NDJSON emitted by opencode on
- *       stdout, reproduced verbatim one line at a time. For forensic purposes
- *       this is the most valuable section: it contains {@code step_start}
+ *       stdout, reproduced line by line (blank lines are dropped). For forensic
+ *       purposes this is the most valuable section: it contains {@code step_start}
  *       events at each turn boundary, {@code text} events with the model's
  *       actual response text, {@code tool_use} and {@code tool_result} events
  *       for every tool invocation, and {@code error} events. The stream is
@@ -61,7 +62,8 @@ import java.util.function.Function;
  *
  * <h2>Transcript directory resolution</h2>
  * <ol>
- *   <li>{@value #ENV_TRANSCRIPT_DIR} environment variable (absolute path).</li>
+ *   <li>{@value #ENV_TRANSCRIPT_DIR} environment variable (absolute path recommended;
+ *       relative paths are accepted and resolved against the JVM working directory).</li>
  *   <li>When {@link AgentRunRequest#getOutputCapturePath()} is set:
  *       {@code <capture-parent>/transcripts/}.</li>
  *   <li>Fallback: {@value #DEFAULT_TRANSCRIPT_DIR}.</li>
@@ -69,7 +71,7 @@ import java.util.function.Function;
  *
  * <h2>File naming</h2>
  * <pre>
- * {@code <yyyyMMdd-HHmmss-UTC>-<jobId>-<phase>[-<sessionId>].jsonl}
+ * {@code <yyyyMMdd-HHmmss>-<jobId>-<phase>[-<sessionId>].jsonl}
  * </pre>
  *
  * <h2>Transcript fidelity</h2>
@@ -176,11 +178,10 @@ final class OpencodeTranscriptWriter {
                ConsoleFeatures logger) {
         try {
             Files.createDirectories(transcriptDir);
-            Path file = transcriptDir.resolve(buildFilename(request, result, startEpochMs));
-            // TODO(review): TRUNCATE_EXISTING has no collision guard; same-ms parallel runs silently overwrite each other
+            String baseName = buildFilename(request, result, startEpochMs);
+            Path file = createNewTranscriptFile(baseName);
             try (BufferedWriter out = Files.newBufferedWriter(
-                    file, StandardCharsets.UTF_8,
-                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+                    file, StandardCharsets.UTF_8, StandardOpenOption.WRITE)) {
                 out.write(buildHeader(request, result, startEpochMs));
                 out.newLine();
                 writeEventStream(out, result != null ? result.rawOutput() : null);
@@ -202,6 +203,25 @@ final class OpencodeTranscriptWriter {
      */
     Path getTranscriptDir() {
         return transcriptDir;
+    }
+
+    /**
+     * Atomically creates an empty file for a new transcript, falling back to a
+     * nonce-suffixed name if the base name is already taken.
+     *
+     * @param baseName the preferred filename (e.g. from {@link #buildFilename})
+     * @return the path of the newly created (empty) file
+     * @throws IOException if neither the base name nor the nonce variant can be created
+     */
+    private Path createNewTranscriptFile(String baseName) throws IOException {
+        try {
+            return Files.createFile(transcriptDir.resolve(baseName));
+        } catch (FileAlreadyExistsException e) {
+            String stem = baseName.endsWith(".jsonl")
+                    ? baseName.substring(0, baseName.length() - 6) : baseName;
+            String nonce = String.format("%04x", System.nanoTime() & 0xFFFFL);
+            return Files.createFile(transcriptDir.resolve(stem + "-" + nonce + ".jsonl"));
+        }
     }
 
     /**
@@ -290,13 +310,9 @@ final class OpencodeTranscriptWriter {
             if (request.getTaskId() != null) {
                 header.put("job_id", request.getTaskId());
             }
-            Map<String, String> env = request.getEnvironment();
-            if (env != null) {
-                // TODO(review): "AR_WORKSTREAM_ID" key is a string literal; centralise in AgentRunRequest.getWorkstreamId()
-                String wsId = env.get("AR_WORKSTREAM_ID");
-                if (wsId != null) {
-                    header.put("workstream_id", wsId);
-                }
+            String wsId = request.getWorkstreamId();
+            if (wsId != null) {
+                header.put("workstream_id", wsId);
             }
             if (request.getActivityTag() != null) {
                 header.put("phase", request.getActivityTag());
@@ -331,8 +347,9 @@ final class OpencodeTranscriptWriter {
     }
 
     /**
-     * Writes the raw NDJSON event stream from opencode verbatim into the
-     * transcript, skipping blank lines.
+     * Writes the raw NDJSON event stream from opencode into the transcript.
+     * Non-blank lines are reproduced verbatim; blank and whitespace-only lines
+     * are dropped (they carry no information in NDJSON and only add noise).
      *
      * <p>No JSON parsing or validation is performed: corrupted or
      * non-JSON lines are reproduced exactly as opencode emitted them,

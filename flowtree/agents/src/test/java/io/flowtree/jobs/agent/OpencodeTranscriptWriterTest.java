@@ -389,17 +389,13 @@ public class OpencodeTranscriptWriterTest extends TestSuiteBase {
     /** When outputCapturePath is set and OPENCODE_TRANSCRIPT_DIR is absent, uses sibling dir. */
     @Test(timeout = 5000)
     public void forRequestUsesOutputCapturePathSiblingWhenEnvAbsent() throws IOException {
-        if (System.getenv(OpencodeTranscriptWriter.ENV_TRANSCRIPT_DIR) != null) {
-            // OPENCODE_TRANSCRIPT_DIR is set in this environment; cannot test the sibling path.
-            return;
-        }
         Path captureFile = Files.createTempDirectory("opc-capture-")
                 .resolve("output.txt");
         AgentRunRequest req = AgentRunRequest.builder()
                 .taskId("job-dir")
                 .outputCapturePath(captureFile)
                 .build();
-        OpencodeTranscriptWriter writer = OpencodeTranscriptWriter.forRequest(req);
+        OpencodeTranscriptWriter writer = OpencodeTranscriptWriter.forRequest(req, name -> null);
         Path expected = captureFile.getParent().resolve("transcripts");
         Assert.assertEquals("transcript dir should be <capture-parent>/transcripts",
                 expected, writer.getTranscriptDir());
@@ -408,12 +404,8 @@ public class OpencodeTranscriptWriterTest extends TestSuiteBase {
     /** When neither env var nor outputCapturePath is set, falls back to the default dir. */
     @Test(timeout = 5000)
     public void forRequestFallsBackToDefaultDirWhenEnvAbsent() {
-        if (System.getenv(OpencodeTranscriptWriter.ENV_TRANSCRIPT_DIR) != null) {
-            // OPENCODE_TRANSCRIPT_DIR is set in this environment; cannot test the default fallback.
-            return;
-        }
         AgentRunRequest req = AgentRunRequest.builder().taskId("job-def").build();
-        OpencodeTranscriptWriter writer = OpencodeTranscriptWriter.forRequest(req);
+        OpencodeTranscriptWriter writer = OpencodeTranscriptWriter.forRequest(req, name -> null);
         Assert.assertEquals("transcript dir should be the default when no env var is set",
                 Paths.get(OpencodeTranscriptWriter.DEFAULT_TRANSCRIPT_DIR),
                 writer.getTranscriptDir());

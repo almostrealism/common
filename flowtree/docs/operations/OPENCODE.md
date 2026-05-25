@@ -62,7 +62,7 @@ its own host) — there are no per-workstream overrides.
 | `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` | empty | Per-provider env-var fallbacks, consulted when `OPENCODE_API_KEY` and the workspace secret are both empty. See [PROVIDERS.md](PROVIDERS.md). |
 | `OPENCODE_DEFAULT_MODEL` | (unset; falls back to the literal alias `default`) | Model name used when the submitted job does not specify one. The `default` alias is fine with llama.cpp's `llama-server` (it ignores the model field on the wire and serves whichever GGUF was loaded); ollama and hosted providers dispatch by name and **require** an explicit value here. |
 | `OPENCODE_CONFIG` | (set automatically at launch) | Path to the synthesized config file. Set by the runner before launching the opencode subprocess; operators do not need to configure this. |
-| `OPENCODE_TRANSCRIPT_DIR` | (see [Session transcripts](#session-transcripts)) | Absolute path to the directory where session transcript JSONL files are written. When unset, the runner derives the directory from the job's output capture path, falling back to `/tmp/opencode-transcripts/`. |
+| `OPENCODE_TRANSCRIPT_DIR` | (see [Session transcripts](#session-transcripts)) | Path to the directory where session transcript JSONL files are written (absolute path recommended; relative paths are resolved against the JVM working directory). When unset, the runner derives the directory from the job's output capture path, falling back to `/tmp/opencode-transcripts`. |
 
 ### Binary discovery order
 
@@ -213,13 +213,13 @@ Limitations (inherent to the upstream opencode stdout format):
 
 ### Storage location
 
-Transcript files are named `<yyyyMMdd-HHmmss-UTC>-<jobId>-<phase>[-<sessionId>].jsonl`
+Transcript files are named `<yyyyMMdd-HHmmss>-<jobId>-<phase>[-<sessionId>].jsonl`
 and written to the first of these that applies:
 
 1. `OPENCODE_TRANSCRIPT_DIR` — set this to a persistent volume path on the
    agent container to ensure transcripts survive container restarts.
 2. Next to the job's output capture file, in a `transcripts/` subdirectory.
-3. `/tmp/opencode-transcripts/` — the default, which is ephemeral on most
+3. `/tmp/opencode-transcripts` — the default, which is ephemeral on most
    container runtimes.
 
 For long-running investigations, set `OPENCODE_TRANSCRIPT_DIR` to a path on a
