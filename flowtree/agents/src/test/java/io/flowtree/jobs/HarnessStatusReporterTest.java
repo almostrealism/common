@@ -166,7 +166,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
 
     @Test(timeout = 30000)
     public void noUnicodeReplacementCharactersInAnyMessage() {
-        String replacementChar = "�";
+        String replacementChar = "\uFFFD";
 
         String entry = HarnessStatusReporter.formatPhaseEntry(
                 Phase.PRIMARY, "claude",
@@ -193,7 +193,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
 
     @Test(timeout = 30000)
     public void emDashPreservedInFormattedMessages() {
-        String emDash = "—";
+        String emDash = "\u2014";
 
         String exit = HarnessStatusReporter.formatPhaseExit(
                 Phase.PRIMARY, successResult(31000, 0.05));
@@ -244,7 +244,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
 
             String extracted = JsonFieldExtractor.extractString(json, "text");
             assertFalse("round-tripped JSON body must not contain U+FFFD replacement char",
-                    extracted != null && extracted.contains("�"));
+                    extracted != null && extracted.contains("\uFFFD"));
             assertTrue("round-trip through JSON must preserve Unicode markers exactly"
                     + " — original=<" + original + "> extracted=<" + extracted + ">",
                     original.equals(extracted));
@@ -252,7 +252,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
     }
 
     @Test(timeout = 30000)
-    public void phaseExitPreservesPhaseNameRunnerStatusAndDuration() {
+    public void phaseExitPreservesPhaseNameStatusAndDuration() {
         AgentRunResult success = successResult(151000, 0.20);
         String msg = HarnessStatusReporter.formatPhaseExit(Phase.PRIMARY, success);
 
