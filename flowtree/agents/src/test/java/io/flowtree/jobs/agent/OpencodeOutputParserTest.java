@@ -25,6 +25,7 @@ import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -271,5 +272,40 @@ public class OpencodeOutputParserTest extends TestSuiteBase {
                 stream, 0, false, 10L, Collections.emptyMap(), SILENT);
         assertEquals(2, result.numTurns());
         assertEquals("firstsecond", result.runnerMetadata().get("response_text"));
+    }
+
+    /** A loop kill overrides the parsed stop reason and marks the session as an error. */
+    @Test(timeout = 5000)
+    public void loopKillOverridesStopReason() {
+        AgentRunResult result = OpencodeOutputParser.parse(
+                SUCCESS_FIXTURE, 0, false, 10L, Collections.emptyMap(), SILENT, false, true);
+        assertEquals(OpencodeOutputParser.STOP_LOOP_DETECTED, result.stopReason());
+        assertTrue(result.sessionIsError());
+    }
+
+    /** A tool_use line yields a stable tool+input signature; identical input maps to the same signature. */
+    @Test(timeout = 5000)
+    public void toActionSignatureIsStableForIdenticalToolInput() {
+        String line = "{\"type\":\"tool_use\",\"part\":{\"tool\":\"bash\","
+                + "\"state\":{\"input\":{\"command\":\"git checkout -- a.yaml\"}}}}";
+        String sig = OpencodeOutputParser.toActionSignature(line);
+        assertNotNull(sig);
+        assertTrue(sig.startsWith("tool:bash:"));
+        assertEquals(sig, OpencodeOutputParser.toActionSignature(line));
+    }
+
+    /** Different tool inputs produce different signatures; non-action lines produce none. */
+    @Test(timeout = 5000)
+    public void toActionSignatureDistinguishesInputAndIgnoresNonActions() {
+        String a = "{\"type\":\"tool_use\",\"part\":{\"tool\":\"bash\","
+                + "\"state\":{\"input\":{\"command\":\"ls\"}}}}";
+        String b = "{\"type\":\"tool_use\",\"part\":{\"tool\":\"bash\","
+                + "\"state\":{\"input\":{\"command\":\"pwd\"}}}}";
+        assertNotEquals(OpencodeOutputParser.toActionSignature(a),
+                OpencodeOutputParser.toActionSignature(b));
+        assertNull(OpencodeOutputParser.toActionSignature(
+                "{\"type\":\"step_start\",\"part\":{}}"));
+        assertNull(OpencodeOutputParser.toActionSignature("Database migration complete."));
+        assertNull(OpencodeOutputParser.toActionSignature(null));
     }
 }
