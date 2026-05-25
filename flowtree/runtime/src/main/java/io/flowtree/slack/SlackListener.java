@@ -18,6 +18,7 @@ package io.flowtree.slack;
 
 import io.flowtree.Server;
 import io.flowtree.jobs.CodingAgentJob;
+import io.flowtree.jobs.HarnessStatusReporter;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
 import io.flowtree.msg.NodeProxy;
@@ -1493,22 +1494,14 @@ public class SlackListener implements ConsoleFeatures {
 
     /**
      * Formats a duration in milliseconds as a human-readable string.
-     *
-     * <p>Returns {@code "0m"} for non-positive values, {@code "Xm"} for
-     * durations under one hour, and {@code "Xh Ym"} for longer durations.</p>
+     * Delegates to {@link HarnessStatusReporter#formatDuration(long)} for a shared
+     * implementation across harness status reporting, per-job Slack output, and stats.
      *
      * @param ms the duration in milliseconds
      * @return a human-readable duration string
      */
     private static String formatDuration(long ms) {
-        if (ms <= 0) return "0m";
-        long totalMinutes = ms / 60000;
-        long hours = totalMinutes / 60;
-        long minutes = totalMinutes % 60;
-        if (hours > 0) {
-            return hours + "h " + minutes + "m";
-        }
-        return minutes + "m";
+        return HarnessStatusReporter.formatDuration(ms);
     }
 
     /**

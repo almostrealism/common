@@ -1379,6 +1379,20 @@ public class WorkstreamConfig {
      */
     public void addWorkstream(Workstream ws) {
         WorkstreamEntry entry = new WorkstreamEntry();
+        populateEntry(entry, ws);
+        workstreams.add(entry);
+    }
+
+    /**
+     * Copies every mutable field from a live {@link Workstream} onto the
+     * supplied {@link WorkstreamEntry}. Shared by {@link #addWorkstream} (which
+     * creates a new entry) and {@link #syncFromWorkstreams} (which updates an
+     * existing one) so the canonical field list is maintained in exactly one place.
+     *
+     * @param entry the entry to populate
+     * @param ws    the live workstream whose current state to copy
+     */
+    private static void populateEntry(WorkstreamEntry entry, Workstream ws) {
         entry.setWorkstreamId(ws.getWorkstreamId());
         entry.setChannelId(ws.getChannelId());
         entry.setChannelName(ws.getChannelName());
@@ -1404,7 +1418,6 @@ public class WorkstreamConfig {
         entry.setRunners(ws.getRunners());
         applyBundleToEntry(entry, ws.getPhaseConfigBundle());
         entry.setArchived(ws.isArchived());
-        workstreams.add(entry);
     }
 
     /**
@@ -1474,31 +1487,7 @@ public class WorkstreamConfig {
                 addWorkstream(ws);
                 continue;
             }
-            entry.setWorkstreamId(ws.getWorkstreamId());
-            entry.setChannelId(ws.getChannelId());
-            entry.setChannelName(ws.getChannelName());
-            entry.setDefaultBranch(ws.getDefaultBranch());
-            entry.setBaseBranch(ws.getBaseBranch());
-            entry.setPushToOrigin(ws.isPushToOrigin());
-            entry.setWorkingDirectory(ws.getWorkingDirectory());
-            entry.setRepoUrl(ws.getRepoUrl());
-            entry.setAllowedTools(ws.getAllowedTools());
-            entry.setMaxTurns(ws.getMaxTurns());
-            entry.setMaxBudgetUsd(ws.getMaxBudgetUsd());
-            entry.setGitUserName(ws.getGitUserName());
-            entry.setGitUserEmail(ws.getGitUserEmail());
-            entry.setEnv(ws.getEnv());
-            entry.setPlanningDocument(ws.getPlanningDocument());
-            entry.setGithubOrg(ws.getGithubOrg());
-            entry.setDependentRepos(ws.getDependentRepos());
-            entry.setRequiredLabels(ws.getRequiredLabels());
-            entry.setWorkspaceId(ws.getWorkspaceId());
-            entry.setModel(ws.getModel());
-            entry.setEffort(ws.getEffort());
-            entry.setDefaultRunner(ws.getDefaultRunner());
-            entry.setRunners(ws.getRunners());
-            applyBundleToEntry(entry, ws.getPhaseConfigBundle());
-            entry.setArchived(ws.isArchived());
+            populateEntry(entry, ws);
         }
     }
 

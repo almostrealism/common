@@ -216,15 +216,22 @@ public final class HarnessStatusReporter {
     }
 
     /**
-     * Formats a millisecond duration compactly as {@code "Xm Ys"} or {@code "Ys"}.
+     * Formats a millisecond duration compactly: {@code "Ys"} for under a minute,
+     * {@code "Xm Ys"} for under an hour, and {@code "Xh Ym"} for an hour or more.
+     * Sub-second values are shown as {@code "0s"}; negative values are clamped to zero.
      *
      * @param millis the duration in milliseconds
      * @return the compact duration string
      */
-    static String formatDuration(long millis) {
+    public static String formatDuration(long millis) {
         long totalSeconds = Math.max(0L, millis) / 1000L;
         long minutes = totalSeconds / 60L;
         long seconds = totalSeconds % 60L;
+        if (minutes >= 60) {
+            long hours = minutes / 60L;
+            long remainingMinutes = minutes % 60L;
+            return hours + "h " + remainingMinutes + "m";
+        }
         return minutes > 0 ? minutes + "m " + seconds + "s" : seconds + "s";
     }
 
