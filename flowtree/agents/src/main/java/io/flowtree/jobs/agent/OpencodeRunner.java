@@ -327,7 +327,8 @@ public class OpencodeRunner implements AgentRunner {
                     request.getInactivityTimeoutMillis(),
                     request.getTaskId(),
                     logger);
-            long durationMs = System.currentTimeMillis() - start;
+            long endMs = System.currentTimeMillis();
+            long durationMs = endMs - start;
 
             String rawOutput = processResult.output();
             if (request.getOutputCapturePath() != null) {
@@ -348,7 +349,7 @@ public class OpencodeRunner implements AgentRunner {
             metadata.put("provider_url", providerUrl);
             metadata.put("model", qualifiedModel);
 
-            return OpencodeOutputParser.parse(
+            AgentRunResult result = OpencodeOutputParser.parse(
                     rawOutput,
                     processResult.exitCode(),
                     processResult.killedForInactivity(),
@@ -356,6 +357,9 @@ public class OpencodeRunner implements AgentRunner {
                     metadata,
                     logger,
                     providerConfig.reportsCost());
+
+            OpencodeTranscriptWriter.forRequest(request).write(request, result, start, endMs, logger);
+            return result;
         } finally {
             deleteConfigFile(configPath, logger);
         }
