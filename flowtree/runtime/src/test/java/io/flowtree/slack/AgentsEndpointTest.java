@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import fi.iki.elonen.NanoHTTPD;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
 import io.flowtree.jobs.agent.Phase;
+import io.flowtree.jobs.agent.PhaseConfigBundle;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Before;
@@ -31,8 +32,6 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.Collections;
-import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -193,53 +192,53 @@ public class AgentsEndpointTest extends TestSuiteBase {
     }
 
     // ----------------------------------------------------------------
-    // Register/update round-trip tests for runners configuration
+    // Register/update round-trip tests for per-phase configuration
     // ----------------------------------------------------------------
 
     @Test(timeout = 10000)
-    public void testRegisterPersistsPerPhaseRunners() throws Exception {
+    public void testRegisterPersistsPerPhaseConfigs() throws Exception {
         String body = "{\"defaultBranch\":\"feature/register-runners\","
                 + "\"channelName\":\"w-register-runners\","
-                + "\"runners\":{\"primary\":\"opencode\",\"deduplication\":\"opencode\"}}";
+                + "\"phaseConfigs\":{\"primary\":{\"runner\":\"opencode\"},"
+                + "\"deduplication\":{\"runner\":\"opencode\"}}}";
         JsonNode response = postJson("/api/workstreams", body);
         assertTrue(response.get("ok").asBoolean());
         Workstream ws = lookupWorkstream(response.get("workstreamId").asText());
-        Map<String, String> runners = ws.getRunners();
-        assertEquals("opencode", runners.get("primary"));
-        assertEquals("opencode", runners.get("deduplication"));
-        assertNull("defaultRunner must remain unset", ws.getDefaultRunner());
+        PhaseConfigBundle bundle = ws.getPhaseConfigBundle();
+        assertEquals("opencode", bundle.forPhase(Phase.PRIMARY).runner());
+        assertEquals("opencode", bundle.forPhase(Phase.DEDUPLICATION).runner());
     }
 
     @Test(timeout = 10000)
-    public void testRegisterPersistsDefaultRunnerViaRunnersDefaultKey() throws Exception {
+    public void testRegisterPersistsDefaultViaDefaultPhaseConfig() throws Exception {
         String body = "{\"defaultBranch\":\"feature/register-default\","
                 + "\"channelName\":\"w-register-default\","
-                + "\"runners\":{\"default\":\"opencode\"}}";
+                + "\"defaultPhaseConfig\":{\"runner\":\"opencode\"}}";
         JsonNode response = postJson("/api/workstreams", body);
         assertTrue(response.get("ok").asBoolean());
         Workstream ws = lookupWorkstream(response.get("workstreamId").asText());
-        assertEquals("opencode", ws.getDefaultRunner());
-        assertTrue("per-phase map must be empty when only 'default' was supplied",
-                ws.getRunners().isEmpty());
+        assertEquals("opencode", ws.getPhaseConfigBundle().defaultPhaseConfig().runner());
     }
 
     @Test(timeout = 10000)
-    public void testRegisterRejectsUnknownPhase() throws Exception {
-        String body = "{\"defaultBranch\":\"feature/register-bad-phase\","
-                + "\"channelName\":\"w-register-bad-phase\","
-                + "\"runners\":{\"not-a-phase\":\"claude\"}}";
+    public void testRegisterRejectsLegacyRunnersField() throws Exception {
+        String body = "{\"defaultBranch\":\"feature/register-legacy\","
+                + "\"channelName\":\"w-register-legacy\","
+                + "\"runners\":{\"primary\":\"opencode\"}}";
         HttpURLConnection conn = openPost("/api/workstreams", body);
         assertEquals(400, conn.getResponseCode());
         JsonNode response = MAPPER.readTree(readErrorBody(conn));
         assertFalse(response.get("ok").asBoolean());
-        assertTrue(response.get("error").asText().contains("Unknown phase"));
+        assertTrue("error must name the removed runners field and the replacement",
+                response.get("error").asText().contains("runners")
+                        && response.get("error").asText().contains("phaseConfigs"));
     }
 
     @Test(timeout = 10000)
     public void testRegisterRejectsUnknownRunner() throws Exception {
         String body = "{\"defaultBranch\":\"feature/register-bad-runner\","
                 + "\"channelName\":\"w-register-bad-runner\","
-                + "\"runners\":{\"primary\":\"not-a-runner\"}}";
+                + "\"phaseConfigs\":{\"primary\":{\"runner\":\"not-a-runner\"}}}";
         HttpURLConnection conn = openPost("/api/workstreams", body);
         assertEquals(400, conn.getResponseCode());
         JsonNode response = MAPPER.readTree(readErrorBody(conn));
@@ -248,35 +247,43 @@ public class AgentsEndpointTest extends TestSuiteBase {
     }
 
     @Test(timeout = 10000)
-    public void testUpdateReplacesRunnersConfig() throws Exception {
+    public void testUpdateAppliesPhaseConfigs() throws Exception {
         Workstream ws = registerBareWorkstream("feature/update-runners", "w-update-runners");
-        ws.setDefaultRunner("claude");
-        ws.setRunners(Collections.singletonMap("primary", "claude"));
 
-        String body = "{\"runners\":{\"default\":\"opencode\","
-                + "\"deduplication\":\"opencode\"}}";
+        String body = "{\"defaultPhaseConfig\":{\"runner\":\"opencode\"},"
+                + "\"phaseConfigs\":{\"deduplication\":{\"runner\":\"opencode\"}}}";
         JsonNode response = postJson("/api/workstreams/" + ws.getWorkstreamId() + "/update", body);
         assertTrue(response.get("ok").asBoolean());
 
-        assertEquals("opencode", ws.getDefaultRunner());
-        assertEquals("opencode", ws.getRunners().get("deduplication"));
-        assertFalse("primary mapping from before the update must be replaced, not merged",
-                ws.getRunners().containsKey("primary"));
+        PhaseConfigBundle bundle = ws.getPhaseConfigBundle();
+        assertEquals("opencode", bundle.defaultPhaseConfig().runner());
+        assertEquals("opencode", bundle.forPhase(Phase.DEDUPLICATION).runner());
     }
 
     @Test(timeout = 10000)
-    public void testUpdateWithoutRunnersLeavesConfigUntouched() throws Exception {
+    public void testUpdateRejectsLegacyModelField() throws Exception {
         Workstream ws = registerBareWorkstream("feature/update-skip", "w-update-skip");
-        ws.setDefaultRunner("opencode");
-        ws.setRunners(Collections.singletonMap("primary", "opencode"));
-
-        // Update touching only the model field — runners config must survive.
+        // The legacy job-level model param is rejected on the update endpoint.
         String body = "{\"model\":\"sonnet\"}";
+        HttpURLConnection conn = openPost(
+                "/api/workstreams/" + ws.getWorkstreamId() + "/update", body);
+        assertEquals(400, conn.getResponseCode());
+        JsonNode response = MAPPER.readTree(readErrorBody(conn));
+        assertFalse(response.get("ok").asBoolean());
+        assertTrue(response.get("error").asText().contains("model"));
+    }
+
+    @Test(timeout = 10000)
+    public void testUpdateWithoutPhaseConfigLeavesConfigUntouched() throws Exception {
+        Workstream ws = registerBareWorkstream("feature/update-keep", "w-update-keep");
+        ws.setPhaseConfigBundle(PhaseConfigBundle.EMPTY.withDefaultRunner("opencode"));
+
+        // Update touching only a non-config field — phase config must survive.
+        String body = "{\"baseBranch\":\"develop\"}";
         JsonNode response = postJson("/api/workstreams/" + ws.getWorkstreamId() + "/update", body);
         assertTrue(response.get("ok").asBoolean());
 
-        assertEquals("opencode", ws.getDefaultRunner());
-        assertEquals("opencode", ws.getRunners().get("primary"));
+        assertEquals("opencode", ws.getPhaseConfigBundle().defaultPhaseConfig().runner());
     }
 
     // ----------------------------------------------------------------

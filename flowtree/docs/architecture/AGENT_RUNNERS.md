@@ -302,24 +302,34 @@ cost/behavior differences that motivated the choice.
 
 ## Configuring runners
 
-Runner selection follows a four-level precedence ladder (highest to lowest):
+Runner (and model / effort / provider) selection follows a precedence
+ladder (highest to lowest):
 
-1. **Per-job override** — the `runners` / `defaultRunner` fields in the
-   job submission payload, forwarded from `workstream_submit_task`'s
-   `runners` and `default_runner` parameters.
-2. **Workstream default** — the `runners` / `defaultRunner` fields stored
-   in the workstream's configuration, set via `workstream_register` or
-   `workstream_update_config`'s `runners` and `default_runner` parameters.
-3. **Workspace default** — the `runners` / `defaultRunner` fields on a
-   `workspaces[]` (or legacy `slackWorkspaces[]`) entry in
+1. **Per-job override** — the `defaultPhaseConfig` / `phaseConfigs` fields
+   in the job submission payload, forwarded from `workstream_submit_task`'s
+   `default_phase_config` and `phase_configs` parameters.
+2. **Workstream default** — the `defaultPhaseConfig` / `phaseConfigs` fields
+   stored in the workstream's configuration, set via `workstream_register`
+   or `workstream_update_config`'s `default_phase_config` and
+   `phase_configs` parameters.
+3. **Workspace default** — the `defaultPhaseConfig` / `phaseConfigs` fields
+   on a `workspaces[]` (or legacy `slackWorkspaces[]`) entry in
    `workstreams.yaml`. Every workstream whose `workspaceId` matches the
    workspace's `id` inherits this default unless it sets its own.
 4. **Built-in default** — `"claude"` (`AgentRunnerRegistry.CLAUDE`).
 
-`SubmissionRunnerResolver` in `flowtree/runtime` implements this ladder.
-Never bypass it: the four levels exist so operators can set a workspace
-policy once across many workstreams, narrow it on individual workstreams,
-and still override on individual jobs.
+`PhaseConfigResolver` in `flowtree/runtime` implements this ladder,
+resolving each field independently. Never bypass it: the levels exist so
+operators can set a workspace policy once across many workstreams, narrow
+it on individual workstreams, and still override on individual jobs.
+
+> **Legacy `model` / `effort` / `default_runner` / `runners` parameters
+> removed.** These are no longer accepted by any config MCP tool; a call
+> that passes one is rejected with a 400-style error pointing to the
+> per-phase replacement. Workstream / workspace YAML may still carry the
+> legacy fields (`model`, `effort`, `defaultRunner`, `runners`): they load,
+> auto-migrate into `defaultPhaseConfig` / `phaseConfigs`, and are dropped
+> the next time the controller saves the config.
 
 ### Discovering available options
 
@@ -327,13 +337,13 @@ Call the `agent_options` MCP tool (read-only; no write scope required) to
 enumerate:
 
 - **`runners`** — available runner names and their `AgentCapabilities` flags.
-  Use the `name` field as the value in the `runners` JSON object.
+  Use the `name` field as the `runner` value in a `PhaseConfig` object.
 - **`phases`** — the eight phase entries (each with a `name` and
   `description`). The phase wire names — `"primary"`, `"deduplication"`,
   `"organizational-placement"`, `"enforce-changes"`,
   `"maven-dependency-protection"`, `"post-completion"`,
   `"commit-message"`, `"git-tampering-restart"` — are the values of the
-  `name` field, and are used as keys in the `runners` JSON object.
+  `name` field, and are used as keys in the `phase_configs` JSON object.
 - **`models`** — accepted model aliases and full identifiers.
 - **`defaultRunner`** — the current built-in default (`"claude"`).
 
@@ -345,13 +355,13 @@ The `agent_options` tool proxies `GET /api/agents` on the controller.
 # Route all phases to opencode by default for this workstream
 workstream_update_config(
     workstream_id="ws-abc123",
-    default_runner="opencode",
+    default_phase_config='{"runner":"opencode"}',
 )
 
 # Or specify per-phase overrides
 workstream_update_config(
     workstream_id="ws-abc123",
-    runners='{"primary":"opencode","deduplication":"opencode"}',
+    phase_configs='{"primary":{"runner":"opencode"},"deduplication":{"runner":"opencode"}}',
 )
 ```
 
@@ -375,8 +385,8 @@ emitted for backward compatibility). The change is persisted back to
 ```python
 workspace_update_config(
     workspace_id="almostrealism",
-    default_runner="claude",
-    runners='{"commit-message":"opencode","organizational-placement":"opencode"}',
+    default_phase_config='{"runner":"claude"}',
+    phase_configs='{"commit-message":{"runner":"opencode"},"organizational-placement":{"runner":"opencode"}}',
     # name="team-alpha",
     # default_channel="C0987654321",
 )
@@ -385,8 +395,8 @@ workspace_update_config(
 The legacy parameter name `slack_workspace_id` is still accepted as a
 deprecated alias for `workspace_id`.
 
-The tool exposes `default_runner`, `runners`, `name`, `default_channel`,
-`new_id`, and `slack_team_id`. **Credential and ACL fields**
+The tool exposes `default_phase_config`, `phase_configs`, `name`,
+`default_channel`, `new_id`, and `slack_team_id`. **Credential and ACL fields**
 (`tokensFile`, `botToken`, `appToken`, `githubOrgs`,
 `channelOwnerUserId`) are deliberately NOT settable here — those must
 be edited in the YAML directly so the change can be code-reviewed
@@ -436,42 +446,48 @@ workspaces:
     name: "team-alpha"
     botToken: "xoxb-..."
     appToken: "xapp-..."
-    defaultRunner: "claude"
-    runners:
-      commit-message: "opencode"
-      organizational-placement: "opencode"
+    defaultPhaseConfig:
+      runner: "claude"
+    phaseConfigs:
+      commit-message:
+        runner: "opencode"
+      organizational-placement:
+        runner: "opencode"
 ```
 
-The legacy `slackWorkspaces:` top-level key is still loaded; each entry
-auto-migrates so its `id` doubles as its `slackTeamId`, preserving
-existing channel routing. Both keys may appear in the same file during
-the migration window — entries from both are merged into the same
-workspace list.
+The legacy `defaultRunner` / `runners` keys are still accepted on load and
+auto-migrated into the per-phase shape, but are dropped on the next save —
+use `defaultPhaseConfig` / `phaseConfigs` for new entries. The legacy
+`slackWorkspaces:` top-level key is still loaded; each entry auto-migrates
+so its `id` doubles as its `slackTeamId`, preserving existing channel
+routing. Both keys may appear in the same file during the migration window
+— entries from both are merged into the same workspace list.
 
-Unknown phase keys in `workspaces[].runners` are rejected at load
+Unknown phase keys in `workspaces[].phaseConfigs` are rejected at load
 time with a clear error naming the offending workspace; the resolver does
 not silently route around them. Workstream-level config fully shadows the
-workspace it belongs to — when a workstream sets `defaultRunner`, the
+workspace it belongs to — when a workstream sets a default runner, the
 workspace's per-phase entries are skipped for that workstream.
 
 ### Overriding at job-submission time
 
 ```python
-# Use opencode for primary work, claude for all enforcement phases
+# Route every phase to opencode by default for this job
 workstream_submit_task(
     workstream_id="ws-abc123",
     prompt="...",
-    default_runner="opencode",
+    default_phase_config='{"runner":"opencode"}',
 )
 
 # Or fine-grained per-phase control
 workstream_submit_task(
     workstream_id="ws-abc123",
     prompt="...",
-    runners='{"primary":"opencode","deduplication":"claude"}',
+    phase_configs='{"primary":{"runner":"opencode"},"deduplication":{"runner":"claude"}}',
 )
 ```
 
-The `runners` JSON object may contain any subset of phase wire names plus
-the optional `"default"` key. An explicit `runners["default"]` wins over
-the separate `default_runner` parameter when both are supplied.
+`default_phase_config` sets the per-job default applied to every phase
+without a dedicated `phase_configs` entry; each `phase_configs` entry
+overrides that default field-by-field. Both accept the full
+`{runner, model, effort, provider}` shape (all keys optional).

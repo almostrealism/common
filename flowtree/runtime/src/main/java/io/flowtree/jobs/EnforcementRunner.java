@@ -170,6 +170,8 @@ class EnforcementRunner implements ConsoleFeatures {
                     if (attempts >= rule.getMaxRetries()) {
                         warn("Enforcement rule '" + rule.getName() + "': exhausted "
                                 + rule.getMaxRetries() + " retries without resolution");
+                        job.harnessStatus().unusual("Enforcement rule '" + rule.getName()
+                                + "' exhausted " + rule.getMaxRetries() + " retries without resolution");
                         if ("post-completion-command".equals(rule.getName())) job.setPostCompletionCapHit(true);
                     } else if (totalAttempts >= CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
                         warn("Enforcement rule '" + rule.getName()

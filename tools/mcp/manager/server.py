@@ -547,8 +547,12 @@ class BearerAuthMiddleware:
         "/oauth/token",
     }
 
-    def __init__(self, app, tokens: list):
+    def __init__(self, app, tokens: list, issuer_url: Optional[str] = None):
         self.app = app
+        # Public issuer URL used to advertise the protected-resource metadata
+        # location in the WWW-Authenticate challenge (RFC 9728). When None it
+        # is derived per-request from the Host header.
+        self.issuer_url = issuer_url.rstrip("/") if issuer_url else None
         # Build a lookup: token value -> (scopes, label, workspace_scopes).
         # workspace_scopes is None for unscoped (superadmin) tokens or a list
         # of Slack workspace IDs for narrower tokens. An empty list in the
@@ -566,6 +570,44 @@ class BearerAuthMiddleware:
                 ws_scopes = None
             if value:
                 self.token_entries.append((value, scopes, label, ws_scopes))
+
+    def _www_authenticate(self, scope) -> bytes:
+        """Build the ``WWW-Authenticate`` challenge for a 401 response.
+
+        Advertises the protected-resource metadata location per RFC 9728 /
+        the MCP authorization spec, so an MCP client that probes the transport
+        endpoint without a token can discover the authorization server from
+        the 401 alone.
+        """
+        from oauth import derive_issuer
+        issuer = derive_issuer(scope, self.issuer_url)
+        # Point at the path-suffixed protected-resource metadata (RFC 9728) so
+        # the advertised resource matches the exact URL the client probed —
+        # including any per-connector path used purely as a cache key.
+        req_path = scope.get("path", "/")
+        suffix = "" if req_path in ("", "/") else req_path
+        prm = f"{issuer}/.well-known/oauth-protected-resource{suffix}"
+        return (f'Bearer realm="ar-manager", '
+                f'resource_metadata="{prm}"').encode("utf-8")
+
+    @staticmethod
+    def _transport_scope(scope):
+        """Normalize an authenticated request's path to the transport root.
+
+        The MCP streamable-HTTP transport is mounted at ``/``, but a connector
+        may be configured with an arbitrary path (some clients key their
+        per-connector OAuth state on the full URL, so a fresh path is the only
+        reliable way to force a brand-new authorization flow). Rewriting the
+        path here lets any such URL reach the single transport handler. OAuth,
+        well-known, and health paths are handled by outer middleware and never
+        reach this point, so only transport requests are affected.
+        """
+        if scope.get("path", "/") == "/":
+            return scope
+        rewritten = dict(scope)
+        rewritten["path"] = "/"
+        rewritten["raw_path"] = b"/"
+        return rewritten
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
@@ -612,7 +654,7 @@ class BearerAuthMiddleware:
                     # no association with any workstream's checkout and
                     # cannot collide with one.)
                     _set_token_context("", "")
-                    await self.app(scope, receive, send)
+                    await self.app(self._transport_scope(scope), receive, send)
                     return
 
                 # Try HMAC temporary token. Temp tokens are issued by the
@@ -637,7 +679,7 @@ class BearerAuthMiddleware:
                             "status": 401,
                             "headers": [
                                 [b"content-type", b"application/json"],
-                                [b"www-authenticate", b'Bearer realm="ar-manager"'],
+                                [b"www-authenticate", self._www_authenticate(scope)],
                             ],
                         })
                         await send({
@@ -662,7 +704,7 @@ class BearerAuthMiddleware:
                         scope.get("path", ""),
                         ws_id or "", job_id or "",
                         workspace_id or "")
-                    await self.app(scope, receive, send)
+                    await self.app(self._transport_scope(scope), receive, send)
                     return
 
             # Reject: no valid token
@@ -671,7 +713,7 @@ class BearerAuthMiddleware:
                 "status": 401,
                 "headers": [
                     [b"content-type", b"application/json"],
-                    [b"www-authenticate", b'Bearer realm="ar-manager"'],
+                    [b"www-authenticate", self._www_authenticate(scope)],
                 ],
             })
             await send({
@@ -1325,7 +1367,11 @@ def workstream_get_status(workstream_id: str, period: str = "weekly") -> dict:
 
     Returns:
         Dictionary with thisWeek and lastWeek aggregate stats (jobCount,
-        successCount, failedCount, totalCostUsd, totalTurns, etc.).
+        successCount, failedCount, totalCostUsd, totalTurns, etc.). Each
+        week's per-workstream stats also include a ``costByRunner`` object
+        mapping runner name to summed USD cost for the window, so the split
+        between (for example) claude and opencode spend is visible alongside
+        the ``totalCostUsd`` aggregate.
     """
     _require_scope("read")
     err = _check_short_strings(workstream_id=workstream_id, period=period)
@@ -1392,54 +1438,10 @@ def workstream_get_job(job_id: str) -> dict:
     return result
 
 
+# Valid Claude Code effort/thinking levels. Mirrors
+# io.flowtree.jobs.agent.ClaudeCodeRunner#VALID_EFFORT_LEVELS; used to
+# pre-validate the ``effort`` field of per-phase configuration client-side.
 VALID_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
-
-VALID_MODELS = (
-    "sonnet", "opus", "haiku",
-    "claude-opus-4-7",
-    "claude-sonnet-4-6",
-    "claude-haiku-4-5-20251001",
-)
-
-
-def _check_effort(effort: str) -> Optional[dict]:
-    """Return an error dict if ``effort`` is non-empty and not a recognised
-    Claude Code effort level, or ``None`` when valid (or empty).
-
-    Accepted values mirror
-    :class:`io.flowtree.jobs.ClaudeCodeJob#VALID_EFFORT_LEVELS`. This list is
-    kept in sync manually; the Java side is the source of truth and rejects
-    unknown values, but pre-validating here gives the caller a clearer error
-    and avoids issuing a doomed HTTP request.
-    """
-    if effort and effort not in VALID_EFFORT_LEVELS:
-        return {
-            "ok": False,
-            "error": f"Invalid effort '{effort}'. Must be one of: "
-                     f"{', '.join(VALID_EFFORT_LEVELS)}",
-        }
-    return None
-
-
-def _check_model(model: str) -> Optional[dict]:
-    """Return an error dict if ``model`` is non-empty and not a recognised
-    Claude Code model identifier, or ``None`` when valid (or empty).
-
-    Accepted values mirror
-    :class:`io.flowtree.jobs.ClaudeCodeJob#VALID_MODELS`.  The Java side is
-    the source of truth and rejects unknown values with a 400 response;
-    pre-validating here gives the caller a clearer error and avoids issuing
-    an HTTP request that the controller would reject.  The controller's
-    error message also flows back through ``_controller_post`` if a value
-    slips through (e.g., the Java list is updated ahead of this one).
-    """
-    if model and model not in VALID_MODELS:
-        return {
-            "ok": False,
-            "error": f"Invalid model '{model}'. Must be one of: "
-                     f"{', '.join(VALID_MODELS)}",
-        }
-    return None
 
 
 _KNOWN_PHASE_WIRE_NAMES = (
@@ -1464,64 +1466,6 @@ _KNOWN_RUNNER_NAMES = (
     "claude",
     "opencode",
 )
-
-
-def _parse_runners_json(runners: str) -> "tuple[Optional[dict], Optional[dict]]":
-    """Parse and validate the ``runners`` JSON argument to ``workstream_submit_task``.
-
-    The argument is a JSON object string whose keys are phase wire names
-    (e.g. ``"primary"``, ``"deduplication"``) and whose values are runner
-    identifiers (e.g. ``"claude"``, ``"opencode"``). An optional ``"default"``
-    key acts as a fallback for unspecified phases. All values must be strings.
-
-    Unknown phase keys are rejected client-side so the caller gets an
-    immediate error instead of a 400 from the controller.
-
-    Args:
-        runners: A JSON object string, or empty to indicate no overrides.
-
-    Returns:
-        A tuple ``(parsed_dict, error_dict)``. On success, ``parsed_dict`` is
-        the decoded mapping (possibly empty) and ``error_dict`` is ``None``.
-        On failure, ``parsed_dict`` is ``None`` and ``error_dict`` carries an
-        ``ok=False`` payload suitable for returning to the MCP caller.
-    """
-    if not runners:
-        return {}, None
-    import json as _json
-    try:
-        parsed = _json.loads(runners)
-    except ValueError as e:
-        return None, {
-            "ok": False,
-            "error": "runners must be a JSON object: " + str(e),
-        }
-    if not isinstance(parsed, dict):
-        return None, {
-            "ok": False,
-            "error": "runners must be a JSON object mapping phase names to runner names",
-        }
-    valid_keys = set(_KNOWN_PHASE_WIRE_NAMES) | {"default"}
-    cleaned: dict = {}
-    for key, value in parsed.items():
-        if key not in valid_keys:
-            return None, {
-                "ok": False,
-                "error": (
-                    "Unknown phase key in runners: '" + str(key) + "'. "
-                    "Allowed phase keys: " + ", ".join(sorted(valid_keys))
-                ),
-            }
-        if not isinstance(value, str) or not value:
-            return None, {
-                "ok": False,
-                "error": (
-                    "Runner value for phase '" + str(key)
-                    + "' must be a non-empty string"
-                ),
-            }
-        cleaned[key] = value
-    return cleaned, None
 
 
 def _parse_default_phase_config_json(default_phase_config: str) -> "tuple[Optional[dict], Optional[dict]]":
@@ -1630,7 +1574,7 @@ def _parse_phase_configs_json(phase_configs: str) -> "tuple[Optional[dict], Opti
 
     Returns:
         A tuple ``(parsed_dict, error_dict)`` matching the pattern of
-        ``_parse_runners_json``.
+        ``_parse_default_phase_config_json``.
     """
     if not phase_configs:
         return {}, None
@@ -1688,6 +1632,82 @@ def _parse_phase_configs_json(phase_configs: str) -> "tuple[Optional[dict], Opti
         if inner_cleaned:
             cleaned[key] = inner_cleaned
     return cleaned, None
+
+
+# ---------------------------------------------------------------------------
+# Removed legacy configuration parameters.
+#
+# ``model`` / ``effort`` / ``default_runner`` / ``runners`` were job-,
+# workstream-, and workspace-level shortcuts that field-by-field competed with
+# the per-phase configuration shape and produced surprising results (a single
+# job-level ``model`` would shadow a workspace's per-phase model override).
+# They are no longer accepted. Callers must use ``default_phase_config`` (a
+# single PhaseConfig applied as the default across every phase) or
+# ``phase_configs`` (a per-phase map of PhaseConfig objects) instead.
+#
+# These names are still declared as parameters on the affected tools — but
+# deliberately WITHOUT type hints, so they stay out of the tool's declared
+# parameter schema (see ``McpToolDiscovery``) while still being captured here
+# at call time. That lets a stale caller that passes one of them fail fast
+# with a clear, actionable error instead of being silently ignored by the MCP
+# argument-validation layer (which drops unknown keyword arguments without
+# complaint). Empty/absent values are treated as "not supplied" so a caller
+# that merely passes ``model=""`` is unaffected.
+_REMOVED_CONFIG_PARAM_HINT = {
+    "model": "Use default_phase_config='{\"model\": \"...\"}' to set one model "
+             "across all phases, or phase_configs to set per-phase model values.",
+    "effort": "Use default_phase_config='{\"effort\": \"...\"}' to set one effort "
+              "level across all phases, or phase_configs to set per-phase effort.",
+    "default_runner": "Use default_phase_config='{\"runner\": \"...\"}' to set the "
+                      "default runner across all phases.",
+    "runners": "Use phase_configs (a per-phase map of {runner, model, effort, "
+               "provider} objects), or default_phase_config for a single default.",
+}
+
+
+def _reject_removed_config_params(model="", effort="",
+                                  default_runner="", runners="") -> Optional[dict]:
+    """Return a 400-style error dict when a caller passes any removed legacy
+    configuration parameter, or ``None`` when none were supplied.
+
+    The removed parameters are ``model``, ``effort``, ``default_runner``, and
+    ``runners``. Each is replaced by per-phase configuration via
+    ``default_phase_config`` and ``phase_configs``. This is a deliberate clean
+    break: rather than silently translating the legacy shape, the call is
+    rejected so the caller migrates explicitly. See
+    ``tools/mcp/CLAUDE.md`` for the configuration reference.
+
+    Args:
+        model: Removed ``model`` argument; non-empty means the caller passed it.
+        effort: Removed ``effort`` argument.
+        default_runner: Removed ``default_runner`` argument.
+        runners: Removed ``runners`` argument.
+
+    Returns:
+        A ``{"ok": False, "error": ...}`` dict naming the first removed
+        parameter supplied, or ``None`` when none were supplied.
+    """
+    supplied = []
+    if model:
+        supplied.append("model")
+    if effort:
+        supplied.append("effort")
+    if default_runner:
+        supplied.append("default_runner")
+    if runners:
+        supplied.append("runners")
+    if not supplied:
+        return None
+    first = supplied[0]
+    return {
+        "ok": False,
+        "error": (
+            "The `" + first + "` parameter is no longer supported. "
+            + _REMOVED_CONFIG_PARAM_HINT[first]
+            + " See tools/mcp/CLAUDE.md for the per-phase configuration reference."
+        ),
+        "removed_parameters": supplied,
+    }
 
 
 def _parse_required_labels(required_labels: str) -> dict:
@@ -1827,17 +1847,21 @@ def workstream_submit_task(
     max_deduplication_passes: int = 0,
     review_enabled: bool = True,
     max_review_passes: int = 0,
-    model: str = "",
-    effort: str = "",
     post_completion_command: str = "",
     post_completion_timeout_seconds: int = 0,
     max_post_completion_passes: int = 0,
     delay_seconds: int = 0,
-    runners: str = "",
-    default_runner: str = "",
     default_phase_config: str = "",
     phase_configs: str = "",
     allow_commit_language: bool = False,
+    # Removed legacy config parameters (model / effort / default_runner /
+    # runners). Declared without type hints so they stay out of the tool's
+    # declared parameter schema while still being captured here for a clear
+    # rejection error — see _reject_removed_config_params.
+    model="",
+    effort="",
+    default_runner="",
+    runners="",
 ) -> dict:
     """Submit a coding task to a FlowTree agent.
 
@@ -1897,21 +1921,13 @@ def workstream_submit_task(
             anything substantial via a ``review-followup`` memory plus an
             inline ``TODO(review):`` code comment. Route the review phase
             to a cheaper runner (e.g. opencode against a local model)
-            with ``runners='{"review":"opencode"}'``. Set to ``False`` to
-            skip the review phase entirely for this job.
+            with ``phase_configs='{"review":{"runner":"opencode"}}'``. Set
+            to ``False`` to skip the review phase entirely for this job.
         max_review_passes: Maximum number of review correction sessions per
             job. 0 (default) uses the server-side default of 1. The review
             rule is single-pass by design; raising this only matters if
             you want the same reviewer to see its own changes on a second
             pass, which is rarely useful.
-        model: Claude Code model alias (e.g. ``"sonnet"``, ``"opus"``,
-            ``"haiku"``) or full identifier (e.g. ``"claude-sonnet-4-6"``)
-            for this job. Empty string falls back to the workstream default,
-            which in turn falls back to the CLI default.
-        effort: Claude Code effort/thinking level for this job. Must be one
-            of ``"low"``, ``"medium"``, ``"high"``, ``"xhigh"``, ``"max"``.
-            Empty string falls back to the workstream default, which in turn
-            falls back to the CLI default.
         post_completion_command: Shell command run after the agent declares its
             work done. If the command exits non-zero, the agent receives a
             correction session showing the output and is asked to fix the
@@ -1943,51 +1959,40 @@ def workstream_submit_task(
             but stays in a pending state until the delay elapses. Workers will
             not pick it up until then. Cancellation works normally during the
             pending period. 0 (default) means dispatch immediately.
-        runners: Per-phase agent runner overrides as a JSON object string. Keys
-            are phase wire names (``"primary"``, ``"review"``,
+        default_phase_config: Per-phase default configuration as a JSON object
+            string with optional ``runner`` / ``model`` / ``effort`` /
+            ``provider`` keys. Applies to every phase that does not have a
+            dedicated entry in ``phase_configs``. Sets the job-level default
+            ``PhaseConfig``. Empty (default) inherits the workstream-level
+            default. Example::
+
+                '{"runner": "opencode", "model": "qwen3-coder:exacto",
+                  "effort": "medium", "provider": "openrouter"}'
+
+        phase_configs: Per-phase configuration overrides as a JSON object
+            whose keys are phase wire names (``"primary"``, ``"review"``,
             ``"deduplication"``, ``"organizational-placement"``,
             ``"enforce-changes"``, ``"maven-dependency-protection"``,
             ``"post-completion"``, ``"commit-message"``,
-            ``"git-tampering-restart"``) plus an optional ``"default"``. Values are runner identifiers such as ``"claude"``
-            or ``"opencode"``. Unspecified phases inherit ``"default"``, which
-            in turn falls back to the workstream default and then the
-            controller default. Example::
-
-                '{"primary":"claude","deduplication":"opencode",
-                  "commit-message":"opencode"}'
-
-            Empty (default) inherits the workstream-level runner configuration.
-            Unknown phase names are rejected client-side with a clear error.
-        default_runner: Convenience shortcut to set the default runner for
-            every phase without enumerating them in ``runners``. Equivalent to
-            passing ``{"default": "<runner>"}`` in ``runners``; when both are
-            supplied the ``"default"`` entry inside ``runners`` wins. Empty
-            (default) inherits the workstream-level default.
-        default_phase_config: Per-phase default configuration as a JSON object
-            string with optional ``runner`` / ``model`` / ``effort`` keys.
-            Applies to every phase that does not have a dedicated entry in
-            ``phase_configs``. Empty (default) inherits the workstream-level
-            default. **Precedence:** wins field-by-field over the legacy
-            ``default_runner`` / ``model`` / ``effort`` parameters when both
-            are supplied. Example: passing
-            ``default_phase_config='{"runner":"claude"}'`` together with
-            ``default_runner="opencode"`` resolves the job-level default
-            runner to ``claude``; the legacy ``default_runner`` is ignored
-            because the new shape supplied a runner.
-        phase_configs: Per-phase configuration overrides as a JSON object
-            whose keys are phase wire names and whose values are
-            ``{runner, model, effort}`` triples. Example::
+            ``"git-tampering-restart"``) and whose values are
+            ``{runner, model, effort, provider}`` objects (all keys
+            optional). Each named phase overrides ``default_phase_config``
+            field-by-field. Example::
 
                 '{"review": {"model": "claude-opus-4-7", "effort": "high"},
                   "commit-message": {"runner": "opencode"}}'
 
-            **Precedence:** wins field-by-field over the legacy ``runners``
-            map when both are supplied. Example: passing
-            ``phase_configs='{"review":{"runner":"claude"}}'`` together with
-            ``runners='{"review":"opencode"}'`` routes the review phase to
-            ``claude``; the legacy ``runners`` entry for ``review`` is
-            ignored. Empty (default) inherits the workstream-level
-            configuration.
+            Empty (default) inherits the workstream-level configuration.
+            Unknown phase names are rejected client-side with a clear error.
+        model: REMOVED. The legacy ``model`` parameter is no longer accepted;
+            passing it fails with a 400-style error. Use
+            ``default_phase_config`` or ``phase_configs`` to set models.
+        effort: REMOVED. The legacy ``effort`` parameter is no longer
+            accepted. Use ``default_phase_config`` or ``phase_configs``.
+        default_runner: REMOVED. The legacy ``default_runner`` parameter is no
+            longer accepted. Use ``default_phase_config='{"runner": "..."}'``.
+        runners: REMOVED. The legacy ``runners`` map is no longer accepted.
+            Use ``phase_configs`` (per-phase) or ``default_phase_config``.
         allow_commit_language: Escape hatch for the commit-language linter.
             By default (``False``), the prompt is scanned for phrases that
             imply the agent controls git commits (e.g. "Commit 1: do X",
@@ -2007,29 +2012,23 @@ def workstream_submit_task(
     err = _check_length(post_completion_command, "post_completion_command", MAX_PROMPT_LEN)
     if err:
         return err
+    err = _reject_removed_config_params(
+        model=model, effort=effort, default_runner=default_runner, runners=runners)
+    if err:
+        return err
     err = _check_short_strings(
         workstream_id=workstream_id, target_branch=target_branch,
         repo_url=repo_url, description=description, started_after=started_after,
         deduplication_mode=deduplication_mode,
-        model=model, effort=effort, default_runner=default_runner,
     )
     if err:
         return err
-    parsed_runners, runners_err = _parse_runners_json(runners)
-    if runners_err:
-        return runners_err
     parsed_default_phase_config, default_pc_err = _parse_default_phase_config_json(default_phase_config)
     if default_pc_err:
         return default_pc_err
     parsed_phase_configs, phase_configs_err = _parse_phase_configs_json(phase_configs)
     if phase_configs_err:
         return phase_configs_err
-    err = _check_effort(effort)
-    if err:
-        return err
-    err = _check_model(model)
-    if err:
-        return err
     # Commit-language linter -- rejects prompts that imply the agent controls
     # git commits (e.g. "Commit 1: do X, Commit 2: do Y").  Bypassed when the
     # caller explicitly opts out via allow_commit_language=True.
@@ -2153,10 +2152,6 @@ def workstream_submit_task(
         payload["reviewEnabled"] = False
     if max_review_passes > 0:
         payload["maxReviewPasses"] = max_review_passes
-    if model:
-        payload["model"] = model
-    if effort:
-        payload["effort"] = effort
     if post_completion_command:
         payload["postCompletionCommand"] = post_completion_command
     if post_completion_timeout_seconds > 0:
@@ -2165,15 +2160,7 @@ def workstream_submit_task(
         payload["maxPostCompletionPasses"] = max_post_completion_passes
     if delay_seconds > 0:
         payload["delaySeconds"] = delay_seconds
-    # Merge default_runner into the runners object so the controller sees a
-    # single representation. The "default" key inside an explicit ``runners``
-    # value wins over default_runner because the explicit form is unambiguous.
-    runners_payload = dict(parsed_runners) if parsed_runners else {}
-    if default_runner and "default" not in runners_payload:
-        runners_payload["default"] = default_runner
-    if runners_payload:
-        payload["runners"] = runners_payload
-    # New unified per-phase configuration. Forwarded under camelCase keys.
+    # Per-phase configuration. Forwarded under camelCase keys.
     if parsed_default_phase_config:
         payload["defaultPhaseConfig"] = parsed_default_phase_config
     if parsed_phase_configs:
@@ -2212,13 +2199,16 @@ def workstream_register(
     plan_instructions: str = "",
     plan_path: str = "",
     plan_commit_message: str = "",
-    model: str = "",
-    effort: str = "",
-    runners: str = "",
-    default_runner: str = "",
     default_phase_config: str = "",
     phase_configs: str = "",
     slack_workspace_id: str = "",
+    # Removed legacy config parameters — see _reject_removed_config_params.
+    # Untyped so they stay out of the declared tool schema while still being
+    # captured here for a clear rejection error.
+    model="",
+    effort="",
+    default_runner="",
+    runners="",
 ) -> dict:
     """Register a new workstream for a branch/repo combination.
 
@@ -2271,40 +2261,33 @@ def workstream_register(
         plan_commit_message: Git commit message for the direct-commit path.
             Ignored when ``plan_instructions`` is used. Auto-generated if
             omitted.
-        model: Default Claude Code model alias (e.g. ``"sonnet"``,
-            ``"opus"``, ``"haiku"``) or full identifier applied to every
-            job submitted to this workstream that does not specify its own
-            model. Empty string leaves the workstream with no default,
-            falling back to the CLI default.
-        effort: Default Claude Code effort/thinking level for the
-            workstream. Must be one of ``"low"``, ``"medium"``, ``"high"``,
-            ``"xhigh"``, ``"max"``. Empty string leaves the workstream with
-            no default.
-        runners: JSON object mapping phase wire names to runner identifiers
-            (e.g. ``'{"primary":"opencode","deduplication":"opencode"}``).
-            An optional ``"default"`` key sets the fallback for unspecified
-            phases. Use ``agent_options`` to discover available runner names
-            and phase wire names. Empty string leaves workstream with no
-            per-phase runner configuration.
-        default_runner: Convenience shortcut equivalent to
-            ``runners='{"default": "<value>"}'``. The explicit
-            ``runners["default"]`` wins when both are supplied. Empty
-            string leaves the workstream default runner unconfigured.
-        default_phase_config: Per-phase default configuration as a JSON
-            object with optional ``runner`` / ``model`` / ``effort`` keys.
-            **Precedence:** supersedes the legacy ``default_runner`` /
-            ``model`` / ``effort`` shortcuts field-by-field when both are
-            supplied — e.g. ``default_phase_config='{"model":"opus"}'``
-            with ``model="sonnet"`` registers the workstream default as
-            ``opus``.
-        phase_configs: Per-phase overrides as a JSON object whose keys
-            are phase wire names and whose values are
-            ``{runner, model, effort}`` triples. **Precedence:**
-            supersedes the legacy ``runners`` map field-by-field when both
-            are supplied — e.g.
-            ``phase_configs='{"review":{"runner":"claude"}}'`` with
-            ``runners='{"review":"opencode"}'`` makes the workstream route
-            the review phase to ``claude``.
+        default_phase_config: Workstream-level default configuration as a
+            JSON object with optional ``runner`` / ``model`` / ``effort`` /
+            ``provider`` keys, applied to every job and phase that does not
+            override it. Use ``agent_options`` to discover available runner
+            names. Example::
+
+                '{"runner": "opencode", "model": "qwen3-coder:exacto",
+                  "effort": "medium", "provider": "openrouter"}'
+
+        phase_configs: Workstream-level per-phase overrides as a JSON object
+            whose keys are phase wire names and whose values are
+            ``{runner, model, effort, provider}`` objects (all keys
+            optional). Each named phase overrides ``default_phase_config``
+            field-by-field. Example::
+
+                '{"review": {"runner": "claude"},
+                  "deduplication": {"runner": "opencode"}}'
+
+        model: REMOVED. The legacy ``model`` parameter is no longer accepted;
+            passing it fails with a 400-style error. Use
+            ``default_phase_config`` or ``phase_configs`` to set models.
+        effort: REMOVED. The legacy ``effort`` parameter is no longer
+            accepted. Use ``default_phase_config`` or ``phase_configs``.
+        default_runner: REMOVED. The legacy ``default_runner`` parameter is no
+            longer accepted. Use ``default_phase_config='{"runner": "..."}'``.
+        runners: REMOVED. The legacy ``runners`` map is no longer accepted.
+            Use ``phase_configs`` (per-phase) or ``default_phase_config``.
 
     Returns:
         Dictionary with workstreamId and channel info on success. When
@@ -2323,24 +2306,18 @@ def workstream_register(
         audit_log.debug("workstream_register: slack_workspace_id is a "
                         "deprecated alias for workspace_id")
         workspace_id = slack_workspace_id
+    err = _reject_removed_config_params(
+        model=model, effort=effort, default_runner=default_runner, runners=runners)
+    if err:
+        return err
     err = _check_short_strings(
         default_branch=default_branch, base_branch=base_branch,
         repo_url=repo_url, planning_document=planning_document,
         channel_name=channel_name, workspace_id=workspace_id,
         plan_path=plan_path, plan_commit_message=plan_commit_message,
-        model=model, effort=effort, default_runner=default_runner,
     )
     if err:
         return err
-    err = _check_effort(effort)
-    if err:
-        return err
-    err = _check_model(model)
-    if err:
-        return err
-    parsed_runners, runners_err = _parse_runners_json(runners)
-    if runners_err:
-        return runners_err
     parsed_default_phase_config, default_pc_err = _parse_default_phase_config_json(default_phase_config)
     if default_pc_err:
         return default_pc_err
@@ -2400,15 +2377,6 @@ def workstream_register(
         repos_list = _parse_dependent_repos(dependent_repos)
         if repos_list:
             payload["dependentRepos"] = repos_list
-    if model:
-        payload["model"] = model
-    if effort:
-        payload["effort"] = effort
-    runners_payload = dict(parsed_runners) if parsed_runners else {}
-    if default_runner and "default" not in runners_payload:
-        runners_payload["default"] = default_runner
-    if runners_payload:
-        payload["runners"] = runners_payload
     if parsed_default_phase_config:
         payload["defaultPhaseConfig"] = parsed_default_phase_config
     if parsed_phase_configs:
@@ -2586,12 +2554,15 @@ def workstream_update_config(
     channel_name: str = "",
     required_labels: str = "",
     dependent_repos: str = "",
-    model: str = "",
-    effort: str = "",
-    runners: str = "",
-    default_runner: str = "",
     default_phase_config: str = "",
     phase_configs: str = "",
+    # Removed legacy config parameters — see _reject_removed_config_params.
+    # Untyped so they stay out of the declared tool schema while still being
+    # captured here for a clear rejection error.
+    model="",
+    effort="",
+    default_runner="",
+    runners="",
 ) -> dict:
     """Update configuration for an existing workstream.
 
@@ -2615,57 +2586,44 @@ def workstream_update_config(
             (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
             Also accepts a JSON array string. Dependent repos follow the same
             branch lifecycle as the primary repo (create/checkout/pull/commit/push).
-        model: New default Claude Code model alias (e.g. ``"sonnet"``,
-            ``"opus"``, ``"haiku"``) or full identifier for the workstream.
-            Applied to jobs that do not specify their own model.
-        effort: New default Claude Code effort/thinking level for the
-            workstream. Must be one of ``"low"``, ``"medium"``, ``"high"``,
-            ``"xhigh"``, ``"max"``.
-        runners: JSON object mapping phase wire names to runner identifiers
-            (e.g. ``'{"primary":"opencode","deduplication":"opencode"}``).
-            An optional ``"default"`` key sets the fallback for unspecified
-            phases. Use ``agent_options`` to discover available runner names
-            and phase wire names. Empty string leaves per-phase configuration
-            unchanged.
-        default_runner: Convenience shortcut equivalent to
-            ``runners='{"default": "<value>"}'``. The explicit
-            ``runners["default"]`` wins when both are supplied. Empty
-            string leaves the workstream default runner unchanged.
-        default_phase_config: New per-phase default configuration as a
-            JSON object with optional ``runner`` / ``model`` / ``effort``
-            keys. Empty leaves it unchanged. **Precedence:** wins
-            field-by-field over the legacy ``default_runner`` / ``model``
-            / ``effort`` shortcuts when both are supplied — e.g.
-            ``default_phase_config='{"runner":"claude"}'`` together with
-            ``default_runner="opencode"`` updates the workstream default
-            runner to ``claude``.
-        phase_configs: New per-phase overrides as a JSON object whose
-            keys are phase wire names and whose values are
-            ``{runner, model, effort}`` triples. Empty leaves unchanged.
-            **Precedence:** wins field-by-field over the legacy
-            ``runners`` map when both are supplied.
+        default_phase_config: New workstream-level default configuration as a
+            JSON object with optional ``runner`` / ``model`` / ``effort`` /
+            ``provider`` keys. Empty leaves it unchanged. Use
+            ``agent_options`` to discover available runner names. Example::
+
+                '{"runner": "opencode", "model": "qwen3-coder:exacto",
+                  "effort": "medium", "provider": "openrouter"}'
+
+        phase_configs: New workstream-level per-phase overrides as a JSON
+            object whose keys are phase wire names and whose values are
+            ``{runner, model, effort, provider}`` objects (all keys
+            optional). Empty leaves the per-phase map unchanged. Each named
+            phase overrides ``default_phase_config`` field-by-field.
+        model: REMOVED. The legacy ``model`` parameter is no longer accepted;
+            passing it fails with a 400-style error. Use
+            ``default_phase_config`` or ``phase_configs`` to set models.
+        effort: REMOVED. The legacy ``effort`` parameter is no longer
+            accepted. Use ``default_phase_config`` or ``phase_configs``.
+        default_runner: REMOVED. The legacy ``default_runner`` parameter is no
+            longer accepted. Use ``default_phase_config='{"runner": "..."}'``.
+        runners: REMOVED. The legacy ``runners`` map is no longer accepted.
+            Use ``phase_configs`` (per-phase) or ``default_phase_config``.
 
     Returns:
         Dictionary confirming the update.
     """
     _require_scope("write")
+    err = _reject_removed_config_params(
+        model=model, effort=effort, default_runner=default_runner, runners=runners)
+    if err:
+        return err
     err = _check_short_strings(
         workstream_id=workstream_id, default_branch=default_branch,
         base_branch=base_branch, repo_url=repo_url,
         planning_document=planning_document, channel_name=channel_name,
-        model=model, effort=effort, default_runner=default_runner,
     )
     if err:
         return err
-    err = _check_effort(effort)
-    if err:
-        return err
-    err = _check_model(model)
-    if err:
-        return err
-    parsed_runners, runners_err = _parse_runners_json(runners)
-    if runners_err:
-        return runners_err
     parsed_default_phase_config, default_pc_err = _parse_default_phase_config_json(default_phase_config)
     if default_pc_err:
         return default_pc_err
@@ -2694,15 +2652,6 @@ def workstream_update_config(
         repos_list = _parse_dependent_repos(dependent_repos)
         if repos_list:
             payload["dependentRepos"] = repos_list
-    if model:
-        payload["model"] = model
-    if effort:
-        payload["effort"] = effort
-    runners_payload = dict(parsed_runners) if parsed_runners else {}
-    if default_runner and "default" not in runners_payload:
-        runners_payload["default"] = default_runner
-    if runners_payload:
-        payload["runners"] = runners_payload
     if parsed_default_phase_config:
         payload["defaultPhaseConfig"] = parsed_default_phase_config
     if parsed_phase_configs:
@@ -2715,8 +2664,7 @@ def workstream_update_config(
             "next_steps": [
                 "Specify fields to update: default_branch, base_branch, "
                 "repo_url, planning_document, channel_name, required_labels, "
-                "dependent_repos, model, effort, runners, default_runner, "
-                "default_phase_config, or phase_configs",
+                "dependent_repos, default_phase_config, or phase_configs",
             ],
         }
 
@@ -2751,8 +2699,6 @@ _WORKSPACE_UNSET = "\0__workspace_unset__\0"
 @mcp.tool()
 def workspace_update_config(
     workspace_id: str = "",
-    default_runner: str = "",
-    runners: str = "",
     default_phase_config: str = "",
     phase_configs: str = "",
     name: str = "",
@@ -2760,6 +2706,11 @@ def workspace_update_config(
     new_id: str = "",
     slack_team_id: str = _WORKSPACE_UNSET,
     slack_workspace_id: str = "",
+    # Removed legacy config parameters — see _reject_removed_config_params.
+    # Untyped so they stay out of the declared tool schema while still being
+    # captured here for a clear rejection error.
+    default_runner="",
+    runners="",
 ) -> dict:
     """Update workspace-level configuration on a workspace entry.
 
@@ -2790,31 +2741,26 @@ def workspace_update_config(
             workspaces migrated from a legacy ``slackWorkspaces:`` YAML
             entry this is the Slack team ID until the workspace is
             renamed via ``new_id``. Required.
-        default_runner: New workspace-level default agent runner applied
-            to workstreams in this workspace when neither the workstream
-            nor the per-job override sets one. Use ``agent_options`` to
-            discover valid runner names. Convenience shortcut equivalent
-            to ``runners='{"default": "<value>"}'``; the explicit
-            ``runners["default"]`` wins when both are supplied.
-        runners: JSON object mapping phase wire names to runner
-            identifiers (e.g.
-            ``'{"primary":"opencode","deduplication":"opencode"}'``).
-            An optional ``"default"`` key sets the workspace-level
-            default. Use ``agent_options`` to discover available phase
-            wire names. Empty string leaves the per-phase map
-            unchanged.
-        default_phase_config: New workspace-level default
-            ``{runner, model, effort}`` triple as a JSON object. Empty
-            leaves it unchanged. **Precedence:** wins field-by-field over
-            the legacy ``default_runner`` shortcut when both are supplied
-            — e.g. ``default_phase_config='{"runner":"claude"}'`` together
-            with ``default_runner="opencode"`` records ``claude`` as the
-            workspace default runner.
+        default_phase_config: New workspace-level default configuration as a
+            JSON object with optional ``runner`` / ``model`` / ``effort`` /
+            ``provider`` keys. Empty leaves it unchanged. Applied to
+            workstreams in this workspace when neither the workstream nor the
+            per-job override sets a value. Use ``agent_options`` to discover
+            valid runner names. Example::
+
+                '{"runner": "opencode", "model": "qwen3-coder:exacto",
+                  "effort": "medium", "provider": "openrouter"}'
+
         phase_configs: New workspace-level per-phase overrides as a JSON
             object whose keys are phase wire names and whose values are
-            ``{runner, model, effort}`` triples. Empty leaves the per-phase
-            map unchanged. **Precedence:** wins field-by-field over the
-            legacy ``runners`` map when both are supplied.
+            ``{runner, model, effort, provider}`` objects (all keys
+            optional). Empty leaves the per-phase map unchanged. Each named
+            phase overrides ``default_phase_config`` field-by-field.
+        default_runner: REMOVED. The legacy ``default_runner`` parameter is no
+            longer accepted; passing it fails with a 400-style error. Use
+            ``default_phase_config='{"runner": "..."}'``.
+        runners: REMOVED. The legacy ``runners`` map is no longer accepted.
+            Use ``phase_configs`` (per-phase) or ``default_phase_config``.
         name: New human-readable workspace label (used in logs and
             diagnostics). Low-risk operational field.
         default_channel: New fallback Slack channel ID for messages
@@ -2854,12 +2800,15 @@ def workspace_update_config(
                 "Pass workspace_id (the operator-chosen workspace ID)",
             ],
         }
+    err = _reject_removed_config_params(
+        default_runner=default_runner, runners=runners)
+    if err:
+        return err
     slack_team_id_provided = slack_team_id != _WORKSPACE_UNSET
     if not slack_team_id_provided:
         slack_team_id = ""
     err = _check_short_strings(
         workspace_id=workspace_id,
-        default_runner=default_runner,
         name=name,
         default_channel=default_channel,
         new_id=new_id,
@@ -2867,9 +2816,6 @@ def workspace_update_config(
     )
     if err:
         return err
-    parsed_runners, runners_err = _parse_runners_json(runners)
-    if runners_err:
-        return runners_err
     parsed_default_phase_config, default_pc_err = _parse_default_phase_config_json(default_phase_config)
     if default_pc_err:
         return default_pc_err
@@ -2888,11 +2834,6 @@ def workspace_update_config(
     if slack_team_id_provided:
         # Empty string clears; non-empty (re)binds. Either case is a write.
         payload["slackTeamId"] = slack_team_id
-    runners_payload = dict(parsed_runners) if parsed_runners else {}
-    if default_runner and "default" not in runners_payload:
-        runners_payload["default"] = default_runner
-    if runners_payload:
-        payload["runners"] = runners_payload
     if parsed_default_phase_config:
         payload["defaultPhaseConfig"] = parsed_default_phase_config
     if parsed_phase_configs:
@@ -2903,8 +2844,8 @@ def workspace_update_config(
             "ok": False,
             "error": "No fields to update. Provide at least one field.",
             "next_steps": [
-                "Specify fields to update: default_runner, runners, "
-                "default_phase_config, phase_configs, name, default_channel, "
+                "Specify fields to update: default_phase_config, "
+                "phase_configs, name, default_channel, "
                 "new_id, or slack_team_id",
             ],
         }
@@ -6312,6 +6253,19 @@ if __name__ == "__main__":
             # Serve MCP at "/" — Claude mobile ignores the path component
             # and always sends requests to the root.
             mcp.settings.streamable_http_path = "/"
+            # Run the streamable-HTTP transport STATELESS so a client is not
+            # required to echo the ``mcp-session-id`` from ``initialize`` on
+            # follow-up requests. The default stateful transport rejects any
+            # follow-up that omits the session id with 400 "Missing session
+            # ID"; OpenAI's MCP client (ChatGPT) does not resend the id, so
+            # its first post-initialize call fails and the OpenAI gateway
+            # surfaces a 502. Stateless mode is safe here: every tool call
+            # decodes its bearer from the request's own Authorization header
+            # (see BearerAuthMiddleware) rather than from session-bound
+            # context, and the tools are independent request/response RPCs
+            # with no server-initiated streaming, so no per-session state is
+            # lost. It is also strictly more lenient for every other client.
+            mcp.settings.stateless_http = True
             # Disable DNS rebinding protection — the server runs behind a
             # TLS-terminating reverse proxy (Tailscale Funnel) where the
             # Host header is the public DNS name, not localhost.
@@ -6340,8 +6294,10 @@ if __name__ == "__main__":
             # existing bearer token.
             from oauth import OAuthMiddleware
             issuer_url = os.environ.get("AR_MANAGER_ISSUER_URL")
-            app = BearerAuthMiddleware(app, tokens)
-            app = OAuthMiddleware(app, tokens, issuer_url=issuer_url)
+            oauth_state_file = os.environ.get("AR_MANAGER_OAUTH_STATE_FILE")
+            app = BearerAuthMiddleware(app, tokens, issuer_url=issuer_url)
+            app = OAuthMiddleware(app, tokens, issuer_url=issuer_url,
+                                  state_file=oauth_state_file)
             app = RateLimitMiddleware(app, requests_per_minute=RATE_LIMIT)
             app = HealthMiddleware(app)
 

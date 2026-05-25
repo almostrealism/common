@@ -187,6 +187,24 @@ public class OpencodeRunner implements AgentRunner {
     }
 
     /**
+     * Stdout-silence window for opencode sessions. opencode (notably
+     * qwen3-coder via OpenRouter, and slower local llama.cpp providers) can
+     * spend several minutes generating a single response between NDJSON
+     * events during a long primary phase, so the {@value
+     * AgentRunner#DEFAULT_INACTIVITY_TIMEOUT_MILLIS}-millisecond default tuned
+     * for Claude Code's faster cadence risks killing legitimate work. A longer
+     * window is safe here because the {@link #probeProviderUrl provider
+     * liveness probe} already fails fast when the upstream is actually down,
+     * leaving this watchdog as a backstop only for a truly wedged subprocess.
+     */
+    private static final long OPENCODE_INACTIVITY_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(45);
+
+    @Override
+    public long defaultInactivityTimeoutMillis() {
+        return OPENCODE_INACTIVITY_TIMEOUT_MILLIS;
+    }
+
+    /**
      * Sets the workspace secret lookup function. This is used to fetch
      * API keys from the workspace secrets store.
      *

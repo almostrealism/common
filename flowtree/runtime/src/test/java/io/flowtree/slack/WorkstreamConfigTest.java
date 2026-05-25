@@ -545,8 +545,13 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals("max", entry.getEffort());
     }
 
+    /**
+     * Legacy {@code model} / {@code effort} are dropped on save (clean break)
+     * but their values are migrated into the new per-phase default, so a
+     * save-then-load cycle preserves the configuration in the new shape.
+     */
     @Test(timeout = 10000)
-    public void testSaveAndReloadPreservesModelAndEffort() throws IOException {
+    public void testSaveAndReloadMigratesModelAndEffortToPhaseConfig() throws IOException {
         String yaml = "workstreams:\n"
             + "  - channelId: \"C_ME\"\n"
             + "    channelName: \"#me\"\n"
@@ -562,8 +567,79 @@ public class WorkstreamConfigTest extends TestSuiteBase {
 
         WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
         WorkstreamConfig.WorkstreamEntry entry = reloaded.getWorkstreams().get(0);
-        assertEquals("sonnet", entry.getModel());
-        assertEquals("high", entry.getEffort());
+        // Legacy fields are no longer written: a save drops them.
+        assertNull("legacy model must not survive a save", entry.getModel());
+        assertNull("legacy effort must not survive a save", entry.getEffort());
+        // The values are migrated into the per-phase default and survive.
+        PhaseConfig def = entry.toPhaseConfigBundle().defaultPhaseConfig();
+        assertEquals("sonnet", def.model());
+        assertEquals("high", def.effort());
+    }
+
+    /**
+     * YAML written by the controller after a save must contain ONLY the new
+     * per-phase shape ({@code defaultPhaseConfig} / {@code phaseConfigs}); the
+     * legacy {@code model} / {@code effort} / {@code defaultRunner} /
+     * {@code runners} keys must be absent from the serialized output even when
+     * they were present on load. This is the clean break: configs that get
+     * touched are rewritten to the new shape.
+     */
+    @Test(timeout = 10000)
+    public void testSaveEmitsOnlyNewShapeNotLegacyFields() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - channelId: \"C-legacy\"\n"
+            + "    defaultBranch: \"feature/legacy\"\n"
+            + "    model: \"opus\"\n"
+            + "    effort: \"high\"\n"
+            + "    defaultRunner: \"opencode\"\n"
+            + "    runners:\n"
+            + "      review: \"claude\"\n"
+            + "slackWorkspaces:\n"
+            + "  - workspaceId: \"T-LEGACY\"\n"
+            + "    botToken: \"xoxb\"\n"
+            + "    appToken: \"xapp\"\n"
+            + "    defaultRunner: \"opencode\"\n"
+            + "    runners:\n"
+            + "      primary: \"claude\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        File tempFile = File.createTempFile("workstream-config-clean-break", ".yaml");
+        tempFile.deleteOnExit();
+        config.saveToYaml(tempFile);
+
+        // Raw-text check: the unambiguous legacy entry-level keys must be
+        // absent. (`model:` / `effort:` / `runner:` also appear nested inside
+        // the new defaultPhaseConfig / phaseConfigs objects, so their absence
+        // at entry level is verified below via the reloaded legacy getters.)
+        String written = new String(Files.readAllBytes(tempFile.toPath()));
+        assertFalse("saved YAML must not contain legacy 'defaultRunner:'",
+                written.contains("defaultRunner:"));
+        assertFalse("saved YAML must not contain legacy 'runners:'", written.contains("runners:"));
+        assertTrue("saved YAML must contain new defaultPhaseConfig",
+                written.contains("defaultPhaseConfig"));
+        assertTrue("saved YAML must contain new phaseConfigs", written.contains("phaseConfigs"));
+
+        // Reloaded legacy getters being empty proves no legacy entry-level
+        // key was written (a legacy key in the output would repopulate them).
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        WorkstreamConfig.WorkstreamEntry wsEntry = reloaded.getWorkstreams().get(0);
+        assertNull(wsEntry.getModel());
+        assertNull(wsEntry.getEffort());
+        assertNull(wsEntry.getDefaultRunner());
+        assertTrue(wsEntry.getRunners().isEmpty());
+        WorkstreamConfig.WorkspaceEntry wspEntry = reloaded.findSlackWorkspace("T-LEGACY");
+        assertNull(wspEntry.getDefaultRunner());
+        assertTrue(wspEntry.getRunners().isEmpty());
+
+        // The configuration is preserved through the migration.
+        PhaseConfigBundle wsBundle = wsEntry.toPhaseConfigBundle();
+        assertEquals("opus", wsBundle.defaultPhaseConfig().model());
+        assertEquals("high", wsBundle.defaultPhaseConfig().effort());
+        assertEquals("opencode", wsBundle.defaultPhaseConfig().runner());
+        assertEquals("claude", wsBundle.forPhase(Phase.REVIEW).runner());
+        PhaseConfigBundle wspBundle = wspEntry.toPhaseConfigBundle();
+        assertEquals("opencode", wspBundle.defaultPhaseConfig().runner());
+        assertEquals("claude", wspBundle.forPhase(Phase.PRIMARY).runner());
     }
 
     /**
@@ -593,14 +669,20 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals("opencode", ws.getDefaultRunner());
         assertEquals("opencode", ws.getRunners().get("deduplication"));
 
-        // Save and reload — the runners section survives a YAML round-trip.
+        // Save and reload — legacy runner fields are dropped on save (clean
+        // break) but the runner configuration is migrated into the per-phase
+        // shape, so it survives the round-trip in the new form.
         File tempFile = File.createTempFile("workstream-config-runners", ".yaml");
         tempFile.deleteOnExit();
         config.saveToYaml(tempFile);
         WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
         WorkstreamConfig.WorkstreamEntry rEntry = reloaded.getWorkstreams().get(0);
-        assertEquals("opencode", rEntry.getDefaultRunner());
-        assertEquals("opencode", rEntry.getRunners().get("deduplication"));
+        assertNull("legacy defaultRunner must not survive a save", rEntry.getDefaultRunner());
+        assertTrue("legacy runners map must not survive a save", rEntry.getRunners().isEmpty());
+        PhaseConfigBundle rBundle = rEntry.toPhaseConfigBundle();
+        assertEquals("opencode", rBundle.defaultPhaseConfig().runner());
+        assertEquals("claude", rBundle.forPhase(Phase.PRIMARY).runner());
+        assertEquals("opencode", rBundle.forPhase(Phase.DEDUPLICATION).runner());
     }
 
     /**
@@ -656,9 +738,14 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         WorkstreamConfig.WorkspaceEntry rEntry =
                 reloaded.findSlackWorkspace("T-RUNNERS");
         assertNotNull(rEntry);
-        assertEquals("opencode", rEntry.getDefaultRunner());
-        assertEquals("claude", rEntry.getRunners().get("primary"));
-        assertEquals("opencode", rEntry.getRunners().get("commit-message"));
+        // Legacy runner fields are dropped on save; the configuration is
+        // migrated into the per-phase shape and survives in the new form.
+        assertNull("legacy defaultRunner must not survive a save", rEntry.getDefaultRunner());
+        assertTrue("legacy runners map must not survive a save", rEntry.getRunners().isEmpty());
+        PhaseConfigBundle rBundle = rEntry.toPhaseConfigBundle();
+        assertEquals("opencode", rBundle.defaultPhaseConfig().runner());
+        assertEquals("claude", rBundle.forPhase(Phase.PRIMARY).runner());
+        assertEquals("opencode", rBundle.forPhase(Phase.COMMIT_MESSAGE).runner());
     }
 
     /**
@@ -688,8 +775,11 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         WorkstreamConfig.WorkspaceEntry rEntry =
                 reloaded.findSlackWorkspace("T-DEF");
         assertNotNull(rEntry);
-        assertEquals("opencode", rEntry.getDefaultRunner());
+        // The legacy defaultRunner is dropped on save but migrated into the
+        // per-phase default, which carries it across the round-trip.
+        assertNull("legacy defaultRunner must not survive a save", rEntry.getDefaultRunner());
         assertTrue(rEntry.getRunners().isEmpty());
+        assertEquals("opencode", rEntry.toPhaseConfigBundle().defaultPhaseConfig().runner());
     }
 
     /**

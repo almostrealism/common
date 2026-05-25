@@ -19,6 +19,8 @@ package io.flowtree.jobs.agent;
 import io.almostrealism.uml.Named;
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.util.concurrent.TimeUnit;
+
 /**
  * Pluggable backend that runs one agent session against a prompt and returns
  * the resulting metrics. Implementations are stateless across calls; the
@@ -34,6 +36,14 @@ import org.almostrealism.io.ConsoleFeatures;
  * @author Michael Murray
  */
 public interface AgentRunner extends Named {
+
+    /**
+     * Default stdout-silence duration applied by the orchestrator's inactivity
+     * watchdog when a runner declares no runner-specific override. Twenty
+     * minutes is tuned for Claude Code's cadence, which streams NDJSON events
+     * frequently while it works.
+     */
+    long DEFAULT_INACTIVITY_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(20);
 
     /**
      * Runs one agent session.
@@ -69,4 +79,22 @@ public interface AgentRunner extends Named {
      *         not support providers (should not happen for modern runners)
      */
     default String defaultProvider() { return null; }
+
+    /**
+     * Returns the stdout-silence duration, in milliseconds, after which the
+     * orchestrator's inactivity watchdog terminates this runner's subprocess.
+     *
+     * <p>The watchdog measures wall-clock silence between lines of captured
+     * stdout, not total runtime: a long-running session keeps the timer reset
+     * as long as it keeps emitting output. Runners whose models produce long
+     * gaps between output lines (for example a local or proxied model thinking
+     * through a large generation before emitting its next event) should
+     * declare a larger window here so legitimate work is not mistaken for a
+     * hung process. The default is {@link #DEFAULT_INACTIVITY_TIMEOUT_MILLIS}.</p>
+     *
+     * @return the inactivity-kill window in milliseconds; always positive
+     */
+    default long defaultInactivityTimeoutMillis() {
+        return DEFAULT_INACTIVITY_TIMEOUT_MILLIS;
+    }
 }

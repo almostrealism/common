@@ -28,6 +28,7 @@ import com.slack.api.methods.response.conversations.ConversationsListResponse;
 import com.slack.api.model.Conversation;
 import com.slack.api.model.ConversationType;
 import io.flowtree.JsonFieldExtractor;
+import io.flowtree.jobs.HarnessStatusReporter;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.JobCompletionListener;
 import org.almostrealism.io.Alert;
@@ -1150,6 +1151,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
 
         // Cost
+        // TODO(review): per-job completion cost line was not enhanced; weekly /flowtree stats gained :moneybag: + per-runner breakdown but this line stays plain and omits event.getCostByRunner()
         if (event.getCostUsd() > 0) {
             sb.append("   Cost: $").append(String.format("%.2f", event.getCostUsd())).append("\n");
         }
@@ -1200,17 +1202,11 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
     /**
      * Formats a duration in milliseconds into a human-readable string.
+     * Delegates to {@link HarnessStatusReporter#formatDuration(long)} for a shared
+     * implementation across harness status reporting and per-job Slack output.
      */
     private static String formatDuration(long ms) {
-        if (ms < 1000) return ms + "ms";
-        long seconds = ms / 1000;
-        if (seconds < 60) return seconds + "s";
-        long minutes = seconds / 60;
-        long remainingSeconds = seconds % 60;
-        if (minutes < 60) return minutes + "m " + remainingSeconds + "s";
-        long hours = minutes / 60;
-        long remainingMinutes = minutes % 60;
-        return hours + "h " + remainingMinutes + "m";
+        return HarnessStatusReporter.formatDuration(ms);
     }
 
     /**
@@ -1291,14 +1287,19 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
-     * Truncates a string to at most {@code maxLength} characters. Returns an
-     * empty string rather than {@code null} when the input is {@code null}.
+     * Truncates a string to at most {@code maxLength} characters, appending
+     * {@code "..."} when the string is shortened. Returns an empty string
+     * rather than {@code null} when the input is {@code null}.
      *
-     * @param s          the string to truncate
-     * @param maxLength  maximum number of characters to retain
+     * <p>Package-private so that other classes in this package
+     * ({@link MessageEndpointHandler}, {@link SlackListener}) can share the
+     * same implementation without duplicating it.
+     *
+     * @param s          the string to truncate, or {@code null}
+     * @param maxLength  maximum number of characters to retain (including ellipsis)
      * @return           the (possibly truncated) string, never {@code null}
      */
-    private static String truncate(String s, int maxLength) {
+    static String truncate(String s, int maxLength) {
         if (s == null) return "";
         if (s.length() <= maxLength) return s;
         return s.substring(0, maxLength - 3) + "...";

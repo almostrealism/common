@@ -35,7 +35,9 @@ import hashlib
 import hmac
 import html
 import json
+import os
 import secrets
+import sys
 import threading
 import time
 from typing import Optional
@@ -51,6 +53,40 @@ _MAX_CLIENTS = 500
 _MAX_PENDING_CODES = 2000
 _CLIENT_STALE_SECONDS = 86400 * 30  # 30 days
 _GC_INTERVAL_SECONDS = 300  # run GC at most every 5 minutes
+
+# Base paths of the discovery documents. A per-path resource appends its path
+# to these (RFC 8414 / RFC 9728 path-scoped discovery), e.g.
+# ``/.well-known/oauth-protected-resource/c1`` and
+# ``/.well-known/oauth-authorization-server/c1``.
+_PRM_PATH = "/.well-known/oauth-protected-resource"
+_ASM_PATH = "/.well-known/oauth-authorization-server"
+
+
+def derive_issuer(scope, configured: Optional[str] = None) -> str:
+    """Resolve the public base/issuer URL for an incoming ASGI request.
+
+    When an issuer is explicitly configured (``AR_MANAGER_ISSUER_URL``) it is
+    used verbatim. Otherwise the scheme and host are derived from the request
+    headers: any non-localhost host is assumed to be HTTPS because the server
+    runs behind a TLS-terminating reverse proxy (Tailscale Funnel), unless an
+    ``X-Forwarded-Proto`` header says otherwise.
+
+    Args:
+        scope: The ASGI connection scope.
+        configured: An explicitly configured issuer URL, or None to derive.
+
+    Returns:
+        The issuer URL with any trailing slash removed.
+    """
+    if configured:
+        return configured.rstrip("/")
+    headers = dict(scope.get("headers", []))
+    host = headers.get(b"host", b"localhost").decode("utf-8")
+    scheme = "http" if host.startswith("localhost") or host.startswith("127.") else "https"
+    forwarded_proto = headers.get(b"x-forwarded-proto", b"").decode("utf-8")
+    if forwarded_proto:
+        scheme = forwarded_proto
+    return f"{scheme}://{host}"
 
 
 # ---------------------------------------------------------------------------
@@ -237,7 +273,8 @@ class OAuthMiddleware:
         "/oauth/token",
     })
 
-    def __init__(self, app, tokens: list, issuer_url: Optional[str] = None):
+    def __init__(self, app, tokens: list, issuer_url: Optional[str] = None,
+                 state_file: Optional[str] = None):
         """
         Args:
             app: The wrapped ASGI application.
@@ -246,9 +283,17 @@ class OAuthMiddleware:
             issuer_url: Public base URL of this server (e.g.
                 ``https://myhost.tail1234.ts.net``). If not set, derived
                 from the ``Host`` header of incoming requests.
+            state_file: Optional path to a JSON file used to persist dynamic
+                client registrations across restarts. When set, registrations
+                are loaded from this file on startup and written back whenever
+                a client is registered or garbage-collected. Without it,
+                registrations live only in memory and every restart forces all
+                connected MCP clients (claude.ai, ChatGPT, etc.) to
+                re-register, breaking any cached ``client_id``.
         """
         self.app = app
         self.issuer_url = issuer_url.rstrip("/") if issuer_url else None
+        self._state_file = state_file
 
         # Build token lookup for validating credentials on the auth page
         self._bearer_tokens: list[tuple[str, list, str]] = []
@@ -259,11 +304,15 @@ class OAuthMiddleware:
             if value:
                 self._bearer_tokens.append((value, scopes, label))
 
-        # In-memory stores (acceptable for single-instance deployment)
+        # Client registrations persist to ``state_file`` (when configured);
+        # authorization codes are short-lived and remain in memory only.
         self._clients: dict[str, dict] = {}
         self._codes: dict[str, dict] = {}
         self._lock = threading.Lock()
         self._last_gc = 0.0
+
+        if self._state_file:
+            self._load_clients()
 
     # -- Routing -------------------------------------------------------------
 
@@ -273,16 +322,23 @@ class OAuthMiddleware:
             return
 
         path = scope.get("path", "")
-        if path not in self.OAUTH_PATHS:
+        # RFC 9728 allows the protected-resource metadata to live at a
+        # path-suffixed well-known URL (e.g.
+        # /.well-known/oauth-protected-resource/c1) so a single server can
+        # expose distinct resources per URL path. Match that prefix as well as
+        # the OAuth endpoints.
+        is_prm = (path == _PRM_PATH or path.startswith(_PRM_PATH + "/"))
+        is_asm = (path == _ASM_PATH or path.startswith(_ASM_PATH + "/"))
+        if path not in self.OAUTH_PATHS and not is_prm and not is_asm:
             await self.app(scope, receive, send)
             return
 
         method = scope.get("method", "GET")
         self._maybe_gc()
 
-        if path == "/.well-known/oauth-authorization-server" and method == "GET":
+        if is_asm and method == "GET":
             await self._handle_metadata(scope, send)
-        elif path == "/.well-known/oauth-protected-resource" and method == "GET":
+        elif is_prm and method == "GET":
             await self._handle_protected_resource(scope, send)
         elif path == "/oauth/register" and method == "POST":
             await self._handle_register(receive, send)
@@ -322,32 +378,85 @@ class OAuthMiddleware:
             ]
             for k in stale_clients:
                 del self._clients[k]
+            if stale_clients:
+                self._save_clients_locked()
+
+    # -- Persistence ---------------------------------------------------------
+
+    def _load_clients(self):
+        """Load persisted client registrations from ``self._state_file``.
+
+        Missing or malformed state is treated as an empty registry rather than
+        a fatal error, so a corrupted file never prevents the server from
+        starting.
+        """
+        try:
+            with open(self._state_file, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except FileNotFoundError:
+            return
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"ar-manager: failed to load OAuth client state from "
+                  f"{self._state_file}: {exc}", file=sys.stderr)
+            return
+
+        clients = data.get("clients") if isinstance(data, dict) else None
+        if not isinstance(clients, dict):
+            return
+
+        with self._lock:
+            self._clients = clients
+        print(f"ar-manager: loaded {len(clients)} OAuth client "
+              f"registration(s) from {self._state_file}", file=sys.stderr)
+
+    def _save_clients_locked(self):
+        """Persist client registrations to ``self._state_file``.
+
+        The caller MUST hold ``self._lock``. The write is atomic (temp file
+        plus ``os.replace``) so a crash mid-write cannot corrupt the file. A
+        failure to persist is logged but never propagated — losing durability
+        is preferable to failing a live registration request.
+        """
+        if not self._state_file:
+            return
+        tmp_path = f"{self._state_file}.tmp"
+        try:
+            parent = os.path.dirname(self._state_file)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(tmp_path, "w", encoding="utf-8") as handle:
+                json.dump({"clients": self._clients}, handle)
+            os.replace(tmp_path, self._state_file)
+        except OSError as exc:
+            print(f"ar-manager: failed to persist OAuth client state to "
+                  f"{self._state_file}: {exc}", file=sys.stderr)
 
     # -- Issuer URL ----------------------------------------------------------
 
     def _get_issuer(self, scope) -> str:
         """Return the issuer URL, deriving from the request if not configured."""
-        if self.issuer_url:
-            return self.issuer_url
-        headers = dict(scope.get("headers", []))
-        host = headers.get(b"host", b"localhost").decode("utf-8")
-        # Assume HTTPS for any non-localhost host (Tailscale Funnel provides TLS)
-        scheme = "http" if host.startswith("localhost") or host.startswith("127.") else "https"
-        forwarded_proto = headers.get(b"x-forwarded-proto", b"").decode("utf-8")
-        if forwarded_proto:
-            scheme = forwarded_proto
-        return f"{scheme}://{host}"
+        return derive_issuer(scope, self.issuer_url)
 
     # -- RFC 8414: Metadata --------------------------------------------------
 
     async def _handle_metadata(self, scope, send):
-        """Serve OAuth 2.1 Authorization Server Metadata."""
-        issuer = self._get_issuer(scope)
+        """Serve OAuth 2.1 Authorization Server Metadata (RFC 8414).
+
+        Supports path-scoped issuers: a request to
+        ``/.well-known/oauth-authorization-server/c1`` advertises issuer
+        ``<origin>/c1`` so the value matches the URL the client derived it
+        from (RFC 8414 issuer validation). The OAuth endpoints themselves stay
+        at the origin root — there is a single authorization server regardless
+        of the per-connector path.
+        """
+        origin = self._get_issuer(scope)
+        path = scope.get("path", _ASM_PATH)
+        suffix = path[len(_ASM_PATH):]  # "" for the root issuer, else "/<path>"
         metadata = {
-            "issuer": issuer,
-            "authorization_endpoint": f"{issuer}/oauth/authorize",
-            "token_endpoint": f"{issuer}/oauth/token",
-            "registration_endpoint": f"{issuer}/oauth/register",
+            "issuer": origin + suffix,
+            "authorization_endpoint": f"{origin}/oauth/authorize",
+            "token_endpoint": f"{origin}/oauth/token",
+            "registration_endpoint": f"{origin}/oauth/register",
             "response_types_supported": ["code"],
             "grant_types_supported": ["authorization_code"],
             "token_endpoint_auth_methods_supported": ["none"],
@@ -362,11 +471,33 @@ class OAuthMiddleware:
         """Serve OAuth Protected Resource Metadata (RFC 9728).
 
         Tells the client which authorization server protects this resource.
+        The advertised ``resource`` mirrors the path the metadata was fetched
+        under: a request to ``/.well-known/oauth-protected-resource/c1`` yields
+        ``resource = <issuer>/c1``. This lets a connector be configured with an
+        arbitrary path (which some clients use as a per-connector cache key)
+        while still presenting a ``resource`` that matches the configured URL.
         """
-        issuer = self._get_issuer(scope)
+        origin = self._get_issuer(scope)
+        path = scope.get("path", _PRM_PATH)
+        suffix = path[len(_PRM_PATH):]  # "" for the root resource, else "/<path>"
+        if suffix:
+            # Path-scoped resource: the authorization server is identified by
+            # the same path-scoped issuer, so the client resolves its metadata
+            # at the matching /.well-known/oauth-authorization-server<suffix>.
+            resource = origin + suffix
+            auth_servers = [resource]
+        else:
+            # Root resource: MCP clients (e.g. claude.ai) canonicalize it WITH
+            # a trailing slash and then correlate the completed authorization
+            # against that exact resource string — so advertise the slash form
+            # or the client fails post-OAuth with "server not found". The
+            # authorization server itself is the bare origin (its AS-metadata
+            # issuer carries no trailing slash).
+            resource = origin + "/"
+            auth_servers = [origin]
         metadata = {
-            "resource": issuer,
-            "authorization_servers": [issuer],
+            "resource": resource,
+            "authorization_servers": auth_servers,
             "bearer_methods_supported": ["header"],
             "scopes_supported": ["read", "write", "pipeline", "memory"],
         }
@@ -429,6 +560,7 @@ class OAuthMiddleware:
                 "created_at": time.time(),
                 "last_used": time.time(),
             }
+            self._save_clients_locked()
 
         await _json_response(send, 201, {
             "client_id": client_id,
@@ -588,6 +720,12 @@ class OAuthMiddleware:
                 "scopes": matched_scopes,
                 "label": matched_label,
                 "token_value": matched_value,
+                # The scope the client asked for, echoed back verbatim in the
+                # token response. The bearer token's own (broader) server-side
+                # scopes are a superset; returning them instead makes strict
+                # clients reject the grant because it doesn't match what they
+                # requested.
+                "requested_scope": params.get("scope", ""),
                 "expires_at": time.time() + _CODE_LIFETIME_SECONDS,
             }
 
@@ -678,12 +816,19 @@ class OAuthMiddleware:
             })
             return
 
-        # Issue the bearer token as the access token
-        scopes = code_entry["scopes"]
+        # Issue the bearer token as the access token. Echo the scope the
+        # client requested (not the token's broader internal scopes) and
+        # include ``expires_in`` — strict clients (e.g. claude.ai) reject the
+        # exchange when the granted scope is an unexpected superset or when
+        # ``expires_in`` is absent. The underlying token does not actually
+        # expire; a long lifetime simply avoids spurious client-side refresh.
+        requested_scope = code_entry.get("requested_scope", "")
+        granted_scope = requested_scope or " ".join(code_entry["scopes"])
         await _json_response(send, 200, {
             "access_token": code_entry["token_value"],
-            "token_type": "bearer",
-            "scope": " ".join(scopes),
+            "token_type": "Bearer",
+            "expires_in": 31536000,
+            "scope": granted_scope,
         })
 
     # -- Error page -----------------------------------------------------------

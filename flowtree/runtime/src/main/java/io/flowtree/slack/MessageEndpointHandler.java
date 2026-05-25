@@ -115,7 +115,7 @@ final class MessageEndpointHandler {
         }
 
         log.accept("Message [" + workstreamId + (jobId != null ? "/" + jobId : "") + "]: "
-                + truncate(text, 80));
+                + SlackNotifier.truncate(text, 80));
 
         // Store as memory — hard error if memory server is configured but fails,
         // warning if memory server is not configured at all (minimal deployment)
@@ -204,7 +204,7 @@ final class MessageEndpointHandler {
             try (InputStream is = conn.getErrorStream()) {
                 if (is != null) {
                     String errBody = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-                    return "memory server returned " + status + ": " + truncate(errBody, 200);
+                    return "memory server returned " + status + ": " + SlackNotifier.truncate(errBody, 200);
                 }
             }
             return "memory server returned " + status;
@@ -213,17 +213,4 @@ final class MessageEndpointHandler {
         }
     }
 
-    /**
-     * Truncates a string to at most {@code maxLength} characters, appending
-     * {@code "..."} when the string is shortened.
-     *
-     * @param s         the string to truncate, or {@code null}
-     * @param maxLength maximum number of characters to retain (including ellipsis)
-     * @return the (possibly truncated) string, never {@code null}
-     */
-    private static String truncate(String s, int maxLength) {
-        if (s == null) return "";
-        if (s.length() <= maxLength) return s;
-        return s.substring(0, maxLength - 3) + "...";
-    }
 }

@@ -38,7 +38,6 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 /**
  * A {@link Job} implementation that executes a Claude Code prompt.
@@ -143,8 +142,6 @@ public class CodingAgentJob extends GitManagedJob {
     private String currentActivity;
     /** Description of a git-tampering rule violation detected during this job. */
     private String gitTamperingViolation;
-    /** Stdout silence duration after which the Claude subprocess is killed (default 20 min). */
-    private long inactivityTimeoutMillis = TimeUnit.MINUTES.toMillis(20);
     /** Maximum relaunches of Claude after inactivity-triggered kills (default 3). */
     private int maxInactivityRestarts = 3;
     /** Number of inactivity-triggered relaunches in the current run; resets to 0 after the run. */
@@ -233,6 +230,8 @@ public class CodingAgentJob extends GitManagedJob {
     private long durationApiMs;
     /** Total cost of the Claude Code session in US dollars. */
     private double costUsd;
+    /** Cumulative USD cost per runner name, summed across every phase invocation in this job. */
+    private final Map<String, Double> costByRunner = new LinkedHashMap<>();
     /** Number of agentic turns taken during the Claude Code session. */
     private int numTurns;
     /** Session subtype / stop reason reported by Claude Code (e.g. "success"). */
@@ -248,6 +247,9 @@ public class CodingAgentJob extends GitManagedJob {
 
     /** Wall-clock instant at which {@link #doWork()} began; used to filter abandoned-test-run scans. */
     private Instant sessionStartedAt;
+
+    /** Publishes harness-level status messages; created lazily once the workstream URL is known. */
+    private HarnessStatusReporter harnessStatus;
 
     /**
      * Default constructor for deserialization.
@@ -1023,6 +1025,8 @@ public class CodingAgentJob extends GitManagedJob {
         String violation = getTamperingDescription();
         warn("Agent tampered with git: " + violation
             + " -- destroying all changes and restarting session");
+        harnessStatus().unusual("Git tampering detected (" + violation
+            + ") — destroying changes and restarting session");
 
         // Set the violation message so buildInstructionPrompt() includes
         // the warning in the restarted session's prompt.
@@ -1070,6 +1074,8 @@ public class CodingAgentJob extends GitManagedJob {
 
         Phase currentPhase = resolveCurrentPhase();
         AgentRunner runner = resolveRunner(currentPhase);
+        harnessStatus().phaseEntry(currentPhase, runner.getName(),
+                resolveEffectivePhaseConfig(currentPhase));
         toolsDownloader.ensurePushedTools(pushedToolsConfig);
         configureMcpBuilder();
         String mcpConfigJson = mcpConfigBuilder.buildMcpConfig();
@@ -1094,6 +1100,7 @@ public class CodingAgentJob extends GitManagedJob {
             wasKilledForInactivity = result.killedForInactivity();
             finalResult = result;
             if (!wasKilledForInactivity) break;
+            harnessStatus().inactivitySuspended(runner.getName(), attempt, maxInactivityRestarts);
             if (attempt == maxInactivityRestarts) {
                 warn("Inactivity-restart limit (" + maxInactivityRestarts + ") reached -- abandoning agent session");
             } else {
@@ -1105,7 +1112,9 @@ public class CodingAgentJob extends GitManagedJob {
 
         if (finalResult != null) {
             absorbResult(finalResult);
+            costByRunner.merge(runner.getName(), finalResult.costUsd(), Double::sum);
         }
+        harnessStatus().phaseExit(currentPhase, finalResult);
         log("Output saved to: " + outputFile);
 
         if (getOutputConsumer() != null) {
@@ -1206,7 +1215,8 @@ public class CodingAgentJob extends GitManagedJob {
                 ? Path.of(getWorkingDirectory()) : null;
         // Resolve per-phase model/effort from the bundle, falling back to
         // the legacy single-value fields for anything the bundle leaves null.
-        PhaseConfig effective = phaseConfigBundle.forPhase(resolveCurrentPhase())
+        Phase phase = resolveCurrentPhase();
+        PhaseConfig effective = phaseConfigBundle.forPhase(phase)
                 .overlayOn(new PhaseConfig(defaultRunner, model, effort));
         return AgentRunRequest.builder()
                 .prompt(buildInstructionPrompt())
@@ -1219,7 +1229,7 @@ public class CodingAgentJob extends GitManagedJob {
                 .provider(effective.provider())
                 .maxTurns(maxTurns)
                 .maxBudgetUsd(maxBudgetUsd)
-                .inactivityTimeoutMillis(inactivityTimeoutMillis)
+                .inactivityTimeoutMillis(resolveRunner(phase).defaultInactivityTimeoutMillis())
                 .inactivityRestartAttempt(attempt)
                 .maxInactivityRestarts(maxInactivityRestarts)
                 .taskId(getTaskId())
@@ -1232,6 +1242,19 @@ public class CodingAgentJob extends GitManagedJob {
     PhaseConfig resolveEffectivePhaseConfig(Phase phase) {
         return phaseConfigBundle.forPhase(phase)
                 .overlayOn(new PhaseConfig(defaultRunner, model, effort));
+    }
+
+    /** Returns the lazily-created harness status reporter (no-op when no workstream URL is set). */
+    HarnessStatusReporter harnessStatus() {
+        if (harnessStatus == null) {
+            harnessStatus = new HarnessStatusReporter(resolveWorkstreamUrl(), this::postJson);
+        }
+        return harnessStatus;
+    }
+
+    /** Returns an immutable snapshot of the cumulative per-runner USD cost for this job. */
+    Map<String, Double> getCostByRunner() {
+        return new LinkedHashMap<>(costByRunner);
     }
 
     /**
@@ -1308,6 +1331,7 @@ public class CodingAgentJob extends GitManagedJob {
                 ccEvent.withCommitMessageSource(commitMessageSource);
             }
             ccEvent.withRunnerName(runnerName);
+            ccEvent.withCostByRunner(costByRunner);
             if (postCompletionCapHit) ccEvent.withPostCompletionCapHit(true);
             if (activeReviewRule != null && activeReviewRule.hasRun()) {
                 ccEvent.withReviewInfo(true, activeReviewRule.getFilesModified(),
@@ -1319,7 +1343,8 @@ public class CodingAgentJob extends GitManagedJob {
     @Override
     protected boolean validateChanges() throws Exception {
         // Test-hiding audit (only when protect-test-files is enabled)
-        if (isProtectTestFiles() && !runTestHidingAudit()) {
+        if (isProtectTestFiles()
+                && !TestHidingAudit.passes(getWorkingDirectory(), getBaseBranch(), this)) {
             return false;
         }
 
@@ -1335,43 +1360,6 @@ public class CodingAgentJob extends GitManagedJob {
         return true;
     }
 
-    /**
-     * Runs the detect-test-hiding.sh audit script against the base branch.
-     *
-     * @return {@code false} if test-hiding violations were found (exit code 2),
-     *         {@code true} otherwise (including script-not-found and other errors)
-     * @throws Exception if the process cannot be started
-     */
-    private boolean runTestHidingAudit() throws Exception {
-        Path auditScript = resolveWorkingPath("tools/ci/agent-protection/detect-test-hiding.sh");
-        if (auditScript == null || !Files.exists(auditScript)) {
-            log("detect-test-hiding.sh not found, skipping validation");
-            return true;
-        }
-
-        String baseBranch = getBaseBranch() != null ? getBaseBranch() : "master";
-        ProcessBuilder pb = new ProcessBuilder("bash", auditScript.toString(),
-                "origin/" + baseBranch);
-        String workDir = getWorkingDirectory();
-        if (workDir != null) {
-            pb.directory(new File(workDir));
-        }
-        pb.redirectErrorStream(true);
-        GitOperations.augmentPath(pb);
-        Process p = pb.start();
-        String auditOutput = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        int code = p.waitFor();
-
-        if (code == 2) {
-            warn("Test-hiding violations detected - aborting commit:\n" + auditOutput);
-            return false;
-        } else if (code != 0) {
-            warn("detect-test-hiding.sh exited with code " + code + ": " + auditOutput);
-        }
-
-        log("Test integrity check passed");
-        return true;
-    }
 
     /** Returns new Java method names introduced since the base branch. */
     List<String> extractNewMethodNames() {

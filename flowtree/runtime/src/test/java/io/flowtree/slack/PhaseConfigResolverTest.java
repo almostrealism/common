@@ -342,4 +342,42 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         assertEquals(TEST_RUNNER, r.forPhase(Phase.REVIEW).runner());
         assertEquals(AgentRunnerRegistry.CLAUDE, r.forPhase(Phase.PRIMARY).runner());
     }
+
+    // --- rejectLegacyRequestFields: the clean-break HTTP guard ----------------
+
+    @Test(timeout = 5000)
+    public void rejectLegacyRequestFieldsAcceptsNullEmptyAndCleanBody() {
+        assertNull(PhaseConfigResolver.rejectLegacyRequestFields(null));
+        assertNull(PhaseConfigResolver.rejectLegacyRequestFields(""));
+        assertNull(PhaseConfigResolver.rejectLegacyRequestFields("{}"));
+        assertNull(PhaseConfigResolver.rejectLegacyRequestFields(
+                "{\"defaultPhaseConfig\":{\"runner\":\"claude\"},"
+                        + "\"phaseConfigs\":{\"review\":{\"model\":\"opus\"}}}"));
+    }
+
+    @Test(timeout = 5000)
+    public void rejectLegacyRequestFieldsRejectsEachRemovedField() {
+        for (String field : new String[] {"model", "effort", "runners", "defaultRunner"}) {
+            String err = PhaseConfigResolver.rejectLegacyRequestFields(
+                    "{\"" + field + "\":\"x\"}");
+            assertNotNull("expected rejection for legacy field " + field, err);
+            assertTrue("error should name the field " + field, err.contains(field));
+            assertTrue("error should point at the per-phase replacement",
+                    err.contains("defaultPhaseConfig") || err.contains("phaseConfigs"));
+        }
+    }
+
+    @Test(timeout = 5000)
+    public void rejectLegacyRequestFieldsNamesFirstRemovedFieldPresent() {
+        String err = PhaseConfigResolver.rejectLegacyRequestFields(
+                "{\"effort\":\"high\",\"runners\":{\"primary\":\"opencode\"}}");
+        assertNotNull(err);
+        assertTrue("model/effort are checked before runners", err.contains("effort"));
+    }
+
+    @Test(timeout = 5000)
+    public void rejectLegacyRequestFieldsIgnoresMalformedJson() {
+        assertNull(PhaseConfigResolver.rejectLegacyRequestFields("not-json"));
+        assertNull(PhaseConfigResolver.rejectLegacyRequestFields("[1,2,3]"));
+    }
 }

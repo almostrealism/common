@@ -78,6 +78,20 @@ public class JobStatsStore implements ConsoleFeatures {
         "CREATE INDEX IF NOT EXISTS idx_timing_ws_started ON job_timing (workstream_id, started_at)";
 
     /**
+     * DDL for the per-runner cost table. One row per (job, runner) pair holds
+     * the cumulative USD cost that runner accrued across all of the job's phase
+     * invocations. Joined back to {@code job_timing} on {@code job_id} for the
+     * time-window and workstream filters used by the aggregation queries.
+     */
+    private static final String CREATE_RUNNER_COST_TABLE = ""
+        + "CREATE TABLE IF NOT EXISTS job_runner_cost ("
+        + "    job_id   VARCHAR(255) NOT NULL,"
+        + "    runner   VARCHAR(64)  NOT NULL,"
+        + "    cost_usd DOUBLE,"
+        + "    PRIMARY KEY (job_id, runner)"
+        + ")";
+
+    /**
      * ALTER TABLE statements to add new columns to existing databases.
      * HSQLDB 2.x does not support {@code IF NOT EXISTS} on {@code ADD COLUMN},
      * so these statements will throw if the column already exists. The
@@ -125,6 +139,7 @@ public class JobStatsStore implements ConsoleFeatures {
             try (Statement stmt = connection.createStatement()) {
                 stmt.execute(CREATE_TABLE);
                 stmt.execute(CREATE_INDEX);
+                stmt.execute(CREATE_RUNNER_COST_TABLE);
                 for (String migration : SCHEMA_MIGRATIONS) {
                     try {
                         stmt.execute(migration);
@@ -338,6 +353,44 @@ public class JobStatsStore implements ConsoleFeatures {
             event.getPermissionDenials(),
             event.getTargetBranch(), event.getCommitHash(),
             event.getPullRequestUrl(), event.getErrorMessage());
+        recordRunnerCosts(event.getJobId(), event.getCostByRunner());
+    }
+
+    /**
+     * Records the per-runner cost breakdown for a job, replacing any existing
+     * rows for that job so a re-reported completion event is idempotent.
+     *
+     * @param jobId        the job identifier
+     * @param costByRunner map of runner name to cumulative USD cost; {@code null}
+     *                     or empty clears any existing rows for the job
+     */
+    public synchronized void recordRunnerCosts(String jobId, Map<String, Double> costByRunner) {
+        if (connection == null || jobId == null) return;
+
+        try (PreparedStatement del = connection.prepareStatement(
+                "DELETE FROM job_runner_cost WHERE job_id = ?")) {
+            del.setString(1, jobId);
+            del.executeUpdate();
+        } catch (SQLException e) {
+            warn("Failed to clear runner costs for job " + jobId + ": " + e.getMessage());
+            return;
+        }
+
+        if (costByRunner == null || costByRunner.isEmpty()) return;
+
+        String sql = "INSERT INTO job_runner_cost (job_id, runner, cost_usd) VALUES (?, ?, ?)";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            for (Map.Entry<String, Double> entry : costByRunner.entrySet()) {
+                if (entry.getKey() == null) continue;
+                ps.setString(1, jobId);
+                ps.setString(2, truncate(entry.getKey(), 64));
+                ps.setDouble(3, entry.getValue() != null ? entry.getValue() : 0.0);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        } catch (SQLException e) {
+            warn("Failed to record runner costs for job " + jobId + ": " + e.getMessage());
+        }
     }
 
     /**
@@ -491,6 +544,7 @@ public class JobStatsStore implements ConsoleFeatures {
                     stats.totalDurationMs = rs.getLong("total_duration_ms");
                     stats.totalCostUsd = rs.getDouble("total_cost_usd");
                     stats.totalTurns = rs.getInt("total_turns");
+                    stats.costByRunner = queryCostByRunner(workstreamId, startInstant, endInstant);
                     return stats;
                 }
             }
@@ -499,6 +553,101 @@ public class JobStatsStore implements ConsoleFeatures {
         }
 
         return new WeeklyStats();
+    }
+
+    /**
+     * Sums per-runner cost over the given window, optionally filtered to a
+     * single workstream. Joins {@code job_runner_cost} to {@code job_timing}
+     * so the same time-window and status filters as the aggregate query apply.
+     *
+     * @param workstreamId the workstream to filter by, or {@code null} for all
+     * @param startInstant inclusive window start
+     * @param endInstant   exclusive window end
+     * @return map of runner name to summed USD cost, ordered by cost descending
+     */
+    private Map<String, Double> queryCostByRunner(String workstreamId,
+                                                  Instant startInstant, Instant endInstant) {
+        Map<String, Double> result = new LinkedHashMap<>();
+        if (connection == null) return result;
+
+        String sql = "SELECT rc.runner AS runner, COALESCE(SUM(rc.cost_usd), 0) AS runner_cost "
+            + "FROM job_runner_cost rc JOIN job_timing t ON rc.job_id = t.job_id "
+            + "WHERE t.started_at >= ? AND t.started_at < ? AND t.status <> 'STARTED'"
+            + (workstreamId != null ? " AND t.workstream_id = ?" : "")
+            + " GROUP BY rc.runner ORDER BY runner_cost DESC";
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.from(startInstant));
+            ps.setTimestamp(2, Timestamp.from(endInstant));
+            if (workstreamId != null) {
+                ps.setString(3, workstreamId);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.put(rs.getString("runner"), rs.getDouble("runner_cost"));
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to query cost by runner: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * Sums per-runner cost grouped by workstream over the given window in a
+     * single query, avoiding N+1 queries when rendering all-workstream stats.
+     *
+     * @param startInstant inclusive window start
+     * @param endInstant   exclusive window end
+     * @return map of workstream ID to (runner → summed USD cost), ordered by runner cost descending within each workstream
+     */
+    private Map<String, Map<String, Double>> queryCostByRunnerPerWorkstream(
+            Instant startInstant, Instant endInstant) {
+        Map<String, Map<String, Double>> result = new LinkedHashMap<>();
+        if (connection == null) return result;
+
+        String sql = "SELECT t.workstream_id, rc.runner, "
+            + "COALESCE(SUM(rc.cost_usd), 0) AS runner_cost "
+            + "FROM job_runner_cost rc JOIN job_timing t ON rc.job_id = t.job_id "
+            + "WHERE t.started_at >= ? AND t.started_at < ? AND t.status <> 'STARTED' "
+            + "GROUP BY t.workstream_id, rc.runner "
+            + "ORDER BY t.workstream_id, runner_cost DESC";
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.from(startInstant));
+            ps.setTimestamp(2, Timestamp.from(endInstant));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String wsId = rs.getString("workstream_id");
+                    result.computeIfAbsent(wsId, k -> new LinkedHashMap<>())
+                          .put(rs.getString("runner"), rs.getDouble("runner_cost"));
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to query cost by runner per workstream: " + e.getMessage());
+        }
+        return result;
+    }
+
+    /**
+     * Formats a per-runner cost map compactly for inclusion in a stats line,
+     * e.g. {@code " (claude $1.20, opencode $0.03)"}. Returns an empty string
+     * when the map is empty so callers can append it unconditionally.
+     *
+     * @param costByRunner map of runner name to USD cost
+     * @return a compact parenthesised breakdown, or {@code ""} when empty
+     */
+    public static String formatRunnerBreakdown(Map<String, Double> costByRunner) {
+        if (costByRunner == null || costByRunner.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder(" (");
+        boolean first = true;
+        for (Map.Entry<String, Double> entry : costByRunner.entrySet()) {
+            if (!first) sb.append(", ");
+            first = false;
+            sb.append(entry.getKey()).append(" $")
+                .append(String.format("%.2f", entry.getValue() != null ? entry.getValue() : 0.0));
+        }
+        return sb.append(')').toString();
     }
 
     /**
@@ -548,6 +697,16 @@ public class JobStatsStore implements ConsoleFeatures {
             }
         } catch (SQLException e) {
             warn("Failed to query weekly stats by workstream: " + e.getMessage());
+        }
+
+        // Populate per-runner cost for every workstream in one grouped query
+        Map<String, Map<String, Double>> runnerCosts =
+                queryCostByRunnerPerWorkstream(startInstant, endInstant);
+        for (Map.Entry<String, WeeklyStats> entry : result.entrySet()) {
+            Map<String, Double> runners = runnerCosts.get(entry.getKey());
+            if (runners != null && !runners.isEmpty()) {
+                entry.getValue().costByRunner = runners;
+            }
         }
 
         return result;
@@ -741,5 +900,10 @@ public class JobStatsStore implements ConsoleFeatures {
         public double totalCostUsd;
         /** Total number of agentic turns across all jobs. */
         public int totalTurns;
+        /**
+         * Per-runner USD cost breakdown for the window, keyed by runner name and
+         * ordered by cost descending. Empty when no per-runner data is recorded.
+         */
+        public Map<String, Double> costByRunner = Collections.emptyMap();
     }
 }
