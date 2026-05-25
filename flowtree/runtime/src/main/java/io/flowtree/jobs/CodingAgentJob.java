@@ -1023,7 +1023,7 @@ public class CodingAgentJob extends GitManagedJob {
                         // the user-facing escalation messaging.
                         if ("enforce-changes".equals(rule.getName())) {
                             enforcementAttempt++;
-                            log("Enforcement attempt: " + (enforcementAttempt + 1));
+                            log("enforce_changes found no changes; restarting from PRIMARY (attempt " + (enforcementAttempt + 1) + ")");
                         }
                         // Preserve commit.txt: executeSingleRun() deletes it at startup.
                         Path rerunCommitFile = resolveWorkingPath("commit.txt");
@@ -1032,10 +1032,13 @@ public class CodingAgentJob extends GitManagedJob {
                             try { savedForRerun = Files.readString(rerunCommitFile, StandardCharsets.UTF_8); }
                             catch (IOException e) { warn("Could not save commit.txt: " + e.getMessage()); }
                         }
-                        // Tag the activity so per-phase runner routing applies even though
-                        // there is no separate correction prompt for this rule.
+                        // For enforce-changes, retry the PRIMARY phase using the same runner configuration
+                        // rather than creating a separate ENFORCE_CHANGES phase.
                         String previousActivity = currentActivity;
-                        currentActivity = rule.getName();
+                        // Only set activity for non-enforce-changes rules to preserve per-phase routing
+                        if (!"enforce-changes".equals(rule.getName())) {
+                            currentActivity = rule.getName();
+                        }
                         try {
                             executeSingleRun();
                         } finally {
