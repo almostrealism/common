@@ -160,4 +160,73 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
         assertEquals("45s", HarnessStatusReporter.formatDuration(45000));
         assertEquals("0s", HarnessStatusReporter.formatDuration(-10));
     }
+
+    @Test(timeout = 30000)
+    public void noUnicodeReplacementCharactersInAnyMessage() {
+        String replacementChar = "�";
+
+        String entry = HarnessStatusReporter.formatPhaseEntry(
+                Phase.PRIMARY, "claude",
+                new PhaseConfig("claude", "sonnet", "medium", "anthropic"));
+        String exit = HarnessStatusReporter.formatPhaseExit(
+                Phase.PRIMARY,
+                successResult(151000, 0.10));
+        String inactivityRelaunch = HarnessStatusReporter.formatInactivity("opencode", 0, 3);
+        String inactivityAbandon = HarnessStatusReporter.formatInactivity("opencode", 3, 3);
+        String unusual = HarnessStatusReporter.SYSTEM_PREFIX
+                + HarnessStatusReporter.UNUSUAL_EMOJI + " some description";
+
+        assertFalse("phase-entry must not contain Unicode replacement char",
+                entry.contains(replacementChar));
+        assertFalse("phase-exit must not contain Unicode replacement char",
+                exit.contains(replacementChar));
+        assertFalse("inactivity-relaunch must not contain Unicode replacement char",
+                inactivityRelaunch.contains(replacementChar));
+        assertFalse("inactivity-abandon must not contain Unicode replacement char",
+                inactivityAbandon.contains(replacementChar));
+        assertFalse("unusual must not contain Unicode replacement char",
+                unusual.contains(replacementChar));
+    }
+
+    @Test(timeout = 30000)
+    public void noEmDashInAnyFormattedMessage() {
+        String emDash = "—";
+
+        String exit = HarnessStatusReporter.formatPhaseExit(
+                Phase.PRIMARY, successResult(31000, 0.05));
+        String relaunch = HarnessStatusReporter.formatInactivity("opencode", 0, 3);
+        String abandon = HarnessStatusReporter.formatInactivity("opencode", 3, 3);
+
+        assertFalse("phase-exit must not contain em-dash", exit.contains(emDash));
+        assertFalse("inactivity-relaunch must not contain em-dash", relaunch.contains(emDash));
+        assertFalse("inactivity-abandon must not contain em-dash", abandon.contains(emDash));
+    }
+
+    @Test(timeout = 30000)
+    public void prefixConstantsAreAsciiSafe() {
+        String[] prefixes = {
+            HarnessStatusReporter.SYSTEM_PREFIX,
+            HarnessStatusReporter.PHASE_ENTRY_EMOJI,
+            HarnessStatusReporter.PHASE_EXIT_EMOJI,
+            HarnessStatusReporter.INACTIVITY_EMOJI,
+            HarnessStatusReporter.UNUSUAL_EMOJI
+        };
+        for (String prefix : prefixes) {
+            for (char ch : prefix.toCharArray()) {
+                assertTrue("prefix constant must be ASCII-safe (no high codepoints): " + prefix,
+                        ch < 128);
+            }
+            assertFalse("prefix constant must be non-empty: " + prefix, prefix.isEmpty());
+        }
+    }
+
+    @Test(timeout = 30000)
+    public void phaseExitPreservesPhaseNameRunnerStatusAndDuration() {
+        AgentRunResult success = successResult(151000, 0.20);
+        String msg = HarnessStatusReporter.formatPhaseExit(Phase.PRIMARY, success);
+
+        assertTrue("phase-exit must name the phase", msg.contains("PRIMARY"));
+        assertTrue("phase-exit must report success", msg.contains("success"));
+        assertTrue("phase-exit must report duration", msg.contains("2m 31s"));
+    }
 }

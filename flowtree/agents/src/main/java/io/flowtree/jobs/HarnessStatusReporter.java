@@ -36,11 +36,14 @@ import java.util.function.BiConsumer;
  * gate). Messages are deliberately sparse — one per notable event, never a
  * progress bar.</p>
  *
- * <p>Every message begins with the distinctive {@link #SYSTEM_PREFIX gear
- * prefix} so that, when scanning a channel, harness messages are immediately
- * distinguishable from agent-authored prose (which would not spontaneously
- * lead with that glyph). A state emoji follows the gear so the kind of event
- * is recognisable at a glance.</p>
+ * <p>Every message begins with the distinctive {@link #SYSTEM_PREFIX :gear:
+ * shortcode prefix} so that, when scanning a channel, harness messages are
+ * immediately distinguishable from agent-authored prose (which would not
+ * spontaneously lead with that prefix). A Slack shortcode follows the gear
+ * prefix so the kind of event is recognisable at a glance. All prefixes use
+ * Slack shortcode syntax (e.g. {@code :arrow_forward:}) rather than raw
+ * Unicode so they survive multi-byte encoding round-trips without
+ * corruption.</p>
  *
  * <p>Reuse, not reinvention: the reporter posts through the same
  * {@code POST <workstreamUrl>/messages} path that publishes the host
@@ -53,20 +56,20 @@ import java.util.function.BiConsumer;
  */
 public final class HarnessStatusReporter {
 
-    /** Distinctive leading glyph identifying every harness-authored message. */
-    public static final String SYSTEM_PREFIX = "⚙️"; // gear
+    /** Distinctive leading shortcode identifying every harness-authored message. */
+    public static final String SYSTEM_PREFIX = ":gear:";
 
-    /** State emoji for a phase being entered. */
-    public static final String PHASE_ENTRY_EMOJI = "▶️"; // play
+    /** Slack shortcode for a phase being entered. */
+    public static final String PHASE_ENTRY_EMOJI = ":arrow_forward:";
 
-    /** State emoji for a phase that has completed. */
-    public static final String PHASE_EXIT_EMOJI = "⏹️"; // stop
+    /** Slack shortcode for a phase that has completed. */
+    public static final String PHASE_EXIT_EMOJI = ":white_check_mark:";
 
-    /** State emoji for an inactivity suspension. */
-    public static final String INACTIVITY_EMOJI = "⏸️"; // pause
+    /** Slack shortcode for an inactivity suspension. */
+    public static final String INACTIVITY_EMOJI = ":pause_button:";
 
-    /** State emoji for an unusual or unexpected termination. */
-    public static final String UNUSUAL_EMOJI = "⚠️"; // warning
+    /** Slack shortcode for an unusual or unexpected termination. */
+    public static final String UNUSUAL_EMOJI = ":warning:";
 
     /** Activity tag applied to harness status messages for later filtering. */
     public static final String ACTIVITY = "harness_status";
@@ -187,7 +190,7 @@ public final class HarnessStatusReporter {
             outcome = "failed (exit " + result.exitCode() + ") in "
                     + formatDuration(result.durationMs());
         }
-        return SYSTEM_PREFIX + PHASE_EXIT_EMOJI + " " + phaseLabel(phase) + " complete — " + outcome;
+        return SYSTEM_PREFIX + PHASE_EXIT_EMOJI + " " + phaseLabel(phase) + " complete - " + outcome;
     }
 
     /**
@@ -202,11 +205,11 @@ public final class HarnessStatusReporter {
         String who = runner != null && !runner.isEmpty() ? runner : "agent";
         if (attempt >= maxRestarts) {
             return SYSTEM_PREFIX + INACTIVITY_EMOJI + " " + who
-                    + " produced no output within the inactivity window — restart limit ("
+                    + " produced no output within the inactivity window - restart limit ("
                     + maxRestarts + ") reached, abandoning session";
         }
         return SYSTEM_PREFIX + INACTIVITY_EMOJI + " " + who
-                + " produced no output within the inactivity window — relaunching (attempt "
+                + " produced no output within the inactivity window - relaunching (attempt "
                 + (attempt + 2) + " of " + (maxRestarts + 1) + ")";
     }
 
