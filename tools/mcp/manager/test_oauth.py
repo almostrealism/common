@@ -8,6 +8,7 @@ MCP client (claude.ai, ChatGPT, ...) is forced to re-register and its cached
 registrations across restarts.
 """
 
+import json
 import os
 import shutil
 import sys
@@ -85,6 +86,145 @@ class OAuthClientPersistenceTest(unittest.TestCase):
             }
             middleware._save_clients_locked()
         self.assertFalse(os.path.exists(self._state_file))
+
+
+class DeriveIssuerTest(unittest.TestCase):
+    """Issuer/base-URL resolution shared by the OAuth and Bearer middleware."""
+
+    def _scope(self, host, proto=None):
+        headers = [(b"host", host.encode())]
+        if proto:
+            headers.append((b"x-forwarded-proto", proto.encode()))
+        return {"headers": headers}
+
+    def test_configured_takes_precedence_and_strips_slash(self):
+        """An explicit issuer is used verbatim, minus any trailing slash."""
+        self.assertEqual(
+            oauth.derive_issuer(self._scope("ignored"), "https://h.example/"),
+            "https://h.example")
+
+    def test_public_host_assumed_https(self):
+        """A non-localhost host is assumed HTTPS (TLS-terminating funnel)."""
+        self.assertEqual(
+            oauth.derive_issuer(self._scope("mac-studio.taild0f87.ts.net")),
+            "https://mac-studio.taild0f87.ts.net")
+
+    def test_localhost_is_http(self):
+        """Loopback hosts stay on http so local probing works."""
+        self.assertEqual(
+            oauth.derive_issuer(self._scope("127.0.0.1:8010")),
+            "http://127.0.0.1:8010")
+
+    def test_forwarded_proto_overrides(self):
+        """X-Forwarded-Proto wins over the host-based scheme guess."""
+        self.assertEqual(
+            oauth.derive_issuer(self._scope("h.example", "http")),
+            "http://h.example")
+
+
+class ProtectedResourceMetadataTest(unittest.IsolatedAsyncioTestCase):
+    """RFC 9728 metadata, including path-scoped resources.
+
+    A connector configured with an arbitrary path (used by some clients as a
+    per-connector cache key) must still receive a ``resource`` that matches its
+    configured URL, while the authorization server stays at the root issuer.
+    """
+
+    async def _fetch_prm(self, path, host="mac-studio.taild0f87.ts.net"):
+        middleware = oauth.OAuthMiddleware(
+            _noop_app, [{"value": "t", "scopes": ["read"], "label": "t"}])
+        scope = {"type": "http", "method": "GET", "path": path,
+                 "headers": [(b"host", host.encode())]}
+        sent = []
+
+        async def send(message):
+            sent.append(message)
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        await middleware(scope, receive, send)
+        status = next(m["status"] for m in sent
+                      if m["type"] == "http.response.start")
+        body = b"".join(m.get("body", b"") for m in sent
+                        if m["type"] == "http.response.body")
+        return status, json.loads(body.decode())
+
+    async def test_root_resource(self):
+        """The root resource is advertised with a trailing slash (matching how
+        MCP clients canonicalize it), while the authorization server stays as
+        the bare origin."""
+        status, meta = await self._fetch_prm(
+            "/.well-known/oauth-protected-resource")
+        self.assertEqual(status, 200)
+        self.assertEqual(meta["resource"],
+                         "https://mac-studio.taild0f87.ts.net/")
+        self.assertEqual(meta["authorization_servers"],
+                         ["https://mac-studio.taild0f87.ts.net"])
+
+    async def test_path_scoped_resource_matches_configured_url(self):
+        """A path-suffixed well-known path advertises that exact resource."""
+        status, meta = await self._fetch_prm(
+            "/.well-known/oauth-protected-resource/c1")
+        self.assertEqual(status, 200)
+        self.assertEqual(meta["resource"],
+                         "https://mac-studio.taild0f87.ts.net/c1")
+        # The authorization server is identified by the same path-scoped
+        # issuer so the client resolves its metadata at the matching path.
+        self.assertEqual(meta["authorization_servers"],
+                         ["https://mac-studio.taild0f87.ts.net/c1"])
+
+
+class AuthServerMetadataTest(unittest.IsolatedAsyncioTestCase):
+    """RFC 8414 metadata, including path-scoped issuers.
+
+    A client that derives the AS metadata URL from a path-scoped resource
+    (``/.well-known/oauth-authorization-server/c1``) validates that the
+    returned ``issuer`` matches; the OAuth endpoints must remain at the root.
+    """
+
+    async def _fetch_asm(self, path, host="mac-studio.taild0f87.ts.net"):
+        middleware = oauth.OAuthMiddleware(
+            _noop_app, [{"value": "t", "scopes": ["read"], "label": "t"}])
+        scope = {"type": "http", "method": "GET", "path": path,
+                 "headers": [(b"host", host.encode())]}
+        sent = []
+
+        async def send(message):
+            sent.append(message)
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        await middleware(scope, receive, send)
+        status = next(m["status"] for m in sent
+                      if m["type"] == "http.response.start")
+        body = b"".join(m.get("body", b"") for m in sent
+                        if m["type"] == "http.response.body")
+        return status, json.loads(body.decode())
+
+    async def test_root_issuer(self):
+        """Root well-known: issuer is the bare origin, endpoints at root."""
+        status, meta = await self._fetch_asm(
+            "/.well-known/oauth-authorization-server")
+        self.assertEqual(status, 200)
+        self.assertEqual(meta["issuer"], "https://mac-studio.taild0f87.ts.net")
+        self.assertEqual(meta["authorization_endpoint"],
+                         "https://mac-studio.taild0f87.ts.net/oauth/authorize")
+
+    async def test_path_scoped_issuer(self):
+        """Path-suffixed well-known: issuer carries the path, endpoints don't."""
+        status, meta = await self._fetch_asm(
+            "/.well-known/oauth-authorization-server/c1")
+        self.assertEqual(status, 200)
+        # issuer must match the URL the client derived it from (RFC 8414)
+        self.assertEqual(meta["issuer"],
+                         "https://mac-studio.taild0f87.ts.net/c1")
+        # endpoints stay at the single root authorization server
+        self.assertEqual(meta["authorization_endpoint"],
+                         "https://mac-studio.taild0f87.ts.net/oauth/authorize")
+        self.assertEqual(meta["token_endpoint"],
+                         "https://mac-studio.taild0f87.ts.net/oauth/token")
 
 
 if __name__ == "__main__":

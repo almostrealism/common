@@ -547,8 +547,12 @@ class BearerAuthMiddleware:
         "/oauth/token",
     }
 
-    def __init__(self, app, tokens: list):
+    def __init__(self, app, tokens: list, issuer_url: Optional[str] = None):
         self.app = app
+        # Public issuer URL used to advertise the protected-resource metadata
+        # location in the WWW-Authenticate challenge (RFC 9728). When None it
+        # is derived per-request from the Host header.
+        self.issuer_url = issuer_url.rstrip("/") if issuer_url else None
         # Build a lookup: token value -> (scopes, label, workspace_scopes).
         # workspace_scopes is None for unscoped (superadmin) tokens or a list
         # of Slack workspace IDs for narrower tokens. An empty list in the
@@ -566,6 +570,44 @@ class BearerAuthMiddleware:
                 ws_scopes = None
             if value:
                 self.token_entries.append((value, scopes, label, ws_scopes))
+
+    def _www_authenticate(self, scope) -> bytes:
+        """Build the ``WWW-Authenticate`` challenge for a 401 response.
+
+        Advertises the protected-resource metadata location per RFC 9728 /
+        the MCP authorization spec, so an MCP client that probes the transport
+        endpoint without a token can discover the authorization server from
+        the 401 alone.
+        """
+        from oauth import derive_issuer
+        issuer = derive_issuer(scope, self.issuer_url)
+        # Point at the path-suffixed protected-resource metadata (RFC 9728) so
+        # the advertised resource matches the exact URL the client probed —
+        # including any per-connector path used purely as a cache key.
+        req_path = scope.get("path", "/")
+        suffix = "" if req_path in ("", "/") else req_path
+        prm = f"{issuer}/.well-known/oauth-protected-resource{suffix}"
+        return (f'Bearer realm="ar-manager", '
+                f'resource_metadata="{prm}"').encode("utf-8")
+
+    @staticmethod
+    def _transport_scope(scope):
+        """Normalize an authenticated request's path to the transport root.
+
+        The MCP streamable-HTTP transport is mounted at ``/``, but a connector
+        may be configured with an arbitrary path (some clients key their
+        per-connector OAuth state on the full URL, so a fresh path is the only
+        reliable way to force a brand-new authorization flow). Rewriting the
+        path here lets any such URL reach the single transport handler. OAuth,
+        well-known, and health paths are handled by outer middleware and never
+        reach this point, so only transport requests are affected.
+        """
+        if scope.get("path", "/") == "/":
+            return scope
+        rewritten = dict(scope)
+        rewritten["path"] = "/"
+        rewritten["raw_path"] = b"/"
+        return rewritten
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
@@ -612,7 +654,7 @@ class BearerAuthMiddleware:
                     # no association with any workstream's checkout and
                     # cannot collide with one.)
                     _set_token_context("", "")
-                    await self.app(scope, receive, send)
+                    await self.app(self._transport_scope(scope), receive, send)
                     return
 
                 # Try HMAC temporary token. Temp tokens are issued by the
@@ -637,7 +679,7 @@ class BearerAuthMiddleware:
                             "status": 401,
                             "headers": [
                                 [b"content-type", b"application/json"],
-                                [b"www-authenticate", b'Bearer realm="ar-manager"'],
+                                [b"www-authenticate", self._www_authenticate(scope)],
                             ],
                         })
                         await send({
@@ -662,7 +704,7 @@ class BearerAuthMiddleware:
                         scope.get("path", ""),
                         ws_id or "", job_id or "",
                         workspace_id or "")
-                    await self.app(scope, receive, send)
+                    await self.app(self._transport_scope(scope), receive, send)
                     return
 
             # Reject: no valid token
@@ -671,7 +713,7 @@ class BearerAuthMiddleware:
                 "status": 401,
                 "headers": [
                     [b"content-type", b"application/json"],
-                    [b"www-authenticate", b'Bearer realm="ar-manager"'],
+                    [b"www-authenticate", self._www_authenticate(scope)],
                 ],
             })
             await send({
@@ -6211,6 +6253,19 @@ if __name__ == "__main__":
             # Serve MCP at "/" — Claude mobile ignores the path component
             # and always sends requests to the root.
             mcp.settings.streamable_http_path = "/"
+            # Run the streamable-HTTP transport STATELESS so a client is not
+            # required to echo the ``mcp-session-id`` from ``initialize`` on
+            # follow-up requests. The default stateful transport rejects any
+            # follow-up that omits the session id with 400 "Missing session
+            # ID"; OpenAI's MCP client (ChatGPT) does not resend the id, so
+            # its first post-initialize call fails and the OpenAI gateway
+            # surfaces a 502. Stateless mode is safe here: every tool call
+            # decodes its bearer from the request's own Authorization header
+            # (see BearerAuthMiddleware) rather than from session-bound
+            # context, and the tools are independent request/response RPCs
+            # with no server-initiated streaming, so no per-session state is
+            # lost. It is also strictly more lenient for every other client.
+            mcp.settings.stateless_http = True
             # Disable DNS rebinding protection — the server runs behind a
             # TLS-terminating reverse proxy (Tailscale Funnel) where the
             # Host header is the public DNS name, not localhost.
@@ -6240,7 +6295,7 @@ if __name__ == "__main__":
             from oauth import OAuthMiddleware
             issuer_url = os.environ.get("AR_MANAGER_ISSUER_URL")
             oauth_state_file = os.environ.get("AR_MANAGER_OAUTH_STATE_FILE")
-            app = BearerAuthMiddleware(app, tokens)
+            app = BearerAuthMiddleware(app, tokens, issuer_url=issuer_url)
             app = OAuthMiddleware(app, tokens, issuer_url=issuer_url,
                                   state_file=oauth_state_file)
             app = RateLimitMiddleware(app, requests_per_minute=RATE_LIMIT)
