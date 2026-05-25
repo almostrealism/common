@@ -16,7 +16,6 @@
 
 package io.flowtree.jobs.agent;
 
-import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -36,9 +35,6 @@ import static org.junit.Assert.assertTrue;
  * opencode error output.
  */
 public class OpencodeOutputParserTest extends TestSuiteBase {
-
-    /** Logger that uses default ConsoleFeatures behavior; we ignore its output. */
-    private static final ConsoleFeatures SILENT = new ConsoleFeatures() {};
 
     /** Representative successful-session output recorded from a forgiving opencode build. */
     private static final String SUCCESS_FIXTURE = "{"

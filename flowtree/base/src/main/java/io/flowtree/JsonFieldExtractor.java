@@ -38,6 +38,13 @@ import java.util.function.Function;
  */
 public final class JsonFieldExtractor {
 
+	/**
+	 * Shared {@link ObjectMapper} instance for JSON parsing operations.
+	 * {@link ObjectMapper} is thread-safe for reading once constructed with
+	 * default configuration; callers must not reconfigure this instance.
+	 */
+	public static final ObjectMapper MAPPER = new ObjectMapper();
+
 	/** Private constructor — all methods are static; this class is not instantiated. */
 	private JsonFieldExtractor() { }
 
@@ -72,8 +79,7 @@ public final class JsonFieldExtractor {
 	public static boolean hasField(String json, String field) {
 		if (json == null) return false;
 		try {
-			ObjectMapper mapper = new ObjectMapper();
-			JsonNode root = mapper.readTree(json);
+			JsonNode root = MAPPER.readTree(json);
 			return root != null && root.has(field);
 		} catch (Exception e) {
 			return false;
@@ -496,8 +502,7 @@ public final class JsonFieldExtractor {
 		if (json == null) return result;
 
 		try {
-			ObjectMapper mapper = new ObjectMapper();
-			JsonNode root = mapper.readTree(json);
+			JsonNode root = MAPPER.readTree(json);
 			JsonNode obj = (field == null) ? root : root.get(field);
 			if (obj == null || !obj.isObject()) return result;
 

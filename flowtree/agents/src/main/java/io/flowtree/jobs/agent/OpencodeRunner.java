@@ -16,8 +16,9 @@
 
 package io.flowtree.jobs.agent;
 
+import static io.flowtree.JsonFieldExtractor.MAPPER;
+
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.jobs.AgentProcessRunner;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -75,13 +76,6 @@ public class OpencodeRunner implements AgentRunner {
     private String binaryVersion;
     /** Workspace secret accessor; overridable for tests. */
     private Function<String, String> secretLookup;
-
-    /**
-     * Shared JSON mapper for parsing secret-lookup payloads. {@link ObjectMapper}
-     * is thread-safe once configured; reusing a single instance avoids the
-     * per-call allocation cost.
-     */
-    private static final ObjectMapper SECRET_PAYLOAD_MAPPER = new ObjectMapper();
 
     /**
      * Shared HTTP client for the secret-lookup endpoint. The JDK
@@ -327,7 +321,8 @@ public class OpencodeRunner implements AgentRunner {
                     request.getInactivityTimeoutMillis(),
                     request.getTaskId(),
                     logger);
-            long durationMs = System.currentTimeMillis() - start;
+            long endMs = System.currentTimeMillis();
+            long durationMs = endMs - start;
 
             String rawOutput = processResult.output();
             if (request.getOutputCapturePath() != null) {
@@ -348,7 +343,7 @@ public class OpencodeRunner implements AgentRunner {
             metadata.put("provider_url", providerUrl);
             metadata.put("model", qualifiedModel);
 
-            return OpencodeOutputParser.parse(
+            AgentRunResult result = OpencodeOutputParser.parse(
                     rawOutput,
                     processResult.exitCode(),
                     processResult.killedForInactivity(),
@@ -356,6 +351,9 @@ public class OpencodeRunner implements AgentRunner {
                     metadata,
                     logger,
                     providerConfig.reportsCost());
+
+            OpencodeTranscriptWriter.forRequest(request).write(request, result, start, endMs, logger);
+            return result;
         } finally {
             deleteConfigFile(configPath, logger);
         }
@@ -548,7 +546,7 @@ public class OpencodeRunner implements AgentRunner {
         Map<String, String> env = request.getEnvironment();
         if (env == null) return name -> null;
         String controllerUrl = env.get("AR_CONTROLLER_URL");
-        String workstreamId = env.get("AR_WORKSTREAM_ID");
+        String workstreamId = request.getWorkstreamId();
         String managerToken = env.get("AR_MANAGER_TOKEN");
         if (controllerUrl == null || controllerUrl.isEmpty()
                 || workstreamId == null || workstreamId.isEmpty()
@@ -632,7 +630,7 @@ public class OpencodeRunner implements AgentRunner {
     static String extractSecretValueFromPayload(String body, String secretName) {
         if (body == null || body.isEmpty()) return null;
         try {
-            JsonNode root = SECRET_PAYLOAD_MAPPER.readTree(body);
+            JsonNode root = MAPPER.readTree(body);
             JsonNode payload = root.get("payload");
             if (payload == null || !payload.isObject()) return null;
             JsonNode direct = payload.get(secretName);

@@ -16,8 +16,9 @@
 
 package io.flowtree.jobs.agent;
 
+import static io.flowtree.JsonFieldExtractor.MAPPER;
+
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.AgentProcessRunner;
 import io.flowtree.jobs.TmuxSession;
@@ -66,9 +67,6 @@ public class ClaudeCodeRunner implements AgentRunner {
 
     /** Path of the binary the runner will launch. Overridable for tests. */
     private final String binaryPath;
-
-    /** JSON mapper used to parse structured output from Claude Code. */
-    private static final ObjectMapper outputMapper = new ObjectMapper();
 
     /** Constructs a runner that launches the {@code claude} binary from the user's PATH. */
     public ClaudeCodeRunner() {
@@ -273,7 +271,7 @@ public class ClaudeCodeRunner implements AgentRunner {
 
         if (resultJson != null && !resultJson.isEmpty()) {
             try {
-                JsonNode root = outputMapper.readTree(resultJson);
+                JsonNode root = MAPPER.readTree(resultJson);
                 sessionId = JsonFieldExtractor.getTextOrNull(root, "session_id");
                 subtype = JsonFieldExtractor.getTextOrNull(root, "subtype");
                 sessionIsError = root.path("is_error").asBoolean(false);
