@@ -272,72 +272,65 @@ fi
 
 echo "Done."
 
-# ── Funnel health check (non-fatal) ───────────────────────────────
+# ── Public endpoint health check (non-fatal) ──────────────────────
 #
-# Verifies that Tailscale Funnel is configured and that the public edge
-# completes a TLS handshake for the exposed ar-manager hostname. This is
-# purely informational — failures never block the script exit code. Seen
-# failure modes: Funnel config lost across daemon restart ("No serve
-# config"), and TLS handshake dropping at the public edge when the local
-# tailscaled is too outdated for the current edge protocol.
+# Verifies that the ar-manager MCP server is reachable over the PUBLIC
+# internet at its Cloudflare Tunnel hostname. Purely informational —
+# failures never block the script exit code.
+#
+# We deliberately resolve via a public DNS resolver (1.1.1.1) instead of
+# the system resolver. An earlier outage went undiagnosed for hours because
+# the old Tailscale Funnel ts.net name resolved to a private 100.x tailnet
+# IP via MagicDNS on this host — so a local curl looked "UP" while the name
+# was NXDOMAIN (and unreachable) for every external client (ChatGPT,
+# claude.ai). Checking public DNS is the only way to catch that class of
+# failure from the server box itself.
+#
+# A 401 is the HEALTHY response: the unauthenticated probe is correctly
+# rejected by the bearer/OAuth layer, which proves the whole path —
+# public DNS -> Cloudflare edge -> cloudflared tunnel -> ar-manager — works.
 
-check_funnel() {
-  # Prefer the Tailscale.app binary on macOS — a /usr/local/bin/tailscale
-  # shim sometimes exists but crashes with a Swift fatal error outside the
-  # app's sandbox. Fall back to PATH on other platforms.
-  local ts_bin=""
-  if [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ]; then
-    ts_bin="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
-  elif command -v tailscale >/dev/null 2>&1; then
-    ts_bin="tailscale"
-  else
-    echo "Funnel check: SKIP — tailscale CLI not found"
-    return 0
-  fi
+PUBLIC_HOST="${AR_MANAGER_PUBLIC_HOST:-mcp.almostrealism.ai}"
 
-  local status_output
-  status_output="$("${ts_bin}" funnel status 2>&1 || true)"
+check_public_endpoint() {
+  local host="${PUBLIC_HOST}"
+  local url="https://${host}"
 
-  if echo "${status_output}" | grep -q "No serve config"; then
-    echo "Funnel check: DOWN — no serve config"
-    echo "  Controller stack is not publicly reachable."
-    echo "  To restore:  ${ts_bin} funnel --bg http://127.0.0.1:8010"
-    return 0
-  fi
-
-  local host url
-  url="$(echo "${status_output}" | grep -oE 'https://[^[:space:]/]+\.ts\.net' | head -1 || true)"
-  if [ -z "${url}" ]; then
-    echo "Funnel check: UNKNOWN — could not parse funnel status output"
-    return 0
-  fi
-  host="${url#https://}"
-
-  # Resolve via public DNS so we test the public edge, not MagicDNS.
+  # Require a PUBLIC DNS answer (not the system/MagicDNS resolver).
   local public_ip=""
   if command -v dig >/dev/null 2>&1; then
-    public_ip="$(dig +short +time=3 @1.1.1.1 "${host}" 2>/dev/null | head -1 || true)"
+    public_ip="$(dig +short +time=3 @1.1.1.1 "${host}" A 2>/dev/null \
+      | grep -E '^[0-9]' | head -1 || true)"
+  else
+    echo "Public endpoint check: SKIP — dig not found (cannot verify public DNS)"
+    return 0
   fi
 
-  local code
-  if [ -n "${public_ip}" ]; then
-    code="$(curl -sS -o /dev/null -w '%{http_code}' \
-      --resolve "${host}:443:${public_ip}" \
-      --connect-timeout 5 --max-time 10 \
-      "${url}/" 2>/dev/null || echo "000")"
-  else
-    # Fall back to the default path (may use MagicDNS inside the tailnet).
-    code="$(curl -sS -o /dev/null -w '%{http_code}' \
-      --connect-timeout 5 --max-time 10 \
-      "${url}/" 2>/dev/null || echo "000")"
+  if [ -z "${public_ip}" ]; then
+    echo "Public endpoint check: DOWN — ${host} has no public DNS record (@1.1.1.1)"
+    echo "  External clients (ChatGPT, claude.ai) cannot reach it."
+    echo "  Check the Cloudflare DNS record and that the tunnel is running:"
+    echo "    cloudflared tunnel info ar-manager"
+    echo "    launchctl print system/com.cloudflare.cloudflared | grep -iE 'state|last exit'"
+    return 0
   fi
+
+  # Test the public edge, pinned to the publicly-resolved IP.
+  local code
+  code="$(curl -sS -o /dev/null -w '%{http_code}' \
+    --resolve "${host}:443:${public_ip}" \
+    --connect-timeout 5 --max-time 10 \
+    "${url}/" 2>/dev/null || echo "000")"
 
   if [ "${code}" = "000" ]; then
-    echo "Funnel check: DOWN — ${url} did not respond at the public edge"
-    echo "  Consider: updating the Tailscale app, or toggling funnel off/on."
+    echo "Public endpoint check: DOWN — ${url} (${public_ip}) did not respond"
+    echo "  Public DNS resolves but the edge/tunnel is not serving. Check:"
+    echo "    cloudflared tunnel info ar-manager   (expect an active connector)"
+  elif [ "${code}" = "401" ]; then
+    echo "Public endpoint check: UP — ${url} responded HTTP 401 (auth required, as expected)"
   else
-    echo "Funnel check: UP — ${url} responded with HTTP ${code}"
+    echo "Public endpoint check: UP — ${url} responded HTTP ${code}"
   fi
 }
 
-check_funnel || true
+check_public_endpoint || true
