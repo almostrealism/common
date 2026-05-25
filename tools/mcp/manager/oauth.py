@@ -720,6 +720,12 @@ class OAuthMiddleware:
                 "scopes": matched_scopes,
                 "label": matched_label,
                 "token_value": matched_value,
+                # The scope the client asked for, echoed back verbatim in the
+                # token response. The bearer token's own (broader) server-side
+                # scopes are a superset; returning them instead makes strict
+                # clients reject the grant because it doesn't match what they
+                # requested.
+                "requested_scope": params.get("scope", ""),
                 "expires_at": time.time() + _CODE_LIFETIME_SECONDS,
             }
 
@@ -810,12 +816,19 @@ class OAuthMiddleware:
             })
             return
 
-        # Issue the bearer token as the access token
-        scopes = code_entry["scopes"]
+        # Issue the bearer token as the access token. Echo the scope the
+        # client requested (not the token's broader internal scopes) and
+        # include ``expires_in`` — strict clients (e.g. claude.ai) reject the
+        # exchange when the granted scope is an unexpected superset or when
+        # ``expires_in`` is absent. The underlying token does not actually
+        # expire; a long lifetime simply avoids spurious client-side refresh.
+        requested_scope = code_entry.get("requested_scope", "")
+        granted_scope = requested_scope or " ".join(code_entry["scopes"])
         await _json_response(send, 200, {
             "access_token": code_entry["token_value"],
-            "token_type": "bearer",
-            "scope": " ".join(scopes),
+            "token_type": "Bearer",
+            "expires_in": 31536000,
+            "scope": granted_scope,
         })
 
     # -- Error page -----------------------------------------------------------
