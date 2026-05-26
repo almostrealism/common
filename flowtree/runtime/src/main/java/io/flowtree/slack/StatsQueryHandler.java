@@ -166,6 +166,15 @@ class StatsQueryHandler {
                 .append(entry.getValue() != null ? entry.getValue() : 0.0);
         }
         json.append("}");
+        json.append(",\"costByModel\":{");
+        first = true;
+        for (Map.Entry<String, Double> entry : stats.costByModel.entrySet()) {
+            if (!first) json.append(",");
+            first = false;
+            json.append(FlowTreeApiEndpoint.escapeJsonValue(entry.getKey())).append(":")
+                .append(entry.getValue() != null ? entry.getValue() : 0.0);
+        }
+        json.append("}");
         json.append("}");
     }
 
