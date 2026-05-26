@@ -3990,13 +3990,11 @@ def workstream_context(
                         "state": raw_pr.get("state"),
                         "created_at": raw_pr.get("created_at"),
                         "updated_at": raw_pr.get("updated_at"),
-                        # TODO(review): Search API returns merged_at nested under pull_request.merged_at, not at top level — always None here for merged PRs; fix by using raw_pr.get("pull_request", {}).get("merged_at") or fetching full PR via /pulls/{number}
                         "merged_at": raw_pr.get("merged_at"),
                         "closed_at": raw_pr.get("closed_at"),
                         "author": author.get("login") if author else None,
-                        # TODO(review): Search API does not return base/head fields — base_branch and head_branch will always be None; fix requires a follow-up GET /repos/{owner}/{repo}/pulls/{number}
-                        "base_branch": (raw_pr.get("base", {}) or {}).get("ref") if isinstance(raw_pr.get("base"), dict) else None,
-                        "head_branch": (raw_pr.get("head", {}) or {}).get("ref") if isinstance(raw_pr.get("head"), dict) else None,
+                        "base_branch": raw_pr.get("base", {}).get("ref") if isinstance(raw_pr.get("base"), dict) else None,
+                        "head_branch": raw_pr.get("head", {}).get("ref") if isinstance(raw_pr.get("head"), dict) else None,
                     }
                 elif pr_lookup.get("ok") is False:
                     pr_error = pr_lookup.get("error", "GitHub API error")
@@ -4324,11 +4322,11 @@ def _find_recent_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
     """Look up the most recent pull request for ``branch`` on ``owner/repo``.
 
     Unlike ``_find_open_pr_by_branch``, this searches across all PR states
-    (open, closed, merged) using the GitHub Search API and returns the most
-    recently updated PR for the branch. Returns a dict with ``ok=True`` and
-    ``pr`` (the raw GitHub PR object) on success, ``ok=True`` with
-    ``found=False`` when no PR exists for the branch, or an ``ok=False``
-    error dict when the GitHub call fails.
+    (open, closed, merged) using the GitHub Pulls list API with ``state=all``
+    and returns the most recently updated PR for the branch. Returns a dict
+    with ``ok=True`` and ``pr`` (the raw GitHub PR object) on success,
+    ``ok=True`` with ``found=False`` when no PR exists for the branch, or
+    an ``ok=False`` error dict when the GitHub call fails.
 
     Args:
         owner: GitHub org (owner).
@@ -4340,20 +4338,21 @@ def _find_recent_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
         and ``branch`` on success; ``ok=True``, ``found=False`` when no PR
         exists; or ``ok=False`` with error message on failure.
     """
-    query = f"repo:{owner}/{repo} type:pr head:{branch}"
-    search_payload = {"q": query, "sort": "updated", "order": "desc", "per_page": 1}
-    search_result = _github_request("GET", "/search/issues", search_payload)
-    if isinstance(search_result, dict) and search_result.get("ok") is False:
-        return search_result
-    if not isinstance(search_result, dict):
+    head = f"{owner}:{branch}"
+    pr_list = _github_request(
+        "GET",
+        f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=all&sort=updated&direction=desc&per_page=1",
+    )
+    if isinstance(pr_list, dict) and pr_list.get("ok") is False:
+        return pr_list
+    if not isinstance(pr_list, list):
         return {
             "ok": False,
-            "error": "Unexpected response from GitHub Search API",
+            "error": "Unexpected response listing pull requests",
         }
-    items = search_result.get("items") or []
-    if not items:
+    if not pr_list:
         return {"ok": True, "found": False, "branch": branch}
-    return {"ok": True, "found": True, "pr": items[0], "branch": branch}
+    return {"ok": True, "found": True, "pr": pr_list[0], "branch": branch}
 
 
 @mcp.tool()
