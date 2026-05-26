@@ -386,7 +386,10 @@ public class OpencodeTranscriptWriterTest extends TestSuiteBase {
 
     // --- Directory resolution ---
 
-    /** When outputCapturePath is set and OPENCODE_TRANSCRIPT_DIR is absent, uses sibling dir. */
+    /**
+     * When outputCapturePath is set, OPENCODE_TRANSCRIPT_DIR is absent, and the
+     * well-known directory does not exist, uses the capture sibling dir.
+     */
     @Test(timeout = 5000)
     public void forRequestUsesOutputCapturePathSiblingWhenEnvAbsent() throws IOException {
         Path captureFile = Files.createTempDirectory("opc-capture-")
@@ -395,20 +398,60 @@ public class OpencodeTranscriptWriterTest extends TestSuiteBase {
                 .taskId("job-dir")
                 .outputCapturePath(captureFile)
                 .build();
-        OpencodeTranscriptWriter writer = OpencodeTranscriptWriter.forRequest(req, name -> null);
+        OpencodeTranscriptWriter writer =
+                OpencodeTranscriptWriter.forRequest(req, name -> null, dir -> false);
         Path expected = captureFile.getParent().resolve("transcripts");
         Assert.assertEquals("transcript dir should be <capture-parent>/transcripts",
                 expected, writer.getTranscriptDir());
     }
 
-    /** When neither env var nor outputCapturePath is set, falls back to the default dir. */
+    /**
+     * When env var, well-known directory, and outputCapturePath are all absent,
+     * falls back to the default dir.
+     */
     @Test(timeout = 5000)
     public void forRequestFallsBackToDefaultDirWhenEnvAbsent() {
         AgentRunRequest req = AgentRunRequest.builder().taskId("job-def").build();
-        OpencodeTranscriptWriter writer = OpencodeTranscriptWriter.forRequest(req, name -> null);
+        OpencodeTranscriptWriter writer =
+                OpencodeTranscriptWriter.forRequest(req, name -> null, dir -> false);
         Assert.assertEquals("transcript dir should be the default when no env var is set",
                 Paths.get(OpencodeTranscriptWriter.DEFAULT_TRANSCRIPT_DIR),
                 writer.getTranscriptDir());
+    }
+
+    /**
+     * When the well-known {@code /agent-transcripts} directory exists, it is preferred
+     * over the output-capture sibling and the {@code /tmp} default.
+     */
+    @Test(timeout = 5000)
+    public void forRequestPrefersWellKnownDirWhenItExists() {
+        Path captureFile = Paths.get("/some/capture/output.txt");
+        AgentRunRequest req = AgentRunRequest.builder()
+                .taskId("job-wk")
+                .outputCapturePath(captureFile)
+                .build();
+        Path wellKnown = Paths.get(OpencodeTranscriptWriter.WELL_KNOWN_TRANSCRIPT_DIR);
+        OpencodeTranscriptWriter writer = OpencodeTranscriptWriter.forRequest(
+                req, name -> null, dir -> dir.equals(wellKnown));
+        Assert.assertEquals("transcript dir should be the well-known per-agent mount",
+                wellKnown, writer.getTranscriptDir());
+    }
+
+    /**
+     * An explicit {@code OPENCODE_TRANSCRIPT_DIR} override wins even when the
+     * well-known {@code /agent-transcripts} directory also exists.
+     */
+    @Test(timeout = 5000)
+    public void forRequestEnvOverrideBeatsWellKnownDir() throws IOException {
+        Path customDir = Files.createTempDirectory("opc-override-");
+        AgentRunRequest req = AgentRunRequest.builder().taskId("job-override").build();
+        OpencodeTranscriptWriter writer = OpencodeTranscriptWriter.forRequest(
+                req,
+                name -> OpencodeTranscriptWriter.ENV_TRANSCRIPT_DIR.equals(name)
+                        ? customDir.toString() : null,
+                dir -> true);
+        Assert.assertEquals("explicit env override must beat the well-known directory",
+                customDir, writer.getTranscriptDir());
     }
 
     /** forRequest(request, envLookup) honours the injected env lookup for OPENCODE_TRANSCRIPT_DIR. */

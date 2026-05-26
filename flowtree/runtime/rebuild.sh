@@ -264,10 +264,18 @@ if [ "${AGENTS}" = true ] || [ "${AGENTS_ONLY}" = true ]; then
 
   export FLOWTREE_ROOT_HOST CLAUDE_CODE_OAUTH_TOKEN
 
-  AGENT_COUNT="${AGENT_COUNT:-2}"
-  echo "Rebuilding ${AGENT_COUNT} agent container(s) (no cache)..."
-  docker compose -f flowtree/runtime/agent/docker-compose.yml build --no-cache --pull
-  docker compose -f flowtree/runtime/agent/docker-compose.yml up -d --force-recreate
+  # Pre-create the per-agent transcript subdirectories on the host so the
+  # bind mounts resolve. Each agent gets a DISTINCT subdir (never shared)
+  # — see the volume policy in flowtree/runtime/agent/docker-compose.yml.
+  AGENT_COMPOSE="flowtree/runtime/agent/docker-compose.yml"
+  TRANSCRIPT_DIR_HOST="${TRANSCRIPT_DIR_HOST:-/Users/Shared/flowtree/agent-transcripts}"
+  for sub in $(grep -oE '/agent-[A-Za-z0-9_-]+:/agent-transcripts:rw' "${AGENT_COMPOSE}" | cut -d: -f1); do
+    mkdir -p "${TRANSCRIPT_DIR_HOST}${sub}"
+  done
+
+  echo "Rebuilding agent pool (no cache); transcripts at ${TRANSCRIPT_DIR_HOST}/<agent>/..."
+  docker compose -f "${AGENT_COMPOSE}" build --no-cache --pull
+  docker compose -f "${AGENT_COMPOSE}" up -d --force-recreate
 fi
 
 echo "Done."
