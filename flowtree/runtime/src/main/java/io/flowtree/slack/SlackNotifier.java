@@ -1151,9 +1151,10 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         }
 
         // Cost
-        // TODO(review): per-job completion cost line was not enhanced; weekly /flowtree stats gained :moneybag: + per-runner breakdown but this line stays plain and omits event.getCostByRunner()
         if (event.getCostUsd() > 0) {
-            sb.append("   Cost: $").append(String.format("%.2f", event.getCostUsd())).append("\n");
+            sb.append("   :moneybag: Cost: $").append(String.format("%.2f", event.getCostUsd()));
+            sb.append(JobStatsStore.formatCostBreakdown(event.getCostByModel()));
+            sb.append("\n");
         }
 
         // Duration (wall time and API time)

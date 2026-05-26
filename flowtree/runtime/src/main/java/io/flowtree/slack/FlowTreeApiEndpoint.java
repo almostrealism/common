@@ -904,6 +904,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 ccEvent.withCommitMessageSource(commitMessageSource);
             }
             ccEvent.withCostByRunner(JsonFieldExtractor.extractDoubleObject(body, "costByRunner"));
+            ccEvent.withCostByModel(JsonFieldExtractor.extractDoubleObject(body, "costByModel"));
         }
 
         log("Status event: " + eventStatus + " for job " + jobId + " in workstream " + workstreamId);

@@ -144,14 +144,14 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
     }
 
     @Test(timeout = 30000)
-    public void formatRunnerBreakdownIsCompactAndOmitsWhenEmpty() {
-        assertEquals("", JobStatsStore.formatRunnerBreakdown(null));
-        assertEquals("", JobStatsStore.formatRunnerBreakdown(new LinkedHashMap<>()));
+    public void formatCostBreakdownIsCompactAndOmitsWhenEmpty() {
+        assertEquals("", JobStatsStore.formatCostBreakdown(null));
+        assertEquals("", JobStatsStore.formatCostBreakdown(new LinkedHashMap<>()));
 
         Map<String, Double> costs = new LinkedHashMap<>();
         costs.put("claude", 42.0);
         costs.put("opencode", 3.0);
-        String formatted = JobStatsStore.formatRunnerBreakdown(costs);
+        String formatted = JobStatsStore.formatCostBreakdown(costs);
         assertEquals(" (claude $42.00, opencode $3.00)", formatted);
     }
 

@@ -111,6 +111,24 @@ public record PhaseConfig(String runner, String model, String effort, String pro
     }
 
     /**
+     * Returns the provider/model attribution key for this configuration.
+     *
+     * <p>Returns {@code "provider/model"} when a provider is present
+     * (e.g. {@code "openrouter/claude-opus-4-7"}) and just the model name
+     * otherwise. A missing or empty model is reported as {@code "unknown"}
+     * so cost is never silently dropped.</p>
+     *
+     * @return a stable key for per-model cost attribution
+     */
+    public String toModelKey() {
+        String m = (model == null || model.isEmpty()) ? "unknown" : model;
+        if (provider != null && !provider.isEmpty()) {
+            return provider + "/" + m;
+        }
+        return m;
+    }
+
+    /**
      * Returns a configuration where each {@code null} field of {@code this}
      * is filled in from {@code other}; non-null fields of {@code this} win.
      * Used by the resolver to layer one precedence level on top of another.
