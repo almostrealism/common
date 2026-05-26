@@ -62,7 +62,7 @@ its own host) — there are no per-workstream overrides.
 | `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` | empty | Per-provider env-var fallbacks, consulted when `OPENCODE_API_KEY` and the workspace secret are both empty. See [PROVIDERS.md](PROVIDERS.md). |
 | `OPENCODE_DEFAULT_MODEL` | (unset; falls back to the literal alias `default`) | Model name used when the submitted job does not specify one. The `default` alias is fine with llama.cpp's `llama-server` (it ignores the model field on the wire and serves whichever GGUF was loaded); ollama and hosted providers dispatch by name and **require** an explicit value here. |
 | `OPENCODE_CONFIG` | (set automatically at launch) | Path to the synthesized config file. Set by the runner before launching the opencode subprocess; operators do not need to configure this. |
-| `OPENCODE_TRANSCRIPT_DIR` | (see [Session transcripts](#session-transcripts)) | Path to the directory where session transcript JSONL files are written (absolute path recommended; relative paths are resolved against the JVM working directory). When unset, the runner derives the directory from the job's output capture path, falling back to `/tmp/opencode-transcripts`. |
+| `OPENCODE_TRANSCRIPT_DIR` | (see [Session transcripts](#session-transcripts)) | Path to the directory where session transcript JSONL files are written (absolute path recommended; relative paths are resolved against the JVM working directory). When unset, the runner uses the well-known `/agent-transcripts` mount if it exists, then the job's output capture path, falling back to `/tmp/opencode-transcripts`. |
 
 ### Binary discovery order
 
@@ -216,15 +216,46 @@ Limitations (inherent to the upstream opencode stdout format):
 Transcript files are named `<yyyyMMdd-HHmmss>-<jobId>-<phase>[-<sessionId>].jsonl`
 and written to the first of these that applies:
 
-1. `OPENCODE_TRANSCRIPT_DIR` — set this to a persistent volume path on the
-   agent container to ensure transcripts survive container restarts.
-2. Next to the job's output capture file, in a `transcripts/` subdirectory.
-3. `/tmp/opencode-transcripts` — the default, which is ephemeral on most
+1. `OPENCODE_TRANSCRIPT_DIR` — an explicit operator override; wins over
+   everything below.
+2. `/agent-transcripts` — the well-known per-agent mount, used automatically
+   when that directory exists. This is how the dockerized agent pool persists
+   transcripts (see [Per-agent transcript volume](#per-agent-transcript-volume)).
+3. Next to the job's output capture file, in a `transcripts/` subdirectory.
+4. `/tmp/opencode-transcripts` — the default, which is ephemeral on most
    container runtimes.
 
-For long-running investigations, set `OPENCODE_TRANSCRIPT_DIR` to a path on a
-mounted NFS volume or bind-mounted host directory. For quick ad-hoc runs on
-a developer machine, the `/tmp/` default is sufficient.
+For long-running investigations under the agent pool, no configuration is
+needed — `/agent-transcripts` is mounted automatically. To point somewhere
+else (an NFS path, a one-off ad-hoc run on a developer machine), set
+`OPENCODE_TRANSCRIPT_DIR`.
+
+#### Per-agent transcript volume
+
+The agent `docker-compose.yml` binds a **distinct host subdirectory per agent**
+to `/agent-transcripts`:
+
+```
+${TRANSCRIPT_DIR_HOST:-/Users/Shared/flowtree/agent-transcripts}/agent-1 -> /agent-transcripts   (agent-1)
+${TRANSCRIPT_DIR_HOST:-/Users/Shared/flowtree/agent-transcripts}/agent-2 -> /agent-transcripts   (agent-2)
+```
+
+This is the **only writable mount** an agent is permitted, and the subdirectory
+must be distinct per agent. Two agents must never be able to share data through
+a volume — a shared writable directory is both a cross-workstream git-collision
+hazard (see `FLOWTREE_COLLISIONS.md`) and a data-exfiltration channel between
+unrelated workstreams. The invariant is enforced in two places:
+
+- **In-container** (`flowtree/runtime/agent/entrypoint.sh`): the agent refuses
+  to start if any writable mount other than `/agent-transcripts` is attached.
+- **In CI** (`tools/ci/validate_agent_volume_isolation.py`, run by the
+  *Agent Volume Isolation* workflow): the compose file fails validation if any
+  two agents could share a writable source, or if a writable mount targets
+  anything other than `/agent-transcripts`.
+
+`start.sh` and `rebuild.sh` create the per-agent host subdirectories for you.
+To collect a job's transcript from the host, the file is under
+`${TRANSCRIPT_DIR_HOST}/<agent>/`; see [Locating transcripts for a job](#locating-transcripts-for-a-job).
 
 ### Locating transcripts for a job
 

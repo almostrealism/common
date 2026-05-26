@@ -35,6 +35,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * Writes a structured JSONL transcript file for a single OpenCode session.
@@ -65,6 +66,14 @@ import java.util.function.Function;
  * <ol>
  *   <li>{@value #ENV_TRANSCRIPT_DIR} environment variable (absolute path recommended;
  *       relative paths are accepted and resolved against the JVM working directory).</li>
+ *   <li>{@value #WELL_KNOWN_TRANSCRIPT_DIR}, when that directory exists. This is the
+ *       conventional mount point for a durable, <em>per-agent</em> transcript volume
+ *       bound into the agent container. Its mere presence signals that the operator
+ *       has deliberately provisioned a persistent sink, so it is preferred over the
+ *       ephemeral output-capture and {@code /tmp} fallbacks. Cross-agent isolation of
+ *       this mount (each agent container binding a distinct host directory) is the
+ *       responsibility of the compose configuration and is enforced in CI by
+ *       {@code tools/ci/validate_agent_volume_isolation.py} — not by this class.</li>
  *   <li>When {@link AgentRunRequest#getOutputCapturePath()} is set:
  *       {@code <capture-parent>/transcripts/}.</li>
  *   <li>Fallback: {@value #DEFAULT_TRANSCRIPT_DIR}.</li>
@@ -100,6 +109,16 @@ final class OpencodeTranscriptWriter {
 
     /** Fallback transcript directory when no other location is resolvable. */
     static final String DEFAULT_TRANSCRIPT_DIR = "/tmp/opencode-transcripts";
+
+    /**
+     * Well-known mount point for a durable, per-agent transcript volume. When this
+     * directory exists it is preferred over the ephemeral output-capture and
+     * {@code /tmp} fallbacks (but not over an explicit {@value #ENV_TRANSCRIPT_DIR}
+     * override). The agent {@code docker-compose.yml} binds a distinct host directory
+     * to this path for each agent container; that per-agent isolation is verified in
+     * CI, not here.
+     */
+    static final String WELL_KNOWN_TRANSCRIPT_DIR = "/agent-transcripts";
 
     /** Environment variable that overrides the transcript directory. */
     static final String ENV_TRANSCRIPT_DIR = "OPENCODE_TRANSCRIPT_DIR";
@@ -143,7 +162,8 @@ final class OpencodeTranscriptWriter {
 
     /**
      * Creates an {@link OpencodeTranscriptWriter} with an injectable environment
-     * lookup. Exposed for tests that cannot set JVM environment variables.
+     * lookup. Exposed for tests that cannot set JVM environment variables. The
+     * well-known directory check uses the real filesystem ({@link Files#isDirectory}).
      *
      * @param request   the run request used for the output-capture-path fallback
      * @param envLookup reads environment variables by name
@@ -151,7 +171,24 @@ final class OpencodeTranscriptWriter {
      */
     static OpencodeTranscriptWriter forRequest(AgentRunRequest request,
                                                Function<String, String> envLookup) {
-        Path dir = resolveTranscriptDir(request, envLookup);
+        return forRequest(request, envLookup, Files::isDirectory);
+    }
+
+    /**
+     * Creates an {@link OpencodeTranscriptWriter} with both the environment lookup
+     * and the directory-existence check injected. Exposed for tests so the
+     * {@value #WELL_KNOWN_TRANSCRIPT_DIR} branch can be exercised deterministically
+     * without depending on the JVM's actual filesystem.
+     *
+     * @param request     the run request used for the output-capture-path fallback
+     * @param envLookup   reads environment variables by name
+     * @param isDirectory reports whether a path is an existing directory
+     * @return a configured writer
+     */
+    static OpencodeTranscriptWriter forRequest(AgentRunRequest request,
+                                               Function<String, String> envLookup,
+                                               Predicate<Path> isDirectory) {
+        Path dir = resolveTranscriptDir(request, envLookup, isDirectory);
         return new OpencodeTranscriptWriter(dir);
     }
 
@@ -223,17 +260,30 @@ final class OpencodeTranscriptWriter {
     }
 
     /**
-     * Resolves the transcript directory.
+     * Resolves the transcript directory, in precedence order:
+     * <ol>
+     *   <li>the {@value #ENV_TRANSCRIPT_DIR} environment variable, when set;</li>
+     *   <li>{@value #WELL_KNOWN_TRANSCRIPT_DIR}, when {@code isDirectory} reports it
+     *       exists (the durable per-agent volume mount);</li>
+     *   <li>the {@code transcripts/} sibling of the request's output-capture path;</li>
+     *   <li>{@value #DEFAULT_TRANSCRIPT_DIR}.</li>
+     * </ol>
      *
-     * @param request   the run request (may be null)
-     * @param envLookup reads environment variables by name
+     * @param request     the run request (may be null)
+     * @param envLookup   reads environment variables by name
+     * @param isDirectory reports whether a path is an existing directory
      * @return the resolved directory path
      */
     private static Path resolveTranscriptDir(AgentRunRequest request,
-                                              Function<String, String> envLookup) {
+                                              Function<String, String> envLookup,
+                                              Predicate<Path> isDirectory) {
         String envDir = envLookup.apply(ENV_TRANSCRIPT_DIR);
         if (envDir != null && !envDir.isEmpty()) {
             return Paths.get(envDir);
+        }
+        Path wellKnown = Paths.get(WELL_KNOWN_TRANSCRIPT_DIR);
+        if (isDirectory.test(wellKnown)) {
+            return wellKnown;
         }
         if (request != null) {
             Path capture = request.getOutputCapturePath();
