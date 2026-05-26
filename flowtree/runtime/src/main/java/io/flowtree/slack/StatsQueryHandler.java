@@ -157,25 +157,23 @@ class StatsQueryHandler {
         json.append(",\"totalDurationMs\":").append(stats.totalDurationMs);
         json.append(",\"totalCostUsd\":").append(stats.totalCostUsd);
         json.append(",\"totalTurns\":").append(stats.totalTurns);
-        json.append(",\"costByRunner\":{");
-        boolean first = true;
-        for (Map.Entry<String, Double> entry : stats.costByRunner.entrySet()) {
-            if (!first) json.append(",");
-            first = false;
-            json.append(FlowTreeApiEndpoint.escapeJsonValue(entry.getKey())).append(":")
-                .append(entry.getValue() != null ? entry.getValue() : 0.0);
-        }
+        appendCostMapJson(json, "costByRunner", stats.costByRunner);
+        appendCostMapJson(json, "costByModel", stats.costByModel);
         json.append("}");
-        json.append(",\"costByModel\":{");
-        first = true;
-        for (Map.Entry<String, Double> entry : stats.costByModel.entrySet()) {
-            if (!first) json.append(",");
-            first = false;
-            json.append(FlowTreeApiEndpoint.escapeJsonValue(entry.getKey())).append(":")
-                .append(entry.getValue() != null ? entry.getValue() : 0.0);
-        }
-        json.append("}");
-        json.append("}");
+    }
+
+    /**
+     * Appends a JSON key-value map for a cost breakdown.
+     * Delegates to {@link JsonFieldExtractor#appendDoubleMapJson} for the shared
+     * implementation.
+     *
+     * @param json     the builder to append to
+     * @param keyName  the JSON key name (e.g. {@code "costByRunner"})
+     * @param costMap map of cost key to USD value
+     */
+    private static void appendCostMapJson(StringBuilder json, String keyName,
+                                       Map<String, Double> costMap) {
+        JsonFieldExtractor.appendDoubleMapJson(json, keyName, costMap);
     }
 
 }

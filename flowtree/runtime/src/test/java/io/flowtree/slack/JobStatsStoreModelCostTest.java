@@ -55,13 +55,16 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
         return store;
     }
 
-    /** Returns the Monday of the current ISO week, in UTC. */
-    private static LocalDate currentMonday() {
+    /** Returns the Monday of the current ISO week, in UTC. Shared by {@link JobStatsStoreRunnerCostTest}. */
+    static LocalDate currentMonday() {
         return LocalDate.now(ZoneOffset.UTC).with(DayOfWeek.MONDAY);
     }
 
-    /** Records a started+completed job so its job_timing row exists and is not STARTED. */
-    private static void recordCompletedJob(JobStatsStore store, String jobId,
+    /**
+     * Records a started+completed job so its job_timing row exists and is not STARTED.
+     * Shared by {@link JobStatsStoreRunnerCostTest} (same package).
+     */
+    static void recordCompletedJob(JobStatsStore store, String jobId,
                                          String workstreamId, Instant when, double totalCost) {
         store.recordJobStarted(jobId, workstreamId, "job " + jobId, when);
         store.recordJobCompleted(jobId, workstreamId, "SUCCESS",
