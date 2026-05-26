@@ -324,29 +324,24 @@ class GitCommitHandler implements ConsoleFeatures {
     }
 
     /**
-     * Pushes the current branch to the {@code origin} remote.
+     * Pushes the current branch to the {@code origin} remote, reconciling
+     * against a target branch that advanced while the job was running.
      *
-     * <p>An explicit refspec ({@code targetBranch:targetBranch}) is used so the
-     * push always targets the correct remote branch regardless of inherited
-     * upstream tracking configuration. The {@code -u} flag sets the upstream to
-     * {@code origin/<targetBranch>} for subsequent operations.</p>
+     * <p>Delegates to {@link GitPushReconciler}, which uses an explicit refspec
+     * ({@code targetBranch:targetBranch}) so the push always targets the correct
+     * remote branch regardless of inherited upstream tracking, and which fetches
+     * and merges {@code origin/<targetBranch>} (resolving conflicts via
+     * {@link GitManagedJob#onPushConflict(String, java.util.List)}) before
+     * retrying when a push is rejected as non-fast-forward.</p>
      *
      * @throws IOException if the git process cannot be started
      * @throws InterruptedException if the calling thread is interrupted
-     * @throws RuntimeException if the push fails (non-zero exit code)
+     * @throws RuntimeException if the push cannot be made to converge
      */
     private void push() throws IOException, InterruptedException {
-        String targetBranch = job.getTargetBranch();
-        log("Pushing to origin/" + targetBranch + "...");
-
-        String refspec = targetBranch + ":" + targetBranch;
-        int result = job.executeGit("push", "-u", "origin", refspec);
-        if (result != 0) {
-            throw new RuntimeException(
-                    "Git push to origin/" + targetBranch + " failed");
-        }
-
-        log("Pushed to origin/" + targetBranch);
+        String repoPath = job.getWorkingDirectory() != null ? job.getWorkingDirectory() : ".";
+        new GitPushReconciler(job, repoPath, job::executeGit, job::executeGitWithOutput)
+                .push(job.getTargetBranch());
     }
 
     /**
@@ -475,13 +470,9 @@ class GitCommitHandler implements ConsoleFeatures {
             }
 
             if (job.isPushToOrigin() && !job.isDryRun()) {
-                String refspec = job.getTargetBranch() + ":" + job.getTargetBranch();
-                int pushExitCode = gitOps.execute("push", "-u", "origin", refspec);
-                if (pushExitCode == 0) {
-                    log("Pushed dependent repo: " + depPath);
-                } else {
-                    throw new IOException("Git push failed for dependent repo: " + depPath);
-                }
+                new GitPushReconciler(job, depPath, gitOps::execute, gitOps::executeWithOutput)
+                        .push(job.getTargetBranch());
+                log("Pushed dependent repo: " + depPath);
             }
         }
     }

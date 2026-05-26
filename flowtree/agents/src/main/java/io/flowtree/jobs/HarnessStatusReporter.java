@@ -36,11 +36,13 @@ import java.util.function.BiConsumer;
  * gate). Messages are deliberately sparse — one per notable event, never a
  * progress bar.</p>
  *
- * <p>Every message begins with the distinctive {@link #SYSTEM_PREFIX gear
+ * <p>Every message begins with the distinctive {@link #SYSTEM_PREFIX ⚙️ gear
  * prefix} so that, when scanning a channel, harness messages are immediately
- * distinguishable from agent-authored prose (which would not spontaneously
- * lead with that glyph). A state emoji follows the gear so the kind of event
- * is recognisable at a glance.</p>
+ * distinguishable from agent-authored prose. A Unicode emoji follows the gear
+ * so the kind of event is recognisable at a glance. Raw Unicode is safe
+ * because the HTTP POST from the harness to the controller explicitly declares
+ * {@code Content-Type: application/json; charset=utf-8}, which prevents
+ * NanoHTTPD from misinterpreting the body as US-ASCII.</p>
  *
  * <p>Reuse, not reinvention: the reporter posts through the same
  * {@code POST <workstreamUrl>/messages} path that publishes the host
@@ -53,20 +55,20 @@ import java.util.function.BiConsumer;
  */
 public final class HarnessStatusReporter {
 
-    /** Distinctive leading glyph identifying every harness-authored message. */
-    public static final String SYSTEM_PREFIX = "⚙️"; // gear
+    /** Distinctive leading Unicode gear emoji identifying every harness-authored message. */
+    public static final String SYSTEM_PREFIX = "⚙️";
 
-    /** State emoji for a phase being entered. */
-    public static final String PHASE_ENTRY_EMOJI = "▶️"; // play
+    /** Unicode play-button emoji for a phase being entered. */
+    public static final String PHASE_ENTRY_EMOJI = "▶️";
 
-    /** State emoji for a phase that has completed. */
-    public static final String PHASE_EXIT_EMOJI = "⏹️"; // stop
+    /** Unicode stop-button emoji for a phase that has completed. */
+    public static final String PHASE_EXIT_EMOJI = "⏹️";
 
-    /** State emoji for an inactivity suspension. */
-    public static final String INACTIVITY_EMOJI = "⏸️"; // pause
+    /** Unicode pause-button emoji for an inactivity suspension. */
+    public static final String INACTIVITY_EMOJI = "⏸️";
 
-    /** State emoji for an unusual or unexpected termination. */
-    public static final String UNUSUAL_EMOJI = "⚠️"; // warning
+    /** Unicode warning sign emoji for an unusual or unexpected termination. */
+    public static final String UNUSUAL_EMOJI = "⚠️";
 
     /** Activity tag applied to harness status messages for later filtering. */
     public static final String ACTIVITY = "harness_status";

@@ -62,6 +62,7 @@ its own host) — there are no per-workstream overrides.
 | `OPENROUTER_API_KEY` / `ANTHROPIC_API_KEY` | empty | Per-provider env-var fallbacks, consulted when `OPENCODE_API_KEY` and the workspace secret are both empty. See [PROVIDERS.md](PROVIDERS.md). |
 | `OPENCODE_DEFAULT_MODEL` | (unset; falls back to the literal alias `default`) | Model name used when the submitted job does not specify one. The `default` alias is fine with llama.cpp's `llama-server` (it ignores the model field on the wire and serves whichever GGUF was loaded); ollama and hosted providers dispatch by name and **require** an explicit value here. |
 | `OPENCODE_CONFIG` | (set automatically at launch) | Path to the synthesized config file. Set by the runner before launching the opencode subprocess; operators do not need to configure this. |
+| `OPENCODE_TRANSCRIPT_DIR` | (see [Session transcripts](#session-transcripts)) | Path to the directory where session transcript JSONL files are written (absolute path recommended; relative paths are resolved against the JVM working directory). When unset, the runner uses the well-known `/agent-transcripts` mount if it exists, then the job's output capture path, falling back to `/tmp/opencode-transcripts`. |
 
 ### Binary discovery order
 
@@ -147,6 +148,128 @@ phases to opencode via the `workstream_submit_task` MCP tool's
 See [../architecture/PHASES.md](../architecture/PHASES.md) for the full
 per-phase precedence rules and [RECIPES.md](RECIPES.md) for vetted
 phase-mix recipes.
+
+---
+
+## Session transcripts
+
+After every opencode session, `OpencodeRunner` automatically writes a structured
+JSONL transcript file that captures the full session for postmortem analysis.
+This is the primary mechanism for investigating model misbehaviour (corrupted
+output, unexpected tool usage, runaway loops, etc.).
+
+### Format
+
+Each transcript file is a JSONL file with three sections:
+
+1. **Header line** (`"type":"transcript_header"`) — session context including
+   `job_id`, `workstream_id`, `phase`, `runner`, `model`, `provider`,
+   `provider_url`, `opencode_version`, `working_directory`, `prompt`,
+   `prompt_length`, `session_id`, `start_epoch_ms`, `start_iso`,
+   `format_version`.
+
+2. **Event stream** — the raw NDJSON emitted by opencode on stdout, one event
+   per line, reproduced verbatim. Recognised event types include:
+   - `step_start` / `step_finish` — turn boundaries
+   - `text` with `part.text` — the model's assembled text output for a message
+   - `tool_use` / `tool_result` — tool invocations and their outputs
+   - `error` — error events emitted by opencode
+
+   Lines that are not valid JSON (for example, truncated output or corruption
+   inserted by a misbehaving model) are reproduced as-is. This is intentional:
+   the forensic value comes from seeing the exact bytes opencode produced, not
+   a cleaned-up interpretation of them.
+
+3. **Footer line** (`"type":"transcript_footer"`) — outcome metrics including
+   `exit_code`, `killed_for_inactivity`, `stop_reason`, `session_is_error`,
+   `num_turns`, `cost_usd`, `duration_ms`, `denied_tool_names`,
+   `session_id`, `end_epoch_ms`, `end_iso`.
+
+### Transcript fidelity and limitations
+
+The transcript captures everything opencode emits on stdout when invoked with
+`--format json`. Specifically:
+
+- **Turn-level structure** is visible: each `step_start` event marks a new
+  agentic turn, so you can count turns and identify where behaviour changed.
+- **Model text** is fully captured: all `text` events contain the assembled
+  text of each assistant message.
+- **Tool interactions** are captured at the event level: you can see which
+  tools were invoked and their results.
+- **Corruption is visible**: malformed, non-JSON, or truncated output is
+  reproduced verbatim in the event stream section.
+
+Limitations (inherent to the upstream opencode stdout format):
+
+- **Per-tool-call timing** is not emitted by opencode; only step-level
+  boundaries are visible.
+- **Raw token stream** is not available; only the final assembled text of
+  each message appears in `text` events.
+- **Internal opencode state** (retry logic, caching, prompt truncation) is
+  opaque — the transcript shows what opencode emitted, not its internal
+  decisions.
+- **Model reasoning / thinking tokens** are not surfaced in the event stream
+  even when the underlying model supports them.
+
+### Storage location
+
+Transcript files are named `<yyyyMMdd-HHmmss>-<jobId>-<phase>[-<sessionId>].jsonl`
+and written to the first of these that applies:
+
+1. `OPENCODE_TRANSCRIPT_DIR` — an explicit operator override; wins over
+   everything below.
+2. `/agent-transcripts` — the well-known per-agent mount, used automatically
+   when that directory exists. This is how the dockerized agent pool persists
+   transcripts (see [Per-agent transcript volume](#per-agent-transcript-volume)).
+3. Next to the job's output capture file, in a `transcripts/` subdirectory.
+4. `/tmp/opencode-transcripts` — the default, which is ephemeral on most
+   container runtimes.
+
+For long-running investigations under the agent pool, no configuration is
+needed — `/agent-transcripts` is mounted automatically. To point somewhere
+else (an NFS path, a one-off ad-hoc run on a developer machine), set
+`OPENCODE_TRANSCRIPT_DIR`.
+
+#### Per-agent transcript volume
+
+The agent `docker-compose.yml` binds a **distinct host subdirectory per agent**
+to `/agent-transcripts`:
+
+```
+${TRANSCRIPT_DIR_HOST:-/Users/Shared/flowtree/agent-transcripts}/agent-1 -> /agent-transcripts   (agent-1)
+${TRANSCRIPT_DIR_HOST:-/Users/Shared/flowtree/agent-transcripts}/agent-2 -> /agent-transcripts   (agent-2)
+```
+
+This is the **only writable mount** an agent is permitted, and the subdirectory
+must be distinct per agent. Two agents must never be able to share data through
+a volume — a shared writable directory is both a cross-workstream git-collision
+hazard (see `FLOWTREE_COLLISIONS.md`) and a data-exfiltration channel between
+unrelated workstreams. The invariant is enforced in two places:
+
+- **In-container** (`flowtree/runtime/agent/entrypoint.sh`): the agent refuses
+  to start if any writable mount other than `/agent-transcripts` is attached.
+- **In CI** (`tools/ci/validate_agent_volume_isolation.py`, run by the
+  *Agent Volume Isolation* workflow): the compose file fails validation if any
+  two agents could share a writable source, or if a writable mount targets
+  anything other than `/agent-transcripts`.
+
+`start.sh` and `rebuild.sh` create the per-agent host subdirectories for you.
+To collect a job's transcript from the host, the file is under
+`${TRANSCRIPT_DIR_HOST}/<agent>/`; see [Locating transcripts for a job](#locating-transcripts-for-a-job).
+
+### Locating transcripts for a job
+
+Given a job ID `<id>`:
+
+```sh
+ls -lt /tmp/opencode-transcripts/*<id>*.jsonl 2>/dev/null | head -5
+# or, if using a custom dir:
+ls -lt "$OPENCODE_TRANSCRIPT_DIR"/*<id>*.jsonl 2>/dev/null | head -5
+```
+
+The header of any matching file contains `job_id`, `workstream_id`, `phase`,
+`model`, `provider`, and `session_id` for cross-referencing with controller
+logs and the FlowTree memory store.
 
 ---
 

@@ -16,8 +16,9 @@
 
 package io.flowtree.jobs.agent;
 
+import static io.flowtree.JsonFieldExtractor.MAPPER;
+
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
@@ -90,9 +91,6 @@ final class OpencodeConfigBuilder {
     /** Built-in tool names recognised when translating the allowlist. */
     private static final List<String> BUILTIN_TOOLS =
             List.of("Read", "Edit", "Bash", "Glob", "Grep", "Write");
-
-    /** Shared JSON mapper. */
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** Environment lookup; overridable for tests. */
     private final Function<String, String> envLookup;

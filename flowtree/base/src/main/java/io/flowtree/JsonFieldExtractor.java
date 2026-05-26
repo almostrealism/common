@@ -38,6 +38,13 @@ import java.util.function.Function;
  */
 public final class JsonFieldExtractor {
 
+	/**
+	 * Shared {@link ObjectMapper} instance for JSON parsing operations.
+	 * {@link ObjectMapper} is thread-safe for reading once constructed with
+	 * default configuration; callers must not reconfigure this instance.
+	 */
+	public static final ObjectMapper MAPPER = new ObjectMapper();
+
 	/** Private constructor — all methods are static; this class is not instantiated. */
 	private JsonFieldExtractor() { }
 
@@ -72,8 +79,7 @@ public final class JsonFieldExtractor {
 	public static boolean hasField(String json, String field) {
 		if (json == null) return false;
 		try {
-			ObjectMapper mapper = new ObjectMapper();
-			JsonNode root = mapper.readTree(json);
+			JsonNode root = MAPPER.readTree(json);
 			return root != null && root.has(field);
 		} catch (Exception e) {
 			return false;
@@ -477,11 +483,13 @@ public final class JsonFieldExtractor {
 	 * Extracts a flat JSON object into a map, applying {@code valueMapper} to
 	 * each member value. Members for which the mapper returns {@code null} are
 	 * skipped, so the mapper doubles as a filter. Shared scaffolding behind
-	 * {@link #extractStringObject(String, String)} and
-	 * {@link #extractDoubleObject(String, String)}.
+	 * {@link #extractStringObject(String, String)},
+	 * {@link #extractDoubleObject(String, String)}, and
+	 * {@link #parseStringObject(String)}.
 	 *
 	 * @param json        the JSON string
-	 * @param field       the field name whose value is the object to extract
+	 * @param field       the field name whose value is the object to extract;
+	 *                    {@code null} uses the root of {@code json} directly
 	 * @param valueMapper converts a member's value node to the map value, or
 	 *                    returns {@code null} to omit the member
 	 * @param <T>         the map value type
@@ -494,9 +502,8 @@ public final class JsonFieldExtractor {
 		if (json == null) return result;
 
 		try {
-			ObjectMapper mapper = new ObjectMapper();
-			JsonNode root = mapper.readTree(json);
-			JsonNode obj = root.get(field);
+			JsonNode root = MAPPER.readTree(json);
+			JsonNode obj = (field == null) ? root : root.get(field);
 			if (obj == null || !obj.isObject()) return result;
 
 			Iterator<Map.Entry<String, JsonNode>> fields = obj.fields();
@@ -512,6 +519,37 @@ public final class JsonFieldExtractor {
 		}
 
 		return result;
+	}
+
+	/**
+	 * Parses a flat JSON object of string key-value pairs from the root of the
+	 * given JSON. This is the root-level counterpart to
+	 * {@link #extractStringObject(String, String)}, which navigates to a named
+	 * field first.
+	 *
+	 * @param json a JSON object string such as {@code {"A":"1","B":"2"}}
+	 * @return a map of string key-value pairs, empty if {@code json} is null,
+	 *         not an object, or fails to parse
+	 */
+	public static Map<String, String> parseStringObject(String json) {
+		return extractObject(json, null, value -> value.isTextual() ? value.asText() : null);
+	}
+
+	/**
+	 * Serializes a flat map of string key-value pairs to a JSON object string.
+	 * The inverse of {@link #parseStringObject(String)}.
+	 *
+	 * @param map the map to serialize; null or empty yields {@code "{}"}
+	 * @return a JSON object string such as {@code {"A":"1","B":"2"}}
+	 */
+	public static String toJsonObject(Map<String, String> map) {
+		if (map == null || map.isEmpty()) return "{}";
+
+		try {
+			return new ObjectMapper().writeValueAsString(map);
+		} catch (Exception e) {
+			return "{}";
+		}
 	}
 
 	/**

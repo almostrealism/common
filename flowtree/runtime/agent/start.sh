@@ -150,10 +150,24 @@ elif [ -z "${CURRENT_TOKEN}" ]; then
     exit 1
 fi
 
-# ── Step 5: Launch ──────────────────────────────────────────────────
+# ── Step 5: Pre-create per-agent transcript directories ─────────────
+#
+# Each agent binds a DISTINCT host subdirectory to /agent-transcripts so
+# transcripts persist across container restarts without ever being shared
+# between agents (see the volume policy in docker-compose.yml). Create
+# those subdirectories on the host up front so the bind mounts resolve to
+# existing directories. The set of agents is read straight from the
+# compose file so this stays in sync as agent-N blocks are added/removed.
 
-AGENT_COUNT="${AGENT_COUNT:-2}"
-log "Starting ${AGENT_COUNT} agent container(s)..."
+TRANSCRIPT_DIR_HOST="${TRANSCRIPT_DIR_HOST:-/Users/Shared/flowtree/agent-transcripts}"
+for sub in $(grep -oE '/agent-[A-Za-z0-9_-]+:/agent-transcripts:rw' "${COMPOSE_FILE}" | cut -d: -f1); do
+    mkdir -p "${TRANSCRIPT_DIR_HOST}${sub}"
+done
+
+# ── Step 6: Launch ──────────────────────────────────────────────────
+
+log "Starting agent pool (services defined in docker-compose.yml)..."
+log "Transcripts: ${TRANSCRIPT_DIR_HOST}/<agent>/"
 
 docker compose -f "${COMPOSE_FILE}" up -d --build
 

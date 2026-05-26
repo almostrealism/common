@@ -36,8 +36,8 @@ import java.util.function.Consumer;
 public enum Phase {
     /** Primary work — the initial agent session that runs the user's prompt. */
     PRIMARY("primary", "Primary work — the initial agent session that runs the user's prompt."),
-    /** Retry of the primary prompt triggered by {@code EnforceChangesRule}. */
-    ENFORCE_CHANGES("enforce-changes", "Retry of the primary prompt triggered by EnforceChangesRule."),
+    /** Retry of the primary prompt triggered by {@code EnforceChangesRule} (DEPRECATED). */
+    ENFORCE_CHANGES("enforce-changes", "Retry of the primary prompt triggered by EnforceChangesRule (DEPRECATED)."),
     /** Review session — second-pass sanity check by a different runner. */
     REVIEW("review", "Review session — second-pass sanity check by a different runner."),
     /** Deduplication audit session. */
@@ -51,7 +51,9 @@ public enum Phase {
     /** Correction session for missing or invalid {@code commit.txt}. */
     COMMIT_MESSAGE("commit-message", "Correction session for missing or invalid commit.txt."),
     /** Restart triggered when the agent tampered with git state. */
-    GIT_TAMPERING_RESTART("git-tampering-restart", "Restart triggered when the agent tampered with git state.");
+    GIT_TAMPERING_RESTART("git-tampering-restart", "Restart triggered when the agent tampered with git state."),
+    /** Focused session that resolves merge conflicts encountered while reconciling a push against an advanced target branch. */
+    PUSH_CONFLICT_RESOLUTION("push-conflict-resolution", "Focused session that resolves merge conflicts encountered while reconciling a push against an advanced target branch.");
 
     /** Canonical kebab-case identifier used on the wire. */
     private final String wireName;

@@ -335,6 +335,37 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     }
 
     /**
+     * Called by {@link GitPushReconciler} when a completion-time merge against an
+     * advanced target branch leaves conflict markers that must be resolved before
+     * the push can proceed.
+     *
+     * <p>Unlike base-branch synchronization — which happens before
+     * {@link #doWork()} while the agent is still running — push reconciliation
+     * happens after the agent has exited, so a conflict here has no in-flight
+     * agent to resolve it. The default implementation logs a warning and returns
+     * {@code false} (fail loudly). Subclasses backed by an agent (e.g.
+     * {@code CodingAgentJob}) override this to run a focused conflict-resolution
+     * session and return {@code true}.</p>
+     *
+     * <p>When this method returns {@code true}, the reconciler verifies that no
+     * unmerged paths remain, stages the resolved files, makes the merge commit,
+     * and retries the push.</p>
+     *
+     * @param repoPath        filesystem path of the repository with the conflict
+     *                        (the primary working directory or a dependent repo)
+     * @param conflictedFiles paths, relative to {@code repoPath}, left in an
+     *                        unmerged state by the reconciliation merge
+     * @return {@code true} if the conflict markers were resolved, {@code false}
+     *         to fail the push
+     */
+    protected boolean onPushConflict(String repoPath, List<String> conflictedFiles) {
+        warn("Push reconciliation conflict in " + repoPath
+                + " but no resolution handler configured -- failing push. Conflicted files: "
+                + String.join(", ", conflictedFiles));
+        return false;
+    }
+
+    /**
      * Executes the full job lifecycle: environment setup, optional repo clone,
      * working-directory preparation, pre-work HEAD snapshot, the subclass work
      * ({@link #doWork()}), git-tampering detection and remediation,
@@ -1136,7 +1167,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         try {
             HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
             conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
             conn.setConnectTimeout(5000);
             conn.setReadTimeout(10000);
             conn.setDoOutput(true);

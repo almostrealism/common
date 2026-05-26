@@ -67,6 +67,13 @@ public final class AgentRunRequest {
     /** File path where the runner should dump its raw output. */
     private final Path outputCapturePath;
 
+    /**
+     * Key in {@link #getEnvironment()} that carries the workstream identifier
+     * forwarded by the orchestrator. Defined here so callers that need to read
+     * the workstream ID do not hard-code the string literal.
+     */
+    public static final String ENV_WORKSTREAM_ID = "AR_WORKSTREAM_ID";
+
     /** Constructs an instance from {@code b}. */
     private AgentRunRequest(Builder b) {
         this.prompt = b.prompt;
@@ -147,6 +154,14 @@ public final class AgentRunRequest {
 
     /** Returns the file path where the runner should dump its raw output. */
     public Path getOutputCapturePath() { return outputCapturePath; }
+
+    /**
+     * Returns the workstream identifier from the request environment, or
+     * {@code null} if {@link #ENV_WORKSTREAM_ID} is absent from the map.
+     */
+    public String getWorkstreamId() {
+        return environment.get(ENV_WORKSTREAM_ID);
+    }
 
     /** Returns a fresh {@link Builder}. */
     public static Builder builder() { return new Builder(); }

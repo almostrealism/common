@@ -17,7 +17,6 @@
 package io.flowtree.jobs.agent;
 
 import com.sun.net.httpserver.HttpServer;
-import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -144,7 +143,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 .build();
 
         try {
-            runner.run(req, new ConsoleFeatures() {});
+            runner.run(req, SILENT);
             throw new AssertionError("expected AgentRunnerNotAvailableException");
         } catch (AgentRunnerNotAvailableException expected) {
             assertNotNull(expected.getMessage());
@@ -233,7 +232,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 .provider("unknown-provider-xyz")
                 .build();
         try {
-            runner.run(req, new ConsoleFeatures() {});
+            runner.run(req, SILENT);
             throw new AssertionError("expected exception for unknown provider");
         } catch (IllegalArgumentException expected) {
             assertNotNull(expected.getMessage());
@@ -271,7 +270,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 .build();
 
         try {
-            runner.run(req, new ConsoleFeatures() {});
+            runner.run(req, SILENT);
             throw new AssertionError("expected fail-loud for missing openrouter key");
         } catch (IllegalStateException expected) {
             String msg = expected.getMessage();
@@ -308,7 +307,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 .build();
 
         try {
-            runner.run(req, new ConsoleFeatures() {});
+            runner.run(req, SILENT);
         } catch (IllegalStateException unexpected) {
             if (unexpected.getMessage() != null
                     && unexpected.getMessage().startsWith("No API key")) {
@@ -335,7 +334,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
         server.start();
         try {
             String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
-            new OpencodeRunner().probeProviderUrl(url, new ConsoleFeatures() {});
+            new OpencodeRunner().probeProviderUrl(url, SILENT);
         } finally {
             server.stop(0);
         }
@@ -356,7 +355,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
         String url = "http://127.0.0.1:" + freePort + "/v1";
 
         try {
-            new OpencodeRunner().probeProviderUrl(url, new ConsoleFeatures() {});
+            new OpencodeRunner().probeProviderUrl(url, SILENT);
             throw new AssertionError("expected AgentRunnerNotAvailableException");
         } catch (AgentRunnerNotAvailableException expected) {
             assertNotNull(expected.getMessage());
@@ -473,7 +472,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                     "openrouter-api-key",
                     "OPENROUTER_API_KEY",
                     OpencodeRunner.controllerSecretLookup(req,
-                            new ConsoleFeatures() {}));
+                            SILENT));
 
             assertTrue("config should embed the fetched apiKey: " + json,
                     json.contains("sk-or-v1-from-http"));
@@ -504,7 +503,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 .environment(new HashMap<>())
                 .build();
         Assert.assertNull(OpencodeRunner.controllerSecretLookup(
-                req, new ConsoleFeatures() {}).apply("openrouter-api-key"));
+                req, SILENT).apply("openrouter-api-key"));
     }
 
     /**
