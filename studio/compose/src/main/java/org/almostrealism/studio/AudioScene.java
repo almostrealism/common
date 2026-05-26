@@ -39,6 +39,7 @@ import org.almostrealism.audio.data.FileWaveDataProviderTree;
 import org.almostrealism.studio.generative.GenerationManager;
 import org.almostrealism.studio.generative.GenerationProvider;
 import org.almostrealism.studio.generative.NoOpGenerationProvider;
+import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.studio.persistence.MigrationClassLoader;
 import org.almostrealism.music.notes.NoteAudioChoice;
@@ -1287,6 +1288,45 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 				time.getClock().setFrame(0);
 			}
 		};
+	}
+
+	/**
+	 * Renders the scene's <em>current</em> pattern content for a single channel
+	 * to a wav file, without assigning or deriving a genome.
+	 *
+	 * <p>Unlike the genome-sweep render in
+	 * {@link org.almostrealism.studio.optimize.AudioScenePopulation}, this method
+	 * renders whatever pattern elements are currently installed on the channel —
+	 * including externally generated content set via
+	 * {@link org.almostrealism.music.pattern.PatternLayerManager#setExplicitElements}.
+	 * It builds a real-time runner for the one channel, ticks it for {@code frames}
+	 * frames, and flushes the output file.</p>
+	 *
+	 * @param channel    the channel index to render
+	 * @param frames     the number of audio frames to render
+	 * @param outputPath the wav file path to write
+	 * @return {@code outputPath}
+	 */
+	public String renderChannel(int channel, int frames, String outputPath) {
+		WaveOutput out = new WaveOutput(() -> new File(outputPath), 24, true);
+		int bufferSize = DEFAULT_REALTIME_BUFFER_SIZE;
+		TemporalCellular cells = runnerRealTime(new MultiChannelAudioOutput(out),
+				List.of(channel), bufferSize);
+		int bufferCount = (frames + bufferSize - 1) / bufferSize;
+
+		Runnable setup = cells.setup().get();
+		Runnable tick = cells.tick().get();
+		try {
+			setup.run();
+			for (int b = 0; b < bufferCount; b++) {
+				tick.run();
+			}
+			out.write().get().run();
+		} finally {
+			out.reset();
+			cells.reset();
+		}
+		return outputPath;
 	}
 
 	/**
