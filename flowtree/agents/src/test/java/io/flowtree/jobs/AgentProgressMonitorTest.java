@@ -70,6 +70,24 @@ public class AgentProgressMonitorTest extends TestSuiteBase {
         assertNull(monitor.getOffendingSignature());
     }
 
+    /**
+     * Window eviction with the same signature as the newly observed one must not
+     * cause a false positive. When the window is full and the oldest entry is the
+     * same signature being re-observed, the post-eviction count is decremented but
+     * the pre-eviction count is still below the threshold, so no loop is reported.
+     */
+    @Test(timeout = 5000)
+    public void noFalsePositiveOnSelfEviction() {
+        AgentProgressMonitor monitor = new AgentProgressMonitor(4, 5, 4);
+        assertFalse(monitor.observe("same"));
+        assertFalse(monitor.observe("same"));
+        for (String sig : new String[] {"a", "b", "c", "d"}) {
+            assertFalse(monitor.observe(sig));
+        }
+        assertFalse(monitor.observe("same"));
+        assertNull(monitor.getOffendingSignature());
+    }
+
     /** Null signatures (non-action lines) are ignored: they neither arm nor trip the detector. */
     @Test(timeout = 5000)
     public void ignoresNullSignatures() {
