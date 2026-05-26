@@ -1730,3 +1730,138 @@ jobs:
             echo "All tests and quality gates passed." >> "$GITHUB_STEP_SUMMARY"
             echo "A FlowTree coding agent job was submitted for general review." >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  # ─── Merge Gate ───────────────────────────────────────────────────────
+  # Single required branch-protection check. Passes when every job that
+  # ran for this pipeline completed successfully. Skipped jobs (due to
+  # layer filtering or docs-only optimisation) are treated as passing.
+  # auto-resolve is intentionally excluded — it is a background automation
+  # task, not a quality signal.
+  #
+  # Configure this as the ONLY required status check under:
+  #   Settings → Branches → Branch protection rules → Require status checks
+  #   Status check name: "All Checks"
+  all-checks:
+    name: All Checks
+    needs:
+      - changes
+      - build
+      - code-policy-check
+      - test-integrity-check
+      - deception-audit
+      - agent-commit-validation
+      - test-timeout-check
+      - duplicate-code-check
+      - checkstyle
+      - python-tests
+      - test-flowtree
+      - test
+      - test-media
+      - test-mac
+      - test-media-mac
+      - javadoc-check
+      - analysis
+      - qodana
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate pipeline results
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          CODE_POLICY_RESULT: ${{ needs.code-policy-check.result }}
+          TEST_INTEGRITY_RESULT: ${{ needs.test-integrity-check.result }}
+          DECEPTION_AUDIT_RESULT: ${{ needs.deception-audit.result }}
+          AGENT_COMMIT_RESULT: ${{ needs.agent-commit-validation.result }}
+          TEST_TIMEOUT_RESULT: ${{ needs.test-timeout-check.result }}
+          DUPLICATE_CODE_RESULT: ${{ needs.duplicate-code-check.result }}
+          CHECKSTYLE_RESULT: ${{ needs.checkstyle.result }}
+          CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
+          PYTHON_TESTS_RESULT: ${{ needs.python-tests.result }}
+          TEST_FLOWTREE_RESULT: ${{ needs.test-flowtree.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          TEST_MEDIA_RESULT: ${{ needs.test-media.result }}
+          TEST_MAC_RESULT: ${{ needs.test-mac.result }}
+          TEST_MEDIA_MAC_RESULT: ${{ needs.test-media-mac.result }}
+          JAVADOC_RESULT: ${{ needs.javadoc-check.result }}
+          JAVADOC_PASSED: ${{ needs.javadoc-check.outputs.passed }}
+          ANALYSIS_RESULT: ${{ needs.analysis.result }}
+          QODANA_RESULT: ${{ needs.qodana.result }}
+        run: |
+          FAILED=""
+
+          # Checks a single job result.
+          # success or skipped → pass; failure or cancelled → fail.
+          check_job() {
+            local name="$1"
+            local result="$2"
+            case "$result" in
+              success|skipped) : ;;
+              failure|cancelled)
+                FAILED="${FAILED} ${name}"
+                echo "::error::${name} result: ${result}" ;;
+              *)
+                echo "::notice::${name} result: ${result} (unexpected — treating as failure)"
+                FAILED="${FAILED} ${name}" ;;
+            esac
+          }
+
+          check_job "build"                   "$BUILD_RESULT"
+          check_job "changes"                 "$CHANGES_RESULT"
+          check_job "code-policy-check"       "$CODE_POLICY_RESULT"
+          check_job "test-integrity-check"    "$TEST_INTEGRITY_RESULT"
+          check_job "deception-audit"         "$DECEPTION_AUDIT_RESULT"
+          check_job "agent-commit-validation" "$AGENT_COMMIT_RESULT"
+          check_job "test-timeout-check"      "$TEST_TIMEOUT_RESULT"
+          check_job "duplicate-code-check"    "$DUPLICATE_CODE_RESULT"
+          check_job "python-tests"            "$PYTHON_TESTS_RESULT"
+          check_job "test-flowtree"           "$TEST_FLOWTREE_RESULT"
+          check_job "test"                    "$TEST_RESULT"
+          check_job "test-media"              "$TEST_MEDIA_RESULT"
+          check_job "test-mac"                "$TEST_MAC_RESULT"
+          check_job "test-media-mac"          "$TEST_MEDIA_MAC_RESULT"
+          check_job "analysis"                "$ANALYSIS_RESULT"
+          check_job "qodana"                  "$QODANA_RESULT"
+
+          # checkstyle and javadoc-check use continue-on-error so their job
+          # result is always "success". Check their outputs.passed instead.
+          if [ "$CHECKSTYLE_PASSED" != "true" ] && [ "$CHECKSTYLE_RESULT" != "skipped" ]; then
+            FAILED="${FAILED} checkstyle"
+            echo "::error::checkstyle reported violations (passed=false)"
+          fi
+          if [ "$JAVADOC_PASSED" != "true" ] && [ "$JAVADOC_RESULT" != "skipped" ]; then
+            FAILED="${FAILED} javadoc-check"
+            echo "::error::javadoc-check reported violations (passed=false)"
+          fi
+
+          if [ -n "$FAILED" ]; then
+            echo "::error::The following jobs failed:${FAILED}"
+            exit 1
+          fi
+          echo "All pipeline jobs completed successfully or were intentionally skipped."
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          echo "## Merge Gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Job | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-----|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| changes | ${{ needs.changes.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| build | ${{ needs.build.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| code-policy-check | ${{ needs.code-policy-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-integrity-check | ${{ needs.test-integrity-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| deception-audit | ${{ needs.deception-audit.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| agent-commit-validation | ${{ needs.agent-commit-validation.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-timeout-check | ${{ needs.test-timeout-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| duplicate-code-check | ${{ needs.duplicate-code-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| checkstyle | ${{ needs.checkstyle.result }} (passed=${{ needs.checkstyle.outputs.passed }}) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| python-tests | ${{ needs.python-tests.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-flowtree | ${{ needs.test-flowtree.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test | ${{ needs.test.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-media | ${{ needs.test-media.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-mac | ${{ needs.test-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test-media-mac | ${{ needs.test-media-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| javadoc-check | ${{ needs.javadoc-check.result }} (passed=${{ needs.javadoc-check.outputs.passed }}) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| analysis | ${{ needs.analysis.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| qodana | ${{ needs.qodana.result }} |" >> "$GITHUB_STEP_SUMMARY"
