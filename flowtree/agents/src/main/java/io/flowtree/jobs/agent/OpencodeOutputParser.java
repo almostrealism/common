@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import io.flowtree.JsonFieldExtractor;
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -29,6 +30,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 /**
  * Forgiving parser for opencode's JSON output.
@@ -48,8 +51,39 @@ final class OpencodeOutputParser {
     /** Stop reason recorded on non-zero exit when the runner reports nothing better. */
     static final String STOP_ERROR_UNKNOWN = "error_unknown";
 
+    /** Stop reason recorded when the loop detector killed the session for repeated, non-progressing actions. */
+    static final String STOP_LOOP_DETECTED = "error_loop_detected";
+
     /** Hidden constructor; static-only utility. */
     private OpencodeOutputParser() {}
+
+    /**
+     * Returns the first {@code maxHexLen} characters of the lowercase hex
+     * SHA-256 digest of {@code input}, or the string {@code "null"} when input
+     * is null. Used as a collision-resistant action fingerprint in loop
+     * detection.
+     *
+     * @param input     the text to fingerprint; {@code null} yields {@code "null"}
+     * @param maxHexLen  maximum number of leading hex characters to return
+     * @return the truncated hex digest, or a {@code hashCode}-based fallback if
+     *         SHA-256 is unavailable
+     */
+    private static String sha256Prefix(String input, int maxHexLen) {
+        if (input == null) {
+            return "null";
+        }
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.substring(0, Math.min(maxHexLen, hex.length()));
+        } catch (NoSuchAlgorithmException e) {
+            return Integer.toHexString(input.hashCode());
+        }
+    }
 
     /**
      * Backwards-compatible overload that defaults {@code reportsCost} to {@code false}.
@@ -72,6 +106,29 @@ final class OpencodeOutputParser {
                                 ConsoleFeatures logger) {
         return parse(rawOutput, exitCode, killedForInactivity, measuredDurationMs,
                 runnerMetadata, logger, false);
+    }
+
+    /**
+     * Backwards-compatible overload that defaults {@code killedForLooping} to {@code false}.
+     *
+     * @param rawOutput            captured stdout from opencode
+     * @param exitCode             process exit code
+     * @param killedForInactivity  whether the inactivity watchdog fired
+     * @param measuredDurationMs   wall-clock duration measured by the runner
+     * @param runnerMetadata       metadata key-values the runner wants to surface
+     * @param logger               diagnostic sink; may be null
+     * @param reportsCost          whether the provider reports cost in usage.cost
+     * @return the populated result
+     */
+    static AgentRunResult parse(String rawOutput,
+                                int exitCode,
+                                boolean killedForInactivity,
+                                long measuredDurationMs,
+                                Map<String, String> runnerMetadata,
+                                ConsoleFeatures logger,
+                                boolean reportsCost) {
+        return parse(rawOutput, exitCode, killedForInactivity, measuredDurationMs,
+                runnerMetadata, logger, reportsCost, false);
     }
 
     /**
@@ -107,6 +164,7 @@ final class OpencodeOutputParser {
      * @param runnerMetadata       metadata key-values the runner wants to surface
      * @param logger               diagnostic sink for unknown fields; may be null
      * @param reportsCost          whether the provider reports cost in usage.cost
+     * @param killedForLooping     whether the loop detector killed the session for repeated actions
      * @return the populated result
      */
     static AgentRunResult parse(String rawOutput,
@@ -115,7 +173,8 @@ final class OpencodeOutputParser {
                                 long measuredDurationMs,
                                 Map<String, String> runnerMetadata,
                                 ConsoleFeatures logger,
-                                boolean reportsCost) {
+                                boolean reportsCost,
+                                boolean killedForLooping) {
         String responseText = "";
         String sessionId = null;
         int numTurns = 0;
@@ -191,6 +250,13 @@ final class OpencodeOutputParser {
             }
         }
 
+        // A loop kill overrides any stop reason the (forcibly truncated) stream
+        // may have parsed, so the run is never reported as a success.
+        if (killedForLooping) {
+            stopReason = STOP_LOOP_DETECTED;
+            isError = true;
+        }
+
         Map<String, String> meta = runnerMetadata == null
                 ? new LinkedHashMap<>()
                 : new LinkedHashMap<>(runnerMetadata);
@@ -211,6 +277,48 @@ final class OpencodeOutputParser {
                 isError,
                 denied,
                 meta);
+    }
+
+    /**
+     * Maps a single line of opencode NDJSON output to a normalized action
+     * signature for loop detection, or {@code null} when the line is not a tool
+     * invocation. The signature combines the tool name with a hash of the tool
+     * input, so repeated identical actions (the same command, the same edit on
+     * the same file) collapse to one signature while distinct actions stay
+     * distinct. Supplied to {@code AgentProcessRunner} as the loop-signature
+     * extractor for opencode sessions.
+     *
+     * <p>Never throws: malformed, non-JSON, or non-tool lines yield {@code null}
+     * and are simply not counted toward repetition.</p>
+     *
+     * @param line one line of captured stdout
+     * @return the action signature, or {@code null} for non-action or unparseable lines
+     */
+    static String toActionSignature(String line) {
+        if (line == null || line.isEmpty()) {
+            return null;
+        }
+        JsonNode node;
+        try {
+            node = MAPPER.readTree(line);
+        } catch (Exception ignored) {
+            return null;
+        }
+        if (node == null || !"tool_use".equals(JsonFieldExtractor.getTextOrNull(node, "type"))) {
+            return null;
+        }
+        JsonNode part = node.get("part");
+        if (part == null) {
+            return null;
+        }
+        String tool = JsonFieldExtractor.getTextOrNull(part, "tool");
+        if (tool == null || tool.isEmpty()) {
+            return null;
+        }
+        JsonNode input = part.path("state").path("input");
+        String inputText = input.isMissingNode() || input.isNull() ? "" : input.toString();
+        String digest = sha256Prefix(inputText, 16);
+        return "tool:" + tool + ":" + digest;
     }
 
     /**

@@ -318,8 +318,10 @@ public class OpencodeRunner implements AgentRunner {
             long start = System.currentTimeMillis();
             AgentProcessRunner.Result processResult = AgentProcessRunner.runAttempt(
                     pb,
+                    false,
                     request.getInactivityTimeoutMillis(),
                     request.getTaskId(),
+                    OpencodeOutputParser::toActionSignature,
                     logger);
             long endMs = System.currentTimeMillis();
             long durationMs = endMs - start;
@@ -350,7 +352,8 @@ public class OpencodeRunner implements AgentRunner {
                     durationMs,
                     metadata,
                     logger,
-                    providerConfig.reportsCost());
+                    providerConfig.reportsCost(),
+                    processResult.killedForLooping());
 
             OpencodeTranscriptWriter.forRequest(request).write(request, result, start, endMs, logger);
             return result;

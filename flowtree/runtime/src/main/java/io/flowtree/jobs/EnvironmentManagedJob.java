@@ -29,9 +29,8 @@ import java.util.stream.Stream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
+import org.almostrealism.util.KeyUtils;
 
 /**
  * Abstract base class for jobs that require a managed execution
@@ -156,7 +155,7 @@ public abstract class EnvironmentManagedJob implements Job, ConsoleFeatures {
         venvPath = resolveVenvPath();
         Path hashFile = venvPath.resolve(".requirements-hash");
         Path stampFile = venvPath.resolve(PYTHON_STAMP);
-        String currentHash = sha256(pythonRequirements);
+        String currentHash = KeyUtils.hash(pythonRequirements);
         String pythonExe = findPython();
 
         boolean venvExists = Files.exists(venvPath.resolve("bin").resolve("python3"));
@@ -292,26 +291,6 @@ public abstract class EnvironmentManagedJob implements Job, ConsoleFeatures {
         if (exitCode != 0) {
             throw new IOException("Command failed (exit " + exitCode + "): "
                     + String.join(" ", command));
-        }
-    }
-
-    /**
-     * Computes the SHA-256 hash of a string.
-     *
-     * @param input the string to hash
-     * @return hex-encoded hash
-     */
-    private static String sha256(String input) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder();
-            for (byte b : hash) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.toString();
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 not available", e);
         }
     }
 
