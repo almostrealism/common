@@ -53,10 +53,17 @@ import java.util.stream.Stream;
  */
 public class Sum<T extends Number> extends NAryExpression<T> {
 	/**
-	 * When {@code true}, arithmetic generators are allowed to reorder their operands
-	 * to aid further simplification.
+	 * When {@code true}, a {@link Sum} all of whose children are
+	 * {@link Expression#isSingleIndexMasked() single-index masked} is rewritten by the
+	 * active {@link io.almostrealism.kernel.KernelTraversalProvider} during
+	 * {@link #simplify(KernelStructureContext, int)}. This collapses a wide sparse-Jacobian
+	 * sum (the shape produced by subset/concat/product gradient deltas) into a single
+	 * precomputed lookup, preventing the inlined expression from exploding in size.
+	 *
+	 * <p>When {@code false}, that same case throws {@link UnsupportedOperationException}
+	 * rather than falling through, so reordering is treated as required wherever it applies.</p>
 	 */
-	public static boolean enableGenerateReordering = false;
+	public static boolean enableGenerateReordering = true;
 
 	/**
 	 * When {@code true}, a repeated sum (i.e. {@code a + a}) is always flattened to
