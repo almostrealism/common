@@ -137,7 +137,7 @@ class EnforcementRunner implements ConsoleFeatures {
                         // would inflate the user-facing escalation messaging.
                         if ("enforce-changes".equals(rule.getName())) {
                             job.setEnforcementAttempt(job.getEnforcementAttempt() + 1);
-                            log("enforce_changes found no changes; restarting from PRIMARY (attempt "
+                            log("enforce_changes found no changes; restarting PRIMARY (retry "
                                     + job.getEnforcementAttempt() + ")");
                         }
                         // Preserve commit.txt: executeSingleRun() deletes it at startup.
@@ -149,9 +149,9 @@ class EnforcementRunner implements ConsoleFeatures {
                         }
                         // For enforce-changes, leave currentActivity unchanged (null during primary
                         // runs) so executeSingleRun() resolves to PRIMARY — Phase.ENFORCE_CHANGES
-                        // is deprecated and must not be used. For any other rules that return a
-                        // null correction prompt, tag the activity so phase-specific runner
-                        // routing can apply.
+                        // is deprecated and must not be used. Tagging currentActivity for other
+                        // rules that return null correction prompt enables activity tracking
+                        // and logs which rule triggered the restart.
                         String previousActivity = job.getCurrentActivity();
                         if (!"enforce-changes".equals(rule.getName())) {
                             job.setCurrentActivity(rule.getName());

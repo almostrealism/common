@@ -1115,10 +1115,7 @@ public class CodingAgentJob extends GitManagedJob {
             log("Target branch: " + getTargetBranch());
         }
         if (enforcementAttempt > 0) {
-            // TODO(review): attempt numbering inconsistency — EnforcementRunner logs "attempt N" (1-based retries)
-            // while this line logs "(enforcementAttempt + 1)" (1-based total attempts). Both say different numbers
-            // for the same restart event. Standardize on one scheme (e.g. both use enforcementAttempt).
-            log("enforce_changes retry: restarting from PRIMARY (attempt " + (enforcementAttempt + 1) + ")");
+            log("enforce_changes retry: restarting from PRIMARY (retry " + enforcementAttempt + ")");
         }
 
         PhaseConfig effective = resolveEffectivePhaseConfig(currentPhase);
