@@ -19,15 +19,26 @@
 
 set -euo pipefail
 
-# ── Writable-volume guard (refuse to start if any volume is writable) ──
+# ── Writable-volume guard (refuse to start on any UNSANCTIONED writable mount) ──
 #
 # Writable shared volumes caused the April 2026 cross-workstream collision
 # documented in FLOWTREE_COLLISIONS.md: two agent containers mounting the
 # same `flowtree_workspaces` volume wrote to the same git working tree
 # concurrently, and the advisory file lock failed because git stash
-# unlinked the lock file mid-job. Per the original flowtree spec,
-# agents must run with NO writable volumes. Read-only bind mounts (ssh
-# keys, models, samples) are fine.
+# unlinked the lock file mid-job. More broadly, any writable directory
+# shared between agents is a cross-workstream data-exfiltration channel.
+#
+# The deeper invariant is therefore: NO two agents may share data through
+# a volume. The one writable mount agents are permitted is the per-agent
+# transcript sink at /agent-transcripts, and its cross-agent isolation
+# (each agent binding a DISTINCT host subdirectory) is verified at the
+# compose level in CI by tools/ci/validate_agent_volume_isolation.py —
+# this in-container guard cannot see other containers' mounts, so it only
+# enforces the local half: the ONLY writable mount allowed here is
+# /agent-transcripts. Any other writable mount aborts startup.
+#
+# Read-only bind mounts (ssh keys, models, samples) are always fine — a
+# read-only mount cannot carry data from one agent to another.
 #
 # System mounts managed by Docker (overlay rootfs, proc, sys, dev, run,
 # /etc/hostname, /etc/hosts, /etc/resolv.conf) are exempt — these are
@@ -49,6 +60,12 @@ _flowtree_check_mount_writability() {
                 || mp == "/etc/resolv.conf") {
                 next
             }
+            # The single sanctioned writable mount: the per-agent transcript
+            # sink. Exact match only — no subpaths — so a stray writable mount
+            # like /agent-transcripts-evil is still reported.
+            if (mp == "/agent-transcripts") {
+                next
+            }
             # Mount options (field 6) begin with rw or ro.
             split(opts, flags, ",")
             if (flags[1] == "rw") print mp
@@ -57,30 +74,34 @@ _flowtree_check_mount_writability() {
 
     if [ -n "${violations}" ]; then
         cat >&2 <<EOF
-ERROR: FlowTree Agent refuses to start -- writable volumes are attached.
+ERROR: FlowTree Agent refuses to start -- unsanctioned writable volumes are attached.
 
 Writable mounts detected:
 $(printf '  %s\n' ${violations})
 
-Per the original FlowTree spec, agents must run with NO writable
-volumes. Read-only bind mounts (ssh keys, models, samples) are fine.
+The ONLY writable mount an agent may have is the per-agent transcript
+sink at /agent-transcripts. Every other mount must be read-only.
 
 This guard exists because writable shared volumes caused the April 2026
 cross-workstream collision documented in FLOWTREE_COLLISIONS.md: two
 agent containers mounting the same volume at /workspace/project wrote
 to the same git working tree simultaneously, and the in-repo advisory
 file lock failed because 'git stash --include-untracked' unlinked the
-lock file mid-job.
+lock file mid-job. A shared writable directory is also a cross-workstream
+data-exfiltration channel between unrelated agents.
 
 To fix the misconfiguration:
   * Remove every 'volumes: - <path>' and 'volumes: - <src>:<dst>'
     entry from your compose file (or '-v' flag from 'docker run')
-    that is not marked ':ro'.
+    that is not marked ':ro', except the per-agent transcript bind
+    '<host>/agent-N:/agent-transcripts:rw'.
   * Each agent container must clone the repository onto its own
     overlay filesystem. Expect a cold 'git clone' on every start --
     this is deliberate: it is the only way to guarantee isolation.
   * Read-only reference mounts (ssh keys, models, samples) are fine
     and should continue to be passed as ':ro' binds.
+  * If you add a writable transcript mount, give EACH agent a DISTINCT
+    host subdirectory so no two agents can read each other's data.
 EOF
         exit 1
     fi
