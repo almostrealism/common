@@ -309,6 +309,135 @@ public class OpencodeOutputParserTest extends TestSuiteBase {
         assertNull(result.runnerMetadata().get("cost_unavailable"));
     }
 
+    /**
+     * Real opencode 1.15.10 output captured from {@code opencode run --format json}
+     * against OpenRouter (model {@code openrouter/qwen/qwen3-coder}), faithfully
+     * reproducing the command line and config FlowTree's {@code OpencodeRunner}
+     * generates. The cost and token usage are carried on the {@code step_finish}
+     * event under {@code part.cost} and {@code part.tokens.{input,output}} —
+     * there is no top-level {@code usage} object. Verbatim except for the API
+     * key (which never appears in the output stream).
+     */
+    private static final String OPENROUTER_REAL_STEP_FINISH = ""
+            + "{\"type\":\"step_start\",\"timestamp\":1779831133667,"
+            + "\"sessionID\":\"ses_199cc2d3fffeiRMbmjI9wJPgi7\","
+            + "\"part\":{\"id\":\"prt_e6633d5e0001O2DRrMn1yRENH9\","
+            + "\"messageID\":\"msg_e6633d3680011JeSLyClrnXixx\","
+            + "\"sessionID\":\"ses_199cc2d3fffeiRMbmjI9wJPgi7\","
+            + "\"type\":\"step-start\"}}\n"
+            + "{\"type\":\"text\",\"timestamp\":1779831133742,"
+            + "\"sessionID\":\"ses_199cc2d3fffeiRMbmjI9wJPgi7\","
+            + "\"part\":{\"id\":\"prt_e6633d5e3001oMcsx3f4iHYwq8\","
+            + "\"messageID\":\"msg_e6633d3680011JeSLyClrnXixx\","
+            + "\"sessionID\":\"ses_199cc2d3fffeiRMbmjI9wJPgi7\","
+            + "\"type\":\"text\",\"text\":\"DONE\","
+            + "\"time\":{\"start\":1779831133667,\"end\":1779831133740}}}\n"
+            + "{\"type\":\"step_finish\",\"timestamp\":1779831133757,"
+            + "\"sessionID\":\"ses_199cc2d3fffeiRMbmjI9wJPgi7\","
+            + "\"part\":{\"id\":\"prt_e6633d639001XN6zI4l4Vnwtju\","
+            + "\"reason\":\"stop\",\"snapshot\":\"428299a406ace2104238d93135967590cddd3760\","
+            + "\"messageID\":\"msg_e6633d3680011JeSLyClrnXixx\","
+            + "\"sessionID\":\"ses_199cc2d3fffeiRMbmjI9wJPgi7\","
+            + "\"type\":\"step-finish\","
+            + "\"tokens\":{\"total\":7481,\"input\":5752,\"output\":1,\"reasoning\":0,"
+            + "\"cache\":{\"write\":0,\"read\":1728}},\"cost\":0.00126724}}\n";
+
+    /**
+     * The real OpenRouter step_finish cost is extracted when {@code reportsCost=true}.
+     * This is the case that was silently producing $0.00 before the parser learned
+     * to read {@code part.cost} instead of a nonexistent top-level {@code usage} block.
+     */
+    @Test(timeout = 5000)
+    public void extractsCostFromStepFinishEvent() {
+        AgentRunResult result = OpencodeOutputParser.parse(
+                OPENROUTER_REAL_STEP_FINISH, 0, false, 100L, Collections.emptyMap(), SILENT, true);
+        assertEquals(0.00126724, result.costUsd(), 1e-12);
+        assertEquals("5752", result.runnerMetadata().get("input_tokens"));
+        assertEquals("1", result.runnerMetadata().get("output_tokens"));
+        assertEquals("1728", result.runnerMetadata().get("cache_read_tokens"));
+        assertNull("cost_unavailable must not be set when cost > 0",
+                result.runnerMetadata().get("cost_unavailable"));
+        assertEquals("DONE", result.runnerMetadata().get("response_text"));
+    }
+
+    /** With {@code reportsCost=false}, step_finish cost and tokens are ignored. */
+    @Test(timeout = 5000)
+    public void ignoresStepFinishCostWhenReportsCostFalse() {
+        AgentRunResult result = OpencodeOutputParser.parse(
+                OPENROUTER_REAL_STEP_FINISH, 0, false, 100L, Collections.emptyMap(), SILENT, false);
+        assertEquals(0.0, result.costUsd(), 1e-12);
+        assertNull(result.runnerMetadata().get("input_tokens"));
+        assertNull(result.runnerMetadata().get("output_tokens"));
+    }
+
+    /**
+     * opencode runs on the Vercel AI SDK, which reports per-step usage, so a
+     * multi-step session emits one {@code step_finish} per step and the session
+     * total is their sum. This stream has two step_finish events; cost and tokens
+     * must accumulate.
+     */
+    @Test(timeout = 5000)
+    public void sumsCostAndTokensAcrossStepFinishEvents() {
+        String stream = ""
+                + "{\"type\":\"step_start\",\"sessionID\":\"ses_m\","
+                + "\"part\":{\"messageID\":\"msg_1\",\"type\":\"step-start\"}}\n"
+                + "{\"type\":\"step_finish\",\"sessionID\":\"ses_m\","
+                + "\"part\":{\"messageID\":\"msg_1\",\"type\":\"step-finish\","
+                + "\"tokens\":{\"input\":100,\"output\":20},\"cost\":0.001}}\n"
+                + "{\"type\":\"step_start\",\"sessionID\":\"ses_m\","
+                + "\"part\":{\"messageID\":\"msg_2\",\"type\":\"step-start\"}}\n"
+                + "{\"type\":\"step_finish\",\"sessionID\":\"ses_m\","
+                + "\"part\":{\"messageID\":\"msg_2\",\"type\":\"step-finish\","
+                + "\"tokens\":{\"input\":300,\"output\":40},\"cost\":0.002}}\n";
+        AgentRunResult result = OpencodeOutputParser.parse(
+                stream, 0, false, 100L, Collections.emptyMap(), SILENT, true);
+        assertEquals(0.003, result.costUsd(), 1e-12);
+        assertEquals("400", result.runnerMetadata().get("input_tokens"));
+        assertEquals("60", result.runnerMetadata().get("output_tokens"));
+        assertEquals("two step_start events", 2, result.numTurns());
+    }
+
+    /**
+     * When the event stream reports token usage but zero cost, the
+     * {@code cost_unavailable} marker is set — the same contract the legacy
+     * usage-block path honours.
+     */
+    @Test(timeout = 5000)
+    public void marksCostUnavailableWhenStepFinishCostZeroButTokensPresent() {
+        String stream = ""
+                + "{\"type\":\"step_start\",\"sessionID\":\"ses_n\","
+                + "\"part\":{\"messageID\":\"msg_1\",\"type\":\"step-start\"}}\n"
+                + "{\"type\":\"step_finish\",\"sessionID\":\"ses_n\","
+                + "\"part\":{\"messageID\":\"msg_1\",\"type\":\"step-finish\","
+                + "\"tokens\":{\"input\":500,\"output\":80},\"cost\":0.0}}\n";
+        AgentRunResult result = OpencodeOutputParser.parse(
+                stream, 0, false, 100L, Collections.emptyMap(), SILENT, true);
+        assertEquals(0.0, result.costUsd(), 1e-12);
+        assertEquals("true", result.runnerMetadata().get("cost_unavailable"));
+        assertEquals("500", result.runnerMetadata().get("input_tokens"));
+        assertEquals("80", result.runnerMetadata().get("output_tokens"));
+    }
+
+    /**
+     * Cache-token counts (part.tokens.cache.read/write) are summed across
+     * step_finish events and surfaced so the runner can price cached reads.
+     */
+    @Test(timeout = 5000)
+    public void sumsCacheTokensAcrossStepFinishEvents() {
+        String stream = ""
+                + "{\"type\":\"step_finish\",\"sessionID\":\"ses_c\","
+                + "\"part\":{\"type\":\"step-finish\",\"tokens\":{\"input\":100,\"output\":10,"
+                + "\"cache\":{\"read\":4000,\"write\":50}},\"cost\":0.0}}\n"
+                + "{\"type\":\"step_finish\",\"sessionID\":\"ses_c\","
+                + "\"part\":{\"type\":\"step-finish\",\"tokens\":{\"input\":200,\"output\":20,"
+                + "\"cache\":{\"read\":6000,\"write\":0}},\"cost\":0.0}}\n";
+        AgentRunResult result = OpencodeOutputParser.parse(
+                stream, 0, false, 100L, Collections.emptyMap(), SILENT, true);
+        assertEquals("10000", result.runnerMetadata().get("cache_read_tokens"));
+        assertEquals("50", result.runnerMetadata().get("cache_write_tokens"));
+        assertEquals("300", result.runnerMetadata().get("input_tokens"));
+    }
+
     /** When no step_start events appear but text events carry messageIDs, count those. */
     @Test(timeout = 5000)
     public void countsDistinctMessageIdsWhenStepStartAbsent() {
