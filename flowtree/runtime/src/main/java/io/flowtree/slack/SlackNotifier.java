@@ -1153,6 +1153,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         // Cost
         if (event.getCostUsd() > 0) {
             sb.append("   :moneybag: Cost: $").append(String.format("%.2f", event.getCostUsd()));
+            sb.append(JobStatsStore.formatCostBreakdown(event.getCostByRunner()));
             sb.append(JobStatsStore.formatCostBreakdown(event.getCostByModel()));
             sb.append("\n");
         }

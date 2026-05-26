@@ -34,6 +34,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -1287,12 +1288,12 @@ public class CodingAgentJob extends GitManagedJob {
 
     /** Returns an immutable snapshot of the cumulative per-runner USD cost for this job. */
     Map<String, Double> getCostByRunner() {
-        return new LinkedHashMap<>(costByRunner);
+        return Collections.unmodifiableMap(new LinkedHashMap<>(costByRunner));
     }
 
     /** Returns an immutable snapshot of the cumulative per-model USD cost for this job. */
     Map<String, Double> getCostByModel() {
-        return new LinkedHashMap<>(costByModel);
+        return Collections.unmodifiableMap(new LinkedHashMap<>(costByModel));
     }
 
     /**
