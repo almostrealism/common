@@ -1744,8 +1744,6 @@ jobs:
   all-checks:
     name: All Checks
     needs:
-      # TODO(review): `changes` result is not evaluated below; if `changes` itself
-      # fails, all downstream jobs skip and this gate would pass having tested nothing.
       - changes
       - build
       - code-policy-check
@@ -1769,6 +1767,7 @@ jobs:
     steps:
       - name: Evaluate pipeline results
         env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
           BUILD_RESULT: ${{ needs.build.result }}
           CODE_POLICY_RESULT: ${{ needs.code-policy-check.result }}
           TEST_INTEGRITY_RESULT: ${{ needs.test-integrity-check.result }}
@@ -1808,6 +1807,7 @@ jobs:
           }
 
           check_job "build"                   "$BUILD_RESULT"
+          check_job "changes"                 "$CHANGES_RESULT"
           check_job "code-policy-check"       "$CODE_POLICY_RESULT"
           check_job "test-integrity-check"    "$TEST_INTEGRITY_RESULT"
           check_job "deception-audit"         "$DECEPTION_AUDIT_RESULT"
@@ -1847,6 +1847,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Job | Result |" >> "$GITHUB_STEP_SUMMARY"
           echo "|-----|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| changes | ${{ needs.changes.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| build | ${{ needs.build.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| code-policy-check | ${{ needs.code-policy-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-integrity-check | ${{ needs.test-integrity-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
