@@ -286,12 +286,20 @@ public final class AgentProcessRunner {
             lastOutputAt.set(System.currentTimeMillis());
             out.append(line).append("\n");
             logger.log(line);
-            if (progress != null && progress.observe(loopSignatureExtractor.apply(line))) {
-                loopKilled.set(true);
-                logger.warn("repeatedActionSignature=" + progress.getOffendingSignature()
-                        + " -- killing process tree after repeated non-progressing agent actions");
-                killAction.run();
-                return;
+            if (progress != null) {
+                String signature;
+                try {
+                    signature = loopSignatureExtractor.apply(line);
+                } catch (Exception e) {
+                    signature = null;
+                }
+                if (progress.observe(signature)) {
+                    loopKilled.set(true);
+                    logger.warn("repeatedActionSignature=" + progress.getOffendingSignature()
+                            + " -- killing process tree after repeated non-progressing agent actions");
+                    killAction.run();
+                    return;
+                }
             }
         }
     }
@@ -358,7 +366,7 @@ public final class AgentProcessRunner {
     /** Logs the read-loop exception either as a benign post-kill notice or a real error, per {@code killed}. */
     private static void logIoOrKill(Exception e, boolean killed, ConsoleFeatures logger) {
         if (killed) {
-            logger.log("Read loop ended after inactivity kill: " + e.getMessage());
+            logger.log("Read loop ended after process termination: " + e.getMessage());
         } else {
             logger.warn("Error: " + e.getMessage(), e);
         }

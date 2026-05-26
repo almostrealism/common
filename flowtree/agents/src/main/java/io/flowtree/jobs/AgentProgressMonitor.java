@@ -117,7 +117,7 @@ final class AgentProgressMonitor {
         }
         totalActions++;
         window.addLast(signature);
-        int count = counts.merge(signature, 1, Integer::sum);
+        counts.merge(signature, 1, Integer::sum);
         if (window.size() > windowSize) {
             String evicted = window.removeFirst();
             if (counts.merge(evicted, -1, Integer::sum) == 0) {
@@ -127,6 +127,7 @@ final class AgentProgressMonitor {
         if (totalActions < minActions) {
             return false;
         }
+        int count = counts.getOrDefault(signature, 0);
         if (count >= repeatThreshold) {
             offendingSignature = signature;
             return true;
