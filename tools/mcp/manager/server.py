@@ -3770,6 +3770,13 @@ def workstream_context(
         ``workstream_id`` is supplied and ``job_limit > 0``; omitted
         otherwise.
       - **metadata**: resolved repo_url, branch, namespace. Always present.
+      - **pull_request**: metadata about the most recent pull request
+        associated with the branch (across all states: open, closed,
+        merged). Present when a PR exists; omitted entirely when no PR
+        is found or the repo cannot be resolved. Includes ``number``,
+        ``title``, ``url``, ``state``, ``created_at``, ``updated_at``,
+        ``merged_at``, ``closed_at``, ``author``, ``base_branch``,
+        and ``head_branch``.
 
     Prefer this tool over ``workstream_get_status`` for
     doing-real-work tasks. ``workstream_get_status`` is an operational-
@@ -3957,6 +3964,45 @@ def workstream_context(
         else:
             commit_error = f"Could not extract owner/repo from URL: {effective_repo}"
 
+    # Fetch the most recent PR for the branch (across all states: open, closed, merged)
+    pull_request = None
+    pr_error = None
+    if effective_repo:
+        pr_owner_repo = _extract_owner_repo(effective_repo)
+        if pr_owner_repo:
+            pr_owner, pr_repo = pr_owner_repo
+            # Set GitHub org context so the proxy uses the correct per-org token
+            ws = _find_workstream(workstream_id) if workstream_id else None
+            if ws:
+                _set_github_org(ws)
+            elif pr_owner:
+                _current_github_org.set(pr_owner)
+
+            try:
+                pr_lookup = _find_recent_pr_by_branch(pr_owner, pr_repo, effective_branch)
+                if pr_lookup.get("ok") and pr_lookup.get("found"):
+                    raw_pr = pr_lookup.get("pr", {})
+                    author = raw_pr.get("user") or raw_pr.get("author") or {}
+                    pull_request = {
+                        "number": raw_pr.get("number"),
+                        "title": raw_pr.get("title"),
+                        "url": raw_pr.get("html_url"),
+                        "state": raw_pr.get("state"),
+                        "created_at": raw_pr.get("created_at"),
+                        "updated_at": raw_pr.get("updated_at"),
+                        "merged_at": raw_pr.get("merged_at"),
+                        "closed_at": raw_pr.get("closed_at"),
+                        "author": author.get("login") if author else None,
+                        "base_branch": raw_pr.get("base", {}).get("ref") if isinstance(raw_pr.get("base"), dict) else None,
+                        "head_branch": raw_pr.get("head", {}).get("ref") if isinstance(raw_pr.get("head"), dict) else None,
+                    }
+                elif pr_lookup.get("ok") is False:
+                    pr_error = pr_lookup.get("error", "GitHub API error")
+            except Exception as exc:
+                pr_error = str(exc)
+                logging.getLogger("ar-manager").warning(
+                    "Failed to fetch PR for %s: %s", effective_branch, exc)
+
     # Compact jobs timeline: enough fields to situate memories in time and
     # link them to the commits/PR flow, nothing more.
     #
@@ -4022,6 +4068,10 @@ def workstream_context(
             result["initial_commit_sha"] = all_commits[0].get("sha", "")[:10]
     if commit_error is not None:
         result["commit_error"] = commit_error
+    if pull_request is not None:
+        result["pull_request"] = pull_request
+    if pr_error is not None:
+        result["pr_error"] = pr_error
 
     return result
 
@@ -4255,6 +4305,43 @@ def _find_open_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
     pr_list = _github_request(
         "GET",
         f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=open",
+    )
+    if isinstance(pr_list, dict) and pr_list.get("ok") is False:
+        return pr_list
+    if not isinstance(pr_list, list):
+        return {
+            "ok": False,
+            "error": "Unexpected response listing pull requests",
+        }
+    if not pr_list:
+        return {"ok": True, "found": False, "branch": branch}
+    return {"ok": True, "found": True, "pr": pr_list[0], "branch": branch}
+
+
+def _find_recent_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
+    """Look up the most recent pull request for ``branch`` on ``owner/repo``.
+
+    Unlike ``_find_open_pr_by_branch``, this searches across all PR states
+    (open, closed, merged) using the GitHub Pulls list API with ``state=all``
+    and returns the most recently updated PR for the branch. Returns a dict
+    with ``ok=True`` and ``pr`` (the raw GitHub PR object) on success,
+    ``ok=True`` with ``found=False`` when no PR exists for the branch, or
+    an ``ok=False`` error dict when the GitHub call fails.
+
+    Args:
+        owner: GitHub org (owner).
+        repo: Repository name.
+        branch: Branch name to search for.
+
+    Returns:
+        Dict with ``ok=True``, ``found=True``, ``pr`` (raw GitHub PR object),
+        and ``branch`` on success; ``ok=True``, ``found=False`` when no PR
+        exists; or ``ok=False`` with error message on failure.
+    """
+    head = f"{owner}:{branch}"
+    pr_list = _github_request(
+        "GET",
+        f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&state=all&sort=updated&direction=desc&per_page=1",
     )
     if isinstance(pr_list, dict) and pr_list.get("ok") is False:
         return pr_list

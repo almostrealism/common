@@ -169,6 +169,11 @@ done
 log "Starting agent pool (services defined in docker-compose.yml)..."
 log "Transcripts: ${TRANSCRIPT_DIR_HOST}/<agent>/"
 
-docker compose -f "${COMPOSE_FILE}" up -d --build
+# --remove-orphans cleans up containers from services that no longer exist
+# in the compose file. This matters across the replicas->explicit-services
+# migration: the old `agent` replica service produced containers named
+# flowtree-agent-1/-2, the exact names the explicit agent-N services now
+# claim via container_name, so a stale orphan would otherwise block startup.
+docker compose -f "${COMPOSE_FILE}" up -d --build --remove-orphans
 
 log "Agents started. Use './start.sh --status' to check or './start.sh --stop' to shut down."

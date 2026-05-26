@@ -620,6 +620,33 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
+	 * Appends a {@link Map} of {@code String} to {@code Double} as a JSON object
+	 * to the given {@link StringBuilder}, using proper JSON key escaping.
+	 * Shared implementation for serializing cost breakdowns in stats reporting.
+	 *
+	 * <p>Output format: {@code {"key1":1.0,"key2":2.0}}</p>
+	 *
+	 * @param sb     the builder to append to (caller adds any surrounding fields)
+	 * @param keyName the JSON key name for this object
+	 * @param map    the map to serialize; {@code null} or empty produces an empty object
+	 */
+	public static void appendDoubleMapJson(StringBuilder sb, String keyName, Map<String, Double> map) {
+		sb.append(",\"").append(keyName).append("\":{");
+		boolean first = true;
+		if (map != null) {
+			for (Map.Entry<String, Double> e : map.entrySet()) {
+				if (!first) sb.append(",");
+				first = false;
+				sb.append("\"")
+					.append(escapeJson(e.getKey()))
+					.append("\":")
+					.append(e.getValue() != null ? e.getValue() : 0.0);
+			}
+		}
+		sb.append("}");
+	}
+
+	/**
 	 * Extracts a numeric string from the beginning of the input.
 	 *
 	 * @param rest         the string to extract from (already trimmed after the colon)

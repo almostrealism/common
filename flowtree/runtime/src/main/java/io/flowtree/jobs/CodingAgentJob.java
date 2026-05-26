@@ -34,6 +34,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -232,6 +233,8 @@ public class CodingAgentJob extends GitManagedJob {
     private double costUsd;
     /** Cumulative USD cost per runner name, summed across every phase invocation in this job. */
     private final Map<String, Double> costByRunner = new LinkedHashMap<>();
+    /** Cumulative USD cost per model (provider/model identifier), summed across every phase invocation in this job. */
+    private final Map<String, Double> costByModel = new LinkedHashMap<>();
     /** Number of agentic turns taken during the Claude Code session. */
     private int numTurns;
     /** Session subtype / stop reason reported by Claude Code (e.g. "success"). */
@@ -1115,6 +1118,9 @@ public class CodingAgentJob extends GitManagedJob {
             log("Enforcement attempt: " + (enforcementAttempt + 1));
         }
 
+        PhaseConfig effective = resolveEffectivePhaseConfig(currentPhase);
+        String modelKey = effective.toModelKey();
+
         output = "";
         AgentRunResult finalResult = null;
         for (int attempt = 0; attempt <= maxInactivityRestarts; attempt++) {
@@ -1140,6 +1146,7 @@ public class CodingAgentJob extends GitManagedJob {
         if (finalResult != null) {
             absorbResult(finalResult);
             costByRunner.merge(runner.getName(), finalResult.costUsd(), Double::sum);
+            costByModel.merge(modelKey, finalResult.costUsd(), Double::sum);
         }
         harnessStatus().phaseExit(currentPhase, finalResult);
         log("Output saved to: " + outputFile);
@@ -1281,7 +1288,12 @@ public class CodingAgentJob extends GitManagedJob {
 
     /** Returns an immutable snapshot of the cumulative per-runner USD cost for this job. */
     Map<String, Double> getCostByRunner() {
-        return new LinkedHashMap<>(costByRunner);
+        return Collections.unmodifiableMap(new LinkedHashMap<>(costByRunner));
+    }
+
+    /** Returns an immutable snapshot of the cumulative per-model USD cost for this job. */
+    Map<String, Double> getCostByModel() {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(costByModel));
     }
 
     /**
@@ -1359,6 +1371,7 @@ public class CodingAgentJob extends GitManagedJob {
             }
             ccEvent.withRunnerName(runnerName);
             ccEvent.withCostByRunner(costByRunner);
+            ccEvent.withCostByModel(costByModel);
             if (postCompletionCapHit) ccEvent.withPostCompletionCapHit(true);
             if (activeReviewRule != null && activeReviewRule.hasRun()) {
                 ccEvent.withReviewInfo(true, activeReviewRule.getFilesModified(),
