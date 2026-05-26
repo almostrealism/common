@@ -3070,6 +3070,58 @@ class TestWorkstreamContextPullRequest(unittest.TestCase):
         self.assertEqual(pr["closed_at"], "2026-01-10T00:00:00Z")
 
 
+class TestFindRecentPrByBranch(unittest.TestCase):
+    """Unit tests for _find_recent_pr_by_branch GitHub API integration."""
+
+    @patch.object(server, "_github_request")
+    def test_calls_pulls_list_api_with_correct_params(self, mock_gh):
+        """Verifies _find_recent_pr_by_branch uses the Pulls list API with state=all."""
+        mock_gh.return_value = []
+        result = server._find_recent_pr_by_branch("org", "repo", "feature/x")
+        mock_gh.assert_called_once()
+        call_args = mock_gh.call_args
+        self.assertEqual(call_args[0][0], "GET")
+        self.assertIn("/repos/org/repo/pulls", call_args[0][1])
+        self.assertIn("head=org:feature/x", call_args[0][1])
+        self.assertIn("state=all", call_args[0][1])
+        self.assertIn("sort=updated", call_args[0][1])
+        self.assertIn("direction=desc", call_args[0][1])
+        self.assertIn("per_page=1", call_args[0][1])
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["found"])
+
+    @patch.object(server, "_github_request")
+    def test_returns_pr_with_full_fields(self, mock_gh):
+        """Verifies the returned PR object contains merged_at, base, and head fields."""
+        mock_pr = {
+            "number": 42,
+            "title": "Feature",
+            "html_url": "https://github.com/org/repo/pull/42",
+            "state": "closed",
+            "merged_at": "2026-01-09T00:00:00Z",
+            "closed_at": "2026-01-10T00:00:00Z",
+            "user": {"login": "author"},
+            "base": {"ref": "master"},
+            "head": {"ref": "feature/x"},
+        }
+        mock_gh.return_value = [mock_pr]
+        result = server._find_recent_pr_by_branch("org", "repo", "feature/x")
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["found"])
+        pr = result["pr"]
+        self.assertEqual(pr["merged_at"], "2026-01-09T00:00:00Z")
+        self.assertEqual(pr["base"]["ref"], "master")
+        self.assertEqual(pr["head"]["ref"], "feature/x")
+
+    @patch.object(server, "_github_request")
+    def test_handles_github_error(self, mock_gh):
+        """Verifies GitHub API errors are propagated correctly."""
+        mock_gh.return_value = {"ok": False, "error": "rate limited"}
+        result = server._find_recent_pr_by_branch("org", "repo", "feature/x")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "rate limited")
+
+
 # -----------------------------------------------------------------------
 # Controller HTTP helpers
 # -----------------------------------------------------------------------
