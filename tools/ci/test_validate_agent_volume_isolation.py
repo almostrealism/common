@@ -188,5 +188,9 @@ services:
 
 def test_anonymous_volumes_are_not_shared():
     # Anonymous volumes have no source; they cannot be a cross-agent channel.
-    # (They are also not writable binds, so the guard-drift check ignores them.)
-    assert v.find_violations(_compose(ANON)) == []
+    # However, they ARE writable mounts, and entrypoint.sh rejects any writable
+    # mount whose target is not exactly /agent-transcripts. So guard-drift
+    # now flags them.
+    violations = v.find_violations(_compose(ANON))
+    assert violations
+    assert any("/agent-transcripts" in m for m in violations)

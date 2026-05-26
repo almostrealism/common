@@ -53,7 +53,7 @@ from __future__ import annotations
 import os
 import re
 import sys
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import yaml
 
@@ -215,7 +215,7 @@ def find_violations(compose: dict) -> List[str]:
     # Check 2 (guard drift): writable mounts must target the sanctioned sink.
     for name, volumes in sorted(agents.items()):
         for vol in volumes:
-            if vol.read_only or vol.is_anonymous:
+            if vol.read_only:
                 continue
             if vol.target != SANCTIONED_WRITABLE_TARGET:
                 violations.append(
