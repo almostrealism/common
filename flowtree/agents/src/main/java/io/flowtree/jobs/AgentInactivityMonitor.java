@@ -59,30 +59,6 @@ final class AgentInactivityMonitor {
     private final String threadName;
 
     /**
-     * Convenience constructor that adapts a {@link Process} to the generic
-     * alive/kill contract: alive is {@code process.isAlive()} and kill
-     * destroys the process and its descendants forcibly.
-     *
-     * @param process                  the subprocess to observe
-     * @param lastOutputAt             clock updated by the read loop on every output line
-     * @param inactivityTimeoutMillis  duration of stdout silence that triggers a kill
-     * @param onTimeout                callback invoked with the observed idle ms when firing
-     * @param threadName               name for the daemon monitor thread
-     */
-    AgentInactivityMonitor(Process process,
-                           AtomicLong lastOutputAt,
-                           long inactivityTimeoutMillis,
-                           LongConsumer onTimeout,
-                           String threadName) {
-        this(process::isAlive,
-             () -> {
-                 process.descendants().forEach(ProcessHandle::destroyForcibly);
-                 process.destroyForcibly();
-             },
-             lastOutputAt, inactivityTimeoutMillis, onTimeout, threadName);
-    }
-
-    /**
      * Creates a monitor with explicit alive-check and kill action.
      *
      * @param alive                    reports whether the subprocess is still running

@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 
 /**
  * Runs a single configured {@link ProcessBuilder} that invokes the Claude
@@ -47,10 +48,16 @@ public final class AgentProcessRunner {
     private AgentProcessRunner() {}
 
     /**
-     * Result of one attempt: exit code, captured stdout (possibly partial),
-     * and whether the monitor killed the process for inactivity.
+     * Result of one attempt: exit code, captured stdout (possibly partial), and
+     * the reason a watchdog killed the process, if any.
+     *
+     * @param exitCode             process exit code; {@code -1} on I/O failure
+     * @param output               captured stdout (possibly partial after a kill)
+     * @param killedForInactivity  {@code true} when the inactivity watchdog fired
+     * @param killedForLooping      {@code true} when the loop detector fired on repeated actions
      */
-    public record Result(int exitCode, String output, boolean killedForInactivity) {}
+    public record Result(int exitCode, String output,
+                         boolean killedForInactivity, boolean killedForLooping) {}
 
     /**
      * Starts the configured {@link ProcessBuilder} and reads its merged stdout
@@ -99,19 +106,48 @@ public final class AgentProcessRunner {
                              long inactivityTimeoutMillis,
                              String taskId,
                              ConsoleFeatures logger) {
+        return runAttempt(pb, useTmux, inactivityTimeoutMillis, taskId, null, logger);
+    }
+
+    /**
+     * Starts the configured subprocess as {@link #runAttempt(ProcessBuilder, boolean, long, String, ConsoleFeatures)}
+     * does, additionally applying a loop detector that kills the process tree
+     * when the agent repeats the same action many times within a short window.
+     *
+     * <p>The {@code loopSignatureExtractor} maps a single line of subprocess
+     * output to a normalized <em>action signature</em> (or {@code null} when the
+     * line is not an action), letting each runner supply its own knowledge of
+     * its output format. Pass {@code null} to disable loop detection entirely.</p>
+     *
+     * @param pb                       fully configured process builder (command, env, dirs)
+     * @param useTmux                  if true, launch via {@link TmuxSession} for a real tty
+     * @param inactivityTimeoutMillis  stdout silence duration that triggers a kill
+     * @param taskId                   task identifier used in the monitor thread name
+     * @param loopSignatureExtractor   maps an output line to an action signature, or null to disable
+     * @param logger                   target for {@code log}/{@code warn} messages
+     * @return the captured result; {@link Result#exitCode} is {@code -1} on I/O failure
+     */
+    public static Result runAttempt(ProcessBuilder pb,
+                             boolean useTmux,
+                             long inactivityTimeoutMillis,
+                             String taskId,
+                             Function<String, String> loopSignatureExtractor,
+                             ConsoleFeatures logger) {
         if (useTmux) {
-            return runInTmux(pb, inactivityTimeoutMillis, taskId, logger);
+            return runInTmux(pb, inactivityTimeoutMillis, taskId, loopSignatureExtractor, logger);
         }
-        return runInProcess(pb, inactivityTimeoutMillis, taskId, logger);
+        return runInProcess(pb, inactivityTimeoutMillis, taskId, loopSignatureExtractor, logger);
     }
 
     /** Runs the command directly as a child {@link Process}. */
     private static Result runInProcess(ProcessBuilder pb,
                                        long inactivityTimeoutMillis,
                                        String taskId,
+                                       Function<String, String> loopSignatureExtractor,
                                        ConsoleFeatures logger) {
         StringBuilder out = new StringBuilder();
         AtomicBoolean killed = new AtomicBoolean(false);
+        AtomicBoolean loopKilled = new AtomicBoolean(false);
         int exitCode = -1;
         Thread monitor = null;
         try {
@@ -119,9 +155,14 @@ public final class AgentProcessRunner {
             long pid = process.pid();
             logger.log("Process started (PID: " + pid + ")");
 
+            Runnable killAction = () -> {
+                process.descendants().forEach(ProcessHandle::destroyForcibly);
+                process.destroyForcibly();
+            };
+
             AtomicLong lastOutputAt = new AtomicLong(System.currentTimeMillis());
             monitor = new AgentInactivityMonitor(
-                    process, lastOutputAt, inactivityTimeoutMillis,
+                    process::isAlive, killAction, lastOutputAt, inactivityTimeoutMillis,
                     idleMillis -> {
                         killed.set(true);
                         logger.warn("No Claude output for " + (idleMillis / 1000)
@@ -131,38 +172,36 @@ public final class AgentProcessRunner {
 
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    lastOutputAt.set(System.currentTimeMillis());
-                    out.append(line).append("\n");
-                    logger.log(line);
-                }
+                pumpOutput(reader, out, lastOutputAt, loopSignatureExtractor,
+                        killAction, loopKilled, logger);
             }
 
             logger.log("Process output stream closed, waiting for exit...");
             exitCode = process.waitFor();
             logger.log("Completed with exit code: " + exitCode);
         } catch (IOException e) {
-            logIoOrKill(e, killed.get(), logger);
+            logIoOrKill(e, killed.get() || loopKilled.get(), logger);
         } catch (InterruptedException e) {
             // Preserve interrupt status so upstream callers can react.
             Thread.currentThread().interrupt();
-            logIoOrKill(e, killed.get(), logger);
+            logIoOrKill(e, killed.get() || loopKilled.get(), logger);
         } finally {
             if (monitor != null) {
                 monitor.interrupt();
             }
         }
-        return new Result(exitCode, out.toString(), killed.get());
+        return new Result(exitCode, out.toString(), killed.get(), loopKilled.get());
     }
 
     /** Runs the command inside a {@link TmuxSession} so the child has a real tty. */
     private static Result runInTmux(ProcessBuilder pb,
                                     long inactivityTimeoutMillis,
                                     String taskId,
+                                    Function<String, String> loopSignatureExtractor,
                                     ConsoleFeatures logger) {
         StringBuilder out = new StringBuilder();
         AtomicBoolean killed = new AtomicBoolean(false);
+        AtomicBoolean loopKilled = new AtomicBoolean(false);
         int exitCode = -1;
         Thread monitor = null;
         String sessionName = "agent-" + sanitizeSessionName(taskId);
@@ -179,10 +218,12 @@ public final class AgentProcessRunner {
             long pid = session.getPid();
             logger.log("Process started (PID: " + pid + ") in tmux session " + session.getName());
 
+            Runnable killAction = session::close;
+
             AtomicLong lastOutputAt = new AtomicLong(System.currentTimeMillis());
             monitor = new AgentInactivityMonitor(
                     session::isAlive,
-                    session::close,
+                    killAction,
                     lastOutputAt,
                     inactivityTimeoutMillis,
                     idleMillis -> {
@@ -194,28 +235,73 @@ public final class AgentProcessRunner {
                     "claude-inactivity-monitor-" + taskId).start();
 
             try (BufferedReader reader = session.captureOutput()) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    lastOutputAt.set(System.currentTimeMillis());
-                    out.append(line).append("\n");
-                    logger.log(line);
-                }
+                pumpOutput(reader, out, lastOutputAt, loopSignatureExtractor,
+                        killAction, loopKilled, logger);
             }
 
             logger.log("Process output stream closed, waiting for exit...");
             exitCode = session.waitFor(-1);
             logger.log("Completed with exit code: " + exitCode);
         } catch (IOException e) {
-            logIoOrKill(e, killed.get(), logger);
+            logIoOrKill(e, killed.get() || loopKilled.get(), logger);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            logIoOrKill(e, killed.get(), logger);
+            logIoOrKill(e, killed.get() || loopKilled.get(), logger);
         } finally {
             if (monitor != null) {
                 monitor.interrupt();
             }
         }
-        return new Result(exitCode, out.toString(), killed.get());
+        return new Result(exitCode, out.toString(), killed.get(), loopKilled.get());
+    }
+
+    /**
+     * Reads the merged output stream to completion, updating the inactivity
+     * clock on every line, appending to {@code out}, mirroring each line to the
+     * logger, and (when {@code loopSignatureExtractor} is non-null) feeding
+     * action signatures to an {@link AgentProgressMonitor}. When the monitor
+     * reports a loop, {@code killAction} is run, {@code loopKilled} is set, and
+     * the method returns so the caller can collect the now-terminated process.
+     *
+     * @param reader                  the subprocess output reader
+     * @param out                     accumulates the captured output
+     * @param lastOutputAt            inactivity clock updated on every line
+     * @param loopSignatureExtractor  maps a line to an action signature, or null to disable detection
+     * @param killAction              terminates the subprocess tree when a loop is detected
+     * @param loopKilled              set to {@code true} when a loop kill is triggered
+     * @param logger                  target for {@code log}/{@code warn} messages
+     * @throws IOException if reading the stream fails
+     */
+    private static void pumpOutput(BufferedReader reader,
+                                   StringBuilder out,
+                                   AtomicLong lastOutputAt,
+                                   Function<String, String> loopSignatureExtractor,
+                                   Runnable killAction,
+                                   AtomicBoolean loopKilled,
+                                   ConsoleFeatures logger) throws IOException {
+        AgentProgressMonitor progress =
+                loopSignatureExtractor != null ? new AgentProgressMonitor() : null;
+        String line;
+        while ((line = reader.readLine()) != null) {
+            lastOutputAt.set(System.currentTimeMillis());
+            out.append(line).append("\n");
+            logger.log(line);
+            if (progress != null) {
+                String signature;
+                try {
+                    signature = loopSignatureExtractor.apply(line);
+                } catch (Exception e) {
+                    signature = null;
+                }
+                if (progress.observe(signature)) {
+                    loopKilled.set(true);
+                    logger.warn("repeatedActionSignature=" + progress.getOffendingSignature()
+                            + " -- killing process tree after repeated non-progressing agent actions");
+                    killAction.run();
+                    return;
+                }
+            }
+        }
     }
 
     /**
@@ -280,7 +366,7 @@ public final class AgentProcessRunner {
     /** Logs the read-loop exception either as a benign post-kill notice or a real error, per {@code killed}. */
     private static void logIoOrKill(Exception e, boolean killed, ConsoleFeatures logger) {
         if (killed) {
-            logger.log("Read loop ended after inactivity kill: " + e.getMessage());
+            logger.log("Read loop ended after process termination: " + e.getMessage());
         } else {
             logger.warn("Error: " + e.getMessage(), e);
         }
