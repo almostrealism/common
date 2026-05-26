@@ -1,3 +1,5 @@
+<!-- Filed upstream: https://github.com/anthropics/claude-ai-mcp/issues/364 (2026-05-26) -->
+
 # claude.ai connector silently drops a fully-successful OAuth flow after token exchange — ChatGPT connects to the identical endpoint without issue
 
 ## TL;DR
