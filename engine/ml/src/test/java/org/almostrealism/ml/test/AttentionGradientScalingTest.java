@@ -127,12 +127,11 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 
 		log("=== Attention Gradient Scaling Test ===");
 		log("");
-		log(String.format("%-8s %-6s %-10s %-8s %-14s %-14s",
-				"SeqLen", "Heads", "HeadSize", "Dim",
-				"Forward(ms)", "Backward(ms)"));
-		log(String.format("%-8s %-6s %-10s %-8s %-14s %-14s",
+		log(String.format("%-8s %-6s %-10s %-8s %-14s",
+				"SeqLen", "Heads", "HeadSize", "Dim", "Compile(ms)"));
+		log(String.format("%-8s %-6s %-10s %-8s %-14s",
 				"--------", "------", "----------", "--------",
-				"--------------", "--------------"));
+				"--------------"));
 
 		for (int[] cfg : configs) {
 			int seqLen = cfg[0];
@@ -146,8 +145,8 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 
 			try {
 				long[] times = runAttentionGradientTest(seqLen, heads, headSize, profile);
-				log(String.format("%-8d %-6d %-10d %-8d %-14d %-14d",
-						seqLen, heads, headSize, dim, times[0], times[1]));
+				log(String.format("%-8d %-6d %-10d %-8d %-14d",
+						seqLen, heads, headSize, dim, times[0]));
 
 				String profilePath = RESULTS_DIR.resolve(
 						"attn_grad_s" + seqLen + "_h" + heads + "_d" + headSize + ".xml").toString();
@@ -262,18 +261,12 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 				wq, wo, w1, w2, loraRank);
 		model.add(block);
 
-		// Compile forward pass
-		long startFwd = System.nanoTime();
-		CompiledModel compiled = model.compile(false, profile);
-		long fwdMs = (System.nanoTime() - startFwd) / 1_000_000;
-		log("  Forward compiled in " + fwdMs + " ms");
-
-		// Compile backward pass
-		compiled.destroy();
-		long startBwd = System.nanoTime();
-		compiled = model.compile(true, profile);
-		long bwdMs = (System.nanoTime() - startBwd) / 1_000_000;
-		log("  Backward compiled in " + bwdMs + " ms");
+		// Compile directly for training; compiling forward-only then destroying and
+		// recompiling the same Model frees activation buffers the backward pass still uses.
+		long startCompile = System.nanoTime();
+		CompiledModel compiled = model.compile(true, profile);
+		long compileMs = (System.nanoTime() - startCompile) / 1_000_000;
+		log("  Compiled in " + compileMs + " ms");
 
 		// Run forward pass
 		PackedCollection input = new PackedCollection(inputShape);
@@ -285,7 +278,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 		log("  Forward run in " + runMs + " ms");
 
 		compiled.destroy();
-		return new long[] { fwdMs, bwdMs };
+		return new long[] { compileMs };
 	}
 
 	/**
@@ -389,18 +382,12 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 		Block block = buildTransformerBlock(1, seqLen, heads, headSize, wq, wo, w1, w2);
 		model.add(block);
 
-		// Compile forward pass
-		long startFwd = System.nanoTime();
-		CompiledModel compiled = model.compile(false, profile);
-		long fwdMs = (System.nanoTime() - startFwd) / 1_000_000;
-		log("  Forward compiled in " + fwdMs + " ms");
-
-		// Compile backward pass
-		compiled.destroy();
-		long startBwd = System.nanoTime();
-		compiled = model.compile(true, profile);
-		long bwdMs = (System.nanoTime() - startBwd) / 1_000_000;
-		log("  Backward compiled in " + bwdMs + " ms");
+		// Compile directly for training; compiling forward-only then destroying and
+		// recompiling the same Model frees activation buffers the backward pass still uses.
+		long startCompile = System.nanoTime();
+		CompiledModel compiled = model.compile(true, profile);
+		long compileMs = (System.nanoTime() - startCompile) / 1_000_000;
+		log("  Compiled in " + compileMs + " ms");
 
 		// Run forward pass
 		PackedCollection input = new PackedCollection(inputShape);
@@ -412,7 +399,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 		log("  Forward run in " + runMs + " ms");
 
 		compiled.destroy();
-		return new long[] { fwdMs, bwdMs };
+		return new long[] { compileMs };
 	}
 
 	/**
@@ -556,18 +543,12 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 				wq, wo, w1, w2, normWeight1, normWeight2);
 		model.add(block);
 
-		// Compile forward pass
-		long startFwd = System.nanoTime();
-		CompiledModel compiled = model.compile(false, profile);
-		long fwdMs = (System.nanoTime() - startFwd) / 1_000_000;
-		log("  Forward compiled in " + fwdMs + " ms");
-
-		// Compile backward pass
-		compiled.destroy();
-		long startBwd = System.nanoTime();
-		compiled = model.compile(true, profile);
-		long bwdMs = (System.nanoTime() - startBwd) / 1_000_000;
-		log("  Backward compiled in " + bwdMs + " ms");
+		// Compile directly for training; compiling forward-only then destroying and
+		// recompiling the same Model frees activation buffers the backward pass still uses.
+		long startCompile = System.nanoTime();
+		CompiledModel compiled = model.compile(true, profile);
+		long compileMs = (System.nanoTime() - startCompile) / 1_000_000;
+		log("  Compiled in " + compileMs + " ms");
 
 		// Run forward pass
 		PackedCollection input = new PackedCollection(inputShape);
@@ -579,7 +560,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 		log("  Forward run in " + runMs + " ms");
 
 		compiled.destroy();
-		return new long[] { fwdMs, bwdMs };
+		return new long[] { compileMs };
 	}
 
 	/**
@@ -715,18 +696,12 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 			model.add(block);
 		}
 
-		// Compile forward pass
-		long startFwd = System.nanoTime();
-		CompiledModel compiled = model.compile(false, profile);
-		long fwdMs = (System.nanoTime() - startFwd) / 1_000_000;
-		log("  Forward compiled in " + fwdMs + " ms");
-
-		// Compile backward pass
-		compiled.destroy();
-		long startBwd = System.nanoTime();
-		compiled = model.compile(true, profile);
-		long bwdMs = (System.nanoTime() - startBwd) / 1_000_000;
-		log("  Backward compiled in " + bwdMs + " ms");
+		// Compile directly for training; compiling forward-only then destroying and
+		// recompiling the same Model frees activation buffers the backward pass still uses.
+		long startCompile = System.nanoTime();
+		CompiledModel compiled = model.compile(true, profile);
+		long compileMs = (System.nanoTime() - startCompile) / 1_000_000;
+		log("  Compiled in " + compileMs + " ms");
 
 		// Run forward pass
 		PackedCollection input = new PackedCollection(inputShape);
@@ -738,7 +713,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 		log("  Forward run in " + runMs + " ms");
 
 		compiled.destroy();
-		return new long[] { fwdMs, bwdMs };
+		return new long[] { compileMs };
 	}
 
 	/**
@@ -864,18 +839,12 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 		// Remove prepended timestep token
 		main.subset(shape(1, seqLen, dim), 0, 1, 0);
 
-		// Compile forward pass
-		long startFwd = System.nanoTime();
-		CompiledModel compiled = model.compile(false, profile);
-		long fwdMs = (System.nanoTime() - startFwd) / 1_000_000;
-		log("  Forward compiled in " + fwdMs + " ms");
-
-		// Compile backward pass
-		compiled.destroy();
-		long startBwd = System.nanoTime();
-		compiled = model.compile(true, profile);
-		long bwdMs = (System.nanoTime() - startBwd) / 1_000_000;
-		log("  Backward compiled in " + bwdMs + " ms");
+		// Compile directly for training; compiling forward-only then destroying and
+		// recompiling the same Model frees activation buffers the backward pass still uses.
+		long startCompile = System.nanoTime();
+		CompiledModel compiled = model.compile(true, profile);
+		long compileMs = (System.nanoTime() - startCompile) / 1_000_000;
+		log("  Compiled in " + compileMs + " ms");
 
 		// Run forward pass
 		PackedCollection mainInput = new PackedCollection(mainInputShape);
@@ -891,7 +860,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 		log("  Forward run in " + runMs + " ms");
 
 		compiled.destroy();
-		return new long[] { fwdMs, bwdMs };
+		return new long[] { compileMs };
 	}
 
 	/**
@@ -1043,18 +1012,12 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 		Block attention = buildAttentionBlock(1, seqLen, heads, headSize, wq, wo);
 		model.add(attention);
 
-		// Compile forward pass
-		long startFwd = System.nanoTime();
-		CompiledModel compiled = model.compile(false, profile);
-		long fwdMs = (System.nanoTime() - startFwd) / 1_000_000;
-		log("  Forward compiled in " + fwdMs + " ms");
-
-		// Compile backward pass (for training)
-		compiled.destroy();
-		long startBwd = System.nanoTime();
-		compiled = model.compile(true, profile);
-		long bwdMs = (System.nanoTime() - startBwd) / 1_000_000;
-		log("  Backward compiled in " + bwdMs + " ms");
+		// Compile directly for training; compiling forward-only then destroying and
+		// recompiling the same Model frees activation buffers the backward pass still uses.
+		long startCompile = System.nanoTime();
+		CompiledModel compiled = model.compile(true, profile);
+		long compileMs = (System.nanoTime() - startCompile) / 1_000_000;
+		log("  Compiled in " + compileMs + " ms");
 
 		// Run one forward + backward pass
 		PackedCollection input = new PackedCollection(inputShape);
@@ -1066,7 +1029,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 		log("  Forward run in " + runMs + " ms");
 
 		compiled.destroy();
-		return new long[] { fwdMs, bwdMs };
+		return new long[] { compileMs };
 	}
 
 	/**
