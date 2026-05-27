@@ -813,12 +813,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 .append("\",\"workstreamId\":\"")
                 .append(workstreamId)
                 .append("\"");
-        PhaseConfigBundle resolvedBundle = pcResolver.resolvedBundle();
-        PhaseConfigBundle requestBundle = pcResolver.requestBundle();
-        PhaseConfigResolver.appendBundleJson(json, requestBundle,
-                "requestedDefaultPhaseConfig", "requestedPhaseConfigs");
-        PhaseConfigResolver.appendBundleJson(json, resolvedBundle,
-                "effectiveDefaultPhaseConfig", "effectivePhaseConfigs");
+        // Echo back the fully-resolved phase configuration (job overrides
+        // layered through workstream / workspace / controller defaults) under
+        // the same field names the config input uses, so the caller sees the
+        // config the job will actually run with.
+        PhaseConfigResolver.appendBundleJson(json, pcResolver.resolvedBundle());
         json.append("}");
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", json.toString());

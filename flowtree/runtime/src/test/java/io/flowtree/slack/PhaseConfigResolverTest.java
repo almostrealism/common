@@ -440,14 +440,14 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         StringBuilder json = new StringBuilder();
         json.append("{\"ok\":true");
         PhaseConfigResolver.appendBundleJson(json, b,
-                "requestedDefaultPhaseConfig", "requestedPhaseConfigs");
+                "customDefault", "customPhases");
         json.append("}");
 
         String result = json.toString();
-        assertTrue("Should contain requestedDefaultPhaseConfig",
-                result.contains("\"requestedDefaultPhaseConfig\""));
-        assertTrue("Should contain requestedPhaseConfigs",
-                result.contains("\"requestedPhaseConfigs\""));
+        assertTrue("Should contain customDefault",
+                result.contains("\"customDefault\""));
+        assertTrue("Should contain customPhases",
+                result.contains("\"customPhases\""));
         assertTrue("Should contain runner value",
                 result.contains(TEST_RUNNER));
         assertFalse("Should NOT contain defaultPhaseConfig label",
@@ -467,7 +467,7 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         StringBuilder json = new StringBuilder();
         json.append("{\"ok\":true");
         PhaseConfigResolver.appendBundleJson(json, PhaseConfigBundle.EMPTY,
-                "requestedDefaultPhaseConfig", "requestedPhaseConfigs");
+                "customDefault", "customPhases");
         json.append("}");
 
         String result = json.toString();
@@ -478,35 +478,34 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
      * Verifies that passing null as a field name suppresses that field,
      * allowing callers to emit only one of default or per-phase.
      */
-    // TODO(review): bundle has no per-phase overrides (phase=null), so phases is empty and
-    // "requestedPhaseConfigs" is never emitted — the assertTrue below will always fail.
-    // Fix: pass a Phase/PhaseConfig pair to bundle() so there is a per-phase entry to serialize.
     @Test(timeout = 5000)
     public void appendBundleJsonWithNullFieldNameSuppressesField() {
         PhaseConfigBundle b = bundle(
-                new PhaseConfig(TEST_RUNNER, null, null), null, null);
+                new PhaseConfig(TEST_RUNNER, null, null),
+                Phase.REVIEW, new PhaseConfig(null, "claude-sonnet-4-6", null));
 
         StringBuilder json = new StringBuilder();
         json.append("{\"ok\":true");
-        PhaseConfigResolver.appendBundleJson(json, b, null, "requestedPhaseConfigs");
+        PhaseConfigResolver.appendBundleJson(json, b, null, "perPhaseConfigs");
         json.append("}");
 
         String result = json.toString();
         assertFalse("default field should be suppressed",
                 result.contains("defaultPhaseConfig"));
         assertTrue("phases field should be present",
-                result.contains("\"requestedPhaseConfigs\""));
+                result.contains("\"perPhaseConfigs\""));
     }
 
-    // --- Submit response: requested vs effective ----------------------------------
+    // --- Submit response: resolved (effective) config under plain names -----------
 
     /**
-     * Verifies that when a job specifies an explicit defaultPhaseConfig that
-     * differs from workstream defaults, both requested and effective values
-     * are distinguishable in the response.
+     * The submit response echoes the fully-resolved bundle under the same
+     * {@code defaultPhaseConfig} / {@code phaseConfigs} names the config input
+     * uses. A job-level default overrides the workstream default, and that
+     * resolved value is what appears in the response.
      */
     @Test(timeout = 5000)
-    public void requestedVsEffectiveDefaultPhaseConfig() {
+    public void submitResponseEmitsResolvedConfigUnderPlainNames() {
         PhaseConfigBundle workstreamBundle = bundle(
                 new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null), null, null);
         PhaseConfigBundle req = bundle(
@@ -518,65 +517,18 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
 
         StringBuilder json = new StringBuilder();
         json.append("{\"ok\":true");
-        PhaseConfigResolver.appendBundleJson(json, r.requestBundle(),
-                "requestedDefaultPhaseConfig", "requestedPhaseConfigs");
-        PhaseConfigResolver.appendBundleJson(json, r.resolvedBundle(),
-                "effectiveDefaultPhaseConfig", "effectivePhaseConfigs");
+        PhaseConfigResolver.appendBundleJson(json, r.resolvedBundle());
         json.append("}");
 
         String result = json.toString();
-        // Requested: opencode, minimax, high
-        assertTrue("Should contain requestedDefaultPhaseConfig",
-                result.contains("\"requestedDefaultPhaseConfig\""));
-        assertTrue("Requested runner should be opencode",
+        assertTrue("Should emit defaultPhaseConfig",
+                result.contains("\"defaultPhaseConfig\""));
+        assertTrue("Resolved runner should be opencode (job overrides workstream claude)",
                 result.contains("\"runner\":\"opencode\""));
-        assertTrue("Requested model should be minimax",
+        assertTrue("Resolved model should be minimax",
                 result.contains("\"model\":\"minimax\""));
-        assertTrue("Requested effort should be high",
-                result.contains("\"effort\":\"high\""));
-
-        // Effective: opencode (from request, overrides workstream claude), minimax, high
-        assertTrue("Should contain effectiveDefaultPhaseConfig",
-                result.contains("\"effectiveDefaultPhaseConfig\""));
-        assertTrue("Effective runner should be opencode",
-                result.contains("\"runner\":\"opencode\""));
-        assertTrue("Effective model should be minimax",
-                result.contains("\"model\":\"minimax\""));
-    }
-
-    /**
-     * Verifies that an explicitly-requested per-phase config that matches the
-     * resolved default still appears in requestedPhaseConfigs (but not in
-     * effectivePhaseConfigs since it equals the resolved default).
-     */
-    @Test(timeout = 5000)
-    public void requestedPhaseConfigAppearsEvenWhenMatchingEffective() {
-        // Workstream default: CLAUDE runner
-        PhaseConfigBundle workstreamBundle = bundle(
-                new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null), null, null);
-        // Job request: PRIMARY override with the SAME runner (but different model)
-        // The model override makes PRIMARY differ from resolved default
-        PhaseConfigBundle req = bundle(
-                new PhaseConfig(null, null, null),
-                Phase.PRIMARY, new PhaseConfig(null, "minimax", null));
-
-        PhaseConfigResolver r = PhaseConfigResolver.resolve(req, workstreamBundle, PhaseConfigBundle.EMPTY);
-        assertNull(r.error());
-
-        StringBuilder json = new StringBuilder();
-        json.append("{\"ok\":true");
-        PhaseConfigResolver.appendBundleJson(json, r.requestBundle(),
-                "requestedDefaultPhaseConfig", "requestedPhaseConfigs");
-        PhaseConfigResolver.appendBundleJson(json, r.resolvedBundle(),
-                "effectiveDefaultPhaseConfig", "effectivePhaseConfigs");
-        json.append("}");
-
-        String result = json.toString();
-        // Primary explicitly set in request
-        assertTrue("Requested PRIMARY should appear",
-                result.contains("\"primary\""));
-        // Primary is in effective because model differs
-        assertTrue("Effective PRIMARY should appear (model=minimax differs from default)",
-                result.contains("\"effectivePhaseConfigs\""));
+        assertFalse("Response must not use the removed requested/effective prefixes",
+                result.contains("requestedDefaultPhaseConfig")
+                        || result.contains("effectiveDefaultPhaseConfig"));
     }
 }

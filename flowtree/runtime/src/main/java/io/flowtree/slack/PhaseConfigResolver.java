@@ -108,9 +108,8 @@ public final class PhaseConfigResolver {
     /**
      * Returns the raw per-job bundle as submitted in the request body, before
      * merging with workstream / workspace / controller defaults. This exposes
-     * exactly what the caller supplied so it can be echoed back in the
-     * submit response as {@code "requestedDefaultPhaseConfig"} /
-     * {@code "requestedPhaseConfigs"}.
+     * exactly what the caller supplied, independent of the resolved result in
+     * {@link #resolvedBundle()}.
      *
      * <p>Never {@code null}; returns {@link PhaseConfigBundle#EMPTY} when the
      * request specified no phase configuration.</p>
@@ -618,12 +617,11 @@ public final class PhaseConfigResolver {
      * Both fragments lead with a comma so they can be appended to an
      * existing JSON object that already has at least one prior field.
      *
-     * <p>This overload allows callers to emit the raw requested config
-     * (with names like {@code "requestedDefaultPhaseConfig"} /
-     * {@code "requestedPhaseConfigs"}) and the effective resolved config
-     * (with names like {@code "effectiveDefaultPhaseConfig"} /
-     * {@code "effectivePhaseConfigs"}) as distinct fields in the same
-     * response.</p>
+     * <p>This overload lets callers emit a bundle under non-default field names
+     * (e.g. when a single JSON object must carry more than one bundle under
+     * distinct keys). Most callers should use the single-argument
+     * {@link #appendBundleJson(StringBuilder, PhaseConfigBundle)}, which uses
+     * the canonical {@code "defaultPhaseConfig"} / {@code "phaseConfigs"}.</p>
      *
      * @param json              the target string builder; must not be {@code null}
      * @param bundle            the bundle to serialise; {@code null} or empty appends
