@@ -814,7 +814,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 .append(workstreamId)
                 .append("\"");
         PhaseConfigBundle resolvedBundle = pcResolver.resolvedBundle();
-        PhaseConfigResolver.appendBundleJson(json, resolvedBundle);
+        PhaseConfigBundle requestBundle = pcResolver.requestBundle();
+        PhaseConfigResolver.appendBundleJson(json, requestBundle,
+                "requestedDefaultPhaseConfig", "requestedPhaseConfigs");
+        PhaseConfigResolver.appendBundleJson(json, resolvedBundle,
+                "effectiveDefaultPhaseConfig", "effectivePhaseConfigs");
         json.append("}");
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", json.toString());
