@@ -145,4 +145,33 @@ public record PhaseConfig(String runner, String model, String effort, String pro
                 effort != null ? effort : other.effort,
                 provider != null ? provider : other.provider);
     }
+
+    /**
+     * Like {@link #overlayOn(PhaseConfig)} but suppresses the base provider
+     * when {@code this} sets a different runner and leaves its own provider
+     * {@code null}. This prevents a provider value configured for one runner
+     * (e.g. {@code "openrouter"} on {@code "opencode"}) from leaking into a
+     * phase that resolves to a different runner (e.g. {@code "claude"}),
+     * where the same provider would be incompatible.
+     *
+     * <p>If {@code this} explicitly sets a provider (non-null), that value
+     * always wins — including incompatible combinations, which are caught by
+     * {@code PhaseConfigResolver.validateProviderForRunner} after resolution.</p>
+     *
+     * @param other the lower-precedence configuration; {@code null} treated as
+     *              {@link #EMPTY}
+     * @return the layered configuration with runner-aware provider inheritance
+     */
+    public PhaseConfig overlayOnClearingInheritedProvider(PhaseConfig other) {
+        if (other == null) return this;
+        // Suppress other's provider when this changes the runner but sets no provider.
+        String effectiveOtherProvider = (runner != null && provider == null
+                && other.runner != null && !runner.equals(other.runner))
+                ? null : other.provider;
+        return new PhaseConfig(
+                runner != null ? runner : other.runner,
+                model != null ? model : other.model,
+                effort != null ? effort : other.effort,
+                provider != null ? provider : effectiveOtherProvider);
+    }
 }

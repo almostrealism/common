@@ -1438,276 +1438,19 @@ def workstream_get_job(job_id: str) -> dict:
     return result
 
 
-# Valid Claude Code effort/thinking levels. Mirrors
-# io.flowtree.jobs.agent.ClaudeCodeRunner#VALID_EFFORT_LEVELS; used to
-# pre-validate the ``effort`` field of per-phase configuration client-side.
-VALID_EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
-
-
-_KNOWN_PHASE_WIRE_NAMES = (
-    "primary",
-    "review",
-    "deduplication",
-    "organizational-placement",
-    "enforce-changes",
-    "maven-dependency-protection",
-    "post-completion",
-    "commit-message",
-    "git-tampering-restart",
+# Phase configuration parsing, validation, and clearing semantics are in
+# phase_config.py — see that module for implementation details and the
+# clearing-semantics contract (empty dict vs None return values).
+from phase_config import (  # noqa: E402
+    VALID_EFFORT_LEVELS,
+    _KNOWN_PHASE_WIRE_NAMES,
+    _KNOWN_RUNNER_NAMES,
+    _parse_default_phase_config_json,
+    _parse_phase_configs_json,
+    _validate_phase_config_field,
+    _REMOVED_CONFIG_PARAM_HINT,
+    _reject_removed_config_params,
 )
-
-
-# Runner identifiers mirrored from
-# ``io.flowtree.jobs.agent.AgentRunnerRegistry`` on the Java side. New
-# runners are registered there; this list must be updated alongside.
-# Client-side validation here gives the caller an immediate error; the
-# controller is the source of truth and rejects unknowns too.
-_KNOWN_RUNNER_NAMES = (
-    "claude",
-    "opencode",
-)
-
-
-def _parse_default_phase_config_json(default_phase_config: str) -> "tuple[Optional[dict], Optional[dict]]":
-    """Parse and validate the ``default_phase_config`` JSON argument.
-
-    The argument is a JSON object string with optional keys ``runner``,
-    ``model``, ``effort``, ``provider``. Unknown keys are rejected.
-
-    Args:
-        default_phase_config: A JSON object string, or empty for none.
-
-    Returns:
-        A tuple ``(parsed_dict, error_dict)``. On success, ``parsed_dict``
-        is the decoded mapping (possibly empty) and ``error_dict`` is
-        ``None``. On failure, ``parsed_dict`` is ``None`` and
-        ``error_dict`` carries an ``ok=False`` payload.
-    """
-    if not default_phase_config:
-        return {}, None
-    import json as _json
-    try:
-        parsed = _json.loads(default_phase_config)
-    except ValueError as e:
-        return None, {
-            "ok": False,
-            "error": "default_phase_config must be a JSON object: " + str(e),
-        }
-    if not isinstance(parsed, dict):
-        return None, {
-            "ok": False,
-            "error": "default_phase_config must be a JSON object with optional runner/model/effort/provider keys",
-        }
-    allowed = {"runner", "model", "effort", "provider"}
-    cleaned: dict = {}
-    for key, value in parsed.items():
-        if key not in allowed:
-            return None, {
-                "ok": False,
-                "error": ("Unknown key in default_phase_config: '"
-                          + str(key) + "'. Allowed: runner, model, effort, provider"),
-            }
-        if value is None:
-            continue
-        if not isinstance(value, str) or not value:
-            return None, {
-                "ok": False,
-                "error": ("default_phase_config." + str(key)
-                          + " must be a non-empty string"),
-            }
-        err = _validate_phase_config_field("default_phase_config", key, value)
-        if err is not None:
-            return None, err
-        cleaned[key] = value
-    return cleaned, None
-
-
-def _validate_phase_config_field(context: str, field: str, value: str) -> Optional[dict]:
-    """Validate a single ``{runner, model, effort, provider}`` field value.
-
-    ``runner`` is checked against the known set of registered runner
-    identifiers ([[_KNOWN_RUNNER_NAMES]]); ``effort`` is checked against
-    [[VALID_EFFORT_LEVELS]]. Both ``model`` and ``provider`` are passed
-    through without client-side validation — the controller validates models
-    against the runner's supportedModels and rejects incompatible
-    provider/runner combinations (e.g. runner=claude with provider!=anthropic)
-    at submission time.
-
-    Args:
-        context: ``"default_phase_config"`` or ``"phase_configs['name']"``
-            — used to build a human-readable error message.
-        field: One of ``"runner"`` / ``"model"`` / ``"effort"`` / ``"provider"``
-            — only ``runner`` and ``effort`` are validated client-side.
-        value: The non-empty string that the caller supplied.
-
-    Returns:
-        ``None`` when the value is valid; otherwise a 400-style
-        ``{"ok": False, "error": ...}`` dict.
-    """
-    if field == "runner" and value not in _KNOWN_RUNNER_NAMES:
-        return {
-            "ok": False,
-            "error": (context + ".runner='" + value + "' is not a known runner. "
-                      "Allowed: " + ", ".join(_KNOWN_RUNNER_NAMES)
-                      + ". Use agent_options to list runners on the controller."),
-        }
-    if field == "effort" and value not in VALID_EFFORT_LEVELS:
-        return {
-            "ok": False,
-            "error": (context + ".effort='" + value + "' is not a valid effort level. "
-                      "Allowed: " + ", ".join(VALID_EFFORT_LEVELS)),
-        }
-    return None
-
-
-def _parse_phase_configs_json(phase_configs: str) -> "tuple[Optional[dict], Optional[dict]]":
-    """Parse and validate the ``phase_configs`` JSON argument.
-
-    The argument is a JSON object whose keys are phase wire names
-    (``"primary"``, ``"review"``, ``"deduplication"``, ...) and whose
-    values are nested JSON objects with optional ``runner`` / ``model`` /
-    ``effort`` / ``provider`` fields. Unknown phase keys are rejected
-    client-side so the caller gets an immediate error.
-
-    Args:
-        phase_configs: A JSON object string, or empty for none.
-
-    Returns:
-        A tuple ``(parsed_dict, error_dict)`` matching the pattern of
-        ``_parse_default_phase_config_json``.
-    """
-    if not phase_configs:
-        return {}, None
-    import json as _json
-    try:
-        parsed = _json.loads(phase_configs)
-    except ValueError as e:
-        return None, {
-            "ok": False,
-            "error": "phase_configs must be a JSON object: " + str(e),
-        }
-    if not isinstance(parsed, dict):
-        return None, {
-            "ok": False,
-            "error": "phase_configs must be a JSON object mapping phase names to objects with optional runner/model/effort/provider keys",
-        }
-    valid_phase_keys = set(_KNOWN_PHASE_WIRE_NAMES)
-    allowed_inner = {"runner", "model", "effort", "provider"}
-    cleaned: dict = {}
-    for key, inner in parsed.items():
-        if key not in valid_phase_keys:
-            return None, {
-                "ok": False,
-                "error": ("Unknown phase key in phase_configs: '" + str(key)
-                          + "'. Allowed phase keys: "
-                          + ", ".join(sorted(valid_phase_keys))),
-            }
-        if not isinstance(inner, dict):
-            return None, {
-                "ok": False,
-                "error": ("phase_configs['" + str(key)
-                          + "'] must be an object with runner/model/effort/provider keys"),
-            }
-        inner_cleaned: dict = {}
-        for inner_key, value in inner.items():
-            if inner_key not in allowed_inner:
-                return None, {
-                    "ok": False,
-                    "error": ("Unknown key in phase_configs['" + str(key) + "']: '"
-                              + str(inner_key) + "'. Allowed: runner, model, effort, provider"),
-                }
-            if value is None:
-                continue
-            if not isinstance(value, str) or not value:
-                return None, {
-                    "ok": False,
-                    "error": ("phase_configs['" + str(key) + "']."
-                              + str(inner_key) + " must be a non-empty string"),
-                }
-            err = _validate_phase_config_field(
-                "phase_configs['" + str(key) + "']", inner_key, value)
-            if err is not None:
-                return None, err
-            inner_cleaned[inner_key] = value
-        if inner_cleaned:
-            cleaned[key] = inner_cleaned
-    return cleaned, None
-
-
-# ---------------------------------------------------------------------------
-# Removed legacy configuration parameters.
-#
-# ``model`` / ``effort`` / ``default_runner`` / ``runners`` were job-,
-# workstream-, and workspace-level shortcuts that field-by-field competed with
-# the per-phase configuration shape and produced surprising results (a single
-# job-level ``model`` would shadow a workspace's per-phase model override).
-# They are no longer accepted. Callers must use ``default_phase_config`` (a
-# single PhaseConfig applied as the default across every phase) or
-# ``phase_configs`` (a per-phase map of PhaseConfig objects) instead.
-#
-# These names are still declared as parameters on the affected tools — but
-# deliberately WITHOUT type hints, so they stay out of the tool's declared
-# parameter schema (see ``McpToolDiscovery``) while still being captured here
-# at call time. That lets a stale caller that passes one of them fail fast
-# with a clear, actionable error instead of being silently ignored by the MCP
-# argument-validation layer (which drops unknown keyword arguments without
-# complaint). Empty/absent values are treated as "not supplied" so a caller
-# that merely passes ``model=""`` is unaffected.
-_REMOVED_CONFIG_PARAM_HINT = {
-    "model": "Use default_phase_config='{\"model\": \"...\"}' to set one model "
-             "across all phases, or phase_configs to set per-phase model values.",
-    "effort": "Use default_phase_config='{\"effort\": \"...\"}' to set one effort "
-              "level across all phases, or phase_configs to set per-phase effort.",
-    "default_runner": "Use default_phase_config='{\"runner\": \"...\"}' to set the "
-                      "default runner across all phases.",
-    "runners": "Use phase_configs (a per-phase map of {runner, model, effort, "
-               "provider} objects), or default_phase_config for a single default.",
-}
-
-
-def _reject_removed_config_params(model="", effort="",
-                                  default_runner="", runners="") -> Optional[dict]:
-    """Return a 400-style error dict when a caller passes any removed legacy
-    configuration parameter, or ``None`` when none were supplied.
-
-    The removed parameters are ``model``, ``effort``, ``default_runner``, and
-    ``runners``. Each is replaced by per-phase configuration via
-    ``default_phase_config`` and ``phase_configs``. This is a deliberate clean
-    break: rather than silently translating the legacy shape, the call is
-    rejected so the caller migrates explicitly. See
-    ``tools/mcp/CLAUDE.md`` for the configuration reference.
-
-    Args:
-        model: Removed ``model`` argument; non-empty means the caller passed it.
-        effort: Removed ``effort`` argument.
-        default_runner: Removed ``default_runner`` argument.
-        runners: Removed ``runners`` argument.
-
-    Returns:
-        A ``{"ok": False, "error": ...}`` dict naming the first removed
-        parameter supplied, or ``None`` when none were supplied.
-    """
-    supplied = []
-    if model:
-        supplied.append("model")
-    if effort:
-        supplied.append("effort")
-    if default_runner:
-        supplied.append("default_runner")
-    if runners:
-        supplied.append("runners")
-    if not supplied:
-        return None
-    first = supplied[0]
-    return {
-        "ok": False,
-        "error": (
-            "The `" + first + "` parameter is no longer supported. "
-            + _REMOVED_CONFIG_PARAM_HINT[first]
-            + " See tools/mcp/CLAUDE.md for the per-phase configuration reference."
-        ),
-        "removed_parameters": supplied,
-    }
 
 
 def _parse_required_labels(required_labels: str) -> dict:
@@ -2588,17 +2331,21 @@ def workstream_update_config(
             branch lifecycle as the primary repo (create/checkout/pull/commit/push).
         default_phase_config: New workstream-level default configuration as a
             JSON object with optional ``runner`` / ``model`` / ``effort`` /
-            ``provider`` keys. Empty leaves it unchanged. Use
-            ``agent_options`` to discover available runner names. Example::
+            ``provider`` keys. Pass ``'{}'`` to clear the stored default
+            (all phases will then fall through to the workspace or controller
+            default). Empty string leaves it unchanged. Use ``agent_options``
+            to discover available runner names. Example::
 
                 '{"runner": "opencode", "model": "qwen3-coder:exacto",
                   "effort": "medium", "provider": "openrouter"}'
 
         phase_configs: New workstream-level per-phase overrides as a JSON
             object whose keys are phase wire names and whose values are
-            ``{runner, model, effort, provider}`` objects (all keys
-            optional). Empty leaves the per-phase map unchanged. Each named
-            phase overrides ``default_phase_config`` field-by-field.
+            ``{runner, model, effort, provider}`` objects (all keys optional).
+            Pass ``'{}'`` to clear all per-phase overrides. Set a phase value
+            to ``null`` (e.g. ``'{"review": null}'``) to clear just that
+            phase's override. Empty string leaves the per-phase map unchanged.
+            Each named phase overrides ``default_phase_config`` field-by-field.
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
             ``default_phase_config`` or ``phase_configs`` to set models.
@@ -2652,9 +2399,10 @@ def workstream_update_config(
         repos_list = _parse_dependent_repos(dependent_repos)
         if repos_list:
             payload["dependentRepos"] = repos_list
-    if parsed_default_phase_config:
+    # Use `is not None` so that an empty-dict clear signal ({}) is forwarded.
+    if parsed_default_phase_config is not None:
         payload["defaultPhaseConfig"] = parsed_default_phase_config
-    if parsed_phase_configs:
+    if parsed_phase_configs is not None:
         payload["phaseConfigs"] = parsed_phase_configs
 
     if not payload:
@@ -2743,19 +2491,22 @@ def workspace_update_config(
             renamed via ``new_id``. Required.
         default_phase_config: New workspace-level default configuration as a
             JSON object with optional ``runner`` / ``model`` / ``effort`` /
-            ``provider`` keys. Empty leaves it unchanged. Applied to
-            workstreams in this workspace when neither the workstream nor the
-            per-job override sets a value. Use ``agent_options`` to discover
-            valid runner names. Example::
+            ``provider`` keys. Pass ``'{}'`` to clear the stored default.
+            Empty string leaves it unchanged. Applied to workstreams in this
+            workspace when neither the workstream nor the per-job override
+            sets a value. Use ``agent_options`` to discover valid runner
+            names. Example::
 
                 '{"runner": "opencode", "model": "qwen3-coder:exacto",
                   "effort": "medium", "provider": "openrouter"}'
 
         phase_configs: New workspace-level per-phase overrides as a JSON
             object whose keys are phase wire names and whose values are
-            ``{runner, model, effort, provider}`` objects (all keys
-            optional). Empty leaves the per-phase map unchanged. Each named
-            phase overrides ``default_phase_config`` field-by-field.
+            ``{runner, model, effort, provider}`` objects (all keys optional).
+            Pass ``'{}'`` to clear all per-phase overrides. Set a phase value
+            to ``null`` (e.g. ``'{"review": null}'``) to clear just that
+            phase's override. Empty string leaves the per-phase map unchanged.
+            Each named phase overrides ``default_phase_config`` field-by-field.
         default_runner: REMOVED. The legacy ``default_runner`` parameter is no
             longer accepted; passing it fails with a 400-style error. Use
             ``default_phase_config='{"runner": "..."}'``.
@@ -2834,9 +2585,10 @@ def workspace_update_config(
     if slack_team_id_provided:
         # Empty string clears; non-empty (re)binds. Either case is a write.
         payload["slackTeamId"] = slack_team_id
-    if parsed_default_phase_config:
+    # Use `is not None` so that an empty-dict clear signal ({}) is forwarded.
+    if parsed_default_phase_config is not None:
         payload["defaultPhaseConfig"] = parsed_default_phase_config
-    if parsed_phase_configs:
+    if parsed_phase_configs is not None:
         payload["phaseConfigs"] = parsed_phase_configs
 
     if not payload:

@@ -95,7 +95,7 @@ public record PhaseConfigBundle(PhaseConfig defaultPhaseConfig,
         PhaseConfig override = phaseConfigs.get(phase);
         return override == null
                 ? defaultPhaseConfig
-                : override.overlayOn(defaultPhaseConfig);
+                : override.overlayOnClearingInheritedProvider(defaultPhaseConfig);
     }
 
     /**

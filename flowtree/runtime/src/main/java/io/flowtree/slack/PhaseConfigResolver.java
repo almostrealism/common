@@ -130,8 +130,8 @@ public final class PhaseConfigResolver {
      */
     public PhaseConfig forPhase(Phase phase) {
         return requestBundle.forPhase(phase)
-                .overlayOn(workstreamBundle.forPhase(phase))
-                .overlayOn(workspaceBundle.forPhase(phase))
+                .overlayOnClearingInheritedProvider(workstreamBundle.forPhase(phase))
+                .overlayOnClearingInheritedProvider(workspaceBundle.forPhase(phase))
                 .overlayOn(CONTROLLER_DEFAULT);
     }
 
@@ -172,17 +172,20 @@ public final class PhaseConfigResolver {
         // Build the "applied to factory" bundle: each phase fully resolved
         // through the ladder. The default is the resolved default at the
         // request level overlaid on workstream/workspace/controller.
+        // Use runner-aware overlay so a provider configured for one runner
+        // at a lower level does not leak into a phase that resolves to a
+        // different runner.
         PhaseConfig resolvedDefault = req.defaultPhaseConfig()
-                .overlayOn(ws.defaultPhaseConfig())
-                .overlayOn(wsp.defaultPhaseConfig())
+                .overlayOnClearingInheritedProvider(ws.defaultPhaseConfig())
+                .overlayOnClearingInheritedProvider(wsp.defaultPhaseConfig())
                 .overlayOn(CONTROLLER_DEFAULT);
 
         // Collect every phase that has any override at any level.
         Map<Phase, PhaseConfig> phases = new EnumMap<>(Phase.class);
         for (Phase phase : Phase.values()) {
             PhaseConfig perPhase = req.forPhase(phase)
-                    .overlayOn(ws.forPhase(phase))
-                    .overlayOn(wsp.forPhase(phase))
+                    .overlayOnClearingInheritedProvider(ws.forPhase(phase))
+                    .overlayOnClearingInheritedProvider(wsp.forPhase(phase))
                     .overlayOn(CONTROLLER_DEFAULT);
             // Only record an entry when the resolved per-phase config
             // differs from the resolved default; this keeps applyTo()
@@ -269,15 +272,8 @@ public final class PhaseConfigResolver {
             String mergedEffort = (legacyEffort != null && !legacyEffort.isEmpty()) ? legacyEffort : def.effort();
             legacy = legacy.withDefault(new PhaseConfig(def.runner(), mergedModel, mergedEffort));
         }
-        if (body == null || body.isEmpty()) return legacy;
-        ObjectMapper mapper = new ObjectMapper();
-        JsonNode root;
-        try {
-            root = mapper.readTree(body);
-        } catch (Exception ex) {
-            return legacy;
-        }
-        if (root == null || !root.isObject()) return legacy;
+        JsonNode root = parseBodyRoot(body);
+        if (root == null) return legacy;
         PhaseConfigBundle result = legacy;
         JsonNode defaultNode = root.get("defaultPhaseConfig");
         if (defaultNode != null && defaultNode.isObject()) {
@@ -469,16 +465,8 @@ public final class PhaseConfigResolver {
      *         {@code null} when the body uses only the supported shape
      */
     public static String rejectLegacyRequestFields(String body) {
-        if (body == null || body.isEmpty()) return null;
-        JsonNode root;
-        try {
-            root = MAPPER.readTree(body);
-        } catch (Exception ex) {
-            // Malformed bodies are handled by the individual field extractors;
-            // this guard only rejects well-formed bodies that use legacy keys.
-            return null;
-        }
-        if (root == null || !root.isObject()) return null;
+        JsonNode root = parseBodyRoot(body);
+        if (root == null) return null;
         for (String field : REMOVED_REQUEST_FIELDS) {
             if (root.has(field)) {
                 return "The `" + field + "` field is no longer supported. Use "
@@ -531,14 +519,15 @@ public final class PhaseConfigResolver {
      *         response when the body's bundle fails syntax validation
      */
     public static String applyToWorkstream(Workstream workstream, String body) {
-        if (workstream == null || body == null || body.isEmpty()) return null;
-        PhaseConfigBundle bodyOnly = bundleFromRequest(body, null, null, null);
-        if (bodyOnly == null || bodyOnly.isEmpty()) return null;
+        if (workstream == null) return null;
+        JsonNode root = parseBodyRoot(body);
+        if (root == null) return null;
+        if (!root.has("defaultPhaseConfig") && !root.has("phaseConfigs")) return null;
         PhaseConfigBundle existing = workstream.getPhaseConfigBundle();
-        PhaseConfigBundle merged = mergeOverlay(bodyOnly, existing);
-        String syntaxErr = validateSyntax(merged);
+        PhaseConfigBundle updated = applyClearingAndOverlay(existing, root);
+        String syntaxErr = validateSyntax(updated);
         if (syntaxErr != null) return syntaxErr;
-        workstream.setPhaseConfigBundle(merged);
+        workstream.setPhaseConfigBundle(updated);
         return null;
     }
 
@@ -556,19 +545,19 @@ public final class PhaseConfigResolver {
      * @return {@code null} on success; an error message on syntax-validation failure
      */
     public static String applyToWorkspace(WorkstreamConfig.WorkspaceEntry entry, String body) {
-        if (entry == null || body == null || body.isEmpty()) return null;
-        PhaseConfigBundle bodyOnly = bundleFromRequest(body, null, null, null);
-        if (bodyOnly == null || bodyOnly.isEmpty()) return null;
+        if (entry == null) return null;
+        JsonNode root = parseBodyRoot(body);
+        if (root == null) return null;
+        if (!root.has("defaultPhaseConfig") && !root.has("phaseConfigs")) return null;
         PhaseConfigBundle existing = entry.toPhaseConfigBundle();
-        PhaseConfigBundle merged = mergeOverlay(bodyOnly, existing);
-        String syntaxErr = validateSyntax(merged);
+        PhaseConfigBundle updated = applyClearingAndOverlay(existing, root);
+        String syntaxErr = validateSyntax(updated);
         if (syntaxErr != null) return syntaxErr;
-        // Write the merged result back as the new-shape fields, leaving the
-        // legacy defaultRunner / runners fields untouched.
-        entry.setDefaultPhaseConfig(merged.defaultPhaseConfig().isEmpty()
-                ? null : merged.defaultPhaseConfig());
+        // Write the updated result back as the new-shape fields.
+        entry.setDefaultPhaseConfig(updated.defaultPhaseConfig().isEmpty()
+                ? null : updated.defaultPhaseConfig());
         Map<String, PhaseConfig> phaseMap = new LinkedHashMap<>();
-        for (Map.Entry<Phase, PhaseConfig> e : merged.phaseConfigs().entrySet()) {
+        for (Map.Entry<Phase, PhaseConfig> e : updated.phaseConfigs().entrySet()) {
             phaseMap.put(e.getKey().wireName(), e.getValue());
         }
         entry.setPhaseConfigs(phaseMap);
@@ -689,6 +678,96 @@ public final class PhaseConfigResolver {
                     .append("\"");
         }
         json.append("}");
+    }
+
+    /**
+     * Applies clearing and overlay operations from the parsed {@code root}
+     * JSON body onto {@code existing}. Implements the clearing semantics for
+     * workstream/workspace stored configs:
+     *
+     * <ul>
+     *   <li>{@code "defaultPhaseConfig": null} or {@code {}} → clears the
+     *       stored default config.</li>
+     *   <li>{@code "phaseConfigs": {}} → clears all per-phase overrides.</li>
+     *   <li>{@code "phaseConfigs": {"review": null}} → clears just that
+     *       phase's override.</li>
+     *   <li>A non-null, non-empty object overlays field-by-field as usual.</li>
+     * </ul>
+     *
+     * @param existing the current bundle; never {@code null}
+     * @param root     the parsed request body JSON object
+     * @return the updated bundle; never {@code null}
+     */
+    private static PhaseConfigBundle applyClearingAndOverlay(
+            PhaseConfigBundle existing, JsonNode root) {
+        PhaseConfig newDefault = existing.defaultPhaseConfig();
+        Map<Phase, PhaseConfig> newPhases = new EnumMap<>(Phase.class);
+        newPhases.putAll(existing.phaseConfigs());
+
+        if (root.has("defaultPhaseConfig")) {
+            JsonNode node = root.get("defaultPhaseConfig");
+            if (isNullOrEmpty(node)) {
+                newDefault = PhaseConfig.EMPTY;
+            } else if (node.isObject()) {
+                PhaseConfig parsed = phaseConfigFromNode(node);
+                if (!parsed.isEmpty()) {
+                    newDefault = parsed.overlayOn(newDefault);
+                }
+            }
+        }
+
+        if (root.has("phaseConfigs")) {
+            JsonNode phaseNode = root.get("phaseConfigs");
+            if (isNullOrEmpty(phaseNode)) {
+                newPhases.clear();
+            } else if (phaseNode.isObject()) {
+                Iterator<Map.Entry<String, JsonNode>> it = phaseNode.fields();
+                while (it.hasNext()) {
+                    Map.Entry<String, JsonNode> e = it.next();
+                    Phase phase;
+                    try {
+                        phase = Phase.fromWireName(e.getKey());
+                    } catch (IllegalArgumentException ex) {
+                        continue;
+                    }
+                    JsonNode val = e.getValue();
+                    if (val == null || val.isNull()) {
+                        newPhases.remove(phase);
+                    } else if (val.isObject()) {
+                        PhaseConfig parsed = phaseConfigFromNode(val);
+                        if (!parsed.isEmpty()) {
+                            PhaseConfig cur = newPhases.get(phase);
+                            newPhases.put(phase, cur == null ? parsed : parsed.overlayOn(cur));
+                        }
+                    }
+                }
+            }
+        }
+
+        return new PhaseConfigBundle(newDefault, newPhases);
+    }
+
+    /**
+     * Parses {@code body} as a JSON object via {@link #MAPPER} and returns the
+     * root node, or {@code null} when the body is {@code null}, empty, malformed,
+     * or not an object. Used by {@link #rejectLegacyRequestFields},
+     * {@link #applyToWorkstream}, and {@link #applyToWorkspace} to avoid
+     * repeating the same try/catch boilerplate in each method.
+     */
+    private static JsonNode parseBodyRoot(String body) {
+        if (body == null || body.isEmpty()) return null;
+        try {
+            JsonNode root = MAPPER.readTree(body);
+            return (root != null && root.isObject()) ? root : null;
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    /** Returns {@code true} when {@code node} is null, JSON null, or an empty object. */
+    private static boolean isNullOrEmpty(JsonNode node) {
+        if (node == null || node.isNull()) return true;
+        return node.isObject() && !node.fields().hasNext();
     }
 
     /**
