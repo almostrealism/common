@@ -299,6 +299,11 @@ public class JobCompletionEvent {
      * for non-coding-agent jobs and events that predate per-runner tracking.
      */
     public Map<String, Double> getCostByRunner() { return Collections.emptyMap(); }
+    /**
+     * Returns the per-model USD cost breakdown for this job, or an empty map
+     * for non-coding-agent jobs and events that predate per-model tracking.
+     */
+    public Map<String, Double> getCostByModel() { return Collections.emptyMap(); }
 
     // ==================== Builder-pattern setters ====================
 
@@ -377,15 +382,28 @@ public class JobCompletionEvent {
         root.put("commitMessageSource", getCommitMessageSource());
         root.put("runnerName", getRunnerName());
 
-        ObjectNode costByRunnerNode = root.putObject("costByRunner");
-        for (Map.Entry<String, Double> e : getCostByRunner().entrySet()) {
-            costByRunnerNode.put(e.getKey(), e.getValue());
-        }
+        putDoubleMap(root, "costByRunner", getCostByRunner());
+        putDoubleMap(root, "costByModel", getCostByModel());
 
         try {
             return EVENT_MAPPER.writeValueAsString(root);
         } catch (Exception e) {
             return "{}";
+        }
+    }
+
+    /**
+     * Serialises a {@code Map<String, Double>} as a JSON object child of {@code root}.
+     *
+     * @param root the parent object node
+     * @param key  the field name under which the child object is created
+     * @param map  the entries to serialise; {@code null} is treated as empty
+     */
+    private static void putDoubleMap(ObjectNode root, String key, Map<String, Double> map) {
+        ObjectNode node = root.putObject(key);
+        if (map == null) return;
+        for (Map.Entry<String, Double> e : map.entrySet()) {
+            node.put(e.getKey(), e.getValue());
         }
     }
 

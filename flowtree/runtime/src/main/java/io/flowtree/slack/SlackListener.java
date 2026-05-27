@@ -1488,7 +1488,10 @@ public class SlackListener implements ConsoleFeatures {
         sb.append(" (:white_check_mark: ").append(stats.successCount);
         sb.append("  :x: ").append(stats.failedCount);
         sb.append("  :no_entry_sign: ").append(stats.cancelledCount).append(")\n");
-        sb.append("  :moneybag: Cost: $").append(String.format("%.2f", stats.totalCostUsd)).append(JobStatsStore.formatRunnerBreakdown(stats.costByRunner)).append("\n");
+        sb.append("  :moneybag: Cost: $").append(String.format("%.2f", stats.totalCostUsd));
+        sb.append(JobStatsStore.formatCostBreakdown(stats.costByRunner));
+        sb.append(JobStatsStore.formatCostBreakdown(stats.costByModel));
+        sb.append("\n");
         sb.append("  :speech_balloon: Turns: ").append(String.format("%,d", stats.totalTurns)).append("\n");
         return sb.toString();
     }

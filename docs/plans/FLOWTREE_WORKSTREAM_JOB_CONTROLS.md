@@ -1,6 +1,8 @@
 # FlowTree Workstream Job Controls
 
-Status: §3 (per-workstream agentEnv injection) implemented; §1, §2, §4 proposed
+Status: §3 (per-workstream agentEnv injection) implemented; §2 (merge-on-completion
+reconciliation) in progress; §1 postponed (mostly already exists, lower priority);
+§4 proposed
 Owner: TBD
 
 ## TL;DR
@@ -33,6 +35,9 @@ and work regardless of whether the workstream runs OpenCode, Claude Code, or
 another runner.
 
 ## 1. Per-submission resource profiles
+
+> **Status: postponed.** Most of this already exists at the workstream level and
+> this is not the most critical piece, so it is deferred behind §2.
 
 ### Today
 
@@ -112,27 +117,58 @@ system (via MCP tools), **not** to git — so the git repo only holds the agent'
 scratch files, which are append-mostly. We don't need locking; we need
 **reconciliation at push time**.
 
-### Proposal
+### What concurrency this actually targets
 
-Add a **completion-time reconciliation** step to the commit/push tail
-(generalizing `synchronize()` to run at the end against the *target* branch,
-not just at the start against the *base* branch):
+The concurrency here is **cross-node**, not same-host. `GitManagedJob`'s
+workspace lock (`GitManagedJob.java`, `acquireWorkspaceLock`) is a
+per-host-filesystem `FileLock` on `<parent>/.flowtree-locks/<repoName>.lock`, so
+it only serializes jobs that share a bind-mounted host path. A single worker
+node runs one job at a time, so two jobs never contend on the same on-disk
+checkout. The real collision is between **separate agent nodes**: each has its
+own checkout, both branch from the same `origin/<targetBranch>` at `prepare()`
+time, and whichever pushes second gets a non-fast-forward rejection. That is
+exactly what reconciliation fixes. No per-job worktree/clone is needed — each
+node already has its own checkout.
 
-1. When a job finishes and is about to push, `git fetch origin` and check
-   whether `origin/<targetBranch>` advanced since the job started.
-2. If it did, merge `origin/<targetBranch>` into the local branch.
-3. **Clean merge** → commit and push.
-4. **Conflict** → reuse the existing flow: leave the merge in progress with
-   conflict markers and **kick off the same conflict-resolution we use for
-   base-branch sync** (agent resolves markers → `GitCommitHandler` makes the
-   merge commit), then push. Because conflicts are limited to append-mostly
-   scratch files, this is rare and cheap.
-5. Loop once more if the remote advanced again during resolution (bounded
-   retry), then fail the push loudly if it still can't converge.
+### Proposal (settled design)
 
-Concurrent jobs each operate on their own working copy (a per-job worktree or
-clone — implementation choice; the persistent per-workstream checkout is reused
-as the source). With reconciliation at push, they never need to lock.
+Add a **reactive** completion-time reconciliation step to the push tail
+(generalizing the base-branch sync to also run at the end against the *target*
+branch):
+
+1. Attempt the push.
+2. On a non-fast-forward rejection, `git fetch origin` and confirm
+   `origin/<targetBranch>` actually advanced (it is no longer an ancestor of
+   `HEAD`). If it did not advance, the push failed for some other reason — fail
+   loudly rather than loop.
+3. Merge `origin/<targetBranch>` into the local branch.
+4. **Clean merge** → retry the push.
+5. **Conflict** → re-invoke the agent to resolve. The base-branch flow cannot be
+   reused as-is because it runs *before* `doWork()` (the agent is still running
+   and resolves markers in place); completion-time reconciliation runs *after*
+   the agent has exited. So `GitManagedJob` exposes a
+   `onPushConflict(repoPath, conflictedFiles)` hook (default: fail loudly).
+   `CodingAgentJob` overrides it to run a **focused** conflict-resolution
+   session via `runCorrectionSession(...)` tagged with the
+   `PUSH_CONFLICT_RESOLUTION` phase — a narrow "resolve these markers, nothing
+   else" prompt, not a re-run of the original task. The reconciler then verifies
+   no unmerged paths remain, stages the resolved files, makes the merge commit,
+   and retries the push.
+6. Bounded retry: **4 attempts**, then fail the push loudly if it still cannot
+   converge.
+
+Because conflicts are limited to append-mostly scratch files, the conflict path
+is rare. The reconciliation also covers **dependent repos** (they push with the
+same refspec and hit the same rejection).
+
+### Open questions — resolved
+
+- **Per-job working copy (worktree vs clone): neither.** A single node runs one
+  job at a time; cross-node jobs already have independent checkouts. No new
+  working-copy machinery.
+- **Concurrency cap: none.** There is no clean way to enforce a per-workstream
+  cap across a distributed FlowTree network, so it is left unbounded.
+- **Reconciliation retry bound: 4.**
 
 ### Why this is safe
 
@@ -143,12 +179,19 @@ as the source). With reconciliation at push, they never need to lock.
 
 ### Integration points
 
-- `GitManagedJob` commit/push tail — add the fetch + merge-against-target step
-  before push.
-- `GitCommitHandler` — already handles in-progress merges; confirm it triggers
-  for the completion-time merge too.
-- Concurrency: allow N concurrent jobs per workstream up to a configurable cap,
-  each with its own working copy.
+- `GitPushReconciler` (new, in `ar-flowtree-runtime`) — the reactive
+  push-and-reconcile loop, generic over a git executor so it serves both the
+  primary repo (`GitManagedJob.executeGit`) and dependent repos
+  (`GitOperations.execute`).
+- `GitManagedJob` — adds the `onPushConflict(repoPath, conflictedFiles)` hook
+  (default: fail loudly).
+- `GitCommitHandler` — `push()` and `handleDependentRepos()` delegate their push
+  to `GitPushReconciler`.
+- `CodingAgentJob` — overrides `onPushConflict(...)` to run the focused
+  conflict-resolution session; prompt text lives in a new
+  `PushConflictPromptBuilder` (mirrors the existing `InstructionPromptBuilder` /
+  `ReviewPromptBuilder`).
+- `Phase` (in `ar-flowtree-agents`) — adds `PUSH_CONFLICT_RESOLUTION`.
 
 ## 3. Per-workstream `agentEnv` injection
 
@@ -174,9 +217,10 @@ state or run follow-up steps). Two options, in order of preference for v1:
 
 ## 5. Phasing
 
-1. `agentEnv` injection (smallest, unblocks workstream-scoped MCP config).
-2. Per-submission resource profiles.
-3. Merge-on-completion reconciliation + concurrent-jobs-per-repo.
+1. ✅ `agentEnv` injection (smallest, unblocks workstream-scoped MCP config).
+2. ⏳ Merge-on-completion reconciliation (cross-node push reconciliation;
+   in progress).
+3. Per-submission resource profiles (postponed; mostly already exists).
 4. Completion webhook (optional; polling works until then).
 
 GitHub App credentials (`GITHUB_APP_CREDENTIALS.md`) are a related capability
@@ -184,9 +228,5 @@ sequenced alongside these.
 
 ## 6. Open questions
 
-1. **Per-job working copy: worktree vs clone.** Worktrees share the object
-   store (cheaper disk, faster) but complicate cleanup; per-job clones are
-   simpler but heavier. Decide during implementation of §2.
-2. **Concurrency cap default.** Start low (e.g. 2–3 per workstream) and tune.
-3. **Reconciliation retry bound.** How many times to re-merge if the remote
-   keeps advancing before giving up and failing the push.
+All §2 open questions are resolved (see "Open questions — resolved" under §2):
+no per-job working copy, no concurrency cap, retry bound of 4.

@@ -239,13 +239,30 @@ final class OpencodeOutputParser {
             numTurns = countAssistantTurns(rawOutput);
         }
 
+        int inputTokens = 0;
+        int outputTokens = 0;
+        boolean costUnavailable = false;
         double costUsd = 0.0;
-        if (reportsCost && root != null) {
+        if (reportsCost) {
             JsonNode usage = firstNode(root, "usage");
+            if (usage == null) {
+                usage = findUsageBlock(rawOutput);
+            }
             if (usage != null) {
                 JsonNode costNode = firstNode(usage, "cost");
                 if (costNode != null && costNode.isNumber()) {
                     costUsd = costNode.asDouble(0.0);
+                }
+                JsonNode inputTokensNode = firstNode(usage, "input_tokens");
+                if (inputTokensNode != null && inputTokensNode.isNumber()) {
+                    inputTokens = inputTokensNode.asInt(0);
+                }
+                JsonNode outputTokensNode = firstNode(usage, "output_tokens");
+                if (outputTokensNode != null && outputTokensNode.isNumber()) {
+                    outputTokens = outputTokensNode.asInt(0);
+                }
+                if (costUsd == 0.0 && (inputTokens > 0 || outputTokens > 0)) {
+                    costUnavailable = true;
                 }
             }
         }
@@ -262,6 +279,15 @@ final class OpencodeOutputParser {
                 : new LinkedHashMap<>(runnerMetadata);
         if (!responseText.isEmpty()) {
             meta.put("response_text", responseText);
+        }
+        if (inputTokens > 0) {
+            meta.put("input_tokens", String.valueOf(inputTokens));
+        }
+        if (outputTokens > 0) {
+            meta.put("output_tokens", String.valueOf(outputTokens));
+        }
+        if (costUnavailable) {
+            meta.put("cost_unavailable", "true");
         }
 
         return new AgentRunResult(
@@ -461,6 +487,34 @@ final class OpencodeOutputParser {
                 return MAPPER.readTree(raw.substring(start, end + 1));
             } catch (Exception ignored) {
                 end = raw.lastIndexOf('}', start - 1);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Finds the best available {@code usage} block by scanning all NDJSON lines.
+     * This handles cases where the final summary with {@code usage} is not in the
+     * last JSON object (e.g., when opencode outputs metadata-only objects after
+     * the summary, or when the summary appears mid-stream).
+     *
+     * @param raw the captured stdout
+     * @return the {@code usage} node, or {@code null} when absent
+     */
+    private static JsonNode findUsageBlock(String raw) {
+        if (raw == null || raw.isEmpty()) return null;
+        String[] lines = raw.split("\\r?\\n");
+        for (int i = lines.length - 1; i >= 0; i--) {
+            String line = lines[i].trim();
+            if (!line.startsWith("{") || !line.endsWith("}")) continue;
+            try {
+                JsonNode node = MAPPER.readTree(line);
+                JsonNode usage = firstNode(node, "usage");
+                if (usage != null && usage.isObject()) {
+                    return usage;
+                }
+            } catch (Exception ignored) {
+                // continue scanning
             }
         }
         return null;

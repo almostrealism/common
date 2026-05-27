@@ -290,6 +290,38 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 	public int[][] generate(int[][] promptTokens, int maxNewEvents,
 							double temperature, double topP, int topK,
 							int[] allowedTrackIds) {
+		return generate(promptTokens, maxNewEvents, temperature, topP, topK,
+				allowedTrackIds, false);
+	}
+
+	/**
+	 * Variant of {@link #generate(int[][], int, double, double, int, int[])} that
+	 * can additionally forbid the model from emitting {@code patch_change} events
+	 * during generation.
+	 *
+	 * <p>When {@code disablePatchChange} is {@code true} the {@code PATCH_CHANGE}
+	 * event type is masked out at the event-type step (step 0), so a channel's
+	 * instrument binding established by a seeded prompt {@code patch_change} cannot
+	 * be overwritten mid-generation.  This mirrors the SkyTNT reference's
+	 * {@code disable_patch_change=True} behaviour.  All other filter semantics are
+	 * identical to the {@code allowedTrackIds} overload.</p>
+	 *
+	 * @param promptTokens       token array of shape (promptLen x maxTokenSeq)
+	 * @param maxNewEvents       maximum number of new events to generate
+	 * @param temperature        sampling temperature (0 = greedy argmax)
+	 * @param topP               nucleus sampling threshold (1.0 = no nucleus filtering)
+	 * @param topK               top-k limit (0 = no top-k filtering)
+	 * @param allowedTrackIds    when non-null, restricts generated events to the
+	 *                           specified track IDs (0–127); {@code null} = no filter
+	 * @param disablePatchChange when {@code true}, the model may not generate
+	 *                           {@code patch_change} events
+	 * @return full token array including prompt
+	 * @throws IllegalArgumentException if {@code allowedTrackIds} is a zero-length
+	 *         array or contains a value outside [0, 127]
+	 */
+	public int[][] generate(int[][] promptTokens, int maxNewEvents,
+							double temperature, double topP, int topK,
+							int[] allowedTrackIds, boolean disablePatchChange) {
 		Set<Integer> allowedTrackTokens = validateAndExpandTrackFilter(allowedTrackIds);
 		List<int[]> sequence = new ArrayList<>(Arrays.asList(promptTokens));
 
@@ -326,6 +358,9 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 				// Apply validity mask: zero out logits for tokens that are not valid
 				// at this step (given the event type chosen at step 0)
 				int[] validIds = tokenizer.getValidTokenIds(step, eventTypeId);
+				if (step == 0 && disablePatchChange) {
+					validIds = removeToken(validIds, SkyTntTokenizerV2.EVENT_PATCH_CHANGE);
+				}
 				if (step == 3 && allowedTrackTokens != null) {
 					validIds = intersectWithTokenSet(validIds, allowedTrackTokens);
 				}
@@ -424,11 +459,38 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 													int maxNewEvents, double temperature,
 													double topP, int topK, int ticksPerBeat,
 													int[] allowedTrackIds) {
+		return generateFromEvents(promptEvents, maxNewEvents, temperature, topP, topK,
+				ticksPerBeat, allowedTrackIds, false);
+	}
+
+	/**
+	 * Variant of
+	 * {@link #generateFromEvents(List, int, double, double, int, int, int[])} that
+	 * can additionally forbid the model from emitting {@code patch_change} events
+	 * (see {@link #generate(int[][], int, double, double, int, int[], boolean)}).
+	 *
+	 * @param promptEvents       existing events to use as context (not returned)
+	 * @param maxNewEvents       maximum number of new events to generate
+	 * @param temperature        sampling temperature
+	 * @param topP               nucleus sampling threshold
+	 * @param topK               top-k limit (0 = disabled)
+	 * @param ticksPerBeat       MIDI PPQ resolution for timing quantization
+	 * @param allowedTrackIds    when non-null, restricts generated events to the
+	 *                           supplied track IDs
+	 * @param disablePatchChange when {@code true}, the model may not generate
+	 *                           {@code patch_change} events
+	 * @return newly generated MIDI events (does not include prompt events)
+	 */
+	public List<MidiNoteEvent> generateFromEvents(List<MidiNoteEvent> promptEvents,
+													int maxNewEvents, double temperature,
+													double topP, int topK, int ticksPerBeat,
+													int[] allowedTrackIds,
+													boolean disablePatchChange) {
 		int[][] promptTokens = tokenizer.tokenize(promptEvents, ticksPerBeat);
 		int promptLen = promptTokens.length;
 
 		int[][] fullSequence = generate(promptTokens, maxNewEvents, temperature, topP, topK,
-				allowedTrackIds);
+				allowedTrackIds, disablePatchChange);
 
 		if (fullSequence.length <= promptLen) {
 			return new ArrayList<>();
@@ -649,6 +711,26 @@ public class SkyTntMidi implements AttentionFeatures, ConsoleFeatures {
 		int n = 0;
 		for (int id : validIds) {
 			if (filterSet.contains(id)) {
+				tmp[n++] = id;
+			}
+		}
+		return Arrays.copyOf(tmp, n);
+	}
+
+	/**
+	 * Returns a copy of {@code validIds} with every occurrence of
+	 * {@code excludedId} removed.  Used to forbid a specific event type (e.g.
+	 * {@code PATCH_CHANGE}) at the event-type step.
+	 *
+	 * @param validIds   the candidate token IDs
+	 * @param excludedId the token ID to drop
+	 * @return a new array without {@code excludedId}
+	 */
+	static int[] removeToken(int[] validIds, int excludedId) {
+		int[] tmp = new int[validIds.length];
+		int n = 0;
+		for (int id : validIds) {
+			if (id != excludedId) {
 				tmp[n++] = id;
 			}
 		}

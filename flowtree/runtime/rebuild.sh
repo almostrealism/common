@@ -275,7 +275,10 @@ if [ "${AGENTS}" = true ] || [ "${AGENTS_ONLY}" = true ]; then
 
   echo "Rebuilding agent pool (no cache); transcripts at ${TRANSCRIPT_DIR_HOST}/<agent>/..."
   docker compose -f "${AGENT_COMPOSE}" build --no-cache --pull
-  docker compose -f "${AGENT_COMPOSE}" up -d --force-recreate
+  # --remove-orphans clears containers from services no longer in the compose
+  # file — notably the flowtree-agent-1/-2 containers left by the old `agent`
+  # replica service, whose names the explicit agent-N services now reuse.
+  docker compose -f "${AGENT_COMPOSE}" up -d --force-recreate --remove-orphans
 fi
 
 echo "Done."

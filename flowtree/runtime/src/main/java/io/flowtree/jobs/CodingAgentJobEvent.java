@@ -78,6 +78,13 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     private Map<String, Double> costByRunner = Collections.emptyMap();
 
     /**
+     * Cumulative USD cost per model (provider/model identifier), summed across
+     * every phase invocation in this job. Empty for events emitted before
+     * per-model cost tracking.
+     */
+    private Map<String, Double> costByModel = Collections.emptyMap();
+
+    /**
      * {@code true} when the post-completion command exhausted its per-job pass
      * cap without ever exiting zero. Distinguishes "command succeeded after N
      * passes" from "command failed and the gate was abandoned".
@@ -386,6 +393,30 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     @Override
     public Map<String, Double> getCostByRunner() {
         return costByRunner;
+    }
+
+    /**
+     * Sets the per-model cost breakdown for this job.
+     *
+     * @param costByModel map of provider/model identifier to cumulative USD cost;
+     *                    a {@code null} value is treated as an empty map
+     * @return this event for chaining
+     */
+    public CodingAgentJobEvent withCostByModel(Map<String, Double> costByModel) {
+        this.costByModel = costByModel != null
+                ? Map.copyOf(costByModel) : Collections.emptyMap();
+        return this;
+    }
+
+    /**
+     * Returns the per-model cost breakdown for this job.
+     *
+     * @return an immutable map of provider/model identifier to cumulative USD cost;
+     *         empty when not populated
+     */
+    @Override
+    public Map<String, Double> getCostByModel() {
+        return costByModel;
     }
 
     /**

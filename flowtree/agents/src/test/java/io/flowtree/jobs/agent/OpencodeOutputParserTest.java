@@ -260,6 +260,55 @@ public class OpencodeOutputParserTest extends TestSuiteBase {
         assertEquals(0.0, result.costUsd(), 1e-9);
     }
 
+    /**
+     * Token counts are extracted from the usage block and stored in runnerMetadata
+     * when {@code reportsCost=true}.
+     */
+    @Test(timeout = 5000)
+    public void extractsTokenCountsWhenReportsCostTrue() {
+        String output = "{\"session_id\":\"s1\",\"steps\":3,\"stopReason\":\"success\","
+                + "\"usage\":{\"cost\":0.0042,\"input_tokens\":500,\"output_tokens\":80}}";
+        AgentRunResult result = OpencodeOutputParser.parse(
+                output, 0, false, 100L, Collections.emptyMap(), SILENT, true);
+        assertEquals("500", result.runnerMetadata().get("input_tokens"));
+        assertEquals("80", result.runnerMetadata().get("output_tokens"));
+        assertNull("cost_unavailable should not be set when cost > 0",
+                result.runnerMetadata().get("cost_unavailable"));
+    }
+
+    /**
+     * When cost is 0 but token counts are available, the cost_unavailable marker
+     * is set in runnerMetadata. This indicates the cost data was not available
+     * from the provider even though token usage was reported.
+     */
+    @Test(timeout = 5000)
+    public void marksCostUnavailableWhenZeroCostButTokensPresent() {
+        String output = "{\"session_id\":\"s1\",\"steps\":3,\"stopReason\":\"success\","
+                + "\"usage\":{\"cost\":0.0,\"input_tokens\":500,\"output_tokens\":80}}";
+        AgentRunResult result = OpencodeOutputParser.parse(
+                output, 0, false, 100L, Collections.emptyMap(), SILENT, true);
+        assertEquals(0.0, result.costUsd(), 1e-9);
+        assertEquals("true", result.runnerMetadata().get("cost_unavailable"));
+        assertEquals("500", result.runnerMetadata().get("input_tokens"));
+        assertEquals("80", result.runnerMetadata().get("output_tokens"));
+    }
+
+    /**
+     * Token counts and cost_unavailable are NOT set when {@code reportsCost=false}
+     * even if usage block is present with token counts.
+     */
+    @Test(timeout = 5000)
+    public void tokenCountsIgnoredWhenReportsCostFalse() {
+        String output = "{\"session_id\":\"s1\",\"steps\":3,\"stopReason\":\"success\","
+                + "\"usage\":{\"cost\":0.0042,\"input_tokens\":500,\"output_tokens\":80}}";
+        AgentRunResult result = OpencodeOutputParser.parse(
+                output, 0, false, 100L, Collections.emptyMap(), SILENT, false);
+        assertEquals(0.0, result.costUsd(), 1e-9);
+        assertNull(result.runnerMetadata().get("input_tokens"));
+        assertNull(result.runnerMetadata().get("output_tokens"));
+        assertNull(result.runnerMetadata().get("cost_unavailable"));
+    }
+
     /** When no step_start events appear but text events carry messageIDs, count those. */
     @Test(timeout = 5000)
     public void countsDistinctMessageIdsWhenStepStartAbsent() {
