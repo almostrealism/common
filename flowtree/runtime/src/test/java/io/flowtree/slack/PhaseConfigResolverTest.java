@@ -16,15 +16,18 @@
 
 package io.flowtree.slack;
 
+import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.io.IOException;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -783,5 +786,68 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         assertFalse("Response must not use the removed requested/effective prefixes",
                 result.contains("requestedDefaultPhaseConfig")
                         || result.contains("effectiveDefaultPhaseConfig"));
+    }
+
+    @Test(timeout = 10000)
+    public void workspaceLevelPhaseConfigInheritedWhenWorkstreamHasNone() throws IOException {
+        // Reproduces the reported regression: a workstream with NO phase config
+        // of its own must inherit the workspace-level defaultPhaseConfig /
+        // phaseConfigs. Exercises the full path: YAML deserialization ->
+        // WorkspaceEntry.toPhaseConfigBundle() -> PhaseConfigResolver.
+        String yaml = "workstreams:\n"
+                + "- workstreamId: \"ws-repro\"\n"
+                + "  channelId: \"C_REPRO\"\n"
+                + "  workspaceId: \"almostrealism\"\n"
+                + "workspaces:\n"
+                + "- id: \"almostrealism\"\n"
+                + "  name: \"almostrealism\"\n"
+                + "  defaultPhaseConfig:\n"
+                + "    runner: \"opencode\"\n"
+                + "    model: \"minimax/minimax-m2.7\"\n"
+                + "    effort: \"medium\"\n"
+                + "    provider: \"openrouter\"\n"
+                + "  phaseConfigs:\n"
+                + "    primary:\n"
+                + "      runner: \"opencode\"\n"
+                + "      model: \"minimax/minimax-m2.7\"\n"
+                + "      provider: \"openrouter\"\n"
+                + "    review:\n"
+                + "      runner: \"claude\"\n"
+                + "      model: \"sonnet\"\n"
+                + "      effort: \"high\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        WorkstreamConfig.WorkspaceEntry wsp = config.findWorkspace("almostrealism");
+        assertNotNull("workspace entry must deserialize", wsp);
+
+        PhaseConfigBundle workspaceBundle = wsp.toPhaseConfigBundle();
+        Assert.assertEquals("workspace default runner must deserialize",
+                "opencode", workspaceBundle.defaultPhaseConfig().runner());
+
+        PhaseConfigResolver resolver = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY, workspaceBundle);
+        assertNull(resolver.error());
+        Assert.assertEquals("primary must inherit workspace opencode runner",
+                "opencode", resolver.forPhase(Phase.PRIMARY).runner());
+        Assert.assertEquals("review must use workspace claude override",
+                "claude", resolver.forPhase(Phase.REVIEW).runner());
+
+        // End-to-end: mirror the actual submit sequence. The workspace uses the
+        // new-shape phase config, so the legacy runner fields are null (as at
+        // runtime); SubmissionRunnerResolver therefore contributes nothing and
+        // PhaseConfigResolver.applyTo(factory) must drive the runner selection.
+        CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
+        SubmissionRunnerResolver runnerResolver = SubmissionRunnerResolver.resolve(
+                Map.of(), null, null, null, null);
+        assertNull(runnerResolver.error());
+        runnerResolver.applyTo(factory);
+        resolver.applyTo(factory);
+
+        CodingAgentJob job = (CodingAgentJob) factory.nextJob();
+        assertNotNull(job);
+        Assert.assertEquals("job PRIMARY runner must resolve to workspace opencode",
+                "opencode", job.getRunnerForPhase(Phase.PRIMARY));
+        Assert.assertEquals("job REVIEW runner must resolve to workspace claude",
+                "claude", job.getRunnerForPhase(Phase.REVIEW));
     }
 }
