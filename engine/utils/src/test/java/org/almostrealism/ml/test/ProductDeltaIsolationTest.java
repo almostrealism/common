@@ -378,18 +378,12 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 			Model model = new Model(inputShape);
 			model.add(dense(weight));
 
-			// Compile forward
-			long startFwd = System.nanoTime();
-			CompiledModel compiled = model.compile(false, profile);
-			long fwdMs = (System.nanoTime() - startFwd) / 1_000_000;
-			log("  Forward compiled in " + fwdMs + " ms");
-
-			// Compile backward (training)
-			compiled.destroy();
+			// Compile directly for training; compiling forward-only then destroying and
+			// recompiling the same Model frees activation buffers the backward pass still uses.
 			long startBwd = System.nanoTime();
-			compiled = model.compile(true, profile);
+			CompiledModel compiled = model.compile(true, profile);
 			long bwdMs = (System.nanoTime() - startBwd) / 1_000_000;
-			log("  Backward compiled in " + bwdMs + " ms");
+			log("  Compiled in " + bwdMs + " ms");
 
 			// Run one forward + backward
 			PackedCollection input = new PackedCollection(inputShape);
@@ -444,18 +438,12 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 			model.add(dense(w1));
 			model.add(dense(w2));
 
-			// Compile forward
-			long startFwd = System.nanoTime();
-			CompiledModel compiled = model.compile(false, profile);
-			long fwdMs = (System.nanoTime() - startFwd) / 1_000_000;
-			log("  Forward compiled in " + fwdMs + " ms");
-
-			// Compile backward
-			compiled.destroy();
+			// Compile directly for training; compiling forward-only then destroying and
+			// recompiling the same Model frees activation buffers the backward pass still uses.
 			long startBwd = System.nanoTime();
-			compiled = model.compile(true, profile);
+			CompiledModel compiled = model.compile(true, profile);
 			long bwdMs = (System.nanoTime() - startBwd) / 1_000_000;
-			log("  Backward compiled in " + bwdMs + " ms");
+			log("  Compiled in " + bwdMs + " ms");
 
 			// Run
 			PackedCollection input = new PackedCollection(inputShape);
@@ -503,18 +491,12 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 			Model model = new Model(inputShape);
 			model.add(dense(weight));
 
-			// Compile forward
-			long startFwd = System.nanoTime();
-			CompiledModel compiled = model.compile(false, profile);
-			long fwdMs = (System.nanoTime() - startFwd) / 1_000_000;
-			log("  Forward compiled in " + fwdMs + " ms");
-
-			// Compile backward
-			compiled.destroy();
+			// Compile directly for training; compiling forward-only then destroying and
+			// recompiling the same Model frees activation buffers the backward pass still uses.
 			long startBwd = System.nanoTime();
-			compiled = model.compile(true, profile);
+			CompiledModel compiled = model.compile(true, profile);
 			long bwdMs = (System.nanoTime() - startBwd) / 1_000_000;
-			log("  Backward compiled in " + bwdMs + " ms");
+			log("  Compiled in " + bwdMs + " ms");
 
 			// Run
 			PackedCollection input = new PackedCollection(inputShape);
@@ -562,18 +544,12 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 			Model model = new Model(inputShape);
 			model.add(dense(weight));
 
-			// Compile forward
-			long startFwd = System.nanoTime();
-			CompiledModel compiled = model.compile(false, profile);
-			long fwdMs = (System.nanoTime() - startFwd) / 1_000_000;
-			log("  Forward compiled in " + fwdMs + " ms");
-
-			// Compile backward
-			compiled.destroy();
+			// Compile directly for training; compiling forward-only then destroying and
+			// recompiling the same Model frees activation buffers the backward pass still uses.
 			long startBwd = System.nanoTime();
-			compiled = model.compile(true, profile);
+			CompiledModel compiled = model.compile(true, profile);
 			long bwdMs = (System.nanoTime() - startBwd) / 1_000_000;
-			log("  Backward compiled in " + bwdMs + " ms");
+			log("  Compiled in " + bwdMs + " ms");
 
 			// Run
 			PackedCollection input = new PackedCollection(inputShape);
@@ -625,18 +601,12 @@ public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeat
 			model.add(relu());
 			model.add(dense(w2));
 
-			// Compile forward
-			long startFwd = System.nanoTime();
-			CompiledModel compiled = model.compile(false, profile);
-			long fwdMs = (System.nanoTime() - startFwd) / 1_000_000;
-			log("  Forward compiled in " + fwdMs + " ms");
-
-			// Compile backward
-			compiled.destroy();
+			// Compile directly for training; compiling forward-only then destroying and
+			// recompiling the same Model frees activation buffers the backward pass still uses.
 			long startBwd = System.nanoTime();
-			compiled = model.compile(true, profile);
+			CompiledModel compiled = model.compile(true, profile);
 			long bwdMs = (System.nanoTime() - startBwd) / 1_000_000;
-			log("  Backward compiled in " + bwdMs + " ms");
+			log("  Compiled in " + bwdMs + " ms");
 
 			// Run
 			PackedCollection input = new PackedCollection(inputShape);
