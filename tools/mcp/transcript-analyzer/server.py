@@ -11,15 +11,10 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 from mcp.server.fastmcp import FastMCP
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = os.environ.get(
-    "AR_PROJECT_ROOT",
-    str(_SCRIPT_DIR.parent.parent.parent)
-)
 DEFAULT_TRANSCRIPT_DIR = os.environ.get(
     "OPENCODE_TRANSCRIPT_DIR",
     "/tmp/opencode-transcripts"
@@ -416,15 +411,15 @@ def get_errors(path: str, include_corrupt: bool = True) -> dict:
         if include_corrupt:
             source = transcript.events
         else:
+            # TODO(review): enumerate(source) yields positions within error_events,
+            # not within transcript.events, so "index" is wrong for include_corrupt=False.
+            # Fix: enumerate(transcript.events) and filter in the loop condition instead.
             source = error_events
 
-        for e in source:
+        for i, e in enumerate(source):
             if e.type == "error" or (include_corrupt and e.is_corrupt):
-                # TODO(review): transcript.events.index(e) is O(n) per iteration (O(n²) total)
-                # and uses value-equality, so duplicate-raw events get the wrong index.
-                # Prefer enumerate(transcript.events) to track position without searching.
                 errors_list.append({
-                    "index": transcript.events.index(e),
+                    "index": i,
                     "type": e.type,
                     "error_message": e.error_message,
                     "is_corrupt": e.is_corrupt,

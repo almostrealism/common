@@ -6,7 +6,6 @@ Uses representative transcript samples to verify parsing and analysis.
 """
 
 import json
-import os
 import sys
 import tempfile
 import unittest
@@ -83,7 +82,7 @@ ERROR_TRANSCRIPT_EVENTS = [
     '{"type":"step_start","sessionID":"sess-err001"}',
     '{"type":"text","part":{"text":"Attempting a risky operation..."}}',
     '{"type":"tool_use","tool":"Bash","input":{"command":"rm -rf /important"}}',
-    '{"type":"error","error":"Permission denied"}',
+    '{"type":"error","part":{"message":"Permission denied"}}',
     '{"type":"text","part":{"text":"The operation failed."}}',
     '{"type":"step_finish","sessionID":"sess-err001"}',
     'CORRUPTED_LINE_NOT_JSON',

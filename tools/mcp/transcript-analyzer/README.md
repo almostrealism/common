@@ -71,7 +71,7 @@ Each transcript is a JSONL file with three sections:
   "phase": "primary",
   "model": "local/qwen3",
   "provider": "local",
-  "opencode_version": "1.0.0",
+  "opencode_version": "<opencode version>",
   "session_id": "sess-abc123",
   "start_epoch_ms": 1700000000000,
   "start_iso": "2026-05-27T12:00:00.000Z"

@@ -160,11 +160,14 @@ def _parse_event(line: str) -> TranscriptEvent:
         node = json.loads(line)
         event_type = node.get("type")
         text = None
+        error_message = None
         if event_type == "text":
             part = node.get("part", {})
             text = part.get("text") if isinstance(part, dict) else None
         elif event_type == "error":
-            text = node.get("error") or node.get("message")
+            part = node.get("part", {})
+            error_message = part.get("message") if isinstance(part, dict) else node.get("error")
+            text = error_message
 
         tool = None
         tool_input = None
@@ -179,7 +182,7 @@ def _parse_event(line: str) -> TranscriptEvent:
             text=text,
             tool=tool,
             tool_input=tool_input,
-            error_message=node.get("error"),
+            error_message=error_message,
             is_corrupt=False,
         )
     except json.JSONDecodeError:
@@ -223,6 +226,7 @@ def get_summary(transcript: Transcript) -> dict:
         "duration_seconds": (footer.duration_ms / 1000.0) if footer.duration_ms else None,
         "num_turns": footer.num_turns or step_starts,
         "step_count": step_starts,
+        "step_finish_count": step_finishes,
         "tool_use_count": len(tool_uses),
         "tool_result_count": len(tool_results),
         "unique_tools": unique_tools,
@@ -373,19 +377,18 @@ def list_transcript_files(
             }
 
             if job_id or session_id:
+                header = {}
                 try:
                     with open(jsonl_path, "r", encoding="utf-8") as f:
                         header_line = f.readline()
                     if header_line.strip():
                         header = json.loads(header_line)
-                        if job_id and job_id not in (header.get("job_id") or ""):
+                        header_job_id = (header.get("job_id") or "").lower()
+                        header_session_id = (header.get("session_id") or "").lower()
+                        if job_id and job_id.lower() not in header_job_id:
                             continue
-                        if session_id and session_id not in (header.get("session_id") or ""):
+                        if session_id and session_id.lower() not in header_session_id:
                             continue
-                    # TODO(review): if header_line.strip() is empty, `header` is unbound here
-                    # and the next line raises NameError (not caught by the OSError/JSONDecodeError
-                    # handler below). Fix: initialize header = {} before the if-block, or guard
-                    # this assignment inside `if header_line.strip()`.
                     entry["job_id"] = header.get("job_id")
                     entry["session_id"] = header.get("session_id")
                     entry["model"] = header.get("model")
