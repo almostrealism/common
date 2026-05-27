@@ -380,4 +380,155 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         assertNull(PhaseConfigResolver.rejectLegacyRequestFields("not-json"));
         assertNull(PhaseConfigResolver.rejectLegacyRequestFields("[1,2,3]"));
     }
+
+    // --- requestBundle() accessor ----------------------------------------------------
+
+    /**
+     * Verifies that requestBundle() exposes exactly what was supplied in the
+     * request, before merging with workstream / workspace / controller defaults.
+     */
+    @Test(timeout = 5000)
+    public void requestBundleExposesRawRequestDefault() {
+        PhaseConfigBundle req = bundle(
+                new PhaseConfig(TEST_RUNNER, "claude-opus-4-7", "high"),
+                null, null);
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(req, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        PhaseConfigBundle reqBundle = r.requestBundle();
+        assertNotNull(reqBundle);
+        assertEquals(TEST_RUNNER, reqBundle.defaultPhaseConfig().runner());
+        assertEquals("claude-opus-4-7", reqBundle.defaultPhaseConfig().model());
+        assertEquals("high", reqBundle.defaultPhaseConfig().effort());
+    }
+
+    @Test(timeout = 5000)
+    public void requestBundleExposesRawRequestPerPhaseOverrides() {
+        PhaseConfigBundle req = bundle(
+                new PhaseConfig(null, null, "high"),
+                Phase.REVIEW, new PhaseConfig(TEST_RUNNER, null, null));
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(req, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        PhaseConfigBundle reqBundle = r.requestBundle();
+        assertNotNull(reqBundle);
+        PhaseConfig review = reqBundle.phaseConfigs().get(Phase.REVIEW);
+        assertNotNull(review);
+        assertEquals(TEST_RUNNER, review.runner());
+    }
+
+    @Test(timeout = 5000)
+    public void requestBundleReturnsEmptyForNoRequestConfig() {
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(
+                PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+        PhaseConfigBundle reqBundle = r.requestBundle();
+        assertNotNull(reqBundle);
+        assertTrue(reqBundle.isEmpty());
+    }
+
+    // --- appendBundleJson with custom field names ----------------------------------
+
+    /**
+     * Verifies that the two-argument appendBundleJson overload emits the
+     * configured field names instead of the defaults.
+     */
+    @Test(timeout = 5000)
+    public void appendBundleJsonWithCustomNames() {
+        PhaseConfigBundle b = bundle(
+                new PhaseConfig(TEST_RUNNER, "claude-opus-4-7", null),
+                Phase.REVIEW, new PhaseConfig(null, "claude-sonnet-4-6", "medium"));
+
+        StringBuilder json = new StringBuilder();
+        json.append("{\"ok\":true");
+        PhaseConfigResolver.appendBundleJson(json, b,
+                "customDefault", "customPhases");
+        json.append("}");
+
+        String result = json.toString();
+        assertTrue("Should contain customDefault",
+                result.contains("\"customDefault\""));
+        assertTrue("Should contain customPhases",
+                result.contains("\"customPhases\""));
+        assertTrue("Should contain runner value",
+                result.contains(TEST_RUNNER));
+        assertFalse("Should NOT contain defaultPhaseConfig label",
+                result.contains("\"defaultPhaseConfig\""));
+        assertFalse("Should NOT contain phaseConfigs label",
+                result.contains("\"phaseConfigs\""));
+        assertTrue("Should contain review phase key",
+                result.contains("\"review\""));
+    }
+
+    /**
+     * Verifies that appendBundleJson with custom names emits nothing when
+     * the bundle is empty or null.
+     */
+    @Test(timeout = 5000)
+    public void appendBundleJsonWithCustomNamesSkipsEmpty() {
+        StringBuilder json = new StringBuilder();
+        json.append("{\"ok\":true");
+        PhaseConfigResolver.appendBundleJson(json, PhaseConfigBundle.EMPTY,
+                "customDefault", "customPhases");
+        json.append("}");
+
+        String result = json.toString();
+        assertEquals("{\"ok\":true}", result);
+    }
+
+    /**
+     * Verifies that passing null as a field name suppresses that field,
+     * allowing callers to emit only one of default or per-phase.
+     */
+    @Test(timeout = 5000)
+    public void appendBundleJsonWithNullFieldNameSuppressesField() {
+        PhaseConfigBundle b = bundle(
+                new PhaseConfig(TEST_RUNNER, null, null),
+                Phase.REVIEW, new PhaseConfig(null, "claude-sonnet-4-6", null));
+
+        StringBuilder json = new StringBuilder();
+        json.append("{\"ok\":true");
+        PhaseConfigResolver.appendBundleJson(json, b, null, "perPhaseConfigs");
+        json.append("}");
+
+        String result = json.toString();
+        assertFalse("default field should be suppressed",
+                result.contains("defaultPhaseConfig"));
+        assertTrue("phases field should be present",
+                result.contains("\"perPhaseConfigs\""));
+    }
+
+    // --- Submit response: resolved (effective) config under plain names -----------
+
+    /**
+     * The submit response echoes the fully-resolved bundle under the same
+     * {@code defaultPhaseConfig} / {@code phaseConfigs} names the config input
+     * uses. A job-level default overrides the workstream default, and that
+     * resolved value is what appears in the response.
+     */
+    @Test(timeout = 5000)
+    public void submitResponseEmitsResolvedConfigUnderPlainNames() {
+        PhaseConfigBundle workstreamBundle = bundle(
+                new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null), null, null);
+        PhaseConfigBundle req = bundle(
+                new PhaseConfig(AgentRunnerRegistry.OPENCODE, "minimax", "high"),
+                null, null);
+
+        PhaseConfigResolver r = PhaseConfigResolver.resolve(req, workstreamBundle, PhaseConfigBundle.EMPTY);
+        assertNull(r.error());
+
+        StringBuilder json = new StringBuilder();
+        json.append("{\"ok\":true");
+        PhaseConfigResolver.appendBundleJson(json, r.resolvedBundle());
+        json.append("}");
+
+        String result = json.toString();
+        assertTrue("Should emit defaultPhaseConfig",
+                result.contains("\"defaultPhaseConfig\""));
+        assertTrue("Resolved runner should be opencode (job overrides workstream claude)",
+                result.contains("\"runner\":\"opencode\""));
+        assertTrue("Resolved model should be minimax",
+                result.contains("\"model\":\"minimax\""));
+        assertFalse("Response must not use the removed requested/effective prefixes",
+                result.contains("requestedDefaultPhaseConfig")
+                        || result.contains("effectiveDefaultPhaseConfig"));
+    }
 }

@@ -385,21 +385,8 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 	public void correctionSessionActivityMatchesRuleName() {
 		AtomicReference<String> capturedActivity = new AtomicReference<>();
 
-		EnforcementRule rule = new EnforcementRule() {
-			private boolean done = false;
-
-			@Override
-			public String getName() { return "maven_dependency_protection"; }
-
-			@Override
-			public boolean isViolated(CodingAgentJob job) { return !done; }
-
-			@Override
-			public String buildCorrectionPrompt(CodingAgentJob job) {
-				done = true;
-				return "correct the dependency violation";
-			}
-		};
+		EnforcementRule rule = EnforcementRule.singleFire("maven_dependency_protection",
+				"correct the dependency violation");
 
 		// Spy subclass: capture the activity argument without launching a subprocess.
 		CodingAgentJob job = new CodingAgentJob("t1", "test") {
