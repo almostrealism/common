@@ -631,7 +631,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setDescription(jobDescription);
         }
         factory.setAllowedTools(workstream.getAllowedTools());
-        factory.setAgentEnv(workstream.getAgentEnv());
+        factory.setAgentEnv(mergeAgentEnv(workstream.getAgentEnv(), body));
         factory.setMaxTurns(maxTurns > 0 ? maxTurns : workstream.getMaxTurns());
         factory.setMaxBudgetUsd(maxBudgetUsd > 0 ? maxBudgetUsd : workstream.getMaxBudgetUsd());
 
@@ -813,8 +813,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 .append("\",\"workstreamId\":\"")
                 .append(workstreamId)
                 .append("\"");
-        PhaseConfigBundle resolvedBundle = pcResolver.resolvedBundle();
-        PhaseConfigResolver.appendBundleJson(json, resolvedBundle);
+        // Echo back the fully-resolved phase configuration (job overrides
+        // layered through workstream / workspace / controller defaults) under
+        // the same field names the config input uses, so the caller sees the
+        // config the job will actually run with.
+        PhaseConfigResolver.appendBundleJson(json, pcResolver.resolvedBundle());
         json.append("}");
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", json.toString());
@@ -1074,6 +1077,29 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     static Map<String, String> extractJsonObjectFields(String json, String field) {
         return JsonFieldExtractor.extractStringObject(json, field);
+    }
+
+    /**
+     * Computes the effective agent environment for a submission: the workstream's static
+     * {@code agentEnv} with any per-submission {@code agentEnv} from the request body merged on top
+     * (submission wins on key collisions). This is what lets a caller inject dynamic, per-job
+     * environment — e.g. a short-lived bearer token minted per job — that cannot live in static
+     * workstream config. Either input may be {@code null}/absent.
+     *
+     * @param workstreamEnv the workstream's configured agentEnv, or {@code null}
+     * @param body          the raw submission JSON body (may contain an {@code agentEnv} object)
+     * @return a new merged map (never {@code null})
+     */
+    static Map<String, String> mergeAgentEnv(Map<String, String> workstreamEnv, String body) {
+        Map<String, String> effective = new HashMap<>();
+        if (workstreamEnv != null) {
+            effective.putAll(workstreamEnv);
+        }
+        Map<String, String> submissionAgentEnv = extractJsonObjectFields(body, "agentEnv");
+        if (submissionAgentEnv != null) {
+            effective.putAll(submissionAgentEnv);
+        }
+        return effective;
     }
 
     /**

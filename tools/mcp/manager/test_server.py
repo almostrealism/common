@@ -2949,6 +2949,179 @@ class TestWorkstreamContextActivityFilter(unittest.TestCase):
         self.assertIn("m3", ids)
 
 
+class TestWorkstreamContextPullRequest(unittest.TestCase):
+    """Tests for the pull_request field in workstream_context."""
+
+    @patch.object(server, "_find_recent_pr_by_branch")
+    @patch.object(server, "_github_request", return_value={"ok": False, "error": "off"})
+    @patch.object(server, "_get_memory_client")
+    def test_pull_request_included_when_found(self, mock_client_fn, _gh, mock_find_pr):
+        """When a PR exists, pull_request field is included in response."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+
+        mock_pr = {
+            "number": 42,
+            "title": "Add new feature",
+            "html_url": "https://github.com/org/repo/pull/42",
+            "state": "open",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-02T00:00:00Z",
+            "merged_at": None,
+            "closed_at": None,
+            "user": {"login": "author"},
+            "base": {"ref": "master"},
+            "head": {"ref": "feature/x"},
+        }
+        mock_find_pr.return_value = {"ok": True, "found": True, "pr": mock_pr}
+
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            include_commits=False,
+        )
+        self.assertTrue(result["ok"])
+        self.assertIn("pull_request", result)
+        pr = result["pull_request"]
+        self.assertEqual(pr["number"], 42)
+        self.assertEqual(pr["title"], "Add new feature")
+        self.assertEqual(pr["url"], "https://github.com/org/repo/pull/42")
+        self.assertEqual(pr["state"], "open")
+        self.assertEqual(pr["author"], "author")
+        self.assertEqual(pr["base_branch"], "master")
+        self.assertEqual(pr["head_branch"], "feature/x")
+
+    @patch.object(server, "_find_recent_pr_by_branch")
+    @patch.object(server, "_github_request", return_value={"ok": False, "error": "off"})
+    @patch.object(server, "_get_memory_client")
+    def test_pull_request_omitted_when_not_found(self, mock_client_fn, _gh, mock_find_pr):
+        """When no PR exists, pull_request field is omitted."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+
+        mock_find_pr.return_value = {"ok": True, "found": False, "branch": "feature/x"}
+
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            include_commits=False,
+        )
+        self.assertTrue(result["ok"])
+        self.assertNotIn("pull_request", result)
+
+    @patch.object(server, "_find_recent_pr_by_branch")
+    @patch.object(server, "_github_request", return_value={"ok": False, "error": "off"})
+    @patch.object(server, "_get_memory_client")
+    def test_pr_error_is_recorded(self, mock_client_fn, _gh, mock_find_pr):
+        """When PR lookup fails, pr_error field is included."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+
+        mock_find_pr.return_value = {"ok": False, "error": "GitHub API error"}
+
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            include_commits=False,
+        )
+        self.assertTrue(result["ok"])
+        self.assertIn("pr_error", result)
+        self.assertEqual(result["pr_error"], "GitHub API error")
+
+    @patch.object(server, "_find_recent_pr_by_branch")
+    @patch.object(server, "_get_memory_client")
+    def test_closed_pr_has_merged_and_closed_timestamps(self, mock_client_fn, mock_find_pr):
+        """Closed/merged PR includes merged_at and closed_at timestamps."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+
+        mock_pr = {
+            "number": 42,
+            "title": "Feature merged",
+            "html_url": "https://github.com/org/repo/pull/42",
+            "state": "closed",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-10T00:00:00Z",
+            "merged_at": "2026-01-09T00:00:00Z",
+            "closed_at": "2026-01-10T00:00:00Z",
+            "user": {"login": "author"},
+            "base": {"ref": "master"},
+            "head": {"ref": "feature/x"},
+        }
+        mock_find_pr.return_value = {"ok": True, "found": True, "pr": mock_pr}
+
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            include_commits=False,
+        )
+        self.assertTrue(result["ok"])
+        pr = result["pull_request"]
+        self.assertEqual(pr["state"], "closed")
+        self.assertEqual(pr["merged_at"], "2026-01-09T00:00:00Z")
+        self.assertEqual(pr["closed_at"], "2026-01-10T00:00:00Z")
+
+
+class TestFindRecentPrByBranch(unittest.TestCase):
+    """Unit tests for _find_recent_pr_by_branch GitHub API integration."""
+
+    @patch.object(server, "_github_request")
+    def test_calls_pulls_list_api_with_correct_params(self, mock_gh):
+        """Verifies _find_recent_pr_by_branch uses the Pulls list API with state=all."""
+        mock_gh.return_value = []
+        result = server._find_recent_pr_by_branch("org", "repo", "feature/x")
+        mock_gh.assert_called_once()
+        call_args = mock_gh.call_args
+        self.assertEqual(call_args[0][0], "GET")
+        self.assertIn("/repos/org/repo/pulls", call_args[0][1])
+        self.assertIn("head=org:feature/x", call_args[0][1])
+        self.assertIn("state=all", call_args[0][1])
+        self.assertIn("sort=updated", call_args[0][1])
+        self.assertIn("direction=desc", call_args[0][1])
+        self.assertIn("per_page=1", call_args[0][1])
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["found"])
+
+    @patch.object(server, "_github_request")
+    def test_returns_pr_with_full_fields(self, mock_gh):
+        """Verifies the returned PR object contains merged_at, base, and head fields."""
+        mock_pr = {
+            "number": 42,
+            "title": "Feature",
+            "html_url": "https://github.com/org/repo/pull/42",
+            "state": "closed",
+            "merged_at": "2026-01-09T00:00:00Z",
+            "closed_at": "2026-01-10T00:00:00Z",
+            "user": {"login": "author"},
+            "base": {"ref": "master"},
+            "head": {"ref": "feature/x"},
+        }
+        mock_gh.return_value = [mock_pr]
+        result = server._find_recent_pr_by_branch("org", "repo", "feature/x")
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["found"])
+        pr = result["pr"]
+        self.assertEqual(pr["merged_at"], "2026-01-09T00:00:00Z")
+        self.assertEqual(pr["base"]["ref"], "master")
+        self.assertEqual(pr["head"]["ref"], "feature/x")
+
+    @patch.object(server, "_github_request")
+    def test_handles_github_error(self, mock_gh):
+        """Verifies GitHub API errors are propagated correctly."""
+        mock_gh.return_value = {"ok": False, "error": "rate limited"}
+        result = server._find_recent_pr_by_branch("org", "repo", "feature/x")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "rate limited")
+
+
 # -----------------------------------------------------------------------
 # Controller HTTP helpers
 # -----------------------------------------------------------------------

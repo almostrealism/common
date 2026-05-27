@@ -522,6 +522,73 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 TimeUnit.MINUTES.toMillis(45), opencodeTimeout);
     }
 
+    // --- OpenRouter cost recovery -------------------------------------------
+
+    /** Minimal OpenRouter catalog used by the cost-recovery tests. */
+    private static final String OR_CATALOG = "{\"data\":[{\"id\":\"qwen/qwen3-coder\","
+            + "\"pricing\":{\"prompt\":\"0.00000022\",\"completion\":\"0.0000018\"}}]}";
+
+    /**
+     * Builds an {@link AgentRunResult} carrying token metadata as
+     * {@link OpencodeOutputParser} would, with {@code cost = 0} and the
+     * {@code cost_unavailable} marker set (the opencode-reported-zero case).
+     */
+    private static AgentRunResult resultWithTokens(long input, long output, long cacheRead) {
+        Map<String, String> meta = new HashMap<>();
+        meta.put("input_tokens", String.valueOf(input));
+        meta.put("output_tokens", String.valueOf(output));
+        if (cacheRead > 0) {
+            meta.put("cache_read_tokens", String.valueOf(cacheRead));
+        }
+        meta.put("cost_unavailable", "true");
+        return new AgentRunResult(0, false, "", "ses", 100L, 0L, 3,
+                0.0, "success", false, List.of(), meta);
+    }
+
+    /**
+     * For the OpenRouter provider, a zero opencode cost is recomputed from the
+     * reported token counts using OpenRouter's per-token rates, even for a
+     * {@code :variant} model id absent from opencode's pricing catalog.
+     * 1000 input + 100 output + 500 cache-read at qwen/qwen3-coder rates
+     * (cache reads defaulting to 10% of the prompt rate) = 0.000411.
+     */
+    @Test(timeout = 5000)
+    public void recoversOpenRouterCostForVariantModel() {
+        OpencodeRunner runner = new OpencodeRunner();
+        runner.setPricingSupplier(() -> OpenRouterPricing.parse(OR_CATALOG));
+        AgentRunResult recomputed = runner.applyOpenRouterCost(
+                resultWithTokens(1000, 100, 500), "openrouter",
+                "openrouter/qwen/qwen3-coder:exacto", SILENT);
+        Assert.assertEquals(0.000411, recomputed.costUsd(), 1e-12);
+        Assert.assertEquals("openrouter_pricing", recomputed.runnerMetadata().get("cost_source"));
+        Assert.assertNull("cost_unavailable should be cleared once cost is recovered",
+                recomputed.runnerMetadata().get("cost_unavailable"));
+    }
+
+    /** Non-OpenRouter providers are left untouched (opencode's cost stands). */
+    @Test(timeout = 5000)
+    public void leavesNonOpenRouterCostUnchanged() {
+        OpencodeRunner runner = new OpencodeRunner();
+        runner.setPricingSupplier(() -> OpenRouterPricing.parse(OR_CATALOG));
+        AgentRunResult original = resultWithTokens(1000, 100, 500);
+        AgentRunResult same = runner.applyOpenRouterCost(
+                original, "local", "local/default", SILENT);
+        Assert.assertEquals(0.0, same.costUsd(), 1e-15);
+        Assert.assertSame(original, same);
+    }
+
+    /** An unknown model leaves opencode's cost as-is rather than inventing one. */
+    @Test(timeout = 5000)
+    public void leavesCostUnchangedWhenModelUnknownToOpenRouter() {
+        OpencodeRunner runner = new OpencodeRunner();
+        runner.setPricingSupplier(() -> OpenRouterPricing.parse(OR_CATALOG));
+        AgentRunResult original = resultWithTokens(1000, 100, 500);
+        AgentRunResult same = runner.applyOpenRouterCost(
+                original, "openrouter", "openrouter/no/such-model", SILENT);
+        Assert.assertEquals(0.0, same.costUsd(), 1e-15);
+        Assert.assertSame(original, same);
+    }
+
     /**
      * Asserts that {@code cmd} contains {@code flag} immediately followed by
      * {@code value}; throws an {@link AssertionError} on the first mismatch.

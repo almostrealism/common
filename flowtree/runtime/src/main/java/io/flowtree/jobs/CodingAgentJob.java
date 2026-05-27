@@ -1115,7 +1115,7 @@ public class CodingAgentJob extends GitManagedJob {
             log("Target branch: " + getTargetBranch());
         }
         if (enforcementAttempt > 0) {
-            log("Enforcement attempt: " + (enforcementAttempt + 1));
+            log("enforce_changes retry: restarting from PRIMARY (retry " + enforcementAttempt + ")");
         }
 
         PhaseConfig effective = resolveEffectivePhaseConfig(currentPhase);

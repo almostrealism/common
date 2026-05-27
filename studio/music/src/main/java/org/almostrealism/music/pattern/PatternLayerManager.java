@@ -655,6 +655,31 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		while (depth() > 0) removeLayer();
 	}
 
+	/**
+	 * Replaces this manager's layer content with a single root layer holding the
+	 * supplied elements, bound to the given audio choice.
+	 *
+	 * <p>This installs <em>externally generated</em> pattern content — e.g.
+	 * elements produced by {@code MidiToPatternConverter} from an ML model — so
+	 * it can be rendered through the normal pattern pipeline
+	 * ({@link #sum}/{@link #getAllElementsByChoice}) without the genome-driven
+	 * generation in {@link #layer}/{@link #refresh}.  It is intended for one-shot
+	 * render scenes; callers should not subsequently invoke {@link #refresh} or
+	 * {@link #setLayerCount} on this manager, as the layer hierarchy is no longer
+	 * derived from the genome parameters.</p>
+	 *
+	 * @param choice   the audio choice supplying the rendered samples; must be a
+	 *                 choice valid for this channel
+	 * @param elements the pattern elements to install (copied defensively)
+	 */
+	public void setExplicitElements(NoteAudioChoice choice, List<PatternElement> elements) {
+		roots.clear();
+		layerParams.clear();
+		roots.add(new PatternLayer(choice, new ArrayList<>(elements)));
+		layerParams.add(new ParameterSet());
+		layerCount = 1;
+	}
+
 	/** Refreshes the pattern by clearing and regenerating all layers. */
 	public void refresh() {
 		clear();

@@ -76,8 +76,14 @@ Check the status of a test run.
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `run_id` | string | Yes | The run identifier |
+| `block` | boolean | No | When true, wait server-side until the run reaches a terminal state (completed/failed/timeout/cancelled) before responding. Default: false. |
+| `timeout_seconds` | integer | No | Maximum seconds to wait when `block=true` (default: 600, max: 3600). If it elapses, the latest still-running status is returned. Ignored when `block` is false. |
 
 **Returns:** Status, timing, and test counts from surefire reports.
+
+With `block=true` you can wait for a run to finish with a single call instead of
+polling in a loop. Use it when you have nothing else to do while waiting;
+otherwise leave it off, return, and do other work between checks.
 
 ### get_run_output
 

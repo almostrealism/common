@@ -66,6 +66,15 @@ public class OpencodeRunner implements AgentRunner {
     /** Canonical runner name used on the wire and registered with {@link AgentRunnerRegistry}. */
     public static final String NAME = "opencode";
 
+    /**
+     * Provider id whose sessions are re-priced from OpenRouter's published
+     * rates. opencode reports {@code cost = 0} for OpenRouter models absent from
+     * its bundled catalog (notably {@code :variant} ids), so for this provider
+     * the cost is recovered from the per-step token counts; see
+     * {@link OpenRouterPricing}.
+     */
+    private static final String PROVIDER_OPENROUTER = "openrouter";
+
     /** Discovery helper for the opencode binary. */
     private final Supplier<OpencodeBinaryLocator> locatorSupplier;
     /** Config builder used to synthesize the JSON config file. */
@@ -76,6 +85,9 @@ public class OpencodeRunner implements AgentRunner {
     private String binaryVersion;
     /** Workspace secret accessor; overridable for tests. */
     private Function<String, String> secretLookup;
+
+    /** Supplies OpenRouter pricing for cost recovery; overridable for tests. */
+    private Supplier<OpenRouterPricing> pricingSupplier = OpenRouterPricing::cached;
 
     /**
      * Shared HTTP client for the secret-lookup endpoint. The JDK
@@ -207,6 +219,16 @@ public class OpencodeRunner implements AgentRunner {
      */
     public void setSecretLookup(Function<String, String> secretLookup) {
         this.secretLookup = secretLookup;
+    }
+
+    /**
+     * Overrides the OpenRouter pricing source. Used by tests to supply a fixed
+     * pricing table instead of fetching OpenRouter's live catalog over HTTP.
+     *
+     * @param pricingSupplier supplies the pricing table on demand
+     */
+    void setPricingSupplier(Supplier<OpenRouterPricing> pricingSupplier) {
+        this.pricingSupplier = pricingSupplier;
     }
 
     /**
@@ -355,10 +377,98 @@ public class OpencodeRunner implements AgentRunner {
                     providerConfig.reportsCost(),
                     processResult.killedForLooping());
 
+            result = applyOpenRouterCost(result, provider, qualifiedModel, logger);
+
             OpencodeTranscriptWriter.forRequest(request).write(request, result, start, endMs, logger);
             return result;
         } finally {
             deleteConfigFile(configPath, logger);
+        }
+    }
+
+    /**
+     * Recovers a dollar cost for OpenRouter sessions from the per-step token
+     * counts opencode reports.
+     *
+     * <p>opencode prices sessions from its bundled models.dev catalog, so any
+     * OpenRouter model id it cannot find there — notably {@code :variant} ids
+     * such as {@code qwen/qwen3-coder:exacto} — is reported at {@code cost = 0}
+     * on every step even though OpenRouter billed for it. The token counts the
+     * parser surfaced (in {@code input_tokens} / {@code output_tokens} /
+     * {@code cache_read_tokens} / {@code cache_write_tokens}) are accurate
+     * regardless, so for the {@link #PROVIDER_OPENROUTER} provider the cost is
+     * recomputed here against OpenRouter's published per-token rates.</p>
+     *
+     * <p>No-ops (returns {@code result} unchanged) for non-OpenRouter providers,
+     * when no token counts were reported, or when OpenRouter's catalog is
+     * unreachable or lacks the model — in which case opencode's own cost (which
+     * may be {@code 0}) is preserved.</p>
+     *
+     * @param result         the parsed session result
+     * @param provider       the resolved provider id
+     * @param qualifiedModel the {@code provider/model} id used for the session
+     * @param logger         diagnostic sink
+     * @return {@code result}, or a copy whose {@code costUsd} was recomputed
+     */
+    AgentRunResult applyOpenRouterCost(AgentRunResult result,
+                                       String provider,
+                                       String qualifiedModel,
+                                       ConsoleFeatures logger) {
+        if (!PROVIDER_OPENROUTER.equals(provider)) {
+            return result;
+        }
+        Map<String, String> meta = result.runnerMetadata();
+        long inputTokens = parseLongOrZero(meta.get("input_tokens"));
+        long outputTokens = parseLongOrZero(meta.get("output_tokens"));
+        long cacheReadTokens = parseLongOrZero(meta.get("cache_read_tokens"));
+        long cacheWriteTokens = parseLongOrZero(meta.get("cache_write_tokens"));
+        if (inputTokens == 0 && outputTokens == 0
+                && cacheReadTokens == 0 && cacheWriteTokens == 0) {
+            return result;
+        }
+        OpenRouterPricing.Rates rates = pricingSupplier.get().ratesFor(qualifiedModel);
+        if (rates == null) {
+            logger.log("openrouter_pricing_unknown model=" + qualifiedModel
+                    + " cost left as reported by opencode");
+            return result;
+        }
+        double cost = rates.cost(inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens);
+        logger.log("openrouter_pricing_applied model=" + qualifiedModel
+                + " input=" + inputTokens + " output=" + outputTokens
+                + " cache_read=" + cacheReadTokens + " cost=" + cost);
+        Map<String, String> newMeta = new LinkedHashMap<>(meta);
+        newMeta.remove("cost_unavailable");
+        newMeta.put("cost_source", "openrouter_pricing");
+        return new AgentRunResult(
+                result.exitCode(),
+                result.killedForInactivity(),
+                result.rawOutput(),
+                result.sessionId(),
+                result.durationMs(),
+                result.durationApiMs(),
+                result.numTurns(),
+                cost,
+                result.stopReason(),
+                result.sessionIsError(),
+                result.deniedToolNames(),
+                newMeta);
+    }
+
+    /**
+     * Parses a non-negative token count, returning {@code 0} for null, blank,
+     * or unparseable values.
+     *
+     * @param value the string value from runner metadata
+     * @return the parsed count, or {@code 0}
+     */
+    private static long parseLongOrZero(String value) {
+        if (value == null || value.isEmpty()) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            return 0L;
         }
     }
 
