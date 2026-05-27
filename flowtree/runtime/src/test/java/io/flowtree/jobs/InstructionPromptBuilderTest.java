@@ -226,7 +226,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			.setEnforcementAttempt(2)
 			.build();
 		assertTrue("Primary session with attempt > 0 must include retry preamble",
-			result.contains("SESSION RESTARTED -- ATTEMPT"));
+			result.contains("SESSION RESTARTED -- RETRY"));
 	}
 
 	@Test(timeout = 30000)
@@ -237,7 +237,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			.setCorrectionSession(true)
 			.build();
 		assertFalse("Correction session must not include the retry preamble",
-			result.contains("SESSION RESTARTED -- ATTEMPT"));
+			result.contains("SESSION RESTARTED -- RETRY"));
 	}
 
 	// ── Harness-feedback invitation ─────────────────────────────────────────
