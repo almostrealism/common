@@ -98,8 +98,8 @@ public class CodingAgentJob extends GitManagedJob {
 
     /**
      * Deduplication mode that disables the deduplication scan entirely.
-     * Use this to explicitly opt out when the default {@link #DEDUP_LOCAL}
-     * behaviour is not desired.
+     * This is the default; opt in to deduplication by passing
+     * {@link #DEDUP_LOCAL} or {@link #DEDUP_SPAWN} explicitly.
      */
     public static final String DEDUP_NONE = "none";
 
@@ -164,8 +164,12 @@ public class CodingAgentJob extends GitManagedJob {
     /** When {@code true}, pom.xml {@code <dependency>} changes trigger a correction loop. */
     private boolean enforceMavenDependencies;
 
-    /** When {@code true} (the default), new files are reviewed for correct module placement. */
-    private boolean enforceOrganizationalPlacement = true;
+    /**
+     * When {@code true}, new files are reviewed for correct module placement.
+     * Defaults to {@code false}; opt in via
+     * {@link #setEnforceOrganizationalPlacement(boolean)}.
+     */
+    private boolean enforceOrganizationalPlacement = false;
 
     /** When {@code true} (the default), a second-pass review session runs after primary work. */
     private boolean reviewEnabled = true;
@@ -569,10 +573,10 @@ public class CodingAgentJob extends GitManagedJob {
     /**
      * Sets the deduplication mode for this job.
      *
-     * <p>The default is {@link #DEDUP_LOCAL} (inline session before commit).
+     * <p>Deduplication is disabled by default ({@link #DEDUP_NONE}).
+     * Pass {@link #DEDUP_LOCAL} to run an inline session before committing.
      * Use {@link #DEDUP_SPAWN} to submit a separate agent job after committing
-     * (requires a workstream URL). Use {@link #DEDUP_NONE} to disable
-     * deduplication entirely.</p>
+     * (requires a workstream URL).</p>
      *
      * @param deduplicationMode {@link #DEDUP_LOCAL}, {@link #DEDUP_SPAWN},
      *                          or {@link #DEDUP_NONE}
@@ -621,7 +625,7 @@ public class CodingAgentJob extends GitManagedJob {
      * If the agent moves no files after reviewing placement, the rule considers the
      * placement correct and exits.</p>
      *
-     * @return {@code true} if organizational placement enforcement is enabled (the default)
+     * @return {@code true} if organizational placement enforcement is enabled
      */
     public boolean isEnforceOrganizationalPlacement() {
         return enforceOrganizationalPlacement;
@@ -630,7 +634,7 @@ public class CodingAgentJob extends GitManagedJob {
     /**
      * Sets whether the organizational placement rule is active for this job.
      *
-     * @param enforceOrganizationalPlacement {@code false} to disable placement enforcement
+     * @param enforceOrganizationalPlacement {@code true} to enable placement enforcement
      */
     public void setEnforceOrganizationalPlacement(boolean enforceOrganizationalPlacement) {
         this.enforceOrganizationalPlacement = enforceOrganizationalPlacement;

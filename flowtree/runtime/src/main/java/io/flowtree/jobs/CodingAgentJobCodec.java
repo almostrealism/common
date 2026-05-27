@@ -139,8 +139,8 @@ final class CodingAgentJobCodec {
         if (job.isEnforceMavenDependencies()) {
             sb.append("::enforceMavenDeps:=true");
         }
-        if (!job.isEnforceOrganizationalPlacement()) {
-            sb.append("::enforceOrgPlacement:=false");
+        if (job.isEnforceOrganizationalPlacement()) {
+            sb.append("::enforceOrgPlacement:=true");
         }
         if (!job.isReviewEnabled()) {
             sb.append("::reviewEnabled:=false");

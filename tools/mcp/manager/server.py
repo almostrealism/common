@@ -1588,6 +1588,7 @@ def workstream_submit_task(
     required_labels: str = "",
     deduplication_mode: str = "",
     max_deduplication_passes: int = 0,
+    organizational_placement_enabled: bool = False,
     review_enabled: bool = True,
     max_review_passes: int = 0,
     post_completion_command: str = "",
@@ -1643,12 +1644,14 @@ def workstream_submit_task(
         required_labels: Comma-separated key:value pairs specifying Node
             labels required to execute this job (e.g., "platform:macos,gpu:true").
             Only Nodes with matching labels will execute the job.
-        deduplication_mode: Post-work deduplication behaviour. Defaults to
-            "local" (inline Claude Code session that removes duplicate methods
-            before committing — safe for iterative testing, no extra jobs
-            spawned). Use "spawn" to submit a separate follow-up job to the
-            same workstream after committing (requires workstream URL). Pass
-            "none" to disable deduplication entirely.
+        deduplication_mode: Post-work deduplication behaviour. Disabled by
+            default (empty string leaves the server default of "none" in
+            effect). Pass ``"local"`` to run an inline Claude Code session
+            that removes duplicate methods before committing — safe for
+            iterative testing, no extra jobs spawned. Use ``"spawn"`` to
+            submit a separate follow-up job to the same workstream after
+            committing (requires workstream URL). Recommended for final
+            pre-merge cleanup: ``deduplication_mode="local"``.
         max_deduplication_passes: Maximum number of deduplication correction
             sessions per job. 0 (default) uses the server-side default of 2.
             Each pass runs a full agent session which adds time and cost; the
@@ -1656,8 +1659,14 @@ def workstream_submit_task(
             multi-job workstreams where the audit re-runs from scratch on each
             job. Set to 1 for trivial follow-up jobs unlikely to introduce
             duplication. Set higher (e.g. 5) for first-time large feature work
-            where thoroughness matters. Has no effect when
-            ``deduplication_mode="none"``.
+            where thoroughness matters. Has no effect when deduplication is
+            disabled.
+        organizational_placement_enabled: When ``True``, activates the
+            organizational placement rule after the primary phase. The agent
+            is prompted to verify that any new files are placed at the correct
+            level of the module hierarchy. Disabled by default to keep routine
+            exploratory jobs cheaper. Enable for final pre-merge cleanup jobs
+            where placement correctness matters.
         review_enabled: When ``True`` (the default), a second-pass review
             session runs after the primary phase. The reviewer is told to
             make surgical fixes only when unambiguous and to defer
@@ -1891,6 +1900,8 @@ def workstream_submit_task(
         payload["deduplicationMode"] = deduplication_mode
     if max_deduplication_passes > 0:
         payload["maxDeduplicationPasses"] = max_deduplication_passes
+    if organizational_placement_enabled:
+        payload["enforceOrganizationalPlacement"] = True
     if not review_enabled:
         payload["reviewEnabled"] = False
     if max_review_passes > 0:

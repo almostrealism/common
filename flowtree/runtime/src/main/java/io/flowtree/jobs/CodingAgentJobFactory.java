@@ -104,10 +104,11 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
 
     /**
      * Deduplication mode applied to jobs created by this factory.
-     * Defaults to {@link CodingAgentJob#DEDUP_LOCAL}.
-     * See {@link CodingAgentJob#DEDUP_NONE} to disable.
+     * Defaults to {@link CodingAgentJob#DEDUP_NONE} (disabled).
+     * Opt in by passing {@link CodingAgentJob#DEDUP_LOCAL} or
+     * {@link CodingAgentJob#DEDUP_SPAWN} when submitting a job.
      */
-    private String deduplicationMode = CodingAgentJob.DEDUP_LOCAL;
+    private String deduplicationMode = CodingAgentJob.DEDUP_NONE;
 
     /**
      * Per-job cap on deduplication passes propagated to jobs created by this factory.
@@ -123,11 +124,14 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private boolean enforceMavenDependencies;
 
     /**
-     * When {@code true} (the default), jobs created by this factory activate the
-     * organizational placement rule, prompting the agent to verify that new files
-     * are placed at the appropriate level of the module hierarchy.
+     * When {@code true}, jobs created by this factory activate the organizational
+     * placement rule, prompting the agent to verify that new files are placed at the
+     * appropriate level of the module hierarchy.
+     * Defaults to {@code false}; opt in via {@code enforceOrganizationalPlacement=true}
+     * on the submit request, or by calling
+     * {@link #setEnforceOrganizationalPlacement(boolean)} directly.
      */
-    private boolean enforceOrganizationalPlacement = true;
+    private boolean enforceOrganizationalPlacement = false;
 
     /**
      * When {@code true} (the default), jobs created by this factory activate the
@@ -694,9 +698,10 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
 
     /**
      * Returns the deduplication mode applied to jobs created by this factory.
+     * Defaults to {@link CodingAgentJob#DEDUP_NONE} (disabled).
      *
-     * @return {@link CodingAgentJob#DEDUP_LOCAL}, {@link CodingAgentJob#DEDUP_SPAWN},
-     *         or {@link CodingAgentJob#DEDUP_NONE}
+     * @return {@link CodingAgentJob#DEDUP_NONE} (default), {@link CodingAgentJob#DEDUP_LOCAL},
+     *         or {@link CodingAgentJob#DEDUP_SPAWN}
      */
     public String getDeduplicationMode() {
         return deduplicationMode;
@@ -767,7 +772,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * Returns whether jobs created by this factory activate the organizational
      * placement rule.
      *
-     * @return {@code true} if placement enforcement is enabled (the default)
+     * @return {@code true} if placement enforcement is enabled; {@code false} by default
      */
     public boolean isEnforceOrganizationalPlacement() {
         return enforceOrganizationalPlacement;
@@ -777,7 +782,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * Sets whether jobs created by this factory activate the organizational
      * placement rule.
      *
-     * @param enforceOrganizationalPlacement {@code false} to disable placement enforcement
+     * @param enforceOrganizationalPlacement {@code true} to enable placement enforcement
      */
     public void setEnforceOrganizationalPlacement(boolean enforceOrganizationalPlacement) {
         this.enforceOrganizationalPlacement = enforceOrganizationalPlacement;

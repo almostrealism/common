@@ -696,6 +696,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (maxDeduplicationPasses > 0) {
             factory.setMaxDeduplicationPasses(maxDeduplicationPasses);
         }
+        // Organizational placement — disabled by default; opt in explicitly
+        if (extractJsonHasField(body, "enforceOrganizationalPlacement"))
+            factory.setEnforceOrganizationalPlacement(
+                    extractJsonBooleanField(body, "enforceOrganizationalPlacement"));
         if (extractJsonHasField(body, "reviewEnabled"))
             factory.setReviewEnabled(extractJsonBooleanField(body, "reviewEnabled"));
         int maxReviewPasses = extractJsonIntField(body, "maxReviewPasses");
@@ -818,6 +822,15 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // the same field names the config input uses, so the caller sees the
         // config the job will actually run with.
         PhaseConfigResolver.appendBundleJson(json, pcResolver.resolvedBundle());
+        // Report which optional phases are active so callers can confirm
+        // the effective job configuration without inspecting phase bundles.
+        String effectiveDedupMode = factory.getDeduplicationMode();
+        boolean dedupEnabled = effectiveDedupMode != null
+                && !effectiveDedupMode.isEmpty()
+                && !CodingAgentJob.DEDUP_NONE.equals(effectiveDedupMode);
+        json.append(",\"deduplicationEnabled\":").append(dedupEnabled);
+        json.append(",\"organizationalPlacementEnabled\":")
+                .append(factory.isEnforceOrganizationalPlacement());
         json.append("}");
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", json.toString());
