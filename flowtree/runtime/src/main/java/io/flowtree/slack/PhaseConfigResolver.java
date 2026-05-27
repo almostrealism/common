@@ -106,6 +106,19 @@ public final class PhaseConfigResolver {
     }
 
     /**
+     * Returns the raw per-job bundle as submitted in the request body, before
+     * merging with workstream / workspace / controller defaults. This exposes
+     * exactly what the caller supplied, independent of the resolved result in
+     * {@link #resolvedBundle()}.
+     *
+     * <p>Never {@code null}; returns {@link PhaseConfigBundle#EMPTY} when the
+     * request specified no phase configuration.</p>
+     */
+    public PhaseConfigBundle requestBundle() {
+        return requestBundle;
+    }
+
+    /**
      * Returns the fully-resolved {@link PhaseConfig} for {@code phase}: the
      * job-level per-phase override (if any) overlaid on the job-level
      * default, then layered through workstream and workspace levels, then
@@ -595,14 +608,39 @@ public final class PhaseConfigResolver {
      */
     // TODO(review): leading-comma contract is fragile for future callers — consider a hasPriorFields flag or Jackson serialisation.
     public static void appendBundleJson(StringBuilder json, PhaseConfigBundle bundle) {
+        appendBundleJson(json, bundle, "defaultPhaseConfig", "phaseConfigs");
+    }
+
+    /**
+     * Appends the {@code defaultPhaseConfig} and {@code phaseConfigs} JSON
+     * fragments to {@code json} using the provided field name prefixes.
+     * Both fragments lead with a comma so they can be appended to an
+     * existing JSON object that already has at least one prior field.
+     *
+     * <p>This overload lets callers emit a bundle under non-default field names
+     * (e.g. when a single JSON object must carry more than one bundle under
+     * distinct keys). Most callers should use the single-argument
+     * {@link #appendBundleJson(StringBuilder, PhaseConfigBundle)}, which uses
+     * the canonical {@code "defaultPhaseConfig"} / {@code "phaseConfigs"}.</p>
+     *
+     * @param json              the target string builder; must not be {@code null}
+     * @param bundle            the bundle to serialise; {@code null} or empty appends
+     *                          nothing
+     * @param defaultFieldName  JSON field name for the default config; may be
+     *                          {@code null} to omit the default field
+     * @param phasesFieldName   JSON field name for the per-phase map; may be
+     *                          {@code null} to omit the phases field
+     */
+    public static void appendBundleJson(StringBuilder json, PhaseConfigBundle bundle,
+                                        String defaultFieldName, String phasesFieldName) {
         if (bundle == null || bundle.isEmpty()) return;
         PhaseConfig def = bundle.defaultPhaseConfig();
-        if (def != null && !def.isEmpty()) {
-            json.append(",\"defaultPhaseConfig\":");
+        if (def != null && !def.isEmpty() && defaultFieldName != null) {
+            json.append(",\"").append(defaultFieldName).append("\":");
             appendPhaseConfigJson(json, def);
         }
         Map<Phase, PhaseConfig> phases = bundle.phaseConfigs();
-        if (phases == null || phases.isEmpty()) return;
+        if (phases == null || phases.isEmpty() || phasesFieldName == null) return;
         StringBuilder inner = new StringBuilder();
         boolean first = true;
         for (Map.Entry<Phase, PhaseConfig> e : phases.entrySet()) {
@@ -616,7 +654,7 @@ public final class PhaseConfigResolver {
             appendPhaseConfigJson(inner, pc);
         }
         if (inner.length() > 0) {
-            json.append(",\"phaseConfigs\":{").append(inner).append("}");
+            json.append(",\"").append(phasesFieldName).append("\":{").append(inner).append("}");
         }
     }
 

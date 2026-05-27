@@ -32,6 +32,7 @@ import re
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import uuid
 import xml.etree.ElementTree as ET
@@ -43,6 +44,13 @@ from typing import Optional
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
+
+# Shared MCP helpers (tools/mcp/common); imported as top-level modules to avoid
+# triggering the package __init__'s heavier dependencies.
+_COMMON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+from polling import block_until_terminal, resolve_block_timeout  # noqa: E402
 
 # Project root: tools/mcp/build-validator/server.py is 4 levels deep
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
@@ -63,6 +71,10 @@ BUILD_REQUIRED_CHECKS = frozenset({"code_policy", "test_timeouts", "duplicate_co
 COMPILE_REQUIRED_CHECKS = frozenset()
 
 DEFAULT_CHECKS = ["checkstyle", "code_policy", "test_timeouts", "duplicate_code"]
+
+# Run statuses that mean a validation has finished (used by the blocking
+# get_validation_status mode to decide when to stop waiting).
+TERMINAL_VALIDATION_STATES = frozenset({"completed", "failed", "timeout", "cancelled"})
 
 # Surefire report class for CodePolicyEnforcementTest
 SUREFIRE_TEST_CLASS = (
@@ -910,12 +922,33 @@ async def list_tools():
             description=(
                 "Get the current status of a validation run. Returns the overall run status "
                 "and the per-check breakdown (pending, running, passed, failed, skipped). "
-                "Poll this until status is completed, failed, timeout, or cancelled."
+                "Returns immediately by default; poll until status is completed, failed, "
+                "timeout, or cancelled.\n\n"
+                "Set block=true to have the server wait until the run reaches a terminal "
+                "state before responding, so you can wait for completion with one call "
+                "instead of polling. The wait is bounded by timeout_seconds; if it elapses "
+                "the latest (still-running) status is returned. Use blocking when you have "
+                "nothing else to do meanwhile; otherwise return and do other work."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "run_id": {"type": "string", "description": "The run identifier returned by start_validation."},
+                    "block": {
+                        "type": "boolean",
+                        "description": (
+                            "When true, wait server-side until the run finishes (or "
+                            "timeout_seconds elapses) before responding. Default: false."
+                        ),
+                    },
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": (
+                            "Maximum seconds to wait when block=true (default: 600, max: 3600). "
+                            "Ignored when block is false."
+                        ),
+                    },
                 },
                 "required": ["run_id"],
             },
@@ -1028,7 +1061,14 @@ async def call_tool(name: str, arguments: dict):
 
         if name == "get_validation_status":
             run_id = arguments["run_id"]
-            status = validator.get_status(run_id)
+            if arguments.get("block"):
+                status = await block_until_terminal(
+                    lambda: validator.get_status(run_id),
+                    TERMINAL_VALIDATION_STATES,
+                    timeout_seconds=resolve_block_timeout(arguments.get("timeout_seconds")),
+                )
+            else:
+                status = validator.get_status(run_id)
             if status is None:
                 return [TextContent(type="text",
                     text=json.dumps({"error": f"Run {run_id!r} not found"}))]

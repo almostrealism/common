@@ -354,7 +354,7 @@ public class InstructionPromptBuilder {
      *
      * <p>When set, the {@code enforce_changes} strict preamble ("Code Changes
      * Are Required") and the enforcement-attempt retry preamble
-     * ("SESSION RESTARTED -- ATTEMPT N") are suppressed.  Enforcement rules
+     * ("SESSION RESTARTED -- RETRY N") are suppressed.  Enforcement rules
      * such as {@code deduplication} or {@code organizational-placement} carry
      * their own self-contained correction prompts where "no changes needed"
      * is a legitimate outcome, and combining the outer job's
@@ -473,7 +473,7 @@ public class InstructionPromptBuilder {
         // retry pressure does not apply to rule-specific correction prompts
         // that may legitimately accept "no changes needed" as resolution.
         if (enforcementAttempt > 0 && !correctionSession) {
-            sb.append("## !! SESSION RESTARTED -- ATTEMPT ").append(enforcementAttempt + 1).append(" !!\n\n");
+            sb.append("## !! SESSION RESTARTED -- RETRY ").append(enforcementAttempt).append(" !!\n\n");
             sb.append("This job was submitted because CI was failing on this branch. ");
             sb.append("Your previous ").append(enforcementAttempt).append(" session");
             if (enforcementAttempt > 1) sb.append("s");
