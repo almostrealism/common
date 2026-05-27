@@ -125,4 +125,58 @@ public class PhaseConfigTest extends TestSuiteBase {
         assertEquals("opus", merged.model());
         assertEquals("high", merged.effort());
     }
+
+    // TODO(review): method name typo — "SupPresses" should be "Suppresses" (stray capital P mid-word)
+    @Test(timeout = 5000)
+    public void clearingOverlaySupPressesProviderWhenRunnerChanges() {
+        // Upper level sets runner=claude (no provider); lower has runner=opencode + provider=openrouter.
+        // The openrouter provider must NOT leak into the claude config.
+        PhaseConfig top = new PhaseConfig("claude", null, null, null);
+        PhaseConfig bottom = new PhaseConfig("opencode", "qwen3-coder", "high", "openrouter");
+        PhaseConfig merged = top.overlayOnClearingInheritedProvider(bottom);
+        assertEquals("claude", merged.runner());
+        assertEquals("qwen3-coder", merged.model());
+        assertEquals("high", merged.effort());
+        assertNull(merged.provider());
+    }
+
+    @Test(timeout = 5000)
+    public void clearingOverlaySuppressesProviderWhenOtherRunnerIsNull() {
+        // Upper sets runner=claude; lower has no runner but has provider=openrouter.
+        // Runners are not explicitly the same, so the provider must be suppressed.
+        PhaseConfig top = new PhaseConfig("claude", null, null, null);
+        PhaseConfig bottom = new PhaseConfig(null, "qwen3-coder", "high", "openrouter");
+        PhaseConfig merged = top.overlayOnClearingInheritedProvider(bottom);
+        assertEquals("claude", merged.runner());
+        assertEquals("qwen3-coder", merged.model());
+        assertNull(merged.provider());
+    }
+
+    @Test(timeout = 5000)
+    public void clearingOverlayPreservesProviderWhenRunnersMatch() {
+        // Both levels name the same runner; provider from lower level should be inherited.
+        PhaseConfig top = new PhaseConfig("opencode", null, null, null);
+        PhaseConfig bottom = new PhaseConfig("opencode", "qwen3-coder", "high", "openrouter");
+        PhaseConfig merged = top.overlayOnClearingInheritedProvider(bottom);
+        assertEquals("opencode", merged.runner());
+        assertEquals("openrouter", merged.provider());
+    }
+
+    @Test(timeout = 5000)
+    public void clearingOverlayThisProviderAlwaysWins() {
+        // Upper explicitly sets provider=anthropic; lower has provider=openrouter.
+        // this.provider wins regardless of runner mismatch.
+        PhaseConfig top = new PhaseConfig("claude", null, null, "anthropic");
+        PhaseConfig bottom = new PhaseConfig("opencode", null, null, "openrouter");
+        PhaseConfig merged = top.overlayOnClearingInheritedProvider(bottom);
+        assertEquals("claude", merged.runner());
+        assertEquals("anthropic", merged.provider());
+    }
+
+    @Test(timeout = 5000)
+    public void clearingOverlayOnNullReturnsSelf() {
+        PhaseConfig top = new PhaseConfig("claude", null, null, null);
+        PhaseConfig merged = top.overlayOnClearingInheritedProvider(null);
+        assertSame(top, merged);
+    }
 }

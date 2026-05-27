@@ -179,10 +179,25 @@ class TestParsePhaseConfigsJson(unittest.TestCase):
         self.assertIsNone(err)
         self.assertEqual(parsed, {"primary": {"runner": "claude"}})
 
-    def test_empty_inner_object_skipped(self):
+    def test_empty_inner_object_included_as_noop(self):
+        # An all-null inner object is kept as {} in cleaned so it is distinguishable
+        # from the outer "{}" clear-all sentinel.  The controller treats a per-phase
+        # empty object as a no-op for that phase.
         parsed, err = _parse_phase_configs_json('{"primary": {}}')
         self.assertIsNone(err)
-        self.assertNotIn("primary", parsed)
+        self.assertIn("primary", parsed)
+        self.assertEqual(parsed["primary"], {})
+
+    def test_all_empty_inner_objects_not_treated_as_clear_all(self):
+        # When every phase has all-null inner fields the result must be a non-empty
+        # dict ({"primary": {}, "review": {}}) so the update path does NOT
+        # accidentally send phaseConfigs:{} and clear all overrides.
+        parsed, err = _parse_phase_configs_json('{"primary": {}, "review": {}}')
+        self.assertIsNone(err)
+        self.assertIsNotNone(parsed)
+        self.assertTrue(bool(parsed))
+        self.assertIn("primary", parsed)
+        self.assertIn("review", parsed)
 
     def test_unknown_phase_key_rejected(self):
         parsed, err = _parse_phase_configs_json('{"unknown-phase": {"runner": "claude"}}')

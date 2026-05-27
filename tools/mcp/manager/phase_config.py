@@ -227,13 +227,12 @@ def _parse_phase_configs_json(
             if err is not None:
                 return None, err
             inner_cleaned[inner_key] = value
-        if inner_cleaned:
-            cleaned[key] = inner_cleaned
-        # TODO(review): empty inner object silently drops the key, leaving `cleaned`
-        # potentially empty. An update tool then forwards {} as {"phaseConfigs":{}},
-        # which clears ALL phase overrides rather than being a no-op for this phase.
-        # Fix: return a distinct sentinel (e.g. empty-dict per-phase marker) so the
-        # update path can distinguish "no phases provided" from "all-null inner fields".
+        # Always include the phase key even when all inner fields are null.
+        # This keeps {"primary": {}} distinguishable from the clear-all "{}"
+        # sentinel: the controller treats an empty per-phase object as a no-op
+        # for that phase, while a missing top-level phaseConfigs key means
+        # "do not touch phase configs" and "{}" means "clear all".
+        cleaned[key] = inner_cleaned
     return cleaned, None
 
 

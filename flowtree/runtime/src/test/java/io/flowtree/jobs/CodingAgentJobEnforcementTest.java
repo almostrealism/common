@@ -35,7 +35,7 @@ import static org.junit.Assert.assertTrue;
  * Tests for the enforcement rule framework on {@link CodingAgentJob}:
  * the {@link EnforcementRule} interface, built-in rule configuration,
  * Maven dependency protection, deduplication rule behaviour, and
- * organisational-placement rule serialisation.
+ * organizational-placement rule serialisation.
  *
  * <p>{@link PostCompletionCommandRule} tests live in
  * {@link CodingAgentJobPostCompletionCommandRuleTest}.</p>

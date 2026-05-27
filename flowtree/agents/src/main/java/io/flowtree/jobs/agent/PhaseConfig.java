@@ -164,9 +164,10 @@ public record PhaseConfig(String runner, String model, String effort, String pro
      */
     public PhaseConfig overlayOnClearingInheritedProvider(PhaseConfig other) {
         if (other == null) return this;
-        // Suppress other's provider when this changes the runner but sets no provider.
+        // Suppress other's provider when this sets a runner that differs from other's (including
+        // when other.runner is null), preventing a provider tied to a different runner from leaking.
         String effectiveOtherProvider = (runner != null && provider == null
-                && other.runner != null && !runner.equals(other.runner))
+                && !runner.equals(other.runner))
                 ? null : other.provider;
         return new PhaseConfig(
                 runner != null ? runner : other.runner,

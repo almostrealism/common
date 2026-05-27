@@ -691,7 +691,7 @@ public final class PhaseConfigResolver {
             } else if (node.isObject()) {
                 PhaseConfig parsed = phaseConfigFromNode(node);
                 if (!parsed.isEmpty()) {
-                    newDefault = parsed.overlayOn(newDefault);
+                    newDefault = parsed.overlayOnClearingInheritedProvider(newDefault);
                 }
             }
         }
@@ -717,7 +717,7 @@ public final class PhaseConfigResolver {
                         PhaseConfig parsed = phaseConfigFromNode(val);
                         if (!parsed.isEmpty()) {
                             PhaseConfig cur = newPhases.get(phase);
-                            newPhases.put(phase, cur == null ? parsed : parsed.overlayOn(cur));
+                            newPhases.put(phase, cur == null ? parsed : parsed.overlayOnClearingInheritedProvider(cur));
                         }
                     }
                 }
