@@ -61,6 +61,19 @@ final class OpenRouterPricing {
     /** Connect/read timeout for the catalog fetch. */
     private static final Duration FETCH_TIMEOUT = Duration.ofSeconds(10);
 
+    /**
+     * Fraction of the prompt rate used to price cached-input reads when
+     * OpenRouter publishes no explicit {@code input_cache_read} rate for a
+     * model. A 90% cache discount (so cached reads cost 10% of fresh input) is
+     * the prevailing OpenRouter convention — the minimax-m2 family publishes
+     * {@code input_cache_read = 0.00000003} against a {@code prompt} of
+     * {@code ~0.0000003} (≈10%), and qwen3-coder providers publish
+     * {@code 0.022} against {@code 0.22} (10%). Pricing cached reads at the full
+     * prompt rate instead overcounts by ~10× on the cached tokens, which
+     * dominate agentic sessions, and inflated reported cost ~3× in practice.
+     */
+    private static final double DEFAULT_CACHE_READ_FRACTION = 0.10;
+
     /** Cached instance, refreshed when older than {@link #TTL}. */
     private static volatile OpenRouterPricing cached;
     /** Wall-clock time the cached instance was fetched. */
@@ -83,10 +96,11 @@ final class OpenRouterPricing {
 
         /**
          * Computes the USD cost of a set of token counts. Cached-input reads are
-         * billed at {@link #cacheRead} when OpenRouter publishes that rate, and
-         * otherwise fall back to the full {@link #prompt} rate (opencode reports
-         * cache reads separately from fresh input, so they would otherwise be
-         * unpriced).
+         * billed at {@link #cacheRead} when OpenRouter publishes that rate;
+         * otherwise they default to {@link #DEFAULT_CACHE_READ_FRACTION} of the
+         * {@link #prompt} rate (the prevailing cache discount) rather than the
+         * full prompt rate, since cached reads dominate agentic sessions and
+         * pricing them at the fresh-input rate overcounts the total several-fold.
          *
          * @param inputTokens      fresh (uncached) input tokens
          * @param outputTokens     output tokens
@@ -96,7 +110,9 @@ final class OpenRouterPricing {
          */
         double cost(long inputTokens, long outputTokens,
                     long cacheReadTokens, long cacheWriteTokens) {
-            double cacheReadRate = cacheRead > 0.0 ? cacheRead : prompt;
+            double cacheReadRate = cacheRead > 0.0
+                    ? cacheRead
+                    : prompt * DEFAULT_CACHE_READ_FRACTION;
             return inputTokens * prompt
                     + outputTokens * completion
                     + cacheReadTokens * cacheReadRate

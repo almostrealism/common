@@ -550,7 +550,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
      * reported token counts using OpenRouter's per-token rates, even for a
      * {@code :variant} model id absent from opencode's pricing catalog.
      * 1000 input + 100 output + 500 cache-read at qwen/qwen3-coder rates
-     * (cache reads falling back to the prompt rate) = 0.00051.
+     * (cache reads defaulting to 10% of the prompt rate) = 0.000411.
      */
     @Test(timeout = 5000)
     public void recoversOpenRouterCostForVariantModel() {
@@ -559,7 +559,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
         AgentRunResult recomputed = runner.applyOpenRouterCost(
                 resultWithTokens(1000, 100, 500), "openrouter",
                 "openrouter/qwen/qwen3-coder:exacto", SILENT);
-        Assert.assertEquals(0.00051, recomputed.costUsd(), 1e-12);
+        Assert.assertEquals(0.000411, recomputed.costUsd(), 1e-12);
         Assert.assertEquals("openrouter_pricing", recomputed.runnerMetadata().get("cost_source"));
         Assert.assertNull("cost_unavailable should be cleared once cost is recovered",
                 recomputed.runnerMetadata().get("cost_unavailable"));

@@ -84,14 +84,15 @@ public class OpenRouterPricingTest extends TestSuiteBase {
     }
 
     /**
-     * Cost for a model without published cache rates: cached-input reads fall
-     * back to the prompt rate. 1000 input + 100 output + 500 cache-read:
-     * 1000*0.00000022 + 100*0.0000018 + 500*0.00000022 = 0.00051.
+     * Cost for a model without published cache rates: cached-input reads default
+     * to 10% of the prompt rate (the prevailing cache discount), not the full
+     * prompt rate. 1000 input + 100 output + 500 cache-read:
+     * 1000*0.00000022 + 100*0.0000018 + 500*(0.00000022*0.10) = 0.000411.
      */
     @Test(timeout = 5000)
-    public void costFallsBackToPromptRateForCacheReadsWhenUnpriced() {
+    public void costDefaultsCacheReadsToDiscountedRateWhenUnpriced() {
         OpenRouterPricing.Rates rates = OpenRouterPricing.parse(CATALOG).ratesFor("qwen/qwen3-coder");
-        assertEquals(0.00051, rates.cost(1000, 100, 500, 0), 1e-12);
+        assertEquals(0.000411, rates.cost(1000, 100, 500, 0), 1e-12);
     }
 
     /**
