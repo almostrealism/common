@@ -486,4 +486,25 @@ public class OpencodeOutputParserTest extends TestSuiteBase {
         assertNull(OpencodeOutputParser.toActionSignature("Database migration complete."));
         assertNull(OpencodeOutputParser.toActionSignature(null));
     }
+
+    /**
+     * Status-polling tools are exempt from loop detection: repeated calls to a
+     * tool whose name contains "status" yield no signature, even with identical
+     * input, so an agent waiting on a long build/test run cannot trip the
+     * repeated-action detector by polling.
+     */
+    @Test(timeout = 5000)
+    public void toActionSignatureExemptsStatusPollingTools() {
+        String validation = "{\"type\":\"tool_use\",\"part\":{\"tool\":\"ar-build-validator_get_validation_status\","
+                + "\"state\":{\"input\":{\"run_id\":\"17444610\"}}}}";
+        String testRun = "{\"type\":\"tool_use\",\"part\":{\"tool\":\"ar-test-runner_get_run_status\","
+                + "\"state\":{\"input\":{\"run_id\":\"77f550c0\"}}}}";
+        assertNull(OpencodeOutputParser.toActionSignature(validation));
+        assertNull(OpencodeOutputParser.toActionSignature(testRun));
+
+        // A non-status tool with the same kind of input is still tracked.
+        String output = "{\"type\":\"tool_use\",\"part\":{\"tool\":\"ar-build-validator_get_validation_output\","
+                + "\"state\":{\"input\":{\"run_id\":\"17444610\"}}}}";
+        assertNotNull(OpencodeOutputParser.toActionSignature(output));
+    }
 }

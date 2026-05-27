@@ -9,6 +9,7 @@ Covers:
 - Fix 3 (default timeout): start_test_run defaults to ``timeout_minutes=15``.
 """
 
+import asyncio
 import json
 import os
 import shutil
@@ -263,6 +264,55 @@ class AbandonRunningRunsTest(unittest.TestCase):
         self._make_run("ab000003", "abandoned")
         result = self._runner.abandon_running_runs()
         self.assertEqual([], result)
+
+
+class GetRunStatusBlockingTest(unittest.TestCase):
+    """get_run_status block=true waits for a terminal state before responding."""
+
+    def _dispatch(self, arguments):
+        """Invoke the MCP get_run_status dispatch and return the parsed JSON."""
+        result = asyncio.run(server.call_tool("get_run_status", arguments))
+        return json.loads(result[0].text)
+
+    def test_non_blocking_returns_immediately(self):
+        """Without block, the dispatch returns the current (running) status once."""
+        calls = []
+
+        def fake_status(run_id):
+            calls.append(run_id)
+            return {"status": "running"}
+
+        with patch.object(server.runner, "get_run_status", side_effect=fake_status):
+            status = self._dispatch({"run_id": "abc"})
+
+        self.assertEqual("running", status["status"])
+        self.assertEqual(["abc"], calls)
+
+    def test_blocking_waits_for_terminal_status(self):
+        """With block=true, the dispatch polls until a terminal state appears."""
+        seq = ["running", "running", "completed"]
+        calls = []
+
+        def fake_status(run_id):
+            calls.append(run_id)
+            return {"status": seq[min(len(calls) - 1, len(seq) - 1)]}
+
+        # Patch sleep so the test does not actually wait between polls.
+        async def no_sleep(_seconds):
+            return None
+
+        with patch.object(server.runner, "get_run_status", side_effect=fake_status), \
+                patch.object(server.asyncio, "sleep", side_effect=no_sleep):
+            status = self._dispatch({"run_id": "abc", "block": True, "timeout_seconds": 30})
+
+        self.assertEqual("completed", status["status"])
+        self.assertEqual(3, len(calls))
+
+    def test_blocking_unknown_run_reports_error(self):
+        """A blocking call on an unknown run still returns the not-found error."""
+        with patch.object(server.runner, "get_run_status", return_value=None):
+            status = self._dispatch({"run_id": "missing", "block": True})
+        self.assertIn("error", status)
 
 
 if __name__ == "__main__":

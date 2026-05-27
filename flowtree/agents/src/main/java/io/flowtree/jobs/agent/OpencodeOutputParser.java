@@ -28,6 +28,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.security.MessageDigest;
@@ -341,8 +342,16 @@ final class OpencodeOutputParser {
      * <p>Never throws: malformed, non-JSON, or non-tool lines yield {@code null}
      * and are simply not counted toward repetition.</p>
      *
+     * <p><b>Status-polling exemption:</b> any tool whose name contains
+     * {@code "status"} (e.g. {@code get_validation_status}, {@code get_run_status})
+     * also yields {@code null} and is never counted toward repetition. An agent
+     * waiting on a long build or test run legitimately polls these many times
+     * with identical arguments; that polling is progress-bearing, not a stuck
+     * loop, so it must not trip the repeated-action detector.</p>
+     *
      * @param line one line of captured stdout
-     * @return the action signature, or {@code null} for non-action or unparseable lines
+     * @return the action signature, or {@code null} for non-action, status-poll,
+     *         or unparseable lines
      */
     static String toActionSignature(String line) {
         if (line == null || line.isEmpty()) {
@@ -363,6 +372,12 @@ final class OpencodeOutputParser {
         }
         String tool = JsonFieldExtractor.getTextOrNull(part, "tool");
         if (tool == null || tool.isEmpty()) {
+            return null;
+        }
+        // Status-polling tools are exempt from loop detection: waiting on a
+        // long-running validation or test run by repeatedly calling its status
+        // endpoint is legitimate progress, not a non-converging loop.
+        if (tool.toLowerCase(Locale.ROOT).contains("status")) {
             return null;
         }
         JsonNode input = part.path("state").path("input");
