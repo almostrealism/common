@@ -108,6 +108,41 @@ public class CodingAgentJobModelConfigTest extends TestSuiteBase {
         }
     }
 
+    @Test(timeout = 30000)
+    public void setModelAcceptsNonClaudeModelWhenRunnerIsOpencode() {
+        // Regression: model validation must be runner-aware. The opencode
+        // runner accepts any OpenRouter provider/model id, so a non-Claude
+        // model must not be rejected against the Claude allowlist. Rejecting it
+        // here previously threw inside the job factory and dropped the job.
+        CodingAgentJob job = new CodingAgentJob("t1", "do something");
+        job.setDefaultRunner("opencode");
+        job.setModel("minimax/minimax-m2.7");
+        assertEquals("minimax/minimax-m2.7", job.getModel());
+    }
+
+    @Test(timeout = 30000)
+    public void factorySetModelAcceptsNonClaudeModelWhenRunnerIsOpencode() {
+        CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+        factory.setDefaultRunner("opencode");
+        factory.setModel("minimax/minimax-m2.7");
+        assertEquals("minimax/minimax-m2.7", factory.getModel());
+    }
+
+    @Test(timeout = 30000)
+    public void factoryNextJobDoesNotDropOpencodeModelJob() {
+        // End-to-end reproduction of the lost-job bug: a factory configured for
+        // the opencode runner with an OpenRouter model must produce a job from
+        // nextJob() rather than throwing (which NodeGroup.addJobs() swallows,
+        // silently dropping the submission).
+        CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
+        factory.setDefaultRunner("opencode");
+        factory.setModel("minimax/minimax-m2.7");
+        CodingAgentJob job = (CodingAgentJob) factory.nextJob();
+        assertNotNull(job);
+        assertEquals("minimax/minimax-m2.7", job.getModel());
+        assertEquals("opencode", job.getDefaultRunner());
+    }
+
     // ── effort field ──────────────────────────────────────────────────────────
 
     @Test(timeout = 30000)

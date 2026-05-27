@@ -409,15 +409,18 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
-     * Sets the Claude Code model for jobs created by this factory.  Passed to
-     * each created job via {@link CodingAgentJob#setModel(String)}.  The value
-     * is validated immediately against {@link CodingAgentJob#VALID_MODELS} so
+     * Sets the model for jobs created by this factory.  Passed to each created
+     * job via {@link CodingAgentJob#setModel(String)}.  The value is validated
+     * immediately against the configured runner's advertised models via
+     * {@link AgentRunnerRegistry#validateModel(String, String)} so
      * misconfiguration fails at the caller rather than silently at dispatch.
+     * Validation is runner-aware, so non-Claude runners (e.g. opencode) are not
+     * rejected against the Claude allowlist.
      *
-     * @param model a value from {@link CodingAgentJob#VALID_MODELS}, or
-     *              {@code null}/empty to use the CLI default
-     * @throws IllegalArgumentException if {@code model} is non-empty and
-     *                                  not a recognised identifier
+     * @param model a model identifier accepted by the configured default
+     *              runner, or {@code null}/empty to use the CLI default
+     * @throws IllegalArgumentException if the runner restricts its models and
+     *                                  {@code model} is not among them
      */
     public void setModel(String model) {
         if (model == null || model.isEmpty()) {
@@ -426,10 +429,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             this.phaseConfigBundle = phaseConfigBundle.withDefaultModel(null);
             return;
         }
-        if (!CodingAgentJob.VALID_MODELS.contains(model)) {
-            throw new IllegalArgumentException("Invalid model '" + model
-                    + "'. Must be one of " + CodingAgentJob.VALID_MODELS);
-        }
+        AgentRunnerRegistry.validateModel(defaultRunner, model);
         this.model = model;
         set("model", model);
         this.phaseConfigBundle = phaseConfigBundle.withDefaultModel(model);
@@ -1213,6 +1213,18 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         job.setWorkingDirectory(workingDirectory);
         job.setMaxTurns(maxTurns);
         job.setMaxBudgetUsd(maxBudgetUsd);
+
+        // Establish the runner before the model so setModel() validates against
+        // the correct runner's allowlist. Setting the model first would always
+        // validate against the default Claude runner and reject legitimate
+        // non-Claude models (e.g. opencode/openrouter), dropping the job.
+        if (defaultRunner != null && !AgentRunnerRegistry.CLAUDE.equals(defaultRunner)) {
+            job.setDefaultRunner(defaultRunner);
+        }
+        for (Map.Entry<Phase, String> e : runnerByPhase.entrySet()) {
+            job.setRunnerForPhase(e.getKey(), e.getValue());
+        }
+
         if (model != null) {
             job.setModel(model);
         }
@@ -1305,17 +1317,12 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             job.setRequiredLabel(entry.getKey(), entry.getValue());
         }
 
-        if (defaultRunner != null && !AgentRunnerRegistry.CLAUDE.equals(defaultRunner)) {
-            job.setDefaultRunner(defaultRunner);
-        }
-        for (Map.Entry<Phase, String> e : runnerByPhase.entrySet()) {
-            job.setRunnerForPhase(e.getKey(), e.getValue());
-        }
-
         // Propagate the full per-phase config bundle so per-phase model and
-        // effort overrides reach the job. setPhaseConfigBundle() re-derives
-        // the legacy fields from the bundle, which overwrites the runner
-        // sync above with the same values plus model/effort.
+        // effort overrides reach the job. The default runner and per-phase
+        // runners were already applied above (before the model) so setModel()
+        // validated against the correct runner; setPhaseConfigBundle()
+        // re-derives the legacy fields from the bundle, restating those same
+        // values plus the per-phase model/effort overrides.
         if (!phaseConfigBundle.isEmpty()) {
             job.setPhaseConfigBundle(phaseConfigBundle);
         }

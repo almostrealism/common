@@ -113,4 +113,37 @@ public final class AgentRunnerRegistry {
                     + " (registered: " + registered + ")");
         }
     }
+
+    /**
+     * Validates that {@code model} is acceptable for the runner registered
+     * under {@code runnerName}.
+     *
+     * <p>A {@code null}/empty model is always accepted (the runner falls back
+     * to its CLI default). A runner that advertises an empty
+     * {@link AgentCapabilities#supportedModels()} set — as the opencode runner
+     * does, since it accepts any OpenRouter {@code provider/model} identifier —
+     * imposes no restriction, so any non-empty model passes. Otherwise the
+     * model must appear in the runner's advertised set.</p>
+     *
+     * <p>This is the single source of truth for model validation: job and
+     * factory setters delegate here rather than checking a hard-coded
+     * Claude-only allowlist, which would reject legitimate models for
+     * non-Claude runners and cause the job to be dropped at dispatch.</p>
+     *
+     * @param runnerName the runner to consult; {@code null}/empty means {@link #CLAUDE}
+     * @param model      the model identifier to validate
+     * @throws IllegalArgumentException when the runner restricts its models and
+     *                                  {@code model} is not among them
+     */
+    public static void validateModel(String runnerName, String model) {
+        if (model == null || model.isEmpty()) {
+            return;
+        }
+        String name = (runnerName == null || runnerName.isEmpty()) ? CLAUDE : runnerName;
+        Set<String> supported = get(name).capabilities().supportedModels();
+        if (!supported.isEmpty() && !supported.contains(model)) {
+            throw new IllegalArgumentException("Invalid model '" + model
+                    + "' for runner '" + name + "'. Must be one of " + supported);
+        }
+    }
 }

@@ -416,12 +416,21 @@ public class CodingAgentJob extends GitManagedJob {
     public String getModel() { return model; }
 
     /**
-     * Sets the Claude Code model.  Validated against {@link #VALID_MODELS} so
+     * Sets the model. Validated against the configured runner's advertised
+     * models via {@link AgentRunnerRegistry#validateModel(String, String)} so
      * an unknown value fails at the caller instead of silently 404-ing the
-     * dispatched subprocess.
+     * dispatched subprocess. Because validation is runner-aware, non-Claude
+     * runners (e.g. opencode, which accepts any OpenRouter {@code
+     * provider/model} id) are not rejected against the Claude allowlist.
      *
-     * @param model a value from {@link #VALID_MODELS}, or {@code null}/empty
-     * @throws IllegalArgumentException if not a recognised identifier
+     * <p>Set the runner via {@link #setDefaultRunner(String)} before calling
+     * this method so the correct allowlist is consulted; otherwise the default
+     * Claude runner's allowlist applies.</p>
+     *
+     * @param model a model identifier accepted by the configured runner, or
+     *              {@code null}/empty to use the CLI default
+     * @throws IllegalArgumentException if the runner restricts its models and
+     *                                  {@code model} is not among them
      */
     public void setModel(String model) {
         if (model == null || model.isEmpty()) {
@@ -429,10 +438,7 @@ public class CodingAgentJob extends GitManagedJob {
             this.phaseConfigBundle = phaseConfigBundle.withDefaultModel(null);
             return;
         }
-        if (!VALID_MODELS.contains(model)) {
-            throw new IllegalArgumentException("Invalid model '" + model
-                    + "'. Must be one of " + VALID_MODELS);
-        }
+        AgentRunnerRegistry.validateModel(defaultRunner, model);
         this.model = model;
         this.phaseConfigBundle = phaseConfigBundle.withDefaultModel(model);
     }
