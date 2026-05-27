@@ -244,44 +244,24 @@ public final class PhaseConfigResolver {
 
     /**
      * Builds a {@link PhaseConfigBundle} from a request body's
-     * {@code defaultPhaseConfig} and {@code phaseConfigs} JSON fields, merged
-     * with any legacy {@code runners} / {@code "default"} entries supplied
-     * via {@code legacyRunners} and the legacy job-level {@code model} /
-     * {@code effort} strings. The new shape wins field-by-field when both
-     * are supplied; the legacy form fills in any field the new form leaves
-     * null.
+     * {@code defaultPhaseConfig} and {@code phaseConfigs} JSON fields. These
+     * are the only per-phase configuration inputs accepted on a request — there
+     * is no legacy job-level {@code model} / {@code effort} / {@code runners}
+     * shortcut.
      *
-     * @param body          the full request body JSON; may be {@code null}
-     * @param legacyRunners parsed legacy {@code runners} object (phase wire
-     *                      name → runner identifier, plus optional
-     *                      {@code "default"}); may be {@code null}
-     * @param legacyModel   legacy job-level {@code model}; may be {@code null}
-     * @param legacyEffort  legacy job-level {@code effort}; may be {@code null}
-     * @return a fresh bundle merging all forms of input
+     * @param body the full request body JSON; may be {@code null}
+     * @return a fresh bundle; {@link PhaseConfigBundle#EMPTY} when the body
+     *         carries no per-phase configuration
      */
-    public static PhaseConfigBundle bundleFromRequest(String body,
-                                                     Map<String, String> legacyRunners,
-                                                     String legacyModel,
-                                                     String legacyEffort) {
-        PhaseConfigBundle legacy = bundleFromLegacyRequest(legacyRunners);
-        // Layer legacy job-level model/effort onto the legacy-derived default.
-        if ((legacyModel != null && !legacyModel.isEmpty())
-                || (legacyEffort != null && !legacyEffort.isEmpty())) {
-            PhaseConfig def = legacy.defaultPhaseConfig();
-            String mergedModel = (legacyModel != null && !legacyModel.isEmpty()) ? legacyModel : def.model();
-            String mergedEffort = (legacyEffort != null && !legacyEffort.isEmpty()) ? legacyEffort : def.effort();
-            legacy = legacy.withDefault(new PhaseConfig(def.runner(), mergedModel, mergedEffort));
-        }
+    public static PhaseConfigBundle bundleFromRequest(String body) {
         JsonNode root = parseBodyRoot(body);
-        if (root == null) return legacy;
-        PhaseConfigBundle result = legacy;
+        if (root == null) return PhaseConfigBundle.EMPTY;
+        PhaseConfigBundle result = PhaseConfigBundle.EMPTY;
         JsonNode defaultNode = root.get("defaultPhaseConfig");
         if (defaultNode != null && defaultNode.isObject()) {
             PhaseConfig parsed = phaseConfigFromNode(defaultNode);
             if (!parsed.isEmpty()) {
-                // New wins field-by-field; overlay parsed on legacy default.
-                PhaseConfig merged = parsed.overlayOn(result.defaultPhaseConfig());
-                result = result.withDefault(merged);
+                result = result.withDefault(parsed);
             }
         }
         JsonNode phaseConfigsNode = root.get("phaseConfigs");

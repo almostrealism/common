@@ -254,27 +254,18 @@ public class FlowTreeController implements ConsoleFeatures {
 
     /**
      * Logs INFO deprecation notices for legacy per-phase config fields,
-     * sanitizes invalid model/effort, generates missing workstream IDs, and
-     * persists the result (per-phase shape only) when anything changed.
-     * Shared by {@link #loadConfig(File)} and {@link #reloadConfig()}.
+     * generates missing workstream IDs, and persists the result (per-phase
+     * shape only) when anything changed. Shared by {@link #loadConfig(File)}
+     * and {@link #reloadConfig()}.
      */
     private void sanitizeAndPersist(WorkstreamConfig config) throws IOException {
         for (String warning : config.legacyConfigWarnings()) {
             log(warning);
         }
-        List<String> sanitizationWarnings = config.sanitize();
-        for (String warning : sanitizationWarnings) {
-            warn(warning);
-        }
         boolean idsAdded = config.ensureWorkstreamIds();
-        if (idsAdded || !sanitizationWarnings.isEmpty()) {
+        if (idsAdded) {
             config.saveToYaml(configFile);
-            if (idsAdded) {
-                log("Generated workstream IDs and saved to " + configFile.getName());
-            }
-            if (!sanitizationWarnings.isEmpty()) {
-                log("Saved sanitized configuration to " + configFile.getName());
-            }
+            log("Generated workstream IDs and saved to " + configFile.getName());
         }
     }
 

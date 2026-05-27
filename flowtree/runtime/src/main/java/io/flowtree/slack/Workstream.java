@@ -16,7 +16,6 @@
 
 package io.flowtree.slack;
 
-import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
@@ -114,23 +113,6 @@ public class Workstream {
     private double maxBudgetUsd;
 
     /**
-     * Default Claude Code model alias or full identifier applied to jobs
-     * submitted to this workstream when the submission does not specify
-     * its own model. {@code null} leaves the {@code --model} flag off so
-     * the CLI chooses.
-     */
-    private String model;
-
-    /**
-     * Default Claude Code effort/thinking level applied to jobs submitted
-     * to this workstream when the submission does not specify its own
-     * effort. {@code null} leaves the {@code --effort} flag off so the
-     * CLI chooses.  Must be one of
-     * {@link CodingAgentJob#VALID_EFFORT_LEVELS} when set.
-     */
-    private String effort;
-
-    /**
      * Default {@link io.flowtree.jobs.agent.AgentRunner} for jobs in this
      * workstream when neither the job submission nor any phase-specific
      * override applies. {@code null} or empty falls back to the controller's
@@ -147,10 +129,9 @@ public class Workstream {
     private Map<String, String> runners = new LinkedHashMap<>();
 
     /**
-     * Unified per-phase configuration bundle for this workstream. Kept in
-     * sync with the legacy {@link #defaultRunner}, {@link #runners},
-     * {@link #model}, and {@link #effort} fields by the corresponding
-     * setters so legacy callers continue to work.
+     * Unified per-phase configuration bundle for this workstream. Sole source
+     * of model, effort, and provider; the runner-resolution fields
+     * {@link #defaultRunner} and {@link #runners} are kept in sync with it.
      */
     private PhaseConfigBundle phaseConfigBundle = PhaseConfigBundle.EMPTY;
 
@@ -583,75 +564,6 @@ public class Workstream {
     }
 
     /**
-     * Returns the default Claude Code model for this workstream, or
-     * {@code null} when no default is set.
-     */
-    public String getModel() {
-        return model;
-    }
-
-    /**
-     * Sets the default Claude Code model for this workstream.  Empty or
-     * {@code null} clears the default so the CLI chooses.  Validated
-     * immediately against {@link CodingAgentJob#VALID_MODELS} so workstream
-     * registration with an unrecognised model fails fast — preventing the
-     * dispatched Claude subprocess from returning a 404 and looping the
-     * enforce-changes machinery indefinitely.
-     *
-     * @param model a value from {@link CodingAgentJob#VALID_MODELS}, or
-     *              {@code null}/empty to clear
-     * @throws IllegalArgumentException if {@code model} is non-empty and
-     *                                  not a recognised identifier
-     */
-    public void setModel(String model) {
-        if (model == null || model.isEmpty()) {
-            this.model = null;
-            this.phaseConfigBundle = phaseConfigBundle.withDefaultModel(null);
-            return;
-        }
-        if (!CodingAgentJob.VALID_MODELS.contains(model)) {
-            throw new IllegalArgumentException("Invalid model '" + model
-                    + "'. Must be one of " + CodingAgentJob.VALID_MODELS);
-        }
-        this.model = model;
-        this.phaseConfigBundle = phaseConfigBundle.withDefaultModel(model);
-    }
-
-    /**
-     * Returns the default Claude Code effort/thinking level for this
-     * workstream, or {@code null} when no default is set.
-     */
-    public String getEffort() {
-        return effort;
-    }
-
-    /**
-     * Sets the default Claude Code effort/thinking level for this
-     * workstream.  Validated immediately against
-     * {@link CodingAgentJob#VALID_EFFORT_LEVELS} so misconfiguration fails
-     * at the caller rather than silently at job dispatch.
-     *
-     * @param effort one of {@link CodingAgentJob#VALID_EFFORT_LEVELS}, or
-     *               {@code null}/empty to clear
-     * @throws IllegalArgumentException if {@code effort} is non-empty and
-     *                                  not a recognised level
-     */
-    public void setEffort(String effort) {
-        if (effort == null || effort.isEmpty()) {
-            this.effort = null;
-            this.phaseConfigBundle = phaseConfigBundle.withDefaultEffort(null);
-            return;
-        }
-        if (!CodingAgentJob.VALID_EFFORT_LEVELS.contains(effort)) {
-            throw new IllegalArgumentException(
-                    "Invalid effort level '" + effort + "'. Must be one of "
-                    + CodingAgentJob.VALID_EFFORT_LEVELS);
-        }
-        this.effort = effort;
-        this.phaseConfigBundle = phaseConfigBundle.withDefaultEffort(effort);
-    }
-
-    /**
      * Returns the default agent runner identifier for this workstream, or
      * {@code null} when no workstream-level default is set.
      */
@@ -715,9 +627,9 @@ public class Workstream {
 
     /**
      * Returns the unified per-phase configuration bundle for this workstream.
-     * Reflects the latest state of the legacy {@code defaultRunner},
-     * {@code runners}, {@code model}, and {@code effort} fields; setters
-     * keep it in sync.
+     * This is the sole source of model, effort, and provider; the
+     * runner-resolution fields {@code defaultRunner} / {@code runners} are
+     * kept in sync with it.
      *
      * @return the bundle, never {@code null}
      */
@@ -726,9 +638,9 @@ public class Workstream {
     }
 
     /**
-     * Replaces the per-phase configuration bundle. Updates the legacy
-     * {@code defaultRunner}, {@code runners}, {@code model}, and
-     * {@code effort} fields to mirror the new bundle.
+     * Replaces the per-phase configuration bundle. Updates the runner-resolution
+     * fields ({@code defaultRunner}, {@code runners}) to mirror the new bundle.
+     * Model, effort, and provider live solely in the bundle.
      *
      * @param bundle the new bundle; {@code null} resets to
      *               {@link PhaseConfigBundle#EMPTY}
@@ -737,8 +649,6 @@ public class Workstream {
         this.phaseConfigBundle = bundle != null ? bundle : PhaseConfigBundle.EMPTY;
         PhaseConfig def = phaseConfigBundle.defaultPhaseConfig();
         this.defaultRunner = (def.runner() != null && !def.runner().isEmpty()) ? def.runner() : null;
-        this.model = def.model();
-        this.effort = def.effort();
         this.runners = new LinkedHashMap<>();
         for (Map.Entry<Phase, PhaseConfig> e
                 : phaseConfigBundle.phaseConfigs().entrySet()) {
@@ -804,12 +714,6 @@ public class Workstream {
         }
         if (planningDocument != null && !planningDocument.isEmpty()) {
             json.append(",\"planningDocument\":\"").append(escapeForJson(planningDocument)).append("\"");
-        }
-        if (model != null && !model.isEmpty()) {
-            json.append(",\"model\":\"").append(escapeForJson(model)).append("\"");
-        }
-        if (effort != null && !effort.isEmpty()) {
-            json.append(",\"effort\":\"").append(escapeForJson(effort)).append("\"");
         }
 
         boolean pipelineCapable = repoUrl != null && !repoUrl.isEmpty();

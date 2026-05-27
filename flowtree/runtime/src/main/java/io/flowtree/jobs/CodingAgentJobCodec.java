@@ -106,11 +106,16 @@ final class CodingAgentJobCodec {
         sb.append("::tools:=").append(GitManagedJob.base64Encode(job.getAllowedTools()));
         sb.append("::maxTurns:=").append(job.getMaxTurns());
         sb.append("::maxBudget:=").append(job.getMaxBudgetUsd());
-        if (job.getModel() != null) {
-            sb.append("::model:=").append(job.getModel());
+        // Runner identity. Model, effort, and provider are NOT separate wire
+        // keys — they travel only inside phaseConfigBundle below, whose decode
+        // (setPhaseConfigBundle) applies them without per-key validation.
+        String defaultRunner = job.getDefaultRunner();
+        if (defaultRunner != null && !AgentRunnerRegistry.CLAUDE.equals(defaultRunner)) {
+            sb.append("::defaultRunner:=").append(defaultRunner);
         }
-        if (job.getEffort() != null) {
-            sb.append("::effort:=").append(job.getEffort());
+        Map<Phase, String> runners = job.getRunnerByPhase();
+        if (!runners.isEmpty()) {
+            sb.append("::runners:=").append(Phase.encodeRunnerMap(runners));
         }
         if (job.getArManagerUrl() != null) {
             sb.append("::arManagerUrl:=").append(GitManagedJob.base64Encode(job.getArManagerUrl()));
@@ -161,22 +166,9 @@ final class CodingAgentJobCodec {
                 sb.append("::maxPostCmdPasses:=").append(job.getMaxPostCompletionPasses());
             }
         }
-        // Only emit the runner name when it differs from the registry default,
-        // so wire-format snapshots of Phase 1 jobs match the pre-refactor output.
-        String defaultRunner = job.getDefaultRunner();
-        if (defaultRunner != null && !AgentRunnerRegistry.CLAUDE.equals(defaultRunner)) {
-            sb.append("::defaultRunner:=").append(defaultRunner);
-        }
-        Map<Phase, String> runners = job.getRunnerByPhase();
-        if (!runners.isEmpty()) {
-            sb.append("::runners:=").append(Phase.encodeRunnerMap(runners));
-        }
-        // Carry the full per-phase bundle separately so per-phase model,
-        // effort, and provider survive the wire round-trip — the legacy
-        // keys above only preserve runner identity per phase, which silently
-        // demotes opencode+openrouter+qwen3-coder to opencode+local+<default>
-        // on the agent. Old agents ignore the unknown key; new agents prefer
-        // it on decode and overwrite the legacy fields with consistent values.
+        // The bundle is the sole carrier of model, effort, and provider (both
+        // the default and every per-phase override). The defaultRunner/runners
+        // keys above carry only runner identity for runner-resolution callers.
         String bundleWire = encodePhaseConfigBundle(job.getPhaseConfigBundle());
         if (bundleWire != null) {
             sb.append("::phaseConfigBundle:=").append(bundleWire);
@@ -206,12 +198,6 @@ final class CodingAgentJobCodec {
                 return true;
             case "maxBudget":
                 job.setMaxBudgetUsd(Double.parseDouble(value));
-                return true;
-            case "model":
-                job.setModel(value);
-                return true;
-            case "effort":
-                job.setEffort(value);
                 return true;
             case "arManagerUrl":
                 job.setArManagerUrl(GitManagedJob.base64Decode(value));

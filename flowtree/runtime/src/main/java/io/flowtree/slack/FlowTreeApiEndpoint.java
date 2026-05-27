@@ -751,7 +751,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // the SubmissionRunnerResolver result so per-phase model / effort /
         // runner overrides reach the factory.
         PhaseConfigBundle requestBundle =
-                PhaseConfigResolver.bundleFromRequest(body, null, null, null);
+                PhaseConfigResolver.bundleFromRequest(body);
         PhaseConfigBundle workstreamBundle = workstream.getPhaseConfigBundle();
         PhaseConfigBundle workspaceBundle = wsEntry != null
                 ? wsEntry.toPhaseConfigBundle()

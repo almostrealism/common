@@ -121,10 +121,6 @@ public class CodingAgentJob extends GitManagedJob {
     private int maxTurns;
     /** Maximum spend budget for this job in US dollars; negative disables the limit. */
     private double maxBudgetUsd;
-    /** Model alias or full name passed via {@code --model}; {@code null} uses the CLI default. */
-    private String model;
-    /** Effort/thinking level passed via {@code --effort}; {@code null} uses the CLI default. */
-    private String effort;
     /** HTTP base URL of the ar-manager service, or {@code null} if not configured. */
     private String arManagerUrl;
     /** Bearer token for authenticating against the ar-manager service. */
@@ -213,9 +209,10 @@ public class CodingAgentJob extends GitManagedJob {
     /**
      * Unified per-phase configuration bundle holding the default
      * {@link PhaseConfig} plus per-phase overrides for runner / model /
-     * effort. Kept in lockstep with the legacy {@link #defaultRunner},
-     * {@link #runnerByPhase}, {@link #model}, and {@link #effort} fields by
-     * the corresponding setters so legacy callers continue to work.
+     * effort / provider. This is the sole source of model, effort, and
+     * provider; the runner-resolution fields {@link #defaultRunner} and
+     * {@link #runnerByPhase} are kept in lockstep with it by
+     * {@link #setPhaseConfigBundle(PhaseConfigBundle)}.
      */
     private PhaseConfigBundle phaseConfigBundle = PhaseConfigBundle.EMPTY;
 
@@ -410,60 +407,6 @@ public class CodingAgentJob extends GitManagedJob {
      */
     public void setMaxBudgetUsd(double maxBudgetUsd) {
         this.maxBudgetUsd = maxBudgetUsd;
-    }
-
-    /** Returns the Claude Code model, or {@code null} to use the CLI default. */
-    public String getModel() { return model; }
-
-    /**
-     * Sets the model. Validated against the configured runner's advertised
-     * models via {@link AgentRunnerRegistry#validateModel(String, String)} so
-     * an unknown value fails at the caller instead of silently 404-ing the
-     * dispatched subprocess. Because validation is runner-aware, non-Claude
-     * runners (e.g. opencode, which accepts any OpenRouter {@code
-     * provider/model} id) are not rejected against the Claude allowlist.
-     *
-     * <p>Set the runner via {@link #setDefaultRunner(String)} before calling
-     * this method so the correct allowlist is consulted; otherwise the default
-     * Claude runner's allowlist applies.</p>
-     *
-     * @param model a model identifier accepted by the configured runner, or
-     *              {@code null}/empty to use the CLI default
-     * @throws IllegalArgumentException if the runner restricts its models and
-     *                                  {@code model} is not among them
-     */
-    public void setModel(String model) {
-        if (model == null || model.isEmpty()) {
-            this.model = null;
-            this.phaseConfigBundle = phaseConfigBundle.withDefaultModel(null);
-            return;
-        }
-        AgentRunnerRegistry.validateModel(defaultRunner, model);
-        this.model = model;
-        this.phaseConfigBundle = phaseConfigBundle.withDefaultModel(model);
-    }
-
-    /** Returns the effort/thinking level, or {@code null} to use the CLI default. */
-    public String getEffort() { return effort; }
-
-    /**
-     * Sets the effort/thinking level. Fails loud for unknown values.
-     *
-     * @param effort one of {@link #VALID_EFFORT_LEVELS}, or {@code null}/empty
-     * @throws IllegalArgumentException if not a valid level
-     */
-    public void setEffort(String effort) {
-        if (effort == null || effort.isEmpty()) {
-            this.effort = null;
-            this.phaseConfigBundle = phaseConfigBundle.withDefaultEffort(null);
-            return;
-        }
-        if (!VALID_EFFORT_LEVELS.contains(effort)) {
-            throw new IllegalArgumentException("Invalid effort level '" + effort
-                    + "'. Must be one of " + VALID_EFFORT_LEVELS);
-        }
-        this.effort = effort;
-        this.phaseConfigBundle = phaseConfigBundle.withDefaultEffort(effort);
     }
 
     /** Returns the ar-manager HTTP URL. */
@@ -828,10 +771,9 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Replaces the per-phase configuration bundle. Updates the legacy
-     * fields ({@link #defaultRunner}, {@link #runnerByPhase},
-     * {@link #model}, {@link #effort}) to reflect the new bundle so that
-     * legacy callers continue to see consistent state.
+     * Replaces the per-phase configuration bundle. Updates the legacy runner
+     * fields ({@link #defaultRunner}, {@link #runnerByPhase}) to reflect the
+     * new bundle so that runner-resolution callers see consistent state.
      *
      * @param bundle the new bundle; {@code null} resets to
      *               {@link PhaseConfigBundle#EMPTY}
@@ -839,13 +781,11 @@ public class CodingAgentJob extends GitManagedJob {
     public void setPhaseConfigBundle(PhaseConfigBundle bundle) {
         this.phaseConfigBundle = bundle != null ? bundle : PhaseConfigBundle.EMPTY;
         PhaseConfig def = phaseConfigBundle.defaultPhaseConfig();
-        // Resync legacy fields, bypassing the bundle update path that the
+        // Resync legacy runner fields, bypassing the bundle update path that the
         // public setters would otherwise trigger.
         String r = def.runner();
         this.defaultRunner = (r != null && !r.isEmpty()) ? r : AgentRunnerRegistry.CLAUDE;
         this.runnerName = this.defaultRunner;
-        this.model = def.model();
-        this.effort = def.effort();
         this.runnerByPhase.clear();
         for (Map.Entry<Phase, PhaseConfig> e : phaseConfigBundle.phaseConfigs().entrySet()) {
             String phaseRunner = e.getValue().runner();
@@ -1257,11 +1197,12 @@ public class CodingAgentJob extends GitManagedJob {
 
         Path workDir = getWorkingDirectory() != null
                 ? Path.of(getWorkingDirectory()) : null;
-        // Resolve per-phase model/effort from the bundle, falling back to
-        // the legacy single-value fields for anything the bundle leaves null.
+        // Resolve per-phase model/effort/provider from the bundle. The runner
+        // falls back to the default runner; model/effort/provider come solely
+        // from the phase config (null means "use the runner's CLI default").
         Phase phase = resolveCurrentPhase();
         PhaseConfig effective = phaseConfigBundle.forPhase(phase)
-                .overlayOn(new PhaseConfig(defaultRunner, model, effort));
+                .overlayOn(new PhaseConfig(defaultRunner, null, null));
         return AgentRunRequest.builder()
                 .prompt(buildInstructionPrompt())
                 .workingDirectory(workDir)
@@ -1282,10 +1223,10 @@ public class CodingAgentJob extends GitManagedJob {
                 .build();
     }
 
-    /** Effective {@link PhaseConfig} for {@code phase}: bundle overlay over the legacy fields. */
+    /** Effective {@link PhaseConfig} for {@code phase}: bundle overlay over the default runner. */
     PhaseConfig resolveEffectivePhaseConfig(Phase phase) {
         return phaseConfigBundle.forPhase(phase)
-                .overlayOn(new PhaseConfig(defaultRunner, model, effort));
+                .overlayOn(new PhaseConfig(defaultRunner, null, null));
     }
 
     /** Returns the lazily-created harness status reporter (no-op when no workstream URL is set). */
