@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.Server;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
 import io.flowtree.jobs.agent.ClaudeCodeRunner;
 import io.flowtree.jobs.agent.Phase;
@@ -140,26 +141,6 @@ public class CodingAgentJobMixedPhaseConfigTest extends TestSuiteBase {
     }
 
     /**
-     * Legacy backward compatibility: a job built with only the legacy
-     * {@code model} + {@code effort} setters resolves every phase to the
-     * same {@code (claude, opus, high)} triple — no behavioural change for
-     * pre-Phase-2 callers.
-     */
-    @Test(timeout = 5000)
-    public void legacyModelAndEffortResolveAcrossAllPhases() {
-        CodingAgentJob coding = new CodingAgentJob("t-legacy", "p");
-        coding.setModel(MODEL_OPUS);
-        coding.setEffort(EFFORT_HIGH);
-
-        for (Phase phase : Phase.values()) {
-            PhaseConfig effective = coding.resolveEffectivePhaseConfig(phase);
-            Assert.assertEquals("phase " + phase + " runner", AgentRunnerRegistry.CLAUDE, effective.runner());
-            Assert.assertEquals("phase " + phase + " model",  MODEL_OPUS, effective.model());
-            Assert.assertEquals("phase " + phase + " effort", EFFORT_HIGH, effective.effort());
-        }
-    }
-
-    /**
      * Legacy backward compatibility: a workstream with legacy {@code runners:
      * {review: opencode}} and {@code defaultRunner: claude} resolves REVIEW
      * to opencode and every other phase to claude.
@@ -203,6 +184,66 @@ public class CodingAgentJobMixedPhaseConfigTest extends TestSuiteBase {
         Assert.assertEquals(AgentRunnerRegistry.OPENCODE, restored.runner());
         Assert.assertEquals("qwen/qwen3-coder:exacto", restored.model());
         Assert.assertEquals("openrouter", restored.provider());
+    }
+
+    /**
+     * Regression for "Entering PRIMARY (claude)": a job resolved to
+     * {@code opencode / minimax-m2.7 / openrouter} on the controller must
+     * survive the controller→agent JOB wire round-trip. The agent decodes a
+     * dispatched job via {@link io.flowtree.Server#instantiateJobClass(String)},
+     * which replays the encoded key/value pairs through
+     * {@link CodingAgentJob#set(String, String)} inside a single try/catch —
+     * any thrown setter aborts the whole loop. Because {@code setModel}
+     * validates the model against the current runner, the {@code defaultRunner}
+     * (and {@code runners}) keys must be decoded before {@code model};
+     * otherwise the non-Claude model is validated against Claude, throws, and
+     * the job silently demotes to the bare Claude default.
+     */
+    @Test(timeout = 5000)
+    public void jobWireRoundTripPreservesDefaultOpencode() {
+        PhaseConfig def = new PhaseConfig(
+                AgentRunnerRegistry.OPENCODE, "minimax/minimax-m2.7", null, "openrouter");
+        PhaseConfigBundle resolved = new PhaseConfigBundle(def, new EnumMap<>(Phase.class));
+
+        CodingAgentJob original = new CodingAgentJob("t-wire", "do something");
+        original.setPhaseConfigBundle(resolved);
+
+        CodingAgentJob decoded = (CodingAgentJob)
+                Server.instantiateJobClass(original.encode());
+        assertNotNull("job decode produced null", decoded);
+
+        Assert.assertEquals("PRIMARY runner", AgentRunnerRegistry.OPENCODE,
+                decoded.resolveRunner(Phase.PRIMARY).getName());
+        PhaseConfig effective = decoded.resolveEffectivePhaseConfig(Phase.PRIMARY);
+        Assert.assertEquals("PRIMARY model", "minimax/minimax-m2.7", effective.model());
+        Assert.assertEquals("PRIMARY provider", "openrouter", effective.provider());
+    }
+
+    /**
+     * Same JOB wire round-trip as
+     * {@link #jobWireRoundTripPreservesDefaultOpencode()} but with the runner
+     * carried as a per-phase override (default stays Claude), exercising the
+     * {@code runners} key ordering relative to {@code model}.
+     */
+    @Test(timeout = 5000)
+    public void jobWireRoundTripPreservesPerPhaseOpencode() {
+        Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
+        overrides.put(Phase.PRIMARY, new PhaseConfig(
+                AgentRunnerRegistry.OPENCODE, "minimax/minimax-m2.7", null, "openrouter"));
+        PhaseConfigBundle resolved = new PhaseConfigBundle(PhaseConfig.EMPTY, overrides);
+
+        CodingAgentJob original = new CodingAgentJob("t-wire-phase", "do something");
+        original.setPhaseConfigBundle(resolved);
+
+        CodingAgentJob decoded = (CodingAgentJob)
+                Server.instantiateJobClass(original.encode());
+        assertNotNull("job decode produced null", decoded);
+
+        Assert.assertEquals("PRIMARY runner", AgentRunnerRegistry.OPENCODE,
+                decoded.resolveRunner(Phase.PRIMARY).getName());
+        PhaseConfig effective = decoded.resolveEffectivePhaseConfig(Phase.PRIMARY);
+        Assert.assertEquals("PRIMARY model", "minimax/minimax-m2.7", effective.model());
+        Assert.assertEquals("PRIMARY provider", "openrouter", effective.provider());
     }
 
     /** Asserts the resolver returns the expected triple for {@code phase}. */

@@ -68,21 +68,6 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     /** Maximum spend budget per job in US dollars. */
     private double maxBudgetUsd = 10.0;
 
-    /**
-     * Model alias or full model name propagated to jobs created by this
-     * factory.  {@code null} leaves the Claude Code {@code --model} flag off
-     * so the CLI uses its own default.
-     */
-    private String model;
-
-    /**
-     * Effort/thinking level propagated to jobs created by this factory.
-     * {@code null} leaves the Claude Code {@code --effort} flag off so the
-     * CLI uses its own default.  Must be one of
-     * {@link CodingAgentJob#VALID_EFFORT_LEVELS} when set.
-     */
-    private String effort;
-
     /** HTTP base URL of the ar-manager service, or {@code null} if not configured. */
     private String arManagerUrl;
 
@@ -104,10 +89,11 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
 
     /**
      * Deduplication mode applied to jobs created by this factory.
-     * Defaults to {@link CodingAgentJob#DEDUP_LOCAL}.
-     * See {@link CodingAgentJob#DEDUP_NONE} to disable.
+     * Defaults to {@link CodingAgentJob#DEDUP_NONE} (disabled).
+     * Opt in by passing {@link CodingAgentJob#DEDUP_LOCAL} or
+     * {@link CodingAgentJob#DEDUP_SPAWN} when submitting a job.
      */
-    private String deduplicationMode = CodingAgentJob.DEDUP_LOCAL;
+    private String deduplicationMode = CodingAgentJob.DEDUP_NONE;
 
     /**
      * Per-job cap on deduplication passes propagated to jobs created by this factory.
@@ -123,11 +109,14 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private boolean enforceMavenDependencies;
 
     /**
-     * When {@code true} (the default), jobs created by this factory activate the
-     * organizational placement rule, prompting the agent to verify that new files
-     * are placed at the appropriate level of the module hierarchy.
+     * When {@code true}, jobs created by this factory activate the organizational
+     * placement rule, prompting the agent to verify that new files are placed at the
+     * appropriate level of the module hierarchy.
+     * Defaults to {@code false}; opt in via {@code enforceOrganizationalPlacement=true}
+     * on the submit request, or by calling
+     * {@link #setEnforceOrganizationalPlacement(boolean)} directly.
      */
-    private boolean enforceOrganizationalPlacement = true;
+    private boolean enforceOrganizationalPlacement = false;
 
     /**
      * When {@code true} (the default), jobs created by this factory activate the
@@ -185,8 +174,9 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
 
     /**
      * Unified per-phase configuration bundle propagated to jobs created by
-     * this factory. Kept in sync with the legacy {@link #defaultRunner},
-     * {@link #runnerByPhase}, {@link #model}, and {@link #effort} fields.
+     * this factory. Sole source of model, effort, and provider; the
+     * runner-resolution fields {@link #defaultRunner} and
+     * {@link #runnerByPhase} are kept in sync with it.
      */
     private PhaseConfigBundle phaseConfigBundle = PhaseConfigBundle.EMPTY;
 
@@ -393,79 +383,6 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     public void setMaxBudgetUsd(double maxBudgetUsd) {
         this.maxBudgetUsd = maxBudgetUsd;
         set("maxBudget", String.valueOf(maxBudgetUsd));
-    }
-
-    /**
-     * Returns the Claude Code model for jobs created by this factory.
-     *
-     * @return the model alias or full name, or {@code null} to use the CLI default
-     */
-    public String getModel() {
-        return model;
-    }
-
-    /**
-     * Sets the Claude Code model for jobs created by this factory.  Passed to
-     * each created job via {@link CodingAgentJob#setModel(String)}.  The value
-     * is validated immediately against {@link CodingAgentJob#VALID_MODELS} so
-     * misconfiguration fails at the caller rather than silently at dispatch.
-     *
-     * @param model a value from {@link CodingAgentJob#VALID_MODELS}, or
-     *              {@code null}/empty to use the CLI default
-     * @throws IllegalArgumentException if {@code model} is non-empty and
-     *                                  not a recognised identifier
-     */
-    public void setModel(String model) {
-        if (model == null || model.isEmpty()) {
-            this.model = null;
-            set("model", null);
-            this.phaseConfigBundle = phaseConfigBundle.withDefaultModel(null);
-            return;
-        }
-        if (!CodingAgentJob.VALID_MODELS.contains(model)) {
-            throw new IllegalArgumentException("Invalid model '" + model
-                    + "'. Must be one of " + CodingAgentJob.VALID_MODELS);
-        }
-        this.model = model;
-        set("model", model);
-        this.phaseConfigBundle = phaseConfigBundle.withDefaultModel(model);
-    }
-
-    /**
-     * Returns the effort/thinking level for jobs created by this factory.
-     *
-     * @return one of {@link CodingAgentJob#VALID_EFFORT_LEVELS}, or
-     *         {@code null} to use the CLI default
-     */
-    public String getEffort() {
-        return effort;
-    }
-
-    /**
-     * Sets the effort/thinking level for jobs created by this factory.  The
-     * value is validated immediately against
-     * {@link CodingAgentJob#VALID_EFFORT_LEVELS} so misconfiguration fails at
-     * the caller rather than silently at dispatch.
-     *
-     * @param effort one of {@link CodingAgentJob#VALID_EFFORT_LEVELS}, or
-     *               {@code null}/empty to use the CLI default
-     * @throws IllegalArgumentException if {@code effort} is not valid
-     */
-    public void setEffort(String effort) {
-        if (effort == null || effort.isEmpty()) {
-            this.effort = null;
-            set("effort", null);
-            this.phaseConfigBundle = phaseConfigBundle.withDefaultEffort(null);
-            return;
-        }
-        if (!CodingAgentJob.VALID_EFFORT_LEVELS.contains(effort)) {
-            throw new IllegalArgumentException(
-                    "Invalid effort level '" + effort + "'. Must be one of "
-                    + CodingAgentJob.VALID_EFFORT_LEVELS);
-        }
-        this.effort = effort;
-        set("effort", effort);
-        this.phaseConfigBundle = phaseConfigBundle.withDefaultEffort(effort);
     }
 
     /**
@@ -694,9 +611,10 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
 
     /**
      * Returns the deduplication mode applied to jobs created by this factory.
+     * Defaults to {@link CodingAgentJob#DEDUP_NONE} (disabled).
      *
-     * @return {@link CodingAgentJob#DEDUP_LOCAL}, {@link CodingAgentJob#DEDUP_SPAWN},
-     *         or {@link CodingAgentJob#DEDUP_NONE}
+     * @return {@link CodingAgentJob#DEDUP_NONE} (default), {@link CodingAgentJob#DEDUP_LOCAL},
+     *         or {@link CodingAgentJob#DEDUP_SPAWN}
      */
     public String getDeduplicationMode() {
         return deduplicationMode;
@@ -767,7 +685,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * Returns whether jobs created by this factory activate the organizational
      * placement rule.
      *
-     * @return {@code true} if placement enforcement is enabled (the default)
+     * @return {@code true} if placement enforcement is enabled; {@code false} by default
      */
     public boolean isEnforceOrganizationalPlacement() {
         return enforceOrganizationalPlacement;
@@ -777,7 +695,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * Sets whether jobs created by this factory activate the organizational
      * placement rule.
      *
-     * @param enforceOrganizationalPlacement {@code false} to disable placement enforcement
+     * @param enforceOrganizationalPlacement {@code true} to enable placement enforcement
      */
     public void setEnforceOrganizationalPlacement(boolean enforceOrganizationalPlacement) {
         this.enforceOrganizationalPlacement = enforceOrganizationalPlacement;
@@ -1060,10 +978,10 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
-     * Replaces the per-phase configuration bundle. Updates the legacy
-     * {@code defaultRunner}, {@code runnerByPhase}, {@code model}, and
-     * {@code effort} fields to match so legacy callers continue to see
-     * consistent state.
+     * Replaces the per-phase configuration bundle. Updates the legacy runner
+     * fields ({@code defaultRunner}, {@code runnerByPhase}) to match so
+     * runner-resolution callers see consistent state. Model, effort, and
+     * provider live solely in the bundle.
      *
      * @param bundle the new bundle; {@code null} resets to
      *               {@link PhaseConfigBundle#EMPTY}
@@ -1074,16 +992,12 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         String r = def.runner();
         this.defaultRunner = (r != null && !r.isEmpty()) ? r : AgentRunnerRegistry.CLAUDE;
         this.runnerName = this.defaultRunner;
-        this.model = def.model();
-        this.effort = def.effort();
         // Update serialised property keys so the wire format stays current.
         if (AgentRunnerRegistry.CLAUDE.equals(this.defaultRunner)) {
             set("defaultRunner", null);
         } else {
             set("defaultRunner", this.defaultRunner);
         }
-        if (this.model != null) set("model", this.model); else set("model", null);
-        if (this.effort != null) set("effort", this.effort); else set("effort", null);
         runnerByPhase.clear();
         for (Map.Entry<Phase, PhaseConfig> e : phaseConfigBundle.phaseConfigs().entrySet()) {
             String phaseRunner = e.getValue().runner();
@@ -1208,12 +1122,10 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         job.setWorkingDirectory(workingDirectory);
         job.setMaxTurns(maxTurns);
         job.setMaxBudgetUsd(maxBudgetUsd);
-        if (model != null) {
-            job.setModel(model);
-        }
-        if (effort != null) {
-            job.setEffort(effort);
-        }
+
+        // Runner, model, effort, and provider are all carried by the
+        // phaseConfigBundle and propagated together via setPhaseConfigBundle
+        // below; no separate scalar runner/model/effort propagation is needed.
 
         String desc = getDescription();
         if (desc != null) {
@@ -1300,17 +1212,9 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             job.setRequiredLabel(entry.getKey(), entry.getValue());
         }
 
-        if (defaultRunner != null && !AgentRunnerRegistry.CLAUDE.equals(defaultRunner)) {
-            job.setDefaultRunner(defaultRunner);
-        }
-        for (Map.Entry<Phase, String> e : runnerByPhase.entrySet()) {
-            job.setRunnerForPhase(e.getKey(), e.getValue());
-        }
-
-        // Propagate the full per-phase config bundle so per-phase model and
-        // effort overrides reach the job. setPhaseConfigBundle() re-derives
-        // the legacy fields from the bundle, which overwrites the runner
-        // sync above with the same values plus model/effort.
+        // Propagate the full per-phase config bundle: it is the single source
+        // of runner, model, effort, and provider (default and per-phase).
+        // setPhaseConfigBundle re-derives the runner-resolution fields from it.
         if (!phaseConfigBundle.isEmpty()) {
             job.setPhaseConfigBundle(phaseConfigBundle);
         }
@@ -1367,12 +1271,6 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             case "maxBudget":
                 this.maxBudgetUsd = Double.parseDouble(value);
                 break;
-            case "model":
-                this.model = (value == null || value.isEmpty()) ? null : value;
-                break;
-            case "effort":
-                this.effort = (value == null || value.isEmpty()) ? null : value;
-                break;
             case "arManagerUrl":
                 this.arManagerUrl = GitManagedJob.base64Decode(value);
                 break;
@@ -1413,9 +1311,9 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             case "phaseConfigBundle":
                 // Assign the field directly: setPhaseConfigBundle would
                 // re-emit set("phaseConfigBundle", ...) and recurse. The
-                // legacy keys above already carry runner/model/effort and
-                // arrive in their own set() calls; the bundle here just
-                // restores per-phase model/effort/provider.
+                // defaultRunner / runners keys arrive in their own set() calls;
+                // the bundle here carries model/effort/provider and per-phase
+                // overrides.
                 this.phaseConfigBundle =
                         CodingAgentJobCodec.decodePhaseConfigBundle(value);
                 break;

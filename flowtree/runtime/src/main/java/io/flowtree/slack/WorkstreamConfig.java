@@ -23,7 +23,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
@@ -37,7 +36,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -415,20 +413,6 @@ public class WorkstreamConfig {
         @JsonAlias({"slackWorkspaceId"})
         private String workspaceId;
         /**
-         * Default Claude Code model alias or full name applied to jobs in this
-         * workstream. Legacy field: accepted on load and auto-migrated into
-         * {@link #defaultPhaseConfig}, but write-only for serialization.
-         */
-        @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
-        private String model;
-        /**
-         * Default Claude Code effort/thinking level applied to jobs in this
-         * workstream. Legacy field: accepted on load and auto-migrated into
-         * {@link #defaultPhaseConfig}, but write-only for serialization.
-         */
-        @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
-        private String effort;
-        /**
          * Default {@link io.flowtree.jobs.agent.AgentRunner} applied to jobs
          * in this workstream when no per-phase or per-job override is set.
          * Legacy field: accepted on load and auto-migrated into
@@ -584,16 +568,6 @@ public class WorkstreamConfig {
         /** Sets the workspace ID for this workstream. */
         public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
 
-        /** Returns the default Claude Code model for jobs in this workstream, or {@code null}. */
-        public String getModel() { return model; }
-        /** Sets the default Claude Code model for jobs in this workstream. */
-        public void setModel(String model) { this.model = model; }
-
-        /** Returns the default Claude Code effort/thinking level for jobs in this workstream, or {@code null}. */
-        public String getEffort() { return effort; }
-        /** Sets the default Claude Code effort/thinking level for jobs in this workstream. */
-        public void setEffort(String effort) { this.effort = effort; }
-
         /** Returns the default agent runner for jobs in this workstream, or {@code null}. */
         public String getDefaultRunner() { return defaultRunner; }
         /** Sets the default agent runner for jobs in this workstream. */
@@ -623,26 +597,15 @@ public class WorkstreamConfig {
         /**
          * Builds the effective {@link PhaseConfigBundle} for this workstream
          * entry, merging the new fields with the legacy
-         * {@code defaultRunner}/{@code runners}/{@code model}/{@code effort}
-         * fields. The new fields take precedence field-by-field.
+         * {@code defaultRunner}/{@code runners} runner fields. The new fields
+         * take precedence field-by-field. Model, effort, and provider come
+         * solely from {@code defaultPhaseConfig}/{@code phaseConfigs}.
          *
          * @return the merged bundle; never {@code null}
          */
         public PhaseConfigBundle toPhaseConfigBundle() {
-            PhaseConfigBundle bundle = PhaseConfigBundle.mergeLegacyWithNew(
+            return PhaseConfigBundle.mergeLegacyWithNew(
                     defaultRunner, runners, defaultPhaseConfig, phaseConfigs);
-            // Legacy workstream-level model/effort populate the bundle's
-            // default field. New defaultPhaseConfig wins when both are
-            // supplied (handled by mergeLegacyWithNew).
-            PhaseConfig def = bundle.defaultPhaseConfig();
-            String mergedModel = def.model() != null ? def.model() : model;
-            String mergedEffort = def.effort() != null ? def.effort() : effort;
-            if (!Objects.equals(mergedModel, def.model())
-                    || !Objects.equals(mergedEffort, def.effort())) {
-                bundle = bundle.withDefault(new PhaseConfig(
-                        def.runner(), mergedModel, mergedEffort));
-            }
-            return bundle;
         }
 
         /** Returns {@code true} when this workstream is archived. */
@@ -683,15 +646,12 @@ public class WorkstreamConfig {
             ws.setDependentRepos(dependentRepos);
             ws.setRequiredLabels(requiredLabels);
             ws.setWorkspaceId(workspaceId);
-            ws.setModel(model);
-            ws.setEffort(effort);
             ws.setDefaultRunner(defaultRunner);
             ws.setRunners(runners);
-            // Layer the new bundle fields on top of the legacy values just
-            // applied above. The bundle setter rewrites all four legacy
-            // fields, so any model / effort / runner present in the bundle
-            // wins over the legacy values (matching the documented "new
-            // wins" precedence on YAML load).
+            // Layer the new bundle fields on top of the legacy runner values
+            // just applied above. The bundle setter rewrites the runner-
+            // resolution fields, so any runner present in the bundle wins over
+            // the legacy values (matching "new wins" precedence on YAML load).
             PhaseConfigBundle bundle = toPhaseConfigBundle();
             if (!bundle.isEmpty()) {
                 ws.setPhaseConfigBundle(bundle);
@@ -1278,47 +1238,9 @@ public class WorkstreamConfig {
     }
 
     /**
-     * Clears any workstream entry fields whose values fail validation
-     * against the canonical lists in {@link CodingAgentJob}.  Currently
-     * checks {@code model} against {@link CodingAgentJob#VALID_MODELS}
-     * and {@code effort} against {@link CodingAgentJob#VALID_EFFORT_LEVELS};
-     * invalid values are reset to {@code null} so the runtime falls back
-     * to the CLI default rather than aborting startup with an
-     * {@link IllegalArgumentException} from {@link Workstream#setModel}
-     * or {@link Workstream#setEffort}.
-     *
-     * @return human-readable warnings describing each cleared value;
-     *         empty when no changes were made
-     */
-    public List<String> sanitize() {
-        List<String> warnings = new ArrayList<>();
-        for (WorkstreamEntry entry : workstreams) {
-            String entryId = entry.getWorkstreamId() != null
-                    ? entry.getWorkstreamId() : entry.getChannelName();
-            String model = entry.getModel();
-            if (model != null && !model.isEmpty()
-                    && !CodingAgentJob.VALID_MODELS.contains(model)) {
-                warnings.add("Workstream '" + entryId + "' has invalid model '"
-                        + model + "'; clearing (must be one of "
-                        + CodingAgentJob.VALID_MODELS + ")");
-                entry.setModel(null);
-            }
-            String effort = entry.getEffort();
-            if (effort != null && !effort.isEmpty()
-                    && !CodingAgentJob.VALID_EFFORT_LEVELS.contains(effort)) {
-                warnings.add("Workstream '" + entryId + "' has invalid effort '"
-                        + effort + "'; clearing (must be one of "
-                        + CodingAgentJob.VALID_EFFORT_LEVELS + ")");
-                entry.setEffort(null);
-            }
-        }
-        return warnings;
-    }
-
-    /**
      * Returns INFO-level deprecation messages for any legacy configuration
-     * fields still present in the loaded configuration. The legacy fields
-     * ({@code model}, {@code effort}, {@code defaultRunner}, {@code runners})
+     * fields still present in the loaded configuration. The legacy runner
+     * fields ({@code defaultRunner}, {@code runners})
      * are accepted on load and auto-migrated into the per-phase shape
      * ({@code defaultPhaseConfig} / {@code phaseConfigs}) by
      * {@link WorkstreamEntry#toPhaseConfigBundle()} and
@@ -1333,8 +1255,6 @@ public class WorkstreamConfig {
         List<String> warnings = new ArrayList<>();
         for (WorkstreamEntry entry : workstreams) {
             List<String> fields = new ArrayList<>();
-            if (entry.getModel() != null && !entry.getModel().isEmpty()) fields.add("model");
-            if (entry.getEffort() != null && !entry.getEffort().isEmpty()) fields.add("effort");
             if (entry.getDefaultRunner() != null && !entry.getDefaultRunner().isEmpty()) fields.add("defaultRunner");
             if (entry.getRunners() != null && !entry.getRunners().isEmpty()) fields.add("runners");
             if (!fields.isEmpty()) {
@@ -1419,8 +1339,6 @@ public class WorkstreamConfig {
         entry.setDependentRepos(ws.getDependentRepos());
         entry.setRequiredLabels(ws.getRequiredLabels());
         entry.setWorkspaceId(ws.getWorkspaceId());
-        entry.setModel(ws.getModel());
-        entry.setEffort(ws.getEffort());
         entry.setDefaultRunner(ws.getDefaultRunner());
         entry.setRunners(ws.getRunners());
         applyBundleToEntry(entry, ws.getPhaseConfigBundle());
@@ -1563,8 +1481,6 @@ public class WorkstreamConfig {
         for (WorkstreamEntry entry : workstreams) {
             applyBundleToFields(entry.toPhaseConfigBundle(),
                     entry::setDefaultPhaseConfig, entry::setPhaseConfigs);
-            entry.setModel(null);
-            entry.setEffort(null);
             entry.setDefaultRunner(null);
             entry.setRunners(null);
         }

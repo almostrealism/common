@@ -48,7 +48,8 @@ Executes a single Claude Code prompt. Extends `GitManagedJob`.
 | `workstreamUrl` | `null` | Controller URL for status events and Slack messaging |
 | `centralizedMcpConfig` | `null` | JSON mapping centralized MCP server names to HTTP URLs and tool names |
 | `pushedToolsConfig` | `null` | JSON mapping pushed tool server names to download URLs and tool names |
-| `deduplicationMode` | `null` | Post-work duplicate-method check. `"local"` runs an inline session before committing; `"spawn"` posts a follow-up job to the workstream. `null` disables. |
+| `deduplicationMode` | `"none"` | Post-work duplicate-method check. Disabled by default. `"local"` runs an inline session before committing (recommended for pre-merge cleanup); `"spawn"` posts a follow-up job to the workstream. |
+| `enforceOrganizationalPlacement` | `false` | When `true`, activates the organizational placement rule after primary work. Disabled by default; opt in for pre-merge cleanup jobs. |
 
 **Results:**
 
@@ -141,7 +142,7 @@ After Claude Code finishes (`doWork()` completes) and before the changes are sta
 
 | Mode | Constant | Behaviour |
 |------|----------|-----------|
-| Disabled | `null` (default) | No deduplication scan. |
+| Disabled | `"none"` **(default)** | No deduplication scan. Keeps routine jobs cheap. |
 | Inline | `ClaudeCodeJob.DEDUP_LOCAL` | A second Claude Code session is started immediately in the same working directory, with the dedup prompt replacing the original prompt. All session machinery (tools, budget, MCP config) is reused. The dedup edits land in the same working tree and are committed together with the original work. **No extra jobs are spawned; safe to iterate.** |
 | Spawn | `ClaudeCodeJob.DEDUP_SPAWN` | A follow-up `ClaudeCodeJob` is posted to the same workstream via `POST /api/submit` after the current commit. Requires a workstream URL. Fire-and-forget. |
 
@@ -160,14 +161,42 @@ The prompt is deliberately aggressive. Key points:
 
 ### Via ar-manager MCP
 
-The `workstream_submit_task` tool exposes the `deduplication_mode` parameter:
+The `workstream_submit_task` tool exposes the `deduplication_mode` parameter.
+By default deduplication is disabled (empty string leaves the server-side
+`DEDUP_NONE` factory default in effect). Opt in explicitly when submitting a
+pre-merge cleanup job:
 
 ```
 workstream_submit_task(
-    prompt="Implement feature X",
+    prompt="Pre-merge cleanup: remove duplicates and check placement",
     workstream_id="ws-common",
-    deduplication_mode="local"   # or "spawn"
+    deduplication_mode="local",              # opt in to inline deduplication
+    organizational_placement_enabled=True,   # opt in to placement review
 )
+```
+
+Routine iterative jobs omit both flags and run cheaply without these phases.
+
+## Organizational Placement Check
+
+After primary work completes, the organizational placement rule can verify that new files are placed at the correct level of the module hierarchy. This check is disabled by default and must be explicitly enabled.
+
+### When to Enable
+
+Enable for pre-merge cleanup jobs where you want to confirm that new classes, modules, or resources were added to the right module layer:
+
+- Shared utilities belong in lower-level modules (e.g. `base/` not `engine/`)
+- Domain types belong in their conceptual domain module, not in callers
+- Test files mirror the source package location
+
+### Via ar-manager MCP
+
+Pass `organizational_placement_enabled=True` to opt in (shown in the combined example above under [Deduplication Check](#deduplication-check)).
+
+### Java API
+
+```java
+factory.setEnforceOrganizationalPlacement(true);  // default is false
 ```
 
 ## MCP Tools

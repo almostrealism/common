@@ -22,6 +22,7 @@ import io.flowtree.jobs.agent.Phase;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Helper that resolves per-phase agent runner configuration for a submitted
@@ -230,31 +231,8 @@ final class SubmissionRunnerResolver {
      */
     static String applyToWorkstream(Workstream workstream,
                                     Map<String, String> requestRunners) {
-        if (requestRunners == null || requestRunners.isEmpty()) return null;
-        String newDefault = null;
-        Map<String, String> phaseMap = new LinkedHashMap<>();
-        for (Map.Entry<String, String> e : requestRunners.entrySet()) {
-            String key = e.getKey();
-            String value = e.getValue();
-            if (value == null || value.isEmpty()) continue;
-            if (!AgentRunnerRegistry.available().contains(value)) {
-                return "Unknown runner: '" + value + "'. Available: "
-                        + AgentRunnerRegistry.available();
-            }
-            if ("default".equals(key)) {
-                newDefault = value;
-            } else {
-                try {
-                    Phase.fromWireName(key);
-                } catch (IllegalArgumentException ex) {
-                    return "Unknown phase in runners: '" + key + "'";
-                }
-                phaseMap.put(key, value);
-            }
-        }
-        if (newDefault != null) workstream.setDefaultRunner(newDefault);
-        workstream.setRunners(phaseMap);
-        return null;
+        return applyRunnerConfig(requestRunners,
+                workstream::setDefaultRunner, workstream::setRunners);
     }
 
     /**
@@ -277,6 +255,28 @@ final class SubmissionRunnerResolver {
      */
     static String applyToWorkspace(WorkstreamConfig.WorkspaceEntry entry,
                                    Map<String, String> requestRunners) {
+        return applyRunnerConfig(requestRunners,
+                entry::setDefaultRunner, entry::setRunners);
+    }
+
+    /**
+     * Validates and applies a parsed {@code runners} object. Iterates over
+     * every entry, validates the runner name against
+     * {@link AgentRunnerRegistry#available()} and the phase name against
+     * {@link Phase#fromWireName(String)}, then passes the resolved default
+     * runner and per-phase map to the provided consumers.
+     *
+     * @param requestRunners the runners map to apply; {@code null} or empty
+     *                       returns {@code null} immediately without calling
+     *                       either consumer
+     * @param setDefault     called with the {@code "default"} runner when
+     *                       a default entry is present
+     * @param setRunners     called with the fully-validated per-phase map
+     * @return {@code null} on success, or a 400-able error message
+     */
+    private static String applyRunnerConfig(Map<String, String> requestRunners,
+                                            Consumer<String> setDefault,
+                                            Consumer<Map<String, String>> setRunners) {
         if (requestRunners == null || requestRunners.isEmpty()) return null;
         String newDefault = null;
         Map<String, String> phaseMap = new LinkedHashMap<>();
@@ -299,8 +299,8 @@ final class SubmissionRunnerResolver {
                 phaseMap.put(key, value);
             }
         }
-        if (newDefault != null) entry.setDefaultRunner(newDefault);
-        entry.setRunners(phaseMap);
+        if (newDefault != null) setDefault.accept(newDefault);
+        setRunners.accept(phaseMap);
         return null;
     }
 
