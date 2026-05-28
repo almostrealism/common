@@ -20,6 +20,9 @@ import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 
 import java.util.function.Consumer;
+import io.flowtree.submission.SubmissionConfigResolver;
+import io.flowtree.workstream.Workstream;
+import io.flowtree.workstream.WorkstreamConfig;
 
 /**
  * Slack-specific glue that wires {@link SubmissionConfigResolver} into the

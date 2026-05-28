@@ -42,7 +42,7 @@ import java.util.regex.Pattern;
  * </ul>
  *
  * <p>Used by both {@link CodingAgentJob} (for local servers) and
- * {@link io.flowtree.slack.FlowTreeController} (for centralized servers).</p>
+ * {@link io.flowtree.controller.FlowTreeController} (for centralized servers).</p>
  *
  * @author Michael Murray
  */

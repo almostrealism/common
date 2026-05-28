@@ -49,6 +49,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import io.flowtree.controller.FlowTreeController;
+import io.flowtree.controller.JobStatsStore;
+import io.flowtree.api.MessageEndpointHandler;
+import io.flowtree.workstream.Workstream;
 
 /**
  * Posts job status updates to Slack channels using the Slack SDK.
@@ -1301,7 +1305,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * @param maxLength  maximum number of characters to retain (including ellipsis)
      * @return           the (possibly truncated) string, never {@code null}
      */
-    static String truncate(String s, int maxLength) {
+    public static String truncate(String s, int maxLength) {
         if (s == null) return "";
         if (s.length() <= maxLength) return s;
         return s.substring(0, maxLength - 3) + "...";

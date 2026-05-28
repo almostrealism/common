@@ -22,7 +22,7 @@ import io.flowtree.jobs.agent.ClaudeCodeRunner;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
-import io.flowtree.slack.PhaseConfigResolver;
+import io.flowtree.submission.PhaseConfigResolver;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
