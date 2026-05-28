@@ -46,6 +46,11 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.Assert;
+import io.flowtree.api.FlowTreeApiEndpoint;
+import io.flowtree.controller.FlowTreeController;
+import io.flowtree.controller.JobStatsStore;
+import io.flowtree.workstream.Workstream;
+import io.flowtree.workstream.WorkstreamConfig;
 
 import static org.junit.Assert.*;
 

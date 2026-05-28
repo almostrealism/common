@@ -55,7 +55,7 @@ Non-goals (explicitly out of scope here):
 ## 1. Controller: `GET /api/agents`
 
 Add a new HTTP endpoint in `FlowTreeApiEndpoint` (or its sibling JSON
-endpoints under `io.flowtree.slack`) that returns the metadata MCP clients
+endpoints under `io.flowtree.api`) that returns the metadata MCP clients
 need to populate runner/phase/model pickers.
 
 ### Response shape
