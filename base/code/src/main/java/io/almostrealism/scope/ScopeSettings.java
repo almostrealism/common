@@ -121,6 +121,24 @@ public class ScopeSettings {
 	public static int maxConditionSize = 32;
 
 	/**
+	 * Maximum {@code count * nodeCount} budget for invoking
+	 * {@link io.almostrealism.kernel.KernelTraversalProvider#generateReordering(Expression)}
+	 * from {@link io.almostrealism.expression.Sum#simplify(KernelStructureContext, int)}.
+	 *
+	 * <p>The reordering rewrite simplifies the wide masked sum once per kernel index, so its
+	 * compile-time cost scales as {@code count * nodeCount} (empirically ~0.25 microseconds
+	 * per unit on the reference machine). When the predicted product exceeds this budget the
+	 * Sum is left inlined: reordering would shrink the emitted kernel body but cost more in
+	 * compile time than the runtime saving justifies. This stops sparse-Jacobian gradient
+	 * expansions (subset/concat/product) from triggering pathological simplification work
+	 * when the contracted dimension is large.</p>
+	 *
+	 * <p>Default {@code 1 << 17} (131072) caps each first-time reorder at roughly 30 ms on
+	 * the reference machine.</p>
+	 */
+	public static int maxReorderingBudget = 1 << 17;
+
+	/**
 	 * When {@code true}, expression tree warnings (oversized trees, excessive nodes)
 	 * are emitted to the log. Controlled by {@code AR_EXPRESSION_WARNINGS}.
 	 */

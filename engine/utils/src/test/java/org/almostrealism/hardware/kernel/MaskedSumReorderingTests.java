@@ -32,14 +32,17 @@ import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.OptionalLong;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Investigation tests for the {@code generateReordering} branch in
@@ -268,6 +271,437 @@ public class MaskedSumReorderingTests extends TestSuiteBase implements Expressio
 					reorderedSize < inlinedSize);
 		} finally {
 			Sum.enableGenerateReordering = previous;
+		}
+	}
+
+	// ---------------------------------------------------------------------
+	// Trade-off landscape investigation
+	//
+	// The tests above answer "does it work" and "does it shrink the kernel body."
+	// The tests below answer "when is it worth doing." They emit measurements
+	// rather than asserting on absolute timings (the latter are environment
+	// dependent), but each one asserts a single qualitative invariant so that
+	// silent regressions in the cost model are caught.
+	//
+	// The cost of {@code generateReordering} (see
+	// {@link KernelTraversalOperationGenerator#generateReordering(Expression)})
+	// has two independent drivers:
+	//   1. {@code n}     - the number of masked children in the Sum.
+	//                      This sets the per-index simplification cost.
+	//   2. {@code count} - the kernel element count.
+	//                      The generator simplifies the expression once per
+	//                      kernel index, so total cost is O(count * simplify(n)).
+	//
+	// Master never hit this path (the projection computations used
+	// Conditional.direct() to avoid Mask conversion); on this branch the
+	// path is reachable and {@code count} is decoupled from {@code n}, which is
+	// the failure mode for convDelta-style gradients where {@code count} is
+	// large (output_shape * input_shape) but each Sum has a modest {@code n}.
+	// ---------------------------------------------------------------------
+
+	/**
+	 * A {@link KernelStructureContext} whose {@link KernelTraversalProvider} is {@code null}.
+	 * In this context {@link Sum#simplify(KernelStructureContext, int)} skips the
+	 * reordering branch entirely and falls through to the inlined sum, regardless of
+	 * {@link Sum#enableGenerateReordering}. Used as the baseline for cost comparisons.
+	 *
+	 * @return a context with no traversal provider
+	 */
+	private KernelStructureContext fallthroughContext() {
+		return new KernelStructureContext() {
+			@Override
+			public OptionalLong getKernelMaximum() { return OptionalLong.empty(); }
+
+			@Override
+			public KernelSeriesProvider getSeriesProvider() { return null; }
+
+			@Override
+			public KernelTraversalProvider getTraversalProvider() { return null; }
+		};
+	}
+
+	/**
+	 * Builds a {@link Sum} of {@code outerN} terms where each term is a single-index-masked
+	 * <em>index-dependent</em> body: {@code Mask.of(index.eq(j), (j+1) * (idx+1) * (idx+2) *
+	 * ... * (idx+bodyDepth))}.
+	 *
+	 * <p>The body is constructed as a product chain involving the kernel index so that it
+	 * does not fold to a constant during local simplification. This is necessary because the
+	 * naive "body is a sum of constants" construction collapses to a single constant before
+	 * reordering even runs, hiding the body-complexity cost.</p>
+	 *
+	 * <p>This mirrors what arises when the chain rule contracts through a sparse projection
+	 * Jacobian: each entry of the contracted Sum is the gradient of one masked output and
+	 * carries non-constant arithmetic that must be re-simplified once per kernel index by
+	 * {@code generateReordering}.</p>
+	 *
+	 * @param outerN    number of masked outer terms
+	 * @param bodyDepth number of index-dependent factors multiplied into each mask body
+	 * @return the constructed sum
+	 */
+	private Expression<?> maskedSumWithBody(int outerN, int bodyDepth) {
+		Expression<?>[] terms = new Expression[outerN];
+		for (int j = 0; j < outerN; j++) {
+			Expression<?> body = e((double) (j + 1));
+			for (int k = 0; k < bodyDepth; k++) {
+				body = body.multiply((Expression<Double>) index.add(e(k + 1)).toDouble());
+			}
+			terms[j] = Mask.of(index.eq(j), body);
+		}
+		return Sum.of(terms);
+	}
+
+	/**
+	 * Times {@code sumFactory.get().simplify(ctxFactory.apply(...), 0)} {@code iters} times,
+	 * each iteration with a freshly built sum and a freshly built context (so the per-context
+	 * lookup-table cache does not skew repeated measurements), and returns the minimum
+	 * elapsed time in nanoseconds. Minimum is used rather than mean to suppress GC/JIT
+	 * jitter; this is a relative measurement, not a benchmark.
+	 *
+	 * @param sumFactory builds a fresh sum each iteration
+	 * @param ctxFactory builds a fresh context each iteration (passed the sum it will simplify)
+	 * @param iters      number of timed iterations
+	 * @return minimum elapsed nanoseconds across iterations
+	 */
+	private long minSimplifyNs(Supplier<Expression<?>> sumFactory,
+							   Function<Expression<?>, KernelStructureContext> ctxFactory,
+							   int iters) {
+		long best = Long.MAX_VALUE;
+		for (int i = 0; i < iters; i++) {
+			Expression<?> sum = sumFactory.get();
+			KernelStructureContext ctx = ctxFactory.apply(sum);
+			long t0 = System.nanoTime();
+			sum.simplify(ctx, 0);
+			long elapsed = System.nanoTime() - t0;
+			if (elapsed < best) best = elapsed;
+		}
+		return best;
+	}
+
+	/**
+	 * Sweeps the width {@code n} of a flat masked sum with {@code count == n} and reports,
+	 * for each width, the emitted-expression size and the {@code simplify} cost both with
+	 * and without reordering.
+	 *
+	 * <p>Expected shape of the data:</p>
+	 * <ul>
+	 *   <li>Inlined emitted-size grows linearly in {@code n}.</li>
+	 *   <li>Reordered emitted-size is roughly constant (a single array reference) above
+	 *       {@link #REORDER_THRESHOLD}.</li>
+	 *   <li>Inlined simplify time grows ~linearly in {@code n}.</li>
+	 *   <li>Reordered simplify time grows ~quadratically in {@code n} when {@code count == n}
+	 *       (per-index simplification of an {@code O(n)} expression done {@code n} times).</li>
+	 * </ul>
+	 *
+	 * <p>This is the test to read first when reasoning about whether the optimization is
+	 * profitable as a function of width alone.</p>
+	 */
+	@Test(timeout = 180000)
+	@TestDepth(2)
+	public void widthSweepCompileCostAndSize() {
+		int[] widths = { 2, 4, 8, 16, 32, 64, 128, 256, 512 };
+
+		boolean previous = Sum.enableGenerateReordering;
+		int previousBudget = ScopeSettings.maxReorderingBudget;
+		Sum.enableGenerateReordering = true;
+		ScopeSettings.maxReorderingBudget = Integer.MAX_VALUE;
+
+		try {
+			// JIT warmup. Both paths are exercised at a representative width.
+			for (int i = 0; i < 3; i++) {
+				maskedSum(64).simplify(fallthroughContext(), 0);
+				maskedSum(64).simplify(traversalContext(64), 0);
+			}
+
+			log(String.format("%-8s %-14s %-18s %-16s %-20s",
+					"width", "inlinedChars", "inlineSimplifyUs", "reorderedChars", "reorderSimplifyUs"));
+
+			int previousInlinedChars = -1;
+			int previousReorderedChars = -1;
+
+			for (int n : widths) {
+				final int width = n;
+				long inlineNs = minSimplifyNs(() -> maskedSum(width),
+						sum -> fallthroughContext(), 3);
+				long reorderNs = minSimplifyNs(() -> maskedSum(width),
+						sum -> traversalContext(width), 3);
+
+				int inlinedChars = maskedSum(width).simplify(fallthroughContext(), 0)
+						.getExpression(lang).length();
+				int reorderedChars = maskedSum(width).simplify(traversalContext(width), 0)
+						.getExpression(lang).length();
+
+				log(String.format("%-8d %-14d %-18d %-16d %-20d",
+						width, inlinedChars, inlineNs / 1000, reorderedChars, reorderNs / 1000));
+
+				if (previousInlinedChars >= 0) {
+					Assert.assertTrue("inlined size must grow monotonically with width",
+							inlinedChars >= previousInlinedChars);
+				}
+				if (width >= REORDER_THRESHOLD && previousReorderedChars >= 0) {
+					// Above threshold the reordered form should not blow up with width.
+					Assert.assertTrue("reordered size should not exceed inlined size above threshold",
+							reorderedChars <= inlinedChars);
+				}
+
+				previousInlinedChars = inlinedChars;
+				previousReorderedChars = reorderedChars;
+			}
+		} finally {
+			Sum.enableGenerateReordering = previous;
+			ScopeSettings.maxReorderingBudget = previousBudget;
+		}
+	}
+
+	/**
+	 * At a fixed (modest) width above the rewrite threshold, sweeps the kernel element count
+	 * over several orders of magnitude. The reordering generator simplifies the expression
+	 * once per kernel index, so total compile cost is expected to grow linearly in
+	 * {@code count} even though the {@code Sum} itself is unchanged.
+	 *
+	 * <p>This is the trade-off that breaks {@code convDeltaSmall}: the masked sums that
+	 * arise from sparse-Jacobian gradients have a modest number of terms but are simplified
+	 * in a context whose kernel count is {@code output_size * input_size}. Inlined cost is
+	 * decoupled from {@code count}; reordered cost is not.</p>
+	 */
+	@Test(timeout = 180000)
+	@TestDepth(2)
+	public void kernelCountSweepCompileCost() {
+		final int width = REORDER_THRESHOLD + 16;
+		int[] counts = { 16, 64, 256, 1024, 4096 };
+
+		boolean previous = Sum.enableGenerateReordering;
+		int previousBudget = ScopeSettings.maxReorderingBudget;
+		Sum.enableGenerateReordering = true;
+		ScopeSettings.maxReorderingBudget = Integer.MAX_VALUE;
+
+		try {
+			// Warmup.
+			for (int i = 0; i < 3; i++) {
+				maskedSum(width).simplify(traversalContext(64), 0);
+			}
+
+			log("kernelCountSweepCompileCost width=" + width);
+			log(String.format("%-10s %-18s %-14s %-18s",
+					"count", "reorderSimplifyUs", "reorderChars", "inlineSimplifyUs"));
+
+			long firstReorderUs = -1;
+			long lastReorderUs = -1;
+
+			for (int count : counts) {
+				final int kernelCount = count;
+
+				long reorderNs = minSimplifyNs(() -> maskedSum(width),
+						sum -> traversalContext(kernelCount), 3);
+				long inlineNs = minSimplifyNs(() -> maskedSum(width),
+						sum -> fallthroughContext(), 3);
+				int reorderedChars = maskedSum(width)
+						.simplify(traversalContext(kernelCount), 0)
+						.getExpression(lang).length();
+
+				log(String.format("%-10d %-18d %-14d %-18d",
+						kernelCount, reorderNs / 1000, reorderedChars, inlineNs / 1000));
+
+				if (firstReorderUs < 0) firstReorderUs = reorderNs / 1000;
+				lastReorderUs = reorderNs / 1000;
+			}
+
+			// The whole point of this test: at fixed width the inlined path's cost is
+			// independent of count, while the reordered path's cost grows with count.
+			// Verify that growing count by 256x does in fact slow reordering substantially.
+			Assert.assertTrue("reorder cost should grow with kernel count (first="
+					+ firstReorderUs + "us last=" + lastReorderUs + "us)",
+					lastReorderUs > firstReorderUs * 2);
+		} finally {
+			Sum.enableGenerateReordering = previous;
+			ScopeSettings.maxReorderingBudget = previousBudget;
+		}
+	}
+
+	/**
+	 * At fixed width and fixed kernel count, sweeps the body complexity of each masked
+	 * term. The reordering generator simplifies the body once per kernel index, so a heavier
+	 * body multiplies the cost by its own simplification cost.
+	 *
+	 * <p>The flat {@link #maskedSum(int)} case has a trivial constant body; chain-rule
+	 * gradients produce masked terms whose body is itself an arithmetic expression. This
+	 * test quantifies how rapidly the optimization stops paying off as that body grows.</p>
+	 */
+	@Test(timeout = 180000)
+	@TestDepth(2)
+	public void bodyComplexitySweepCompileCost() {
+		final int width = REORDER_THRESHOLD + 8;
+		final int kernelCount = 256;
+		int[] bodyDepths = { 0, 1, 2, 4, 8, 16 };
+
+		boolean previous = Sum.enableGenerateReordering;
+		int previousBudget = ScopeSettings.maxReorderingBudget;
+		Sum.enableGenerateReordering = true;
+		ScopeSettings.maxReorderingBudget = Integer.MAX_VALUE;
+
+		try {
+			// Warmup.
+			for (int i = 0; i < 3; i++) {
+				maskedSumWithBody(width, 2).simplify(traversalContext(kernelCount), 0);
+			}
+
+			log("bodyComplexitySweepCompileCost width=" + width + " count=" + kernelCount);
+			log(String.format("%-10s %-18s %-14s %-18s",
+					"bodyDepth", "reorderSimplifyUs", "reorderChars", "inlineSimplifyUs"));
+
+			long firstReorderUs = -1;
+			long lastReorderUs = -1;
+
+			for (int body : bodyDepths) {
+				final int bodySize = body;
+
+				long reorderNs = minSimplifyNs(() -> maskedSumWithBody(width, bodySize),
+						sum -> traversalContext(kernelCount), 3);
+				long inlineNs = minSimplifyNs(() -> maskedSumWithBody(width, bodySize),
+						sum -> fallthroughContext(), 3);
+				int reorderedChars = maskedSumWithBody(width, bodySize)
+						.simplify(traversalContext(kernelCount), 0)
+						.getExpression(lang).length();
+
+				log(String.format("%-10d %-18d %-14d %-18d",
+						bodySize, reorderNs / 1000, reorderedChars, inlineNs / 1000));
+
+				if (firstReorderUs < 0) firstReorderUs = reorderNs / 1000;
+				lastReorderUs = reorderNs / 1000;
+			}
+
+			// Body complexity is expected to amplify cost only when the body is not
+			// constant-foldable. With the index-dependent body used here the cost should
+			// strictly grow with depth; tolerate +20% noise on the lowest depth.
+			Assert.assertTrue("reorder cost should grow with index-dependent body depth (first="
+					+ firstReorderUs + "us last=" + lastReorderUs + "us)",
+					lastReorderUs > firstReorderUs * 6 / 5);
+		} finally {
+			Sum.enableGenerateReordering = previous;
+			ScopeSettings.maxReorderingBudget = previousBudget;
+		}
+	}
+
+	/**
+	 * The reordering generator caches lookup tables by the structurally-equal source
+	 * expression within a single {@link KernelStructureContext}: see {@code variables.get(
+	 * expression)} in {@link KernelTraversalOperationGenerator#generateReordering(Expression)}.
+	 * Equality is {@link Expression#compare(Expression)}, which short-circuits on cached
+	 * metrics (type, depth, node count, hash) before recursing, so the cache lookup is
+	 * cheap even for deeply nested keys.
+	 *
+	 * <p>A second simplification of an equivalent sum in the same context skips the
+	 * entire per-index simplify loop. The remaining cost is the lookup plus whatever
+	 * {@code super.simplify} does to the children, which is independent of the kernel
+	 * count.</p>
+	 *
+	 * <p>The expected warm/cold ratio is dominated by how much of the cold path is the
+	 * per-index loop. With wide sums and large kernel counts the loop dominates and warm
+	 * is dramatically faster; for the modest dimensions used here we still expect a
+	 * meaningful improvement.</p>
+	 */
+	@Test(timeout = 60000)
+	public void reorderingCacheAmortisesRepeatedSimplify() {
+		int n = REORDER_THRESHOLD + 8;
+		int count = n * 4;
+		KernelStructureContext ctx = traversalContext(count);
+
+		boolean previous = Sum.enableGenerateReordering;
+		Sum.enableGenerateReordering = true;
+
+		try {
+			// Cold simplify - builds and caches the lookup table.
+			long t0 = System.nanoTime();
+			Expression<?> firstResult = maskedSum(n).simplify(ctx, 0);
+			long firstNs = System.nanoTime() - t0;
+
+			// Warm simplify - same context, same structural form, should hit the cache.
+			t0 = System.nanoTime();
+			Expression<?> secondResult = maskedSum(n).simplify(ctx, 0);
+			long secondNs = System.nanoTime() - t0;
+
+			log("cold simplify=" + firstNs / 1000 + "us warm simplify=" + secondNs / 1000
+					+ "us ratio=" + String.format("%.2f", secondNs / (double) firstNs));
+
+			Assert.assertFalse("cold simplify should produce a non-Sum reference",
+					firstResult instanceof Sum);
+			Assert.assertFalse("warm simplify should produce a non-Sum reference",
+					secondResult instanceof Sum);
+			// With structural caching the warm path skips the per-index simplify loop
+			// entirely; for these dimensions the warm path should be well under half
+			// the cost of the cold path.
+			Assert.assertTrue("warm simplify should be at least 2x faster than cold (cold="
+					+ firstNs / 1000 + "us warm=" + secondNs / 1000 + "us)",
+					secondNs * 2 < firstNs);
+		} finally {
+			Sum.enableGenerateReordering = previous;
+		}
+	}
+
+	/**
+	 * Verifies the {@link ScopeSettings#maxReorderingBudget} guard in
+	 * {@link Sum#simplify(KernelStructureContext, int)}. A masked sum that would normally
+	 * trigger {@code generateReordering} (above {@link #REORDER_THRESHOLD} children, in a
+	 * context that exposes a {@link KernelTraversalProvider}) must instead fall through to
+	 * the inlined form when the predicted {@code count * nodeCount} exceeds the budget.
+	 *
+	 * <p>Asserts both directions of the guard:</p>
+	 * <ul>
+	 *   <li>With a very small budget, the simplified result is still a {@link Sum} - the
+	 *       reordering rewrite was skipped.</li>
+	 *   <li>With an effectively unlimited budget, the rewrite fires as before and the
+	 *       result is no longer a {@link Sum}.</li>
+	 * </ul>
+	 */
+	@Test(timeout = 30000)
+	public void budgetGuardSkipsExpensiveReordering() {
+		boolean previousReorder = Sum.enableGenerateReordering;
+		int previousBudget = ScopeSettings.maxReorderingBudget;
+		Sum.enableGenerateReordering = true;
+
+		try {
+			int n = REORDER_THRESHOLD + 16;
+			int largeCount = 1 << 14;
+
+			ScopeSettings.maxReorderingBudget = 1024;
+			Expression<?> overBudget = maskedSum(n).simplify(traversalContext(largeCount), 0);
+			Assert.assertTrue("over-budget sum should fall through to the inlined Sum",
+					overBudget instanceof Sum);
+
+			ScopeSettings.maxReorderingBudget = Integer.MAX_VALUE;
+			Expression<?> withinBudget = maskedSum(n).simplify(traversalContext(n), 0);
+			Assert.assertFalse("within-budget sum should be replaced by a lookup reference",
+					withinBudget instanceof Sum);
+		} finally {
+			Sum.enableGenerateReordering = previousReorder;
+			ScopeSettings.maxReorderingBudget = previousBudget;
+		}
+	}
+
+	/**
+	 * The {@code enableGenerateReordering = false} landmine throws when the masked-sum
+	 * branch is reached. The budget guard must run <em>before</em> that throw: if the
+	 * reordering wouldn't have fired anyway (because it would exceed the budget), the
+	 * landmine should also stay silent and the simplification should fall through.
+	 *
+	 * <p>This protects callers that want to keep the landmine enabled while disabling
+	 * reordering for genuinely expensive cases via budget alone.</p>
+	 */
+	@Test(timeout = 30000)
+	public void budgetGuardSuppressesLandmineForOverBudgetCase() {
+		boolean previousReorder = Sum.enableGenerateReordering;
+		int previousBudget = ScopeSettings.maxReorderingBudget;
+		Sum.enableGenerateReordering = false;
+		ScopeSettings.maxReorderingBudget = 1;
+
+		try {
+			int n = REORDER_THRESHOLD + 4;
+			Expression<?> result = maskedSum(n).simplify(traversalContext(n * 4), 0);
+			Assert.assertTrue("over-budget sum should fall through to the inlined Sum"
+					+ " even with the landmine flag", result instanceof Sum);
+		} finally {
+			Sum.enableGenerateReordering = previousReorder;
+			ScopeSettings.maxReorderingBudget = previousBudget;
 		}
 	}
 }
