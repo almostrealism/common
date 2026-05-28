@@ -89,7 +89,7 @@ The test files are organized into two packages mirroring the source structure:
 | `JobCompletionEventTest` | `JobCompletionEvent` | Factory methods, builder-pattern setters, default values, toString output |
 | `ClaudeCodeJobEventTest` | `ClaudeCodeJobEvent` | Inheritance from `JobCompletionEvent`, Claude Code-specific builder methods, default values |
 
-### io.flowtree.slack (1 comprehensive test class)
+### io.flowtree.slack and sibling packages
 
 | Test Class | Source Class(es) Covered | Focus |
 |------------|--------------------------|-------|

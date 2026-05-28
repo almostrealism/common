@@ -38,6 +38,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import io.flowtree.api.FlowTreeApiEndpoint;
+import io.flowtree.controller.FlowTreeController;
+import io.flowtree.controller.JobStatsStore;
+import io.flowtree.workstream.Workstream;
+import io.flowtree.workstream.WorkstreamConfig;
+import io.flowtree.api.SecretsRequestHandler;
 
 /**
  * Listens for Slack messages and creates Claude Code jobs.
@@ -1525,7 +1531,7 @@ public class SlackListener implements ConsoleFeatures {
      * the controller was configured programmatically without a file), changes
      * are runtime-only and a warning is logged.</p>
      */
-    void persistConfig() {
+    public void persistConfig() {
         if (workstreamConfig == null || configFile == null) {
             log("No config file loaded - changes are runtime-only");
             return;
