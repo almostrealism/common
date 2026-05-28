@@ -223,7 +223,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 ? new HashMap<>(orgToWorkspaceId) : new HashMap<>();
     }
 
-    /** Sets the workspace lookup feeding the workspace layer of {@link SubmissionRunnerResolver}; {@code null} disables it. */
+    /** Sets the workspace lookup feeding the workspace layer of {@link SubmissionConfigResolver}; {@code null} disables it. */
     public void setWorkspaceLookup(Function<String, WorkstreamConfig.WorkspaceEntry> lookup) {
         this.workspaceLookup = lookup != null ? lookup : id -> null;
     }
@@ -728,38 +728,18 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setRequiredLabel(entry.getKey(), entry.getValue());
         }
 
+        // Resolve runner and Phase config layers (request / workstream /
+        // workspace / controller default) through the shared submission
+        // resolver. Same code path the Slack listener uses, so workspace-level
+        // settings are honoured uniformly regardless of submission entrypoint.
         String wsId = workstream.getWorkspaceId();
         WorkstreamConfig.WorkspaceEntry wsEntry = (wsId != null && !wsId.isEmpty()) ? workspaceLookup.apply(wsId) : null;
         if (wsId != null && !wsId.isEmpty() && wsEntry == null) log("submitWorkspaceMissing workspaceId=" + wsId);
-        // The request no longer carries a legacy "runners" map (it is rejected
-        // up front by rejectLegacyRequestFields); pass an empty request map so
-        // SubmissionRunnerResolver only resolves the workstream / workspace
-        // legacy runner fields, which remain the fallback for jobs whose
-        // resolved per-phase bundle leaves the runner unset.
-        SubmissionRunnerResolver runnerResolver = SubmissionRunnerResolver.resolve(
-                Map.of(),
-                workstream.getDefaultRunner(), workstream.getRunners(),
-                wsEntry != null ? wsEntry.getDefaultRunner() : null, wsEntry != null ? wsEntry.getRunners() : null);
-        if (runnerResolver.error() != null) return errorResponse(runnerResolver.error());
-        runnerResolver.applyTo(factory);
-
-        // Unified per-phase config (defaultPhaseConfig + phaseConfigs). Builds
-        // a request-level bundle from the body's per-phase JSON fields only —
-        // legacy runners / model / effort are no longer accepted on the
-        // request — then layers workstream and workspace bundles through the
-        // PhaseConfigResolver ladder. The resolved bundle is applied on top of
-        // the SubmissionRunnerResolver result so per-phase model / effort /
-        // runner overrides reach the factory.
-        PhaseConfigBundle requestBundle =
-                PhaseConfigResolver.bundleFromRequest(body);
-        PhaseConfigBundle workstreamBundle = workstream.getPhaseConfigBundle();
-        PhaseConfigBundle workspaceBundle = wsEntry != null
-                ? wsEntry.toPhaseConfigBundle()
-                : PhaseConfigBundle.EMPTY;
-        PhaseConfigResolver pcResolver = PhaseConfigResolver.resolve(
-                requestBundle, workstreamBundle, workspaceBundle);
-        if (pcResolver.error() != null) return errorResponse(pcResolver.error());
-        pcResolver.applyTo(factory);
+        PhaseConfigBundle requestBundle = PhaseConfigResolver.bundleFromRequest(body);
+        SubmissionConfigResolver configResolver = SubmissionConfigResolver.resolve(
+                requestBundle, workstream, wsEntry);
+        if (configResolver.error() != null) return errorResponse(configResolver.error());
+        configResolver.applyTo(factory);
 
         // Auto-create PR on successful completion
         if (autoCreatePr) {
@@ -821,7 +801,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // layered through workstream / workspace / controller defaults) under
         // the same field names the config input uses, so the caller sees the
         // config the job will actually run with.
-        PhaseConfigResolver.appendBundleJson(json, pcResolver.resolvedBundle());
+        PhaseConfigResolver.appendBundleJson(json, configResolver.phaseConfigResolver().resolvedBundle());
         // Report which optional phases are active so callers can confirm
         // the effective job configuration without inspecting phase bundles.
         String effectiveDedupMode = factory.getDeduplicationMode();
