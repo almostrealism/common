@@ -39,7 +39,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -180,7 +179,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     }
 
     @Test(timeout = 10000)
-    public void testSlackCompletionOmitsCostBlock() {
+    public void testSlackCompletionWithCostBlock() {
         List<String> messages = new ArrayList<>();
         SlackNotifier notifier = new SlackNotifier(null);
         notifier.setMessageCallback(json -> {
@@ -209,10 +208,14 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
         assertTrue(messages.size() > 0);
         String msg = messages.get(0);
-        assertFalse("Slack completion should not include moneybag cost block (Option B)",
+        assertTrue("Slack completion should include moneybag cost block",
             msg.contains(":moneybag:"));
-        assertFalse("Slack completion should not include dollar total (Option B)",
+        assertTrue("Slack completion should include dollar total",
             msg.contains(":dollar:"));
+        assertTrue("Slack completion should include per-model cost breakdown",
+            msg.contains("claude-opus-4-7"));
+        assertTrue("Slack completion should include runner breakdown",
+            msg.contains("claude") && msg.contains("opencode"));
     }
 
     @Test(timeout = 10000)

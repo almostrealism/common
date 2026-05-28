@@ -170,15 +170,12 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
      * @param numTurns      number of agentic turns
      * @return this event for chaining
      */
-    // TODO(review): withTimingInfo sets this.costUsd (local) but not super.totalCostUsd, so
-    // getTotalCostUsd() returns 0 on live events. If any code path calls getTotalCostUsd() on
-    // a CodingAgentJobEvent before it is persisted and re-read via rowToEvent(), it silently
-    // gets 0 instead of the real cost. Fix: add setTotalCostUsd(costUsd) here.
     public CodingAgentJobEvent withTimingInfo(long durationMs, long durationApiMs,
                                              double costUsd, int numTurns) {
         this.durationMs = durationMs;
         this.durationApiMs = durationApiMs;
         this.costUsd = costUsd;
+        setTotalCostUsd(costUsd);
         this.numTurns = numTurns;
         return this;
     }
