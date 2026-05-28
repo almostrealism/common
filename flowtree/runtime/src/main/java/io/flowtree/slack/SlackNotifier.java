@@ -1154,19 +1154,22 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         if (event.getCostUsd() > 0) {
             sb.append(JobStatsStore.formatModelCostLines(event.getCostByModel()));
             sb.append("   :dollar: $").append(String.format("%.2f", event.getCostUsd()));
-            // TODO(review): if costByRunner is null/empty or all values are zero, output is "total []" with empty brackets
-            sb.append(" total [");
+            sb.append(" total");
             Map<String, Double> costByRunner = event.getCostByRunner();
             if (costByRunner != null && !costByRunner.isEmpty()) {
+                StringBuilder runnerSb = new StringBuilder();
                 boolean first = true;
                 for (Map.Entry<String, Double> entry : costByRunner.entrySet()) {
                     if (entry.getValue() == null || entry.getValue() <= 0.0) continue;
-                    if (!first) sb.append(" | ");
+                    if (!first) runnerSb.append(" | ");
                     first = false;
-                    sb.append(entry.getKey()).append(" $").append(String.format("%.2f", entry.getValue()));
+                    runnerSb.append(entry.getKey()).append(" $").append(String.format("%.2f", entry.getValue()));
+                }
+                if (runnerSb.length() > 0) {
+                    sb.append(" [").append(runnerSb).append("]");
                 }
             }
-            sb.append("]\n");
+            sb.append("\n");
         }
 
         // Duration (wall time and API time)

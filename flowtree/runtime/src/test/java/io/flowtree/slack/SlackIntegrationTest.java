@@ -39,6 +39,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -171,6 +172,80 @@ public class SlackIntegrationTest extends TestSuiteBase {
         String failMsg = messages.get(0);
         assertTrue(failMsg.contains("Work failed"));
         assertTrue(failMsg.contains("Compilation failed"));
+    }
+
+    @Test(timeout = 10000)
+    public void testNotifierCostBlockWithRunnerBreakdown() {
+        List<String> messages = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json -> {
+            int start = json.indexOf("\"text\":\"") + 8;
+            int end = json.indexOf("\"", start);
+            if (start > 7 && end > start) {
+                messages.add(json.substring(start, end).replace("\\n", "\n"));
+            }
+        });
+
+        Workstream workstream = new Workstream("C_COST_1", "#cost-test");
+        notifier.registerWorkstream(workstream);
+
+        // Case 1: cost with both costByModel and costByRunner
+        CodingAgentJobEvent eventWithCosts = CodingAgentJobEvent.success("job-cost-1", "Costly task");
+        Map<String, Double> costByModel = new HashMap<>();
+        costByModel.put("claude-opus-4-7", 1.50);
+        costByModel.put("openrouter:qwen3-coder:exacto", 0.25);
+        eventWithCosts.withCostByModel(costByModel);
+        Map<String, Double> costByRunner = new HashMap<>();
+        costByRunner.put("claude", 1.20);
+        costByRunner.put("opencode", 0.55);
+        eventWithCosts.withCostByRunner(costByRunner);
+        eventWithCosts.withTimingInfo(0, 0, 1.75, 0);
+        notifier.onJobCompleted(workstream.getWorkstreamId(), eventWithCosts);
+
+        assertTrue(messages.size() > 0);
+        String msg = messages.get(0);
+        assertTrue("Should show total cost", msg.contains(":dollar: $1.75 total"));
+        assertTrue("Should show claude-opus-4-7 model cost", msg.contains(":moneybag: $1.50 - claude-opus-4-7"));
+        assertTrue("Should show openrouter model cost", msg.contains(":moneybag: $0.25 - openrouter:qwen3-coder:exacto"));
+        assertTrue("Should show runner breakdown", msg.contains("claude $1.20") && msg.contains("opencode $0.55"));
+
+        messages.clear();
+
+        // Case 2: cost with empty costByRunner (no runner breakdown brackets)
+        CodingAgentJobEvent eventWithEmptyRunner = CodingAgentJobEvent.success("job-cost-2", "Task with empty runner");
+        Map<String, Double> costByModel2 = new HashMap<>();
+        costByModel2.put("claude-opus-4-7", 0.80);
+        eventWithEmptyRunner.withCostByModel(costByModel2);
+        eventWithEmptyRunner.withCostByRunner(Collections.emptyMap());
+        eventWithEmptyRunner.withTimingInfo(0, 0, 0.80, 0);
+        notifier.onJobCompleted(workstream.getWorkstreamId(), eventWithEmptyRunner);
+
+        assertTrue(messages.size() > 0);
+        String msg2 = messages.get(0);
+        assertTrue("Should show total cost without runner brackets",
+            msg2.contains(":dollar: $0.80 total"));
+        assertFalse("Should not show empty brackets for empty costByRunner",
+            msg2.contains("total []"));
+
+        messages.clear();
+
+        // Case 3: cost with only zero values in costByRunner (no runner breakdown)
+        CodingAgentJobEvent eventWithZeroRunner = CodingAgentJobEvent.success("job-cost-3", "Task with zero runner cost");
+        Map<String, Double> costByModel3 = new HashMap<>();
+        costByModel3.put("openrouter:qwen3-coder:exacto", 0.10);
+        eventWithZeroRunner.withCostByModel(costByModel3);
+        Map<String, Double> costByRunnerZero = new HashMap<>();
+        costByRunnerZero.put("opencode", 0.0);
+        eventWithZeroRunner.withCostByRunner(costByRunnerZero);
+        eventWithZeroRunner.withTimingInfo(0, 0, 0.10, 0);
+        notifier.onJobCompleted(workstream.getWorkstreamId(), eventWithZeroRunner);
+
+        assertTrue(messages.size() > 0);
+        String msg3 = messages.get(0);
+        assertTrue("Should show total cost without runner brackets when all runners are zero",
+            msg3.contains(":dollar: $0.10 total"));
+        assertFalse("Should not show empty brackets for zero-cost runners",
+            msg3.contains("total []"));
     }
 
     @Test(timeout = 10000)
