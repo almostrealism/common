@@ -1176,8 +1176,33 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (event.getErrorMessage() != null) {
             j.append(",\"errorMessage\":\"").append(JsonFieldExtractor.escapeJson(event.getErrorMessage())).append("\"");
         }
-        if (event.getCostUsd() > 0) {
-            j.append(String.format(",\"costUsd\":%.4f", event.getCostUsd()));
+        double totalCost = event.getTotalCostUsd();
+        if (totalCost > 0) {
+            j.append(String.format(",\"totalCostUsd\":%.2f", totalCost));
+            Map<String, Double> costByRunner = event.getCostByRunner();
+            if (costByRunner != null && !costByRunner.isEmpty()) {
+                j.append(",\"costByRunner\":{");
+                boolean first = true;
+                for (Map.Entry<String, Double> e : costByRunner.entrySet()) {
+                    if (!first) j.append(",");
+                    first = false;
+                    j.append("\"").append(JsonFieldExtractor.escapeJson(e.getKey())).append("\":")
+                        .append(String.format("%.2f", e.getValue() != null ? e.getValue() : 0.0));
+                }
+                j.append("}");
+            }
+            Map<String, Double> costByModel = event.getCostByModel();
+            if (costByModel != null && !costByModel.isEmpty()) {
+                j.append(",\"costByModel\":{");
+                boolean first = true;
+                for (Map.Entry<String, Double> e : costByModel.entrySet()) {
+                    if (!first) j.append(",");
+                    first = false;
+                    j.append("\"").append(JsonFieldExtractor.escapeJson(e.getKey())).append("\":")
+                        .append(String.format("%.2f", e.getValue() != null ? e.getValue() : 0.0));
+                }
+                j.append("}");
+            }
         }
         j.append("}");
         return j.toString();
