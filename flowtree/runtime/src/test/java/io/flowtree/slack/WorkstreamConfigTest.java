@@ -382,73 +382,6 @@ public class WorkstreamConfigTest extends TestSuiteBase {
     // ── model/effort defaults on Workstream ───────────────────────────────────
 
     @Test(timeout = 10000)
-    public void testWorkstreamModelEffortDefaultsAreNull() {
-        Workstream ws = new Workstream("C_M", "#m");
-        assertNull(ws.getModel());
-        assertNull(ws.getEffort());
-    }
-
-    @Test(timeout = 10000)
-    public void testWorkstreamSetModelAndEffort() {
-        Workstream ws = new Workstream("C_M", "#m");
-        ws.setModel("opus");
-        ws.setEffort("high");
-        assertEquals("opus", ws.getModel());
-        assertEquals("high", ws.getEffort());
-    }
-
-    @Test(timeout = 10000)
-    public void testWorkstreamSetModelEmptyClearsToNull() {
-        Workstream ws = new Workstream("C_M", "#m");
-        ws.setModel("opus");
-        ws.setModel("");
-        assertNull(ws.getModel());
-    }
-
-    @Test(timeout = 10000)
-    public void testWorkstreamSetEffortEmptyClearsToNull() {
-        Workstream ws = new Workstream("C_M", "#m");
-        ws.setEffort("max");
-        ws.setEffort("");
-        assertNull(ws.getEffort());
-    }
-
-    @Test(timeout = 10000, expected = IllegalArgumentException.class)
-    public void testWorkstreamSetEffortRejectsInvalidLevel() {
-        new Workstream("C_M", "#m").setEffort("nuclear");
-    }
-
-    @Test(timeout = 10000, expected = IllegalArgumentException.class)
-    public void testWorkstreamSetModelRejectsInvalidIdentifier() {
-        // The wire-up bug that triggered the unbounded enforcement loop
-        // came in via this setter — workstream YAML / register-API stored
-        // "sonnet-4-6" (missing claude- prefix) and every subsequent job
-        // dispatched it unchallenged.  Validate here so the loud failure
-        // happens at registration time, not on every dispatched job.
-        new Workstream("C_M", "#m").setModel("sonnet-4-6");
-    }
-
-    @Test(timeout = 10000)
-    public void testWorkstreamSummaryJsonIncludesModelAndEffort() {
-        Workstream ws = new Workstream("C_M", "#m");
-        ws.setModel("sonnet");
-        ws.setEffort("medium");
-        String json = ws.toSummaryJson();
-        assertTrue("expected model in summary: " + json,
-            json.contains("\"model\":\"sonnet\""));
-        assertTrue("expected effort in summary: " + json,
-            json.contains("\"effort\":\"medium\""));
-    }
-
-    @Test(timeout = 10000)
-    public void testWorkstreamSummaryJsonOmitsModelAndEffortWhenUnset() {
-        Workstream ws = new Workstream("C_M", "#m");
-        String json = ws.toSummaryJson();
-        assertFalse("unexpected model: " + json, json.contains("\"model\""));
-        assertFalse("unexpected effort: " + json, json.contains("\"effort\""));
-    }
-
-    @Test(timeout = 10000)
     public void testWorkstreamSummaryJsonEmitsArchivedFlagWhenSet() {
         Workstream ws = new Workstream("C_A", "#archived");
         ws.setArchived(true);
@@ -492,105 +425,20 @@ public class WorkstreamConfigTest extends TestSuiteBase {
             config.getWorkstreams().get(0).isArchived());
     }
 
-    // ── model/effort persistence in WorkstreamConfig ──────────────────────────
-
-    @Test(timeout = 10000)
-    public void testYamlRoundTripsModelAndEffort() throws IOException {
-        String yaml = "workstreams:\n"
-            + "  - channelId: \"C_ME\"\n"
-            + "    channelName: \"#me\"\n"
-            + "    defaultBranch: \"main\"\n"
-            + "    model: \"opus\"\n"
-            + "    effort: \"xhigh\"\n";
-
-        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
-        assertEquals("opus", entry.getModel());
-        assertEquals("xhigh", entry.getEffort());
-
-        Workstream ws = entry.toWorkstream();
-        assertEquals("opus", ws.getModel());
-        assertEquals("xhigh", ws.getEffort());
-    }
-
-    @Test(timeout = 10000)
-    public void testAddWorkstreamCarriesModelAndEffort() {
-        WorkstreamConfig config = new WorkstreamConfig();
-        Workstream ws = new Workstream("C_ME", "#me");
-        ws.setModel("haiku");
-        ws.setEffort("low");
-        config.addWorkstream(ws);
-
-        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
-        assertEquals("haiku", entry.getModel());
-        assertEquals("low", entry.getEffort());
-    }
-
-    @Test(timeout = 10000)
-    public void testSyncFromWorkstreamsUpdatesModelAndEffort() throws IOException {
-        String yaml = "workstreams:\n"
-            + "  - channelId: \"C_ME\"\n"
-            + "    channelName: \"#me\"\n"
-            + "    defaultBranch: \"main\"\n";
-
-        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        List<Workstream> wsList = config.toWorkstreams();
-        Workstream ws = wsList.get(0);
-        ws.setModel("sonnet");
-        ws.setEffort("max");
-        config.syncFromWorkstreams(wsList);
-
-        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
-        assertEquals("sonnet", entry.getModel());
-        assertEquals("max", entry.getEffort());
-    }
-
-    /**
-     * Legacy {@code model} / {@code effort} are dropped on save (clean break)
-     * but their values are migrated into the new per-phase default, so a
-     * save-then-load cycle preserves the configuration in the new shape.
-     */
-    @Test(timeout = 10000)
-    public void testSaveAndReloadMigratesModelAndEffortToPhaseConfig() throws IOException {
-        String yaml = "workstreams:\n"
-            + "  - channelId: \"C_ME\"\n"
-            + "    channelName: \"#me\"\n"
-            + "    defaultBranch: \"main\"\n"
-            + "    model: \"sonnet\"\n"
-            + "    effort: \"high\"\n";
-
-        WorkstreamConfig original = WorkstreamConfig.loadFromYamlString(yaml);
-
-        File tempFile = File.createTempFile("workstream-config-model-effort", ".yaml");
-        tempFile.deleteOnExit();
-        original.saveToYaml(tempFile);
-
-        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
-        WorkstreamConfig.WorkstreamEntry entry = reloaded.getWorkstreams().get(0);
-        // Legacy fields are no longer written: a save drops them.
-        assertNull("legacy model must not survive a save", entry.getModel());
-        assertNull("legacy effort must not survive a save", entry.getEffort());
-        // The values are migrated into the per-phase default and survive.
-        PhaseConfig def = entry.toPhaseConfigBundle().defaultPhaseConfig();
-        assertEquals("sonnet", def.model());
-        assertEquals("high", def.effort());
-    }
+    // ── legacy-runner clean-break persistence in WorkstreamConfig ─────────────
 
     /**
      * YAML written by the controller after a save must contain ONLY the new
      * per-phase shape ({@code defaultPhaseConfig} / {@code phaseConfigs}); the
-     * legacy {@code model} / {@code effort} / {@code defaultRunner} /
-     * {@code runners} keys must be absent from the serialized output even when
-     * they were present on load. This is the clean break: configs that get
-     * touched are rewritten to the new shape.
+     * legacy {@code defaultRunner} / {@code runners} keys must be absent from
+     * the serialized output even when they were present on load. This is the
+     * clean break: configs that get touched are rewritten to the new shape.
      */
     @Test(timeout = 10000)
     public void testSaveEmitsOnlyNewShapeNotLegacyFields() throws IOException {
         String yaml = "workstreams:\n"
             + "  - channelId: \"C-legacy\"\n"
             + "    defaultBranch: \"feature/legacy\"\n"
-            + "    model: \"opus\"\n"
-            + "    effort: \"high\"\n"
             + "    defaultRunner: \"opencode\"\n"
             + "    runners:\n"
             + "      review: \"claude\"\n"
@@ -608,9 +456,9 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         config.saveToYaml(tempFile);
 
         // Raw-text check: the unambiguous legacy entry-level keys must be
-        // absent. (`model:` / `effort:` / `runner:` also appear nested inside
-        // the new defaultPhaseConfig / phaseConfigs objects, so their absence
-        // at entry level is verified below via the reloaded legacy getters.)
+        // absent. (`runner:` also appears nested inside the new
+        // defaultPhaseConfig / phaseConfigs objects, so its absence at entry
+        // level is verified below via the reloaded legacy getters.)
         String written = new String(Files.readAllBytes(tempFile.toPath()));
         assertFalse("saved YAML must not contain legacy 'defaultRunner:'",
                 written.contains("defaultRunner:"));
@@ -623,18 +471,14 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         // key was written (a legacy key in the output would repopulate them).
         WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
         WorkstreamConfig.WorkstreamEntry wsEntry = reloaded.getWorkstreams().get(0);
-        assertNull(wsEntry.getModel());
-        assertNull(wsEntry.getEffort());
         assertNull(wsEntry.getDefaultRunner());
         assertTrue(wsEntry.getRunners().isEmpty());
         WorkstreamConfig.WorkspaceEntry wspEntry = reloaded.findSlackWorkspace("T-LEGACY");
         assertNull(wspEntry.getDefaultRunner());
         assertTrue(wspEntry.getRunners().isEmpty());
 
-        // The configuration is preserved through the migration.
+        // The runner configuration is preserved through the migration.
         PhaseConfigBundle wsBundle = wsEntry.toPhaseConfigBundle();
-        assertEquals("opus", wsBundle.defaultPhaseConfig().model());
-        assertEquals("high", wsBundle.defaultPhaseConfig().effort());
         assertEquals("opencode", wsBundle.defaultPhaseConfig().runner());
         assertEquals("claude", wsBundle.forPhase(Phase.REVIEW).runner());
         PhaseConfigBundle wspBundle = wspEntry.toPhaseConfigBundle();

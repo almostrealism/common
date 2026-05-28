@@ -22,6 +22,7 @@ import io.flowtree.jobs.agent.AgentRunResult;
 import io.flowtree.jobs.agent.AgentRunner;
 import io.flowtree.jobs.agent.AgentRunnerRegistry;
 import io.flowtree.jobs.agent.Phase;
+import io.flowtree.jobs.agent.PhaseConfigBundle;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
@@ -99,8 +100,8 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         job.setAllowedTools("Read,Edit");
         job.setMaxTurns(11);
         job.setMaxBudgetUsd(3.0);
-        job.setModel("opus");
-        job.setEffort("high");
+        job.setPhaseConfigBundle(
+                PhaseConfigBundle.EMPTY.withDefaultModel("opus").withDefaultEffort("high"));
 
         AgentRunRequest req = job.buildRunRequest(
                 "Read,Edit,mcp__ar-manager__send_message",

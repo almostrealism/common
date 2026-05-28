@@ -131,15 +131,14 @@ class EnforcementRunner implements ConsoleFeatures {
                     if (correctionPrompt != null) {
                         job.runCorrectionSession(correctionPrompt, rule.getName());
                     } else {
-                        // TODO(review): merge dropped origin/master's enforce-changes routing fix here;
-                        // master no longer sets currentActivity for enforce-changes (keeps PRIMARY routing,
-                        // since Phase.ENFORCE_CHANGES is now DEPRECATED) and updated the log message below.
-                        // enforce-changes is the only rule that re-runs with the existing
-                        // prompt; bumping enforcementAttempt for other rules would inflate
-                        // the user-facing escalation messaging.
+                        // enforce-changes is the only built-in rule whose buildCorrectionPrompt
+                        // returns null; it re-runs the original prompt so the "code changes are
+                        // required" block applies. Bumping enforcementAttempt for other rules
+                        // would inflate the user-facing escalation messaging.
                         if ("enforce-changes".equals(rule.getName())) {
                             job.setEnforcementAttempt(job.getEnforcementAttempt() + 1);
-                            log("Enforcement attempt: " + (job.getEnforcementAttempt() + 1));
+                            log("enforce_changes found no changes; restarting PRIMARY (retry "
+                                    + job.getEnforcementAttempt() + ")");
                         }
                         // Preserve commit.txt: executeSingleRun() deletes it at startup.
                         Path rerunCommitFile = job.resolveWorkingPath("commit.txt");
@@ -148,10 +147,15 @@ class EnforcementRunner implements ConsoleFeatures {
                             try { savedForRerun = Files.readString(rerunCommitFile, StandardCharsets.UTF_8); }
                             catch (IOException e) { warn("Could not save commit.txt: " + e.getMessage()); }
                         }
-                        // Tag the activity so per-phase runner routing applies even though
-                        // there is no separate correction prompt for this rule.
+                        // For enforce-changes, leave currentActivity unchanged (null during primary
+                        // runs) so executeSingleRun() resolves to PRIMARY — Phase.ENFORCE_CHANGES
+                        // is deprecated and must not be used. Tagging currentActivity for other
+                        // rules that return null correction prompt enables activity tracking
+                        // and logs which rule triggered the restart.
                         String previousActivity = job.getCurrentActivity();
-                        job.setCurrentActivity(rule.getName());
+                        if (!"enforce-changes".equals(rule.getName())) {
+                            job.setCurrentActivity(rule.getName());
+                        }
                         try {
                             job.executeSingleRun();
                         } finally {

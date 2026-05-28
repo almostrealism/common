@@ -54,28 +54,14 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
         return store;
     }
 
-    /** Returns the Monday of the current ISO week, in UTC. */
-    private static LocalDate currentMonday() {
-        return LocalDate.now(ZoneOffset.UTC).with(DayOfWeek.MONDAY);
-    }
-
-    /** Records a started+completed job so its job_timing row exists and is not STARTED. */
-    private static void recordCompletedJob(JobStatsStore store, String jobId,
-                                           String workstreamId, Instant when, double totalCost) {
-        store.recordJobStarted(jobId, workstreamId, "job " + jobId, when);
-        store.recordJobCompleted(jobId, workstreamId, "SUCCESS",
-                when.plusMillis(60000), 55000, 30000, totalCost, 10, "sess-" + jobId,
-                0, "success", false, 0, null, null, null, null);
-    }
-
     @Test(timeout = 30000)
     public void singleJobWithTwoRunnersBreaksDownByRunner() throws Exception {
         JobStatsStore store = newStore();
         try {
-            LocalDate monday = currentMonday();
+            LocalDate monday = JobStatsStoreModelCostTest.currentMonday();
             Instant when = monday.atStartOfDay(ZoneOffset.UTC).toInstant().plusSeconds(3600);
 
-            recordCompletedJob(store, "job-1", "ws-mixed", when, 0.45);
+            JobStatsStoreModelCostTest.recordCompletedJob(store, "job-1", "ws-mixed", when, 0.45);
             // The same job ran two phases on two different runners.
             Map<String, Double> perRunner = new LinkedHashMap<>();
             perRunner.put("claude", 0.42);
@@ -94,11 +80,11 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
     public void costSumsAcrossJobsPerRunner() throws Exception {
         JobStatsStore store = newStore();
         try {
-            LocalDate monday = currentMonday();
+            LocalDate monday = JobStatsStoreModelCostTest.currentMonday();
             Instant when = monday.atStartOfDay(ZoneOffset.UTC).toInstant().plusSeconds(3600);
 
-            recordCompletedJob(store, "job-a", "ws-sum", when, 1.0);
-            recordCompletedJob(store, "job-b", "ws-sum", when, 1.0);
+            JobStatsStoreModelCostTest.recordCompletedJob(store, "job-a", "ws-sum", when, 1.0);
+            JobStatsStoreModelCostTest.recordCompletedJob(store, "job-b", "ws-sum", when, 1.0);
 
             Map<String, Double> a = new LinkedHashMap<>();
             a.put("claude", 0.50);
@@ -123,9 +109,9 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
     public void reRecordingReplacesRatherThanDoubleCounts() throws Exception {
         JobStatsStore store = newStore();
         try {
-            LocalDate monday = currentMonday();
+            LocalDate monday = JobStatsStoreModelCostTest.currentMonday();
             Instant when = monday.atStartOfDay(ZoneOffset.UTC).toInstant().plusSeconds(3600);
-            recordCompletedJob(store, "job-x", "ws-idem", when, 0.2);
+            JobStatsStoreModelCostTest.recordCompletedJob(store, "job-x", "ws-idem", when, 0.2);
 
             Map<String, Double> first = new LinkedHashMap<>();
             first.put("claude", 0.10);
@@ -159,9 +145,9 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
     public void apiStatsEndpointIncludesPerRunnerBreakdown() throws Exception {
         JobStatsStore store = newStore();
         try {
-            LocalDate monday = currentMonday();
+            LocalDate monday = JobStatsStoreModelCostTest.currentMonday();
             Instant when = monday.atStartOfDay(ZoneOffset.UTC).toInstant().plusSeconds(3600);
-            recordCompletedJob(store, "job-api", "ws-api", when, 0.45);
+            JobStatsStoreModelCostTest.recordCompletedJob(store, "job-api", "ws-api", when, 0.45);
 
             Map<String, Double> perRunner = new LinkedHashMap<>();
             perRunner.put("claude", 0.42);
@@ -200,11 +186,11 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
     public void allWorkstreamsPathPopulatesCostByRunner() throws Exception {
         JobStatsStore store = newStore();
         try {
-            LocalDate monday = currentMonday();
+            LocalDate monday = JobStatsStoreModelCostTest.currentMonday();
             Instant when = monday.atStartOfDay(ZoneOffset.UTC).toInstant().plusSeconds(3600);
 
-            recordCompletedJob(store, "job-ws1", "ws-one", when, 0.50);
-            recordCompletedJob(store, "job-ws2", "ws-two", when, 0.30);
+            JobStatsStoreModelCostTest.recordCompletedJob(store, "job-ws1", "ws-one", when, 0.50);
+            JobStatsStoreModelCostTest.recordCompletedJob(store, "job-ws2", "ws-two", when, 0.30);
 
             Map<String, Double> runners1 = new LinkedHashMap<>();
             runners1.put("claude", 0.45);
@@ -231,9 +217,9 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
     public void emptyBreakdownClearsExistingRows() throws Exception {
         JobStatsStore store = newStore();
         try {
-            LocalDate monday = currentMonday();
+            LocalDate monday = JobStatsStoreModelCostTest.currentMonday();
             Instant when = monday.atStartOfDay(ZoneOffset.UTC).toInstant().plusSeconds(3600);
-            recordCompletedJob(store, "job-clear", "ws-clear", when, 0.2);
+            JobStatsStoreModelCostTest.recordCompletedJob(store, "job-clear", "ws-clear", when, 0.2);
 
             Map<String, Double> costs = new LinkedHashMap<>();
             costs.put("claude", 0.10);

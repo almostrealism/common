@@ -411,6 +411,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_submit_task must declare allow_commit_language in signature"
 			+ " so callers can opt out of the commit-language linter when needed",
 			submitParams.contains("allow_commit_language"));
+		assertTrue("workstream_submit_task must declare organizational_placement_enabled in"
+			+ " signature so callers can opt in to placement review for pre-merge jobs",
+			submitParams.contains("organizational_placement_enabled"));
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");

@@ -55,13 +55,16 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
         return store;
     }
 
-    /** Returns the Monday of the current ISO week, in UTC. */
-    private static LocalDate currentMonday() {
+    /** Returns the Monday of the current ISO week, in UTC. Shared by {@link JobStatsStoreRunnerCostTest}. */
+    static LocalDate currentMonday() {
         return LocalDate.now(ZoneOffset.UTC).with(DayOfWeek.MONDAY);
     }
 
-    /** Records a started+completed job so its job_timing row exists and is not STARTED. */
-    private static void recordCompletedJob(JobStatsStore store, String jobId,
+    /**
+     * Records a started+completed job so its job_timing row exists and is not STARTED.
+     * Shared by {@link JobStatsStoreRunnerCostTest} (same package).
+     */
+    static void recordCompletedJob(JobStatsStore store, String jobId,
                                          String workstreamId, Instant when, double totalCost) {
         store.recordJobStarted(jobId, workstreamId, "job " + jobId, when);
         store.recordJobCompleted(jobId, workstreamId, "SUCCESS",
@@ -233,5 +236,54 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
         } finally {
             store.close();
         }
+    }
+
+    @Test(timeout = 30000)
+    public void formatModelCostLinesStripsProviderPrefix() {
+        assertEquals("", JobStatsStore.formatModelCostLines(null));
+        assertEquals("", JobStatsStore.formatModelCostLines(new LinkedHashMap<>()));
+
+        Map<String, Double> costs = new LinkedHashMap<>();
+        costs.put("openrouter/minimax-m2.7", 0.13);
+        costs.put("sonnet", 0.48);
+        String formatted = JobStatsStore.formatModelCostLines(costs);
+        assertEquals(
+            "   :moneybag: $0.13 - minimax-m2.7\n" +
+            "   :moneybag: $0.48 - sonnet\n",
+            formatted);
+    }
+
+    @Test(timeout = 30000)
+    public void formatModelCostLinesOmitsZeroCostEntries() {
+        Map<String, Double> costs = new LinkedHashMap<>();
+        costs.put("openrouter/minimax-m2.7", 0.13);
+        costs.put("sonnet", 0.0);
+        costs.put("claude-opus-4-7", null);
+        String formatted = JobStatsStore.formatModelCostLines(costs);
+        assertEquals(
+            "   :moneybag: $0.13 - minimax-m2.7\n",
+            formatted);
+    }
+
+    @Test(timeout = 30000)
+    public void formatModelCostLinesStripsOnlyFirstProviderSegment() {
+        Map<String, Double> costs = new LinkedHashMap<>();
+        costs.put("openrouter/minimax/minimax-m2.7", 0.13);
+        String formatted = JobStatsStore.formatModelCostLines(costs);
+        assertEquals(
+            "   :moneybag: $0.13 - minimax/minimax-m2.7\n",
+            formatted);
+    }
+
+    @Test(timeout = 30000)
+    public void formatModelCostLinesWithProviderPrefixEdgeCases() {
+        Map<String, Double> costs = new LinkedHashMap<>();
+        costs.put("anthropic/claude-opus-4-7", 0.42);
+        costs.put("google/gemini-pro", 0.03);
+        String formatted = JobStatsStore.formatModelCostLines(costs);
+        assertEquals(
+            "   :moneybag: $0.42 - claude-opus-4-7\n" +
+            "   :moneybag: $0.03 - gemini-pro\n",
+            formatted);
     }
 }
