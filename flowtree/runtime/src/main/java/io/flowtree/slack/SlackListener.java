@@ -613,6 +613,14 @@ public class SlackListener implements ConsoleFeatures {
             }
         }
 
+        // Apply request / workstream / workspace runner + Phase config to the
+        // factory. Posts a Slack message and returns false on validation
+        // failure; without this call workspace-level Phase runner settings
+        // would be silently dropped on the Slack submission path.
+        if (!SlackSubmissionConfig.apply(factory, workstream, workstreamConfig, wsNotifier, this::log)) {
+            return false;
+        }
+
         // Build workstream URL for status reporting and Slack messaging
         if (apiPort > 0) {
             String baseUrl = "http://0.0.0.0:" + apiPort
