@@ -35,6 +35,7 @@ import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.profile.ScopeTimingListener;
 import io.almostrealism.scope.ExpressionCache;
+import io.almostrealism.scope.LeafInternTable;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Signature;
@@ -238,7 +239,7 @@ public abstract class Expression<T> implements
 		}
 
 		this.type = type;
-		this.children = List.of(children);
+		this.children = List.of(LeafInternTable.canonicalize(children));
 		if (init) init();
 	}
 

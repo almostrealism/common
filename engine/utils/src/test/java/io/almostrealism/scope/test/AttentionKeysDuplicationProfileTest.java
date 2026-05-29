@@ -27,8 +27,10 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.ExpressionDuplicationScanner;
 import io.almostrealism.scope.ExpressionDuplicationScanner.Report;
+import io.almostrealism.scope.LeafInternTable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeExpressionCollector;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
@@ -61,24 +63,66 @@ import java.util.List;
 public class AttentionKeysDuplicationProfileTest extends TestSuiteBase implements
 		ExpressionFeatures, CollectionFeatures {
 
-	/** Sequence length; matches {@code AttentionTests.attentionKeys}. */
-	private static final int SEQ_LENGTH = 128;
+	/** Sequence length for the baseline run; matches {@code AttentionTests.attentionKeys}. */
+	private static final int SEQ_LENGTH_BASELINE = 128;
+
+	/**
+	 * Sequence length for the interned run. Distinct from
+	 * {@link #SEQ_LENGTH_BASELINE} so the framework's compile cache cannot
+	 * reuse the first run's kernels — only the concrete dimension constants
+	 * differ between the two runs.
+	 */
+	private static final int SEQ_LENGTH_INTERNED = 112;
+
 	/** Attention heads; matches {@code AttentionTests.attentionKeys}. */
 	private static final int HEADS = 12;
 	/** Head size; matches {@code AttentionTests.attentionKeys}. */
 	private static final int HEAD_SIZE = 64;
 
 	/**
-	 * Builds the attention-keys forward pipeline, installs a compilation listener,
-	 * runs the workload, then scans every captured scope for Expression
-	 * duplication. Asserts only that we captured something — the actual numbers
-	 * go in the log for the investigation to read.
+	 * Builds the attention-keys forward pipeline, runs it twice — once with
+	 * {@link ScopeSettings#enableLeafInterning} off (the baseline) and once
+	 * with it on — and reports {@link ExpressionDuplicationScanner} statistics
+	 * for both. Same shape as
+	 * {@code RmsnormDuplicationProfileTest.rmsnormDuplicationProfile}; see
+	 * that test for the rationale on the same-JVM A/B approach.
 	 */
 	@Test(timeout = 120000)
 	public void attentionKeysDuplicationProfile() {
+		boolean previousFlag = ScopeSettings.enableLeafInterning;
+		LeafInternTable.clear();
+
+		try {
+			ScopeSettings.enableLeafInterning = false;
+			Report baseline = runOnce("baseline", SEQ_LENGTH_BASELINE);
+
+			LeafInternTable.clear();
+			ScopeSettings.enableLeafInterning = true;
+			Report interned = runOnce("interned", SEQ_LENGTH_INTERNED);
+
+			log("attentionKeys baseline (seq=" + SEQ_LENGTH_BASELINE + "):  " + baseline.summary());
+			log("attentionKeys interned (seq=" + SEQ_LENGTH_INTERNED + "):  " + interned.summary());
+			log("LeafInternTable size after interned run = " + LeafInternTable.size());
+		} finally {
+			ScopeSettings.enableLeafInterning = previousFlag;
+			LeafInternTable.clear();
+		}
+	}
+
+	/**
+	 * Runs the attention-keys pipeline once with the current
+	 * {@link ScopeSettings#enableLeafInterning} setting, captures all compiled
+	 * scopes, scans them, and returns the report.
+	 *
+	 * @param label     tag printed before this run's report
+	 * @param seqLength sequence length (drives the compile signature so two
+	 *                  calls at different lengths both produce a fresh compile)
+	 * @return the duplication report for this run
+	 */
+	private Report runOnce(String label, int seqLength) {
 		TraversalPolicy inputShape = shape(HEADS, HEAD_SIZE);
-		TraversalPolicy keyShape = shape(SEQ_LENGTH, HEADS, HEAD_SIZE);
-		TraversalPolicy outputShape = shape(HEADS, SEQ_LENGTH);
+		TraversalPolicy keyShape = shape(seqLength, HEADS, HEAD_SIZE);
+		TraversalPolicy outputShape = shape(HEADS, seqLength);
 
 		PackedCollection q = new PackedCollection(inputShape);
 		PackedCollection keyCache = new PackedCollection(keyShape);
@@ -90,7 +134,7 @@ public class AttentionKeysDuplicationProfileTest extends TestSuiteBase implement
 				.traverse(1).map(v -> v.multiply(p(q)))
 				.traverse(2).sum()
 				.divide(c(Math.sqrt(HEAD_SIZE)))
-				.reshape(shape(SEQ_LENGTH, HEADS))
+				.reshape(shape(seqLength, HEADS))
 				.enumerate(1, 1)
 				.reshape(outputShape);
 
@@ -104,10 +148,9 @@ public class AttentionKeysDuplicationProfileTest extends TestSuiteBase implement
 			AbstractComputeContext.compilationTimingListener = previous;
 		}
 
-		log("attentionKeys seq=" + SEQ_LENGTH + " heads=" + HEADS + " head=" + HEAD_SIZE
-				+ " captured-scopes=" + capturedScopes.size());
-		Assert.assertFalse("the compilation listener captured no scopes; "
-				+ "is the workload reaching the compute context?",
+		log("attentionKeys [" + label + "] seq=" + seqLength + " heads=" + HEADS
+				+ " head=" + HEAD_SIZE + " captured-scopes=" + capturedScopes.size());
+		Assert.assertFalse("the compilation listener captured no scopes for run " + label,
 				capturedScopes.isEmpty());
 
 		List<Expression<?>> roots = new ArrayList<>();
@@ -115,15 +158,17 @@ public class AttentionKeysDuplicationProfileTest extends TestSuiteBase implement
 			roots.addAll(ScopeExpressionCollector.collect(scope));
 		}
 
-		log("expression-roots=" + roots.size());
-		Assert.assertFalse("ScopeExpressionCollector returned no Expression roots",
+		log("attentionKeys [" + label + "] expression-roots=" + roots.size());
+		Assert.assertFalse("ScopeExpressionCollector returned no Expression roots for run " + label,
 				roots.isEmpty());
 
 		Report report = ExpressionDuplicationScanner.scan(roots);
-		log(report.fullTable());
+		log("attentionKeys [" + label + "]\n" + report.fullTable());
 
-		Assert.assertTrue("scan found no Expression nodes: " + report.summary(),
-				report.getTotalNodes() > 0);
+		Assert.assertTrue("scan found no Expression nodes for run " + label + ": "
+				+ report.summary(), report.getTotalNodes() > 0);
+
+		return report;
 	}
 
 	/**

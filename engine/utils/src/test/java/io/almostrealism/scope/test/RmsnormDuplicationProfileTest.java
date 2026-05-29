@@ -22,8 +22,10 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.ExpressionDuplicationScanner;
 import io.almostrealism.scope.ExpressionDuplicationScanner.Report;
+import io.almostrealism.scope.LeafInternTable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeExpressionCollector;
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
@@ -66,24 +68,67 @@ import java.util.List;
  */
 public class RmsnormDuplicationProfileTest extends TestSuiteBase implements LayerFeatures {
 
-	/** Vector size of the rmsnorm layer. Matches {@code LayersTests.SIZE}. */
-	private static final int SIZE = 768;
+	/** Vector size for the baseline run. Matches {@code LayersTests.SIZE}. */
+	private static final int SIZE_BASELINE = 768;
 
 	/**
-	 * Builds the rmsnorm forward pipeline, installs a compilation listener,
-	 * runs the workload, then scans every captured scope for Expression
-	 * duplication. Asserts only that we captured something — the actual numbers
-	 * go in the log for the investigation to read.
+	 * Vector size for the interned run. Distinct from {@link #SIZE_BASELINE} so
+	 * the framework's compile cache cannot reuse the first run's compiled
+	 * kernels (the shape is part of the signature). The rmsnorm Expression
+	 * shape is identical at either size — only concrete dimension constants
+	 * differ — so duplication ratios are directly comparable.
+	 */
+	private static final int SIZE_INTERNED = 752;
+
+	/**
+	 * Builds the rmsnorm forward pipeline, runs it twice — once with
+	 * {@link ScopeSettings#enableLeafInterning} off (the baseline) and once
+	 * with it on, at a slightly different size to force a fresh compile — and
+	 * reports {@link ExpressionDuplicationScanner} statistics for both.
 	 */
 	@Test(timeout = 60000)
 	public void rmsnormDuplicationProfile() {
-		PackedCollection in = new PackedCollection(shape(SIZE));
+		boolean previousFlag = ScopeSettings.enableLeafInterning;
+		LeafInternTable.clear();
+
+		try {
+			ScopeSettings.enableLeafInterning = false;
+			Report baseline = runOnce("baseline", SIZE_BASELINE);
+
+			LeafInternTable.clear();
+			ScopeSettings.enableLeafInterning = true;
+			Report interned = runOnce("interned", SIZE_INTERNED);
+
+			log("rmsnorm baseline (SIZE=" + SIZE_BASELINE + "):  " + baseline.summary());
+			log("rmsnorm interned (SIZE=" + SIZE_INTERNED + "):  " + interned.summary());
+			log("LeafInternTable size after interned run = " + LeafInternTable.size());
+		} finally {
+			ScopeSettings.enableLeafInterning = previousFlag;
+			LeafInternTable.clear();
+		}
+	}
+
+	/**
+	 * Runs the rmsnorm pipeline once with the current
+	 * {@link ScopeSettings#enableLeafInterning} setting, captures all
+	 * compiled scopes via the static {@link CompilationTimingListener} hook,
+	 * scans them, and returns the report. Logs the per-class table under the
+	 * given label so baseline and interned runs are easy to distinguish in
+	 * the test output.
+	 *
+	 * @param label tag printed before this run's report
+	 * @param size  rmsnorm vector size (controls the compile signature so two
+	 *              calls at different sizes both produce a fresh compile)
+	 * @return the duplication report for this run
+	 */
+	private Report runOnce(String label, int size) {
+		PackedCollection in = new PackedCollection(shape(size));
 		in.fill(pos -> Math.random());
 
-		PackedCollection weights = new PackedCollection(shape(SIZE));
+		PackedCollection weights = new PackedCollection(shape(size));
 		weights.fill(pos -> Math.random());
 
-		SequentialBlock model = new SequentialBlock(shape(SIZE));
+		SequentialBlock model = new SequentialBlock(shape(size));
 		model.add(rmsnorm(weights));
 
 		OperationList op = (OperationList) model.getForward().push(p(in));
@@ -100,9 +145,8 @@ public class RmsnormDuplicationProfileTest extends TestSuiteBase implements Laye
 			AbstractComputeContext.compilationTimingListener = previous;
 		}
 
-		log("rmsnorm SIZE=" + SIZE + " captured-scopes=" + capturedScopes.size());
-		Assert.assertFalse("the compilation listener captured no scopes; "
-				+ "is the workload reaching the compute context?",
+		log("rmsnorm [" + label + "] SIZE=" + size + " captured-scopes=" + capturedScopes.size());
+		Assert.assertFalse("the compilation listener captured no scopes for run " + label,
 				capturedScopes.isEmpty());
 
 		List<Expression<?>> roots = new ArrayList<>();
@@ -110,15 +154,17 @@ public class RmsnormDuplicationProfileTest extends TestSuiteBase implements Laye
 			roots.addAll(ScopeExpressionCollector.collect(scope));
 		}
 
-		log("expression-roots=" + roots.size());
-		Assert.assertFalse("ScopeExpressionCollector returned no Expression roots",
+		log("rmsnorm [" + label + "] expression-roots=" + roots.size());
+		Assert.assertFalse("ScopeExpressionCollector returned no Expression roots for run " + label,
 				roots.isEmpty());
 
 		Report report = ExpressionDuplicationScanner.scan(roots);
-		log(report.fullTable());
+		log("rmsnorm [" + label + "]\n" + report.fullTable());
 
-		Assert.assertTrue("scan found no Expression nodes: " + report.summary(),
-				report.getTotalNodes() > 0);
+		Assert.assertTrue("scan found no Expression nodes for run " + label + ": "
+				+ report.summary(), report.getTotalNodes() > 0);
+
+		return report;
 	}
 
 	/**

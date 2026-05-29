@@ -387,6 +387,199 @@ once we have the Phase 1 benchmarks to evaluate them against.
   expressions across JVM invocations. Almost certainly not worth it
   for this codebase.
 
+## Status (2026-05-29) — Phase 2.5 extended interning (KernelIndex + InstanceReference)
+
+The Phase 2 prototype covered only `Constant<?>` subclasses. Phase 2.5
+extends `LeafInternTable` to also cover `KernelIndex` and
+`InstanceReference`. The investigation surfaced a real
+framework-equality dependency that shaped the implementation.
+
+### What the broader test surfaced
+
+A first attempt simply tightened `KernelIndex.compare()` to include
+axis + context. Running the broader test set (six representative
+classes, 110 tests) surfaced **4 real failures** in
+`ExpressionSimplificationTests`:
+
+- `kernelIndexOptions` — `getIndexOptions(kernel())` looks up axis-0
+  matches inside an expression by querying with a freshly-built
+  no-context `kernel()`. With loose compare it found the
+  context-bearing internal index; with strict compare it did not.
+- `sequenceMax3` / `sequenceMax4` / `kernelSumMod2` — same pattern
+  via `Expression.sequence(...)`: the framework looks up a kernel
+  axis ignoring context, and relies on the loose compare.
+
+So the framework's contract is "two `KernelIndex` with the same axis
+are interchangeable for lookups; if you need context-specific
+behaviour, call simplify." Tightening the compare violated that
+contract.
+
+### The fix: dual-table strict secondary key
+
+The compare on `KernelIndex` was reverted. `LeafInternTable` now uses
+a strict secondary key for `KernelIndex` only — a small
+`KernelIndexKey` inner class with its own equals/hashCode based on
+axis + context-by-reference, stored in a second
+`ConcurrentHashMap<KernelIndexKey, KernelIndex>`. Expression-level
+equality stays exactly as the framework expects; intern lookups are
+strict by construction.
+
+`InstanceReference` did not need a compare change — its existing
+`compare()` already includes var/pos/index. It is added directly to
+the primary table.
+
+### A/B numbers after Phase 2.5
+
+| workload | baseline | Phase 2 (constants) | Phase 2.5 (constants + KernelIndex + InstanceReference) |
+|---|---|---|---|
+| rmsnorm | total=33 dup=6 ratio=0.182 | total=30 dup=3 ratio=0.100 | **total=30 dup=3 ratio=0.100** (unchanged) |
+| attentionKeys | total=44 dup=16 ratio=0.364 | total=41 dup=13 ratio=0.317 | **total=37 dup=9 ratio=0.243** |
+
+On attention, KernelIndex collapsed from 6→1 (loose, 5 dups) to 2→1
+(strict, 1 dup) — 4 of the 5 duplicates were context-equivalent and
+folded; the remaining 1 represents two genuinely different contexts
+that correctly stayed separate. rmsnorm's KernelIndex distinct count
+was unchanged (1 → 1) because all its kernel indices already shared a
+single context.
+
+`LeafInternTable.size()` after the interned runs: **16 (rmsnorm), 23
+(attentionKeys)**. The KernelIndex secondary table holds 1-2 entries
+in each, the rest are constants and InstanceReferences.
+
+### Documented limitation — InstanceReference top-level bypass
+
+`InstanceReference` was added to `isInternable` and has 2 structural
+duplicates in each workload, but **none of them collapsed**. Cause:
+the canonicalisation hook fires in the parent `Expression`
+constructor (`children = canonicalize(children)`); leaves only reach
+the hook when they are children of another constructed expression.
+The remaining duplicate `InstanceReference`s in these workloads are
+top-level scope variables / statements — they are not children of
+anything we construct, so the hook never sees them.
+
+A future Phase 2.6 could close this gap by hooking the
+canonicalisation at the point where statements are added to a scope
+or where the compute context dispatches a scope for compilation.
+That is out of scope for the current prototype.
+
+### Verification
+
+- **110/110 tests pass** across MaskedSumReorderingTests,
+  LeafInternTableTests, ExpressionDuplicationScannerTests,
+  ExpressionSimplificationTests, KernelSeriesTests,
+  QuotientMultiOperandTest. Both rmsnorm + attention adaptors pass.
+- Build validator clean (checkstyle, code_policy, test_timeouts,
+  duplicate_code).
+
+### Files changed in this round
+
+- `base/code/src/main/java/io/almostrealism/scope/LeafInternTable.java` —
+  added strict secondary table + `KernelIndexKey`; extended
+  `isInternable`; updated docs.
+- `engine/utils/.../scope/test/LeafInternTableTests.java` —
+  added `kernelIndicesAreInternedByStrictKey`, rewrote
+  `tableRespectsMaxSizeCap` to test the cap contract directly rather
+  than rely on exact `size()` (which now spans two tables), updated
+  `findInternableLeaf` to filter on `IntegerConstant` rather than any
+  internable.
+- `base/code/src/main/java/io/almostrealism/kernel/KernelIndex.java` —
+  no net change (an attempted compare tightening was reverted after
+  the broader-test surfacing).
+
+---
+
+## Status (2026-05-29) — Phase 2 leaf interning prototype landed
+
+The Phase 2 prototype targets `Constant<?>` subclasses only —
+`IntegerConstant`, `DoubleConstant`, `LongConstant`, `BooleanConstant`,
+`ConstantValue`. Context-bearing leaves (`KernelIndex`,
+`InstanceReference`, `SizeValue`) are deliberately excluded for the
+first cut because their {@code compare()} contract does not include
+all fields that distinguish a usage site from a different one.
+
+### Implementation
+
+- `base/code/.../scope/LeafInternTable.java` (new) — process-wide
+  `ConcurrentHashMap<Expression<?>, Expression<?>>` keyed by structural
+  equality. Bounded by `ScopeSettings.maxLeafInternTableSize` (default
+  4096); above the cap, lookups still return existing canonicals but
+  new entries are not added.
+- `base/code/.../scope/ScopeSettings.java` — new flags
+  `enableLeafInterning` (default `false`) and `maxLeafInternTableSize`.
+- `base/code/.../expression/Expression.java` — one-line hook in the
+  children-taking constructor:
+  ```java
+  this.children = List.of(LeafInternTable.canonicalize(children));
+  ```
+  When the flag is off this is a no-op early return; when on it
+  replaces internable leaves in the children array with their
+  canonical instances. Each freshly-allocated leaf still allocates;
+  duplicates simply become unreferenced once their parents finish
+  construction.
+- `engine/utils/.../scope/test/LeafInternTableTests.java` (new) —
+  six tests covering: flag-off preserves identity, flag-on collapses
+  duplicates, structural equality preserved across the rewrite,
+  non-`Constant` leaves are untouched, `DoubleConstant`s intern
+  alongside `IntegerConstant`s, the size cap degrades gracefully.
+
+### A/B numbers from real compiles
+
+Both adaptor tests now run baseline (flag off) and interned (flag on)
+side-by-side in a single test method. Each run uses a slightly
+different shape so the framework's compile cache cannot reuse the
+first run's kernels — only concrete dimension constants differ
+between the two runs.
+
+| workload | run | shape | total | distinct | dup | ratio | IntegerConstant dup |
+|---|---|---|---|---|---|---|---|
+| rmsnorm | baseline | SIZE=768 | 33 | 27 | 6 | 0.182 | 3 |
+| rmsnorm | interned | SIZE=752 | 30 | 27 | 3 | **0.100** | 0 |
+| attentionKeys | baseline | seq=128 | 44 | 28 | 16 | 0.364 | 3 |
+| attentionKeys | interned | seq=112 | 41 | 28 | 13 | **0.317** | 0 |
+
+Two invariants hold across both runs and both workloads:
+
+1. **Distinct count is unchanged** (27 → 27, 28 → 28). Identity collapse
+   does not collapse structural classes — interning preserves
+   semantics.
+2. **Every `IntegerConstant` duplicate is eliminated** (3 → 0 in both
+   workloads). The prototype does exactly what it claims for the leaf
+   types it targets.
+
+`LeafInternTable` size after the interned runs: **6 entries (rmsnorm),
+7 entries (attentionKeys)** — well under the 4096 cap, no degradation
+behaviour exercised at this scale.
+
+### What's left for attention
+
+The Phase 1 attention numbers showed three big duplicate populations:
+
+- `KernelIndex` 6 → 1 (5 duplicates, ~31% of the total)
+- `Product` 7 → 4 (3 duplicates, ~19%)
+- `InstanceReference` 7 → 5 (2 duplicates, ~12%)
+
+The Phase 2 prototype does not address any of these — `KernelIndex` and
+`InstanceReference` are context-bearing and excluded; `Product` is a
+structural node not a leaf. The remaining drop from 0.364 to 0.317 is
+exactly what we expected from the leaf-only intervention.
+
+The next natural Phase 2 step is to fix the `compare()` semantics on
+`KernelIndex` and `InstanceReference` so they're safely internable,
+then re-measure. Structural-subtree interning (Product, Sum, etc.)
+should wait until we have a stronger case for it — at present those
+duplicates account for a small fraction of the total.
+
+### Files added in this round
+
+- `base/code/src/main/java/io/almostrealism/scope/LeafInternTable.java` (new)
+- `engine/utils/src/test/java/io/almostrealism/scope/test/LeafInternTableTests.java` (new)
+- `base/code/src/main/java/io/almostrealism/scope/ScopeSettings.java` (two new fields)
+- `base/code/src/main/java/io/almostrealism/expression/Expression.java` (one-line constructor hook + one import)
+- `engine/utils/.../RmsnormDuplicationProfileTest.java` (extended for baseline/interned A/B)
+- `engine/utils/.../AttentionKeysDuplicationProfileTest.java` (same)
+
+---
+
 ## Status (2026-05-28) — Phase 1.1 + first 1.2 adaptor (rmsnorm)
 
 - Plan drafted on `feature/expression-dag-intern` (off
