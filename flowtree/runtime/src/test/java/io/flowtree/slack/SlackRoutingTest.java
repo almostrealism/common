@@ -1,0 +1,347 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.flowtree.slack;
+
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Test;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import static org.junit.Assert.*;
+
+/**
+ * Tests for {@link SlackListener} workspace-aware routing, multi-tenant
+ * channel key generation, and {@link SlackNotifier} workstream resolution
+ * by branch name.
+ *
+ * <p>These tests verify:
+ * <ul>
+ *   <li>Composite channel keys including workspace ID ({@code T111:C_CHANNEL})</li>
+ *   <li>Backward compatibility for bare channel ID routing</li>
+ *   <li>Workspace-aware workstream registration and lookup</li>
+ *   <li>Forwarding to per-workspace {@link SlackNotifier} instances</li>
+ *   <li>Slash command workspace ID propagation</li>
+ * </ul>
+ */
+public class SlackRoutingTest extends TestSuiteBase {
+
+    @Test(timeout = 10000)
+    public void testChannelKeyNullWorkspaceReturnsBareChannelId() {
+        assertEquals("C_ALPHA", SlackListener.channelKey(null, "C_ALPHA"));
+    }
+
+    @Test(timeout = 10000)
+    public void testChannelKeyWithWorkspaceReturnsCompositeKey() {
+        assertEquals("T111:C_ALPHA", SlackListener.channelKey("T111", "C_ALPHA"));
+    }
+
+    @Test(timeout = 10000)
+    public void testChannelKeyDifferentWorkspacesSameChannelProduceDifferentKeys() {
+        String keyA = SlackListener.channelKey("T111", "C_SHARED");
+        String keyB = SlackListener.channelKey("T222", "C_SHARED");
+        assertFalse("Same channel in different workspaces must produce different keys",
+                keyA.equals(keyB));
+    }
+
+    @Test(timeout = 10000)
+    public void testBackwardCompatNullWorkspaceIdRouting() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        Workstream ws = new Workstream("ws-back", "C_BACK", "#back");
+        ws.setDefaultBranch("main");
+        listener.registerWorkstream(ws);
+
+        Workstream found = listener.getWorkstream("C_BACK");
+        assertNotNull("Backward compat: getWorkstream() with bare channel ID must work", found);
+        assertEquals("C_BACK", found.getChannelId());
+    }
+
+    @Test(timeout = 10000)
+    public void testWorkspaceAwareWorkstreamRegistration() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        Workstream ws = new Workstream("ws-multi", "C_MULTI", "#multi");
+        ws.setDefaultBranch("main");
+        ws.setWorkspaceId("T111");
+        listener.registerWorkstream(ws);
+
+        listener.handleMessage("C_MULTI", "U1", "hello", "ts1", null, "T111");
+        boolean found = listener.getWorkstreams().values().stream()
+                .anyMatch(w -> "C_MULTI".equals(w.getChannelId()));
+        assertTrue("Workspace-aware workstream should be registered", found);
+    }
+
+    @Test(timeout = 10000)
+    public void testSameChannelIdInTwoWorkspacesRoutedIndependently() {
+        SlackNotifier notifierA = new SlackNotifier(null);
+        SlackNotifier notifierB = new SlackNotifier(null);
+
+        SlackListener listener = new SlackListener(notifierA);
+
+        Map<String, SlackNotifier> byWorkspace = new HashMap<>();
+        byWorkspace.put("T111", notifierA);
+        byWorkspace.put("T222", notifierB);
+        listener.setNotifiersByWorkspace(byWorkspace);
+
+        Workstream wsA = new Workstream("ws-a", "C_SHARED", "#shared-a");
+        wsA.setDefaultBranch("main");
+        wsA.setWorkspaceId("T111");
+        listener.registerWorkstream(wsA);
+
+        Workstream wsB = new Workstream("ws-b", "C_SHARED", "#shared-b");
+        wsB.setDefaultBranch("develop");
+        wsB.setWorkspaceId("T222");
+        listener.registerWorkstream(wsB);
+
+        assertEquals("Two workstreams with same channelId in different workspaces must coexist",
+                2, listener.getWorkstreams().size());
+
+        boolean hasMain = listener.getWorkstreams().values().stream()
+                .anyMatch(w -> "main".equals(w.getDefaultBranch()));
+        boolean hasDevelop = listener.getWorkstreams().values().stream()
+                .anyMatch(w -> "develop".equals(w.getDefaultBranch()));
+        assertTrue("wsA (main branch) must be registered", hasMain);
+        assertTrue("wsB (develop branch) must be registered", hasDevelop);
+    }
+
+    @Test(timeout = 10000)
+    public void testHandleMessageUnknownChannelReturnsFalseWithWorkspaceId() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        boolean handled = listener.handleMessage("C_UNKNOWN", "U1", "hello", "ts1", null, "T111");
+        assertFalse("Message to unknown channel must return false", handled);
+    }
+
+    @Test(timeout = 10000)
+    public void testSlashCommandSetupSetsSlackWorkspaceIdOnNewWorkstream() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        java.util.List<String> responses = new java.util.ArrayList<>();
+        SlackListener.SlashCommandResponder responder = text -> responses.add(text);
+
+        listener.handleSlashCommand("setup /workspace/project feature/test",
+                "C_SETUP_WS", "#setup-ws", responder, "T999");
+
+        boolean foundWithWorkspace = listener.getWorkstreams().values().stream()
+                .anyMatch(w -> "T999".equals(w.getWorkspaceId())
+                        && "C_SETUP_WS".equals(w.getChannelId()));
+        assertTrue("Setup must store slackWorkspaceId on new workstream", foundWithWorkspace);
+    }
+
+    @Test(timeout = 10000)
+    public void testSlashCommandActiveFiltersWorkstreamsByWorkspace() {
+        SlackNotifier notifier = new SlackNotifier(null);
+        SlackListener listener = new SlackListener(notifier);
+
+        Map<String, SlackNotifier> byWorkspace = new HashMap<>();
+        byWorkspace.put("T111", notifier);
+        listener.setNotifiersByWorkspace(byWorkspace);
+
+        Workstream wsA = new Workstream("ws-act-a", "C_ACT_A", "#act-a");
+        wsA.setDefaultBranch("main");
+        wsA.setWorkspaceId("T111");
+        listener.registerWorkstream(wsA);
+
+        Workstream wsB = new Workstream("ws-act-b", "C_ACT_B", "#act-b");
+        wsB.setDefaultBranch("develop");
+        wsB.setWorkspaceId("T222");
+        listener.registerWorkstream(wsB);
+
+        java.util.List<String> responses = new java.util.ArrayList<>();
+        SlackListener.SlashCommandResponder responder = text -> responses.add(text);
+        listener.handleSlashCommand("active", "C_ACT_A", "#act-a", responder, "T111");
+
+        assertFalse("Active command should respond", responses.isEmpty());
+        assertTrue("With null stats store active command warns",
+                responses.get(0).contains("not available"));
+    }
+
+    @Test(timeout = 10000)
+    public void testSetNotifiersByWorkspaceIsUsedForNotifierResolution() {
+        SlackNotifier primaryNotifier = new SlackNotifier(null);
+        SlackNotifier workspaceNotifier = new SlackNotifier(null);
+
+        SlackListener listener = new SlackListener(primaryNotifier);
+
+        Map<String, SlackNotifier> byWorkspace = new HashMap<>();
+        byWorkspace.put("T_SPECIAL", workspaceNotifier);
+        listener.setNotifiersByWorkspace(byWorkspace);
+
+        Workstream ws = new Workstream("ws-special", "C_SPECIAL", "#special");
+        ws.setWorkspaceId("T_SPECIAL");
+        ws.setDefaultBranch("main");
+        listener.registerWorkstream(ws);
+
+        Map<String, JobCompletionEvent> jobs = workspaceNotifier.getRecentJobs(ws.getWorkstreamId());
+        assertNotNull("Workspace notifier should have workstream registered", jobs);
+    }
+
+    @Test(timeout = 10000)
+    public void testFindWorkstreamByBranch() {
+        SlackNotifier notifier = new SlackNotifier(null);
+
+        Workstream ws1 = new Workstream("ws-rings", "C_RINGS", "#rings");
+        ws1.setDefaultBranch("feature/new-decoder");
+
+        Workstream ws2 = new Workstream("ws-common", "C_COMMON", "#common");
+        ws2.setDefaultBranch("feature/pipeline-agents");
+
+        Workstream ws3 = new Workstream("ws-no-branch", "C_NONE", "#no-branch");
+
+        notifier.registerWorkstream(ws1);
+        notifier.registerWorkstream(ws2);
+        notifier.registerWorkstream(ws3);
+
+        assertSame(ws1, notifier.findWorkstreamByBranch("feature/new-decoder"));
+        assertSame(ws2, notifier.findWorkstreamByBranch("feature/pipeline-agents"));
+
+        assertNull(notifier.findWorkstreamByBranch("feature/unknown"));
+        assertNull(notifier.findWorkstreamByBranch(null));
+        assertNull(notifier.findWorkstreamByBranch(""));
+
+        assertNull(notifier.findWorkstreamByBranch("feature/new"));
+        assertNull(notifier.findWorkstreamByBranch("feature/new-decoder-v2"));
+    }
+
+    @Test(timeout = 10000)
+    public void testApiSubmitAmbiguousBranchAcrossDifferentRepos() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream wsCommon = new Workstream("C_COMMON", "#w-audio-prototypes");
+        wsCommon.setDefaultBranch("feature/audio-prototypes");
+        wsCommon.setRepoUrl("git@github.com:almostrealism/common.git");
+        notifier.registerWorkstream(wsCommon);
+
+        Workstream wsRings = new Workstream("C_RINGS", "#w-audio-prototypes-rings");
+        wsRings.setDefaultBranch("feature/audio-prototypes");
+        wsRings.setRepoUrl("git@github.com:almostrealism/ringsdesktop.git");
+        notifier.registerWorkstream(wsRings);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"prompt\":\"Do something\","
+                    + "\"targetBranch\":\"feature/audio-prototypes\"}";
+
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/submit").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            try (java.io.OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+
+            assertEquals(400, conn.getResponseCode());
+            String error = new String(conn.getErrorStream().readAllBytes(),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            assertTrue("Error should mention ambiguous resolution; was: " + error,
+                    error.contains("Ambiguous"));
+            assertTrue("Error should name the branch involved",
+                    error.contains("feature/audio-prototypes"));
+            assertTrue("Error should mention both repositories",
+                    error.contains("common") && error.contains("ringsdesktop"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    @Test(timeout = 10000)
+    public void testApiSubmitDisambiguatesByRepoUrl() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream wsCommon = new Workstream("C_COMMON", "#w-audio-prototypes");
+        wsCommon.setDefaultBranch("feature/audio-prototypes");
+        wsCommon.setRepoUrl("git@github.com:almostrealism/common.git");
+        notifier.registerWorkstream(wsCommon);
+
+        Workstream wsRings = new Workstream("C_RINGS", "#w-audio-prototypes-rings");
+        wsRings.setDefaultBranch("feature/audio-prototypes");
+        wsRings.setRepoUrl("git@github.com:almostrealism/ringsdesktop.git");
+        notifier.registerWorkstream(wsRings);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"prompt\":\"Do something\","
+                    + "\"targetBranch\":\"feature/audio-prototypes\","
+                    + "\"repoUrl\":\"git@github.com:almostrealism/common.git\"}";
+
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/submit").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            try (java.io.OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+
+            assertEquals(400, conn.getResponseCode());
+            String error = new String(conn.getErrorStream().readAllBytes(),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            assertTrue("Resolver must not have flagged ambiguity; got: " + error,
+                    !error.contains("Ambiguous"));
+            assertTrue("Submission must reach the post-resolution server check; got: " + error,
+                    error.contains("No FlowTree server"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    @Test(timeout = 10000)
+    public void testApiSubmitRepoUrlMismatchDoesNotCrossRoute() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream wsCommon = new Workstream("C_COMMON", "#w-audio-prototypes");
+        wsCommon.setDefaultBranch("feature/audio-prototypes");
+        wsCommon.setRepoUrl("git@github.com:almostrealism/common.git");
+        notifier.registerWorkstream(wsCommon);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"prompt\":\"Do something\","
+                    + "\"targetBranch\":\"feature/audio-prototypes\","
+                    + "\"repoUrl\":\"git@github.com:almostrealism/ringsdesktop.git\"}";
+
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/submit").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            try (java.io.OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+
+            assertEquals(400, conn.getResponseCode());
+            String error = new String(conn.getErrorStream().readAllBytes(),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            assertTrue("Should report no workstream found, not silently cross-route; got: " + error,
+                    error.contains("No workstream found for branch"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+}
