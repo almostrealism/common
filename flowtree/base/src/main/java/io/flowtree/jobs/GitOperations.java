@@ -796,14 +796,17 @@ public class GitOperations implements ConsoleFeatures {
                     resolveGitCommand(), "diff", "--name-only", "--diff-filter=A",
                     "origin/" + baseBranch);
             if (workDir != null) pb.directory(new File(workDir));
-            pb.redirectErrorStream(true);
+            // Keep stderr separate so a git failure (not-a-repo, unknown base ref,
+            // etc.) cannot be mis-parsed as a "new file" path.
             augmentPath(pb);
             Process p = pb.start();
-            String listing = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            p.waitFor();
-            for (String path : listing.split("\n")) {
-                String trimmed = path.trim();
-                if (!isExcludedPath(trimmed)) seen.add(trimmed);
+            String listing = new String(
+                    p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            if (p.waitFor() == 0) {
+                for (String path : listing.split("\n")) {
+                    String trimmed = path.trim();
+                    if (!trimmed.isEmpty() && !isExcludedPath(trimmed)) seen.add(trimmed);
+                }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -815,14 +818,15 @@ public class GitOperations implements ConsoleFeatures {
             ProcessBuilder pb = new ProcessBuilder(
                     resolveGitCommand(), "ls-files", "--others", "--exclude-standard");
             if (workDir != null) pb.directory(new File(workDir));
-            pb.redirectErrorStream(true);
             augmentPath(pb);
             Process p = pb.start();
-            String listing = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            p.waitFor();
-            for (String path : listing.split("\n")) {
-                String trimmed = path.trim();
-                if (!isExcludedPath(trimmed)) seen.add(trimmed);
+            String listing = new String(
+                    p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            if (p.waitFor() == 0) {
+                for (String path : listing.split("\n")) {
+                    String trimmed = path.trim();
+                    if (!trimmed.isEmpty() && !isExcludedPath(trimmed)) seen.add(trimmed);
+                }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();

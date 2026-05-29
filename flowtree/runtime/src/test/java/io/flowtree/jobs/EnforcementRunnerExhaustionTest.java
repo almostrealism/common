@@ -253,8 +253,16 @@ public class EnforcementRunnerExhaustionTest extends TestSuiteBase {
             @Override public void onCorrectionAttempted(CodingAgentJob job) { rule2Executions.incrementAndGet(); }
         };
 
-        // TODO(review): anonymous class override "protected void harnessStatus()" does not compile — CodingAgentJob.harnessStatus() returns HarnessStatusReporter; remove the override (no-op already when workstreamUrl is null)
-        CodingAgentJob job = new CodingAgentJob("t1", "Do the work") {};
+        CodingAgentJob job = new CodingAgentJob("t1", "Do the work") {
+            @Override
+            void executeSingleRun() {
+                // Keep the test hermetic: rule corrections route through
+                // runCorrectionSession() -> executeSingleRun(), and the real
+                // implementation would launch a Claude subprocess. The rule's
+                // onCorrectionAttempted() (which increments the counters) still
+                // runs, so the per-rule ceiling assertions remain meaningful.
+            }
+        };
         job.setWorkingDirectory(tempDir.toString());
         job.setTargetBranch("feature/test");
         job.setEnforceOrganizationalPlacement(false);

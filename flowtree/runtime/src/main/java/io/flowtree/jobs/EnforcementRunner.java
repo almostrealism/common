@@ -23,9 +23,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 /**
  * Orchestrates the post-run enforcement rules for a {@link CodingAgentJob}.
@@ -110,43 +110,47 @@ class EnforcementRunner implements ConsoleFeatures {
         List<EnforcementRule> rules = buildActiveRules();
         int totalAttempts = 0;
         boolean anyRuleCorrectionRan;
-        Map<String, Integer> ruleEntryCount = new HashMap<>();
+        // Rules that must never be re-entered: either their per-rule cap exceeded the
+        // absolute ceiling (so re-running would only hit the ceiling again) or an
+        // exhaustion fallback has already resolved them. A chronically-violated rule
+        // with a modest per-rule cap is NOT placed here — it re-enters across passes
+        // and is bounded by the global total-attempt cap instead.
+        Set<String> exhaustedRules = new HashSet<>();
         do {
             anyRuleCorrectionRan = false;
             for (EnforcementRule rule : rules) {
+                String ruleName = rule.getName();
+                if (exhaustedRules.contains(ruleName)) {
+                    continue;
+                }
                 if (!rule.isViolated(job)) {
-                    log("Enforcement rule '" + rule.getName() + "': no violation");
+                    log("Enforcement rule '" + ruleName + "': no violation");
                     continue;
                 }
 
-                log("Enforcement rule '" + rule.getName() + "': violation detected");
+                log("Enforcement rule '" + ruleName + "': violation detected");
 
-                int ruleEntries = ruleEntryCount.getOrDefault(rule.getName(), 0);
-                if (ruleEntries >= CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES) {
-                    warn("Enforcement rule '" + rule.getName()
-                            + "': absolute entry ceiling (" + CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES
-                            + ") reached; skipping rule to prevent runaway cost");
-                    job.harnessStatus().unusual("Enforcement rule '" + rule.getName()
-                            + "' reached absolute entry ceiling and was skipped");
-                    continue;
-                }
-                ruleEntryCount.put(rule.getName(), ruleEntries + 1);
-
+                // Correction attempts in a single pass are bounded by the rule's own cap
+                // and the absolute safety ceiling, whichever is smaller. When the rule's
+                // cap exceeds the ceiling, the ceiling is what stops the pass — and in that
+                // case the rule is retired afterwards so it cannot re-enter and run away.
+                int ruleCap = Math.min(rule.getMaxRetries(), CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES);
+                boolean ceilingLimited = rule.getMaxRetries() > CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES;
                 int attempts = 0;
-                while (attempts < rule.getMaxRetries()
+                while (attempts < ruleCap
                         && rule.isViolated(job)
                         && !job.hasAgentCommitted()
                         && totalAttempts < CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
                     attempts++;
                     totalAttempts++;
                     anyRuleCorrectionRan = true;
-                    log("Enforcement rule '" + rule.getName()
+                    log("Enforcement rule '" + ruleName
                             + "': correction attempt " + attempts);
                     String correctionPrompt = rule.buildCorrectionPrompt(job);
                     if (correctionPrompt != null) {
-                        job.runCorrectionSession(correctionPrompt, rule.getName());
+                        job.runCorrectionSession(correctionPrompt, ruleName);
                     } else {
-                        if ("enforce-changes".equals(rule.getName())) {
+                        if ("enforce-changes".equals(ruleName)) {
                             job.setEnforcementAttempt(job.getEnforcementAttempt() + 1);
                             log("enforce_changes found no changes; restarting PRIMARY (retry "
                                     + job.getEnforcementAttempt() + ")");
@@ -158,8 +162,8 @@ class EnforcementRunner implements ConsoleFeatures {
                             catch (IOException e) { warn("Could not save commit.txt: " + e.getMessage()); }
                         }
                         String previousActivity = job.getCurrentActivity();
-                        if (!"enforce-changes".equals(rule.getName())) {
-                            job.setCurrentActivity(rule.getName());
+                        if (!"enforce-changes".equals(ruleName)) {
+                            job.setCurrentActivity(ruleName);
                         }
                         try {
                             job.executeSingleRun();
@@ -177,18 +181,33 @@ class EnforcementRunner implements ConsoleFeatures {
                 }
 
                 if (!job.hasAgentCommitted() && rule.isViolated(job)) {
-                    if (attempts >= rule.getMaxRetries()) {
-                        warn("Enforcement rule '" + rule.getName() + "': exhausted "
-                                + rule.getMaxRetries() + " retries without resolution");
-                        job.harnessStatus().unusual("Enforcement rule '" + rule.getName()
-                                + "' exhausted " + rule.getMaxRetries() + " retries without resolution");
-                        if ("post-completion-command".equals(rule.getName())) job.setPostCompletionCapHit(true);
-                        applyExhaustionFallback(rule, job);
+                    if (attempts >= ruleCap) {
+                        if (ceilingLimited) {
+                            warn("Enforcement rule '" + ruleName
+                                    + "': absolute entry ceiling (" + CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES
+                                    + ") reached; skipping rule to prevent runaway cost");
+                            job.harnessStatus().unusual("Enforcement rule '" + ruleName
+                                    + "' reached absolute entry ceiling and was skipped");
+                        } else {
+                            warn("Enforcement rule '" + ruleName + "': exhausted "
+                                    + rule.getMaxRetries() + " retries without resolution");
+                            job.harnessStatus().unusual("Enforcement rule '" + ruleName
+                                    + "' exhausted " + rule.getMaxRetries() + " retries without resolution");
+                        }
+                        if ("post-completion-command".equals(ruleName)) job.setPostCompletionCapHit(true);
+                        boolean fallbackApplied = applyExhaustionFallback(rule, job);
+                        // Retire the rule only when the ceiling bound it (re-running would
+                        // just hit the ceiling again) or a fallback already resolved it.
+                        // Otherwise the rule is free to re-enter on the next pass, with the
+                        // global total-attempt cap as the ultimate backstop.
+                        if (ceilingLimited || fallbackApplied) {
+                            exhaustedRules.add(ruleName);
+                        }
                     } else if (totalAttempts >= CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
-                        warn("Enforcement rule '" + rule.getName()
+                        warn("Enforcement rule '" + ruleName
                                 + "': stopped because the total enforcement attempt cap was reached");
                     }
-                } else if ("post-completion-command".equals(rule.getName()) && ((PostCompletionCommandRule) rule).isCapHit()) {
+                } else if ("post-completion-command".equals(ruleName) && ((PostCompletionCommandRule) rule).isCapHit()) {
                     job.setPostCompletionCapHit(true);
                 }
                 if (totalAttempts >= CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) break;
@@ -206,17 +225,23 @@ class EnforcementRunner implements ConsoleFeatures {
     /**
      * Invokes the rule-specific fallback when a rule's per-pass cap is exhausted.
      * The fallback writes a usable commit message so the job can proceed.
+     *
+     * @return {@code true} if a fallback was applied (so the rule is now resolved
+     *         and should not be re-entered); {@code false} if the rule has no
+     *         fallback
      */
-    private void applyExhaustionFallback(EnforcementRule rule, CodingAgentJob job) {
-        if (!"commit-message".equals(rule.getName())) return;
+    private boolean applyExhaustionFallback(EnforcementRule rule, CodingAgentJob job) {
+        if (!"commit-message".equals(rule.getName())) return false;
         Path commitFile = job.resolveWorkingPath("commit.txt");
-        if (commitFile == null) return;
+        if (commitFile == null) return false;
         String fallback = buildFallbackCommitMessage(job);
         try {
             Files.writeString(commitFile, fallback, StandardCharsets.UTF_8);
             log("commit-message rule: wrote fallback commit message to commit.txt");
+            return true;
         } catch (IOException e) {
             warn("Could not write fallback commit.txt: " + e.getMessage());
+            return false;
         }
     }
 
