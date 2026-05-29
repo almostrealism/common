@@ -95,6 +95,24 @@ public class JobCompletionEvent {
     private String pullRequestUrl;
 
     /**
+     * Total USD cost for this job, populated from per-phase cost accumulation
+     * or from the {@code job_timing} table during retrieval.
+     */
+    protected double totalCostUsd;
+
+    /**
+     * Per-runner USD cost breakdown, populated from per-phase accumulation or
+     * from the {@code job_runner_cost} table during retrieval.
+     */
+    protected Map<String, Double> costByRunner = Collections.emptyMap();
+
+    /**
+     * Per-model USD cost breakdown, populated from per-phase accumulation or
+     * from the {@code job_model_cost} table during retrieval.
+     */
+    protected Map<String, Double> costByModel = Collections.emptyMap();
+
+    /**
      * Creates a new job completion event.
      *
      * @param jobId       the job identifier
@@ -298,12 +316,46 @@ public class JobCompletionEvent {
      * Returns the per-runner USD cost breakdown for this job, or an empty map
      * for non-coding-agent jobs and events that predate per-runner tracking.
      */
-    public Map<String, Double> getCostByRunner() { return Collections.emptyMap(); }
+    public Map<String, Double> getCostByRunner() { return costByRunner; }
     /**
      * Returns the per-model USD cost breakdown for this job, or an empty map
      * for non-coding-agent jobs and events that predate per-model tracking.
      */
-    public Map<String, Double> getCostByModel() { return Collections.emptyMap(); }
+    public Map<String, Double> getCostByModel() { return costByModel; }
+
+    // ---- Public setters for use by JobStatsStore row reconstruction ----
+
+    /**
+     * Sets the total USD cost for this job.
+     *
+     * @param totalCostUsd the total cost
+     */
+    public void setTotalCostUsd(double totalCostUsd) { this.totalCostUsd = totalCostUsd; }
+
+    /**
+     * Returns the total USD cost for this job.
+     *
+     * @return the total cost
+     */
+    public double getTotalCostUsd() { return totalCostUsd; }
+
+    /**
+     * Sets the per-runner cost breakdown for this job.
+     *
+     * @param costByRunner map of runner name to USD cost
+     */
+    public void setCostByRunner(Map<String, Double> costByRunner) {
+        this.costByRunner = costByRunner != null ? Map.copyOf(costByRunner) : Collections.emptyMap();
+    }
+
+    /**
+     * Sets the per-model cost breakdown for this job.
+     *
+     * @param costByModel map of provider/model identifier to USD cost
+     */
+    public void setCostByModel(Map<String, Double> costByModel) {
+        this.costByModel = costByModel != null ? Map.copyOf(costByModel) : Collections.emptyMap();
+    }
 
     // ==================== Builder-pattern setters ====================
 

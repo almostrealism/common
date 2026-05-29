@@ -903,6 +903,18 @@ public class CodingAgentJob extends GitManagedJob {
      */
     public static final int DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS = 25;
 
+    /**
+     * Absolute ceiling on the number of times the outer enforcement loop will
+     * re-enter any single rule within one job.  This is a safety net: per-rule
+     * caps ({@link EnforcementRule#getMaxRetries()}) are the primary mechanism,
+     * but a bug in the exhaustion-tracking logic could allow a rule to re-enter
+     * indefinitely.  A value of 10 is far beyond any normal rule's per-pass
+     * budget (e.g. commit-message has cap=2, deduplication has cap=3) so it will
+     * not trip in ordinary operation but prevents runaway cost from any future
+     * bug like the infinite loop described in the task.
+     */
+    public static final int DEFAULT_MAX_RULE_ENTRIES = 10;
+
     @Override
     protected void doWork() {
         if (sessionStartedAt == null) sessionStartedAt = Instant.now();

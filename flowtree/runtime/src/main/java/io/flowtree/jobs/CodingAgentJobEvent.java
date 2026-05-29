@@ -72,19 +72,6 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     private String runnerName;
 
     /**
-     * Cumulative USD cost per runner name, summed across every phase invocation
-     * in this job. Empty for events emitted before per-runner cost tracking.
-     */
-    private Map<String, Double> costByRunner = Collections.emptyMap();
-
-    /**
-     * Cumulative USD cost per model (provider/model identifier), summed across
-     * every phase invocation in this job. Empty for events emitted before
-     * per-model cost tracking.
-     */
-    private Map<String, Double> costByModel = Collections.emptyMap();
-
-    /**
      * {@code true} when the post-completion command exhausted its per-job pass
      * cap without ever exiting zero. Distinguishes "command succeeded after N
      * passes" from "command failed and the gate was abandoned".
@@ -188,6 +175,7 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
         this.durationMs = durationMs;
         this.durationApiMs = durationApiMs;
         this.costUsd = costUsd;
+        setTotalCostUsd(costUsd);
         this.numTurns = numTurns;
         return this;
     }
@@ -379,20 +367,8 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
      * @return this event for chaining
      */
     public CodingAgentJobEvent withCostByRunner(Map<String, Double> costByRunner) {
-        this.costByRunner = costByRunner != null
-                ? Map.copyOf(costByRunner) : Collections.emptyMap();
+        setCostByRunner(costByRunner);
         return this;
-    }
-
-    /**
-     * Returns the per-runner cost breakdown for this job.
-     *
-     * @return an immutable map of runner name to cumulative USD cost; empty
-     *         when not populated
-     */
-    @Override
-    public Map<String, Double> getCostByRunner() {
-        return costByRunner;
     }
 
     /**
@@ -403,20 +379,8 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
      * @return this event for chaining
      */
     public CodingAgentJobEvent withCostByModel(Map<String, Double> costByModel) {
-        this.costByModel = costByModel != null
-                ? Map.copyOf(costByModel) : Collections.emptyMap();
+        setCostByModel(costByModel);
         return this;
-    }
-
-    /**
-     * Returns the per-model cost breakdown for this job.
-     *
-     * @return an immutable map of provider/model identifier to cumulative USD cost;
-     *         empty when not populated
-     */
-    @Override
-    public Map<String, Double> getCostByModel() {
-        return costByModel;
     }
 
     /**

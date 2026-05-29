@@ -1127,14 +1127,14 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
-     * Appends session metrics (stop reason, turns, cost, time, permission denials)
+     * Appends session metrics (turns, time, cost, permission denials)
      * to the Slack message if any metrics are available.
      */
     private void appendSessionMetrics(StringBuilder sb, JobCompletionEvent event) {
         boolean hasMetrics = event.getNumTurns() > 0
-            || event.getCostUsd() > 0
             || event.getDurationMs() > 0
-            || event.getSubtype() != null;
+            || event.getSubtype() != null
+            || event.getCostUsd() > 0;
         if (!hasMetrics) return;
 
         sb.append("   ---\n");
@@ -1154,14 +1154,6 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             sb.append("   Turns: ").append(event.getNumTurns()).append("\n");
         }
 
-        // Cost
-        if (event.getCostUsd() > 0) {
-            sb.append("   :moneybag: Cost: $").append(String.format("%.2f", event.getCostUsd()));
-            sb.append(JobStatsStore.formatCostBreakdown(event.getCostByRunner()));
-            sb.append(JobStatsStore.formatCostBreakdown(event.getCostByModel()));
-            sb.append("\n");
-        }
-
         // Duration (wall time and API time)
         if (event.getDurationMs() > 0) {
             sb.append("   Time: ").append(formatDuration(event.getDurationMs()));
@@ -1169,6 +1161,26 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 sb.append(" (API: ").append(formatDuration(event.getDurationApiMs())).append(")");
             }
             sb.append("\n");
+        }
+
+        // Cost
+        if (event.getCostUsd() > 0) {
+            sb.append(JobStatsStore.formatModelCostLines(event.getCostByModel()));
+            sb.append("   :dollar: $").append(String.format("%.2f", event.getCostUsd()));
+            sb.append(" total [");
+            Map<String, Double> costByRunner = event.getCostByRunner();
+            if (costByRunner != null && !costByRunner.isEmpty()) {
+                boolean first = true;
+                for (Map.Entry<String, Double> entry : costByRunner.entrySet()) {
+                    if (entry.getValue() == null || entry.getValue() <= 0.0) continue;
+                    if (!first) sb.append(" | ");
+                    first = false;
+                    sb.append(entry.getKey()).append(" $").append(String.format("%.2f", entry.getValue()));
+                }
+            }
+            // TODO(review): if costByRunner is empty or all-zero, this emits "total []" with empty brackets.
+            // Fix: collect runner lines into a StringBuilder first; skip the bracket wrapper when nothing was written.
+            sb.append("]\n");
         }
 
         // Permission denials

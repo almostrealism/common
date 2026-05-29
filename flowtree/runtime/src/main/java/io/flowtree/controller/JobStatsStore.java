@@ -485,6 +485,8 @@ public class JobStatsStore implements ConsoleFeatures {
     /**
      * Constructs a {@link JobCompletionEvent} from the current row of a ResultSet.
      * Returns a best-effort reconstruction; Claude-specific fields default to zero/null.
+     * Cost fields are populated from the per-runner and per-model cost tables so that
+     * {@code getJob} can return an event with a complete cost picture.
      */
     private JobCompletionEvent rowToEvent(ResultSet rs) throws SQLException {
         String jobId = rs.getString("job_id");
@@ -521,7 +523,36 @@ public class JobStatsStore implements ConsoleFeatures {
             event.withPullRequestUrl(pullRequestUrl);
         }
 
+        event.setTotalCostUsd(rs.getDouble("cost_usd"));
+        event.setCostByRunner(queryCostForJob(jobId, "job_runner_cost", "runner"));
+        event.setCostByModel(queryCostForJob(jobId, "job_model_cost", "model"));
+
         return event;
+    }
+
+    /**
+     * Queries all cost rows for a specific job from a cost table.
+     *
+     * @param jobId      the job identifier
+     * @param table      the cost table name ({@code job_runner_cost} or {@code job_model_cost})
+     * @param keyColumn  the key column name ({@code runner} or {@code model})
+     * @return map of cost key to USD amount, never {@code null}
+     */
+    private Map<String, Double> queryCostForJob(String jobId, String table, String keyColumn) {
+        Map<String, Double> result = new LinkedHashMap<>();
+        if (connection == null) return result;
+        String sql = "SELECT " + keyColumn + ", cost_usd FROM " + table + " WHERE job_id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, jobId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.put(rs.getString(keyColumn), rs.getDouble("cost_usd"));
+                }
+            }
+        } catch (SQLException e) {
+            warn("Failed to query cost for job " + jobId + " from " + table + ": " + e.getMessage());
+        }
+        return result;
     }
 
     /**
@@ -742,6 +773,37 @@ public class JobStatsStore implements ConsoleFeatures {
                 .append(String.format("%.2f", entry.getValue() != null ? entry.getValue() : 0.0));
         }
         return sb.append(')').toString();
+    }
+
+    /**
+     * Formats a cost-by-model map as one line per model for Slack output,
+     * stripping provider prefixes (e.g. "openrouter/") from model keys.
+     * Zero-cost entries are omitted. Returns an empty string when the map
+     * is empty so callers can append it unconditionally.
+     *
+     * <p>Sample output:
+     * <pre>
+     *    :moneybag: $0.13 - minimax/minimax-m2.7
+     *    :moneybag: $0.48 - sonnet
+     * </pre>
+     *
+     * @param costByModel map of provider/model identifier to USD cost
+     * @return a multi-line model breakdown, or {@code ""} when empty
+     */
+    public static String formatModelCostLines(Map<String, Double> costByModel) {
+        if (costByModel == null || costByModel.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, Double> entry : costByModel.entrySet()) {
+            if (entry.getValue() == null || entry.getValue() <= 0.0) continue;
+            String model = entry.getKey();
+            int slashIdx = model.indexOf('/');
+            if (slashIdx >= 0) {
+                model = model.substring(slashIdx + 1);
+            }
+            sb.append("   :moneybag: $").append(String.format("%.2f", entry.getValue()));
+            sb.append(" - ").append(model).append("\n");
+        }
+        return sb.toString();
     }
 
     /**

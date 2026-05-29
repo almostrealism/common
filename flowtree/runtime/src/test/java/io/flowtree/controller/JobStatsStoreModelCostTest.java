@@ -239,4 +239,53 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
             store.close();
         }
     }
+
+    @Test(timeout = 30000)
+    public void formatModelCostLinesStripsProviderPrefix() {
+        assertEquals("", JobStatsStore.formatModelCostLines(null));
+        assertEquals("", JobStatsStore.formatModelCostLines(new LinkedHashMap<>()));
+
+        Map<String, Double> costs = new LinkedHashMap<>();
+        costs.put("openrouter/minimax-m2.7", 0.13);
+        costs.put("sonnet", 0.48);
+        String formatted = JobStatsStore.formatModelCostLines(costs);
+        assertEquals(
+            "   :moneybag: $0.13 - minimax-m2.7\n" +
+            "   :moneybag: $0.48 - sonnet\n",
+            formatted);
+    }
+
+    @Test(timeout = 30000)
+    public void formatModelCostLinesOmitsZeroCostEntries() {
+        Map<String, Double> costs = new LinkedHashMap<>();
+        costs.put("openrouter/minimax-m2.7", 0.13);
+        costs.put("sonnet", 0.0);
+        costs.put("claude-opus-4-7", null);
+        String formatted = JobStatsStore.formatModelCostLines(costs);
+        assertEquals(
+            "   :moneybag: $0.13 - minimax-m2.7\n",
+            formatted);
+    }
+
+    @Test(timeout = 30000)
+    public void formatModelCostLinesStripsOnlyFirstProviderSegment() {
+        Map<String, Double> costs = new LinkedHashMap<>();
+        costs.put("openrouter/minimax/minimax-m2.7", 0.13);
+        String formatted = JobStatsStore.formatModelCostLines(costs);
+        assertEquals(
+            "   :moneybag: $0.13 - minimax/minimax-m2.7\n",
+            formatted);
+    }
+
+    @Test(timeout = 30000)
+    public void formatModelCostLinesWithProviderPrefixEdgeCases() {
+        Map<String, Double> costs = new LinkedHashMap<>();
+        costs.put("anthropic/claude-opus-4-7", 0.42);
+        costs.put("google/gemini-pro", 0.03);
+        String formatted = JobStatsStore.formatModelCostLines(costs);
+        assertEquals(
+            "   :moneybag: $0.42 - claude-opus-4-7\n" +
+            "   :moneybag: $0.03 - gemini-pro\n",
+            formatted);
+    }
 }

@@ -23,7 +23,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Orchestrates the post-run enforcement rules for a {@link CodingAgentJob}.
@@ -108,6 +110,7 @@ class EnforcementRunner implements ConsoleFeatures {
         List<EnforcementRule> rules = buildActiveRules();
         int totalAttempts = 0;
         boolean anyRuleCorrectionRan;
+        Map<String, Integer> ruleEntryCount = new HashMap<>();
         do {
             anyRuleCorrectionRan = false;
             for (EnforcementRule rule : rules) {
@@ -117,6 +120,18 @@ class EnforcementRunner implements ConsoleFeatures {
                 }
 
                 log("Enforcement rule '" + rule.getName() + "': violation detected");
+
+                int ruleEntries = ruleEntryCount.getOrDefault(rule.getName(), 0);
+                if (ruleEntries >= CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES) {
+                    warn("Enforcement rule '" + rule.getName()
+                            + "': absolute entry ceiling (" + CodingAgentJob.DEFAULT_MAX_RULE_ENTRIES
+                            + ") reached; skipping rule to prevent runaway cost");
+                    job.harnessStatus().unusual("Enforcement rule '" + rule.getName()
+                            + "' reached absolute entry ceiling and was skipped");
+                    continue;
+                }
+                ruleEntryCount.put(rule.getName(), ruleEntries + 1);
+
                 int attempts = 0;
                 while (attempts < rule.getMaxRetries()
                         && rule.isViolated(job)
@@ -131,27 +146,17 @@ class EnforcementRunner implements ConsoleFeatures {
                     if (correctionPrompt != null) {
                         job.runCorrectionSession(correctionPrompt, rule.getName());
                     } else {
-                        // enforce-changes is the only built-in rule whose buildCorrectionPrompt
-                        // returns null; it re-runs the original prompt so the "code changes are
-                        // required" block applies. Bumping enforcementAttempt for other rules
-                        // would inflate the user-facing escalation messaging.
                         if ("enforce-changes".equals(rule.getName())) {
                             job.setEnforcementAttempt(job.getEnforcementAttempt() + 1);
                             log("enforce_changes found no changes; restarting PRIMARY (retry "
                                     + job.getEnforcementAttempt() + ")");
                         }
-                        // Preserve commit.txt: executeSingleRun() deletes it at startup.
                         Path rerunCommitFile = job.resolveWorkingPath("commit.txt");
                         String savedForRerun = null;
                         if (rerunCommitFile != null && Files.exists(rerunCommitFile)) {
                             try { savedForRerun = Files.readString(rerunCommitFile, StandardCharsets.UTF_8); }
                             catch (IOException e) { warn("Could not save commit.txt: " + e.getMessage()); }
                         }
-                        // For enforce-changes, leave currentActivity unchanged (null during primary
-                        // runs) so executeSingleRun() resolves to PRIMARY — Phase.ENFORCE_CHANGES
-                        // is deprecated and must not be used. Tagging currentActivity for other
-                        // rules that return null correction prompt enables activity tracking
-                        // and logs which rule triggered the restart.
                         String previousActivity = job.getCurrentActivity();
                         if (!"enforce-changes".equals(rule.getName())) {
                             job.setCurrentActivity(rule.getName());
@@ -161,8 +166,6 @@ class EnforcementRunner implements ConsoleFeatures {
                         } finally {
                             job.setCurrentActivity(previousActivity);
                         }
-                        // Only restore old commit.txt if the rerun did not write a new one;
-                        // when the rerun makes the actual code changes its message is authoritative.
                         boolean rerunWroteCommit = rerunCommitFile != null && Files.exists(rerunCommitFile);
                         if (!rerunWroteCommit && savedForRerun != null && rerunCommitFile != null) {
                             try { Files.writeString(rerunCommitFile, savedForRerun, StandardCharsets.UTF_8); }
@@ -180,6 +183,7 @@ class EnforcementRunner implements ConsoleFeatures {
                         job.harnessStatus().unusual("Enforcement rule '" + rule.getName()
                                 + "' exhausted " + rule.getMaxRetries() + " retries without resolution");
                         if ("post-completion-command".equals(rule.getName())) job.setPostCompletionCapHit(true);
+                        applyExhaustionFallback(rule, job);
                     } else if (totalAttempts >= CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
                         warn("Enforcement rule '" + rule.getName()
                                 + "': stopped because the total enforcement attempt cap was reached");
@@ -197,5 +201,44 @@ class EnforcementRunner implements ConsoleFeatures {
                     + CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS + ") — giving up to"
                     + " avoid an unbounded retry loop");
         }
+    }
+
+    /**
+     * Invokes the rule-specific fallback when a rule's per-pass cap is exhausted.
+     * The fallback writes a usable commit message so the job can proceed.
+     */
+    private void applyExhaustionFallback(EnforcementRule rule, CodingAgentJob job) {
+        if (!"commit-message".equals(rule.getName())) return;
+        Path commitFile = job.resolveWorkingPath("commit.txt");
+        if (commitFile == null) return;
+        String fallback = buildFallbackCommitMessage(job);
+        try {
+            Files.writeString(commitFile, fallback, StandardCharsets.UTF_8);
+            log("commit-message rule: wrote fallback commit message to commit.txt");
+        } catch (IOException e) {
+            warn("Could not write fallback commit.txt: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Builds the fallback commit message used when the commit-message rule exhausts
+     * its retries and needs to produce a usable message so the job can proceed.
+     * Uses, in order:
+     * <ol>
+     *   <li>The job prompt's first line, if non-empty</li>
+     *   <li>{@code "Job {jobId} commit"}</li>
+     * </ol>
+     */
+    private String buildFallbackCommitMessage(CodingAgentJob job) {
+        String prompt = job.getPrompt();
+        if (prompt != null && !prompt.trim().isEmpty()) {
+            String firstLine = prompt.trim().split("\n")[0].trim();
+            if (!firstLine.isEmpty()) {
+                return firstLine.length() > 72
+                        ? firstLine.substring(0, 69) + "..."
+                        : firstLine;
+            }
+        }
+        return "Job " + job.getTaskId() + " commit";
     }
 }
