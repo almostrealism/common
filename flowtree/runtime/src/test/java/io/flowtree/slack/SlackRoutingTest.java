@@ -23,8 +23,13 @@ import io.flowtree.workstream.Workstream;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.*;
@@ -140,7 +145,7 @@ public class SlackRoutingTest extends TestSuiteBase {
         SlackNotifier notifier = new SlackNotifier(null);
         SlackListener listener = new SlackListener(notifier);
 
-        java.util.List<String> responses = new java.util.ArrayList<>();
+        List<String> responses = new ArrayList<>();
         SlackListener.SlashCommandResponder responder = text -> responses.add(text);
 
         listener.handleSlashCommand("setup /workspace/project feature/test",
@@ -171,7 +176,7 @@ public class SlackRoutingTest extends TestSuiteBase {
         wsB.setWorkspaceId("T222");
         listener.registerWorkstream(wsB);
 
-        java.util.List<String> responses = new java.util.ArrayList<>();
+        List<String> responses = new ArrayList<>();
         SlackListener.SlashCommandResponder responder = text -> responses.add(text);
         listener.handleSlashCommand("active", "C_ACT_A", "#act-a", responder, "T111");
 
@@ -248,18 +253,18 @@ public class SlackRoutingTest extends TestSuiteBase {
             String body = "{\"prompt\":\"Do something\","
                     + "\"targetBranch\":\"feature/audio-prototypes\"}";
 
-            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new URL(
+            HttpURLConnection conn = (HttpURLConnection) new URL(
                     "http://localhost:" + port + "/api/submit").openConnection();
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
-            try (java.io.OutputStream os = conn.getOutputStream()) {
-                os.write(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
             }
 
             assertEquals(400, conn.getResponseCode());
             String error = new String(conn.getErrorStream().readAllBytes(),
-                    java.nio.charset.StandardCharsets.UTF_8);
+                    StandardCharsets.UTF_8);
             assertTrue("Error should mention ambiguous resolution; was: " + error,
                     error.contains("Ambiguous"));
             assertTrue("Error should name the branch involved",
@@ -293,18 +298,18 @@ public class SlackRoutingTest extends TestSuiteBase {
                     + "\"targetBranch\":\"feature/audio-prototypes\","
                     + "\"repoUrl\":\"git@github.com:almostrealism/common.git\"}";
 
-            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new URL(
+            HttpURLConnection conn = (HttpURLConnection) new URL(
                     "http://localhost:" + port + "/api/submit").openConnection();
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
-            try (java.io.OutputStream os = conn.getOutputStream()) {
-                os.write(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
             }
 
             assertEquals(400, conn.getResponseCode());
             String error = new String(conn.getErrorStream().readAllBytes(),
-                    java.nio.charset.StandardCharsets.UTF_8);
+                    StandardCharsets.UTF_8);
             assertTrue("Resolver must not have flagged ambiguity; got: " + error,
                     !error.contains("Ambiguous"));
             assertTrue("Submission must reach the post-resolution server check; got: " + error,
@@ -331,18 +336,18 @@ public class SlackRoutingTest extends TestSuiteBase {
                     + "\"targetBranch\":\"feature/audio-prototypes\","
                     + "\"repoUrl\":\"git@github.com:almostrealism/ringsdesktop.git\"}";
 
-            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new URL(
+            HttpURLConnection conn = (HttpURLConnection) new URL(
                     "http://localhost:" + port + "/api/submit").openConnection();
             conn.setRequestMethod("POST");
             conn.setDoOutput(true);
             conn.setRequestProperty("Content-Type", "application/json");
-            try (java.io.OutputStream os = conn.getOutputStream()) {
-                os.write(body.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
             }
 
             assertEquals(400, conn.getResponseCode());
             String error = new String(conn.getErrorStream().readAllBytes(),
-                    java.nio.charset.StandardCharsets.UTF_8);
+                    StandardCharsets.UTF_8);
             assertTrue("Should report no workstream found, not silently cross-route; got: " + error,
                     error.contains("No workstream found for branch"));
         } finally {
