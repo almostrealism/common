@@ -2120,4 +2120,5 @@ public class SlackIntegrationTest extends TestSuiteBase {
             endpoint.stop();
         }
     }
+}
 

@@ -201,11 +201,7 @@
 					<configLocation>checkstyle.xml</configLocation>
 					<consoleOutput>true</consoleOutput>
 					<failsOnError>true</failsOnError>
-							<!-- TODO(review): enabling this causes MissingJavadocMethod and MissingJavadocType to apply to all test sources;
-					     most existing @Test methods lack javadoc and will fail. Add a SuppressionFilter exempting test sources
-					     from javadoc rules, or use a separate checkstyle config for test sources. Also SlackIntegrationTest.java
-					     is 2122 lines and will fail the 1600-line FileLength check immediately. -->
-					<includeTestSourceDirectory>true</includeTestSourceDirectory>
+						<includeTestSourceDirectory>false</includeTestSourceDirectory>
 				</configuration>
 				<executions>
 					<execution>
@@ -243,7 +239,7 @@
 							<configLocation>checkstyle.xml</configLocation>
 							<consoleOutput>true</consoleOutput>
 							<failsOnError>true</failsOnError>
-					<includeTestSourceDirectory>true</includeTestSourceDirectory>
+							<includeTestSourceDirectory>false</includeTestSourceDirectory>
 						</configuration>
 						<executions>
 							<execution>

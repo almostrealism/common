@@ -18,10 +18,11 @@ package io.flowtree.slack;
 
 import fi.iki.elonen.NanoHTTPD;
 import io.flowtree.JsonFieldExtractor;
-import io.flowtree.controller.FlowTreeApiEndpoint;
+import io.flowtree.api.FlowTreeApiEndpoint;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
+import io.flowtree.workstream.Workstream;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
