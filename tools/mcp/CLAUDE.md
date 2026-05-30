@@ -87,7 +87,7 @@ Follow the pattern of `workstream_submit_task` (line ~911 of `server.py`) exactl
 
 ---
 
-## JSON-object parameters: `runners`, `requiredLabels`, etc.
+## JSON-object parameters: `phase_configs`, `requiredLabels`, etc.
 
 Several MCP tools (`workstream_submit_task`, `workstream_register`,
 `workstream_update_config`, `workspace_update_config`) accept structured
@@ -95,41 +95,59 @@ data through string-typed parameters that the tool then parses locally:
 
 - `required_labels: str = ""` — a comma-separated `key:value` CSV.
 - `dependent_repos: str = ""` — a comma-separated list of git URLs.
-- `runners: str = ""` — a JSON object whose keys are
+- `default_phase_config: str = ""` — JSON object with optional
+  `runner` / `model` / `effort` / `provider` keys. Sets the container's
+  default `PhaseConfig` (the `defaultPhaseConfig` of the bundle described
+  in `docs/plans/UNIFIED_PHASE_CONFIG.md`), applied to every phase that has
+  no dedicated `phase_configs` entry. Parsed by
+  `_parse_default_phase_config_json`, which checks runners against the known
+  set and efforts against `VALID_EFFORT_LEVELS`; `provider` is opaque and
+  passed through to the controller unchanged.
+  Example: `'{"runner": "opencode", "model": "qwen3-coder:exacto",
+  "effort": "medium", "provider": "openrouter"}'`
+- `phase_configs: str = ""` — JSON object mapping
   [`Phase`](../../flowtree/agents/src/main/java/io/flowtree/jobs/agent/Phase.java)
   wire names (`"primary"`, `"review"`, `"deduplication"`,
   `"organizational-placement"`, `"enforce-changes"`,
   `"maven-dependency-protection"`, `"post-completion"`, `"commit-message"`,
-  `"git-tampering-restart"`) plus
-  an optional `"default"` key. Values are runner identifiers
-  (`"claude"`, `"opencode"`, ...). The tool parses the string with
-  `json.loads`, validates phase names against the enum, and forwards the
-  decoded object to the controller via the `runners` field in the
-  submission payload.
-- `default_runner: str = ""` — convenience shortcut equivalent to
-  `runners='{"default": "<value>"}'`. The explicit `runners["default"]`
-  wins when both are supplied.
-- `default_phase_config: str = ""` — JSON object with optional
-  `runner` / `model` / `effort` / `provider` keys. Sets the container's
-  default `PhaseConfig` (the `defaultPhaseConfig` of the bundle described
-  in `docs/plans/UNIFIED_PHASE_CONFIG.md`). Wins field-by-field over the
-  legacy `default_runner` / `model` / `effort` shortcuts when both are
-  supplied. Parsed by `_parse_default_phase_config_json`, which checks
-  runners against the known set and efforts against `VALID_EFFORT_LEVELS`;
-  `provider` is opaque and passed through to the controller unchanged.
-  Example: `'{"runner": "opencode", "model": "qwen3-coder:exacto",
-  "effort": "medium", "provider": "openrouter"}'`
-- `phase_configs: str = ""` — JSON object mapping phase wire names to
-  objects with `runner`, `model`, `effort`, and `provider` keys (all
-  optional). Wins field-by-field over the legacy `runners` map when both
-  are supplied. Parsed by `_parse_phase_configs_json` with the same
-  per-field validation as `default_phase_config`. Example:
+  `"git-tampering-restart"`) to objects with `runner`, `model`, `effort`,
+  and `provider` keys (all optional). Each named phase overrides
+  `default_phase_config` field-by-field. Parsed by
+  `_parse_phase_configs_json` with the same per-field validation as
+  `default_phase_config`. Example:
   `'{"primary": {"runner": "opencode", "model": "claude-sonnet-4-6",
   "effort": "high", "provider": "anthropic"},
   "deduplication": {"runner": "opencode", "provider": "openrouter"}}'`
 
+### Removed legacy parameters — `model`, `effort`, `default_runner`, `runners`
+
+These four parameters are **no longer accepted** on any of the four tools.
+They were job/workstream/workspace-level shortcuts that propagated as
+defaults and silently defeated per-phase overrides field-by-field, so they
+were a recurring source of surprising behaviour. A caller that passes any of
+them is rejected with a 400-style `{"ok": False, "error": "..."}` dict
+naming the offending parameter and pointing to its replacement (see
+`_reject_removed_config_params` in `tools/mcp/manager/server.py`). This is a
+deliberate clean break — there is no silent translation. Migrate callers as
+follows:
+
+| Removed parameter | Replacement |
+|-------------------|-------------|
+| `model="opus"` | `default_phase_config='{"model": "opus"}'` (or per phase via `phase_configs`) |
+| `effort="high"` | `default_phase_config='{"effort": "high"}'` |
+| `default_runner="claude"` | `default_phase_config='{"runner": "claude"}'` |
+| `runners='{"review": "opencode"}'` | `phase_configs='{"review": {"runner": "opencode"}}'` |
+
+Workstream and workspace YAML on disk may still contain the legacy fields
+(`model`, `effort`, `defaultRunner`, `runners`). They continue to load and
+are auto-migrated into `defaultPhaseConfig` / `phaseConfigs` on the Java side
+(an INFO-level deprecation notice is logged on load). The next time the
+controller writes that config back, only the new shape is emitted — a
+save-then-load cycle migrates the file in place. See
+`WorkstreamConfig.migrateLegacyConfigToPhaseConfig`.
+
 When adding a new structured parameter, follow the pattern from
-`_parse_runners_json` and `_parse_default_phase_config_json` in
+`_parse_phase_configs_json` and `_parse_default_phase_config_json` in
 `tools/mcp/manager/server.py`: parse, validate locally (phase keys,
 runners against `_KNOWN_RUNNER_NAMES`, efforts against
 `VALID_EFFORT_LEVELS`, opaque fields like `model` passed through to the

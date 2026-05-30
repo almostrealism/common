@@ -16,7 +16,6 @@
 
 package io.flowtree.jobs.agent;
 
-import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -37,9 +36,6 @@ import static org.junit.Assert.fail;
  * before the pluggable-agents refactor.
  */
 public class ClaudeCodeRunnerTest extends TestSuiteBase {
-
-    /** Logger that uses default ConsoleFeatures behavior; sufficient for tests that don't assert log output. */
-    private static final ConsoleFeatures SILENT = new ConsoleFeatures() {};
 
     /**
      * Builds a minimal {@link AgentRunRequest} populated with everything the

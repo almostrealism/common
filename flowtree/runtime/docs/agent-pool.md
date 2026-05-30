@@ -28,18 +28,14 @@ pressing Enter keeps them unchanged.
 
 ### Scaling
 
-The default pool size is 2 agents. Change it via the `AGENT_COUNT`
-environment variable or `.env`:
+The pool is defined by explicit named services in `docker-compose.yml`
+(`agent-1`, `agent-2`, …). This is deliberate: a single shared host
+bind mounted on every replica would let one agent read another agent's
+transcripts, which the volume isolation policy forbids.
 
-```bash
-AGENT_COUNT=4 ./start.sh
-```
-
-Or scale after launch:
-
-```bash
-docker compose -f docker-compose.yml up -d --scale agent=4
-```
+To add an agent, copy an existing `agent-N` block and give it a new
+`container_name` and a distinct host subdirectory for its transcript
+bind. To remove one, delete its service block.
 
 ### Stopping
 
@@ -95,7 +91,7 @@ All settings live in `flowtree/runtime/agent/.env` (copied from `.env.example`).
 | `CLAUDE_CODE_OAUTH_TOKEN` | Yes* | -- | OAuth token from `claude setup-token` |
 | `FLOWTREE_ROOT_HOST` | Yes | -- | Controller hostname or IP |
 | `FLOWTREE_ROOT_PORT` | No | `7766` | Controller FlowTree port |
-| `AGENT_COUNT` | No | `2` | Number of agent containers |
+| `AGENT_COUNT` | No | — | Removed: pool size is set by explicit agent-N services in docker-compose.yml |
 | `AGENT_CPUS` | No | `4` | CPU limit per container |
 | `AGENT_MEMORY` | No | `4g` | Memory limit per container |
 | `AGENT_JVM_OPTS` | No | `-Xmx2048m` | JVM options for the FlowTree Server |

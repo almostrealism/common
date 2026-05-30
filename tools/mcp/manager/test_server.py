@@ -703,15 +703,24 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         with self.assertRaises(PermissionError):
             server.workstream_submit_task(prompt="Task")
 
-    @patch.object(server, "_controller_post")
-    def test_submit_includes_model_and_effort(self, mock_post):
+    def test_submit_rejects_legacy_model(self):
+        """The dropped `model` param is rejected with a 400-style error
+        pointing callers at default_phase_config / phase_configs."""
         _grant_all_scopes()
-        mock_post.return_value = {"ok": True, "jobId": "job-me"}
-        server.workstream_submit_task(
-            prompt="Task", model="opus", effort="high")
-        payload = mock_post.call_args[0][1]
-        self.assertEqual(payload["model"], "opus")
-        self.assertEqual(payload["effort"], "high")
+        result = server.workstream_submit_task(prompt="Task", model="opus")
+        self.assertFalse(result["ok"])
+        self.assertIn("model", result["error"])
+        self.assertIn("no longer supported", result["error"])
+        self.assertEqual(result["removed_parameters"], ["model"])
+
+    def test_submit_rejects_legacy_effort(self):
+        """The dropped `effort` param is rejected with a 400-style error."""
+        _grant_all_scopes()
+        result = server.workstream_submit_task(prompt="Task", effort="high")
+        self.assertFalse(result["ok"])
+        self.assertIn("effort", result["error"])
+        self.assertIn("no longer supported", result["error"])
+        self.assertEqual(result["removed_parameters"], ["effort"])
 
     @patch.object(server, "_controller_post")
     def test_submit_omits_model_and_effort_when_unset(self, mock_post):
@@ -721,21 +730,6 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         payload = mock_post.call_args[0][1]
         self.assertNotIn("model", payload)
         self.assertNotIn("effort", payload)
-
-    def test_submit_rejects_invalid_effort(self):
-        _grant_all_scopes()
-        result = server.workstream_submit_task(prompt="Task", effort="nuclear")
-        self.assertFalse(result["ok"])
-        self.assertIn("Invalid effort", result["error"])
-
-    def test_submit_rejects_invalid_model(self):
-        # Reproduces the wire-up bug that drove an unbounded retry loop:
-        # "sonnet-4-6" looks plausible but is not a real CLI model id.
-        _grant_all_scopes()
-        result = server.workstream_submit_task(prompt="Task", model="sonnet-4-6")
-        self.assertFalse(result["ok"])
-        self.assertIn("Invalid model", result["error"])
-        self.assertIn("sonnet-4-6", result["error"])
 
     @patch.object(server, "_controller_post")
     def test_submit_post_completion_command_included_in_payload(self, mock_post):
@@ -850,41 +844,28 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         payload = mock_post.call_args[0][1]
         self.assertNotIn("delaySeconds", payload)
 
-    @patch.object(server, "_controller_post")
-    def test_submit_runners_forwarded_as_object(self, mock_post):
-        """runners JSON string is parsed and forwarded as a nested object."""
+    def test_submit_rejects_legacy_runners(self):
+        """The dropped `runners` map is rejected with a 400-style error
+        pointing callers at phase_configs / default_phase_config."""
         _grant_all_scopes()
-        mock_post.return_value = {"ok": True, "jobId": "job-runners"}
-        server.workstream_submit_task(
+        result = server.workstream_submit_task(
             prompt="Task",
             runners='{"primary":"claude","deduplication":"opencode"}',
         )
-        payload = mock_post.call_args[0][1]
-        self.assertEqual(payload["runners"], {
-            "primary": "claude", "deduplication": "opencode"})
+        self.assertFalse(result["ok"])
+        self.assertIn("runners", result["error"])
+        self.assertIn("no longer supported", result["error"])
+        self.assertEqual(result["removed_parameters"], ["runners"])
 
-    @patch.object(server, "_controller_post")
-    def test_submit_default_runner_merged_into_runners(self, mock_post):
-        """default_runner alone is forwarded as runners={"default": <value>}."""
+    def test_submit_rejects_legacy_default_runner(self):
+        """The dropped `default_runner` shortcut is rejected."""
         _grant_all_scopes()
-        mock_post.return_value = {"ok": True, "jobId": "job-default-runner"}
-        server.workstream_submit_task(prompt="Task", default_runner="opencode")
-        payload = mock_post.call_args[0][1]
-        self.assertEqual(payload["runners"], {"default": "opencode"})
-
-    @patch.object(server, "_controller_post")
-    def test_submit_runners_default_wins_over_default_runner(self, mock_post):
-        """When both runners["default"] and default_runner are set, the
-        explicit runners["default"] is authoritative."""
-        _grant_all_scopes()
-        mock_post.return_value = {"ok": True, "jobId": "job-precedence"}
-        server.workstream_submit_task(
-            prompt="Task",
-            runners='{"default":"claude"}',
-            default_runner="opencode",
-        )
-        payload = mock_post.call_args[0][1]
-        self.assertEqual(payload["runners"], {"default": "claude"})
+        result = server.workstream_submit_task(
+            prompt="Task", default_runner="opencode")
+        self.assertFalse(result["ok"])
+        self.assertIn("default_runner", result["error"])
+        self.assertIn("no longer supported", result["error"])
+        self.assertEqual(result["removed_parameters"], ["default_runner"])
 
     @patch.object(server, "_controller_post")
     def test_submit_runners_omitted_by_default(self, mock_post):
@@ -894,47 +875,6 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         server.workstream_submit_task(prompt="Task")
         payload = mock_post.call_args[0][1]
         self.assertNotIn("runners", payload)
-
-    def test_submit_runners_rejects_unknown_phase(self):
-        """Unknown phase names in runners are rejected client-side with 400."""
-        _grant_all_scopes()
-        result = server.workstream_submit_task(
-            prompt="Task",
-            runners='{"unknown-phase":"claude"}',
-        )
-        self.assertFalse(result["ok"])
-        self.assertIn("Unknown phase", result["error"])
-        self.assertIn("unknown-phase", result["error"])
-
-    def test_submit_runners_rejects_non_object_json(self):
-        """runners must be a JSON object, not an array or scalar."""
-        _grant_all_scopes()
-        result = server.workstream_submit_task(
-            prompt="Task",
-            runners='["claude"]',
-        )
-        self.assertFalse(result["ok"])
-        self.assertIn("JSON object", result["error"])
-
-    def test_submit_runners_rejects_invalid_json(self):
-        """runners must be valid JSON."""
-        _grant_all_scopes()
-        result = server.workstream_submit_task(
-            prompt="Task",
-            runners="not-valid-json",
-        )
-        self.assertFalse(result["ok"])
-        self.assertIn("JSON object", result["error"])
-
-    def test_submit_runners_rejects_non_string_value(self):
-        """Runner values must be non-empty strings."""
-        _grant_all_scopes()
-        result = server.workstream_submit_task(
-            prompt="Task",
-            runners='{"primary":""}',
-        )
-        self.assertFalse(result["ok"])
-        self.assertIn("non-empty string", result["error"])
 
     @patch.object(server, "_controller_post")
     def test_submit_default_phase_config_forwarded(self, mock_post):
@@ -985,19 +925,18 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("bogus", result["error"])
 
-    @patch.object(server, "_controller_post")
-    def test_submit_phase_configs_and_legacy_runners_coexist(self, mock_post):
-        """Legacy runners and new phase_configs forms can be supplied together."""
+    def test_submit_rejects_legacy_runners_even_with_phase_configs(self):
+        """A legacy `runners` map is rejected up front even when the new
+        phase_configs form is also supplied — no silent translation."""
         _grant_all_scopes()
-        mock_post.return_value = {"ok": True, "jobId": "job-coexist"}
-        server.workstream_submit_task(
+        result = server.workstream_submit_task(
             prompt="Task",
             runners='{"primary":"opencode"}',
             phase_configs='{"review":{"effort":"high"}}',
         )
-        payload = mock_post.call_args[0][1]
-        self.assertEqual(payload["runners"], {"primary": "opencode"})
-        self.assertEqual(payload["phaseConfigs"], {"review": {"effort": "high"}})
+        self.assertFalse(result["ok"])
+        self.assertIn("runners", result["error"])
+        self.assertIn("no longer supported", result["error"])
 
     @patch.object(server, "_controller_post")
     def test_submit_phase_configs_omitted_by_default(self, mock_post):
@@ -1438,53 +1377,46 @@ class TestWorkstreamRegister(unittest.TestCase):
         steps_text = " ".join(result["next_steps"])
         self.assertIn("repo_url", steps_text)
 
-    @patch.object(server, "_controller_post")
-    def test_register_includes_model_and_effort(self, mock_post):
-        _grant_all_scopes()
-        mock_post.return_value = {"ok": True, "workstreamId": "ws-me"}
-        server.workstream_register(
-            default_branch="feature/me", model="sonnet", effort="medium")
-        payload = mock_post.call_args[0][1]
-        self.assertEqual(payload["model"], "sonnet")
-        self.assertEqual(payload["effort"], "medium")
-
-    def test_register_rejects_invalid_effort(self):
+    def test_register_rejects_legacy_model(self):
+        """The dropped `model` param is rejected with a 400-style error."""
         _grant_all_scopes()
         result = server.workstream_register(
-            default_branch="feature/me", effort="extreme")
+            default_branch="feature/me", model="sonnet")
         self.assertFalse(result["ok"])
-        self.assertIn("Invalid effort", result["error"])
+        self.assertIn("model", result["error"])
+        self.assertIn("no longer supported", result["error"])
+        self.assertEqual(result["removed_parameters"], ["model"])
 
-    def test_register_rejects_invalid_model(self):
+    def test_register_rejects_legacy_effort(self):
+        """The dropped `effort` param is rejected."""
         _grant_all_scopes()
         result = server.workstream_register(
-            default_branch="feature/me", model="sonnet-4-6")
+            default_branch="feature/me", effort="medium")
         self.assertFalse(result["ok"])
-        self.assertIn("Invalid model", result["error"])
+        self.assertIn("effort", result["error"])
+        self.assertIn("no longer supported", result["error"])
 
-    @patch.object(server, "_controller_post")
-    def test_register_runners_forwarded_as_object(self, mock_post):
-        """runners JSON string is parsed and forwarded as a nested object."""
+    def test_register_rejects_legacy_runners(self):
+        """The dropped `runners` map is rejected."""
         _grant_all_scopes()
-        mock_post.return_value = {"ok": True, "workstreamId": "ws-runners"}
-        server.workstream_register(
+        result = server.workstream_register(
             default_branch="feature/x",
             runners='{"primary":"opencode","deduplication":"opencode"}',
         )
-        payload = mock_post.call_args[0][1]
-        self.assertEqual(payload["runners"], {"primary": "opencode", "deduplication": "opencode"})
+        self.assertFalse(result["ok"])
+        self.assertIn("runners", result["error"])
+        self.assertIn("no longer supported", result["error"])
 
-    @patch.object(server, "_controller_post")
-    def test_register_default_runner_forwarded(self, mock_post):
-        """default_runner alone is forwarded as runners={"default": <value>}."""
+    def test_register_rejects_legacy_default_runner(self):
+        """The dropped `default_runner` shortcut is rejected."""
         _grant_all_scopes()
-        mock_post.return_value = {"ok": True, "workstreamId": "ws-dr"}
-        server.workstream_register(
+        result = server.workstream_register(
             default_branch="feature/x",
             default_runner="opencode",
         )
-        payload = mock_post.call_args[0][1]
-        self.assertEqual(payload["runners"], {"default": "opencode"})
+        self.assertFalse(result["ok"])
+        self.assertIn("default_runner", result["error"])
+        self.assertIn("no longer supported", result["error"])
 
     @patch.object(server, "_controller_post")
     def test_register_runners_omitted_by_default(self, mock_post):
@@ -1494,26 +1426,6 @@ class TestWorkstreamRegister(unittest.TestCase):
         server.workstream_register(default_branch="feature/x")
         payload = mock_post.call_args[0][1]
         self.assertNotIn("runners", payload)
-
-    def test_register_runners_rejects_malformed_json(self):
-        """Malformed runners JSON yields ok=False without calling the controller."""
-        _grant_all_scopes()
-        result = server.workstream_register(
-            default_branch="feature/x",
-            runners="not-valid-json",
-        )
-        self.assertFalse(result["ok"])
-        self.assertIn("error", result)
-
-    def test_register_runners_rejects_unknown_phase(self):
-        """Unknown phase names in runners are rejected client-side."""
-        _grant_all_scopes()
-        result = server.workstream_register(
-            default_branch="feature/x",
-            runners='{"unknown-phase":"claude"}',
-        )
-        self.assertFalse(result["ok"])
-        self.assertIn("error", result)
 
 
 class TestWorkstreamUpdateConfig(unittest.TestCase):
@@ -1552,73 +1464,45 @@ class TestWorkstreamUpdateConfig(unittest.TestCase):
         steps_text = " ".join(result["next_steps"])
         self.assertIn("pipeline", steps_text)
 
-    @patch.object(server, "_controller_post")
-    def test_update_includes_model_and_effort(self, mock_post):
-        _grant_all_scopes()
-        mock_post.return_value = {"ok": True}
-        server.workstream_update_config(
-            workstream_id="ws-test", model="haiku", effort="low")
-        payload = mock_post.call_args[0][1]
-        self.assertEqual(payload["model"], "haiku")
-        self.assertEqual(payload["effort"], "low")
-
-    def test_update_rejects_invalid_effort(self):
+    def test_update_rejects_legacy_model(self):
+        """The dropped `model` param is rejected with a 400-style error."""
         _grant_all_scopes()
         result = server.workstream_update_config(
-            workstream_id="ws-test", effort="bogus")
+            workstream_id="ws-test", model="haiku")
         self.assertFalse(result["ok"])
-        self.assertIn("Invalid effort", result["error"])
+        self.assertIn("model", result["error"])
+        self.assertIn("no longer supported", result["error"])
 
-    def test_update_rejects_invalid_model(self):
+    def test_update_rejects_legacy_effort(self):
+        """The dropped `effort` param is rejected."""
         _grant_all_scopes()
         result = server.workstream_update_config(
-            workstream_id="ws-test", model="sonnet-4-6")
+            workstream_id="ws-test", effort="low")
         self.assertFalse(result["ok"])
-        self.assertIn("Invalid model", result["error"])
+        self.assertIn("effort", result["error"])
+        self.assertIn("no longer supported", result["error"])
 
-    @patch.object(server, "_controller_post")
-    def test_update_runners_forwarded_as_object(self, mock_post):
-        """runners JSON string is parsed and forwarded as a nested object."""
+    def test_update_rejects_legacy_runners(self):
+        """The dropped `runners` map is rejected."""
         _grant_all_scopes()
-        mock_post.return_value = {"ok": True}
-        server.workstream_update_config(
+        result = server.workstream_update_config(
             workstream_id="ws-test",
             runners='{"primary":"opencode"}',
         )
-        payload = mock_post.call_args[0][1]
-        self.assertEqual(payload["runners"], {"primary": "opencode"})
+        self.assertFalse(result["ok"])
+        self.assertIn("runners", result["error"])
+        self.assertIn("no longer supported", result["error"])
 
-    @patch.object(server, "_controller_post")
-    def test_update_default_runner_forwarded(self, mock_post):
-        """default_runner alone is forwarded as runners={"default": <value>}."""
+    def test_update_rejects_legacy_default_runner(self):
+        """The dropped `default_runner` shortcut is rejected."""
         _grant_all_scopes()
-        mock_post.return_value = {"ok": True}
-        server.workstream_update_config(
+        result = server.workstream_update_config(
             workstream_id="ws-test",
             default_runner="opencode",
         )
-        payload = mock_post.call_args[0][1]
-        self.assertEqual(payload["runners"], {"default": "opencode"})
-
-    def test_update_runners_rejects_malformed_json(self):
-        """Malformed runners JSON yields ok=False without calling the controller."""
-        _grant_all_scopes()
-        result = server.workstream_update_config(
-            workstream_id="ws-test",
-            runners="not-valid-json",
-        )
         self.assertFalse(result["ok"])
-        self.assertIn("error", result)
-
-    def test_update_runners_rejects_unknown_phase(self):
-        """Unknown phase names in runners are rejected client-side."""
-        _grant_all_scopes()
-        result = server.workstream_update_config(
-            workstream_id="ws-test",
-            runners='{"unknown-phase":"claude"}',
-        )
-        self.assertFalse(result["ok"])
-        self.assertIn("error", result)
+        self.assertIn("default_runner", result["error"])
+        self.assertIn("no longer supported", result["error"])
 
 
 class TestWorkspaceUpdateConfig(unittest.TestCase):
@@ -1640,68 +1524,35 @@ class TestWorkspaceUpdateConfig(unittest.TestCase):
         self.assertEqual(payload["defaultChannel"], "C9999")
         self.assertTrue(result["ok"])
 
-    @patch.object(server, "_controller_post")
-    def test_update_runners_forwarded_as_object(self, mock_post):
-        """runners JSON string is parsed and forwarded as a nested object."""
+    def test_update_rejects_legacy_runners(self):
+        """The dropped `runners` map is rejected with a 400-style error."""
         _grant_all_scopes()
-        mock_post.return_value = {"ok": True}
-        server.workspace_update_config(
+        result = server.workspace_update_config(
             slack_workspace_id="T0123456789",
             runners='{"primary":"opencode"}',
         )
-        payload = mock_post.call_args[0][1]
-        self.assertEqual(payload["runners"], {"primary": "opencode"})
+        self.assertFalse(result["ok"])
+        self.assertIn("runners", result["error"])
+        self.assertIn("no longer supported", result["error"])
+        self.assertEqual(result["removed_parameters"], ["runners"])
 
-    @patch.object(server, "_controller_post")
-    def test_update_default_runner_forwarded(self, mock_post):
-        """default_runner alone is forwarded as runners={"default": <value>}."""
+    def test_update_rejects_legacy_default_runner(self):
+        """The dropped `default_runner` shortcut is rejected."""
         _grant_all_scopes()
-        mock_post.return_value = {"ok": True}
-        server.workspace_update_config(
+        result = server.workspace_update_config(
             slack_workspace_id="T0123456789",
             default_runner="opencode",
         )
-        payload = mock_post.call_args[0][1]
-        self.assertEqual(payload["runners"], {"default": "opencode"})
-
-    @patch.object(server, "_controller_post")
-    def test_explicit_default_in_runners_wins(self, mock_post):
-        """When both runners[default] and default_runner are supplied, runners wins."""
-        _grant_all_scopes()
-        mock_post.return_value = {"ok": True}
-        server.workspace_update_config(
-            slack_workspace_id="T0123456789",
-            runners='{"default":"opencode"}',
-            default_runner="claude",
-        )
-        payload = mock_post.call_args[0][1]
-        self.assertEqual(payload["runners"], {"default": "opencode"})
+        self.assertFalse(result["ok"])
+        self.assertIn("default_runner", result["error"])
+        self.assertIn("no longer supported", result["error"])
+        self.assertEqual(result["removed_parameters"], ["default_runner"])
 
     def test_no_fields_returns_error(self):
         _grant_all_scopes()
         result = server.workspace_update_config(slack_workspace_id="T0123456789")
         self.assertFalse(result["ok"])
         self.assertIn("No fields to update", result["error"])
-
-    def test_update_runners_rejects_malformed_json(self):
-        """Malformed runners JSON yields ok=False without calling the controller."""
-        _grant_all_scopes()
-        result = server.workspace_update_config(
-            slack_workspace_id="T0123456789",
-            runners="not-valid-json",
-        )
-        self.assertFalse(result["ok"])
-        self.assertIn("error", result)
-
-    def test_update_runners_rejects_unknown_phase(self):
-        """Unknown phase names in runners are rejected client-side."""
-        _grant_all_scopes()
-        result = server.workspace_update_config(
-            slack_workspace_id="T0123456789",
-            runners='{"unknown-phase":"claude"}',
-        )
-        self.assertFalse(result["ok"])
-        self.assertIn("error", result)
 
     @patch.object(server, "_controller_post")
     def test_empty_string_fields_do_not_change_payload(self, mock_post):
@@ -1971,53 +1822,50 @@ class TestPhaseConfigParameters(unittest.TestCase):
             self.assertFalse(result["ok"], "tool=" + tool)
             self.assertIn("bogus", result["error"], "tool=" + tool)
 
-    # ---- legacy + new precedence ------------------------------------------
+    # ---- dropped legacy params are rejected, never translated -------------
 
     @patch.object(server, "_controller_post")
-    def test_new_default_phase_config_coexists_with_legacy_default_runner(
-            self, mock_post):
-        """When the caller supplies both ``default_phase_config`` (new) and
-        ``default_runner`` (legacy), both shapes are forwarded to the
-        controller. The controller resolves precedence per
-        ``PhaseConfigResolver``: the new ``defaultPhaseConfig`` wins
-        field-by-field over the legacy ``runners["default"]``.
+    def test_dropped_legacy_params_rejected_for_all_tools(self, mock_post):
+        """The legacy config params are no longer accepted on any entry point.
+        Each of ``model`` / ``effort`` / ``default_runner`` / ``runners`` is
+        rejected with a 400-style error that names the parameter and points at
+        the per-phase replacement; the controller is never called and no
+        silent translation occurs. ``model`` / ``effort`` were never workspace
+        fields, so only ``default_runner`` / ``runners`` apply to that tool."""
+        mock_post.return_value = {"ok": True, "jobId": "j", "workstreamId": "w"}
+        legacy = {
+            "model": "opus",
+            "effort": "high",
+            "default_runner": "claude",
+            "runners": '{"primary":"opencode"}',
+        }
+        for tool in ("submit", "register", "update", "workspace"):
+            params = (("default_runner", "runners") if tool == "workspace"
+                      else tuple(legacy))
+            for param in params:
+                mock_post.reset_mock()
+                label = "tool=" + tool + " param=" + param
+                result = self._invoke(tool, **{param: legacy[param]})
+                self.assertFalse(result["ok"], label)
+                self.assertIn(param, result["error"], label)
+                self.assertIn("no longer supported", result["error"], label)
+                self.assertEqual(result["removed_parameters"], [param], label)
+                mock_post.assert_not_called()
 
-        Verifying both arrived intact (rather than asserting one was
-        dropped) keeps the client honest about what it forwards and
-        leaves precedence enforcement on the single source of truth
-        (the resolver), where it belongs.
-        """
+    @patch.object(server, "_controller_post")
+    def test_dropped_legacy_param_rejected_even_with_new_shape(self, mock_post):
+        """A legacy param is rejected even when a valid new-shape param is
+        also supplied — the clean break takes priority over translation."""
         mock_post.return_value = {"ok": True, "jobId": "j", "workstreamId": "w"}
         for tool in ("submit", "register", "update", "workspace"):
             mock_post.reset_mock()
-            self._invoke(
+            result = self._invoke(
                 tool,
                 default_phase_config='{"runner":"claude"}',
-                default_runner="opencode")
-            payload = self._payload(mock_post)
-            self.assertEqual(payload["defaultPhaseConfig"],
-                             {"runner": "claude"}, "tool=" + tool)
-            self.assertEqual(payload["runners"], {"default": "opencode"},
-                             "tool=" + tool)
-
-    @patch.object(server, "_controller_post")
-    def test_new_phase_configs_coexists_with_legacy_runners(self, mock_post):
-        """Same coexistence rule but for the per-phase shape: the new
-        ``phaseConfigs`` and the legacy ``runners`` map both reach the
-        controller. Precedence (new > legacy, field-by-field) is the
-        controller's job."""
-        mock_post.return_value = {"ok": True, "jobId": "j", "workstreamId": "w"}
-        for tool in ("submit", "register", "update", "workspace"):
-            mock_post.reset_mock()
-            self._invoke(
-                tool,
-                phase_configs='{"review":{"runner":"claude"}}',
                 runners='{"review":"opencode"}')
-            payload = self._payload(mock_post)
-            self.assertEqual(payload["phaseConfigs"],
-                             {"review": {"runner": "claude"}}, "tool=" + tool)
-            self.assertEqual(payload["runners"], {"review": "opencode"},
-                             "tool=" + tool)
+            self.assertFalse(result["ok"], "tool=" + tool)
+            self.assertIn("runners", result["error"], "tool=" + tool)
+            mock_post.assert_not_called()
 
 
 # -----------------------------------------------------------------------
@@ -3099,6 +2947,179 @@ class TestWorkstreamContextActivityFilter(unittest.TestCase):
         ids = [m["id"] for m in result["memories"]]
         self.assertIn("m2", ids)
         self.assertIn("m3", ids)
+
+
+class TestWorkstreamContextPullRequest(unittest.TestCase):
+    """Tests for the pull_request field in workstream_context."""
+
+    @patch.object(server, "_find_recent_pr_by_branch")
+    @patch.object(server, "_github_request", return_value={"ok": False, "error": "off"})
+    @patch.object(server, "_get_memory_client")
+    def test_pull_request_included_when_found(self, mock_client_fn, _gh, mock_find_pr):
+        """When a PR exists, pull_request field is included in response."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+
+        mock_pr = {
+            "number": 42,
+            "title": "Add new feature",
+            "html_url": "https://github.com/org/repo/pull/42",
+            "state": "open",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-02T00:00:00Z",
+            "merged_at": None,
+            "closed_at": None,
+            "user": {"login": "author"},
+            "base": {"ref": "master"},
+            "head": {"ref": "feature/x"},
+        }
+        mock_find_pr.return_value = {"ok": True, "found": True, "pr": mock_pr}
+
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            include_commits=False,
+        )
+        self.assertTrue(result["ok"])
+        self.assertIn("pull_request", result)
+        pr = result["pull_request"]
+        self.assertEqual(pr["number"], 42)
+        self.assertEqual(pr["title"], "Add new feature")
+        self.assertEqual(pr["url"], "https://github.com/org/repo/pull/42")
+        self.assertEqual(pr["state"], "open")
+        self.assertEqual(pr["author"], "author")
+        self.assertEqual(pr["base_branch"], "master")
+        self.assertEqual(pr["head_branch"], "feature/x")
+
+    @patch.object(server, "_find_recent_pr_by_branch")
+    @patch.object(server, "_github_request", return_value={"ok": False, "error": "off"})
+    @patch.object(server, "_get_memory_client")
+    def test_pull_request_omitted_when_not_found(self, mock_client_fn, _gh, mock_find_pr):
+        """When no PR exists, pull_request field is omitted."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+
+        mock_find_pr.return_value = {"ok": True, "found": False, "branch": "feature/x"}
+
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            include_commits=False,
+        )
+        self.assertTrue(result["ok"])
+        self.assertNotIn("pull_request", result)
+
+    @patch.object(server, "_find_recent_pr_by_branch")
+    @patch.object(server, "_github_request", return_value={"ok": False, "error": "off"})
+    @patch.object(server, "_get_memory_client")
+    def test_pr_error_is_recorded(self, mock_client_fn, _gh, mock_find_pr):
+        """When PR lookup fails, pr_error field is included."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+
+        mock_find_pr.return_value = {"ok": False, "error": "GitHub API error"}
+
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            include_commits=False,
+        )
+        self.assertTrue(result["ok"])
+        self.assertIn("pr_error", result)
+        self.assertEqual(result["pr_error"], "GitHub API error")
+
+    @patch.object(server, "_find_recent_pr_by_branch")
+    @patch.object(server, "_get_memory_client")
+    def test_closed_pr_has_merged_and_closed_timestamps(self, mock_client_fn, mock_find_pr):
+        """Closed/merged PR includes merged_at and closed_at timestamps."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search_by_branch.return_value = []
+        mock_client_fn.return_value = client
+
+        mock_pr = {
+            "number": 42,
+            "title": "Feature merged",
+            "html_url": "https://github.com/org/repo/pull/42",
+            "state": "closed",
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-10T00:00:00Z",
+            "merged_at": "2026-01-09T00:00:00Z",
+            "closed_at": "2026-01-10T00:00:00Z",
+            "user": {"login": "author"},
+            "base": {"ref": "master"},
+            "head": {"ref": "feature/x"},
+        }
+        mock_find_pr.return_value = {"ok": True, "found": True, "pr": mock_pr}
+
+        result = server.workstream_context(
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            include_commits=False,
+        )
+        self.assertTrue(result["ok"])
+        pr = result["pull_request"]
+        self.assertEqual(pr["state"], "closed")
+        self.assertEqual(pr["merged_at"], "2026-01-09T00:00:00Z")
+        self.assertEqual(pr["closed_at"], "2026-01-10T00:00:00Z")
+
+
+class TestFindRecentPrByBranch(unittest.TestCase):
+    """Unit tests for _find_recent_pr_by_branch GitHub API integration."""
+
+    @patch.object(server, "_github_request")
+    def test_calls_pulls_list_api_with_correct_params(self, mock_gh):
+        """Verifies _find_recent_pr_by_branch uses the Pulls list API with state=all."""
+        mock_gh.return_value = []
+        result = server._find_recent_pr_by_branch("org", "repo", "feature/x")
+        mock_gh.assert_called_once()
+        call_args = mock_gh.call_args
+        self.assertEqual(call_args[0][0], "GET")
+        self.assertIn("/repos/org/repo/pulls", call_args[0][1])
+        self.assertIn("head=org:feature/x", call_args[0][1])
+        self.assertIn("state=all", call_args[0][1])
+        self.assertIn("sort=updated", call_args[0][1])
+        self.assertIn("direction=desc", call_args[0][1])
+        self.assertIn("per_page=1", call_args[0][1])
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["found"])
+
+    @patch.object(server, "_github_request")
+    def test_returns_pr_with_full_fields(self, mock_gh):
+        """Verifies the returned PR object contains merged_at, base, and head fields."""
+        mock_pr = {
+            "number": 42,
+            "title": "Feature",
+            "html_url": "https://github.com/org/repo/pull/42",
+            "state": "closed",
+            "merged_at": "2026-01-09T00:00:00Z",
+            "closed_at": "2026-01-10T00:00:00Z",
+            "user": {"login": "author"},
+            "base": {"ref": "master"},
+            "head": {"ref": "feature/x"},
+        }
+        mock_gh.return_value = [mock_pr]
+        result = server._find_recent_pr_by_branch("org", "repo", "feature/x")
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["found"])
+        pr = result["pr"]
+        self.assertEqual(pr["merged_at"], "2026-01-09T00:00:00Z")
+        self.assertEqual(pr["base"]["ref"], "master")
+        self.assertEqual(pr["head"]["ref"], "feature/x")
+
+    @patch.object(server, "_github_request")
+    def test_handles_github_error(self, mock_gh):
+        """Verifies GitHub API errors are propagated correctly."""
+        mock_gh.return_value = {"ok": False, "error": "rate limited"}
+        result = server._find_recent_pr_by_branch("org", "repo", "feature/x")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "rate limited")
 
 
 # -----------------------------------------------------------------------

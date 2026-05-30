@@ -111,4 +111,30 @@ public interface EnforcementRule extends Named {
     default int getMaxRetries() {
         return CodingAgentJob.DEFAULT_MAX_RULE_RETRIES;
     }
+
+    /**
+     * Creates a single-fire rule whose {@link #isViolated} returns {@code true}
+     * until {@link #buildCorrectionPrompt} is invoked, then {@code false} on every
+     * subsequent check.
+     *
+     * <p>Use this when exactly one correction attempt is needed and the caller does
+     * not need to track violation state across retries.  Pass {@code null} as
+     * {@code prompt} to re-run the agent with the existing job prompt unchanged
+     * (the same semantics as returning {@code null} from {@link #buildCorrectionPrompt}).</p>
+     *
+     * @param name   the rule name returned by {@link #getName()}
+     * @param prompt the correction prompt, or {@code null} to reuse the existing job prompt
+     * @return an {@code EnforcementRule} that fires at most once
+     */
+    static EnforcementRule singleFire(String name, String prompt) {
+        return new EnforcementRule() {
+            private boolean done = false;
+            @Override public String getName() { return name; }
+            @Override public boolean isViolated(CodingAgentJob job) { return !done; }
+            @Override public String buildCorrectionPrompt(CodingAgentJob job) {
+                done = true;
+                return prompt;
+            }
+        };
+    }
 }

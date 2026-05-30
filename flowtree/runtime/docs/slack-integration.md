@@ -42,7 +42,7 @@ controller.start();
 **Command-line:**
 
 ```bash
-java -cp flowtree.jar io.flowtree.slack.FlowTreeController \
+java -cp flowtree.jar io.flowtree.controller.FlowTreeController \
     --tokens slack-tokens.json \
     --config workstreams.yaml \
     --api-port 7780

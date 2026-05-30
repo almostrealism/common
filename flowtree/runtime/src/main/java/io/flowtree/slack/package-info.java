@@ -15,48 +15,45 @@
  */
 
 /**
- * FlowTree orchestration with optional Slack integration.
+ * Slack integration for the FlowTree controller.
  *
- * <p>This package provides components for controlling Claude Code agents via
- * HTTP API and optionally through Slack:</p>
+ * <p>This package contains <em>only</em> the Slack-specific glue used to
+ * submit jobs from Slack messages and post job status back to Slack:</p>
  * <ul>
- *   <li>{@link io.flowtree.slack.FlowTreeController} - Main entry point and lifecycle manager</li>
- *   <li>{@link io.flowtree.slack.SlackListener} - Parses Slack messages and creates jobs</li>
- *   <li>{@link io.flowtree.slack.SlackNotifier} - Posts status updates to Slack channels</li>
- *   <li>{@link io.flowtree.slack.FlowTreeApiEndpoint} - HTTP API for agent communication and job submission</li>
- *   <li>{@link io.flowtree.slack.Workstream} - Configuration for channel-to-agent mapping</li>
+ *   <li>{@link io.flowtree.slack.SlackListener} &mdash; parses Slack events
+ *       and dispatches job submissions and slash commands.</li>
+ *   <li>{@link io.flowtree.slack.SlackNotifier} &mdash; posts status messages
+ *       to Slack channels.</li>
+ *   <li>{@link io.flowtree.slack.SlackTokens} &mdash; OAuth token holder.</li>
+ *   <li>{@link io.flowtree.slack.NotifierRegistry} &mdash; per-workspace
+ *       {@link io.flowtree.slack.SlackNotifier} registry consulted by the
+ *       HTTP API.</li>
+ *   <li>{@link io.flowtree.slack.SlackSubmissionConfig} &mdash; wires the
+ *       shared {@link io.flowtree.submission.SubmissionConfigResolver} into
+ *       the Slack submission flow and translates resolver errors into a
+ *       chat message.</li>
  * </ul>
  *
- * <h2>Architecture</h2>
- * <pre>
- * External System          FlowTreeController           Flowtree Server
- *       |                       |                           |
- *       | POST /submit          |                           |
- *       |----------------------&gt;|                           |
- *       |                       |   SlackListener           |
- *       |                       |--------------&gt;            |
- *       |                       |   creates job             |
- *       |                       |                    +------+
- *       |                       |                    | job  |
- *       |                       |                    | runs |
- *       |                       |                    +------+
- *       |                       |   SlackNotifier           |
- *       |                       |&lt;--------------            |
- *       |  "Work complete"      |   job completed           |
- *       |&lt;----------------------|                           |
- * </pre>
+ * <p>Everything that is not Slack-specific has been moved out of this
+ * package:</p>
+ * <ul>
+ *   <li>{@link io.flowtree.controller.FlowTreeController} &mdash; the
+ *       top-level controller.</li>
+ *   <li>{@link io.flowtree.api.FlowTreeApiEndpoint} and per-resource handlers
+ *       &mdash; the HTTP API.</li>
+ *   <li>{@link io.flowtree.workstream.Workstream} and
+ *       {@link io.flowtree.workstream.WorkstreamConfig} &mdash; workstream
+ *       model and persistence.</li>
+ *   <li>{@code io.flowtree.submission.*} &mdash; submission-time runner and
+ *       Phase config resolvers.</li>
+ * </ul>
  *
  * <h2>Configuration</h2>
- * <p>Optional environment variables (for Slack integration):</p>
+ * <p>Environment variables for Slack integration:</p>
  * <ul>
- *   <li>{@code SLACK_BOT_TOKEN} - Bot User OAuth Token (xoxb-...)</li>
- *   <li>{@code SLACK_APP_TOKEN} - App-level token for Socket Mode (xapp-...)</li>
+ *   <li>{@code SLACK_BOT_TOKEN} &mdash; Bot User OAuth Token ({@code xoxb-...}).</li>
+ *   <li>{@code SLACK_APP_TOKEN} &mdash; App-level token for Socket Mode ({@code xapp-...}).</li>
  * </ul>
- *
- * <h2>Future: MCP Memory Integration</h2>
- * <p>The workstream ID ({@link io.flowtree.slack.Workstream#getWorkstreamId()})
- * is designed to serve as a memory namespace for future MCP tool integration,
- * allowing both agents and operators to share persistent context.</p>
  *
  * @author Michael Murray
  */

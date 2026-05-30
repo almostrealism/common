@@ -16,18 +16,23 @@
 
 package io.flowtree.jobs.agent;
 
+import static io.flowtree.JsonFieldExtractor.MAPPER;
+
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.JsonFieldExtractor;
 import org.almostrealism.io.ConsoleFeatures;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 /**
  * Forgiving parser for opencode's JSON output.
@@ -41,17 +46,45 @@ import java.util.Set;
  */
 final class OpencodeOutputParser {
 
-    /** Shared JSON mapper. */
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-
     /** Stop reason recorded on successful exit when the runner reports nothing better. */
     static final String STOP_SUCCESS = "success";
 
     /** Stop reason recorded on non-zero exit when the runner reports nothing better. */
     static final String STOP_ERROR_UNKNOWN = "error_unknown";
 
+    /** Stop reason recorded when the loop detector killed the session for repeated, non-progressing actions. */
+    static final String STOP_LOOP_DETECTED = "error_loop_detected";
+
     /** Hidden constructor; static-only utility. */
     private OpencodeOutputParser() {}
+
+    /**
+     * Returns the first {@code maxHexLen} characters of the lowercase hex
+     * SHA-256 digest of {@code input}, or the string {@code "null"} when input
+     * is null. Used as a collision-resistant action fingerprint in loop
+     * detection.
+     *
+     * @param input     the text to fingerprint; {@code null} yields {@code "null"}
+     * @param maxHexLen  maximum number of leading hex characters to return
+     * @return the truncated hex digest, or a {@code hashCode}-based fallback if
+     *         SHA-256 is unavailable
+     */
+    private static String sha256Prefix(String input, int maxHexLen) {
+        if (input == null) {
+            return "null";
+        }
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] digest = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.substring(0, Math.min(maxHexLen, hex.length()));
+        } catch (NoSuchAlgorithmException e) {
+            return Integer.toHexString(input.hashCode());
+        }
+    }
 
     /**
      * Backwards-compatible overload that defaults {@code reportsCost} to {@code false}.
@@ -77,6 +110,29 @@ final class OpencodeOutputParser {
     }
 
     /**
+     * Backwards-compatible overload that defaults {@code killedForLooping} to {@code false}.
+     *
+     * @param rawOutput            captured stdout from opencode
+     * @param exitCode             process exit code
+     * @param killedForInactivity  whether the inactivity watchdog fired
+     * @param measuredDurationMs   wall-clock duration measured by the runner
+     * @param runnerMetadata       metadata key-values the runner wants to surface
+     * @param logger               diagnostic sink; may be null
+     * @param reportsCost          whether the provider reports cost in usage.cost
+     * @return the populated result
+     */
+    static AgentRunResult parse(String rawOutput,
+                                int exitCode,
+                                boolean killedForInactivity,
+                                long measuredDurationMs,
+                                Map<String, String> runnerMetadata,
+                                ConsoleFeatures logger,
+                                boolean reportsCost) {
+        return parse(rawOutput, exitCode, killedForInactivity, measuredDurationMs,
+                runnerMetadata, logger, reportsCost, false);
+    }
+
+    /**
      * Parses {@code rawOutput} into an {@link AgentRunResult}.
      *
      * <p>Behaviour:</p>
@@ -89,8 +145,9 @@ final class OpencodeOutputParser {
      *   <li>{@code numTurns} is taken from {@code steps} or {@code iterations}
      *       on the final JSON object, else counted from assistant entries in
      *       the transcript, else 0.</li>
-     *   <li>{@code costUsd} is extracted from {@code usage.cost} when
-     *       {@code reportsCost} is true and the field is present; otherwise 0.</li>
+     *   <li>{@code costUsd} is, when {@code reportsCost} is true, the sum of the
+     *       per-step {@code part.cost} values on the {@code step_finish} events;
+     *       a top-level {@code usage.cost} block is used as a fallback. Otherwise 0.</li>
      *   <li>{@code stopReason} is taken from the final object's
      *       {@code stopReason}, {@code stop_reason}, {@code finish_reason}, or {@code reason} key,
      *       falling back to success/error_unknown by exit code.</li>
@@ -109,6 +166,7 @@ final class OpencodeOutputParser {
      * @param runnerMetadata       metadata key-values the runner wants to surface
      * @param logger               diagnostic sink for unknown fields; may be null
      * @param reportsCost          whether the provider reports cost in usage.cost
+     * @param killedForLooping     whether the loop detector killed the session for repeated actions
      * @return the populated result
      */
     static AgentRunResult parse(String rawOutput,
@@ -117,7 +175,8 @@ final class OpencodeOutputParser {
                                 long measuredDurationMs,
                                 Map<String, String> runnerMetadata,
                                 ConsoleFeatures logger,
-                                boolean reportsCost) {
+                                boolean reportsCost,
+                                boolean killedForLooping) {
         String responseText = "";
         String sessionId = null;
         int numTurns = 0;
@@ -182,15 +241,56 @@ final class OpencodeOutputParser {
             numTurns = countAssistantTurns(rawOutput);
         }
 
+        int inputTokens = 0;
+        int outputTokens = 0;
+        int cacheReadTokens = 0;
+        int cacheWriteTokens = 0;
+        boolean costUnavailable = false;
         double costUsd = 0.0;
-        if (reportsCost && root != null) {
-            JsonNode usage = firstNode(root, "usage");
-            if (usage != null) {
-                JsonNode costNode = firstNode(usage, "cost");
-                if (costNode != null && costNode.isNumber()) {
-                    costUsd = costNode.asDouble(0.0);
+        if (reportsCost) {
+            // Primary source: the per-step usage opencode emits on its
+            // step_finish events (part.cost / part.tokens). This is the shape
+            // real opencode --format json output uses; it carries no top-level
+            // "usage" object.
+            if (events != null && events.usageSeen) {
+                costUsd = events.cost;
+                inputTokens = events.inputTokens;
+                outputTokens = events.outputTokens;
+                cacheReadTokens = events.cacheReadTokens;
+                cacheWriteTokens = events.cacheWriteTokens;
+            } else {
+                // Fallback: a top-level "usage" block. Retained for forgiving
+                // single-object fixtures and any future opencode build that
+                // summarises usage that way.
+                JsonNode usage = firstNode(root, "usage");
+                if (usage == null) {
+                    usage = findUsageBlock(rawOutput);
+                }
+                if (usage != null) {
+                    JsonNode costNode = firstNode(usage, "cost");
+                    if (costNode != null && costNode.isNumber()) {
+                        costUsd = costNode.asDouble(0.0);
+                    }
+                    JsonNode inputTokensNode = firstNode(usage, "input_tokens");
+                    if (inputTokensNode != null && inputTokensNode.isNumber()) {
+                        inputTokens = inputTokensNode.asInt(0);
+                    }
+                    JsonNode outputTokensNode = firstNode(usage, "output_tokens");
+                    if (outputTokensNode != null && outputTokensNode.isNumber()) {
+                        outputTokens = outputTokensNode.asInt(0);
+                    }
                 }
             }
+            if (costUsd == 0.0 && (inputTokens > 0 || outputTokens > 0)) {
+                costUnavailable = true;
+            }
+        }
+
+        // A loop kill overrides any stop reason the (forcibly truncated) stream
+        // may have parsed, so the run is never reported as a success.
+        if (killedForLooping) {
+            stopReason = STOP_LOOP_DETECTED;
+            isError = true;
         }
 
         Map<String, String> meta = runnerMetadata == null
@@ -198,6 +298,21 @@ final class OpencodeOutputParser {
                 : new LinkedHashMap<>(runnerMetadata);
         if (!responseText.isEmpty()) {
             meta.put("response_text", responseText);
+        }
+        if (inputTokens > 0) {
+            meta.put("input_tokens", String.valueOf(inputTokens));
+        }
+        if (outputTokens > 0) {
+            meta.put("output_tokens", String.valueOf(outputTokens));
+        }
+        if (cacheReadTokens > 0) {
+            meta.put("cache_read_tokens", String.valueOf(cacheReadTokens));
+        }
+        if (cacheWriteTokens > 0) {
+            meta.put("cache_write_tokens", String.valueOf(cacheWriteTokens));
+        }
+        if (costUnavailable) {
+            meta.put("cost_unavailable", "true");
         }
 
         return new AgentRunResult(
@@ -216,12 +331,70 @@ final class OpencodeOutputParser {
     }
 
     /**
+     * Maps a single line of opencode NDJSON output to a normalized action
+     * signature for loop detection, or {@code null} when the line is not a tool
+     * invocation. The signature combines the tool name with a hash of the tool
+     * input, so repeated identical actions (the same command, the same edit on
+     * the same file) collapse to one signature while distinct actions stay
+     * distinct. Supplied to {@code AgentProcessRunner} as the loop-signature
+     * extractor for opencode sessions.
+     *
+     * <p>Never throws: malformed, non-JSON, or non-tool lines yield {@code null}
+     * and are simply not counted toward repetition.</p>
+     *
+     * <p><b>Status-polling exemption:</b> any tool whose name contains
+     * {@code "status"} (e.g. {@code get_validation_status}, {@code get_run_status})
+     * also yields {@code null} and is never counted toward repetition. An agent
+     * waiting on a long build or test run legitimately polls these many times
+     * with identical arguments; that polling is progress-bearing, not a stuck
+     * loop, so it must not trip the repeated-action detector.</p>
+     *
+     * @param line one line of captured stdout
+     * @return the action signature, or {@code null} for non-action, status-poll,
+     *         or unparseable lines
+     */
+    static String toActionSignature(String line) {
+        if (line == null || line.isEmpty()) {
+            return null;
+        }
+        JsonNode node;
+        try {
+            node = MAPPER.readTree(line);
+        } catch (Exception ignored) {
+            return null;
+        }
+        if (node == null || !"tool_use".equals(JsonFieldExtractor.getTextOrNull(node, "type"))) {
+            return null;
+        }
+        JsonNode part = node.get("part");
+        if (part == null) {
+            return null;
+        }
+        String tool = JsonFieldExtractor.getTextOrNull(part, "tool");
+        if (tool == null || tool.isEmpty()) {
+            return null;
+        }
+        // Status-polling tools are exempt from loop detection: waiting on a
+        // long-running validation or test run by repeatedly calling its status
+        // endpoint is legitimate progress, not a non-converging loop.
+        if (tool.toLowerCase(Locale.ROOT).contains("status")) {
+            return null;
+        }
+        JsonNode input = part.path("state").path("input");
+        String inputText = input.isMissingNode() || input.isNull() ? "" : input.toString();
+        String digest = sha256Prefix(inputText, 16);
+        return "tool:" + tool + ":" + digest;
+    }
+
+    /**
      * Walks the captured stdout as an NDJSON event stream and extracts the
      * fields that map onto {@link AgentRunResult}. Recognised event types:
      * <ul>
      *   <li>{@code step_start} — counted as one turn</li>
      *   <li>{@code text} — assistant-emitted text chunk; {@code part.text} is
      *       appended to the running response text</li>
+     *   <li>{@code step_finish} — per-step usage; {@code part.cost} and
+     *       {@code part.tokens.input}/{@code output} are summed across steps</li>
      *   <li>{@code error} — flips {@code errorSeen}</li>
      * </ul>
      *
@@ -283,8 +456,48 @@ final class OpencodeOutputParser {
                 case "error":
                     acc.errorSeen = true;
                     break;
+                case "step_finish":
+                case "step-finish":
+                    // opencode reports per-step usage on the step_finish event:
+                    // part.cost is that step's dollar cost and part.tokens.input
+                    // / part.tokens.output are that step's token counts. opencode
+                    // runs on the Vercel AI SDK, whose onStepFinish callback
+                    // surfaces per-step (not cumulative) usage, so the session
+                    // total is the sum across every step_finish. There is no
+                    // top-level "usage" object in opencode's output.
+                    if (partNode != null) {
+                        JsonNode costNode = partNode.get("cost");
+                        if (costNode != null && costNode.isNumber()) {
+                            acc.cost += costNode.asDouble();
+                            acc.usageSeen = true;
+                        }
+                        JsonNode tokensNode = partNode.get("tokens");
+                        if (tokensNode != null && tokensNode.isObject()) {
+                            JsonNode inNode = tokensNode.get("input");
+                            if (inNode != null && inNode.isNumber()) {
+                                acc.inputTokens += inNode.asInt();
+                            }
+                            JsonNode outNode = tokensNode.get("output");
+                            if (outNode != null && outNode.isNumber()) {
+                                acc.outputTokens += outNode.asInt();
+                            }
+                            JsonNode cacheNode = tokensNode.get("cache");
+                            if (cacheNode != null && cacheNode.isObject()) {
+                                JsonNode readNode = cacheNode.get("read");
+                                if (readNode != null && readNode.isNumber()) {
+                                    acc.cacheReadTokens += readNode.asInt();
+                                }
+                                JsonNode writeNode = cacheNode.get("write");
+                                if (writeNode != null && writeNode.isNumber()) {
+                                    acc.cacheWriteTokens += writeNode.asInt();
+                                }
+                            }
+                            acc.usageSeen = true;
+                        }
+                    }
+                    break;
                 default:
-                    // ignore — tool_use, tool_result, step_finish, etc.
+                    // ignore — tool_use, tool_result, etc.
                     break;
             }
         }
@@ -312,6 +525,18 @@ final class OpencodeOutputParser {
         int numTurns;
         /** {@code true} when at least one {@code error} event was emitted. */
         boolean errorSeen;
+        /** Summed {@code part.cost} across every {@code step_finish} event. */
+        double cost;
+        /** Summed {@code part.tokens.input} across every {@code step_finish} event. */
+        int inputTokens;
+        /** Summed {@code part.tokens.output} across every {@code step_finish} event. */
+        int outputTokens;
+        /** Summed {@code part.tokens.cache.read} across every {@code step_finish} event. */
+        int cacheReadTokens;
+        /** Summed {@code part.tokens.cache.write} across every {@code step_finish} event. */
+        int cacheWriteTokens;
+        /** {@code true} once any {@code step_finish} carried a cost or token block. */
+        boolean usageSeen;
     }
 
     /**
@@ -355,6 +580,34 @@ final class OpencodeOutputParser {
                 return MAPPER.readTree(raw.substring(start, end + 1));
             } catch (Exception ignored) {
                 end = raw.lastIndexOf('}', start - 1);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Finds the best available {@code usage} block by scanning all NDJSON lines.
+     * This handles cases where the final summary with {@code usage} is not in the
+     * last JSON object (e.g., when opencode outputs metadata-only objects after
+     * the summary, or when the summary appears mid-stream).
+     *
+     * @param raw the captured stdout
+     * @return the {@code usage} node, or {@code null} when absent
+     */
+    private static JsonNode findUsageBlock(String raw) {
+        if (raw == null || raw.isEmpty()) return null;
+        String[] lines = raw.split("\\r?\\n");
+        for (int i = lines.length - 1; i >= 0; i--) {
+            String line = lines[i].trim();
+            if (!line.startsWith("{") || !line.endsWith("}")) continue;
+            try {
+                JsonNode node = MAPPER.readTree(line);
+                JsonNode usage = firstNode(node, "usage");
+                if (usage != null && usage.isObject()) {
+                    return usage;
+                }
+            } catch (Exception ignored) {
+                // continue scanning
             }
         }
         return null;

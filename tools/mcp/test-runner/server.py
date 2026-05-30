@@ -32,6 +32,13 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
+# Shared MCP helpers (tools/mcp/common); imported as top-level modules to avoid
+# triggering the package __init__'s heavier dependencies.
+_COMMON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+from polling import block_until_terminal, resolve_block_timeout  # noqa: E402
+
 # Configuration - derive project root from script location (tools/mcp/test-runner/server.py -> project root)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
 RUNS_DIR = Path(__file__).parent / "runs"
@@ -57,6 +64,10 @@ FORK_FAILURE_PATTERNS = [
     "ForkedBooter",
 ]
 EARLY_EXIT_THRESHOLD_SECONDS = 15
+
+# Run statuses that mean a test run has finished (used by the blocking
+# get_run_status mode to decide when to stop waiting).
+TERMINAL_RUN_STATES = frozenset({"completed", "failed", "timeout", "cancelled"})
 
 # Ensure runs directory exists
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
@@ -1404,13 +1415,37 @@ async def list_tools():
         ),
         Tool(
             name="get_run_status",
-            description="Get the status of a test run including test counts and duration.",
+            description=(
+                "Get the status of a test run including test counts and duration. "
+                "Returns immediately by default; poll until status is completed, failed, "
+                "timeout, or cancelled.\n\n"
+                "Set block=true to have the server wait until the run reaches a terminal "
+                "state before responding, so you can wait for completion with one call "
+                "instead of polling. The wait is bounded by timeout_seconds; if it elapses "
+                "the latest (still-running) status is returned. Use blocking when you have "
+                "nothing else to do meanwhile; otherwise return and do other work."
+            ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "run_id": {
                         "type": "string",
                         "description": "The run identifier"
+                    },
+                    "block": {
+                        "type": "boolean",
+                        "description": (
+                            "When true, wait server-side until the run finishes (or "
+                            "timeout_seconds elapses) before responding. Default: false."
+                        )
+                    },
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": (
+                            "Maximum seconds to wait when block=true (default: 600, max: 3600). "
+                            "Ignored when block is false."
+                        )
                     }
                 },
                 "required": ["run_id"]
@@ -1549,7 +1584,14 @@ async def call_tool(name: str, arguments: dict):
 
         elif name == "get_run_status":
             run_id = arguments["run_id"]
-            status = runner.get_run_status(run_id)
+            if arguments.get("block"):
+                status = await block_until_terminal(
+                    lambda: runner.get_run_status(run_id),
+                    TERMINAL_RUN_STATES,
+                    timeout_seconds=resolve_block_timeout(arguments.get("timeout_seconds")),
+                )
+            else:
+                status = runner.get_run_status(run_id)
             if status is None:
                 return [TextContent(
                     type="text",

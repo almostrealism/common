@@ -16,8 +16,9 @@
 
 package io.flowtree.jobs.agent;
 
+import static io.flowtree.JsonFieldExtractor.MAPPER;
+
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.jobs.AgentProcessRunner;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -65,6 +66,15 @@ public class OpencodeRunner implements AgentRunner {
     /** Canonical runner name used on the wire and registered with {@link AgentRunnerRegistry}. */
     public static final String NAME = "opencode";
 
+    /**
+     * Provider id whose sessions are re-priced from OpenRouter's published
+     * rates. opencode reports {@code cost = 0} for OpenRouter models absent from
+     * its bundled catalog (notably {@code :variant} ids), so for this provider
+     * the cost is recovered from the per-step token counts; see
+     * {@link OpenRouterPricing}.
+     */
+    private static final String PROVIDER_OPENROUTER = "openrouter";
+
     /** Discovery helper for the opencode binary. */
     private final Supplier<OpencodeBinaryLocator> locatorSupplier;
     /** Config builder used to synthesize the JSON config file. */
@@ -76,12 +86,8 @@ public class OpencodeRunner implements AgentRunner {
     /** Workspace secret accessor; overridable for tests. */
     private Function<String, String> secretLookup;
 
-    /**
-     * Shared JSON mapper for parsing secret-lookup payloads. {@link ObjectMapper}
-     * is thread-safe once configured; reusing a single instance avoids the
-     * per-call allocation cost.
-     */
-    private static final ObjectMapper SECRET_PAYLOAD_MAPPER = new ObjectMapper();
+    /** Supplies OpenRouter pricing for cost recovery; overridable for tests. */
+    private Supplier<OpenRouterPricing> pricingSupplier = OpenRouterPricing::cached;
 
     /**
      * Shared HTTP client for the secret-lookup endpoint. The JDK
@@ -187,6 +193,24 @@ public class OpencodeRunner implements AgentRunner {
     }
 
     /**
+     * Stdout-silence window for opencode sessions. opencode (notably
+     * qwen3-coder via OpenRouter, and slower local llama.cpp providers) can
+     * spend several minutes generating a single response between NDJSON
+     * events during a long primary phase, so the {@value
+     * AgentRunner#DEFAULT_INACTIVITY_TIMEOUT_MILLIS}-millisecond default tuned
+     * for Claude Code's faster cadence risks killing legitimate work. A longer
+     * window is safe here because the {@link #probeProviderUrl provider
+     * liveness probe} already fails fast when the upstream is actually down,
+     * leaving this watchdog as a backstop only for a truly wedged subprocess.
+     */
+    private static final long OPENCODE_INACTIVITY_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(45);
+
+    @Override
+    public long defaultInactivityTimeoutMillis() {
+        return OPENCODE_INACTIVITY_TIMEOUT_MILLIS;
+    }
+
+    /**
      * Sets the workspace secret lookup function. This is used to fetch
      * API keys from the workspace secrets store.
      *
@@ -195,6 +219,16 @@ public class OpencodeRunner implements AgentRunner {
      */
     public void setSecretLookup(Function<String, String> secretLookup) {
         this.secretLookup = secretLookup;
+    }
+
+    /**
+     * Overrides the OpenRouter pricing source. Used by tests to supply a fixed
+     * pricing table instead of fetching OpenRouter's live catalog over HTTP.
+     *
+     * @param pricingSupplier supplies the pricing table on demand
+     */
+    void setPricingSupplier(Supplier<OpenRouterPricing> pricingSupplier) {
+        this.pricingSupplier = pricingSupplier;
     }
 
     /**
@@ -306,10 +340,13 @@ public class OpencodeRunner implements AgentRunner {
             long start = System.currentTimeMillis();
             AgentProcessRunner.Result processResult = AgentProcessRunner.runAttempt(
                     pb,
+                    false,
                     request.getInactivityTimeoutMillis(),
                     request.getTaskId(),
+                    OpencodeOutputParser::toActionSignature,
                     logger);
-            long durationMs = System.currentTimeMillis() - start;
+            long endMs = System.currentTimeMillis();
+            long durationMs = endMs - start;
 
             String rawOutput = processResult.output();
             if (request.getOutputCapturePath() != null) {
@@ -330,16 +367,108 @@ public class OpencodeRunner implements AgentRunner {
             metadata.put("provider_url", providerUrl);
             metadata.put("model", qualifiedModel);
 
-            return OpencodeOutputParser.parse(
+            AgentRunResult result = OpencodeOutputParser.parse(
                     rawOutput,
                     processResult.exitCode(),
                     processResult.killedForInactivity(),
                     durationMs,
                     metadata,
                     logger,
-                    providerConfig.reportsCost());
+                    providerConfig.reportsCost(),
+                    processResult.killedForLooping());
+
+            result = applyOpenRouterCost(result, provider, qualifiedModel, logger);
+
+            OpencodeTranscriptWriter.forRequest(request).write(request, result, start, endMs, logger);
+            return result;
         } finally {
             deleteConfigFile(configPath, logger);
+        }
+    }
+
+    /**
+     * Recovers a dollar cost for OpenRouter sessions from the per-step token
+     * counts opencode reports.
+     *
+     * <p>opencode prices sessions from its bundled models.dev catalog, so any
+     * OpenRouter model id it cannot find there — notably {@code :variant} ids
+     * such as {@code qwen/qwen3-coder:exacto} — is reported at {@code cost = 0}
+     * on every step even though OpenRouter billed for it. The token counts the
+     * parser surfaced (in {@code input_tokens} / {@code output_tokens} /
+     * {@code cache_read_tokens} / {@code cache_write_tokens}) are accurate
+     * regardless, so for the {@link #PROVIDER_OPENROUTER} provider the cost is
+     * recomputed here against OpenRouter's published per-token rates.</p>
+     *
+     * <p>No-ops (returns {@code result} unchanged) for non-OpenRouter providers,
+     * when no token counts were reported, or when OpenRouter's catalog is
+     * unreachable or lacks the model — in which case opencode's own cost (which
+     * may be {@code 0}) is preserved.</p>
+     *
+     * @param result         the parsed session result
+     * @param provider       the resolved provider id
+     * @param qualifiedModel the {@code provider/model} id used for the session
+     * @param logger         diagnostic sink
+     * @return {@code result}, or a copy whose {@code costUsd} was recomputed
+     */
+    AgentRunResult applyOpenRouterCost(AgentRunResult result,
+                                       String provider,
+                                       String qualifiedModel,
+                                       ConsoleFeatures logger) {
+        if (!PROVIDER_OPENROUTER.equals(provider)) {
+            return result;
+        }
+        Map<String, String> meta = result.runnerMetadata();
+        long inputTokens = parseLongOrZero(meta.get("input_tokens"));
+        long outputTokens = parseLongOrZero(meta.get("output_tokens"));
+        long cacheReadTokens = parseLongOrZero(meta.get("cache_read_tokens"));
+        long cacheWriteTokens = parseLongOrZero(meta.get("cache_write_tokens"));
+        if (inputTokens == 0 && outputTokens == 0
+                && cacheReadTokens == 0 && cacheWriteTokens == 0) {
+            return result;
+        }
+        OpenRouterPricing.Rates rates = pricingSupplier.get().ratesFor(qualifiedModel);
+        if (rates == null) {
+            logger.log("openrouter_pricing_unknown model=" + qualifiedModel
+                    + " cost left as reported by opencode");
+            return result;
+        }
+        double cost = rates.cost(inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens);
+        logger.log("openrouter_pricing_applied model=" + qualifiedModel
+                + " input=" + inputTokens + " output=" + outputTokens
+                + " cache_read=" + cacheReadTokens + " cost=" + cost);
+        Map<String, String> newMeta = new LinkedHashMap<>(meta);
+        newMeta.remove("cost_unavailable");
+        newMeta.put("cost_source", "openrouter_pricing");
+        return new AgentRunResult(
+                result.exitCode(),
+                result.killedForInactivity(),
+                result.rawOutput(),
+                result.sessionId(),
+                result.durationMs(),
+                result.durationApiMs(),
+                result.numTurns(),
+                cost,
+                result.stopReason(),
+                result.sessionIsError(),
+                result.deniedToolNames(),
+                newMeta);
+    }
+
+    /**
+     * Parses a non-negative token count, returning {@code 0} for null, blank,
+     * or unparseable values.
+     *
+     * @param value the string value from runner metadata
+     * @return the parsed count, or {@code 0}
+     */
+    private static long parseLongOrZero(String value) {
+        if (value == null || value.isEmpty()) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            return 0L;
         }
     }
 
@@ -530,7 +659,7 @@ public class OpencodeRunner implements AgentRunner {
         Map<String, String> env = request.getEnvironment();
         if (env == null) return name -> null;
         String controllerUrl = env.get("AR_CONTROLLER_URL");
-        String workstreamId = env.get("AR_WORKSTREAM_ID");
+        String workstreamId = request.getWorkstreamId();
         String managerToken = env.get("AR_MANAGER_TOKEN");
         if (controllerUrl == null || controllerUrl.isEmpty()
                 || workstreamId == null || workstreamId.isEmpty()
@@ -614,7 +743,7 @@ public class OpencodeRunner implements AgentRunner {
     static String extractSecretValueFromPayload(String body, String secretName) {
         if (body == null || body.isEmpty()) return null;
         try {
-            JsonNode root = SECRET_PAYLOAD_MAPPER.readTree(body);
+            JsonNode root = MAPPER.readTree(body);
             JsonNode payload = root.get("payload");
             if (payload == null || !payload.isObject()) return null;
             JsonNode direct = payload.get(secretName);

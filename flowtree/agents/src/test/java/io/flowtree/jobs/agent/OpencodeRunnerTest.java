@@ -17,7 +17,6 @@
 package io.flowtree.jobs.agent;
 
 import com.sun.net.httpserver.HttpServer;
-import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -30,6 +29,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -143,7 +143,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 .build();
 
         try {
-            runner.run(req, new ConsoleFeatures() {});
+            runner.run(req, SILENT);
             throw new AssertionError("expected AgentRunnerNotAvailableException");
         } catch (AgentRunnerNotAvailableException expected) {
             assertNotNull(expected.getMessage());
@@ -232,7 +232,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 .provider("unknown-provider-xyz")
                 .build();
         try {
-            runner.run(req, new ConsoleFeatures() {});
+            runner.run(req, SILENT);
             throw new AssertionError("expected exception for unknown provider");
         } catch (IllegalArgumentException expected) {
             assertNotNull(expected.getMessage());
@@ -270,7 +270,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 .build();
 
         try {
-            runner.run(req, new ConsoleFeatures() {});
+            runner.run(req, SILENT);
             throw new AssertionError("expected fail-loud for missing openrouter key");
         } catch (IllegalStateException expected) {
             String msg = expected.getMessage();
@@ -307,7 +307,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 .build();
 
         try {
-            runner.run(req, new ConsoleFeatures() {});
+            runner.run(req, SILENT);
         } catch (IllegalStateException unexpected) {
             if (unexpected.getMessage() != null
                     && unexpected.getMessage().startsWith("No API key")) {
@@ -334,7 +334,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
         server.start();
         try {
             String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1";
-            new OpencodeRunner().probeProviderUrl(url, new ConsoleFeatures() {});
+            new OpencodeRunner().probeProviderUrl(url, SILENT);
         } finally {
             server.stop(0);
         }
@@ -355,7 +355,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
         String url = "http://127.0.0.1:" + freePort + "/v1";
 
         try {
-            new OpencodeRunner().probeProviderUrl(url, new ConsoleFeatures() {});
+            new OpencodeRunner().probeProviderUrl(url, SILENT);
             throw new AssertionError("expected AgentRunnerNotAvailableException");
         } catch (AgentRunnerNotAvailableException expected) {
             assertNotNull(expected.getMessage());
@@ -472,7 +472,7 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                     "openrouter-api-key",
                     "OPENROUTER_API_KEY",
                     OpencodeRunner.controllerSecretLookup(req,
-                            new ConsoleFeatures() {}));
+                            SILENT));
 
             assertTrue("config should embed the fetched apiKey: " + json,
                     json.contains("sk-or-v1-from-http"));
@@ -503,7 +503,90 @@ public class OpencodeRunnerTest extends TestSuiteBase {
                 .environment(new HashMap<>())
                 .build();
         Assert.assertNull(OpencodeRunner.controllerSecretLookup(
-                req, new ConsoleFeatures() {}).apply("openrouter-api-key"));
+                req, SILENT).apply("openrouter-api-key"));
+    }
+
+    /**
+     * opencode (notably qwen3-coder via OpenRouter and slower local providers)
+     * can spend many minutes generating a single response between NDJSON events
+     * during a long primary phase, so it must declare a larger inactivity
+     * window than the Claude-tuned
+     * {@link AgentRunner#DEFAULT_INACTIVITY_TIMEOUT_MILLIS default}.
+     */
+    @Test(timeout = 5000)
+    public void declaresLongerInactivityTimeoutThanDefault() {
+        long opencodeTimeout = new OpencodeRunner().defaultInactivityTimeoutMillis();
+        Assert.assertTrue("opencode must allow longer stdout silence than the default",
+                opencodeTimeout > AgentRunner.DEFAULT_INACTIVITY_TIMEOUT_MILLIS);
+        Assert.assertEquals("opencode inactivity window is 45 minutes",
+                TimeUnit.MINUTES.toMillis(45), opencodeTimeout);
+    }
+
+    // --- OpenRouter cost recovery -------------------------------------------
+
+    /** Minimal OpenRouter catalog used by the cost-recovery tests. */
+    private static final String OR_CATALOG = "{\"data\":[{\"id\":\"qwen/qwen3-coder\","
+            + "\"pricing\":{\"prompt\":\"0.00000022\",\"completion\":\"0.0000018\"}}]}";
+
+    /**
+     * Builds an {@link AgentRunResult} carrying token metadata as
+     * {@link OpencodeOutputParser} would, with {@code cost = 0} and the
+     * {@code cost_unavailable} marker set (the opencode-reported-zero case).
+     */
+    private static AgentRunResult resultWithTokens(long input, long output, long cacheRead) {
+        Map<String, String> meta = new HashMap<>();
+        meta.put("input_tokens", String.valueOf(input));
+        meta.put("output_tokens", String.valueOf(output));
+        if (cacheRead > 0) {
+            meta.put("cache_read_tokens", String.valueOf(cacheRead));
+        }
+        meta.put("cost_unavailable", "true");
+        return new AgentRunResult(0, false, "", "ses", 100L, 0L, 3,
+                0.0, "success", false, List.of(), meta);
+    }
+
+    /**
+     * For the OpenRouter provider, a zero opencode cost is recomputed from the
+     * reported token counts using OpenRouter's per-token rates, even for a
+     * {@code :variant} model id absent from opencode's pricing catalog.
+     * 1000 input + 100 output + 500 cache-read at qwen/qwen3-coder rates
+     * (cache reads defaulting to 10% of the prompt rate) = 0.000411.
+     */
+    @Test(timeout = 5000)
+    public void recoversOpenRouterCostForVariantModel() {
+        OpencodeRunner runner = new OpencodeRunner();
+        runner.setPricingSupplier(() -> OpenRouterPricing.parse(OR_CATALOG));
+        AgentRunResult recomputed = runner.applyOpenRouterCost(
+                resultWithTokens(1000, 100, 500), "openrouter",
+                "openrouter/qwen/qwen3-coder:exacto", SILENT);
+        Assert.assertEquals(0.000411, recomputed.costUsd(), 1e-12);
+        Assert.assertEquals("openrouter_pricing", recomputed.runnerMetadata().get("cost_source"));
+        Assert.assertNull("cost_unavailable should be cleared once cost is recovered",
+                recomputed.runnerMetadata().get("cost_unavailable"));
+    }
+
+    /** Non-OpenRouter providers are left untouched (opencode's cost stands). */
+    @Test(timeout = 5000)
+    public void leavesNonOpenRouterCostUnchanged() {
+        OpencodeRunner runner = new OpencodeRunner();
+        runner.setPricingSupplier(() -> OpenRouterPricing.parse(OR_CATALOG));
+        AgentRunResult original = resultWithTokens(1000, 100, 500);
+        AgentRunResult same = runner.applyOpenRouterCost(
+                original, "local", "local/default", SILENT);
+        Assert.assertEquals(0.0, same.costUsd(), 1e-15);
+        Assert.assertSame(original, same);
+    }
+
+    /** An unknown model leaves opencode's cost as-is rather than inventing one. */
+    @Test(timeout = 5000)
+    public void leavesCostUnchangedWhenModelUnknownToOpenRouter() {
+        OpencodeRunner runner = new OpencodeRunner();
+        runner.setPricingSupplier(() -> OpenRouterPricing.parse(OR_CATALOG));
+        AgentRunResult original = resultWithTokens(1000, 100, 500);
+        AgentRunResult same = runner.applyOpenRouterCost(
+                original, "openrouter", "openrouter/no/such-model", SILENT);
+        Assert.assertEquals(0.0, same.costUsd(), 1e-15);
+        Assert.assertSame(original, same);
     }
 
     /**

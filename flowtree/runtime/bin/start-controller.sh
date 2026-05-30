@@ -39,7 +39,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODULE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 PROJECT_ROOT="$(cd "${MODULE_DIR}/../.." && pwd)"
 
-MAIN_CLASS="io.flowtree.slack.FlowTreeController"
+MAIN_CLASS="io.flowtree.controller.FlowTreeController"
 
 # Show help if requested (before potentially building)
 for arg in "$@"; do

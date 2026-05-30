@@ -18,6 +18,7 @@ package io.flowtree.slack;
 
 import io.flowtree.Server;
 import io.flowtree.jobs.CodingAgentJob;
+import io.flowtree.jobs.HarnessStatusReporter;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
 import io.flowtree.msg.NodeProxy;
@@ -37,6 +38,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import io.flowtree.api.FlowTreeApiEndpoint;
+import io.flowtree.controller.FlowTreeController;
+import io.flowtree.controller.JobStatsStore;
+import io.flowtree.workstream.Workstream;
+import io.flowtree.workstream.WorkstreamConfig;
+import io.flowtree.api.SecretsRequestHandler;
 
 /**
  * Listens for Slack messages and creates Claude Code jobs.
@@ -540,6 +547,7 @@ public class SlackListener implements ConsoleFeatures {
         // Create job factory with workstream settings
         CodingAgentJob.Factory factory = new CodingAgentJob.Factory(prompt);
         factory.setAllowedTools(workstream.getAllowedTools());
+        factory.setAgentEnv(workstream.getAgentEnv());
         factory.setMaxTurns(workstream.getMaxTurns());
         factory.setMaxBudgetUsd(workstream.getMaxBudgetUsd());
 
@@ -609,6 +617,14 @@ public class SlackListener implements ConsoleFeatures {
             for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
                 factory.setRequiredLabel(entry.getKey(), entry.getValue());
             }
+        }
+
+        // Apply request / workstream / workspace runner + Phase config to the
+        // factory. Posts a Slack message and returns false on validation
+        // failure; without this call workspace-level Phase runner settings
+        // would be silently dropped on the Slack submission path.
+        if (!SlackSubmissionConfig.apply(factory, workstream, workstreamConfig, wsNotifier, this::log)) {
+            return false;
         }
 
         // Build workstream URL for status reporting and Slack messaging
@@ -941,7 +957,7 @@ public class SlackListener implements ConsoleFeatures {
 
         boolean submitted = submitJob(ws, args.trim(), null, null);
         if (submitted) {
-            ctx.respond(":arrow_forward: Task submitted: " + truncate(args.trim(), 100));
+            ctx.respond(":arrow_forward: Task submitted: " + SlackNotifier.truncate(args.trim(), 100));
         }
     }
 
@@ -1094,8 +1110,8 @@ public class SlackListener implements ConsoleFeatures {
                     emoji = ":grey_question:";
                     statusText = "";
             }
-            sb.append("   ").append(emoji).append(" `").append(truncate(entry.getKey(), 8)).append("` - ");
-            sb.append(truncate(event.getDescription(), 60)).append(statusText).append("\n");
+            sb.append("   ").append(emoji).append(" `").append(SlackNotifier.truncate(entry.getKey(), 8)).append("` - ");
+            sb.append(SlackNotifier.truncate(event.getDescription(), 60)).append(statusText).append("\n");
             count++;
         }
 
@@ -1486,29 +1502,24 @@ public class SlackListener implements ConsoleFeatures {
         sb.append(" (:white_check_mark: ").append(stats.successCount);
         sb.append("  :x: ").append(stats.failedCount);
         sb.append("  :no_entry_sign: ").append(stats.cancelledCount).append(")\n");
-        sb.append("  :moneybag: Cost: $").append(String.format("%.2f", stats.totalCostUsd)).append("\n");
+        sb.append("  :moneybag: Cost: $").append(String.format("%.2f", stats.totalCostUsd));
+        sb.append(JobStatsStore.formatCostBreakdown(stats.costByRunner));
+        sb.append(JobStatsStore.formatCostBreakdown(stats.costByModel));
+        sb.append("\n");
         sb.append("  :speech_balloon: Turns: ").append(String.format("%,d", stats.totalTurns)).append("\n");
         return sb.toString();
     }
 
     /**
      * Formats a duration in milliseconds as a human-readable string.
-     *
-     * <p>Returns {@code "0m"} for non-positive values, {@code "Xm"} for
-     * durations under one hour, and {@code "Xh Ym"} for longer durations.</p>
+     * Delegates to {@link HarnessStatusReporter#formatDuration(long)} for a shared
+     * implementation across harness status reporting, per-job Slack output, and stats.
      *
      * @param ms the duration in milliseconds
      * @return a human-readable duration string
      */
     private static String formatDuration(long ms) {
-        if (ms <= 0) return "0m";
-        long totalMinutes = ms / 60000;
-        long hours = totalMinutes / 60;
-        long minutes = totalMinutes % 60;
-        if (hours > 0) {
-            return hours + "h " + minutes + "m";
-        }
-        return minutes + "m";
+        return HarnessStatusReporter.formatDuration(ms);
     }
 
     /**
@@ -1520,7 +1531,7 @@ public class SlackListener implements ConsoleFeatures {
      * the controller was configured programmatically without a file), changes
      * are runtime-only and a warning is logged.</p>
      */
-    void persistConfig() {
+    public void persistConfig() {
         if (workstreamConfig == null || configFile == null) {
             log("No config file loaded - changes are runtime-only");
             return;
@@ -1535,21 +1546,6 @@ public class SlackListener implements ConsoleFeatures {
         } catch (IOException e) {
             warn("Failed to persist config: " + e.getMessage());
         }
-    }
-
-    /**
-     * Truncates a string to at most {@code maxLength} characters, appending
-     * {@code "..."} if the string was shortened. Returns an empty string for
-     * {@code null} input.
-     *
-     * @param s         the string to truncate (may be {@code null})
-     * @param maxLength the maximum length of the returned string, inclusive of the ellipsis
-     * @return the (possibly truncated) string, never {@code null}
-     */
-    private static String truncate(String s, int maxLength) {
-        if (s == null) return "";
-        if (s.length() <= maxLength) return s;
-        return s.substring(0, maxLength - 3) + "...";
     }
 
     /**

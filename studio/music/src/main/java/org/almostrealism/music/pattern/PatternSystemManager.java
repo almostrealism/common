@@ -45,6 +45,7 @@ import java.util.function.Function;
 import java.util.function.IntSupplier;
 import java.util.function.IntToDoubleFunction;
 import java.util.function.IntUnaryOperator;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.almostrealism.music.notes.NoteAudioContext;
 import java.util.stream.Collectors;
@@ -347,9 +348,33 @@ public class PatternSystemManager implements NoteSourceProvider, CodeFeatures {
 	 */
 	public List<MidiNoteEvent> toMidiEvents(AudioSceneContext context,
 											 double start, double end) {
+		return toMidiEvents(context, start, end, pattern -> true);
+	}
+
+	/**
+	 * Exports the patterns accepted by {@code filter} in the time range
+	 * {@code [start, end)} measures as MIDI events.
+	 *
+	 * <p>Identical to {@link #toMidiEvents(AudioSceneContext, double, double)}
+	 * but restricted to the {@link PatternLayerManager}s for which
+	 * {@code filter} returns {@code true}.  This lets callers export a single
+	 * channel's content (e.g. {@code p -> p.getChannel() == ch}) without pulling
+	 * in the rest of the arrangement — used when assembling a per-role ML prompt.</p>
+	 *
+	 * @param context the audio scene context for timing and scale resolution
+	 * @param start   the start of the export range in measures (inclusive)
+	 * @param end     the end of the export range in measures (exclusive)
+	 * @param filter  predicate selecting which pattern managers to export
+	 * @return list of MIDI note events within the range, sorted by onset
+	 */
+	public List<MidiNoteEvent> toMidiEvents(AudioSceneContext context,
+											 double start, double end,
+											 Predicate<PatternLayerManager> filter) {
 		List<MidiNoteEvent> events = new ArrayList<>();
 
 		for (PatternLayerManager pattern : patterns) {
+			if (!filter.test(pattern)) continue;
+
 			double patternDuration = pattern.getDuration();
 			if (patternDuration <= 0) continue;
 

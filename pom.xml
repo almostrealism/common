@@ -201,7 +201,7 @@
 					<configLocation>checkstyle.xml</configLocation>
 					<consoleOutput>true</consoleOutput>
 					<failsOnError>true</failsOnError>
-					<includeTestSourceDirectory>false</includeTestSourceDirectory>
+						<includeTestSourceDirectory>false</includeTestSourceDirectory>
 				</configuration>
 				<executions>
 					<execution>

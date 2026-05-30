@@ -24,6 +24,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Lightweight JSON field extraction utilities that avoid external library dependencies.
@@ -36,6 +37,13 @@ import java.util.Map;
  * For complex JSON processing, use a proper JSON library instead.</p>
  */
 public final class JsonFieldExtractor {
+
+	/**
+	 * Shared {@link ObjectMapper} instance for JSON parsing operations.
+	 * {@link ObjectMapper} is thread-safe for reading once constructed with
+	 * default configuration; callers must not reconfigure this instance.
+	 */
+	public static final ObjectMapper MAPPER = new ObjectMapper();
 
 	/** Private constructor — all methods are static; this class is not instantiated. */
 	private JsonFieldExtractor() { }
@@ -71,8 +79,7 @@ public final class JsonFieldExtractor {
 	public static boolean hasField(String json, String field) {
 		if (json == null) return false;
 		try {
-			ObjectMapper mapper = new ObjectMapper();
-			JsonNode root = mapper.readTree(json);
+			JsonNode root = MAPPER.readTree(json);
 			return root != null && root.has(field);
 		} catch (Exception e) {
 			return false;
@@ -432,27 +439,117 @@ public final class JsonFieldExtractor {
 	 * @return a map of string key-value pairs, empty if not found
 	 */
 	public static Map<String, String> extractStringObject(String json, String field) {
-		Map<String, String> result = new LinkedHashMap<>();
+		return extractObject(json, field, value -> value.isTextual() ? value.asText() : null);
+	}
+
+	/**
+	 * Extracts a flat JSON object whose values are numbers, returning them as
+	 * a map of string key to {@link Double}. Both numeric values
+	 * ({@code {"claude": 0.42}}) and numeric strings ({@code {"claude": "0.42"}})
+	 * are accepted; values that are neither are skipped.
+	 *
+	 * @param json  the JSON string
+	 * @param field the field name whose value is the object to extract
+	 * @return a map of key to numeric value, empty if not found or unparseable
+	 */
+	public static Map<String, Double> extractDoubleObject(String json, String field) {
+		return extractObject(json, field, JsonFieldExtractor::numericValue);
+	}
+
+	/**
+	 * Interprets a JSON node as a {@link Double}, accepting both numeric nodes
+	 * ({@code 0.42}) and numeric string nodes ({@code "0.42"}). Returns
+	 * {@code null} for any other node so the caller skips it.
+	 *
+	 * @param value the JSON node to interpret
+	 * @return the numeric value, or {@code null} when the node is neither a
+	 *         number nor a numeric string
+	 */
+	private static Double numericValue(JsonNode value) {
+		if (value.isNumber()) {
+			return value.asDouble();
+		}
+		if (value.isTextual()) {
+			try {
+				return Double.parseDouble(value.asText());
+			} catch (NumberFormatException ignored) {
+				return null;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Extracts a flat JSON object into a map, applying {@code valueMapper} to
+	 * each member value. Members for which the mapper returns {@code null} are
+	 * skipped, so the mapper doubles as a filter. Shared scaffolding behind
+	 * {@link #extractStringObject(String, String)},
+	 * {@link #extractDoubleObject(String, String)}, and
+	 * {@link #parseStringObject(String)}.
+	 *
+	 * @param json        the JSON string
+	 * @param field       the field name whose value is the object to extract;
+	 *                    {@code null} uses the root of {@code json} directly
+	 * @param valueMapper converts a member's value node to the map value, or
+	 *                    returns {@code null} to omit the member
+	 * @param <T>         the map value type
+	 * @return a map of key to mapped value, preserving member order; empty when
+	 *         the field is absent, not an object, or the JSON is unparseable
+	 */
+	private static <T> Map<String, T> extractObject(String json, String field,
+			Function<JsonNode, T> valueMapper) {
+		Map<String, T> result = new LinkedHashMap<>();
 		if (json == null) return result;
 
 		try {
-			ObjectMapper mapper = new ObjectMapper();
-			JsonNode root = mapper.readTree(json);
-			JsonNode obj = root.get(field);
+			JsonNode root = MAPPER.readTree(json);
+			JsonNode obj = (field == null) ? root : root.get(field);
 			if (obj == null || !obj.isObject()) return result;
 
 			Iterator<Map.Entry<String, JsonNode>> fields = obj.fields();
 			while (fields.hasNext()) {
 				Map.Entry<String, JsonNode> entry = fields.next();
-				if (entry.getValue().isTextual()) {
-					result.put(entry.getKey(), entry.getValue().asText());
+				T value = valueMapper.apply(entry.getValue());
+				if (value != null) {
+					result.put(entry.getKey(), value);
 				}
 			}
 		} catch (Exception e) {
-			// Return empty map on parse failure
+			// Return whatever parsed before the failure
 		}
 
 		return result;
+	}
+
+	/**
+	 * Parses a flat JSON object of string key-value pairs from the root of the
+	 * given JSON. This is the root-level counterpart to
+	 * {@link #extractStringObject(String, String)}, which navigates to a named
+	 * field first.
+	 *
+	 * @param json a JSON object string such as {@code {"A":"1","B":"2"}}
+	 * @return a map of string key-value pairs, empty if {@code json} is null,
+	 *         not an object, or fails to parse
+	 */
+	public static Map<String, String> parseStringObject(String json) {
+		return extractObject(json, null, value -> value.isTextual() ? value.asText() : null);
+	}
+
+	/**
+	 * Serializes a flat map of string key-value pairs to a JSON object string.
+	 * The inverse of {@link #parseStringObject(String)}.
+	 *
+	 * @param map the map to serialize; null or empty yields {@code "{}"}
+	 * @return a JSON object string such as {@code {"A":"1","B":"2"}}
+	 */
+	public static String toJsonObject(Map<String, String> map) {
+		if (map == null || map.isEmpty()) return "{}";
+
+		try {
+			return new ObjectMapper().writeValueAsString(map);
+		} catch (Exception e) {
+			return "{}";
+		}
 	}
 
 	/**
@@ -520,6 +617,33 @@ public final class JsonFieldExtractor {
 				.replace("\n", "\\n")
 				.replace("\r", "\\r")
 				.replace("\t", "\\t");
+	}
+
+	/**
+	 * Appends a {@link Map} of {@code String} to {@code Double} as a JSON object
+	 * to the given {@link StringBuilder}, using proper JSON key escaping.
+	 * Shared implementation for serializing cost breakdowns in stats reporting.
+	 *
+	 * <p>Output format: {@code {"key1":1.0,"key2":2.0}}</p>
+	 *
+	 * @param sb     the builder to append to (caller adds any surrounding fields)
+	 * @param keyName the JSON key name for this object
+	 * @param map    the map to serialize; {@code null} or empty produces an empty object
+	 */
+	public static void appendDoubleMapJson(StringBuilder sb, String keyName, Map<String, Double> map) {
+		sb.append(",\"").append(keyName).append("\":{");
+		boolean first = true;
+		if (map != null) {
+			for (Map.Entry<String, Double> e : map.entrySet()) {
+				if (!first) sb.append(",");
+				first = false;
+				sb.append("\"")
+					.append(escapeJson(e.getKey()))
+					.append("\":")
+					.append(e.getValue() != null ? e.getValue() : 0.0);
+			}
+		}
+		sb.append("}");
 	}
 
 	/**

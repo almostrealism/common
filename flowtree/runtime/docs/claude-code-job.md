@@ -395,7 +395,7 @@ All setters support chaining. The `build()` method assembles sections in this fi
 
 0b. **Inactivity Timeout Warning** -- Present when `inactivityRestartAttempt > 0`. Heading: `## !! SESSION RESTARTED -- INACTIVITY TIMEOUT !!`. Explains that the previous Claude subprocess was killed because it produced no output for too long, identifies the most common cause (`pgrep -f` matching its own command line, `curl` polling against invented endpoints), and instructs the agent to use the MCP `get_*_status` tools rather than bash `while`/`until`/`for` loops. Reminds the agent that prior progress is preserved in git and to consult `workstream_context` before duplicating work.
 
-0c. **Enforcement Retry Warning** -- Present when `enforcementAttempt > 0`. Heading: `## !! SESSION RESTARTED -- ATTEMPT N !!`. Used when the previous run produced no code changes and the enforcement loop is asking for another attempt. Tells the agent to investigate CI status with the test runner (using the exact CI command) and produce real production-code changes rather than re-running the prompt verbatim.
+0c. **Enforcement Retry Warning** -- Present when `enforcementAttempt > 0`. Heading: `## !! SESSION RESTARTED -- RETRY N !!`. Used when the previous run produced no code changes and the enforcement loop is asking for another attempt. Tells the agent to investigate CI status with the test runner (using the exact CI command) and produce real production-code changes rather than re-running the prompt verbatim.
 
 1. **Opening paragraph** -- Always present. Establishes that the agent is autonomous with no TTY and no interactive session.
 

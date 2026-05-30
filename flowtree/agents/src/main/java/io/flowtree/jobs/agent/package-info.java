@@ -24,6 +24,14 @@
  * and output across the boundary. Phase 1 of the pluggable-agents refactor
  * introduces the package and ships {@link io.flowtree.jobs.agent.ClaudeCodeRunner}
  * as the sole implementation; subsequent phases add additional runners (e.g.
- * opencode) and per-phase runner selection on the orchestrator.</p>
+ * {@link io.flowtree.jobs.agent.OpencodeRunner}) and per-phase runner selection
+ * on the orchestrator.</p>
+ *
+ * <p>{@link io.flowtree.jobs.agent.OpencodeTranscriptWriter} writes a structured
+ * JSONL transcript for every opencode session, capturing the full NDJSON event
+ * stream alongside session-context metadata (job ID, workstream ID, phase, model,
+ * provider) and outcome metrics. Transcripts are written to a configurable
+ * directory (see {@link io.flowtree.jobs.agent.OpencodeTranscriptWriter#ENV_TRANSCRIPT_DIR})
+ * and survive job completion for postmortem analysis.</p>
  */
 package io.flowtree.jobs.agent;

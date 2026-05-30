@@ -95,7 +95,7 @@ public record PhaseConfigBundle(PhaseConfig defaultPhaseConfig,
         PhaseConfig override = phaseConfigs.get(phase);
         return override == null
                 ? defaultPhaseConfig
-                : override.overlayOn(defaultPhaseConfig);
+                : override.overlayOnClearingInheritedProvider(defaultPhaseConfig);
     }
 
     /**
@@ -184,6 +184,51 @@ public record PhaseConfigBundle(PhaseConfig defaultPhaseConfig,
             }
         }
         return new PhaseConfigBundle(def, phases);
+    }
+
+    /**
+     * Merges the legacy single-runner fields ({@code defaultRunner} /
+     * {@code runners}) with the new {@code defaultPhaseConfig} /
+     * {@code phaseConfigs} fields into a single bundle. New fields take
+     * precedence field-by-field — when both forms set the same field, the new
+     * form wins; the legacy form fills in any field the new form leaves null.
+     *
+     * @param legacyDefaultRunner the legacy single-runner default, or {@code null}
+     * @param legacyRunners       the legacy per-phase runner map, keyed by
+     *                            phase wire name; may be {@code null}
+     * @param newDefault          the new default {@link PhaseConfig}, or {@code null}
+     * @param newPhaseConfigs     the new per-phase {@link PhaseConfig} map,
+     *                            keyed by phase wire name; may be {@code null}
+     * @return the merged bundle; never {@code null}
+     */
+    public static PhaseConfigBundle mergeLegacyWithNew(String legacyDefaultRunner,
+                                                       Map<String, String> legacyRunners,
+                                                       PhaseConfig newDefault,
+                                                       Map<String, PhaseConfig> newPhaseConfigs) {
+        PhaseConfigBundle bundle = fromLegacyRunners(legacyDefaultRunner, legacyRunners);
+        if (newDefault != null && !newDefault.isEmpty()) {
+            // New default overlays the legacy-derived default field-by-field
+            // (new wins; legacy fills in missing fields).
+            bundle = bundle.withDefault(
+                    newDefault.overlayOn(bundle.defaultPhaseConfig()));
+        }
+        if (newPhaseConfigs != null && !newPhaseConfigs.isEmpty()) {
+            for (Map.Entry<String, PhaseConfig> e : newPhaseConfigs.entrySet()) {
+                if (e.getValue() == null || e.getValue().isEmpty()) continue;
+                Phase phase;
+                try {
+                    phase = Phase.fromWireName(e.getKey());
+                } catch (IllegalArgumentException ex) {
+                    continue;
+                }
+                PhaseConfig existing = bundle.phaseConfigs().get(phase);
+                PhaseConfig merged = existing == null
+                        ? e.getValue()
+                        : e.getValue().overlayOn(existing);
+                bundle = bundle.withPhase(phase, merged);
+            }
+        }
+        return bundle;
     }
 
     /**

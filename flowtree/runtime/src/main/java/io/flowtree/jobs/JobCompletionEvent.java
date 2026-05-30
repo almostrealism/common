@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Event object containing details about a job's completion.
@@ -92,6 +93,24 @@ public class JobCompletionEvent {
 
     /** URL of the GitHub pull request opened by this job, or {@code null}. */
     private String pullRequestUrl;
+
+    /**
+     * Total USD cost for this job, populated from per-phase cost accumulation
+     * or from the {@code job_timing} table during retrieval.
+     */
+    protected double totalCostUsd;
+
+    /**
+     * Per-runner USD cost breakdown, populated from per-phase accumulation or
+     * from the {@code job_runner_cost} table during retrieval.
+     */
+    protected Map<String, Double> costByRunner = Collections.emptyMap();
+
+    /**
+     * Per-model USD cost breakdown, populated from per-phase accumulation or
+     * from the {@code job_model_cost} table during retrieval.
+     */
+    protected Map<String, Double> costByModel = Collections.emptyMap();
 
     /**
      * Creates a new job completion event.
@@ -293,6 +312,50 @@ public class JobCompletionEvent {
      * {@code null} for non-coding-agent jobs.
      */
     public String getRunnerName() { return null; }
+    /**
+     * Returns the per-runner USD cost breakdown for this job, or an empty map
+     * for non-coding-agent jobs and events that predate per-runner tracking.
+     */
+    public Map<String, Double> getCostByRunner() { return costByRunner; }
+    /**
+     * Returns the per-model USD cost breakdown for this job, or an empty map
+     * for non-coding-agent jobs and events that predate per-model tracking.
+     */
+    public Map<String, Double> getCostByModel() { return costByModel; }
+
+    // ---- Public setters for use by JobStatsStore row reconstruction ----
+
+    /**
+     * Sets the total USD cost for this job.
+     *
+     * @param totalCostUsd the total cost
+     */
+    public void setTotalCostUsd(double totalCostUsd) { this.totalCostUsd = totalCostUsd; }
+
+    /**
+     * Returns the total USD cost for this job.
+     *
+     * @return the total cost
+     */
+    public double getTotalCostUsd() { return totalCostUsd; }
+
+    /**
+     * Sets the per-runner cost breakdown for this job.
+     *
+     * @param costByRunner map of runner name to USD cost
+     */
+    public void setCostByRunner(Map<String, Double> costByRunner) {
+        this.costByRunner = costByRunner != null ? Map.copyOf(costByRunner) : Collections.emptyMap();
+    }
+
+    /**
+     * Sets the per-model cost breakdown for this job.
+     *
+     * @param costByModel map of provider/model identifier to USD cost
+     */
+    public void setCostByModel(Map<String, Double> costByModel) {
+        this.costByModel = costByModel != null ? Map.copyOf(costByModel) : Collections.emptyMap();
+    }
 
     // ==================== Builder-pattern setters ====================
 
@@ -371,10 +434,28 @@ public class JobCompletionEvent {
         root.put("commitMessageSource", getCommitMessageSource());
         root.put("runnerName", getRunnerName());
 
+        putDoubleMap(root, "costByRunner", getCostByRunner());
+        putDoubleMap(root, "costByModel", getCostByModel());
+
         try {
             return EVENT_MAPPER.writeValueAsString(root);
         } catch (Exception e) {
             return "{}";
+        }
+    }
+
+    /**
+     * Serialises a {@code Map<String, Double>} as a JSON object child of {@code root}.
+     *
+     * @param root the parent object node
+     * @param key  the field name under which the child object is created
+     * @param map  the entries to serialise; {@code null} is treated as empty
+     */
+    private static void putDoubleMap(ObjectNode root, String key, Map<String, Double> map) {
+        ObjectNode node = root.putObject(key);
+        if (map == null) return;
+        for (Map.Entry<String, Double> e : map.entrySet()) {
+            node.put(e.getKey(), e.getValue());
         }
     }
 

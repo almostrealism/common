@@ -34,11 +34,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 /**
  * A {@link Job} implementation that executes a Claude Code prompt.
@@ -98,8 +98,8 @@ public class CodingAgentJob extends GitManagedJob {
 
     /**
      * Deduplication mode that disables the deduplication scan entirely.
-     * Use this to explicitly opt out when the default {@link #DEDUP_LOCAL}
-     * behaviour is not desired.
+     * This is the default; opt in to deduplication by passing
+     * {@link #DEDUP_LOCAL} or {@link #DEDUP_SPAWN} explicitly.
      */
     public static final String DEDUP_NONE = "none";
 
@@ -121,16 +121,14 @@ public class CodingAgentJob extends GitManagedJob {
     private int maxTurns;
     /** Maximum spend budget for this job in US dollars; negative disables the limit. */
     private double maxBudgetUsd;
-    /** Model alias or full name passed via {@code --model}; {@code null} uses the CLI default. */
-    private String model;
-    /** Effort/thinking level passed via {@code --effort}; {@code null} uses the CLI default. */
-    private String effort;
     /** HTTP base URL of the ar-manager service, or {@code null} if not configured. */
     private String arManagerUrl;
     /** Bearer token for authenticating against the ar-manager service. */
     private String arManagerToken;
     /** Pushed-tools JSON; null when no controller is in the loop. */
     private String pushedToolsConfig;
+    /** Per-workstream env vars set on the agent subprocess; null when none configured. */
+    private Map<String, String> agentEnv;
     /** Optional planning document text injected into the Claude Code system prompt. */
     private String planningDocument;
     /** Whether the job must produce at least one staged file change to succeed. */
@@ -141,8 +139,6 @@ public class CodingAgentJob extends GitManagedJob {
     private String currentActivity;
     /** Description of a git-tampering rule violation detected during this job. */
     private String gitTamperingViolation;
-    /** Stdout silence duration after which the Claude subprocess is killed (default 20 min). */
-    private long inactivityTimeoutMillis = TimeUnit.MINUTES.toMillis(20);
     /** Maximum relaunches of Claude after inactivity-triggered kills (default 3). */
     private int maxInactivityRestarts = 3;
     /** Number of inactivity-triggered relaunches in the current run; resets to 0 after the run. */
@@ -164,14 +160,18 @@ public class CodingAgentJob extends GitManagedJob {
     /** When {@code true}, pom.xml {@code <dependency>} changes trigger a correction loop. */
     private boolean enforceMavenDependencies;
 
-    /** When {@code true} (the default), new files are reviewed for correct module placement. */
-    private boolean enforceOrganizationalPlacement = true;
+    /**
+     * When {@code true}, new files are reviewed for correct module placement.
+     * Defaults to {@code false}; opt in via
+     * {@link #setEnforceOrganizationalPlacement(boolean)}.
+     */
+    private boolean enforceOrganizationalPlacement = false;
 
     /** When {@code true} (the default), a second-pass review session runs after primary work. */
     private boolean reviewEnabled = true;
     /** Per-job cap on review passes; passed to {@link ReviewRule}. */
     private int maxReviewPasses = DEFAULT_MAX_REVIEW_PASSES;
-    /** Active {@link ReviewRule} instance after {@link #buildActiveRules()} runs; owns review telemetry. */
+    /** Active {@link ReviewRule} instance set by {@link EnforcementRunner} while assembling rules; owns review telemetry. */
     private ReviewRule activeReviewRule;
 
     /** Shell command run after the agent completes; non-empty activates {@link PostCompletionCommandRule}. */
@@ -188,7 +188,7 @@ public class CodingAgentJob extends GitManagedJob {
     /** {@code true} when the pass cap was exhausted without a zero exit. */
     private boolean postCompletionCapHit;
 
-    /** Additional enforcement rules from {@link #addEnforcementRule}; built-ins are created in {@link #buildActiveRules()}. */
+    /** Additional enforcement rules from {@link #addEnforcementRule}; built-ins are created by {@link EnforcementRunner}. */
     private final List<EnforcementRule> customEnforcementRules = new ArrayList<>();
 
     /**
@@ -209,9 +209,10 @@ public class CodingAgentJob extends GitManagedJob {
     /**
      * Unified per-phase configuration bundle holding the default
      * {@link PhaseConfig} plus per-phase overrides for runner / model /
-     * effort. Kept in lockstep with the legacy {@link #defaultRunner},
-     * {@link #runnerByPhase}, {@link #model}, and {@link #effort} fields by
-     * the corresponding setters so legacy callers continue to work.
+     * effort / provider. This is the sole source of model, effort, and
+     * provider; the runner-resolution fields {@link #defaultRunner} and
+     * {@link #runnerByPhase} are kept in lockstep with it by
+     * {@link #setPhaseConfigBundle(PhaseConfigBundle)}.
      */
     private PhaseConfigBundle phaseConfigBundle = PhaseConfigBundle.EMPTY;
 
@@ -231,6 +232,10 @@ public class CodingAgentJob extends GitManagedJob {
     private long durationApiMs;
     /** Total cost of the Claude Code session in US dollars. */
     private double costUsd;
+    /** Cumulative USD cost per runner name, summed across every phase invocation in this job. */
+    private final Map<String, Double> costByRunner = new LinkedHashMap<>();
+    /** Cumulative USD cost per model (provider/model identifier), summed across every phase invocation in this job. */
+    private final Map<String, Double> costByModel = new LinkedHashMap<>();
     /** Number of agentic turns taken during the Claude Code session. */
     private int numTurns;
     /** Session subtype / stop reason reported by Claude Code (e.g. "success"). */
@@ -246,6 +251,9 @@ public class CodingAgentJob extends GitManagedJob {
 
     /** Wall-clock instant at which {@link #doWork()} began; used to filter abandoned-test-run scans. */
     private Instant sessionStartedAt;
+
+    /** Publishes harness-level status messages; created lazily once the workstream URL is known. */
+    private HarnessStatusReporter harnessStatus;
 
     /**
      * Default constructor for deserialization.
@@ -401,54 +409,6 @@ public class CodingAgentJob extends GitManagedJob {
         this.maxBudgetUsd = maxBudgetUsd;
     }
 
-    /** Returns the Claude Code model, or {@code null} to use the CLI default. */
-    public String getModel() { return model; }
-
-    /**
-     * Sets the Claude Code model.  Validated against {@link #VALID_MODELS} so
-     * an unknown value fails at the caller instead of silently 404-ing the
-     * dispatched subprocess.
-     *
-     * @param model a value from {@link #VALID_MODELS}, or {@code null}/empty
-     * @throws IllegalArgumentException if not a recognised identifier
-     */
-    public void setModel(String model) {
-        if (model == null || model.isEmpty()) {
-            this.model = null;
-            this.phaseConfigBundle = phaseConfigBundle.withDefaultModel(null);
-            return;
-        }
-        if (!VALID_MODELS.contains(model)) {
-            throw new IllegalArgumentException("Invalid model '" + model
-                    + "'. Must be one of " + VALID_MODELS);
-        }
-        this.model = model;
-        this.phaseConfigBundle = phaseConfigBundle.withDefaultModel(model);
-    }
-
-    /** Returns the effort/thinking level, or {@code null} to use the CLI default. */
-    public String getEffort() { return effort; }
-
-    /**
-     * Sets the effort/thinking level. Fails loud for unknown values.
-     *
-     * @param effort one of {@link #VALID_EFFORT_LEVELS}, or {@code null}/empty
-     * @throws IllegalArgumentException if not a valid level
-     */
-    public void setEffort(String effort) {
-        if (effort == null || effort.isEmpty()) {
-            this.effort = null;
-            this.phaseConfigBundle = phaseConfigBundle.withDefaultEffort(null);
-            return;
-        }
-        if (!VALID_EFFORT_LEVELS.contains(effort)) {
-            throw new IllegalArgumentException("Invalid effort level '" + effort
-                    + "'. Must be one of " + VALID_EFFORT_LEVELS);
-        }
-        this.effort = effort;
-        this.phaseConfigBundle = phaseConfigBundle.withDefaultEffort(effort);
-    }
-
     /** Returns the ar-manager HTTP URL. */
     public String getArManagerUrl() {
         return arManagerUrl;
@@ -483,6 +443,14 @@ public class CodingAgentJob extends GitManagedJob {
     /** Sets the pushed-tools configuration JSON (may be {@code null}). */
     public void setPushedToolsConfig(String pushedToolsConfig) {
         this.pushedToolsConfig = pushedToolsConfig;
+    }
+
+    /** Returns the per-workstream agent-subprocess env vars, or {@code null}. */
+    public Map<String, String> getAgentEnv() { return agentEnv; }
+
+    /** Sets per-workstream env vars applied to the agent subprocess (may be {@code null}). */
+    public void setAgentEnv(Map<String, String> agentEnv) {
+        this.agentEnv = agentEnv;
     }
 
     /**
@@ -554,10 +522,10 @@ public class CodingAgentJob extends GitManagedJob {
     /**
      * Sets the deduplication mode for this job.
      *
-     * <p>The default is {@link #DEDUP_LOCAL} (inline session before commit).
+     * <p>Deduplication is disabled by default ({@link #DEDUP_NONE}).
+     * Pass {@link #DEDUP_LOCAL} to run an inline session before committing.
      * Use {@link #DEDUP_SPAWN} to submit a separate agent job after committing
-     * (requires a workstream URL). Use {@link #DEDUP_NONE} to disable
-     * deduplication entirely.</p>
+     * (requires a workstream URL).</p>
      *
      * @param deduplicationMode {@link #DEDUP_LOCAL}, {@link #DEDUP_SPAWN},
      *                          or {@link #DEDUP_NONE}
@@ -606,7 +574,7 @@ public class CodingAgentJob extends GitManagedJob {
      * If the agent moves no files after reviewing placement, the rule considers the
      * placement correct and exits.</p>
      *
-     * @return {@code true} if organizational placement enforcement is enabled (the default)
+     * @return {@code true} if organizational placement enforcement is enabled
      */
     public boolean isEnforceOrganizationalPlacement() {
         return enforceOrganizationalPlacement;
@@ -615,7 +583,7 @@ public class CodingAgentJob extends GitManagedJob {
     /**
      * Sets whether the organizational placement rule is active for this job.
      *
-     * @param enforceOrganizationalPlacement {@code false} to disable placement enforcement
+     * @param enforceOrganizationalPlacement {@code true} to enable placement enforcement
      */
     public void setEnforceOrganizationalPlacement(boolean enforceOrganizationalPlacement) {
         this.enforceOrganizationalPlacement = enforceOrganizationalPlacement;
@@ -663,6 +631,18 @@ public class CodingAgentJob extends GitManagedJob {
 
     /** Sets the current correction-session rule name; null for primary work. Package-private for tests. */
     void setCurrentActivity(String currentActivity) { this.currentActivity = currentActivity; }
+
+    /** Returns the current correction-session rule name, or null for primary work. */
+    String getCurrentActivity() { return currentActivity; }
+
+    /** Sets the active review rule (or null); used by {@link EnforcementRunner} when assembling rules. */
+    void setActiveReviewRule(ReviewRule activeReviewRule) { this.activeReviewRule = activeReviewRule; }
+
+    /** Marks that the post-completion command rule hit its retry cap. */
+    void setPostCompletionCapHit(boolean postCompletionCapHit) { this.postCompletionCapHit = postCompletionCapHit; }
+
+    /** Returns the custom enforcement rules registered via {@link #addEnforcementRule}. */
+    List<EnforcementRule> getCustomEnforcementRules() { return customEnforcementRules; }
 
     /**
      * Returns the name of the {@link AgentRunner} dispatching this job's
@@ -791,10 +771,9 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Replaces the per-phase configuration bundle. Updates the legacy
-     * fields ({@link #defaultRunner}, {@link #runnerByPhase},
-     * {@link #model}, {@link #effort}) to reflect the new bundle so that
-     * legacy callers continue to see consistent state.
+     * Replaces the per-phase configuration bundle. Updates the legacy runner
+     * fields ({@link #defaultRunner}, {@link #runnerByPhase}) to reflect the
+     * new bundle so that runner-resolution callers see consistent state.
      *
      * @param bundle the new bundle; {@code null} resets to
      *               {@link PhaseConfigBundle#EMPTY}
@@ -802,13 +781,11 @@ public class CodingAgentJob extends GitManagedJob {
     public void setPhaseConfigBundle(PhaseConfigBundle bundle) {
         this.phaseConfigBundle = bundle != null ? bundle : PhaseConfigBundle.EMPTY;
         PhaseConfig def = phaseConfigBundle.defaultPhaseConfig();
-        // Resync legacy fields, bypassing the bundle update path that the
+        // Resync legacy runner fields, bypassing the bundle update path that the
         // public setters would otherwise trigger.
         String r = def.runner();
         this.defaultRunner = (r != null && !r.isEmpty()) ? r : AgentRunnerRegistry.CLAUDE;
         this.runnerName = this.defaultRunner;
-        this.model = def.model();
-        this.effort = def.effort();
         this.runnerByPhase.clear();
         for (Map.Entry<Phase, PhaseConfig> e : phaseConfigBundle.phaseConfigs().entrySet()) {
             String phaseRunner = e.getValue().runner();
@@ -926,6 +903,18 @@ public class CodingAgentJob extends GitManagedJob {
      */
     public static final int DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS = 25;
 
+    /**
+     * Absolute ceiling on the number of times the outer enforcement loop will
+     * re-enter any single rule within one job.  This is a safety net: per-rule
+     * caps ({@link EnforcementRule#getMaxRetries()}) are the primary mechanism,
+     * but a bug in the exhaustion-tracking logic could allow a rule to re-enter
+     * indefinitely.  A value of 10 is far beyond any normal rule's per-pass
+     * budget (e.g. commit-message has cap=2, deduplication has cap=3) so it will
+     * not trip in ordinary operation but prevents runaway cost from any future
+     * bug like the infinite loop described in the task.
+     */
+    public static final int DEFAULT_MAX_RULE_ENTRIES = 10;
+
     @Override
     protected void doWork() {
         if (sessionStartedAt == null) sessionStartedAt = Instant.now();
@@ -939,47 +928,8 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Builds the ordered list of enforcement rules that are currently active for
-     * this job, based on the job's configuration flags.
-     *
-     * <p>Rules are evaluated in declaration order: built-in rules first, then any
-     * custom rules registered via {@link #addEnforcementRule(EnforcementRule)}.</p>
-     *
-     * @return ordered list of active enforcement rules; never {@code null}
-     */
-    private List<EnforcementRule> buildActiveRules() {
-        List<EnforcementRule> rules = new ArrayList<>();
-        if (enforceChanges) {
-            rules.add(new EnforceChangesRule());
-        }
-        activeReviewRule = reviewEnabled ? new ReviewRule(maxReviewPasses) : null;
-        if (activeReviewRule != null) rules.add(activeReviewRule);
-        if (DEDUP_LOCAL.equals(deduplicationMode)) {
-            rules.add(new DeduplicationRule(maxDeduplicationPasses));
-        }
-        if (enforceOrganizationalPlacement) {
-            rules.add(new OrganizationalPlacementRule());
-        }
-        if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
-            rules.add(new PostCompletionCommandRule(
-                    postCompletionCommand,
-                    postCompletionWorkingDir,
-                    postCompletionTimeoutSeconds,
-                    maxPostCompletionPasses));
-        }
-        if (enforceMavenDependencies) {
-            rules.add(new MavenDependencyProtectionRule());
-        }
-        rules.addAll(customEnforcementRules);
-        // Always last: verifies commit.txt is present and agent-authored.
-        if (getTargetBranch() != null && !getTargetBranch().isEmpty()) {
-            rules.add(new CommitMessageRule());
-        }
-        return rules;
-    }
-
-    /**
-     * Runs all active enforcement rules in sequence.
+     * Runs all active enforcement rules in sequence, delegating to
+     * {@link EnforcementRunner}.
      *
      * <p>For each rule that detects a violation, a correction session is started
      * and the check is repeated until the violation is resolved or the rule's
@@ -990,89 +940,7 @@ public class CodingAgentJob extends GitManagedJob {
      * tampering-detection path in {@link GitManagedJob} handles that case.</p>
      */
     void runEnforcementRules() {
-        List<EnforcementRule> rules = buildActiveRules();
-        int totalAttempts = 0;
-        boolean anyRuleCorrectionRan;
-        do {
-            anyRuleCorrectionRan = false;
-            for (EnforcementRule rule : rules) {
-                if (!rule.isViolated(this)) {
-                    log("Enforcement rule '" + rule.getName() + "': no violation");
-                    continue;
-                }
-
-                log("Enforcement rule '" + rule.getName() + "': violation detected");
-                int attempts = 0;
-                while (attempts < rule.getMaxRetries()
-                        && rule.isViolated(this)
-                        && !hasAgentCommitted()
-                        && totalAttempts < DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
-                    attempts++;
-                    totalAttempts++;
-                    anyRuleCorrectionRan = true;
-                    log("Enforcement rule '" + rule.getName()
-                            + "': correction attempt " + attempts);
-                    String correctionPrompt = rule.buildCorrectionPrompt(this);
-                    if (correctionPrompt != null) {
-                        runCorrectionSession(correctionPrompt, rule.getName());
-                    } else {
-                        // enforce-changes is the only rule that re-runs with the existing
-                        // prompt; bumping enforcementAttempt for other rules would inflate
-                        // the user-facing escalation messaging.
-                        if ("enforce-changes".equals(rule.getName())) {
-                            enforcementAttempt++;
-                            log("Enforcement attempt: " + (enforcementAttempt + 1));
-                        }
-                        // Preserve commit.txt: executeSingleRun() deletes it at startup.
-                        Path rerunCommitFile = resolveWorkingPath("commit.txt");
-                        String savedForRerun = null;
-                        if (rerunCommitFile != null && Files.exists(rerunCommitFile)) {
-                            try { savedForRerun = Files.readString(rerunCommitFile, StandardCharsets.UTF_8); }
-                            catch (IOException e) { warn("Could not save commit.txt: " + e.getMessage()); }
-                        }
-                        // Tag the activity so per-phase runner routing applies even though
-                        // there is no separate correction prompt for this rule.
-                        String previousActivity = currentActivity;
-                        currentActivity = rule.getName();
-                        try {
-                            executeSingleRun();
-                        } finally {
-                            currentActivity = previousActivity;
-                        }
-                        // Only restore old commit.txt if the rerun did not write a new one;
-                        // when the rerun makes the actual code changes its message is authoritative.
-                        boolean rerunWroteCommit = rerunCommitFile != null && Files.exists(rerunCommitFile);
-                        if (!rerunWroteCommit && savedForRerun != null && rerunCommitFile != null) {
-                            try { Files.writeString(rerunCommitFile, savedForRerun, StandardCharsets.UTF_8); }
-                            catch (IOException e) { warn("Could not restore commit.txt: " + e.getMessage()); }
-                        }
-                    }
-                    rule.onCorrectionAttempted(this);
-                    if (hasAgentCommitted()) break;
-                }
-
-                if (!hasAgentCommitted() && rule.isViolated(this)) {
-                    if (attempts >= rule.getMaxRetries()) {
-                        warn("Enforcement rule '" + rule.getName() + "': exhausted "
-                                + rule.getMaxRetries() + " retries without resolution");
-                        if ("post-completion-command".equals(rule.getName())) postCompletionCapHit = true;
-                    } else if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
-                        warn("Enforcement rule '" + rule.getName()
-                                + "': stopped because the total enforcement attempt cap was reached");
-                    }
-                } else if ("post-completion-command".equals(rule.getName()) && ((PostCompletionCommandRule) rule).isCapHit()) {
-                    postCompletionCapHit = true;
-                }
-                if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) break;
-            }
-        } while (totalAttempts < DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS
-                && anyRuleCorrectionRan && !hasAgentCommitted());
-
-        if (totalAttempts >= DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS) {
-            warn("Enforcement aborted after " + totalAttempts + " total attempts (cap: "
-                    + DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS + ") — giving up to"
-                    + " avoid an unbounded retry loop");
-        }
+        new EnforcementRunner(this).run();
     }
 
     /**
@@ -1117,11 +985,40 @@ public class CodingAgentJob extends GitManagedJob {
         }
     }
 
+    /**
+     * Resolves a completion-time push reconciliation conflict by running a
+     * focused conflict-resolution agent session.
+     *
+     * <p>Unlike {@link #onGitTampering()}, which restarts the full primary
+     * session, this runs a narrow {@code "resolve these markers, nothing else"}
+     * correction session via {@link #runCorrectionSession(String, String)} tagged
+     * with {@link Phase#PUSH_CONFLICT_RESOLUTION}. After this returns,
+     * {@link GitPushReconciler} verifies the markers are gone, stages the
+     * resolved files, and makes the merge commit.</p>
+     *
+     * @param repoPath        repository containing the conflict (primary working
+     *                        directory or a dependent repo sibling)
+     * @param conflictedFiles paths, relative to {@code repoPath}, left unmerged
+     * @return always {@code true}; the reconciler verifies the actual outcome
+     */
+    @Override
+    protected boolean onPushConflict(String repoPath, List<String> conflictedFiles) {
+        warn("Resolving push reconciliation conflict in " + repoPath
+                + " (" + conflictedFiles.size() + " file(s))");
+        harnessStatus().unusual("Push reconciliation conflict in " + repoPath
+                + " — running focused conflict-resolution session");
+        String correctionPrompt = PushConflictPromptBuilder.build(this, repoPath, conflictedFiles);
+        runCorrectionSession(correctionPrompt, Phase.PUSH_CONFLICT_RESOLUTION.wireName());
+        return true;
+    }
+
     @Override
     protected boolean onGitTampering() {
         String violation = getTamperingDescription();
         warn("Agent tampered with git: " + violation
             + " -- destroying all changes and restarting session");
+        harnessStatus().unusual("Git tampering detected (" + violation
+            + ") — destroying changes and restarting session");
 
         // Set the violation message so buildInstructionPrompt() includes
         // the warning in the restarted session's prompt.
@@ -1169,6 +1066,8 @@ public class CodingAgentJob extends GitManagedJob {
 
         Phase currentPhase = resolveCurrentPhase();
         AgentRunner runner = resolveRunner(currentPhase);
+        harnessStatus().phaseEntry(currentPhase, runner.getName(),
+                resolveEffectivePhaseConfig(currentPhase));
         toolsDownloader.ensurePushedTools(pushedToolsConfig);
         configureMcpBuilder();
         String mcpConfigJson = mcpConfigBuilder.buildMcpConfig();
@@ -1178,8 +1077,11 @@ public class CodingAgentJob extends GitManagedJob {
             log("Target branch: " + getTargetBranch());
         }
         if (enforcementAttempt > 0) {
-            log("Enforcement attempt: " + (enforcementAttempt + 1));
+            log("enforce_changes retry: restarting from PRIMARY (retry " + enforcementAttempt + ")");
         }
+
+        PhaseConfig effective = resolveEffectivePhaseConfig(currentPhase);
+        String modelKey = effective.toModelKey();
 
         output = "";
         AgentRunResult finalResult = null;
@@ -1193,6 +1095,7 @@ public class CodingAgentJob extends GitManagedJob {
             wasKilledForInactivity = result.killedForInactivity();
             finalResult = result;
             if (!wasKilledForInactivity) break;
+            harnessStatus().inactivitySuspended(runner.getName(), attempt, maxInactivityRestarts);
             if (attempt == maxInactivityRestarts) {
                 warn("Inactivity-restart limit (" + maxInactivityRestarts + ") reached -- abandoning agent session");
             } else {
@@ -1204,7 +1107,10 @@ public class CodingAgentJob extends GitManagedJob {
 
         if (finalResult != null) {
             absorbResult(finalResult);
+            costByRunner.merge(runner.getName(), finalResult.costUsd(), Double::sum);
+            costByModel.merge(modelKey, finalResult.costUsd(), Double::sum);
         }
+        harnessStatus().phaseExit(currentPhase, finalResult);
         log("Output saved to: " + outputFile);
 
         if (getOutputConsumer() != null) {
@@ -1289,6 +1195,12 @@ public class CodingAgentJob extends GitManagedJob {
                                     Path outputCapturePath,
                                     int attempt) {
         Map<String, String> env = new LinkedHashMap<>();
+        // Per-workstream agentEnv first, so framework-critical vars set by
+        // applyAgentEnvironment (ar-manager URL/token, workstream URL) win on
+        // any key collision.
+        if (agentEnv != null && !agentEnv.isEmpty()) {
+            env.putAll(agentEnv);
+        }
         String wsUrl = resolveWorkstreamUrl();
         if (wsUrl != null && !wsUrl.isEmpty()) {
             log("AR_WORKSTREAM_URL: " + wsUrl);
@@ -1297,10 +1209,12 @@ public class CodingAgentJob extends GitManagedJob {
 
         Path workDir = getWorkingDirectory() != null
                 ? Path.of(getWorkingDirectory()) : null;
-        // Resolve per-phase model/effort from the bundle, falling back to
-        // the legacy single-value fields for anything the bundle leaves null.
-        PhaseConfig effective = phaseConfigBundle.forPhase(resolveCurrentPhase())
-                .overlayOn(new PhaseConfig(defaultRunner, model, effort));
+        // Resolve per-phase model/effort/provider from the bundle. The runner
+        // falls back to the default runner; model/effort/provider come solely
+        // from the phase config (null means "use the runner's CLI default").
+        Phase phase = resolveCurrentPhase();
+        PhaseConfig effective = phaseConfigBundle.forPhase(phase)
+                .overlayOn(new PhaseConfig(defaultRunner, null, null));
         return AgentRunRequest.builder()
                 .prompt(buildInstructionPrompt())
                 .workingDirectory(workDir)
@@ -1312,7 +1226,7 @@ public class CodingAgentJob extends GitManagedJob {
                 .provider(effective.provider())
                 .maxTurns(maxTurns)
                 .maxBudgetUsd(maxBudgetUsd)
-                .inactivityTimeoutMillis(inactivityTimeoutMillis)
+                .inactivityTimeoutMillis(resolveRunner(phase).defaultInactivityTimeoutMillis())
                 .inactivityRestartAttempt(attempt)
                 .maxInactivityRestarts(maxInactivityRestarts)
                 .taskId(getTaskId())
@@ -1321,10 +1235,28 @@ public class CodingAgentJob extends GitManagedJob {
                 .build();
     }
 
-    /** Effective {@link PhaseConfig} for {@code phase}: bundle overlay over the legacy fields. */
+    /** Effective {@link PhaseConfig} for {@code phase}: bundle overlay over the default runner. */
     PhaseConfig resolveEffectivePhaseConfig(Phase phase) {
         return phaseConfigBundle.forPhase(phase)
-                .overlayOn(new PhaseConfig(defaultRunner, model, effort));
+                .overlayOn(new PhaseConfig(defaultRunner, null, null));
+    }
+
+    /** Returns the lazily-created harness status reporter (no-op when no workstream URL is set). */
+    HarnessStatusReporter harnessStatus() {
+        if (harnessStatus == null) {
+            harnessStatus = new HarnessStatusReporter(resolveWorkstreamUrl(), this::postJson);
+        }
+        return harnessStatus;
+    }
+
+    /** Returns an immutable snapshot of the cumulative per-runner USD cost for this job. */
+    Map<String, Double> getCostByRunner() {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(costByRunner));
+    }
+
+    /** Returns an immutable snapshot of the cumulative per-model USD cost for this job. */
+    Map<String, Double> getCostByModel() {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(costByModel));
     }
 
     /**
@@ -1401,6 +1333,8 @@ public class CodingAgentJob extends GitManagedJob {
                 ccEvent.withCommitMessageSource(commitMessageSource);
             }
             ccEvent.withRunnerName(runnerName);
+            ccEvent.withCostByRunner(costByRunner);
+            ccEvent.withCostByModel(costByModel);
             if (postCompletionCapHit) ccEvent.withPostCompletionCapHit(true);
             if (activeReviewRule != null && activeReviewRule.hasRun()) {
                 ccEvent.withReviewInfo(true, activeReviewRule.getFilesModified(),
@@ -1412,7 +1346,8 @@ public class CodingAgentJob extends GitManagedJob {
     @Override
     protected boolean validateChanges() throws Exception {
         // Test-hiding audit (only when protect-test-files is enabled)
-        if (isProtectTestFiles() && !runTestHidingAudit()) {
+        if (isProtectTestFiles()
+                && !TestHidingAudit.passes(getWorkingDirectory(), getBaseBranch(), this)) {
             return false;
         }
 
@@ -1428,43 +1363,6 @@ public class CodingAgentJob extends GitManagedJob {
         return true;
     }
 
-    /**
-     * Runs the detect-test-hiding.sh audit script against the base branch.
-     *
-     * @return {@code false} if test-hiding violations were found (exit code 2),
-     *         {@code true} otherwise (including script-not-found and other errors)
-     * @throws Exception if the process cannot be started
-     */
-    private boolean runTestHidingAudit() throws Exception {
-        Path auditScript = resolveWorkingPath("tools/ci/agent-protection/detect-test-hiding.sh");
-        if (auditScript == null || !Files.exists(auditScript)) {
-            log("detect-test-hiding.sh not found, skipping validation");
-            return true;
-        }
-
-        String baseBranch = getBaseBranch() != null ? getBaseBranch() : "master";
-        ProcessBuilder pb = new ProcessBuilder("bash", auditScript.toString(),
-                "origin/" + baseBranch);
-        String workDir = getWorkingDirectory();
-        if (workDir != null) {
-            pb.directory(new File(workDir));
-        }
-        pb.redirectErrorStream(true);
-        GitOperations.augmentPath(pb);
-        Process p = pb.start();
-        String auditOutput = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        int code = p.waitFor();
-
-        if (code == 2) {
-            warn("Test-hiding violations detected - aborting commit:\n" + auditOutput);
-            return false;
-        } else if (code != 0) {
-            warn("detect-test-hiding.sh exited with code " + code + ": " + auditOutput);
-        }
-
-        log("Test integrity check passed");
-        return true;
-    }
 
     /** Returns new Java method names introduced since the base branch. */
     List<String> extractNewMethodNames() {
@@ -1541,7 +1439,7 @@ public class CodingAgentJob extends GitManagedJob {
      * @param filename the path relative to the working directory
      * @return the resolved {@link Path}
      */
-    private Path resolveWorkingPath(String filename) {
+    Path resolveWorkingPath(String filename) {
         String workDir = getWorkingDirectory();
         if (workDir != null) {
             return Path.of(workDir, filename);

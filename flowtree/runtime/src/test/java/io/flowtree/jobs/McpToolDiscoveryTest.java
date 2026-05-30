@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -371,9 +372,11 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			submitParams.contains("prompt"));
 		assertTrue("workstream_submit_task must declare workstream_id in signature",
 			submitParams.contains("workstream_id"));
-		assertTrue("workstream_submit_task must declare model in signature",
+		assertFalse("workstream_submit_task must NOT declare the dropped legacy model"
+			+ " param in its schema; callers use default_phase_config / phase_configs",
 			submitParams.contains("model"));
-		assertTrue("workstream_submit_task must declare effort in signature",
+		assertFalse("workstream_submit_task must NOT declare the dropped legacy effort"
+			+ " param in its schema; callers use default_phase_config / phase_configs",
 			submitParams.contains("effort"));
 		assertTrue("workstream_submit_task must declare post_completion_command in signature",
 			submitParams.contains("post_completion_command"));
@@ -392,11 +395,11 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			submitParams.contains("max_post_completion_passes"));
 		assertTrue("workstream_submit_task must declare delay_seconds in signature",
 			submitParams.contains("delay_seconds"));
-		assertTrue("workstream_submit_task must declare runners in signature so per-phase"
-			+ " agent runner selection can be passed through",
+		assertFalse("workstream_submit_task must NOT declare the dropped legacy runners"
+			+ " param in its schema; callers use phase_configs",
 			submitParams.contains("runners"));
-		assertTrue("workstream_submit_task must declare default_runner in signature so"
-			+ " operators can set the default runner without enumerating phases",
+		assertFalse("workstream_submit_task must NOT declare the dropped legacy"
+			+ " default_runner param in its schema; callers use default_phase_config",
 			submitParams.contains("default_runner"));
 		assertTrue("workstream_submit_task must declare default_phase_config in"
 			+ " signature so per-phase (runner, model, effort) defaults can be set"
@@ -408,18 +411,21 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_submit_task must declare allow_commit_language in signature"
 			+ " so callers can opt out of the commit-language linter when needed",
 			submitParams.contains("allow_commit_language"));
+		assertTrue("workstream_submit_task must declare organizational_placement_enabled in"
+			+ " signature so callers can opt in to placement review for pre-merge jobs",
+			submitParams.contains("organizational_placement_enabled"));
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
-		assertTrue("workstream_register must declare model in signature",
+		assertFalse("workstream_register must NOT declare the dropped legacy model param",
 			registerParams.contains("model"));
-		assertTrue("workstream_register must declare effort in signature",
+		assertFalse("workstream_register must NOT declare the dropped legacy effort param",
 			registerParams.contains("effort"));
-		assertTrue("workstream_register must declare runners in signature so per-phase"
-			+ " agent runner selection can be set at workstream level",
+		assertFalse("workstream_register must NOT declare the dropped legacy runners param;"
+			+ " callers use phase_configs",
 			registerParams.contains("runners"));
-		assertTrue("workstream_register must declare default_runner in signature so"
-			+ " operators can set the default runner for all phases",
+		assertFalse("workstream_register must NOT declare the dropped legacy default_runner"
+			+ " param; callers use default_phase_config",
 			registerParams.contains("default_runner"));
 		assertTrue("workstream_register must declare default_phase_config in signature"
 			+ " so per-phase (runner, model, effort) defaults can be set at"
@@ -432,15 +438,15 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 
 		List<String> updateConfigParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
-		assertTrue("workstream_update_config must declare model in signature",
+		assertFalse("workstream_update_config must NOT declare the dropped legacy model param",
 			updateConfigParams.contains("model"));
-		assertTrue("workstream_update_config must declare effort in signature",
+		assertFalse("workstream_update_config must NOT declare the dropped legacy effort param",
 			updateConfigParams.contains("effort"));
-		assertTrue("workstream_update_config must declare runners in signature so per-phase"
-			+ " agent runner selection can be updated at workstream level",
+		assertFalse("workstream_update_config must NOT declare the dropped legacy runners"
+			+ " param; callers use phase_configs",
 			updateConfigParams.contains("runners"));
-		assertTrue("workstream_update_config must declare default_runner in signature so"
-			+ " operators can update the default runner for all phases",
+		assertFalse("workstream_update_config must NOT declare the dropped legacy"
+			+ " default_runner param; callers use default_phase_config",
 			updateConfigParams.contains("default_runner"));
 		assertTrue("workstream_update_config must declare default_phase_config in"
 			+ " signature so the workstream-level (runner, model, effort)"
@@ -463,9 +469,11 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workspace_update_config must declare slack_team_id in signature so"
 			+ " operators can set or clear the Slack team binding",
 			workspaceUpdateParams.contains("slack_team_id"));
-		assertTrue("workspace_update_config must declare default_runner in signature",
+		assertFalse("workspace_update_config must NOT declare the dropped legacy default_runner"
+			+ " param; callers use default_phase_config",
 			workspaceUpdateParams.contains("default_runner"));
-		assertTrue("workspace_update_config must declare runners in signature",
+		assertFalse("workspace_update_config must NOT declare the dropped legacy runners"
+			+ " param; callers use phase_configs",
 			workspaceUpdateParams.contains("runners"));
 		assertTrue("workspace_update_config must declare default_phase_config in"
 			+ " signature so the workspace-level (runner, model, effort)"

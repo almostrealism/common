@@ -2,8 +2,16 @@
 
 Recommended starting configurations for the per-phase runner map. Each
 recipe is a complete set of phase → runner assignments that can be passed
-to `workstream_submit_task` (as `runners` + optional `default_runner`) or
-set as workstream defaults in `WorkstreamConfig`.
+to `workstream_submit_task` (via `default_phase_config` + `phase_configs`)
+or set as workstream defaults in `WorkstreamConfig`.
+
+> **Legacy parameters removed.** The `model`, `effort`, `default_runner`,
+> and `runners` parameters are **no longer accepted** by
+> `workstream_submit_task`, `workstream_register`,
+> `workstream_update_config`, or `workspace_update_config`. A call that
+> passes any of them is rejected with a 400-style error pointing to the
+> replacement. Use `default_phase_config` and `phase_configs` exclusively
+> (the examples below are all in the new shape).
 
 For the precedence rules behind per-phase selection, see
 [../architecture/PHASES.md](../architecture/PHASES.md). For
@@ -22,17 +30,17 @@ opencode-specific operator setup, see [OPENCODE.md](OPENCODE.md).
 
 ### As a `workstream_submit_task` payload
 
-**All-Claude** — omit `runners` and `default_runner`; the controller falls
-through to `"claude"` by default.
+**All-Claude** — omit `default_phase_config` and `phase_configs`; the
+controller falls through to `"claude"` by default.
 
 **Cheap-second-pass** (the recommended starting point — primary stays on
 Claude, only the review pass is delegated):
 
 ```json
 {
-  "default_runner": "claude",
-  "runners": {
-    "review": "opencode"
+  "default_phase_config": {"runner": "claude"},
+  "phase_configs": {
+    "review": {"runner": "opencode"}
   }
 }
 ```
@@ -41,12 +49,12 @@ Claude, only the review pass is delegated):
 
 ```json
 {
-  "default_runner": "claude",
-  "runners": {
-    "primary": "opencode",
-    "review": "opencode",
-    "enforce-changes": "opencode",
-    "post-completion": "opencode"
+  "default_phase_config": {"runner": "claude"},
+  "phase_configs": {
+    "primary": {"runner": "opencode"},
+    "review": {"runner": "opencode"},
+    "enforce-changes": {"runner": "opencode"},
+    "post-completion": {"runner": "opencode"}
   }
 }
 ```
@@ -55,7 +63,7 @@ Claude, only the review pass is delegated):
 
 ```json
 {
-  "default_runner": "opencode"
+  "default_phase_config": {"runner": "opencode"}
 }
 ```
 
@@ -63,9 +71,10 @@ Claude, only the review pass is delegated):
 
 The unified `phase_configs` parameter on `workstream_submit_task` lets a
 single submission set `runner`, `model`, and `effort` independently for
-every phase. The legacy `runners` / `default_runner` / `model` / `effort`
-parameters are still accepted as a convenience for runner-only flows; the
-new shape supersedes them when both are supplied.
+every phase, with `default_phase_config` supplying the fallback for any
+phase that has no dedicated entry. This is the only supported shape — the
+removed `runners` / `default_runner` / `model` / `effort` parameters are
+rejected.
 
 **Cheap-review-with-strong-claude** (claude opus on review with maximum
 effort; everything else runs on the lighter sonnet at low effort):
@@ -120,24 +129,7 @@ silently ignored at runtime, not rejected at submission.
 
 ### As workstream defaults
 
-```yaml
-workstreams:
-  - workstreamId: ws-frugal
-    defaultRunner: opencode
-    runners:
-      deduplication: claude
-      commit-message: claude
-```
-
-Per-job overrides still apply; this just changes the workstream-level
-fallback.
-
-The richer per-phase shape is available as `defaultPhaseConfig` plus
-`phaseConfigs`; the legacy `defaultRunner` and `runners` keys are kept
-for backwards compatibility and are still re-emitted on save when set
-(since the new shape and the legacy shape live side-by-side on
-`WorkstreamEntry`). When both forms set the same field the new form
-wins at resolution time.
+Set the per-phase shape directly on the `WorkstreamEntry`:
 
 ```yaml
 workstreams:
@@ -154,6 +146,17 @@ workstreams:
         model: claude-opus-4-7
         effort: high
 ```
+
+Per-job overrides still apply; this just changes the workstream-level
+fallback.
+
+The legacy `defaultRunner` / `runners` / `model` / `effort` keys are still
+**accepted on load** for backwards compatibility — they are auto-migrated
+into `defaultPhaseConfig` / `phaseConfigs` (an INFO-level deprecation notice
+is logged), and the new form wins field-by-field when both are present. They
+are **no longer written back**: the next time the controller saves this
+config only the new shape is emitted, so a save-then-load cycle migrates the
+file in place. New configs should use the per-phase shape directly.
 
 ### As workspace defaults
 
@@ -180,17 +183,15 @@ workspaces:
       review:
         model: claude-opus-4-7
         effort: high
-    # Legacy form — still accepted, but the per-phase shape above wins
-    # field-by-field when both are present:
-    defaultRunner: claude
-    runners:
-      commit-message: opencode
-      organizational-placement: opencode
 ```
+
+The legacy `defaultRunner` / `runners` keys are still accepted on load and
+auto-migrated into the per-phase shape, but are dropped on the next save
+(see the workstream note above). Use the per-phase shape for new configs.
 
 Every workstream whose `workspaceId` matches this entry inherits the
 defaults. Workstream-level config still wins — if a workstream sets its
-own `defaultRunner`, the workspace's per-phase entries are ignored for
+own default runner, the workspace's per-phase entries are ignored for
 that workstream (per [PHASES.md](../architecture/PHASES.md)).
 
 The legacy `slackWorkspaces:` top-level key is still accepted; each
@@ -216,11 +217,10 @@ workspace_update_config(
 )
 ```
 
-The legacy `default_runner` / `runners` / `model` / `effort` parameters
-remain accepted as deprecated aliases — they map into the same bundle
-on the controller. When both shapes are supplied to the same tool the
-new `default_phase_config` / `phase_configs` shape wins field-by-field
-per the precedence rules in
+The `default_runner` / `runners` / `model` / `effort` parameters are no
+longer accepted on any config tool; a call that passes one is rejected with
+a 400-style error. Use `default_phase_config` / `phase_configs` per the
+precedence rules in
 [../../docs/plans/UNIFIED_PHASE_CONFIG.md](../../docs/plans/UNIFIED_PHASE_CONFIG.md).
 
 To migrate from the initial Slack-team-ID-as-ID form to a friendlier
@@ -233,9 +233,9 @@ workspace_update_config(
 )
 ```
 
-The tool covers `default_phase_config`, `phase_configs`,
-`default_runner`, `runners`, `name`, `default_channel`, `new_id`, and
-`slack_team_id`. Credentials (`tokensFile`, `botToken`, `appToken`) and
+The tool covers `default_phase_config`, `phase_configs`, `name`,
+`default_channel`, `new_id`, and `slack_team_id`. Credentials
+(`tokensFile`, `botToken`, `appToken`) and
 ACL fields (`githubOrgs`, `channelOwnerUserId`) remain YAML-only —
 edit `workstreams.yaml` and reload the controller for those.
 

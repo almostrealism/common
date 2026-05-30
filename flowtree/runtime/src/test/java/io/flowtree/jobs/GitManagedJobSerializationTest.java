@@ -90,6 +90,26 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 		return restored;
 	}
 
+	/**
+	 * Encodes {@code original}, then parses the wire format and calls
+	 * {@code set()} on a fresh {@link CodingAgentJobFactory} for every
+	 * key-value pair.  This overload handles the parent factory type;
+	 * use {@link #roundTripFactory(CodingAgentJob.Factory)} when the
+	 * subtype is needed.
+	 */
+	static CodingAgentJobFactory roundTripFactory(CodingAgentJobFactory original) {
+		String encoded = original.encode();
+		CodingAgentJobFactory restored = new CodingAgentJobFactory();
+		String[] parts = encoded.split("::");
+		for (int i = 1; i < parts.length; i++) {
+			int sep = parts[i].indexOf(":=");
+			if (sep > 0) {
+				restored.set(parts[i].substring(0, sep), parts[i].substring(sep + 2));
+			}
+		}
+		return restored;
+	}
+
 	// ── Field-level tests ────────────────────────────────────────────────────
 
 	@Test(timeout = 30000)

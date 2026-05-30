@@ -10,7 +10,7 @@
 # Then run:
 #   export SLACK_BOT_TOKEN=xoxb-your-bot-token
 #   export SLACK_APP_TOKEN=xapp-your-app-token
-#   java -cp flowtree.jar io.flowtree.slack.FlowTreeController --config workstreams.yaml
+#   java -cp flowtree.jar io.flowtree.controller.FlowTreeController --config workstreams.yaml
 
 # ---------------------------------------------------------------------------
 # Global settings
@@ -112,6 +112,11 @@ workstreams:
     # requiredLabels:                  # Node labels all jobs in this workstream must match.
     #   platform: "macos"              # Jobs run only on nodes labeled platform=macos.
     #   gpu: "true"                    # Combine multiple labels as needed.
+    # agentEnv:                        # Env vars set on the agent subprocess for this
+    #   MY_VAR: "value"                # workstream. Inherited by every process the agent
+    #   OTHER_VAR: "value2"            # spawns, including project-local MCP servers. (This
+    #                                  # differs from the pushed-tool `env` field, which only
+    #                                  # targets pushed-tool MCP stdio configs.)
 
   # Project Beta — uses explicit workingDirectory (legacy approach).
   - channelId: "C9876543210"
