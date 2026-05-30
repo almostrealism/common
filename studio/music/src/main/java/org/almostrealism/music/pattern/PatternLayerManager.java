@@ -143,14 +143,14 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 * {@link BatchedPatternLayerRenderer}. Matches the production fixture used
 	 * by the batched-chain benchmarks.
 	 */
-	private static final int BATCHED_SOURCE_LENGTH = 2048;
+	public static final int BATCHED_SOURCE_LENGTH = 2048;
 
 	/**
 	 * Default target-samples-per-note used when constructing a per-pattern
 	 * {@link BatchedPatternLayerRenderer}. Matches the production fixture used
 	 * by the batched-chain benchmarks.
 	 */
-	private static final int BATCHED_TARGET_LENGTH = 1024;
+	public static final int BATCHED_TARGET_LENGTH = 1024;
 
 	/** The audio channel index for this pattern. */
 	private int channel;
@@ -278,13 +278,12 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 * constructing it on first call. Used by {@link PatternFeatures#render} to
 	 * route through the batched dispatch when {@link #enableBatched} is set.
 	 *
-	 * <p>The renderer is constructed with the default per-note source/target
-	 * lengths ({@value #BATCHED_SOURCE_LENGTH}/{@value #BATCHED_TARGET_LENGTH}),
-	 * the FIR order from {@link MultiOrderFilterEnvelopeProcessor#filterOrder},
-	 * and the sample rate from {@link OutputLine#sampleRate} (the user-configured
-	 * rate set at application startup). The per-pattern instance owns its bucket
-	 * cache so compiled batched kernels are shared across ticks of the same
-	 * pattern.</p>
+	 * <p>The renderer is constructed with the FIR order from
+	 * {@link MultiOrderFilterEnvelopeProcessor#filterOrder} and the sample rate from
+	 * {@link OutputLine#sampleRate} (the user-configured rate set at application
+	 * startup). Per-note source and row lengths are sized per dispatch to the render
+	 * window and the notes present. The per-pattern instance owns its kernel cache so
+	 * compiled batched kernels are shared across ticks of the same shape.</p>
 	 *
 	 * @return the per-pattern batched renderer
 	 */
@@ -296,7 +295,6 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				renderer = batchedLayerRenderer;
 				if (renderer == null) {
 					renderer = new BatchedPatternLayerRenderer(
-							BATCHED_SOURCE_LENGTH, BATCHED_TARGET_LENGTH,
 							OutputLine.sampleRate, MultiOrderFilterEnvelopeProcessor.filterOrder);
 					batchedLayerRenderer = renderer;
 				}

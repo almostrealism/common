@@ -16,6 +16,8 @@
 
 package org.almostrealism.audio;
 
+import io.almostrealism.relation.Evaluable;
+import org.almostrealism.audio.filter.MultiOrderFilterEnvelopeProcessor;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -92,6 +94,98 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 		this.padHalf = filterOrder / 2;
 	}
 
+	/** Compile-once fully-fused SSS dispatch, reused across ticks; built on first {@link #sssDispatch}. */
+	private Evaluable sssDispatch;
+
+	/** Bound per-layer source buffers read by {@link #sssDispatch}, each {@code [n, sourceLength]}. */
+	private PackedCollection[] sssSources;
+
+	/** Bound per-layer pitch-ratio buffers, each {@code [n]}. */
+	private PackedCollection[] sssRatios;
+
+	/** Bound per-layer envelope-scalar buffers, {@code [layers][8]} each {@code [n]}. */
+	private PackedCollection[][] sssLayerEnv;
+
+	/** Bound filter-envelope scalar buffers, {@code [5]} each {@code [n]}. */
+	private PackedCollection[] sssFilterAdsr;
+
+	/** Bound volume-envelope scalar buffers, {@code [5]} each {@code [n]}. */
+	private PackedCollection[] sssVolumeAdsr;
+
+	/** Bound per-note destination offsets, {@code [n]}. */
+	private PackedCollection sssDestOffsets;
+
+	/** Bound per-note sampling offsets, {@code [n]}. */
+	private PackedCollection sssSamplingOffsets;
+
+	/**
+	 * Returns the compile-once fully-fused SSS dispatch for this renderer's fixed
+	 * shape, building and compiling it on first call and reusing it thereafter. The
+	 * dispatch reads its inputs from this renderer's
+	 * bound buffers (the {@code getSss*} accessors); a caller writes the per-tick
+	 * data into those buffers with {@code setMem} and re-evaluates the returned
+	 * {@link Evaluable}, so the native kernel is compiled once and reused every tick
+	 * rather than rebuilt and recompiled per dispatch.
+	 *
+	 * @param layers the number of source layers (the SSS aggregation arity)
+	 * @return the compiled, reusable dispatch evaluable producing a {@code [targetLength]} window
+	 */
+	public Evaluable sssDispatch(int layers) {
+		if (sssDispatch == null) {
+			sssSources = new PackedCollection[layers];
+			sssRatios = new PackedCollection[layers];
+			sssLayerEnv = new PackedCollection[layers][8];
+			for (int l = 0; l < layers; l++) {
+				sssSources[l] = new PackedCollection(n, sourceLength);
+				sssRatios[l] = new PackedCollection(n);
+				for (int p = 0; p < 8; p++) {
+					sssLayerEnv[l][p] = new PackedCollection(n);
+				}
+			}
+			sssFilterAdsr = new PackedCollection[5];
+			sssVolumeAdsr = new PackedCollection[5];
+			for (int p = 0; p < 5; p++) {
+				sssFilterAdsr[p] = new PackedCollection(n);
+				sssVolumeAdsr[p] = new PackedCollection(n);
+			}
+			sssDestOffsets = new PackedCollection(n);
+			sssSamplingOffsets = new PackedCollection(n);
+
+			CollectionProducer producer = buildBatchedSssChainPlacedFromScalars(
+					sssSources, sssRatios, sssLayerEnv, sssFilterAdsr, sssVolumeAdsr,
+					sssDestOffsets, sssSamplingOffsets, targetLength);
+			// Plain get() (not Process.optimized) is used deliberately: the chain's
+			// reshape nodes trip the optimizer's isolation pass, and the compile-once
+			// win comes from caching this Evaluable, not from graph optimization.
+			sssDispatch = producer.get();
+		}
+		return sssDispatch;
+	}
+
+	/** Returns the bound per-layer source buffers for the SSS dispatch. */
+	public PackedCollection[] getSssSources() { return sssSources; }
+
+	/** Returns the bound per-layer pitch-ratio buffers for the SSS dispatch. */
+	public PackedCollection[] getSssRatios() { return sssRatios; }
+
+	/** Returns the bound per-layer envelope-scalar buffers for the SSS dispatch. */
+	public PackedCollection[][] getSssLayerEnv() { return sssLayerEnv; }
+
+	/** Returns the bound filter-envelope scalar buffers for the SSS dispatch. */
+	public PackedCollection[] getSssFilterAdsr() { return sssFilterAdsr; }
+
+	/** Returns the bound volume-envelope scalar buffers for the SSS dispatch. */
+	public PackedCollection[] getSssVolumeAdsr() { return sssVolumeAdsr; }
+
+	/** Returns the bound per-note destination-offset buffer for the SSS dispatch. */
+	public PackedCollection getSssDestOffsets() { return sssDestOffsets; }
+
+	/** Returns the bound per-note sampling-offset buffer for the SSS dispatch. */
+	public PackedCollection getSssSamplingOffsets() { return sssSamplingOffsets; }
+
+	/** Returns the number of notes per batch (the bucket size). */
+	public int getN() { return n; }
+
 	/**
 	 * Builds a per-note linear-resample producer that maps a
 	 * {@code [sourceLength]} source to {@code [targetLength]} via
@@ -153,8 +247,8 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 												 PackedCollection filterCutoffs,
 												 PackedCollection volumeEnvelopes) {
 		CollectionProducer resampled2D =
-				resampleFlat(batchedSource, ratios).reshape(shape(n, targetLength));
-		CollectionProducer voiced2D = filterVolume2D(resampled2D, filterCutoffs, volumeEnvelopes);
+				resampleFlat(batchedSource, ratios, null).reshape(shape(n, targetLength));
+		CollectionProducer voiced2D = filterVolume2D(resampled2D, cp(filterCutoffs), cp(volumeEnvelopes));
 		return reduceAligned(voiced2D);
 	}
 
@@ -185,8 +279,8 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 												   PackedCollection[] layerEnvelopes,
 												   PackedCollection filterCutoffs,
 												   PackedCollection volumeEnvelopes) {
-		return reduceAligned(voicedSss(sources, ratios, layerEnvelopes,
-				filterCutoffs, volumeEnvelopes));
+		return reduceAligned(voicedSss(sources, ratios, wrapCurves(layerEnvelopes),
+				cp(filterCutoffs), cp(volumeEnvelopes), null));
 	}
 
 	/**
@@ -216,8 +310,8 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 														 PackedCollection volumeEnvelopes,
 														 PackedCollection destOffsets,
 														 int windowWidth) {
-		CollectionProducer voiced2D = voicedSss(sources, ratios, layerEnvelopes,
-				filterCutoffs, volumeEnvelopes);
+		CollectionProducer voiced2D = voicedSss(sources, ratios, wrapCurves(layerEnvelopes),
+				cp(filterCutoffs), cp(volumeEnvelopes), null);
 		return scatterAddFlat(voiced2D.reshape(shape(n * targetLength)),
 				destOffsets, n, targetLength, windowWidth);
 	}
@@ -239,9 +333,10 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	 */
 	private CollectionProducer voicedSss(PackedCollection[] sources,
 										 PackedCollection[] ratios,
-										 PackedCollection[] layerEnvelopes,
-										 PackedCollection filterCutoffs,
-										 PackedCollection volumeEnvelopes) {
+										 CollectionProducer[] layerEnvelopes,
+										 CollectionProducer filterCutoffs,
+										 CollectionProducer volumeEnvelopes,
+										 PackedCollection samplingOffsets) {
 		if (sources.length == 0) {
 			throw new IllegalArgumentException("At least one source layer is required");
 		}
@@ -249,8 +344,8 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 		int totalSamples = n * targetLength;
 		CollectionProducer merged = null;
 		for (int i = 0; i < sources.length; i++) {
-			CollectionProducer layer = resampleFlat(sources[i], ratios[i])
-					.multiply(cp(layerEnvelopes[i]).reshape(shape(totalSamples)));
+			CollectionProducer layer = resampleFlat(sources[i], ratios[i], samplingOffsets)
+					.multiply(layerEnvelopes[i].reshape(shape(totalSamples)));
 			merged = (merged == null) ? layer : merged.add(layer);
 		}
 
@@ -258,23 +353,323 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 		return filterVolume2D(merged2D, filterCutoffs, volumeEnvelopes);
 	}
 
+	/** Wraps each materialized envelope curve as a {@link CollectionProducer} via {@code cp}. */
+	private CollectionProducer[] wrapCurves(PackedCollection[] curves) {
+		CollectionProducer[] wrapped = new CollectionProducer[curves.length];
+		for (int i = 0; i < curves.length; i++) {
+			wrapped[i] = cp(curves[i]);
+		}
+		return wrapped;
+	}
+
+	/**
+	 * Fully fused production form of {@link #buildBatchedSssChainPlaced}: generates
+	 * the per-layer, filter-cutoff, and volume envelope curves <em>inside</em> the
+	 * kernel from per-note ADSR scalar tensors (so no envelope curve is
+	 * materialized per note), then runs the three-layer SSS chain and the
+	 * offset-aware scatter placement as a single compiled dispatch. This is the
+	 * entry point the production gather targets: it consumes only cheap per-note
+	 * scalars, pitch ratios, source buffers, and offsets.
+	 *
+	 * <p>The filter-cutoff curve is the volume-envelope ADSR shape scaled to
+	 * {@link MultiOrderFilterEnvelopeProcessor#filterPeak} Hz, matching the
+	 * production filter envelope.</p>
+	 *
+	 * @param sources        per-layer flattened sources, each shape {@code [n, sourceLength]}
+	 * @param ratios         per-layer per-note pitch ratios, each shape {@code [n]}
+	 * @param layerEnvParams per-layer ADSR scalars for {@link #buildLayerEnvelopeCurve},
+	 *                       {@code [layer][8]} = (mainDuration, f0, f1, f2, v0, v1, v2, v3), each {@code [n]}
+	 * @param filterAdsr     filter-envelope scalars {@code [5]} = (attack, decay, sustain, release, duration), each {@code [n]}
+	 * @param volumeAdsr     volume-envelope scalars {@code [5]} = (attack, decay, sustain, release, duration), each {@code [n]}
+	 * @param destOffsets    per-note destination offsets in frames, shape {@code [n]}
+	 * @param windowWidth    width of the output window in frames
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [windowWidth]}
+	 */
+	public CollectionProducer buildBatchedSssChainPlacedFromScalars(PackedCollection[] sources,
+																	PackedCollection[] ratios,
+																	PackedCollection[][] layerEnvParams,
+																	PackedCollection[] filterAdsr,
+																	PackedCollection[] volumeAdsr,
+																	PackedCollection destOffsets,
+																	int windowWidth) {
+		return buildBatchedSssChainPlacedFromScalars(sources, ratios, layerEnvParams,
+				filterAdsr, volumeAdsr, destOffsets, null, windowWidth);
+	}
+
+	/**
+	 * Offset-aware form of
+	 * {@link #buildBatchedSssChainPlacedFromScalars(PackedCollection[], PackedCollection[], PackedCollection[][], PackedCollection[], PackedCollection[], PackedCollection, int)}:
+	 * each note's source read and every generated envelope (per-layer, filter
+	 * cutoff, volume) are advanced by the note's per-note {@code samplingOffsets}, so
+	 * a note that began in an earlier window renders the slice belonging to this
+	 * window — reading from its within-note position and continuing its envelopes
+	 * from the correct point — before being placed at its {@code destOffsets}. With
+	 * {@code samplingOffsets} {@code null} this is identical to the sample-0 form.
+	 *
+	 * @param sources         per-layer flattened sources, each shape {@code [n, sourceLength]}
+	 * @param ratios          per-layer per-note pitch ratios, each shape {@code [n]}
+	 * @param layerEnvParams  per-layer ADSR scalars for {@link #buildLayerEnvelopeCurve}, {@code [layer][8]}
+	 * @param filterAdsr      filter-envelope scalars {@code [5]}, each {@code [n]}
+	 * @param volumeAdsr      volume-envelope scalars {@code [5]}, each {@code [n]}
+	 * @param destOffsets     per-note destination offsets in frames, shape {@code [n]}
+	 * @param samplingOffsets per-note within-note sampling offsets in frames, shape {@code [n]}, or {@code null}
+	 * @param windowWidth     width of the output window in frames
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [windowWidth]}
+	 */
+	public CollectionProducer buildBatchedSssChainPlacedFromScalars(PackedCollection[] sources,
+																	PackedCollection[] ratios,
+																	PackedCollection[][] layerEnvParams,
+																	PackedCollection[] filterAdsr,
+																	PackedCollection[] volumeAdsr,
+																	PackedCollection destOffsets,
+																	PackedCollection samplingOffsets,
+																	int windowWidth) {
+		CollectionProducer[] layerEnv2D = new CollectionProducer[sources.length];
+		for (int i = 0; i < sources.length; i++) {
+			PackedCollection[] p = layerEnvParams[i];
+			layerEnv2D[i] = buildLayerEnvelopeCurve(p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], samplingOffsets);
+		}
+
+		CollectionProducer filterCutoffs2D = buildVolumeEnvelopeCurve(
+				filterAdsr[0], filterAdsr[1], filterAdsr[2], filterAdsr[3], filterAdsr[4], samplingOffsets)
+				.multiply(c(MultiOrderFilterEnvelopeProcessor.filterPeak));
+		CollectionProducer volumeEnv2D = buildVolumeEnvelopeCurve(
+				volumeAdsr[0], volumeAdsr[1], volumeAdsr[2], volumeAdsr[3], volumeAdsr[4], samplingOffsets);
+
+		CollectionProducer voiced2D = voicedSss(sources, ratios, layerEnv2D,
+				filterCutoffs2D, volumeEnv2D, samplingOffsets);
+		return scatterAddFlat(voiced2D.reshape(shape(n * targetLength)),
+				destOffsets, n, targetLength, windowWidth);
+	}
+
+	/**
+	 * Generates the batched ADSR volume-envelope gain curves for all {@code n}
+	 * notes from per-note scalar parameters, reproducing the shape of
+	 * {@code EnvelopeFeatures.envelope(duration, attack, decay, sustain, release)}
+	 * (used by {@code AudioProcessingUtils.getVolumeEnv}) so the curves are
+	 * generated inside the batched kernel rather than materialized per note.
+	 *
+	 * <p>Attack is clamped to 75% and decay to 25% of the duration. For each note
+	 * the gain at sample {@code i} (time {@code t = i / sampleRate}) is the
+	 * piecewise-linear ADSR, selected with strict {@code >} comparisons to match
+	 * {@code EnvelopeSection}:</p>
+	 * <ul>
+	 *   <li>{@code t <= a}: {@code min(t/a, 1)}</li>
+	 *   <li>{@code a < t <= a+d}: {@code max(0, (1 - p) + sustain*p)}, {@code p = (t-a)/d}</li>
+	 *   <li>{@code a+d < t <= duration}: {@code sustain}</li>
+	 *   <li>{@code t > duration}: {@code max(0, sustain*(1 - (t-duration)/release))}</li>
+	 * </ul>
+	 *
+	 * @param attack   per-note attack times in seconds, shape {@code [n]}
+	 * @param decay    per-note decay times in seconds, shape {@code [n]}
+	 * @param sustain  per-note sustain levels, shape {@code [n]}
+	 * @param release  per-note release times in seconds, shape {@code [n]}
+	 * @param duration per-note durations in seconds, shape {@code [n]}
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [n, targetLength]}
+	 */
+	public CollectionProducer buildVolumeEnvelopeCurve(PackedCollection attack,
+													   PackedCollection decay,
+													   PackedCollection sustain,
+													   PackedCollection release,
+													   PackedCollection duration) {
+		return buildVolumeEnvelopeCurve(attack, decay, sustain, release, duration, null);
+	}
+
+	/**
+	 * Offset-aware form of
+	 * {@link #buildVolumeEnvelopeCurve(PackedCollection, PackedCollection, PackedCollection, PackedCollection, PackedCollection)}:
+	 * evaluates each note's gain at note-elapsed time {@code (samplingOffset + i) / sampleRate}
+	 * rather than {@code i / sampleRate}, so a note that began in an earlier window
+	 * continues its ADSR from the correct point. With {@code samplingOffsets}
+	 * {@code null} the behavior is identical to the sample-0 form.
+	 *
+	 * @param attack          per-note attack times in seconds, shape {@code [n]}
+	 * @param decay           per-note decay times in seconds, shape {@code [n]}
+	 * @param sustain         per-note sustain levels, shape {@code [n]}
+	 * @param release         per-note release times in seconds, shape {@code [n]}
+	 * @param duration        per-note durations in seconds, shape {@code [n]}
+	 * @param samplingOffsets per-note sampling offsets in frames, shape {@code [n]}, or {@code null}
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [n, targetLength]}
+	 */
+	public CollectionProducer buildVolumeEnvelopeCurve(PackedCollection attack,
+													   PackedCollection decay,
+													   PackedCollection sustain,
+													   PackedCollection release,
+													   PackedCollection duration,
+													   PackedCollection samplingOffsets) {
+		int total = n * targetLength;
+
+		CollectionProducer t = integers(0, total);
+		CollectionProducer noteIdx = floor(t.divide(c((double) targetLength)));
+		CollectionProducer sampleIdx = effectiveSampleIdx(
+				t.subtract(noteIdx.multiply(c((double) targetLength))), noteIdx, samplingOffsets, total);
+		CollectionProducer time = sampleIdx.divide(c((double) sampleRate));
+
+		CollectionProducer att = c(shape(total), cp(attack), noteIdx);
+		CollectionProducer dec = c(shape(total), cp(decay), noteIdx);
+		CollectionProducer sus = c(shape(total), cp(sustain), noteIdx);
+		CollectionProducer rel = c(shape(total), cp(release), noteIdx);
+		CollectionProducer dur = c(shape(total), cp(duration), noteIdx);
+
+		// Clamp attack to 75% and decay to 25% of the duration.
+		CollectionProducer a = min(att, dur.multiply(c(0.75)));
+		CollectionProducer d = min(dec, dur.multiply(c(0.25)));
+
+		CollectionProducer attackGain = min(time.divide(a), c(1.0));
+		CollectionProducer decayGain = linearSegment(time, a, d, c(1.0), sus);
+		CollectionProducer releaseGain = linearSegment(time, dur, rel, sus, c(0.0));
+
+		// Piecewise selection (strict >): t>dur ? release : t>a+d ? sustain : t>a ? decay : attack
+		CollectionProducer afterAttack = time.greaterThan(a, decayGain, attackGain);
+		CollectionProducer afterDecay = time.greaterThan(a.add(d), sus, afterAttack);
+		CollectionProducer gain = time.greaterThan(dur, releaseGain, afterDecay);
+
+		return gain.reshape(shape(n, targetLength));
+	}
+
+	/**
+	 * Generates the batched per-layer envelope gain curves for all {@code n}
+	 * notes, reproducing {@code AudioProcessingUtils.getLayerEnv} (used by
+	 * {@code ParameterizedLayerEnvelope}). The curve is a three-segment
+	 * piecewise-linear envelope through the points {@code (0, v0)},
+	 * {@code (d0, v1)}, {@code (d1, v2)}, {@code (d2, v3)}, where
+	 * {@code dk = mainDuration * fk}, selected with strict {@code >} comparisons:
+	 * {@code t>d1 ? seg2 : t>d0 ? seg1 : seg0}.
+	 *
+	 * @param mainDuration per-note base duration in seconds, shape {@code [n]}
+	 * @param f0 per-note segment-0 end fraction of {@code mainDuration}, shape {@code [n]}
+	 * @param f1 per-note segment-1 end fraction of {@code mainDuration}, shape {@code [n]}
+	 * @param f2 per-note segment-2 end fraction of {@code mainDuration}, shape {@code [n]}
+	 * @param v0 per-note level at time 0, shape {@code [n]}
+	 * @param v1 per-note level at {@code d0}, shape {@code [n]}
+	 * @param v2 per-note level at {@code d1}, shape {@code [n]}
+	 * @param v3 per-note level at {@code d2}, shape {@code [n]}
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [n, targetLength]}
+	 */
+	public CollectionProducer buildLayerEnvelopeCurve(PackedCollection mainDuration,
+													  PackedCollection f0, PackedCollection f1, PackedCollection f2,
+													  PackedCollection v0, PackedCollection v1,
+													  PackedCollection v2, PackedCollection v3) {
+		return buildLayerEnvelopeCurve(mainDuration, f0, f1, f2, v0, v1, v2, v3, null);
+	}
+
+	/**
+	 * Offset-aware form of
+	 * {@link #buildLayerEnvelopeCurve(PackedCollection, PackedCollection, PackedCollection, PackedCollection, PackedCollection, PackedCollection, PackedCollection, PackedCollection)}:
+	 * evaluates each note's layer envelope at note-elapsed time
+	 * {@code (samplingOffset + i) / sampleRate} so a note continuing from an earlier
+	 * window resumes at the correct point. With {@code samplingOffsets} {@code null}
+	 * the behavior is identical to the sample-0 form.
+	 *
+	 * @param mainDuration    per-note base duration in seconds, shape {@code [n]}
+	 * @param f0 per-note segment-0 end fraction of {@code mainDuration}, shape {@code [n]}
+	 * @param f1 per-note segment-1 end fraction of {@code mainDuration}, shape {@code [n]}
+	 * @param f2 per-note segment-2 end fraction of {@code mainDuration}, shape {@code [n]}
+	 * @param v0 per-note level at time 0, shape {@code [n]}
+	 * @param v1 per-note level at {@code d0}, shape {@code [n]}
+	 * @param v2 per-note level at {@code d1}, shape {@code [n]}
+	 * @param v3 per-note level at {@code d2}, shape {@code [n]}
+	 * @param samplingOffsets per-note sampling offsets in frames, shape {@code [n]}, or {@code null}
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [n, targetLength]}
+	 */
+	public CollectionProducer buildLayerEnvelopeCurve(PackedCollection mainDuration,
+													  PackedCollection f0, PackedCollection f1, PackedCollection f2,
+													  PackedCollection v0, PackedCollection v1,
+													  PackedCollection v2, PackedCollection v3,
+													  PackedCollection samplingOffsets) {
+		int total = n * targetLength;
+
+		CollectionProducer t = integers(0, total);
+		CollectionProducer noteIdx = floor(t.divide(c((double) targetLength)));
+		CollectionProducer sampleIdx = effectiveSampleIdx(
+				t.subtract(noteIdx.multiply(c((double) targetLength))), noteIdx, samplingOffsets, total);
+		CollectionProducer time = sampleIdx.divide(c((double) sampleRate));
+
+		CollectionProducer dr = c(shape(total), cp(mainDuration), noteIdx);
+		CollectionProducer fr0 = c(shape(total), cp(f0), noteIdx);
+		CollectionProducer fr1 = c(shape(total), cp(f1), noteIdx);
+		CollectionProducer fr2 = c(shape(total), cp(f2), noteIdx);
+		CollectionProducer vol0 = c(shape(total), cp(v0), noteIdx);
+		CollectionProducer vol1 = c(shape(total), cp(v1), noteIdx);
+		CollectionProducer vol2 = c(shape(total), cp(v2), noteIdx);
+		CollectionProducer vol3 = c(shape(total), cp(v3), noteIdx);
+
+		CollectionProducer d0 = dr.multiply(fr0);
+		CollectionProducer d1 = dr.multiply(fr1);
+		CollectionProducer d2 = dr.multiply(fr2);
+
+		CollectionProducer seg0 = linearSegment(time, c(0.0), d0, vol0, vol1);
+		CollectionProducer seg1 = linearSegment(time, d0, d1.subtract(d0), vol1, vol2);
+		CollectionProducer seg2 = linearSegment(time, d1, d2.subtract(d1), vol2, vol3);
+
+		CollectionProducer afterFirst = time.greaterThan(d0, seg1, seg0);
+		CollectionProducer gain = time.greaterThan(d1, seg2, afterFirst);
+
+		return gain.reshape(shape(n, targetLength));
+	}
+
+	/**
+	 * One clamped linear envelope segment, matching
+	 * {@code EnvelopeFeatures.linear(offset, duration, startVolume, endVolume)}:
+	 * {@code max(0, (1 - p)*startVolume + p*endVolume)} with
+	 * {@code p = (time - offset) / duration}. All inputs are flat producers of
+	 * the same length (or scalars to broadcast).
+	 *
+	 * @param time     per-sample time in seconds
+	 * @param offset   segment start time in seconds
+	 * @param duration segment duration in seconds
+	 * @param startV   level at the segment start
+	 * @param endV     level at the segment end
+	 * @return an uncompiled {@link CollectionProducer} of the segment level
+	 */
+	private CollectionProducer linearSegment(CollectionProducer time, CollectionProducer offset,
+											 CollectionProducer duration, CollectionProducer startV,
+											 CollectionProducer endV) {
+		CollectionProducer pos = time.subtract(offset).divide(duration);
+		CollectionProducer oneMinusPos = pos.multiply(c(-1.0)).add(c(1.0));
+		return max(oneMinusPos.multiply(startV).add(pos.multiply(endV)), c(0.0));
+	}
+
+	/**
+	 * Adds the per-note sampling offset to the within-row sample index so a note
+	 * that began in an earlier window is read (and enveloped) from its current
+	 * within-note position rather than from sample 0. With {@code samplingOffsets}
+	 * {@code null} the index is returned unchanged (a sample-0 origin), preserving
+	 * the single-window behavior of every existing caller.
+	 *
+	 * @param sampleIdx       within-row sample index, flat shape {@code [total]}
+	 * @param noteIdx         per-sample note index, flat shape {@code [total]}
+	 * @param samplingOffsets per-note sampling offsets in frames, shape {@code [n]}, or {@code null}
+	 * @param total           flat length {@code n * targetLength}
+	 * @return the effective within-note sample index, flat shape {@code [total]}
+	 */
+	private CollectionProducer effectiveSampleIdx(CollectionProducer sampleIdx, CollectionProducer noteIdx,
+												  PackedCollection samplingOffsets, int total) {
+		if (samplingOffsets == null) return sampleIdx;
+		return sampleIdx.add(c(shape(total), cp(samplingOffsets), noteIdx));
+	}
+
 	/**
 	 * Kernel 1 — batched linear resample for one source layer. Maps each flat
 	 * output index to {@code (noteIdx, sampleIdx)} and gathers from the note's
 	 * source row with linear interpolation, using the per-note {@code ratios}.
 	 *
-	 * @param source flattened source audio, shape {@code [n, sourceLength]}
-	 * @param ratios per-note pitch ratios, shape {@code [n]}
+	 * @param source          flattened source audio, shape {@code [n, sourceLength]}
+	 * @param ratios          per-note pitch ratios, shape {@code [n]}
+	 * @param samplingOffsets per-note sampling offsets in frames, shape {@code [n]}, or
+	 *                        {@code null} to read every note from sample 0
 	 * @return an uncompiled {@link CollectionProducer} of flat shape {@code [n * targetLength]}
 	 */
-	private CollectionProducer resampleFlat(PackedCollection source, PackedCollection ratios) {
+	private CollectionProducer resampleFlat(PackedCollection source, PackedCollection ratios,
+											PackedCollection samplingOffsets) {
 		int totalSamples = n * targetLength;
 
 		CollectionProducer outIdx = integers(0, totalSamples);
 		// noteIdx = floor(outIdx / targetLength)
 		CollectionProducer noteIdx = floor(outIdx.multiply(c(1.0 / targetLength)));
-		// sampleIdx = outIdx - noteIdx * targetLength
-		CollectionProducer sampleIdx = outIdx.subtract(noteIdx.multiply(c((double) targetLength)));
+		// sampleIdx = outIdx - noteIdx * targetLength, shifted by the note's sampling offset
+		CollectionProducer sampleIdx = effectiveSampleIdx(
+				outIdx.subtract(noteIdx.multiply(c((double) targetLength))), noteIdx, samplingOffsets, totalSamples);
 		// Per-row ratio: ratios[noteIdx]
 		CollectionProducer perNoteRatio = c(shape(totalSamples), cp(ratios), noteIdx);
 		CollectionProducer srcPos = sampleIdx.multiply(perNoteRatio);
@@ -298,19 +693,19 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	 * adjacent-note audio; the pad zones are trimmed afterward.
 	 *
 	 * @param audio2D         merged per-note audio, shape {@code [n, targetLength]}
-	 * @param filterCutoffs   per-note per-sample cutoff envelopes, shape {@code [n, targetLength]}
-	 * @param volumeEnvelopes per-note per-sample volume gain envelopes, shape {@code [n, targetLength]}
+	 * @param filterCutoffs2D per-note per-sample cutoff envelopes (producer), shape {@code [n, targetLength]}
+	 * @param volumeEnv2D     per-note per-sample volume gain envelopes (producer), shape {@code [n, targetLength]}
 	 * @return an uncompiled {@link CollectionProducer} of shape {@code [n, targetLength]}
 	 */
 	private CollectionProducer filterVolume2D(CollectionProducer audio2D,
-											  PackedCollection filterCutoffs,
-											  PackedCollection volumeEnvelopes) {
+											  CollectionProducer filterCutoffs2D,
+											  CollectionProducer volumeEnv2D) {
 		int totalSamples = n * targetLength;
 		int paddedNoteSize = targetLength + 2 * padHalf;
 		int paddedTotal = n * paddedNoteSize;
 
 		CollectionProducer paddedAudio2D = pad(audio2D, 0, padHalf);
-		CollectionProducer paddedCutoff2D = pad(cp(filterCutoffs), 0, padHalf);
+		CollectionProducer paddedCutoff2D = pad(filterCutoffs2D, 0, padHalf);
 		CollectionProducer flatPaddedAudio = paddedAudio2D.reshape(shape(paddedTotal));
 		CollectionProducer flatPaddedCutoff = paddedCutoff2D.reshape(shape(paddedTotal));
 		CollectionProducer filtered =
@@ -319,7 +714,7 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 		CollectionProducer trimmed = subset(shape(n, targetLength), filtered2D, 0, padHalf);
 
 		CollectionProducer flatTrimmed = trimmed.reshape(shape(totalSamples));
-		CollectionProducer flatVolumeEnv = cp(volumeEnvelopes).reshape(shape(totalSamples));
+		CollectionProducer flatVolumeEnv = volumeEnv2D.reshape(shape(totalSamples));
 		CollectionProducer voiced = flatTrimmed.multiply(flatVolumeEnv);
 		return voiced.reshape(shape(n, targetLength));
 	}

@@ -1,6 +1,7 @@
 package org.almostrealism.music.pattern;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.CellFeatures;
@@ -123,6 +124,71 @@ public interface PatternFeatures extends CodeFeatures {
 	 */
 	default BatchedPatternLayerRenderer getBatchedLayerRenderer() {
 		return null;
+	}
+
+	/**
+	 * Evaluates a batched render output producer and accumulates it into the
+	 * destination buffer. This is the pipeline boundary where the batched pattern
+	 * dispatch built by {@link BatchedPatternLayerRenderer} is materialized — kept
+	 * here so the batched path shares the per-note path's evaluate boundary.
+	 *
+	 * @param output      the placed, summed window producer of shape {@code [frameCount]}
+	 * @param destination the per-tick destination buffer to accumulate into
+	 * @param frameCount  the number of frames in the output window
+	 */
+	default void accumulateBatchedOutput(Producer<PackedCollection> output,
+										 PackedCollection destination, int frameCount) {
+		accumulateBatchedOutput(output, destination, 0, frameCount);
+	}
+
+	/**
+	 * Evaluates a batched render output producer and accumulates it into the
+	 * destination buffer starting at {@code destOffset}. Used by the dispatch when a
+	 * large render window is split into bounded sub-windows that each accumulate into
+	 * their slice of the destination.
+	 *
+	 * @param output      the placed, summed window producer of shape {@code [frameCount]}
+	 * @param destination the per-tick destination buffer to accumulate into
+	 * @param destOffset  the frame offset into {@code destination} to accumulate at
+	 * @param frameCount  the number of frames in the output window
+	 */
+	default void accumulateBatchedOutput(Producer<PackedCollection> output,
+										 PackedCollection destination, int destOffset, int frameCount) {
+		accumulateBatchedOutput(output.get().evaluate(), destination, destOffset, frameCount);
+	}
+
+	/**
+	 * Accumulates an already-evaluated batched render window into the destination
+	 * buffer starting at {@code destOffset}. This is the boundary used by the
+	 * compile-once dispatch, which re-evaluates its cached kernel to a
+	 * {@link PackedCollection} and accumulates it directly (no per-tick producer
+	 * compilation).
+	 *
+	 * @param output      the placed, summed window of shape {@code [frameCount]}
+	 * @param destination the per-tick destination buffer to accumulate into
+	 * @param destOffset  the frame offset into {@code destination} to accumulate at
+	 * @param frameCount  the number of frames in the output window
+	 */
+	default void accumulateBatchedOutput(PackedCollection output,
+										 PackedCollection destination, int destOffset, int frameCount) {
+		AudioProcessingUtils.getSum().sum(
+				destination.range(new TraversalPolicy(frameCount), destOffset), output);
+	}
+
+	/**
+	 * Re-evaluates a compiled batched dispatch and accumulates its output window
+	 * into the destination at {@code destOffset}. The dispatch is evaluated here, at
+	 * the pipeline boundary, so the compile-once kernel is reused each tick without
+	 * per-tick recompilation.
+	 *
+	 * @param dispatch    the compiled, reusable dispatch evaluable
+	 * @param destination the per-tick destination buffer to accumulate into
+	 * @param destOffset  the frame offset into {@code destination} to accumulate at
+	 * @param frameCount  the number of frames in the output window
+	 */
+	default void accumulateBatchedOutput(Evaluable dispatch,
+										 PackedCollection destination, int destOffset, int frameCount) {
+		accumulateBatchedOutput((PackedCollection) dispatch.evaluate(), destination, destOffset, frameCount);
 	}
 
 	/**
