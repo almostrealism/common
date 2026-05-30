@@ -121,6 +121,25 @@ public class ScopeSettings {
 	public static int maxConditionSize = 32;
 
 	/**
+	 * When {@code true}, parent {@link Expression} constructors canonicalise
+	 * their children array via {@link LeafInternTable#canonicalize(Expression[])}.
+	 * Each freshly-allocated leaf whose value has already been seen collapses
+	 * onto a shared canonical instance, reducing long-lived retention of
+	 * duplicate immutable leaves.
+	 *
+	 * <p>Off by default while the leaf-interning prototype is evaluated.</p>
+	 */
+	public static boolean enableLeafInterning = false;
+
+	/**
+	 * Maximum number of canonical entries the {@link LeafInternTable} will
+	 * hold. When the table is full, lookups still return existing canonicals
+	 * but new entries are not added — the table degrades gracefully rather
+	 * than growing without bound or evicting hot entries.
+	 */
+	public static int maxLeafInternTableSize = 4096;
+
+	/**
 	 * When {@code true}, expression tree warnings (oversized trees, excessive nodes)
 	 * are emitted to the log. Controlled by {@code AR_EXPRESSION_WARNINGS}.
 	 */
