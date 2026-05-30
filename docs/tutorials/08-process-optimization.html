@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Process Optimization - Almost Realism Framework</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <style>
+        .key-concepts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+        .concept-card { background: #f8f9fa; border-left: 4px solid #00796b; padding: 15px; border-radius: 4px; }
+        .concept-card h4 { margin-top: 0; color: #00796b; }
+        .performance-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .performance-table th, .performance-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        .performance-table th { background-color: #e0f2f1; color: #00796b; font-weight: bold; }
+        .performance-table tr:hover { background-color: #f5f5f5; }
+        .comparison-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .comparison-table th, .comparison-table td { padding: 10px; border: 1px solid #ddd; text-align: left; }
+        .comparison-table th { background-color: #e0f2f1; color: #00796b; }
+        .code-example { background: #f5f5f5; border-left: 4px solid #00796b; padding: 15px; margin: 15px 0; border-radius: 4px; }
+        .warning { background-color: #ffebee; border-left: 4px solid #c62828; padding: 12px; margin: 15px 0; }
+        .info-box { background-color: #e0f2f1; border-left: 4px solid #00796b; padding: 12px; margin: 15px 0; border-radius: 4px; }
+        .success-box { background-color: #e8f5e9; border-left: 4px solid #2e7d32; padding: 12px; margin: 15px 0; border-radius: 4px; }
+        .flow-diagram { background: #fff; border: 2px solid #00796b; border-radius: 8px; padding: 20px; margin: 20px 0; text-align: center; }
+        .flow-diagram .phase { display: inline-block; background: #e0f2f1; padding: 15px 20px; border-radius: 8px; margin: 5px; }
+        .flow-diagram .arrow { display: inline-block; font-size: 24px; color: #00796b; margin: 0 5px; vertical-align: middle; }
+        .flow-diagram .phase-label { font-size: 0.8em; color: #666; display: block; margin-top: 5px; }
+        .strategy-card { background: #fff; border: 2px solid #ddd; border-radius: 8px; padding: 20px; margin: 15px 0; }
+        .strategy-card h4 { margin-top: 0; color: #00796b; border-bottom: 2px solid #e0f2f1; padding-bottom: 10px; }
+        .strategy-card.recommended { border-color: #00796b; }
+        .tree-diagram { background: #2d2d2d; color: #4CAF50; font-family: monospace; padding: 20px; border-radius: 6px; margin: 15px 0; white-space: pre; overflow-x: auto; }
+        .decision-box { background: linear-gradient(135deg, #e0f2f1 0%, #b2dfdb 100%); border-radius: 8px; padding: 20px; margin: 15px 0; }
+        .decision-box h5 { margin-top: 0; color: #00695c; }
+        .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
+        .metric-box { background: #fff; border: 2px solid #ddd; border-radius: 8px; padding: 15px; text-align: center; }
+        .metric-box .value { font-size: 2em; font-weight: bold; color: #00796b; }
+        .metric-box .label { font-size: 0.9em; color: #666; }
+        .antipattern { background-color: #ffebee; border: 2px solid #c62828; border-radius: 8px; padding: 15px; margin: 15px 0; }
+        .antipattern h5 { margin-top: 0; color: #c62828; }
+        .pattern { background-color: #e8f5e9; border: 2px solid #2e7d32; border-radius: 8px; padding: 15px; margin: 15px 0; }
+        .pattern h5 { margin-top: 0; color: #2e7d32; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Process Optimization System</h1>
+            <p class="tagline">Understanding Expression Tree Isolation and Kernel Boundaries</p>
+            <nav>
+                <a href="../index.html">Home</a>
+                <a href="#overview">Overview</a>
+                <a href="#problem">The Problem</a>
+                <a href="#architecture">Architecture</a>
+                <a href="#strategies">Strategies</a>
+                <a href="#isolation">Isolation Patterns</a>
+                <a href="#debugging">Debugging</a>
+                <a href="#best-practices">Best Practices</a>
+            </nav>
+        </header>
+
+        <main>
+            <section id="overview">
+                <h2>Overview</h2>
+                <p>The Process optimization system is a hierarchical framework for transforming computational work trees to improve execution efficiency. It automatically decides where to break up large expression trees into independently compiled kernels.</p>
+
+                <div class="warning" style="background-color: #fff3e0; border-left-color: #ff9800;">
+                    <strong>Critical Understanding:</strong> This system exists because without it, nested computations create expression trees that grow exponentially, causing compilation timeouts, stack overflows, and memory exhaustion.
+                </div>
+
+                <div class="key-concepts">
+                    <div class="concept-card">
+                        <h4>Expression Embedding</h4>
+                        <p>When operations are nested, child expressions get embedded in parent expressions, creating a single large tree that must be compiled together.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Process Isolation</h4>
+                        <p>Breaking the tree into independent units that compile as separate kernels, with results passed through memory.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Optimization Strategies</h4>
+                        <p>Pluggable algorithms that analyze tree structure and decide when isolation improves performance.</p>
+                    </div>
+                    <div class="concept-card">
+                        <h4>Context Propagation</h4>
+                        <p>Information about parallelism, hardware requirements, and optimization state flows through the tree during optimization.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="problem">
+                <h2>The Expression Embedding Problem</h2>
+
+                <h3>Without Isolation</h3>
+                <p>When processes are not isolated, their expressions get embedded in parent expressions:</p>
+
+                <div class="tree-diagram">add(multiply(a, b), multiply(c, d))
+    ├── multiply expression (embedded in add)
+    │   ├── a.getValueAt(i) (embedded)
+    │   └── b.getValueAt(i) (embedded)
+    └── multiply expression (embedded in add)
+        ├── c.getValueAt(i) (embedded)
+        └── d.getValueAt(i) (embedded)</div>
+
+                <p>This creates a single large expression tree that:</p>
+                <ul>
+                    <li>Takes <strong>exponentially longer</strong> to compile with depth</li>
+                    <li>May <strong>overflow the call stack</strong> during compilation</li>
+                    <li>Cannot be <strong>partially cached or reused</strong></li>
+                </ul>
+
+                <h3>With Isolation</h3>
+                <p>When processes are isolated, they compile as separate kernels:</p>
+
+                <div class="tree-diagram">add(isolate(multiply(a, b)), isolate(multiply(c, d)))
+    ├── [Kernel 1: multiply(a, b)] → temp1
+    ├── [Kernel 2: multiply(c, d)] → temp2
+    └── [Kernel 3: add(temp1, temp2)]</div>
+
+                <p>Each kernel compiles independently, enabling:</p>
+                <ul>
+                    <li><strong>Bounded compilation time</strong> per kernel</li>
+                    <li><strong>Kernel caching and reuse</strong></li>
+                    <li><strong>Parallel compilation</strong> (future optimization)</li>
+                </ul>
+
+                <h3>Real-World Impact</h3>
+                <div class="metric-grid">
+                    <div class="metric-box">
+                        <div class="value">256s</div>
+                        <div class="label">Without Isolation (timeout)</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="value">~10s</div>
+                        <div class="label">With Proper Isolation</div>
+                    </div>
+                    <div class="metric-box">
+                        <div class="value">25x</div>
+                        <div class="label">Performance Improvement</div>
+                    </div>
+                </div>
+
+                <div class="info-box">
+                    <strong>Key Insight:</strong> The time is NOT spent in kernel execution, but in expression tree evaluation during the compilation phase. Isolation breaks this exponential growth.
+                </div>
+            </section>
+
+            <section id="architecture">
+                <h2>Core Architecture</h2>
+
+                <h3>Process Hierarchy</h3>
+                <div class="tree-diagram">Process&lt;P, T&gt;
+├── optimize()                  - Entry point for optimization
+├── isolate()                   - Wraps for independent execution
+├── isIsolationTarget()         - Determines if isolation needed
+└── getChildren()               - Returns child processes
+
+ParallelProcess&lt;P, T&gt; extends Process
+├── getParallelism()            - Returns parallelism count
+├── optimize(context, child)    - Optimizes individual child
+└── isUniform()                 - Checks child parallelism equality
+
+ComputableParallelProcess&lt;P, T&gt; extends ParallelProcess
+├── createContext()             - Returns ComputableProcessContext
+└── isIsolationTarget()         - Checks compute requirements</div>
+
+                <h3>Context Hierarchy</h3>
+                <div class="tree-diagram">ProcessContext
+├── getOptimizationStrategy()   - Returns current strategy
+└── getDepth()                  - Returns nesting level (0 = root)
+
+ParallelProcessContext extends ProcessContext
+├── parallelism                 - Work items at current level
+├── aggregationCount            - Inputs per output
+└── fixed                       - Compile-time determined
+
+ComputableProcessContext extends ParallelProcessContext
+└── requirements                - List&lt;ComputeRequirement&gt;</div>
+
+                <h3>Optimization Flow</h3>
+                <div class="flow-diagram">
+                    <div class="phase">
+                        <strong>process.optimize()</strong>
+                        <span class="phase-label">Entry Point</span>
+                    </div>
+                    <span class="arrow">&rarr;</span>
+                    <div class="phase">
+                        <strong>Create Context</strong>
+                        <span class="phase-label">ParallelProcessContext</span>
+                    </div>
+                    <span class="arrow">&rarr;</span>
+                    <div class="phase">
+                        <strong>Optimize Children</strong>
+                        <span class="phase-label">Recursive</span>
+                    </div>
+                    <span class="arrow">&rarr;</span>
+                    <div class="phase">
+                        <strong>Check Isolation</strong>
+                        <span class="phase-label">isIsolationTarget()</span>
+                    </div>
+                    <span class="arrow">&rarr;</span>
+                    <div class="phase">
+                        <strong>Apply Strategy</strong>
+                        <span class="phase-label">Final Decision</span>
+                    </div>
+                </div>
+
+                <div class="code-example">
+                    <strong>Optimization Algorithm:</strong>
+                    <pre><code>1. User calls process.optimize() or process.optimize(context)
+   ↓
+2. ParallelProcess.optimize(context) is invoked
+   ├── If no children: return this (unchanged)
+   ├── Create ParallelProcessContext from parent context
+   ├── For each child:
+   │   ├── Recursively call child.optimize(context)
+   │   ├── Call optimize(context, optimizedChild) to decide isolation
+   │   └── Result is either child or child.isolate()
+   └── Delegate to context.getOptimizationStrategy().optimize(...)
+   ↓
+3. Strategy analyzes parallelism, memory, and tree structure
+   ├── Extract parallelism and output size from each child
+   ├── Calculate current score vs. isolated score
+   ├── Apply strategy-specific rules
+   └── Return optimized process (children isolated or not)</code></pre>
+                </div>
+
+                <h3>How IsolatedProcess Breaks Embedding</h3>
+                <div class="decision-box">
+                    <h5>The Key Mechanism</h5>
+                    <p><code>IsolatedProcess</code> does <strong>NOT</strong> implement <code>TraversableExpression</code>. When a parent's <code>getValueAt()</code> checks if a child can provide expressions:</p>
+                    <pre><code>if (child instanceof TraversableExpression) {
+    // EMBEDDED: calls child.getValueAt(index)
+    return ((TraversableExpression) child).getValueAt(index);
+} else {
+    // ISOLATED: returns null, forces separate kernel
+    return null;
+}</code></pre>
+                    <p>When <code>getValueAt()</code> returns <code>null</code>, the parent cannot embed the child, forcing a compilation boundary.</p>
+                </div>
+            </section>
+
+            <section id="strategies">
+                <h2>Optimization Strategies</h2>
+
+                <h3>Strategy Interface</h3>
+                <div class="code-example">
+                    <pre><code class="language-java">public interface ProcessOptimizationStrategy {
+    /**
+     * Optimize a process tree.
+     * @return Optimized process, or null if strategy doesn't apply
+     */
+    &lt;P extends Process&lt;?, ?&gt;, T&gt; Process&lt;P, T&gt; optimize(
+        ProcessContext ctx,
+        Process&lt;P, T&gt; parent,
+        Collection&lt;P&gt; children,
+        Function&lt;Collection&lt;P&gt;, Stream&lt;P&gt;&gt; childProcessor);
+}</code></pre>
+                </div>
+
+                <h3>ParallelismTargetOptimization (Default)</h3>
+                <div class="strategy-card recommended">
+                    <h4>Default Strategy - Threshold-Based Isolation</h4>
+                    <p>Makes isolation decisions based on parallelism counts and memory costs.</p>
+
+                    <table class="comparison-table">
+                        <tr>
+                            <th>Parameter</th>
+                            <th>Default Value</th>
+                            <th>Purpose</th>
+                        </tr>
+                        <tr>
+                            <td><code>minCount</code></td>
+                            <td>256 (2^8)</td>
+                            <td>Minimum parallelism to consider</td>
+                        </tr>
+                        <tr>
+                            <td><code>targetCount</code></td>
+                            <td>131072 (2^17)</td>
+                            <td>Target threshold for decisions</td>
+                        </tr>
+                        <tr>
+                            <td><code>maxCount</code></td>
+                            <td>1048576 (2^20)</td>
+                            <td>Maximum before skip isolation</td>
+                        </tr>
+                    </table>
+
+                    <div class="decision-box">
+                        <h5>Decision Logic</h5>
+                        <ol>
+                            <li>If ≤1 child OR total parallelism equals parent's → <strong>SKIP</strong></li>
+                            <li>If max child > maxCount (1M) → <strong>SKIP</strong> (avoid fragmentation)</li>
+                            <li>If enableNarrowMax AND max child > targetCount AND context >= minCount → <strong>SKIP</strong></li>
+                            <li>Calculate scores: <code>parallelismValue - memoryCost</code></li>
+                            <li>If isolatedScore > currentScore → <strong>ISOLATE</strong></li>
+                        </ol>
+                    </div>
+                </div>
+
+                <h3>TraversableDepthTargetOptimization</h3>
+                <div class="strategy-card">
+                    <h4>Depth-Based Isolation</h4>
+                    <p>Prevents expression trees from becoming too deep (which causes stack overflow).</p>
+
+                    <div class="code-example">
+                        <pre><code>// Constructor takes depth limit (default: 8)
+new TraversableDepthTargetOptimization(8);
+
+// Decision: If any child's depth > limit → ISOLATE</code></pre>
+                    </div>
+
+                    <p><strong>When to Use:</strong></p>
+                    <ul>
+                        <li>Deep expression trees from nested operations</li>
+                        <li>Operations that compose many TraversableExpressions</li>
+                        <li>When seeing stack overflow during compilation</li>
+                    </ul>
+                </div>
+
+                <h3>AggregationDepthTargetOptimization</h3>
+                <div class="strategy-card">
+                    <h4>Aggregation-Based Isolation</h4>
+                    <p>Flattens deep aggregation trees (reductions, convolutions, etc.).</p>
+
+                    <table class="comparison-table">
+                        <tr>
+                            <th>Threshold</th>
+                            <th>Value</th>
+                            <th>Purpose</th>
+                        </tr>
+                        <tr>
+                            <td>AGGREGATION_THRESHOLD</td>
+                            <td>64</td>
+                            <td>Minimum aggregation count</td>
+                        </tr>
+                        <tr>
+                            <td>PARALLELISM_THRESHOLD</td>
+                            <td>128</td>
+                            <td>Minimum child parallelism</td>
+                        </tr>
+                    </table>
+
+                    <p><strong>Use Cases:</strong></p>
+                    <ul>
+                        <li>Large convolution operations with many input channels</li>
+                        <li>Deep reduction trees</li>
+                        <li>Operations with high fan-in</li>
+                    </ul>
+                </div>
+
+                <h3>CascadingOptimizationStrategy</h3>
+                <div class="strategy-card">
+                    <h4>Chain Multiple Strategies</h4>
+                    <p>Chains multiple strategies; first successful result wins.</p>
+
+                    <div class="code-example">
+                        <pre><code class="language-java">ProcessOptimizationStrategy strategy = new CascadingOptimizationStrategy(
+    new TraversableDepthTargetOptimization(8),    // Check depth first
+    new AggregationDepthTargetOptimization(12),   // Then aggregation
+    new ParallelismDiversityOptimization(),       // Then diversity
+    new ParallelismTargetOptimization()           // Finally, default
+);</code></pre>
+                    </div>
+
+                    <div class="info-box">
+                        <strong>Design Principle:</strong> More specific strategies first (depth, aggregation), more general strategies last (parallelism target). Each strategy returns <code>null</code> if not applicable.
+                    </div>
+                </div>
+
+                <h3>Strategy Selection Guide</h3>
+                <table class="performance-table">
+                    <tr>
+                        <th>Scenario</th>
+                        <th>Recommended Strategy</th>
+                        <th>Why</th>
+                    </tr>
+                    <tr>
+                        <td>General use</td>
+                        <td><code>ParallelismTargetOptimization</code></td>
+                        <td>Balanced default behavior</td>
+                    </tr>
+                    <tr>
+                        <td>Deep expressions</td>
+                        <td><code>TraversableDepthTargetOptimization(8)</code></td>
+                        <td>Prevents stack overflow</td>
+                    </tr>
+                    <tr>
+                        <td>Large reductions</td>
+                        <td><code>AggregationDepthTargetOptimization(12)</code></td>
+                        <td>Handles high fan-in</td>
+                    </tr>
+                    <tr>
+                        <td>Mixed workloads</td>
+                        <td><code>CascadingOptimizationStrategy</code></td>
+                        <td>Combines multiple heuristics</td>
+                    </tr>
+                    <tr>
+                        <td>ML gradient computation</td>
+                        <td>Cascading with depth=4</td>
+                        <td>Gradients create deep trees</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="isolation">
+                <h2>Isolation Patterns</h2>
+
+                <h3>Pattern 1: Chain Breaking</h3>
+                <div class="pattern">
+                    <h5>Problem: Long chains of operations create deep expression trees</h5>
+                    <pre><code>// Deep chain without isolation
+result = op1(op2(op3(op4(op5(input)))));
+// Expression depth: 5, grows exponentially with nesting</code></pre>
+                    <h5>Solution: Insert isolation points in the chain</h5>
+                    <pre><code>// With strategic isolation
+temp1 = op1(op2(input)).optimize().get().evaluate();
+temp2 = op3(op4(op5(p(temp1)))).optimize().get().evaluate();</code></pre>
+                    <p><strong>Automatic:</strong> Use <code>TraversableDepthTargetOptimization(4)</code></p>
+                </div>
+
+                <h3>Pattern 2: Multi-Input Aggregation</h3>
+                <div class="pattern">
+                    <h5>Problem: Operations with many inputs embed all input expressions</h5>
+                    <pre><code>// Concatenation of many tensors - all expressions embedded
+result = concat(t1, t2, t3, t4, t5, t6, t7, t8);</code></pre>
+                    <h5>Solution: Ensure inputs are isolated or pre-computed</h5>
+                    <pre><code>// Compute heavy inputs first
+List&lt;PackedCollection&gt; precomputed = heavyOps.stream()
+    .map(op -> op.optimize().get().evaluate())
+    .collect(toList());
+
+// Concat from memory references
+result = concat(precomputed.stream().map(this::p).toArray(Producer[]::new));</code></pre>
+                </div>
+
+                <h3>Pattern 3: Gradient Computation</h3>
+                <div class="pattern">
+                    <h5>Problem: Automatic differentiation creates exponentially growing trees</h5>
+                    <pre><code>// Forward: y = f(x)
+// Backward: dy/dx = chain rule across all operations
+CollectionProducer gradient = output.delta(input);
+// Expression tree includes all intermediate derivatives</code></pre>
+                    <h5>Solution: Use TransitiveDeltaExpressionComputation</h5>
+                    <pre><code>public class MyComputation extends TransitiveDeltaExpressionComputation {
+    @Override
+    public CollectionProducer delta(Producer&lt;?&gt; target) {
+        // Create isolated delta computation
+        List&lt;Process&lt;?, ?&gt;&gt; deltas = computeInputDeltas(target);
+        return generate(deltas).reshape(outputShape.append(targetShape));
+    }
+}</code></pre>
+                    <p><strong>Key Insight:</strong> Each transitive delta computation creates an isolated boundary.</p>
+                </div>
+
+                <h3>Anti-Pattern 1: Over-Isolation</h3>
+                <div class="antipattern">
+                    <h5>BAD: Isolating tiny operations</h5>
+                    <pre><code>for (int i = 0; i < 1000; i++) {
+    PackedCollection result = add(a, b).optimize().get().evaluate();
+    // 1000 kernel launches instead of 1!
+}</code></pre>
+                    <p><strong>Fix:</strong> Batch operations or raise isolation thresholds.</p>
+                </div>
+
+                <h3>Anti-Pattern 2: Under-Isolation</h3>
+                <div class="antipattern">
+                    <h5>BAD: No isolation on deep nested computation</h5>
+                    <pre><code>OperationList ops = buildDeepComputationGraph();
+Runnable r = ops.get();  // Missing optimize()!
+// Potential stack overflow or timeout</code></pre>
+                    <p><strong>Fix:</strong> Always call <code>optimize()</code> before <code>get()</code> for complex computations.</p>
+                </div>
+
+                <h3>Anti-Pattern 3: Hacking getValueAt()</h3>
+                <div class="antipattern">
+                    <h5>BAD: Returning null from getValueAt() to force isolation</h5>
+                    <pre><code>@Override
+public Expression&lt;Double&gt; getValueAt(Expression index) {
+    if (shouldForceIsolation()) {
+        return null;  // WRONG! Violates architecture
+    }
+    return computeValue(index);
+}</code></pre>
+                    <p><strong>Fix:</strong> Use <code>isIsolationTarget()</code> and proper optimization flow.</p>
+                </div>
+            </section>
+
+            <section id="debugging">
+                <h2>Debugging Isolation Issues</h2>
+
+                <h3>Symptoms of Missing Isolation</h3>
+                <ul>
+                    <li>Test timeouts (60+ seconds for simple operations)</li>
+                    <li>Stack overflow during compilation</li>
+                    <li>OutOfMemoryError during expression evaluation</li>
+                    <li>Massive expression trees in stack traces</li>
+                    <li>Profile showing time in "kernelSeries" evaluation stages</li>
+                </ul>
+
+                <h3>Check If Isolation Is Happening</h3>
+                <div class="code-example">
+                    <pre><code class="language-java">// Add isolation logging
+ParallelProcess.isolationFlags.add(p -> {
+    System.out.println("[CHECK] " + p.getClass().getSimpleName() +
+        " isIsolated=" + (p instanceof IsolatedProcess));
+    return true;
+});</code></pre>
+                </div>
+
+                <h3>Trace Optimization Decisions</h3>
+                <div class="code-example">
+                    <pre><code class="language-java">// Log when optimization runs
+ProcessOptimizationStrategy.listeners.add(parent -> {
+    System.out.println("[OPT] Processing: " + parent);
+});
+
+// Enable verbose logging
+ComputableParallelProcess.enableOptimizationLog = true;</code></pre>
+                </div>
+
+                <h3>Verify Expression Depth</h3>
+                <div class="code-example">
+                    <pre><code class="language-java">// Override in your process
+@Override
+public boolean isIsolationTarget(ProcessContext ctx) {
+    int depth = calculateDepth(this);
+    System.out.println("Depth of " + this + ": " + depth);
+    return depth > 8 || super.isIsolationTarget(ctx);
+}</code></pre>
+                </div>
+
+                <h3>Profile Kernel Compilation</h3>
+                <div class="code-example">
+                    <pre><code class="language-java">// Measure optimization and compilation separately
+long start = System.nanoTime();
+OperationList optimized = (OperationList) ops.optimize();
+long optimizeTime = System.nanoTime() - start;
+
+start = System.nanoTime();
+Runnable r = optimized.get();
+long compileTime = System.nanoTime() - start;
+
+System.out.println("Optimize: " + (optimizeTime / 1e6) + "ms");
+System.out.println("Compile: " + (compileTime / 1e6) + "ms");</code></pre>
+                </div>
+
+                <h3>Using Profile Analysis</h3>
+                <div class="info-box">
+                    <strong>Profile XML Analysis:</strong> Use the <code>ar-profile-analyzer</code> MCP tool to identify slow operations:
+                    <ul>
+                        <li><code>find_slowest</code> - Find the N slowest operations</li>
+                        <li><code>get_timing_breakdown</code> - See compile vs run time</li>
+                        <li><code>list_children</code> - Drill into operation hierarchy</li>
+                    </ul>
+                    <p>Look for operations where compile time >> run time, indicating expression tree issues.</p>
+                </div>
+            </section>
+
+            <section id="best-practices">
+                <h2>Best Practices</h2>
+
+                <div class="success-box">
+                    <h4>1. Always Call optimize() Before get()</h4>
+                    <pre><code class="language-java">// CORRECT
+OperationList ops = model.getForward().push(input);
+ops = (OperationList) ops.optimize();  // Critical!
+Runnable r = ops.get();</code></pre>
+                </div>
+
+                <div class="success-box">
+                    <h4>2. Use Cascading Strategies for Complex Workloads</h4>
+                    <pre><code class="language-java">ProcessContextBase.setDefaultOptimizationStrategy(
+    new CascadingOptimizationStrategy(
+        new TraversableDepthTargetOptimization(8),
+        new AggregationDepthTargetOptimization(12),
+        new ParallelismTargetOptimization()
+    )
+);</code></pre>
+                </div>
+
+                <div class="success-box">
+                    <h4>3. Use TransitiveDeltaExpressionComputation for Gradients</h4>
+                    <p>For operations that participate in backpropagation, extend <code>TransitiveDeltaExpressionComputation</code> to get automatic isolation of gradient computations.</p>
+                </div>
+
+                <div class="success-box">
+                    <h4>4. Monitor Compilation Times</h4>
+                    <p>If compilation takes >1 second for a simple operation, you likely have an isolation issue.</p>
+                </div>
+
+                <div class="success-box">
+                    <h4>5. Profile First, Optimize Second</h4>
+                    <p>Use profile XML analysis to identify where time is actually spent before adjusting isolation strategies.</p>
+                </div>
+
+                <h3>Performance Trade-offs</h3>
+                <table class="performance-table">
+                    <tr>
+                        <th>Scenario</th>
+                        <th>Memory</th>
+                        <th>Compilation</th>
+                        <th>Execution</th>
+                    </tr>
+                    <tr>
+                        <td>No isolation</td>
+                        <td>Single output buffer</td>
+                        <td>One large, slow compilation</td>
+                        <td>One kernel launch (if it compiles)</td>
+                    </tr>
+                    <tr>
+                        <td>Full isolation</td>
+                        <td>Buffer per operation</td>
+                        <td>Many small, fast compilations</td>
+                        <td>Many kernel launches</td>
+                    </tr>
+                    <tr>
+                        <td>Strategic isolation</td>
+                        <td>Minimal intermediate buffers</td>
+                        <td>Balanced compilation time</td>
+                        <td>Optimal kernel granularity</td>
+                    </tr>
+                </table>
+            </section>
+
+            <section id="resources">
+                <h2>Additional Resources</h2>
+
+                <h3>Internal Documentation</h3>
+                <ul>
+                    <li><a href="../../docs/internals/process-optimization.md">Process Optimization</a> - Detailed architecture</li>
+                    <li><a href="../../docs/internals/optimization-strategies.md">Optimization Strategies</a> - Strategy reference</li>
+                    <li><a href="../../docs/internals/isolation-patterns.md">Isolation Patterns</a> - Patterns and anti-patterns</li>
+                </ul>
+
+                <h3>Key Source Files</h3>
+                <table class="comparison-table">
+                    <tr>
+                        <th>File</th>
+                        <th>Purpose</th>
+                    </tr>
+                    <tr>
+                        <td><code>relation/.../Process.java</code></td>
+                        <td>Core interface, isolation control</td>
+                    </tr>
+                    <tr>
+                        <td><code>relation/.../ParallelProcess.java</code></td>
+                        <td>Parallel execution, recursive optimization</td>
+                    </tr>
+                    <tr>
+                        <td><code>relation/.../ProcessOptimizationStrategy.java</code></td>
+                        <td>Strategy interface</td>
+                    </tr>
+                    <tr>
+                        <td><code>relation/.../ParallelismTargetOptimization.java</code></td>
+                        <td>Default strategy implementation</td>
+                    </tr>
+                    <tr>
+                        <td><code>code/.../TraversableDepthTargetOptimization.java</code></td>
+                        <td>Depth-based strategy</td>
+                    </tr>
+                    <tr>
+                        <td><code>code/.../AggregationDepthTargetOptimization.java</code></td>
+                        <td>Aggregation-based strategy</td>
+                    </tr>
+                </table>
+
+                <h3>Related Tutorials</h3>
+                <ul>
+                    <li><a href="04-computation-graphs.html">Computation Graphs</a> - How graphs are built</li>
+                    <li><a href="03-hardware-acceleration.html">Hardware Acceleration</a> - Kernel compilation</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p><a href="../index.html">&larr; Back to Framework Documentation</a></p>
+            <p>&copy; 2024 Michael Murray. Licensed under the Apache License, Version 2.0.</p>
+        </footer>
+    </div>
+
+    <script src="../js/docs.js"></script>
+</body>
+</html>
