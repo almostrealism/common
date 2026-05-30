@@ -67,6 +67,53 @@ class DefaultTimeoutTest(unittest.TestCase):
         self.assertEqual(15, server.DEFAULT_TIMEOUT)
 
 
+class JmxMonitoringJvmArgsTest(unittest.TestCase):
+    """jmx_monitoring must not inject startup JVM flags.
+
+    Both -XX:StartFlightRecording and -XX:NativeMemoryTracking break this
+    project's surefire-forked JVM (the former corrupts the surefire channel
+    by writing to stdout; the latter aborts the JVM when the JNI hardware
+    library loads). jmx_monitoring's only job is to enable forked-PID
+    discovery so ar-jmx tools can attach at runtime via jcmd.
+    """
+
+    def setUp(self):
+        self._runner = server.TestRunner()
+        self._tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
+    def _arg_line(self, cmd):
+        for arg in cmd:
+            if arg.startswith("-DargLine="):
+                return arg
+        return ""
+
+    def test_jmx_monitoring_injects_no_startup_flags(self):
+        config = server.RunConfig(module="utils", jmx_monitoring=True)
+        cmd = self._runner.build_maven_command(
+            config, run_dir=Path(self._tmpdir), run_id="r1")
+        arg_line = self._arg_line(cmd)
+        self.assertNotIn("StartFlightRecording", arg_line)
+        self.assertNotIn("NativeMemoryTracking", arg_line)
+
+    def test_jmx_monitoring_off_injects_no_startup_flags(self):
+        config = server.RunConfig(module="utils", jmx_monitoring=False)
+        cmd = self._runner.build_maven_command(
+            config, run_dir=Path(self._tmpdir), run_id="r2")
+        arg_line = self._arg_line(cmd)
+        self.assertNotIn("StartFlightRecording", arg_line)
+        self.assertNotIn("NativeMemoryTracking", arg_line)
+
+    def test_explicit_jvm_args_still_forwarded(self):
+        config = server.RunConfig(
+            module="utils", jmx_monitoring=True, jvm_args=["-Xmx4g"])
+        cmd = self._runner.build_maven_command(
+            config, run_dir=Path(self._tmpdir), run_id="r3")
+        self.assertIn("-Xmx4g", self._arg_line(cmd))
+
+
 class WatcherInferStatusTest(unittest.TestCase):
     """Fix 1: watcher.infer_exit_status reads BUILD SUCCESS / BUILD FAILURE."""
 
