@@ -490,7 +490,7 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		int groups = 4;
 
 		while (c < 1400) {
-			log("START c = " + c);
+			log("c = " + c);
 			normBackwardsTrainable("backwardsTrainable" + c, c, groups);
 			c = c + 200;
 		}

@@ -26,6 +26,8 @@ import org.almostrealism.color.Shader;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ShadableIntersection;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.primitives.Sphere;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -34,7 +36,7 @@ import org.junit.Test;
  * Basic intersection tests to verify ray-surface intersection calculation
  * works with current ar-common API.
  */
-public class BasicIntersectionTest extends TestSuiteBase {
+public class BasicIntersectionTest extends TestSuiteBase implements ConsoleFeatures {
 
 	@Test(timeout = 10000)
 	public void sphereIntersection() {
@@ -115,7 +117,7 @@ public class BasicIntersectionTest extends TestSuiteBase {
 			assertEquals("Blue component should be 0.2", 0.2, color.toDouble(2));
 		} catch (Exception e) {
 			log("Exception getting color: " + e.getMessage());
-			e.printStackTrace();
+			Console.root().alert("BasicIntersectionTest exception getting color", e);
 		}
 	}
 

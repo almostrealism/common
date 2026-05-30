@@ -134,7 +134,6 @@ public class MixdownChromosomeRangesTest extends TestSuiteBase implements CellFe
 		return factor.getResultant(c(1.0)).get().evaluate().toDouble(0);
 	}
 
-	@SuppressWarnings("unchecked")
 	private Chromosome<PackedCollection> readChromosomeField(MixdownManager mixdown, String name) {
 		try {
 			Field f = MixdownManager.class.getDeclaredField(name);

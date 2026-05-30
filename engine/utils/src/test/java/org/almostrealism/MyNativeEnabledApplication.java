@@ -290,7 +290,7 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		ComplexNumber b = new ComplexNumber(3, 4);
 
 		Producer<ComplexNumber> c = (Producer) multiplyComplex(c(a), c(b));
-		log("(1 + 2i) * (3 + 4i) = ");
+		log("Computing (1 + 2i) * (3 + 4i)");
 		c.evaluate().print();
 	}
 

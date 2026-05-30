@@ -29,9 +29,7 @@ public class DeterminantDebugTest extends TestSuiteBase implements TransformMatr
 
 	@Test(timeout = 10000)
 	public void testSimpleDeterminant() {
-		log("========================================");
-		log("TEST: Simple Determinant Calculation");
-		log("========================================");
+		log("Simple Determinant Calculation");
 
 		// Test identity matrix (det should be 1)
 		TransformMatrix identity = new TransformMatrix();
@@ -60,9 +58,7 @@ public class DeterminantDebugTest extends TestSuiteBase implements TransformMatr
 
 	@Test(timeout = 10000)
 	public void testNonDiagonalMatrix() {
-		log("========================================");
-		log("TEST: Non-Diagonal Matrix Determinant");
-		log("========================================");
+		log("Non-Diagonal Matrix Determinant");
 
 		// Create a simple non-diagonal matrix with known determinant
 		double[][] matrixData = new double[][]{
@@ -84,9 +80,7 @@ public class DeterminantDebugTest extends TestSuiteBase implements TransformMatr
 
 	@Test(timeout = 10000)
 	public void testUpperTriangularConversion() {
-		log("========================================");
-		log("TEST: Debug Upper Triangular Conversion");
-		log("========================================");
+		log("Debug Upper Triangular Conversion");
 
 		// For a diagonal matrix, upper triangular conversion should be a no-op
 		Producer<TransformMatrix> scaleProducer = (Producer) scaleMatrix(vector(2.0, 2.0, 2.0));

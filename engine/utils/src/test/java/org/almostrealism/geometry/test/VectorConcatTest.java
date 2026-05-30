@@ -19,13 +19,15 @@ package org.almostrealism.geometry.test;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
  * Test to isolate the vector concat issue.
  */
-public class VectorConcatTest extends TestSuiteBase implements VectorFeatures {
+public class VectorConcatTest extends TestSuiteBase implements VectorFeatures, ConsoleFeatures {
 
 	@Test(timeout = 10000)
 	public void simpleVectorFromScalars() {
@@ -57,7 +59,7 @@ public class VectorConcatTest extends TestSuiteBase implements VectorFeatures {
 			assertEquals("Z should be 3.0", 3.0, result.toDouble(2));
 		} catch (Exception e) {
 			log("Exception: " + e.getMessage());
-			e.printStackTrace();
+			Console.root().alert("VectorConcatTest exception", e);
 			throw e;
 		}
 	}

@@ -395,9 +395,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 
 	@Test(timeout = 10000)
 	public void testSphereTransformMatrixCreation() {
-		log("========================================");
-		log("COMPONENT TEST 1: How Sphere.calculateTransform() creates the matrix");
-		log("========================================");
+		log("How Sphere.calculateTransform() creates the matrix");
 
 		Sphere sphere = new Sphere();
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
@@ -428,9 +426,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 
 	@Test(timeout = 10000)
 	public void testSphereInverseTransformMatrix() {
-		log("========================================");
-		log("COMPONENT TEST 2: Inverse transform matrix for scaled sphere");
-		log("========================================");
+		log("Inverse transform matrix for scaled sphere");
 
 		Sphere sphere = new Sphere();
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
@@ -461,9 +457,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 
 	@Test(timeout = 10000)
 	public void testRayTransformationByInverseScale() {
-		log("========================================");
-		log("COMPONENT TEST 3: Ray transformation by inverse scale matrix");
-		log("========================================");
+		log("Ray transformation by inverse scale matrix");
 
 		// Create scale(2,2,2) sphere
 		Sphere sphere = new Sphere();
@@ -509,9 +503,7 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 
 	@Test(timeout = 10000)
 	public void testManualIntersectionCalculation() {
-		log("========================================");
-		log("COMPONENT TEST 4: Manual intersection calculation step-by-step");
-		log("========================================");
+		log("Manual intersection calculation step-by-step");
 
 		// Manually compute intersection for transformed ray with unit sphere
 		// Ray: origin=(0,0,5), direction=(0,0,-0.5) [from test above]

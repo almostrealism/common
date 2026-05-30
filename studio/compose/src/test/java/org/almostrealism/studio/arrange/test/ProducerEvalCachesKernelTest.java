@@ -435,7 +435,6 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 		dumpProducerLeaves(producer, 0);
 	}
 
-	@SuppressWarnings({"rawtypes", "unchecked"})
 	private void dumpProducerLeaves(Object node, int depth) {
 		String indent = "  ".repeat(depth);
 		String cls = node == null ? "null" : node.getClass().getName();

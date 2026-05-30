@@ -144,7 +144,7 @@ public class AsyncResultDeliveryTest extends TestSuiteBase {
 			lambda1.accept("result_from_async1");  // Goes to details2, not details1!
 		} catch (IllegalArgumentException e) {
 			error.set(e);
-			log("ERROR: " + e.getMessage());
+			log("Error: " + e.getMessage());
 		}
 
 		// Second async completes - lambda2 also tries to deliver to details2
@@ -153,7 +153,7 @@ public class AsyncResultDeliveryTest extends TestSuiteBase {
 			lambda2.accept("result_from_async2");  // DUPLICATE! details2 already has a result!
 		} catch (IllegalArgumentException e) {
 			error.set(e);
-			log("ERROR: " + e.getMessage());
+			log("Error: " + e.getMessage());
 		}
 
 		// Verify the bug

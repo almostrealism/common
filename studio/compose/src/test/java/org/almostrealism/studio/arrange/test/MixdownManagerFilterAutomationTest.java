@@ -334,7 +334,6 @@ public class MixdownManagerFilterAutomationTest extends TestSuiteBase
 	 * chromosome's gene 0 so we can confirm the genome assignment actually
 	 * reaches the gene values used by the high-pass filter.
 	 */
-	@SuppressWarnings("unchecked")
 	private void logMainFilterUpGeneLoci(String name, MixdownManager mixdown) {
 		try {
 			Field f = MixdownManager.class.getDeclaredField("mainFilterUpSimple");

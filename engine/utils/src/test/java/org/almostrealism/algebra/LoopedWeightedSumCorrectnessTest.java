@@ -135,7 +135,7 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 		r.run();
 
 		// Verify results
-		log("=== Test 1.1: Hand-Computed Reference ===");
+		log("Test 1.1: Hand-Computed Reference");
 		log("Expected: [" + expected[0] + ", " + expected[1] + "]");
 		log("Actual:   [" + output.toDouble(0) + ", " + output.toDouble(1) + "]");
 
@@ -144,7 +144,7 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 			assertEquals("Output[" + i + "] mismatch", expected[i], actual);
 		}
 
-		log("PASSED");
+		log("Test 1.1 passed");
 	}
 
 	/**
@@ -203,7 +203,7 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 		Runnable r = optimized.get();
 		r.run();
 
-		log("=== Test 1.1b: Hand-Computed Reference (With Optimization) ===");
+		log("Test 1.1b: Hand-Computed Reference (With Optimization)");
 		log("Expected: [" + expected[0] + ", " + expected[1] + "]");
 		log("Actual:   [" + output.toDouble(0) + ", " + output.toDouble(1) + "]");
 
@@ -212,7 +212,7 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 			assertEquals("Output[" + i + "] mismatch (with optimization)", expected[i], actual);
 		}
 
-		log("PASSED");
+		log("Test 1.1b passed");
 	}
 
 	/**
@@ -288,14 +288,14 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 			expectedOutput[o] = sum;
 		}
 
-		log("=== Test 1.2: LoopedWeightedSumComputation vs Manual Computation ===");
+		log("Test 1.2: LoopedWeightedSumComputation vs Manual Computation");
 		log("Comparing with outerCount=" + outerCount + ", innerCount=" + innerCount + ", outputSize=" + outputSize);
 
 		for (int i = 0; i < outputSize; i++) {
 			assertEquals("Output[" + i + "] mismatch", expectedOutput[i], loopedOutput.toDouble(i));
 		}
 
-		log("PASSED");
+		log("Test 1.2 passed");
 	}
 
 	/**
@@ -364,7 +364,7 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 			expected[o] = sum;
 		}
 
-		log("=== Test 1.3: Larger Scale (outerCount=" + outerCount + ", innerCount=" + innerCount + ") ===");
+		log("Test 1.3: Larger Scale (outerCount=" + outerCount + ", innerCount=" + innerCount + ")");
 		log("Compile time: " + compileTime + "ms");
 		log("Run time: " + runTime + "ms");
 
@@ -372,6 +372,6 @@ public class LoopedWeightedSumCorrectnessTest extends TestSuiteBase implements L
 			assertEquals("Output[" + i + "] mismatch", expected[i], output.toDouble(i));
 		}
 
-		log("PASSED");
+		log("Test 1.3 passed");
 	}
 }
