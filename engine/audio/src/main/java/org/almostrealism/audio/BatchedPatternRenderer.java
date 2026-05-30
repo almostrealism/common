@@ -152,13 +152,67 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 												 PackedCollection ratios,
 												 PackedCollection filterCutoffs,
 												 PackedCollection volumeEnvelopes) {
-		int totalSamples = n * targetLength;
-		int paddedNoteSize = targetLength + 2 * padHalf;
-		int paddedTotal = n * paddedNoteSize;
+		CollectionProducer resampled2D =
+				resampleFlat(batchedSource, ratios).reshape(shape(n, targetLength));
+		CollectionProducer voiced2D = filterVolume2D(resampled2D, filterCutoffs, volumeEnvelopes);
+		return reduceAligned(voiced2D);
+	}
 
-		// ── Kernel 1: batched resample ──────────────────────────────────────
-		// Map each flat output index to (noteIdx, sampleIdx) and gather from
-		// the note's source row with linear interpolation.
+	/**
+	 * Builds the batched three-source-sum (SSS) chain — the production melodic
+	 * note shape. Each of the
+	 * {@code sources.length} layers is independently resampled by its own
+	 * per-note ratio, multiplied by its per-layer envelope, and the layers are
+	 * summed — the {@code SOURCE, SOURCE, SOURCE} aggregation, the only
+	 * {@code NoteAudioSourceAggregator} strategy reachable in production. The
+	 * merged signal then flows through the shared filter-envelope and
+	 * volume-envelope stages and the aligned reduction.
+	 *
+	 * <p>{@code sources}, {@code ratios}, and {@code layerEnvelopes} are parallel
+	 * arrays, one entry per layer. The returned producer is uncompiled; no
+	 * {@code evaluate()} occurs here.</p>
+	 *
+	 * @param sources         per-layer flattened sources, each shape {@code [n, sourceLength]}
+	 * @param ratios          per-layer per-note pitch ratios, each shape {@code [n]}
+	 * @param layerEnvelopes  per-layer per-note per-sample envelopes, each shape {@code [n, targetLength]}
+	 * @param filterCutoffs   post-merge per-note cutoff envelopes, shape {@code [n, targetLength]}
+	 * @param volumeEnvelopes post-merge per-note volume envelopes, shape {@code [n, targetLength]}
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [targetLength]}
+	 * @throws IllegalArgumentException if {@code sources} is empty
+	 */
+	public CollectionProducer buildBatchedSssChain(PackedCollection[] sources,
+												   PackedCollection[] ratios,
+												   PackedCollection[] layerEnvelopes,
+												   PackedCollection filterCutoffs,
+												   PackedCollection volumeEnvelopes) {
+		if (sources.length == 0) {
+			throw new IllegalArgumentException("At least one source layer is required");
+		}
+
+		int totalSamples = n * targetLength;
+		CollectionProducer merged = null;
+		for (int i = 0; i < sources.length; i++) {
+			CollectionProducer layer = resampleFlat(sources[i], ratios[i])
+					.multiply(cp(layerEnvelopes[i]).reshape(shape(totalSamples)));
+			merged = (merged == null) ? layer : merged.add(layer);
+		}
+
+		CollectionProducer merged2D = merged.reshape(shape(n, targetLength));
+		CollectionProducer voiced2D = filterVolume2D(merged2D, filterCutoffs, volumeEnvelopes);
+		return reduceAligned(voiced2D);
+	}
+
+	/**
+	 * Kernel 1 — batched linear resample for one source layer. Maps each flat
+	 * output index to {@code (noteIdx, sampleIdx)} and gathers from the note's
+	 * source row with linear interpolation, using the per-note {@code ratios}.
+	 *
+	 * @param source flattened source audio, shape {@code [n, sourceLength]}
+	 * @param ratios per-note pitch ratios, shape {@code [n]}
+	 * @return an uncompiled {@link CollectionProducer} of flat shape {@code [n * targetLength]}
+	 */
+	private CollectionProducer resampleFlat(PackedCollection source, PackedCollection ratios) {
+		int totalSamples = n * targetLength;
 
 		CollectionProducer outIdx = integers(0, totalSamples);
 		// noteIdx = floor(outIdx / targetLength)
@@ -174,20 +228,32 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 		CollectionProducer sourceBaseIdx = noteIdx.multiply(c((double) sourceLength));
 		CollectionProducer srcIdx0 = sourceBaseIdx.add(fPos);
 		CollectionProducer srcIdx1 = sourceBaseIdx.add(fPos.add(c(1.0)));
-		CollectionProducer flatSource = cp(batchedSource).reshape(shape(n * sourceLength));
+		CollectionProducer flatSource = cp(source).reshape(shape(n * sourceLength));
 		CollectionProducer batchedS0 = c(shape(totalSamples), flatSource, srcIdx0);
 		CollectionProducer batchedS1 = c(shape(totalSamples), flatSource, srcIdx1);
-		CollectionProducer batchedResampled =
-				batchedS0.add(frac.multiply(batchedS1.subtract(batchedS0)));
-		CollectionProducer resampled2D = batchedResampled.reshape(shape(n, targetLength));
+		return batchedS0.add(frac.multiply(batchedS1.subtract(batchedS0)));
+	}
 
-		// ── Kernel 2: filter envelope via padded-row lowPass ────────────────
-		// Pad each row by padHalf zeros on each side so that FIR boundary
-		// reads at row transitions fall into the padding rather than the audio
-		// of an adjacent note.  The per-row pad zones are then trimmed after
-		// the lowPass call to recover the [N, targetLength] shape.
+	/**
+	 * Kernels 2 + 3 — padded-row FIR filter envelope followed by element-wise
+	 * volume envelope, applied to an already-merged {@code [n, targetLength]}
+	 * audio signal. Each row is padded by {@code filterOrder/2} zeros on each
+	 * side so FIR boundary reads at row transitions land in padding rather than
+	 * adjacent-note audio; the pad zones are trimmed afterward.
+	 *
+	 * @param audio2D         merged per-note audio, shape {@code [n, targetLength]}
+	 * @param filterCutoffs   per-note per-sample cutoff envelopes, shape {@code [n, targetLength]}
+	 * @param volumeEnvelopes per-note per-sample volume gain envelopes, shape {@code [n, targetLength]}
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [n, targetLength]}
+	 */
+	private CollectionProducer filterVolume2D(CollectionProducer audio2D,
+											  PackedCollection filterCutoffs,
+											  PackedCollection volumeEnvelopes) {
+		int totalSamples = n * targetLength;
+		int paddedNoteSize = targetLength + 2 * padHalf;
+		int paddedTotal = n * paddedNoteSize;
 
-		CollectionProducer paddedAudio2D = pad(resampled2D, 0, padHalf);
+		CollectionProducer paddedAudio2D = pad(audio2D, 0, padHalf);
 		CollectionProducer paddedCutoff2D = pad(cp(filterCutoffs), 0, padHalf);
 		CollectionProducer flatPaddedAudio = paddedAudio2D.reshape(shape(paddedTotal));
 		CollectionProducer flatPaddedCutoff = paddedCutoff2D.reshape(shape(paddedTotal));
@@ -196,17 +262,24 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 		CollectionProducer filtered2D = filtered.reshape(shape(n, paddedNoteSize));
 		CollectionProducer trimmed = subset(shape(n, targetLength), filtered2D, 0, padHalf);
 
-		// ── Kernel 3: volume envelope multiply ─────────────────────────────
 		CollectionProducer flatTrimmed = trimmed.reshape(shape(totalSamples));
 		CollectionProducer flatVolumeEnv = cp(volumeEnvelopes).reshape(shape(totalSamples));
 		CollectionProducer voiced = flatTrimmed.multiply(flatVolumeEnv);
-		CollectionProducer voiced2D = voiced.reshape(shape(n, targetLength));
+		return voiced.reshape(shape(n, targetLength));
+	}
 
-		// ── Kernel 4: accumulate-reduce [N, targetLength] → [targetLength] ──
-		// permute [N, targetLength] → [targetLength, N], then traverse(1).sum()
-		// reduces each row of N notes to a single value.
-		CollectionProducer permuted = permute(voiced2D, 1, 0);
-		return permuted.traverse(1).sum().reshape(shape(targetLength));
+	/**
+	 * Kernel 4 — aligned accumulate-reduce: sum across the note axis,
+	 * {@code [n, targetLength] → [targetLength]}, by permuting to
+	 * {@code [targetLength, n]} and reducing the note axis. This is the
+	 * placement-free reduction; {@link #buildScatterAdd} is its offset-aware
+	 * generalization.
+	 *
+	 * @param voiced2D per-note voiced audio, shape {@code [n, targetLength]}
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [targetLength]}
+	 */
+	private CollectionProducer reduceAligned(CollectionProducer voiced2D) {
+		return permute(voiced2D, 1, 0).traverse(1).sum().reshape(shape(targetLength));
 	}
 
 	/**

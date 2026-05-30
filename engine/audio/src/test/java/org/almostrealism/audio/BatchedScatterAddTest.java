@@ -29,8 +29,7 @@ import org.junit.Test;
  * scatter-add that places each note's row into the output window at its
  * destination offset. This is the batched generalization of the per-note ranged
  * accumulate in {@code PatternFeatures.sumToDestination}; correctness here is the
- * gate (spike #1) for the real-time a2 batching design — see
- * {@code docs/plans/audio-scene-redesign/VARIABLE_NOTE_SCHEDULING.md}.
+ * gate (spike #1) for the real-time a2 batching design.
  */
 public class BatchedScatterAddTest extends TestSuiteBase implements TemporalFeatures {
 
