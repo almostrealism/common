@@ -6,12 +6,11 @@
 
 ---
 
-<!-- TODO(review): Motivation section heading and body (lines below) are in Chinese; entire rest of document is in English — translate to English before implementation -->
-##动机
+## Motivation
 
-我们观察到不同的runner/model组合在行为上存在显著差异，而这些差异从最终输出中并不明显。例如，opencode + MiniMax能产生有效代码，但通过`send_message`进行工作叙述的频率远低于Claude。我们怀疑在工具使用和上下文效率方面也存在看不见的差异——除非研究实际会话记录，否则无法发现。
+We have observed significant behavioral differences between different runner/model combinations, and these differences are not visible from the final output alone. For example, opencode + MiniMax can produce valid code, but reports work progress via `send_message` far less frequently than Claude. We suspect there are also invisible differences in tool use and context efficiency — which cannot be discovered without studying actual session transcripts.
 
-opencode的transcript现在在job完成后存储在持久卷上，并且已有MCP工具用于解析它们。我们希望闭合这个反馈循环：在job的工作完成后，可选地启动一个reflection会话，研究primary phase的transcript，并提炼出改进agent工作方式的具体机会。
+opencode transcripts are now stored on a persistent volume after job completion, and MCP tools already exist to parse them. We want to close this feedback loop: after a job's primary work is done, optionally launch a reflection session that studies the primary phase transcript and extracts concrete opportunities to improve how agents work.
 
 ---
 
@@ -351,6 +350,7 @@ These are surfaced in `CodingAgentJobEvent` (analogous to `reviewInfo`).
 
 ### 6.5 Phase Ordering
 
+<!-- TODO(review): Second instance of the buildActiveRules() contradiction — per Section 3.2/3.3 the retrospective phase is NOT in buildActiveRules() at all; verification should check that doWork() calls runReflectionPhase() after runEnforcementRules(), not buildActiveRules() order -->
 - Retrospective runs after all other phases (including `commit-message`)
 - Verified by checking `buildActiveRules()` order: retrospective is added last
 
