@@ -50,18 +50,23 @@ Each kernel compiles independently, enabling:
 ```java
 // Process.isolate() creates a wrapper
 public default Process<P, T> isolate() {
-    return Process.of(() -> this.get());
+    return Process.of(this);
 }
 
-// Process.of() creates an IsolatedProcess
-public static <T> Process<?, T> of(Supplier<Evaluable<T>> supplier) {
-    return new IsolatedProcess<>(supplier);
+// Process.of() creates a Process wrapper
+public static <P extends Process<?, ?>, T> Process<P, T> of(Supplier<T> supplier) {
+    return new Process<>() {
+        @Override
+        public T get() {
+            return supplier.get();
+        }
+    };
 }
 ```
 
 ### Breaking TraversableExpression
 
-The key to isolation is that `IsolatedProcess` does **NOT** implement `TraversableExpression`:
+The key to isolation is that the wrapper returned by `Process.of(...)` does **NOT** implement `TraversableExpression`:
 
 ```java
 // In parent's getExpression():
