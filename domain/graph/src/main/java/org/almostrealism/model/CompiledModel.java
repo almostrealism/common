@@ -222,6 +222,15 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	/**
 	 * Destroys this compiled model and releases all resources.
 	 * After calling this method, the model should not be used.
+	 *
+	 * <p><strong>Warning:</strong> this also releases memory that is shared with the
+	 * originating {@link Model}. The forward and backward operations capture buffers
+	 * owned by the model's layers (for example, the activation buffer that each layer's
+	 * {@code BackPropagationCell} holds via {@code setForwardInput}). Destroying this
+	 * {@link CompiledModel} frees those buffers, so the source {@link Model} must not be
+	 * reused or recompiled afterward — a later compilation would wire its backward pass
+	 * to released memory and fail with a {@link NullPointerException}. Build a fresh
+	 * {@link Model} if another compilation is needed.</p>
 	 */
 	@Override
 	public void destroy() {
@@ -262,6 +271,8 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 	public static CompiledModel compile(Model model,
 										boolean backprop, boolean returnGradient,
 										OperationProfile profile) {
+		model.recordCompilation();
+
 		Runnable setup = Process.optimized(model.setup()).get();
 
 		List<InputManager> in = new ArrayList<>();
