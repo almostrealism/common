@@ -185,6 +185,63 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 												   PackedCollection[] layerEnvelopes,
 												   PackedCollection filterCutoffs,
 												   PackedCollection volumeEnvelopes) {
+		return reduceAligned(voicedSss(sources, ratios, layerEnvelopes,
+				filterCutoffs, volumeEnvelopes));
+	}
+
+	/**
+	 * Builds the batched three-source-sum (SSS) chain with offset-aware
+	 * placement: identical to {@link #buildBatchedSssChain} through the
+	 * volume-envelope stage, but the per-note {@code [targetLength]} voiced rows
+	 * are scattered into a {@code [windowWidth]} output at their per-note
+	 * destination offsets (the same mechanism as {@link #buildScatterAdd})
+	 * instead of being summed in alignment. This is the full first-cut real-time
+	 * a2 form: one fused kernel from three source layers to a placed, summed
+	 * output window. No intermediate buffer is materialized between the chain and
+	 * the placement.
+	 *
+	 * @param sources         per-layer flattened sources, each shape {@code [n, sourceLength]}
+	 * @param ratios          per-layer per-note pitch ratios, each shape {@code [n]}
+	 * @param layerEnvelopes  per-layer per-note per-sample envelopes, each shape {@code [n, targetLength]}
+	 * @param filterCutoffs   post-merge per-note cutoff envelopes, shape {@code [n, targetLength]}
+	 * @param volumeEnvelopes post-merge per-note volume envelopes, shape {@code [n, targetLength]}
+	 * @param destOffsets     per-note destination offsets in frames, shape {@code [n]}
+	 * @param windowWidth     width of the output window in frames
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [windowWidth]}
+	 */
+	public CollectionProducer buildBatchedSssChainPlaced(PackedCollection[] sources,
+														 PackedCollection[] ratios,
+														 PackedCollection[] layerEnvelopes,
+														 PackedCollection filterCutoffs,
+														 PackedCollection volumeEnvelopes,
+														 PackedCollection destOffsets,
+														 int windowWidth) {
+		CollectionProducer voiced2D = voicedSss(sources, ratios, layerEnvelopes,
+				filterCutoffs, volumeEnvelopes);
+		return scatterAddFlat(voiced2D.reshape(shape(n * targetLength)),
+				destOffsets, n, targetLength, windowWidth);
+	}
+
+	/**
+	 * Shared SSS front + envelope stages: resamples each source layer by its
+	 * per-note ratio, multiplies by its per-layer envelope, sums the layers, and
+	 * applies the filter and volume envelopes. Used by both
+	 * {@link #buildBatchedSssChain} (aligned reduce) and
+	 * {@link #buildBatchedSssChainPlaced} (scatter placement).
+	 *
+	 * @param sources         per-layer flattened sources, each shape {@code [n, sourceLength]}
+	 * @param ratios          per-layer per-note pitch ratios, each shape {@code [n]}
+	 * @param layerEnvelopes  per-layer per-note per-sample envelopes, each shape {@code [n, targetLength]}
+	 * @param filterCutoffs   post-merge per-note cutoff envelopes, shape {@code [n, targetLength]}
+	 * @param volumeEnvelopes post-merge per-note volume envelopes, shape {@code [n, targetLength]}
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [n, targetLength]}
+	 * @throws IllegalArgumentException if {@code sources} is empty
+	 */
+	private CollectionProducer voicedSss(PackedCollection[] sources,
+										 PackedCollection[] ratios,
+										 PackedCollection[] layerEnvelopes,
+										 PackedCollection filterCutoffs,
+										 PackedCollection volumeEnvelopes) {
 		if (sources.length == 0) {
 			throw new IllegalArgumentException("At least one source layer is required");
 		}
@@ -198,8 +255,7 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 		}
 
 		CollectionProducer merged2D = merged.reshape(shape(n, targetLength));
-		CollectionProducer voiced2D = filterVolume2D(merged2D, filterCutoffs, volumeEnvelopes);
-		return reduceAligned(voiced2D);
+		return filterVolume2D(merged2D, filterCutoffs, volumeEnvelopes);
 	}
 
 	/**
@@ -319,6 +375,26 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	public CollectionProducer buildScatterAdd(PackedCollection rows,
 											  PackedCollection destOffsets,
 											  int noteCount, int rowLength, int windowWidth) {
+		return scatterAddFlat(cp(rows).reshape(shape(noteCount * rowLength)),
+				destOffsets, noteCount, rowLength, windowWidth);
+	}
+
+	/**
+	 * Core of {@link #buildScatterAdd} operating on an uncompiled {@code flatRows}
+	 * producer (flat shape {@code [noteCount * rowLength]}) rather than a
+	 * materialized buffer, so it can be fused directly onto an upstream chain
+	 * (e.g. {@link #buildBatchedSssChainPlaced}) and compiled as a single kernel.
+	 *
+	 * @param flatRows    per-note rows, flat shape {@code [noteCount * rowLength]}
+	 * @param destOffsets per-note destination offsets in frames, shape {@code [noteCount]}
+	 * @param noteCount   number of notes (rows)
+	 * @param rowLength   samples per note row
+	 * @param windowWidth width of the output window in frames
+	 * @return an uncompiled {@link CollectionProducer} of shape {@code [windowWidth]}
+	 */
+	private CollectionProducer scatterAddFlat(CollectionProducer flatRows,
+											  PackedCollection destOffsets,
+											  int noteCount, int rowLength, int windowWidth) {
 		int total = noteCount * windowWidth;
 
 		// Flat intermediate index t in [0, noteCount * windowWidth), laid out
@@ -343,7 +419,6 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 		CollectionProducer flatRowIdx =
 				noteIdx.multiply(c((double) rowLength)).add(clampedLocal);
 
-		CollectionProducer flatRows = cp(rows).reshape(shape(noteCount * rowLength));
 		CollectionProducer gathered = c(shape(total), flatRows, flatRowIdx);
 		CollectionProducer contribution = gathered.multiply(mask);
 

@@ -28,13 +28,12 @@ import org.junit.Test;
 import java.util.Random;
 
 /**
- * Verifies that {@link BatchedPatternRenderer#buildBatchedSssChain} produces
- * output acoustically equivalent to a sequential per-note reference for the
- * production melodic note shape: three independently resampled source layers,
- * each shaped by a per-layer envelope, summed (SSS), then passed through the
- * shared filter-envelope and volume-envelope stages. The back half is the same
- * code exercised by {@link BatchedPatternRendererTest}; this test adds the
- * three-layer summed front half.
+ * Verifies the batched three-source-sum (SSS) chain — the production melodic
+ * note shape (three resampled, per-layer-enveloped source layers, summed, then
+ * filter and volume envelopes). Two outputs are checked against a shared
+ * per-note reference: {@link BatchedPatternRenderer#buildBatchedSssChain} (the
+ * aligned reduction) and {@link BatchedPatternRenderer#buildBatchedSssChainPlaced}
+ * (the fused offset-aware scatter placement into a wider window).
  */
 public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatures {
 
@@ -56,77 +55,80 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 	/** FIR filter order matching production {@code EfxManager.filterOrder}. */
 	private static final int FILTER_ORDER = 40;
 
-	/**
-	 * Generates {@value #LAYERS} layers of {@value #N} notes with distinct source
-	 * buffers, per-layer pitch ratios, and per-layer envelopes; runs both the
-	 * sequential per-note SSS reference and
-	 * {@link BatchedPatternRenderer#buildBatchedSssChain}; and asserts the RMS
-	 * difference is below {@code 1e-4}.
-	 */
-	@Test(timeout = 120000)
-	@TestDepth(2)
-	public void testSssAcousticEquivalence() {
-		BatchedPatternRenderer renderer = new BatchedPatternRenderer(
-				N, SOURCE_LENGTH, TARGET_LENGTH, SAMPLE_RATE, FILTER_ORDER);
+	/** Batched inputs plus the per-note reference voiced rows for one workload. */
+	private static final class Workload {
+		private final PackedCollection[] sources = new PackedCollection[LAYERS];
+		private final PackedCollection[] ratios = new PackedCollection[LAYERS];
+		private final PackedCollection[] layerEnvelopes = new PackedCollection[LAYERS];
+		private PackedCollection filterCutoffs;
+		private PackedCollection volumeEnvelopes;
+		/** Per-note reference voiced output, shape {@code [N][TARGET_LENGTH]}. */
+		private final double[][] voiced = new double[N][TARGET_LENGTH];
+	}
 
+	/**
+	 * Builds a synthetic SSS workload: per-layer random sources, ratios, and
+	 * envelopes plus post-merge filter/volume envelopes, and computes the
+	 * sequential per-note reference voiced rows (sum of resample × per-layer
+	 * envelope over layers → lowPass(cutoff) → × volume).
+	 */
+	private Workload buildWorkload(BatchedPatternRenderer renderer) {
+		Workload w = new Workload();
 		Random rng = new Random(7L);
 
-		// Per-layer source buffers [LAYERS][N] and per-layer ratios [LAYERS][N].
-		PackedCollection[][] sources = new PackedCollection[LAYERS][N];
 		double[][] ratioValues = new double[LAYERS][N];
+		PackedCollection[][] sourceByLayerNote = new PackedCollection[LAYERS][N];
+		double[][] layerEnvData = new double[LAYERS][N * TARGET_LENGTH];
+
 		for (int l = 0; l < LAYERS; l++) {
+			double[] batchData = new double[N * SOURCE_LENGTH];
+			double[] ratioData = new double[N];
 			for (int n = 0; n < N; n++) {
 				double[] data = new double[SOURCE_LENGTH];
 				for (int i = 0; i < SOURCE_LENGTH; i++) {
 					data[i] = rng.nextDouble() * 2.0 - 1.0;
+					batchData[n * SOURCE_LENGTH + i] = data[i];
 				}
-				sources[l][n] = new PackedCollection(SOURCE_LENGTH);
-				sources[l][n].setMem(data);
+				sourceByLayerNote[l][n] = new PackedCollection(SOURCE_LENGTH);
+				sourceByLayerNote[l][n].setMem(data);
 				// Ratios in [1.0, 1.45] — max source index < SOURCE_LENGTH.
 				ratioValues[l][n] = 1.0 + 0.1 * l + 0.05 * n;
-			}
-		}
+				ratioData[n] = ratioValues[l][n];
 
-		// Per-layer envelopes [LAYERS] of shape [N, TARGET_LENGTH].
-		double[][] layerEnvData = new double[LAYERS][N * TARGET_LENGTH];
-		for (int l = 0; l < LAYERS; l++) {
-			for (int n = 0; n < N; n++) {
 				double sustain = 0.5 + 0.1 * l + 0.02 * n;
 				PatternRenderingFloorBenchmark.fillAdsrShape(layerEnvData[l], n * TARGET_LENGTH, TARGET_LENGTH,
 						0.0, 1.0, sustain, 0.0,
 						0.04 + 0.01 * l, 0.09 + 0.01 * l, 0.13 + 0.01 * l);
 			}
+			w.sources[l] = new PackedCollection(shape(N, SOURCE_LENGTH));
+			w.sources[l].setMem(batchData);
+			w.ratios[l] = new PackedCollection(N);
+			w.ratios[l].setMem(ratioData);
+			w.layerEnvelopes[l] = new PackedCollection(shape(N, TARGET_LENGTH));
+			w.layerEnvelopes[l].setMem(layerEnvData[l]);
 		}
 
-		// Post-merge filter cutoff envelopes [N, TARGET_LENGTH].
 		double[] filterCutoffData = new double[N * TARGET_LENGTH];
+		double[] volumeEnvData = new double[N * TARGET_LENGTH];
 		for (int n = 0; n < N; n++) {
 			PatternRenderingFloorBenchmark.fillAdsrShape(filterCutoffData, n * TARGET_LENGTH, TARGET_LENGTH,
 					150.0 + n * 50.0, 4000.0 + n * 600.0, 800.0 + n * 200.0, 150.0 + n * 50.0,
 					0.05 + n * 0.005, 0.10 + n * 0.005, 0.15 + n * 0.005);
-		}
-		PackedCollection filterCutoffs = new PackedCollection(shape(N, TARGET_LENGTH));
-		filterCutoffs.setMem(filterCutoffData);
-
-		// Post-merge volume envelopes [N, TARGET_LENGTH].
-		double[] volumeEnvData = new double[N * TARGET_LENGTH];
-		for (int n = 0; n < N; n++) {
 			PatternRenderingFloorBenchmark.fillAdsrShape(volumeEnvData, n * TARGET_LENGTH, TARGET_LENGTH,
 					0.0, 1.0, 0.4 + n * 0.05, 0.0,
 					0.05 + n * 0.005, 0.10 + n * 0.005, 0.15 + n * 0.005);
 		}
-		PackedCollection volumeEnvelopes = new PackedCollection(shape(N, TARGET_LENGTH));
-		volumeEnvelopes.setMem(volumeEnvData);
+		w.filterCutoffs = new PackedCollection(shape(N, TARGET_LENGTH));
+		w.filterCutoffs.setMem(filterCutoffData);
+		w.volumeEnvelopes = new PackedCollection(shape(N, TARGET_LENGTH));
+		w.volumeEnvelopes.setMem(volumeEnvData);
 
-		// ── Per-note sequential SSS reference ─────────────────────────────────
-		// For each note: sum (resample(layer) × perLayerEnv) over layers →
-		// lowPass(cutoff) → × volume → accumulate.
-		double[] reference = new double[TARGET_LENGTH];
+		// Per-note reference: Σ_layer resample × perLayerEnv → lowPass → × volume.
 		for (int n = 0; n < N; n++) {
 			double[] merged = new double[TARGET_LENGTH];
 			for (int l = 0; l < LAYERS; l++) {
 				PackedCollection resampled =
-						renderer.buildResampleProducer(sources[l][n], ratioValues[l][n])
+						renderer.buildResampleProducer(sourceByLayerNote[l][n], ratioValues[l][n])
 								.get().evaluate();
 				for (int i = 0; i < TARGET_LENGTH; i++) {
 					merged[i] += resampled.toDouble(i) * layerEnvData[l][n * TARGET_LENGTH + i];
@@ -135,74 +137,110 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 
 			PackedCollection mergedN = new PackedCollection(TARGET_LENGTH);
 			mergedN.setMem(merged);
-
-			double[] cutoffNData = new double[TARGET_LENGTH];
-			System.arraycopy(filterCutoffData, n * TARGET_LENGTH, cutoffNData, 0, TARGET_LENGTH);
-			PackedCollection cutoffN = new PackedCollection(TARGET_LENGTH);
-			cutoffN.setMem(cutoffNData);
+			PackedCollection cutoffN = row(filterCutoffData, n);
+			PackedCollection volN = row(volumeEnvData, n);
 
 			PackedCollection filtered =
 					c(lowPass(traverseEach(cp(mergedN)), cp(cutoffN), SAMPLE_RATE, FILTER_ORDER))
 							.reshape(shape(TARGET_LENGTH))
 							.get().evaluate();
-
-			double[] volNData = new double[TARGET_LENGTH];
-			System.arraycopy(volumeEnvData, n * TARGET_LENGTH, volNData, 0, TARGET_LENGTH);
-			PackedCollection volN = new PackedCollection(TARGET_LENGTH);
-			volN.setMem(volNData);
-
 			PackedCollection voiced = cp(filtered).multiply(cp(volN)).get().evaluate();
 			for (int i = 0; i < TARGET_LENGTH; i++) {
-				reference[i] += voiced.toDouble(i);
+				w.voiced[n][i] = voiced.toDouble(i);
 			}
 		}
 
-		// ── Batched SSS chain path ────────────────────────────────────────────
-		PackedCollection[] batchedSources = new PackedCollection[LAYERS];
-		PackedCollection[] ratios = new PackedCollection[LAYERS];
-		PackedCollection[] layerEnvelopes = new PackedCollection[LAYERS];
-		for (int l = 0; l < LAYERS; l++) {
-			double[] batchData = new double[N * SOURCE_LENGTH];
-			double[] ratioData = new double[N];
-			for (int n = 0; n < N; n++) {
-				for (int i = 0; i < SOURCE_LENGTH; i++) {
-					batchData[n * SOURCE_LENGTH + i] = sources[l][n].toDouble(i);
-				}
-				ratioData[n] = ratioValues[l][n];
-			}
-			batchedSources[l] = new PackedCollection(shape(N, SOURCE_LENGTH));
-			batchedSources[l].setMem(batchData);
-			ratios[l] = new PackedCollection(N);
-			ratios[l].setMem(ratioData);
-			layerEnvelopes[l] = new PackedCollection(shape(N, TARGET_LENGTH));
-			layerEnvelopes[l].setMem(layerEnvData[l]);
-		}
+		return w;
+	}
 
-		PackedCollection batchedOutput =
-				renderer.buildBatchedSssChain(batchedSources, ratios, layerEnvelopes,
-						filterCutoffs, volumeEnvelopes)
-						.get().evaluate();
+	/** Extracts row {@code n} of a flat {@code [N, TARGET_LENGTH]} array into a collection. */
+	private PackedCollection row(double[] flat, int n) {
+		double[] data = new double[TARGET_LENGTH];
+		System.arraycopy(flat, n * TARGET_LENGTH, data, 0, TARGET_LENGTH);
+		PackedCollection c = new PackedCollection(TARGET_LENGTH);
+		c.setMem(data);
+		return c;
+	}
 
-		// ── Acoustic equivalence assertion ────────────────────────────────────
+	/** Asserts the RMS difference between {@code expected} and {@code actual} is below {@code 1e-4}. */
+	private void assertRmsEquivalent(String label, double[] expected, PackedCollection actual) {
 		double sumSqDiff = 0.0;
 		double sumSqRef = 0.0;
-		for (int i = 0; i < TARGET_LENGTH; i++) {
-			double diff = reference[i] - batchedOutput.toDouble(i);
+		for (int i = 0; i < expected.length; i++) {
+			double diff = expected[i] - actual.toDouble(i);
 			sumSqDiff += diff * diff;
-			sumSqRef += reference[i] * reference[i];
+			sumSqRef += expected[i] * expected[i];
 		}
-		double rms = Math.sqrt(sumSqDiff / TARGET_LENGTH);
-		double refRms = Math.sqrt(sumSqRef / TARGET_LENGTH);
+		double rms = Math.sqrt(sumSqDiff / expected.length);
+		double refRms = Math.sqrt(sumSqRef / expected.length);
 
-		log("BatchedPatternRenderer SSS acoustic equivalence:");
+		log(label + " acoustic equivalence:");
 		log(String.format("  Reference RMS: %.6f", refRms));
 		log(String.format("  Difference RMS: %.6f", rms));
 		if (refRms > 1e-10) {
 			log(String.format("  Relative difference: %.2e", rms / refRms));
 		}
+		Assert.assertTrue(label + " RMS difference exceeds 1e-4 (got " + rms + ")", rms < 1e-4);
+	}
 
-		Assert.assertTrue(
-				"Batched SSS chain RMS difference from per-note reference exceeds 1e-4 (got " + rms + ")",
-				rms < 1e-4);
+	/**
+	 * Aligned reduction: the summed SSS chain must match Σ_n voiced[n].
+	 */
+	@Test(timeout = 120000)
+	@TestDepth(2)
+	public void testSssAcousticEquivalence() {
+		BatchedPatternRenderer renderer = new BatchedPatternRenderer(
+				N, SOURCE_LENGTH, TARGET_LENGTH, SAMPLE_RATE, FILTER_ORDER);
+		Workload w = buildWorkload(renderer);
+
+		double[] expected = new double[TARGET_LENGTH];
+		for (int n = 0; n < N; n++) {
+			for (int i = 0; i < TARGET_LENGTH; i++) {
+				expected[i] += w.voiced[n][i];
+			}
+		}
+
+		PackedCollection out = renderer.buildBatchedSssChain(
+				w.sources, w.ratios, w.layerEnvelopes, w.filterCutoffs, w.volumeEnvelopes)
+				.get().evaluate();
+
+		assertRmsEquivalent("Batched SSS chain", expected, out);
+	}
+
+	/**
+	 * Fused placement: the SSS chain plus offset-aware scatter must match the
+	 * per-note voiced rows placed at their destination offsets in a wider window,
+	 * with one note truncated at the window edge. Offsets {0, 256, 512, 700},
+	 * window 1536: note 3 spans [700, 1724) and is truncated at 1536.
+	 */
+	@Test(timeout = 120000)
+	@TestDepth(2)
+	public void testSssPlacedAcousticEquivalence() {
+		BatchedPatternRenderer renderer = new BatchedPatternRenderer(
+				N, SOURCE_LENGTH, TARGET_LENGTH, SAMPLE_RATE, FILTER_ORDER);
+		Workload w = buildWorkload(renderer);
+
+		int windowWidth = 1536;
+		double[] destOffsetValues = { 0, 256, 512, 700 };
+		PackedCollection destOffsets = new PackedCollection(N);
+		destOffsets.setMem(destOffsetValues);
+
+		double[] expected = new double[windowWidth];
+		for (int n = 0; n < N; n++) {
+			int off = (int) destOffsetValues[n];
+			for (int k = 0; k < TARGET_LENGTH; k++) {
+				int f = off + k;
+				if (f < windowWidth) {
+					expected[f] += w.voiced[n][k];
+				}
+			}
+		}
+
+		PackedCollection out = renderer.buildBatchedSssChainPlaced(
+				w.sources, w.ratios, w.layerEnvelopes, w.filterCutoffs, w.volumeEnvelopes,
+				destOffsets, windowWidth)
+				.get().evaluate();
+
+		assertRmsEquivalent("Batched SSS placed chain", expected, out);
 	}
 }
