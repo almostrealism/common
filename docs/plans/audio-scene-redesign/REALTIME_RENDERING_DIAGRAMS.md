@@ -164,10 +164,19 @@ drains. a3 is already done — point it at PDSL `Block`s.
      • the 278 ms collapses: N-per-note dispatches → 1-per-layer dispatch (benchmarked 100–1500×).
      • a2's horizon hides its remaining cost behind playback; a3 only ever sees ready samples.
 
-   THE ONE GENUINELY-OPEN DESIGN QUESTION (carried from PATTERN_SYSTEM_PHASE3_DESIGN):
-     variable note scheduling as a STATIC graph — notes differ in start/length/pitch, but a
-     batched kernel wants fixed shapes. Candidates: pad-to-max + mask; tile by pitch-class for
-     resample caching; fixed-shape note-buckets per layer. This is the crux of a2, not a3.
+   THE a1→a2 SEAM DECISION (reframed — see NOTE_GRAPH_SHAPES.md and PRIOR_ATTEMPT_POSTMORTEM.md):
+     The seam is NOT "compile an arbitrary note graph." Production notes are a tiny CLOSED set
+     of shapes — one dominant 3-layer-merge → filterEnv → volumeEnv template (LAYER_COUNT=3),
+     × 4 merge strategies × optional envelopes ≈ a single-digit kernel family. So the seam is:
+       a1 CLASSIFIES each note into its shape class + emits a flat input record
+          (3×{source,pitchRatio,layerEnv}, mergeStrategy, filterEnvParams, volumeEnvParams);
+       a2 is a small set of PRECOMPILED batched kernels keyed by shape class (reusing the
+          merged BatchedPatternRenderer chain as the post-merge half), dispatched once per
+          shape-group per tick; unknown shapes fall back LOUDLY (fallbackCount asserted 0).
+     Residual question, now BOUNDED within a shape class: variable note length/pitch as a
+     static graph (pad-to-max + mask vs pitch-class tiling). This is the crux of a2, not a3.
+     The prior branch failed here by assuming ONE source per note (innermostAudio) when every
+     real note is a 3-SOURCE merge — wrong schema by construction.
 ```
 
 ---

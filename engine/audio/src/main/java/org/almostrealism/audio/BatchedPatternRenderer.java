@@ -208,4 +208,75 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 		CollectionProducer permuted = permute(voiced2D, 1, 0);
 		return permuted.traverse(1).sum().reshape(shape(targetLength));
 	}
+
+	/**
+	 * Builds an offset-aware scatter-add that places each note's
+	 * {@code [rowLength]} row into a {@code [windowWidth]} output buffer at the
+	 * note's per-note destination offset, summing overlaps into one window.
+	 *
+	 * <p>This is the batched form of the per-note ranged accumulate performed
+	 * today by {@code PatternFeatures.sumToDestination}
+	 * ({@code dest.range(shape, destOffset) += audio.range(shape, sourceOffset)}).
+	 * It <em>generalizes</em> the aligned reduction at the tail of
+	 * {@link #buildBatchedChain}: when every destination offset is {@code 0} and
+	 * {@code rowLength == windowWidth}, this produces the same result as
+	 * {@code permute([N, W]) → traverse(1).sum()}.</p>
+	 *
+	 * <p>For output frame {@code f} and note {@code n}, the contribution is
+	 * {@code rows[n, f - destOffsets[n]]} when
+	 * {@code 0 <= f - destOffsets[n] < rowLength}, and {@code 0} otherwise. A row
+	 * whose placement runs past {@code windowWidth} is truncated — that audio
+	 * belongs to a later window and is supplied on the next tick via the note's
+	 * advancing sampling offset.</p>
+	 *
+	 * <p>The returned producer is uncompiled; no {@code evaluate()} occurs here.
+	 * The index split uses {@code divide} (not multiply-by-reciprocal) so the
+	 * integer {@code floor} is exact for any {@code windowWidth}.</p>
+	 *
+	 * @param rows        per-note rows packed row-by-row, shape
+	 *                    {@code [noteCount, rowLength]}
+	 * @param destOffsets per-note destination offsets in frames, shape
+	 *                    {@code [noteCount]}
+	 * @param noteCount   number of notes (rows)
+	 * @param rowLength   samples per note row
+	 * @param windowWidth width of the output window in frames
+	 * @return an uncompiled {@link CollectionProducer} of shape
+	 *         {@code [windowWidth]}
+	 */
+	public CollectionProducer buildScatterAdd(PackedCollection rows,
+											  PackedCollection destOffsets,
+											  int noteCount, int rowLength, int windowWidth) {
+		int total = noteCount * windowWidth;
+
+		// Flat intermediate index t in [0, noteCount * windowWidth), laid out
+		// [noteCount, windowWidth]; the final reduction sums the note axis.
+		CollectionProducer t = integers(0, total);
+		CollectionProducer noteIdx = floor(t.divide(c((double) windowWidth)));
+		CollectionProducer f = t.subtract(noteIdx.multiply(c((double) windowWidth)));
+
+		// Per-row destination offset, gathered by note index.
+		CollectionProducer destOff = c(shape(total), cp(destOffsets), noteIdx);
+		// Position within the note's row that maps to output frame f.
+		CollectionProducer localIdx = f.subtract(destOff);
+
+		// Validity mask: 1 where 0 <= localIdx < rowLength, else 0.
+		CollectionProducer geLow = localIdx.greaterThan(c(0.0), c(1.0), c(0.0), true);
+		CollectionProducer ltHigh = localIdx.lessThan(c((double) rowLength), c(1.0), c(0.0));
+		CollectionProducer mask = geLow.multiply(ltHigh);
+
+		// Clamp the row position into range so the gather index is always valid;
+		// the mask zeroes any out-of-range contribution.
+		CollectionProducer clampedLocal = bound(localIdx, 0.0, (double) (rowLength - 1));
+		CollectionProducer flatRowIdx =
+				noteIdx.multiply(c((double) rowLength)).add(clampedLocal);
+
+		CollectionProducer flatRows = cp(rows).reshape(shape(noteCount * rowLength));
+		CollectionProducer gathered = c(shape(total), flatRows, flatRowIdx);
+		CollectionProducer contribution = gathered.multiply(mask);
+
+		// Sum the note axis: [noteCount, windowWidth] → [windowWidth, noteCount]
+		// → reduce → [windowWidth].
+		CollectionProducer rows2D = contribution.reshape(shape(noteCount, windowWidth));
+		return permute(rows2D, 1, 0).traverse(1).sum().reshape(shape(windowWidth));
+	}
 }
