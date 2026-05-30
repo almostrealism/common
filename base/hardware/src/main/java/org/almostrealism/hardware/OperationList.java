@@ -735,6 +735,13 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public String getFunctionName() { return this.functionName; }
 
 	/**
+	 * Returns the description of this operation list.
+	 *
+	 * @return The description, or null if not set
+	 */
+	public String getDescription() { return this.description; }
+
+	/**
 	 * Returns the operation metadata for profiling and identification.
 	 *
 	 * @return The operation metadata
@@ -1023,9 +1030,14 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		OperationList flat = stream()
 				.flatMap(o -> {
 					if (o instanceof OperationList) {
-						OperationList op = ((OperationList) o).flatten();
+						OperationList original = (OperationList) o;
+						String provenance = original.getDescription();
+						OperationList op = original.flatten();
 
 						if (op.getComputeRequirements() == null) {
+							if (provenance != null) {
+								op.forEach(child -> applyProvenance(child, provenance));
+							}
 							return op.stream();
 						} else {
 							return Stream.of(op);
@@ -1038,6 +1050,22 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		flat.enableCompilation = enableCompilation;
 		flat.setComputeRequirements(getComputeRequirements());
 		return flat;
+	}
+
+	/**
+	 * Applies a provenance label to the given operation's metadata, if the operation
+	 * implements {@link OperationInfo} and has non-null metadata.
+	 *
+	 * @param op         the operation whose metadata to label
+	 * @param provenance the provenance string to prepend to the short description
+	 */
+	private static void applyProvenance(Supplier<Runnable> op, String provenance) {
+		if (op instanceof OperationInfo) {
+			OperationMetadata metadata = ((OperationInfo) op).getMetadata();
+			if (metadata != null) {
+				metadata.applyProvenance(provenance);
+			}
+		}
 	}
 
 	public void run() { get().run(); }
