@@ -153,19 +153,30 @@ class TestRunner:
 
         Args:
             config: Run configuration.
-            run_dir: Run directory, used for JFR output path when jmx_monitoring is enabled.
+            run_dir: Run directory (reserved for per-run output paths).
             run_id: Run identifier, used to isolate instruction set output files.
         """
         cmd = ["mvn", "test", "-pl", config.module]
 
-        # Build JVM args, prepending JMX diagnostics args if enabled
+        # Build JVM args. Deliberately inject NOTHING when jmx_monitoring is on:
+        # jmx_monitoring's only job is to enable forked-PID discovery (below) so
+        # the ar-jmx tools can attach. Every useful ar-jmx diagnostic -- thread
+        # dump, JFR recording, class histogram, GC stats, allocation report --
+        # works by attaching to the already-running JVM via jcmd and needs no
+        # startup flag.
+        #
+        # Two startup flags were tried here and removed because both break the
+        # surefire-forked JVM that this project uses:
+        #   * -XX:StartFlightRecording makes the JVM print "Started recording
+        #     N..." straight to stdout (the C++ JFR initialiser bypasses -Xlog
+        #     filters). Surefire treats any direct stdout write from a forked
+        #     JVM as channel corruption and kills the fork before any test runs.
+        #     Start JFR via the ar-jmx start_jfr_recording tool instead.
+        #   * -XX:NativeMemoryTracking=summary aborts this project's forked JVM
+        #     (SIGABRT, exit 134) when the JNI hardware native library loads.
+        #     A caller that specifically wants NMT and accepts that risk can
+        #     still pass it explicitly through jvm_args.
         jvm_args = list(config.jvm_args)
-        if config.jmx_monitoring and run_dir is not None:
-            jfr_path = run_dir / "jmx" / "jfr_recording.jfr"
-            jvm_args = [
-                f"-XX:StartFlightRecording=filename={jfr_path},settings={config.jfr_settings},dumponexit=true",
-                "-XX:NativeMemoryTracking=summary",
-            ] + jvm_args
 
         # Add JVM args if specified
         if jvm_args:
@@ -1397,12 +1408,12 @@ async def list_tools():
                     },
                     "jmx_monitoring": {
                         "type": "boolean",
-                        "description": "Enable JMX monitoring: injects JFR/NMT JVM args and discovers forked JVM PID for use with ar-jmx tools (default: false)"
+                        "description": "Enable JMX monitoring: discovers the forked test JVM PID so ar-jmx tools can attach (default: false). Injects no JVM startup flags -- thread dumps, JFR, class histograms, GC stats and allocation reports all attach via jcmd at runtime. (JFR and NMT are NOT auto-injected: -XX:StartFlightRecording corrupts the surefire fork channel via stdout, and -XX:NativeMemoryTracking aborts this project's JVM when the JNI hardware library loads. Start JFR via ar-jmx start_jfr_recording; pass NMT explicitly through jvm_args only if you accept the crash risk.)"
                     },
                     "jfr_settings": {
                         "type": "string",
                         "enum": ["default", "profile"],
-                        "description": "JFR settings profile: 'default' for allocation profiling, 'profile' for CPU method sampling (~20ms interval). Only used when jmx_monitoring is true (default: 'default')"
+                        "description": "Accepted for backward compatibility but no longer wired to JVM startup; pass the chosen profile to ar-jmx start_jfr_recording when you call it (default: 'default')"
                     },
                     "repetitions": {
                         "type": "integer",
