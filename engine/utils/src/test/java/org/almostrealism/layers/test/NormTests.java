@@ -43,13 +43,25 @@ import org.junit.Test;
 import java.io.IOException;
 import java.util.function.Supplier;
 
+/**
+ * Tests for normalization layers including RMSNorm and GroupNorm.
+ */
 public class NormTests extends TestSuiteBase implements LayerFeatures, GradientTestFeatures {
+	/** Enable random input generation for tests. */
 	public static boolean enableRandom = true;
+
+	/** Threshold for numerical comparison tolerance. */
 	public static double threshold = 0.005;
 
+	/** Fixed values for deterministic testing when random is disabled. */
 	protected static double[] values = {0.5, 1.5, 2.0};
+
+	/** Position counter for deterministic value selection. */
 	protected static int pos = 0;
 
+	/**
+	 * Returns a random value or a fixed value based on enableRandom flag.
+	 */
 	private static double random() {
 		if (enableRandom) {
 			return Math.random();
@@ -58,14 +70,23 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		return values[pos++ % values.length];
 	}
 
+	/**
+	 * Creates a random input supplier for tests.
+	 */
 	protected Supplier<PackedCollection> randomInput(int size) {
 		return () -> new PackedCollection(size).fill(() -> random() / 10.0);
 	}
 
+	/**
+	 * Creates a random gradient supplier for tests.
+	 */
 	protected Supplier<PackedCollection> randomGradient(int size) {
 		return () -> new PackedCollection(shape(size)).fill(() -> 1 + (random() * 4.0));
 	}
 
+	/**
+	 * Validates normalization computation against expected values.
+	 */
 	protected void validate(int groups, int groupSize, int v,
 							PackedCollection in, PackedCollection out,
 							PackedCollection weights, PackedCollection biases) {
@@ -112,11 +133,17 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		}
 	}
 
+	/**
+	 * Tests normalization computation without weights or biases.
+	 */
 	@Test(timeout = 60000)
 	public void normComputationNoWeights() {
 		normComputation(12, 10, 4, null, null);
 	}
 
+	/**
+	 * Tests normalization computation with weights and biases.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(1)
 	public void normComputationMedium() {
@@ -128,6 +155,9 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		normComputation(c, v, 4, weights, biases);
 	}
 
+	/**
+	 * Helper method to test normalization computation with given parameters.
+	 */
 	public void normComputation(int c, int v, int groups, PackedCollection weights, PackedCollection biases) {
 		double eps = Hardware.getLocalHardware().epsilon();
 
@@ -151,6 +181,9 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 				}, false, false, true);
 	}
 
+	/**
+	 * Tests normalization delta computation with weights.
+	 */
 	@Test(timeout = 60000)
 	@TestProperties(knownIssue = true)
 	public void normComputationDeltaMedium() {
@@ -162,6 +195,9 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		normComputationDelta(c, v, 4, weights, null);
 	}
 
+	/**
+	 * Helper method to test normalization delta computation.
+	 */
 	public void normComputationDelta(int c, int v, int groups, PackedCollection weights, PackedCollection biases) {
 		double eps = Hardware.getLocalHardware().epsilon();
 
@@ -186,6 +222,9 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 				}, false, false, true);
 	}
 
+	/**
+	 * Tests norm layer computation without trainable parameters.
+	 */
 	@Test(timeout = 60000)
 	public void normLayer() {
 		int c = 12;
@@ -205,6 +244,9 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		validate(groups, groupSize, v, in, out, null, null);
 	}
 
+	/**
+	 * Tests norm layer with trainable weights and biases.
+	 */
 	@Test(timeout = 60000)
 	public void normLayerTrainable() {
 		int c = 12;
@@ -227,10 +269,16 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		validate(groups, groupSize, v, in, out, weights, biases);
 	}
 
+	/**
+	 * Helper for backwards testing with default input source.
+	 */
 	protected void normBackwards(int c, int groups) throws IOException {
 		normBackwards(null, c, groups, randomInput(c));
 	}
 
+	/**
+	 * Helper for backwards testing with named input source.
+	 */
 	protected void normBackwards(String name, int c, int groups,
 								 Supplier<PackedCollection> inputSource) throws IOException {
 		log("Total native programs = " + NativeCompiler.getTotalInstructionSets());
@@ -287,22 +335,34 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		log("Total native programs after validate = " + NativeCompiler.getTotalInstructionSets());
 	}
 
+	/**
+	 * Tests norm backwards pass with small input and low variance.
+	 */
 	@Test(timeout = 60000)
 	public void backwardsSmallLowVariance() throws IOException {
 		normBackwards("backwardsSmallLowVariance", 2, 1,
 				() -> new PackedCollection(shape(2)).fill(1.0, 1.01));
 	}
 
+	/**
+	 * Tests norm backwards pass with small input.
+	 */
 	@Test(timeout = 60000)
 	public void backwardsSmall() throws IOException {
 		normBackwards(2, 1);
 	}
 
+	/**
+	 * Tests norm backwards pass with medium-sized input.
+	 */
 	@Test(timeout = 60000)
 	public void backwardsMedium() throws IOException {
 		normBackwards(120, 4);
 	}
 
+	/**
+	 * Tests norm backwards pass with progressively smaller inputs.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(3)
 	public void backwardsProgressive() throws IOException {
@@ -314,50 +374,77 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		}
 	}
 
+	/**
+	 * Tests norm backwards pass with bias and small low variance input.
+	 */
 	@Test(timeout = 60000)
 	public void backwardsBiasSmallLowVariance() throws IOException {
 		normBackwardsBias("backwardsBiasSmallLowVariance", 2, 1, true, 1.0, 1.01);
 	}
 
+	/**
+	 * Tests norm backwards pass with bias on small input set 1.
+	 */
 	@Test(timeout = 60000)
 	public void backwardsBiasSmall1() throws IOException {
 		normBackwardsBias("backwardsBiasSmall1", 2, 1);
 	}
 
+	/**
+	 * Tests norm backwards pass with bias on small input set 2.
+	 */
 	@Test(timeout = 60000)
 	public void backwardsBiasSmall2() throws IOException {
 		normBackwardsBias("backwardsBiasSmall2", 4, 1);
 	}
 
+	/**
+	 * Tests norm backwards pass with bias on medium input set 1.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(2)
 	public void backwardsBiasMedium1() throws IOException {
 		normBackwardsBias("backwardsBiasMedium1", 8, 4);
 	}
 
+	/**
+	 * Tests norm backwards pass with bias on medium input set 2.
+	 */
 	@Test(timeout = 60000)
 	public void backwardsBiasMedium2() throws IOException {
 		normBackwardsBias("backwardsBiasMedium2", 16, 4);
 	}
 
+	/**
+	 * Tests norm backwards pass with bias on medium input set 3.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(1)
 	public void backwardsBiasMedium3() throws IOException {
 		normBackwardsBias("backwardsBiasMedium3", 64, 1);
 	}
 
+	/**
+	 * Tests norm backwards pass with bias and progressive input sizes set 1.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(2)
 	public void backwardsBiasProgressive1() throws IOException {
 		backwardsBiasProgressive(2, 1, 5);
 	}
 
+	/**
+	 * Tests norm backwards pass with bias and progressive input sizes set 2.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(1)
 	public void backwardsBiasProgressive2() throws IOException {
 		backwardsBiasProgressive(32, 4, 3);
 	}
 
+	/**
+	 * Helper for testing backwards bias with progressive input sizes.
+	 */
 	public void backwardsBiasProgressive(int c, int groups, int n) throws IOException {
 		for (int i = 0; i < n; i++) {
 			log("Iteration " + i + " c = " + c);
@@ -366,18 +453,30 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		}
 	}
 
+	/**
+	 * Helper for backwards bias testing with default fail-fast behavior.
+	 */
 	public void normBackwardsBias(String name, int c, int groups) throws IOException {
 		normBackwardsBias(name, c, groups, true);
 	}
 
+	/**
+	 * Helper for backwards bias testing with configurable fail-fast behavior.
+	 */
 	public void normBackwardsBias(String name, int c, int groups, boolean failFast) throws IOException {
 		normBackwardsBias(name, c, groups, failFast, randomInput(c));
 	}
 
+	/**
+	 * Helper for backwards bias testing with fixed input values.
+	 */
 	public void normBackwardsBias(String name, int c, int groups, boolean failFast, double x, double y) throws IOException {
 		normBackwardsBias(name, c, groups, failFast, () -> new PackedCollection(shape(c)).fill(x, y));
 	}
 
+	/**
+	 * Helper for backwards bias testing with custom input supplier.
+	 */
 	public void normBackwardsBias(String name, int c, int groups, boolean failFast, Supplier<PackedCollection> inputSource) throws IOException {
 		PackedCollection lr = pack(0.01);
 		PackedCollection input = inputSource.get();
@@ -428,6 +527,9 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		}
 	}
 
+	/**
+	 * Tests trainable norm backwards pass with small low variance input.
+	 */
 	@Test(timeout = 60000)
 	public void backwardsTrainableSmallLowVariance() throws IOException {
 		normBackwardsTrainable("backwardsTrainableSmallLowVariance",
@@ -435,11 +537,17 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 				() -> new PackedCollection(shape(2)).fill(1.0, 1.01));
 	}
 
+	/**
+	 * Tests trainable norm backwards pass with small input set 1.
+	 */
 	@Test(timeout = 60000)
 	public void backwardsTrainableSmall1() throws IOException {
 		normBackwardsTrainable("backwardsTrainableSmall1", 2, 1);
 	}
 
+	/**
+	 * Tests trainable norm backwards pass with small input set 2.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(1)
 	public void backwardsTrainableSmall2() throws IOException {
@@ -454,17 +562,26 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		}
 	}
 
+	/**
+	 * Tests trainable norm backwards pass with medium input set 1.
+	 */
 	@Test(timeout = 60000)
 	public void backwardsTrainableMedium1() throws IOException {
 		normBackwardsTrainable("backwardsTrainableMedium1", 8, 4);
 	}
 
+	/**
+	 * Tests trainable norm backwards pass with medium input set 2.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(1)
 	public void backwardsTrainableMedium2() throws IOException {
 		normBackwardsTrainable("backwardsTrainableMedium2", 16, 4);
 	}
 
+	/**
+	 * Tests trainable norm backwards pass with large input set 1.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(2)
 	public void backwardsTrainableLarge1() throws IOException {
@@ -473,6 +590,9 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		normBackwardsTrainable("backwardsTrainableLarge1", c, groups);
 	}
 
+	/**
+	 * Tests trainable norm backwards pass with large input set 2.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(1)
 	public void backwardsTrainableLarge2() throws IOException {
@@ -481,6 +601,9 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		normBackwardsTrainable("backwardsTrainableLarge2", c, groups);
 	}
 
+	/**
+	 * Tests trainable norm backwards pass with progressive input sizes.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(3)
 	@TestProperties(knownIssue = true)
@@ -496,6 +619,9 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		}
 	}
 
+	/**
+	 * Tests trainable norm backwards pass with very large input set 1.
+	 */
 	@Test(timeout = 120 * 60000)
 	@TestDepth(2)
 	@TestProperties(knownIssue = true)
@@ -505,6 +631,9 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		normBackwardsTrainable("backwardsTrainableVeryLarge1", c, groups);
 	}
 
+	/**
+	 * Tests trainable norm backwards pass with very large input set 2.
+	 */
 	@Test(timeout = 10 * 60000)
 	@TestDepth(3)
 	@TestProperties(knownIssue = true)
@@ -515,6 +644,9 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		normBackwardsTrainable("backwardsTrainableVeryLarge2", c, groups);
 	}
 
+	/**
+	 * Tests trainable norm backwards pass with very large input set 3.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(3)
 	@TestProperties(knownIssue = true, longRunning = true)
@@ -525,14 +657,23 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		normBackwardsTrainable("backwardsTrainableVeryLarge3", c, groups, false);
 	}
 
+	/**
+	 * Helper for trainable backwards testing with default validation.
+	 */
 	protected void normBackwardsTrainable(String name, int c, int groups) throws IOException {
 		normBackwardsTrainable(name, c, groups, true);
 	}
 
+	/**
+	 * Helper for trainable backwards testing with configurable validation.
+	 */
 	protected void normBackwardsTrainable(String name, int c, int groups, boolean validate) throws IOException {
 		normBackwardsTrainable(name, c, groups, validate, true);
 	}
 
+	/**
+	 * Helper for trainable backwards testing with configurable validation and fail-fast.
+	 */
 	protected void normBackwardsTrainable(String name, int c, int groups, boolean validate, boolean failFast) throws IOException {
 		normBackwardsTrainable(name, c, groups, validate, failFast, randomInput(c));
 	}
@@ -629,6 +770,9 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		}
 	}
 
+	/**
+	 * Helper to run a cell operation with optional profiling.
+	 */
 	protected void run(String name, Cell<PackedCollection> cell, PackedCollection input) throws IOException {
 		Supplier<Runnable> op = Process.optimized(cell.push(p(input)));
 
@@ -639,6 +783,9 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		}
 	}
 
+	/**
+	 * Tests norm layer as part of a model.
+	 */
 	@Test(timeout = 60000)
 	public void normModel() throws IOException {
 		int c = 12;

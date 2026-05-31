@@ -26,8 +26,14 @@ import io.almostrealism.collect.Shape;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for point extraction from mesh data.
+ */
 public class PointExtractionTest extends TestSuiteBase {
 
+	/**
+	 * Tests batch edge computation from extracted vertices.
+	 */
 	@Test(timeout = 10000)
 	public void batchEdgeComputation() {
 		// Test computing edges from extracted vertices

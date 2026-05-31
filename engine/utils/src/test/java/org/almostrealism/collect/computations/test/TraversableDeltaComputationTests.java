@@ -38,8 +38,14 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for traversable delta computations.
+ */
 public class TraversableDeltaComputationTests extends TestSuiteBase implements GradientTestFeatures {
 
+	/**
+	 * Tests polynomial x + 1 gradient.
+	 */
 	@Test(timeout = 60000)
 	public void polynomial0() {
 		// x + 1
@@ -55,6 +61,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests polynomial x^2 + 3x + 1 gradient.
+	 */
 	@Test(timeout = 60000)
 	public void polynomial1() {
 		// x^2 + 3x + 1
@@ -80,6 +89,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests polynomial 2D gradient with weight vector.
+	 */
 	@Test(timeout = 60000)
 	public void polynomial2() {
 		int dim = 3;
@@ -119,6 +131,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests polynomial with constant term gradient.
+	 */
 	@Test(timeout = 60000)
 	public void polynomial3() {
 		int dim = 3;
@@ -161,6 +176,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests x^2 + w*x + 1 gradient.
+	 */
 	@Test(timeout = 60000)
 	public void polynomial4() {
 		int dim = 3;
@@ -199,6 +217,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests x^2 - w*x + 1 gradient.
+	 */
 	@Test(timeout = 60000)
 	public void polynomial5() {
 		int dim = 3;
@@ -236,6 +257,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests x^2 - w*x + 1 gradient with scalar input.
+	 */
 	@Test(timeout = 60000)
 	public void polynomial6() {
 		int dim = 3;
@@ -272,6 +296,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests fixed power gradient x^3 + w^x + 1.
+	 */
 	@Test(timeout = 60000)
 	public void powerFixed() {
 		int dim = 3;
@@ -304,6 +331,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests power function gradient with generator.
+	 */
 	@Test(timeout = 60000)
 	public void power1() {
 		int dim = 3;
@@ -339,6 +369,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}, true, false);
 	}
 
+	/**
+	 * Tests power function with and without delta.
+	 */
 	@Test(timeout = 60000)
 	public void power2() {
 		int dim = 3;
@@ -398,6 +431,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		});
 	}
 
+	/**
+	 * Tests sum and power combination gradient.
+	 */
 	@Test(timeout = 60000)
 	public void sumPow1() {
 		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
@@ -422,6 +458,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				});
 	}
 
+	/**
+	 * Tests product and sum combination gradient.
+	 */
 	@Test(timeout = 60000)
 	public void productSum1() {
 		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
@@ -447,6 +486,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				});
 	}
 
+	/**
+	 * Tests product, sum and power combination gradient.
+	 */
 	@Test(timeout = 60000)
 	public void productSumPow1() {
 		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
@@ -509,16 +551,25 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				}, false, false, true);
 	}
 
+	/**
+	 * Tests variance gradient.
+	 */
 	@Test(timeout = 60000)
 	public void variance1() throws IOException {
 		variance("variance1", 1.0, 1.1).save("results/variance1.xml");
 	}
 
+	/**
+	 * Tests variance gradient with different inputs.
+	 */
 	@Test(timeout = 60000)
 	public void variance2() throws IOException {
 		variance("variance2", 1.5, 2.5).save("results/variance2.xml");
 	}
 
+	/**
+	 * Tests divide by mean gradient.
+	 */
 	@Test(timeout = 60000)
 	public void divide1() {
 		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
@@ -547,6 +598,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				});
 	}
 
+	/**
+	 * Tests divide by squared mean gradient.
+	 */
 	@Test(timeout = 60000)
 	public void divide2() {
 		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
@@ -575,6 +629,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				});
 	}
 
+	/**
+	 * Tests subtract mean and divide gradient.
+	 */
 	@Test(timeout = 60000)
 	public void divide3() {
 		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
@@ -603,6 +660,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				});
 	}
 
+	/**
+	 * Tests divide with epsilon sqrt gradient.
+	 */
 	@Test(timeout = 60000)
 	public void divide4() {
 		PackedCollection o = new PackedCollection(2).fill(1.0, 1.01);
@@ -635,6 +695,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				});
 	}
 
+	/**
+	 * Tests divide with squared epsilon sqrt gradient.
+	 */
 	@Test(timeout = 60000)
 	public void divide5() {
 		PackedCollection o = new PackedCollection(2).fill(1.0, 1.01);
@@ -668,6 +731,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				}, false, false, true);
 	}
 
+	/**
+	 * Tests subtract mean divide by variance gradient.
+	 */
 	@Test(timeout = 60000)
 	public void divide6() {
 		PackedCollection o = new PackedCollection(2).fill(1.5, 2.5);
@@ -720,6 +786,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests recursive division with subtract mean and variance sqrt.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(1)
 	public void divide7() {
@@ -741,6 +810,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				});
 	}
 
+	/**
+	 * Tests recursive division with bias addition.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(1)
 	public void divide8() {
@@ -765,6 +837,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				});
 	}
 
+	/**
+	 * Tests divide with mean subtraction and epsilon.
+	 */
 	@Test(timeout = 60000)
 	public void divide9() {
 //		PackedCollection o = new PackedCollection(2).fill(1.0, 1.01);
@@ -784,6 +859,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				});
 	}
 
+	/**
+	 * Tests recursive divide with squared diff and epsilon.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(2)
 	public void divide10() {
@@ -810,6 +888,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				});
 	}
 
+	/**
+	 * Tests recursive divide with bias and epsilon.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(1)
 	public void divide11() {
@@ -839,6 +920,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				}, true);
 	}
 
+	/**
+	 * Tests divide product gradient with random inputs.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(1)
 	public void divideProduct1() {
@@ -886,6 +970,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				});
 	}
 
+	/**
+	 * Tests divide product with bias and profiling.
+	 */
 	@Test(timeout = 60000)
 	public void divideProduct2() throws IOException {
 		int c = 2;
@@ -932,12 +1019,18 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				}, false, true, true).save("results/divideProduct2.xml");
 	}
 
+	/**
+	 * Tests divide product with random source generator.
+	 */
 	@Test(timeout = 60000)
 	public void divideProduct3() throws IOException {
 		int c = 2;
 		divideProduct("divideProduct3", c, () -> new PackedCollection(c).fill(() -> Math.random() / 10.0));
 	}
 
+	/**
+	 * Tests divide product with specific values.
+	 */
 	@Test(timeout = 60000)
 	public void divideProduct4() throws IOException {
 		int c = 2;
@@ -977,6 +1070,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				}, false, false, true).save("results/" + name + ".xml");
 	}
 
+	/**
+	 * Tests enumerate operation gradient.
+	 */
 	@Test(timeout = 60000)
 	public void enumerate() {
 		int count = 1;
@@ -1004,6 +1100,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests embedded gradient with multiple weights.
+	 */
 	@Test(timeout = 60000)
 	public void embedded1() {
 		int dim = 3;
@@ -1039,6 +1138,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests embedded gradient with sum.
+	 */
 	@Test(timeout = 60000)
 	public void embedded2() {
 		int dim = 3;
@@ -1062,6 +1164,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests repeat multiply with matrix and vector.
+	 */
 	@Test(timeout = 60000)
 	public void repeatMultiply1() {
 		int dim = 2;
@@ -1086,6 +1191,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		});
 	}
 
+	/**
+	 * Tests repeat multiply with direct input.
+	 */
 	@Test(timeout = 60000)
 	public void repeatMultiply2() {
 		int dim = 2;
@@ -1108,6 +1216,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		assertEquals(5.0, out.toDouble(7));
 	}
 
+	/**
+	 * Tests repeat multiply gradient w.r.t. matrix.
+	 */
 	@Test(timeout = 60000)
 	public void repeatMultiply3() {
 		int dim = 2;
@@ -1131,6 +1242,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests multiply gradient.
+	 */
 	@Test(timeout = 60000)
 	public void multiply() {
 		int dim = 4;
@@ -1155,6 +1269,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests multiply add gradient.
+	 */
 	@Test(timeout = 60000)
 	public void multiplyAdd1() {
 		int dim = 4;
@@ -1180,6 +1297,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests multiply self-add gradient.
+	 */
 	@Test(timeout = 60000)
 	public void multiplyAdd2() {
 		int dim = 4;
@@ -1205,6 +1325,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests multiply sum gradient.
+	 */
 	@Test(timeout = 60000)
 	public void multiplySum() {
 		int dim = 4;
@@ -1225,6 +1348,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests multiply enumerate gradient.
+	 */
 	@Test(timeout = 60000)
 	public void multiplyEnumerate() {
 		int dim = 2;
@@ -1254,6 +1380,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests enumerate index gradient.
+	 */
 	@Test(timeout = 60000)
 	public void enumerateIndex() {
 		int dim = 2;
@@ -1284,6 +1413,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests enumerate multiply sum gradient.
+	 */
 	@Test(timeout = 60000)
 	public void enumerateMultiplySum() {
 		boolean enableSum = true;
@@ -1324,6 +1456,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests enumerate map gradient with optimization.
+	 */
 	@Test(timeout = 60000)
 	public void enumerateMap() {
 		boolean enableOptimize = true;
@@ -1374,11 +1509,17 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests multiply twice with small dimension.
+	 */
 	@Test(timeout = 60000)
 	public void multiplyTwiceSmall() {
 		multiplyTwice(2, false);
 	}
 
+	/**
+	 * Tests multiply twice with large dimension.
+	 */
 	@Test(timeout = 60000)
 	public void multiplyTwiceLarge() {
 		multiplyTwice(5, false);
@@ -1414,6 +1555,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		});
 	}
 
+	/**
+	 * Tests sum then multiply gradient.
+	 */
 	@Test(timeout = 60000)
 	public void sumMultiply() {
 		int dim = 2;
@@ -1442,6 +1586,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		});
 	}
 
+	/**
+	 * Tests enumerate multiply with scaling.
+	 */
 	@Test(timeout = 60000)
 	public void enumerateMultiply() {
 		int dim = 5;
@@ -1457,6 +1604,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		assertEquals(80, dout.doubleStream().sum());
 	}
 
+	/**
+	 * Tests enumerate sum with multiple samples.
+	 */
 	@Test(timeout = 60000)
 	public void enumerateSum1() {
 		int count = 2;
@@ -1487,6 +1637,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		assertEquals(11.0, dout.toDouble(5));
 	}
 
+	/**
+	 * Tests enumerate sum with various dimensions.
+	 */
 	@Test(timeout = 60000)
 	public void enumerateSum2() {
 		int dim = 5;
@@ -1502,6 +1655,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		dout.print();
 	}
 
+	/**
+	 * Tests max operation gradient.
+	 */
 	@Test(timeout = 60000)
 	public void max() {
 		PackedCollection in = pack(10, 100, 1000);
@@ -1517,6 +1673,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests map operation gradient.
+	 */
 	@Test(timeout = 60000)
 	public void map() {
 		PackedCollection g = pack(3, 5);
@@ -1538,6 +1697,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		}
 	}
 
+	/**
+	 * Tests 1D map operation gradient.
+	 */
 	@Test(timeout = 60000)
 	public void map1d() {
 		int count = 1;
@@ -1561,6 +1723,9 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		assertEquals(-9, dout.toDouble(1));
 	}
 
+	/**
+	 * Tests 2D map operation gradient.
+	 */
 	@Test(timeout = 60000)
 	public void map2d() {
 		int count = 2;

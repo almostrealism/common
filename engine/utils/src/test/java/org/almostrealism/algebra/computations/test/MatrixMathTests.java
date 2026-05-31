@@ -24,41 +24,67 @@ import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestDepth;
 import org.junit.Test;
 
+/**
+ * Tests for matrix math computations.
+ */
 public class MatrixMathTests extends TestSuiteBase {
+	/** Enables operation optimization in tests. */
 	private static final boolean enableOptimization = false;
+	/** Enables test repetition. */
 	private static final boolean enableRepeat = true;
 
+	/**
+	 * Tests matrix multiplication with very small matrices.
+	 */
 	@Test(timeout = 30000)
 	public void matmulVerySmall() {
 		matmul(0, 2, 4, enableOptimization, true);
 	}
 
+	/**
+	 * Tests batch matrix multiplication with very small matrices.
+	 */
 	@Test(timeout = 30000)
 	public void matmulVerySmallBatch() {
 		matmul(5, 2, 4, enableOptimization, true);
 	}
 
+	/**
+	 * Tests matrix multiplication with small matrices.
+	 */
 	@Test(timeout = 30000)
 	public void matmulSmall() {
 		matmul(0, 12, 4, enableOptimization, true);
 	}
 
+	/**
+	 * Tests batch matrix multiplication with small matrices.
+	 */
 	@Test(timeout = 30000)
 	public void matmulSmallBatch() {
 		matmul(10, 12, 4, enableOptimization, true);
 	}
 
+	/**
+	 * Tests matrix multiplication with medium-sized matrices.
+	 */
 	@Test(timeout = 30000)
 	public void matmulMedium() {
 		matmul(8, 64, 32, enableOptimization, true);
 	}
 
+	/**
+	 * Tests matrix multiplication with large matrices.
+	 */
 	@Test(timeout = 30000)
 	@TestDepth(1)
 	public void matmulLarge() {
 		matmul(2, 2048, 1024, enableOptimization, true);
 	}
 
+	/**
+	 * Tests matrix multiplication with powers of 2 sizes.
+	 */
 	@Test(timeout = 20000)
 	@TestDepth(1)
 	public void matmulPowers() {
@@ -67,6 +93,9 @@ public class MatrixMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests matrix multiply with identity-style input.
+	 */
 	@Test(timeout = 30000)
 	public void matrix1() {
 		int n = 2;
@@ -93,6 +122,9 @@ public class MatrixMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests matrix multiply with enumerate and repeat.
+	 */
 	@Test(timeout = 30000)
 	public void matrix2() {
 		int n = 2;
@@ -129,6 +161,9 @@ public class MatrixMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Multiplies two matrices using standard algorithm.
+	 */
 	private void multiplyMatrices(int n, int m, int p,
 								  PackedCollection matrix1,
 								  PackedCollection matrix2,
@@ -150,6 +185,9 @@ public class MatrixMathTests extends TestSuiteBase {
 		destination.setMem(result);
 	}
 
+	/**
+	 * Tests matrix multiplication with given batch and dimension parameters.
+	 */
 	protected void matmul(int batches, int dim, int width, boolean optimize, boolean validate) {
 		PackedCollection matrix = new PackedCollection(dim, width);
 		PackedCollection vector;
@@ -211,6 +249,9 @@ public class MatrixMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests matrix sum of powers computation.
+	 */
 	@Test(timeout = 4 * 60000)
 	@TestDepth(3)
 	public void sumPowers() {
@@ -219,6 +260,9 @@ public class MatrixMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests sum operation with specified count and dimension.
+	 */
 	protected void sum(int count, int dim) {
 		PackedCollection vectors = new PackedCollection(count, dim);
 		PackedCollection result = new PackedCollection(count);

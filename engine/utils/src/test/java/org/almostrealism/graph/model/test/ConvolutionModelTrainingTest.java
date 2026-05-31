@@ -42,9 +42,21 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for convolution model training including dataset generation, optimization, and validation.
+ */
 public class ConvolutionModelTrainingTest extends TestSuiteBase implements ModelFeatures, ModelTestFeatures {
+	/**
+	 * Whether to use large model dimensions.
+	 */
 	static boolean large = true;
+	/**
+	 * Batch size for training.
+	 */
 	static int batchSize;
+	/**
+	 * Dimensions for rows and columns.
+	 */
 	static int rows, cols;
 
 	static {
@@ -59,6 +71,12 @@ public class ConvolutionModelTrainingTest extends TestSuiteBase implements Model
 		}
 	}
 
+	/**
+	 * Generates a synthetic dataset of circles and squares.
+	 *
+	 * @param outShape Output shape for the dataset
+	 * @return List of value targets
+	 */
 	public List<ValueTarget<PackedCollection>> generateDataset(TraversalPolicy outShape) {
 		List<ValueTarget<PackedCollection>> data = new ArrayList<>();
 
@@ -104,6 +122,14 @@ public class ConvolutionModelTrainingTest extends TestSuiteBase implements Model
 		return data;
 	}
 
+	/**
+	 * Loads dataset from image files in a directory.
+	 *
+	 * @param imagesDir Directory containing image files
+	 * @param outShape Output shape for the dataset
+	 * @return List of value targets
+	 * @throws IOException If loading fails
+	 */
 	public List<ValueTarget<PackedCollection>> loadDataset(File imagesDir, TraversalPolicy outShape) throws IOException {
 		List<ValueTarget<PackedCollection>> data = new ArrayList<>();
 
@@ -129,6 +155,11 @@ public class ConvolutionModelTrainingTest extends TestSuiteBase implements Model
 		return data;
 	}
 
+	/**
+	 * Tests convolution model training with circles vs squares dataset.
+	 *
+	 * @throws IOException If training fails
+	 */
 	@Test(timeout = 120000)
 	@TestDepth(10)
 	public void train() throws IOException {
@@ -182,6 +213,19 @@ public class ConvolutionModelTrainingTest extends TestSuiteBase implements Model
 		log(String.valueOf(results));
 	}
 
+	/**
+	 * Optimizes the model for multiple epochs.
+	 *
+	 * @param name Optimization run name
+	 * @param model Compiled model to optimize
+	 * @param trainData Training data supplier
+	 * @param testData Test data supplier
+	 * @param epochs Number of epochs
+	 * @param steps Number of steps per epoch
+	 * @param lossTarget Target loss value
+	 * @return Array of accuracy values per epoch
+	 * @throws IOException If optimization fails
+	 */
 	public double[] optimize(String name, CompiledModel model,
 							 Supplier<Dataset<?>> trainData,
 							 Supplier<Dataset<?>> testData,
@@ -199,6 +243,13 @@ public class ConvolutionModelTrainingTest extends TestSuiteBase implements Model
 		return accuracy;
 	}
 
+	/**
+	 * Validates the model accuracy on test data.
+	 *
+	 * @param model Compiled model to validate
+	 * @param data Test data supplier
+	 * @return Accuracy value
+	 */
 	public double validate(CompiledModel model, Supplier<Dataset<?>> data) {
 		ModelOptimizer optimizer = new ModelOptimizer(model, data);
 		double accuracy = optimizer.accuracy((expected, actual) -> expected.argmax() == actual.argmax());
@@ -206,6 +257,12 @@ public class ConvolutionModelTrainingTest extends TestSuiteBase implements Model
 		return accuracy;
 	}
 
+	/**
+	 * Appends integer values to a string buffer.
+	 *
+	 * @param buf String buffer to append to
+	 * @param values Values to append
+	 */
 	protected static void append(StringBuilder buf, int[] values) {
 		for (int i = 0; i < values.length; i++) {
 			buf.append(values[i]);
@@ -214,6 +271,12 @@ public class ConvolutionModelTrainingTest extends TestSuiteBase implements Model
 		buf.append("\n");
 	}
 
+	/**
+	 * Appends double values to a string buffer.
+	 *
+	 * @param buf String buffer to append to
+	 * @param values Values to append
+	 */
 	protected static void append(StringBuilder buf, double[] values) {
 		for (int i = 0; i < values.length; i++) {
 			buf.append(values[i]);

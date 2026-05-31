@@ -24,7 +24,14 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for standard mathematical operations on collections.
+ */
 public class StandardMathTests extends TestSuiteBase {
+
+	/**
+	 * Tests addition of two scalar values.
+	 */
 	@Test(timeout = 30000)
 	public void add() {
 		CollectionProducer sum = add(c(1.0), c(2.0));
@@ -33,6 +40,9 @@ public class StandardMathTests extends TestSuiteBase {
 		assertEquals(3.0, ev.evaluate());
 	}
 
+	/**
+	 * Tests division operation on collections.
+	 */
 	@Test(timeout = 30000)
 	public void divide() {
 		int dim = 256;
@@ -54,6 +64,9 @@ public class StandardMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests multiply broadcast operation.
+	 */
 	@Test(timeout = 30000)
 	public void multiplyBroadcast() {
 		PackedCollection in = new PackedCollection(shape(12, 32, 2)).randFill();
@@ -75,6 +88,9 @@ public class StandardMathTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests SiLU (Sigmoid Linear Unit) activation function.
+	 */
 	@Test(timeout = 30000)
 	public void silu() {
 		int dim = 256;

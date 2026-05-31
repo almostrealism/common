@@ -44,21 +44,34 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for expression simplification and kernel index operations.
+ */
 public class ExpressionSimplificationTests extends TestSuiteBase implements ExpressionFeatures {
 
+	/** Language operations instance for expression rendering. */
 	private LanguageOperations lang = new LanguageOperationsStub();
 
+	/**
+	 * Tests that boolean constants with different values are not equal.
+	 */
 	@Test(timeout = 30000)
 	public void notEqual() {
 		Assert.assertFalse(new BooleanConstant(true).equals(new BooleanConstant(false)));
 	}
 
+	/**
+	 * Tests mod bounded equality with limit.
+	 */
 	@Test(timeout = 30000)
 	public void modBoundedEquality() {
 		assertEquals(5, kernel().withLimit(6).add(3).imod(6).upperBound().orElse(-1));
 		assertTrue(kernel().withLimit(6).add(3).imod(6).eq(5).booleanValue().isEmpty());
 	}
 
+	/**
+	 * Tests mod limit behavior.
+	 */
 	@Test(timeout = 30000)
 	public void modLimit() {
 		Assert.assertEquals(25, new IntegerConstant(25).upperBound(null).orElse(-1));
@@ -67,11 +80,17 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals(10, kernel().withLimit(100).divide(10).getLimit().orElse(-1));
 	}
 
+	/**
+	 * Tests kernel index options retrieval.
+	 */
 	@Test(timeout = 30000)
 	public void kernelIndexOptions() {
 		Assert.assertEquals(20, kernel().withLimit(20).getIndexOptions(kernel()).orElseThrow().size());
 	}
 
+	/**
+	 * Tests mod index options retrieval.
+	 */
 	@Test(timeout = 30000)
 	public void modIndexOptions() {
 		KernelIndex k = kernel();
@@ -82,6 +101,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals(20, r.divide(5).imod(2).add(r).getIndexOptions(k).orElseThrow().size());
 	}
 
+	/**
+	 * Tests divide index options retrieval.
+	 */
 	@Test(timeout = 30000)
 	public void divideIndexOptions1() {
 		KernelIndex k = kernel().withLimit(100);
@@ -91,6 +113,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertTrue(r.getIndexOptions(k).orElseThrow().contains(20));
 	}
 
+	/**
+	 * Tests divide index options with smaller limit.
+	 */
 	@Test(timeout = 30000)
 	public void divideIndexOptions2() {
 		KernelIndex k = kernel().withLimit(6);
@@ -101,6 +126,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertTrue(options.contains(4));
 	}
 
+	/**
+	 * Tests product to int conversion.
+	 */
 	@Test(timeout = 30000)
 	public void productToInt() {
 		Expression a = new IntegerConstant(1);
@@ -111,6 +139,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		log(String.valueOf(out.getSimpleExpression(lang)));
 	}
 
+	/**
+	 * Tests divide operation on expressions.
+	 */
 	@Test(timeout = 30000)
 	public void divide() {
 		String e = e(1).divide(e(2)).getSimpleExpression(lang);
@@ -118,6 +149,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertTrue(e.length() < 12);
 	}
 
+	/**
+	 * Tests constant sum simplification.
+	 */
 	@Test(timeout = 30000)
 	public void constantSum() {
 		// 1 + (- ((2.0 - 0) / 4.0))
@@ -128,6 +162,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("0.5", out.getExpression(lang));
 	}
 
+	/**
+	 * Tests cast sum divide operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void castSumDivide1() {
 		Expression d = e(1).divide(e(2));
@@ -137,6 +174,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("25", out.getSimpleExpression(lang));
 	}
 
+	/**
+	 * Tests cast sum divide operation 2.
+	 */
 	@Test(timeout = 30000)
 	public void castSumDivide2() {
 		Expression d = e(1).divide(e(2));
@@ -148,6 +188,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("25", out.getSimpleExpression(lang));
 	}
 
+	/**
+	 * Tests mod cast sum combined operations.
+	 */
 	@Test(timeout = 30000)
 	public void modCastSum() {
 		Expression d = e(1).divide(e(2)).add(e(2).multiply(e(4)));
@@ -161,6 +204,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		log(simple);
 	}
 
+	/**
+	 * Tests cast floor divide operation.
+	 */
 	@Test(timeout = 30000)
 	public void castFloorDivide() {
 		Expression exp = e(0.0).divide(e(4.0)).floor()
@@ -170,6 +216,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("0", exp.getSimpleExpression(lang));
 	}
 
+	/**
+	 * Tests kernel product mod 1 operation.
+	 */
 	@Test(timeout = 30000)
 	public void kernelProductMod1() {
 		Expression<?> e =
@@ -182,6 +231,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("(kernel0 % 64800) * 64801", simple);
 	}
 
+	/**
+	 * Tests kernel quotient operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void kernelQuotient1() {
 		Expression e = kernel().withLimit(10).divide(10);
@@ -191,6 +243,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("0", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel quotient operation 2.
+	 */
 	@Test(timeout = 30000)
 	public void kernelQuotient2() {
 		Expression e = kernel().withLimit(100).divide(10).divide(10);
@@ -200,6 +255,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("0", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel sum quotient operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void kernelSumQuotient1() {
 		int n = 4;
@@ -213,6 +271,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("kernel0 / " + n, simple);
 	}
 
+	/**
+	 * Tests kernel sum quotient operation 2.
+	 */
 	@Test(timeout = 30000)
 	public void kernelSumQuotient2() {
 		Expression e = kernel().divide(5).multiply(5).add(1).divide(5);
@@ -220,6 +281,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("kernel0 / 5", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel sum quotient operation 3.
+	 */
 	@Test(timeout = 30000)
 	public void kernelSumQuotient3() {
 		// (((kernel0 + ((kernel0 / 12) * -12)) / 3) + 3) * 10
@@ -231,6 +295,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		// Assert.assertEquals("(kernel0 + ((kernel0 / 12) * -12)) / 3", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel mod quotient operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void kernelModQuotient1() {
 		KernelIndex kernel = kernel().withLimit(2100);
@@ -243,6 +310,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("((kernel0 / 210) * 10) + 7", e.getSimpleExpression(lang));
 	}
 
+	/**
+	 * Tests kernel mod quotient operation 2.
+	 */
 	@Test(timeout = 30000)
 	public void kernelModQuotient2() {
 		// (kernel0 % 9) / 3
@@ -255,6 +325,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("kernel0 / 3", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel mod product operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void kernelModProduct1() {
 		Expression kernel0 = new KernelIndex();
@@ -267,6 +340,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("0", simple);
 	}
 
+	/**
+	 * Tests kernel mod product operation 2.
+	 */
 	@Test(timeout = 30000)
 	public void kernelModProduct2() {
 		Expression e = kernel().imod(16).multiply(17).divide(16);
@@ -275,6 +351,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("kernel0 % 16", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel mod product operation 3.
+	 */
 	@Test(timeout = 30000)
 	public void kernelModProduct3() {
 		// (((kernel0 * 64) + _52_i) % 64) * 72
@@ -287,6 +366,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertFalse(e.isPossiblyNegative());
 	}
 
+	/**
+	 * Tests kernel mod product operation 4.
+	 */
 	@Test(timeout = 30000)
 	public void kernelModProduct4() {
 		int n = 64;
@@ -299,6 +381,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("54", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel mod product operation 5.
+	 */
 	@Test(timeout = 30000)
 	public void kernelModProduct5() {
 		int n = 64;
@@ -312,6 +397,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("0", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel mod sum operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void kernelModSum1() {
 		int m = 257;
@@ -330,6 +418,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		// TODO  This can potentially be simplified to an expression of the form a >= x > b
 	}
 
+	/**
+	 * Tests mod sum sequence operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void modSumSeq1() {
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
@@ -338,6 +429,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		compareSimplifiedSequence(e);
 	}
 
+	/**
+	 * Tests mod sum sequence operation 2.
+	 */
 	@Test(timeout = 30000)
 	public void modSumSeq2() {
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
@@ -346,6 +440,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		compareSimplifiedSequence(e);
 	}
 
+	/**
+	 * Tests mod sum sequence operation 3.
+	 */
 	@Test(timeout = 30000)
 	public void modSumSeq3() {
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
@@ -354,6 +451,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		compareSimplifiedSequence(e);
 	}
 
+	/**
+	 * Tests mod sum sequence operation 5.
+	 */
 	@Test(timeout = 30000)
 	public void modSumSeq5() {
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
@@ -362,6 +462,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		compareSimplifiedSequence(e);
 	}
 
+	/**
+	 * Tests mod sum sequence operation 6.
+	 */
 	@Test(timeout = 30000)
 	public void modSumSeq6() {
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
@@ -370,6 +473,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		compareSimplifiedSequence(e);
 	}
 
+	/**
+	 * Tests mod sum sequence operation 7.
+	 */
 	@Test(timeout = 30000)
 	public void modSumSeq7() {
 		// (((((ind0 * 2) + (ind0 % 2)) % 4) / 2) % 2)
@@ -379,6 +485,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		compareSimplifiedSequence(e);
 	}
 
+	/**
+	 * Tests mod sum sequence operation 8.
+	 */
 	@Test(timeout = 30000)
 	public void modSumSeq8() {
 		// (((((ind0 * 4) + (ind0 % 4)) % 4)
@@ -390,6 +499,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("ind0 % 4", e.getSimpleExpression(lang));
 	}
 
+	/**
+	 * Tests mod sum sequence operation 9.
+	 */
 	@Test(timeout = 30000)
 	public void modSumSeq9() {
 		// ((ind0 % 1024) + 1024) % 256
@@ -403,6 +515,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("ind0 % 256", e.getSimpleExpression(lang));
 	}
 
+	/**
+	 * Tests mod sum operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void modSum1() {
 		// (((((ind0 * 2) + (ind0 % 2)) % 4) / 2) % 2)
@@ -420,6 +535,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		log(Arrays.toString(seq.intValues().limit(4).toArray()));
 	}
 
+	/**
+	 * Tests equals operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void equals1() {
 		DefaultIndex idx = new DefaultIndex("ind0", 4);
@@ -435,6 +553,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("true", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests equals operation 2.
+	 */
 	@Test(timeout = 30000)
 	public void equals2() {
 		// (((((ind0 * 2) + (ind0 % 2)) % 4) / 2) % 2) == (((ind0 * 2) + (ind0 % 2)) % 2)
@@ -457,6 +578,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("true", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests sequence max value operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void sequenceMax1() {
 		Expression e = kernel().withLimit(3).multiply(Integer.MAX_VALUE);
@@ -465,6 +589,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals(2L * Integer.MAX_VALUE, seq.longStream().toArray()[2]);
 	}
 
+	/**
+	 * Tests sequence max value operation 2.
+	 */
 	@Test(timeout = 30000)
 	public void sequenceMax2() {
 		Expression e = kernel().withLimit(3).multiply(Integer.MAX_VALUE);
@@ -473,6 +600,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals(2L * Integer.MAX_VALUE, seq.longStream().toArray()[2]);
 	}
 
+	/**
+	 * Tests sequence max value operation 3.
+	 */
 	@Test(timeout = 30000)
 	public void sequenceMax3() {
 		int n = 1600;
@@ -494,6 +624,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		}
 	}
 
+	/**
+	 * Tests sequence max value operation 4.
+	 */
 	@Test(timeout = 30000)
 	public void sequenceMax4() {
 		int n = 1400;
@@ -514,6 +647,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		}
 	}
 
+	/**
+	 * Tests sum product quotient operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void sumProductQuotient1() {
 		// (
@@ -530,6 +666,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		log(String.valueOf(e.getSimplified().getExpression(lang)));
 	}
 
+	/**
+	 * Tests kernel multi sum operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void kernelMultiSum1() {
 		Expression kernel = kernel().withLimit(2100);
@@ -541,6 +680,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("kernel0", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel conditional operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void kernelConditional1() {
 		// ((0 == (kernel0 / 3)) ? 1 : 0)
@@ -551,6 +693,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		log(String.valueOf(new DefaultKernelStructureContext(9).getSeriesProvider().getSeries(e).getExpression(lang)));
 	}
 
+	/**
+	 * Tests kernel sum mod operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void kernelSumMod1() {
 		// (((((kernel0 % 3) * 3) + (kernel0 / 3) + ((kernel0 / 9) * 9)) / 3) % 3)
@@ -563,6 +708,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("kernel0 % 3", e.getSimpleExpression(lang));
 	}
 
+	/**
+	 * Tests kernel sum mod operation 2.
+	 */
 	@Test(timeout = 30000)
 	@TestDepth(1)
 	public void kernelSumMod2() {
@@ -576,6 +724,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		log(e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel sum mod operation 3.
+	 */
 	@Test(timeout = 30000)
 	public void kernelSumMod3() {
 		int n = 1300;
@@ -588,6 +739,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		compareSimplifiedSequence(e);
 	}
 
+	/**
+	 * Tests kernel sum mod operation 4.
+	 */
 	@Test(timeout = 30000)
 	@TestDepth(1)
 	public void kernelSumMod4() {
@@ -602,6 +756,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		compareSimplifiedSequence(e);
 	}
 
+	/**
+	 * Tests kernel sum mod operation 5.
+	 */
 	@Test(timeout = 30000)
 	public void kernelSumMod5() {
 		// (((((kernel0 * 64) + _52_i) / 64) * 4608) +
@@ -616,6 +773,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertFalse(e.isPossiblyNegative());
 	}
 
+	/**
+	 * Tests kernel sum mod operation 6.
+	 */
 	@Test(timeout = 30000)
 	public void kernelSumMod6() {
 		//((((((kernel0 * 64) + _52_i) / 64) * 4608) +
@@ -633,6 +793,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertFalse(e.isPossiblyNegative());
 	}
 
+	/**
+	 * Tests kernel sum mod operation 7.
+	 */
 	@Test(timeout = 30000)
 	public void kernelSumMod7() {
 		KernelIndex kernel = kernel().withLimit(441000);
@@ -646,6 +809,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("(kernel0 % 2100) * -2100", e.getSimpleExpression(lang));
 	}
 
+	/**
+	 * Tests kernel sum mod options operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void kernelSumModOptions1() {
 		// ((kernel0 / 4) * 2) + (kernel0 % 2)
@@ -661,6 +827,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertTrue(options.isEmpty() || options.get().contains(5));
 	}
 
+	/**
+	 * Tests kernel sum mod options operation 2.
+	 */
 	@Test(timeout = 30000)
 	public void kernelSumModOptions2() {
 		// ((((kernel0 % 4) / 2) * 4) + ((kernel0 / 4) * 2) + (kernel0 % 2))
@@ -677,6 +846,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertTrue(options.isEmpty() || options.get().contains(7));
 	}
 
+	/**
+	 * Tests sum product quotient operation 2.
+	 */
 	@Test(timeout = 30000)
 	public void sumProductQuotient2() {
 		// kernel0 + ((kernel0 / 256) * -256)
@@ -688,6 +860,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("kernel0 % 256", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests sum product quotient operation 3.
+	 */
 	@Test(timeout = 30000)
 	public void sumProductQuotient3() {
 		// (kernel0 + ((kernel0 / 256) * -256)) / 256
@@ -699,6 +874,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("0", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel multi sum operation 2.
+	 */
 	@Test(timeout = 30000)
 	public void kernelMultiSum2() {
 		// ((kernel0 / 256) * 400) + (((kernel0 + ((kernel0 / 256) * -256)) / 256) * 400)
@@ -712,6 +890,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("(kernel0 / 256) * 400", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel sum mod operation 8.
+	 */
 	@Test(timeout = 30000)
 	public void kernelSumMod8() {
 		// (((kernel0 / 256) * 400) + (((kernel0 + ((kernel0 / 256) * -256)) / 256) * 400)) % 129600
@@ -725,6 +906,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("(kernel0 / 256) * 400", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel sum mod operation 9.
+	 */
 	@Test(timeout = 30000)
 	public void kernelSumMod9() {
 		// (((kernel0 % 1024) / 256) * 256) + (((kernel0 % 256) / 16) * 16)
@@ -744,6 +928,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("((kernel0 % " + (4 * m * n) + ") / " + n + ") * " + n, e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel sum mod operation 10.
+	 */
 	@Test(timeout = 30000)
 	public void kernelSumMod10() {
 		// (((kernel0 % 1024) / 256) * 256) + (((kernel0 % 256) / 16) * 16) + -17408
@@ -756,6 +943,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("(((kernel0 % 1024) / 16) * 16) + -17408", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel sum mod operation 11.
+	 */
 	@Test(timeout = 30000)
 	public void kernelSumMod11() {
 		DefaultKernelStructureContext ctx = new DefaultKernelStructureContext(1183744);
@@ -776,6 +966,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		}
 	}
 
+	/**
+	 * Tests kernel conditional sum operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void kernelConditionalSum1() {
 //		int a = ((0 == (kernel0 / 3)) ? 1 : 0);
@@ -795,6 +988,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals(String.valueOf(1.0 / 3.0), e.getSimpleExpression(lang));
 	}
 
+	/**
+	 * Tests kernel conditional sum operation 2.
+	 */
 	@Test(timeout = 30000)
 	public void kernelConditionalSum2() {
 		// (((((((kernel0 % 3) * 3) + (kernel0 / 3) + ((kernel0 / 9) * 9)) / 3) % 3) == (kernel0 / 3)) ? 1 : 0)
@@ -814,6 +1010,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("(((- (kernel0 / 3)) + (kernel0 % 3)) == 0) ? 1 : 0", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel conditional sum operation 3.
+	 */
 	@Test(timeout = 30000)
 	public void kernelConditionalSum3() {
 		// ((((kernel0 % 295936) / 17408) * 18) + ((kernel0 % 17408) / 1024) + 972) == 1
@@ -827,6 +1026,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("false", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests kernel conditional sum operation 4.
+	 */
 	@Test(timeout = 30000)
 	public void kernelConditionalSum4() {
 		// ((((kernel0 % 295936) / 17408) * 18) + ((kernel0 % 17408) / 1024) + 1) == 18
@@ -840,6 +1042,9 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("((((kernel0 % 295936) / 17408) * 18) + ((kernel0 % 17408) / 1024)) == 17", e.getExpression(lang));
 	}
 
+	/**
+	 * Tests redundant quotient product operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void redundantQuotientProduct1() {
 		// ((((((kernel0 % 20) / 5) * 5) + 1) / 5) * 5) % 20
@@ -859,10 +1064,16 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		Assert.assertEquals("((kernel0 % 20) / 5) * 5", e.getExpression(lang));
 	}
 
+	/**
+	 * Compares the simplified sequence of an expression against itself.
+	 */
 	protected void compareSimplifiedSequence(Expression e) {
 		compareSequences(e, e.getSimplified());
 	}
 
+	/**
+	 * Compares two expressions by evaluating their sequences.
+	 */
 	protected void compareSequences(Expression a, Expression b) {
 		log(b.getExpression(lang));
 

@@ -22,6 +22,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 public class ReusableInstructionSetTests extends TestSuiteBase {
+	/**
+	 * Tests reusable instruction set with add operation.
+	 */
 	@Test(timeout = 10000)
 	public void add() {
 		int n = 6;

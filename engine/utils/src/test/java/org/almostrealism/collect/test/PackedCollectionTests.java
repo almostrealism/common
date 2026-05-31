@@ -22,6 +22,9 @@ import org.junit.Test;
 
 public class PackedCollectionTests extends TestSuiteBase {
 
+	/**
+	 * Tests that transpose correctly transposes a 10x4 collection.
+	 */
 	@Test(timeout = 10000)
 	public void transpose() {
 		PackedCollection data = new PackedCollection(shape(10, 4))
@@ -40,6 +43,9 @@ public class PackedCollectionTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests that clear zeros out all elements in a collection.
+	 */
 	@Test(timeout = 10000)
 	public void clear() {
 		PackedCollection data = new PackedCollection(4);

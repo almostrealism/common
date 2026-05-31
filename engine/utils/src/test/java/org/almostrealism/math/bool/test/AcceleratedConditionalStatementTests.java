@@ -31,6 +31,9 @@ import java.util.stream.IntStream;
 
 public class AcceleratedConditionalStatementTests extends TestSuiteBase {
 
+	/**
+	 * Tests random less-than kernel with 100x2 collections.
+	 */
 	@Test(timeout = 10000)
 	public void randomLessThanKernel() {
 		PackedCollection x = rand(shape(100, 2)).get().evaluate();
@@ -56,12 +59,20 @@ public class AcceleratedConditionalStatementTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Creates a less-than comparison producer.
+	 *
+	 * @return Less-than collection producer
+	 */
 	protected CollectionProducer lessThan() {
 		Producer<PackedCollection> one = v(shape(-1, 1), 0);
 		Producer<PackedCollection> two = v(shape(-1, 1), 1);
 		return lessThan(one, two, one, two, false);
 	}
 
+	/**
+	 * Tests less-than with pass-through values.
+	 */
 	@Test(timeout = 10000)
 	public void withPassThrough() {
 		IntStream.range(0, 5)
@@ -72,6 +83,9 @@ public class AcceleratedConditionalStatementTests extends TestSuiteBase {
 				});
 	}
 
+	/**
+	 * Tests dot product conditional (marked as known issue).
+	 */
 	@Test(timeout = 10000)
 	@TestProperties(knownIssue = true)
 	public void dotProduct() {
@@ -87,6 +101,9 @@ public class AcceleratedConditionalStatementTests extends TestSuiteBase {
 		Assert.assertNotEquals(0.0, r.toDouble());
 	}
 
+	/**
+	 * Tests cross product conditional.
+	 */
 	@Test(timeout = 10000)
 	public void crossProduct() {
 		CollectionProducer lt1 = lessThan(
@@ -103,6 +120,13 @@ public class AcceleratedConditionalStatementTests extends TestSuiteBase {
 		assertTrue(v == 1.0 || v == 2.0);
 	}
 
+	/**
+	 * Checks a less-than operation with two inputs.
+	 *
+	 * @param lt Less-than producer
+	 * @param a First input
+	 * @param b Second input
+	 */
 	private void check(CollectionProducer lt,
 					   PackedCollection a, PackedCollection b) {
 		PackedCollection s = lt.evaluate(a, b);
@@ -115,6 +139,9 @@ public class AcceleratedConditionalStatementTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests compact nested conditionals.
+	 */
 	@Test(timeout = 10000)
 	public void compactNested() {
 		IntStream.range(1, 10).forEach(i -> {

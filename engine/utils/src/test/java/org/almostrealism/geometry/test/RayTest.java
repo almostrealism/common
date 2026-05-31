@@ -27,7 +27,13 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for Ray geometry computations.
+ */
 public class RayTest extends TestSuiteBase {
+	/**
+	 * Tests pointAt calculation for a simple ray.
+	 */
 	@Test(timeout = 10000)
 	public void pointAtTest1() {
 		CollectionProducer p = pointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), c(10));
@@ -35,12 +41,18 @@ public class RayTest extends TestSuiteBase {
 		assertEquals(new Vector(0.0, 10.0, 5.0), p.get().evaluate());
 	}
 
+	/**
+	 * Tests pointAt with negative scalar.
+	 */
 	@Test(timeout = 10000)
 	public void pointAtTest2() {
 		CollectionProducer at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), c(-20));
 		assertEquals(new Vector(0.0, -10.0, 21.0), at.get().evaluate());
 	}
 
+	/**
+	 * Tests pointAt with dynamic producer.
+	 */
 	@Test(timeout = 10000)
 	public void dynamicPointAt() {
 		Producer<PackedCollection> d = func(shape(1), new AdaptEvaluable<>(c(-20).get())::evaluate);
@@ -48,6 +60,9 @@ public class RayTest extends TestSuiteBase {
 		assertEquals(new Vector(0.0, -10.0, 21.0), at.get().evaluate());
 	}
 
+	/**
+	 * Tests direction extraction from rays.
+	 */
 	@Test(timeout = 10000)
 	public void directions() {
 		Producer<PackedCollection> directions = direction(v(shape(-1, 6), 0));
@@ -67,6 +82,9 @@ public class RayTest extends TestSuiteBase {
 		assertEquals(new Vector(16, 17, 18), d.get(2));
 	}
 
+	/**
+	 * Tests various dot product operations on rays.
+	 */
 	@Test(timeout = 10000)
 	public void dotProductTests() {
 		Producer<Ray> r = v(Ray.shape(), 0);
@@ -82,6 +100,9 @@ public class RayTest extends TestSuiteBase {
 				new Vector(7, 4, 2))));
 	}
 
+	/**
+	 * Tests static ray computation.
+	 */
 	@Test(timeout = 10000)
 	public void staticComputation() {
 		Producer<Ray> comp = (Producer) value(new Ray(new Vector(1.0, 2.0, 3.0),
@@ -107,6 +128,9 @@ public class RayTest extends TestSuiteBase {
 		assertEquals(6.0, r.getDirection().toDouble(2));
 	}
 
+	/**
+	 * Tests batch multiplication of ray components.
+	 */
 	@Test(timeout = 10000)
 	public void batchMultiply() {
 		Producer<Ray> rays = v(shape(-1, 6), 0);
@@ -129,6 +153,9 @@ public class RayTest extends TestSuiteBase {
 		assertEquals(new Vector(0, 0, 0), result.get(2));
 	}
 
+	/**
+	 * Tests batch dot product operations on rays.
+	 */
 	@Test(timeout = 10000)
 	public void batchDotProduct() {
 		Producer<Ray> rays = v(shape(-1, 6), 0);
@@ -151,6 +178,9 @@ public class RayTest extends TestSuiteBase {
 		assertEquals(20.0, result.valueAt(2, 0));
 	}
 
+	/**
+	 * Tests batch origin-dot-direction operation.
+	 */
 	@Test(timeout = 10000)
 	public void batchODotD() {
 		Producer<Ray> rays = v(shape(-1, 6), 0);
@@ -171,6 +201,9 @@ public class RayTest extends TestSuiteBase {
 		assertEquals(20.0, result.valueAt(2, 0));
 	}
 
+	/**
+	 * Tests batch direction-dot-direction operation.
+	 */
 	@Test(timeout = 10000)
 	public void batchDDotD() {
 		Producer<Ray> rays = v(shape(-1, 6), 0);
@@ -191,6 +224,9 @@ public class RayTest extends TestSuiteBase {
 		assertEquals(50.0, result.valueAt(2, 0));
 	}
 
+	/**
+	 * Tests batch origin-dot-origin operation.
+	 */
 	@Test(timeout = 10000)
 	public void batchODotO() {
 		Producer<Ray> rays = v(shape(-1, 6), 0);
@@ -211,6 +247,9 @@ public class RayTest extends TestSuiteBase {
 		assertEquals(14.0, result.valueAt(2, 0));
 	}
 
+	/**
+	 * Tests ray dot products with a single ray in batch mode.
+	 */
 	@Test(timeout = 10000)
 	public void rayDotProductsSingleRay() {
 		// Test that dot products work for a single ray in batch mode

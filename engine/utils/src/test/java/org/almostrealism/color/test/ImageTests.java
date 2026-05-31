@@ -27,21 +27,36 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 
+/**
+ * Tests for image processing operations.
+ */
 public class ImageTests extends TestSuiteBase implements RGBFeatures {
+	/**
+	 * Applies a transform to image data.
+	 */
 	protected CollectionProducer imageTransform(CollectionProducer image) {
 		return image.multiply(2).subtract(1.0);
 	}
 
+	/**
+	 * Applies reverse transform to image data.
+	 */
 	protected CollectionProducer imageTransformReverse(Producer<PackedCollection> data) {
 		return c(data).add(1.0).divide(2);
 	}
 
+	/**
+	 * Tests noise generation and saving.
+	 */
 	@Test(timeout = 10000)
 	public void noise() throws IOException {
 		CollectionProducer data = imageTransformReverse(randn(shape(3, 128, 128)));
 		saveChannels("results/noise.png", data).get().run();
 	}
 
+	/**
+	 * Tests adding noise to an image.
+	 */
 	@Test(timeout = 10000)
 	public void addNoise() throws IOException {
 		File img = new File("library/test_image.jpeg");

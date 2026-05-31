@@ -22,6 +22,9 @@ import org.junit.Test;
  */
 public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, TransformMatrixFeatures {
 
+	/**
+	 * Tests transform matrix inverse and ray transformation.
+	 */
 	@Test(timeout = 10000)
 	public void testTransformMatrixInverse() {
 		log("Testing TransformMatrix inverse and ray transformation...");
@@ -94,6 +97,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Transform matrix inverse test passed!");
 	}
 
+	/**
+	 * Tests sphere intersection with transform matrices.
+	 */
 	@Test(timeout = 25000)
 	public void testSphereIntersectionWithTransform() {
 		log("Testing sphere intersection WITH transforms enabled...");
@@ -181,6 +187,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("All transform tests passed!");
 	}
 
+	/**
+	 * Tests ray origin translation with transform matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testRayOriginTranslation() {
 		log("Testing ray origin translation...");
@@ -208,6 +217,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Ray origin translation test passed!");
 	}
 
+	/**
+	 * Tests ray origin inverse translation with transform matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testRayOriginInverseTranslation() {
 		log("Testing ray origin inverse translation...");
@@ -235,6 +247,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Ray origin inverse translation test passed!");
 	}
 
+	/**
+	 * Tests that ray direction is unaffected by translation.
+	 */
 	@Test(timeout = 10000)
 	public void testRayDirectionUnaffectedByTranslation() {
 		log("Testing ray direction unaffected by translation...");
@@ -262,6 +277,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Direction unaffected by translation test passed!");
 	}
 
+	/**
+	 * Tests scaled sphere intersection distance calculation.
+	 */
 	@Test(timeout = 10000)
 	public void testScaledSphereIntersectionDistance() {
 		log("Testing that scaled sphere intersection returns correct WORLD SPACE distance...");
@@ -300,6 +318,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 	// This test may have incorrect expectations about how TransformMatrix.transform() works.
 	// Need to investigate the actual transform implementation first.
 
+	/**
+	 * Tests combined transform on ray.
+	 */
 	@Test(timeout = 10000)
 	public void testCombinedTransformOnRay() {
 		log("Testing combined transform (translate + scale) on ray...");
@@ -336,6 +357,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Combined transform test passed!");
 	}
 
+	/**
+	 * Tests intersection with translated sphere.
+	 */
 	@Test(timeout = 10000)
 	public void testIntersectionWithTranslatedSphere() {
 		log("Testing intersection experiment: translated sphere requires inverse transform...");

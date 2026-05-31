@@ -29,8 +29,14 @@ import java.util.stream.IntStream;
 
 public class AggregatedComputationTests extends TestSuiteBase {
 
+	/**
+	 * Whether optimization is enabled for tests.
+	 */
 	boolean enableOptimization = false;
 
+	/**
+	 * Tests medium-sized sum aggregation.
+	 */
 	@Test(timeout = 120000)
 	public void mediumSum() {
 		int r = 1024;
@@ -47,6 +53,9 @@ public class AggregatedComputationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests large sum aggregation with depth 1.
+	 */
 	@Test(timeout = 120000)
 	@TestDepth(1)
 	public void largeSum() {

@@ -27,7 +27,13 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for triangle data operations.
+ */
 public class TriangleDataTest extends TestSuiteBase {
+	/**
+	 * Creates test vertex data with sample triangles.
+	 */
 	protected Mesh.VertexData data() {
 		DefaultVertexData data = new DefaultVertexData(5, 3);
 		data.getVertices().set(0, new Vector(0.0, 1.0, 0.0));
@@ -43,8 +49,14 @@ public class TriangleDataTest extends TestSuiteBase {
 		return data;
 	}
 
+	/**
+	 * Gets mesh point data from test data.
+	 */
 	protected PackedCollection points() {return data().getMeshPointData();}
 
+	/**
+	 * Tests edge calculations from triangle vertices.
+	 */
 	@Test(timeout = 10000)
 	public void edges() {
 		PackedCollection points = points();

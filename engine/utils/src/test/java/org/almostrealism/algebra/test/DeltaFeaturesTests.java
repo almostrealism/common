@@ -29,7 +29,14 @@ import org.junit.Test;
 
 import java.util.stream.IntStream;
 
+/**
+ * Tests for delta features computation on algebraic operations.
+ */
 public class DeltaFeaturesTests extends TestSuiteBase implements DeltaFeatures {
+
+	/**
+	 * Tests embedded product delta generation.
+	 */
 	@Test(timeout = 60000)
 	public void embeddedProduct() {
 		int dim = 3;
@@ -67,6 +74,9 @@ public class DeltaFeaturesTests extends TestSuiteBase implements DeltaFeatures {
 		}
 	}
 
+	/**
+	 * Tests embedded power delta generation.
+	 */
 	@Test(timeout = 60000)
 	@TestProperties(knownIssue = true)
 	public void embeddedPower() {
@@ -103,6 +113,9 @@ public class DeltaFeaturesTests extends TestSuiteBase implements DeltaFeatures {
 		}
 	}
 
+	/**
+	 * Tests embedded sum delta generation.
+	 */
 	@Test(timeout = 60000)
 	public void embeddedSum() {
 		// f(x) = x0 + x1, x2 + x3
@@ -137,6 +150,9 @@ public class DeltaFeaturesTests extends TestSuiteBase implements DeltaFeatures {
 		}
 	}
 
+	/**
+	 * Tests embedded repeat delta generation.
+	 */
 	@Test(timeout = 60000)
 	public void embeddedRepeat() {
 		// f(x) = x0, x0

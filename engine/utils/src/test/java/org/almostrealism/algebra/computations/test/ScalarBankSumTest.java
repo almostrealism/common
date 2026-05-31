@@ -21,7 +21,13 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for scalar bank sum computation.
+ */
 public class ScalarBankSumTest extends TestSuiteBase {
+	/**
+	 * Tests sum operation on scalar bank.
+	 */
 	@Test(timeout = 10000)
 	public void sum() {
 		PackedCollection bank = new PackedCollection(shape(4, 2));

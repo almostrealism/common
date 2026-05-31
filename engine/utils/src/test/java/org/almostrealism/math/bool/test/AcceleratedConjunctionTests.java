@@ -28,6 +28,15 @@ import org.junit.Test;
 import java.util.stream.IntStream;
 
 public class AcceleratedConjunctionTests extends TestSuiteBase {
+	/**
+	 * Creates a conjunction of two less-than comparisons.
+	 *
+	 * @param a First collection producer
+	 * @param b Second collection producer
+	 * @param c Third collection producer
+	 * @param d Fourth collection producer
+	 * @return Combined conjunction
+	 */
 	protected CollectionProducer conjunction(
 			Producer<PackedCollection> a, Producer<PackedCollection> b,
 			Producer<PackedCollection> c, Producer<PackedCollection> d) {
@@ -36,6 +45,15 @@ public class AcceleratedConjunctionTests extends TestSuiteBase {
 		return and(l1, l2, a, b);
 	}
 
+	/**
+	 * Creates a test runnable for a conjunction with given values.
+	 *
+	 * @param a First value
+	 * @param b Second value
+	 * @param c Third value
+	 * @param d Fourth value
+	 * @return Runnable test
+	 */
 	protected Runnable conjunctionTest(double a, double b, double c, double d) {
 		Evaluable<PackedCollection> s = conjunction(
 				c(a), v(shape(1), 0),
@@ -52,6 +70,9 @@ public class AcceleratedConjunctionTests extends TestSuiteBase {
 		};
 	}
 
+	/**
+	 * Tests multiple random conjunctions.
+	 */
 	@Test(timeout = 10000)
 	public void conjunctions() {
 		IntStream.range(0, 10).mapToObj(i ->
@@ -59,12 +80,21 @@ public class AcceleratedConjunctionTests extends TestSuiteBase {
 				.forEach(Runnable::run);
 	}
 
+	/**
+	 * Creates a conjunction using dot product comparisons.
+	 *
+	 * @param r Ray producer
+	 * @return Dot product conjunction
+	 */
 	protected CollectionProducer dotProductConjunction(Producer<Ray> r) {
 		return conjunction(oDotd(
 						ray(i -> Math.random())), c(1),
 				oDotd(v(Ray.shape(), 0)), c(1));
 	}
 
+	/**
+	 * Tests dot product in conjunction.
+	 */
 	@Test(timeout = 10000)
 	public void dotProductInConjunction() {
 		CollectionProducer c = dotProductConjunction(v(Ray.shape(), 0));
@@ -74,6 +104,9 @@ public class AcceleratedConjunctionTests extends TestSuiteBase {
 		Assert.assertNotEquals(0, v);
 	}
 
+	/**
+	 * Tests nested dot product conjunction variant 1.
+	 */
 	@Test(timeout = 10000)
 	public void dotProductInNestedConjunction1() {
 		CollectionProducer c = dotProductConjunction((Producer) ray(i -> Math.random()));
@@ -84,6 +117,9 @@ public class AcceleratedConjunctionTests extends TestSuiteBase {
 		Assert.assertNotEquals(0, v);
 	}
 
+	/**
+	 * Tests nested dot product conjunction variant 2.
+	 */
 	@Test(timeout = 10000)
 	public void dotProductInNestedConjunction2() {
 		CollectionProducer c = dotProductConjunction((Producer) ray(i -> Math.random()));
@@ -94,6 +130,9 @@ public class AcceleratedConjunctionTests extends TestSuiteBase {
 		Assert.assertNotEquals(0, v);
 	}
 
+	/**
+	 * Tests nested dot product conjunction variant 3.
+	 */
 	@Test(timeout = 10000)
 	public void dotProductInNestedConjunction3() {
 		CollectionProducer c = dotProductConjunction(v(Ray.shape(), 0));
@@ -104,6 +143,9 @@ public class AcceleratedConjunctionTests extends TestSuiteBase {
 		Assert.assertNotEquals(0, v);
 	}
 
+	/**
+	 * Tests nested dot product conjunction variant 4.
+	 */
 	@Test(timeout = 10000)
 	public void dotProductInNestedConjunction4() {
 		CollectionProducer c = dotProductConjunction(v(Ray.shape(), 0));

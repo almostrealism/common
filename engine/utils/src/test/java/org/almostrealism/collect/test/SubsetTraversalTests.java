@@ -28,6 +28,9 @@ import org.junit.Test;
 
 public class SubsetTraversalTests extends TestSuiteBase {
 
+	/**
+	 * Tests basic subset traversal.
+	 */
 	@Test(timeout = 10000)
 	public void traversal() {
 		TraversalPolicy resultShape = shape(4, 1);
@@ -55,6 +58,9 @@ public class SubsetTraversalTests extends TestSuiteBase {
 		mapping.getValueAt(e(index));
 	}
 
+	/**
+	 * Tests subset traversal with convolution.
+	 */
 	@Test(timeout = 10000)
 	public void convolution() {
 		int batch = 1;

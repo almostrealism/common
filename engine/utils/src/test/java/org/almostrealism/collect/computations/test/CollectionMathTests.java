@@ -25,7 +25,13 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for collection math operations.
+ */
 public class CollectionMathTests extends TestSuiteBase {
+	/**
+	 * Tests broadcast product with scalar.
+	 */
 	@Test(timeout = 30000)
 	public void broadcastProduct1() {
 		PackedCollection a = new PackedCollection(shape(10));
@@ -41,6 +47,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests broadcast product with different shapes.
+	 */
 	@Test(timeout = 30000)
 	public void broadcastProduct2() {
 		PackedCollection a = new PackedCollection(shape(10));
@@ -61,6 +70,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests traverse product operation.
+	 */
 	@Test(timeout = 30000)
 	public void traverseProduct() {
 		PackedCollection a = new PackedCollection(shape(10)).randFill();
@@ -77,6 +89,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests repeat product operation.
+	 */
 	@Test(timeout = 30000)
 	public void repeatProduct() {
 		PackedCollection a = new PackedCollection(shape(2, 5)).randFill();
@@ -94,6 +109,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests double broadcast product.
+	 */
 	@Test(timeout = 30000)
 	public void doubleBroadcastProduct() {
 		int r = 6;
@@ -111,6 +129,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests double broadcast product with arguments.
+	 */
 	@Test(timeout = 30000)
 	public void doubleBroadcastProductArguments() {
 		int r = 3;

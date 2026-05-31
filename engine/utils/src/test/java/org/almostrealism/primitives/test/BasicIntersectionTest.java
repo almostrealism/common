@@ -38,6 +38,9 @@ import org.junit.Test;
  */
 public class BasicIntersectionTest extends TestSuiteBase implements ConsoleFeatures {
 
+	/**
+	 * Tests sphere intersection with ray.
+	 */
 	@Test(timeout = 10000)
 	public void sphereIntersection() {
 		log("Testing sphere intersection...");
@@ -59,6 +62,9 @@ public class BasicIntersectionTest extends TestSuiteBase implements ConsoleFeatu
 		assertNotNull("Intersection should not be null", intersection);
 	}
 
+	/**
+	 * Tests sphere intersection distance calculation.
+	 */
 	@Test(timeout = 10000)
 	public void sphereIntersectionDistance() {
 		log("Testing sphere intersection distance...");
@@ -88,6 +94,9 @@ public class BasicIntersectionTest extends TestSuiteBase implements ConsoleFeatu
 		}
 	}
 
+	/**
+	 * Tests sphere color computation with shader.
+	 */
 	@Test(timeout = 10000)
 	public void sphereColor() {
 		log("Testing sphere color computation...");
@@ -121,6 +130,9 @@ public class BasicIntersectionTest extends TestSuiteBase implements ConsoleFeatu
 		}
 	}
 
+	/**
+	 * Tests point light creation and color retrieval.
+	 */
 	@Test(timeout = 10000)
 	public void pointLightCreation() {
 		log("Testing point light creation...");

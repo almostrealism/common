@@ -41,8 +41,12 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 	 * A testable version of WeightedSumComputation that allows controlling isolation.
 	 */
 	static class TestableWeightedSumComputation extends WeightedSumComputation {
+		/** Whether to force isolation. */
 		private final boolean forceIsolation;
 
+		/**
+		 * Creates a testable weighted sum with forced isolation setting.
+		 */
 		public TestableWeightedSumComputation(TraversalPolicy resultShape,
 											  TraversalPolicy inputPositions,
 											  TraversalPolicy weightPositions,
