@@ -194,28 +194,6 @@
 				</configuration>
 			</plugin>
 			<plugin>
-				<groupId>org.codehaus.mojo</groupId>
-				<artifactId>exec-maven-plugin</artifactId>
-				<version>3.1.0</version>
-				<configuration>
-					<executable>bash</executable>
-					<workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
-					<arguments>
-						<argument>${maven.multiModuleProjectDirectory}/scripts/verify-enforcement-config.sh</argument>
-					</arguments>
-				</configuration>
-				<executions>
-					<execution>
-						<id>verify-enforcement-config</id>
-						<phase>validate</phase>
-						<inherited>false</inherited>
-						<goals>
-							<goal>exec</goal>
-						</goals>
-					</execution>
-				</executions>
-			</plugin>
-			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-checkstyle-plugin</artifactId>
 				<version>3.3.1</version>

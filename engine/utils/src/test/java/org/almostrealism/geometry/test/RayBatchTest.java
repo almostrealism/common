@@ -32,6 +32,9 @@ import org.junit.Test;
  */
 public class RayBatchTest extends TestSuiteBase {
 
+	/**
+	 * Tests whether origin(rays) preserves batch dimensions when rays has shape (N, 6).
+	 */
 	@Test(timeout = 10000)
 	public void testOriginShapeWithBatch() {
 		log("=== Testing origin() shape with batch ===");
@@ -67,6 +70,9 @@ public class RayBatchTest extends TestSuiteBase {
 		log("Got: " + originResults.getShape() + " with " + originResults.getMemLength() + " elements");
 	}
 
+	/**
+	 * Tests whether direction(rays) preserves batch dimensions when rays has shape (N, 6).
+	 */
 	@Test(timeout = 10000)
 	public void testDirectionShapeWithBatch() {
 		log("\n=== Testing direction() shape with batch ===");
@@ -100,6 +106,9 @@ public class RayBatchTest extends TestSuiteBase {
 		log("Got: " + directionResults.getShape() + " with " + directionResults.getMemLength() + " elements");
 	}
 
+	/**
+	 * Tests element-wise multiplication of origin and direction from batched rays.
+	 */
 	@Test(timeout = 10000)
 	public void testMultiplyOriginDirection() {
 		log("\n=== Testing origin(rays).multiply(direction(rays)) ===");
@@ -126,6 +135,9 @@ public class RayBatchTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests dot product computation between origin and direction in batch mode.
+	 */
 	@Test(timeout = 10000)
 	public void testDotProductWithBatch() {
 		log("\n=== Testing dotProduct(origin(rays), direction(rays)) ===");
@@ -160,6 +172,9 @@ public class RayBatchTest extends TestSuiteBase {
 		log("  Ray 2: 20.0");
 	}
 
+	/**
+	 * Tests oDotd() with into() for proper batch evaluation.
+	 */
 	@Test(timeout = 10000)
 	public void testODotDWithInto() {
 		log("\n=== Testing oDotd() with into() for proper batch evaluation ===");

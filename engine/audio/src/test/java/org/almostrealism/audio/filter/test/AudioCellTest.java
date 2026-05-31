@@ -27,7 +27,16 @@ import org.junit.Test;
 import java.io.File;
 import java.util.function.Supplier;
 
+/**
+ * Tests for audio cell filter operations.
+ * Verifies high-pass filtering, frame processing, and signal repetition.
+ */
 public class AudioCellTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
+
+	/**
+	 * Tests single-frame filtering with high-pass filter.
+	 * Verifies that filtering a test WAV file produces expected output values.
+	 */
 	@Test(timeout = 60000)
 	public void filterFrame() {
 		WaveOutput out = new WaveOutput();
@@ -49,6 +58,10 @@ public class AudioCellTest extends TestSuiteBase implements CellFeatures, AudioT
 		Assert.assertNotEquals(0.0, result.toDouble(3), 0.0);
 	}
 
+	/**
+	 * Tests filtering a WAV file and writing output to a file.
+	 * Applies a high-pass filter and saves 10 seconds of audio.
+	 */
 	@Test(timeout = 60000)
 	public void filter() {
 		Supplier<Runnable> op =
@@ -60,6 +73,10 @@ public class AudioCellTest extends TestSuiteBase implements CellFeatures, AudioT
 		r.run();
 	}
 
+	/**
+	 * Tests audio signal repetition with a constant amplitude.
+	 * Creates a repeated audio signal lasting 10 seconds.
+	 */
 	@Test(timeout = 60000)
 	public void repeat() {
 		Supplier<Runnable> op =

@@ -39,6 +39,9 @@ import java.util.List;
  */
 public class MigrationClassLoaderTest extends TestSuiteBase {
 
+	/**
+	 * Test that AudioChoiceNode class name is correctly translated.
+	 */
 	@Test(timeout = 60000)
 	public void exactMappingAudioChoiceNode() {
 		Assert.assertEquals(
@@ -46,6 +49,9 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 				MigrationClassLoader.translate("org.almostrealism.audio.notes.AudioChoiceNode"));
 	}
 
+	/**
+	 * Test that ChannelAudioNode class name is correctly translated.
+	 */
 	@Test(timeout = 60000)
 	public void exactMappingChannelAudioNode() {
 		Assert.assertEquals(
@@ -53,6 +59,9 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 				MigrationClassLoader.translate("org.almostrealism.audio.notes.ChannelAudioNode"));
 	}
 
+	/**
+	 * Test that SceneAudioNode class name is correctly translated.
+	 */
 	@Test(timeout = 60000)
 	public void exactMappingSceneAudioNode() {
 		Assert.assertEquals(
@@ -60,6 +69,9 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 				MigrationClassLoader.translate("org.almostrealism.audio.notes.SceneAudioNode"));
 	}
 
+	/**
+	 * Test that FileNoteSource class name is correctly translated with prefix mapping.
+	 */
 	@Test(timeout = 60000)
 	public void prefixMappingFileNoteSource() {
 		Assert.assertEquals(
@@ -67,6 +79,9 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 				MigrationClassLoader.translate("org.almostrealism.audio.notes.FileNoteSource"));
 	}
 
+	/**
+	 * Test that TreeNoteSource class name is correctly translated with prefix mapping.
+	 */
 	@Test(timeout = 60000)
 	public void prefixMappingTreeNoteSource() {
 		Assert.assertEquals(
@@ -74,6 +89,9 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 				MigrationClassLoader.translate("org.almostrealism.audio.notes.TreeNoteSource"));
 	}
 
+	/**
+	 * Test that ParameterizedFilterEnvelope class name is correctly translated with prefix mapping.
+	 */
 	@Test(timeout = 60000)
 	public void prefixMappingFilter() {
 		Assert.assertEquals(
@@ -81,6 +99,9 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 				MigrationClassLoader.translate("org.almostrealism.audio.filter.ParameterizedFilterEnvelope"));
 	}
 
+	/**
+	 * Test that PatternElementFactory class name is correctly translated with prefix mapping.
+	 */
 	@Test(timeout = 60000)
 	public void prefixMappingPattern() {
 		Assert.assertEquals(
@@ -88,6 +109,9 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 				MigrationClassLoader.translate("org.almostrealism.audio.pattern.PatternElementFactory"));
 	}
 
+	/**
+	 * Test that AudioHealthScore class name is correctly translated with prefix mapping.
+	 */
 	@Test(timeout = 60000)
 	public void prefixMappingHealth() {
 		Assert.assertEquals(
@@ -95,6 +119,9 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 				MigrationClassLoader.translate("org.almostrealism.audio.health.AudioHealthScore"));
 	}
 
+	/**
+	 * Test that AudioGenerator class name is correctly translated with prefix mapping.
+	 */
 	@Test(timeout = 60000)
 	public void prefixMappingMlAudio() {
 		Assert.assertEquals(
@@ -102,6 +129,9 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 				MigrationClassLoader.translate("org.almostrealism.ml.audio.AudioGenerator"));
 	}
 
+	/**
+	 * Test that GenomicNetwork class name is correctly translated from com.almostrealism prefix.
+	 */
 	@Test(timeout = 60000)
 	public void prefixMappingComAlmostrealism() {
 		Assert.assertEquals(
@@ -109,6 +139,9 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 				MigrationClassLoader.translate("com.almostrealism.spatial.GenomicNetwork"));
 	}
 
+	/**
+	 * Test that unmapped class names pass through unchanged.
+	 */
 	@Test(timeout = 60000)
 	public void unmappedNamePassesThrough() {
 		Assert.assertEquals(
@@ -116,6 +149,9 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 				MigrationClassLoader.translate("java.util.ArrayList"));
 	}
 
+	/**
+	 * Test that migrateContent correctly translates both exact and prefix-mapped class names.
+	 */
 	@Test(timeout = 60000)
 	public void migrateContentExactAndPrefix() {
 		String input = "class=\"org.almostrealism.audio.notes.AudioChoiceNode\" " +
@@ -125,6 +161,9 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 		Assert.assertTrue(result.contains("org.almostrealism.music.notes.FileNoteSource"));
 	}
 
+	/**
+	 * Test that migrateContent correctly translates XML fragments with class attributes.
+	 */
 	@Test(timeout = 60000)
 	public void migrateContentXmlFragment() {
 		String xml = "<object class=\"com.almostrealism.spatial.GenomicNetwork\">" +
@@ -134,6 +173,9 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 		Assert.assertTrue(result.contains("org.almostrealism.studio.health.AudioHealthScore"));
 	}
 
+	/**
+	 * Test that migrateContent correctly translates JSON fragments with @type field.
+	 */
 	@Test(timeout = 60000)
 	public void migrateContentJsonFragment() {
 		String json = "{\"@type\":\"org.almostrealism.audio.notes.TreeNoteSource\"}";
@@ -146,6 +188,9 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 	 * applied correctly. Full deserialization requires the ringsdesktop
 	 * classpath (GenomicNetwork lives in studio/spatial), so this test
 	 * only checks that the content transformation is correct.
+	 */
+	/**
+	 * Test that migrateContent correctly translates class names in networks.xml content.
 	 */
 	@Test(timeout = 120000)
 	public void migrateNetworksXmlContent() throws Exception {
@@ -173,6 +218,9 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Test that pattern-factory.json is correctly migrated and deserialized.
+	 */
 	@Test(timeout = 120000)
 	public void loadPatternFactoryJson() throws Exception {
 		File file = new File("../../../examples/pattern-factory.json");

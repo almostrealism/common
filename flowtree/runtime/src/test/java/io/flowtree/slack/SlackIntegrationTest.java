@@ -62,6 +62,7 @@ import static org.junit.Assert.*;
  */
 public class SlackIntegrationTest extends TestSuiteBase {
 
+    /** Workstream configuration stores and retrieves channel, agents, branch, and budget. */
     @Test(timeout = 10000)
     public void testWorkstreamConfiguration() {
         Workstream workstream = new Workstream("C0123456789", "#test-channel");
@@ -78,6 +79,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertNotNull(workstream.getWorkstreamId());
     }
 
+    /** Workstream getNextAgent round-robins across registered agents. */
     @Test(timeout = 10000)
     public void testAgentRoundRobin() {
         Workstream workstream = new Workstream("C123", "#test");
@@ -97,6 +99,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("host1", a4.getHost()); // Wraps around
     }
 
+    /** SlackListener extracts prompts from Slack message format. */
     @Test(timeout = 10000)
     public void testPromptExtraction() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -118,6 +121,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("Direct prompt", listener.extractPrompt("Direct prompt"));
     }
 
+    /** SlackNotifier formats job started/success/failure messages correctly. */
     @Test(timeout = 10000)
     public void testNotifierMessageFormatting() {
         List<String> messages = new ArrayList<>();
@@ -179,6 +183,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     }
 
     // TODO(review): duplicate of SlackCostNotifierTest.testSlackCompletionWithCostBlock — remove this copy once the split is confirmed complete
+    /** Slack completion message includes cost block with model and runner breakdown. */
     @Test(timeout = 10000)
     public void testSlackCompletionWithCostBlock() {
         List<String> messages = new ArrayList<>();
@@ -219,6 +224,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
             msg.contains("claude") && msg.contains("opencode"));
     }
 
+    /** JobCompletionEvent builder produces correct status, git info, and error fields. */
     @Test(timeout = 10000)
     public void testJobCompletionEvent() {
         // Test started event
@@ -252,6 +258,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals(0, ccEvent.getExitCode());
     }
 
+    /** FlowTreeController simulateMessage dispatches to registered workstreams. */
     @Test(timeout = 10000)
     public void testControllerSimulation() throws Exception {
         FlowTreeController controller = new FlowTreeController(null, null);
@@ -269,6 +276,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         // which connects to actual agents. This tests the basic plumbing.
     }
 
+    /** JobCompletionListener receives and accumulates job started/completed events. */
     @Test(timeout = 10000)
     public void testCompletionListenerInterface() {
         List<JobCompletionEvent> events = new ArrayList<>();
@@ -294,6 +302,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals(JobCompletionEvent.Status.SUCCESS, events.get(1).getStatus());
     }
 
+    /** FlowTreeApiEndpoint POST /messages delivers text to the correct channel. */
     @Test(timeout = 10000)
     public void testApiEndpointPostMessage() throws Exception {
         AtomicReference<String> receivedChannel = new AtomicReference<>();
@@ -334,6 +343,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         }
     }
 
+    /** FlowTreeApiEndpoint GET /api/health returns 200 with ISO-8601 server_time. */
     @Test(timeout = 10000)
     public void testApiEndpointHealthCheck() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -360,6 +370,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         }
     }
 
+    /** FlowTreeApiEndpoint POST /messages returns 400 when text field is missing. */
     @Test(timeout = 10000)
     public void testApiEndpointMissingText() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -394,6 +405,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         }
     }
 
+    /** FlowTreeApiEndpoint POST /submit returns 400 when prompt field is missing. */
     @Test(timeout = 10000)
     public void testApiEndpointSubmitMissingPrompt() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -428,6 +440,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         }
     }
 
+    /** FlowTreeApiEndpoint POST /submit returns 400 for unknown workstream id. */
     @Test(timeout = 10000)
     public void testApiEndpointSubmitUnknownWorkstream() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -458,6 +471,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         }
     }
 
+    /** FlowTreeApiEndpoint POST /submit returns 400 when no server is configured. */
     @Test(timeout = 10000)
     public void testApiEndpointSubmitNoServer() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -492,6 +506,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         }
     }
 
+    /** CodingAgentJob.Factory setWorkstreamUrl propagates to nextJob(). */
     @Test(timeout = 10000)
     public void testFactoryWorkstreamUrlConfiguration() {
         CodingAgentJob.Factory factory = new CodingAgentJob.Factory("Test prompt");
@@ -507,6 +522,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
 
     // --- Slash command tests ---
 
+    /** SlackListener /flowtree help returns command list. */
     @Test(timeout = 10000)
     public void testSlashCommandHelp() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -523,6 +539,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("/flowtree task"));
     }
 
+    /** SlackListener /flowtree unknown subcommand returns command list. */
     @Test(timeout = 10000)
     public void testSlashCommandUnknownSubcommand() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -535,6 +552,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("Flowtree Commands"));
     }
 
+    /** SlackListener /flowtree setup creates a new workstream with correct defaults. */
     @Test(timeout = 10000)
     public void testSlashCommandSetupCreatesWorkstream() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -559,6 +577,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals(800, ws.getMaxTurns());
     }
 
+    /** SlackListener /flowtree setup updates an existing workstream in place. */
     @Test(timeout = 10000)
     public void testSlashCommandSetupUpdatesExisting() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -586,6 +605,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("new-branch", ws.getDefaultBranch());
     }
 
+    /** SlackListener /flowtree setup returns usage when arguments are missing. */
     @Test(timeout = 10000)
     public void testSlashCommandSetupMissingArgs() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -603,6 +623,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("Both working directory (or repo URL) and branch are required"));
     }
 
+    /** SlackListener /flowtree info returns workstream details for registered channel. */
     @Test(timeout = 10000)
     public void testSlashCommandInfo() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -631,6 +652,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("ci@example.com"));
     }
 
+    /** SlackListener /flowtree info shows setup instructions when no workstream exists. */
     @Test(timeout = 10000)
     public void testSlashCommandInfoNoWorkstream() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -644,6 +666,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("/flowtree setup"));
     }
 
+    /** SlackListener /flowtree status returns agent status for registered workstream. */
     @Test(timeout = 10000)
     public void testSlashCommandStatus() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -663,6 +686,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("main"));
     }
 
+    /** SlackListener /flowtree config with no args shows all settings for a workstream. */
     @Test(timeout = 10000)
     public void testSlashCommandConfigShowAll() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -686,6 +710,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("develop"));
     }
 
+    /** SlackListener /flowtree config key shows single setting value. */
     @Test(timeout = 10000)
     public void testSlashCommandConfigShowSingle() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -702,6 +727,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("20.00"));
     }
 
+    /** SlackListener /flowtree config key value updates workstream settings. */
     @Test(timeout = 10000)
     public void testSlashCommandConfigUpdate() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -741,6 +767,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("Unknown setting"));
     }
 
+    /** SlackListener /flowtree config rejects non-numeric values for numeric fields. */
     @Test(timeout = 10000)
     public void testSlashCommandConfigInvalidNumber() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -754,6 +781,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("Invalid number"));
     }
 
+    /** SlackListener /flowtree jobs lists recent jobs or shows empty state. */
     @Test(timeout = 10000)
     public void testSlashCommandJobs() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -780,6 +808,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("Fix auth bug"));
     }
 
+    /** SlackListener /flowtree cancel currently returns not yet implemented. */
     @Test(timeout = 10000)
     public void testSlashCommandCancel() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -794,6 +823,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(response.get().contains("not yet implemented"));
     }
 
+    /** SlackListener /flowtree setup persists new workstream to YAML config file. */
     @Test(timeout = 10000)
     public void testSlashCommandSetupPersistence() throws IOException {
         // Create a temp YAML config file
@@ -842,6 +872,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("feature/new", newEntry.getDefaultBranch());
     }
 
+    /** SlackNotifier tracks and updates job lifecycle events per workstream. */
     @Test(timeout = 10000)
     public void testNotifierJobTracking() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -873,6 +904,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(notifier.getRecentJobs("unknown-ws").isEmpty());
     }
 
+    /** SlackNotifier findWorkstreamByBranch matches workstream by target branch. */
     @Test(timeout = 10000)
     public void testFindWorkstreamByBranch() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -906,6 +938,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertNull(notifier.findWorkstreamByBranch("feature/new-decoder-v2"));
     }
 
+    /** FlowTreeApiEndpoint resolves workstreamId from body.targetBranch before URL path. */
     @Test(timeout = 10000)
     public void testSubmitBranchToWorkstreamResolution() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -1007,6 +1040,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         }
     }
 
+    /** Slack app manifest includes slash_commands and /flowtree command. */
     @Test(timeout = 10000)
     public void testSlackManifestIncludesSlashCommand() throws IOException {
         // Load manifest from classpath (it's a resource in the same module)
@@ -1018,6 +1052,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue(content.contains("/flowtree"));
         assertTrue(content.contains("commands"));
     }
+    /** JsonFieldExtractor.extractLastJsonObject finds result line in Claude Code NDJSON output. */
     @Test(timeout = 10000)
     public void testExtractLastJsonObjectFindsResultLine() {
         // Simulates Claude Code NDJSON output: per-turn objects first, result last
@@ -1045,6 +1080,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("sess-final", sessionId);
     }
 
+    /** JsonFieldExtractor.extractLastJsonObject falls back to last line when no type marker. */
     @Test(timeout = 10000)
     public void testExtractLastJsonObjectFallsBackToLastLine() {
         // No "type":"result" marker -- should fall back to last JSON object
@@ -1056,12 +1092,14 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals(90000, JsonFieldExtractor.extractLong(result, "duration_ms"));
     }
 
+    /** JsonFieldExtractor.extractLastJsonObject returns null for null and empty input. */
     @Test(timeout = 10000)
     public void testExtractLastJsonObjectNullInput() {
         assertNull(JsonFieldExtractor.extractLastJsonObject(null, "result"));
         assertNull(JsonFieldExtractor.extractLastJsonObject("", "result"));
     }
 
+    /** JsonFieldExtractor.extractLastJsonObject with null type returns the last JSON object. */
     @Test(timeout = 10000)
     public void testExtractLastJsonObjectNullType() {
         // null type should return the very last JSON object
@@ -1408,6 +1446,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
     // Phase 1a: Multi-Tenant Config Schema Tests
     // -------------------------------------------------------------------------
 
+    /** WorkstreamConfig.WorkspaceEntry serializes and deserializes all Slack fields. */
     @Test(timeout = 10000)
     public void testWorkspaceEntryYamlRoundTrip() throws IOException {
         String yaml = "slackWorkspaces:\n" +
@@ -1435,6 +1474,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("U0123456789", entry.getChannelOwnerUserId());
     }
 
+    /** WorkstreamConfig parses multiple slackWorkspaces entries with githubOrgs and tokensFile. */
     @Test(timeout = 10000)
     public void testMultipleSlackWorkspacesYamlParsing() throws IOException {
         String yaml = "slackWorkspaces:\n" +
@@ -1466,6 +1506,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("/config/slack-tokens.json", ws2.getTokensFile());
     }
 
+    /** WorkstreamConfig backward compat: no slackWorkspaces key produces empty list. */
     @Test(timeout = 10000)
     public void testBackwardCompatNoSlackWorkspaces() throws IOException {
         String yaml = "githubOrgs:\n" +
@@ -1492,6 +1533,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertNull(config.getWorkstreams().get(0).getWorkspaceId());
     }
 
+    /** WorkstreamEntry with explicit slackWorkspaceId parses correctly; without it is null. */
     @Test(timeout = 10000)
     public void testWorkstreamEntryWithSlackWorkspaceId() throws IOException {
         String yaml = "slackWorkspaces:\n" +
@@ -1525,6 +1567,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertNull(workstreams.get(1).getWorkspaceId());
     }
 
+    /** SlackTokens.from(entry) extracts inline botToken and appToken. */
     @Test(timeout = 10000)
     public void testSlackTokensFromEntryInlineTokens() throws IOException {
         WorkstreamConfig.WorkspaceEntry entry = new WorkstreamConfig.WorkspaceEntry();
@@ -1538,6 +1581,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("xapp-inline-app", tokens.getAppToken());
     }
 
+    /** SlackTokens.from(entry) tokensFile takes priority over inline botToken. */
     @Test(timeout = 10000)
     public void testSlackTokensFromEntryTokensFile() throws IOException {
         File tempFile = File.createTempFile("workspace-tokens-test", ".json");
@@ -1557,6 +1601,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("xapp-from-file", tokens.getAppToken());
     }
 
+    /** WorkstreamConfig ignores unknown fields in YAML without throwing. */
     @Test(timeout = 10000)
     public void testWorkspaceEntryUnknownFieldsIgnored() throws IOException {
         String yaml = "slackWorkspaces:\n" +
@@ -1570,6 +1615,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("T777", config.getSlackWorkspaces().get(0).getId());
     }
 
+    /** WorkstreamConfig slackWorkspaceId preserved in addWorkstream and syncFromWorkstreams. */
     @Test(timeout = 10000)
     public void testWorkstreamSlackWorkspaceIdPreservedInAddAndSync() {
         WorkstreamConfig config = new WorkstreamConfig();
@@ -1592,16 +1638,19 @@ public class SlackIntegrationTest extends TestSuiteBase {
     // Phase 1c: Listener and Notifier Routing Tests
     // -------------------------------------------------------------------------
 
+    /** SlackListener.channelKey with null workspace returns bare channelId. */
     @Test(timeout = 10000)
     public void testChannelKeyNullWorkspaceReturnsBareChannelId() {
         assertEquals("C_ALPHA", SlackListener.channelKey(null, "C_ALPHA"));
     }
 
+    /** SlackListener.channelKey with workspace returns composite workspaceId:channelId. */
     @Test(timeout = 10000)
     public void testChannelKeyWithWorkspaceReturnsCompositeKey() {
         assertEquals("T111:C_ALPHA", SlackListener.channelKey("T111", "C_ALPHA"));
     }
 
+    /** SlackListener.channelKey same channel in different workspaces produces different keys. */
     @Test(timeout = 10000)
     public void testChannelKeyDifferentWorkspacesSameChannelProduceDifferentKeys() {
         String keyA = SlackListener.channelKey("T111", "C_SHARED");
@@ -1610,6 +1659,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
                 keyA.equals(keyB));
     }
 
+    /** Backward compat: getWorkstream(bareChannelId) still works with null workspaceId. */
     @Test(timeout = 10000)
     public void testBackwardCompatNullWorkspaceIdRouting() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -1625,6 +1675,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals("C_BACK", found.getChannelId());
     }
 
+    /** SlackListener workspace-aware registration and composite key lookup. */
     @Test(timeout = 10000)
     public void testWorkspaceAwareWorkstreamRegistration() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -1643,6 +1694,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue("Workspace-aware workstream should be registered", found);
     }
 
+    /** Same channelId in two workspaces routes to separate notifiers independently. */
     @Test(timeout = 10000)
     public void testSameChannelIdInTwoWorkspacesRoutedIndependently() {
         SlackNotifier notifierA = new SlackNotifier(null);
@@ -1679,6 +1731,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue("wsB (develop branch) must be registered", hasDevelop);
     }
 
+    /** SlackListener.handleMessage returns false for unknown channel with workspaceId. */
     @Test(timeout = 10000)
     public void testHandleMessageUnknownChannelReturnsFalseWithWorkspaceId() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -1688,6 +1741,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertFalse("Message to unknown channel must return false", handled);
     }
 
+    /** /flowtree setup stores slackWorkspaceId on newly created workstream. */
     @Test(timeout = 10000)
     public void testSlashCommandSetupSetsSlackWorkspaceIdOnNewWorkstream() throws IOException {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -1706,6 +1760,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertTrue("Setup must store slackWorkspaceId on new workstream", foundWithWorkspace);
     }
 
+    /** /flowtree active filters workstreams by workspace context. */
     @Test(timeout = 10000)
     public void testSlashCommandActiveFiltersWorkstreamsByWorkspace() throws IOException {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -1738,6 +1793,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
                 responses.get(0).contains("not available"));
     }
 
+    /** SlackListener.setNotifiersByWorkspace routes workstreams to workspace-specific notifiers. */
     @Test(timeout = 10000)
     public void testSetNotifiersByWorkspaceIsUsedForNotifierResolution() {
         SlackNotifier primaryNotifier = new SlackNotifier(null);

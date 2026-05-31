@@ -58,14 +58,19 @@ import static org.junit.Assume.assumeTrue;
  */
 public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 
+	/** Path to the audio library directory. */
 	private static final String LIBRARY_PATH = "../../ringsdesktop/Library";
+
+	/** Sample rate from OutputLine in samples per second. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
-	// 2 seconds = 1 measure at 120 BPM - enough to verify audio content
-	// (Frame-by-frame processing is slow, so we keep duration short for testing)
+
+	/** Duration of test audio in seconds (2 seconds = 1 measure at 120 BPM). */
 	private static final double DURATION_SECONDS = 2.0;
+
+	/** Buffer size for real-time rendering in frames. */
 	private static final int BUFFER_SIZE = 1024;
 
-	// Source samples used for comparison
+	/** Source samples used for comparison testing. */
 	private static final String[] SOURCE_SAMPLES = {
 		"Snare Perc DD.wav",
 		"GT_HAT_31.wav",
@@ -336,6 +341,9 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 	/**
 	 * Creates a properly configured test scene with programmatic audio choices.
 	 * This avoids dependency on external pattern-factory.json with invalid paths.
+	 *
+	 * @param libraryDir the library directory containing audio samples
+	 * @return configured AudioScene
 	 */
 	private AudioScene<?> createTestScene(File libraryDir) {
 		// Create scene with 2 channels and 2 delay layers
@@ -391,6 +399,8 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 
 	/**
 	 * Generates spectrograms for source samples used in the test.
+	 *
+	 * @param libraryDir the library directory
 	 */
 	private void generateSourceSampleSpectrograms(File libraryDir) {
 		log("=== Generating Source Sample Spectrograms ===");
@@ -421,6 +431,9 @@ public class AudioSceneRealTimeTest extends AudioSceneTestBase {
 
 	/**
 	 * Verifies that an audio file contains actual signal (not silence).
+	 *
+	 * @param filePath path to the audio file
+	 * @param description description for assertion messages
 	 */
 	private void verifyAudioContent(String filePath, String description) {
 		try {

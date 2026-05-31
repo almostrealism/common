@@ -48,8 +48,13 @@ import static org.junit.Assert.*;
  */
 public class RealTimeRenderingComparisonTest extends AudioSceneTestBase {
 
+	/** Sample rate in samples per second. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
+
+	/** Duration of test audio in seconds. */
 	private static final double DURATION_SECONDS = 4.0;
+
+	/** Total frame count for test duration. */
 	private static final int TOTAL_FRAMES = (int) (SAMPLE_RATE * DURATION_SECONDS);
 
 	/**

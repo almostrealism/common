@@ -530,6 +530,9 @@ public class SphereTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests camera intersection kernel with sphere.
+	 */
 	// @Test(timeout = 10000)
 	public void cameraIntersectionKernel() {
 		int w = 100;

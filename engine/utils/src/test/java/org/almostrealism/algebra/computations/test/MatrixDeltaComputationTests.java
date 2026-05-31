@@ -308,6 +308,15 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		matmal("matmulLarge2", 392, 10, true);
 	}
 
+	/**
+	 * Helper method to run matmul profiling tests with given parameters.
+	 *
+	 * @param name Test name for profiling
+	 * @param size Matrix size
+	 * @param nodes Number of nodes
+	 * @param dIn Whether to use delta input
+	 * @throws IOException If profiling fails
+	 */
 	public void matmal(String name, int size, int nodes, boolean dIn) throws IOException {
 		OperationProfileNode profile = new OperationProfileNode( name);
 
@@ -377,6 +386,11 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		matmulEnumerateProduct(true);
 	}
 
+	/**
+	 * Tests matmul enumerate product gradient.
+	 *
+	 * @param optimize Whether to use optimized computation
+	 */
 	public void matmulEnumerateProduct(boolean optimize) {
 		int count = 1;
 		int dim = 3;
@@ -488,6 +502,14 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		denseWeights("denseWeightsLarge", 7688, 10);
 	}
 
+	/**
+	 * Helper method to run dense weights gradient tests with given parameters.
+	 *
+	 * @param name Test name for profiling
+	 * @param size Input size
+	 * @param nodes Number of nodes
+	 * @throws IOException If profiling fails
+	 */
 	public void denseWeights(String name, int size, int nodes) throws IOException {
 		PackedCollection v = new PackedCollection(shape(size)).fill(Math::random);
 		PackedCollection g = new PackedCollection(shape(nodes)).fill(Math::random);

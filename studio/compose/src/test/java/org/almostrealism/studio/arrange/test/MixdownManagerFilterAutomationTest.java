@@ -191,12 +191,20 @@ public class MixdownManagerFilterAutomationTest extends TestSuiteBase
 	/**
 	 * Configuration knobs for {@link #runMixdown(Options)}. Public so all
 	 * experiment toggles are visible at the call site.
+	 *
+	 * <p>Fields are package-private for visibility; all are controlled via
+	 * the {@link Options} constructor and mutators.</p>
 	 */
 	private static class Options {
+		/** Name identifier for this test configuration. */
 		final String name;
+		/** Whether to enable the main filter up. */
 		boolean enableFilterUp = true;
+		/** Whether to zero out the genome. */
 		boolean zeroGenome = true;
+		/** Whether to save profiling data. */
 		boolean saveProfile = false;
+		/** Number of frames to pre-advance the clock. */
 		long preAdvanceClockFrames = 0;
 
 		Options(String name) { this.name = name; }
@@ -221,6 +229,13 @@ public class MixdownManagerFilterAutomationTest extends TestSuiteBase
 		return runMixdown(opts);
 	}
 
+	/**
+	 * Runs the mixdown with the given options.
+	 *
+	 * @param opts the options for this run
+	 * @return the RMS value of the output
+	 * @throws IOException if file operations fail
+	 */
 	private double runMixdown(Options opts) throws IOException {
 		String name = opts.name;
 

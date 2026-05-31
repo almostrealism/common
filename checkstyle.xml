@@ -42,6 +42,14 @@
         <property name="fileNamePattern" value="[/\\]generated[/\\]"/>
     </module>
 
+    <!-- Exempt test sources from all checks, consistent with the documented
+         intent in the checkstyle comments that "test sources exempt" applies
+         to MissingJavadocType, MissingJavadocMethod, and JavadocVariable.
+         This filter ensures test files under src/test/java are not checked. -->
+    <module name="BeforeExecutionExclusionFileFilter">
+        <property name="fileNamePattern" value="[/\\]test[/\\].*\.java$"/>
+    </module>
+
     <!-- Cap Java source files at 1600 lines.  Files larger than this are a
          sign that a class is doing too much and should be split into focused
          collaborators.  The limit was lowered from 1800 to 1600 to reduce
@@ -78,55 +86,6 @@
     <module name="SuppressionSingleFilter">
         <property name="id" value="DirectSystemOut"/>
         <property name="files" value="Console\.java"/>
-    </module>
-
-    <!-- Test sources are exempt from all checkstyle rules so that existing test
-         files don't require package-info.java or per-method javadoc, and
-         don't trigger log prefix or other style rules. FileLength and all
-         other Checker-level rules still apply to both main and test sources.
-         This exemption is intentionally broad: enabling includeTestSourceDirectory
-         was for FileLength enforcement only; other rules would require significant
-         migration work across the test corpus. -->
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="JavadocPackage"/>
-        <property name="files" value=".*[/\\]test[/\\]"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="MissingJavadocType"/>
-        <property name="files" value=".*[/\\]test[/\\]"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="MissingJavadocMethod"/>
-        <property name="files" value=".*[/\\]test[/\\]"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="JavadocVariable"/>
-        <property name="files" value=".*[/\\]test[/\\]"/>
-    </module>
-
-    <!-- Exempt test sources from log prefix and DirectSystemOut rules.
-         These use id rather than checks because the checks property pattern
-         matching doesn't work correctly for RegexpSinglelineJava-based checks. -->
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="BracketLabelInLog"/>
-        <property name="files" value=".*[/\\]test[/\\]"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="CapsLabelInLog"/>
-        <property name="files" value=".*[/\\]test[/\\]"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="DirectSystemOut"/>
-        <property name="files" value=".*[/\\]test[/\\]"/>
-    </module>
-
-    <!-- Exempt test sources from FileLength check.
-         Test files are often long due to test infrastructure and are validated
-         through other means. This allows includeTestSourceDirectory=true for
-         FileLength enforcement on MAIN sources without failing on test files. -->
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="FileLength"/>
-        <property name="files" value=".*[/\\]test[/\\]"/>
     </module>
 
     <!-- TODO(review): Verify each file below is actually in src/main/java (not src/test/java).

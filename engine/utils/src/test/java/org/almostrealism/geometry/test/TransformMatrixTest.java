@@ -417,6 +417,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Inverse transform hit test passed!");
 	}
 
+	/**
+	 * Tests how Sphere.calculateTransform() creates the transform matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testSphereTransformMatrixCreation() {
 		log("How Sphere.calculateTransform() creates the matrix");
@@ -448,6 +451,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		assertTrue("M[3,3] should be 1.0", Math.abs(matData[15] - 1.0) < 0.001);
 	}
 
+	/**
+	 * Tests the inverse transform matrix for a scaled sphere.
+	 */
 	@Test(timeout = 10000)
 	public void testSphereInverseTransformMatrix() {
 		log("Inverse transform matrix for scaled sphere");
@@ -479,6 +485,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		assertTrue("M[3,3] should be 1.0", Math.abs(invData[15] - 1.0) < 0.001);
 	}
 
+	/**
+	 * Tests ray transformation by an inverse scale matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testRayTransformationByInverseScale() {
 		log("Ray transformation by inverse scale matrix");
@@ -525,6 +534,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		assertTrue("Direction length should be 0.5", Math.abs(dirLength - 0.5) < 0.001);
 	}
 
+	/**
+	 * Performs manual intersection calculation step-by-step to verify math.
+	 */
 	@Test(timeout = 10000)
 	public void testManualIntersectionCalculation() {
 		log("Manual intersection calculation step-by-step");
@@ -1135,16 +1147,25 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Batch element-wise test passed!");
 	}
 
+	/**
+	 * Tests the adjoint matrix computation.
+	 */
 	@Test(timeout = 10000)
 	public void adjoint() {
 		new TransformMatrix().adjoint();
 	}
 
+	/**
+	 * Tests the determinant computation for a transform matrix.
+	 */
 	@Test(timeout = 10000)
 	public void determinant() {
 		new TransformMatrix().determinant();
 	}
 
+	/**
+	 * Tests behavior when a scale transform has zero in one dimension.
+	 */
 	@Test(timeout = 10000)
 	public void testZeroScaleDetection() {
 		log("Testing edge case: zero scale transform...");

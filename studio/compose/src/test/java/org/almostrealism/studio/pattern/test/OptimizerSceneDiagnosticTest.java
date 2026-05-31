@@ -87,12 +87,24 @@ import java.util.List;
  */
 public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 
+	/**
+	 * Returns the pattern factory file, checking app directory first.
+	 *
+	 * @return the pattern factory file
+	 */
 	private static File patternFactoryFile() {
 		File app = new File(SystemUtils.getLocalDestination("pattern-factory.json"));
 		if (app.exists()) return app;
 		return new File("pattern-factory.json");
 	}
 
+	/**
+	 * Reads NoteAudioChoiceList from a pattern factory file.
+	 *
+	 * @param patternFactory the file to read
+	 * @return the deserialized choice list
+	 * @throws IOException if reading fails
+	 */
 	private NoteAudioChoiceList readChoices(File patternFactory) throws IOException {
 		try (InputStream in = new FileInputStream(patternFactory)) {
 			return AudioSceneLoader.defaultMapper().readValue(
@@ -191,8 +203,8 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 			totalUnloadable += choiceUnloadable;
 		}
 
-		log("TOTAL: " + totalProviders + " providers, " + totalLoadable
-				+ " loadable, " + totalUnloadable + " unloadable");
+		log("Providers: " + totalProviders + ", loadable: " + totalLoadable
+				+ ", unloadable: " + totalUnloadable);
 
 		if (totalProviders == 0) {
 			throw new AssertionError(
@@ -749,10 +761,31 @@ public class OptimizerSceneDiagnosticTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Functional interface for IO operations.
+	 */
 	private interface IOAction {
+		/**
+		 * Runs the IO action.
+		 * @throws IOException if the action fails
+		 */
 		void run() throws IOException;
 	}
 
+	/**
+	 * Executes a test body with specified effect flags.
+	 *
+	 * @param mainFilterUp enable main filter up
+	 * @param efxFilters enable efx filters
+	 * @param efx enable efx
+	 * @param reverb enable reverb
+	 * @param transmission enable transmission
+	 * @param wetInAdjust enable wet in adjustment
+	 * @param masterFilterDown enable master filter down
+	 * @param automation enable automation manager
+	 * @param body the test body to execute
+	 * @throws IOException if the body throws
+	 */
 	private void withEffects(boolean mainFilterUp, boolean efxFilters, boolean efx,
 							 boolean reverb, boolean transmission, boolean wetInAdjust,
 							 boolean masterFilterDown, boolean automation,

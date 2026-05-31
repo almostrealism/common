@@ -25,11 +25,23 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for {@link BufferedAudioPlayer} playback functionality.
+ */
 public class BufferedAudioPlayerTest extends TestSuiteBase implements AudioTestFeatures {
+
+	/** Audio data received from the player. */
 	private PackedCollection data;
+
+	/** Accumulated total of absolute sample values. */
 	private double total = 0.0;
+
+	/** Number of samples received from the player. */
 	private int count = 0;
 
+	/**
+	 * Test that buffered audio player can play audio data.
+	 */
 	@Test(timeout = 60_000)
 	public void play() throws InterruptedException {
 		int sampleRate = OutputLine.sampleRate;

@@ -439,6 +439,10 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 
 	/**
 	 * Applies softmax to an array in-place.
+	 *
+	 * @param x Array to transform
+	 * @param offset Starting offset in array
+	 * @param size Number of elements to process
 	 */
 	protected static void softmax(double[] x, int offset, int size) {
 		double max = x[offset];
@@ -471,6 +475,10 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 
 	/**
 	 * Compares computed softmax output against expected values.
+	 *
+	 * @param op Optional operation to run before comparison
+	 * @param dest Destination collection with computed values
+	 * @param values Expected values
 	 */
 	protected void compare(Supplier<Runnable> op, PackedCollection dest, double[] values) {
 		if (op != null) {
@@ -485,6 +493,12 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		}
 	}
 
+	/**
+	 * Creates a copy of the input collection.
+	 *
+	 * @param input Collection to copy
+	 * @return Copy of the input collection
+	 */
 	private PackedCollection copy(PackedCollection input) {
 		PackedCollection output = new PackedCollection(input.getShape());
 		output.fill(pos -> input.valueAt(pos));

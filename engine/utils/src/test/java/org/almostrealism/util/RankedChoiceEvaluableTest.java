@@ -32,7 +32,13 @@ import org.junit.Test;
 
 import java.util.stream.IntStream;
 
+/**
+ * Tests for RankedChoiceEvaluable.
+ */
 public class RankedChoiceEvaluableTest extends TestSuiteBase {
+	/**
+	 * Tests the highest rank operation.
+	 */
 	@Test(timeout = 10000)
 	@TestProperties(knownIssue = true)
 	public void highestRank() {
@@ -48,6 +54,9 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests the highest rank kernel operation.
+	 */
 	@Test(timeout = 10000)
 	public void highestRankKernel() {
 		PackedCollection in = new PackedCollection(new TraversalPolicy(4, 1));
@@ -67,6 +76,9 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 		Assert.assertEquals(1.0, out.get(0).toDouble(0), Math.pow(10, -10));
 	}
 
+	/**
+	 * Returns a RankedChoiceProducer with three ranked choices.
+	 */
 	protected RankedChoiceEvaluableForVector getRankedChoiceProducer1() {
 		ProducerWithRankAdapter<PackedCollection> v1 = new ProducerWithRankAdapter<>(vector(1, 2, 3), c(2.0));
 		ProducerWithRankAdapter<PackedCollection> v2 = new ProducerWithRankAdapter<>(vector(4, 5, 6), c(1.0));
@@ -79,6 +91,9 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 		return rcp;
 	}
 
+	/**
+	 * Returns a RankedChoiceProducer with two ranked choices.
+	 */
 	protected RankedChoiceEvaluableForVector getRankedChoiceProducer2() {
 		ProducerWithRankAdapter<PackedCollection> v1 = new ProducerWithRankAdapter<>(vector(0.7034, 0.7034, 0.7034), c(0.9002));
 		ProducerWithRankAdapter<PackedCollection> v2 = new ProducerWithRankAdapter<>(vector(0.0, 0.0, 0.0), c(-17.274));
@@ -89,6 +104,9 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 		return rcp;
 	}
 
+	/**
+	 * Tests ranked choice selection with first producer.
+	 */
 	// TODO  @Test(timeout = 10000)
 	public void rankedChoice1() {
 		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer1();
@@ -99,6 +117,9 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 		assert result.equals(new Vector(4, 5, 6));
 	}
 
+	/**
+	 * Tests ranked choice selection with second producer.
+	 */
 	// TODO  @Test(timeout = 10000)
 	public void rankedChoice2() {
 		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer2();
@@ -109,6 +130,9 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 		assert result.equals(new Vector(0.7034, 0.7034, 0.7034));
 	}
 
+	/**
+	 * Tests compact ranked choice selection with first producer.
+	 */
 	// TODO  @Test(timeout = 10000)
 	public void rankedChoiceCompact1() {
 		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer1();

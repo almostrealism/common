@@ -272,6 +272,12 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 		sineDeltaPerformance("sineDeltaLarge", 256);
 	}
 
+	/**
+	 * Helper method to test sine delta performance at specified dimension.
+	 * @param name the test name for profiling
+	 * @param dim the dimension for the test
+	 * @throws IOException if saving the profile fails
+	 */
 	private void sineDeltaPerformance(String name, int dim) throws IOException {
 		log("Testing sine gradient performance at dim=" + dim);
 
@@ -318,6 +324,12 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 		cosineDeltaPerformance("cosineDeltaMedium", 64);
 	}
 
+	/**
+	 * Helper method to test cosine delta performance at specified dimension.
+	 * @param name the test name for profiling
+	 * @param dim the dimension for the test
+	 * @throws IOException if saving the profile fails
+	 */
 	private void cosineDeltaPerformance(String name, int dim) throws IOException {
 		log("Testing cosine gradient performance at dim=" + dim);
 
@@ -505,6 +517,14 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 		fourierFeaturesPerformance("fourierLarge", 1, 1, 256);
 	}
 
+	/**
+	 * Helper method to test Fourier features performance at specified scale.
+	 * @param name the test name for profiling
+	 * @param batchSize the batch size
+	 * @param inFeatures number of input features
+	 * @param halfOut half the output feature count (cos and sin each produce halfOut)
+	 * @throws IOException if saving the profile fails
+	 */
 	private void fourierFeaturesPerformance(String name, int batchSize, int inFeatures, int halfOut) throws IOException {
 		int outFeatures = halfOut * 2;
 
@@ -597,6 +617,14 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 		fourierFeaturesWeightGradient("fourierWeightLarge", 1, 1, 128);
 	}
 
+	/**
+	 * Helper method to test Fourier features weight gradient at specified scale.
+	 * @param name the test name for profiling
+	 * @param batchSize the batch size
+	 * @param inFeatures number of input features
+	 * @param halfOut half the output feature count
+	 * @throws IOException if saving the profile fails
+	 */
 	private void fourierFeaturesWeightGradient(String name, int batchSize, int inFeatures, int halfOut) throws IOException {
 		int outFeatures = halfOut * 2;
 

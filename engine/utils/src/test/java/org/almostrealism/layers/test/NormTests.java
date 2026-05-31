@@ -61,6 +61,8 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 
 	/**
 	 * Returns a random value or a fixed value based on enableRandom flag.
+	 *
+	 * @return Random or fixed double value
 	 */
 	private static double random() {
 		if (enableRandom) {
@@ -678,6 +680,17 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 		normBackwardsTrainable(name, c, groups, validate, failFast, randomInput(c));
 	}
 
+	/**
+	 * Helper for trainable backwards testing with custom input supplier.
+	 *
+	 * @param name Test name for profiling
+	 * @param c Channel size
+	 * @param groups Number of groups
+	 * @param validate Whether to validate results
+	 * @param failFast Whether to fail immediately on validation error
+	 * @param inputSource Supplier for input collections
+	 * @throws IOException If profiling fails
+	 */
 	protected void normBackwardsTrainable(String name, int c, int groups,
 										  boolean validate, boolean failFast,
 										  Supplier<PackedCollection> inputSource) throws IOException {

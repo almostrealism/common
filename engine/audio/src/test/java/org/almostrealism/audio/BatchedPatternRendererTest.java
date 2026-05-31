@@ -29,14 +29,16 @@ import org.junit.Test;
 import java.util.Random;
 
 /**
- * Verifies that {@link BatchedPatternRenderer#buildBatchedChain} produces output
- * acoustically equivalent to sequential per-note resample → lowPass filter →
- * volume envelope → accumulate evaluation on the same workload.
+ * Verifies that {@link org.almostrealism.audio.BatchedPatternRenderer#buildBatchedChain} produces output
+ * acoustically equivalent to sequential per-note resample {@literal ->} lowPass filter {@literal ->}
+ * volume envelope {@literal ->} accumulate evaluation on the same workload.
  *
  * <p>Both paths use identical pre-materialized per-row filter cutoff envelopes and
  * volume envelopes, so any difference is due to floating-point addition-order
  * variation in the batched reduction. The RMS tolerance ({@code 1e-4}) is tight
  * enough to catch a real regression but tolerant of such precision differences.</p>
+ *
+ * @see org.almostrealism.audio.BatchedPatternRenderer
  */
 public class BatchedPatternRendererTest extends TestSuiteBase implements TemporalFeatures {
 

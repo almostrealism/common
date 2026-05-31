@@ -135,6 +135,9 @@ public class KernelOperationTests extends TestSuiteBase implements KernelAsserti
 		assertEquals(expected, x.toDouble(0));
 	}
 
+	/**
+	 * Tests kernel list operations.
+	 */
 	// @Test(timeout = 30000)
 	public void kernelList() {
 		PackedCollection timeline = new PackedCollection(shape(10), 1);

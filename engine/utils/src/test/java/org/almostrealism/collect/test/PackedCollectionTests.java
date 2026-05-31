@@ -20,6 +20,9 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for PackedCollection and its operations like transpose and clear.
+ */
 public class PackedCollectionTests extends TestSuiteBase {
 
 	/**

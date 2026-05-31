@@ -26,6 +26,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for SubsetTraversalExpression and subset traversal operations.
+ */
 public class SubsetTraversalTests extends TestSuiteBase {
 
 	/**

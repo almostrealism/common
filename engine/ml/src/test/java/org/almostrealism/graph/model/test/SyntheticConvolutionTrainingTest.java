@@ -61,9 +61,8 @@ public class SyntheticConvolutionTrainingTest extends TestSuiteBase implements M
 
 	/**
 	 * Generates a synthetic dataset of circles and squares for binary classification.
-	 * Circles are class 0, squares are class 1.
 	 *
-	 * @param batchSize batch size (usually 1 for this test)
+	 * @param batchSize batch size
 	 * @param rows image height
 	 * @param cols image width
 	 * @param outShape output shape for classification targets
@@ -122,6 +121,8 @@ public class SyntheticConvolutionTrainingTest extends TestSuiteBase implements M
 	 * <p>Validates basic 2D convolution training for binary classification.</p>
 	 *
 	 * <p>Architecture: Input [1, 16, 16] - Conv2d [1-4, 3x3] - Pool2d [2x2] - Flatten - Dense - Output [2]</p>
+	 *
+	 * @throws FileNotFoundException if model output file cannot be created
 	 */
 	@Test(timeout = 12 * 60000)
 	@TestDepth(2)

@@ -31,7 +31,6 @@ import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
@@ -47,10 +46,13 @@ import java.util.Arrays;
  */
 public class MultiTokenGenerationTest extends TestSuiteBase implements AttentionFeatures, ConsoleFeatures {
 
+	/** Directory containing exported model weights. */
 	private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
+
+	/** Directory containing PyTorch reference outputs. */
 	private static final String REFERENCE_DIR = "/workspace/project/common/ml/qwen3_reference";
 
-	// Position collection - shared between model building and test loop
+	/** Position collection shared between model building and test loop. */
 	private PackedCollection position;
 
 	/**
@@ -114,7 +116,7 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 			log("--- Step " + step + ": Input token " + currentToken + " ---");
 
 			// CRITICAL: Update position before forward pass
-			// This enables proper RoPE rotation, causal masking, and KV cache indexing
+			// Maintains proper RoPE rotation, causal masking, and KV cache indexing
 			position.setMem(0, (double) step);
 
 			// Get embedding for current token
@@ -211,14 +213,15 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 	}
 
 	/**
-	 * Build transformer without vocab projection (same as SimpleTransformerValidationTest).
+	 * Builds transformer without vocab projection.
+	 *
+	 * @param config the model configuration
+	 * @param stateDict the state dictionary containing weights
+	 * @return the built transformer model
 	 */
 	private Model buildTransformerWithoutVocabProjection(Qwen3Config config,
 														 StateDictionary stateDict) {
 		Model transformer = new Model(shape(1, config.dim));
-
-		// Use the instance field (initialized in test method)
-		// Position is updated in the test loop before each forward pass
 
 		PackedCollection rmsFinalWeight = stateDict.get("model.norm.weight");
 		PackedCollection freqCis = computeRopeFreqs(config);
@@ -262,6 +265,12 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 		return transformer;
 	}
 
+	/**
+	 * Computes RoPE frequencies for the model configuration.
+	 *
+	 * @param config the model configuration
+	 * @return the frequency tensor
+	 */
 	private PackedCollection computeRopeFreqs(Qwen3Config config) {
 		int headSize = config.headSize;
 		int seqLen = 10;
@@ -282,6 +291,14 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 		return freqCis;
 	}
 
+	/**
+	 * Computes logits by manually multiplying hidden state with embedding weights.
+	 *
+	 * @param hidden the hidden state output
+	 * @param weights the embedding weights
+	 * @param config the model configuration
+	 * @return the computed logits array
+	 */
 	private double[] computeLogitsManually(PackedCollection hidden,
 										   PackedCollection weights,
 										   Qwen3Config config) {
@@ -298,6 +315,13 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 		return logits;
 	}
 
+	/**
+	 * Finds the top-k largest values in an array.
+	 *
+	 * @param values the input array
+	 * @param k the number of top values to find
+	 * @return array of indices of top-k values
+	 */
 	private int[] findTopK(double[] values, int k) {
 		int[] indices = new int[k];
 		double[] topValues = new double[k];
@@ -326,6 +350,13 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 		return indices;
 	}
 
+	/**
+	 * Finds the top-k largest values in a float array.
+	 *
+	 * @param values the input float array
+	 * @param k the number of top values to find
+	 * @return array of indices of top-k values
+	 */
 	private int[] findTopKFromFloat(float[] values, int k) {
 		int[] indices = new int[k];
 		float[] topValues = new float[k];
@@ -354,6 +385,12 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 		return indices;
 	}
 
+	/**
+	 * Loads reference logits from a binary file.
+	 *
+	 * @param filename the name of the reference file
+	 * @return array of float values, or null if file cannot be loaded
+	 */
 	private float[] loadReferenceLogits(String filename) {
 		String filepath = REFERENCE_DIR + "/" + filename;
 		try (FileChannel channel = FileChannel.open(Paths.get(filepath), StandardOpenOption.READ)) {

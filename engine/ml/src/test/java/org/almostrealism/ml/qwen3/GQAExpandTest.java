@@ -16,6 +16,12 @@ import org.junit.Test;
  */
 public class GQAExpandTest extends TestSuiteBase implements AttentionFeatures, ConsoleFeatures {
 
+	/**
+	 * Test GQA expansion with Qwen2.5-0.5B configuration.
+	 *
+	 * <p>Verifies that when there are more query heads than key/value heads,
+	 * each KV head is correctly expanded/duplicated across query heads.</p>
+	 */
 	@Test(timeout = 30000)
 	public void testGQAExpand() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
@@ -100,6 +106,13 @@ public class GQAExpandTest extends TestSuiteBase implements AttentionFeatures, C
 		}
 	}
 
+	/**
+	 * Formats the first n elements of a collection as a string.
+	 *
+	 * @param c the collection to format
+	 * @param n the number of elements to include
+	 * @return formatted string representation
+	 */
 	private String formatFirst(PackedCollection c, int n) {
 		StringBuilder sb = new StringBuilder("[");
 		for (int i = 0; i < Math.min(n, c.getShape().getTotalSize()); i++) {
@@ -110,6 +123,14 @@ public class GQAExpandTest extends TestSuiteBase implements AttentionFeatures, C
 		return sb.toString();
 	}
 
+	/**
+	 * Formats a range of elements from a collection as a string.
+	 *
+	 * @param c the collection to format
+	 * @param start the starting index
+	 * @param n the number of elements to include
+	 * @return formatted string representation
+	 */
 	private String formatRange(PackedCollection c, int start, int n) {
 		StringBuilder sb = new StringBuilder("[");
 		for (int i = start; i < Math.min(start + n, c.getShape().getTotalSize()); i++) {

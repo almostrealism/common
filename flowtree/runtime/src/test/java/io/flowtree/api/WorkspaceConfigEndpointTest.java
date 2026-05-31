@@ -67,6 +67,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
     /** Listening port assigned by NanoHTTPD. */
     private int port;
 
+    /** Sets up the workspace config endpoint with a temporary YAML file. */
     @Before
     public void setUp() throws Exception {
         config = new WorkstreamConfig();
@@ -93,12 +94,14 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         port = endpoint.getListeningPort();
     }
 
+    /** Stops the endpoint and deletes the temporary config file. */
     @After
     public void tearDown() {
         if (endpoint != null) endpoint.stop();
         if (configFile != null && configFile.exists()) configFile.delete();
     }
 
+    /** POST /api/workspaces/{id}/config updates name and defaultChannel. */
     @Test(timeout = 10000)
     public void testUpdateNameAndDefaultChannel() throws Exception {
         JsonNode response = postJson("/api/workspaces/" + WORKSPACE_ID + "/config",
@@ -108,6 +111,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         assertEquals("C9999", workspaceEntry.getDefaultChannel());
     }
 
+    /** POST /api/workspaces/{id}/config rejects the legacy 'runners' field with HTTP 400. */
     @Test(timeout = 10000)
     public void testRejectsLegacyRunnersField() throws Exception {
         HttpURLConnection conn = openPost("/api/workspaces/" + WORKSPACE_ID + "/config",
@@ -120,6 +124,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
                         && response.get("error").asText().contains("phaseConfigs"));
     }
 
+    /** POST /api/workspaces/{id}/config rejects the legacy 'defaultRunner' field with HTTP 400. */
     @Test(timeout = 10000)
     public void testRejectsLegacyDefaultRunnerField() throws Exception {
         HttpURLConnection conn = openPost("/api/workspaces/" + WORKSPACE_ID + "/config",
@@ -131,6 +136,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
                 response.get("error").asText().contains("defaultRunner"));
     }
 
+    /** POST /api/workspaces/{id}/config for unknown workspace returns HTTP 404. */
     @Test(timeout = 10000)
     public void testUpdateUnknownWorkspaceReturns404() throws Exception {
         HttpURLConnection conn = openPost(
@@ -142,6 +148,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         assertTrue(response.get("error").asText().contains("Unknown workspace"));
     }
 
+    /** POST /api/workspaces/{id}/config rejects the legacy 'model' and 'effort' fields with HTTP 400. */
     @Test(timeout = 10000)
     public void testRejectsLegacyModelAndEffortFields() throws Exception {
         for (String field : new String[] {"model", "effort"}) {
@@ -157,6 +164,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         }
     }
 
+    /** POST /api/workspaces/{id}/config rejects an unknown runner name with HTTP 400. */
     @Test(timeout = 10000)
     public void testUpdateRejectsUnknownRunner() throws Exception {
         HttpURLConnection conn = openPost(
@@ -168,6 +176,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         assertTrue(response.get("error").asText().contains("Unknown runner"));
     }
 
+    /** POST /api/workspaces/{id}/config with empty body leaves entry fields unchanged. */
     @Test(timeout = 10000)
     public void testEmptyBodyLeavesEntryUnchanged() throws Exception {
         String initialName = workspaceEntry.getName();
@@ -178,6 +187,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         assertEquals(initialChannel, workspaceEntry.getDefaultChannel());
     }
 
+    /** POST /api/workspaces/{id}/config persists to disk and survives YAML reload. */
     @Test(timeout = 10000)
     public void testUpdatePersistsToDiskAndSurvivesReload() throws Exception {
         JsonNode response = postJson("/api/workspaces/" + WORKSPACE_ID + "/config",
@@ -199,6 +209,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         assertEquals("opencode", reloadedEntry.getPhaseConfigs().get("primary").runner());
     }
 
+    /** POST /api/workspaces/{id}/config ignores credential fields botToken, tokensFile, appToken. */
     @Test(timeout = 10000)
     public void testCredentialFieldsAreNotSettable() throws Exception {
         workspaceEntry.setBotToken("xoxb-original");
@@ -214,6 +225,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         assertNull(workspaceEntry.getAppToken());
     }
 
+    /** POST /api/workspaces/{id}/config response echoes updated name and phase config. */
     @Test(timeout = 10000)
     public void testResponseEchoesUpdatedFields() throws Exception {
         JsonNode response = postJson("/api/workspaces/" + WORKSPACE_ID + "/config",
@@ -225,6 +237,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         assertEquals("opencode", response.get("phaseConfigs").get("primary").get("runner").asText());
     }
 
+    /** POST /api/workspaces/{id}/config with newId renames the workspace and updates workstreams. */
     @Test(timeout = 10000)
     public void testRenameWorkspaceViaNewId() throws Exception {
         // Seed a workstream that references the workspace by its current ID.
@@ -253,6 +266,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
                 config.findWorkspace("almostrealism").getSlackTeamId());
     }
 
+    /** POST /api/workspaces/{id}/config with empty slackTeamId clears the Slack binding. */
     @Test(timeout = 10000)
     public void testSlackTeamIdEmptyClearsConnection() throws Exception {
         assertEquals(WORKSPACE_ID, workspaceEntry.getSlackTeamId());
@@ -262,6 +276,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         assertNull(workspaceEntry.getSlackTeamId());
     }
 
+    /** POST /api/workspaces/{id}/config with non-empty slackTeamId rebinds to the new team. */
     @Test(timeout = 10000)
     public void testSlackTeamIdNonEmptyRebinds() throws Exception {
         JsonNode response = postJson("/api/workspaces/" + WORKSPACE_ID + "/config",
@@ -270,6 +285,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         assertEquals("TZZZZ", workspaceEntry.getSlackTeamId());
     }
 
+    /** POST /api/workspaces/{id}/config defaultPhaseConfig and phaseConfigs persist and survive reload. */
     @Test(timeout = 10000)
     public void testPhaseConfigsPersistToDiskAndSurviveReload() throws Exception {
         // Exercise the full round-trip: POST defaultPhaseConfig + phaseConfigs,
@@ -310,6 +326,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
                 reloadedEntry.getPhaseConfigs().get("review").model());
     }
 
+    /** POST /api/workspaces/{id}/config response echoes defaultPhaseConfig and phaseConfigs. */
     @Test(timeout = 10000)
     public void testResponseEchoesPhaseConfigFields() throws Exception {
         JsonNode response = postJson("/api/workspaces/" + WORKSPACE_ID + "/config",
@@ -331,6 +348,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
                 response.get("phaseConfigs").get("review").get("model").asText());
     }
 
+    /** POST /api/workspaces/{id}/config accepts a model-only phaseConfig override at workspace level. */
     @Test(timeout = 10000)
     public void testPhaseConfigModelOnlyOverrideIsAcceptedAtWorkspaceLevel() throws Exception {
         // Reviewer feedback (PR #238): the workspace endpoint must accept a
@@ -351,12 +369,14 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
     // Helpers
     // ----------------------------------------------------------------
 
+    /** Posts JSON to the endpoint and returns the parsed response. */
     private JsonNode postJson(String path, String body) throws IOException {
         HttpURLConnection conn = openPost(path, body);
         assertEquals(200, conn.getResponseCode());
         return MAPPER.readTree(readBody(conn));
     }
 
+    /** Opens a POST connection with JSON body. */
     private HttpURLConnection openPost(String path, String body) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) new URL(
                 "http://localhost:" + port + path).openConnection();
@@ -369,10 +389,12 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         return conn;
     }
 
+    /** Reads the response body from an HTTP connection. */
     private static String readBody(HttpURLConnection conn) throws IOException {
         return new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
     }
 
+    /** Reads the error stream from an HTTP connection. */
     private static String readErrorBody(HttpURLConnection conn) throws IOException {
         return new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
     }

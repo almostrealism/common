@@ -38,6 +38,7 @@ import static org.junit.Assert.fail;
  */
 public class PhaseConfigBundleTest extends TestSuiteBase {
 
+    /** EMPTY bundle is empty, default config is EMPTY, phase configs map is empty. */
     @Test(timeout = 5000)
     public void emptyBundleIsEmpty() {
         assertTrue(PhaseConfigBundle.EMPTY.isEmpty());
@@ -45,6 +46,7 @@ public class PhaseConfigBundleTest extends TestSuiteBase {
         assertTrue(PhaseConfigBundle.EMPTY.phaseConfigs().isEmpty());
     }
 
+    /** null default normalises to EMPTY PhaseConfig; null overrides yields empty map. */
     @Test(timeout = 5000)
     public void nullDefaultNormalisesToEmpty() {
         PhaseConfigBundle b = new PhaseConfigBundle(null, null);
@@ -52,6 +54,7 @@ public class PhaseConfigBundleTest extends TestSuiteBase {
         assertTrue(b.phaseConfigs().isEmpty());
     }
 
+    /** forPhase returns the default config when no per-phase override exists. */
     @Test(timeout = 5000)
     public void forPhaseReturnsDefaultWhenNoOverride() {
         PhaseConfig def = new PhaseConfig("claude", "opus", "high");
@@ -60,6 +63,7 @@ public class PhaseConfigBundleTest extends TestSuiteBase {
         assertEquals(def, b.forPhase(Phase.REVIEW));
     }
 
+    /** forPhase null returns the default config. */
     @Test(timeout = 5000)
     public void forPhaseNullArgumentReturnsDefault() {
         PhaseConfig def = new PhaseConfig("claude", "opus", "high");
@@ -67,6 +71,7 @@ public class PhaseConfigBundleTest extends TestSuiteBase {
         assertEquals(def, b.forPhase(null));
     }
 
+    /** forPhase overlays the per-phase override on the default config. */
     @Test(timeout = 5000)
     public void forPhaseOverlaysOverrideOnDefault() {
         PhaseConfig def = new PhaseConfig("claude", "opus", "high");
@@ -81,6 +86,7 @@ public class PhaseConfigBundleTest extends TestSuiteBase {
         assertEquals(def, b.forPhase(Phase.PRIMARY));
     }
 
+    /** withDefault replaces the default config while preserving existing overrides. */
     @Test(timeout = 5000)
     public void withDefaultReplacesDefaultPreservingOverrides() {
         Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
@@ -92,6 +98,7 @@ public class PhaseConfigBundleTest extends TestSuiteBase {
         assertEquals("opencode", updated.phaseConfigs().get(Phase.REVIEW).runner());
     }
 
+    /** withPhase adds a per-phase entry to the bundle. */
     @Test(timeout = 5000)
     public void withPhaseAddsEntry() {
         PhaseConfigBundle b = PhaseConfigBundle.EMPTY
@@ -100,6 +107,7 @@ public class PhaseConfigBundleTest extends TestSuiteBase {
         assertEquals("opencode", b.phaseConfigs().get(Phase.COMMIT_MESSAGE).runner());
     }
 
+    /** withPhase null clears an existing per-phase entry. */
     @Test(timeout = 5000)
     public void withPhaseNullClearsEntry() {
         Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
@@ -109,6 +117,9 @@ public class PhaseConfigBundleTest extends TestSuiteBase {
         assertTrue(updated.phaseConfigs().isEmpty());
     }
 
+    /**
+     * Tests that withPhase rejects null phase arguments.
+     */
     @Test(timeout = 5000)
     public void withPhaseRejectsNullPhase() {
         try {
@@ -119,6 +130,9 @@ public class PhaseConfigBundleTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Tests that fromLegacyRunners builds a runner-only bundle correctly.
+     */
     @Test(timeout = 5000)
     public void fromLegacyRunnersBuildsRunnerOnlyBundle() {
         Map<String, String> runners = new LinkedHashMap<>();
@@ -134,12 +148,18 @@ public class PhaseConfigBundleTest extends TestSuiteBase {
         assertNull(review.effort());
     }
 
+    /**
+     * Tests that fromLegacyRunners handles null default runner gracefully.
+     */
     @Test(timeout = 5000)
     public void fromLegacyRunnersHandlesNullDefault() {
         PhaseConfigBundle b = PhaseConfigBundle.fromLegacyRunners(null, null);
         assertTrue(b.isEmpty());
     }
 
+    /**
+     * Tests that fromLegacyRunners skips unknown phases.
+     */
     @Test(timeout = 5000)
     public void fromLegacyRunnersSkipsUnknownPhase() {
         Map<String, String> runners = new LinkedHashMap<>();
@@ -150,6 +170,9 @@ public class PhaseConfigBundleTest extends TestSuiteBase {
         assertEquals("opencode", b.phaseConfigs().get(Phase.REVIEW).runner());
     }
 
+    /**
+     * Tests that toLegacyRunnerMap exposes runner-only configurations.
+     */
     @Test(timeout = 5000)
     public void toLegacyRunnerMapExposesRunnerOnly() {
         Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
@@ -160,6 +183,9 @@ public class PhaseConfigBundleTest extends TestSuiteBase {
         assertEquals("opencode", legacy.get("review"));
     }
 
+    /**
+     * Tests that toLegacyRunnerMap skips entries without a runner.
+     */
     @Test(timeout = 5000)
     public void toLegacyRunnerMapSkipsEntriesWithoutRunner() {
         Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
@@ -168,6 +194,9 @@ public class PhaseConfigBundleTest extends TestSuiteBase {
         assertTrue(b.toLegacyRunnerMap().isEmpty());
     }
 
+    /**
+     * Tests that an empty bundle ignores empty configs in isEmpty check.
+     */
     @Test(timeout = 5000)
     public void emptyBundleIgnoresEmptyConfigsInIsEmpty() {
         Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
@@ -177,6 +206,9 @@ public class PhaseConfigBundleTest extends TestSuiteBase {
         assertTrue(b.isEmpty());
     }
 
+    /**
+     * Tests that a non-empty override bundle is not considered empty.
+     */
     @Test(timeout = 5000)
     public void nonEmptyOverrideIsNotEmpty() {
         Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);

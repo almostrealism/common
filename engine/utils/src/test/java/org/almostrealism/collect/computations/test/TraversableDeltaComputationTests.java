@@ -44,394 +44,6 @@ import java.util.stream.IntStream;
 public class TraversableDeltaComputationTests extends TestSuiteBase implements GradientTestFeatures {
 
 	/**
-	 * Tests polynomial x + 1 gradient.
-	 */
-	@Test(timeout = 60000)
-	public void polynomial0() {
-		// x + 1
-		CollectionProducer c = x().add(1);
-
-		// dy = f'(x)
-		Evaluable<PackedCollection> dy = c.delta(x()).get();
-		PackedCollection out = dy.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
-		out.print();
-
-		for (int i = 0; i < 5; i++) {
-			assertEquals(1.0, out.toDouble(i));
-		}
-	}
-
-	/**
-	 * Tests polynomial x^2 + 3x + 1 gradient.
-	 */
-	@Test(timeout = 60000)
-	public void polynomial1() {
-		// x^2 + 3x + 1
-		CollectionProducer c = x().sq().add(x().mul(3)).add(1);
-
-		// y = f(x)
-		Evaluable<PackedCollection> y = c.get();
-		PackedCollection out = y.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
-		out.print();
-
-		for (int i = 0; i < 5; i++) {
-			assertEquals(1.0 + 3 * (i + 1) + (i + 1) * (i + 1), out.toDouble(i));
-		}
-
-		// dy = f'(x)
-		//    = 2x + 3
-		Evaluable<PackedCollection> dy = c.delta(x()).get();
-		out = dy.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
-		out.print();
-
-		for (int i = 0; i < 5; i++) {
-			assertEquals(2 * (i + 1) + 3, out.toDouble(i));
-		}
-	}
-
-	/**
-	 * Tests polynomial 2D gradient with weight vector.
-	 */
-	@Test(timeout = 60000)
-	public void polynomial2() {
-		int dim = 3;
-		int count = 2;
-
-		PackedCollection v = pack(IntStream.range(0, count * dim).boxed()
-				.mapToDouble(Double::valueOf).toArray())
-				.reshape(count, dim).traverse();
-		PackedCollection w = pack(4, -3, 2);
-		CollectionProducer x = x(-1, dim);
-
-		// w * x
-		CollectionProducer c = x.mul(p(w));
-
-		// y = f(x)
-		Evaluable<PackedCollection> y = c.get();
-		PackedCollection out = y.evaluate(v);
-		log(Arrays.toString(out.toArray(0, count * dim)));
-
-		// dy = f'(x)
-		//    = w
-		Evaluable<PackedCollection> dy = c.delta(x).get();
-		PackedCollection dout = dy.evaluate(v);
-		double[] d = dout.toArray(0, count * dim * dim);
-		log(Arrays.toString(d));
-
-		for (int i = 0; i < count; i++) {
-			for (int j = 0 ; j < dim; j++) {
-				for (int k = 0; k < dim; k++) {
-					if (j == k) {
-						assertEquals(w.toDouble(j), d[i * dim * dim + j * dim + k]);
-					} else {
-						assertEquals(0.0, d[i * dim * dim + j * dim + k]);
-					}
-				}
-			}
-		}
-	}
-
-	/**
-	 * Tests polynomial with constant term gradient.
-	 */
-	@Test(timeout = 60000)
-	public void polynomial3() {
-		int dim = 3;
-		int count = 2;
-
-		PackedCollection v = pack(IntStream.range(0, count * dim).boxed()
-				.mapToDouble(Double::valueOf).toArray())
-				.reshape(count, dim).traverse();
-		PackedCollection w = pack(4, -3, 2);
-		CollectionProducer x = x(-1, dim);
-
-		// w * x + 1
-		CollectionProducer c = x.mul(p(w)).add(c(1).repeat(3).consolidate());
-
-		// y = f(x)
-		Evaluable<PackedCollection> y = c.get();
-		PackedCollection out = y.evaluate(v);
-		double[] l = out.toArray(0, count * dim);
-		log(Arrays.toString(l));
-		assertEquals(1.0, l[0]);
-		assertEquals(-2.0, l[1]);
-
-		// dy = f'(x)
-		//    = w
-		Evaluable<PackedCollection> dy = c.delta(x).get();
-		PackedCollection dout = dy.evaluate(v);
-		double[] d = dout.toArray(0, count * dim * dim);
-		log(Arrays.toString(d));
-
-		for (int i = 0; i < count; i++) {
-			for (int j = 0 ; j < dim; j++) {
-				for (int k = 0; k < dim; k++) {
-					if (j == k) {
-						assertEquals(w.toDouble(j), d[i * dim * dim + j * dim + k]);
-					} else {
-						assertEquals(0.0, d[i * dim * dim + j * dim + k]);
-					}
-				}
-			}
-		}
-	}
-
-	/**
-	 * Tests x^2 + w*x + 1 gradient.
-	 */
-	@Test(timeout = 60000)
-	public void polynomial4() {
-		int dim = 3;
-
-		PackedCollection v = pack(IntStream.range(0, 4 * dim).boxed()
-										.mapToDouble(Double::valueOf).toArray())
-										.reshape(4, dim).traverse();
-		PackedCollection w = pack(4, -3, 2);
-		CollectionProducer x = x(-1, dim);
-
-		// x^2 + w * x + 1
-		CollectionProducer c = x.sq().add(x.mul(p(w))).add(c(1).repeat(3).consolidate());
-
-		// y = f(x)
-		Evaluable<PackedCollection> y = c.get();
-		PackedCollection out = y.evaluate(v);
-		out.print();
-
-
-		// dy = f'(x)
-		//    = 2x + w
-		Evaluable<PackedCollection> dy = c.delta(x).get();
-		PackedCollection dout = dy.evaluate(v);
-		dout.print();
-
-		for (int i = 0; i < 4; i++) {
-			for (int j = 0; j < dim; j++) {
-				for (int k = 0; k < dim; k++) {
-					if (j == k) {
-						assertEquals(2 * v.valueAt(i, j) + w.valueAt(j), dout.valueAt(i, j, k));
-					} else {
-						assertEquals(0.0, dout.valueAt(i, j, k));
-					}
-				}
-			}
-		}
-	}
-
-	/**
-	 * Tests x^2 - w*x + 1 gradient.
-	 */
-	@Test(timeout = 60000)
-	public void polynomial5() {
-		int dim = 3;
-
-		PackedCollection v = pack(IntStream.range(0, 4 * dim).boxed()
-				.mapToDouble(Double::valueOf).toArray())
-				.reshape(4, dim).traverse();
-		PackedCollection w = pack(4, -3, 2);
-		CollectionProducer x = x(-1, dim);
-
-		// x^2 + w * -x + 1
-		CollectionProducer c = x.sq().add(x.minus().mul(p(w))).add(c(1).repeat(3).consolidate());
-
-		// y = f(x)
-		Evaluable<PackedCollection> y = c.get();
-		PackedCollection out = y.evaluate(v);
-		log(Arrays.toString(out.toArray(0, 4 * dim)));
-
-		// dy = f'(x)
-		//    = 2x - w
-		Evaluable<PackedCollection> dy = c.delta(x).get();
-		PackedCollection dout = dy.evaluate(v);
-		dout.print();
-
-		for (int i = 0; i < 4; i++) {
-			for (int j = 0; j < dim; j++) {
-				for (int k = 0; k < dim; k++) {
-					if (j == k) {
-						assertEquals(2 * v.valueAt(i, j) - w.valueAt(j), dout.valueAt(i, j, k));
-					} else {
-						assertEquals(0.0, dout.valueAt(i, j, k));
-					}
-				}
-			}
-		}
-	}
-
-	/**
-	 * Tests x^2 - w*x + 1 gradient with scalar input.
-	 */
-	@Test(timeout = 60000)
-	public void polynomial6() {
-		int dim = 3;
-
-		PackedCollection v = pack(IntStream.range(0, dim).boxed()
-				.mapToDouble(Double::valueOf).toArray())
-				.reshape(dim).traverse();
-		PackedCollection w = pack(4, -3, 2);
-		CollectionProducer x = cp(v);
-
-		// x^2 + w * -x + 1
-		CollectionProducer c = x.sq().add(x.minus().mul(p(w))).add(c(1).repeat(3).consolidate());
-		log(String.valueOf(c.describe()));
-
-		// y = f(x)
-		Evaluable<PackedCollection> y = c.get();
-		PackedCollection out = y.evaluate();
-		out.print();
-
-		// dy = f'(x)
-		//    = 2x - w
-		Evaluable<PackedCollection> dy = c.delta(x).get();
-		PackedCollection dout = dy.evaluate();
-		dout.print();
-
-		for (int j = 0; j < dim; j++) {
-			for (int k = 0; k < dim; k++) {
-				if (j == k) {
-					assertEquals(2 * v.valueAt(j) - w.valueAt(j), dout.valueAt(j, k));
-				} else {
-					assertEquals(0.0, dout.valueAt(j, k));
-				}
-			}
-		}
-	}
-
-	/**
-	 * Tests fixed power gradient x^3 + w^x + 1.
-	 */
-	@Test(timeout = 60000)
-	public void powerFixed() {
-		int dim = 3;
-
-		PackedCollection v = pack(IntStream.range(0, dim).boxed()
-				.mapToDouble(d -> 1 + d / 2.0).toArray())
-				.reshape(dim);
-		PackedCollection w = pack(4, 1, 2);
-		CollectionProducer x = cp(v);
-
-		// x^3 + w^x + 1
-		CollectionProducer c = x.pow(3).add(cp(w).pow(x)).add(c(1).repeat(3).consolidate());
-
-		// dy = f'(x)
-		//    = 3x^2 + w^x * log(w)
-		Evaluable<PackedCollection> dy = c.delta(x).get();
-		PackedCollection dout = dy.evaluate();
-		dout.print();
-
-		for (int i = 0; i < dim; i++) {
-			for (int j = 0; j < dim; j++) {
-				if (i == j) {
-					assertEquals(3 * Math.pow(v.valueAt(i), 2) +
-									Math.pow(w.valueAt(i), v.valueAt(i)) * Math.log(w.valueAt(i)),
-							dout.valueAt(i, j));
-				} else {
-					assertEquals(0.0, dout.valueAt(i, j));
-				}
-			}
-		}
-	}
-
-	/**
-	 * Tests power function gradient with generator.
-	 */
-	@Test(timeout = 60000)
-	public void power1() {
-		int dim = 3;
-
-		IntFunction<PackedCollection> inputGenerator = count ->
-				pack(IntStream.range(0, count * dim).boxed()
-						.mapToDouble(d -> 1 + d / 2.0).toArray())
-						.reshape(count, dim).traverse();
-
-		Factor<PackedCollection> f = x -> {
-			// x^3 + w^x + 1
-			CollectionProducer c = c(x).pow(3);
-
-			// dy = f'(x)
-			//    = 3x^2
-			return c.delta(x);
-		};
-
-		runTest("power1", dim, inputGenerator, f, (in, out) -> {
-			out.traverse(2).print();
-
-			for (int n = 0; n < in.getCount(); n++) {
-				for (int i = 0; i < dim; i++) {
-					for (int j = 0; j < dim; j++) {
-						if (i == j) {
-							assertEquals(3 * Math.pow(in.valueAt(n, i), 2), out.valueAt(n, i, j));
-						} else {
-							assertEquals(0.0, out.valueAt(n, i, j));
-						}
-					}
-				}
-			}
-		}, true, false);
-	}
-
-	/**
-	 * Tests power function with and without delta.
-	 */
-	@Test(timeout = 60000)
-	public void power2() {
-		int dim = 3;
-
-		IntFunction<PackedCollection> inputGenerator = count ->
-				pack(IntStream.range(0, count * dim).boxed()
-						.mapToDouble(d -> 1 + d / 2.0).toArray())
-						.reshape(count, dim).traverse();
-
-		PackedCollection w = pack(4, 1, 2);
-
-		Factor<PackedCollection> f = x -> {
-			// x^3 + w^x + 1
-			CollectionProducer c =
-					c(x).pow(3).add(cp(w).pow(x)).add(c(1).repeat(3).consolidate());
-			return c;
-		};
-
-		runTest("power2", dim, inputGenerator, f, (in, out) -> {
-			out.print();
-
-			for (int n = 0; n < in.getCount(); n++) {
-				for (int i = 0; i < dim; i++) {
-					assertEquals(Math.pow(in.valueAt(n, i), 3) +
-									Math.pow(w.valueAt(i), in.valueAt(n, i)) + 1,
-							out.toDouble(n * dim + i));
-				}
-			}
-		});
-
-		f = x -> {
-			// x^3 + w^x + 1
-			CollectionProducer c =
-					c(x).pow(3).add(cp(w).pow(x)).add(c(1).repeat(3).consolidate());
-
-			// dy = f'(x)
-			//    = 3x^2 + w^x * log(w)
-			return c.delta(x);
-		};
-
-		runTest("power2_delta", dim, inputGenerator, f, (in, out) -> {
-			out.print();
-
-			for (int n = 0; n < in.getCount(); n++) {
-				for (int i = 0; i < dim; i++) {
-					for (int j = 0; j < dim; j++) {
-						if (i == j) {
-							assertEquals(3 * Math.pow(in.valueAt(n, i), 2) +
-											Math.pow(w.valueAt(i), in.valueAt(n, i)) * Math.log(w.valueAt(i)),
-									out.valueAt(n, i, j));
-						} else {
-							assertEquals(0.0, out.valueAt(n, i, j));
-						}
-					}
-				}
-			}
-		});
-	}
-
-	/**
 	 * Tests sum and power combination gradient.
 	 */
 	@Test(timeout = 60000)
@@ -514,6 +126,13 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				});
 	}
 
+	/**
+	 * Helper method to test variance gradient computation.
+	 * @param name the test name for profiling
+	 * @param x first input value
+	 * @param y second input value
+	 * @return the operation profile node
+	 */
 	public OperationProfileNode variance(String name, double x, double y) {
 		int c = 2;
 		int groups = 1;
@@ -761,11 +380,22 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 				}, false, false, true);
 	}
 
+	/**
+	 * Runs recursive division tests with the given supply and validation.
+	 * @param supply the factor supplying input collections
+	 * @param validate the consumer to validate output
+	 */
 	protected void recursiveDivisionTest(Factor<PackedCollection> supply,
 										 BiConsumer<PackedCollection, PackedCollection> validate) {
 		recursiveDivisionTest(supply, validate, false);
 	}
 
+	/**
+	 * Runs recursive division tests with optimization control.
+	 * @param supply the factor supplying input collections
+	 * @param validate the consumer to validate output
+	 * @param optimizeOnly if true, only run with optimization
+	 */
 	protected void recursiveDivisionTest(Factor<PackedCollection> supply,
 										 BiConsumer<PackedCollection, PackedCollection> validate,
 										 boolean optimizeOnly) {
@@ -1037,6 +667,13 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		divideProduct("divideProduct4", c, () -> new PackedCollection(c).fill(1.0, 1.01));
 	}
 
+	/**
+	 * Tests divide product gradient with configurable source and saves profile.
+	 * @param name the test name for profiling
+	 * @param c the collection size
+	 * @param source the supplier for input collections
+	 * @throws IOException if saving the profile fails
+	 */
 	public void divideProduct(String name, int c, Supplier<PackedCollection> source) throws IOException {
 		PackedCollection o = source.get();
 		PackedCollection g = new PackedCollection(c).fill(() -> 1 + (Math.random() * 4.0));
@@ -1525,6 +1162,11 @@ public class TraversableDeltaComputationTests extends TestSuiteBase implements G
 		multiplyTwice(5, false);
 	}
 
+	/**
+	 * Tests multiply operation applied twice with specified dimension.
+	 * @param dim the dimension for the test
+	 * @param optimize whether to use optimized evaluation
+	 */
 	public void multiplyTwice(int dim, boolean optimize) {
 		PackedCollection input = new PackedCollection(shape(dim));
 		CollectionProducer c = cp(input)

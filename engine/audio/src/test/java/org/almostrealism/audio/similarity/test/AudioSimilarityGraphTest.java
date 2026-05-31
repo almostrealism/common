@@ -216,6 +216,11 @@ public class AudioSimilarityGraphTest extends TestSuiteBase {
 
 	// ── Test helpers ─────────────────────────────────────────────────────
 
+	/**
+	 * Creates a three-node graph for testing.
+	 *
+	 * @return list of WaveDetails representing A<->B:0.8, A<->C:0.3, B<->C:0.5
+	 */
 	private List<WaveDetails> createThreeNodeGraph() {
 		List<WaveDetails> details = new ArrayList<>();
 
@@ -239,6 +244,13 @@ public class AudioSimilarityGraphTest extends TestSuiteBase {
 		return details;
 	}
 
+	/**
+	 * Creates a WaveDetails with the given identifier and similarities.
+	 *
+	 * @param identifier the wave identifier
+	 * @param similarities map of other identifiers to similarity scores
+	 * @return configured WaveDetails instance
+	 */
 	private WaveDetails createDetails(String identifier, Map<String, Double> similarities) {
 		WaveDetails details = new WaveDetails(identifier);
 		details.setSimilarities(similarities);

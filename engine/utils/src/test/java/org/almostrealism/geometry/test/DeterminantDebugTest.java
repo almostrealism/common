@@ -27,6 +27,9 @@ import org.junit.Test;
  */
 public class DeterminantDebugTest extends TestSuiteBase implements TransformMatrixFeatures {
 
+	/**
+	 * Tests determinant calculation for identity and scale matrices.
+	 */
 	@Test(timeout = 10000)
 	public void testSimpleDeterminant() {
 		log("Simple Determinant Calculation");
@@ -56,6 +59,9 @@ public class DeterminantDebugTest extends TestSuiteBase implements TransformMatr
 		assertTrue("Scale(3,3,3) determinant should be 27.0", Math.abs(scale3Det - 27.0) < 0.001);
 	}
 
+	/**
+	 * Tests determinant calculation for a non-diagonal matrix with known determinant.
+	 */
 	@Test(timeout = 10000)
 	public void testNonDiagonalMatrix() {
 		log("Non-Diagonal Matrix Determinant");
@@ -78,6 +84,9 @@ public class DeterminantDebugTest extends TestSuiteBase implements TransformMatr
 		assertTrue("Determinant should be 3.0", Math.abs(det - 3.0) < 0.001);
 	}
 
+	/**
+	 * Debug test to verify upper triangular conversion for determinant calculation.
+	 */
 	@Test(timeout = 10000)
 	public void testUpperTriangularConversion() {
 		log("Debug Upper Triangular Conversion");
@@ -108,6 +117,12 @@ public class DeterminantDebugTest extends TestSuiteBase implements TransformMatr
 				Math.abs(det - 1.0) < 0.001 && Math.abs(det5 - 1.0) < 0.001);
 	}
 
+	/**
+	 * Prints a matrix for debugging.
+	 *
+	 * @param label Label for the output
+	 * @param mat Matrix to print
+	 */
 	private void printMatrix(String label, TransformMatrix mat) {
 		double[] data = mat.toArray();
 		log(label + " matrix:");

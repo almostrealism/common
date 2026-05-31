@@ -27,6 +27,9 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for AggregatedComputation and aggregated operations like sum.
+ */
 public class AggregatedComputationTests extends TestSuiteBase {
 
 	/**

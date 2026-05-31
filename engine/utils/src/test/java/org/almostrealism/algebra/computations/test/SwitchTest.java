@@ -34,11 +34,24 @@ public class SwitchTest extends TestSuiteBase {
 
 	/**
 	 * Creates a Switch computation with the given output and decision variables.
+	 *
+	 * @param output Output collection
+	 * @param decision Decision collection
+	 * @param multiplier Multiplier collection
+	 * @return Switch computation
 	 */
 	public Switch choice(PackedCollection output, PackedCollection decision, PackedCollection multiplier) {
 		return choice(output, p(decision), p(multiplier));
 	}
 
+	/**
+	 * Creates a Switch computation with producer-based decision and multiplier.
+	 *
+	 * @param output Output collection
+	 * @param decision Decision producer
+	 * @param multiplier Multiplier producer
+	 * @return Switch computation
+	 */
 	public Switch choice(PackedCollection output, Producer<PackedCollection> decision, Producer<PackedCollection> multiplier) {
 		Computation<Void> firstChoice = a(1, p(output), multiply(multiplier, c(2.0)));
 		Computation<Void> secondChoice = a(1, p(output), multiply(multiplier, c(4.0)));

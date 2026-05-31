@@ -34,14 +34,22 @@ import java.io.File;
 @Ignore("Manual diagnostic — requires developer-local protobuf and samples directory; too slow for CI")
 public class PrototypeDiscoveryTest extends TestSuiteBase {
 
+	/** Path prefix for protobuf store files. */
 	private static final String PROTOBUF_PREFIX = "/Users/michael/Projects/AlmostRealism/library";
+
+	/** Root directory for audio samples. */
 	private static final String SAMPLES_ROOT = "/Users/michael/Music/Samples";
 
+	/**
+	 * Runs the prototype discovery process against local data files.
+	 *
+	 * @throws Exception if discovery fails
+	 */
 	@Test(timeout = 120000)
 	public void runDiscovery() throws Exception {
 		File protobufFile = new File(PROTOBUF_PREFIX + "_0.bin");
 		if (!protobufFile.exists()) {
-			log("SKIP: Protobuf file not found: " + protobufFile);
+			log("Protobuf file not found: " + protobufFile);
 			return;
 		}
 

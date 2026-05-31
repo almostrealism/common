@@ -49,9 +49,16 @@ public class OobleckAutoEncoderTest extends TestSuiteBase {
 	/** Decoder output channels for each block. */
 	private static final int[] DEC_OUT_CHANNELS = {1024, 512, 256, 128, 128};
 
+	/** Base number of channels for the smallest layer. */
 	private static final int BASE_CHANNELS = 128;
+
+	/** Number of residual blocks per encoder/decoder stage. */
 	private static final int NUM_RES_BLOCKS = 3;
+
+	/** Latent dimension for the encoder output. */
 	private static final int LATENT_DIM_ENCODER = 128;
+
+	/** Latent dimension for the decoder input. */
 	private static final int LATENT_DIM_DECODER = 64;
 
 	/**

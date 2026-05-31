@@ -28,6 +28,9 @@ import java.io.File;
  */
 final class DiskStoreTestSupport {
 
+	/**
+	 * Utility class — no instantiation.
+	 */
 	private DiskStoreTestSupport() { }
 
 	/**

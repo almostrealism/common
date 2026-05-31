@@ -14,6 +14,9 @@ import org.junit.Test;
  */
 public class TransformInversionTest extends TestSuiteBase implements TransformMatrixFeatures {
 
+	/**
+	 * Tests that the inverse of an identity matrix is the identity matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testIdentityMatrixInverse() {
 		log("Identity Matrix Inversion");
@@ -33,6 +36,9 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 				0, 0, 0, 1);
 	}
 
+	/**
+	 * Tests that the inverse of a translation matrix correctly negates the translation.
+	 */
 	@Test(timeout = 10000)
 	public void testTranslationMatrixInverse() {
 		log("Translation Matrix Inversion");
@@ -55,6 +61,9 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 				0, 0, 0, 1);
 	}
 
+	/**
+	 * Tests that the inverse of a uniform scale matrix correctly inverts the scale factor.
+	 */
 	@Test(timeout = 10000)
 	public void testUniformScaleMatrixInverse() {
 		log("Uniform Scale Matrix Inversion");
@@ -84,6 +93,9 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 				0, 0, 0, 1);
 	}
 
+	/**
+	 * Tests that the inverse of a non-uniform scale matrix correctly inverts each scale factor.
+	 */
 	@Test(timeout = 10000)
 	public void testNonUniformScaleMatrixInverse() {
 		log("Non-uniform Scale Matrix Inversion");
@@ -113,6 +125,9 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 				0, 0, 0, 1);
 	}
 
+	/**
+	 * Verifies that a matrix multiplied by its inverse produces the identity matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testMatrixMultiplicationVerification() {
 		log("Verify M * M^-1 = Identity");
@@ -138,6 +153,9 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 				0, 0, 0, 1);
 	}
 
+	/**
+	 * Tests that the inverse of an inverse matrix equals the original matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testInverseOfInverse() {
 		log("Inverse of inverse equals original");
@@ -163,6 +181,9 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 				0, 0, 0, 1);
 	}
 
+	/**
+	 * Tests inversion of a matrix with scale factors less than 1.
+	 */
 	@Test(timeout = 10000)
 	public void testSmallScaleInverse() {
 		log("Small Scale Factor Inversion");
@@ -192,6 +213,9 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 				0, 0, 0, 1);
 	}
 
+	/**
+	 * Debug test to verify the adjoint matrix calculation for scale matrices.
+	 */
 	@Test(timeout = 10000)
 	public void testDebugAdjointCalculation() {
 		log("Debug Adjoint Calculation");
@@ -230,6 +254,12 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 
 	// Helper methods
 
+	/**
+	 * Prints a transform matrix with a label for debugging.
+	 *
+	 * @param label Label for the matrix output
+	 * @param mat Matrix to print
+	 */
 	private void printMatrix(String label, TransformMatrix mat) {
 		double[] data = mat.toArray();
 		log(label + " matrix:");
@@ -239,6 +269,28 @@ public class TransformInversionTest extends TestSuiteBase implements TransformMa
 		}
 	}
 
+	/**
+	 * Asserts that a matrix equals expected values.
+	 *
+	 * @param message Message for the assertion
+	 * @param actual Actual matrix
+	 * @param m00 Matrix element at row 0, col 0
+	 * @param m01 Matrix element at row 0, col 1
+	 * @param m02 Matrix element at row 0, col 2
+	 * @param m03 Matrix element at row 0, col 3
+	 * @param m10 Matrix element at row 1, col 0
+	 * @param m11 Matrix element at row 1, col 1
+	 * @param m12 Matrix element at row 1, col 2
+	 * @param m13 Matrix element at row 1, col 3
+	 * @param m20 Matrix element at row 2, col 0
+	 * @param m21 Matrix element at row 2, col 1
+	 * @param m22 Matrix element at row 2, col 2
+	 * @param m23 Matrix element at row 2, col 3
+	 * @param m30 Matrix element at row 3, col 0
+	 * @param m31 Matrix element at row 3, col 1
+	 * @param m32 Matrix element at row 3, col 2
+	 * @param m33 Matrix element at row 3, col 3
+	 */
 	private void assertMatrixEquals(String message, TransformMatrix actual,
 									double m00, double m01, double m02, double m03,
 									double m10, double m11, double m12, double m13,

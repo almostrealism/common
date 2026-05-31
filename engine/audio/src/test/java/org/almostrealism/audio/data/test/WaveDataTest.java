@@ -35,7 +35,10 @@ import java.nio.file.Files;
  */
 public class WaveDataTest extends TestSuiteBase {
 
+	/** Test sample rate derived from {@link OutputLine}. */
 	private static final int TEST_SAMPLE_RATE = OutputLine.sampleRate;
+
+	/** Tolerance for floating-point comparisons in duration and sample rate tests. */
 	private static final double EPSILON = 0.0001;
 
 	/**

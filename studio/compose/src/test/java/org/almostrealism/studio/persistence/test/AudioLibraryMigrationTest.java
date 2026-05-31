@@ -50,10 +50,19 @@ import java.util.stream.Stream;
  */
 public class AudioLibraryMigrationTest extends TestSuiteBase {
 
+	/** Temporary directory for test files. */
 	private Path tempDir;
+
+	/** Directory containing legacy-format library files. */
 	private Path legacyDir;
+
+	/** Directory for the new Protobuf store. */
 	private Path storeDir;
 
+	/**
+	 * Sets up temporary directories for migration testing.
+	 * @throws IOException if directory creation fails
+	 */
 	@Before
 	public void setUp() throws IOException {
 		tempDir = Files.createTempDirectory("migration-test");
@@ -62,6 +71,10 @@ public class AudioLibraryMigrationTest extends TestSuiteBase {
 		Files.createDirectories(legacyDir);
 	}
 
+	/**
+	 * Tears down test resources and cleans up temporary directories.
+	 * @throws IOException if directory traversal fails
+	 */
 	@After
 	public void tearDown() throws IOException {
 		if (tempDir != null && Files.exists(tempDir)) {

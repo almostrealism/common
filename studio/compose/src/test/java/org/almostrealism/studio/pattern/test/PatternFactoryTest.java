@@ -50,8 +50,13 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
+/**
+ * Tests for {@link PatternLayerManager} pattern factory functionality,
+ * verifying pattern loading, genome assignment, and audio rendering.
+ */
 public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 
+	/** Path to the library directory. */
 	public static String LIBRARY = "Library";
 
 	static {
@@ -62,6 +67,9 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 		if (arg != null) LIBRARY = arg;
 	}
 
+	/**
+	 * Test that pattern choices can be read from file and re-serialized.
+	 */
 	@Test(timeout = 30_000)
 	public void fixChoices() throws IOException {
 		Assume.assumeTrue("pattern-factory.json required",
@@ -70,6 +78,9 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 		new ObjectMapper().writeValue(new File("pattern-factory-new.json"), choices);
 	}
 
+	/**
+	 * Test that choices can be consolidated into directories by name.
+	 */
 	// @Test(timeout = 30000)
 	public void consolidateChoices() throws IOException {
 		List<NoteAudioChoice> choices = readChoices();
@@ -98,10 +109,23 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 		});
 	}
 
+	/**
+	 * Reads pattern choices from the pattern-factory file.
+	 *
+	 * @return the deserialized choice list
+	 * @throws IOException if reading fails
+	 */
 	public NoteAudioChoiceList readChoices() throws IOException {
 		return readChoices(true);
 	}
 
+	/**
+	 * Reads pattern choices from either the old or new pattern-factory file.
+	 *
+	 * @param useOld if true, prefers the old file format
+	 * @return the deserialized choice list
+	 * @throws IOException if reading fails
+	 */
 	public NoteAudioChoiceList readChoices(boolean useOld) throws IOException {
 		ObjectMapper mapper = new ObjectMapper();
 		mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -114,6 +138,9 @@ public class PatternFactoryTest extends TestSuiteBase implements CellFeatures {
 		}
 	}
 
+	/**
+	 * Test that pattern layers can be rendered to audio and saved to file.
+	 */
 	@Test(timeout = 300_000)
 	public void runLayers() throws IOException {
 		Assume.assumeTrue("Library directory required", new File(LIBRARY).exists());

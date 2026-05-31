@@ -55,21 +55,37 @@ import static org.junit.Assert.assertTrue;
  */
 public class MselfFeedbackMatrixTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
 
+	/** Sample rate for audio processing (in Hz) */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
+
+	/** Number of delay cells in the test matrix */
 	private static final int N = 4;
+
+	/** Delay time in seconds for each delay cell */
 	private static final double DELAY_SECONDS = 0.05;
+
+	/** Total duration of test signals in seconds */
 	private static final double DURATION_SECONDS = 1.5;
 
+	/**
+	 * Tests mself feedback matrix with stable parameters.
+	 */
 	@Test(timeout = 60000)
 	public void mselfStable() {
 		runMselfMatrix("mself-stable", 0.05, 0.4);
 	}
 
+	/**
+	 * Tests mself feedback matrix with marginal stability.
+	 */
 	@Test(timeout = 60000)
 	public void mselfMarginal() {
 		runMselfMatrix("mself-marginal", 0.3, 0.6);
 	}
 
+	/**
+	 * Tests mself feedback matrix with unstable parameters.
+	 */
 	@Test(timeout = 60000)
 	public void mselfUnstable() {
 		runMselfMatrix("mself-unstable", 0.5, 0.7);
@@ -274,6 +290,12 @@ public class MselfFeedbackMatrixTest extends TestSuiteBase implements CellFeatur
 		log(name + ": wrote " + outputFile + " (" + outputFile.length() + " bytes)");
 	}
 
+	/**
+	 * Creates an array of N identical values.
+	 *
+	 * @param value The value to fill the array with
+	 * @return Array of N elements all set to value
+	 */
 	private double[] uniformRow(double value) {
 		double[] r = new double[N];
 		for (int i = 0; i < N; i++) r[i] = value;

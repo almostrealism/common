@@ -21,6 +21,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for TraversalPolicy and its dimension manipulation operations.
+ */
 public class TraversalPolicyTests extends TestSuiteBase {
 	/**
 	 * Tests flatten required with single dimension.

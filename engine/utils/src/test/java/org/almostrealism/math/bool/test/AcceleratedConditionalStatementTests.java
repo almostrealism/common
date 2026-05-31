@@ -29,6 +29,9 @@ import org.junit.Test;
 
 import java.util.stream.IntStream;
 
+/**
+ * Tests for accelerated conditional statement operations.
+ */
 public class AcceleratedConditionalStatementTests extends TestSuiteBase {
 
 	/**

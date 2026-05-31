@@ -40,7 +40,10 @@ import java.nio.file.Path;
  */
 public class EncoderCompilationProfileTest extends TestSuiteBase {
 
+	/** Directory containing autoencoder weights. */
 	private static final Path AUTOENCODER_DIR = Path.of("/workspace/project/weights/autoencoder");
+
+	/** Audio sample rate in Hz. */
 	private static final int SAMPLE_RATE = 44100;
 
 	/**
@@ -159,6 +162,12 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 		log("Profile saved to: " + profilePath);
 	}
 
+	/**
+	 * Profiles encoder compilation with the specified audio duration.
+	 *
+	 * @param seconds audio duration in seconds
+	 * @param profileName name for the output profile file
+	 */
 	private void profileEncoder(double seconds, String profileName) throws IOException {
 		if (!Files.exists(AUTOENCODER_DIR)) {
 			log("Autoencoder weights not found at " + AUTOENCODER_DIR + ", skipping");

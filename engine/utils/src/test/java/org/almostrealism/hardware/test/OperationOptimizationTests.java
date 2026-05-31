@@ -30,6 +30,9 @@ import org.junit.Test;
 
 import java.util.function.Supplier;
 
+/**
+ * Tests for operation optimization and performance profiling.
+ */
 public class OperationOptimizationTests extends TestSuiteBase {
 	/**
 	 * Tests reshape and enumerate operations.

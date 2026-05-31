@@ -201,6 +201,9 @@ public class MoonbeamAttentionTest extends TestSuiteBase {
 	/**
 	 * Helper to create a Producer array, isolating the unavoidable unchecked
 	 * cast required by Java's lack of generic array creation.
+	 *
+	 * @param size the size of the array to create
+	 * @return an array of Producers of the specified size
 	 */
 	private static Producer<PackedCollection>[] createPositionProducers(int size) {
 		return new Producer[size];

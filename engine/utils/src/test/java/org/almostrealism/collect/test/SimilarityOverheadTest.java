@@ -616,6 +616,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 				" ms/comparison)");
 	}
 
+	/** Cache for cosine similarity evaluables to avoid recreating identical computation graphs. */
 	private static final Map<Long, Evaluable<PackedCollection>> cosineCache = new HashMap<>();
 
 	/**
@@ -859,6 +860,14 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		return tensors;
 	}
 
+	/**
+	 * Creates random tensors for testing.
+	 *
+	 * @param count Number of tensors
+	 * @param frames Number of frames per tensor
+	 * @param bins Number of bins per frame
+	 * @return Array of random tensors
+	 */
 	private PackedCollection[] createRandomTensors(int count, int frames, int bins) {
 		Random rng = new Random(42);
 		PackedCollection[] tensors = new PackedCollection[count];

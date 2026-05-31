@@ -21,6 +21,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for matrix multiplication operations on PackedCollection.
+ */
 public class MatrixCollectionTests extends TestSuiteBase {
 	/**
 	 * Tests matrix multiply with mapping.

@@ -10,7 +10,15 @@ import org.junit.Test;
 
 import java.io.File;
 
+/**
+ * Tests for mixdown operations combining multiple audio sources.
+ */
 public class MixdownTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
+
+	/**
+	 * Tests combining multiple wave files with different timing offsets
+	 * and gain factors into a single mixed output.
+	 */
 	@Test(timeout = 60000)
 	public void samples() {
 		int count = 32;

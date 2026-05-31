@@ -65,10 +65,11 @@ public class AsyncResultDeliveryTest extends TestSuiteBase {
 		log("=== Lambda Captures Mutable Field Bug Demo ===");
 
 		// Simulate the ProcessDetailsFactory pattern
+		/** Simulates the factory pattern for bug demonstration. */
 		class SimulatedFactory {
 			String currentDetails = "details1";
 
-			// Buggy pattern: lambda captures 'this' and accesses 'this.currentDetails' at execution time
+			/** Creates a consumer that logs the result. */
 			Consumer<String> result() {
 				return r -> log("Lambda delivered '" + r + "' to: " + currentDetails);
 			}
@@ -100,12 +101,15 @@ public class AsyncResultDeliveryTest extends TestSuiteBase {
 		log("\n=== Duplicate Result Error Simulation ===");
 
 		// Simple details class that tracks results
+		/** Tracks results for a single details instance. */
 		class SimpleDetails {
 			final String name;
 			String resultAt0 = null;
 
+			/** Creates a details instance with the given name. */
 			SimpleDetails(String name) { this.name = name; }
 
+			/** Records the result value at the specified index. */
 			void result(int index, String value) {
 				if (resultAt0 != null) {
 					throw new IllegalArgumentException("Duplicate result for argument index " + index);
@@ -116,9 +120,11 @@ public class AsyncResultDeliveryTest extends TestSuiteBase {
 		}
 
 		// Simulate the factory
+		/** Simulates the buggy factory pattern. */
 		class SimulatedFactory {
 			SimpleDetails currentDetails;
 
+			/** Creates a consumer that accesses currentDetails at execution time. */
 			Consumer<String> result(int index) {
 				// BUG: captures 'this' and uses 'this.currentDetails' at execution time
 				return r -> currentDetails.result(index, r);
@@ -171,12 +177,15 @@ public class AsyncResultDeliveryTest extends TestSuiteBase {
 	public void proposedFixWithExplicitCapture() {
 		log("\n=== Proposed Fix: Explicit Instance Capture ===");
 
+		/** Tracks results for a single details instance. */
 		class SimpleDetails {
 			final String name;
 			String resultAt0 = null;
 
+			/** Creates a details instance with the given name. */
 			SimpleDetails(String name) { this.name = name; }
 
+			/** Records the result value at the specified index. */
 			void result(int index, String value) {
 				if (resultAt0 != null) {
 					throw new IllegalArgumentException("Duplicate result for argument index " + index);
@@ -187,8 +196,10 @@ public class AsyncResultDeliveryTest extends TestSuiteBase {
 		}
 
 		// FIXED factory: result() captures the specific details instance
+		/** Simulates the fixed factory pattern with explicit capture. */
 		class FixedFactory {
 			// FIX: Pass targetDetails explicitly instead of using 'this.currentDetails'
+			/** Creates a consumer that captures the targetDetails explicitly. */
 			Consumer<String> result(int index, SimpleDetails targetDetails) {
 				// Captures targetDetails (a parameter), not a mutable field
 				return r -> targetDetails.result(index, r);

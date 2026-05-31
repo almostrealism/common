@@ -46,6 +46,7 @@ import java.util.Arrays;
 public class DelayNetworkBehaviorTest extends TestSuiteBase
 		implements MultiChannelDspFeatures {
 
+	/** Numerical tolerance for floating-point comparisons. */
 	private static final double EPS = 1.0e-9;
 
 	/**
@@ -54,13 +55,29 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 	 * passes and inspect the slot contents directly afterwards.
 	 */
 	private static final class Harness {
+		/** Compiled model for forward passes. */
 		final CompiledModel model;
+		/** Per-state ring buffer slot. */
 		final PackedCollection buffer;
+		/** Per-channel write-head slot. */
 		final PackedCollection heads;
+		/** Number of channels. */
 		final int channels;
+		/** Signal size per channel. */
 		final int signalSize;
+		/** Buffer size in samples. */
 		final int bufSize;
 
+		/**
+		 * Constructs a Harness with the provided model and state slots.
+		 *
+		 * @param model compiled model for forward passes
+		 * @param buffer per-state ring buffer slot
+		 * @param heads per-channel write-head slot
+		 * @param channels number of channels
+		 * @param signalSize signal size per channel
+		 * @param bufSize buffer size in samples
+		 */
 		Harness(CompiledModel model, PackedCollection buffer, PackedCollection heads,
 				int channels, int signalSize, int bufSize) {
 			this.model = model;
@@ -95,15 +112,35 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 			return out.toArray(0, channels * signalSize);
 		}
 
+		/**
+		 * Reads the current ring buffer state.
+		 *
+		 * @return buffer contents as a flat double array
+		 */
 		double[] readBuffer() {
 			return buffer.toArray(0, channels * bufSize);
 		}
 
+		/**
+		 * Reads the current per-channel write head positions.
+		 *
+		 * @return head positions as a double array
+		 */
 		double[] readHeads() {
 			return heads.toArray(0, channels);
 		}
 	}
 
+	/**
+	 * Builds a delay-network test harness with the specified configuration.
+	 *
+	 * @param channels number of channels
+	 * @param signalSize signal size per channel
+	 * @param bufSize buffer size in samples
+	 * @param tapDelays per-channel tap delay values
+	 * @param feedbackMatrixRowMajor row-major feedback matrix (channels x channels)
+	 * @return configured test harness
+	 */
 	private Harness build(int channels, int signalSize, int bufSize,
 						  double[] tapDelays, double[] feedbackMatrixRowMajor) {
 		Assert.assertEquals("delaySamples length must equal channels",
@@ -130,6 +167,12 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		return new Harness(compiled, buffer, heads, channels, signalSize, bufSize);
 	}
 
+	/**
+	 * Creates a zero feedback matrix of the specified size.
+	 *
+	 * @param channels matrix dimension
+	 * @return zero-initialized matrix
+	 */
 	private static double[] zeroFeedback(int channels) {
 		return new double[channels * channels];
 	}
@@ -461,6 +504,13 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 	 * work to relax the constraint is tracked alongside the broader
 	 * {@code MixdownManagerPdslTest.testMixdownManagerReverbPath} reverb
 	 * fix; once that lands, this test should be restored as-is.
+	 */
+	/**
+	 * Tests buffer wrap-around correctness when head advances past bufSize.
+	 *
+	 * <p>This test is ignored while the delay_network kernel requires
+	 * bufSize == signalSize. Re-enable when the kernel is relaxed to
+	 * allow bufSize > signalSize.</p>
 	 */
 	@Ignore("Cannot exercise wrap-around while delay_network kernel "
 			+ "requires bufSize == signalSize (MultiChannelDspFeatures.java:181). "

@@ -52,20 +52,34 @@ import java.util.List;
  */
 public class SampleBrushVisualTest extends TestSuiteBase {
 
+	/** Audio sample rate in Hz. */
 	private static final int SAMPLE_RATE = 44100;
+	/** Number of frequency bins in the spectrogram. */
 	private static final int FREQ_BINS = 256;
+	/** Number of time frames in the frequency data. */
 	private static final int FREQ_FRAMES = 1100;
+	/** Sample rate for frequency domain data in Hz. */
 	private static final double FREQ_SAMPLE_RATE = 100.0;
+	/** Duration of the source audio in seconds. */
 	private static final double SOURCE_DURATION = FREQ_FRAMES / FREQ_SAMPLE_RATE;
 
+	/** Width of the output PNG image in pixels. */
 	private static final int IMG_WIDTH = 800;
+	/** Height of the output PNG image in pixels. */
 	private static final int IMG_HEIGHT = 400;
+	/** Margin around the canvas in pixels. */
 	private static final int MARGIN = 20;
 
+	/** Directory where test output PNG files are written. */
 	private static final String RESULTS_DIR = "results";
 
+	/** Temporal context for mapping time/frequency to spatial positions. */
 	private TemporalSpatialContext context;
 
+	/**
+	 * Sets up the test fixture, creating the results directory and
+	 * initializing the temporal spatial context.
+	 */
 	@Before
 	public void setUp() {
 		new File(RESULTS_DIR).mkdirs();
@@ -73,6 +87,9 @@ public class SampleBrushVisualTest extends TestSuiteBase {
 		context.setDuration(SOURCE_DURATION);
 	}
 
+	/**
+	 * Renders source pattern and simulated brush drags to PNG files.
+	 */
 	@Test(timeout = 60000)
 	public void renderSourceAndBrushDrags() throws IOException {
 		WaveDetails source = createSourcePattern();
@@ -120,6 +137,10 @@ public class SampleBrushVisualTest extends TestSuiteBase {
 		return source;
 	}
 
+	/**
+	 * Paints dots into the frequency data at the specified bin,
+	 * spreading across adjacent bins and frames.
+	 */
 	private void paintDots(PackedCollection freqData, int bin, int spacing, double magnitude) {
 		int dotSize = 4;
 		for (int frame = 0; frame < FREQ_FRAMES; frame += spacing) {
@@ -134,6 +155,9 @@ public class SampleBrushVisualTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Creates a blank canvas with the configured frequency dimensions.
+	 */
 	private EditableSpatialWaveDetails createBlankCanvas() {
 		return new EditableSpatialWaveDetails(
 				"canvas", FREQ_FRAMES, FREQ_BINS, SAMPLE_RATE, FREQ_SAMPLE_RATE);

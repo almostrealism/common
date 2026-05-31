@@ -54,11 +54,13 @@ public class ReviewRuleTest extends TestSuiteBase {
 		boolean hasUncommittedChanges() { return dirty; }
 	}
 
+	/** ReviewRule getName returns "review". */
 	@Test(timeout = 30000)
 	public void getNameReturnsReview() {
 		assertEquals("review", new ReviewRule().getName());
 	}
 
+	/** ReviewRule DEFAULT_MAX_PASSES and default maxRetries is 1. */
 	@Test(timeout = 30000)
 	public void defaultMaxPassesIsOne() {
 		assertEquals(1, ReviewRule.DEFAULT_MAX_PASSES);
@@ -66,39 +68,46 @@ public class ReviewRuleTest extends TestSuiteBase {
 		assertEquals(1, CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES);
 	}
 
+	/** ReviewRule constructor with maxPasses overrides maxRetries. */
 	@Test(timeout = 30000)
 	public void maxRetriesRespectsConstructorOverride() {
 		assertEquals(3, new ReviewRule(3).getMaxRetries());
 	}
 
+	/** ReviewRule constructor rejects maxPasses of 0. */
 	@Test(timeout = 30000, expected = IllegalArgumentException.class)
 	public void constructorRejectsZero() {
 		new ReviewRule(0);
 	}
 
+	/** ReviewRule constructor rejects negative maxPasses. */
 	@Test(timeout = 30000, expected = IllegalArgumentException.class)
 	public void constructorRejectsNegative() {
 		new ReviewRule(-1);
 	}
 
+	/** ReviewRule isViolated returns true when job has new files. */
 	@Test(timeout = 30000)
 	public void isViolatedTrueWithNewFiles() {
 		ReviewRule rule = new ReviewRule();
 		assertTrue(rule.isViolated(new StubJob(List.of("foo/Bar.java"), false)));
 	}
 
+	/** ReviewRule isViolated returns true when job has uncommitted changes. */
 	@Test(timeout = 30000)
 	public void isViolatedTrueWithUncommittedChanges() {
 		ReviewRule rule = new ReviewRule();
 		assertTrue(rule.isViolated(new StubJob(new ArrayList<>(), true)));
 	}
 
+	/** ReviewRule isViolated returns false for clean tree with no new files. */
 	@Test(timeout = 30000)
 	public void isViolatedFalseOnCleanTree() {
 		ReviewRule rule = new ReviewRule();
 		assertFalse(rule.isViolated(new StubJob(new ArrayList<>(), false)));
 	}
 
+	/** ReviewRule isViolated returns false after first correction attempt (maxPasses=1). */
 	@Test(timeout = 30000)
 	public void isViolatedFalseAfterFirstRun() {
 		ReviewRule rule = new ReviewRule();
@@ -111,6 +120,7 @@ public class ReviewRuleTest extends TestSuiteBase {
 		assertFalse(rule.isViolated(job));
 	}
 
+	/** ReviewRule isViolated respects maxPasses greater than 1. */
 	@Test(timeout = 30000)
 	public void isViolatedRespectsMaxPassesAboveOne() {
 		ReviewRule rule = new ReviewRule(3);
@@ -129,6 +139,7 @@ public class ReviewRuleTest extends TestSuiteBase {
 				rule.isViolated(job));
 	}
 
+	/** ReviewRule buildCorrectionPrompt returns non-null with required sections. */
 	@Test(timeout = 30000)
 	public void buildCorrectionPromptReturnsNonNull() {
 		ReviewRule rule = new ReviewRule();
@@ -157,16 +168,19 @@ public class ReviewRuleTest extends TestSuiteBase {
 
 	// ── Phase wire mapping ──────────────────────────────────────────────────
 
+	/** Phase.REVIEW exists and fromWireName("review") resolves to it. */
 	@Test(timeout = 30000)
 	public void phaseReviewExists() {
 		assertEquals(Phase.REVIEW, Phase.fromWireName("review"));
 	}
 
+	/** Phase.fromRuleName("review") resolves to Phase.REVIEW. */
 	@Test(timeout = 30000)
 	public void fromRuleNameReviewResolvesToPhaseReview() {
 		assertEquals(Phase.REVIEW, Phase.fromRuleName("review"));
 	}
 
+	/** Phase.REVIEW.wireName() returns "review". */
 	@Test(timeout = 30000)
 	public void reviewPhaseWireName() {
 		assertEquals("review", Phase.REVIEW.wireName());
@@ -174,21 +188,25 @@ public class ReviewRuleTest extends TestSuiteBase {
 
 	// ── reviewEnabled / maxReviewPasses on CodingAgentJob ───────────────────
 
+	/** CodingAgentJob isReviewEnabled defaults to true. */
 	@Test(timeout = 30000)
 	public void reviewEnabledDefaultIsTrue() {
 		assertTrue(new CodingAgentJob("t1", "p").isReviewEnabled());
 	}
 
+	/** CodingAgentJob getMaxReviewPasses defaults to 1. */
 	@Test(timeout = 30000)
 	public void maxReviewPassesDefaultIsOne() {
 		assertEquals(1, new CodingAgentJob("t1", "p").getMaxReviewPasses());
 	}
 
+	/** CodingAgentJob setMaxReviewPasses rejects 0. */
 	@Test(timeout = 30000, expected = IllegalArgumentException.class)
 	public void setMaxReviewPassesRejectsZero() {
 		new CodingAgentJob("t1", "p").setMaxReviewPasses(0);
 	}
 
+	/** CodingAgentJob setMaxReviewPasses rejects negative values. */
 	@Test(timeout = 30000, expected = IllegalArgumentException.class)
 	public void setMaxReviewPassesRejectsNegative() {
 		new CodingAgentJob("t1", "p").setMaxReviewPasses(-2);
@@ -196,6 +214,7 @@ public class ReviewRuleTest extends TestSuiteBase {
 
 	// ── Wire format — defaults absent ───────────────────────────────────────
 
+	/** reviewEnabled absent from wire format when default (true). */
 	@Test(timeout = 30000)
 	public void reviewEnabledAbsentFromWireFormatWhenTrue() {
 		CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -204,6 +223,7 @@ public class ReviewRuleTest extends TestSuiteBase {
 				encoded.contains("reviewEnabled"));
 	}
 
+	/** reviewEnabled appears in wire format when explicitly set to false. */
 	@Test(timeout = 30000)
 	public void reviewEnabledAppearsInWireFormatWhenFalse() {
 		CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -213,6 +233,7 @@ public class ReviewRuleTest extends TestSuiteBase {
 				encoded.contains("reviewEnabled:=false"));
 	}
 
+	/** maxReviewPasses absent from wire format when default (1). */
 	@Test(timeout = 30000)
 	public void maxReviewPassesAbsentFromWireFormatWhenDefault() {
 		CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -221,6 +242,7 @@ public class ReviewRuleTest extends TestSuiteBase {
 				encoded.contains("maxReviewPasses"));
 	}
 
+	/** maxReviewPasses appears in wire format when overridden. */
 	@Test(timeout = 30000)
 	public void maxReviewPassesAppearsInWireFormatWhenOverridden() {
 		CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -230,6 +252,7 @@ public class ReviewRuleTest extends TestSuiteBase {
 				encoded.contains("maxReviewPasses:=3"));
 	}
 
+	/** reviewEnabled round-trips correctly via job.set(). */
 	@Test(timeout = 30000)
 	public void reviewEnabledRoundTripViaSet() {
 		CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -239,6 +262,7 @@ public class ReviewRuleTest extends TestSuiteBase {
 		assertTrue(job.isReviewEnabled());
 	}
 
+	/** maxReviewPasses round-trips correctly via job.set(). */
 	@Test(timeout = 30000)
 	public void maxReviewPassesRoundTripViaSet() {
 		CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -246,6 +270,7 @@ public class ReviewRuleTest extends TestSuiteBase {
 		assertEquals(4, job.getMaxReviewPasses());
 	}
 
+	/** maxReviewPasses deserialization falls back to default on invalid string. */
 	@Test(timeout = 30000)
 	public void maxReviewPassesDeserializationFallsBackOnInvalidString() {
 		CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -253,6 +278,7 @@ public class ReviewRuleTest extends TestSuiteBase {
 		assertEquals(CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES, job.getMaxReviewPasses());
 	}
 
+	/** maxReviewPasses deserialization falls back to default on 0 or negative. */
 	@Test(timeout = 30000)
 	public void maxReviewPassesDeserializationFallsBackOnNonPositive() {
 		CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -262,6 +288,7 @@ public class ReviewRuleTest extends TestSuiteBase {
 		assertEquals(CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES, job.getMaxReviewPasses());
 	}
 
+	/** CodingAgentJob review settings survive encode/decode round-trip. */
 	@Test(timeout = 30000)
 	public void encodeDecodeRoundTrip() {
 		CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -274,11 +301,13 @@ public class ReviewRuleTest extends TestSuiteBase {
 
 	// ── Factory propagation ────────────────────────────────────────────────
 
+	/** CodingAgentJobFactory isReviewEnabled defaults to true. */
 	@Test(timeout = 30000)
 	public void factoryReviewEnabledDefaultTrue() {
 		assertTrue(new CodingAgentJobFactory("prompt").isReviewEnabled());
 	}
 
+	/** CodingAgentJobFactory reviewEnabled propagates to nextJob(). */
 	@Test(timeout = 30000)
 	public void factoryReviewEnabledPropagatesToJob() {
 		CodingAgentJobFactory factory = new CodingAgentJobFactory("p");
@@ -288,6 +317,7 @@ public class ReviewRuleTest extends TestSuiteBase {
 		assertFalse(job.isReviewEnabled());
 	}
 
+	/** CodingAgentJobFactory maxReviewPasses propagates to nextJob(). */
 	@Test(timeout = 30000)
 	public void factoryMaxReviewPassesPropagatesToJob() {
 		CodingAgentJobFactory factory = new CodingAgentJobFactory("p");
@@ -297,11 +327,13 @@ public class ReviewRuleTest extends TestSuiteBase {
 		assertEquals(2, job.getMaxReviewPasses());
 	}
 
+	/** CodingAgentJobFactory setMaxReviewPasses rejects 0. */
 	@Test(timeout = 30000, expected = IllegalArgumentException.class)
 	public void factorySetMaxReviewPassesRejectsZero() {
 		new CodingAgentJobFactory("p").setMaxReviewPasses(0);
 	}
 
+	/** CodingAgentJobFactory reviewEnabled round-trips via set(). */
 	@Test(timeout = 30000)
 	public void factoryReviewEnabledRoundTripViaSet() {
 		CodingAgentJobFactory factory = new CodingAgentJobFactory("p");

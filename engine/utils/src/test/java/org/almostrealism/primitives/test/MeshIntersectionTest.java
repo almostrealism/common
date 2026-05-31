@@ -52,6 +52,8 @@ public class MeshIntersectionTest extends TestSuiteBase {
 
 	/**
 	 * Creates a test mesh with sample triangles.
+	 *
+	 * @return Mesh with sample triangle data
 	 */
 	protected Mesh mesh() {
 		DefaultVertexData data = new DefaultVertexData(5, 3);
@@ -69,6 +71,8 @@ public class MeshIntersectionTest extends TestSuiteBase {
 
 	/**
 	 * Creates a camera for ray generation.
+	 *
+	 * @return Camera producer for ray generation
 	 */
 	protected Producer<Ray> camera() {
 		ThinLensCamera c = new ThinLensCamera();
@@ -134,6 +138,9 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		Assert.assertEquals(0.6666666865348816, n.toDouble(2), Math.pow(10, -10));
 	}
 
+	/**
+	 * Tests triangle intersect at kernel.
+	 */
 	@Test(timeout = 10000)
 	public void triangleIntersectAtKernel() {
 		PackedCollection in = Ray.bank(1);

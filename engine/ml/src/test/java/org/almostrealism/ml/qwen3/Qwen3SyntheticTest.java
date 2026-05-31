@@ -15,23 +15,30 @@ import static org.junit.Assert.fail;
 
 /**
  * Synthetic test for Qwen3 using random weights.
- * <p>
- * This test creates a tiny Qwen3 model with random weights to verify:
- * 1. Model construction doesn't crash
- * 2. Forward pass executes without errors
- * 3. Output shapes are correct
- * 4. No null pointer exceptions or indexing errors
- * <p>
- * This does NOT validate:
- * - Weight shapes match HuggingFace format
- * - Output is meaningful
- * - Attention mechanism is correct
+ *
+ * <p>This test creates a tiny Qwen3 model with random weights to verify:
+ * <ul>
+ *   <li>Model construction doesn't crash</li>
+ *   <li>Forward pass executes without errors</li>
+ *   <li>Output shapes are correct</li>
+ *   <li>No null pointer exceptions or indexing errors</li>
+ * </ul></p>
+ *
+ * <p>This does NOT validate:
+ * <ul>
+ *   <li>Weight shapes match HuggingFace format</li>
+ *   <li>Output is meaningful</li>
+ *   <li>Attention mechanism is correct</li>
+ * </ul></p>
  */
 public class Qwen3SyntheticTest extends TestSuiteBase {
 
 	/**
-	 * Create random weights with correct shapes for a Qwen3 config.
-	 * Returns a StateDictionary populated with HuggingFace-style key names.
+	 * Creates random weights with correct shapes for a Qwen3 config.
+	 *
+	 * @param config the model configuration
+	 * @param seed random seed for reproducibility
+	 * @return StateDictionary populated with HuggingFace-style key names
 	 */
 	private static StateDictionary createRandomWeights(Qwen3Config config, long seed) {
 		Random random = new Random(seed);
@@ -94,6 +101,13 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 		return new StateDictionary(weights);
 	}
 
+	/**
+	 * Creates a PackedCollection filled with small random values.
+	 *
+	 * @param random the random number generator
+	 * @param dims the tensor dimensions
+	 * @return collection filled with random values in range [-0.1, 0.1]
+	 */
 	private static PackedCollection randomCollection(Random random, int... dims) {
 		TraversalPolicy shape = new TraversalPolicy(dims);
 		PackedCollection collection = new PackedCollection(shape);
@@ -107,6 +121,10 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 		return collection;
 	}
 
+	/**
+	 * Test that tiny model can be constructed without errors.
+	 * Uses heads==kvHeads because GQA is not yet fully implemented.
+	 */
 	@Test(timeout = 120000)
 	public void testTinyModelConstruction() {
 		log("\n=== Test 1: Tiny Model Construction ===");
@@ -161,6 +179,9 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 		log("[OK] All construction tests passed!\n");
 	}
 
+	/**
+	 * Test that model is ready for compilation.
+	 */
 	@Test(timeout = 120000)
 	public void testModelCompilation() {
 		log("\n=== Test 2: Model Compilation ===");
@@ -189,6 +210,9 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 		log("[OK] Compilation test passed!\n");
 	}
 
+	/**
+	 * Test that weight shapes are correct for the model configuration.
+	 */
 	@Test(timeout = 120000)
 	public void testWeightShapes() {
 		log("\n=== Test 3: Weight Shape Verification ===");
@@ -243,6 +267,8 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 
 	/**
 	 * Main method for running tests without JUnit.
+	 *
+	 * @param args command line arguments
 	 */
 	public static void main(String[] args) {
 		Console.root().println("+============================================================+");

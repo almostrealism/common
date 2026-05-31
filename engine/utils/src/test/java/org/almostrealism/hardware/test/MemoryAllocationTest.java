@@ -22,6 +22,9 @@ import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for memory allocation and hardware memory management.
+ */
 public class MemoryAllocationTest extends TestSuiteBase {
 	/**
 	 * Tests allocating and destroying large collections (long-running).

@@ -29,6 +29,9 @@ import org.junit.Test;
  */
 public class VectorConcatTest extends TestSuiteBase implements VectorFeatures, ConsoleFeatures {
 
+	/**
+	 * Tests creating a vector from three scalar values using concat operations.
+	 */
 	@Test(timeout = 10000)
 	public void simpleVectorFromScalars() {
 		log("Creating vector from three scalar values...");

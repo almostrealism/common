@@ -56,11 +56,18 @@ import static org.junit.Assert.fail;
  */
 public class MixdownChromosomeRangesTest extends TestSuiteBase implements CellFeatures {
 
+	/** Sample rate for audio processing. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
+	/** Number of audio channels. */
 	private static final int CHANNELS = 6;
+	/** Number of delay layers in the mixdown. */
 	private static final int DELAY_LAYERS = 4;
+	/** Number of parameters in the genome. */
 	private static final int GENOME_PARAMS = 256;
 
+	/**
+	 * Verifies that transmission and wetOut values respect configured ranges.
+	 */
 	@Test(timeout = 30_000)
 	public void transmissionAndWetOutValuesRespectConfiguredRange() {
 		double measureDuration = Frequency.forBPM(120).l(4);
@@ -130,10 +137,23 @@ public class MixdownChromosomeRangesTest extends TestSuiteBase implements CellFe
 				!failed);
 	}
 
+	/**
+	 * Evaluates a factor and returns its result as a double.
+	 *
+	 * @param factor the factor to evaluate
+	 * @return the evaluated result
+	 */
 	private double evaluateFactor(Factor<PackedCollection> factor) {
 		return factor.getResultant(c(1.0)).get().evaluate().toDouble(0);
 	}
 
+	/**
+	 * Reads a chromosome field from a MixdownManager using reflection.
+	 *
+	 * @param mixdown the mixdown manager
+	 * @param name the field name
+	 * @return the chromosome
+	 */
 	private Chromosome<PackedCollection> readChromosomeField(MixdownManager mixdown, String name) {
 		try {
 			Field f = MixdownManager.class.getDeclaredField(name);

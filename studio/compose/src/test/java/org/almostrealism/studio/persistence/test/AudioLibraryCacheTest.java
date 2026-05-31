@@ -54,15 +54,25 @@ import java.util.concurrent.CompletableFuture;
  */
 public class AudioLibraryCacheTest extends TestSuiteBase {
 
+	/** Temporary directory for test files. */
 	private File tempDir;
+
+	/** The audio library under test. */
 	private AudioLibrary library;
 
+	/**
+	 * Sets up a temporary directory and audio library for testing.
+	 * @throws IOException if directory creation fails
+	 */
 	@Before
 	public void setUp() throws IOException {
 		tempDir = Files.createTempDirectory("audio-lib-cache-test").toFile();
 		library = new AudioLibrary(tempDir, 44100);
 	}
 
+	/**
+	 * Tears down test resources by stopping the library and cleaning up temp files.
+	 */
 	@After
 	public void tearDown() {
 		if (library != null) {

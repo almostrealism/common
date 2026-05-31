@@ -58,7 +58,10 @@ import static org.junit.Assert.*;
  */
 public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 
+	/** Buffer size for real-time rendering in frames. */
 	private static final int BUFFER_SIZE = 4096;
+
+	/** Number of source channels in test scenes. */
 	private static final int SOURCE_COUNT = 6;
 
 	/**
@@ -392,6 +395,9 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 
 	/**
 	 * Creates a scene with a working genome seed and 6 channels (effects enabled).
+	 *
+	 * @param samplesDir the samples directory
+	 * @return configured scene, or null if no working seed found
 	 */
 	private AudioScene<?> createSceneWithWorkingSeed(File samplesDir) {
 		AudioScene<?> searchScene = createBaselineScene(samplesDir, SOURCE_COUNT);
@@ -403,6 +409,11 @@ public class AudioSceneBufferConsolidationTest extends AudioSceneTestBase {
 		return scene;
 	}
 
+	/**
+	 * Returns the samples directory.
+	 *
+	 * @return the samples directory
+	 */
 	private File requireSamplesDir() {
 		return getSamplesDir();
 	}

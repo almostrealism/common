@@ -45,23 +45,38 @@ import org.junit.Test;
 import java.io.File;
 import java.util.List;
 
+/**
+ * Tests for AssignableGenome audio cell processing.
+ */
 public class AssignableGenomeTest extends TestSuiteBase implements CellFeatures {
+	/**
+	 * Initializes test environment before all tests.
+	 */
 	@BeforeClass
 	public static void init() {
 		// AcceleratedTimeSeries.defaultCacheLevel = CacheLevel.ALL;
 		StableDurationHealthComputation.enableVerbose = true;
 	}
 
+	/**
+	 * Cleans up test environment after all tests.
+	 */
 	@AfterClass
 	public static void shutdown() {
 		AcceleratedTimeSeries.defaultCacheLevel = CacheLevel.NONE;
 		StableDurationHealthComputation.enableVerbose = false;
 	}
 
+	/**
+	 * Creates an AudioScene for testing.
+	 */
 	protected AudioScene<?> scene() {
 		return new AudioScene<>(null, 120, 2, 2, OutputLine.sampleRate);
 	}
 
+	/**
+	 * Creates test cells with filters and meters.
+	 */
 	protected Cells cells(Receptor<PackedCollection> meter) {
 		List<Frequency> frequencies = new DefaultKeyboardTuning().getTones(WesternScales.major(WesternChromatic.G3, 1));
 
@@ -82,6 +97,9 @@ public class AssignableGenomeTest extends TestSuiteBase implements CellFeatures 
 			return cells;
 	}
 
+	/**
+	 * Test that cell examples produce correct audio output.
+	 */
 	@Test(timeout = 300_000)
 	@TestProperties(knownIssue = true)
 	@TestDepth(1)

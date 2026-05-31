@@ -60,6 +60,9 @@ import java.util.Random;
  */
 public class GruDecoderPdslInferenceTest extends TestSuiteBase implements ConsoleFeatures {
 
+	/**
+	 * Path to the Moonbeam protobuf weights directory.
+	 */
 	private static final String WEIGHTS_DIR = "/Users/Shared/models/moonbeam-weights-protobuf";
 
 	// -----------------------------------------------------------------------

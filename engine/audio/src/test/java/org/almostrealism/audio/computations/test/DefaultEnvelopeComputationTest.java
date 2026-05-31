@@ -22,17 +22,34 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for {@link org.almostrealism.audio.computations.DefaultEnvelopeComputation}.
+ * Verifies envelope computation with various input values.
+ */
 public class DefaultEnvelopeComputationTest extends TestSuiteBase {
+
+	/** Input collection containing a single sample value. */
 	private static final PackedCollection input = new PackedCollection(1);
 
 	static {
 		input.setMem(0, 0.5);
 	}
 
+	/**
+	 * Creates a new {@link org.almostrealism.audio.computations.DefaultEnvelopeComputation}
+	 * using the predefined input collection.
+	 *
+	 * @return a new DefaultEnvelopeComputation instance
+	 */
 	public DefaultEnvelopeComputation computation() {
 		return new DefaultEnvelopeComputation(p(input));
 	}
 
+	/**
+	 * Tests envelope computation evaluation with different input values.
+	 * Verifies that the envelope computation produces expected output values
+	 * for input of 0.5 (producing positive result) and 1.0 (producing zero).
+	 */
 	@Test(timeout = 30000)
 	public void evaluate() {
 		Evaluable<PackedCollection> s = computation().get();

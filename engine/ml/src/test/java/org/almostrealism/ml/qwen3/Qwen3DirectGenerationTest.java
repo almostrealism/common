@@ -4,8 +4,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
-import org.almostrealism.ml.AutoregressiveModel;
-import org.almostrealism.model.CompiledModel;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.util.TestDepth;
@@ -16,7 +14,6 @@ import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
@@ -36,8 +33,13 @@ import java.util.Arrays;
  */
 public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleFeatures {
 
+	/** Directory containing exported model weights. */
 	private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
+
+	/** Path to the tokenizer binary file. */
 	private static final String TOKENIZER_PATH = WEIGHTS_DIR + "/tokenizer.bin";
+
+	/** Directory containing PyTorch reference outputs. */
 	private static final String REFERENCE_DIR = "/workspace/project/common/ml/qwen3_reference";
 
 	/**
@@ -198,6 +200,12 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 				expectedOutputs[0], generatedTokens[0]);
 	}
 
+	/**
+	 * Loads reference logits from a binary file.
+	 *
+	 * @param filename the name of the reference file
+	 * @return array of float values, or null if file cannot be loaded
+	 */
 	private float[] loadReferenceLogits(String filename) {
 		String filepath = REFERENCE_DIR + "/" + filename;
 		try (FileChannel channel = FileChannel.open(Paths.get(filepath), StandardOpenOption.READ)) {
@@ -218,6 +226,13 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 		}
 	}
 
+	/**
+	 * Finds the top-k largest values in an array.
+	 *
+	 * @param values the input array
+	 * @param k the number of top values to find
+	 * @return array of indices of top-k values
+	 */
 	private int[] findTopK(double[] values, int k) {
 		int[] indices = new int[k];
 		double[] topValues = new double[k];
@@ -239,6 +254,13 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 		return indices;
 	}
 
+	/**
+	 * Finds the top-k largest values in a float array.
+	 *
+	 * @param values the input float array
+	 * @param k the number of top values to find
+	 * @return array of indices of top-k values
+	 */
 	private int[] findTopKFromFloat(float[] values, int k) {
 		int[] indices = new int[k];
 		float[] topValues = new float[k];

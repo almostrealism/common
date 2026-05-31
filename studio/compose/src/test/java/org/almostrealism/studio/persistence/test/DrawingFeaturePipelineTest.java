@@ -64,16 +64,34 @@ import java.util.stream.Stream;
  */
 public class DrawingFeaturePipelineTest extends TestSuiteBase {
 
+	/** Sample rate for audio in Hz. */
 	private static final int SAMPLE_RATE = 44100;
+
+	/** Number of frequency bins in spectral data. */
 	private static final int FREQ_BINS = 32;
+
+	/** Number of frames in frequency data. */
 	private static final int FREQ_FRAMES = 100;
+
+	/** Sample rate for frequency data in Hz. */
 	private static final double FREQ_SAMPLE_RATE = 100.0;
+
+	/** Number of frames in feature data. */
 	private static final int FEATURE_FRAMES = 8;
+
+	/** Number of bins in feature data. */
 	private static final int FEATURE_BINS = 16;
 
+	/** Temporary directory for test files. */
 	private Path tempDir;
+
+	/** The audio library under test. */
 	private AudioLibrary library;
 
+	/**
+	 * Sets up temporary directory and audio library for drawing pipeline testing.
+	 * @throws IOException if directory creation fails
+	 */
 	@Before
 	public void setUp() throws IOException {
 		tempDir = Files.createTempDirectory("drawing-pipeline-test");
@@ -81,6 +99,10 @@ public class DrawingFeaturePipelineTest extends TestSuiteBase {
 		library.getWaveDetailsFactory().setFeatureProvider(new TestFeatureProvider());
 	}
 
+	/**
+	 * Tears down test resources and cleans up temporary directories.
+	 * @throws IOException if directory traversal fails
+	 */
 	@After
 	public void tearDown() throws IOException {
 		if (library != null) library.stop();

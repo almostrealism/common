@@ -12,6 +12,9 @@ import java.util.Arrays;
  */
 public class Qwen3TokenizerTest extends TestSuiteBase {
 
+	/**
+	 * Test basic encoding of text to tokens.
+	 */
 	@Test(timeout = 5000)
 	public void testBasicEncoding() {
 		// Create test tokenizer with simple vocab
@@ -28,6 +31,9 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		log("Tokens: " + Arrays.toString(tokens));
 	}
 
+	/**
+	 * Test encoding followed by decoding produces valid output.
+	 */
 	@Test(timeout = 5000)
 	public void testEncodeDecode() {
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
@@ -44,6 +50,9 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		assertTrue("Decoded text should not be empty", decoded.length() > 0);
 	}
 
+	/**
+	 * Test special token handling (BOS and EOS tokens).
+	 */
 	@Test(timeout = 5000)
 	public void testSpecialTokens() {
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
@@ -72,6 +81,9 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 				Qwen3Tokenizer.EOS_TOKEN, tokensWithBoth[tokensWithBoth.length - 1]);
 	}
 
+	/**
+	 * Test that empty string produces zero tokens.
+	 */
 	@Test(timeout = 5000)
 	public void testEmptyString() {
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
@@ -81,6 +93,9 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		assertEquals("Empty string should produce 0 tokens", 0, tokens.length);
 	}
 
+	/**
+	 * Test encoding of multi-byte UTF-8 characters.
+	 */
 	@Test(timeout = 5000)
 	public void testMultiByteCharacters() {
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
@@ -96,6 +111,9 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		log("Tokens: " + Arrays.toString(tokens));
 	}
 
+	/**
+	 * Test that vocabulary size is correct.
+	 */
 	@Test(timeout = 5000)
 	public void testVocabSize() {
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
@@ -107,6 +125,9 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 		log("Vocabulary size: " + vocabSize);
 	}
 
+	/**
+	 * Test decoding of tokens back to text.
+	 */
 	@Test(timeout = 5000)
 	public void testDecode() {
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
@@ -166,6 +187,8 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 
 	/**
 	 * Main method for manual testing without JUnit.
+	 *
+	 * @param args command line arguments
 	 */
 	public static void main(String[] args) {
 		Console.root().println("=== Qwen3Tokenizer Manual Test ===\n");
