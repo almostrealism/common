@@ -45,6 +45,11 @@
           },
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-git-worktree.sh",
+            "description": "Block 'git worktree add' \u2014 all changes must stay in the single working tree the developer can see (read-only 'git worktree list' allowed)"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-mvn-test-direct.sh",
             "description": "Block direct mvn test \u2014 must use mcp__ar-test-runner__start_test_run"
           },
