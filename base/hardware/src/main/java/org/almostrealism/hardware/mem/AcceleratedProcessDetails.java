@@ -176,6 +176,15 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	/** Optional semaphore for coordinating kernel execution completion. */
 	private DefaultLatchSemaphore semaphore;
 
+	/**
+	 * Optional device-completion semaphore published by the operator dispatch (e.g. an
+	 * OpenCL {@code cl_event}-backed semaphore). When set it is the operation's true
+	 * completion and is returned by {@link #getSemaphore()} in preference to the
+	 * host-readiness {@link #semaphore latch}, so callers wait on (and can chain) actual
+	 * kernel completion rather than the host enqueue.
+	 */
+	private Semaphore completionSemaphore;
+
 	/** Listeners to notify when all arguments are ready. */
 	private List<Runnable> listeners;
 
@@ -223,7 +232,9 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 *
 	 * @return the semaphore, or null if not set
 	 */
-	public Semaphore getSemaphore() { return semaphore; }
+	public Semaphore getSemaphore() {
+		return completionSemaphore != null ? completionSemaphore : semaphore;
+	}
 
 	/**
 	 * Sets the {@link Semaphore} for coordinating kernel completion notifications.
@@ -231,6 +242,17 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	 * @param semaphore the semaphore to set
 	 */
 	public void setSemaphore(DefaultLatchSemaphore semaphore) { this.semaphore = semaphore; }
+
+	/**
+	 * Sets the device-completion {@link Semaphore} published by the operator dispatch.
+	 * When non-null this is returned by {@link #getSemaphore()} in preference to the
+	 * host-readiness latch, so callers wait on actual kernel completion.
+	 *
+	 * @param completionSemaphore the operator's completion semaphore, or null
+	 */
+	public void setCompletionSemaphore(Semaphore completionSemaphore) {
+		this.completionSemaphore = completionSemaphore;
+	}
 
 	/**
 	 * Returns the processed arguments as a typed array.

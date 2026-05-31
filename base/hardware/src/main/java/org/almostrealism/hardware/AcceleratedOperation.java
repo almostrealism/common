@@ -541,7 +541,27 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @return Process details containing execution state and semaphore for synchronization
 	 * @throws UnsupportedOperationException if the operation was not compiled
 	 */
-	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
+	protected AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
+		return apply(output, args, null);
+	}
+
+	/**
+	 * Applies this operation, chaining on a prior operation's completion.
+	 *
+	 * <p>Equivalent to {@link #apply(MemoryBank, Object[])} except that {@code dependsOn},
+	 * when non-null, is passed to the operator so the provider can make this dispatch wait
+	 * on the prior operation's completion <em>inside the provider</em> (e.g. an OpenCL
+	 * {@code cl_event} wait-list) rather than blocking the host. The returned details'
+	 * {@link AcceleratedProcessDetails#getSemaphore() completion semaphore} is this
+	 * operation's completion, suitable for use as the next operation's {@code dependsOn}.</p>
+	 *
+	 * @param output    The destination memory bank for operation results, or null
+	 * @param args      The input arguments for the operation
+	 * @param dependsOn The prior operation's completion {@link Semaphore} to chain on, or null
+	 * @return Process details containing execution state and the completion semaphore
+	 * @throws UnsupportedOperationException if the operation was not compiled
+	 */
+	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args, Semaphore dependsOn) {
 		if (getArguments() == null && getInstructionSetManager() == null) {
 			throw new UnsupportedOperationException("Operation was not compiled");
 		}
@@ -563,12 +583,19 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				process.getPrepare().get().run();
 			}
 
-			// Run the operator
-			Semaphore nextSemaphore = operator.accept(input, null);
+			// Run the operator, chaining on the prior operation's completion when provided
+			Semaphore nextSemaphore = operator.accept(input, dependsOn);
 
 			// Register kernel semaphore with the active heap stage so
 			// that pop() waits for kernel completion before destroying memory
 			Heap.addPendingKernel(nextSemaphore);
+
+			// Adopt the operator's device-completion semaphore as the process completion so
+			// callers wait on (and can chain via dependsOn) the actual kernel completion
+			// rather than the host-readiness latch. When the operator returns null (fully
+			// synchronous providers) the host latch remains the completion — behavior is
+			// unchanged.
+			process.setCompletionSemaphore(nextSemaphore);
 
 			// Postprocessing
 			if (processing) {
