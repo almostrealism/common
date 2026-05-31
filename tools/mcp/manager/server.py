@@ -1589,6 +1589,7 @@ def workstream_submit_task(
     deduplication_mode: str = "",
     max_deduplication_passes: int = 0,
     organizational_placement_enabled: bool = False,
+    reflection_enabled: bool = False,
     review_enabled: bool = True,
     max_review_passes: int = 0,
     post_completion_command: str = "",
@@ -1667,6 +1668,15 @@ def workstream_submit_task(
             level of the module hierarchy. Disabled by default to keep routine
             exploratory jobs cheaper. Enable for final pre-merge cleanup jobs
             where placement correctness matters.
+        reflection_enabled: When ``True``, activates the retrospective phase
+            after all other phases. A separate agent session analyzes the
+            primary phase transcript for tool-use and context-efficiency
+            improvement opportunities, emitting findings as memories. The
+            phase produces no code changes. Disabled by default. The
+            recommended default model for this phase is ``claude-sonnet-4-7``
+            or stronger, since analyzing a transcript benefits from strong
+            reasoning. Configure via
+            ``phase_configs='{"retrospective":{"model":"claude-sonnet-4-7"}}'``.
         review_enabled: When ``True`` (the default), a second-pass review
             session runs after the primary phase. The reviewer is told to
             make surgical fixes only when unambiguous and to defer
@@ -1902,6 +1912,8 @@ def workstream_submit_task(
         payload["maxDeduplicationPasses"] = max_deduplication_passes
     if organizational_placement_enabled:
         payload["enforceOrganizationalPlacement"] = True
+    if reflection_enabled:
+        payload["reflectionEnabled"] = True
     if not review_enabled:
         payload["reviewEnabled"] = False
     if max_review_passes > 0:

@@ -20,8 +20,6 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelTraversalProvider;
-import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Producer;
@@ -30,7 +28,7 @@ import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
-import java.util.IdentityHashMap;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.IntStream;
@@ -111,19 +109,21 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	/** Minimum number of child expressions required before generating a traversal operation. */
 	public static int minimumChildren = 16;
 
-	/** Language operations used for generating kernel traversal expressions. */
-	private LanguageOperations lang;
-
 	/** Maximum number of traversal operations that can be generated. */
 	private int count;
 	/** If true, the count is fixed and cannot grow dynamically. */
 	private boolean fixed;
 	/** Factory for creating array variables from producers during traversal code generation. */
 	private Function<Producer<?>, ArrayVariable<?>> variableFactory;
-	/** Map from operation key to generated traversal operations. */
-	private Map<String, KernelTraversalOperation> operations;
-	/** Map from variable key to generated array variables. */
-	private Map<String, ArrayVariable> variables;
+	/**
+	 * Generated traversal operations, keyed by the structurally-equal source expression.
+	 * {@link Expression#equals(Object)} delegates to {@link Expression#compare(Expression)}
+	 * which uses cached metrics (type, depth, node count, hash) for O(1) early rejection,
+	 * so lookup is fast even with deeply nested keys.
+	 */
+	private Map<Expression<?>, KernelTraversalOperation> operations;
+	/** Generated array variables, keyed by the same source expression as {@link #operations}. */
+	private Map<Expression<?>, ArrayVariable> variables;
 
 	/**
 	 * Creates a generator with the given count, fixedness, and variable factory.
@@ -133,12 +133,11 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	 * @param variableFactory Factory for creating array variables from producers
 	 */
 	protected KernelTraversalOperationGenerator(int count, boolean fixed, Function<Producer<?>, ArrayVariable<?>> variableFactory) {
-		this.lang = new LanguageOperationsStub();
 		this.count = count;
 		this.fixed = fixed;
 		this.variableFactory = variableFactory;
-		this.operations = new IdentityHashMap<>();
-		this.variables = new IdentityHashMap<>();
+		this.operations = new HashMap<>();
+		this.variables = new HashMap<>();
 	}
 
 	/**
@@ -167,8 +166,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 			if (!enableGeneration || !fixed) return expression;
 			if (expression.getChildren().size() < minimumChildren) return expression;
 
-			String e = expression.getExpression(lang);
-			ArrayVariable<?> variable = variables.get(e);
+			ArrayVariable<?> variable = variables.get(expression);
 			if (variable != null) return variable.reference(new KernelIndex());
 
 			if (operations.size() >= defaultMaxEntries) {
@@ -181,10 +179,10 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 			IntStream.range(0, count)
 					.mapToObj(i -> expression.withIndex(new KernelIndex(), i).getSimplified())
 					.forEach(operation.getExpressions()::add);
-			operations.put(e, operation);
+			operations.put(expression, operation);
 
 			variable = variableFactory.apply((Producer) operation.isolate());
-			variables.put(e, variable);
+			variables.put(expression, variable);
 			return variable.reference(new KernelIndex());
 		} finally {
 			timing.addEntry(String.valueOf(count), System.nanoTime() - start);

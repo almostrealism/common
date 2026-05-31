@@ -18,6 +18,9 @@ package org.almostrealism.studio.optimize;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.OutputFeatures;
 import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
@@ -32,8 +35,7 @@ import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 
 import java.io.File;
-import java.io.FileWriter;
-import java.io.PrintWriter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -84,8 +86,16 @@ public final class RealtimeContinuousRenderer {
 		// listened to while it runs. Otherwise only the first loop is written.
 		boolean liveOutput = Boolean.getBoolean("AR_RT_LIVE_OUTPUT");
 
-		new File("results").mkdirs();
-		PrintWriter mon = new PrintWriter(new FileWriter("results/rt-monitor.log", true), true);
+		File resultsDir = new File("results");
+		if (!resultsDir.mkdirs() && !resultsDir.isDirectory()) {
+			throw new IOException("Unable to create results directory: " + resultsDir.getAbsolutePath());
+		}
+		// Route monitor output through the framework's Console rather than an ad-hoc
+		// PrintWriter: a child console mirrors every line to results/rt-monitor.log (via
+		// the file-output listener) and to the root console, with framework timestamps.
+		Console monitor = Console.root().child();
+		monitor.addListener(OutputFeatures.fileOutput("results/rt-monitor.log"));
+		ConsoleFeatures log = monitor.features(RealtimeContinuousRenderer.class);
 
 		AudioScene<?> scene = AudioSceneOptimizer.createScene();
 		scene.setTotalMeasures(measures);
@@ -103,12 +113,12 @@ public final class RealtimeContinuousRenderer {
 		Runnable setup = cells.setup().get();
 		Runnable tick = cells.tick().get();
 
-		mon.printf("START channels=%s measures=%d buffer=%d arrangement=%.1fs buffersPerLoop=%d targetHours=%.1f%n",
-				channels, measures, bufferSize, frames / (double) OutputLine.sampleRate, buffersPerLoop, targetHours);
+		log.log(String.format("channels=%s measures=%d buffer=%d arrangement=%.1fs buffersPerLoop=%d targetHours=%.1f",
+				channels, measures, bufferSize, frames / (double) OutputLine.sampleRate, buffersPerLoop, targetHours));
 
 		long setupStart = System.nanoTime();
 		setup.run();
-		mon.printf("setup_ms=%d%n", (System.nanoTime() - setupStart) / 1_000_000L);
+		log.log(String.format("setup_ms=%d", (System.nanoTime() - setupStart) / 1_000_000L));
 
 		long targetBuffers = (long) (targetHours * 3600.0 / bufferAudioSec);
 		long[] count = {0};
@@ -165,10 +175,10 @@ public final class RealtimeContinuousRenderer {
 						rollSum[0] = 0;
 						rollN[0] = 0;
 						double wall = (System.nanoTime() - wallStart) / 1e9;
-						mon.printf("audio=%.0fs(%.3fh) wall=%.0fs buffers=%d loop=%d ratio=%.3f peak=%.3f worstWindow=%.3f mem=%dMB %s%n",
+						log.log(String.format("audio=%.0fs(%.3fh) wall=%.0fs buffers=%d loop=%d ratio=%.3f peak=%.3f worstWindow=%.3f mem=%dMB %s",
 								audioSec[0], audioSec[0] / 3600.0, wall, count[0], loopIdx[0], roll, peak[0],
 								worstRoll[0], allocatedNativeBytes() / (1024 * 1024),
-								roll < 1.0 ? "REALTIME" : "*** SLOWER-THAN-REALTIME ***");
+								roll < 1.0 ? "realtime" : "slower-than-realtime"));
 					}
 				}
 
@@ -186,7 +196,7 @@ public final class RealtimeContinuousRenderer {
 					pop.setGenomes(List.of(scene.getGenome().random()));
 					pop.enableGenome(0);
 					PatternLayerManager.invalidateCaches();
-					mon.printf("switch_arrangement loop=%d buffers=%d%n", loopIdx[0], count[0]);
+					log.log(String.format("switch_arrangement loop=%d buffers=%d", loopIdx[0], count[0]));
 				} else {
 					cells.reset();
 				}
@@ -200,10 +210,9 @@ public final class RealtimeContinuousRenderer {
 			} else {
 				loopBody.run();
 			}
-			mon.printf("DONE generated %.2f hours of audio over %d loops; peak=%.3f worstWindow=%.3f%n",
-					audioSec[0] / 3600.0, loopIdx[0], peak[0], worstRoll[0]);
+			log.log(String.format("generated %.2f hours of audio over %d loops; peak=%.3f worstWindow=%.3f",
+					audioSec[0] / 3600.0, loopIdx[0], peak[0], worstRoll[0]));
 		} finally {
-			mon.close();
 			pop.destroy();
 			scene.destroy();
 			if (heap != null) heap.destroy();

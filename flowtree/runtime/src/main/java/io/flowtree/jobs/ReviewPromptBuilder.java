@@ -65,23 +65,6 @@ final class ReviewPromptBuilder {
     private ReviewPromptBuilder() {}
 
     /**
-     * Extracts the workstream id from a workstream URL of the shape
-     * {@code .../api/workstreams/<wsId>[/jobs/...]}.
-     *
-     * @param url the workstream URL or {@code null}
-     * @return the workstream id, or {@code null} when none could be parsed
-     */
-    static String extractWorkstreamId(String url) {
-        if (url == null || url.isEmpty()) return null;
-        int idx = url.indexOf("/workstreams/");
-        if (idx < 0) return null;
-        int start = idx + "/workstreams/".length();
-        int end = url.indexOf('/', start);
-        String id = end < 0 ? url.substring(start) : url.substring(start, end);
-        return id.isEmpty() ? null : id;
-    }
-
-    /**
      * Builds the review prompt for {@code job}.
      *
      * @param job the job whose primary phase has just completed
@@ -204,7 +187,7 @@ final class ReviewPromptBuilder {
         sb.append("        namespace=\"default\",\n");
         sb.append("        tags=[\"review-followup\", \"workstream:<workstream-id>\"]\n");
         sb.append("      )\n\n");
-        String wsId = extractWorkstreamId(job.resolveWorkstreamUrl());
+        String wsId = WorkstreamUtils.extractWorkstreamId(job.resolveWorkstreamUrl());
         if (wsId != null && !wsId.isEmpty()) {
             sb.append("      Use workstream:").append(wsId)
               .append(" as the second tag value.\n\n");

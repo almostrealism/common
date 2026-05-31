@@ -95,7 +95,7 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	}
 
 	/** Compile-once fully-fused SSS dispatch, reused across ticks; built on first {@link #sssDispatch}. */
-	private Evaluable sssDispatch;
+	private Evaluable<PackedCollection> sssDispatch;
 
 	/** Bound per-layer source buffers read by {@link #sssDispatch}, each {@code [n, sourceLength]}. */
 	private PackedCollection[] sssSources;
@@ -130,7 +130,7 @@ public class BatchedPatternRenderer implements CollectionFeatures, TemporalFeatu
 	 * @param layers the number of source layers (the SSS aggregation arity)
 	 * @return the compiled, reusable dispatch evaluable producing a {@code [targetLength]} window
 	 */
-	public Evaluable sssDispatch(int layers) {
+	public Evaluable<PackedCollection> sssDispatch(int layers) {
 		if (sssDispatch == null) {
 			sssSources = new PackedCollection[layers];
 			sssRatios = new PackedCollection[layers];

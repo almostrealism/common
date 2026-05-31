@@ -105,6 +105,9 @@ public class Model implements Setup, Destroyable, Tracking, CodeFeatures {
 	/** The parameter-update strategy applied during training; may be {@code null}. */
 	private ParameterUpdate<PackedCollection> parameterUpdate;
 
+	/** The number of times this model has been compiled; used to warn on repeated compilation. */
+	private int compilations;
+
 	/**
 	 * Creates a new model with no initial shape.
 	 */
@@ -293,6 +296,27 @@ public class Model implements Setup, Destroyable, Tracking, CodeFeatures {
 	 * @return the backward cell
 	 */
 	public Cell<PackedCollection> backward() { return blocks.getBackward(); }
+
+	/**
+	 * Records that this model has been compiled, warning when it is compiled more than once.
+	 *
+	 * <p>Compiling the same {@link Model} instance a second time is unsafe. A prior
+	 * {@link CompiledModel#destroy()} may have released activation buffers that this
+	 * model's backward cells still reference, and an inference compilation mutates
+	 * shared model state (input tracking) without restoring it. Either condition can
+	 * leave a subsequent compilation wired to released memory, producing
+	 * {@link NullPointerException}s during the backward pass. Build a fresh
+	 * {@link Model} for each compilation instead.</p>
+	 */
+	public void recordCompilation() {
+		compilations++;
+
+		if (compilations > 1) {
+			warn("Model has been compiled " + compilations + " times; recompiling the same " +
+					"Model instance may reference buffers released by a previous " +
+					"CompiledModel.destroy() and can cause unexpected behavior during execution");
+		}
+	}
 
 	/**
 	 * Compiles this model with backpropagation enabled.

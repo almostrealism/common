@@ -40,6 +40,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -219,10 +220,10 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 * is assigned) so persistent caches do not serve audio rendered for the previous
 	 * arrangement.
 	 */
-	private static volatile int cacheEpoch = 0;
+	private static final AtomicInteger cacheEpoch = new AtomicInteger();
 
 	/** The {@link #cacheEpoch} value this instance last reconciled with. */
-	private int observedCacheEpoch = cacheEpoch;
+	private int observedCacheEpoch = cacheEpoch.get();
 
 	/**
 	 * Invalidates all pattern note-audio caches at the next render. Call this after
@@ -230,7 +231,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	 * the previous arrangement is discarded rather than reused.
 	 */
 	public static void invalidateCaches() {
-		cacheEpoch++;
+		cacheEpoch.incrementAndGet();
 	}
 
 	/**
@@ -771,10 +772,11 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				() -> () -> {
 					int frame = startFrame.getAsInt();
 					AudioSceneContext ctx = context.get();
-					if (observedCacheEpoch != cacheEpoch) {
+					int currentEpoch = cacheEpoch.get();
+					if (observedCacheEpoch != currentEpoch) {
 						// Arrangement switched: discard audio rendered for the previous
 						// genome so the new arrangement renders fresh.
-						observedCacheEpoch = cacheEpoch;
+						observedCacheEpoch = currentEpoch;
 						noteAudioCache.clear();
 					} else if (!cachePersist) {
 						if (frame == 0) {
@@ -833,9 +835,9 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 
 		// Disable caching only when frameCount covers the entire arrangement
 		// (all notes rendered in one call — caching wastes memory). When a Heap is
-		// active the cache is still used: renderPerNote detaches each cached note
-		// result from the active stage via Heap.retain(...) so it survives the
-		// per-buffer Heap.stage() pop that frees the evaluation intermediates.
+		// active the cache is still used: renderPerNote copies each evaluated note
+		// result into a standalone PackedCollection before caching, so the cached copy
+		// survives the per-buffer Heap.stage() pop that frees the evaluation intermediates.
 		NoteAudioCache effectiveCache = (frameCount < ctx.getFrames()) ? cache : null;
 
 		IntStream.range(firstRepetition, lastRepetition).forEach(rep -> {

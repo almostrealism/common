@@ -186,34 +186,13 @@ public class PatternNote extends PatternNoteAudioAdapter {
 	}
 
 	@Override
-	protected PatternNoteAudio getDelegate() {
+	public PatternNoteAudio getDelegate() {
 		return delegate;
 	}
 
 	@Override
-	protected NoteAudioFilter getFilter() {
+	public NoteAudioFilter getFilter() {
 		return filter;
-	}
-
-	/**
-	 * Public accessor for the wrapped delegate (delegate mode); {@code null} in
-	 * layer mode. Exposes the note structure for batched-input extraction.
-	 *
-	 * @return the delegate note audio, or {@code null} in layer mode
-	 */
-	public PatternNoteAudio getDelegateAudio() {
-		return getDelegate();
-	}
-
-	/**
-	 * Public accessor for the filter applied to the delegate (delegate mode);
-	 * {@code null} in layer mode. Exposes the note structure for batched-input
-	 * extraction.
-	 *
-	 * @return the applied filter, or {@code null} in layer mode
-	 */
-	public NoteAudioFilter getAppliedFilter() {
-		return getFilter();
 	}
 
 	@Override

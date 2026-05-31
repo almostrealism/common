@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Production integration boundary for the Phase 3 batched pattern rendering path.
@@ -120,27 +121,27 @@ public final class BatchedPatternLayerRenderer {
 			new ConcurrentHashMap<>();
 
 	/** Count of batched-kernel dispatches; instrumentation for the realtime gate. */
-	public static volatile long batchedDispatchCount = 0;
+	public static final AtomicLong batchedDispatchCount = new AtomicLong();
 
 	/** Count of fallbacks to the per-note path; must be 0 at production density when batched. */
-	public static volatile long fallbackCount = 0;
+	public static final AtomicLong fallbackCount = new AtomicLong();
 
 	/** Cumulative host-side input-marshalling time (ns): buffer clear + source/scalar writes. */
-	public static volatile long marshalNanos = 0;
+	public static final AtomicLong marshalNanos = new AtomicLong();
 
 	/** Cumulative device-side time (ns): cached-kernel re-evaluation plus the accumulate sum. */
-	public static volatile long evalNanos = 0;
+	public static final AtomicLong evalNanos = new AtomicLong();
 
 	/** Cumulative note-generation + per-note gather time (ns): {@code getNoteDestinations}. */
-	public static volatile long gatherNanos = 0;
+	public static final AtomicLong gatherNanos = new AtomicLong();
 
 	/** Resets the dispatch instrumentation counters. */
 	public static void resetCounters() {
-		batchedDispatchCount = 0;
-		fallbackCount = 0;
-		marshalNanos = 0;
-		evalNanos = 0;
-		gatherNanos = 0;
+		batchedDispatchCount.set(0);
+		fallbackCount.set(0);
+		marshalNanos.set(0);
+		evalNanos.set(0);
+		gatherNanos.set(0);
 	}
 
 	/** Finite placeholder note duration (seconds) for silent padded batch rows. */
@@ -242,7 +243,7 @@ public final class BatchedPatternLayerRenderer {
 				.map(e -> e.getNoteDestinations(melodic, offset, sceneContext, audioContext))
 				.flatMap(List::stream)
 				.toList();
-		gatherNanos += System.nanoTime() - genStart;
+		gatherNanos.addAndGet(System.nanoTime() - genStart);
 
 		// Collect notes overlapping [startFrame, endFrame). The batched path can
 		// dispatch when every overlapping note carries a melodic-SSS input record;
@@ -266,13 +267,13 @@ public final class BatchedPatternLayerRenderer {
 
 		if (allBatchable && !overlapping.isEmpty()) {
 			dispatchBatched(features, overlapping, startFrame, frameCount, destination);
-			batchedDispatchCount++;
+			batchedDispatchCount.incrementAndGet();
 			return;
 		}
 
 		// Fall back to the per-note path for any tick with an unsupported note.
 		if (!overlapping.isEmpty()) {
-			fallbackCount++;
+			fallbackCount.incrementAndGet();
 		}
 		features.renderPerNote(sceneContext, audioContext, elements, melodic, offset,
 				startFrame, frameCount, cache);
@@ -376,7 +377,12 @@ public final class BatchedPatternLayerRenderer {
 		}
 
 		// Zero the bound source buffers so padded (and previously-used) rows contribute
-		// nothing, then copy each real note's source into its row.
+		// nothing, then copy each real note's source into its row. The clear spans the
+		// full [bucketN, sourceLength] buffer deliberately: bucketN and sourceLength are
+		// fixed for a cached renderer, so this clear compiles once and is reused every
+		// tick. A partial clear sized to the (unbucketed, per-tick-varying) note count
+		// would recompile the zeroing kernel on every dispatch — far costlier than the
+		// extra padded-row zeroing it would save.
 		PackedCollection[] boundSources = renderer.getSssSources();
 		for (int l = 0; l < layers; l++) {
 			boundSources[l].clear();
@@ -417,14 +423,14 @@ public final class BatchedPatternLayerRenderer {
 		writeColumn(renderer.getSssDestOffsets(), destOffsets);
 		writeColumn(renderer.getSssSamplingOffsets(), samplingOffsets);
 
-		marshalNanos += System.nanoTime() - marshalStart;
+		marshalNanos.addAndGet(System.nanoTime() - marshalStart);
 
 		// The compiled kernel rereads the bound buffers; PatternFeatures re-evaluates
 		// it at the pipeline boundary and accumulates the window into the destination.
 		long evalStart = System.nanoTime();
 		features.accumulateBatchedOutput(renderer.sssDispatch(layers),
 				destination, destBaseOffset, targetLength);
-		evalNanos += System.nanoTime() - evalStart;
+		evalNanos.addAndGet(System.nanoTime() - evalStart);
 	}
 
 	/**

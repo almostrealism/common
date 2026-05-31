@@ -142,7 +142,7 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 			PackedCollection resampled = renderer.buildResampleProducer(in.getSources()[l], in.getRatios()[l])
 					.get().evaluate();
 			ParameterizedLayerEnvelope.Filter lf =
-					(ParameterizedLayerEnvelope.Filter) ((PatternNoteLayer) inner.getLayers().get(l)).getAppliedFilter();
+					(ParameterizedLayerEnvelope.Filter) ((PatternNoteLayer) inner.getLayers().get(l)).getFilter();
 			PackedCollection enveloped = lf.apply(cp(resampled), cp(dur), cp(auto)).get().evaluate();
 			for (int i = 0; i < TARGET_LENGTH; i++) {
 				merged[i] += enveloped.toDouble(i);
@@ -152,10 +152,10 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 		PackedCollection mergedColl = new PackedCollection(TARGET_LENGTH);
 		mergedColl.setMem(merged);
 
-		ParameterizedFilterEnvelope.Filter filtF = (ParameterizedFilterEnvelope.Filter) mid.getAppliedFilter();
+		ParameterizedFilterEnvelope.Filter filtF = (ParameterizedFilterEnvelope.Filter) mid.getFilter();
 		PackedCollection filtered = filtF.apply(cp(mergedColl), cp(dur), cp(auto)).get().evaluate();
 
-		ParameterizedVolumeEnvelope.Filter volF = (ParameterizedVolumeEnvelope.Filter) outer.getAppliedFilter();
+		ParameterizedVolumeEnvelope.Filter volF = (ParameterizedVolumeEnvelope.Filter) outer.getFilter();
 		PackedCollection voiced = volF.apply(cp(filtered), cp(dur), cp(auto)).get().evaluate();
 
 		double sumSqDiff = 0.0;

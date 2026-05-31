@@ -68,26 +68,10 @@ public class PatternNoteLayer extends PatternNoteAudioAdapter implements Keyboar
 	}
 
 	@Override
-	protected PatternNoteAudio getDelegate() { return delegate; }
+	public PatternNoteAudio getDelegate() { return delegate; }
 
 	@Override
-	protected NoteAudioFilter getFilter() { return filter; }
-
-	/**
-	 * Public accessor for this layer's delegate audio source. Exposes the layer
-	 * structure for batched-input extraction.
-	 *
-	 * @return the underlying note audio source
-	 */
-	public PatternNoteAudio getDelegateAudio() { return getDelegate(); }
-
-	/**
-	 * Public accessor for this layer's applied filter. Exposes the layer
-	 * structure for batched-input extraction.
-	 *
-	 * @return the audio filter applied to this layer
-	 */
-	public NoteAudioFilter getAppliedFilter() { return getFilter(); }
+	public NoteAudioFilter getFilter() { return filter; }
 
 	@Override
 	protected PatternNoteAudio getProvider(KeyPosition<?> target,

@@ -119,10 +119,10 @@ public abstract class PatternNoteAudioAdapter implements
 	}
 
 	/** Returns the underlying note audio delegate, or {@code null} if none is set. */
-	protected abstract PatternNoteAudio getDelegate();
+	public abstract PatternNoteAudio getDelegate();
 
 	/** Returns the audio filter applied to the delegate's output. */
-	protected abstract NoteAudioFilter getFilter();
+	public abstract NoteAudioFilter getFilter();
 
 	/**
 	 * Returns the note audio provider for the given target and selection function.
