@@ -174,6 +174,19 @@ public class CodingAgentJob extends GitManagedJob {
     /** Active {@link ReviewRule} instance set by {@link EnforcementRunner} while assembling rules; owns review telemetry. */
     private ReviewRule activeReviewRule;
 
+    /**
+     * When {@code true}, a retrospective session runs after all other phases,
+     * analyzing the primary phase transcript for tool-use and context-efficiency
+     * improvement opportunities. Defaults to {@code false}; opt in per-job.
+     */
+    private boolean reflectionEnabled = false;
+    /** {@code true} after {@link #runReflectionPhase()} has executed; reset on each {@link #doWork()} call. */
+    private boolean reflectionRan;
+    /** {@code true} when the retrospective agent found and analyzed a primary-phase transcript. */
+    private boolean reflectionTranscriptFound;
+    /** Number of improvement findings emitted as memories by the retrospective agent. */
+    private int reflectionFindingsCount;
+
     /** Shell command run after the agent completes; non-empty activates {@link PostCompletionCommandRule}. */
     private String postCompletionCommand;
 
@@ -602,6 +615,11 @@ public class CodingAgentJob extends GitManagedJob {
         this.maxReviewPasses = maxReviewPasses;
     }
 
+    /** Returns whether the retrospective phase is active for this job; default {@code false}. */
+    public boolean isReflectionEnabled() { return reflectionEnabled; }
+    /** Sets whether the retrospective phase is active for this job; {@code true} to enable retrospective analysis. */
+    public void setReflectionEnabled(boolean reflectionEnabled) { this.reflectionEnabled = reflectionEnabled; }
+
     /** Returns the post-completion command; non-empty activates {@link PostCompletionCommandRule}. */
     public String getPostCompletionCommand() { return postCompletionCommand; }
 
@@ -925,6 +943,13 @@ public class CodingAgentJob extends GitManagedJob {
         if (!hasAgentCommitted()) {
             runEnforcementRules();
         }
+        // Retrospective phase runs after all enforcement rules, regardless of whether
+        // a commit was produced. It produces memories, not code, so it cannot cause
+        // a retry loop even when hasAgentCommitted() is false.
+        reflectionRan = false;
+        if (reflectionEnabled) {
+            runReflectionPhase();
+        }
     }
 
     /**
@@ -941,6 +966,35 @@ public class CodingAgentJob extends GitManagedJob {
      */
     void runEnforcementRules() {
         new EnforcementRunner(this).run();
+    }
+
+    /**
+     * Runs the retrospective phase — a single agent session that analyzes the
+     * primary phase transcript for tool-use and context-efficiency improvement
+     * opportunities.
+     *
+     * <p>The session runs after all enforcement rules have completed, regardless
+     * of whether the agent produced a commit. It produces memories, not code
+     * changes, so it cannot trigger re-entry into the enforcement loop even
+     * when {@link #hasAgentCommitted()} returns {@code false}.</p>
+     *
+     * <p>The session uses the standard per-phase configuration resolution:
+     * {@link #resolveEffectivePhaseConfig(Phase#RETROSPECTIVE)} applies the
+     * {@code phase_configs["retrospective"]} override, falling back to
+     * {@code default_phase_config} and then to the system default.</p>
+     */
+    void runReflectionPhase() {
+        String originalPrompt = this.prompt;
+        String previousActivity = this.currentActivity;
+        this.currentActivity = Phase.RETROSPECTIVE.wireName();
+        try {
+            this.prompt = RetrospectivePromptBuilder.build(this);
+            reflectionRan = true;
+            executeSingleRun();
+        } finally {
+            this.prompt = originalPrompt;
+            this.currentActivity = previousActivity;
+        }
     }
 
     /**
@@ -1339,6 +1393,13 @@ public class CodingAgentJob extends GitManagedJob {
             if (activeReviewRule != null && activeReviewRule.hasRun()) {
                 ccEvent.withReviewInfo(true, activeReviewRule.getFilesModified(),
                         activeReviewRule.getMemoriesStored(), activeReviewRule.isExitedCleanly());
+            }
+            if (reflectionRan) {
+                PhaseConfig retroConfig = resolveEffectivePhaseConfig(Phase.RETROSPECTIVE);
+                String modelKey = retroConfig.toModelKey();
+                Double retroCost = costByModel.get(modelKey);
+                ccEvent.withReflectionInfo(true, retroCost != null ? retroCost : 0.0,
+                        reflectionTranscriptFound, reflectionFindingsCount);
             }
         }
     }

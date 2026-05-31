@@ -150,6 +150,9 @@ final class CodingAgentJobCodec {
         if (!job.isReviewEnabled()) {
             sb.append("::reviewEnabled:=false");
         }
+        if (job.isReflectionEnabled()) {
+            sb.append("::reflectionEnabled:=true");
+        }
         if (job.getMaxReviewPasses() != CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES) {
             sb.append("::maxReviewPasses:=").append(job.getMaxReviewPasses());
         }
@@ -234,6 +237,9 @@ final class CodingAgentJobCodec {
                 return true;
             case "reviewEnabled":
                 job.setReviewEnabled(Boolean.parseBoolean(value));
+                return true;
+            case "reflectionEnabled":
+                job.setReflectionEnabled(Boolean.parseBoolean(value));
                 return true;
             case "maxReviewPasses":
                 job.setMaxReviewPasses(parsePositiveOrDefault(value, CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES));

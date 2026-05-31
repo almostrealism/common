@@ -125,6 +125,14 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private boolean reviewEnabled = true;
 
     /**
+     * When {@code true}, jobs created by this factory activate the retrospective
+     * phase — a post-work session that analyzes the primary transcript for
+     * tool-use and context-efficiency improvement opportunities. Defaults to
+     * {@code false}; opt in per-job.
+     */
+    private boolean reflectionEnabled = false;
+
+    /**
      * Per-job cap on review passes propagated to jobs created by this factory.
      * Defaults to {@link CodingAgentJob#DEFAULT_MAX_REVIEW_PASSES}.
      */
@@ -723,6 +731,25 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
+     * Returns whether the retrospective phase is active for jobs created by this factory.
+     *
+     * @return {@code true} when retrospective analysis is enabled; {@code false} by default
+     */
+    public boolean isReflectionEnabled() {
+        return reflectionEnabled;
+    }
+
+    /**
+     * Sets whether the retrospective phase is active for jobs created by this factory.
+     *
+     * @param reflectionEnabled {@code true} to enable retrospective analysis after primary work
+     */
+    public void setReflectionEnabled(boolean reflectionEnabled) {
+        this.reflectionEnabled = reflectionEnabled;
+        set("reflectionEnabled", String.valueOf(reflectionEnabled));
+    }
+
+    /**
      * Returns the maximum number of review passes for jobs created by this factory.
      *
      * @return the pass cap; defaults to {@link CodingAgentJob#DEFAULT_MAX_REVIEW_PASSES}
@@ -1185,6 +1212,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         job.setEnforceOrganizationalPlacement(enforceOrganizationalPlacement);
         job.setReviewEnabled(reviewEnabled);
         job.setMaxReviewPasses(maxReviewPasses);
+        job.setReflectionEnabled(reflectionEnabled);
         if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
             job.setPostCompletionCommand(postCompletionCommand);
             if (postCompletionWorkingDir != null) {
@@ -1350,6 +1378,9 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 return;
             case "reviewEnabled":
                 this.reviewEnabled = Boolean.parseBoolean(value);
+                return;
+            case "reflectionEnabled":
+                this.reflectionEnabled = Boolean.parseBoolean(value);
                 return;
             case "maxReviewPasses":
                 this.maxReviewPasses = CodingAgentJobCodec.parsePositiveOrDefault(
