@@ -26,6 +26,7 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
 import org.almostrealism.c.NativeMemoryProvider;
@@ -193,7 +194,7 @@ import java.util.List;
  * @see AcceleratedProcessDetails
  */
 public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T>
-							implements Runnable, ScopeLifecycle, Countable, HardwareFeatures {
+							implements Runnable, Submittable, ScopeLifecycle, Countable, HardwareFeatures {
 
 	/** Console for logging accelerated operation events. */
 	public static Console console = Computation.console.child();
@@ -431,6 +432,30 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 			AcceleratedProcessDetails process = apply(null, new Object[0]);
 			waitFor(process.getSemaphore());
+		} finally {
+			if (getComputeRequirements() != null) {
+				Hardware.getLocalHardware().getComputer().popRequirements();
+			}
+		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Dispatches this operation chaining on {@code dependsOn} (via
+	 * {@link #apply(MemoryBank, Object[], Semaphore)}) and returns its completion
+	 * {@link Semaphore} <em>without</em> blocking the host. This is the non-blocking
+	 * counterpart to {@link #run()} (which is {@code submit(null)} followed by a wait); it
+	 * lets a composite chain operations and defer the completion wait into the provider.</p>
+	 */
+	@Override
+	public Semaphore submit(Semaphore dependsOn) {
+		try {
+			if (getComputeRequirements() != null) {
+				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());
+			}
+
+			return apply(null, new Object[0], dependsOn).getSemaphore();
 		} finally {
 			if (getComputeRequirements() != null) {
 				Hardware.getLocalHardware().getComputer().popRequirements();

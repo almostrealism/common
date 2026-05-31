@@ -133,15 +133,24 @@ and (on Metal) ~one command buffer instead of N.
    `dependsOn` into `operator.accept(...)`, and the operator's returned device-completion
    semaphore is adopted as the process completion (`AcceleratedProcessDetails.getSemaphore()`
    prefers it). Default unchanged (no provider returns a live semaphore yet).
-2. **Executable-side async contract + composite chaining (provider-agnostic).** Define the
-   operation/`Runnable` analog of `StreamingEvaluable` (or a unified completion contract
-   reachable from `ParallelProcess`), and have a composite — the `OperationList` `Runner` as
-   the first *consumer*, through the general contract, not by special-casing the class —
-   thread each child's completion into the next's `dependsOn` and issue one trailing wait. On
-   JNI this chains already-completed semaphores, so it must be a correctness-preserving no-op
-   (validate harness green on JNI).
-3. **Metal provider opt-in (the payoff).** Provide Metal's device-completion `Semaphore`
-   (`MTLSharedEvent` / command-buffer completion handler) and wrap a chained group in **one**
+2. **(DONE) Executable-side async contract + composite chaining (provider-agnostic).**
+   Added `io.almostrealism.concurrent.Submittable` (the operation/`Runnable` analog of
+   `StreamingEvaluable`): `Semaphore submit(Semaphore dependsOn)`. `AcceleratedOperation`
+   implements it (`run()` is `submit(null)` + wait). The `OperationList` `Runner` consumes it
+   generically (`instanceof Submittable`) — chains each child's completion into the next's
+   `dependsOn`, one trailing wait; non-`Submittable` members barrier-then-run, preserving
+   order.
+   **Critical constraint discovered:** chaining is *only* sound/beneficial when the provider
+   returns a **live device completion** that the next dispatch waits on inside the provider.
+   On synchronous providers the completion is a host latch counted down by the
+   `Hardware.isAsync()` arg-loading executor; threading it through `dependsOn.waitFor()`
+   serializes across executor tasks and is catastrophically slow (observed ~800× on the
+   microbenchmark). So `OperationList.enableSemaphoreChaining` **defaults off**
+   (`AR_HARDWARE_SEMAPHORE_CHAINING`) and is meant to be enabled only for async GPU providers.
+   Harness + operation tests green with it off (no regression).
+3. **Metal provider opt-in (the payoff) — REMAINING.** Provide Metal's device-completion
+   `Semaphore` (`MTLSharedEvent` / command-buffer completion handler) and wrap a chained group
+   in **one**
    command buffer committed once. With step 2 in place this defers the wait on Metal —
    fewer command buffers + one host wait. Validate on Metal (harness µs/dispatch drops; the
    `RealtimeContinuousRenderer` sustained-dispatch outcome below).

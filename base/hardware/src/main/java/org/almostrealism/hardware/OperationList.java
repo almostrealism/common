@@ -26,6 +26,8 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
+import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lifecycle.Destroyable;
@@ -616,6 +618,23 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * @see <a href="docs/internals/operationlist-optimization-flags.md">Detailed Documentation</a>
 	 */
 	public static boolean enableSegmenting = false;
+
+	/**
+	 * When {@code true}, an unfused {@link Runner} chains its {@link Submittable} children by
+	 * threading each child's completion {@link io.almostrealism.concurrent.Semaphore} into the
+	 * next child's {@code dependsOn} and issuing a single completion wait at the end, instead
+	 * of waiting per operation.
+	 *
+	 * <p>This is only beneficial — and only correct without serialization overhead — when the
+	 * provider returns a <em>live device completion</em> that the next dispatch can wait on
+	 * inside the provider (e.g. a Metal {@code MTLSharedEvent}). On synchronous providers the
+	 * completion is a host latch driven by the {@link Hardware#isAsync() async} arg-loading
+	 * executor, and threading it through {@code dependsOn.waitFor()} serializes across executor
+	 * tasks. It therefore defaults to {@code false}; enable it (via
+	 * {@code AR_HARDWARE_SEMAPHORE_CHAINING}) for async GPU providers.</p>
+	 */
+	public static boolean enableSemaphoreChaining =
+			SystemUtils.isEnabled("AR_HARDWARE_SEMAPHORE_CHAINING").orElse(false);
 
 	/**
 	 * Enable non-uniform compilation where operations with different counts can be compiled
@@ -1292,16 +1311,45 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					Hardware.getLocalHardware().getComputer().pushRequirements(requirements);
 				}
 
-				if (timingListener == null) {
-					for (int i = 0; i < run.size(); i++) {
-						run.get(i).run();
+				Semaphore pending = null;
+
+				for (int i = 0; i < run.size(); i++) {
+					Runnable r = run.get(i);
+
+					if (enableSemaphoreChaining && r instanceof Submittable) {
+						// Chain: submit this operation depending on the previous one's
+						// completion and carry its completion forward, deferring the wait.
+						Submittable s = (Submittable) r;
+						Semaphore dependsOn = pending;
+
+						if (timingListener == null) {
+							pending = s.submit(dependsOn);
+						} else {
+							if (enableRunLogging) log("Running " + OperationInfo.display(r));
+							Semaphore[] completion = { null };
+							timingListener.recordDuration(getMetadata(),
+									() -> completion[0] = s.submit(dependsOn));
+							pending = completion[0];
+						}
+					} else {
+						// Non-chainable member: complete any pending chain first to preserve
+						// sequential ordering, then run synchronously.
+						if (pending != null) {
+							pending.waitFor();
+							pending = null;
+						}
+
+						if (timingListener == null) {
+							r.run();
+						} else {
+							if (enableRunLogging) log("Running " + OperationInfo.display(r));
+							timingListener.recordDuration(getMetadata(), r);
+						}
 					}
-				} else {
-					for (int i = 0; i < run.size(); i++) {
-						if (enableRunLogging)
-							log("Running " + OperationInfo.display(run.get(i)));
-						timingListener.recordDuration(getMetadata(), run.get(i));
-					}
+				}
+
+				if (pending != null) {
+					pending.waitFor();
 				}
 			} finally {
 				if (requirements != null) {
