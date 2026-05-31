@@ -625,16 +625,18 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * next child's {@code dependsOn} and issuing a single completion wait at the end, instead
 	 * of waiting per operation.
 	 *
-	 * <p>This is only beneficial — and only correct without serialization overhead — when the
-	 * provider returns a <em>live device completion</em> that the next dispatch can wait on
-	 * inside the provider (e.g. a Metal {@code MTLSharedEvent}). On synchronous providers the
+	 * <p>Chaining engages only for members whose provider reports a deferrable device completion
+	 * via {@link io.almostrealism.concurrent.Submittable#isCompletionDeferred()} (e.g. batched
+	 * Metal); every other member runs sequentially, exactly as when chaining is off. This gate
+	 * is what makes the flag safe to leave on by default: on synchronous providers the
 	 * completion is a host latch driven by the {@link Hardware#isAsync() async} arg-loading
-	 * executor, and threading it through {@code dependsOn.waitFor()} serializes across executor
-	 * tasks. It therefore defaults to {@code false}; enable it (via
-	 * {@code AR_HARDWARE_SEMAPHORE_CHAINING}) for async GPU providers.</p>
+	 * executor, and threading it through {@code dependsOn.waitFor()} would serialize across
+	 * executor tasks — so those members are never chained. Defaults to {@code true}; set
+	 * {@code AR_HARDWARE_SEMAPHORE_CHAINING=disabled} to force the legacy per-operation wait
+	 * even for deferring providers.</p>
 	 */
 	public static boolean enableSemaphoreChaining =
-			SystemUtils.isEnabled("AR_HARDWARE_SEMAPHORE_CHAINING").orElse(false);
+			SystemUtils.isEnabled("AR_HARDWARE_SEMAPHORE_CHAINING").orElse(true);
 
 	/**
 	 * Enable non-uniform compilation where operations with different counts can be compiled
@@ -1316,9 +1318,14 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				for (int i = 0; i < run.size(); i++) {
 					Runnable r = run.get(i);
 
-					if (enableSemaphoreChaining && r instanceof Submittable) {
+					if (enableSemaphoreChaining && r instanceof Submittable
+							&& ((Submittable) r).isCompletionDeferred()) {
 						// Chain: submit this operation depending on the previous one's
 						// completion and carry its completion forward, deferring the wait.
+						// Only operations whose provider publishes a deferred device completion
+						// (e.g. batched Metal) take this path; synchronous providers fall through
+						// to the sequential branch so their host-readiness latch is never threaded
+						// into the next operation's wait (which would serialize the async executor).
 						Submittable s = (Submittable) r;
 						Semaphore dependsOn = pending;
 

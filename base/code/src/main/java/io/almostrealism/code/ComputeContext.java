@@ -121,6 +121,26 @@ public interface ComputeContext<MEM> {
 	}
 
 	/**
+	 * Indicates whether operations dispatched within this context publish a <em>deferred</em>
+	 * device-completion handle &mdash; one whose wait can be postponed and threaded into a
+	 * subsequent dispatch's dependency without blocking the host inline (e.g. a batched Metal
+	 * command buffer committed at the trailing wait).
+	 *
+	 * <p>This is the provider's opt-in to semaphore chaining. A synchronous provider (one that
+	 * has already completed the work by the time its {@code accept} returns) must return
+	 * {@code false} here: chaining such a provider would only thread its host-readiness latch
+	 * into the next operation's wait, serializing across the async arg-loading executor with no
+	 * benefit. Composites (see {@code OperationList}) chain only the operations whose context
+	 * reports {@code true} and run the rest sequentially.</p>
+	 *
+	 * @return {@code true} if dispatches here yield a deferrable device completion worth
+	 *         chaining; {@code false} (the default) for synchronous providers
+	 */
+	default boolean isCompletionDeferred() {
+		return false;
+	}
+
+	/**
 	 * Destroys this compute context and releases all associated resources.
 	 * After calling this method, the context should not be used.
 	 */

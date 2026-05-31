@@ -57,10 +57,12 @@ public class MetalCommandRunner {
 	/**
 	 * When {@code true}, commands are encoded into a single command buffer and committed once
 	 * (at a completion wait or the {@link #maxBatchSize} cap); when {@code false}, each command
-	 * is committed and waited immediately (one buffer per dispatch). Controlled by
-	 * {@code AR_METAL_BATCH}; defaults off so the legacy path is unchanged until validated.
+	 * is committed and waited immediately (one buffer per dispatch). Enabling this also makes
+	 * {@link MetalComputeContext#isCompletionDeferred()} report {@code true}, so an
+	 * {@code OperationList} chains batched Metal dispatches. Controlled by {@code AR_METAL_BATCH};
+	 * defaults on. Set {@code AR_METAL_BATCH=disabled} to restore one-buffer-per-dispatch.
 	 */
-	public static boolean enableBatching = SystemUtils.isEnabled("AR_METAL_BATCH").orElse(false);
+	public static boolean enableBatching = SystemUtils.isEnabled("AR_METAL_BATCH").orElse(true);
 
 	/** Maximum commands encoded into one batched command buffer before a forced commit. */
 	public static int maxBatchSize = Integer.getInteger("AR_METAL_MAX_BATCH", 256);

@@ -145,9 +145,21 @@ and (on Metal) ~one command buffer instead of N.
    On synchronous providers the completion is a host latch counted down by the
    `Hardware.isAsync()` arg-loading executor; threading it through `dependsOn.waitFor()`
    serializes across executor tasks and is catastrophically slow (observed ~800× on the
-   microbenchmark). So `OperationList.enableSemaphoreChaining` **defaults off**
-   (`AR_HARDWARE_SEMAPHORE_CHAINING`) and is meant to be enabled only for async GPU providers.
-   Harness + operation tests green with it off (no regression).
+   microbenchmark; root cause is the `dependsOn.waitFor()` at `NativeExecution.accept`, which
+   the original author flagged with a `TODO  We can do better than forcing this method to
+   block`).
+   **Resolution — provider-declared deferral (the "any platform can participate" hook):**
+   `ComputeContext.isCompletionDeferred()` (default `false`) lets a provider opt in;
+   `MetalComputeContext` returns `MetalCommandRunner.enableBatching`. `Submittable` exposes the
+   same predicate (default `false`), overridden by `AcceleratedOperation` to read its context.
+   The `Runner` chains a member **only** when `isCompletionDeferred()` is true; every other
+   member runs sequentially exactly as before. This honors the `Submittable` contract's existing
+   promise that synchronous providers "degrade transparently to sequential synchronous
+   execution," and makes the flag **safe to default on**. `OperationList.enableSemaphoreChaining`
+   now **defaults on** (`AR_HARDWARE_SEMAPHORE_CHAINING=disabled` to force legacy per-op waits).
+   Verified with the new defaults on: native = 92.95 µs/dispatch (no regression — chaining inert
+   on JNI), `*` = 141.72 µs (routes to JNI, inert, no regression), `mtl` = 97.05 µs (batches),
+   `MatrixMathTests` 10/10 green on Metal (dependent kernels ordered correctly).
 3. **Metal command-buffer batching — DONE (measured 2.1× on the microbenchmark).**
    - **(DONE) Encode/commit split.** `MetalCommand` now *encodes only* (`encode(cmdBuf)`);
      `MetalCommandRunner` owns the command-buffer lifecycle. With batching off

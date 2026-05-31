@@ -178,6 +178,27 @@ The `AR_HARDWARE_DRIVER` environment variable controls which backends are loaded
 - **x86/x64 (Linux/Windows):** OpenCL → JNI
 - **x86/x64 (macOS):** OpenCL (no JNI)
 
+### Backend Coverage in CI
+
+The CI pipeline (`.github/workflows/analysis.yaml`) exercises **more than one
+backend** — do not assume CI is Linux/JNI-only:
+
+- **Ubuntu jobs** (`runs-on: ubuntu-latest` / `[self-hosted, linux, ar-ci]`) run
+  the bulk of the matrix with `-DAR_HARDWARE_DRIVER=native`, i.e. the JNI/native
+  backend. Metal and OpenCL are not available there.
+- **Self-hosted macOS jobs** (`runs-on: [self-hosted, macos, ar-ci]` — the
+  `test-mac` and `test-media-mac` jobs) run on Apple Silicon hardware with
+  `-DAR_HARDWARE_DRIVER=*`, so JNI, **Metal**, and OpenCL are all loaded and
+  auto-selected. These jobs cover `base/hardware`, `engine/utils`, `engine/ml`,
+  `engine/render`, and the audio/music/studio suites.
+
+Consequence: Metal-specific code **is** reachable in CI, but only on the macOS
+runners, and only for operations the auto-selector actually routes to Metal.
+Under `AR_HARDWARE_DRIVER=*` on Apple Silicon the auto-selection order is
+JNI → Metal → OpenCL, so small/simple operations commonly execute on JNI even
+on the macOS runners; to guarantee a kernel runs on Metal in a test, force it
+with `-DAR_HARDWARE_DRIVER=mtl`.
+
 ### Key Environment Variables
 
 | Variable | Purpose | Default |
