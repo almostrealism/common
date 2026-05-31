@@ -17,11 +17,8 @@
                                that they do not grow beyond their current sizes.
       - JavadocPackage       : every package needs a package-info.java with Javadoc
       - MissingJavadocType   : every type declaration needs a Javadoc comment
-                               (test sources exempt)
       - MissingJavadocMethod : every method and constructor needs a Javadoc comment
-                               (test sources exempt)
       - JavadocVariable      : every field needs a Javadoc comment
-                               (test sources exempt)
       - RegexpSinglelineJava : prohibits use of 'var' and '@SuppressWarnings'
       - RegexpSinglelineJava : prohibits System.out/err and e.printStackTrace().
                                Use Console.root() or implement ConsoleFeatures instead.
@@ -40,14 +37,6 @@
     <!-- Exclude auto-generated source files -->
     <module name="BeforeExecutionExclusionFileFilter">
         <property name="fileNamePattern" value="[/\\]generated[/\\]"/>
-    </module>
-
-    <!-- Exempt test sources from all checks, consistent with the documented
-         intent in the checkstyle comments that "test sources exempt" applies
-         to MissingJavadocType, MissingJavadocMethod, and JavadocVariable.
-         This filter ensures test files under src/test/java are not checked. -->
-    <module name="BeforeExecutionExclusionFileFilter">
-        <property name="fileNamePattern" value="[/\\]test[/\\].*\.java$"/>
     </module>
 
     <!-- Cap Java source files at 1600 lines.  Files larger than this are a
@@ -88,77 +77,13 @@
         <property name="files" value="Console\.java"/>
     </module>
 
-    <!-- TODO(review): Verify each file below is actually in src/main/java (not src/test/java).
-         Files in test directories are already covered by the broad .*[/\\]test[/\\] suppression
-         above; redundant per-file entries should be removed. Files genuinely in main sources
-         should have their log messages rewritten rather than suppressed long-term. -->
-    <!-- Per-file suppressions for main source log prefix violations only. -->
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="BracketLabelInLog"/>
-        <property name="files" value="GruDecoderPdslInferenceTest\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="BracketLabelInLog"/>
-        <property name="files" value="GQAExpandTest\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="BracketLabelInLog"/>
-        <property name="files" value="MultiTokenGenerationTest\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="BracketLabelInLog"/>
-        <property name="files" value="Qwen3DirectGenerationTest\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="BracketLabelInLog"/>
-        <property name="files" value="Qwen3EmbeddingTest\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="BracketLabelInLog"/>
-        <property name="files" value="Qwen3GenerationDemo\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="BracketLabelInLog"/>
-        <property name="files" value="Qwen3SyntheticTest\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="BracketLabelInLog"/>
-        <property name="files" value="Qwen3TokenizerTest\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="BracketLabelInLog"/>
-        <property name="files" value="SharedEmbeddingsTest\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="CapsLabelInLog"/>
-        <property name="files" value="OobleckValidationTest\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="CapsLabelInLog"/>
-        <property name="files" value="EncoderCompilationProfileTest\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="CapsLabelInLog"/>
-        <property name="files" value="Conv1dCorrectnessTest\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="CapsLabelInLog"/>
-        <property name="files" value="Qwen3GenerationDemo\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="CapsLabelInLog"/>
-        <property name="files" value="RotationTests\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="id" value="CapsLabelInLog"/>
-        <property name="files" value="Qwen3DirectGenerationTest\.java"/>
-    </module>
-
-    <!-- Require package-info.java with a Javadoc comment for every package.
-         Applied at Checker level so it applies to both main and test sources. -->
+    <!-- Require package-info.java with a Javadoc comment for every package -->
     <module name="JavadocPackage"/>
 
     <module name="TreeWalker">
+
+        <!-- Every type declaration (class, interface, enum, annotation, record)
+             must have a Javadoc comment, including private and package-private types. -->
         <module name="MissingJavadocType">
             <property name="scope" value="private"/>
         </module>
@@ -195,6 +120,20 @@
             <property name="id" value="DirectSystemOut"/>
             <property name="format" value="\bprintStackTrace\(\)"/>
             <property name="message" value="Use Console.root().alert(message, exception) instead of printStackTrace(). See base/io/README.md."/>
+            <property name="ignoreComments" value="true"/>
+        </module>
+
+        <!-- Prohibit constructing an ad-hoc log-file sink: a Writer/OutputStream/
+             PrintStream opened over a "*.log" path. Routing status output to a private
+             log file bypasses the Console framework (no timestamps, filtering, listeners,
+             or shared aggregation). Register a file destination with
+             Console.root().addListener(OutputFeatures.fileOutput(path)) and emit through
+             Console / ConsoleFeatures instead. Data files (.wav, .csv, generated sources)
+             are unaffected — only "*.log" destinations match. See base/io/README.md. -->
+        <module name="RegexpSinglelineJava">
+            <property name="id" value="AdHocLogFileSink"/>
+            <property name="format" value="new\s+\w*(Writer|OutputStream|PrintStream)\s*\([^;]*\.log&quot;"/>
+            <property name="message" value="Do not write log output to an ad-hoc file. Use Console.root().addListener(OutputFeatures.fileOutput(path)) and log via Console / ConsoleFeatures. See base/io/README.md."/>
             <property name="ignoreComments" value="true"/>
         </module>
 

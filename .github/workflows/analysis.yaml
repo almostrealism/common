@@ -294,6 +294,81 @@ jobs:
             echo "No test-hiding modifications or enforcement tampering detected." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  # ─── Checkstyle Config Integrity Check ──────────────────────────────
+  # Confirms the checkstyle configuration has not been tampered with on a
+  # PR branch. checkstyle.xml is enforcement infrastructure: weakening or
+  # removing rules to make violating code pass is not allowed. Any change
+  # to it relative to master fails the build. If a rule genuinely needs to
+  # change, open a separate PR with justification for human review.
+  checkstyle-integrity-check:
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      passed: ${{ steps.check.outcome == 'success' }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: git fetch origin master:refs/remotes/origin/master --no-tags
+
+      - name: Check for checkstyle config tampering
+        id: check
+        if: github.ref != 'refs/heads/master'
+        run: |
+          # The checkstyle configuration is enforcement infrastructure. Any
+          # modification on a PR branch is treated as tampering and fails the
+          # build.
+          PROTECTED_FILES=(
+            "checkstyle.xml"
+          )
+
+          TAMPERED=""
+          for f in "${PROTECTED_FILES[@]}"; do
+            if git diff --name-only origin/master...HEAD -- "$f" | grep -q .; then
+              TAMPERED="${TAMPERED}- ${f}\n"
+            fi
+          done
+
+          if [ -n "$TAMPERED" ]; then
+            echo "::error::Checkstyle configuration was modified — this is not allowed on PR branches"
+            echo -e "## Checkstyle Configuration Tampering Detected\n" > ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "The following protected files were modified on this branch:\n" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "$TAMPERED" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "\nThe checkstyle configuration enforces code quality rules. It CANNOT be" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "modified on PR branches. The only way to pass the build is to fix the" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "code that violates the rules — not to weaken the rules.\n" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "If you believe a rule needs to change, open a separate PR with a" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "justification for human review." >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            cat ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            exit 1
+          fi
+
+          echo "No checkstyle configuration modifications detected."
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          echo "## Checkstyle Config Integrity Check" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.check.outcome }}" != "success" ]; then
+            echo "**FAILED: The checkstyle configuration was tampered with.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "checkstyle.xml is protected and cannot be modified on PR branches." >> "$GITHUB_STEP_SUMMARY"
+            echo "Fix the code that violates the rules instead." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            if [ -f ${RUNNER_TEMP}/checkstyle-integrity-report.txt ]; then
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+              cat ${RUNNER_TEMP}/checkstyle-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "No checkstyle configuration tampering detected." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   # ─── Deception Audit ─────────────────────────────────────────────
   # Scans the branch commit history for patterns of coordinated
   # agent deception: ping-pong modifications, test-only commits,
@@ -1744,6 +1819,7 @@ jobs:
       - build
       - code-policy-check
       - test-integrity-check
+      - checkstyle-integrity-check
       - deception-audit
       - agent-commit-validation
       - test-timeout-check
@@ -1767,6 +1843,7 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           CODE_POLICY_RESULT: ${{ needs.code-policy-check.result }}
           TEST_INTEGRITY_RESULT: ${{ needs.test-integrity-check.result }}
+          CHECKSTYLE_INTEGRITY_RESULT: ${{ needs.checkstyle-integrity-check.result }}
           DECEPTION_AUDIT_RESULT: ${{ needs.deception-audit.result }}
           AGENT_COMMIT_RESULT: ${{ needs.agent-commit-validation.result }}
           TEST_TIMEOUT_RESULT: ${{ needs.test-timeout-check.result }}
@@ -1806,6 +1883,7 @@ jobs:
           check_job "changes"                 "$CHANGES_RESULT"
           check_job "code-policy-check"       "$CODE_POLICY_RESULT"
           check_job "test-integrity-check"    "$TEST_INTEGRITY_RESULT"
+          check_job "checkstyle-integrity-check" "$CHECKSTYLE_INTEGRITY_RESULT"
           check_job "deception-audit"         "$DECEPTION_AUDIT_RESULT"
           check_job "agent-commit-validation" "$AGENT_COMMIT_RESULT"
           check_job "test-timeout-check"      "$TEST_TIMEOUT_RESULT"
@@ -1847,6 +1925,7 @@ jobs:
           echo "| build | ${{ needs.build.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| code-policy-check | ${{ needs.code-policy-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-integrity-check | ${{ needs.test-integrity-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| checkstyle-integrity-check | ${{ needs.checkstyle-integrity-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| deception-audit | ${{ needs.deception-audit.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| agent-commit-validation | ${{ needs.agent-commit-validation.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-timeout-check | ${{ needs.test-timeout-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
