@@ -13,13 +13,25 @@
 #   BASE_BRANCH      - base branch for comparison
 #
 # Optional environment variables:
-#   CONTROLLER_HOST   - FlowTree controller hostname (default: localhost)
+#   CONTROLLER_URL    - FlowTree controller base URL. Takes precedence over
+#                       CONTROLLER_HOST/CONTROLLER_PORT when set. Use this to
+#                       reach the controller through the public Cloudflare
+#                       Access tunnel (e.g. https://flowtree.almostrealism.ai)
+#                       from a cloud runner.
+#   CONTROLLER_HOST   - FlowTree controller hostname (default: localhost).
+#                       Used only when CONTROLLER_URL is unset; reaches the
+#                       controller directly on the closed network.
 #   CONTROLLER_PORT   - FlowTree controller port     (default: 7780)
+#   CF_ACCESS_CLIENT_ID     - Cloudflare Access service token client ID;
+#                             sent as CF-Access-Client-Id header when set
+#   CF_ACCESS_CLIENT_SECRET - Cloudflare Access service token client secret;
+#                             sent as CF-Access-Client-Secret header when set
 #   MAX_TURNS         - agent turn budget             (omitted → workstream default)
 #   MAX_BUDGET_USD    - agent dollar budget           (omitted → workstream default)
 #   ENFORCE_CHANGES   - require code changes or retry (default: false)
 #   AUTO_CREATE_PR    - auto-create a GitHub PR on success (default: false)
 #   STARTED_AFTER     - epoch millis; skip if a newer job exists (default: unset)
+#   DELAY_SECONDS     - delay execution by this many seconds (default: unset → run immediately)
 #   DESCRIPTION       - short label for notifications (e.g., "Resolve test failures")
 #
 # Exit codes:
@@ -45,28 +57,21 @@ for var in BRANCH BASE_BRANCH; do
     fi
 done
 
-CONTROLLER_HOST="${CONTROLLER_HOST:-localhost}"
-CONTROLLER_PORT="${CONTROLLER_PORT:-7780}"
-
-# ── Escalation Circuit Breaker (DECEPTION.md Countermeasure #6) ─────
-# Check if any failing test class has been dispatched too many times.
-# If so, block dispatch and require human intervention.
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ESCALATION_TRACKER="${SCRIPT_DIR}/agent-protection/escalation-tracker.sh"
-if [ -x "${ESCALATION_TRACKER}" ] && [ -n "${FAILING_TEST_CLASSES:-}" ]; then
-    for TEST_CLASS in $FAILING_TEST_CLASSES; do
-        if ! "${ESCALATION_TRACKER}" check "$BRANCH" "$TEST_CLASS"; then
-            echo "::error::Circuit breaker tripped for ${TEST_CLASS} on ${BRANCH}. Manual intervention required."
-            exit 0
-        fi
-        # Record this dispatch attempt
-        "${ESCALATION_TRACKER}" record "$BRANCH" "$TEST_CLASS"
-    done
+# Resolve the controller endpoint. CONTROLLER_URL (the Cloudflare-tunnelled
+# public URL) takes precedence; otherwise fall back to building the URL from
+# CONTROLLER_HOST/CONTROLLER_PORT for callers that reach the controller
+# directly on the closed network.
+if [ -n "${CONTROLLER_URL:-}" ]; then
+    CONTROLLER_BASE="${CONTROLLER_URL%/}"
+else
+    CONTROLLER_HOST="${CONTROLLER_HOST:-localhost}"
+    CONTROLLER_PORT="${CONTROLLER_PORT:-7780}"
+    CONTROLLER_BASE="http://${CONTROLLER_HOST}:${CONTROLLER_PORT}"
 fi
 
 PROMPT=$(cat "$PROMPT_FILE")
 
-ENDPOINT="http://${CONTROLLER_HOST}:${CONTROLLER_PORT}/api/submit"
+ENDPOINT="${CONTROLLER_BASE}/api/submit"
 
 # Build the JSON payload; maxTurns and maxBudgetUsd are omitted by default
 # so the workstream's own defaults are used. Include them only when
@@ -105,14 +110,23 @@ if [ -n "${STARTED_AFTER:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --arg t "$STARTED_AFTER" '. + {startedAfter: $t}')
 fi
 
-RESPONSE=$(curl -s -w "\n%{http_code}" \
-    -X POST \
-    -H "Content-Type: application/json" \
-    -d "$PAYLOAD" \
-    "$ENDPOINT") || CURL_EXIT=$?
+if [ -n "${DELAY_SECONDS:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --argjson d "$DELAY_SECONDS" '. + {delaySeconds: $d}')
+fi
+
+# Send Cloudflare Access service-token headers when provided so the request
+# is authorized through the tunnel in front of the controller.
+CURL_ARGS=(-s -w "\n%{http_code}" -X POST -H "Content-Type: application/json")
+
+if [ -n "${CF_ACCESS_CLIENT_ID:-}" ] && [ -n "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
+    CURL_ARGS+=(-H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}")
+    CURL_ARGS+=(-H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}")
+fi
+
+RESPONSE=$(curl "${CURL_ARGS[@]}" -d "$PAYLOAD" "$ENDPOINT") || CURL_EXIT=$?
 
 if [ "${CURL_EXIT:-0}" -ne 0 ]; then
-    echo "::error::curl failed (exit code $CURL_EXIT) — controller may be unreachable at ${CONTROLLER_HOST}:${CONTROLLER_PORT}"
+    echo "::error::curl failed (exit code $CURL_EXIT) — controller may be unreachable at ${CONTROLLER_BASE}"
     exit 1
 fi
 

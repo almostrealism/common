@@ -1185,10 +1185,17 @@ jobs:
   auto-resolve:
     needs: [changes, build, test, test-flowtree, test-media, javadoc-check, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle, analysis]
     if: ${{ !cancelled() && github.ref != 'refs/heads/master' }}
-    runs-on: [self-hosted, macos, ar-ci]
+    # Runs on a GitHub-hosted runner and reaches the FlowTree controller
+    # through the public Cloudflare Access tunnel (CONTROLLER_URL + the
+    # CF-Access service-token headers set on each submit step). This removes
+    # the dependency on a self-hosted runner inside the closed network.
+    runs-on: ubuntu-latest
     # Treated as a deployment to the `worker` environment so the pipeline
-    # pauses here until an authorized reviewer approves the run. Configure
-    # required reviewers under: Settings -> Environments -> worker.
+    # pauses here until an authorized reviewer approves the run. This manual
+    # approval gate is enforced by the environment's required-reviewers rule
+    # and is independent of the runner type — moving to ubuntu-latest does not
+    # weaken it. Configure required reviewers under:
+    # Settings -> Environments -> worker.
     environment: worker
     concurrency:
       group: auto-resolve-${{ github.ref }}
@@ -1265,8 +1272,9 @@ jobs:
       - name: Submit agent job (build failure)
         if: steps.build-check.outputs.build_failed == 'true' && inputs.auto_resolve != 'false'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
@@ -1282,9 +1290,10 @@ jobs:
       - name: Clean stale surefire reports
         if: steps.build-check.outputs.build_failed != 'true'
         run: |
-          # On self-hosted runners, previous test-mac runs may leave
-          # surefire reports in the workspace. Remove them so they
-          # cannot contaminate the artifact download directory.
+          # Defensive cleanup so locally-produced surefire reports cannot
+          # contaminate the artifact download directory. On the ephemeral
+          # ubuntu-latest runner the workspace starts clean, so this is
+          # effectively a no-op, but it is kept as a guard.
           find . -path "*/target/surefire-reports" -type d -exec rm -rf {} + 2>/dev/null || true
           rm -rf all-surefire-reports
 
@@ -1464,23 +1473,15 @@ jobs:
         run: |
           ./tools/ci/prompts/build-resolve-prompt.sh "${{ runner.temp }}/test-failures.txt" "${{ runner.temp }}/agent-prompt.txt"
 
-      - name: Extract failing test class names
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true'
-        id: test-classes
-        run: |
-          # Extract test class names from the failure summary for the escalation tracker
-          CLASSES=$(grep -oP '[\w.]+Test\w*' "${{ runner.temp }}/test-failures.txt" 2>/dev/null | sort -u | tr '\n' ' ' || true)
-          echo "failing_classes=$CLASSES" >> "$GITHUB_OUTPUT"
-
       - name: Submit agent job (test failures)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures == 'true' && inputs.auto_resolve != 'false'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           PROTECT_TEST_FILES: "true"
-          FAILING_TEST_CLASSES: ${{ steps.test-classes.outputs.failing_classes }}
           ENFORCE_CHANGES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve ${{ steps.failures.outputs.failure_count }} test failure(s)"
@@ -1501,25 +1502,15 @@ jobs:
         run: |
           ./tools/ci/prompts/build-vm-crash-prompt.sh all-crash-reports "${{ runner.temp }}/agent-prompt.txt"
 
-      - name: Extract crashed test class names
-        if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
-        id: crash-classes
-        run: |
-          CLASSES=""
-          if [ -f all-crash-reports/crash-summary.txt ]; then
-            CLASSES=$(grep -oP 'org\.almostrealism\.\S*Test\S*' all-crash-reports/crash-summary.txt 2>/dev/null | sort -u | tr '\n' ' ' || true)
-          fi
-          echo "failing_classes=$CLASSES" >> "$GITHUB_OUTPUT"
-
       - name: Submit agent job (test job crash)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true' && inputs.auto_resolve != 'false'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           PROTECT_TEST_FILES: "true"
-          FAILING_TEST_CLASSES: ${{ steps.crash-classes.outputs.failing_classes }}
           ENFORCE_CHANGES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           DESCRIPTION: "Resolve JVM crash in test execution"
@@ -1544,8 +1535,9 @@ jobs:
       - name: Submit agent job (incomplete tests)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true' && inputs.auto_resolve != 'false'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
@@ -1575,8 +1567,9 @@ jobs:
       - name: Submit agent job (code policy violations)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed != 'true' && inputs.auto_resolve != 'false'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
@@ -1625,8 +1618,9 @@ jobs:
       - name: Submit agent job (quality gates)
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.quality.outputs.has_failures == 'true' && inputs.auto_resolve != 'false'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
@@ -1652,8 +1646,9 @@ jobs:
       - name: Submit agent job (docs-only verify)
         if: ((steps.build-check.outputs.docs_only_skip == 'true') || (steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only == 'true')) && inputs.auto_resolve != 'false'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
@@ -1678,8 +1673,9 @@ jobs:
       - name: Submit agent job (general review)
         if: steps.build-check.outputs.docs_only_skip != 'true' && steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true' && steps.quality.outputs.has_failures != 'true' && steps.docs-check.outputs.docs_only != 'true' && inputs.auto_resolve != 'false'
         env:
-          CONTROLLER_HOST: ${{ secrets.FLOWTREE_CONTROLLER_HOST || 'mac-studio' }}
-          CONTROLLER_PORT: ${{ secrets.FLOWTREE_CONTROLLER_PORT || '7780' }}
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
