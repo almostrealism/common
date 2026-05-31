@@ -184,6 +184,14 @@ final class RetrospectivePromptBuilder {
         sb.append("Model tag: The model that ran the primary phase is in the transcript\n");
         sb.append("metadata (get_transcript_metadata). Add \"model:<modelName>\" to the tags\n");
         sb.append("when the model information is available.\n\n");
+
+        sb.append("IMPORTANT — WRITE RESULTS FILE\n\n");
+        sb.append("After storing all findings, write a JSON file to the working directory:\n\n");
+        sb.append("  File: retrospective-results.json\n");
+        sb.append("  Content: {\"transcriptFound\": true, \"findingsCount\": <N>}\n\n");
+        sb.append("Replace <N> with the number of finding memories you stored.\n");
+        sb.append("This file communicates structured results to the parent job\n");
+        sb.append("and is the ONLY file you may write.\n\n");
     }
 
     /** Appends graceful degradation instructions when no transcript is found. */
@@ -193,7 +201,7 @@ final class RetrospectivePromptBuilder {
 
         sb.append("GRACEFUL DEGRADATION — NO TRANSCRIPT FOUND\n\n");
         sb.append("If list_transcripts returns no matching primary transcript (or an error),\n");
-        sb.append("emit ONE memory noting that no transcript was available and exit cleanly:\n\n");
+        sb.append("emit ONE memory noting that no transcript was available:\n\n");
 
         sb.append("  memory_store(\n");
         sb.append("    namespace=\"self-improvement\",\n");
@@ -206,7 +214,9 @@ final class RetrospectivePromptBuilder {
         sb.append("            \"transcript recording failed, or session was very short.\")\n");
         sb.append("  )\n\n");
 
-        sb.append("Then exit without making any code changes.\n\n");
+        sb.append("Then write the results file and exit:\n");
+        sb.append("  File: retrospective-results.json\n");
+        sb.append("  Content: {\"transcriptFound\": false, \"findingsCount\": 0}\n\n");
     }
 
     /** Appends forbidden actions. */
@@ -216,14 +226,16 @@ final class RetrospectivePromptBuilder {
         sb.append("  - No Read, Edit, Write, Bash, Glob, or Grep on the codebase.\n");
         sb.append("  - No commits — the harness will commit at session end.\n");
         sb.append("  - No changes to any configuration files.\n");
-        sb.append("  - No prompt modifications.\n\n");
+        sb.append("  - No prompt modifications.\n");
+        sb.append("  - EXCEPT: You MAY write one file: retrospective-results.json\n");
+        sb.append("    (structured output required by the parent job; see HOW TO STORE FINDINGS).\n\n");
     }
 
     /** Appends the expected outcome statement. */
     private static void appendExpectedOutcome(StringBuilder sb) {
         sb.append("EXPECTED OUTCOME\n");
         sb.append("Store zero or more finding memories (or one no-transcript memory if\n");
-        sb.append("no transcript is available), then exit. The session should produce\n");
-        sb.append("no commits and no file changes of any kind.\n\n");
+        sb.append("no transcript is available), write retrospective-results.json, then exit.\n");
+        sb.append("The session should produce no commits and no other file changes.\n\n");
     }
 }

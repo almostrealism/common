@@ -36,8 +36,7 @@ The retrospective phase runs **last**, after all enforcement rules and all corre
 PRIMARY → [correction loops] → REVIEW → DEDUPLICATION → ORGANIZATIONAL_PLACEMENT → POST_COMPLETION → COMMIT_MESSAGE → [RETROSPECTIVE]
 ```
 
-<!-- TODO(review): Contradicts Section 3.2 — Section 3.2 says phase runs OUTSIDE the rule loop via doWork(), not as an EnforcementRule in buildActiveRules(); clarify which is authoritative (Section 3.2/3.3 appear to be the deliberate design) -->
-Practically, it is added to `EnforcementRunner.buildActiveRules()` as the final entry, controlled by a boolean flag `reflectionEnabled` (analogous to `reviewEnabled`).
+The retrospective phase runs as a **post-enforcement hook** in `CodingAgentJob.doWork()`, called after `runEnforcementRules()` returns. It is NOT added to `EnforcementRunner.buildActiveRules()` — that was the original sketch, but the final design (Sections 3.2/3.3) intentionally keeps it outside the rule loop. The `reflectionEnabled` boolean flag gates whether `runReflectionPhase()` is invoked, analogous to `reviewEnabled`.
 
 ### 1.3 Activation Mechanism
 
@@ -350,9 +349,8 @@ These are surfaced in `CodingAgentJobEvent` (analogous to `reviewInfo`).
 
 ### 6.5 Phase Ordering
 
-<!-- TODO(review): Second instance of the buildActiveRules() contradiction — per Section 3.2/3.3 the retrospective phase is NOT in buildActiveRules() at all; verification should check that doWork() calls runReflectionPhase() after runEnforcementRules(), not buildActiveRules() order -->
 - Retrospective runs after all other phases (including `commit-message`)
-- Verified by checking `buildActiveRules()` order: retrospective is added last
+- Verified by the call chain in `CodingAgentJob.doWork()`: `runEnforcementRules()` returns, then `runReflectionPhase()` is called if `reflectionEnabled`. The retrospective phase is NOT in `EnforcementRunner.buildActiveRules()` — it is a post-enforcement hook, not an enforcement rule, so it cannot cause a retry loop.
 
 ### 6.6 Per-Phase Config Routing
 
