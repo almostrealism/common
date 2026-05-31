@@ -178,4 +178,52 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		// Should have full provenance chain
 		assertEquals("level 2 ==> level 3 ==> add op", metadata.getShortDescription());
 	}
+
+	/**
+	 * Verifies that flatten() does not mutate the original operation's metadata and that
+	 * repeated flattening does not accumulate provenance prefixes (e.g.
+	 * "layer ==> layer ==> add"). Both are consequences of the non-mutating
+	 * {@link OperationMetadata#withProvenance(String)} path used during flattening.
+	 */
+	@Test(timeout = 30000)
+	public void testFlattenDoesNotMutateOrAccumulate() {
+		PackedCollection a = new PackedCollection(shape(10));
+		PackedCollection b = new PackedCollection(shape(10));
+
+		a.fill(pos -> Math.random());
+
+		OperationList inner = new OperationList("layer gradient");
+		inner.add(a("inner add", traverseEach(p(b)), add(p(a), c(1.0))));
+
+		OperationList outer = new OperationList("outer");
+		outer.add(inner);
+
+		// Capture the original leaf operation and its metadata identity/value
+		Supplier<Runnable> originalLeaf = inner.get(0);
+		assertTrue(originalLeaf instanceof OperationInfo);
+		OperationMetadata originalMetadata = ((OperationInfo) originalLeaf).getMetadata();
+		String originalDescription = originalMetadata.getShortDescription();
+
+		OperationList firstFlatten = outer.flatten();
+		OperationList secondFlatten = outer.flatten();
+
+		// 1. flatten() must not replace or mutate the original leaf still held by `inner`
+		assertSame("flatten() must not replace the original leaf instance",
+				originalLeaf, inner.get(0));
+		// flatten() must not mutate the original operation's shortDescription
+		assertEquals(originalDescription,
+				((OperationInfo) inner.get(0)).getMetadata().getShortDescription());
+
+		// 2. Each flatten produces the correct single-level provenance...
+		assertEquals(1, firstFlatten.size());
+		assertEquals(1, secondFlatten.size());
+		String firstDesc = ((OperationInfo) firstFlatten.get(0)).getMetadata().getShortDescription();
+		String secondDesc = ((OperationInfo) secondFlatten.get(0)).getMetadata().getShortDescription();
+		assertEquals("layer gradient ==> inner add", firstDesc);
+
+		// 3. ...and repeating it never accumulates extra prefixes (no "==> ==>" growth)
+		assertEquals(firstDesc, secondDesc);
+		// exactly one provenance separator expected for a single nesting level
+		assertEquals(1, firstDesc.split("==>", -1).length - 1);
+	}
 }

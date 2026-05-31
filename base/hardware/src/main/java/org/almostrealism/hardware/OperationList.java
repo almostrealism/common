@@ -34,6 +34,7 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.profile.OperationTimingListener;
+import io.almostrealism.profile.OperationWithInfo;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
@@ -1036,7 +1037,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 						if (op.getComputeRequirements() == null) {
 							if (provenance != null) {
-								op.forEach(child -> applyProvenance(child, provenance));
+								return op.stream().map(child -> withProvenance(child, provenance));
 							}
 							return op.stream();
 						} else {
@@ -1053,19 +1054,38 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	}
 
 	/**
-	 * Applies a provenance label to the given operation's metadata, if the operation
-	 * implements {@link OperationInfo} and has non-null metadata.
+	 * Returns an operation labelled with the given provenance, without mutating the
+	 * input or any metadata it shares with other holders.
 	 *
-	 * @param op         the operation whose metadata to label
+	 * <p>When {@code op} is a leaf {@link OperationInfo} with non-null metadata, this
+	 * returns an {@link OperationWithInfo} wrapping {@code op} with a fresh
+	 * {@link OperationMetadata#withProvenance(String)} copy, so the original metadata
+	 * (which may still be referenced by the un-flattened nested lists, or read again on
+	 * a subsequent {@link #flatten()}) is left untouched and provenance prefixes cannot
+	 * accumulate across repeated flattens.</p>
+	 *
+	 * <p>A nested {@link OperationList} child (which arises when a sub-list carried its
+	 * own {@link #getComputeRequirements() compute requirements} and was therefore kept
+	 * intact during the recursive flatten) is returned unchanged: wrapping it in an
+	 * {@link OperationWithInfo} would discard its list structure and compute
+	 * requirements, and its leaf operations already received provenance when that
+	 * sub-list was flattened. Operations that are not {@link OperationInfo} or have no
+	 * metadata are also returned unchanged.</p>
+	 *
+	 * @param op         the operation to label
 	 * @param provenance the provenance string to prepend to the short description
+	 * @return a provenance-labelled wrapper, or {@code op} unchanged when it is a nested
+	 *         list or carries no metadata
 	 */
-	private static void applyProvenance(Supplier<Runnable> op, String provenance) {
-		if (op instanceof OperationInfo) {
+	private static Supplier<Runnable> withProvenance(Supplier<Runnable> op, String provenance) {
+		if (op instanceof OperationInfo && !(op instanceof OperationList)) {
 			OperationMetadata metadata = ((OperationInfo) op).getMetadata();
 			if (metadata != null) {
-				metadata.applyProvenance(provenance);
+				return OperationWithInfo.of(metadata.withProvenance(provenance), op);
 			}
 		}
+
+		return op;
 	}
 
 	public void run() { get().run(); }

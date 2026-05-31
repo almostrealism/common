@@ -290,29 +290,22 @@ public class OperationMetadata implements DescribableParent<OperationMetadata> {
 	}
 
 	/**
-	 * Mutates this metadata's shortDescription to indicate provenance.
-	 * The new shortDescription follows the pattern: "parent ==> child"
-	 * where child is the current shortDescription (or displayName if no
-	 * shortDescription is set).
+	 * Returns a new {@link OperationMetadata} with the same data as this instance but
+	 * with a shortDescription that indicates the provenance of the operation.
 	 *
-	 * @param parent the parent context name to prepend
-	 */
-	public void applyProvenance(String parent) {
-		String child = shortDescription != null ? shortDescription : displayName;
-		setShortDescription(parent + " ==> " + child);
-	}
-
-	/**
-	 * Returns a new {@link OperationMetadata} with the same data but with a
-	 * shortDescription that indicates the provenance of this operation.
+	 * <p>The new shortDescription follows the pattern {@code "parent ==> child"} where
+	 * {@code child} is this metadata's current shortDescription (or its displayName if
+	 * no shortDescription is set). This method does not mutate this instance, so a
+	 * metadata instance shared by multiple holders is never altered and provenance
+	 * prefixes cannot accumulate across repeated applications.</p>
 	 *
 	 * @param parent the parent context name to prepend
 	 * @return a new OperationMetadata with provenance in the shortDescription
-	 * @see #applyProvenance(String)
 	 */
 	public OperationMetadata withProvenance(String parent) {
+		String child = shortDescription != null ? shortDescription : displayName;
 		OperationMetadata metadata = new OperationMetadata(this);
-		metadata.applyProvenance(parent);
+		metadata.setShortDescription(parent + " ==> " + child);
 		return metadata;
 	}
 
