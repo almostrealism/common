@@ -239,6 +239,7 @@ public class NativeDataContext extends HardwareDataContext {
 		}
 
 		context = isExternal ? new ExternalComputeContext(this, compiler) : new NativeComputeContext(this, compiler);
+		log("Hardware[" + getName() + "]: kernels run on the CPU");
 	}
 
 	@Override

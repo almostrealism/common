@@ -96,7 +96,9 @@ the provider" means.
   `AcceleratedProcessDetails` carrying a `Semaphore`) followed by `waitFor(semaphore)` —
   **dispatch and wait are already separate calls**.
 - Operators already accept `dependsOn`; `CLOperator` already chains via `cl_event`
-  (the async return is just commented out, currently synchronous via `processEvent`).
+  (the async return is commented out, currently synchronous via `processEvent`). This is the
+  clearest existing *model* of provider-side chaining — but Apple OpenCL is deprecated and is
+  not the default executor here, so it is a reference only, not the implementation target.
 - `Evaluable.async()` → `StreamingEvaluable` (push model: `request(args)` returns
   immediately, result delivered to `setDownstream(consumer)`).
 - The `HeapStage` pending-kernel hooks exist for future async operators.
@@ -119,26 +121,39 @@ and (on Metal) ~one command buffer instead of N.
 > The CI box is currently also running earlier jobs, so timing will fluctuate — these first
 > steps are about *working + correct*, gated by tests, not about benchmarks.
 
-1. **Formalize the executable-side completion contract.** Define the async executable
-   interface for the operation/`Runnable` side (the missing `StreamingEvaluable` analog), or
-   a unified completion contract reachable from `ParallelProcess`. Default implementation =
-   synchronous (already-completed semaphore). Nothing else changes yet.
-2. **Provider opt-in on OpenCL first** (most-complete substrate): behind a flag (default off
-   = current behavior), un-comment/return the live `CLSemaphore` and thread `dependsOn` so a
-   group chains via `cl_event`, with a single trailing host wait. Verify correctness with the
-   flag both **off and on**.
-3. **Generalize the barrier** so the deferred wait is driven by the executable-side contract
-   (works for any `ParallelProcess`), with `OperationList`'s `Runnable` as the first consumer
-   — used *through* the general contract, not by special-casing the class.
-4. **Then Metal**: provide the `MTLSharedEvent` / completion-handler `Semaphore` and the
-   per-group command buffer (the sustained-dispatch payoff).
+> **Target the Metal backend, not CL.** Measured here with the microbenchmark below:
+> JNI/native ≈ 159 µs/dispatch (synchronous CPU — nothing to defer), Metal ≈ 1193 µs/dispatch
+> (the real target — worst per-dispatch overhead), CL ≈ 613 µs/dispatch (Apple-**deprecated**,
+> and not the default executor). Apple OpenCL is a compatibility shim; the `cl_event` chaining
+> in `CLOperator` is a useful *model* for the contract but is not an implementation or
+> validation target. JNI is the synchronous correctness baseline; **Metal is where the work
+> pays off**.
+
+1. **(DONE) Per-operation completion threading.** `apply(output, args, dependsOn)` passes
+   `dependsOn` into `operator.accept(...)`, and the operator's returned device-completion
+   semaphore is adopted as the process completion (`AcceleratedProcessDetails.getSemaphore()`
+   prefers it). Default unchanged (no provider returns a live semaphore yet).
+2. **Executable-side async contract + composite chaining (provider-agnostic).** Define the
+   operation/`Runnable` analog of `StreamingEvaluable` (or a unified completion contract
+   reachable from `ParallelProcess`), and have a composite — the `OperationList` `Runner` as
+   the first *consumer*, through the general contract, not by special-casing the class —
+   thread each child's completion into the next's `dependsOn` and issue one trailing wait. On
+   JNI this chains already-completed semaphores, so it must be a correctness-preserving no-op
+   (validate harness green on JNI).
+3. **Metal provider opt-in (the payoff).** Provide Metal's device-completion `Semaphore`
+   (`MTLSharedEvent` / command-buffer completion handler) and wrap a chained group in **one**
+   command buffer committed once. With step 2 in place this defers the wait on Metal —
+   fewer command buffers + one host wait. Validate on Metal (harness µs/dispatch drops; the
+   `RealtimeContinuousRenderer` sustained-dispatch outcome below).
 
 ## Validation harness
 
 - **Microbenchmark (new):** `engine/utils/.../OperationDispatchBatchingTests` — N tiny
   independent ops (`OperationList(name, false)`, intentionally **unfused**), run M times,
-  reports µs/dispatch and asserts correctness. Baseline observed ~261 µs/dispatch on OpenCL.
-  Raising the iteration count reproduces the Metal stall.
+  reports µs/dispatch and asserts correctness. Force the backend with
+  `-DAR_HARDWARE_DRIVER=mtl|native|cl`. Baselines (1024 dispatches): **native ≈ 159 µs**,
+  default `"*"` ≈ 261 µs (executes on JNI, *not* CL), **CL ≈ 613 µs**, **Metal ≈ 1193 µs**.
+  Metal is the target. Raising the iteration count reproduces the Metal stall.
 - **Correctness gate:** every step must keep this test (and the existing `OperationSemaphoreTests`,
   `BatchedVsPerNoteRmsTest`, audio RMS checks) green — output must be numerically unchanged.
 - **Sustained-dispatch outcome:** `RealtimeContinuousRenderer` on Metal
