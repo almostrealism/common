@@ -274,9 +274,20 @@ public interface PatternFeatures extends CodeFeatures {
 							Heap.stage(() -> {
 								Producer<PackedCollection> fullProducer =
 										note.getProducer(-1);
-								fullResult[0] =
+								PackedCollection evaluated =
 										traverse(1, fullProducer).get().evaluate();
-								if (fullResult[0] != null) {
+								if (evaluated != null) {
+									// Copy the rendered note audio into a fresh standalone
+									// PackedCollection (PackedCollection does not allocate
+									// from the Heap arena, and a plain construction is not
+									// registered with the active stage) so it survives the
+									// stage pop that frees the per-evaluation intermediates
+									// — including the evaluated result itself. The cache owns
+									// this copy and destroys it on eviction. Copying (rather
+									// than detaching the evaluated result) avoids any chance
+									// of a double free between the cache and the Heap stage.
+									fullResult[0] = new PackedCollection(evaluated.getShape());
+									fullResult[0].setMem(0, evaluated);
 									cache.put(noteStart, fullResult[0]);
 									sumToDestination(destination, fullResult[0], noteStart,
 											startFrame, endFrame, frameCount);

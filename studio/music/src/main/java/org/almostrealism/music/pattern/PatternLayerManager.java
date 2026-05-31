@@ -200,6 +200,40 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 	private final NoteAudioCache noteAudioCache = new NoteAudioCache();
 
 	/**
+	 * When {@code true}, {@link #noteAudioCache} is never cleared or evicted in
+	 * {@link #sum}, so a continuously looped arrangement reuses the same rendered
+	 * note audio across passes with no re-evaluation and no per-loop deallocation
+	 * churn (the deallocation churn otherwise intermittently stalls the render
+	 * kernel). Memory is then bounded by the arrangement length rather than the
+	 * current playback window. Enabled via the {@code AR_PATTERN_CACHE_PERSIST}
+	 * system property; callers that switch arrangements at runtime must leave it
+	 * disabled so stale audio is evicted.
+	 */
+	private static final boolean cachePersist =
+			Boolean.getBoolean("AR_PATTERN_CACHE_PERSIST");
+
+	/**
+	 * Global cache-invalidation epoch. {@link #invalidateCaches()} increments it to
+	 * force every {@link PatternLayerManager} to discard its {@link #noteAudioCache}
+	 * on the next {@link #sum} — required when the arrangement changes (a new genome
+	 * is assigned) so persistent caches do not serve audio rendered for the previous
+	 * arrangement.
+	 */
+	private static volatile int cacheEpoch = 0;
+
+	/** The {@link #cacheEpoch} value this instance last reconciled with. */
+	private int observedCacheEpoch = cacheEpoch;
+
+	/**
+	 * Invalidates all pattern note-audio caches at the next render. Call this after
+	 * assigning a new genome / switching arrangements so that cached note audio from
+	 * the previous arrangement is discarded rather than reused.
+	 */
+	public static void invalidateCaches() {
+		cacheEpoch++;
+	}
+
+	/**
 	 * Per-pattern batched dispatch site. Lazily constructed on first access from
 	 * {@link #getBatchedLayerRenderer()} so the bucket cache only materialises
 	 * when {@link #enableBatched} routes through it.
@@ -737,10 +771,17 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 				() -> () -> {
 					int frame = startFrame.getAsInt();
 					AudioSceneContext ctx = context.get();
-					if (frame == 0) {
+					if (observedCacheEpoch != cacheEpoch) {
+						// Arrangement switched: discard audio rendered for the previous
+						// genome so the new arrangement renders fresh.
+						observedCacheEpoch = cacheEpoch;
 						noteAudioCache.clear();
-					} else {
-						noteAudioCache.evictBefore(frame);
+					} else if (!cachePersist) {
+						if (frame == 0) {
+							noteAudioCache.clear();
+						} else {
+							noteAudioCache.evictBefore(frame);
+						}
 					}
 					sumInternal(ctx, voicing, audioChannel, frame, frameCount, noteAudioCache);
 				});
@@ -790,13 +831,12 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures {
 		int firstRepetition = Math.max(0, (int) Math.floor(startMeasure / duration));
 		int lastRepetition = Math.min(totalRepetitions, (int) Math.ceil(endMeasure / duration));
 
-		// Disable caching when (a) frameCount covers the entire arrangement
-		// (all notes rendered in one call — caching wastes memory) or (b) a
-		// Heap is active, because Heap.stage() frees evaluated audio after
-		// each note and cached references would point to freed memory.
-		NoteAudioCache effectiveCache =
-				(frameCount < ctx.getFrames() && Heap.getDefault() == null)
-						? cache : null;
+		// Disable caching only when frameCount covers the entire arrangement
+		// (all notes rendered in one call — caching wastes memory). When a Heap is
+		// active the cache is still used: renderPerNote detaches each cached note
+		// result from the active stage via Heap.retain(...) so it survives the
+		// per-buffer Heap.stage() pop that frees the evaluation intermediates.
+		NoteAudioCache effectiveCache = (frameCount < ctx.getFrames()) ? cache : null;
 
 		IntStream.range(firstRepetition, lastRepetition).forEach(rep -> {
 			double repStart = rep * duration;
