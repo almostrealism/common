@@ -240,28 +240,28 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void extractWorkstreamIdFromTypicalUrl() {
         String url = "http://0.0.0.0:7700/api/workstreams/ws-1/jobs/job-abc";
-        assertEquals("ws-1", RetrospectivePromptBuilder.extractWorkstreamId(url));
+        assertEquals("ws-1", WorkstreamUtils.extractWorkstreamId(url));
     }
 
     @Test(timeout = 30000)
     public void extractWorkstreamIdNoJobsSegment() {
         String url = "http://host/api/workstreams/mystream";
-        assertEquals("mystream", RetrospectivePromptBuilder.extractWorkstreamId(url));
+        assertEquals("mystream", WorkstreamUtils.extractWorkstreamId(url));
     }
 
     @Test(timeout = 30000)
     public void extractWorkstreamIdNoWorkstreamsSegmentReturnsNull() {
-        assertEquals(null, RetrospectivePromptBuilder.extractWorkstreamId("http://host:7700/api/submit"));
+        assertEquals(null, WorkstreamUtils.extractWorkstreamId("http://host:7700/api/submit"));
     }
 
     @Test(timeout = 30000)
     public void extractWorkstreamIdEmptyStringReturnsNull() {
-        assertEquals(null, RetrospectivePromptBuilder.extractWorkstreamId(""));
+        assertEquals(null, WorkstreamUtils.extractWorkstreamId(""));
     }
 
     @Test(timeout = 30000)
     public void extractWorkstreamIdNullReturnsNull() {
-        assertEquals(null, RetrospectivePromptBuilder.extractWorkstreamId(null));
+        assertEquals(null, WorkstreamUtils.extractWorkstreamId(null));
     }
 
     // ── Non-code-producing phase completes correctly ───────────────────────

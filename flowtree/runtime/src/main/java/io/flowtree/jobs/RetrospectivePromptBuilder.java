@@ -54,23 +54,6 @@ final class RetrospectivePromptBuilder {
     private RetrospectivePromptBuilder() {}
 
     /**
-     * Extracts the workstream id from a workstream URL of the shape
-     * {@code .../api/workstreams/<wsId>[/jobs/...]}.
-     *
-     * @param url the workstream URL or {@code null}
-     * @return the workstream id, or {@code null} when none could be parsed
-     */
-    static String extractWorkstreamId(String url) {
-        if (url == null || url.isEmpty()) return null;
-        int idx = url.indexOf("/workstreams/");
-        if (idx < 0) return null;
-        int start = idx + "/workstreams/".length();
-        int end = url.indexOf('/', start);
-        String id = end < 0 ? url.substring(start) : url.substring(start, end);
-        return id.isEmpty() ? null : id;
-    }
-
-    /**
      * Builds the retrospective analysis prompt for {@code job}.
      *
      * @param job the job whose primary phase transcript is to be analyzed
@@ -112,7 +95,7 @@ final class RetrospectivePromptBuilder {
     private static void appendWhatToStudy(StringBuilder sb, CodingAgentJob job) {
         String jobId = job.getTaskId();
         String wsUrl = job.resolveWorkstreamUrl();
-        String wsId = extractWorkstreamId(wsUrl);
+        String wsId = WorkstreamUtils.extractWorkstreamId(wsUrl);
 
         sb.append("WHAT TO STUDY\n\n");
 
@@ -178,7 +161,7 @@ final class RetrospectivePromptBuilder {
 
     /** Appends how to store findings as memories. */
     private static void appendHowToStoreFindings(StringBuilder sb, CodingAgentJob job) {
-        String wsId = extractWorkstreamId(job.resolveWorkstreamUrl());
+        String wsId = WorkstreamUtils.extractWorkstreamId(job.resolveWorkstreamUrl());
         String jobId = job.getTaskId();
 
         sb.append("HOW TO STORE FINDINGS\n\n");
@@ -205,7 +188,7 @@ final class RetrospectivePromptBuilder {
 
     /** Appends graceful degradation instructions when no transcript is found. */
     private static void appendGracefulDegradation(StringBuilder sb, CodingAgentJob job) {
-        String wsId = extractWorkstreamId(job.resolveWorkstreamUrl());
+        String wsId = WorkstreamUtils.extractWorkstreamId(job.resolveWorkstreamUrl());
         String jobId = job.getTaskId();
 
         sb.append("GRACEFUL DEGRADATION — NO TRANSCRIPT FOUND\n\n");
