@@ -24,6 +24,7 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.KernelStructureContext;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 
 import java.util.List;
@@ -160,6 +161,36 @@ public class SubsetProjectionComputation extends TraversableExpressionComputatio
 					new IntegerConstant(1).toDouble(),
 					new IntegerConstant(0).toDouble());
 		});
+	}
+
+	/**
+	 * Returns the number of {@link io.almostrealism.code.ExpressionAssignment}
+	 * statements emitted into the generated {@link io.almostrealism.scope.Scope}.
+	 *
+	 * <p>The inherited behaviour unrolls one statement per output element (returning
+	 * {@code getShape().getSize()}) whenever the surrounding
+	 * {@link KernelStructureContext} reports a kernel maximum that differs from
+	 * {@link #getCountLong()}. That unrolling exists for computations that read their
+	 * inputs <em>relatively</em>, where a single relative statement is only valid when
+	 * the kernel width matches the traversal policy exactly.</p>
+	 *
+	 * <p>This projection has no data inputs and computes every Jacobian entry purely
+	 * from its absolute index via {@link #getValueAt(Expression)} (output index
+	 * {@code idx / inputSize}, input index {@code idx % inputSize}, compared against
+	 * the expected input position). An absolute, input-free expression is correct at
+	 * any kernel width, so it never needs per-element unrolling. Returning
+	 * {@link #getMemLength()} keeps the emitted scope a single
+	 * {@link io.almostrealism.kernel.KernelIndex} parameterized statement
+	 * ({@code output[kernelIndex] = getValueAt(kernelIndex)}) evaluated in parallel
+	 * across all {@link #getCountLong()} Jacobian entries at kernel runtime, rather
+	 * than expanding the entire dense Jacobian at compile time.</p>
+	 *
+	 * @param context The kernel structure context for the surrounding compilation
+	 * @return {@link #getMemLength()} - a single parameterized statement
+	 */
+	@Override
+	protected int getStatementCount(KernelStructureContext context) {
+		return getMemLength();
 	}
 
 	/**
