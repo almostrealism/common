@@ -117,8 +117,8 @@ public class BatchedNoteInputs {
 	 * @return {@code true} if the note matches the melodic-SSS shape
 	 */
 	public static boolean isMelodicSssShape(PatternNote outer) {
-		if (!(outer.getDelegateAudio() instanceof PatternNote mid)) return false;
-		if (!(mid.getDelegateAudio() instanceof PatternNote inner)) return false;
+		if (!(outer.getDelegate() instanceof PatternNote mid)) return false;
+		if (!(mid.getDelegate() instanceof PatternNote inner)) return false;
 		List<PatternNoteAudio> layers = inner.getLayers();
 		return layers != null && layers.size() == LAYERS
 				&& inner.getAggregationChoice() == 0.0
@@ -163,10 +163,10 @@ public class BatchedNoteInputs {
 	public static BatchedNoteInputs from(PatternNote outer, KeyPosition<?> target, int channel,
 										 double durationSec, double automationLevel,
 										 DoubleFunction<PatternNoteAudio> audioSelection, int sourceLength) {
-		if (!(outer.getAppliedFilter() instanceof ParameterizedVolumeEnvelope.Filter volF)) return null;
-		if (!(outer.getDelegateAudio() instanceof PatternNote mid)) return null;
-		if (!(mid.getAppliedFilter() instanceof ParameterizedFilterEnvelope.Filter filtF)) return null;
-		if (!(mid.getDelegateAudio() instanceof PatternNote inner)) return null;
+		if (!(outer.getFilter() instanceof ParameterizedVolumeEnvelope.Filter volF)) return null;
+		if (!(outer.getDelegate() instanceof PatternNote mid)) return null;
+		if (!(mid.getFilter() instanceof ParameterizedFilterEnvelope.Filter filtF)) return null;
+		if (!(mid.getDelegate() instanceof PatternNote inner)) return null;
 
 		List<PatternNoteAudio> layers = inner.getLayers();
 		if (layers == null || layers.size() != LAYERS || inner.getAggregationChoice() != 0.0) {
@@ -191,9 +191,9 @@ public class BatchedNoteInputs {
 		double[][] layerParams = new double[LAYERS][];
 		for (int i = 0; i < LAYERS; i++) {
 			if (!(layers.get(i) instanceof PatternNoteLayer layer)) return null;
-			if (!(layer.getAppliedFilter() instanceof ParameterizedLayerEnvelope.Filter lf)) return null;
+			if (!(layer.getFilter() instanceof ParameterizedLayerEnvelope.Filter lf)) return null;
 
-			PatternNoteAudio resolved = layer.getDelegateAudio();
+			PatternNoteAudio resolved = layer.getDelegate();
 			if (resolved instanceof PatternNoteAudioChoice choice) {
 				resolved = choice.getDelegate(audioSelection);
 			}
