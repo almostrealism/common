@@ -199,14 +199,16 @@
 				<version>3.1.0</version>
 				<configuration>
 					<executable>bash</executable>
+					<workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory>
 					<arguments>
-						<argument>scripts/verify-enforcement-config.sh</argument>
+						<argument>${maven.multiModuleProjectDirectory}/scripts/verify-enforcement-config.sh</argument>
 					</arguments>
 				</configuration>
 				<executions>
 					<execution>
 						<id>verify-enforcement-config</id>
 						<phase>validate</phase>
+						<inherited>false</inherited>
 						<goals>
 							<goal>exec</goal>
 						</goals>
