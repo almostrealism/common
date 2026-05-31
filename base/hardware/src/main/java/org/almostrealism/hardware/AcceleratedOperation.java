@@ -203,13 +203,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	/** Timing metric for wrapped evaluation. */
 	public static TimingMetric wrappedEvalMetric = console.timing("wrappedEval");
 
-	/**
-	 * Thread-local storage for {@link Semaphore} instances used to control concurrent access to
-	 * accelerated operations. Each thread maintains its own semaphore to prevent race conditions
-	 * during parallel execution.
-	 */
-	private static final ThreadLocal<Semaphore> semaphores = new ThreadLocal<>();
-
 	/** Indicates whether this operation executes as a kernel (GPU/OpenCL/Metal) or JNI native code. */
 	private final boolean kernel;
 
@@ -523,31 +516,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @return Process details ready for execution
 	 */
 	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
-		Semaphore lastSemaphore = getSemaphore();
-
-		try {
-			pushSemaphore();
-			return getDetailsFactory().init(output, args).construct();
-		} finally {
-			semaphores.set(lastSemaphore);
-		}
-	}
-
-	/**
-	 * Pushes a new semaphore onto the thread-local stack for this operation.
-	 *
-	 * <p>If no semaphore exists for the current thread, creates a new {@link DefaultLatchSemaphore}
-	 * with zero permits. Otherwise, creates a child semaphore linked to the current one using
-	 * this operation's metadata as the requester.</p>
-	 */
-	protected void pushSemaphore() {
-		Semaphore current = getSemaphore();
-
-		if (current == null) {
-			semaphores.set(new DefaultLatchSemaphore(getMetadata(), 0));
-		} else {
-			semaphores.set(current.withRequester(getMetadata()));
-		}
+		return getDetailsFactory().init(output, args).construct();
 	}
 
 	/**
@@ -690,28 +659,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	@Override
 	public Console console() { return console; }
 
-	/**
-	 * Returns the thread-local semaphore for the current thread, or null if none is set.
-	 *
-	 * @return the current thread's semaphore, or null
-	 */
-	public static Semaphore getSemaphore() { return semaphores.get(); }
-
-	/**
-	 * Waits for the current thread's semaphore to complete and clears it.
-	 *
-	 * <p>If a semaphore exists for the current thread, this method blocks until it
-	 * is released, then clears the thread-local reference. If no semaphore exists,
-	 * this method returns immediately.</p>
-	 */
-	public static void waitFor() {
-		Semaphore s = getSemaphore();
-
-		if (s != null) {
-			s.waitFor();
-			semaphores.set(null);
-		}
-	}
 
 	/** Prints timing statistics. */
 	public static void printTimes() {

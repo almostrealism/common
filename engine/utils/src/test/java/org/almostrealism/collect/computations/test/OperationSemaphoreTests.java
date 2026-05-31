@@ -18,7 +18,6 @@ package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
@@ -60,8 +59,6 @@ public class OperationSemaphoreTests extends TestSuiteBase {
 
 		Runnable r = op.get(profiles);
 
-		long waitTime = 0;
-
 		verboseLog(() -> {
 			r.run();
 		});
@@ -69,12 +66,8 @@ public class OperationSemaphoreTests extends TestSuiteBase {
 
 		for (int i = 0; i < 1000; i++) {
 			r.run();
-			long start = System.currentTimeMillis();
-			AcceleratedOperation.waitFor();
-			waitTime += (System.currentTimeMillis() - start);
 		}
 
-		log("Semaphore wait time: " + waitTime + "ms");
 		profiles.print();
 
 		if (validate) {
