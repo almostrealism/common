@@ -345,4 +345,42 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 		assertTrue("Reminder must explain that multi-phase prompts still work",
 			result.contains("logically separate phases"));
 	}
+
+	// ── Language requirement ─────────────────────────────────────────────────
+
+	@Test(timeout = 30000)
+	public void languageRequirementAppearsInPrimaryPrompt() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("Do some work")
+			.build();
+		assertTrue("Language requirement must appear in every primary prompt",
+			result.contains("All output must be in English"));
+		assertTrue("Language requirement must explicitly prohibit non-English output",
+			result.contains("Do not write in any other language"));
+	}
+
+	@Test(timeout = 30000)
+	public void languageRequirementAppearsNearTopOfPrompt() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("task body")
+			.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1")
+			.build();
+		int langIdx = result.indexOf("All output must be in English");
+		int requestIdx = result.indexOf("--- BEGIN USER REQUEST ---");
+		assertTrue("Language requirement should appear in the prompt", langIdx >= 0);
+		assertTrue("User request marker should appear in the prompt", requestIdx >= 0);
+		assertTrue("Language requirement should precede the user request marker",
+			langIdx < requestIdx);
+	}
+
+	@Test(timeout = 30000)
+	public void languageRequirementAppearsInCorrectionSession() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("rule correction prompt")
+			.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1")
+			.setCorrectionSession(true)
+			.build();
+		assertTrue("Language requirement must also appear in correction sessions",
+			result.contains("All output must be in English"));
+	}
 }
