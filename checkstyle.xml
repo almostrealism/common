@@ -123,6 +123,20 @@
             <property name="ignoreComments" value="true"/>
         </module>
 
+        <!-- Prohibit constructing an ad-hoc log-file sink: a Writer/OutputStream/
+             PrintStream opened over a "*.log" path. Routing status output to a private
+             log file bypasses the Console framework (no timestamps, filtering, listeners,
+             or shared aggregation). Register a file destination with
+             Console.root().addListener(OutputFeatures.fileOutput(path)) and emit through
+             Console / ConsoleFeatures instead. Data files (.wav, .csv, generated sources)
+             are unaffected — only "*.log" destinations match. See base/io/README.md. -->
+        <module name="RegexpSinglelineJava">
+            <property name="id" value="AdHocLogFileSink"/>
+            <property name="format" value="new\s+\w*(Writer|OutputStream|PrintStream)\s*\([^;]*\.log&quot;"/>
+            <property name="message" value="Do not write log output to an ad-hoc file. Use Console.root().addListener(OutputFeatures.fileOutput(path)) and log via Console / ConsoleFeatures. See base/io/README.md."/>
+            <property name="ignoreComments" value="true"/>
+        </module>
+
         <!-- Prohibit use of 'var' keyword - always use explicit types -->
         <module name="RegexpSinglelineJava">
             <property name="format" value="^\s*(var|final\s+var)\s+\w+\s*="/>

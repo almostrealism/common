@@ -1,6 +1,7 @@
 package org.almostrealism.music.pattern;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.audio.CellFeatures;
@@ -126,6 +127,71 @@ public interface PatternFeatures extends CodeFeatures {
 	}
 
 	/**
+	 * Evaluates a batched render output producer and accumulates it into the
+	 * destination buffer. This is the pipeline boundary where the batched pattern
+	 * dispatch built by {@link BatchedPatternLayerRenderer} is materialized — kept
+	 * here so the batched path shares the per-note path's evaluate boundary.
+	 *
+	 * @param output      the placed, summed window producer of shape {@code [frameCount]}
+	 * @param destination the per-tick destination buffer to accumulate into
+	 * @param frameCount  the number of frames in the output window
+	 */
+	default void accumulateBatchedOutput(Producer<PackedCollection> output,
+										 PackedCollection destination, int frameCount) {
+		accumulateBatchedOutput(output, destination, 0, frameCount);
+	}
+
+	/**
+	 * Evaluates a batched render output producer and accumulates it into the
+	 * destination buffer starting at {@code destOffset}. Used by the dispatch when a
+	 * large render window is split into bounded sub-windows that each accumulate into
+	 * their slice of the destination.
+	 *
+	 * @param output      the placed, summed window producer of shape {@code [frameCount]}
+	 * @param destination the per-tick destination buffer to accumulate into
+	 * @param destOffset  the frame offset into {@code destination} to accumulate at
+	 * @param frameCount  the number of frames in the output window
+	 */
+	default void accumulateBatchedOutput(Producer<PackedCollection> output,
+										 PackedCollection destination, int destOffset, int frameCount) {
+		accumulateBatchedOutput(output.get().evaluate(), destination, destOffset, frameCount);
+	}
+
+	/**
+	 * Accumulates an already-evaluated batched render window into the destination
+	 * buffer starting at {@code destOffset}. This is the boundary used by the
+	 * compile-once dispatch, which re-evaluates its cached kernel to a
+	 * {@link PackedCollection} and accumulates it directly (no per-tick producer
+	 * compilation).
+	 *
+	 * @param output      the placed, summed window of shape {@code [frameCount]}
+	 * @param destination the per-tick destination buffer to accumulate into
+	 * @param destOffset  the frame offset into {@code destination} to accumulate at
+	 * @param frameCount  the number of frames in the output window
+	 */
+	default void accumulateBatchedOutput(PackedCollection output,
+										 PackedCollection destination, int destOffset, int frameCount) {
+		AudioProcessingUtils.getSum().sum(
+				destination.range(new TraversalPolicy(frameCount), destOffset), output);
+	}
+
+	/**
+	 * Re-evaluates a compiled batched dispatch and accumulates its output window
+	 * into the destination at {@code destOffset}. The dispatch is evaluated here, at
+	 * the pipeline boundary, so the compile-once kernel is reused each tick without
+	 * per-tick recompilation.
+	 *
+	 * @param dispatch    the compiled, reusable dispatch evaluable
+	 * @param destination the per-tick destination buffer to accumulate into
+	 * @param destOffset  the frame offset into {@code destination} to accumulate at
+	 * @param frameCount  the number of frames in the output window
+	 */
+	default void accumulateBatchedOutput(Evaluable<PackedCollection> dispatch,
+										 PackedCollection destination, int destOffset, int frameCount) {
+		accumulateBatchedOutput(dispatch.evaluate(), destination, destOffset, frameCount);
+	}
+
+	/**
 	 * Renders pattern elements using the legacy per-note dispatch path.
 	 *
 	 * <p>This is the original rendering implementation shared by both offline and
@@ -208,9 +274,20 @@ public interface PatternFeatures extends CodeFeatures {
 							Heap.stage(() -> {
 								Producer<PackedCollection> fullProducer =
 										note.getProducer(-1);
-								fullResult[0] =
+								PackedCollection evaluated =
 										traverse(1, fullProducer).get().evaluate();
-								if (fullResult[0] != null) {
+								if (evaluated != null) {
+									// Copy the rendered note audio into a fresh standalone
+									// PackedCollection (PackedCollection does not allocate
+									// from the Heap arena, and a plain construction is not
+									// registered with the active stage) so it survives the
+									// stage pop that frees the per-evaluation intermediates
+									// — including the evaluated result itself. The cache owns
+									// this copy and destroys it on eviction. Copying (rather
+									// than detaching the evaluated result) avoids any chance
+									// of a double free between the cache and the Heap stage.
+									fullResult[0] = new PackedCollection(evaluated.getShape());
+									fullResult[0].setMem(0, evaluated);
 									cache.put(noteStart, fullResult[0]);
 									sumToDestination(destination, fullResult[0], noteStart,
 											startFrame, endFrame, frameCount);
