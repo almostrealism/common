@@ -129,6 +129,10 @@
         <property name="files" value=".*[/\\]test[/\\]"/>
     </module>
 
+    <!-- TODO(review): Verify each file below is actually in src/main/java (not src/test/java).
+         Files in test directories are already covered by the broad .*[/\\]test[/\\] suppression
+         above; redundant per-file entries should be removed. Files genuinely in main sources
+         should have their log messages rewritten rather than suppressed long-term. -->
     <!-- Per-file suppressions for main source log prefix violations only. -->
     <module name="SuppressionSingleFilter">
         <property name="id" value="BracketLabelInLog"/>

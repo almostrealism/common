@@ -525,7 +525,7 @@ public class SimpleRenderTest extends TestSuiteBase {
 			assertTrue("Should have some non-black pixels", nonBlackPixels > 0);
 		} catch (Exception e) {
 			log("Exception during render: " + e.getMessage());
-			Console.root().alert("Exception during render", e);
+			e.printStackTrace();
 			throw e;
 		}
 	}
