@@ -16,93 +16,187 @@
 
 package org.almostrealism.hardware.metal;
 
+import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.profile.OperationMetadata;
+import org.almostrealism.io.SystemUtils;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /**
- * Executor service for {@link MetalCommand} instances.
+ * Owns the Metal command-buffer lifecycle for a {@link MetalComputeContext}.
  *
- * <p>Manages pre-allocated offset and size buffers for kernel arguments and
- * submits commands to a single-threaded executor.</p>
+ * <p>{@link MetalCommand}s are <em>encoded</em> (not committed) on a single-threaded
+ * executor. When {@link #enableBatching} is off, each command is committed and waited
+ * immediately — one command buffer per dispatch (legacy behaviour). When on, commands are
+ * encoded into a single open command buffer (one encoder each, so Metal's cross-encoder
+ * hazard tracking orders dependent kernels) and committed once, either at a
+ * {@linkplain #completionSemaphore() completion wait} or when {@link #maxBatchSize} commands
+ * have accumulated. Batching collapses the command-buffer count — which is what both bounds
+ * per-dispatch overhead and avoids the driver stall under sustained dispatch — but is only
+ * sound when the per-operation host waits are deferred (see
+ * {@code OperationList.enableSemaphoreChaining}); otherwise each commit forces a wait.</p>
  *
- * <h2>Buffer Management</h2>
+ * <h2>Memory lifetime</h2>
  *
- * <pre>{@code
- * // Pre-allocated buffers avoid repeated allocation overhead
- * MTLBuffer offset;  // int[MAX_ARGS] for argument offsets
- * MTLBuffer size;    // int[MAX_ARGS] for argument sizes
- *
- * // Commands reuse these buffers
- * offset.setContents(new int[]{0, 10, 20});
- * size.setContents(new int[]{10, 10, 10});
- * }</pre>
- *
- * @see MetalCommand
- * @see MetalOperator
+ * <p>Memory referenced by an encoded-but-uncommitted kernel must stay alive until the batch
+ * commits and completes. Callers pass an {@code onCommit} callback to {@link #submit} that
+ * releases that memory; the runner runs it only after the buffer it was encoded into has
+ * committed and {@code waitUntilCompleted}. The Objective-C autorelease pool likewise spans
+ * the whole batch (the command buffer and its encoders are autoreleased and must survive
+ * until commit).</p>
  */
 public class MetalCommandRunner {
-	/** Maximum number of kernel arguments supported by the pre-allocated offset and size buffers. */
+	/** Maximum number of kernel arguments a single command may bind. */
 	public static final int MAX_ARGS = 512;
+
+	/**
+	 * When {@code true}, commands are encoded into a single command buffer and committed once
+	 * (at a completion wait or the {@link #maxBatchSize} cap); when {@code false}, each command
+	 * is committed and waited immediately (one buffer per dispatch). Controlled by
+	 * {@code AR_METAL_BATCH}; defaults off so the legacy path is unchanged until validated.
+	 */
+	public static boolean enableBatching = SystemUtils.isEnabled("AR_METAL_BATCH").orElse(false);
+
+	/** Maximum commands encoded into one batched command buffer before a forced commit. */
+	public static int maxBatchSize = Integer.getInteger("AR_METAL_MAX_BATCH", 256);
 
 	/** Single-threaded executor that serializes Metal command submission to avoid concurrency issues. */
 	private ExecutorService executor;
 
-	/** Pre-allocated integer buffer holding the byte offset of each kernel argument. */
-	private MTLBuffer offset;
-	/** Pre-allocated integer buffer holding the element count (size) of each kernel argument. */
-	private MTLBuffer size;
 	/** The command queue used to submit encoded Metal compute commands. */
 	private final MTLCommandQueue queue;
 
+	/** The open (encoded, not yet committed) command buffer, or {@code null}. Executor-thread only. */
+	private MTLCommandBuffer openBuffer;
+	/** Autorelease pool spanning the open buffer's lifetime. Executor-thread only. */
+	private long openPool;
+	/** Number of commands encoded into the open buffer. Executor-thread only. */
+	private int encoded;
+	/** Callbacks to run after the open buffer commits and completes (releases kernel memory). */
+	private final List<Runnable> onCommit = new ArrayList<>();
+
+	/** Shared completion semaphore — its {@link Semaphore#waitFor()} commits the open batch. */
+	private final Semaphore completion = new FlushSemaphore();
+
 	/**
-	 * Creates a Metal command runner with pre-allocated argument buffers.
+	 * Creates a Metal command runner.
 	 *
 	 * @param queue The {@link MTLCommandQueue} for submitting commands
 	 */
 	public MetalCommandRunner(MTLCommandQueue queue) {
 		this.executor = Executors.newSingleThreadExecutor();
 		this.queue = queue;
-		offset = queue.getDevice().newIntBuffer32(MAX_ARGS);
-		size = queue.getDevice().newIntBuffer32(MAX_ARGS);
 	}
 
 	/**
-	 * Submits a Metal command for asynchronous execution.
+	 * Encodes a command into the current command buffer.
 	 *
-	 * <p>Commands execute on a single-threaded executor to avoid concurrency issues.
-	 * The command receives pre-allocated offset and size buffers.</p>
+	 * <p>Returns after the command has been encoded. The buffer is committed either at a
+	 * {@linkplain #completionSemaphore() completion wait}, at the {@link #maxBatchSize} cap,
+	 * or immediately when {@link #enableBatching} is off. {@code onCommit} (if non-null) runs
+	 * after the buffer this command was encoded into has committed and completed.</p>
 	 *
-	 * @param command The {@link MetalCommand} to execute
-	 * @return {@link Future} for tracking command completion
+	 * @param command  the command to encode
+	 * @param onCommit released-memory callback to run after this command's buffer completes, or null
 	 */
-	public Future<?> submit(MetalCommand command) {
-		return executor.submit(() -> {
-			// Wrap each dispatch in an Objective-C autorelease pool on this worker
-			// thread. metal-cpp's commandBuffer()/computeCommandEncoder() return
-			// autoreleased objects; without a pool on this long-lived thread they
-			// accumulate in the Metal driver and stall sustained real-time rendering
-			// after a few thousand dispatches. The pool drains them after every dispatch.
-			long pool = MTL.autoreleasePoolPush();
-			try {
-				command.run(offset, size, queue);
-			} finally {
-				MTL.autoreleasePoolPop(pool);
+	public void submit(MetalCommand command, Runnable onCommit) {
+		await(executor.submit(() -> {
+			ensureOpenBuffer();
+			command.encode(openBuffer);
+			encoded++;
+			if (onCommit != null) this.onCommit.add(onCommit);
+
+			if (!enableBatching || encoded >= maxBatchSize) {
+				commitOnExecutor();
 			}
-		});
+		}));
+	}
+
+	/**
+	 * Commits and waits for the open batched command buffer, if any, running pending
+	 * {@code onCommit} callbacks afterward. Safe to call when no buffer is open.
+	 */
+	public void flush() {
+		await(executor.submit(this::commitOnExecutor));
+	}
+
+	/**
+	 * Returns the shared completion semaphore whose {@link Semaphore#waitFor()} commits the
+	 * open batch. Used as an operation's completion handle so the trailing wait of a chained
+	 * group triggers the single commit.
+	 *
+	 * @return the completion semaphore
+	 */
+	public Semaphore completionSemaphore() {
+		return completion;
+	}
+
+	/** Opens a fresh command buffer (and its autorelease pool) if none is currently open. */
+	private void ensureOpenBuffer() {
+		if (openBuffer == null) {
+			openPool = MTL.autoreleasePoolPush();
+			openBuffer = queue.commandBuffer();
+			encoded = 0;
+		}
+	}
+
+	/**
+	 * Commits and waits for the open buffer, drains its autorelease pool, and runs the
+	 * accumulated {@code onCommit} callbacks. Must run on the executor thread.
+	 */
+	private void commitOnExecutor() {
+		if (openBuffer == null) return;
+
+		openBuffer.commit();
+		openBuffer.waitUntilCompleted();
+		openBuffer = null;
+		MTL.autoreleasePoolPop(openPool);
+		openPool = 0;
+		encoded = 0;
+
+		List<Runnable> callbacks = new ArrayList<>(onCommit);
+		onCommit.clear();
+		callbacks.forEach(Runnable::run);
+	}
+
+	/** Waits for the given executor task to finish, rethrowing any execution failure. */
+	private static void await(Future<?> f) {
+		try {
+			f.get();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		} catch (ExecutionException e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	/**
 	 * Destroys this command runner and releases all resources.
 	 *
-	 * <p>Releases offset and size buffers and shuts down the executor service.</p>
+	 * <p>Commits any open batch and shuts down the executor service.</p>
 	 */
 	public void destroy() {
-		if (offset != null) offset.release();
-		if (size != null) size.release();
-		if (executor != null) executor.shutdown();
-		offset = null;
-		size = null;
+		if (executor != null) {
+			flush();
+			executor.shutdown();
+		}
 		executor = null;
+	}
+
+	/** A {@link Semaphore} whose {@link #waitFor()} commits the runner's open batch. */
+	private final class FlushSemaphore implements Semaphore {
+		@Override
+		public void waitFor() { flush(); }
+
+		@Override
+		public OperationMetadata getRequester() { return null; }
+
+		@Override
+		public Semaphore withRequester(OperationMetadata requester) { return this; }
 	}
 }

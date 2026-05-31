@@ -148,12 +148,33 @@ and (on Metal) ~one command buffer instead of N.
    microbenchmark). So `OperationList.enableSemaphoreChaining` **defaults off**
    (`AR_HARDWARE_SEMAPHORE_CHAINING`) and is meant to be enabled only for async GPU providers.
    Harness + operation tests green with it off (no regression).
-3. **Metal provider opt-in (the payoff) — REMAINING.** Provide Metal's device-completion
-   `Semaphore` (`MTLSharedEvent` / command-buffer completion handler) and wrap a chained group
-   in **one**
-   command buffer committed once. With step 2 in place this defers the wait on Metal —
-   fewer command buffers + one host wait. Validate on Metal (harness µs/dispatch drops; the
-   `RealtimeContinuousRenderer` sustained-dispatch outcome below).
+3. **Metal command-buffer batching — DONE (measured 2.1× on the microbenchmark).**
+   - **(DONE) Encode/commit split.** `MetalCommand` now *encodes only* (`encode(cmdBuf)`);
+     `MetalCommandRunner` owns the command-buffer lifecycle. With batching off
+     (`AR_METAL_BATCH`, default off) each command commits+waits immediately (legacy behaviour,
+     validated: 6 Metal tests green, no regression). With batching on it encodes into one open
+     command buffer (one encoder per command → Metal hazard tracking orders dependents) and
+     commits at the trailing completion wait (`completionSemaphore().waitFor()`) or the
+     `maxBatchSize` cap. Memory lifetime is handled: the `onCommit` callback (which releases the
+     kernel's `KernelMemoryGuard` and fences its references) runs only after the buffer it was
+     encoded into commits+completes; the autorelease pool spans the whole batch.
+   - **(DONE) Per-command argument binding via `setBytes`.** The shared, reused `offset`/`size`
+     argument buffers — which under deferred commit would make every batched kernel read the
+     *last* command's offsets/sizes at GPU-execution time — are gone. Per-dispatch offsets/sizes
+     are now inlined into the command with a new native `MTL_setBytes`
+     (`MTL::ComputeCommandEncoder::setBytes`), surfaced as `MTL.setBytes(long,int,int[])` and
+     `MTLComputeCommandEncoder.setBytes(int,int[])`, called from `MetalOperator.accept`. Metal
+     copies the values into the command at encode time, so each batched command captures its own
+     args — no shared buffer to corrupt. `MetalCommandRunner` no longer allocates the `offset`/
+     `size` buffers.
+   - **(MEASURED) Microbenchmark result.** `OperationDispatchBatchingTests` forced to Metal
+     (`-DAR_HARDWARE_DRIVER=mtl`, 1024 dispatches): batching **off** = 209.89 µs/dispatch;
+     batching **on** (`-DAR_METAL_BATCH=enabled -DAR_HARDWARE_SEMAPHORE_CHAINING=enabled`,
+     note the values are `enabled`/`disabled` per `SystemUtils.isEnabled`, *not* true/false) =
+     100.43 µs/dispatch (**~2.1×**), correctness preserved (output == 2×input asserted).
+     Checkstyle + code_policy clean.
+   - **(REMAINING) Sustained-dispatch confirmation.** Run `RealtimeContinuousRenderer` on Metal
+     with batching on to confirm it blows past the ~2560-buffer stall (see below).
 
 ## Validation harness
 

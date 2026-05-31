@@ -403,6 +403,18 @@ public class MTL {
 	public static native void setBuffer(long commandEncoder, int index, long buffer);
 
 	/**
+	 * Binds a small array of ints directly into the kernel argument table at the given index,
+	 * without a backing buffer. Metal copies the bytes into the command at encode time, so each
+	 * encoded command captures its own values — safe when many commands are batched into one
+	 * command buffer. Subject to Metal's inline-argument size limit (typically 4&nbsp;KB).
+	 *
+	 * @param commandEncoder Native command encoder pointer
+	 * @param index Buffer binding index
+	 * @param data The integer values to bind inline
+	 */
+	public static native void setBytes(long commandEncoder, int index, int[] data);
+
+	/**
 	 * Dispatches compute threads with explicit threadgroup and grid dimensions.
 	 *
 	 * @param commandEncoder Native command encoder pointer

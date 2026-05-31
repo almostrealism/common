@@ -392,6 +392,19 @@ JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setBuffer(JNIEn
     enc->setBuffer(buf, 0, (NS::UInteger) index);
 }
 
+// Binds a small array of ints directly into the kernel's argument table at the given index,
+// without a backing MTL::Buffer. Metal copies the bytes into the command at encode time, so
+// each encoded command captures its own values — unlike a shared, reused buffer, this is safe
+// when many commands are batched into one command buffer and committed together.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setBytes(JNIEnv* env, jclass, jlong cmdEnc, jint index, jintArray data) {
+    MTL::ComputeCommandEncoder* enc = (MTL::ComputeCommandEncoder*) cmdEnc;
+    jsize len = env->GetArrayLength(data);
+    jint* elems = env->GetIntArrayElements(data, nullptr);
+    enc->setBytes(elems, (NS::UInteger) (len * sizeof(jint)), (NS::UInteger) index);
+    env->ReleaseIntArrayElements(data, elems, JNI_ABORT);
+}
+
 extern "C"
 JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_releaseBuffer(JNIEnv* env, jclass, jlong buffer) {
     MTL::Buffer* buf = (MTL::Buffer*) buffer;

@@ -27,8 +27,6 @@ import org.almostrealism.hardware.mem.KernelMemoryGuard;
 import java.lang.ref.Reference;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.stream.IntStream;
 
 /**
@@ -214,7 +212,11 @@ public class MetalOperator extends HardwareOperator {
 
 		long id = totalInvocations++;
 
-		if (dependsOn != null) dependsOn.waitFor();
+		// When batching is off, each command commits and waits immediately, so a prior
+		// dependency must be satisfied before this dispatch. When batching is on, ordering is
+		// provided by the shared command buffer (one encoder per command, Metal hazard
+		// tracking) and the serial command queue, so no host-side dependsOn wait is needed.
+		if (!MetalCommandRunner.enableBatching && dependsOn != null) dependsOn.waitFor();
 
 		MemoryData data[] = prepareArguments(argCount, args);
 		if (data.length > MetalCommandRunner.MAX_ARGS) {
@@ -223,79 +225,64 @@ public class MetalOperator extends HardwareOperator {
 
 		KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(data);
 
-		try {
-			Future<?> run = context.getCommandRunner().submit((offset, size, queue) -> {
-				recordDuration(null, () -> {
-					int index = 0;
-					long totalSize = 0;
+		// Encode this kernel into the runner's command buffer (one encoder per command). The
+		// runner commits the (possibly batched) buffer; the onCommit callback releases the
+		// memory the kernel referenced only after that buffer has completed.
+		context.getCommandRunner().submit(cmdBuf -> {
+			recordDuration(null, () -> {
+				int index = 0;
+				long totalSize = 0;
 
-					MTLCommandBuffer cmdBuf = queue.commandBuffer();
-					MTLComputeCommandEncoder encoder = cmdBuf.encoder();
+				MTLComputeCommandEncoder encoder = cmdBuf.encoder();
 
-					encoder.setComputePipelineState(kernel);
+				encoder.setComputePipelineState(kernel);
 
-					for (int i = 0; i < argCount; i++) {
-						MetalMemory mem = (MetalMemory) data[i].getMem();
-						totalSize += mem.getSize();
-						encoder.setBuffer(index++, ((MetalMemory) data[i].getMem()).getMem()); // Buffer
-					}
+				for (int i = 0; i < argCount; i++) {
+					MetalMemory mem = (MetalMemory) data[i].getMem();
+					totalSize += mem.getSize();
+					encoder.setBuffer(index++, ((MetalMemory) data[i].getMem()).getMem()); // Buffer
+				}
 
-					int offsetValues[] = IntStream.range(0, argCount).map(i -> data[i].getOffset()).toArray();
-					int sizeValues[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
+				int offsetValues[] = IntStream.range(0, argCount).map(i -> data[i].getOffset()).toArray();
+				int sizeValues[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
 
-					offset.setContents(offsetValues);
-					size.setContents(sizeValues);
+				if (enableVerboseLog) {
+					log(prog.getMetadata().getDisplayName() + " (" + id + ")");
+					log("\tSizes = " + Arrays.toString(sizeValues));
+					log("\tOffsets = " + Arrays.toString(offsetValues));
+				}
 
-					if (enableVerboseLog) {
-						log(prog.getMetadata().getDisplayName() + " (" + id + ")");
-						log("\tSizes = " + Arrays.toString(sizeValues));
-						log("\tOffsets = " + Arrays.toString(offsetValues));
-					}
+				// Inline the per-dispatch offset/size arrays into the command (Metal copies them at
+				// encode time) so batched commands do not share mutable argument buffers.
+				encoder.setBytes(index++, offsetValues);
+				encoder.setBytes(index++, sizeValues);
 
-					encoder.setBuffer(index++, offset);
-					encoder.setBuffer(index++, size);
+				if (getGlobalWorkSize() > Integer.MAX_VALUE) {
+					throw new UnsupportedOperationException();
+				}
 
-					if (getGlobalWorkSize() > Integer.MAX_VALUE) {
-						throw new UnsupportedOperationException();
-					}
+				int groupDims[] = getWorkgroupDimensions();
 
-					int groupDims[] = getWorkgroupDimensions();
+				if (enableDispatchThreadgroups) {
+					int groupSize = groupDims[0] * groupDims[1] * groupDims[2];
+					int gridDims[] = new int[]{(int) (getGlobalWorkSize() / groupSize), 1, 1};
+					encoder.dispatchThreadgroups(groupDims[0], groupDims[1], groupDims[2],
+							gridDims[0], gridDims[1], gridDims[2]);
+				} else {
+					int gridDims[] = new int[]{(int) (getGlobalWorkSize()), 1, 1};
+					encoder.dispatchThreads(groupDims[0], groupDims[1], groupDims[2],
+							gridDims[0], gridDims[1], gridDims[2]);
+				}
 
-					if (enableDispatchThreadgroups) {
-						int groupSize = groupDims[0] * groupDims[1] * groupDims[2];
-						int gridDims[] = new int[]{(int) (getGlobalWorkSize() / groupSize), 1, 1};
-						encoder.dispatchThreadgroups(groupDims[0], groupDims[1], groupDims[2],
-								gridDims[0], gridDims[1], gridDims[2]);
-					} else {
-						int gridDims[] = new int[]{(int) (getGlobalWorkSize()), 1, 1};
-						encoder.dispatchThreads(groupDims[0], groupDims[1], groupDims[2],
-								gridDims[0], gridDims[1], gridDims[2]);
-					}
-
-					encoder.endEncoding();
-
-					cmdBuf.commit();
-					cmdBuf.waitUntilCompleted();
-				});
+				encoder.endEncoding();
 			});
-
-			try {
-				// TODO  This should actually return a Semaphore rather than
-				// TODO  blocking until the process is over
-				run.get();
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-			} catch (ExecutionException e) {
-				throw new RuntimeException(e);
-			}
-		} finally {
+		}, () -> {
 			KernelMemoryGuard.releaseFor(guard, data);
-		}
+			Reference.reachabilityFence(data);
+			Reference.reachabilityFence(args);
+		});
 
-		Reference.reachabilityFence(data);
-		Reference.reachabilityFence(args);
-
-		return null;
+		return MetalCommandRunner.enableBatching ? context.getCommandRunner().completionSemaphore() : null;
 	}
 
 	/**
