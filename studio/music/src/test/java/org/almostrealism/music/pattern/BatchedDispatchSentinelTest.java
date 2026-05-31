@@ -107,13 +107,13 @@ public class BatchedDispatchSentinelTest extends TestSuiteBase implements AudioT
 			PatternLayerManager.enableBatched = previous;
 		}
 
-		log("batchedDispatchCount=" + BatchedPatternLayerRenderer.batchedDispatchCount
-				+ " fallbackCount=" + BatchedPatternLayerRenderer.fallbackCount);
+		log("batchedDispatchCount=" + BatchedPatternLayerRenderer.batchedDispatchCount.get()
+				+ " fallbackCount=" + BatchedPatternLayerRenderer.fallbackCount.get());
 
 		Assert.assertTrue(
 				"batched dispatch should fire for a melodic pattern (counts: batched="
-						+ BatchedPatternLayerRenderer.batchedDispatchCount + ", fallback="
-						+ BatchedPatternLayerRenderer.fallbackCount + ")",
-				BatchedPatternLayerRenderer.batchedDispatchCount > 0);
+						+ BatchedPatternLayerRenderer.batchedDispatchCount.get() + ", fallback="
+						+ BatchedPatternLayerRenderer.fallbackCount.get() + ")",
+				BatchedPatternLayerRenderer.batchedDispatchCount.get() > 0);
 	}
 }

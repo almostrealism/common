@@ -121,8 +121,8 @@ public class BatchedVsPerNoteRmsTest extends TestSuiteBase implements AudioTestF
 			PackedCollection dest = new PackedCollection(frameCount);
 			BatchedPatternLayerRenderer.resetCounters();
 			render(candidate, context(measures, measureFrames, frameCount, dest), frameCount, true);
-			if (BatchedPatternLayerRenderer.batchedDispatchCount > 0
-					&& BatchedPatternLayerRenderer.fallbackCount == 0) {
+			if (BatchedPatternLayerRenderer.batchedDispatchCount.get() > 0
+					&& BatchedPatternLayerRenderer.fallbackCount.get() == 0) {
 				manager = candidate;
 				batchedOut = dest;
 			}

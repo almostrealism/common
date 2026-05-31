@@ -33,6 +33,7 @@ import org.almostrealism.studio.health.MultiChannelAudioOutput;
 
 import java.io.File;
 import java.io.FileWriter;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
@@ -84,7 +85,10 @@ public final class RealtimeContinuousRenderer {
 		// listened to while it runs. Otherwise only the first loop is written.
 		boolean liveOutput = Boolean.getBoolean("AR_RT_LIVE_OUTPUT");
 
-		new File("results").mkdirs();
+		File resultsDir = new File("results");
+		if (!resultsDir.mkdirs() && !resultsDir.isDirectory()) {
+			throw new IOException("Unable to create results directory: " + resultsDir.getAbsolutePath());
+		}
 		PrintWriter mon = new PrintWriter(new FileWriter("results/rt-monitor.log", true), true);
 
 		AudioScene<?> scene = AudioSceneOptimizer.createScene();

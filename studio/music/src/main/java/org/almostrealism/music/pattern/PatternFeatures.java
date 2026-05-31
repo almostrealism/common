@@ -186,9 +186,9 @@ public interface PatternFeatures extends CodeFeatures {
 	 * @param destOffset  the frame offset into {@code destination} to accumulate at
 	 * @param frameCount  the number of frames in the output window
 	 */
-	default void accumulateBatchedOutput(Evaluable dispatch,
+	default void accumulateBatchedOutput(Evaluable<PackedCollection> dispatch,
 										 PackedCollection destination, int destOffset, int frameCount) {
-		accumulateBatchedOutput((PackedCollection) dispatch.evaluate(), destination, destOffset, frameCount);
+		accumulateBatchedOutput(dispatch.evaluate(), destination, destOffset, frameCount);
 	}
 
 	/**

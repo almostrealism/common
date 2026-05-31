@@ -134,8 +134,8 @@ public class BatchedRealtimeTickTest extends TestSuiteBase implements AudioTestF
 			PackedCollection probe = new PackedCollection(span);
 			BatchedPatternLayerRenderer.resetCounters();
 			renderAllTicks(candidate, context(measures, measureFrames), probe, true);
-			if (BatchedPatternLayerRenderer.batchedDispatchCount > 0
-					&& BatchedPatternLayerRenderer.fallbackCount == 0) {
+			if (BatchedPatternLayerRenderer.batchedDispatchCount.get() > 0
+					&& BatchedPatternLayerRenderer.fallbackCount.get() == 0) {
 				manager = candidate;
 			}
 		}
@@ -152,9 +152,9 @@ public class BatchedRealtimeTickTest extends TestSuiteBase implements AudioTestF
 		PackedCollection batched = new PackedCollection(span);
 		BatchedPatternLayerRenderer.resetCounters();
 		long batchedNanos = renderAllTicks(manager, context(measures, measureFrames), batched, true);
-		double marshalMs = BatchedPatternLayerRenderer.marshalNanos / 1_000_000.0;
-		double evalMs = BatchedPatternLayerRenderer.evalNanos / 1_000_000.0;
-		double gatherMs = BatchedPatternLayerRenderer.gatherNanos / 1_000_000.0;
+		double marshalMs = BatchedPatternLayerRenderer.marshalNanos.get() / 1_000_000.0;
+		double evalMs = BatchedPatternLayerRenderer.evalNanos.get() / 1_000_000.0;
+		double gatherMs = BatchedPatternLayerRenderer.gatherNanos.get() / 1_000_000.0;
 
 		double sumSqDiff = 0.0;
 		double sumSqRef = 0.0;
