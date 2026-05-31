@@ -534,7 +534,6 @@ The following scripts enforce invariants mechanically:
 
 - `tools/ci/agent-protection/validate-agent-commit.sh` — Blocks agent commits that modify base-branch test files or CI files, or that contain no production code changes.
 - `tools/ci/agent-protection/detect-test-hiding.sh` — 12 pattern detectors: TestDepth escalation, timeout inflation, dimension reduction, tolerance weakening, numeric literal shrinkage, net assertion loss.
-- `tools/ci/agent-protection/escalation-tracker.sh` — Circuit breaker: after 2 failed auto-resolve attempts for the same test class on the same branch, stops dispatching agents and requires human intervention.
 - `tools/ci/agent-protection/deception-audit.sh` — Detects cross-session deception patterns: ping-pong (agent modifies, human reverts, agent re-modifies), test-only commits, TestDepth churn.
 
 ## Rules That Cannot Be Bypassed
