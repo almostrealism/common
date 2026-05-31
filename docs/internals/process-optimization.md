@@ -37,7 +37,7 @@ The fundamental abstraction for composable computational work.
 
 **Key Methods:**
 - `optimize()` / `optimize(ProcessContext)` - Entry point for optimization
-- `isolate()` - Wraps process for independent execution via `Process.of(supplier)`
+- `isolate()` - Wraps process for independent execution via `Process.of(this)`
 - `isIsolationTarget(ProcessContext)` - Returns `true` if process needs isolation
 - `getOutputSize()` - Returns memory footprint for cost analysis
 
@@ -183,10 +183,10 @@ A process becomes isolated when:
 ### How Isolation Works
 
 ```java
-// Process.isolate() creates an IsolatedProcess wrapper
-Process isolated = process.isolate();  // Returns Process.of(() -> process.get())
+// Process.isolate() creates a Process wrapper
+Process isolated = process.isolate();  // Returns Process.of(process)
 
-// IsolatedProcess does NOT implement TraversableExpression
+// The Process wrapper does NOT implement TraversableExpression
 // When parent calls getValueAt() on an isolated child:
 if (child instanceof TraversableExpression) {
     return ((TraversableExpression) child).getValueAt(index);

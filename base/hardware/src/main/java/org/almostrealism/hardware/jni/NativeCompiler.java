@@ -274,7 +274,7 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 	private static final int REDUCED_OPT_THRESHOLD = 50000;
 
 	/** GCC pragma directive prepended to large generated source files to use {@code -O1} instead of {@code -O3}. */
-	private static final String REDUCED_OPT_PRAGMA = "#pragma GCC optimize(\"O1\")\n";
+	private static final String REDUCED_OPT_PRAGMA = "#if defined(__OPTIMIZE__)\n#pragma GCC optimize(\"O1\")\n#endif\n";
 
 	/** Counter used to generate unique class names for compiled runnable operations. */
 	private static int runnableCount;
