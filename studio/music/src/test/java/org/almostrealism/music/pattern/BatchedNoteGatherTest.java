@@ -54,20 +54,35 @@ import java.util.function.DoubleFunction;
  */
 public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeatures {
 
+	/** Number of audio layers used in the synthetic test note. */
 	private static final int LAYERS = 3;
+
+	/** Length of each synthetic source sample in frames. */
 	private static final int SOURCE_LENGTH = 2048;
+
+	/** Length of the rendered output buffer in frames. */
 	private static final int TARGET_LENGTH = 1024;
+
+	/** Audio sample rate, taken from the standard output line configuration. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
+
+	/** FIR filter order used by the batched renderer. */
 	private static final int FILTER_ORDER = 40;
+
+	/** Note duration in seconds passed to gather and reference computation. */
 	private static final double DURATION_SEC = 0.02;
+
+	/** Automation level passed to gather and reference envelope computation. */
 	private static final double AUTOMATION_LEVEL = 0.5;
 
+	/** Creates a single-element {@link PackedCollection} containing the given value. */
 	private PackedCollection single(double value) {
 		PackedCollection c = new PackedCollection(1);
 		c.setMem(new double[] { value });
 		return c;
 	}
 
+	/** Generates a deterministic random audio sample of {@code SOURCE_LENGTH} frames using the given seed. */
 	private PackedCollection sample(long seed) {
 		Random rng = new Random(seed);
 		double[] data = new double[SOURCE_LENGTH];
@@ -79,6 +94,11 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 		return c;
 	}
 
+	/**
+	 * Verifies that the batched kernel output produced from gathered scalar inputs
+	 * matches the production per-note envelope filters applied to the same resampled
+	 * sources within an acceptable RMS tolerance.
+	 */
 	@Test(timeout = 240000)
 	@TestDepth(2)
 	public void testGatheredNoteMatchesProductionFilters() {
@@ -189,6 +209,7 @@ public class BatchedNoteGatherTest extends TestSuiteBase implements TemporalFeat
 		return cols;
 	}
 
+	/** Wraps a {@link PackedCollection} audio sample as a {@link NoteAudioProvider} tuned to C1. */
 	private NoteAudioProvider provider(PackedCollection sampleData) {
 		return NoteAudioProvider.create(() -> sampleData, WesternChromatic.C1);
 	}

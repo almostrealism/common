@@ -45,10 +45,15 @@ import java.util.stream.IntStream;
  * amplitude control, envelope application, and cell integration.
  */
 public class SineWaveCellTest extends TestSuiteBase implements CellFeatures {
+
+	/** Default duration for test audio in frames (10 seconds at sample rate) */
 	public static final int DURATION_FRAMES = 10 * OutputLine.sampleRate;
 
 	/**
 	 * Creates a receptor that captures the output value.
+	 *
+	 * @param capture AtomicReference to store the captured value
+	 * @return Receptor that captures output to the AtomicReference
 	 */
 	protected Receptor<PackedCollection> capturingReceptor(AtomicReference<Double> capture) {
 		return protein -> () -> () -> capture.set(protein.get().evaluate().toDouble(0));
@@ -56,6 +61,9 @@ public class SineWaveCellTest extends TestSuiteBase implements CellFeatures {
 
 	/**
 	 * Creates a receptor that accumulates all output values.
+	 *
+	 * @param values List to accumulate values into
+	 * @return Receptor that appends output values to the list
 	 */
 	protected Receptor<PackedCollection> accumulatingReceptor(List<Double> values) {
 		return protein -> () -> () -> values.add(protein.get().evaluate().toDouble(0));
@@ -63,11 +71,18 @@ public class SineWaveCellTest extends TestSuiteBase implements CellFeatures {
 
 	/**
 	 * Creates a receptor that logs output values to console.
+	 *
+	 * @return Receptor that logs output values
 	 */
 	protected Receptor<PackedCollection> loggingReceptor() {
 		return protein -> () -> () -> log(String.valueOf(protein.get().evaluate().toDouble(0)));
 	}
 
+	/**
+	 * Creates a cell that logs output values to console.
+	 *
+	 * @return Cell that logs output values
+	 */
 	protected Cell<PackedCollection> loggingCell() {
 		return new ReceptorCell<>(protein -> () -> () ->
 				log(String.valueOf(protein.get().evaluate().toDouble(0))));
@@ -75,6 +90,8 @@ public class SineWaveCellTest extends TestSuiteBase implements CellFeatures {
 
 	/**
 	 * Creates a basic SineWaveCell configured for G3 with envelope.
+	 *
+	 * @return Configured SineWaveCell for G3
 	 */
 	protected SineWaveCell cell() {
 		SineWaveCell cell = new SineWaveCell();
@@ -198,6 +215,12 @@ public class SineWaveCellTest extends TestSuiteBase implements CellFeatures {
 				highCrossings > lowCrossings);
 	}
 
+	/**
+	 * Counts zero crossings in a list of audio values.
+	 *
+	 * @param values Audio sample values
+	 * @return Number of zero crossings
+	 */
 	private int countZeroCrossings(List<Double> values) {
 		int crossings = 0;
 		for (int i = 1; i < values.size(); i++) {
@@ -241,7 +264,7 @@ public class SineWaveCellTest extends TestSuiteBase implements CellFeatures {
 	}
 
 	/**
-	 * Tests cell pair integration.
+	 * Tests cell pair integration with MultiCell.
 	 */
 	@Test(timeout = 30000)
 	public void withCellPairIntegration() {
@@ -339,6 +362,11 @@ public class SineWaveCellTest extends TestSuiteBase implements CellFeatures {
 				values.stream().anyMatch(v -> Math.abs(v) > 0.1));
 	}
 
+	/**
+	 * Creates an identity Gene for testing.
+	 *
+	 * @return Gene that returns IdentityFactor for all indices
+	 */
 	protected Gene<PackedCollection> identityGene() {
 		return new Gene<>() {
 			@Override

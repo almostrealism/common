@@ -27,7 +27,13 @@ import org.junit.Test;
 
 import java.util.Arrays;
 
+/**
+ * Tests for collection kernel operations including multiply, divide, and conditional kernels.
+ */
 public class CollectionKernelTests extends TestSuiteBase {
+	/**
+	 * Tests dynamic collection producer function evaluation.
+	 */
 	@Test(timeout = 30000)
 	public void func() {
 		DynamicCollectionProducer a = func(shape(2, 5), args ->
@@ -43,6 +49,9 @@ public class CollectionKernelTests extends TestSuiteBase {
 		Assert.assertEquals(2, out.getCountLong());
 	}
 
+	/**
+	 * Tests element-wise multiplication kernel operation.
+	 */
 	@Test(timeout = 30000)
 	public void multiply() {
 		double[] v1 = {2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0};
@@ -76,6 +85,9 @@ public class CollectionKernelTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests element-wise division kernel operation.
+	 */
 	@Test(timeout = 30000)
 	public void divide() {
 		double[] v1 = {2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0};
@@ -107,6 +119,9 @@ public class CollectionKernelTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests provider add kernel operation.
+	 */
 	@Test(timeout = 30000)
 	public void providerAddKernel() {
 		PackedCollection a = tensor(shape(10)).pack().traverse();
@@ -124,6 +139,9 @@ public class CollectionKernelTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests conditional kernel operation with greaterThanConditional.
+	 */
 	@Test(timeout = 30000)
 	public void conditionalKernel() {
 		Producer<PackedCollection> in = v(shape(-1), 0);

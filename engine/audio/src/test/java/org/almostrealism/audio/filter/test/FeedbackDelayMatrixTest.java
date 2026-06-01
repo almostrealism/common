@@ -32,6 +32,7 @@ import org.junit.Test;
  */
 public class FeedbackDelayMatrixTest extends TestSuiteBase implements CellFeatures {
 
+	/** Sample rate for audio tests, derived from OutputLine defaults. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
 	/**
@@ -101,6 +102,10 @@ public class FeedbackDelayMatrixTest extends TestSuiteBase implements CellFeatur
 
 	/**
 	 * Helper method to apply delay network to input.
+	 *
+	 * @param network  The delay network to apply
+	 * @param input    The input audio signal
+	 * @return The processed output signal
 	 */
 	private PackedCollection applyDelayNetwork(DelayNetwork network, PackedCollection input) {
 		PackedCollection output = new PackedCollection(input.getMemLength());

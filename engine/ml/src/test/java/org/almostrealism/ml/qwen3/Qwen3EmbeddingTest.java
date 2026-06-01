@@ -11,13 +11,19 @@ import org.junit.Test;
 import java.util.Arrays;
 
 /**
- * Test to validate embedding lookup.
+ * Test to validate embedding lookup functionality.
  */
 public class Qwen3EmbeddingTest extends TestSuiteBase implements AttentionFeatures {
 
+	/** Directory containing exported model weights. */
 	private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
+
+	/** Path to the tokenizer binary file. */
 	private static final String TOKENIZER_PATH = WEIGHTS_DIR + "/tokenizer.bin";
 
+	/**
+	 * Tests embedding lookup for token "Hello" and other tokens.
+	 */
 	@Test(timeout = 30000)
 	public void testEmbeddingLookup() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
@@ -58,9 +64,9 @@ public class Qwen3EmbeddingTest extends TestSuiteBase implements AttentionFeatur
 		log("\nEmbedding L1 norm: " + sum);
 
 		if (sum < 0.001) {
-			log("[ERROR] WARNING: Embedding appears to be all zeros!");
+			log("Embedding appears to be all zeros!");
 		} else {
-			log("[OK] Embedding looks valid");
+			log("Embedding looks valid");
 		}
 
 		// Test a few more tokens

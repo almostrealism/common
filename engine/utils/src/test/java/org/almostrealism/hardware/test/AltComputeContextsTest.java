@@ -24,7 +24,14 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for alternative compute contexts and hardware acceleration.
+ */
 public class AltComputeContextsTest extends TestSuiteBase {
+
+	/**
+	 * Tests OpenCL and native compute contexts.
+	 */
 	// TODO  @Test(timeout = 10000)
 	public void clAndNative() {
 		dc(() -> {
@@ -41,6 +48,9 @@ public class AltComputeContextsTest extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests matrix multiplication operation.
+	 */
 	@Test(timeout = 10000)
 	public void matmul() {
 		boolean enableOptimization = true;

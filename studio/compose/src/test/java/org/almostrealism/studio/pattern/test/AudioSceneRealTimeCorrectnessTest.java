@@ -88,10 +88,15 @@ import static org.junit.Assert.*;
  */
 public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 
+	/** Buffer size for real-time rendering in frames. */
 	private static final int BUFFER_SIZE = 4096;
 
+	/** Test helper for real-time scene operations. */
 	private RealTimeTestHelper helper;
 
+	/**
+	 * Sets up the test helper for real-time scene operations.
+	 */
 	@Before
 	public void setUp() {
 		helper = new RealTimeTestHelper(this);
@@ -313,7 +318,7 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		// The buffer should contain audio (not necessarily all of it, depends on pattern timing)
 		// We check that at least some audio was rendered
 		if (maxAmplitude < 0.001) {
-			log("WARNING: Frame-range render produced very low amplitude");
+			log("Frame-range render produced very low amplitude");
 			log("This may be expected if no pattern elements fall within the first buffer");
 			// Don't fail - pattern elements might not start at frame 0
 		} else {
@@ -1157,13 +1162,13 @@ public class AudioSceneRealTimeCorrectnessTest extends AudioSceneTestBase {
 		log("Target buffer time: " + String.format("%.2f ms", coldTiming.targetBufferMs()));
 
 		if (improvement > 50) {
-			log("RESULT: Cache warming provides SIGNIFICANT benefit");
+			log("Cache warming provides SIGNIFICANT benefit");
 			log("  -> Compilation was the bottleneck; kernels are reusable across notes");
 		} else if (improvement > 10) {
-			log("RESULT: Cache warming provides MODERATE benefit");
+			log("Cache warming provides MODERATE benefit");
 			log("  -> Some notes share compilation signatures, but not all");
 		} else {
-			log("RESULT: Cache warming provides MINIMAL benefit");
+			log("Cache warming provides MINIMAL benefit");
 			log("  -> Signatures are likely unique per note, or compilation is not the bottleneck");
 		}
 

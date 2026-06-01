@@ -36,23 +36,52 @@ import java.io.File;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for {@link org.almostrealism.graph.AdjustableDelayCell}.
+ * Verifies delay cell computation, push/tick operations, and integration with audio cells.
+ *
+ * @see org.almostrealism.graph.AdjustableDelayCell
+ */
 public class AdjustableDelayCellTest extends SineWaveCellTest {
+
+	/** Number of frames to delay in tests. */
 	public static int DELAY_FRAMES = 1000;
 
+	/**
+	 * Initializes test environment before test class runs.
+	 * Currently empty but allows for future test setup.
+	 */
 	@BeforeClass
 	public static void init() {
 		// AcceleratedTimeSeries.defaultCacheLevel = MemoryBankAdapter.CacheLevel.ALL;
 	}
 
+	/**
+	 * Cleans up test environment after test class completes.
+	 * Resets the cache level for AcceleratedTimeSeries.
+	 */
 	@AfterClass
 	public static void shutdown() {
 		AcceleratedTimeSeries.defaultCacheLevel = MemoryBankAdapter.CacheLevel.NONE;
 	}
 
+	/**
+	 * Creates a new AdjustableDelayCell with delay duration calculated from
+	 * {@link #DELAY_FRAMES} and the sample rate from {@link OutputLine}.
+	 *
+	 * @return a new AdjustableDelayCell configured with the default delay
+	 */
 	protected AdjustableDelayCell adjustableDelay() {
 		return new AdjustableDelayCell(OutputLine.sampleRate, ((double) DELAY_FRAMES) / OutputLine.sampleRate);
 	}
 
+	/**
+	 * Creates an {@link OperationList} representing the computation for a delay cell,
+	 * consisting of a push operation with a scaled multiplier and a tick operation.
+	 *
+	 * @param delay the AdjustableDelayCell to create operations for
+	 * @return an OperationList containing the push and tick operations
+	 */
 	public OperationList computation(AdjustableDelayCell delay) {
 		PackedCollection multiplier = new PackedCollection(1);
 		multiplier.setMem(0.1);
@@ -64,22 +93,28 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 		return ops;
 	}
 
+	/**
+	 * Tests push and tick operations executed separately, verifying that
+	 * the delay cell correctly processes audio through its buffer.
+	 */
 	@Test(timeout = 60000)
 	public void computationSeparately() {
 		AdjustableDelayCell delay = adjustableDelay();
-		delay.setup().get().run();
+		Supplier<Runnable> setupOp = delay.setup();
 		OperationList ops = computation(delay);
 
-		Runnable push = ops.get(0).get();
-		Runnable tick = ops.get(1).get();
+		Runnable setup = setupOp.get();
+		Runnable op = ops.get();
 
-		IntStream.range(0, 25).forEach(i -> {
-			push.run();
-			tick.run();
-		});
+		setup.run();
+		IntStream.range(0, 25).forEach(i -> op.run());
 		assertions(delay);
 	}
 
+	/**
+	 * Tests push and tick operations executed together as a single operation,
+	 * verifying that the delay cell processes audio correctly.
+	 */
 	@Test(timeout = 60000)
 	public void computationTogether() {
 		AdjustableDelayCell delay = adjustableDelay();
@@ -94,6 +129,10 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 		assertions(delay);
 	}
 
+	/**
+	 * Tests push and tick operations executed in a loop using lp() operator,
+	 * verifying the delay cell processes audio correctly with looped execution.
+	 */
 	@Test(timeout = 60000)
 	public void computationLoop() {
 		AdjustableDelayCell delay = adjustableDelay();
@@ -105,6 +144,13 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 		assertions(delay);
 	}
 
+	/**
+	 * Validates that the delay cell has produced expected cursor positions and buffer values
+	 * after 25 iterations. Checks that the cursor advanced to frame 25, the delay cursor
+	 * advanced to {@link #DELAY_FRAMES} + 25, and the buffer contains the expected scaled value.
+	 *
+	 * @param delay the AdjustableDelayCell to validate
+	 */
 	protected void assertions(AdjustableDelayCell delay) {
 		CursorPair cursors = delay.getCursors();
 		assertEquals(25.0, cursors.getCursor());
@@ -116,6 +162,10 @@ public class AdjustableDelayCellTest extends SineWaveCellTest {
 		assertEquals(0.1, t.getValue());
 	}
 
+	/**
+	 * Tests the AdjustableDelayCell integrated with a SineWaveCell,
+	 * writing output to a WAV file for verification.
+	 */
 	@Test(timeout = 60000)
 	public void withAdjustableDelayCell() {
 		AdjustableDelayCell delay = adjustableDelay();

@@ -154,6 +154,9 @@ public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures {
 		log("\n=== BENCHMARK COMPLETE ===");
 	}
 
+	/**
+	 * Initializes weight matrix with test values.
+	 */
 	private void initializeWeights(PackedCollection weights, int rows, int cols) {
 		for (int i = 0; i < Math.min(rows, 100); i++) {
 			for (int j = 0; j < cols; j++) {
@@ -162,12 +165,18 @@ public class MatmulPathTest extends TestSuiteBase implements MatrixFeatures {
 		}
 	}
 
+	/**
+	 * Initializes input vector with test values.
+	 */
 	private void initializeInput(PackedCollection input, int size) {
 		for (int i = 0; i < size; i++) {
 			input.setMem(i, 0.1 * (i + 1));
 		}
 	}
 
+	/**
+	 * Verifies output correctness against expected computation.
+	 */
 	private void verifyOutput(PackedCollection output, PackedCollection weights,
 							  PackedCollection input, int outputSize, int inputSize) {
 		for (int i = 0; i < Math.min(10, outputSize); i++) {

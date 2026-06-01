@@ -30,6 +30,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class InstructionPromptBuilderTest extends TestSuiteBase {
 
+	/** InstructionPromptBuilder includes user prompt text always. */
 	@Test(timeout = 30000)
 	public void includesUserPromptAlways() {
 		String result = new InstructionPromptBuilder()
@@ -39,6 +40,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("Fix the authentication bug"));
 	}
 
+	/** InstructionPromptBuilder includes Communication section when workstream URL is set. */
 	@Test(timeout = 30000)
 	public void includesCommunicationSectionWhenUrlSet() {
 		String result = new InstructionPromptBuilder()
@@ -51,6 +53,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("send_message"));
 	}
 
+	/** InstructionPromptBuilder excludes Communication section when no workstream URL. */
 	@Test(timeout = 30000)
 	public void excludesMessageSectionWhenNoUrl() {
 		String result = new InstructionPromptBuilder()
@@ -62,6 +65,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("## Communication"));
 	}
 
+	/** InstructionPromptBuilder includes Test Integrity Policy when protectTestFiles is true. */
 	@Test(timeout = 30000)
 	public void includesTestIntegrityWhenProtected() {
 		String result = new InstructionPromptBuilder()
@@ -72,6 +76,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("Test Integrity Policy"));
 	}
 
+	/** InstructionPromptBuilder includes Merge Conflicts section when hasMergeConflicts is true. */
 	@Test(timeout = 30000)
 	public void includesMergeConflictSection() {
 		String result = new InstructionPromptBuilder()
@@ -89,6 +94,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("README.md"));
 	}
 
+	/** InstructionPromptBuilder includes Branch Awareness section when targetBranch is set. */
 	@Test(timeout = 30000)
 	public void includesBranchCatchupSection() {
 		String result = new InstructionPromptBuilder()
@@ -101,6 +107,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("workstream_context"));
 	}
 
+	/** InstructionPromptBuilder includes budget and turn limit when set. */
 	@Test(timeout = 30000)
 	public void includesBudgetSection() {
 		String result = new InstructionPromptBuilder()
@@ -114,6 +121,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("100 turns"));
 	}
 
+	/** InstructionPromptBuilder includes Planning Document section when set. */
 	@Test(timeout = 30000)
 	public void includesPlanningDocSection() {
 		String result = new InstructionPromptBuilder()
@@ -126,6 +134,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("docs/planning/feature-plan.md"));
 	}
 
+	/** InstructionPromptBuilder includes Dependent Repositories section when paths are set. */
 	@Test(timeout = 30000)
 	public void includesDependentReposSection() {
 		String result = new InstructionPromptBuilder()
@@ -143,6 +152,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("/workspace/project/repo-b"));
 	}
 
+	/** InstructionPromptBuilder excludes Dependent Repositories when paths not set. */
 	@Test(timeout = 30000)
 	public void excludesDependentReposSectionWhenUnset() {
 		String result = new InstructionPromptBuilder()
@@ -152,6 +162,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("## Dependent Repositories"));
 	}
 
+	/** InstructionPromptBuilder includes inactivity restart preamble when attempt > 0. */
 	@Test(timeout = 30000)
 	public void includesInactivityRestartPreambleWhenAttemptPositive() {
 		String result = new InstructionPromptBuilder()
@@ -164,6 +175,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("pgrep -f"));
 	}
 
+	/** InstructionPromptBuilder excludes inactivity restart preamble when attempt == 0. */
 	@Test(timeout = 30000)
 	public void excludesInactivityRestartPreambleWhenAttemptZero() {
 		String result = new InstructionPromptBuilder()
@@ -176,6 +188,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 
 	// ── Correction-session preamble suppression ─────────────────────────────
 
+	/** Primary session with enforceChanges includes Code Changes Are Required block. */
 	@Test(timeout = 30000)
 	public void primarySessionWithEnforceChangesIncludesStrictBlock() {
 		String result = new InstructionPromptBuilder()
@@ -187,6 +200,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("Code Changes Are Required"));
 	}
 
+	/** Correction session suppresses enforceChanges strict block. */
 	@Test(timeout = 30000)
 	public void correctionSessionSuppressesEnforceChangesStrictBlock() {
 		String result = new InstructionPromptBuilder()
@@ -201,6 +215,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("Exiting without code changes"));
 	}
 
+	/** Correction session includes permissive Non-Code Requests block when workstream URL set. */
 	@Test(timeout = 30000)
 	public void correctionSessionStillIncludesPermissivePromptsWhenWorkstreamUrlSet() {
 		// When enforce_changes is true on the outer job but we are inside a
@@ -219,6 +234,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("Justifying No Code Changes"));
 	}
 
+	/** Primary session with enforcementAttempt > 0 includes SESSION RESTARTED -- RETRY. */
 	@Test(timeout = 30000)
 	public void primarySessionIncludesEnforcementRetryPreamble() {
 		String result = new InstructionPromptBuilder()
@@ -229,6 +245,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("SESSION RESTARTED -- RETRY"));
 	}
 
+	/** Correction session suppresses enforcement retry preamble. */
 	@Test(timeout = 30000)
 	public void correctionSessionSuppressesEnforcementRetryPreamble() {
 		String result = new InstructionPromptBuilder()
@@ -242,6 +259,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 
 	// ── Harness-feedback invitation ─────────────────────────────────────────
 
+	/** InstructionPromptBuilder includes Feedback to Harness when workstream URL is set. */
 	@Test(timeout = 30000)
 	public void harnessFeedbackInvitationAppearsWhenWorkstreamUrlSet() {
 		String result = new InstructionPromptBuilder()
@@ -254,6 +272,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("harness_feedback"));
 	}
 
+	/** InstructionPromptBuilder excludes harness feedback when no workstream URL. */
 	@Test(timeout = 30000)
 	public void harnessFeedbackInvitationAbsentWithoutWorkstreamUrl() {
 		String result = new InstructionPromptBuilder()
@@ -263,6 +282,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("Feedback to the Harness"));
 	}
 
+	/** InstructionPromptBuilder includes harness feedback in correction sessions too. */
 	@Test(timeout = 30000)
 	public void harnessFeedbackInvitationAppearsInCorrectionSessions() {
 		// The feedback invitation should be visible in both primary and
@@ -276,6 +296,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("Feedback to the Harness"));
 	}
 
+	/** Harness feedback invitation appears before the user request marker in prompt. */
 	@Test(timeout = 30000)
 	public void harnessFeedbackInvitationAppearsBeforeUserRequestMarker() {
 		String result = new InstructionPromptBuilder()
@@ -292,6 +313,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 
 	// ── Git workflow reminder ────────────────────────────────────────────────
 
+	/** InstructionPromptBuilder includes Note on git workflow in every prompt. */
 	@Test(timeout = 30000)
 	public void gitWorkflowReminderAppearsInEveryPrompt() {
 		String result = new InstructionPromptBuilder()
@@ -303,6 +325,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("single commit"));
 	}
 
+	/** InstructionPromptBuilder includes git workflow reminder when workstream URL is set. */
 	@Test(timeout = 30000)
 	public void gitWorkflowReminderAppearsWithWorkstreamUrl() {
 		String result = new InstructionPromptBuilder()
@@ -313,6 +336,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("Note on git workflow"));
 	}
 
+	/** InstructionPromptBuilder includes git workflow reminder in correction sessions. */
 	@Test(timeout = 30000)
 	public void gitWorkflowReminderAppearsInCorrectionSession() {
 		String result = new InstructionPromptBuilder()
@@ -324,6 +348,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("Note on git workflow"));
 	}
 
+	/** Git workflow reminder appears before the user request marker in prompt. */
 	@Test(timeout = 30000)
 	public void gitWorkflowReminderAppearsBeforeUserRequestMarker() {
 		String result = new InstructionPromptBuilder()
@@ -337,6 +362,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			reminderIdx < requestIdx);
 	}
 
+	/** Git workflow reminder explains that multi-phase prompts still work. */
 	@Test(timeout = 30000)
 	public void gitWorkflowReminderExplainsMultiPhaseTreatment() {
 		String result = new InstructionPromptBuilder()
@@ -348,6 +374,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 
 	// ── Language requirement ─────────────────────────────────────────────────
 
+	/** InstructionPromptBuilder includes language requirement in primary prompts. */
 	@Test(timeout = 30000)
 	public void languageRequirementAppearsInPrimaryPrompt() {
 		String result = new InstructionPromptBuilder()
@@ -359,6 +386,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("Do not write in any other language"));
 	}
 
+	/** Language requirement appears near top of prompt before user request marker. */
 	@Test(timeout = 30000)
 	public void languageRequirementAppearsNearTopOfPrompt() {
 		String result = new InstructionPromptBuilder()
@@ -373,6 +401,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			langIdx < requestIdx);
 	}
 
+	/** InstructionPromptBuilder includes language requirement in correction sessions too. */
 	@Test(timeout = 30000)
 	public void languageRequirementAppearsInCorrectionSession() {
 		String result = new InstructionPromptBuilder()

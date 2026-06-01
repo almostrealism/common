@@ -58,13 +58,19 @@ import java.util.List;
  */
 public class PrototypeDiscoveryPersistenceTest extends TestSuiteBase {
 
+	/** Audio sample rate in Hz. */
 	private static final int SAMPLE_RATE = 44100;
+	/** Number of frames per feature computation window. */
 	private static final int FEATURE_FRAMES = 16;
+	/** Number of frequency bins per feature frame. */
 	private static final int FEATURE_BINS = 32;
 
+	/** Default path to audio samples directory. */
 	private static final String DEFAULT_SAMPLES =
 			System.getProperty("user.home") + "/Music/Samples";
+	/** Default path to protobuf store directory. */
 	private static final String DEFAULT_STORE = "/tmp/ar-discovery-store";
+	/** Default maximum number of prototypes to discover. */
 	private static final int DEFAULT_MAX_PROTOTYPES = 10;
 
 	/**
@@ -86,7 +92,7 @@ public class PrototypeDiscoveryPersistenceTest extends TestSuiteBase {
 
 		File samplesDir = new File(samplesPath);
 		if (!samplesDir.isDirectory()) {
-			log("SKIP: Samples directory not found: " + samplesDir);
+			log("Samples directory not found: " + samplesDir);
 			return;
 		}
 

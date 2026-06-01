@@ -58,6 +58,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class CodingAgentJobPushedToolsTest {
 
+    /** JSON pushed-tools config emitted by the controller for an ar-secrets server. */
     private static final String CTRL_CONFIG = "{\"ar-secrets\":{"
         + "\"url\":\"http://0.0.0.0:7780/api/tools/ar-secrets\","
         + "\"tools\":[\"secret_list_names\",\"secret_render_file\"]}}";
@@ -75,6 +76,9 @@ public class CodingAgentJobPushedToolsTest {
         m.invoke(job);
     }
 
+    /**
+     * Reads the private {@code mcpConfigBuilder} field from the given job via reflection.
+     */
     private static McpConfigBuilder readMcpBuilder(CodingAgentJob job) throws Exception {
         Field f = CodingAgentJob.class.getDeclaredField("mcpConfigBuilder");
         f.setAccessible(true);
@@ -82,6 +86,10 @@ public class CodingAgentJobPushedToolsTest {
     }
 
 
+    /**
+     * Verifies that {@link CodingAgentJobFactory#setPushedToolsConfig} stores the value
+     * and {@link CodingAgentJobFactory#getPushedToolsConfig} returns the same value.
+     */
     @Test(timeout = 30000)
     public void factorySetterStoresConfigAndExposesIt() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("p");
@@ -89,6 +97,9 @@ public class CodingAgentJobPushedToolsTest {
         Assert.assertEquals(CTRL_CONFIG, factory.getPushedToolsConfig());
     }
 
+    /**
+     * Verifies that the pushed-tools config survives a factory encode/set wire round-trip.
+     */
     @Test(timeout = 30000)
     public void factoryEncodeRoundTripPreservesPushedToolsConfig() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("p");
@@ -99,6 +110,9 @@ public class CodingAgentJobPushedToolsTest {
                 CTRL_CONFIG, reconstructed.getPushedToolsConfig());
     }
 
+    /**
+     * Verifies that the factory propagates its pushed-tools config to the job it produces.
+     */
     @Test(timeout = 30000)
     public void factoryPropagatesPushedToolsConfigToJob() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("do work");
@@ -112,6 +126,9 @@ public class CodingAgentJobPushedToolsTest {
                 CTRL_CONFIG, job.getPushedToolsConfig());
     }
 
+    /**
+     * Verifies that the pushed-tools config survives a job encode/set wire round-trip.
+     */
     @Test(timeout = 30000)
     public void jobEncodeRoundTripPreservesPushedToolsConfig() {
         CodingAgentJob job = new CodingAgentJob("t1", "do work");
@@ -122,6 +139,11 @@ public class CodingAgentJobPushedToolsTest {
                 CTRL_CONFIG, reconstructed.getPushedToolsConfig());
     }
 
+    /**
+     * Verifies the full chain: after factory and job wire round-trips, the MCP config
+     * contains a stdio ar-secrets entry and the allowed-tools list contains both
+     * secret_list_names and secret_render_file.
+     */
     @Test(timeout = 30000)
     public void mcpConfigContainsArSecretsStdioEntryAfterFullChain() throws Exception {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("do work");
@@ -157,6 +179,10 @@ public class CodingAgentJobPushedToolsTest {
                 allowed.contains("mcp__ar-manager__send_message"));
     }
 
+    /**
+     * Verifies that when no pushed-tools config is set, the builder emits no pushed-tool
+     * entry and does not crash.
+     */
     @Test(timeout = 30000)
     public void emptyPushedToolsConfigProducesNoStdioEntry() throws Exception {
         // No pushedToolsConfig set → builder must not emit any pushed-tool entry

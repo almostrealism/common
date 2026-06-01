@@ -40,6 +40,10 @@ import static org.junit.Assert.assertTrue;
  */
 public class DeduplicationRulePromptTest extends TestSuiteBase {
 
+    /**
+     * Builds a baseline deduplication prompt using a single representative candidate
+     * against the {@code master} base branch.
+     */
     private static String prompt() {
         return DeduplicationRule.buildDeduplicationPrompt(
                 Collections.singletonList("FooHandler.truncate(String, int)"),
@@ -48,6 +52,10 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
 
     // ── New wording: the audit must improve code reuse ───────────────────────
 
+    /**
+     * Verifies that the prompt frames the audit goal as improving code reuse and
+     * requires the codebase to be left with less duplication.
+     */
     @Test(timeout = 30000)
     public void promptStatesGoalIsImprovingCodeReuse() {
         String text = prompt();
@@ -57,6 +65,10 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
                 text.contains("LESS DUPLICATION"));
     }
 
+    /**
+     * Verifies that the prompt explicitly rejects the rationalization that pre-existing
+     * copies of a method are out of scope for the deduplication audit.
+     */
     @Test(timeout = 30000)
     public void promptRejectsPreExistingRationalization() {
         String text = prompt();
@@ -64,6 +76,10 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
                 text.contains("Pre-existing copies are still duplicates"));
     }
 
+    /**
+     * Verifies that the prompt explains detector thresholds are a floor, not a ceiling,
+     * and explicitly names the {@code duplicate_code} linter.
+     */
     @Test(timeout = 30000)
     public void promptRejectsDetectorThresholdRationalization() {
         String text = prompt();
@@ -73,6 +89,10 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
                 text.contains("duplicate_code"));
     }
 
+    /**
+     * Verifies that the prompt rejects the "net change is zero" framing as a valid
+     * reason to leave duplicate code in place.
+     */
     @Test(timeout = 30000)
     public void promptRejectsNetChangeRationalization() {
         String text = prompt();
@@ -83,6 +103,10 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
 
     // ── Scope boundary ───────────────────────────────────────────────────────
 
+    /**
+     * Verifies that the prompt defines what "related to this work" means, including
+     * same and adjacent packages as relevant scope.
+     */
     @Test(timeout = 30000)
     public void promptDefinesRelatedScope() {
         String text = prompt();
@@ -92,6 +116,10 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
                 text.contains("same package") && text.contains("adjacent package"));
     }
 
+    /**
+     * Verifies that the prompt includes an OUT-OF-SCOPE counter-example and clarifies
+     * that not every discovered duplication requires action.
+     */
     @Test(timeout = 30000)
     public void promptIncludesOutOfScopeCounterExample() {
         String text = prompt();
@@ -101,6 +129,10 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
                 text.contains("not every duplication you happen to discover"));
     }
 
+    /**
+     * Verifies that the prompt includes the concrete {@code truncate(String, int)} worked
+     * example, naming BazListener and QuxNotifier as pre-existing duplicate copies.
+     */
     @Test(timeout = 30000)
     public void promptIncludesTruncateWorkedExample() {
         String text = prompt();
@@ -112,6 +144,10 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
 
     // ── Old escape-hatch wording must be gone ────────────────────────────────
 
+    /**
+     * Verifies that the prompt does not require a duplicate to have existed before the
+     * branch was created, and does not exclude branch-modified files from consideration.
+     */
     @Test(timeout = 30000)
     public void promptDoesNotDemandPreBranchExistence() {
         String text = prompt();
@@ -121,6 +157,10 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
                 text.contains("That is just the file where the method was introduced"));
     }
 
+    /**
+     * Verifies that the prompt does not instruct the agent to skip duplicate candidates
+     * whose containing file appears in the branch diff.
+     */
     @Test(timeout = 30000)
     public void promptDoesNotInstructAgentToSkipCandidatesOnBranchModifiedFiles() {
         String text = prompt();
@@ -131,6 +171,10 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
 
     // ── Edit rules carried forward ───────────────────────────────────────────
 
+    /**
+     * Verifies that the prompt still prohibits the use of {@code git restore},
+     * {@code checkout --}, and {@code reset} to undo changes.
+     */
     @Test(timeout = 30000)
     public void promptRetainsGitRevertProhibition() {
         String text = prompt();
@@ -138,6 +182,10 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
                 text.contains("NEVER use git restore"));
     }
 
+    /**
+     * Verifies that the prompt forbids creating a new Maven module as a vehicle for
+     * housing a shared helper extracted during the deduplication audit.
+     */
     @Test(timeout = 30000)
     public void promptForbidsCreatingNewMavenModule() {
         String text = prompt();
@@ -147,6 +195,10 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
 
     // ── Truncation indicator preserved ───────────────────────────────────────
 
+    /**
+     * Verifies that the prompt discloses truncation by stating how many of the total
+     * candidate methods are being shown when the list is capped.
+     */
     @Test(timeout = 30000)
     public void promptIndicatesTruncationWhenCapped() {
         List<String> capped = Arrays.asList("A.a()", "B.b()", "C.c()");
@@ -157,6 +209,10 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
 
     // ── Base branch threading ────────────────────────────────────────────────
 
+    /**
+     * Verifies that all git commands in the prompt reference the configured base branch
+     * ({@code main} in this case) rather than hard-coding {@code master}.
+     */
     @Test(timeout = 30000)
     public void promptUsesConfiguredBaseBranchInDiffCommand() {
         String text = DeduplicationRule.buildDeduplicationPrompt(
@@ -171,6 +227,10 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
                 text.contains("origin/master"));
     }
 
+    /**
+     * Verifies that passing {@code null} as the base branch causes the prompt to fall
+     * back to {@code origin/master} in all git commands.
+     */
     @Test(timeout = 30000)
     public void promptFallsBackToMasterWhenBaseBranchNull() {
         String text = DeduplicationRule.buildDeduplicationPrompt(
@@ -179,6 +239,10 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
                 text.contains("git diff origin/master...HEAD --name-only"));
     }
 
+    /**
+     * Verifies that passing a blank (whitespace-only) base branch causes the prompt to
+     * fall back to {@code origin/master} in all git commands.
+     */
     @Test(timeout = 30000)
     public void promptFallsBackToMasterWhenBaseBranchBlank() {
         String text = DeduplicationRule.buildDeduplicationPrompt(

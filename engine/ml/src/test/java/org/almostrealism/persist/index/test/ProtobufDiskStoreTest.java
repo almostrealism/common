@@ -45,13 +45,22 @@ import static org.almostrealism.persist.index.test.DiskStoreTestSupport.makeReco
  */
 public class ProtobufDiskStoreTest extends TestSuiteBase {
 
+	/** Temporary directory for store files. */
 	private File tempDir;
 
+	/**
+	 * Creates a temporary directory before each test.
+	 *
+	 * @throws Exception if directory creation fails
+	 */
 	@Before
 	public void setUp() throws Exception {
 		tempDir = Files.createTempDirectory("diskstore-test").toFile();
 	}
 
+	/**
+	 * Cleans up the temporary directory after each test.
+	 */
 	@After
 	public void tearDown() {
 		deleteRecursively(tempDir);
@@ -656,6 +665,13 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Builds a string of repeated characters for test payloads.
+	 *
+	 * @param c      character to repeat
+	 * @param length total length of the resulting string
+	 * @return a string of {@code length} repetitions of {@code c}
+	 */
 	private static String makePayload(char c, int length) {
 		StringBuilder sb = new StringBuilder(length);
 		for (int i = 0; i < length; i++) {
@@ -664,6 +680,7 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 		return sb.toString();
 	}
 
+	/** Default maximum memory budget in bytes for {@link ProtobufDiskStore}. */
 	private static final long DEFAULT_MEM = ProtobufDiskStore.DEFAULT_MAX_MEMORY_BYTES;
 
 }

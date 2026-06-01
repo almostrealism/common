@@ -33,12 +33,14 @@ import static org.junit.Assert.assertTrue;
  */
 public class JobCompletionEventTest extends TestSuiteBase {
 
+	/** Verifies that a success event is created with the SUCCESS status. */
 	@Test(timeout = 30000)
 	public void successEventHasCorrectStatus() {
 		JobCompletionEvent event = JobCompletionEvent.success("job-1", "Test job");
 		assertEquals(JobCompletionEvent.Status.SUCCESS, event.getStatus());
 	}
 
+	/** Verifies that a failed event captures the error message and exception. */
 	@Test(timeout = 30000)
 	public void failedEventCapturesError() {
 		RuntimeException cause = new RuntimeException("cause");
@@ -50,6 +52,7 @@ public class JobCompletionEventTest extends TestSuiteBase {
 		assertEquals(cause, event.getException());
 	}
 
+	/** Verifies that withGitInfo sets branch, commit hash, staged files, skipped files, and push flag. */
 	@Test(timeout = 30000)
 	public void withGitInfoSetsAllFields() {
 		List<String> staged = Arrays.asList("file1.java", "file2.java");
@@ -65,6 +68,7 @@ public class JobCompletionEventTest extends TestSuiteBase {
 		assertTrue(event.isPushed());
 	}
 
+	/** Verifies that withPullRequestUrl stores the URL on the event. */
 	@Test(timeout = 30000)
 	public void withPullRequestUrlSetsUrl() {
 		JobCompletionEvent event = JobCompletionEvent.success("job-4", "PR job")
@@ -73,6 +77,7 @@ public class JobCompletionEventTest extends TestSuiteBase {
 		assertEquals("https://github.com/org/repo/pull/1", event.getPullRequestUrl());
 	}
 
+	/** Verifies that staged and skipped file lists default to non-null empty lists. */
 	@Test(timeout = 30000)
 	public void defaultListsAreEmpty() {
 		JobCompletionEvent event = JobCompletionEvent.success("job-5", "Default lists");
@@ -83,6 +88,7 @@ public class JobCompletionEventTest extends TestSuiteBase {
 		assertTrue(event.getSkippedFiles().isEmpty());
 	}
 
+	/** Verifies that toString includes the job ID, status, and commit hash. */
 	@Test(timeout = 30000)
 	public void toStringIncludesKeyFields() {
 		JobCompletionEvent event = JobCompletionEvent.success("job-6", "ToString job")

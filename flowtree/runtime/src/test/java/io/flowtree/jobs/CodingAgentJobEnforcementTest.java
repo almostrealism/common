@@ -44,6 +44,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 
 	// ── EnforcementRule interface defaults ──────────────────────────────────
 
+	/** EnforcementRule default maxRetries matches CodingAgentJob.DEFAULT_MAX_RULE_RETRIES. */
 	@Test(timeout = 30000)
 	public void defaultMaxRetriesMatchesConstant() {
 		EnforcementRule rule = new EnforcementRule() {
@@ -57,6 +58,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 		assertEquals(CodingAgentJob.DEFAULT_MAX_RULE_RETRIES, rule.getMaxRetries());
 	}
 
+	/** CodingAgentJob.DEFAULT_MAX_RULE_RETRIES equals 5. */
 	@Test(timeout = 30000)
 	public void defaultMaxRetriesValue() {
 		assertEquals(5, CodingAgentJob.DEFAULT_MAX_RULE_RETRIES);
@@ -64,12 +66,14 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 
 	// ── enforceMavenDependencies flag ────────────────────────────────────────
 
+	/** CodingAgentJob isEnforceMavenDependencies defaults to false. */
 	@Test(timeout = 30000)
 	public void enforceMavenDependenciesDefaultFalse() {
 		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		assertFalse(job.isEnforceMavenDependencies());
 	}
 
+	/** CodingAgentJob.setEnforceMavenDependencies(true) is reflected in getter. */
 	@Test(timeout = 30000)
 	public void setEnforceMavenDependenciesTrue() {
 		CodingAgentJob job = new CodingAgentJob("t1", "do something");
@@ -77,6 +81,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 		assertTrue(job.isEnforceMavenDependencies());
 	}
 
+	/** CodingAgentJob enforceMavenDependencies round-trips via setters. */
 	@Test(timeout = 30000)
 	public void setEnforceMavenDependenciesRoundTrip() {
 		CodingAgentJob job = new CodingAgentJob("t1", "do something");
@@ -88,6 +93,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 
 	// ── Serialisation — enforceMavenDependencies ─────────────────────────────
 
+	/** enforceMavenDeps appears in wire format when set to true. */
 	@Test(timeout = 30000)
 	public void enforceMavenDepsAppearsInWireFormatWhenTrue() {
 		CodingAgentJob job = new CodingAgentJob("t1", "hello");
@@ -98,6 +104,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 				encoded.contains("enforceMavenDeps:=true"));
 	}
 
+	/** enforceMavenDeps absent from wire format when false (default). */
 	@Test(timeout = 30000)
 	public void enforceMavenDepsAbsentInWireFormatWhenFalse() {
 		CodingAgentJob job = new CodingAgentJob("t1", "hello");
@@ -107,6 +114,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 				encoded.contains("enforceMavenDeps"));
 	}
 
+	/** CodingAgentJob enforceMavenDependencies round-trips through serialization. */
 	@Test(timeout = 30000)
 	public void enforceMavenDepsDeserialises() {
 		CodingAgentJob job = new CodingAgentJob("t1", "hello");
@@ -118,6 +126,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 
 	// ── addEnforcementRule ───────────────────────────────────────────────────
 
+	/** CodingAgentJob.addEnforcementRule accepts a custom EnforcementRule without throwing. */
 	@Test(timeout = 30000)
 	public void addEnforcementRuleAcceptsCustomRule() {
 		CodingAgentJob job = new CodingAgentJob("t1", "do something");
@@ -134,6 +143,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 		// execution is verified by integration / functional tests.
 	}
 
+	/** EnforcementRule.getMaxRetries() is overridable by custom rule implementation. */
 	@Test(timeout = 30000)
 	public void customRuleMaxRetriesOverridable() {
 		EnforcementRule rule = new EnforcementRule() {
@@ -151,12 +161,14 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 
 	// ── CodingAgentJobFactory — enforceMavenDependencies ─────────────────────
 
+	/** CodingAgentJobFactory isEnforceMavenDependencies defaults to false. */
 	@Test(timeout = 30000)
 	public void factoryEnforceMavenDependenciesDefaultFalse() {
 		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
 		assertFalse(factory.isEnforceMavenDependencies());
 	}
 
+	/** CodingAgentJobFactory.setEnforceMavenDependencies propagates to nextJob(). */
 	@Test(timeout = 30000)
 	public void factorySetEnforceMavenDependenciesPropagatesToJob() {
 		CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
@@ -166,6 +178,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 		assertTrue(job.isEnforceMavenDependencies());
 	}
 
+	/** CodingAgentJobFactory default enforceMavenDependencies does not propagate true to job. */
 	@Test(timeout = 30000)
 	public void factoryEnforceMavenDependenciesDefaultDoesNotPropagateTrue() {
 		CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
@@ -174,6 +187,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 		assertFalse(job.isEnforceMavenDependencies());
 	}
 
+	/** CodingAgentJobFactory enforceMavenDeps round-trips via set(). */
 	@Test(timeout = 30000)
 	public void factoryEnforceMavenDepsRoundTripViaEncode() {
 		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
@@ -190,6 +204,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 
 	// ── onCorrectionAttempted callback ──────────────────────────────────────
 
+	/** EnforcementRule.onCorrectionAttempted default implementation is a no-op. */
 	@Test(timeout = 30000)
 	public void onCorrectionAttemptedDefaultIsNoOp() {
 		EnforcementRule rule = new EnforcementRule() {
@@ -204,6 +219,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 		rule.onCorrectionAttempted(new CodingAgentJob("t1", "do something"));
 	}
 
+	/** EnforcementRule.onCorrectionAttempted can be overridden to track calls. */
 	@Test(timeout = 30000)
 	public void onCorrectionAttemptedCanBeOverridden() {
 		AtomicInteger callCount = new AtomicInteger();
@@ -492,6 +508,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 
 	// ── Backward compatibility ───────────────────────────────────────────────
 
+	/** Verifies that setEnforceChanges and isEnforceChanges still work correctly after any refactor. */
 	@Test(timeout = 30000)
 	public void enforceChangesStillFunctionsAfterRefactor() {
 		CodingAgentJob job = new CodingAgentJob("t1", "hello");
@@ -503,6 +520,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 
 	// ── OrganizationalPlacementRule — flag defaults ──────────────────────────
 
+	/** Verifies that setEnforceOrganizationalPlacement(false) causes isEnforceOrganizationalPlacement to return false. */
 	@Test(timeout = 30000)
 	public void setEnforceOrganizationalPlacementFalse() {
 		CodingAgentJob job = new CodingAgentJob("t1", "do something");
@@ -510,6 +528,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 		assertFalse(job.isEnforceOrganizationalPlacement());
 	}
 
+	/** Verifies that enforceOrganizationalPlacement can be toggled true then false and reflects the correct value each time. */
 	@Test(timeout = 30000)
 	public void setEnforceOrganizationalPlacementRoundTrip() {
 		CodingAgentJob job = new CodingAgentJob("t1", "do something");
@@ -522,6 +541,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 
 	// ── OrganizationalPlacementRule — serialisation ──────────────────────────
 
+	/** Verifies that enforceOrgPlacement does not appear in the wire format when left at its default value of false. */
 	@Test(timeout = 30000)
 	public void enforceOrgPlacementAbsentInWireFormatWhenDefault() {
 		CodingAgentJob job = new CodingAgentJob("t1", "hello");
@@ -532,6 +552,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 				encoded.contains("enforceOrgPlacement"));
 	}
 
+	/** Verifies that enforceOrgPlacement:=true appears in the wire format when the flag is set to true. */
 	@Test(timeout = 30000)
 	public void enforceOrgPlacementAppearsInWireFormatWhenTrue() {
 		CodingAgentJob job = new CodingAgentJob("t1", "hello");
@@ -542,6 +563,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 				encoded.contains("enforceOrgPlacement:=true"));
 	}
 
+	/** Verifies that enforceOrganizationalPlacement round-trips correctly through serialization and deserialization. */
 	@Test(timeout = 30000)
 	public void enforceOrgPlacementDeserialises() {
 		CodingAgentJob job = new CodingAgentJob("t1", "hello");
@@ -553,6 +575,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 
 	// ── OrganizationalPlacementRule — factory propagation ───────────────────
 
+	/** Verifies that CodingAgentJobFactory.setEnforceOrganizationalPlacement(false) propagates false to jobs created by nextJob(). */
 	@Test(timeout = 30000)
 	public void factorySetEnforceOrganizationalPlacementFalsePropagatesToJob() {
 		CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
@@ -562,6 +585,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 		assertFalse(job.isEnforceOrganizationalPlacement());
 	}
 
+	/** Verifies that enforceOrgPlacement on CodingAgentJobFactory round-trips correctly through the set() deserialization path. */
 	@Test(timeout = 30000)
 	public void factoryEnforceOrgPlacementRoundTripViaSet() {
 		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
@@ -702,6 +726,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 		assertEquals(CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS, attempts);
 	}
 
+	/** Pins the DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS constant to 25 so silent regressions are caught. */
 	@Test(timeout = 30000)
 	public void totalEnforcementAttemptCapDefaultValue() {
 		// Pin the constant so silent regressions (e.g., raising the cap by an

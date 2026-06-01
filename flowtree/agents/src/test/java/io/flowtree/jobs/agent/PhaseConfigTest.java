@@ -32,6 +32,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class PhaseConfigTest extends TestSuiteBase {
 
+    /** EMPTY config is completely null (isEmpty, runner, model, effort all null). */
     @Test(timeout = 5000)
     public void emptyIsAllNull() {
         assertTrue(PhaseConfig.EMPTY.isEmpty());
@@ -40,6 +41,7 @@ public class PhaseConfigTest extends TestSuiteBase {
         assertNull(PhaseConfig.EMPTY.effort());
     }
 
+    /** Setting any single field (runner, model, or effort) makes a config non-empty. */
     @Test(timeout = 5000)
     public void anyFieldSetMakesNonEmpty() {
         assertFalse(new PhaseConfig("claude", null, null).isEmpty());
@@ -47,6 +49,7 @@ public class PhaseConfigTest extends TestSuiteBase {
         assertFalse(new PhaseConfig(null, null, "high").isEmpty());
     }
 
+    /** withRunner updates runner while preserving model and effort. */
     @Test(timeout = 5000)
     public void withRunnerPreservesOtherFields() {
         PhaseConfig original = new PhaseConfig(null, "opus", "high");
@@ -56,6 +59,7 @@ public class PhaseConfigTest extends TestSuiteBase {
         assertEquals("high", updated.effort());
     }
 
+    /** withModel updates model while preserving runner and effort. */
     @Test(timeout = 5000)
     public void withModelPreservesOtherFields() {
         PhaseConfig original = new PhaseConfig("claude", null, "low");
@@ -65,6 +69,7 @@ public class PhaseConfigTest extends TestSuiteBase {
         assertEquals("low", updated.effort());
     }
 
+    /** withEffort updates effort while preserving runner and model. */
     @Test(timeout = 5000)
     public void withEffortPreservesOtherFields() {
         PhaseConfig original = new PhaseConfig("claude", "opus", null);
@@ -74,6 +79,7 @@ public class PhaseConfigTest extends TestSuiteBase {
         assertEquals("medium", updated.effort());
     }
 
+    /** overlayOn fills null fields from the other config; non-null fields win. */
     @Test(timeout = 5000)
     public void overlayFillsNullsFromOther() {
         PhaseConfig top = new PhaseConfig("claude", null, null);
@@ -85,6 +91,7 @@ public class PhaseConfigTest extends TestSuiteBase {
         assertEquals("high", merged.effort());
     }
 
+    /** overlayOn null returns self (no-op merge). */
     @Test(timeout = 5000)
     public void overlayOnNullReturnsSelf() {
         PhaseConfig top = new PhaseConfig("claude", null, null);
@@ -92,6 +99,7 @@ public class PhaseConfigTest extends TestSuiteBase {
         assertSame(top, merged);
     }
 
+    /** overlayOn chains correctly over three levels (job, workstream, workspace). */
     @Test(timeout = 5000)
     public void overlayChainsThreeLevels() {
         PhaseConfig job = new PhaseConfig(null, null, "high");
@@ -103,6 +111,7 @@ public class PhaseConfigTest extends TestSuiteBase {
         assertEquals("high", resolved.effort());
     }
 
+    /** overlayOn does not mutate either input config. */
     @Test(timeout = 5000)
     public void overlayDoesNotMutateInputs() {
         PhaseConfig top = new PhaseConfig("claude", null, null);
@@ -116,6 +125,7 @@ public class PhaseConfigTest extends TestSuiteBase {
         assertNotNull(merged);
     }
 
+    /** Non-null fields in the top config always win over null in the bottom. */
     @Test(timeout = 5000)
     public void nonNullFieldsAlwaysWinOverNull() {
         PhaseConfig top = new PhaseConfig(null, null, null);
@@ -126,7 +136,7 @@ public class PhaseConfigTest extends TestSuiteBase {
         assertEquals("high", merged.effort());
     }
 
-    // TODO(review): method name typo — "SupPresses" should be "Suppresses" (stray capital P mid-word)
+    /** overlayOnClearingInheritedProvider suppresses lower provider when runner changes. */
     @Test(timeout = 5000)
     public void clearingOverlaySupPressesProviderWhenRunnerChanges() {
         // Upper level sets runner=claude (no provider); lower has runner=opencode + provider=openrouter.
@@ -140,6 +150,7 @@ public class PhaseConfigTest extends TestSuiteBase {
         assertNull(merged.provider());
     }
 
+    /** overlayOnClearingInheritedProvider suppresses provider when other runner is null. */
     @Test(timeout = 5000)
     public void clearingOverlaySuppressesProviderWhenOtherRunnerIsNull() {
         // Upper sets runner=claude; lower has no runner but has provider=openrouter.
@@ -152,6 +163,7 @@ public class PhaseConfigTest extends TestSuiteBase {
         assertNull(merged.provider());
     }
 
+    /** overlayOnClearingInheritedProvider preserves provider when both runners match. */
     @Test(timeout = 5000)
     public void clearingOverlayPreservesProviderWhenRunnersMatch() {
         // Both levels name the same runner; provider from lower level should be inherited.
@@ -162,6 +174,7 @@ public class PhaseConfigTest extends TestSuiteBase {
         assertEquals("openrouter", merged.provider());
     }
 
+    /** overlayOnClearingInheritedProvider this.provider always wins over other.provider. */
     @Test(timeout = 5000)
     public void clearingOverlayThisProviderAlwaysWins() {
         // Upper explicitly sets provider=anthropic; lower has provider=openrouter.
@@ -173,6 +186,7 @@ public class PhaseConfigTest extends TestSuiteBase {
         assertEquals("anthropic", merged.provider());
     }
 
+    /** overlayOnClearingInheritedProvider on null returns self. */
     @Test(timeout = 5000)
     public void clearingOverlayOnNullReturnsSelf() {
         PhaseConfig top = new PhaseConfig("claude", null, null, null);

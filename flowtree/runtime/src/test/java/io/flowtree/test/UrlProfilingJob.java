@@ -43,13 +43,20 @@ public class UrlProfilingJob implements Job, ConsoleFeatures {
 	 * Output handler that writes URL profiling results to a timestamped file.
 	 */
 	public static class Handler implements OutputHandler {
+		/** Writer used to persist profiling output to a file. */
 		private PrintWriter out;
 
+		/**
+		 * Constructs a Handler that writes to a timestamped URL profiling output file.
+		 */
 		public Handler() throws IOException {
 			this.out = new PrintWriter(new BufferedWriter(new FileWriter("htdocs/url-profile" +
 							System.currentTimeMillis() + ".txt")));
 		}
 
+		/**
+		 * Stores a single profiling result line, separating fields with tabs.
+		 */
 		@Override
 		public void storeOutput(long time, int uid, JobOutput output) {
 			String s[] = output.getOutput().split(JobFactory.ENTRY_SEPARATOR);
@@ -68,26 +75,50 @@ public class UrlProfilingJob implements Job, ConsoleFeatures {
 		}
 	}
 
+	/** Unique task identifier for this job. */
 	private String id;
+
+	/** URI of the URL to be profiled. */
 	private String uri;
+
+	/** Number of download iterations to perform. */
 	private int size;
+
+	/** Future that completes when the job finishes or fails. */
 	private CompletableFuture<Void> future = new CompletableFuture<>();
+
+	/** Last output produced by this job after execution. */
 	private JobOutput lastOutput;
 
+	/**
+	 * Constructs a default UrlProfilingJob with no initial parameters.
+	 */
 	public UrlProfilingJob() { }
 
+	/**
+	 * Constructs a UrlProfilingJob with the specified identifier, URI, and iteration count.
+	 */
 	public UrlProfilingJob(String id, String uri, int size) {
 		this.id = id;
 		this.uri = uri;
 		this.size = size;
 	}
 
+	/**
+	 * Returns the unique task identifier for this job.
+	 */
 	@Override
 	public String getTaskId() { return this.id; }
 
+	/**
+	 * Returns a human-readable string describing this task and its identifier.
+	 */
 	@Override
 	public String getTaskString() { return "UriProfilingTask (" + this.id + ")"; }
 
+	/**
+	 * Encodes this job's configuration as a colon-separated key-value string.
+	 */
 	@Override
 	public String encode() {
 		StringBuilder b = new StringBuilder();
@@ -101,6 +132,9 @@ public class UrlProfilingJob implements Job, ConsoleFeatures {
 		return b.toString();
 	}
 
+	/**
+	 * Sets a configuration property on this job by key name.
+	 */
 	@Override
 	public void set(String key, String value) {
 		if (key.equals("id")) {
@@ -112,6 +146,10 @@ public class UrlProfilingJob implements Job, ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Executes the URL profiling job, measuring download time and byte throughput
+	 * across the configured number of iterations.
+	 */
 	@Override
 	public void run() throws RuntimeException {
 		try {
@@ -167,6 +205,9 @@ public class UrlProfilingJob implements Job, ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Returns the CompletableFuture that completes when this job finishes execution.
+	 */
 	@Override
 	public CompletableFuture<Void> getCompletableFuture() { return future; }
 
@@ -175,6 +216,9 @@ public class UrlProfilingJob implements Job, ConsoleFeatures {
 	 */
 	public JobOutput getLastOutput() { return lastOutput; }
 
+	/**
+	 * Returns a string representation of this job including its URI and iteration count.
+	 */
 	@Override
 	public String toString() {
 		return "UrlProfilingJob (" + this.uri + ") size = " + this.size;

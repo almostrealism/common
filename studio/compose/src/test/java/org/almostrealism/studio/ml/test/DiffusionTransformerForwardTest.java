@@ -37,6 +37,7 @@ import static org.junit.Assert.assertNotNull;
  */
 public class DiffusionTransformerForwardTest extends TestSuiteBase {
 
+	/** Path to the diffusion transformer weights directory. */
 	private static final Path WEIGHTS_DIR = Path.of("/workspace/project/weights");
 
 	/**

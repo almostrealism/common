@@ -85,8 +85,12 @@ import static org.junit.Assert.assertTrue;
  */
 public class TimeCellAutomationTest extends TestSuiteBase implements CellFeatures {
 
+	/** Sample rate for audio processing. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
+	/**
+	 * Tests direct frame read after setFrame calls.
+	 */
 	@Test(timeout = 30_000)
 	public void directReadAfterSetFrame() {
 		TimeCell clock = new TimeCell();
@@ -107,6 +111,9 @@ public class TimeCellAutomationTest extends TestSuiteBase implements CellFeature
 				987654.0, frame.get().evaluate().toDouble(0), 1e-9);
 	}
 
+	/**
+	 * Tests direct frame read after tick calls.
+	 */
 	@Test(timeout = 30_000)
 	public void directReadAfterTick() {
 		TimeCell clock = new TimeCell();
@@ -128,11 +135,7 @@ public class TimeCellAutomationTest extends TestSuiteBase implements CellFeature
 	}
 
 	/**
-	 * Drives the clock inside a {@link TemporalRunner}-compiled loop and reads
-	 * the final frame from Java. The clock backs a single shared
-	 * {@link PackedCollection}; if the runtime kernel reads/writes a different
-	 * memory than the Java-side {@link TimeCell#getFrame()} accessor, the
-	 * read-back will not match the iteration count.
+	 * Tests that the compiled loop advances the frame correctly.
 	 */
 	@Test(timeout = 60_000)
 	public void compiledLoopAdvancesFrame() {
@@ -149,6 +152,9 @@ public class TimeCellAutomationTest extends TestSuiteBase implements CellFeature
 				(double) iterations, observed, 1e-6);
 	}
 
+	/**
+	 * Tests that automation values vary with direct clock manipulation.
+	 */
 	@Test(timeout = 30_000)
 	public void automationVariesWithDirectClock() {
 		double measureDuration = Frequency.forBPM(120).l(4);

@@ -35,6 +35,9 @@ import java.io.IOException;
  */
 public class Convolution2dDeltaComputationTests extends TestSuiteBase {
 
+	/**
+	 * Tests convolution with the smallest dimension (10x10, 3x3 kernel, 8 filters).
+	 */
 	@Test(timeout = 7 * 60000)
 	@TestDepth(1)
 	public void convSmallest() throws IOException {
@@ -45,6 +48,9 @@ public class Convolution2dDeltaComputationTests extends TestSuiteBase {
 		convolution2d("convSmallest", shape(dim, dim), size, filters);
 	}
 
+	/**
+	 * Tests convolution with small dimension (16x16, 3x3 kernel, 8 filters).
+	 */
 	@Test(timeout = 60 * 60000)
 	@TestDepth(2)
 	public void convSmall() throws IOException {
@@ -57,6 +63,9 @@ public class Convolution2dDeltaComputationTests extends TestSuiteBase {
 		convolution2d("convSmall", shape(dim, dim), size, filters);
 	}
 
+	/**
+	 * Tests convolution with large dimension (64x64, 3x3 kernel, 8 filters).
+	 */
 	@Test(timeout = 60000)
 	@TestProperties(knownIssue = true)
 	public void convLarge() throws IOException {

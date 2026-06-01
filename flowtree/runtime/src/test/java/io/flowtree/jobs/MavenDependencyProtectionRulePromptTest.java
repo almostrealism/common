@@ -34,12 +34,14 @@ import static org.junit.Assert.assertTrue;
  */
 public class MavenDependencyProtectionRulePromptTest extends TestSuiteBase {
 
+    /** Returns the correction prompt text built against the {@code master} base branch. */
     private static String prompt() {
         return MavenDependencyProtectionRule.buildCorrectionPromptText("master");
     }
 
     // ── Blocking behaviour preserved ─────────────────────────────────────────
 
+    /** Verifies that the prompt opens with the Maven dependency protection violation header. */
     @Test(timeout = 30000)
     public void promptStatesViolationHeader() {
         String text = prompt();
@@ -47,6 +49,7 @@ public class MavenDependencyProtectionRulePromptTest extends TestSuiteBase {
                 text.contains("MAVEN DEPENDENCY PROTECTION RULE VIOLATION"));
     }
 
+    /** Verifies that the prompt includes the mandatory instruction to revert all dependency changes. */
     @Test(timeout = 30000)
     public void promptRequiresMandatoryRevert() {
         String text = prompt();
@@ -54,6 +57,7 @@ public class MavenDependencyProtectionRulePromptTest extends TestSuiteBase {
                 text.contains("MANDATORY ACTION: Revert all <dependency> changes"));
     }
 
+    /** Verifies that the prompt embeds the base branch name in the git diff command. */
     @Test(timeout = 30000)
     public void promptIncludesBaseBranchInDiffCommand() {
         String text = prompt();
@@ -61,6 +65,7 @@ public class MavenDependencyProtectionRulePromptTest extends TestSuiteBase {
                 text.contains("git diff origin/master"));
     }
 
+    /** Verifies that the prompt explicitly forbids using git restore on pom.xml files. */
     @Test(timeout = 30000)
     public void promptForbidsGitRestore() {
         String text = prompt();
@@ -68,6 +73,7 @@ public class MavenDependencyProtectionRulePromptTest extends TestSuiteBase {
                 text.contains("do NOT use git restore"));
     }
 
+    /** Verifies that the prompt explicitly permits keeping non-dependency pom.xml changes. */
     @Test(timeout = 30000)
     public void promptPermitsNonDependencyChanges() {
         String text = prompt();
@@ -78,6 +84,7 @@ public class MavenDependencyProtectionRulePromptTest extends TestSuiteBase {
 
     // ── New: explain the underlying need ─────────────────────────────────────
 
+    /** Verifies that the prompt contains an "EXPLAIN THE UNDERLYING NEED" section. */
     @Test(timeout = 30000)
     public void promptIncludesExplainUnderlyingNeedSection() {
         String text = prompt();
@@ -85,6 +92,7 @@ public class MavenDependencyProtectionRulePromptTest extends TestSuiteBase {
                 text.contains("EXPLAIN THE UNDERLYING NEED"));
     }
 
+    /** Verifies that the prompt asks the agent what goal drove the dependency change. */
     @Test(timeout = 30000)
     public void promptAsksForGoalThatDroveChange() {
         String text = prompt();
@@ -92,6 +100,7 @@ public class MavenDependencyProtectionRulePromptTest extends TestSuiteBase {
                 text.contains("What goal drove the dependency change"));
     }
 
+    /** Verifies that the prompt asks whether the same goal can be achieved without adding the dependency. */
     @Test(timeout = 30000)
     public void promptAsksWhetherAlternativeExists() {
         String text = prompt();
@@ -99,6 +108,7 @@ public class MavenDependencyProtectionRulePromptTest extends TestSuiteBase {
                 text.contains("same goal can be expressed without adding the"));
     }
 
+    /** Verifies that the prompt instructs the agent to flag areas for human review when no alternative exists. */
     @Test(timeout = 30000)
     public void promptInstructsAgentToFlagIfNoAlternative() {
         String text = prompt();
@@ -109,6 +119,7 @@ public class MavenDependencyProtectionRulePromptTest extends TestSuiteBase {
 
     // ── Base branch is embedded correctly ────────────────────────────────────
 
+    /** Verifies that the supplied base branch name is correctly embedded in the prompt. */
     @Test(timeout = 30000)
     public void promptUsesSuppliedBaseBranch() {
         String text = MavenDependencyProtectionRule.buildCorrectionPromptText("develop");
@@ -119,6 +130,7 @@ public class MavenDependencyProtectionRulePromptTest extends TestSuiteBase {
                 text.contains("origin/master"));
     }
 
+    /** Verifies that the prompt falls back to master when the supplied base branch is blank. */
     @Test(timeout = 30000)
     public void promptDefaultsToMasterForBlankBaseBranch() {
         String text = MavenDependencyProtectionRule.buildCorrectionPromptText(

@@ -42,18 +42,30 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for StableDurationHealthComputation health computation.
+ */
 public class StableDurationHealthComputationTest extends AudioScenePopulationTest {
 
+	/**
+	 * Initializes test environment before all tests.
+	 */
 	@BeforeClass
 	public static void init() {
 		StableDurationHealthComputation.enableVerbose = true;
 	}
 
+	/**
+	 * Cleans up test environment after all tests.
+	 */
 	@AfterClass
 	public static void shutdown() {
 		StableDurationHealthComputation.enableVerbose = false;
 	}
 
+	/**
+	 * Test that cells pattern data context computes health correctly.
+	 */
 	@Test(timeout = 600_000)
 	@TestDepth(1)
 	public void cellsPatternDataContext() {
@@ -75,6 +87,9 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 		});
 	}
 
+	/**
+	 * Test that small cells pattern health computation works correctly.
+	 */
 	@Test(timeout = 300_000)
 	@TestDepth(1)
 	public void cellsPatternSmall() {
@@ -99,6 +114,9 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 		health.computeHealth();
 	}
 
+	/**
+	 * Test that large cells pattern health computation works correctly.
+	 */
 	@Test(timeout = 300_000)
 	@TestDepth(2)
 	public void cellsPatternLarge() {
@@ -115,6 +133,9 @@ public class StableDurationHealthComputationTest extends AudioScenePopulationTes
 		health.computeHealth();
 	}
 
+	/**
+	 * Test health computation with stored population samples.
+	 */
 	@Test(timeout = 900_000)
 	@TestDepth(2)
 	public void samplesPopulationHealth() throws IOException {

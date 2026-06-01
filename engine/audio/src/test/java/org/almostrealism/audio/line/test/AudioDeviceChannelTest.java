@@ -35,6 +35,9 @@ import java.util.TreeSet;
  */
 public class AudioDeviceChannelTest extends TestSuiteBase {
 
+	/**
+	 * Reports the channel capabilities of all available audio output devices.
+	 */
 	@Test(timeout = 60000)
 	public void reportDeviceChannelCapabilities() {
 		for (Mixer.Info info : AudioSystem.getMixerInfo()) {

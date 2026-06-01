@@ -35,6 +35,11 @@ import static org.junit.Assert.assertTrue;
  */
 public class OrganizationalPlacementRulePromptTest extends TestSuiteBase {
 
+    /**
+     * Builds a placement prompt using a single synthetic file path for use in tests.
+     *
+     * @return the generated placement prompt string
+     */
     private static String prompt() {
         return OrganizationalPlacementRule.buildOrganizationalPlacementPrompt(
                 Collections.singletonList(
@@ -43,6 +48,9 @@ public class OrganizationalPlacementRulePromptTest extends TestSuiteBase {
 
     // ── Core placement principles ────────────────────────────────────────────
 
+    /**
+     * Verifies that the prompt states the lowest-level organizational hierarchy principle.
+     */
     @Test(timeout = 30000)
     public void promptStatesLowestLevelPrinciple() {
         String text = prompt();
@@ -50,6 +58,9 @@ public class OrganizationalPlacementRulePromptTest extends TestSuiteBase {
                 text.contains("LOWEST level of the organizational hierarchy"));
     }
 
+    /**
+     * Verifies that the prompt explains that utility classes should reside in a shared lower-level module.
+     */
     @Test(timeout = 30000)
     public void promptStatesUtilityClassPrinciple() {
         String text = prompt();
@@ -57,6 +68,9 @@ public class OrganizationalPlacementRulePromptTest extends TestSuiteBase {
                 text.contains("utility class that could serve multiple modules"));
     }
 
+    /**
+     * Verifies that the prompt warns about circular dependencies in module placement.
+     */
     @Test(timeout = 30000)
     public void promptStatesDependencyHierarchyPrinciple() {
         String text = prompt();
@@ -64,6 +78,9 @@ public class OrganizationalPlacementRulePromptTest extends TestSuiteBase {
                 text.contains("circular dependency"));
     }
 
+    /**
+     * Verifies that the prompt describes where planning documents should be placed.
+     */
     @Test(timeout = 30000)
     public void promptStatesDocumentPlacementPrinciple() {
         String text = prompt();
@@ -73,6 +90,9 @@ public class OrganizationalPlacementRulePromptTest extends TestSuiteBase {
 
     // ── P1: existing files in scope (the key new principle) ─────────────────
 
+    /**
+     * Verifies that the prompt states existing files substantially modified by the branch are in scope.
+     */
     @Test(timeout = 30000)
     public void promptIncludesExistingFilesInScope() {
         String text = prompt();
@@ -81,6 +101,9 @@ public class OrganizationalPlacementRulePromptTest extends TestSuiteBase {
                 text.contains("EXISTING files your branch substantially modifies are also in scope"));
     }
 
+    /**
+     * Verifies that the prompt explicitly rejects the rationalization that a file pre-dated the branch.
+     */
     @Test(timeout = 30000)
     public void promptRejectsPreDatedFileRationalization() {
         String text = prompt();
@@ -88,6 +111,9 @@ public class OrganizationalPlacementRulePromptTest extends TestSuiteBase {
                 text.contains("\"The file pre-dated my branch\" is not a reason"));
     }
 
+    /**
+     * Verifies that the prompt acknowledges the circular-dependency constraint applies to existing-file moves.
+     */
     @Test(timeout = 30000)
     public void promptReferencesCircularDependencyExceptionForExistingFiles() {
         String text = prompt();
@@ -98,6 +124,9 @@ public class OrganizationalPlacementRulePromptTest extends TestSuiteBase {
 
     // ── Closing instruction covers both new and existing files ───────────────
 
+    /**
+     * Verifies that the closing instruction mentions existing files the branch modifies, not just new files.
+     */
     @Test(timeout = 30000)
     public void closingInstructionCoversExistingFilesToo() {
         String text = prompt();
@@ -108,6 +137,9 @@ public class OrganizationalPlacementRulePromptTest extends TestSuiteBase {
 
     // ── File list is rendered ────────────────────────────────────────────────
 
+    /**
+     * Verifies that the prompt includes all file paths provided to the builder.
+     */
     @Test(timeout = 30000)
     public void promptListsProvidedFiles() {
         String text = OrganizationalPlacementRule.buildOrganizationalPlacementPrompt(

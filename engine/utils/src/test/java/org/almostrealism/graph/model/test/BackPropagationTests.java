@@ -34,8 +34,14 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for backpropagation and gradient computation in neural network models.
+ */
 public class BackPropagationTests extends TestSuiteBase {
 
+	/**
+	 * Tests dense layer backward pass with known issue.
+	 */
 	@Test(timeout = 120000)
 	@TestProperties(knownIssue = true)
 	public void denseBackwards() {
@@ -111,6 +117,9 @@ public class BackPropagationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests 2D pooling layer backward pass.
+	 */
 	@Test(timeout = 120000)
 	public void pool2dBackwards() {
 		if (skipLongTests || skipKnownIssues) return;
@@ -166,6 +175,9 @@ public class BackPropagationTests extends TestSuiteBase {
 	}
 
 	// @Test(timeout = 120000)
+	/**
+	 * Tests convolution backward pass.
+	 */
 	private void convBackwards() {
 		int convSize = 3;
 		int w = 10;
@@ -217,6 +229,9 @@ public class BackPropagationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests composition backward pass.
+	 */
 	@Test(timeout = 120000)
 	public void compositionBackwards() {
 		SequentialBlock block = new SequentialBlock(shape(3));
@@ -241,6 +256,9 @@ public class BackPropagationTests extends TestSuiteBase {
 		assertEquals(48.0, gradient.toDouble(2));
 	}
 
+	/**
+	 * Tests split backward pass with repeat operation.
+	 */
 	@Test(timeout = 120000)
 	public void splitBackwardsRepeat() {
 		SequentialBlock block = new SequentialBlock(shape(3, 2));
@@ -283,6 +301,9 @@ public class BackPropagationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests split backward pass with add operation.
+	 */
 	@Test(timeout = 120000)
 	public void splitBackwardsAdd() {
 		SequentialBlock block = new SequentialBlock(shape(3, 2));
@@ -330,6 +351,9 @@ public class BackPropagationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests split backward pass with child index.
+	 */
 	@Test(timeout = 120000)
 	public void splitBackwardsChildIndex() {
 		SequentialBlock block = new SequentialBlock(shape(3, 2));

@@ -42,10 +42,19 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Tests for MixdownManager audio mixdown functionality.
+ */
 public class MixdownManagerTests extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
+	/** Duration of the mixdown test in seconds. */
 	private final double duration = 180;
+
+	/** Sample rate for audio processing. */
 	private final int sampleRate = OutputLine.sampleRate;
 
+	/**
+	 * Runs the mixdown process with the given parameters.
+	 */
 	protected void run(String name, GlobalTimeManager time, MixdownManager mixdown, CellList cells) {
 		OperationList setup = new OperationList("MixdownManagerTests Setup");
 		setup.add(mixdown.getAutomationManager().setup());
@@ -72,6 +81,9 @@ public class MixdownManagerTests extends TestSuiteBase implements CellFeatures, 
 		mixOut.write().get().run();
 	}
 
+	/**
+	 * Test that MixdownManager produces correct mixdown output with effects.
+	 */
 	@Test(timeout = 600_000)
 	@TestProperties(knownIssue = true)
 	@TestDepth(1)

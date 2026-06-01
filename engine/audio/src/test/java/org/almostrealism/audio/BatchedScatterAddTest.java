@@ -38,6 +38,7 @@ public class BatchedScatterAddTest extends TestSuiteBase implements TemporalFeat
 		return new BatchedPatternRenderer(noteCount, rowLength, rowLength, OutputLine.sampleRate, 2);
 	}
 
+	/** Creates a {@link PackedCollection} pre-populated with the given values. */
 	private PackedCollection collection(double... values) {
 		PackedCollection c = new PackedCollection(values.length);
 		c.setMem(values);

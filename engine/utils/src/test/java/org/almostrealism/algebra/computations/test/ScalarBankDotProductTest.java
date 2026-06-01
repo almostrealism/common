@@ -24,9 +24,16 @@ import org.junit.Test;
 
 import java.util.stream.IntStream;
 
+/**
+ * Tests for scalar bank dot product computation.
+ */
 public class ScalarBankDotProductTest extends TestSuiteBase {
+	/** Size of the scalar bank. */
 	public static final int SIZE = 32;
 
+	/**
+	 * Creates a test window with alternating values.
+	 */
 	public PackedCollection window() {
 		PackedCollection window = new PackedCollection(shape(SIZE, 2));
 		IntStream.range(0, SIZE).forEach(i -> {
@@ -36,6 +43,9 @@ public class ScalarBankDotProductTest extends TestSuiteBase {
 		return window;
 	}
 
+	/**
+	 * Tests scalar bank dot product with size 32.
+	 */
 	@Test(timeout = 10000)
 	public void scalarBankDotProduct32() {
 		PackedCollection window = window();

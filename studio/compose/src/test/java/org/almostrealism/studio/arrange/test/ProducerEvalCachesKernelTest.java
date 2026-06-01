@@ -435,7 +435,12 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 		dumpProducerLeaves(producer, 0);
 	}
 
-	@SuppressWarnings({"rawtypes", "unchecked"})
+	/**
+	 * Dumps the producer tree leaves for diagnostic purposes.
+	 *
+	 * @param node the node to dump
+	 * @param depth the current recursion depth
+	 */
 	private void dumpProducerLeaves(Object node, int depth) {
 		String indent = "  ".repeat(depth);
 		String cls = node == null ? "null" : node.getClass().getName();

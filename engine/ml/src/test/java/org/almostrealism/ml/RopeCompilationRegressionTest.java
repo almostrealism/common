@@ -289,12 +289,28 @@ public class RopeCompilationRegressionTest extends TestSuiteBase implements Atte
 	 * same RoPE shape.
 	 */
 	private static final class MoonbeamScaleFixture {
+
+		/** Dimensionality of each attention head. */
 		final int headDim = 8;
+
+		/** Frequency dimension (half of headDim). */
 		final int freqDim = headDim / 2;
+
+		/** Number of heads per group. */
 		final int[] headsPerGroup = { 1, 1, 1, 1, 1, 1 };
+
+		/** Total number of heads across all groups. */
 		final int totalHeads;
+
+		/** Head group configurations with lazy freqCis. */
 		final HeadGroupConfig[] headGroups;
 
+		/**
+		 * Creates a new fixture with the specified head groups and total head count.
+		 *
+		 * @param headGroups the head group configurations
+		 * @param totalHeads the total number of heads
+		 */
 		MoonbeamScaleFixture(HeadGroupConfig[] headGroups, int totalHeads) {
 			this.totalHeads = totalHeads;
 			this.headGroups = headGroups;
@@ -305,6 +321,8 @@ public class RopeCompilationRegressionTest extends TestSuiteBase implements Atte
 	 * Build a {@link MoonbeamScaleFixture} with freshly-allocated attribute
 	 * positions and {@link HeadGroupConfig}s. Allocated per-test so the
 	 * underlying {@link PackedCollection}s are isolated between tests.
+	 *
+	 * @return a new fixture configured for Moonbeam-scale testing
 	 */
 	private MoonbeamScaleFixture moonbeamScaleFixture() {
 		int headDim = 8;

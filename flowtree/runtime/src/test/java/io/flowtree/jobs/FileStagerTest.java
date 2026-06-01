@@ -40,6 +40,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class FileStagerTest extends TestSuiteBase {
 
+	/** Verifies that files not matching any exclusion pattern are staged successfully. */
 	@Test(timeout = 30000)
 	public void stagesNonExcludedFiles() throws IOException {
 		Path tempDir = Files.createTempDirectory("stager-test");
@@ -65,6 +66,7 @@ public class FileStagerTest extends TestSuiteBase {
 		}
 	}
 
+	/** Verifies that files matching exclusion patterns are skipped and not staged. */
 	@Test(timeout = 30000)
 	public void skipsExcludedPatterns() throws IOException {
 		Path tempDir = Files.createTempDirectory("stager-test");
@@ -93,6 +95,7 @@ public class FileStagerTest extends TestSuiteBase {
 		}
 	}
 
+	/** Verifies that files exceeding the configured maximum size limit are skipped. */
 	@Test(timeout = 30000)
 	public void skipsOversizedFiles() throws IOException {
 		Path tempDir = Files.createTempDirectory("stager-test");
@@ -121,6 +124,7 @@ public class FileStagerTest extends TestSuiteBase {
 		}
 	}
 
+	/** Verifies that files detected as binary (high null-byte ratio) are skipped. */
 	@Test(timeout = 30000)
 	public void skipsBinaryFiles() throws IOException {
 		Path tempDir = Files.createTempDirectory("stager-test");
@@ -148,6 +152,7 @@ public class FileStagerTest extends TestSuiteBase {
 		}
 	}
 
+	/** Verifies that test files already present on the base branch are protected and skipped. */
 	@Test(timeout = 30000)
 	public void protectsExistingTestFiles() throws IOException {
 		Path tempDir = Files.createTempDirectory("stager-test");
@@ -178,6 +183,7 @@ public class FileStagerTest extends TestSuiteBase {
 		}
 	}
 
+	/** Verifies that new test files introduced on the branch (not on base) are allowed to be staged. */
 	@Test(timeout = 30000)
 	public void allowsBranchNewTestFiles() throws IOException {
 		Path tempDir = Files.createTempDirectory("stager-test");
@@ -208,6 +214,7 @@ public class FileStagerTest extends TestSuiteBase {
 		}
 	}
 
+	/** Verifies that files missing from disk (deleted files) are still staged for removal. */
 	@Test(timeout = 30000)
 	public void handlesDeletedFiles() throws IOException {
 		Path tempDir = Files.createTempDirectory("stager-test");
@@ -229,6 +236,7 @@ public class FileStagerTest extends TestSuiteBase {
 		}
 	}
 
+	/** Verifies that a single-star glob pattern matches file names within the same directory level. */
 	@Test(timeout = 30000)
 	public void globMatchesSingleStar() {
 		assertTrue(FileStager.matchesGlobPattern("foo.log", "*.log"));
@@ -237,12 +245,14 @@ public class FileStagerTest extends TestSuiteBase {
 		assertFalse(FileStager.matchesGlobPattern("foo.txt", "*.log"));
 	}
 
+	/** Verifies that a double-star glob pattern matches paths at any depth beneath the prefix. */
 	@Test(timeout = 30000)
 	public void globMatchesDoubleStar() {
 		assertTrue(FileStager.matchesGlobPattern("target/foo/bar.class", "target/**"));
 		assertTrue(FileStager.matchesGlobPattern("target/bar.class", "target/**"));
 	}
 
+	/** Verifies that a literal (non-glob) pattern matches only the exact file name. */
 	@Test(timeout = 30000)
 	public void globMatchesExactName() {
 		assertTrue(FileStager.matchesGlobPattern(".DS_Store", ".DS_Store"));

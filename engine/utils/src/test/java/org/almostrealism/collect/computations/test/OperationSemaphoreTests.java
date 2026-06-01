@@ -26,12 +26,21 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Tests for operation semaphore behavior with concurrent sum operations.
+ */
 public class OperationSemaphoreTests extends TestSuiteBase {
+	/**
+	 * Tests sum operation with semaphore.
+	 */
 	@Test(timeout = 2 * 60000)
 	public void sum() {
 		sum(16, 2048, 1024, false);
 	}
 
+	/**
+	 * Tests sum with varying power dimensions.
+	 */
 	@Test(timeout = 4 * 60000)
 	@TestDepth(2)
 	public void sumPowers() {
@@ -40,6 +49,14 @@ public class OperationSemaphoreTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Runs sum test with specified parameters.
+	 *
+	 * @param ops Number of operations
+	 * @param count Count per operation
+	 * @param dim Dimension
+	 * @param validate Whether to validate results
+	 */
 	protected void sum(int ops, int count, int dim, boolean validate) {
 		OperationProfile profiles = new OperationProfile();
 		OperationList op = new OperationList("Vector Test", false);

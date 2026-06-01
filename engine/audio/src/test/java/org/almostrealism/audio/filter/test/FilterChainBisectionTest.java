@@ -103,6 +103,7 @@ import java.util.function.IntFunction;
  */
 public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatures {
 
+	/** Sample rate for audio tests, derived from OutputLine defaults. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
 	/** A1: AudioPassFilter setup() pre-computes a non-zero a1 coefficient. */
@@ -269,6 +270,12 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 				+ output + ")", Math.abs(output) > 0.0);
 	}
 
+	/**
+	 * Reads the filter output value by accessing the internal data field.
+	 *
+	 * @param filter The audio pass filter to read from
+	 * @return The filter's output value
+	 */
 	private static double readOutput(AudioPassFilter filter) {
 		try {
 			Field f = AudioPassFilter.class.getDeclaredField("data");
@@ -492,9 +499,19 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 				Math.abs(output) > 0.0);
 	}
 
-	/** A minimal cell that captures the value pushed to it into an output collection. */
+	/**
+	 * A minimal cell that captures the value pushed to it into an output collection.
+	 */
 	private class TapCell extends CellAdapter<PackedCollection> {
+
+		/** The collection to capture pushed values into. */
 		private final PackedCollection capture;
+
+		/**
+		 * Creates a new TapCell that captures to the given collection.
+		 *
+		 * @param capture The collection to write captured values to
+		 */
 		TapCell(PackedCollection capture) { this.capture = capture; }
 
 		@Override
@@ -662,6 +679,12 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 				Math.abs(captureVal) > 0.0);
 	}
 
+	/**
+	 * Reads the a1 coefficient from the filter's internal data storage.
+	 *
+	 * @param filter The audio pass filter to read from
+	 * @return The a1 coefficient value
+	 */
 	private static double readA1(AudioPassFilter filter) {
 		try {
 			Field f = AudioPassFilter.class.getDeclaredField("data");
@@ -832,7 +855,15 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	 * in a single class (no andThen invocation).
 	 */
 	private static class InlineComposed implements CellularTemporalFactor<PackedCollection>, CellFeatures {
+
+		/** The audio pass filter to delegate to. */
 		private final AudioPassFilter hp;
+
+		/**
+		 * Creates an InlineComposed that wraps the given filter.
+		 *
+		 * @param hp The audio pass filter to wrap
+		 */
 		InlineComposed(AudioPassFilter hp) { this.hp = hp; }
 
 		@Override
@@ -1516,7 +1547,15 @@ public class FilterChainBisectionTest extends TestSuiteBase implements CellFeatu
 	 * Used as a controllable source for chain tests.
 	 */
 	private static class ProbeCell extends CellAdapter<PackedCollection> {
+
+		/** The constant producer to push. */
 		private final Producer<PackedCollection> value;
+
+		/**
+		 * Creates a new ProbeCell with the given constant value.
+		 *
+		 * @param value The producer to return when push() is called
+		 */
 		ProbeCell(Producer<PackedCollection> value) { this.value = value; }
 
 		@Override

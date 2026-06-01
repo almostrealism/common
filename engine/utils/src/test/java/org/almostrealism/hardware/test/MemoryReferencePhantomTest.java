@@ -133,6 +133,12 @@ public class MemoryReferencePhantomTest extends TestSuiteBase {
 	 * {@link RAM} with allocation tracking enabled for stack trace tests.
 	 */
 	private static class TrackedRAM extends TestRAM {
+		/**
+		 * Creates a TrackedRAM with the specified address and size.
+		 *
+		 * @param address the memory address
+		 * @param size the memory size
+		 */
 		TrackedRAM(long address, long size) {
 			super(address, size, 16);
 		}
@@ -143,13 +149,28 @@ public class MemoryReferencePhantomTest extends TestSuiteBase {
 	 * requiring native memory allocation.
 	 */
 	private static class TestRAM extends RAM {
+		/** Memory address for this test RAM. */
 		private final long address;
+		/** Size of the test RAM region. */
 		private final long size;
 
+		/**
+		 * Creates a TestRAM with the specified address and size.
+		 *
+		 * @param address the memory address
+		 * @param size the memory size
+		 */
 		TestRAM(long address, long size) {
 			this(address, size, 0);
 		}
 
+		/**
+		 * Creates a TestRAM with the specified address, size, and trace frame count.
+		 *
+		 * @param address the memory address
+		 * @param size the memory size
+		 * @param traceFrames the number of stack trace frames to capture
+		 */
 		TestRAM(long address, long size, int traceFrames) {
 			super(traceFrames);
 			this.address = address;

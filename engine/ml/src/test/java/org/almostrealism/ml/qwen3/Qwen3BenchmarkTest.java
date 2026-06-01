@@ -12,7 +12,6 @@ import org.almostrealism.util.TestUtils;
 import org.junit.Assume;
 import org.junit.Test;
 
-import org.almostrealism.model.CompiledModel;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -32,12 +31,17 @@ import java.util.List;
  */
 public class Qwen3BenchmarkTest extends TestSuiteBase implements ConsoleFeatures {
 
+	/** Directory containing exported model weights. */
 	private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
+
+	/** Path to the tokenizer binary file. */
 	private static final String TOKENIZER_PATH = WEIGHTS_DIR + "/tokenizer.bin";
+
+	/** Base path for benchmark results files. */
 	private static final String RESULTS_FILE = "/workspace/project/common/ml/results/java_benchmark.txt";
 
 	/**
-	 * Run benchmark measuring time per token for autoregressive generation.
+	 * Run benchmark measuring time per token for autoregressive generation with full 32K context.
 	 */
 	@Test(timeout = 300000)
 	@TestDepth(2)
@@ -73,6 +77,12 @@ public class Qwen3BenchmarkTest extends TestSuiteBase implements ConsoleFeatures
 
 	/**
 	 * Core benchmark implementation with configurable seqLen.
+	 *
+	 * @param numTokens number of tokens to generate per run
+	 * @param warmupTokens number of warmup tokens before timing
+	 * @param numRuns number of benchmark runs
+	 * @param seqLen sequence length for the model
+	 * @param label label for the results file
 	 */
 	private void runBenchmarkWithSeqLen(int numTokens, int warmupTokens, int numRuns,
 	                                     int seqLen, String label) throws Exception {
@@ -208,7 +218,12 @@ public class Qwen3BenchmarkTest extends TestSuiteBase implements ConsoleFeatures
 	}
 
 	/**
-	 * Create input collection from token embedding.
+	 * Creates an input collection from token embedding.
+	 *
+	 * @param embeddings the token embeddings
+	 * @param token the token index
+	 * @param dim the embedding dimension
+	 * @return input collection for the model
 	 */
 	private PackedCollection createInput(PackedCollection embeddings, int token, int dim) {
 		PackedCollection input = new PackedCollection(shape(1, dim));
@@ -219,7 +234,11 @@ public class Qwen3BenchmarkTest extends TestSuiteBase implements ConsoleFeatures
 	}
 
 	/**
-	 * Find the argmax (greedy decoding).
+	 * Finds the argmax index (greedy decoding).
+	 *
+	 * @param logits the logits array
+	 * @param vocabSize the vocabulary size
+	 * @return the index of the maximum logit
 	 */
 	private int findArgmax(PackedCollection logits, int vocabSize) {
 		int maxIdx = 0;

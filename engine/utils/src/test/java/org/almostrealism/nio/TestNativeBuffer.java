@@ -27,8 +27,16 @@ import java.nio.ByteOrder;
  * which is why it must reside in the {@code org.almostrealism.nio} package.</p>
  */
 public class TestNativeBuffer extends NativeBuffer {
+	/** The fixed address to return from getContentPointer(). */
 	private final long address;
 
+	/**
+	 * Creates a test buffer with the given parameters.
+	 *
+	 * @param rootBuffer Root byte buffer
+	 * @param sharedLocation Shared memory location
+	 * @param address Fixed address to return
+	 */
 	private TestNativeBuffer(ByteBuffer rootBuffer, String sharedLocation, long address) {
 		super(null, rootBuffer, rootBuffer.asDoubleBuffer(), sharedLocation);
 		this.address = address;

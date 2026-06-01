@@ -8,7 +8,14 @@ import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for pair bank operations.
+ */
 public class PairBankTest extends TestSuiteBase {
+
+	/**
+	 * Tests basic pair bank operations.
+	 */
 	@Test(timeout = 10000)
 	public void test() {
 		PackedCollection bank = Pair.bank(2);
@@ -20,6 +27,9 @@ public class PairBankTest extends TestSuiteBase {
 		assertEquals(4.0, bank.get(1).toDouble(1));
 	}
 
+	/**
+	 * Tests concatenation of pair banks.
+	 */
 	@Test(timeout = 10000)
 	public void concat1() {
 		Producer<PackedCollection> l = v(shape(-1, 1), 0);
@@ -43,6 +53,9 @@ public class PairBankTest extends TestSuiteBase {
 		assertEquals(7.0, destination.valueAt(2, 1));
 	}
 
+	/**
+	 * Tests concatenation of pair banks with in-place inputs.
+	 */
 	@Test(timeout = 10000)
 	public void concat2() {
 		Producer<PackedCollection> in = v(shape(-1, 4, 1), 0);
@@ -61,6 +74,9 @@ public class PairBankTest extends TestSuiteBase {
 		assertEquals(3.0, destination.valueAt(2, 1));
 	}
 
+	/**
+	 * Tests mapping operations over pair banks.
+	 */
 	@Test(timeout = 10000)
 	@TestProperties(knownIssue = true)
 	public void map() {
@@ -84,6 +100,9 @@ public class PairBankTest extends TestSuiteBase {
 		assertEquals(7.0, destination.valueAt(2, 1));
 	}
 
+	/**
+	 * Tests extracting a pair from a pair bank.
+	 */
 	@Test(timeout = 10000)
 	public void pairFromPairBank() {
 		PackedCollection bank = Pair.bank(10);

@@ -28,7 +28,13 @@ import org.junit.Test;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+/**
+ * Tests for PackedCollection repeat operations that replicate collections across dimensions.
+ */
 public class PackedCollectionRepeatTests extends TestSuiteBase {
+	/**
+	 * Tests isolated repeat operation (marked as known issue).
+	 */
 	@Test(timeout = 30000)
 	@TestProperties(knownIssue = true)
 	public void isolatedRepeat() {
@@ -57,6 +63,9 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 		Assert.assertTrue(out.getShape().getOrder() instanceof RepeatTraversalOrdering);
 	}
 
+	/**
+	 * Tests repeat with item traversal.
+	 */
 	@Test(timeout = 30000)
 	public void repeatItem() {
 		int w = 2;
@@ -81,6 +90,9 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests 3D repeat operation.
+	 */
 	@Test(timeout = 30000)
 	public void repeat3d() {
 		int w = 1;
@@ -105,6 +117,9 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests repeat followed by sum.
+	 */
 	@Test(timeout = 30000)
 	public void repeatSum() {
 		int size = 30;
@@ -135,6 +150,9 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 		kernelTest(dense, valid);
 	}
 
+	/**
+	 * Tests repeat with enumerate and multiply.
+	 */
 	@Test(timeout = 30000)
 	public void repeatEnumerateMultiply() {
 		int size = 30;
@@ -169,6 +187,9 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 		kernelTest(dense, valid);
 	}
 
+	/**
+	 * Tests repeat with enumerate, multiply, and add.
+	 */
 	@Test(timeout = 30000)
 	public void repeatEnumerateMultiplyAdd() {
 		int size = 30;
@@ -209,6 +230,9 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 		kernelTest(dense, valid);
 	}
 
+	/**
+	 * Tests max operation with repeat.
+	 */
 	@Test(timeout = 30000)
 	public void maxRepeat() {
 		PackedCollection in = new PackedCollection(8, 4).randFill();
@@ -233,6 +257,9 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests upsampling with repeat.
+	 */
 	@Test(timeout = 30000)
 	public void upsample() {
 		PackedCollection input = pack(1.0, 2.0, 3.0, 4.0).reshape(1, 1, 2, 2);

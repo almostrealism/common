@@ -29,7 +29,13 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for {@link SampleMixer} audio mixing functionality.
+ */
 public class MixerTests extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
+	/**
+	 * Test that sample mixer produces audio output.
+	 */
 	@Test(timeout = 30_000)
 	public void sampleMixer() {
 		String testAudio = getTestWavPath();

@@ -151,19 +151,13 @@
             <property name="ignoreComments" value="true"/>
         </module>
 
-        <!-- Detect fully-qualified class references that should use imports.
-             Matches common java.* packages used inline (not in import
-             statements). Uses severity=warning until existing violations
-             are cleaned up.
-             Note: ErrorProne was considered but cannot be added because pom.xml
-             modifications are not permitted, and ErrorProne lacks a built-in check
-             for this pattern. Checkstyle RegexpSinglelineJava is a better fit. -->
-        <module name="RegexpSinglelineJava">
-            <property name="format" value="^(?!\s*import\b)(?!\s*package\b).*\bjava\.(util|io|nio|lang|math|net|time)\.[A-Z]\w+[^;]"/>
-            <property name="message" value="Use an import instead of a fully-qualified class reference."/>
-            <property name="ignoreComments" value="true"/>
-            <property name="severity" value="warning"/>
-        </module>
+        <!-- Fully-qualified class references are detected by ErrorProne's
+             UnnecessarilyFullyQualified check (-Xep:UnnecessarilyFullyQualified:ERROR
+             in the root pom.xml).  ErrorProne is AST-aware, so it flags only
+             genuinely unnecessary qualifications and correctly leaves necessary
+             disambiguation alone (e.g. java.util.Random inside the project's own
+             Random class).  No checkstyle rule is needed for this. -->
+
         <!-- Prohibit decorative prefixes in log/warn calls.
 
              The logging framework already prefixes every line with the

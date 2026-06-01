@@ -71,6 +71,11 @@ public class PatternFeaturesFastFailTest extends TestSuiteBase implements Patter
 		};
 	}
 
+	/**
+	 * Creates a minimal audio scene context for testing.
+	 *
+	 * @return the minimal context with default values
+	 */
 	private static AudioSceneContext minimalContext() {
 		AudioSceneContext ctx = new AudioSceneContext();
 		ctx.setDestination(new PackedCollection(1024));

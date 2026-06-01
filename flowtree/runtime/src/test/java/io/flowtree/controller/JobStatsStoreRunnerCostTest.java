@@ -56,6 +56,10 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
         return store;
     }
 
+    /**
+     * Verifies that runner costs recorded for a single job are exposed individually
+     * in the per-runner breakdown of the weekly stats.
+     */
     @Test(timeout = 30000)
     public void singleJobWithTwoRunnersBreaksDownByRunner() throws Exception {
         JobStatsStore store = newStore();
@@ -78,6 +82,10 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that per-runner costs from multiple jobs within the same workstream
+     * are summed together in the weekly stats.
+     */
     @Test(timeout = 30000)
     public void costSumsAcrossJobsPerRunner() throws Exception {
         JobStatsStore store = newStore();
@@ -107,6 +115,10 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that re-recording runner costs for the same job replaces the
+     * previous values rather than accumulating them.
+     */
     @Test(timeout = 30000)
     public void reRecordingReplacesRatherThanDoubleCounts() throws Exception {
         JobStatsStore store = newStore();
@@ -131,6 +143,10 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that {@link JobStatsStore#formatCostBreakdown} returns an empty string
+     * for null or empty maps and produces a compact parenthetical string otherwise.
+     */
     @Test(timeout = 30000)
     public void formatCostBreakdownIsCompactAndOmitsWhenEmpty() {
         assertEquals("", JobStatsStore.formatCostBreakdown(null));
@@ -143,6 +159,10 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
         assertEquals(" (claude $42.00, opencode $3.00)", formatted);
     }
 
+    /**
+     * Verifies that the {@code /api/stats} HTTP endpoint exposes a {@code costByRunner}
+     * object alongside the aggregate {@code totalCostUsd} field.
+     */
     @Test(timeout = 30000)
     public void apiStatsEndpointIncludesPerRunnerBreakdown() throws Exception {
         JobStatsStore store = newStore();
@@ -184,6 +204,10 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that {@link JobStatsStore#getWeeklyStatsByWorkstream} populates per-runner
+     * cost data for every workstream returned by the all-workstreams query.
+     */
     @Test(timeout = 30000)
     public void allWorkstreamsPathPopulatesCostByRunner() throws Exception {
         JobStatsStore store = newStore();
@@ -215,6 +239,10 @@ public class JobStatsStoreRunnerCostTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that recording an empty runner-cost map for a job removes any
+     * previously stored runner cost rows for that job.
+     */
     @Test(timeout = 30000)
     public void emptyBreakdownClearsExistingRows() throws Exception {
         JobStatsStore store = newStore();

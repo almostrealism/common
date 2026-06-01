@@ -50,16 +50,25 @@ import static org.junit.Assert.*;
  */
 public class SlackRoutingTest extends TestSuiteBase {
 
+    /**
+     * Verifies that a null workspace ID causes {@code channelKey} to return the bare channel ID.
+     */
     @Test(timeout = 10000)
     public void testChannelKeyNullWorkspaceReturnsBareChannelId() {
         assertEquals("C_ALPHA", SlackListener.channelKey(null, "C_ALPHA"));
     }
 
+    /**
+     * Verifies that a non-null workspace ID causes {@code channelKey} to return a composite key.
+     */
     @Test(timeout = 10000)
     public void testChannelKeyWithWorkspaceReturnsCompositeKey() {
         assertEquals("T111:C_ALPHA", SlackListener.channelKey("T111", "C_ALPHA"));
     }
 
+    /**
+     * Verifies that the same channel ID in two different workspaces produces distinct keys.
+     */
     @Test(timeout = 10000)
     public void testChannelKeyDifferentWorkspacesSameChannelProduceDifferentKeys() {
         String keyA = SlackListener.channelKey("T111", "C_SHARED");
@@ -68,6 +77,9 @@ public class SlackRoutingTest extends TestSuiteBase {
                 keyA.equals(keyB));
     }
 
+    /**
+     * Verifies backward compatibility where a bare channel ID lookup succeeds when no workspace ID is set.
+     */
     @Test(timeout = 10000)
     public void testBackwardCompatNullWorkspaceIdRouting() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -82,6 +94,9 @@ public class SlackRoutingTest extends TestSuiteBase {
         assertEquals("C_BACK", found.getChannelId());
     }
 
+    /**
+     * Verifies that a workstream with a workspace ID is registered and retrievable by the listener.
+     */
     @Test(timeout = 10000)
     public void testWorkspaceAwareWorkstreamRegistration() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -98,6 +113,9 @@ public class SlackRoutingTest extends TestSuiteBase {
         assertTrue("Workspace-aware workstream should be registered", found);
     }
 
+    /**
+     * Verifies that two workstreams sharing the same channel ID but belonging to different workspaces coexist.
+     */
     @Test(timeout = 10000)
     public void testSameChannelIdInTwoWorkspacesRoutedIndependently() {
         SlackNotifier notifierA = new SlackNotifier(null);
@@ -131,6 +149,9 @@ public class SlackRoutingTest extends TestSuiteBase {
         assertTrue("wsB (develop branch) must be registered", hasDevelop);
     }
 
+    /**
+     * Verifies that {@code handleMessage} returns false when the channel is not registered.
+     */
     @Test(timeout = 10000)
     public void testHandleMessageUnknownChannelReturnsFalseWithWorkspaceId() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -140,6 +161,9 @@ public class SlackRoutingTest extends TestSuiteBase {
         assertFalse("Message to unknown channel must return false", handled);
     }
 
+    /**
+     * Verifies that a {@code setup} slash command stores the workspace ID on the newly created workstream.
+     */
     @Test(timeout = 10000)
     public void testSlashCommandSetupSetsSlackWorkspaceIdOnNewWorkstream() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -157,6 +181,9 @@ public class SlackRoutingTest extends TestSuiteBase {
         assertTrue("Setup must store slackWorkspaceId on new workstream", foundWithWorkspace);
     }
 
+    /**
+     * Verifies that the {@code active} slash command filters workstreams to the calling workspace.
+     */
     @Test(timeout = 10000)
     public void testSlashCommandActiveFiltersWorkstreamsByWorkspace() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -185,6 +212,9 @@ public class SlackRoutingTest extends TestSuiteBase {
                 responses.get(0).contains("not available"));
     }
 
+    /**
+     * Verifies that the per-workspace notifier map is used when resolving the notifier for a workstream.
+     */
     @Test(timeout = 10000)
     public void testSetNotifiersByWorkspaceIsUsedForNotifierResolution() {
         SlackNotifier primaryNotifier = new SlackNotifier(null);
@@ -205,6 +235,10 @@ public class SlackRoutingTest extends TestSuiteBase {
         assertNotNull("Workspace notifier should have workstream registered", jobs);
     }
 
+    /**
+     * Verifies that {@code findWorkstreamByBranch} returns the correct workstream for exact branch matches
+     * and returns null for unknown, null, empty, or partial branch names.
+     */
     @Test(timeout = 10000)
     public void testFindWorkstreamByBranch() {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -232,6 +266,10 @@ public class SlackRoutingTest extends TestSuiteBase {
         assertNull(notifier.findWorkstreamByBranch("feature/new-decoder-v2"));
     }
 
+    /**
+     * Verifies that submitting a branch name matched by workstreams in two different repositories
+     * returns HTTP 400 with an "Ambiguous" error naming both repositories.
+     */
     @Test(timeout = 10000)
     public void testApiSubmitAmbiguousBranchAcrossDifferentRepos() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -276,6 +314,10 @@ public class SlackRoutingTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that providing a {@code repoUrl} in the submit request resolves ambiguity and routes
+     * to the correct workstream without returning an "Ambiguous" error.
+     */
     @Test(timeout = 10000)
     public void testApiSubmitDisambiguatesByRepoUrl() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -319,6 +361,10 @@ public class SlackRoutingTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that a {@code repoUrl} that matches no registered workstream results in a "no workstream found"
+     * error rather than silently routing to a different repository.
+     */
     @Test(timeout = 10000)
     public void testApiSubmitRepoUrlMismatchDoesNotCrossRoute() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);

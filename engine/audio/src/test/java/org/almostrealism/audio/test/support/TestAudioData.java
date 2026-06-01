@@ -39,6 +39,7 @@ public class TestAudioData {
 	/** Standard test amplitude (0.5 to avoid clipping) */
 	public static final double DEFAULT_AMPLITUDE = 0.5;
 
+	/** Random number generator with fixed seed for reproducible test data */
 	private static final Random random = new Random(42);
 
 	/**

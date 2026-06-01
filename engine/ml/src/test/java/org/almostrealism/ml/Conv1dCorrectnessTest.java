@@ -37,6 +37,8 @@ import org.junit.Test;
  * Focused correctness tests for 1D convolution.
  * Uses simple inputs and hand-calculated expected outputs
  * to verify the implementation is correct.
+ *
+ * @see LayerFeatures#convolution1d
  */
 public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeatures {
 
@@ -153,6 +155,16 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		log("=== Manual test PASSED ===\n");
 	}
 
+	/**
+	 * Test 1: Simplest possible case.
+	 * Single channel, batch=1, kernel=3, stride=1, no padding.
+	 * Input: [1, 2, 3, 4, 5]
+	 * Weights: [0.5, 1.0, 0.5]
+	 * Expected output (valid convolution):
+	 *   out[0] = 0.5*1 + 1.0*2 + 0.5*3 = 0.5 + 2.0 + 1.5 = 4.0
+	 *   out[1] = 0.5*2 + 1.0*3 + 0.5*4 = 1.0 + 3.0 + 2.0 = 6.0
+	 *   out[2] = 0.5*3 + 1.0*4 + 0.5*5 = 1.5 + 4.0 + 2.5 = 8.0
+	 */
 	@Test(timeout = 60000)
 	public void testSimpleConv1d() {
 		// Disable debug logging - it causes toArray() errors with parameterized expressions
@@ -348,7 +360,7 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		}
 
 		if (allSame) {
-			log("CONFIRMED: Bug reproduced - all outputs are the same!");
+			log("Bug reproduced - all outputs are the same!");
 			log("This proves the missing .withRate(3, stride, 1) is the cause.");
 		} else {
 			log("Bug NOT reproduced - outputs vary. Checking correctness...");
@@ -413,7 +425,7 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		}
 
 		if (allEqual) {
-			log("ERROR: All outputs are identical! Position indexing is broken.");
+			log("All outputs are identical! Position indexing is broken.");
 		} else {
 			log("OK: Outputs vary across sequence positions.");
 		}

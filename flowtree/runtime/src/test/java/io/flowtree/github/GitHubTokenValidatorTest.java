@@ -42,12 +42,19 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 	 * making real HTTP calls.
 	 */
 	private static class StubValidator extends GitHubTokenValidator {
+		/** Preconfigured stub responses keyed by request path. */
 		private final Map<String, GitHubResponse> responses = new LinkedHashMap<>();
 
+		/**
+		 * Registers a stub response for the given path.
+		 */
 		void stubResponse(String path, int status, String body) {
 			responses.put(path, new GitHubResponse(status, body));
 		}
 
+		/**
+		 * Returns the preconfigured stub response for the given path, or a 404 if none is registered.
+		 */
 		@Override
 		GitHubResponse githubGet(String token, String path) throws IOException {
 			GitHubResponse resp = responses.get(path);
@@ -56,6 +63,9 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Verifies that a token with push access to the configured repository is reported as valid.
+	 */
 	@Test(timeout = 10000)
 	public void validTokenWithRepoAccess() {
 		StubValidator validator = new StubValidator();
@@ -74,6 +84,9 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 		assertTrue("Should have no errors", result.getErrors().isEmpty());
 	}
 
+	/**
+	 * Verifies that a 401 response from the GitHub API causes the token to be reported as invalid.
+	 */
 	@Test(timeout = 10000)
 	public void expiredTokenReturns401() {
 		StubValidator validator = new StubValidator();
@@ -89,6 +102,9 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 		assertTrue(result.getErrors().get(0).contains("401"));
 	}
 
+	/**
+	 * Verifies that a 403 response from the GitHub API causes the token to be reported as invalid.
+	 */
 	@Test(timeout = 10000)
 	public void forbiddenTokenReturns403() {
 		StubValidator validator = new StubValidator();
@@ -103,6 +119,9 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 		assertTrue(result.getErrors().get(0).contains("403"));
 	}
 
+	/**
+	 * Verifies that a 404 response for a repository causes a validation error naming that repository.
+	 */
 	@Test(timeout = 10000)
 	public void repoNotAccessible() {
 		StubValidator validator = new StubValidator();
@@ -122,6 +141,9 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 		assertTrue(result.getErrors().get(0).contains("not found"));
 	}
 
+	/**
+	 * Verifies that a repository with push permission set to false causes a validation error.
+	 */
 	@Test(timeout = 10000)
 	public void repoLacksPushPermission() {
 		StubValidator validator = new StubValidator();
@@ -140,6 +162,9 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 		assertTrue(result.getErrors().get(0).contains("push permission"));
 	}
 
+	/**
+	 * Verifies that when one of multiple repositories is inaccessible, validation reports exactly one error.
+	 */
 	@Test(timeout = 10000)
 	public void multipleReposPartialFailure() {
 		StubValidator validator = new StubValidator();
@@ -162,6 +187,9 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 		assertTrue(result.getErrors().get(0).contains("repo-b"));
 	}
 
+	/**
+	 * Verifies that the owner/repo pair is correctly extracted from an SSH-format GitHub URL.
+	 */
 	@Test(timeout = 10000)
 	public void extractOwnerRepoFromSshUrl() {
 		assertEquals("almostrealism/common",
@@ -169,6 +197,9 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 						"git@github.com:almostrealism/common.git"));
 	}
 
+	/**
+	 * Verifies that the owner/repo pair is correctly extracted from an HTTPS-format GitHub URL.
+	 */
 	@Test(timeout = 10000)
 	public void extractOwnerRepoFromHttpsUrl() {
 		assertEquals("Plytrix/plytrix-platform",
@@ -176,12 +207,18 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 						"https://github.com/Plytrix/plytrix-platform.git"));
 	}
 
+	/**
+	 * Verifies that null and empty inputs to extractOwnerRepo return null without throwing.
+	 */
 	@Test(timeout = 10000)
 	public void extractOwnerRepoFromNullReturnsNull() {
 		assertNull(GitHubTokenValidator.extractOwnerRepo(null));
 		assertNull(GitHubTokenValidator.extractOwnerRepo(""));
 	}
 
+	/**
+	 * Verifies that validateAll returns an empty list when no tokens are configured.
+	 */
 	@Test(timeout = 10000)
 	public void validateAllWithNoTokens() {
 		StubValidator validator = new StubValidator();
@@ -198,6 +235,9 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 	// Phase 1d: Per-workspace githubOrgs validation tests
 	// -------------------------------------------------------------------------
 
+	/**
+	 * Verifies that per-workspace GitHub org tokens are included and validated by validateAll.
+	 */
 	@Test(timeout = 10000)
 	public void validateAllIncludesPerWorkspaceOrgTokens() throws Exception {
 		StubValidator validator = new StubValidator();
@@ -231,6 +271,9 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 						|| results.get(0).getLabel().contains("ws-org"));
 	}
 
+	/**
+	 * Verifies that validateAll merges both global and per-workspace org tokens into the result list.
+	 */
 	@Test(timeout = 10000)
 	public void validateAllMergesGlobalAndWorkspaceOrgTokens() throws Exception {
 		StubValidator validator = new StubValidator();
@@ -257,6 +300,9 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 		assertEquals("Both global and workspace org tokens should be validated", 2, results.size());
 	}
 
+	/**
+	 * Verifies that when a workspace org token has the same org key as a global token, the workspace token overrides it.
+	 */
 	@Test(timeout = 10000)
 	public void validateAllHandlesWorkspaceOrgCollisionWithGlobal() throws Exception {
 		StubValidator validator = new StubValidator();
@@ -286,6 +332,9 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 				1, results.size());
 	}
 
+	/**
+	 * Verifies backward-compatible single-workspace mode where no slackWorkspaces block is present.
+	 */
 	@Test(timeout = 10000)
 	public void validateAllBackwardCompatSingleWorkspaceNoSlackWorkspaces() throws Exception {
 		StubValidator validator = new StubValidator();
@@ -305,6 +354,9 @@ public class GitHubTokenValidatorTest extends TestSuiteBase {
 		assertEquals("org:solo-org", results.get(0).getLabel());
 	}
 
+	/**
+	 * Verifies that a workspace entry with no githubOrgs configured produces an empty validation result.
+	 */
 	@Test(timeout = 10000)
 	public void validateAllEmptyGithubOrgsOnWorkspaceEntry() throws Exception {
 		StubValidator validator = new StubValidator();

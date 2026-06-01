@@ -69,28 +69,42 @@ import java.util.stream.Stream;
  */
 public class DrawingGenerationEndToEndTest extends TestSuiteBase {
 
+	/** Audio sample rate in Hz. */
 	private static final int SAMPLE_RATE = 44100;
+	/** Number of frequency bins in the spectrogram. */
 	private static final int FREQ_BINS = 256;
+	/** Number of time frames in the frequency data. */
 	private static final int FREQ_FRAMES = 1000;
+	/** Sample rate for frequency domain data in Hz. */
 	private static final double FREQ_SAMPLE_RATE = 100.0;
 
+	/** Directory containing the autoencoder model assets. */
 	private static final String AUTOENCODER_DIR =
 			System.getProperty("user.home") +
 					"/Documents/AlmostRealism/Resources/assets/stable-audio-autoencoder";
+	/** Directory containing the DIT model assets. */
 	private static final String DIT_DIR =
 			System.getProperty("user.home") +
 					"/Library/Application Support/com.almostrealism.Rings/assets/stable-audio-dit";
 
+	/** Directory where test output results are written. */
 	private static final String RESULTS_DIR = "results";
 
+	/** Temporary directory for test execution. */
 	private Path tempDir;
 
+	/**
+	 * Sets up the test fixture, creating a temporary directory and results directory.
+	 */
 	@Before
 	public void setUp() throws IOException {
 		tempDir = Files.createTempDirectory("e2e-generation-test");
 		new File(RESULTS_DIR).mkdirs();
 	}
 
+	/**
+	 * Cleans up the test fixture by deleting the temporary directory.
+	 */
 	@After
 	public void tearDown() throws IOException {
 		if (tempDir != null && Files.exists(tempDir)) {

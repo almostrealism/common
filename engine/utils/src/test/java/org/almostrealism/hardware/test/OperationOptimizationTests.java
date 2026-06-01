@@ -30,7 +30,13 @@ import org.junit.Test;
 
 import java.util.function.Supplier;
 
+/**
+ * Tests for operation optimization and performance profiling.
+ */
 public class OperationOptimizationTests extends TestSuiteBase {
+	/**
+	 * Tests reshape and enumerate operations.
+	 */
 	@Test(timeout = 30000)
 	public void reshapeEnumerate() {
 		int seqLength = 1024;
@@ -67,6 +73,9 @@ public class OperationOptimizationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests matrix multiplication loop.
+	 */
 	@Test(timeout = 30000)
 	public void matmulLoop() {
 		int dim = 256;
@@ -81,6 +90,9 @@ public class OperationOptimizationTests extends TestSuiteBase {
 		log(String.valueOf(Countable.count(loop)));
 	}
 
+	/**
+	 * Compares native vs Java matrix multiplication loops (long-running).
+	 */
 	@Test(timeout = 2 * 60000)
 	@TestDepth(3)
 	@TestProperties(longRunning = true)
@@ -102,6 +114,11 @@ public class OperationOptimizationTests extends TestSuiteBase {
 		profile(loop(Process.isolated(a(p(in), matmul(p(matrix), p(in)))), itr));
 	}
 
+	/**
+	 * Profiles a runnable operation.
+	 *
+	 * @param r Runnable to profile
+	 */
 	private void profile(Supplier<Runnable> r) {
 		OperationProfile profiles = new OperationProfile();
 		OperationList op = new OperationList("Profiler", false);

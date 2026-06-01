@@ -47,13 +47,19 @@ import static org.junit.Assert.assertNull;
  */
 public class CodingAgentJobMixedPhaseConfigTest extends TestSuiteBase {
 
-    /** Effort constants used in this scenario. */
+    /** High effort constant used in this scenario. */
     private static final String EFFORT_HIGH = "high";
+
+    /** Medium effort constant used in this scenario. */
     private static final String EFFORT_MEDIUM = "medium";
+
+    /** Low effort constant used in this scenario. */
     private static final String EFFORT_LOW = "low";
 
-    /** Models used in this scenario; selected from {@link ClaudeCodeRunner#VALID_MODELS}. */
+    /** Opus model identifier, selected from {@link ClaudeCodeRunner#VALID_MODELS}. */
     private static final String MODEL_OPUS = "opus";
+
+    /** Sonnet model identifier, selected from {@link ClaudeCodeRunner#VALID_MODELS}. */
     private static final String MODEL_SONNET = "sonnet";
 
     /** Builds the mixed-phase scenario described in the task brief. */

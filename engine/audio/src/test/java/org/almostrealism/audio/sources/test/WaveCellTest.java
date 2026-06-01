@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-
 package org.almostrealism.audio.sources.test;
 
 import io.almostrealism.relation.Evaluable;
@@ -43,13 +42,26 @@ import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for {@link WaveCell} including playback, sequencing, and clock synchronization.
+ */
 public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
+
+	/**
+	 * Creates a WaveCell from the test WAV file with a 1000-sample window.
+	 *
+	 * @return Configured WaveCell ready for testing
+	 * @throws IOException If test file cannot be loaded
+	 */
 	protected WaveCell cell() throws IOException {
 		return WaveData.load(getTestWavFile())
 						.toCell(0, 1000, null, c(10))
 				.apply(new DefaultWaveCellData());
 	}
 
+	/**
+	 * Tests that the cell's receptor mechanism is properly invoked during push.
+	 */
 	@Test(timeout = 60000)
 	public void push() throws IOException {
 		WaveCell cell = cell();
@@ -64,12 +76,16 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		IntStream.range(0, 100).forEach(i -> r.run());
 	}
 
-	// Known issue: cycling 100 dc(...) blocks aborts on Linux glibc with
-	// "double free or corruption (out)". Root cause appears to be that
-	// NativeDataContext.destroy() bulk-frees every allocated native pointer
-	// via NativeMemoryProvider, but Java NativeMemory wrappers may still be
-	// referenced; their cleaner later free()s the same address. macOS libmalloc
-	// tolerates this; glibc detects it and aborts the JVM.
+	/**
+	 * Tests sustained playback over an extended period with cycling.
+	 * <p>
+	 * Known issue: cycling 100 dc(...) blocks aborts on Linux glibc with
+	 * "double free or corruption (out)". Root cause appears to be that
+	 * NativeDataContext.destroy() bulk-frees every allocated native pointer
+	 * via NativeMemoryProvider, but Java NativeMemory wrappers may still be
+	 * referenced; their cleaner later free()s the same address. macOS libmalloc
+	 * tolerates this; glibc detects it and aborts the JVM.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(1)
 	@TestProperties(longRunning = true, knownIssue = true)
@@ -94,6 +110,9 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		});
 	}
 
+	/**
+	 * Tests clean single-pass wave file playback.
+	 */
 	@Test(timeout = 60000)
 	public void clean() {
 		int count = 8;
@@ -104,6 +123,9 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
+	/**
+	 * Tests repeating a hi-hat sample across multiple beats.
+	 */
 	@Test(timeout = 60000)
 	public void repeatHat() {
 		int count = 32;
@@ -115,6 +137,9 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
+	/**
+	 * Tests repeating a snare sample across multiple beats.
+	 */
 	@Test(timeout = 60000)
 	public void repeatSnare() {
 		int count = 32;
@@ -126,6 +151,9 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
+	/**
+	 * Tests sequential playback of multiple wave file instances.
+	 */
 	@Test(timeout = 60000)
 	public void sequence() {
 		int count = 32;
@@ -139,6 +167,9 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
+	/**
+	 * Tests output assignment from wave cell to a receptor.
+	 */
 	@Test(timeout = 60000)
 	public void assignment() {
 		PackedCollection out = new PackedCollection(1);
@@ -152,6 +183,9 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		Assert.assertNotEquals(0.0, out.toDouble(0), 0.0);
 	}
 
+	/**
+	 * Tests wave cell playback synchronized to internal clock.
+	 */
 	@Test(timeout = 60000)
 	public void internalClock() {
 		double rate = 2 * Math.PI / 1000;
@@ -181,6 +215,9 @@ public class WaveCellTest extends TestSuiteBase implements CellFeatures, AudioTe
 		assertEquals(data.toDouble((int) (0.3 * OutputLine.sampleRate) - 1), out.toDouble(0));
 	}
 
+	/**
+	 * Tests wave cell playback synchronized to external TimeCell clock.
+	 */
 	@Test(timeout = 60000)
 	public void externalClock() {
 		double rate = 2 * Math.PI / 1000;

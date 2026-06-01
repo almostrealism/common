@@ -415,7 +415,7 @@ public class OobleckValidationTest extends OobleckValidationBase {
 		compareBlockOutput("Block2_ISOLATED", block2Output, refAfterBlock2, TOLERANCE);
 
 		log("\n=== Block-by-Block Comparison Complete ===");
-		log("NOTE: Remaining blocks (3-5) skipped for faster debugging. Re-enable after Block 2 is fixed.");
+		log("Remaining blocks (3-5) skipped for faster debugging. Re-enable after Block 2 is fixed.");
 	}
 
 	/**

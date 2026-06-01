@@ -35,14 +35,31 @@ import java.util.List;
  * We need to find the break-even point where isolation overhead during
  * execution outweighs compilation time savings.</p>
  */
+/**
+ * Tests to measure the RUNTIME performance tradeoff of isolation.
+ *
+ * <p>Key insight: Compilation happens once, execution happens many times.
+ * We need to find the break-even point where isolation overhead during
+ * execution outweighs compilation time savings.</p>
+ */
 public class WeightedSumIsolationRuntimeTest extends TestSuiteBase implements AlgebraFeatures {
 
+	/** Number of warmup iterations before measurement. */
 	private static final int WARMUP_ITERATIONS = 100;
+
+	/** Number of measurement iterations for timing. */
 	private static final int MEASUREMENT_ITERATIONS = 1000;
 
+	/**
+	 * Testable weighted sum computation with configurable isolation.
+	 */
 	static class TestableWeightedSumComputation extends WeightedSumComputation {
+		/** Whether to force isolation */
 		private final boolean forceIsolation;
 
+		/**
+		 * Creates a testable weighted sum with forced isolation setting.
+		 */
 		public TestableWeightedSumComputation(TraversalPolicy resultShape,
 											  TraversalPolicy inputPositions,
 											  TraversalPolicy weightPositions,
@@ -252,6 +269,9 @@ public class WeightedSumIsolationRuntimeTest extends TestSuiteBase implements Al
 		log("  MARGINAL = Mixed results, depends on iteration count");
 	}
 
+	/**
+	 * Measures compilation and execution timing for weighted sum computation.
+	 */
 	private Result measureFullCycle(int outputSize, int groupSize, boolean isolate) {
 		int c1 = outputSize;
 		int c2 = 1;
@@ -304,6 +324,9 @@ public class WeightedSumIsolationRuntimeTest extends TestSuiteBase implements Al
 		return new Result(compileTimeMs, execTimePerIterUs);
 	}
 
+	/**
+	 * Formats large numbers with K/M/B suffixes.
+	 */
 	private String formatNumber(long n) {
 		if (n >= 1_000_000_000) return String.format("%.1fB", n / 1_000_000_000.0);
 		if (n >= 1_000_000) return String.format("%.1fM", n / 1_000_000.0);
@@ -311,10 +334,18 @@ public class WeightedSumIsolationRuntimeTest extends TestSuiteBase implements Al
 		return String.valueOf(n);
 	}
 
+	/**
+	 * Holds timing measurement results.
+	 */
 	private static class Result {
+		/** Compilation time in milliseconds. */
 		final long compileTimeMs;
+		/** Execution time per iteration in microseconds. */
 		final double execTimePerIterUs;
 
+		/**
+		 * Creates a result with timing measurements.
+		 */
 		Result(long compileTimeMs, double execTimePerIterUs) {
 			this.compileTimeMs = compileTimeMs;
 			this.execTimePerIterUs = execTimePerIterUs;

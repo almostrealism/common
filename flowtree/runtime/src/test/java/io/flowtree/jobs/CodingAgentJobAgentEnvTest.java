@@ -37,6 +37,7 @@ import java.util.Map;
  */
 public class CodingAgentJobAgentEnvTest extends TestSuiteBase {
 
+    /** Returns a sample environment map with two representative entries for use in test assertions. */
     private static Map<String, String> sampleEnv() {
         Map<String, String> env = new LinkedHashMap<>();
         env.put("TENANT_ID", "tenant-a");
@@ -44,6 +45,7 @@ public class CodingAgentJobAgentEnvTest extends TestSuiteBase {
         return env;
     }
 
+    /** Verifies that agentEnv set on a factory is propagated to the job it produces. */
     @Test(timeout = 30000)
     public void factoryPropagatesAgentEnvToJob() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("do work");
@@ -55,6 +57,7 @@ public class CodingAgentJobAgentEnvTest extends TestSuiteBase {
                 sampleEnv(), job.getAgentEnv());
     }
 
+    /** Verifies that agentEnv survives a factory wire round-trip serialization and deserialization. */
     @Test(timeout = 30000)
     public void factoryWireRoundTripPreservesAgentEnv() {
         CodingAgentJob.Factory factory = new CodingAgentJob.Factory("do work");
@@ -67,6 +70,7 @@ public class CodingAgentJobAgentEnvTest extends TestSuiteBase {
                 sampleEnv(), job.getAgentEnv());
     }
 
+    /** Verifies that agentEnv survives a job wire round-trip serialization and deserialization. */
     @Test(timeout = 30000)
     public void jobWireRoundTripPreservesAgentEnv() {
         CodingAgentJob job = new CodingAgentJob("t1", "do work");
@@ -77,6 +81,7 @@ public class CodingAgentJobAgentEnvTest extends TestSuiteBase {
                 sampleEnv(), reconstructed.getAgentEnv());
     }
 
+    /** Verifies that agentEnv is injected into the AgentRunRequest environment used for the agent subprocess. */
     @Test(timeout = 30000)
     public void buildRunRequestInjectsAgentEnv() {
         CodingAgentJob job = new CodingAgentJob("t1", "do work");
@@ -92,6 +97,7 @@ public class CodingAgentJobAgentEnvTest extends TestSuiteBase {
         Assert.assertEquals("secret-a", env.get("RUNTIME_SECRET_NAME"));
     }
 
+    /** Verifies that leaving agentEnv unset does not cause errors and the request still has a valid environment map. */
     @Test(timeout = 30000)
     public void absentAgentEnvIsHarmless() {
         CodingAgentJob job = new CodingAgentJob("t1", "do work");

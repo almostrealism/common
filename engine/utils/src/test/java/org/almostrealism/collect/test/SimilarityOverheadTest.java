@@ -123,7 +123,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 			}
 		}
 
-		log("=== Baseline Results (" + totalComparisons + " comparisons) ===");
+		log("Baseline Results (" + totalComparisons + " comparisons)");
 		log("Computation creation: " +
 				String.format("%.1f", computationCreationTime / 1_000_000_000.0) + "s total, " +
 				String.format("%.3f", computationCreationTime / (double) totalComparisons / 1_000_000.0) +
@@ -280,7 +280,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		}
 
 		long elapsed = System.nanoTime() - start;
-		log("=== Cached Cosine Similarity Evaluable ===");
+		log("Cached Cosine Similarity Evaluable");
 		log("Comparisons: " + totalComparisons + " in " +
 				String.format("%.1f", elapsed / 1_000_000_000.0) + "s (" +
 				String.format("%.3f", elapsed / (double) totalComparisons / 1_000_000.0) +
@@ -431,7 +431,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		}
 
 		long totalTime = dataStackTime + kernelTime + extractTime;
-		log("=== Batched Cosine Similarity (batch=" + batchSize + ") ===");
+		log("Batched Cosine Similarity (batch=" + batchSize + ")");
 		log("Comparisons: " + totalComparisons + " in " +
 				String.format("%.1f", totalTime / 1_000_000_000.0) + "s (" +
 				String.format("%.3f", totalTime / (double) totalComparisons / 1_000_000.0) +
@@ -530,7 +530,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 			if (batchOffset + FRAMES <= batchAllValues.length) {
 				System.arraycopy(batchAllValues, batchOffset, targetBatch, 0, FRAMES);
 			} else {
-				log("ERROR: batch output too small for target " + b +
+				log("Batch output too small for target " + b +
 						", needed offset " + batchOffset + "+" + FRAMES +
 						" but length=" + batchAllValues.length);
 				continue;
@@ -609,13 +609,14 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		}
 
 		long elapsed = System.nanoTime() - startTime;
-		log("=== Batched Similarity at Scale (batch=" + batchSize + ") ===");
+		log("Batched Similarity at Scale (batch=" + batchSize + ")");
 		log("Completed " + totalComparisons + " comparisons in " +
 				String.format("%.1f", elapsed / 1_000_000_000.0) + "s (" +
 				String.format("%.3f", elapsed / (double) totalComparisons / 1_000_000.0) +
 				" ms/comparison)");
 	}
 
+	/** Cache for cosine similarity evaluables to avoid recreating identical computation graphs. */
 	private static final Map<Long, Evaluable<PackedCollection>> cosineCache = new HashMap<>();
 
 	/**
@@ -725,7 +726,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		double reductionPercent = 100.0 * (totalPairs - candidates.size()) / totalPairs;
 		long totalTime = embeddingTime + filterTime + exactTime;
 
-		log("=== Incremental Similarity (Phase 5) ===");
+		log("Incremental Similarity (Phase 5)");
 		log("Clusters: " + clusters + ", Samples: " + count);
 		log("Total pairs: " + totalPairs + ", Candidate pairs: " + candidates.size());
 		log("Exact comparisons reduced by: " + String.format("%.1f%%", reductionPercent));
@@ -859,6 +860,14 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		return tensors;
 	}
 
+	/**
+	 * Creates random tensors for testing.
+	 *
+	 * @param count Number of tensors
+	 * @param frames Number of frames per tensor
+	 * @param bins Number of bins per frame
+	 * @return Array of random tensors
+	 */
 	private PackedCollection[] createRandomTensors(int count, int frames, int bins) {
 		Random rng = new Random(42);
 		PackedCollection[] tensors = new PackedCollection[count];

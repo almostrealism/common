@@ -68,6 +68,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         runner = null;
     }
 
+    /** Verifies that {@code resolveRunner} returns the runner registered under the configured name. */
     @Test(timeout = 10000)
     public void resolveRunnerHonoursRunnerName() {
         CodingAgentJob job = new CodingAgentJob("t-1", "p");
@@ -76,6 +77,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         assertEquals(RECORDING_RUNNER, resolved.getName());
     }
 
+    /** Verifies that {@code resolveRunner} falls back to the Claude runner when no runner name is set. */
     @Test(timeout = 10000)
     public void resolveRunnerDefaultsToClaude() {
         CodingAgentJob job = new CodingAgentJob("t-1", "p");
@@ -83,6 +85,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         assertEquals(AgentRunnerRegistry.CLAUDE, resolved.getName());
     }
 
+    /** Verifies that a per-phase runner override is used for that phase while other phases use the default. */
     @Test(timeout = 10000)
     public void resolveRunnerHonoursPerPhaseOverride() {
         CodingAgentJob job = new CodingAgentJob("t-1", "p");
@@ -94,6 +97,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
                 job.resolveRunner(Phase.PRIMARY).getName());
     }
 
+    /** Verifies that all job-level configuration is propagated into the built {@link AgentRunRequest}. */
     @Test(timeout = 10000)
     public void buildRunRequestThreadsConfigurationThroughRequest() {
         CodingAgentJob job = new CodingAgentJob("t-2", "do the thing");
@@ -121,6 +125,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         assertEquals(Path.of("/tmp/x.json"), req.getOutputCapturePath());
     }
 
+    /** Verifies that {@code executeSingleRun} dispatches through the configured runner and captures the result. */
     @Test(timeout = 10000)
     public void executeSingleRunDispatchesThroughRunner() throws Exception {
         Path workDir = Files.createTempDirectory("coding-agent-dispatch-");
@@ -153,6 +158,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         }
     }
 
+    /** Verifies that the runner name survives an encode/set round-trip. */
     @Test(timeout = 10000)
     public void runnerNameRoundTripsThroughEncodeAndSet() {
         CodingAgentJob original = new CodingAgentJob("t-4", "p");
@@ -166,6 +172,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         assertEquals(RECORDING_RUNNER, roundTrip.getRunnerName());
     }
 
+    /** Verifies that the legacy {@code runner} key is accepted during deserialization and sets the default runner. */
     @Test(timeout = 10000)
     public void legacyRunnerKeySetsDefaultRunner() {
         // Phase-2 deserialization must continue to accept the legacy
@@ -176,6 +183,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         assertEquals(RECORDING_RUNNER, restored.getRunnerName());
     }
 
+    /** Verifies that when the runner name is the default it is not included in the encoded form. */
     @Test(timeout = 10000)
     public void runnerNameDefaultIsOmittedFromEncode() {
         CodingAgentJob job = new CodingAgentJob("t-5", "p");
@@ -188,6 +196,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
                 encoded.contains("::runners:="));
     }
 
+    /** Verifies that the per-phase runner map survives a full encode/decode round-trip. */
     @Test(timeout = 10000)
     public void perPhaseRunnerMapRoundTrips() {
         CodingAgentJob original = new CodingAgentJob("t-rp", "p");
@@ -205,6 +214,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
                 restored.getRunnerForPhase(Phase.COMMIT_MESSAGE));
     }
 
+    /** Verifies that a per-phase runners map and a defaultRunner key can coexist in the serialized form. */
     @Test(timeout = 10000)
     public void runnersKeyAndDefaultRunnerCoexistOnTheWire() {
         CodingAgentJob original = new CodingAgentJob("t-coexist", "p");
@@ -219,6 +229,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
                 restored.getRunnerForPhase(Phase.ORGANIZATIONAL_PLACEMENT));
     }
 
+    /** Verifies that an explicit {@code defaultRunner} key wins over the legacy {@code runner} key when both are present. */
     @Test(timeout = 10000)
     public void runnersAndLegacyRunnerKeyTogetherPrefersExplicitDefault() {
         // When both legacy ``runner`` and new ``defaultRunner`` are present
@@ -229,6 +240,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         assertEquals(RECORDING_RUNNER, restored.getDefaultRunner());
     }
 
+    /** Verifies that an unrecognised phase name in the runners map is silently skipped without throwing. */
     @Test(timeout = 10000)
     public void unknownPhaseInRunnersIsSkippedRatherThanFailing() {
         // A future producer must not be able to brick a current consumer.
@@ -238,6 +250,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         assertEquals(RECORDING_RUNNER, restored.getRunnerForPhase(Phase.PRIMARY));
     }
 
+    /** Verifies that every known rule name resolves to the expected {@link Phase} value. */
     @Test(timeout = 10000)
     public void resolveCurrentPhaseRoundTripsForEveryRuleName() {
         // Every rule name must resolve to a Phase so dispatch can route the
@@ -254,6 +267,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         assertEquals(Phase.COMMIT_MESSAGE, Phase.fromRuleName("commit-message"));
     }
 
+    /** Verifies that the REVIEW phase routes to a configured per-phase runner while other phases use the default. */
     @Test(timeout = 10000)
     public void reviewPhaseRoutesToConfiguredRunner() {
         CodingAgentJob job = new CodingAgentJob("t-rv", "p");
@@ -264,6 +278,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
                 job.resolveRunner(Phase.PRIMARY).getName());
     }
 
+    /** Verifies that the REVIEW phase inherits the default runner when no per-phase override is set. */
     @Test(timeout = 10000)
     public void reviewPhaseInheritsDefaultRunner() {
         CodingAgentJob job = new CodingAgentJob("t-rv", "p");
@@ -272,6 +287,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
                 job.resolveRunner(Phase.REVIEW).getName());
     }
 
+    /** Verifies that REVIEW is declared between ENFORCE_CHANGES and DEDUPLICATION in the {@link Phase} enum. */
     @Test(timeout = 10000)
     public void reviewPhaseOrderedBetweenEnforceChangesAndDeduplication() {
         // The declaration order of Phase governs encode/decode iteration, so
@@ -289,6 +305,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         assertTrue("REVIEW must be declared before DEDUPLICATION", rv < dd);
     }
 
+    /** Verifies that {@code hasUncommittedChanges} returns {@code true} when a dependent repo has uncommitted files. */
     @Test(timeout = 10000)
     public void hasUncommittedChangesReturnsTrueForDirtyDependentRepo() throws Exception {
         Path primary = initGitRepo();
@@ -324,6 +341,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         }
     }
 
+    /** Verifies that {@code hasUncommittedChanges} returns {@code false} when both the primary and dependent repos are clean. */
     @Test(timeout = 10000)
     public void hasUncommittedChangesReturnsFalseWhenBothReposClean() throws Exception {
         Path primary = initGitRepo();
@@ -387,15 +405,18 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
                 Collections.emptyList(),
                 Collections.emptyMap());
 
+        /** Returns the fixed name used to register this runner in the registry. */
         @Override
         public String getName() { return RECORDING_RUNNER; }
 
+        /** Returns a capabilities descriptor with tool-list and MCP support enabled. */
         @Override
         public AgentCapabilities capabilities() {
             return new AgentCapabilities(false, false, false, false, true, true, false,
                     Collections.emptySet());
         }
 
+        /** Records the request and returns the preconfigured {@link #nextResult}. */
         @Override
         public AgentRunResult run(AgentRunRequest request, ConsoleFeatures logger) {
             requests.add(request);

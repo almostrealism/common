@@ -110,7 +110,7 @@ public class NormLayerShapeInvestigationTest extends TestSuiteBase {
 		// NOTE: 1D shapes (6) cannot be used directly with norm(1).apply()
 		// because padDimensions will create (1, 1, 6) and the item() check fails
 		log("");
-		log("NOTE: Direct 1D shape input to norm() is not supported.");
+		log("Direct 1D shape input to norm() is not supported.");
 		log("Use SequentialBlock.add(norm(groups)) which passes output shape of previous layer.");
 	}
 

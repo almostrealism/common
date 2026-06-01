@@ -34,11 +34,13 @@ import static org.junit.Assert.assertTrue;
  */
 public class TmuxSessionTest extends TestSuiteBase {
 
+	/** Skips tests when tmux is not available on PATH. */
 	@Before
 	public void requireTmux() {
 		Assume.assumeTrue("tmux not on PATH", tmuxAvailable());
 	}
 
+	/** startAndWaitFor returns the wrapped process exit code. */
 	@Test(timeout = 30000)
 	public void startAndWaitForCapturesExitCode() throws Exception {
 		try (TmuxSession session = TmuxSession.create()) {
@@ -48,6 +50,7 @@ public class TmuxSessionTest extends TestSuiteBase {
 		}
 	}
 
+	/** captureOutput streams stdout lines from the wrapped process. */
 	@Test(timeout = 30000)
 	public void captureOutputStreamsStdoutLines() throws Exception {
 		try (TmuxSession session = TmuxSession.create()) {
@@ -70,6 +73,7 @@ public class TmuxSessionTest extends TestSuiteBase {
 		}
 	}
 
+	/** sendLine delivers text to the wrapped process stdin. */
 	@Test(timeout = 30000)
 	public void sendLineDeliversTextToWrappedProcess() throws Exception {
 		try (TmuxSession session = TmuxSession.create()) {
@@ -92,6 +96,7 @@ public class TmuxSessionTest extends TestSuiteBase {
 		}
 	}
 
+	/** close kills a running tmux session. */
 	@Test(timeout = 30000)
 	public void closeKillsRunningSession() throws Exception {
 		TmuxSession session = TmuxSession.create();
@@ -106,6 +111,7 @@ public class TmuxSessionTest extends TestSuiteBase {
 		}
 	}
 
+	/** environment overrides are visible to the command via the set environment. */
 	@Test(timeout = 30000)
 	public void environmentOverridesAreVisibleToCommand() throws Exception {
 		try (TmuxSession session = TmuxSession.create()) {
@@ -125,6 +131,7 @@ public class TmuxSessionTest extends TestSuiteBase {
 		}
 	}
 
+	/** Checks whether tmux is available on PATH. */
 	private static boolean tmuxAvailable() {
 		try {
 			ProcessBuilder pb = new ProcessBuilder("tmux", "-V");

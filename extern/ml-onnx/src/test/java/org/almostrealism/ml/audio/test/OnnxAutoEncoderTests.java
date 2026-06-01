@@ -27,7 +27,14 @@ import org.junit.Test;
 
 import java.io.File;
 
+/**
+ * Tests for ONNX autoencoder integration.
+ */
 public class OnnxAutoEncoderTests extends TestSuiteBase {
+
+	/**
+	 * Test encoding audio with the ONNX autoencoder.
+	 */
 	@Test(timeout = 120000)
 	public void encode() throws OrtException {
 		AssetGroup assets = new AssetGroup(AssetGroupInfo

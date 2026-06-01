@@ -15,7 +15,13 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 
+/**
+ * Tests for Metal JNI integration.
+ */
 public class MetalJNI extends TestSuiteBase {
+	/**
+	 * Runs the Metal vector-matrix multiplication test.
+	 */
 	@Test(timeout = 30000)
 	public void run() throws IOException {
 		if (!(Hardware.getLocalHardware().getComputeContext() instanceof MetalComputeContext)) return;
@@ -32,6 +38,15 @@ public class MetalJNI extends TestSuiteBase {
 		log("Result: " + result[0] + ", " + result[1] + ", " + result[2] + ", " + result[3]);
 	}
 
+	/**
+	 * Multiplies a vector with a matrix using Metal compute.
+	 *
+	 * @param vector the input vector
+	 * @param matrix the input matrix
+	 * @param result the output result buffer
+	 * @param numElements the number of elements
+	 * @throws IOException if an I/O error occurs
+	 */
 	public static void multiplyVectorWithMatrix(float[] vector, float[] matrix, float[] result, int numElements) throws IOException {
 		StringBuilder functionSource = new StringBuilder();
 

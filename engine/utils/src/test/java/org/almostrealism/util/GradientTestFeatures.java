@@ -27,8 +27,20 @@ import org.almostrealism.hardware.Hardware;
 import java.util.function.BiConsumer;
 import java.util.function.IntFunction;
 
+/**
+ * Test features for gradient computation testing.
+ */
 public interface GradientTestFeatures extends CodeFeatures {
 
+	/**
+	 * Runs a gradient test with the given parameters.
+	 *
+	 * @param name the test name
+	 * @param dim the dimension
+	 * @param inputGenerator generates input collections
+	 * @param operation the operation to test
+	 * @param validate validation consumer
+	 */
 	default void runTest(String name, int dim,
 						 IntFunction<PackedCollection> inputGenerator,
 						 Factor<PackedCollection> operation,
@@ -36,6 +48,17 @@ public interface GradientTestFeatures extends CodeFeatures {
 		runTest(name, dim, inputGenerator, operation, validate, true, true);
 	}
 
+	/**
+	 * Runs a gradient test with configurable fixed/variable input testing.
+	 *
+	 * @param name the test name
+	 * @param dim the dimension
+	 * @param inputGenerator generates input collections
+	 * @param operation the operation to test
+	 * @param validate validation consumer
+	 * @param fixed whether to test with fixed input
+	 * @param variable whether to test with variable input
+	 */
 	default void runTest(String name, int dim,
 						 IntFunction<PackedCollection> inputGenerator,
 						 Factor<PackedCollection> operation,
@@ -67,8 +90,15 @@ public interface GradientTestFeatures extends CodeFeatures {
 		}
 	}
 
+	/**
+	 * Applies gradient transformation to delta and gradient collections.
+	 *
+	 * @param delta the delta collection
+	 * @param gradient the gradient collection
+	 * @return the resulting producer
+	 */
 	default Producer<PackedCollection> applyGradient(CollectionProducer delta,
-														CollectionProducer gradient) {
+													CollectionProducer gradient) {
 		CollectionFeatures cf = CollectionFeatures.getInstance();
 		int outSize = cf.shape(gradient).getTotalSize();
 		int inSize = cf.shape(delta).getTotalSize() / outSize;
@@ -82,10 +112,19 @@ public interface GradientTestFeatures extends CodeFeatures {
 				.each();
 	}
 
+	/**
+	 * Computes the backwards pass for normalization with weights and bias.
+	 *
+	 * @param xGroup the input group
+	 * @param gradient the gradient
+	 * @param weights the weights, or null if none
+	 * @param bias the bias, or null if none
+	 * @return the result collection
+	 */
 	default PackedCollection normBackwards(PackedCollection xGroup,
-											  PackedCollection gradient,
-											  PackedCollection weights,
-											  PackedCollection bias) {
+										  PackedCollection gradient,
+										  PackedCollection weights,
+										  PackedCollection bias) {
 		double eps = Hardware.getLocalHardware().epsilon();
 		int groupSize = xGroup.getShape().getTotalSize();
 
@@ -118,6 +157,14 @@ public interface GradientTestFeatures extends CodeFeatures {
 				.replace(v -> v / stdG);
 	}
 
+	/**
+	 * Computes the gradient for a group with given count, output, and gradient.
+	 *
+	 * @param c the count
+	 * @param o the output collection
+	 * @param g the gradient collection
+	 * @return the result collection
+	 */
 	default PackedCollection dlDxGroup(int c, PackedCollection o, PackedCollection g) {
 		double eps = 1e-5;
 		double muG = o.doubleStream().sum() / c;
@@ -137,11 +184,20 @@ public interface GradientTestFeatures extends CodeFeatures {
 				g, gradientMean, normalized, gradientByInputMean);
 	}
 
+	/**
+	 * Computes the gradient for a group with normalized values.
+	 *
+	 * @param dLdHatXGroup the gradient of loss with respect to normalized input
+	 * @param dLdHatXGroupMean the mean of dLdHatXGroup
+	 * @param xHatGroup the normalized input
+	 * @param dLdHatXGroupXHatGroupMean the mean of dLdHatXGroup * xHatGroup
+	 * @return the result collection
+	 */
 	// TODO  Make private
 	default PackedCollection dlDxGroup(PackedCollection dLdHatXGroup,
-										  double dLdHatXGroupMean,
-										  PackedCollection xHatGroup,
-										  double dLdHatXGroupXHatGroupMean) {
+									  double dLdHatXGroupMean,
+									  PackedCollection xHatGroup,
+									  double dLdHatXGroupXHatGroupMean) {
 		return new PackedCollection(dLdHatXGroup.getShape())
 				.fill(pos -> dLdHatXGroup.valueAt(pos) - dLdHatXGroupMean
 						- xHatGroup.valueAt(pos) * dLdHatXGroupXHatGroupMean);

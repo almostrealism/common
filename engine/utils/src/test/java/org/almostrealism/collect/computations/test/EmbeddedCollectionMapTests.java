@@ -25,8 +25,14 @@ import org.junit.Test;
 
 import java.util.Arrays;
 
+/**
+ * Tests for embedded collection map operations.
+ */
 public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelAssertions {
 
+	/**
+	 * Tests multiply operation on embedded collections.
+	 */
 	@Test(timeout = 30000)
 	public void multiply() {
 		PackedCollection a = tensor(shape(8, 1)).pack();
@@ -35,6 +41,9 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		multiply(p(a.traverseEach()), p(b.traverseEach())).get().evaluate();
 	}
 
+	/**
+	 * Tests multiply map operation.
+	 */
 	@Test(timeout = 30000)
 	public void multiplyMap() {
 		int n = 2;
@@ -60,6 +69,9 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		});
 	}
 
+	/**
+	 * Tests reduce max operation.
+	 */
 	@Test(timeout = 30000)
 	public void reduceMax() {
 		int c = 16;
@@ -90,6 +102,9 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		});
 	}
 
+	/**
+	 * Tests single enumerate operation.
+	 */
 	@Test(timeout = 30000)
 	public void singleEnumerate() {
 		int c = 16;
@@ -113,6 +128,9 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		}
 	}
 
+	/**
+	 * Tests single enumerate max operation.
+	 */
 	@Test(timeout = 30000)
 	@TestProperties(knownIssue = true)
 	public void singleEnumerateMax() {
@@ -149,6 +167,9 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		}
 	}
 
+	/**
+	 * Tests single enumerate reduce max operation.
+	 */
 	@Test(timeout = 30000)
 	public void singleEnumerateReduceMax() {
 		int c = 16;
@@ -184,6 +205,9 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		}
 	}
 
+	/**
+	 * Tests enumerate reduce max operation.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateReduceMax() {
 		int c = 16;
@@ -220,6 +244,9 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		});
 	}
 
+	/**
+	 * Tests atomic reduce enumerate operation.
+	 */
 	@Test(timeout = 30000)
 	public void atomicReduceEnumerate() {
 		int c = 16;
@@ -251,6 +278,9 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		});
 	}
 
+	/**
+	 * Tests repeat map operation.
+	 */
 	@Test(timeout = 30000)
 	public void repeatMap() {
 		int c = 8;
@@ -281,6 +311,9 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		});
 	}
 
+	/**
+	 * Tests repeat multiply operation.
+	 */
 	@Test(timeout = 30000)
 	public void repeatMultiply() {
 		int d = 4;
@@ -308,6 +341,9 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		});
 	}
 
+	/**
+	 * Tests repeat multiply map operation.
+	 */
 	@Test(timeout = 30000)
 	public void repeatMultiplyMap() {
 		int c = 8;
@@ -339,6 +375,9 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		});
 	}
 
+	/**
+	 * Tests reduce enumerate operation.
+	 */
 	@Test(timeout = 30000)
 	public void reduceEnumerate() {
 		int n = 4;
@@ -367,6 +406,9 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		});
 	}
 
+	/**
+	 * Tests map enumerate 3D operation.
+	 */
 	@Test(timeout = 30000)
 	public void mapEnumerate3d() {
 		int n = 4;
@@ -402,6 +444,9 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		});
 	}
 
+	/**
+	 * Tests enumerate operation.
+	 */
 	@Test(timeout = 30000)
 	public void enumerate() {
 		int n = 4;
@@ -430,6 +475,9 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		});
 	}
 
+	/**
+	 * Tests enumerate expression operation.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateExpression() {
 		int n = 4;
@@ -461,6 +509,9 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		});
 	}
 
+	/**
+	 * Tests reduce max enumerate 3D operation.
+	 */
 	@Test(timeout = 30000)
 	public void reduceMaxEnumerate3d() {
 		int n = 8;
@@ -491,6 +542,9 @@ public class EmbeddedCollectionMapTests extends TestSuiteBase implements KernelA
 		});
 	}
 
+	/**
+	 * Tests enumerate reduce enumerate max operation.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateReduceEnumerateMax() {
 		int c = 8;
