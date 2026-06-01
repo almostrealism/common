@@ -651,6 +651,20 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 */
 	public static boolean enableNonUniformCompilation = false;
 
+	/**
+	 * When {@code true}, {@link #flatten()} labels each inlined child operation with the
+	 * provenance of its originating sub-list by wrapping it in an
+	 * {@link io.almostrealism.profile.OperationWithInfo}. This aids profile diagnostics
+	 * but inserts a decorator into the flattened operation stream.
+	 *
+	 * <p>Disabled by default: the wrapping interferes with downstream process optimization
+	 * on the model-compilation path (it can prevent expression embedding from being broken
+	 * up, causing compilation to hang). The remaining provenance infrastructure
+	 * ({@link io.almostrealism.profile.OperationMetadata#withProvenance(String)} and the
+	 * profile-analysis tooling) is unaffected by this flag and remains available.</p>
+	 */
+	public static boolean enableProvenance = false;
+
 	/** Thread-local flag set when a kernel abort has been triggered; holds the offending MemoryData. */
 	private static ThreadLocal<MemoryData> abortFlag;
 	/** If true, abort when argument evaluation fails; if false, abort when scope construction fails. */
@@ -1036,7 +1050,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 						OperationList op = original.flatten();
 
 						if (op.getComputeRequirements() == null) {
-							if (provenance != null) {
+							if (enableProvenance && provenance != null) {
 								return op.stream().map(child -> withProvenance(child, provenance));
 							}
 							return op.stream();

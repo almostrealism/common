@@ -79,8 +79,15 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		OperationList outer = new OperationList("outer");
 		outer.add(inner);
 
-		// Flatten
-		OperationList flat = outer.flatten();
+		// Flatten with provenance labelling enabled
+		boolean previous = OperationList.enableProvenance;
+		OperationList flat;
+		OperationList.enableProvenance = true;
+		try {
+			flat = outer.flatten();
+		} finally {
+			OperationList.enableProvenance = previous;
+		}
 
 		// The flattened list should have one operation with provenance
 		assertEquals(1, flat.size());
@@ -166,8 +173,15 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		OperationList level1 = new OperationList("level 1");
 		level1.add(level2);
 
-		// Flatten
-		OperationList flat = level1.flatten();
+		// Flatten with provenance labelling enabled
+		boolean previous = OperationList.enableProvenance;
+		OperationList flat;
+		OperationList.enableProvenance = true;
+		try {
+			flat = level1.flatten();
+		} finally {
+			OperationList.enableProvenance = previous;
+		}
 
 		assertEquals(1, flat.size());
 
@@ -204,8 +218,16 @@ public class OperationProvenanceTests extends TestSuiteBase {
 		OperationMetadata originalMetadata = ((OperationInfo) originalLeaf).getMetadata();
 		String originalDescription = originalMetadata.getShortDescription();
 
-		OperationList firstFlatten = outer.flatten();
-		OperationList secondFlatten = outer.flatten();
+		boolean previous = OperationList.enableProvenance;
+		OperationList firstFlatten;
+		OperationList secondFlatten;
+		OperationList.enableProvenance = true;
+		try {
+			firstFlatten = outer.flatten();
+			secondFlatten = outer.flatten();
+		} finally {
+			OperationList.enableProvenance = previous;
+		}
 
 		// 1. flatten() must not replace or mutate the original leaf still held by `inner`
 		assertSame("flatten() must not replace the original leaf instance",
