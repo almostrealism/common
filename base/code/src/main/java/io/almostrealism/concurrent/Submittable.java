@@ -49,21 +49,4 @@ public interface Submittable {
 	 *         publishes no completion handle (fully synchronous execution)
 	 */
 	Semaphore submit(Semaphore dependsOn);
-
-	/**
-	 * Whether this operation publishes a <em>deferred</em> completion worth chaining &mdash;
-	 * i.e. whether its underlying provider can postpone the completion wait rather than having
-	 * already finished the work synchronously.
-	 *
-	 * <p>A composite should chain (via {@link #submit(Semaphore)}) only the members that report
-	 * {@code true}, and execute the rest sequentially. Chaining a synchronous member threads its
-	 * host-readiness latch into the next member's wait, serializing across the async dispatch
-	 * executor with no benefit. Defaults to {@code false}; an implementation backed by a
-	 * provider with asynchronous device completion (e.g. batched Metal) overrides it.</p>
-	 *
-	 * @return {@code true} if this operation's completion is deferrable and worth chaining
-	 */
-	default boolean isCompletionDeferred() {
-		return false;
-	}
 }

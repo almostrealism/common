@@ -83,6 +83,41 @@ JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_waitUntilComple
     buf->waitUntilCompleted();
 }
 
+// Creates an MTLSharedEvent on the device, used to order dispatches across command buffers
+// on the GPU (the analog of an OpenCL cl_event). The caller owns the returned event and must
+// release it with releaseSharedEvent.
+extern "C"
+JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_createSharedEvent(JNIEnv* env, jclass cls, jlong device) {
+    MTL::Device* dev = (MTL::Device*) device;
+    MTL::SharedEvent* event = dev->newSharedEvent();
+    return (jlong) event;
+}
+
+// Encodes, into the command buffer, a signal of the event to the given value once the buffer's
+// prior work completes. Must be called when no encoder is active on the buffer.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_encodeSignalEvent(JNIEnv* env, jclass cls, jlong cmdBuffer, jlong event, jlong value) {
+    MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
+    MTL::SharedEvent* ev = (MTL::SharedEvent*) event;
+    buf->encodeSignalEvent(ev, (uint64_t) value);
+}
+
+// Encodes, into the command buffer, a wait until the event reaches the given value before the
+// buffer's subsequent work runs. Must be called when no encoder is active on the buffer.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_encodeWaitForEvent(JNIEnv* env, jclass cls, jlong cmdBuffer, jlong event, jlong value) {
+    MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
+    MTL::SharedEvent* ev = (MTL::SharedEvent*) event;
+    buf->encodeWait(ev, (uint64_t) value);
+}
+
+// Releases an event created by createSharedEvent.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_releaseSharedEvent(JNIEnv* env, jclass cls, jlong event) {
+    MTL::SharedEvent* ev = (MTL::SharedEvent*) event;
+    ev->release();
+}
+
 extern "C"
 JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_computeCommandEncoder(JNIEnv* env, jclass cls, jlong cmdBuffer) {
     MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;

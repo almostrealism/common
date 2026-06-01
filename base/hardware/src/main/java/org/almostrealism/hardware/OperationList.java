@@ -619,29 +619,6 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 */
 	public static boolean enableSegmenting = false;
 
-	/**
-	 * When {@code true}, an unfused {@link Runner} chains its {@link Submittable} children by
-	 * threading each child's completion {@link io.almostrealism.concurrent.Semaphore} into the
-	 * next child's {@code dependsOn} and issuing a single completion wait at the end, instead
-	 * of waiting per operation.
-	 *
-	 * <p>Chaining engages only for members whose provider reports a deferrable device completion
-	 * via {@link io.almostrealism.concurrent.Submittable#isCompletionDeferred()} (e.g. batched
-	 * Metal); every other member runs sequentially, exactly as when chaining is off. This gate
-	 * makes the flag harmless on synchronous providers — their completion is a host latch driven
-	 * by the {@link Hardware#isAsync() async} arg-loading executor, and threading it through
-	 * {@code dependsOn.waitFor()} would serialize across executor tasks, so those members are
-	 * never chained.</p>
-	 *
-	 * <p><strong>Defaults on.</strong> The gate keeps it inert on synchronous providers; the only
-	 * provider that defers is batched Metal
-	 * ({@link io.almostrealism.code.ComputeContext#isCompletionDeferred()}). Dependent chained
-	 * members are encoded in order (see {@code AcceleratedOperation.submit()} ->
-	 * {@code AcceleratedProcessDetails.awaitReady()}), so ordering is correct. Set
-	 * {@code AR_HARDWARE_SEMAPHORE_CHAINING=disabled} to force the legacy per-operation wait.</p>
-	 */
-	public static boolean enableSemaphoreChaining =
-			SystemUtils.isEnabled("AR_HARDWARE_SEMAPHORE_CHAINING").orElse(true);
 
 	/**
 	 * Enable non-uniform compilation where operations with different counts can be compiled
@@ -1323,28 +1300,29 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 				for (int i = 0; i < run.size(); i++) {
 					Runnable r = run.get(i);
 
-					if (enableSemaphoreChaining && r instanceof Submittable
-							&& ((Submittable) r).isCompletionDeferred()) {
-						// Chain: submit this operation depending on the previous one's
-						// completion and carry its completion forward, deferring the wait.
-						// Only operations whose provider publishes a deferred device completion
-						// (e.g. batched Metal) take this path; synchronous providers fall through
-						// to the sequential branch so their host-readiness latch is never threaded
-						// into the next operation's wait (which would serialize the async executor).
+					if (r instanceof Submittable) {
+						// Issue the dispatch without waiting; carry its completion forward so a
+						// single wait at the end (or before the next non-submittable member) covers
+						// the whole group. Members are issued in order (the dispatch is issued before
+						// submit() returns, see AcceleratedOperation.submit), so the provider keeps
+						// them in order — a synchronous provider runs each before the next is issued,
+						// while Metal encodes them into one command buffer where issue order and
+						// hazard tracking serialize any real read-after-write dependency. No artificial
+						// dependency is threaded between members (that would force a provider to treat
+						// independent dispatches as dependent and defeat batching).
 						Submittable s = (Submittable) r;
-						Semaphore dependsOn = pending;
 
 						if (timingListener == null) {
-							pending = s.submit(dependsOn);
+							pending = s.submit(null);
 						} else {
 							if (enableRunLogging) log("Running " + OperationInfo.display(r));
 							Semaphore[] completion = { null };
 							timingListener.recordDuration(getMetadata(),
-									() -> completion[0] = s.submit(dependsOn));
+									() -> completion[0] = s.submit(null));
 							pending = completion[0];
 						}
 					} else {
-						// Non-chainable member: complete any pending chain first to preserve
+						// Non-submittable member: complete any outstanding group first to preserve
 						// sequential ordering, then run synchronously.
 						if (pending != null) {
 							pending.waitFor();

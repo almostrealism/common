@@ -2,10 +2,15 @@
 
 ## Status
 
-Active design. The motivating outcome is **sustained Metal dispatch**, but the work is a
+Active design — **redo in progress.** The first implementation (PR #277) was rejected for
+systematically violating the platform's design; before reading the steps below, read
+**"Failure pattern of the first attempt"** near the end of this document — it is the single
+most important section, and the redo must satisfy its compliance rules.
+
+The motivating outcome is **sustained Metal dispatch**, but the work is a
 **general, provider-agnostic** change: move an operation's completion barrier (the "wait")
 down into the `ComputeContext` provider, exposed through an executable-side contract that
-any `ParallelProcess` can use and any provider can opt into.
+any `ParallelProcess` uses and every provider honors — *not* opts into.
 
 Scope here is **Options A + C** (group submission + async completion/chaining). Kernel
 **fusion (Option B)** — collapsing many operations into one kernel — is deliberately out of
@@ -259,6 +264,79 @@ and (on Metal) ~one command buffer instead of N.
   fusion (Option B); to be discussed before extending beyond A + C.
 - Where the group/barrier boundary is chosen (per `OperationList`, per tick, per
   `StreamingEvaluable.request`) and how it composes with nested processes.
+
+## Failure pattern of the first attempt (READ THIS BEFORE THE REDO)
+
+The first implementation of this plan (PR #277) was rejected. It "worked" in the narrow
+sense that the targeted tests passed, but it did so by violating the platform's design at
+nearly every step. Every individual mistake is an instance of **one** pattern, and that
+pattern must be understood before re-attempting, because it is seductive and it will recur.
+
+### The pattern: carving exceptions into a universal contract instead of fixing the abstraction
+
+The platform runs on **universal contracts**. The central one here:
+
+> An operation publishes a completion `Semaphore`, and anything that depends on the
+> operation waits on that semaphore. Unconditionally. Every provider, every operation.
+
+The contract's value *is* its universality — ordering and correctness hold by construction
+because there are no exceptions. When the clean contract did not obviously fit the batching
+case, the first attempt repeatedly bought local convenience by **spending that
+universality**: a flag here, a conditional there, a second semaphore, an untyped handle, a
+renamed log line. Each is a place where some code is *exempted* from the rule.
+
+This is not a style problem. **The bug lived inside the carve-out.** The stale-zero
+corruption that consumed the entire debugging effort was *caused by* `MetalOperator`
+skipping `dependsOn.waitFor()` when batching was on (it was handed a dependency and refused
+to honor it). The "fix" was then *another* carve-out — a second "readiness" semaphore plus
+`awaitReady()` — to compensate for the first. Patching holes in a contract with more holes.
+
+### The carve-outs that occurred (so they are recognizable next time)
+
+- **Conditional compliance with a dependency.** `if (!enableBatching) dependsOn.waitFor()` —
+  refusing to wait on a semaphore you were told you depend on. There is never a reason to
+  ignore a `dependsOn`. If waiting should be cheap, make the *semaphore* cheap (an
+  already-completed semaphore), not the *wait* conditional.
+- **Conditionally returning the completion.** `return enableBatching ? completionSemaphore() : null`.
+  If a caller is handed a semaphore it must use it. If no semaphore should exist, the
+  **command runner** must be the thing smart enough not to create one — the decision lives in
+  the provider, never as a flag at the call site.
+- **Two semaphores for one operation.** A "readiness latch" *and* a "completion semaphore".
+  An operation has exactly one completion. Two is the visible residue of an unsolved problem;
+  make the single semaphore mean the right thing.
+- **Feature gates / capability flags.** `enableBatching`, `enableSemaphoreChaining`,
+  `ComputeContext.isCompletionDeferred()`. These exist *to enable* special-casing; they are
+  the machinery of non-compliance. A provider participates by honoring the contract, not by
+  advertising an opt-out.
+- **Bolting the feature onto one Computation.** Batching reachable only through
+  `OperationList.Runner`. Batching is a property of the **execution/dispatch contract** so
+  that *any* `Computation` benefits; it is not a privilege of one class.
+- **Dropping types at the JNI boundary.** Raw `long` native pointers and `Set<Long>`. A
+  native object gets a Java type that represents it. Using JNI is not a license to stop
+  caring about types.
+- **Substituting your own vocabulary for established conventions.** Rewriting the CL/JNI/Metal
+  data-context log language instead of matching the existing "Using … for …" phrasing — done,
+  ironically, while performing a *consistency* task. Conform to what exists; do not invent a
+  parallel standard.
+
+### Compliance rules for the redo (non-negotiable)
+
+1. **No new flags or capability predicates** to control dispatch/batching/chaining behavior.
+   If you reach for one, the abstraction is wrong — fix the abstraction.
+2. **Every provider always returns a real `Semaphore`** — an already-completed one when the
+   work was synchronous — so callers can wait **unconditionally** and the synchronous case is
+   simply a free wait.
+3. **`dependsOn` is always honored.** No code conditionally skips a dependency wait.
+4. **One completion concept per operation.** No readiness/completion duality.
+5. **The command runner owns the batching decision internally.** No caller branches on whether
+   batching is active.
+6. **Batching is available to any `Computation`** through the execution contract, not special-cased
+   to `OperationList`.
+7. **Native handles are typed.** No raw `long`/`Set<Long>` standing in for objects.
+8. **Logging and other established conventions are matched, not replaced.**
+
+The litmus test for the redo: *if removing a line would let some operation opt out of waiting
+on a semaphore it depends on, that line is the bug — delete it and make the provider correct.*
 
 ## References
 

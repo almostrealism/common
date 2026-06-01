@@ -199,17 +199,6 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	public boolean isCPU() { return false; }
 
 	/**
-	 * Reports a deferred device completion when command-buffer batching is enabled. Batched
-	 * Metal dispatches encode into one open command buffer and commit at the chained group's
-	 * trailing wait, so their completion is genuinely deferrable; unbatched dispatches commit
-	 * and wait immediately and are therefore synchronous.
-	 *
-	 * @return {@code true} when {@link MetalCommandRunner#enableBatching} is set
-	 */
-	@Override
-	public boolean isCompletionDeferred() { return MetalCommandRunner.enableBatching; }
-
-	/**
 	 * Returns the Metal device for this context.
 	 *
 	 * @return The {@link MTLDevice} instance

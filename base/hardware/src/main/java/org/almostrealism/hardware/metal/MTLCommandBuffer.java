@@ -78,4 +78,26 @@ public class MTLCommandBuffer extends MTLObject {
 	public void waitUntilCompleted() {
 		MTL.waitUntilCompleted(getNativePointer());
 	}
+
+	/**
+	 * Encodes a signal of {@code event} to {@code value} once this buffer's prior work
+	 * completes. Must be called when no encoder is active on this buffer.
+	 *
+	 * @param event The {@link MTLEvent} to signal
+	 * @param value The value to signal
+	 */
+	public void encodeSignalEvent(MTLEvent event, long value) {
+		MTL.encodeSignalEvent(getNativePointer(), event.getNativePointer(), value);
+	}
+
+	/**
+	 * Encodes a wait until {@code event} reaches {@code value} before this buffer's subsequent
+	 * work runs. Must be called when no encoder is active on this buffer.
+	 *
+	 * @param event The {@link MTLEvent} to wait on
+	 * @param value The value to wait for
+	 */
+	public void encodeWaitForEvent(MTLEvent event, long value) {
+		MTL.encodeWaitForEvent(getNativePointer(), event.getNativePointer(), value);
+	}
 }

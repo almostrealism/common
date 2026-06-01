@@ -431,6 +431,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			}
 
 			AcceleratedProcessDetails process = apply(null, new Object[0]);
+			process.awaitReady();
 			waitFor(process.getSemaphore());
 		} finally {
 			if (getComputeRequirements() != null) {
@@ -468,19 +469,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				Hardware.getLocalHardware().getComputer().popRequirements();
 			}
 		}
-	}
-
-	/**
-	 * Reports whether this operation's {@link ComputeContext} publishes a deferred device
-	 * completion worth chaining (e.g. batched Metal). Synchronous providers (JNI, OpenCL,
-	 * unbatched Metal) report {@code false} so a composite runs them sequentially rather than
-	 * threading their host-readiness latch into the next operation's wait.
-	 *
-	 * @return {@code true} if the compute context defers completion; {@code false} otherwise
-	 */
-	@Override
-	public boolean isCompletionDeferred() {
-		return getComputeContext() != null && getComputeContext().isCompletionDeferred();
 	}
 
 	/**

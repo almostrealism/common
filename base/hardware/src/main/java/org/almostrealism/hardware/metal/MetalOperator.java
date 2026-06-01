@@ -212,35 +212,36 @@ public class MetalOperator extends HardwareOperator {
 
 		long id = totalInvocations++;
 
-		// When batching is off, each command commits and waits immediately, so a prior
-		// dependency must be satisfied before this dispatch. When batching is on, ordering is
-		// provided by the shared command buffer (one encoder per command, Metal hazard
-		// tracking) and the serial command queue, so no host-side dependsOn wait is needed.
-		if (!MetalCommandRunner.enableBatching && dependsOn != null) dependsOn.waitFor();
-
 		MemoryData data[] = prepareArguments(argCount, args);
 		if (data.length > MetalCommandRunner.MAX_ARGS) {
 			throw new UnsupportedOperationException();
 		}
 
+		MetalCommandRunner runner = context.getCommandRunner();
+
+		// Honor the dependency unconditionally. A dependency produced by this runner is passed
+		// through so the runner orders this dispatch after it on the GPU (no host stall); any
+		// other dependency (a foreign provider, or another Metal runner with its own event) is
+		// waited on the host here.
+		boolean ordered = dependsOn instanceof MetalSemaphore
+				&& ((MetalSemaphore) dependsOn).getRunner() == runner;
+		if (dependsOn != null && !ordered) dependsOn.waitFor();
+
 		KernelMemoryGuard guard = KernelMemoryGuard.acquireFor(data);
 
-		// Encode this kernel into the runner's command buffer (one encoder per command). The
-		// runner commits the (possibly batched) buffer; the onCommit callback releases the
-		// memory the kernel referenced only after that buffer has completed.
-		context.getCommandRunner().submit(cmdBuf -> {
+		// Encode this kernel into the runner's command buffer. The runner returns this dispatch's
+		// completion semaphore; the onComplete callback releases the memory the kernel referenced
+		// only after that buffer has completed.
+		return runner.submit(cmdBuf -> {
 			recordDuration(null, () -> {
 				int index = 0;
-				long totalSize = 0;
 
 				MTLComputeCommandEncoder encoder = cmdBuf.encoder();
 
 				encoder.setComputePipelineState(kernel);
 
 				for (int i = 0; i < argCount; i++) {
-					MetalMemory mem = (MetalMemory) data[i].getMem();
-					totalSize += mem.getSize();
-					encoder.setBuffer(index++, ((MetalMemory) data[i].getMem()).getMem()); // Buffer
+					encoder.setBuffer(index++, ((MetalMemory) data[i].getMem()).getMem());
 				}
 
 				int offsetValues[] = IntStream.range(0, argCount).map(i -> data[i].getOffset()).toArray();
@@ -255,7 +256,7 @@ public class MetalOperator extends HardwareOperator {
 				// Inline the per-dispatch offset/size arrays into the command (Metal copies them at
 				// encode time) so batched commands do not share mutable argument buffers.
 				encoder.setBytes(index++, offsetValues);
-				encoder.setBytes(index++, sizeValues);
+				encoder.setBytes(index, sizeValues);
 
 				if (getGlobalWorkSize() > Integer.MAX_VALUE) {
 					throw new UnsupportedOperationException();
@@ -276,13 +277,11 @@ public class MetalOperator extends HardwareOperator {
 
 				encoder.endEncoding();
 			});
-		}, () -> {
+		}, ordered ? dependsOn : null, () -> {
 			KernelMemoryGuard.releaseFor(guard, data);
 			Reference.reachabilityFence(data);
 			Reference.reachabilityFence(args);
 		});
-
-		return MetalCommandRunner.enableBatching ? context.getCommandRunner().completionSemaphore() : null;
 	}
 
 	/**

@@ -229,61 +229,27 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	public boolean isEmpty() { return replacementManager.isEmpty(); }
 
 	/**
-	 * Returns the {@link Semaphore} for coordinating kernel completion, or null if not set.
+	 * Returns the operation's completion {@link Semaphore} — the one published by the operator
+	 * dispatch (every provider returns a real semaphore: a {@code MetalSemaphore}, a
+	 * {@code CLSemaphore}, or an already-completed native latch). It is valid once
+	 * {@link #awaitReady()} has returned (which {@code apply} ensures before handing the process
+	 * back). The host-readiness {@link #semaphore latch} is a fallback only.
 	 *
-	 * <p>When the operator has already published its device-completion semaphore (synchronous
-	 * dispatch), that is returned directly. Otherwise the dispatch may still publish it
-	 * asynchronously from the {@link Hardware#isAsync() async} {@code whenReady} callback, so a
-	 * view is returned that first waits host-readiness — after which the completion semaphore is
-	 * set if it is going to be — and then waits that completion. This makes the wait deterministic
-	 * for deferred providers: a caller of a batched Metal operation waits the encode <em>and</em>
-	 * the commit (the {@code FlushSemaphore}), rather than racing the async publication and
-	 * reading uncommitted device memory.</p>
-	 *
-	 * @return the semaphore, or null if none is set
+	 * @return the completion semaphore, or null if none is set
 	 */
 	public Semaphore getSemaphore() {
-		if (completionSemaphore != null) return completionSemaphore;
-		if (semaphore == null) return null;
-		return new ReadinessThenCompletionSemaphore();
+		return completionSemaphore != null ? completionSemaphore : semaphore;
 	}
 
 	/**
-	 * Blocks until this operation's arguments are ready and its listeners have run — i.e. until
-	 * the kernel has been <em>encoded/dispatched</em> (for a batching provider, encoded into the
-	 * command buffer; the commit may still be deferred). Used by the chained {@code submit} path
-	 * so a dependent operation is encoded only after the operation it depends on, preserving
-	 * order even though the completion wait is deferred.
+	 * Blocks until this operation's arguments have been processed and the dispatch has been
+	 * issued — i.e. until {@link #setCompletionSemaphore} has been called with the operator's
+	 * completion. This is an internal readiness gate (it is not the operation's completion);
+	 * {@code apply} waits on it before returning so the completion from {@link #getSemaphore()}
+	 * is available, and so a chained dependent operation is issued after the one it depends on.
 	 */
 	public void awaitReady() {
 		if (semaphore != null) semaphore.waitFor();
-	}
-
-	/**
-	 * A {@link Semaphore} view that waits host-readiness (the {@link #semaphore latch}) and then
-	 * the operator's {@link #completionSemaphore device completion}, re-reading the latter after
-	 * readiness so an asynchronously published completion (e.g. a batched Metal commit) is
-	 * honored rather than missed.
-	 */
-	private final class ReadinessThenCompletionSemaphore implements Semaphore {
-		@Override
-		public void waitFor() {
-			DefaultLatchSemaphore latch = semaphore;
-			if (latch != null) latch.waitFor();
-
-			Semaphore completion = completionSemaphore;
-			if (completion != null) completion.waitFor();
-		}
-
-		@Override
-		public OperationMetadata getRequester() {
-			Semaphore completion = completionSemaphore;
-			if (completion != null) return completion.getRequester();
-			return semaphore != null ? semaphore.getRequester() : null;
-		}
-
-		@Override
-		public Semaphore withRequester(OperationMetadata requester) { return this; }
 	}
 
 	/**

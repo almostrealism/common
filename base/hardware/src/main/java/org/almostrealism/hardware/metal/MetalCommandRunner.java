@@ -17,8 +17,6 @@
 package org.almostrealism.hardware.metal;
 
 import io.almostrealism.concurrent.Semaphore;
-import io.almostrealism.profile.OperationMetadata;
-import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,65 +28,60 @@ import java.util.concurrent.Future;
 /**
  * Owns the Metal command-buffer lifecycle for a {@link MetalComputeContext}.
  *
- * <p>{@link MetalCommand}s are <em>encoded</em> (not committed) on a single-threaded
- * executor. When {@link #enableBatching} is off, each command is committed and waited
- * immediately — one command buffer per dispatch (legacy behaviour). When on, commands are
- * encoded into a single open command buffer (one encoder each, so Metal's cross-encoder
- * hazard tracking orders dependent kernels) and committed once, either at a
- * {@linkplain #completionSemaphore() completion wait} or when {@link #maxBatchSize} commands
- * have accumulated. Batching collapses the command-buffer count — which is what both bounds
- * per-dispatch overhead and avoids the driver stall under sustained dispatch — but is only
- * sound when the per-operation host waits are deferred (see
- * {@code OperationList.enableSemaphoreChaining}); otherwise each commit forces a wait.</p>
+ * <p>Dispatches are <em>encoded</em> into an open command buffer (not committed per dispatch) on a
+ * single-threaded executor, so independent dispatches accumulate into one command buffer. Each
+ * dispatch returns a {@link MetalSemaphore} — the operation's single completion handle — and
+ * signals a {@link MTLEvent} timeline value. Ordering between dependent dispatches is expressed at
+ * the GPU level: when a dispatch is submitted with a {@link MetalSemaphore} dependency, the open
+ * buffer is committed and a fresh buffer encodes a wait for the dependency's event value, so the
+ * GPU serializes the dependent after the dependency across buffers without a host stall.</p>
+ *
+ * <p>{@link MetalSemaphore#waitFor()} is the only thing that blocks the host: it commits the
+ * dispatch's buffer if still open and waits for it (and every buffer committed before it, since the
+ * queue is serial) to complete.</p>
  *
  * <h2>Memory lifetime</h2>
  *
- * <p>Memory referenced by an encoded-but-uncommitted kernel must stay alive until the batch
- * commits and completes. Callers pass an {@code onCommit} callback to {@link #submit} that
- * releases that memory; the runner runs it only after the buffer it was encoded into has
- * committed and {@code waitUntilCompleted}. The Objective-C autorelease pool likewise spans
- * the whole batch (the command buffer and its encoders are autoreleased and must survive
- * until commit).</p>
+ * <p>Memory referenced by an encoded kernel must stay alive until its command buffer has completed.
+ * Callers pass an {@code onCommit} callback to {@link #submit} that releases that memory; the runner
+ * runs it only after the buffer the dispatch was encoded into has completed. The Objective-C
+ * autorelease pool spans an open buffer's encoding and is drained once that buffer is committed (the
+ * queue then retains the committed buffer until it completes).</p>
  */
 public class MetalCommandRunner {
 	/** Maximum number of kernel arguments a single command may bind. */
 	public static final int MAX_ARGS = 512;
 
 	/**
-	 * When {@code true}, commands are encoded into a single command buffer and committed once
-	 * (at a completion wait or the {@link #maxBatchSize} cap); when {@code false}, each command
-	 * is committed and waited immediately (one buffer per dispatch). Enabling this also makes
-	 * {@link MetalComputeContext#isCompletionDeferred()} report {@code true}, so an
-	 * {@code OperationList} chains batched Metal dispatches.
-	 *
-	 * <p>Controlled by {@code AR_METAL_BATCH}; <strong>defaults on</strong>. Ordering of dependent
-	 * dispatches is correct because chained members are encoded in order (see
-	 * {@code AcceleratedProcessDetails.awaitReady()} and {@code AcceleratedOperation.submit()})
-	 * and Metal's same-buffer hazard tracking serializes dependents within the committed buffer.
-	 * Set {@code AR_METAL_BATCH=disabled} to restore one-buffer-per-dispatch.</p>
+	 * Maximum dispatches encoded into one open command buffer before it is committed. This is a
+	 * memory bound (it caps how much encoded-but-uncompleted work and how large an autorelease pool
+	 * accumulate), not a behavioural switch — correctness does not depend on its value.
 	 */
-	public static boolean enableBatching = SystemUtils.isEnabled("AR_METAL_BATCH").orElse(true);
+	private static final int MAX_OPEN = 256;
 
-	/** Maximum commands encoded into one batched command buffer before a forced commit. */
-	public static int maxBatchSize = Integer.getInteger("AR_METAL_MAX_BATCH", 256);
-
-	/** Single-threaded executor that serializes Metal command submission to avoid concurrency issues. */
+	/** Single-threaded executor that serializes all command-buffer operations. */
 	private ExecutorService executor;
 
 	/** The command queue used to submit encoded Metal compute commands. */
 	private final MTLCommandQueue queue;
 
+	/** Timeline event used to order dependent dispatches across command buffers on the GPU. */
+	private final MTLEvent event;
+
+	/** Monotonic value last signaled on {@link #event}. Executor-thread only. */
+	private long signaled;
+
 	/** The open (encoded, not yet committed) command buffer, or {@code null}. Executor-thread only. */
 	private MTLCommandBuffer openBuffer;
-	/** Autorelease pool spanning the open buffer's lifetime. Executor-thread only. */
+	/** Autorelease pool spanning the open buffer's encoding. Executor-thread only. */
 	private long openPool;
-	/** Number of commands encoded into the open buffer. Executor-thread only. */
-	private int encoded;
-	/** Callbacks to run after the open buffer commits and completes (releases kernel memory). */
-	private final List<Runnable> onCommit = new ArrayList<>();
+	/** Number of dispatches encoded into the open buffer. Executor-thread only. */
+	private int openCount;
+	/** Released-memory callbacks for dispatches in the open buffer. Executor-thread only. */
+	private List<Runnable> openOnComplete = new ArrayList<>();
 
-	/** Shared completion semaphore — its {@link Semaphore#waitFor()} commits the open batch. */
-	private final Semaphore completion = new FlushSemaphore();
+	/** Committed-but-not-yet-completed buffers, in commit (queue) order. Executor-thread only. */
+	private final List<CommittedBuffer> committed = new ArrayList<>();
 
 	/**
 	 * Creates a Metal command runner.
@@ -98,49 +91,68 @@ public class MetalCommandRunner {
 	public MetalCommandRunner(MTLCommandQueue queue) {
 		this.executor = Executors.newSingleThreadExecutor();
 		this.queue = queue;
+		this.event = queue.getDevice().newSharedEvent();
 	}
 
 	/**
-	 * Encodes a command into the current command buffer.
+	 * Encodes a dispatch into the open command buffer and returns its completion semaphore.
 	 *
-	 * <p>Returns after the command has been encoded. The buffer is committed either at a
-	 * {@linkplain #completionSemaphore() completion wait}, at the {@link #maxBatchSize} cap,
-	 * or immediately when {@link #enableBatching} is off. {@code onCommit} (if non-null) runs
-	 * after the buffer this command was encoded into has committed and completed.</p>
+	 * <p>When {@code dependsOn} is a {@link MetalSemaphore} from this runner, the open buffer is
+	 * committed first and the dispatch encodes a GPU wait for that dependency's event value, so the
+	 * dependent runs after the dependency without the host blocking. (A foreign dependency must be
+	 * waited by the caller before calling this method.)</p>
 	 *
-	 * @param command  the command to encode
-	 * @param onCommit released-memory callback to run after this command's buffer completes, or null
+	 * @param command   encodes the kernel into the supplied command buffer
+	 * @param dependsOn  a prior {@link MetalSemaphore} this dispatch depends on, or {@code null}
+	 * @param onComplete released-memory callback to run after this dispatch's buffer completes, or null
+	 * @return this dispatch's completion semaphore
 	 */
-	public void submit(MetalCommand command, Runnable onCommit) {
-		await(executor.submit(() -> {
-			ensureOpenBuffer();
-			command.encode(openBuffer);
-			encoded++;
-			if (onCommit != null) this.onCommit.add(onCommit);
+	public MetalSemaphore submit(MetalCommand command, Semaphore dependsOn, Runnable onComplete) {
+		List<MetalSemaphore> result = new ArrayList<>(1);
 
-			if (!enableBatching || encoded >= maxBatchSize) {
-				commitOnExecutor();
+		await(executor.submit(() -> {
+			MetalSemaphore dependency =
+					dependsOn instanceof MetalSemaphore && ((MetalSemaphore) dependsOn).getRunner() == this
+							? (MetalSemaphore) dependsOn : null;
+
+			// Order a dependent dispatch after its dependency across buffers: commit the open buffer
+			// (so the dependency's signal lands in an earlier, committed buffer) then wait its value.
+			if (dependency != null && dependency.getCommandBuffer() == openBuffer) {
+				commitOpenOnExecutor();
+			}
+
+			ensureOpenBuffer();
+
+			if (dependency != null) {
+				openBuffer.encodeWaitForEvent(event, dependency.getValue());
+			}
+
+			command.encode(openBuffer);
+
+			signaled++;
+			openBuffer.encodeSignalEvent(event, signaled);
+			openCount++;
+			if (onComplete != null) openOnComplete.add(onComplete);
+
+			result.add(new MetalSemaphore(null, this, openBuffer, event, signaled));
+
+			if (openCount >= MAX_OPEN) {
+				commitOpenOnExecutor();
 			}
 		}));
+
+		return result.get(0);
 	}
 
 	/**
-	 * Commits and waits for the open batched command buffer, if any, running pending
-	 * {@code onCommit} callbacks afterward. Safe to call when no buffer is open.
-	 */
-	public void flush() {
-		await(executor.submit(this::commitOnExecutor));
-	}
-
-	/**
-	 * Returns the shared completion semaphore whose {@link Semaphore#waitFor()} commits the
-	 * open batch. Used as an operation's completion handle so the trailing wait of a chained
-	 * group triggers the single commit.
+	 * Commits (if still open) the buffer the given dispatch was encoded into and blocks until it,
+	 * and every buffer committed before it, has completed; then runs their released-memory
+	 * callbacks. Invoked by {@link MetalSemaphore#waitFor()}.
 	 *
-	 * @return the completion semaphore
+	 * @param commandBuffer the dispatch's command buffer
 	 */
-	public Semaphore completionSemaphore() {
-		return completion;
+	public void complete(MTLCommandBuffer commandBuffer) {
+		await(executor.submit(() -> completeOnExecutor(commandBuffer)));
 	}
 
 	/** Opens a fresh command buffer (and its autorelease pool) if none is currently open. */
@@ -148,27 +160,48 @@ public class MetalCommandRunner {
 		if (openBuffer == null) {
 			openPool = MTL.autoreleasePoolPush();
 			openBuffer = queue.commandBuffer();
-			encoded = 0;
+			openCount = 0;
 		}
 	}
 
 	/**
-	 * Commits and waits for the open buffer, drains its autorelease pool, and runs the
-	 * accumulated {@code onCommit} callbacks. Must run on the executor thread.
+	 * Commits the open buffer (if any) and moves it to the committed list, draining its autorelease
+	 * pool. Does not wait for completion. Must run on the executor thread.
 	 */
-	private void commitOnExecutor() {
+	private void commitOpenOnExecutor() {
 		if (openBuffer == null) return;
 
 		openBuffer.commit();
-		openBuffer.waitUntilCompleted();
-		openBuffer = null;
 		MTL.autoreleasePoolPop(openPool);
 		openPool = 0;
-		encoded = 0;
 
-		List<Runnable> callbacks = new ArrayList<>(onCommit);
-		onCommit.clear();
-		callbacks.forEach(Runnable::run);
+		committed.add(new CommittedBuffer(openBuffer, openOnComplete));
+		openBuffer = null;
+		openCount = 0;
+		openOnComplete = new ArrayList<>();
+	}
+
+	/**
+	 * Commits the target buffer if it is still open, then waits for it and every earlier committed
+	 * buffer to complete, running their callbacks in order. Must run on the executor thread.
+	 */
+	private void completeOnExecutor(MTLCommandBuffer target) {
+		if (target == openBuffer) commitOpenOnExecutor();
+
+		int index = -1;
+		for (int i = 0; i < committed.size(); i++) {
+			if (committed.get(i).buffer == target) {
+				index = i;
+				break;
+			}
+		}
+
+		// Not found means it already completed and was drained by an earlier wait.
+		for (int i = 0; i <= index; i++) {
+			CommittedBuffer c = committed.remove(0);
+			c.buffer.waitUntilCompleted();
+			c.onComplete.forEach(Runnable::run);
+		}
 	}
 
 	/** Waits for the given executor task to finish, rethrowing any execution failure. */
@@ -185,25 +218,41 @@ public class MetalCommandRunner {
 	/**
 	 * Destroys this command runner and releases all resources.
 	 *
-	 * <p>Commits any open batch and shuts down the executor service.</p>
+	 * <p>Commits and waits for any open and committed buffers, runs their callbacks, releases the
+	 * timeline event, and shuts down the executor service.</p>
 	 */
 	public void destroy() {
 		if (executor != null) {
-			flush();
+			await(executor.submit(() -> {
+				commitOpenOnExecutor();
+				while (!committed.isEmpty()) {
+					CommittedBuffer c = committed.remove(0);
+					c.buffer.waitUntilCompleted();
+					c.onComplete.forEach(Runnable::run);
+				}
+				event.release();
+			}));
 			executor.shutdown();
 		}
 		executor = null;
 	}
 
-	/** A {@link Semaphore} whose {@link #waitFor()} commits the runner's open batch. */
-	private final class FlushSemaphore implements Semaphore {
-		@Override
-		public void waitFor() { flush(); }
+	/** A committed command buffer and the released-memory callbacks to run once it completes. */
+	private static final class CommittedBuffer {
+		/** The committed command buffer. */
+		private final MTLCommandBuffer buffer;
+		/** Released-memory callbacks to run once the buffer completes. */
+		private final List<Runnable> onComplete;
 
-		@Override
-		public OperationMetadata getRequester() { return null; }
-
-		@Override
-		public Semaphore withRequester(OperationMetadata requester) { return this; }
+		/**
+		 * Creates a committed-buffer record.
+		 *
+		 * @param buffer     the committed command buffer
+		 * @param onComplete callbacks to run once it completes
+		 */
+		private CommittedBuffer(MTLCommandBuffer buffer, List<Runnable> onComplete) {
+			this.buffer = buffer;
+			this.onComplete = onComplete;
+		}
 	}
 }

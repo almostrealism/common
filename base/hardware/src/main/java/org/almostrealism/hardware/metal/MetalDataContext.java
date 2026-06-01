@@ -124,7 +124,7 @@ public class MetalDataContext extends HardwareDataContext {
 		if (mainDevice != null) return;
 
 		mainDevice = MTLDevice.createSystemDefaultDevice();
-		log("Hardware[" + getName() + "]: kernels run on the system default GPU");
+		log("Hardware[" + getName() + "]: Using the system default GPU for kernels");
 	}
 
 	/**

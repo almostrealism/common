@@ -389,7 +389,7 @@ public class CLDataContext implements DataContext<MemoryData>, ConsoleFeatures {
 				CL.clGetDeviceIDs(platform, CL.CL_DEVICE_TYPE_GPU, numDevices, devices, null);
 				kernelDevice = devices[deviceIndex];
 
-				log("Hardware[" + name + "]: kernels run on " + deviceName(CL.CL_DEVICE_TYPE_GPU) + " " + deviceIndex);
+				log("Hardware[" + name + "]: Using " + deviceName(CL.CL_DEVICE_TYPE_GPU) + " " + deviceIndex + " for kernels");
 			}
 		}
 
