@@ -1022,7 +1022,18 @@ jobs:
         with:
           java-version: '17'
           distribution: 'adopt'
-          cache: 'maven'
+
+      - name: Isolate Maven repository per runner
+        # Self-hosted macOS runners share one $HOME/.m2 (unlike the Linux jobs,
+        # which Docker isolates). Concurrent workers installing the same SNAPSHOT
+        # artifacts into a shared repository clobber each other. Give every runner
+        # its own local repository instead. A runner executes one job at a time,
+        # so this is reused across jobs on that runner — the dependency cache is
+        # preserved while cross-worker pollution is eliminated. $HOME and
+        # RUNNER_NAME are expanded by the shell here (a workflow-level env: would
+        # not expand $HOME), and spaces in the runner name are sanitized so the
+        # -D argument stays a single token.
+        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
 
       - name: Build (skip tests)
         run: mvn install -DskipTests -Dcheckstyle.skip=true
@@ -1093,7 +1104,18 @@ jobs:
         with:
           java-version: '17'
           distribution: 'adopt'
-          cache: 'maven'
+
+      - name: Isolate Maven repository per runner
+        # Self-hosted macOS runners share one $HOME/.m2 (unlike the Linux jobs,
+        # which Docker isolates). Concurrent workers installing the same SNAPSHOT
+        # artifacts into a shared repository clobber each other. Give every runner
+        # its own local repository instead. A runner executes one job at a time,
+        # so this is reused across jobs on that runner — the dependency cache is
+        # preserved while cross-worker pollution is eliminated. $HOME and
+        # RUNNER_NAME are expanded by the shell here (a workflow-level env: would
+        # not expand $HOME), and spaces in the runner name are sanitized so the
+        # -D argument stays a single token.
+        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
 
       - name: Build (skip tests)
         run: mvn install -DskipTests -Dcheckstyle.skip=true
