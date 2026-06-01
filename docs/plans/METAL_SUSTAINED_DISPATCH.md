@@ -2,10 +2,150 @@
 
 ## Status
 
-Active design — **redo in progress.** The first implementation (PR #277) was rejected for
-systematically violating the platform's design; before reading the steps below, read
-**"Failure pattern of the first attempt"** near the end of this document — it is the single
-most important section, and the redo must satisfy its compliance rules.
+**Redo landed (commit `42cadcc05`); performance follow-up attempt 2 tried and REVERTED — blocked
+on a second-command-buffer completion stall (see "Attempt 2" below).** The first
+implementation (PR #277) was rejected for systematically violating the platform's design —
+read **"Failure pattern of the first attempt"** near the end of this document before changing
+anything. The redo replaced it and mirrors the OpenCL provider exactly (see "Redo — the
+correct implementation" below). What remains is one performance follow-up, analyzed in
+"Performance follow-up" below.
+
+### Redo — the correct implementation (done)
+
+Mirrors `CLOperator`/`CLSemaphore`, no carve-outs:
+- Native `MTLSharedEvent` (the `cl_event` analog): `MTL.cpp` `createSharedEvent` /
+  `encodeSignalEvent` / `encodeWaitForEvent` / `releaseSharedEvent`, with typed wrappers
+  `MTLEvent`, `MTLDevice.newSharedEvent()`, `MTLCommandBuffer.encode{Signal,WaitFor}Event`.
+- `MetalSemaphore` (typed, `implements Semaphore`, mirrors `CLSemaphore`) — the **one**
+  completion handle per dispatch; `waitFor()` commits its buffer if open then waits; carries
+  the event+value so a dependent orders after it on the GPU.
+- `MetalCommandRunner.submit(command, dependsOn, onComplete)` **always** returns a
+  `MetalSemaphore`; a same-runner `MetalSemaphore` dependency → commit the open buffer +
+  `encodeWaitForEvent` (GPU order, no host stall); independent dispatches share an open buffer
+  and commit once at the consuming `waitFor`. No `enable*` flags.
+- `MetalOperator.accept` **always** honors `dependsOn` (GPU-order a same-runner
+  `MetalSemaphore`, else host `waitFor` a foreign one) and **always** returns the
+  `MetalSemaphore`.
+- Cross-stack carve-outs removed (`isCompletionDeferred`, `enableSemaphoreChaining`,
+  `enableBatching`, the completion wrapper); `getSemaphore()` returns the one completion;
+  logging restored; native handles typed (see `base/CLAUDE.md`).
+
+Validated: forced `mtl` 73/73 correct (incl. the dependent `integersIndexAssignment`); native
+43/43 (no regression); checkstyle + code_policy clean.
+
+### Performance follow-up (in progress)
+
+Microbenchmark is ~245 µs/dispatch vs a ~100 µs batched target. **Root cause:** the
+`whenReady` executor is `ComputeContext.runLater` →
+`Executors.newFixedThreadPool(KernelPreferences.getEvaluationParallelism())` — a *multi-thread*
+pool. Independent operations' `whenReady` tasks (which do arg-loading **and** call
+`runner.submit` to encode) race, so encodes can reach the runner out of submission order.
+Metal same-buffer hazard tracking orders dependents by **encode order**, so an out-of-order
+encode of a real read-after-write would be wrong. `AcceleratedProcessDetails.awaitReady()`
+(waited by `run`/`submit`/`evaluate`/`request`) forces each dispatch to be fully issued before
+the next — restoring order, but serializing the per-op encode and erasing the arg-loading
+overlap that made batching fast.
+
+The agreed model (confirmed with the owner): submission order **is** a valid dependency order
+(the platform enforces dependency structure at creation time), so the invariant to preserve is
+simply "**encode in submission order**" — no dependency analysis, no per-op host stall.
+Within one Metal context: keep arg-loading parallel, order only the cheap encode, let the GPU
+run independent kernels concurrently and hazard-track dependents; host-wait only at a *foreign*
+ComputeContext boundary (where the penalty is acceptable).
+
+**Attempt 1 (reverted — deadlocks).** Added a submission-ordinal turn gate
+(`ComputeContext.reserveDispatch`/`awaitDispatch`/`completeDispatch`, driven by the runner) so
+the `whenReady` callback waits its turn before encoding, with a forward-resolving completion so
+`submit` is non-blocking and `awaitReady` removed. It **hangs**: `awaitDispatch` blocks a
+*bounded* pool thread, and the per-op postprocessing `nextSemaphore.waitFor()`
+(`AcceleratedOperation.apply`) blocks more pool threads inside `MetalCommandRunner.complete →
+waitUntilCompleted`. With more concurrent dispatches than pool threads, the thread holding the
+needed turn (or the buffer that must complete) can be queued behind blocked threads →
+thread-pool starvation. Confirmed by jstack (threads parked in `complete`/`completeOnExecutor →
+waitUntilCompleted`).
+
+**The real requirement, learned from attempt 1: nothing that runs on the shared bounded pool may
+block on the runner.** The deadlock-free shape is:
+- The pool thread, after arg-loading, hands the encode to the runner **non-blocking** with its
+  submission ordinal, and returns immediately.
+- The runner (its own single thread) drains encodes in **ordinal order**, buffering out-of-order
+  arrivals.
+- `submit` returns a **promise** `MetalSemaphore` (created up front, its command-buffer/value
+  resolved when the runner encodes it) — which also collapses the readiness latch into one
+  self-resolving completion (closing the "two semaphores" comment for real).
+- The per-op postprocessing wait must not run on the pool either, or must not commit-and-wait
+  per op.
+
+**Attempt 2 (tried — REVERTED; second-buffer completion hang).** The obstacle in attempt 1 was
+that ordering needed a submission ordinal that `Execution.accept(args, dependsOn)` does not
+carry. Attempt 2 avoided the ordinal entirely by using the completion `Semaphore` itself as the
+cross-operation plumbing — exactly what the type exists for — adding **one general,
+provider-agnostic capability** with no-op defaults so non-Metal providers were unaffected:
+
+- `Semaphore.andThen(Runnable)` — the non-blocking, issuance-time dual of `waitFor`. Default runs
+  the continuation immediately; `MetalSemaphore` overrode it to run when the dispatch is *encoded*.
+- `ComputeContext.reserveDispatch()` — creates the dispatch's completion **up front** (default
+  `null`; Metal returned an unresolved promise `MetalSemaphore`).
+- `Execution.accept(args, dependsOn, completion)` — a 3-arg overload (default delegates to the
+  2-arg form; Metal overrode it to **resolve** the pre-created promise when the dispatch issued).
+
+The intended flow: `AcceleratedOperation.apply` calls `reserveDispatch()`, publishes the promise
+synchronously, passes it into 3-arg `accept`; `OperationList`'s runner threads each member's
+completion into the next member's `dependsOn`; `MetalCommandRunner.submit` becomes non-blocking
+(`executor.execute`) and registers the encode via `dependsOn.andThen(...)`, a cascade that orders
+the chain on the runner's single thread with no pool-thread blocking; `awaitReady` removed.
+
+**The symptom.** Forced `mtl` `OperationSemaphoreTests#sum`/`sumPowers` and
+`OperationDispatchBatchingTests#manySmallDispatches` **hang**. Tracing the runner (one log line
+per encode/commit/wait) showed the *first* command buffer commits and completes
+(`waitUntilCompleted` returns), but whenever a *second* command buffer is created, committed and
+waited, it **never completes** — the runner's single executor thread parks in native
+`waitUntilCompleted` forever (jstack: `RUNNABLE`, burning CPU), and the host blocks behind it.
+A native diagnostic that polled `MTLCommandBuffer.status()` turned the hang into a SIGSEGV in
+`objc_msgSend` from `waitUntilCompleted` — the buffer was *over-released* (a queue-autoreleased
+command buffer freed once it completes, then messaged again by the poll); that crash was a
+diagnostic artifact, but it confirms the symptom is command-buffer-lifetime/completion-sensitive.
+
+**Bisection (definitive — done on a quiesced GPU, ruling out contention).** Starting from a
+known-good baseline and adding one change at a time:
+
+1. *Promise `MetalSemaphore` + non-blocking runner alone (apply-path at HEAD, no `reserveDispatch`,
+   no chaining, `awaitReady` kept):* **PASSES** `sum` in ~2.8 s and batches (`openCount` up to
+   144), at ~48 µs/dispatch — a real improvement. So the promise object, the 3-arg `accept`, the
+   `andThen` cascade and even the non-blocking `executor.execute` handoff are **not** the problem.
+2. *Add `reserveDispatch` (publish the completion before `whenReady` and pass it into 3-arg
+   `accept`):* **breaks batching** (`openCount` drops to 1 — one committed buffer per dispatch) and
+   `sum` **hangs** on the second buffer. So `reserveDispatch`/early-publication is one trigger and
+   was abandoned.
+3. *Drop `reserveDispatch` again, keep the non-blocking runner:* `sum` passes (batches, avoids a
+   second buffer) but `OperationDispatchBatchingTests#manySmallDispatches` still **hangs** — its
+   per-dispatch `waitFor` (the `processing` branch of `apply` / inline `DestinationEvaluable`
+   waits) commits one buffer per dispatch, so it hits the second-buffer path and stalls.
+4. *Blocking encode vs non-blocking, with/without the now-unused `encodeSignalEvent`:* **no
+   change** — the second buffer hangs either way. GPU contention also ruled out (other CI runners
+   stopped; still deterministic).
+
+**The unresolved core.** Any workload that creates a **second committed command buffer** under
+the promise/runner shape stalls in `waitUntilCompleted` on that buffer, while the redo (HEAD) —
+whose `submit`/`commit`/`complete`/`completeOnExecutor` are byte-identical at the executor level —
+completes the same second buffer in ~3 s. The redo's only material differences are: `submit`
+blocks the caller on the encode via `await(executor.submit(...).get())`, and a same-runner
+dependent commits the open buffer and uses `encodeWaitForEvent` to wait the prior buffer's event
+(so consecutive buffers are GPU-ordered). The promise design removed both. Why a fresh second
+buffer that is committed and waited never completes — when the first one does and the redo's does
+— was **not isolated** by black-box bisection; it needs Metal-level command-buffer error
+introspection (retain the buffer across the wait, read `buffer.status()`/`buffer.error()` without
+the autorelease pitfall, or attach a completion handler) and likely the owner's read on whether
+two independent committed buffers on this serial queue need the event-wait the redo encodes.
+
+**Current state:** reverted to the redo (HEAD) — correct, flag-free, already collapses
+command-buffer *count* (the stall-avoidance goal). The non-blocking promise runner is a proven
+~2–4× win for *batched* workloads but is blocked on the second-buffer completion stall for
+per-dispatch-`waitFor` workloads. All attempt-2 code was reverted so the tree carries no unused
+API or half-working path; the design and bisection above stand as the starting point for a future
+attempt.
+
+### Original framing
 
 The motivating outcome is **sustained Metal dispatch**, but the work is a
 **general, provider-agnostic** change: move an operation's completion barrier (the "wait")
