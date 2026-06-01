@@ -654,14 +654,32 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	/**
 	 * When {@code true}, {@link #flatten()} labels each inlined child operation with the
 	 * provenance of its originating sub-list by wrapping it in an
-	 * {@link io.almostrealism.profile.OperationWithInfo}. This aids profile diagnostics
-	 * but inserts a decorator into the flattened operation stream.
+	 * {@link io.almostrealism.profile.OperationWithInfo}. This aids profile diagnostics by
+	 * carrying a "parent ==&gt; child" description through the flattened operation stream.
 	 *
-	 * <p>Disabled by default: the wrapping interferes with downstream process optimization
-	 * on the model-compilation path (it can prevent expression embedding from being broken
-	 * up, causing compilation to hang). The remaining provenance infrastructure
+	 * <p><strong>Disabled by default, and do not flip it back on without addressing the
+	 * problem below.</strong> Wrapping an operation in {@link io.almostrealism.profile.OperationWithInfo}
+	 * does not merely attach a label &mdash; it inserts a decorator into the
+	 * {@link io.almostrealism.compute.Process} tree, and that decorator <em>changes how the
+	 * wrapped {@link io.almostrealism.compute.Process} is optimized and ultimately executed</em>.
+	 * Optimization proceeds by calling {@code optimize(...)}, then {@code isolate()} /
+	 * {@code generate(...)} on each node; a wrapper that does not faithfully delegate every
+	 * one of these (and re-wrap the result) silently alters the optimization path. The
+	 * concrete failure we hit: with the wrapper in place on the model-compilation path,
+	 * expression embedding was no longer broken up where the optimizer intended, the emitted
+	 * kernel exploded, and {@code Model.compile()} hung to the test timeout
+	 * (see {@code LoRALinearTests.testModelCompilation}). Even when the wrapper's
+	 * {@code optimize}/{@code isolate}/{@code generate} are made to delegate, the wrapper still
+	 * participates in the process tree and can change which {@link Computation}s are fused,
+	 * isolated, or inlined &mdash; i.e. it changes what is actually executed, not just what is
+	 * reported. Re-enabling this requires proving (with a model-compilation regression test,
+	 * not just provenance-string assertions) that the wrapping is transparent to optimization
+	 * for every path that flows through {@link #flatten()}.</p>
+	 *
+	 * <p>The rest of the provenance infrastructure
 	 * ({@link io.almostrealism.profile.OperationMetadata#withProvenance(String)} and the
-	 * profile-analysis tooling) is unaffected by this flag and remains available.</p>
+	 * profile-analysis tooling) does not insert wrappers into the process tree and is
+	 * unaffected by this flag &mdash; it remains available regardless of this setting.</p>
 	 */
 	public static boolean enableProvenance = false;
 
