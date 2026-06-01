@@ -32,7 +32,7 @@ import java.util.Set;
 public class WesternChromaticTest extends TestSuiteBase {
 
 	/**
-	 * Tests that all enum values exist.
+	 * Tests that all 88 enum values exist (A0 to C8).
 	 */
 	@Test(timeout = 5000)
 	public void allNotesExist() {
@@ -57,7 +57,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Tests that A4 is position 48.
+	 * Tests that A4 is position 48 (standard tuning reference).
 	 */
 	@Test(timeout = 5000)
 	public void a4IsPosition48() {
@@ -73,7 +73,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Tests positions within an octave span from A1 to GS2.
+	 * Tests positions within an octave span from A1 to G#2.
 	 */
 	@Test(timeout = 5000)
 	public void octaveSpan() {
@@ -105,7 +105,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Tests scale valueAt returns correct notes.
+	 * Tests scale valueAt returns correct notes at boundary positions.
 	 */
 	@Test(timeout = 5000)
 	public void scaleValueAt() {
@@ -140,7 +140,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Tests that all 88 positions are unique.
+	 * Tests that all 88 positions are unique (no duplicates).
 	 */
 	@Test(timeout = 5000)
 	public void uniquePositions() {
@@ -187,7 +187,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Tests sharp note naming conventions.
+	 * Tests sharp note naming conventions relative to natural notes.
 	 */
 	@Test(timeout = 5000)
 	public void sharpNoteNaming() {
@@ -201,7 +201,7 @@ public class WesternChromaticTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Tests forEach iteration on scale.
+	 * Tests forEach iteration on scale visits all 88 notes.
 	 */
 	@Test(timeout = 5000)
 	public void scaleForEach() {

@@ -36,18 +36,31 @@ import java.util.stream.IntStream;
  */
 public class SineWaveComputationTest extends TestSuiteBase implements CellFeatures {
 
+	/** Audio sample rate from {@link OutputLine}. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
+
+	/** Tolerance for floating-point comparisons. */
 	private static final double EPSILON = 0.0001;
 
 	/**
-	 * Creates a receptor that accumulates all output values.
+	 * Creates a receptor that accumulates all output values from a
+	 * {@link PackedCollection} by extracting the scalar value at index 0
+	 * and adding it to the provided list.
+	 *
+	 * @param values the list to accumulate values into
+	 * @return a receptor that captures output values
 	 */
 	private Receptor<PackedCollection> accumulatingReceptor(List<Double> values) {
 		return protein -> () -> () -> values.add(protein.get().evaluate().toDouble(0));
 	}
 
 	/**
-	 * Helper to setup and run a SineWaveCell, returning collected values.
+	 * Helper to setup and run a {@link SineWaveCell}, returning collected values
+	 * after the specified number of iterations.
+	 *
+	 * @param cell the SineWaveCell to run
+	 * @param iterations the number of push/tick cycles to perform
+	 * @return list of output values collected during the run
 	 */
 	private List<Double> runCell(SineWaveCell cell, int iterations) {
 		List<Double> values = new ArrayList<>();
@@ -256,6 +269,13 @@ public class SineWaveComputationTest extends TestSuiteBase implements CellFeatur
 		Assert.assertTrue("Should have reasonable crossings for 440 Hz", crossings > 10 && crossings < 30);
 	}
 
+	/**
+	 * Counts the number of zero crossings in the provided list of values.
+	 * A zero crossing occurs when consecutive values have opposite signs.
+	 *
+	 * @param values the list of audio sample values
+	 * @return the number of zero crossings detected
+	 */
 	private int countZeroCrossings(List<Double> values) {
 		int crossings = 0;
 		for (int i = 1; i < values.size(); i++) {

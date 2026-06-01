@@ -33,11 +33,21 @@ import org.junit.Test;
 
 import java.util.stream.IntStream;
 
+/**
+ * Application demonstrating native-enabled computation features.
+ */
 public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFeatures {
+	/**
+	 * Entry point for running the application.
+	 * @param args Command-line arguments
+	 */
 	public static void main(String[] args) {
 		new MyNativeEnabledApplication().performMath();
 	}
 
+	/**
+	 * Tests basic constant multiplication computation.
+	 */
 	@Test(timeout = 30000)
 	public void performMath() {
 		// Compose the expression
@@ -55,6 +65,9 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		log(String.valueOf(displayResult));
 	}
 
+	/**
+	 * Tests tensor creation and multiplication computation.
+	 */
 	@Test(timeout = 30000)
 	public void createTensor() {
 		// Create the tensor
@@ -80,6 +93,9 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		product.evaluate().print();
 	}
 
+	/**
+	 * Tests variable-based multiplication with repeated evaluation.
+	 */
 	@Test(timeout = 30000)
 	public void variableMath() {
 		// Define argument 0
@@ -100,6 +116,9 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		compiledOperation.evaluate(pack(5, 4)).print();
 	}
 
+	/**
+	 * Tests repeated execution of variable math operations.
+	 */
 	@Test(timeout = 30000)
 	public void performThreeExperiments() {
 		for (int i = 0; i < 3; i++) {
@@ -124,6 +143,9 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		}
 	}
 
+	/**
+	 * Tests CPU and GPU execution modes for computations.
+	 */
 	@Test(timeout = 30000)
 	public void useCpuAndGpu() {
 		PackedCollection result = new PackedCollection(shape(1));
@@ -138,6 +160,9 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		log("Result = " + result.toArrayString());
 	}
 
+	/**
+	 * Tests kernel evaluation with data parallelization.
+	 */
 	@Test(timeout = 30000)
 	public void kernelEvaluation() {
 		// Define argument 0
@@ -163,6 +188,9 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		results.print();
 	}
 
+	/**
+	 * Tests shape manipulation for GPU parallelism.
+	 */
 	@Test(timeout = 30000)
 	public void shapes() {
 		// The shape is a 3D array with 10x4x2 elements, and 80 elements in total.
@@ -191,6 +219,9 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		// --> And that's just one item from the original shape (which contained 40 of them).
 	}
 
+	/**
+	 * Tests repeat operation with reshape and multiplication.
+	 */
 	@Test(timeout = 30000)
 	public void repeat() {
 		PackedCollection a = pack(2, 3).reshape(2, 1);
@@ -198,6 +229,9 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		c(a).traverse(1).repeat(2).multiply(c(b)).evaluate().print();
 	}
 
+	/**
+	 * Tests enumeration operation with reshape and traversal.
+	 */
 	@Test(timeout = 30000)
 	public void enumerate() {
 		PackedCollection a =
@@ -214,6 +248,9 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		// [8.0, 9.0]
 	}
 
+	/**
+	 * Tests 3D subset extraction and verification.
+	 */
 	@Test(timeout = 30000)
 	public void subset3d() {
 		int w = 2;
@@ -242,6 +279,9 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		}
 	}
 
+	/**
+	 * Tests polynomial computation and automatic differentiation.
+	 */
 	@Test(timeout = 30000)
 	public void polynomialDelta() {
 		// x^2 + 3x + 1
@@ -258,6 +298,9 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		out.consolidate().print();
 	}
 
+	/**
+	 * Tests vector computation and automatic differentiation.
+	 */
 	@Test(timeout = 30000)
 	public void vectorDelta() {
 		int dim = 3;
@@ -284,16 +327,22 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		dout.print();
 	}
 
+	/**
+	 * Tests complex number multiplication.
+	 */
 	@Test(timeout = 30000)
 	public void complexMath() {
 		ComplexNumber a = new ComplexNumber(1, 2);
 		ComplexNumber b = new ComplexNumber(3, 4);
 
 		Producer<ComplexNumber> c = (Producer) multiplyComplex(c(a), c(b));
-		log("(1 + 2i) * (3 + 4i) = ");
+		log("Computing (1 + 2i) * (3 + 4i)");
 		c.evaluate().print();
 	}
 
+	/**
+	 * Tests CNN model training with convolution and pooling layers.
+	 */
 	@Test(timeout = 30000)
 	public void trainCnn() {
 		int s = 10;
@@ -305,6 +354,11 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		train(input, model(s, s, 3, 8, 10));
 	}
 
+	/**
+	 * Trains the model with random input data for multiple epochs.
+	 * @param input The input collection for training
+	 * @param model The model to train
+	 */
 	protected void train(PackedCollection input, Model model) {
 		CompiledModel compiled = model.compile();
 		log("Model compiled");
@@ -330,6 +384,15 @@ public class MyNativeEnabledApplication extends TestSuiteBase implements CodeFea
 		}
 	}
 
+	/**
+	 * Creates a CNN model with convolution, pooling, and dense layers.
+	 * @param r Number of rows
+	 * @param c Number of columns
+	 * @param convSize Convolution kernel size
+	 * @param convFilters Number of convolution filters
+	 * @param denseSize Dense layer size
+	 * @return The constructed model
+	 */
 	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
 		Model model = new Model(shape(r, c));
 		model.add(convolution2d(convFilters, convSize));

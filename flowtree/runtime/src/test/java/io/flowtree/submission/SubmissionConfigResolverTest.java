@@ -52,27 +52,42 @@ public class SubmissionConfigResolverTest extends TestSuiteBase {
     /** Registered alongside {@code "claude"} for tests that need a second runner. */
     private static final String TEST_RUNNER = "submission-config-resolver-test-runner";
 
+    /** Registers {@link #TEST_RUNNER} in the {@link AgentRunnerRegistry} before each test. */
     @Before
     public void registerTestRunner() {
         AgentRunnerRegistry.register(TEST_RUNNER, () -> null);
     }
 
+    /** Returns a minimal {@link Workstream} instance suitable for use in tests. */
     private static Workstream workstream() {
         return new Workstream("ws-1", "C0001", "general");
     }
 
+    /**
+     * Returns a {@link WorkstreamConfig.WorkspaceEntry} with the given identifier
+     * and no other configuration.
+     */
     private static WorkstreamConfig.WorkspaceEntry workspace(String id) {
         WorkstreamConfig.WorkspaceEntry entry = new WorkstreamConfig.WorkspaceEntry();
         entry.setId(id);
         return entry;
     }
 
+    /**
+     * Returns a {@link PhaseConfigBundle} with the given default {@link PhaseConfig}
+     * and an optional per-phase override.
+     */
     private static PhaseConfigBundle bundle(PhaseConfig def, Phase phase, PhaseConfig override) {
         Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
         if (phase != null && override != null) overrides.put(phase, override);
         return new PhaseConfigBundle(def == null ? PhaseConfig.EMPTY : def, overrides);
     }
 
+    /**
+     * Verifies that when no workstream or workspace configuration is present the
+     * resolver produces no error and the resolved phase config uses the controller
+     * default runner.
+     */
     @Test(timeout = 5000)
     public void allEmptyAppliesControllerDefaults() {
         SubmissionConfigResolver r = SubmissionConfigResolver.resolve(
@@ -125,6 +140,10 @@ public class SubmissionConfigResolverTest extends TestSuiteBase {
         assertEquals("model-x", resolved.model());
     }
 
+    /**
+     * Verifies that when both a workstream and a workspace supply a default runner the
+     * workstream-level value takes precedence over the workspace-level value.
+     */
     @Test(timeout = 5000)
     public void workstreamDefaultBeatsWorkspaceDefault() {
         WorkstreamConfig.WorkspaceEntry wsEntry = workspace("acme");
@@ -144,6 +163,10 @@ public class SubmissionConfigResolverTest extends TestSuiteBase {
         assertEquals(AgentRunnerRegistry.CLAUDE, resolved.runner());
     }
 
+    /**
+     * Verifies that a {@link PhaseConfigBundle} supplied on the request overrides both
+     * workspace-level and workstream-level phase configuration.
+     */
     @Test(timeout = 5000)
     public void requestBundleBeatsWorkspaceAndWorkstream() {
         Workstream ws = workstream();
@@ -161,6 +184,10 @@ public class SubmissionConfigResolverTest extends TestSuiteBase {
         assertEquals("req-model", resolved.model());
     }
 
+    /**
+     * Verifies that passing {@code null} as the request {@link PhaseConfigBundle}
+     * is treated identically to {@link PhaseConfigBundle#EMPTY} and does not throw.
+     */
     @Test(timeout = 5000)
     public void nullRequestBundleTreatedAsEmpty() {
         SubmissionConfigResolver r = SubmissionConfigResolver.resolve(
@@ -170,6 +197,10 @@ public class SubmissionConfigResolverTest extends TestSuiteBase {
         r.applyTo(f); // must not throw
     }
 
+    /**
+     * Verifies that a runner-validation error is surfaced through {@link SubmissionConfigResolver#error()}
+     * and that {@link SubmissionConfigResolver#applyTo} is a no-op when an error is present.
+     */
     @Test(timeout = 5000)
     public void runnerResolverErrorSurfacedAndApplyIsNoOp() {
         Workstream ws = workstream();

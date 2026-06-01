@@ -24,6 +24,7 @@ import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.music.midi.MidiNoteEvent;
 import org.almostrealism.music.notes.NoteAudioContext;
+import org.almostrealism.music.notes.PatternNote;
 import org.almostrealism.audio.tone.KeyPosition;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
@@ -321,7 +322,40 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 						audioContext.getAudioSelection(),
 						context.getTimeForDuration(),
 						frameCount > 0 ? offsetArg : null, frameCount));
+
+		if (PatternLayerManager.enableBatched) {
+			note.setBatchedInputs(gatherBatchedInputs(element, details, durationSec, audioContext));
+		}
 		return note;
+	}
+
+	/**
+	 * Extracts the batched-kernel input record for the given note, or {@code null}
+	 * if the note is not the melodic-SSS shape. Only invoked when batched
+	 * rendering is enabled, so the per-note gather adds no cost on the default path.
+	 *
+	 * @param element      the pattern element
+	 * @param details      the voicing details for this note
+	 * @param durationSec  the note duration in seconds
+	 * @param audioContext the note audio context
+	 * @return the extracted batched inputs, or {@code null} if unsupported
+	 */
+	private BatchedNoteInputs gatherBatchedInputs(PatternElement element, ElementVoicingDetails details,
+												  double durationSec, NoteAudioContext audioContext) {
+		PatternNote note = element.getNote(details.getVoicing());
+		if (note == null || !BatchedNoteInputs.isMelodicSssShape(note)) return null;
+
+		double automationLevel = 1.0;
+		PackedCollection automation = element.getAutomationParameters();
+		if (automation != null && automation.getMemLength() > 0) {
+			automationLevel = automation.toDouble(0);
+		}
+
+		// Keep the full resampled source; the dispatch sizes the per-note row to the
+		// render window once it is known (the gather does not know the window width).
+		return BatchedNoteInputs.from(note, details.getTarget(),
+				details.getStereoChannel().getIndex(), durationSec, automationLevel,
+				audioContext.getAudioSelection());
 	}
 
 

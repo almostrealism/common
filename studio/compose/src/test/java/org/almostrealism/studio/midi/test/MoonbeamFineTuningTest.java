@@ -97,6 +97,7 @@ import java.util.Map;
 public class MoonbeamFineTuningTest extends TestSuiteBase implements
 		AttentionFeatures {
 
+	/** Path to the pretrained Moonbeam model weights directory. */
 	private static final String WEIGHTS_DIR = "/Users/Shared/models/moonbeam-weights-protobuf";
 
 	/**
@@ -332,12 +333,12 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 
 		log("=== GRU Decoder Gradient Flow Analysis ===");
 		log("GRU decode produces " + GRUDecoder.TOKENS_PER_NOTE + " tokens correctly (inference works)");
-		log("LIMITATION: GRUCell.forward() uses host-side toDouble() loops");
-		log("LIMITATION: GRUDecoder.linearForwardCached() uses cached double[] arrays");
-		log("RESULT: No automatic differentiation through GRU decode steps");
-		log("IMPACT: Cannot backpropagate from decode vocabulary loss to transformer parameters");
-		log("WORKAROUND: Train transformer with proxy loss on hidden states (see testTransformerTrainingWithMSE)");
-		log("FIX NEEDED: Convert GRUCell to use Producer pattern for hardware-accelerated autodiff");
+		log("Limitation: GRUCell.forward() uses host-side toDouble() loops");
+		log("Limitation: GRUDecoder.linearForwardCached() uses cached double[] arrays");
+		log("Result: No automatic differentiation through GRU decode steps");
+		log("Impact: Cannot backpropagate from decode vocabulary loss to transformer parameters");
+		log("Workaround: Train transformer with proxy loss on hidden states (see testTransformerTrainingWithMSE)");
+		log("Fix needed: Convert GRUCell to use Producer pattern for hardware-accelerated autodiff");
 	}
 
 	/**

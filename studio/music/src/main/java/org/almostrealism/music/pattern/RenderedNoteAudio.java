@@ -70,6 +70,13 @@ public class RenderedNoteAudio {
 	private IntFunction<Producer<PackedCollection>> producerFactory;
 
 	/**
+	 * The batched-kernel input record for this note, or {@code null} when the
+	 * note is not the melodic-SSS shape (in which case the batched dispatch
+	 * falls back to per-note rendering).
+	 */
+	private BatchedNoteInputs batchedInputs;
+
+	/**
 	 * Creates a RenderedNoteAudio with an expected frame count for pre-filtering.
 	 *
 	 * <p>The {@code expectedFrameCount} enables overlap checks before the expensive
@@ -163,5 +170,24 @@ public class RenderedNoteAudio {
 					"this indicates a missing setup in ScaleTraversalStrategy");
 		}
 		return producerFactory.apply(frameCount);
+	}
+
+	/**
+	 * Returns the batched-kernel input record for this note, or {@code null}
+	 * when the note is not the melodic-SSS shape.
+	 *
+	 * @return the batched inputs, or {@code null}
+	 */
+	public BatchedNoteInputs getBatchedInputs() {
+		return batchedInputs;
+	}
+
+	/**
+	 * Sets the batched-kernel input record for this note.
+	 *
+	 * @param batchedInputs the batched inputs, or {@code null} if unsupported
+	 */
+	public void setBatchedInputs(BatchedNoteInputs batchedInputs) {
+		this.batchedInputs = batchedInputs;
 	}
 }

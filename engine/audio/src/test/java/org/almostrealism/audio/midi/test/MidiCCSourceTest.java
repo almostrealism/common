@@ -27,6 +27,9 @@ import static org.junit.Assert.*;
  */
 public class MidiCCSourceTest extends TestSuiteBase {
 
+	/**
+	 * Tests that raw MIDI CC values (0-127) are mapped to normalized range (0.0-1.0).
+	 */
 	@Test(timeout = 5000)
 	public void testDefaultRange() {
 		MidiCCSource source = new MidiCCSource(1);
@@ -41,6 +44,9 @@ public class MidiCCSourceTest extends TestSuiteBase {
 		assertEquals(0.5, source.getValue(), 0.02);  // 64/127 ~= 0.504
 	}
 
+	/**
+	 * Tests that a custom value range can be set and maps correctly from MIDI values.
+	 */
 	@Test(timeout = 5000)
 	public void testCustomRange() {
 		MidiCCSource source = new MidiCCSource(1);
@@ -58,6 +64,9 @@ public class MidiCCSourceTest extends TestSuiteBase {
 		assertTrue("Mid value should be around 2550", mid > 2400 && mid < 2700);
 	}
 
+	/**
+	 * Tests that bipolar mode correctly centers around 0 with symmetric min/max.
+	 */
 	@Test(timeout = 5000)
 	public void testBipolarMode() {
 		MidiCCSource source = new MidiCCSource(1);
@@ -77,6 +86,9 @@ public class MidiCCSourceTest extends TestSuiteBase {
 		assertEquals(1.0, source.getValue(), 0.02);
 	}
 
+	/**
+	 * Tests that exponential curve mapping produces lower values at low inputs.
+	 */
 	@Test(timeout = 5000)
 	public void testExponentialCurve() {
 		MidiCCSource source = new MidiCCSource(1);
@@ -93,6 +105,9 @@ public class MidiCCSourceTest extends TestSuiteBase {
 		assertTrue("Exponential should be lower at low input", expValue < linearValue);
 	}
 
+	/**
+	 * Tests that logarithmic curve mapping produces higher values at low inputs.
+	 */
 	@Test(timeout = 5000)
 	public void testLogarithmicCurve() {
 		MidiCCSource source = new MidiCCSource(1);
@@ -109,6 +124,9 @@ public class MidiCCSourceTest extends TestSuiteBase {
 		assertTrue("Logarithmic should be higher at low input", logValue > linearValue);
 	}
 
+	/**
+	 * Tests that smoothing gradually approaches target value over multiple reads.
+	 */
 	@Test(timeout = 5000)
 	public void testSmoothing() {
 		MidiCCSource source = new MidiCCSource(1);
@@ -134,12 +152,18 @@ public class MidiCCSourceTest extends TestSuiteBase {
 			laterRead > 0.9);
 	}
 
+	/**
+	 * Tests that getCCNumber() returns the correct MIDI CC number.
+	 */
 	@Test(timeout = 5000)
 	public void testCCNumber() {
 		MidiCCSource source = new MidiCCSource(74);  // Cutoff
 		assertEquals(74, source.getCCNumber());
 	}
 
+	/**
+	 * Tests that raw MIDI values are clamped to 0-127 range.
+	 */
 	@Test(timeout = 5000)
 	public void testRawValue() {
 		MidiCCSource source = new MidiCCSource(1);
@@ -155,6 +179,9 @@ public class MidiCCSourceTest extends TestSuiteBase {
 		assertEquals(127, source.getRawValue());
 	}
 
+	/**
+	 * Tests that isBipolar() reflects the current bipolar setting.
+	 */
 	@Test(timeout = 5000)
 	public void testIsBipolar() {
 		MidiCCSource source = new MidiCCSource(1);
@@ -164,6 +191,9 @@ public class MidiCCSourceTest extends TestSuiteBase {
 		assertTrue(source.isBipolar());
 	}
 
+	/**
+	 * Tests that tick() returns a non-null operation for compatibility with temporal graphs.
+	 */
 	@Test(timeout = 5000)
 	public void testTickReturnsOperation() {
 		MidiCCSource source = new MidiCCSource(1);

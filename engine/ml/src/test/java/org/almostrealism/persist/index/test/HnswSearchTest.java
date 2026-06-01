@@ -49,13 +49,22 @@ import static org.almostrealism.persist.index.test.DiskStoreTestSupport.vec;
  */
 public class HnswSearchTest extends TestSuiteBase {
 
+	/** Temporary directory for index files. */
 	private File tempDir;
 
+	/**
+	 * Creates a temporary directory before each test.
+	 *
+	 * @throws Exception if directory creation fails
+	 */
 	@Before
 	public void setUp() throws Exception {
 		tempDir = Files.createTempDirectory("vectorsearch-test").toFile();
 	}
 
+	/**
+	 * Cleans up the temporary directory after each test.
+	 */
 	@After
 	public void tearDown() {
 		deleteRecursively(tempDir);
@@ -647,6 +656,13 @@ public class HnswSearchTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Generates a random vector with values uniformly distributed in [-1, 1].
+	 *
+	 * @param dimension vector dimensionality
+	 * @param random    random source
+	 * @return a new random vector
+	 */
 	private static PackedCollection randomVector(int dimension, Random random) {
 		double[] values = new double[dimension];
 		for (int i = 0; i < dimension; i++) {

@@ -35,24 +35,28 @@ import static org.junit.Assert.assertTrue;
  */
 public class PullRequestDetectorTest extends TestSuiteBase {
 
+	/** Verifies that extractOwnerRepo correctly parses an SSH-format GitHub remote URL. */
 	@Test(timeout = 30000)
 	public void extractsOwnerRepoFromSSH() {
 		String result = PullRequestDetector.extractOwnerRepo("git@github.com:owner/repo.git");
 		assertEquals("owner/repo", result);
 	}
 
+	/** Verifies that extractOwnerRepo correctly parses an HTTPS-format GitHub remote URL. */
 	@Test(timeout = 30000)
 	public void extractsOwnerRepoFromHTTPS() {
 		String result = PullRequestDetector.extractOwnerRepo("https://github.com/owner/repo.git");
 		assertEquals("owner/repo", result);
 	}
 
+	/** Verifies that extractOwnerRepo returns null for a non-GitHub remote URL. */
 	@Test(timeout = 30000)
 	public void returnsEmptyForNonGitHub() {
 		String result = PullRequestDetector.extractOwnerRepo("https://gitlab.com/owner/repo.git");
 		assertNull(result);
 	}
 
+	/** Verifies that a well-formed GitHub URL with a valid owner/repo path is accepted. */
 	@Test(timeout = 30000)
 	public void validateOwnerRepoAcceptsValid() {
 		// validateOwnerRepo is private, so we verify through extractOwnerRepo
@@ -63,6 +67,7 @@ public class PullRequestDetectorTest extends TestSuiteBase {
 		assertEquals("owner/repo", result);
 	}
 
+	/** Verifies that URLs lacking a valid owner/repo structure or using a non-GitHub host are rejected. */
 	@Test(timeout = 30000)
 	public void validateOwnerRepoRejectsInvalid() {
 		// A URL with no valid owner/repo structure should return null.
@@ -75,6 +80,7 @@ public class PullRequestDetectorTest extends TestSuiteBase {
 		assertNull("Expected null for non-GitHub URL", resultNull);
 	}
 
+	/** Verifies that detect returns an empty Optional when the remote URL is null. */
 	@Test(timeout = 30000)
 	public void detectReturnsEmptyForNullRemoteUrl() {
 		PullRequestDetector detector = new PullRequestDetector();

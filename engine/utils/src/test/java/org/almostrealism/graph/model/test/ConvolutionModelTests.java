@@ -40,18 +40,31 @@ import org.junit.Test;
 import java.io.IOException;
 import java.util.function.Supplier;
 
+/**
+ * Tests for convolution model operations.
+ */
 public class ConvolutionModelTests extends TestSuiteBase implements ModelFeatures, KernelAssertions {
+
+	/**
+	 * Tests single channel convolution with small dimensions.
+	 */
 	@Test(timeout = 30000)
 	public void convSingleChannelSmall() {
 		convSingleChannel(10, 10, 3, 8);
 	}
 
+	/**
+	 * Tests single channel convolution with medium dimensions.
+	 */
 	@Test(timeout = 30000)
 	public void convSingleChannelMedium() {
 //		convSingleChannel(54, 54, 3, 6);
 		convSingleChannel(52, 52, 3, 6);
 	}
 
+	/**
+	 * Executes single channel convolution test.
+	 */
 	public void convSingleChannel(int h, int w, int convSize, int filterCount) {
 		TraversalPolicy inputShape = shape(h, w);
 		Model model = new Model(inputShape);
@@ -75,22 +88,34 @@ public class ConvolutionModelTests extends TestSuiteBase implements ModelFeature
 		validateConv(input.reshape(1, 1, h, w), filter, output, convSize);
 	}
 
+	/**
+	 * Tests multi-channel convolution with small dimensions.
+	 */
 	@Test(timeout = 30000)
 	public void convMultiChannelSmall() {
 		convMultiChannel(2, 4, 10, 10, 3, 6);
 	}
 
+	/**
+	 * Tests multi-channel convolution with medium dimensions.
+	 */
 	@Test(timeout = 15 * 60000)
 	@TestDepth(1)
 	public void convMultiChannelMedium() {
 		convMultiChannel(2, 4, 54, 54, 3, 6);
 	}
 
+	/**
+	 * Tests multi-channel convolution with large dimensions.
+	 */
 	@Test(timeout = 2 * 60000)
 	public void convMultiChannelLarge() {
 		convMultiChannel(1, 56, 28, 28, 3, 28);
 	}
 
+	/**
+	 * Executes multi-channel convolution test.
+	 */
 	public void convMultiChannel(int n, int c, int h, int w, int convSize, int filterCount) {
 		TraversalPolicy inputShape = shape(n, c, h, w);
 		Model model = new Model(inputShape);
@@ -113,16 +138,25 @@ public class ConvolutionModelTests extends TestSuiteBase implements ModelFeature
 		validateConv(input, filter, output, convSize);
 	}
 
+	/**
+	 * Tests small atom convolution backward pass.
+	 */
 	@Test(timeout = 30000)
 	public void convBackwardsSmallAtom() throws IOException {
 		convBackwards("convBackwardsSmallAtom", 1, 3, 4, 4, 1, 3, 0, true);
 	}
 
+	/**
+	 * Tests medium atom convolution backward pass.
+	 */
 	@Test(timeout = 30000)
 	public void convBackwardsMediumAtom() throws IOException {
 		convBackwards("convBackwardsMediumAtom", 1, 28, 28, 28, 1, 28, 0, true);
 	}
 
+	/**
+	 * Tests medium atom padded convolution backward pass.
+	 */
 	@Test(timeout = 30000)
 	@TestProperties(knownIssue = true)
 	public void convBackwardsMediumAtomPadded() throws IOException {
@@ -130,47 +164,74 @@ public class ConvolutionModelTests extends TestSuiteBase implements ModelFeature
 		convBackwards("convBackwardsMediumAtomPadded", 1, 28, 28, 28, 1, 28,1, true);
 	}
 
+	/**
+	 * Tests small convolution backward pass.
+	 */
 	@Test(timeout = 30000)
 	public void convBackwardsSmall() throws IOException {
 		convBackwards("convBackwardsSmall", 1, 3, 4, 4, 2, 3,0, true);
 	}
 
+	/**
+	 * Tests small padded convolution backward pass.
+	 */
 	@Test(timeout = 30000)
 	public void convBackwardsSmallPadded() throws IOException {
 		convBackwards("convBackwardsSmallPadded", 1, 3, 4, 4, 2, 3, 1, true);
 	}
 
+	/**
+	 * Tests medium convolution backward pass.
+	 */
 	@Test(timeout = 30000)
 	public void convBackwardsMedium() throws IOException {
 		convBackwards("convBackwardsMedium", 1, 28, 28, 28, 3, 28, 0, true);
 	}
 
+	/**
+	 * Tests medium batch convolution backward pass.
+	 */
 	@Test(timeout = 90 * 60000)
 	@TestDepth(2)
 	public void convBackwardsMediumBatch() throws IOException {
 		convBackwards("convBackwardsMediumBatch", 4, 28, 28, 28, 3, 28, 0, true);
 	}
 
+	/**
+	 * Tests large convolution backward pass.
+	 */
 	@Test(timeout = 2 * 60000)
 	public void convBackwardsLarge() throws IOException {
 		convBackwards("convBackwardsLarge", 1, 168, 7, 7, 3, 112, 1, true);
 	}
 
+	/**
+	 * Tests medium padded convolution backward pass.
+	 */
 	@Test(timeout = 30000)
 	public void convBackwardsMediumPadded() throws IOException {
 		convBackwards("convBackwardsMediumPadded", 1, 28, 28, 28, 3, 28, 1, true);
 	}
 
+	/**
+	 * Tests smallest convolution gradient.
+	 */
 	@Test(timeout = 30000)
 	public void convGradientSmallest() throws IOException {
 		convGradient("convGradientSmallest", 1, 1, 4, 4, 2, 1, 0, false);
 	}
 
+	/**
+	 * Tests small convolution gradient.
+	 */
 	@Test(timeout = 30000)
 	public void convGradientSmall() throws IOException {
 		convGradient("convGradientSmallest", 3, 2, 4, 4, 2, 2, 0, false);
 	}
 
+	/**
+	 * Tests convolution gradient computation.
+	 */
 	public void convGradient(String name, int bs, int c, int h, int w, int convSize,
 							 int filterCount, int padding, boolean bias) throws IOException {
 		TraversalPolicy inputShape = shape(bs, c, h, w);
@@ -233,6 +294,9 @@ public class ConvolutionModelTests extends TestSuiteBase implements ModelFeature
 		}
 	}
 
+	/**
+	 * Tests convolution backward pass with profiling.
+	 */
 	public void convBackwards(String name, int n, int c, int h, int w, int convSize,
 							  int filterCount, int padding, boolean bias) throws IOException {
 		TraversalPolicy inputShape = shape(n, c, h, w);
@@ -263,6 +327,9 @@ public class ConvolutionModelTests extends TestSuiteBase implements ModelFeature
 		}
 	}
 
+	/**
+	 * Validates convolution output against expected values.
+	 */
 	protected void validateConv(PackedCollection input, PackedCollection filter, PackedCollection output, int convSize) {
 		int batches = input.getShape().length(0);
 		int channels = input.getShape().length(1);

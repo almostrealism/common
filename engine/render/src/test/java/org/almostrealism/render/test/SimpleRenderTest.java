@@ -44,9 +44,15 @@ import org.almostrealism.geometry.TransformMatrix;
  * Simple rendering tests to verify the ray tracing pipeline can produce output.
  */
 public class SimpleRenderTest extends TestSuiteBase {
+	/** Image width for rendering tests. */
 	int width = 64;
+
+	/** Image height for rendering tests. */
 	int height = 64;
 
+	/**
+	 * Tests rendering a single pixel with transforms enabled.
+	 */
 	@TestProperties(knownIssue = true)
 	@Test(timeout = 30000)
 	public void testSinglePixelRendering() {
@@ -131,6 +137,9 @@ public class SimpleRenderTest extends TestSuiteBase {
 		assertTrue("Single pixel should be non-black", isNonBlack);
 	}
 
+	/**
+	 * Compares working intersection test vs broken rank cache.
+	 */
 	@TestProperties(knownIssue = true)
 	@Test(timeout = 30000)
 	public void testRankCacheComparison() {
@@ -227,6 +236,9 @@ public class SimpleRenderTest extends TestSuiteBase {
 
 	}
 
+	/**
+	 * Tests camera ray direction computation.
+	 */
 	@Test(timeout = 30000)
 	public void testCameraRayDirection() {
 		log("Testing camera ray direction computation...");
@@ -286,6 +298,9 @@ public class SimpleRenderTest extends TestSuiteBase {
 		log("\nTest passed!");
 	}
 
+	/**
+	 * Tests shader/lighting calculation in isolation.
+	 */
 	@Test(timeout = 30000)
 	public void testShaderIsolated() {
 		log("Testing shader/lighting calculation in isolation...");
@@ -348,6 +363,9 @@ public class SimpleRenderTest extends TestSuiteBase {
 		assertTrue("Shader should produce non-black color for lit sphere", isNonBlack);
 	}
 
+	/**
+	 * Tests direct sphere intersection.
+	 */
 	@Test(timeout = 30000)
 	public void debugIntersection() {
 		log("Testing direct sphere intersection...");
@@ -377,6 +395,9 @@ public class SimpleRenderTest extends TestSuiteBase {
 		assertTrue("Distance should be ~9.0 (was " + distVal + ")", Math.abs(distVal - 9.0) < 0.1);
 	}
 
+	/**
+	 * Tests camera ray generation.
+	 */
 	@Test(timeout = 30000)
 	public void debugCameraRay() {
 		log("Testing camera ray generation...");
@@ -422,6 +443,9 @@ public class SimpleRenderTest extends TestSuiteBase {
 		log("Camera ray correctly hits sphere at distance " + dist);
 	}
 
+	/**
+	 * Tests rendering a scene with a single sphere.
+	 */
 	@TestProperties(knownIssue = true)
 	@Test(timeout = 30000)
 	public void renderSingleSphere() throws Exception {
@@ -525,11 +549,13 @@ public class SimpleRenderTest extends TestSuiteBase {
 			assertTrue("Should have some non-black pixels", nonBlackPixels > 0);
 		} catch (Exception e) {
 			log("Exception during render: " + e.getMessage());
-			e.printStackTrace();
 			throw e;
 		}
 	}
 
+	/**
+	 * Tests rendering a scene with two spheres.
+	 */
 	@TestProperties(knownIssue = true)
 	@Test(timeout = 30000)
 	public void renderTwoSpheres() throws Exception {

@@ -40,6 +40,7 @@ import java.util.stream.Stream;
  */
 public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 
+	/** Directory containing bass loop audio files for testing. */
 	private static final Path BASS_LOOPS_DIR = Path.of("/workspace/project/BASS LOOPS_125");
 
 	/**
@@ -48,7 +49,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	@Test(timeout = 120_000)
 	public void testBasicCollection() throws IOException {
 		if (!Files.exists(BASS_LOOPS_DIR)) {
-			log("BASS LOOPS directory not found, skipping test");
+			log("Bass loops directory not found, skipping test");
 			return;
 		}
 
@@ -91,7 +92,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	@Test(timeout = 120_000)
 	public void testAmplitudeNormalization() throws IOException {
 		if (!Files.exists(BASS_LOOPS_DIR)) {
-			log("BASS LOOPS directory not found, skipping test");
+			log("Bass loops directory not found, skipping test");
 			return;
 		}
 
@@ -126,7 +127,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	@Test(timeout = 120_000)
 	public void testTrainValidationSplit() throws IOException {
 		if (!Files.exists(BASS_LOOPS_DIR)) {
-			log("BASS LOOPS directory not found, skipping test");
+			log("Bass loops directory not found, skipping test");
 			return;
 		}
 
@@ -160,7 +161,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	@Test(timeout = 120_000)
 	public void testAugmentation() throws IOException {
 		if (!Files.exists(BASS_LOOPS_DIR)) {
-			log("BASS LOOPS directory not found, skipping test");
+			log("Bass loops directory not found, skipping test");
 			return;
 		}
 
@@ -204,7 +205,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	@Test(timeout = 120_000)
 	public void testCollectFromDirectory() throws IOException {
 		if (!Files.exists(BASS_LOOPS_DIR)) {
-			log("BASS LOOPS directory not found, skipping test");
+			log("Bass loops directory not found, skipping test");
 			return;
 		}
 
@@ -231,7 +232,7 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 	@Test(timeout = 120_000)
 	public void testSegmentLength() throws IOException {
 		if (!Files.exists(BASS_LOOPS_DIR)) {
-			log("BASS LOOPS directory not found, skipping test");
+			log("Bass loops directory not found, skipping test");
 			return;
 		}
 
@@ -268,6 +269,13 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 		log("Segment length test passed");
 	}
 
+	/**
+	 * Retrieves audio files from the bass loops directory.
+	 *
+	 * @param maxFiles maximum number of files to return
+	 * @return list of Paths to audio files
+	 * @throws IOException if directory listing fails
+	 */
 	private List<Path> getAudioFiles(int maxFiles) throws IOException {
 		try (Stream<Path> paths = Files.list(BASS_LOOPS_DIR)) {
 			return paths
@@ -278,6 +286,12 @@ public class AudioTrainingDataCollectorTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Counts the number of items in a dataset.
+	 *
+	 * @param dataset the dataset to count
+	 * @return number of items in the dataset
+	 */
 	private int countDataset(Dataset<?> dataset) {
 		int count = 0;
 		for (Object ignored : dataset) {

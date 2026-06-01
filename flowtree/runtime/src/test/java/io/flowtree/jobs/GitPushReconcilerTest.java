@@ -59,6 +59,7 @@ public class GitPushReconcilerTest extends TestSuiteBase {
         /** Paths reported by {@code diff --name-only --diff-filter=U}. */
         List<String> conflicted = new ArrayList<>();
 
+        /** Executes a git command described by {@code args} and returns the simulated exit code. */
         int exec(String... args) {
             commands.add(String.join(" ", args));
             switch (args[0]) {
@@ -76,6 +77,7 @@ public class GitPushReconcilerTest extends TestSuiteBase {
             }
         }
 
+        /** Executes a git query command and returns the simulated output string. */
         String query(String... args) {
             commands.add("Q:" + String.join(" ", args));
             if ("ls-files".equals(args[0])) return unmergedOutput;
@@ -84,6 +86,7 @@ public class GitPushReconcilerTest extends TestSuiteBase {
             return "";
         }
 
+        /** Returns the number of recorded commands that start with the given prefix. */
         long count(String prefix) {
             return commands.stream().filter(c -> c.startsWith(prefix)).count();
         }
@@ -91,24 +94,31 @@ public class GitPushReconcilerTest extends TestSuiteBase {
 
     /** Minimal concrete {@link GitManagedJob} whose conflict hook is scriptable. */
     static final class StubJob extends GitManagedJob {
+        /** Whether the conflict hook should report that conflicts were resolved. */
         boolean resolveConflict = true;
+        /** Tracks how many times the {@link #onPushConflict} hook has been invoked. */
         int conflictHookCalls = 0;
+        /** The list of conflicted files passed to the most recent conflict hook call. */
         List<String> lastConflictedFiles;
 
+        /** Constructs a {@link StubJob} targeting the {@code feature/x} branch with task id {@code t1}. */
         StubJob() {
             setTargetBranch("feature/x");
             setTaskId("t1");
         }
 
+        /** No-op implementation of the work body; all behavior is driven by the reconciler under test. */
         @Override
         protected void doWork() {
         }
 
+        /** Returns a fixed stub task string for identification purposes. */
         @Override
         public String getTaskString() {
             return "stub-task";
         }
 
+        /** Records the call and returns the configured {@link #resolveConflict} flag. */
         @Override
         protected boolean onPushConflict(String repoPath, List<String> conflictedFiles) {
             conflictHookCalls++;
@@ -117,10 +127,12 @@ public class GitPushReconcilerTest extends TestSuiteBase {
         }
     }
 
+    /** Creates a {@link GitPushReconciler} wired to the given stub job and fake git executor. */
     private static GitPushReconciler reconciler(StubJob job, FakeGit git) {
         return new GitPushReconciler(job, "/tmp/repo", git::exec, git::query);
     }
 
+    /** Verifies that a push that succeeds on the first attempt performs no fetch or conflict resolution. */
     @Test(timeout = 30000)
     public void cleanPushFirstTrySkipsReconciliation() throws Exception {
         StubJob job = new StubJob();
@@ -133,6 +145,7 @@ public class GitPushReconcilerTest extends TestSuiteBase {
         assertEquals(0, job.conflictHookCalls);
     }
 
+    /** Verifies that a rejected push triggers a fetch-and-merge reconciliation and then retries the push. */
     @Test(timeout = 30000)
     public void rejectionThenCleanMergeRetriesPush() throws Exception {
         StubJob job = new StubJob();
@@ -147,6 +160,7 @@ public class GitPushReconcilerTest extends TestSuiteBase {
         assertEquals("clean merge needs no conflict hook", 0, job.conflictHookCalls);
     }
 
+    /** Verifies that when the merge produces conflicts the agent hook is called and the resolved files are staged and committed before retrying. */
     @Test(timeout = 30000)
     public void conflictResolvedByAgentThenCommitsAndRetries() throws Exception {
         StubJob job = new StubJob();
@@ -168,6 +182,7 @@ public class GitPushReconcilerTest extends TestSuiteBase {
                 git.commands.stream().anyMatch(c -> c.contains("commit")));
     }
 
+    /** Verifies that a push failure where the remote did not advance throws an exception containing "did not advance". */
     @Test(timeout = 30000)
     public void remoteDidNotAdvanceFailsLoudly() {
         StubJob job = new StubJob();
@@ -184,6 +199,7 @@ public class GitPushReconcilerTest extends TestSuiteBase {
         assertEquals(0, job.conflictHookCalls);
     }
 
+    /** Verifies that when the conflict hook declines to resolve conflicts an exception containing "not resolved" is thrown. */
     @Test(timeout = 30000)
     public void unresolvedConflictFailsLoudly() {
         StubJob job = new StubJob();
@@ -202,6 +218,7 @@ public class GitPushReconcilerTest extends TestSuiteBase {
         assertEquals(1, job.conflictHookCalls);
     }
 
+    /** Verifies that exhausting all reconciliation attempts throws an exception mentioning the maximum attempt count. */
     @Test(timeout = 30000)
     public void exhaustsRetriesFailsLoudly() {
         StubJob job = new StubJob();

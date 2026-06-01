@@ -41,6 +41,10 @@ import static org.junit.Assert.assertTrue;
  */
 public class McpConfigBuilderTest extends TestSuiteBase {
 
+	/**
+	 * Verifies that {@link McpConfigBuilder} emits a valid HTTP entry for
+	 * ar-manager when both URL and token are configured.
+	 */
 	@Test(timeout = 30000)
 	public void buildsArManagerHttpEntry() {
 		McpConfigBuilder builder = new McpConfigBuilder();
@@ -55,6 +59,9 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 			config.contains("Bearer armt_tmp_testtoken"));
 	}
 
+	/**
+	 * Verifies that the ar-manager server entry is omitted when no token is configured.
+	 */
 	@Test(timeout = 30000)
 	public void omitsArManagerWithoutToken() {
 		McpConfigBuilder builder = new McpConfigBuilder();
@@ -67,6 +74,10 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 			config.contains("ar-manager"));
 	}
 
+	/**
+	 * Verifies that servers declared in a project's {@code .mcp.json} and enabled
+	 * in {@code .claude/settings.json} appear in the generated MCP config.
+	 */
 	@Test(timeout = 30000)
 	public void buildsProjectServerEntries() throws IOException {
 		Path tempDir = Files.createTempDirectory("mcp_config_test_");
@@ -106,6 +117,10 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Verifies that pushed-tools config produces a stdio server entry pointing at
+	 * the downloaded server script, and that the tool names appear in the allowlist.
+	 */
 	@Test(timeout = 30000)
 	public void pushedToolsEmitStdioEntryAndAllowedTools() {
 		McpConfigBuilder builder = new McpConfigBuilder();
@@ -126,6 +141,11 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 			allowed.contains("mcp__ar-secrets__secret_render_file"));
 	}
 
+	/**
+	 * Verifies that a pushed-tool entry for a server name also present in the project's
+	 * {@code .mcp.json} takes precedence, using the downloaded path rather than the
+	 * project-relative path.
+	 */
 	@Test(timeout = 30000)
 	public void pushedToolEntryOverridesProjectMcpJsonOfSameName() throws IOException {
 		Path tempDir = Files.createTempDirectory("mcp_pushed_dedup_");
@@ -153,6 +173,10 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Verifies that {@link McpConfigBuilder#buildAllowedTools(String)} includes
+	 * ar-manager tools (and excludes deliberately excluded ones) when ar-manager is configured.
+	 */
 	@Test(timeout = 30000)
 	public void buildAllowedToolsIncludesArManager() {
 		McpConfigBuilder builder = new McpConfigBuilder();
@@ -346,6 +370,10 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 		);
 	}
 
+	/**
+	 * Verifies that ar-manager tools are absent from the allowlist when no
+	 * ar-manager URL or token has been configured.
+	 */
 	@Test(timeout = 30000)
 	public void buildAllowedToolsExcludesArManagerWithoutConfig() {
 		McpConfigBuilder builder = new McpConfigBuilder();
@@ -357,6 +385,11 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 			allowed.contains("mcp__ar-manager__"));
 	}
 
+	/**
+	 * Verifies that an {@code ar-manager} entry in the project's {@code .mcp.json}
+	 * is skipped during project-server discovery, since ar-manager is handled as a
+	 * centralized HTTP entry instead.
+	 */
 	@Test(timeout = 30000)
 	public void excludesArManagerFromProjectDiscovery() throws IOException {
 		Path tempDir = Files.createTempDirectory("mcp_config_test_");

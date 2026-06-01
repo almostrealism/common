@@ -29,8 +29,18 @@ import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
+/**
+ * Tests for rotary position embedding (RoPE) and rotation features.
+ * Validates both compilation correctness and numerical accuracy of RoPE implementation.
+ *
+ * @see RotationFeatures
+ */
 public class RotationTests extends TestSuiteBase implements RotationFeatures {
 
+	/**
+	 * Tests that permutation compilation works correctly in SequentialBlock.
+	 * Double permutation (0,2,1,3 twice) should result in identity.
+	 */
 	@Test(timeout = 30000)
 	public void permutationCompilation() {
 		int batchSize = 1, seqLen = 4, heads = 2, dimHead = 8;
@@ -61,7 +71,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		log("Permutation compilation difference: " + diff);
 
 		if (Math.abs(diff) > 1e-6) {
-			log("ERROR: SequentialBlock permutation compilation is broken!");
+			log("SequentialBlock permutation compilation is broken!");
 
 			// Print detailed comparison
 			for (int i = 0; i < Math.min(20, input.getShape().getTotalSize()); i++) {
@@ -73,6 +83,10 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertEquals(input, compiledResult);
 	}
 
+	/**
+	 * Tests batch cosine product computation with frequency expansion.
+	 * Verifies that cos(expandedFreqs) produces correct values across batch and heads.
+	 */
 	@Test(timeout = 30000)
 	public void batchCosineProduct() {
 		int batchSize = 2;
@@ -111,6 +125,10 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue("Cosine values should match expected", diff < 1e-6);
 	}
 
+	/**
+	 * Tests batch rotary sum: left * cos(freqs) + right * sin(freqs).
+	 * Verifies the combined rotation operation with both inputs.
+	 */
 	@Test(timeout = 30000)
 	public void batchRotarySum() {
 		int batchSize = 2;
@@ -155,6 +173,10 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue("Cosine values should match expected", diff < 1e-6);
 	}
 
+	/**
+	 * Tests the rotateHalf operation that interleaves and negates halves of the input.
+	 * First half becomes negated second half, second half becomes first half.
+	 */
 	@Test(timeout = 30000)
 	public void rotateHalf() {
 		int batchSize = 1;
@@ -187,6 +209,10 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		}
 	}
 
+	/**
+	 * Tests the rotateHalf sum: input + rotateHalf(input).
+	 * Verifies that the sum of original and rotated input produces expected values.
+	 */
 	@Test(timeout = 30000)
 	public void rotateHalfSum() {
 		int batchSize = 1;
@@ -225,6 +251,10 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue("Average difference exceeded", diff < 1e-6);
 	}
 
+	/**
+	 * Tests the full rotary product sum: input * cos(freqs) + rotateHalf(input) * sin(freqs).
+	 * This is the complete rotary embedding application used in transformers.
+	 */
 	@Test(timeout = 30000)
 	public void rotateHalfProductSum() {
 		int batchSize = 1;
@@ -289,6 +319,10 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue("Average difference exceeded", diff < 1e-6);
 	}
 
+	/**
+	 * Tests the applyRotaryTransform method directly.
+	 * Verifies that the rotary transform produces correct values matching manual computation.
+	 */
 	@Test(timeout = 30000)
 	public void applyRotaryTransform() {
 		int batchSize = 2;
@@ -343,6 +377,12 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue("Average difference exceeded", diff < 1e-6);
 	}
 
+	/**
+	 * Tests applyRotaryTransform against reference data from PyTorch rotary embedding.
+	 * Compares computeRotaryFreqs and applyRotaryPositionEmbedding against expected outputs.
+	 *
+	 * @throws Exception if reference data cannot be loaded
+	 */
 	@Test(timeout = 30000)
 	public void applyRotaryTransformCompare() throws Exception {
 		if (testProfileIs(TestUtils.PIPELINE)) return;
@@ -398,6 +438,10 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		assertTrue(diff < 1e-4);
 	}
 
+	/**
+	 * Tests ropeRotation with pre-computed weights at a specific position.
+	 * Verifies that complex multiplication produces expected rotated values.
+	 */
 	@Test(timeout = 60000)
 	public void ropeRotation() {
 		if (testProfileIs(TestUtils.PIPELINE)) return;

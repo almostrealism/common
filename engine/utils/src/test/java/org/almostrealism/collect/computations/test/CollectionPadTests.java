@@ -23,6 +23,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for padding and concatenation operations on collections.
+ */
 public class CollectionPadTests extends TestSuiteBase {
 	/**
 	 * Tests padding computation with subset operations.
@@ -287,6 +290,9 @@ public class CollectionPadTests extends TestSuiteBase {
 	}
 
 
+	/**
+	 * Tests padding operation with a small batch of scalars.
+	 */
 	@Test(timeout = 30000)
 	public void padSmallBatch() {
 		// Test padding operation with a batch of scalars
@@ -317,6 +323,9 @@ public class CollectionPadTests extends TestSuiteBase {
 		Assert.assertEquals(0.0, result.valueAt(2, 1), 0.01);
 	}
 
+	/**
+	 * Tests concatenation operation with a small batch of scalars.
+	 */
 	@Test(timeout = 30000)
 	public void concatSmallBatch() {
 		// Test concat operation with batch of scalars
@@ -348,6 +357,9 @@ public class CollectionPadTests extends TestSuiteBase {
 		Assert.assertEquals(30.0, result.valueAt(2, 1), 0.01);
 	}
 
+	/**
+	 * Tests concatenation with exactly 256 elements to check for batch size limits.
+	 */
 	@Test(timeout = 30000)
 	public void concatLargeBatch() {
 		// Test concat with exactly 256 elements to check for batch size limit
@@ -385,6 +397,9 @@ public class CollectionPadTests extends TestSuiteBase {
 		Assert.assertEquals(510.0, result.valueAt(255, 1), 0.01);
 	}
 
+	/**
+	 * Tests concat with 2D traversal using a 16x16 grid.
+	 */
 	@Test(timeout = 30000)
 	public void concat2DTraversal() {
 		// Test concat with 2D traversal

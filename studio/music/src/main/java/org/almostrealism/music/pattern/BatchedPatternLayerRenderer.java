@@ -22,9 +22,11 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.notes.NoteAudioContext;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Production integration boundary for the Phase 3 batched pattern rendering path.
@@ -92,19 +94,58 @@ public final class BatchedPatternLayerRenderer {
 	public static final int[] BUCKETS = {16, 32, 64, 128, 256, 512};
 
 	/**
-	 * Bucket-keyed cache of compiled batched renderers. The cache key is the
-	 * bucket-N (one of {@link #BUCKETS}); a single renderer per bucket is
-	 * shared across all ticks. Concurrent access is supported for future
-	 * multi-thread render orchestration.
+	 * Granularity to which the per-dispatch source length is rounded up so a small
+	 * set of compiled kernels is shared across windows whose source requirements
+	 * differ only slightly.
 	 */
-	private final ConcurrentMap<Integer, BatchedPatternRenderer> rendererCache =
+	public static final int SOURCE_BUCKET = 1024;
+
+	/**
+	 * Maximum per-dispatch render window in frames. A render call wider than this is
+	 * split into consecutive sub-windows so the compiled kernel (whose intermediate
+	 * buffers scale with {@code bucketN * windowWidth}) stays bounded regardless of
+	 * the caller's frame count. The production real-time path renders one audio
+	 * buffer at a time (well under this), so the split is a robustness bound for
+	 * large offline render spans; it also drives note continuation across windows.
+	 */
+	public static final int MAX_WINDOW = 8192;
+
+	/**
+	 * Cache of compiled batched renderers keyed by {@code [bucketN, sourceLength,
+	 * targetLength]}. The kernel is fixed-shape at construction, so a distinct
+	 * renderer is compiled per note-count bucket, per source-length bucket, and per
+	 * render-window width; each is shared across all ticks of the same shape.
+	 * Concurrent access is supported for future multi-thread render orchestration.
+	 */
+	private final ConcurrentMap<List<Integer>, BatchedPatternRenderer> rendererCache =
 			new ConcurrentHashMap<>();
 
-	/** Source samples per note before resampling. */
-	private final int sourceLength;
+	/** Count of batched-kernel dispatches; instrumentation for the realtime gate. */
+	public static final AtomicLong batchedDispatchCount = new AtomicLong();
 
-	/** Target samples per note after resampling. */
-	private final int targetLength;
+	/** Count of fallbacks to the per-note path; must be 0 at production density when batched. */
+	public static final AtomicLong fallbackCount = new AtomicLong();
+
+	/** Cumulative host-side input-marshalling time (ns): buffer clear + source/scalar writes. */
+	public static final AtomicLong marshalNanos = new AtomicLong();
+
+	/** Cumulative device-side time (ns): cached-kernel re-evaluation plus the accumulate sum. */
+	public static final AtomicLong evalNanos = new AtomicLong();
+
+	/** Cumulative note-generation + per-note gather time (ns): {@code getNoteDestinations}. */
+	public static final AtomicLong gatherNanos = new AtomicLong();
+
+	/** Resets the dispatch instrumentation counters. */
+	public static void resetCounters() {
+		batchedDispatchCount.set(0);
+		fallbackCount.set(0);
+		marshalNanos.set(0);
+		evalNanos.set(0);
+		gatherNanos.set(0);
+	}
+
+	/** Finite placeholder note duration (seconds) for silent padded batch rows. */
+	private static final double PAD_DURATION = 0.01;
 
 	/** Audio sample rate in Hz. */
 	private final int sampleRate;
@@ -113,19 +154,15 @@ public final class BatchedPatternLayerRenderer {
 	private final int filterOrder;
 
 	/**
-	 * Constructs a batched layer renderer with the given fixed parameters.
-	 * Per-bucket {@link BatchedPatternRenderer} instances are lazily created
-	 * on first dispatch to each bucket.
+	 * Constructs a batched layer renderer. The per-note source length and the
+	 * per-note row (target) length are not fixed here — they are sized per dispatch
+	 * to the render window and the notes present, and compiled kernels are cached
+	 * per resulting shape.
 	 *
-	 * @param sourceLength source samples per note before resampling
-	 * @param targetLength target samples per note after resampling
-	 * @param sampleRate   audio sample rate in Hz
-	 * @param filterOrder  FIR filter order for the per-row lowpass kernel
+	 * @param sampleRate  audio sample rate in Hz
+	 * @param filterOrder FIR filter order for the per-row lowpass kernel
 	 */
-	public BatchedPatternLayerRenderer(int sourceLength, int targetLength,
-									   int sampleRate, int filterOrder) {
-		this.sourceLength = sourceLength;
-		this.targetLength = targetLength;
+	public BatchedPatternLayerRenderer(int sampleRate, int filterOrder) {
 		this.sampleRate = sampleRate;
 		this.filterOrder = filterOrder;
 	}
@@ -145,24 +182,19 @@ public final class BatchedPatternLayerRenderer {
 	}
 
 	/**
-	 * Returns the cached {@link BatchedPatternRenderer} for the given bucket,
-	 * lazily constructing one if absent.
+	 * Returns the cached {@link BatchedPatternRenderer} for the given shape, lazily
+	 * compiling one if absent.
 	 *
-	 * @param bucket the bucket-N (one of {@link #BUCKETS}, or anything else if
-	 *               oversized)
-	 * @return the renderer compiled for that bucket
+	 * @param bucket       the bucket-N (one of {@link #BUCKETS}, or larger if oversized)
+	 * @param sourceLength per-note source buffer length (already source-bucketed)
+	 * @param targetLength per-note row length (the render window width)
+	 * @return the renderer compiled for that shape
 	 */
-	public BatchedPatternRenderer rendererFor(int bucket) {
-		return rendererCache.computeIfAbsent(bucket, b ->
-				new BatchedPatternRenderer(b, sourceLength, targetLength,
+	public BatchedPatternRenderer rendererFor(int bucket, int sourceLength, int targetLength) {
+		return rendererCache.computeIfAbsent(List.of(bucket, sourceLength, targetLength), k ->
+				new BatchedPatternRenderer(bucket, sourceLength, targetLength,
 						sampleRate, filterOrder));
 	}
-
-	/** Returns the source samples per note configured for this renderer. */
-	public int getSourceLength() { return sourceLength; }
-
-	/** Returns the target samples per note after resampling. */
-	public int getTargetLength() { return targetLength; }
 
 	/** Returns the configured audio sample rate in Hz. */
 	public int getSampleRate() { return sampleRate; }
@@ -206,13 +238,19 @@ public final class BatchedPatternLayerRenderer {
 
 		int endFrame = startFrame + frameCount;
 
+		long genStart = System.nanoTime();
 		List<RenderedNoteAudio> destinations = elements.stream()
 				.map(e -> e.getNoteDestinations(melodic, offset, sceneContext, audioContext))
 				.flatMap(List::stream)
 				.toList();
+		gatherNanos.addAndGet(System.nanoTime() - genStart);
 
-		// Count overlapping notes (those that intersect [startFrame, endFrame)).
-		int overlappingCount = 0;
+		// Collect notes overlapping [startFrame, endFrame). The batched path can
+		// dispatch when every overlapping note carries a melodic-SSS input record;
+		// a note continuing from an earlier tick is rendered from its within-note
+		// sampling offset (computed per note in dispatchBatched).
+		List<RenderedNoteAudio> overlapping = new ArrayList<>();
+		boolean allBatchable = true;
 		for (RenderedNoteAudio note : destinations) {
 			int noteStart = note.getOffset();
 			if (note.getExpectedFrameCount() > 0) {
@@ -221,23 +259,234 @@ public final class BatchedPatternLayerRenderer {
 			} else if (noteStart >= endFrame) {
 				continue;
 			}
-			overlappingCount++;
+			overlapping.add(note);
+			if (note.getBatchedInputs() == null) {
+				allBatchable = false;
+			}
 		}
 
-		// Prime the bucket cache for this tick's N. The compiled renderer is
-		// reused across ticks with the same bucket-N (no per-tick recompile).
-		if (overlappingCount > 0) {
-			rendererFor(bucketFor(overlappingCount));
+		if (allBatchable && !overlapping.isEmpty()) {
+			dispatchBatched(features, overlapping, startFrame, frameCount, destination);
+			batchedDispatchCount.incrementAndGet();
+			return;
 		}
 
-		// Fallback to the per-note path. This preserves acoustic equivalence
-		// while the per-note input plumbing (source buffer, pitch ratio, ADSR
-		// scalars) is in development. When that lands, this fallback is
-		// replaced by a single buildBatchedChain dispatch on the gathered
-		// [N, ...] tensors, with the destination accumulating the reduced
-		// [targetLength] output at the tick-relative offsets via the existing
-		// sum-to-destination mechanism.
+		// Fall back to the per-note path for any tick with an unsupported note.
+		if (!overlapping.isEmpty()) {
+			fallbackCount.incrementAndGet();
+		}
 		features.renderPerNote(sceneContext, audioContext, elements, melodic, offset,
 				startFrame, frameCount, cache);
+	}
+
+	/**
+	 * Dispatches the batched melodic-SSS path for the given notes (all of which
+	 * carry a {@link BatchedNoteInputs} record), splitting the render range into
+	 * {@link #MAX_WINDOW}-bounded sub-windows so the compiled kernel size stays
+	 * bounded regardless of {@code frameCount}. Each sub-window renders the notes
+	 * overlapping it via {@link #dispatchWindow}; a note spanning a sub-window
+	 * boundary is continued in the next sub-window from its advancing sampling
+	 * offset.
+	 *
+	 * @param features    the features instance providing the evaluate boundary
+	 * @param notes       the notes to render (size {@code >= 1})
+	 * @param startFrame  the tick's absolute start frame
+	 * @param frameCount  the tick's frame count (the full output window width)
+	 * @param destination the per-tick destination buffer to accumulate into
+	 */
+	private void dispatchBatched(PatternFeatures features, List<RenderedNoteAudio> notes, int startFrame,
+								 int frameCount, PackedCollection destination) {
+		for (int ws = 0; ws < frameCount; ws += MAX_WINDOW) {
+			int subWidth = Math.min(MAX_WINDOW, frameCount - ws);
+			int subStart = startFrame + ws;
+			int subEnd = subStart + subWidth;
+
+			List<RenderedNoteAudio> sub = new ArrayList<>();
+			for (RenderedNoteAudio note : notes) {
+				int noteStart = note.getOffset();
+				if (note.getExpectedFrameCount() > 0) {
+					int noteEnd = noteStart + note.getExpectedFrameCount();
+					if (noteEnd <= subStart || noteStart >= subEnd) continue;
+				} else if (noteStart >= subEnd) {
+					continue;
+				}
+				sub.add(note);
+			}
+			if (!sub.isEmpty()) {
+				dispatchWindow(features, sub, subStart, subWidth, destination, ws);
+			}
+		}
+	}
+
+	/**
+	 * Dispatches one bounded sub-window: builds the padded batch tensors for the
+	 * notes overlapping {@code [windowStart, windowStart + windowWidth)}, runs the
+	 * fused melodic-SSS kernel sized to this window, and accumulates the placed,
+	 * summed output into {@code destination} starting at {@code destBaseOffset}.
+	 *
+	 * @param features      the features instance providing the evaluate boundary
+	 * @param notes         the notes overlapping this sub-window (size {@code >= 1})
+	 * @param windowStart   the sub-window's absolute start frame
+	 * @param windowWidth   the sub-window's frame count (per-note row length)
+	 * @param destination   the per-tick destination buffer to accumulate into
+	 * @param destBaseOffset the frame offset into {@code destination} for this sub-window
+	 */
+	private void dispatchWindow(PatternFeatures features, List<RenderedNoteAudio> notes, int windowStart,
+								int windowWidth, PackedCollection destination, int destBaseOffset) {
+		int count = notes.size();
+		int bucketN = bucketFor(count);
+		int layers = BatchedNoteInputs.LAYERS;
+		int startFrame = windowStart;
+		int targetLength = windowWidth;
+
+		double[][] ratios = new double[layers][bucketN];
+		double[][][] layerParams = new double[layers][8][bucketN];
+		double[][] filterAdsr = new double[5][bucketN];
+		double[][] volumeAdsr = new double[5][bucketN];
+		double[] destOffsets = new double[bucketN];
+		double[] samplingOffsets = new double[bucketN];
+
+		// A note beginning in this window is placed at its in-window offset and read
+		// from sample 0; a note continuing from an earlier window is placed at offset
+		// 0 and read (and enveloped) from its within-note position, so output frame k
+		// maps to absolute frame startFrame + k either way. Size the per-note source
+		// row to hold the frames this window reads: samplingOffset + targetLength.
+		int sourceLength = sourceLengthFor(notes, count, layers, startFrame, targetLength);
+
+		// Compile-once: the renderer holds the compiled kernel and its bound input
+		// buffers for this shape; per tick we write the gathered data into those
+		// buffers and re-run the cached kernel (cp() rereads buffer memory), so no
+		// kernel is rebuilt or recompiled per dispatch.
+		BatchedPatternRenderer renderer = rendererFor(bucketN, sourceLength, targetLength);
+		renderer.sssDispatch(layers);
+
+		long marshalStart = System.nanoTime();
+
+		// Finite placeholder scalars for all rows; real rows overwrite below.
+		double[] layerDefaults = { PAD_DURATION, 0.3, 0.6, 1.0, 0.5, 0.5, 0.5, 0.5 };
+		double[] adsrDefaults = { 0.002, 0.002, 0.5, 0.003, PAD_DURATION };
+		for (int row = 0; row < bucketN; row++) {
+			for (int l = 0; l < layers; l++) {
+				ratios[l][row] = 1.0;
+				for (int p = 0; p < 8; p++) layerParams[l][p][row] = layerDefaults[p];
+			}
+			for (int p = 0; p < 5; p++) {
+				filterAdsr[p][row] = adsrDefaults[p];
+				volumeAdsr[p][row] = adsrDefaults[p];
+			}
+		}
+
+		// Zero the bound source buffers so padded (and previously-used) rows contribute
+		// nothing, then copy each real note's source into its row. The clear spans the
+		// full [bucketN, sourceLength] buffer deliberately: bucketN and sourceLength are
+		// fixed for a cached renderer, so this clear compiles once and is reused every
+		// tick. A partial clear sized to the (unbucketed, per-tick-varying) note count
+		// would recompile the zeroing kernel on every dispatch — far costlier than the
+		// extra padded-row zeroing it would save.
+		PackedCollection[] boundSources = renderer.getSssSources();
+		for (int l = 0; l < layers; l++) {
+			boundSources[l].clear();
+		}
+		for (int row = 0; row < count; row++) {
+			BatchedNoteInputs in = notes.get(row).getBatchedInputs();
+			for (int l = 0; l < layers; l++) {
+				PackedCollection src = in.getSources()[l];
+				copyRow(boundSources[l], row * sourceLength, src,
+						Math.min(src.getMemLength(), sourceLength));
+				ratios[l][row] = in.getRatios()[l];
+				for (int p = 0; p < 8; p++) layerParams[l][p][row] = in.getLayerParams()[l][p];
+			}
+			for (int p = 0; p < 5; p++) {
+				filterAdsr[p][row] = in.getFilterAdsr()[p];
+				volumeAdsr[p][row] = in.getVolumeAdsr()[p];
+			}
+			int noteStart = notes.get(row).getOffset();
+			destOffsets[row] = Math.max(0, noteStart - startFrame);
+			samplingOffsets[row] = Math.max(0, startFrame - noteStart);
+		}
+
+		// Write the assembled per-note scalar columns into the kernel's bound buffers.
+		PackedCollection[] boundRatios = renderer.getSssRatios();
+		PackedCollection[][] boundLayerEnv = renderer.getSssLayerEnv();
+		for (int l = 0; l < layers; l++) {
+			writeColumn(boundRatios[l], ratios[l]);
+			for (int p = 0; p < 8; p++) {
+				writeColumn(boundLayerEnv[l][p], layerParams[l][p]);
+			}
+		}
+		PackedCollection[] boundFilter = renderer.getSssFilterAdsr();
+		PackedCollection[] boundVolume = renderer.getSssVolumeAdsr();
+		for (int p = 0; p < 5; p++) {
+			writeColumn(boundFilter[p], filterAdsr[p]);
+			writeColumn(boundVolume[p], volumeAdsr[p]);
+		}
+		writeColumn(renderer.getSssDestOffsets(), destOffsets);
+		writeColumn(renderer.getSssSamplingOffsets(), samplingOffsets);
+
+		marshalNanos.addAndGet(System.nanoTime() - marshalStart);
+
+		// The compiled kernel rereads the bound buffers; PatternFeatures re-evaluates
+		// it at the pipeline boundary and accumulates the window into the destination.
+		long evalStart = System.nanoTime();
+		features.accumulateBatchedOutput(renderer.sssDispatch(layers),
+				destination, destBaseOffset, targetLength);
+		evalNanos.addAndGet(System.nanoTime() - evalStart);
+	}
+
+	/**
+	 * Computes the per-note source-row length for one dispatch: large enough to hold
+	 * the highest raw-source frame any note's resample reads this window. The kernel
+	 * reads raw source position {@code (samplingOffset + sampleIdx) * ratio}, so the
+	 * highest read is {@code ceil((samplingOffset + targetLength) * ratio) + 1} (the
+	 * {@code +1} covering the linear-interpolation neighbor). Reads past a note's
+	 * actual raw length land in the cleared (zero) tail of the row. The result is
+	 * rounded up to {@link #SOURCE_BUCKET} so kernels are shared across similar
+	 * windows.
+	 *
+	 * @param notes        the notes being dispatched
+	 * @param count        the number of real (non-padded) notes
+	 * @param layers       the source layers per note
+	 * @param startFrame   the window's absolute start frame
+	 * @param targetLength the per-note row length (window width)
+	 * @return the source-bucketed per-note source length
+	 */
+	private static int sourceLengthFor(List<RenderedNoteAudio> notes, int count, int layers,
+									   int startFrame, int targetLength) {
+		int required = targetLength + 1;
+		for (int row = 0; row < count; row++) {
+			int samplingOffset = Math.max(0, startFrame - notes.get(row).getOffset());
+			BatchedNoteInputs in = notes.get(row).getBatchedInputs();
+			for (int l = 0; l < layers; l++) {
+				int read = (int) Math.ceil((samplingOffset + targetLength) * in.getRatios()[l]) + 1;
+				required = Math.max(required, read);
+			}
+		}
+		return ((required + SOURCE_BUCKET - 1) / SOURCE_BUCKET) * SOURCE_BUCKET;
+	}
+
+	/**
+	 * Writes a per-note scalar column into a bound kernel-input buffer. This is a
+	 * bulk host-to-collection marshalling copy assembling the batch input, not
+	 * element-wise host computation.
+	 *
+	 * @param dest   the bound {@code [n]} kernel-input buffer
+	 * @param values the per-note scalar values to write
+	 */
+	private void writeColumn(PackedCollection dest, double[] values) {
+		dest.setMem(values);
+	}
+
+	/**
+	 * Copies a per-note source buffer into one row of the batched source buffer.
+	 * This is a bulk collection-to-collection marshalling copy assembling the
+	 * batch input, not element-wise host computation.
+	 *
+	 * @param dest        the batched {@code [bucketN, sourceLength]} source buffer
+	 * @param frameOffset the flat destination offset ({@code row * sourceLength})
+	 * @param src         the note's source buffer of length {@code sourceLength}
+	 * @param length      the number of samples to copy
+	 */
+	private void copyRow(PackedCollection dest, int frameOffset, PackedCollection src, int length) {
+		dest.setMem(frameOffset, src, 0, length);
 	}
 }

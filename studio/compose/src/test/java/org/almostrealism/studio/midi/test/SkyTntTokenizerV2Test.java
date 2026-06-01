@@ -616,12 +616,27 @@ public class SkyTntTokenizerV2Test extends TestSuiteBase {
     // Helpers
     // -----------------------------------------------------------------------
 
+    /**
+     * Converts an integer array to a {@link Set}.
+     *
+     * @param arr the input array
+     * @return a Set containing all values from arr
+     */
     private static Set<Integer> toSet(int[] arr) {
         Set<Integer> s = new HashSet<>();
         for (int v : arr) s.add(v);
         return s;
     }
 
+    /**
+     * Asserts that a token range is correct: values from offset to offset+count-1
+     * must appear in the actual array.
+     *
+     * @param msg    the assertion message prefix
+     * @param offset the expected starting offset
+     * @param count  the expected count of values
+     * @param actual the actual token array
+     */
     private void assertRangeEquals(String msg, int offset, int count, int[] actual) {
         assertEquals(msg + " size", count, actual.length);
         for (int i = 0; i < count; i++) {

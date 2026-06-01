@@ -37,12 +37,24 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
+/**
+ * Tests for mesh intersection operations.
+ */
 public class MeshIntersectionTest extends TestSuiteBase {
+	/** Mesh data under test. */
 	private MeshData data;
+
+	/** Ray producer for intersection tests. */
 	private Producer<Ray> ray;
 
+	/** Width of the test viewport. */
 	private int width, height;
 
+	/**
+	 * Creates a test mesh with sample triangles.
+	 *
+	 * @return Mesh with sample triangle data
+	 */
 	protected Mesh mesh() {
 		DefaultVertexData data = new DefaultVertexData(5, 3);
 		data.getVertices().set(0, new Vector(0.0, 1.0, 0.0));
@@ -57,6 +69,11 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		return new Mesh(data);
 	}
 
+	/**
+	 * Creates a camera for ray generation.
+	 *
+	 * @return Camera producer for ray generation
+	 */
 	protected Producer<Ray> camera() {
 		ThinLensCamera c = new ThinLensCamera();
 		c.setLocation(new Vector(0.0, 0.0, 10.0));
@@ -71,12 +88,18 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		return (Producer) c.rayAt(v(Pair.shape(), 0), pair(width, height));
 	}
 
+	/**
+	 * Initializes test fixtures.
+	 */
 	@Before
 	public void init() {
 		data = mesh().getMeshData();
 		ray = camera();
 	}
 
+	/**
+	 * Tests mesh intersection at origin.
+	 */
 	@Test(timeout = 10000)
 	@TestProperties(knownIssue = true)
 	public void intersectAt() {
@@ -115,6 +138,9 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		Assert.assertEquals(0.6666666865348816, n.toDouble(2), Math.pow(10, -10));
 	}
 
+	/**
+	 * Tests triangle intersect at kernel.
+	 */
 	@Test(timeout = 10000)
 	public void triangleIntersectAtKernel() {
 		PackedCollection in = Ray.bank(1);

@@ -15,6 +15,12 @@ import org.junit.Test;
  */
 public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures, ConsoleFeatures {
 
+	/** Position collection shared between model building and test loop. */
+	private PackedCollection position;
+
+	/**
+	 * Test simple branch with cache that writes input directly.
+	 */
 	@Test(timeout = 60000)
 	public void testSimpleBranchWithCache() throws Exception {
 		String logFile = "/workspace/project/common/ml/results/branch_cache_test.txt";
@@ -32,7 +38,7 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 		cache.clear();
 
 		// Create position indicator
-		PackedCollection position = new PackedCollection(shape(1));
+		position = new PackedCollection(shape(1));
 		position.setMem(0, 0.0);
 
 		// Create a simple block with a branch that writes to cache
@@ -87,6 +93,9 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 		log(pass ? "  [PASS] Branch and cache work correctly" : "  [FAIL] Branch or cache has issues");
 	}
 
+	/**
+	 * Test branch with transform and cache that multiplies input by 2.
+	 */
 	@Test(timeout = 60000)
 	public void testBranchWithTransformAndCache() throws Exception {
 		String logFile = "/workspace/project/common/ml/results/branch_transform_cache_test.txt";
@@ -104,7 +113,7 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 		cache.clear();
 
 		// Create position indicator
-		PackedCollection position = new PackedCollection(shape(1));
+		position = new PackedCollection(shape(1));
 		position.setMem(0, 0.0);
 
 		// Create a simple block with a branch that transforms and writes to cache
@@ -162,6 +171,9 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 		log(pass ? "  [PASS] Branch, transform, and cache work correctly" : "  [FAIL] Something is wrong");
 	}
 
+	/**
+	 * Test two branches with separate caches (simulating K and V paths).
+	 */
 	@Test(timeout = 60000)
 	public void testTwoBranchesWithCaches() throws Exception {
 		String logFile = "/workspace/project/common/ml/results/two_branches_cache_test.txt";
@@ -181,7 +193,7 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 		cache2.clear();
 
 		// Create position indicator
-		PackedCollection position = new PackedCollection(shape(1));
+		position = new PackedCollection(shape(1));
 		position.setMem(0, 0.0);
 
 		// Create a block with two branches (like K and V paths)
@@ -249,6 +261,13 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 		log(pass ? "  [PASS] Two branches with caches work correctly" : "  [FAIL] Something is wrong");
 	}
 
+	/**
+	 * Formats the first n elements of a collection as a string.
+	 *
+	 * @param c the collection to format
+	 * @param n the number of elements to include
+	 * @return formatted string representation
+	 */
 	private String formatFirst(PackedCollection c, int n) {
 		StringBuilder sb = new StringBuilder("[");
 		for (int i = 0; i < Math.min(n, c.getShape().getTotalSize()); i++) {
@@ -259,6 +278,13 @@ public class BranchCacheTest extends TestSuiteBase implements AttentionFeatures,
 		return sb.toString();
 	}
 
+	/**
+	 * Formats expected values for verification.
+	 *
+	 * @param dim the dimension size
+	 * @param factor the multiplication factor
+	 * @return formatted string of expected values
+	 */
 	private String formatExpected(int dim, double factor) {
 		StringBuilder sb = new StringBuilder("[");
 		for (int i = 0; i < dim; i++) {

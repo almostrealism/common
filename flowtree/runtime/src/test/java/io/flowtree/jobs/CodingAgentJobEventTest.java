@@ -36,12 +36,14 @@ import static org.junit.Assert.assertTrue;
  */
 public class CodingAgentJobEventTest extends TestSuiteBase {
 
+	/** Verifies that {@link CodingAgentJobEvent} is an instance of {@link JobCompletionEvent}. */
 	@Test(timeout = 30000)
 	public void extendsBaseEvent() {
 		CodingAgentJobEvent event = CodingAgentJobEvent.success("cc-1", "Claude job");
 		assertTrue(event instanceof JobCompletionEvent);
 	}
 
+	/** Verifies that {@code withClaudeCodeInfo} sets the prompt, session ID, and exit code fields. */
 	@Test(timeout = 30000)
 	public void withClaudeCodeInfoSetsFields() {
 		CodingAgentJobEvent event = CodingAgentJobEvent.success("cc-2", "Claude job")
@@ -52,6 +54,7 @@ public class CodingAgentJobEventTest extends TestSuiteBase {
 		assertEquals(0, event.getExitCode());
 	}
 
+	/** Verifies that {@code withSessionDetails} sets subtype, error flag, denial count, and denied tool names. */
 	@Test(timeout = 30000)
 	public void withSessionDetailsSetsFields() {
 		List<String> denied = Arrays.asList("Edit", "Bash");
@@ -65,6 +68,7 @@ public class CodingAgentJobEventTest extends TestSuiteBase {
 		assertEquals(denied, event.getDeniedToolNames());
 	}
 
+	/** Verifies that {@code getDeniedToolNames} returns a non-null empty list when not explicitly set. */
 	@Test(timeout = 30000)
 	public void deniedToolNamesDefaultsToEmpty() {
 		CodingAgentJobEvent event = CodingAgentJobEvent.success("cc-4", "Claude job");
@@ -73,6 +77,7 @@ public class CodingAgentJobEventTest extends TestSuiteBase {
 		assertTrue(event.getDeniedToolNames().isEmpty());
 	}
 
+	/** Verifies that {@code getCostByRunner} returns a non-null empty map when not explicitly set. */
 	@Test(timeout = 30000)
 	public void costByRunnerDefaultsToEmpty() {
 		CodingAgentJobEvent event = CodingAgentJobEvent.success("cc-5", "Claude job");
@@ -81,6 +86,7 @@ public class CodingAgentJobEventTest extends TestSuiteBase {
 		assertTrue(event.getCostByRunner().isEmpty());
 	}
 
+	/** Verifies that the cost-by-runner map is correctly serialized and deserialized through a JSON round trip. */
 	@Test(timeout = 30000)
 	public void costByRunnerSurvivesJsonRoundTrip() {
 		Map<String, Double> costs = new LinkedHashMap<>();

@@ -202,17 +202,17 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 			midiInput.addListener(new MidiInputListener() {
 				@Override
 				public void noteOn(int channel, int note, int velocity) {
-					log("DEBUG MIDI: Note ON  ch=" + channel + " note=" + note + " vel=" + velocity);
+					log("Note ON  ch=" + channel + " note=" + note + " vel=" + velocity);
 				}
 
 				@Override
 				public void noteOff(int channel, int note, int velocity) {
-					log("DEBUG MIDI: Note OFF ch=" + channel + " note=" + note);
+					log("Note OFF ch=" + channel + " note=" + note);
 				}
 
 				@Override
 				public void controlChange(int channel, int controller, int value) {
-					log("DEBUG MIDI: CC ch=" + channel + " cc=" + controller + " val=" + value);
+					log("Control change ch=" + channel + " cc=" + controller + " val=" + value);
 				}
 			});
 
@@ -278,11 +278,11 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 			log("Total sampled frames: " + totalSampledFrames);
 			log("Non-zero frames: " + nonZeroFrames);
 			if (overallPeak > 0.01) {
-				log("[OK] Audio IS being generated - check speaker/volume settings");
+				log("Audio IS being generated - check speaker/volume settings");
 			} else if (overallPeak > 0.0001) {
-				log("[WARN] Very low audio level detected - may be too quiet to hear");
+				log("Very low audio level detected - may be too quiet to hear");
 			} else {
-				log("[FAIL] NO audio detected - synthesizer output issue");
+				log("NO audio detected - synthesizer output issue");
 			}
 
 			// 10. Cleanup
@@ -293,7 +293,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 
 		} finally {
 			midiInput.close();
-			log("MIDI connection closed.");
+			log("Connection closed.");
 		}
 
 		log("\nTest completed successfully!");
@@ -343,7 +343,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 			}
 
 			if (selectedMixer == null) {
-				log("WARNING: No audio device found matching pattern \"" + pattern + "\"");
+				log("No audio device found matching pattern \"" + pattern + "\"");
 				log("Using default audio output instead.");
 			}
 		}
@@ -367,7 +367,6 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 			return new SourceDataOutputLine(line, bufferSize);
 		} catch (Exception e) {
 			log("Error creating audio output: " + e.getMessage());
-			e.printStackTrace();
 			return null;
 		}
 	}
@@ -398,7 +397,6 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 			return new SourceDataOutputLine(line, bufferSize);
 		} catch (Exception e) {
 			log("Error creating audio output: " + e.getMessage());
-			e.printStackTrace();
 			return null;
 		}
 	}
@@ -432,7 +430,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 				}
 			}
 
-			log("WARNING: No device found matching pattern \"" + pattern + "\"");
+			log("No device found matching pattern \"" + pattern + "\"");
 			return null;
 		}
 
@@ -651,7 +649,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		log("Rendered frames: " + scheduler.getRenderedFrames());
 
 		if (scheduler.getRenderedCount() == 0) {
-			log("WARNING: Scheduler did not start processing within " + maxWaitMs + "ms!");
+			log("Scheduler did not start processing within " + maxWaitMs + "ms!");
 		}
 
 		// Wait for at least one more tick to ensure audio is written to output
@@ -785,7 +783,7 @@ public class MidiSynthesizerManualTest extends TestSuiteBase implements CellFeat
 		log("Captured values: " + capturedValues.size());
 
 		if (capturedValues.isEmpty()) {
-			log("ERROR: No values captured! The receptor was never called.");
+			log("No values captured - the receptor was never called");
 		} else {
 			// Find non-zero values
 			long nonZeroCount = capturedValues.stream()

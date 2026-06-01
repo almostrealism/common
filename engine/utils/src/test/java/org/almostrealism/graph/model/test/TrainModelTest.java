@@ -44,13 +44,24 @@ import org.junit.Test;
 import java.io.IOException;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for model training operations.
+ */
 public class TrainModelTest extends TestSuiteBase implements ModelFeatures, KernelAssertions {
+	/** Convolution size */
 	private final int convSize = 3;
+	/** Pool size */
 	private final int poolSize = 2;
+	/** Width dimension */
 	private final int w = 10;
+	/** Height dimension */
 	private final int h = 10;
+	/** Input shape */
 	private TraversalPolicy inputShape = shape(h, w);
 
+	/**
+	 * Tests dense layer training.
+	 */
 	@Test(timeout = 120000)
 	@TestProperties(knownIssue = true)
 	public void dense() {
@@ -117,6 +128,9 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 		}
 	}
 
+	/**
+	 * Tests pooling layer.
+	 */
 	@Test(timeout = 120000)
 	public void pool() {
 		Block conv = convolution2d(inputShape, 8, convSize, false);
@@ -137,6 +151,9 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 		pool2d(inputShape.length(0), inputShape.length(1), 8, 2, input, output);
 	}
 
+	/**
+	 * Tests convolution and pooling layers.
+	 */
 	@Test(timeout = 120000)
 	public void convPool() {
 		Model model = new Model(inputShape);
@@ -211,12 +228,25 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 		}
 	}
 
+	/**
+	 * Helper to create a model for testing.
+	 * @param r row dimension
+	 * @param c column dimension
+	 * @param convSize convolution size
+	 * @param convFilters number of convolution filters
+	 * @param convLayers number of convolution layers
+	 * @param denseSize dense layer size
+	 * @return configured model
+	 */
 	protected Model model(int r, int c, int convSize, int convFilters, int convLayers, int denseSize) {
 		Model model = convolution2dModel(r, c, convSize, convFilters, convLayers, denseSize);
 		log("Created model (" + model.getBlocks().size() + " blocks)");
 		return model;
 	}
 
+	/**
+	 * Tests training with smallest model.
+	 */
 	@Test(timeout = 4 * 60000)
 	@TestDepth(1)
 	public void trainSmallest() throws IOException {
@@ -226,6 +256,9 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 		train(input, model(dim, dim, 2, 2, 1, 10));
 	}
 
+	/**
+	 * Tests training with very small model.
+	 */
 	@Test(timeout = 4 * 60000)
 	@TestDepth(2)
 	public void trainVerySmall() throws IOException {
@@ -240,6 +273,9 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 	}
 
 
+	/**
+	 * Tests training with small model.
+	 */
 	@Test(timeout = 30 * 60000)
 	@TestDepth(3)
 	@TestProperties(knownIssue = true)
@@ -252,6 +288,9 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 		train(input, model(dim, dim, 3, filters, 2, 10));
 	}
 
+	/**
+	 * Tests training with medium model.
+	 */
 	@Test(timeout = 120000)
 	@TestDepth(10)
 	@TestProperties(longRunning = true)
@@ -264,6 +303,9 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 		train(input, model(dim, dim, 3, filters, 3, 10));
 	}
 
+	/**
+	 * Tests training with large model.
+	 */
 	@Test(timeout = 120000)
 	@TestDepth(10)
 	@TestProperties(longRunning = true)
@@ -280,6 +322,9 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 		}
 	}
 
+	/**
+	 * Tests progressive training with increasing model size.
+	 */
 	@Test(timeout = 120000)
 	@TestDepth(10)
 	@TestProperties(longRunning = true)
@@ -298,10 +343,21 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 		}
 	}
 
+	/**
+	 * Helper for training with default epochs.
+	 * @param input training input
+	 * @param model model to train
+	 */
 	protected void train(PackedCollection input, Model model) throws IOException {
 		train(input, model, trainingEpochs);
 	}
 
+	/**
+	 * Helper for training with specified epochs.
+	 * @param input training input
+	 * @param model model to train
+	 * @param epochCount number of training epochs
+	 */
 	protected void train(PackedCollection input, Model model, int epochCount) throws IOException {
 		OperationProfileNode profile = new OperationProfileNode("Model");
 		CompiledModel compiled = model.compile(profile);

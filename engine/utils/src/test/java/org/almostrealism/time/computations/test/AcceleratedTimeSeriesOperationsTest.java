@@ -33,11 +33,22 @@ import org.junit.Test;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for accelerated time series operations.
+ */
 public class AcceleratedTimeSeriesOperationsTest extends TestSuiteBase implements CodeFeatures {
+	/** Cursor pair for time series operations. */
 	private CursorPair cursors;
+
+	/** Accelerated time series under test. */
 	private AcceleratedTimeSeries series;
+
+	/** Collection to hold values. */
 	private PackedCollection value;
 
+	/**
+	 * Creates a test time series with sample data.
+	 */
 	protected AcceleratedTimeSeries series() {
 		AcceleratedTimeSeries series = new AcceleratedTimeSeries(100);
 		series.add(new TemporalScalar(1.0, 10));
@@ -48,6 +59,9 @@ public class AcceleratedTimeSeriesOperationsTest extends TestSuiteBase implement
 		return series;
 	}
 
+	/**
+	 * Creates a cursor pair at the specified time.
+	 */
 	protected CursorPair cursors(double t) {
 		CursorPair cursors = new CursorPair();
 		cursors.setCursor(t);
@@ -55,6 +69,9 @@ public class AcceleratedTimeSeriesOperationsTest extends TestSuiteBase implement
 		return cursors;
 	}
 
+	/**
+	 * Tests purge operation on accelerated time series.
+	 */
 	@Test(timeout = 10000)
 	public void purgeTest() {
 //		dc(() -> {
@@ -76,6 +93,9 @@ public class AcceleratedTimeSeriesOperationsTest extends TestSuiteBase implement
 //		});
 	}
 
+	/**
+	 * Tests valueAt operation on accelerated time series.
+	 */
 	@Test(timeout = 10000)
 	public void valueAt() {
 		AcceleratedTimeSeries series = series();
@@ -84,6 +104,9 @@ public class AcceleratedTimeSeriesOperationsTest extends TestSuiteBase implement
 		Assert.assertEquals(series.valueAt(3.25).toDouble(1), compiled.evaluate().toDouble(), Math.pow(10, -10));
 	}
 
+	/**
+	 * Validates valueAt results for the test series.
+	 */
 	protected void valueAtAssertions(AcceleratedTimeSeries series) {
 		Assert.assertEquals(15.0, series.valueAt(3.0).getValue(), Math.pow(10, -10));
 		Assert.assertEquals(15.5, series.valueAt(3.25).getValue(), Math.pow(10, -10));
@@ -91,28 +114,46 @@ public class AcceleratedTimeSeriesOperationsTest extends TestSuiteBase implement
 		Assert.assertEquals(24.0, series.valueAt(5.0).getValue(), Math.pow(10, -10));
 	}
 
+	/**
+	 * Initializes test fixtures.
+	 */
 	protected void init() {
 		cursors = cursors(5);
 		series = series();
 		value = new PackedCollection(1);
 	}
 
+	/**
+	 * Creates an add operation for the test series.
+	 */
 	protected Supplier<Runnable> add() {
 		return series.add((Producer) temporal(r(p(cursors)), c(30)));
 	}
 
+	/**
+	 * Creates an assign operation for the test series.
+	 */
 	protected Supplier<Runnable> assign() {
 		return a(1, p(value), series.valueAt(p(cursors)));
 	}
 
+	/**
+	 * Creates a purge operation for the test series.
+	 */
 	protected Supplier<Runnable> purge() {
 		return series.purge(p(cursors));
 	}
 
+	/**
+	 * Creates an increment operation for cursors.
+	 */
 	protected Supplier<Runnable> increment() {
 		return cursors.increment(c(1));
 	}
 
+	/**
+	 * Tests add operation on accelerated time series.
+	 */
 	@Test(timeout = 10000)
 	public void addTest() {
 		init();
@@ -128,6 +169,9 @@ public class AcceleratedTimeSeriesOperationsTest extends TestSuiteBase implement
 		Assert.assertEquals(7.0, series.get(series.getLength()).getTime(), Math.pow(10, -10));
 	}
 
+	/**
+	 * Runs all test operations for a given index.
+	 */
 	public void runAllOperations(int index) {
 		Supplier<Runnable> r = add();
 		Supplier<Runnable> a = assign();
@@ -147,12 +191,18 @@ public class AcceleratedTimeSeriesOperationsTest extends TestSuiteBase implement
 		postPurgeAssertions(index);
 	}
 
+	/**
+	 * Validates state after purge operations.
+	 */
 	protected void postPurgeAssertions(int index) {
 		Assert.assertEquals(2, series.getLength());
 		Assert.assertEquals(30.0, series.valueAt(index + 6.0).getValue(), Math.pow(10, -10));
 		Assert.assertEquals(30.0, series.valueAt(p(cursors)).get().evaluate().toDouble(), Math.pow(10, -10));
 	}
 
+	/**
+	 * Tests all operations on accelerated time series.
+	 */
 	// TODO  @Test(timeout = 10000)
 	public void allOperationsTest() {
 		init();
@@ -160,6 +210,9 @@ public class AcceleratedTimeSeriesOperationsTest extends TestSuiteBase implement
 		log(String.valueOf(cursors));
 	}
 
+	/**
+	 * Creates an operation list for testing.
+	 */
 	protected OperationList operationList(boolean enableCompilation) {
 		OperationList op = new OperationList("Accelerated Time Series Operations Test", enableCompilation);
 		op.add(add());
@@ -169,6 +222,9 @@ public class AcceleratedTimeSeriesOperationsTest extends TestSuiteBase implement
 		return op;
 	}
 
+	/**
+	 * Validates operation list execution results.
+	 */
 	protected void operationListAssertions(OperationList opl) {
 		Runnable op = opl.get();
 
@@ -178,12 +234,18 @@ public class AcceleratedTimeSeriesOperationsTest extends TestSuiteBase implement
 		});
 	}
 
+	/**
+	 * Tests operation list creation.
+	 */
 	// TODO  @Test(timeout = 10000)
 	public void operationListTest() {
 		init();
 		operationListAssertions(operationList(false));
 	}
 
+	/**
+	 * Tests compiled operation list creation.
+	 */
 	// TODO  @Test(timeout = 10000)
 	public void operationListCompiledTest() {
 		init();

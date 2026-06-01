@@ -77,7 +77,19 @@ public class MetalCommandRunner {
 	 * @return {@link Future} for tracking command completion
 	 */
 	public Future<?> submit(MetalCommand command) {
-		return executor.submit(() -> command.run(offset, size, queue));
+		return executor.submit(() -> {
+			// Wrap each dispatch in an Objective-C autorelease pool on this worker
+			// thread. metal-cpp's commandBuffer()/computeCommandEncoder() return
+			// autoreleased objects; without a pool on this long-lived thread they
+			// accumulate in the Metal driver and stall sustained real-time rendering
+			// after a few thousand dispatches. The pool drains them after every dispatch.
+			long pool = MTL.autoreleasePoolPush();
+			try {
+				command.run(offset, size, queue);
+			} finally {
+				MTL.autoreleasePoolPop(pool);
+			}
+		});
 	}
 
 	/**

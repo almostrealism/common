@@ -24,7 +24,14 @@ import org.almostrealism.time.TemporalScalar;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for expression delegation to hardware operations.
+ */
 public class ExpressionDelegationTest extends TestSuiteBase {
+
+	/**
+	 * Tests extracting a scalar from a temporal scalar.
+	 */
 	@Test(timeout = 10000)
 	public void scalarFromTemporalScalar() {
 		TemporalScalar t = new TemporalScalar(4, 8);
@@ -32,6 +39,9 @@ public class ExpressionDelegationTest extends TestSuiteBase {
 		assertEquals(8.0, ev.evaluate());
 	}
 
+	/**
+	 * Tests extracting a scalar from temporal scalars created from scalars.
+	 */
 	@Test(timeout = 10000)
 	public void scalarFromTemporalScalarFromScalars() {
 		verboseLog(() -> {
@@ -45,6 +55,9 @@ public class ExpressionDelegationTest extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests assignment from product operation.
+	 */
 	@Test(timeout = 10000)
 	public void assignmentFromProduct() {
 		PackedCollection a = pack(1.0);

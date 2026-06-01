@@ -92,6 +92,15 @@ public class Llama2ConfigTest extends TestSuiteBase {
 
 	/**
 	 * Creates a 7-integer little-endian ByteBuffer simulating a checkpoint header.
+	 *
+	 * @param dim model dimension
+	 * @param hiddenDim hidden dimension
+	 * @param layerCount number of layers
+	 * @param headCount number of attention heads
+	 * @param kvHeadCount number of key/value heads
+	 * @param vocabSize vocabulary size (negative for non-shared weights)
+	 * @param seqLen maximum sequence length
+	 * @return a ByteBuffer containing the header data
 	 */
 	private static ByteBuffer createHeader(int dim, int hiddenDim, int layerCount,
 			int headCount, int kvHeadCount, int vocabSize, int seqLen) {

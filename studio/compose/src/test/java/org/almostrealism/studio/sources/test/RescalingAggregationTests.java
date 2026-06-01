@@ -48,9 +48,18 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Tests for frequency and volume rescaling aggregators that combine
+ * audio sources with rescaling envelopes.
+ */
 public class RescalingAggregationTests extends TestSuiteBase implements PatternFeatures, AudioTestFeatures {
+
+	/** The audio sample rate from OutputLine. */
 	private final int sampleRate = OutputLine.sampleRate;
 
+	/**
+	 * Test that aggregated FFT data can be loaded from audio files.
+	 */
 	@Test(timeout = 60000)
 	@TestProperties(knownIssue = true)
 	public void loadAggregated() throws IOException {
@@ -71,6 +80,9 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 		Assert.assertTrue(total > 10);
 	}
 
+	/**
+	 * Test that volume rescaling aggregation produces audio output.
+	 */
 	@Test(timeout = 60000)
 	public void rescaleVolume() throws IOException {
 		VolumeRescalingSourceAggregator aggregator = new VolumeRescalingSourceAggregator();
@@ -90,6 +102,9 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 	}
 
 
+	/**
+	 * Test that frequency rescaling aggregation produces audio output.
+	 */
 	@Test(timeout = 60000)
 	public void rescaleFrequency() throws IOException {
 		FrequencyRescalingSourceAggregator aggregator = new FrequencyRescalingSourceAggregator();
@@ -108,6 +123,9 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 		out.save(new File("results/rescaling-frequency.wav"));
 	}
 
+	/**
+	 * Test that modular rescaling with source, frequency, and volume inputs produces audio.
+	 */
 	@Test(timeout = 60000)
 	public void rescaleModular1() throws IOException {
 		modularRescale("rescaling-modular-1",
@@ -116,6 +134,9 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 				ModularSourceAggregator.InputType.VOLUME_ENVELOPE);
 	}
 
+	/**
+	 * Test that modular rescaling with dual source inputs produces audio.
+	 */
 	@Test(timeout = 60000)
 	public void rescaleModular2() throws IOException {
 		modularRescale("rescaling-modular-2",
@@ -124,6 +145,12 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 				ModularSourceAggregator.InputType.VOLUME_ENVELOPE);
 	}
 
+	/**
+	 * Runs a modular rescaling test with the specified input types.
+	 *
+	 * @param name output file name
+	 * @param inputs the input type configuration
+	 */
 	public void modularRescale(String name, ModularSourceAggregator.InputType... inputs) throws IOException {
 		ModularSourceAggregator aggregator = new ModularSourceAggregator(inputs);
 
@@ -143,6 +170,9 @@ public class RescalingAggregationTests extends TestSuiteBase implements PatternF
 		out.save(new File("results/" + name + ".wav"));
 	}
 
+	/**
+	 * Test that aggregated patterns can be rendered to audio with scale-based note selection.
+	 */
 	@Test(timeout = 60000)
 	public void aggregatedPattern() {
 		// Define the shared parameters, including how notes should be

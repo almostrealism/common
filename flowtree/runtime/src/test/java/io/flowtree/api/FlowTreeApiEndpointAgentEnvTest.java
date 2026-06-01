@@ -31,6 +31,7 @@ import java.util.Map;
  */
 public class FlowTreeApiEndpointAgentEnvTest extends TestSuiteBase {
 
+    /** Workstream agentEnv is used when the submission body has no agentEnv. */
     @Test(timeout = 5000)
     public void workstreamEnvUsedWhenSubmissionHasNoAgentEnv() {
         Map<String, String> ws = new HashMap<>();
@@ -42,6 +43,7 @@ public class FlowTreeApiEndpointAgentEnvTest extends TestSuiteBase {
         Assert.assertEquals(1, merged.size());
     }
 
+    /** Submission agentEnv is injected when the workstream has none. */
     @Test(timeout = 5000)
     public void submissionAgentEnvInjectedWhenWorkstreamHasNone() {
         String body = "{\"prompt\":\"hi\",\"agentEnv\":{\"MOSAIC_AGENT_TOKEN\":\"tok-123\"}}";
@@ -51,6 +53,7 @@ public class FlowTreeApiEndpointAgentEnvTest extends TestSuiteBase {
         Assert.assertEquals("tok-123", merged.get("MOSAIC_AGENT_TOKEN"));
     }
 
+    /** Submission agentEnv wins over workstream agentEnv on key collision. */
     @Test(timeout = 5000)
     public void submissionWinsOnKeyCollision() {
         Map<String, String> ws = new HashMap<>();
@@ -65,6 +68,7 @@ public class FlowTreeApiEndpointAgentEnvTest extends TestSuiteBase {
         Assert.assertEquals("tok", merged.get("MOSAIC_AGENT_TOKEN"));   // submission-only key added
     }
 
+    /** Empty map when neither workstream nor submission provides agentEnv. */
     @Test(timeout = 5000)
     public void emptyWhenNeitherProvided() {
         Map<String, String> merged = FlowTreeApiEndpoint.mergeAgentEnv(null, "{\"prompt\":\"hi\"}");

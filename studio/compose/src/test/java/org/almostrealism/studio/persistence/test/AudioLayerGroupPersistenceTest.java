@@ -71,6 +71,7 @@ import java.util.Optional;
  */
 public class AudioLayerGroupPersistenceTest extends TestSuiteBase {
 
+	/** Ticks per quarter note for MIDI pattern construction. */
 	private static final int PPQ = 480;
 
 	/**

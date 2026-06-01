@@ -33,7 +33,13 @@ import org.junit.Test;
 
 import java.io.File;
 
+/**
+ * Tests for LinearAutomation audio processing.
+ */
 public class LinearAutomationTests extends TestSuiteBase implements CellFeatures, SamplingFeatures, OptimizeFactorFeatures, AudioTestFeatures {
+	/**
+	 * Test that rise/fall automation filter works correctly.
+	 */
 	@Test(timeout = 120_000)
 	public void riseFall() {
 		String testAudio = getTestWavPath();
@@ -65,6 +71,9 @@ public class LinearAutomationTests extends TestSuiteBase implements CellFeatures
 		cells.sec(seconds).get().run();
 	}
 
+	/**
+	 * Test that rise/fall automation with clock works correctly.
+	 */
 	@Test(timeout = 120_000)
 	public void riseFallAutomationClock() {
 		String testAudio = getTestWavPath();
@@ -96,6 +105,9 @@ public class LinearAutomationTests extends TestSuiteBase implements CellFeatures
 		cells.sec(seconds).get().run();
 	}
 
+	/**
+	 * Test that rise/fall automation produces correct audio output.
+	 */
 	@Test(timeout = 120_000)
 	@TestProperties(knownIssue = true)
 	public void riseFallAutomation() {

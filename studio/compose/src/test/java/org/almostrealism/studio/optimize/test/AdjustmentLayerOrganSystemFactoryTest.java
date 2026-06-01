@@ -28,11 +28,20 @@ import java.io.File;
 
 import static org.junit.Assert.assertTrue;
 
+/**
+ * Tests for AdjustmentLayerOrganSystemFactory audio processing.
+ */
 public class AdjustmentLayerOrganSystemFactoryTest extends AudioSceneOptimizationTest {
 
+	/** Buffer size for real-time rendering. */
 	private static final int BUFFER_SIZE = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
+
+	/** Duration in seconds for render operations. */
 	private static final double SECONDS = 8.0;
 
+	/**
+	 * Renders audio for the specified duration.
+	 */
 	private static void render(TemporalCellular runner) {
 		runner.setup().get().run();
 		Runnable tick = runner.tick().get();
@@ -41,6 +50,9 @@ public class AdjustmentLayerOrganSystemFactoryTest extends AudioSceneOptimizatio
 		for (int i = 0; i < bufferCount; i++) tick.run();
 	}
 
+	/**
+	 * Test that multiple renders produce consistent output.
+	 */
 	@Test(timeout = 300_000)
 	@TestDepth(2)
 	public void compare() {
@@ -71,6 +83,9 @@ public class AdjustmentLayerOrganSystemFactoryTest extends AudioSceneOptimizatio
 		});
 	}
 
+	/**
+	 * Test that layered organ renders grow on subsequent renders.
+	 */
 	@Test(timeout = 300_000)
 	@TestDepth(1)
 	public void layered() {
@@ -94,6 +109,9 @@ public class AdjustmentLayerOrganSystemFactoryTest extends AudioSceneOptimizatio
 				outFile.length() > firstLen);
 	}
 
+	/**
+	 * Test that random layered organ produces valid audio output.
+	 */
 	@Test(timeout = 180_000)
 	public void layeredRandom() {
 		File outFile = new File("results/layered-organ-factory-rand-test.wav");

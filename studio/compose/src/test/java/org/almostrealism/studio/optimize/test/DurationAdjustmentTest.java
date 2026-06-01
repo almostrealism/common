@@ -34,7 +34,13 @@ import org.junit.Test;
 
 import java.io.File;
 
+/**
+ * Tests for DurationAdjustment temporal processing.
+ */
 public class DurationAdjustmentTest extends TestSuiteBase implements CellFeatures, OptimizeFactorFeatures, AudioTestFeatures {
+	/**
+	 * Test that dynamic repeat adjustment works correctly.
+	 */
 	@Test(timeout = 120_000)
 	public void dynamicRepeat() {
 		String testAudio = getTestWavPath();
@@ -60,6 +66,9 @@ public class DurationAdjustmentTest extends TestSuiteBase implements CellFeature
 		cells.sec(bpm(120).l(count)).get().run();
 	}
 
+	/**
+	 * Test that duration adjustment produces correct audio.
+	 */
 	@Test(timeout = 120_000)
 	public void durationAdjustment() {
 		String testAudio = getTestWavPath();

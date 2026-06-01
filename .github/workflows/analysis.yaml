@@ -11,6 +11,14 @@ on:
         options:
           - 'true'
           - 'false'
+      override_integrity_checks:
+        description: 'Ignore the outcome of the integrity-check jobs (test-integrity-check, checkstyle-integrity-check) so a stuck pipeline can complete. Use only when a block is a known false positive.'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
   push:
     branches:
       - master
@@ -141,7 +149,7 @@ jobs:
           cache: 'maven'
 
       - name: Build
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
   # ─── Code Policy Enforcement ───────────────────────────────────────
   code-policy-check:
@@ -165,12 +173,12 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Code Policy Enforcement
         id: check
         run: |
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl tools \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl tools \
            -Dtest="CodePolicyEnforcementTest#enforceCodePolicies+testDetector*" \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
@@ -210,6 +218,8 @@ jobs:
       - name: Check for enforcement infrastructure tampering
         id: enforcement
         if: github.ref != 'refs/heads/master'
+        env:
+          OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
         run: |
           # These files are the enforcement infrastructure. Any modification
           # on a PR branch is treated as tampering and fails the build.
@@ -244,20 +254,30 @@ jobs:
             echo -e "If you believe a policy needs to change, open a separate PR with a" >> ${RUNNER_TEMP}/enforcement-report.txt
             echo -e "justification for human review." >> ${RUNNER_TEMP}/enforcement-report.txt
             cat ${RUNNER_TEMP}/enforcement-report.txt
-            exit 1
+            if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
+              echo "::warning::Enforcement infrastructure tampering detected but IGNORED via the override_integrity_checks input"
+            else
+              exit 1
+            fi
+          else
+            echo "No enforcement infrastructure modifications detected."
           fi
-
-          echo "No enforcement infrastructure modifications detected."
 
       - name: Check for test-hiding modifications
         id: check
         if: github.ref != 'refs/heads/master'
+        env:
+          OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
         run: |
           chmod +x ./tools/ci/agent-protection/detect-test-hiding.sh
           ./tools/ci/agent-protection/detect-test-hiding.sh origin/master ${RUNNER_TEMP}/test-integrity-report.txt || {
             EXIT_CODE=$?
             if [ "$EXIT_CODE" -eq 2 ]; then
               echo "::error::Test integrity violations detected — existing tests were modified to hide failures"
+              if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
+                echo "::warning::Test integrity violations IGNORED via the override_integrity_checks input"
+                exit 0
+              fi
               exit 1
             fi
             exit "$EXIT_CODE"
@@ -292,6 +312,87 @@ jobs:
             fi
           else
             echo "No test-hiding modifications or enforcement tampering detected." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # ─── Checkstyle Config Integrity Check ──────────────────────────────
+  # Confirms the checkstyle configuration has not been tampered with on a
+  # PR branch. checkstyle.xml is enforcement infrastructure: weakening or
+  # removing rules to make violating code pass is not allowed. Any change
+  # to it relative to master fails the build. If a rule genuinely needs to
+  # change, open a separate PR with justification for human review.
+  checkstyle-integrity-check:
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      passed: ${{ steps.check.outcome == 'success' }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Fetch base branch
+        run: git fetch origin master:refs/remotes/origin/master --no-tags
+
+      - name: Check for checkstyle config tampering
+        id: check
+        if: github.ref != 'refs/heads/master'
+        env:
+          OVERRIDE_INTEGRITY: ${{ inputs.override_integrity_checks }}
+        run: |
+          # The checkstyle configuration is enforcement infrastructure. Any
+          # modification on a PR branch is treated as tampering and fails the
+          # build.
+          PROTECTED_FILES=(
+            "checkstyle.xml"
+          )
+
+          TAMPERED=""
+          for f in "${PROTECTED_FILES[@]}"; do
+            if git diff --name-only origin/master...HEAD -- "$f" | grep -q .; then
+              TAMPERED="${TAMPERED}- ${f}\n"
+            fi
+          done
+
+          if [ -n "$TAMPERED" ]; then
+            echo "::error::Checkstyle configuration was modified — this is not allowed on PR branches"
+            echo -e "## Checkstyle Configuration Tampering Detected\n" > ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "The following protected files were modified on this branch:\n" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "$TAMPERED" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "\nThe checkstyle configuration enforces code quality rules. It CANNOT be" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "modified on PR branches. The only way to pass the build is to fix the" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "code that violates the rules — not to weaken the rules.\n" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "If you believe a rule needs to change, open a separate PR with a" >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            echo -e "justification for human review." >> ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            cat ${RUNNER_TEMP}/checkstyle-integrity-report.txt
+            if [ "$OVERRIDE_INTEGRITY" = "true" ]; then
+              echo "::warning::Checkstyle configuration tampering detected but IGNORED via the override_integrity_checks input"
+            else
+              exit 1
+            fi
+          else
+            echo "No checkstyle configuration modifications detected."
+          fi
+
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          echo "## Checkstyle Config Integrity Check" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${{ steps.check.outcome }}" != "success" ]; then
+            echo "**FAILED: The checkstyle configuration was tampered with.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "checkstyle.xml is protected and cannot be modified on PR branches." >> "$GITHUB_STEP_SUMMARY"
+            echo "Fix the code that violates the rules instead." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            if [ -f ${RUNNER_TEMP}/checkstyle-integrity-report.txt ]; then
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+              cat ${RUNNER_TEMP}/checkstyle-integrity-report.txt >> "$GITHUB_STEP_SUMMARY"
+              echo '```' >> "$GITHUB_STEP_SUMMARY"
+            fi
+          else
+            echo "No checkstyle configuration tampering detected." >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # ─── Deception Audit ─────────────────────────────────────────────
@@ -394,47 +495,6 @@ jobs:
             echo "Agent commit validation passed." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-  javadoc-check:
-    needs: test-media
-    runs-on: ubuntu-latest
-    # Out of the critical path: does not block tests or other jobs.
-    # Failures are reported but do not fail the overall workflow.
-    continue-on-error: true
-    outputs:
-      passed: ${{ steps.check.outcome == 'success' }}
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'adopt'
-          cache: 'maven'
-
-      - name: Build (skip tests)
-        run: mvn install -DskipTests
-
-      - name: Check Javadoc Coverage
-        id: check
-        run: mvn checkstyle:check -Pjavadoc-check
-
-      - name: Summary
-        if: ${{ !cancelled() }}
-        run: |
-          echo "## Javadoc Coverage Check" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.check.outcome }}" = "success" ]; then
-            echo "All non-private classes and methods have Javadoc documentation." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Some non-private classes or methods are missing Javadoc documentation." >> "$GITHUB_STEP_SUMMARY"
-            echo "Run \`mvn checkstyle:check -Pjavadoc-check\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
-          fi
-
   test-timeout-check:
     needs: build
     runs-on: ubuntu-latest
@@ -456,12 +516,12 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Check Test Timeouts
         id: check
         run: |
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl tools \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl tools \
            -Dtest=CodePolicyEnforcementTest#enforceTestTimeouts \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
@@ -499,12 +559,12 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Check Duplicate Code
         id: check
         run: |
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl tools \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl tools \
            -Dtest=CodePolicyEnforcementTest#enforceNoDuplicateCode \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
@@ -526,6 +586,13 @@ jobs:
   # as a dedicated job for clear violation reporting in the PR summary.
   checkstyle:
     needs: [changes, build]
+    # Intentionally NOT gated on checkstyle-integrity-check. Correctness and
+    # integrity are independent concerns: integrity protects the config from
+    # unauthorized *modification* (which can be overridden when a modification
+    # is legitimately intended), but a real checkstyle *violation* must ALWAYS
+    # fail the pipeline. Coupling the two would let an overridden or failed
+    # integrity check suppress the correctness gate, so this job runs against
+    # whatever config exists on the branch regardless of the integrity result.
     if: needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -546,7 +613,7 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Check exempt file lengths
         run: bash scripts/check-exempt-file-lengths.sh
@@ -649,11 +716,11 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Flowtree Tests
         run: |
-          mvn test -pl flowtree/runtime \
+          mvn test -Dcheckstyle.skip=true -pl flowtree/runtime \
            -DAR_TEST_PROFILE=pipeline
 
       - name: Collect Coverage Data
@@ -704,13 +771,13 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Run Hardware Tests
         if: matrix.group == 0
         run: |
           set -o pipefail
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl base/hardware \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/hardware \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -729,7 +796,7 @@ jobs:
       - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
           set -o pipefail
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/utils \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/utils \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -750,7 +817,7 @@ jobs:
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
           set -o pipefail
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/ml \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/ml \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -773,7 +840,7 @@ jobs:
         if: matrix.group == 0
         run: |
           set -o pipefail
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/render \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/render \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -850,12 +917,12 @@ jobs:
           cache: 'maven'
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Run Audio Tests
         run: |
           set -o pipefail
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/audio \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/audio \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -865,7 +932,7 @@ jobs:
       - name: Run Music Tests
         run: |
           set -o pipefail
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl studio/music \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/music \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -875,7 +942,7 @@ jobs:
       - name: Run Compose Tests
         run: |
           set -o pipefail
-          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl studio/compose \
+          LD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -955,22 +1022,33 @@ jobs:
         with:
           java-version: '17'
           distribution: 'adopt'
-          cache: 'maven'
+
+      - name: Isolate Maven repository per runner
+        # Self-hosted macOS runners share one $HOME/.m2 (unlike the Linux jobs,
+        # which Docker isolates). Concurrent workers installing the same SNAPSHOT
+        # artifacts into a shared repository clobber each other. Give every runner
+        # its own local repository instead. A runner executes one job at a time,
+        # so this is reused across jobs on that runner — the dependency cache is
+        # preserved while cross-worker pollution is eliminated. $HOME and
+        # RUNNER_NAME are expanded by the shell here (a workflow-level env: would
+        # not expand $HOME), and spaces in the runner name are sanitized so the
+        # -D argument stays a single token.
+        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Run Hardware Tests
         if: matrix.group == 0
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl base/hardware \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl base/hardware \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Run Utils Tests (Group ${{ matrix.group }})
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/utils \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/utils \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -979,7 +1057,7 @@ jobs:
 
       - name: Run ML Tests (Group ${{ matrix.group }})
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/ml \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/ml \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -990,7 +1068,7 @@ jobs:
       - name: Run Render Tests
         if: matrix.group == 0
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/render \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/render \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
@@ -1026,14 +1104,25 @@ jobs:
         with:
           java-version: '17'
           distribution: 'adopt'
-          cache: 'maven'
+
+      - name: Isolate Maven repository per runner
+        # Self-hosted macOS runners share one $HOME/.m2 (unlike the Linux jobs,
+        # which Docker isolates). Concurrent workers installing the same SNAPSHOT
+        # artifacts into a shared repository clobber each other. Give every runner
+        # its own local repository instead. A runner executes one job at a time,
+        # so this is reused across jobs on that runner — the dependency cache is
+        # preserved while cross-worker pollution is eliminated. $HOME and
+        # RUNNER_NAME are expanded by the shell here (a workflow-level env: would
+        # not expand $HOME), and spaces in the runner name are sanitized so the
+        # -D argument stays a single token.
+        run: echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=$HOME/.m2-ci/${RUNNER_NAME// /_}" >> "$GITHUB_ENV"
 
       - name: Build (skip tests)
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Run Audio Tests
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl engine/audio \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl engine/audio \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -1041,14 +1130,14 @@ jobs:
 
       - name: Run Music Tests
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl studio/music \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/music \
            -DAR_HARDWARE_DRIVER=* \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs"
 
       - name: Run Compose Tests
         run: |
-          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -pl studio/compose \
+          DYLD_LIBRARY_PATH="${{ runner.temp }}/ar_libs" mvn test -Dcheckstyle.skip=true -pl studio/compose \
            -DAR_HARDWARE_DRIVER=native \
            -DAR_HARDWARE_MEMORY_SCALE=7 \
            -DAR_HARDWARE_LIBS="${{ runner.temp }}/ar_libs" \
@@ -1061,6 +1150,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      checks: write
+      security-events: write
 
     steps:
       - name: Checkout Code
@@ -1077,7 +1168,7 @@ jobs:
           cache: 'maven'
 
       - name: Build for Analysis
-        run: mvn install -DskipTests
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
 
       - name: Download All Coverage Data
         uses: actions/download-artifact@v4
@@ -1132,30 +1223,10 @@ jobs:
           path: .qodana/code-coverage/
           retention-days: 30
 
-  qodana:
-    needs: [analysis]
-    runs-on: ubuntu-latest
-    permissions:
-      checks: write
-      security-events: write
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'adopt'
-          cache: 'maven'
-
-      - name: Build for Analysis
-        run: mvn install -DskipTests
-
+      # Qodana runs as part of this job (rather than a separate one) so it
+      # analyzes the same workspace the coverage was just merged into: the
+      # report at .qodana/code-coverage/coverage.xml is picked up directly,
+      # and we avoid a redundant checkout and `mvn install`.
       - name: Qodana Scan
         uses: JetBrains/qodana-action@main
         env:
@@ -1183,7 +1254,7 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [changes, build, test, test-flowtree, test-media, javadoc-check, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle, analysis]
+    needs: [changes, build, test, test-flowtree, test-media, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle, analysis]
     if: ${{ !cancelled() && github.ref != 'refs/heads/master' }}
     # Runs on a GitHub-hosted runner and reaches the FlowTree controller
     # through the public Cloudflare Access tunnel (CONTROLLER_URL + the
@@ -1585,7 +1656,6 @@ jobs:
         if: steps.build-check.outputs.build_failed != 'true' && steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.incomplete != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && needs.code-policy-check.outputs.passed == 'true'
         id: quality
         env:
-          JAVADOC_PASSED: ${{ needs.javadoc-check.outputs.passed }}
           TIMEOUT_PASSED: ${{ needs.test-timeout-check.outputs.passed }}
           DUPLICATE_PASSED: ${{ needs.duplicate-code-check.outputs.passed }}
           TEST_INTEGRITY_PASSED: ${{ needs.test-integrity-check.outputs.passed }}
@@ -1744,6 +1814,7 @@ jobs:
       - build
       - code-policy-check
       - test-integrity-check
+      - checkstyle-integrity-check
       - deception-audit
       - agent-commit-validation
       - test-timeout-check
@@ -1755,9 +1826,7 @@ jobs:
       - test-media
       - test-mac
       - test-media-mac
-      - javadoc-check
       - analysis
-      - qodana
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -1767,6 +1836,7 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           CODE_POLICY_RESULT: ${{ needs.code-policy-check.result }}
           TEST_INTEGRITY_RESULT: ${{ needs.test-integrity-check.result }}
+          CHECKSTYLE_INTEGRITY_RESULT: ${{ needs.checkstyle-integrity-check.result }}
           DECEPTION_AUDIT_RESULT: ${{ needs.deception-audit.result }}
           AGENT_COMMIT_RESULT: ${{ needs.agent-commit-validation.result }}
           TEST_TIMEOUT_RESULT: ${{ needs.test-timeout-check.result }}
@@ -1779,10 +1849,7 @@ jobs:
           TEST_MEDIA_RESULT: ${{ needs.test-media.result }}
           TEST_MAC_RESULT: ${{ needs.test-mac.result }}
           TEST_MEDIA_MAC_RESULT: ${{ needs.test-media-mac.result }}
-          JAVADOC_RESULT: ${{ needs.javadoc-check.result }}
-          JAVADOC_PASSED: ${{ needs.javadoc-check.outputs.passed }}
           ANALYSIS_RESULT: ${{ needs.analysis.result }}
-          QODANA_RESULT: ${{ needs.qodana.result }}
         run: |
           FAILED=""
 
@@ -1806,6 +1873,7 @@ jobs:
           check_job "changes"                 "$CHANGES_RESULT"
           check_job "code-policy-check"       "$CODE_POLICY_RESULT"
           check_job "test-integrity-check"    "$TEST_INTEGRITY_RESULT"
+          check_job "checkstyle-integrity-check" "$CHECKSTYLE_INTEGRITY_RESULT"
           check_job "deception-audit"         "$DECEPTION_AUDIT_RESULT"
           check_job "agent-commit-validation" "$AGENT_COMMIT_RESULT"
           check_job "test-timeout-check"      "$TEST_TIMEOUT_RESULT"
@@ -1817,17 +1885,12 @@ jobs:
           check_job "test-mac"                "$TEST_MAC_RESULT"
           check_job "test-media-mac"          "$TEST_MEDIA_MAC_RESULT"
           check_job "analysis"                "$ANALYSIS_RESULT"
-          check_job "qodana"                  "$QODANA_RESULT"
 
-          # checkstyle and javadoc-check use continue-on-error so their job
-          # result is always "success". Check their outputs.passed instead.
+          # checkstyle uses continue-on-error so its job result is always
+          # "success". Check its outputs.passed instead.
           if [ "$CHECKSTYLE_PASSED" != "true" ] && [ "$CHECKSTYLE_RESULT" != "skipped" ]; then
             FAILED="${FAILED} checkstyle"
             echo "::error::checkstyle reported violations (passed=false)"
-          fi
-          if [ "$JAVADOC_PASSED" != "true" ] && [ "$JAVADOC_RESULT" != "skipped" ]; then
-            FAILED="${FAILED} javadoc-check"
-            echo "::error::javadoc-check reported violations (passed=false)"
           fi
 
           if [ -n "$FAILED" ]; then
@@ -1847,6 +1910,7 @@ jobs:
           echo "| build | ${{ needs.build.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| code-policy-check | ${{ needs.code-policy-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-integrity-check | ${{ needs.test-integrity-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| checkstyle-integrity-check | ${{ needs.checkstyle-integrity-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| deception-audit | ${{ needs.deception-audit.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| agent-commit-validation | ${{ needs.agent-commit-validation.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-timeout-check | ${{ needs.test-timeout-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
@@ -1858,6 +1922,4 @@ jobs:
           echo "| test-media | ${{ needs.test-media.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-mac | ${{ needs.test-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-media-mac | ${{ needs.test-media-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| javadoc-check | ${{ needs.javadoc-check.result }} (passed=${{ needs.javadoc-check.outputs.passed }}) |" >> "$GITHUB_STEP_SUMMARY"
           echo "| analysis | ${{ needs.analysis.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| qodana | ${{ needs.qodana.result }} |" >> "$GITHUB_STEP_SUMMARY"

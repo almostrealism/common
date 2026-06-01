@@ -58,6 +58,10 @@ import static org.junit.Assert.*;
  */
 public class SlackCostNotifierTest extends TestSuiteBase {
 
+    /**
+     * Verifies that a job completion notification with cost data includes a cost block
+     * containing per-model and per-runner breakdowns in the Slack message.
+     */
     @Test(timeout = 10000)
     public void testSlackCompletionWithCostBlock() {
         List<String> messages = new ArrayList<>();
@@ -97,6 +101,10 @@ public class SlackCostNotifierTest extends TestSuiteBase {
             msg.contains("claude") && msg.contains("opencode"));
     }
 
+    /**
+     * Verifies that the stats API endpoint returns aggregated weekly job stats
+     * including per-workstream data, and that workstream filtering works correctly.
+     */
     @Test(timeout = 10000)
     public void testApiStatsEndpoint() throws Exception {
         File tempDir = Files.createTempDirectory("stats-test").toFile();
@@ -162,6 +170,10 @@ public class SlackCostNotifierTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that the stats API endpoint returns a 400 error when an unsupported
+     * period parameter (e.g., "monthly") is supplied.
+     */
     @Test(timeout = 10000)
     public void testApiStatsUnsupportedPeriod() throws Exception {
         File tempDir = Files.createTempDirectory("stats-period-test").toFile();
@@ -197,6 +209,10 @@ public class SlackCostNotifierTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that the stats API endpoint returns a 200 response indicating stats are
+     * not configured when no {@link JobStatsStore} has been set on the endpoint.
+     */
     @Test(timeout = 10000)
     public void testApiStatsNotConfigured() throws Exception {
         SlackNotifier notifier = new SlackNotifier(null);
@@ -219,6 +235,10 @@ public class SlackCostNotifierTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that a job completion message is posted with {@code reply_broadcast=true}
+     * so it appears in the channel as well as the thread.
+     */
     @Test(timeout = 10000)
     public void testCompletionMessageBroadcastsToChannel() {
         List<String> messages = new ArrayList<>();
@@ -252,6 +272,10 @@ public class SlackCostNotifierTest extends TestSuiteBase {
             message.contains("https://github.com/test/repo/pull/123"));
     }
 
+    /**
+     * Verifies that an intermediate job-started status message is posted without
+     * {@code reply_broadcast}, so it stays only in the thread and not the channel.
+     */
     @Test(timeout = 10000)
     public void testStatusMessageDoesNotBroadcast() {
         List<String> messages = new ArrayList<>();
@@ -279,6 +303,10 @@ public class SlackCostNotifierTest extends TestSuiteBase {
             JsonFieldExtractor.extractString(message, "thread_ts"));
     }
 
+    /**
+     * Verifies that {@link SlackNotifier#postMessageInThread} does not set
+     * {@code reply_broadcast} by default.
+     */
     @Test(timeout = 10000)
     public void testPostMessageInThreadDefaultIsNoBroadcast() {
         List<String> messages = new ArrayList<>();
@@ -295,6 +323,10 @@ public class SlackCostNotifierTest extends TestSuiteBase {
             JsonFieldExtractor.extractBoolean(message, "reply_broadcast"));
     }
 
+    /**
+     * Verifies that {@link SlackNotifier#getThreadTs} falls back to the durable
+     * {@link JobStatsStore} when the in-memory map has no entry for the given job id.
+     */
     @Test(timeout = 10000)
     public void testGetThreadTsFallsBackToStatsStoreAfterJobCompletion() throws Exception {
         File tempDir = Files.createTempDirectory("thread-ts-fallback").toFile();
@@ -324,6 +356,10 @@ public class SlackCostNotifierTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that {@link SlackNotifier#getThreadTs} returns null when no stats store
+     * is configured and the job id has no in-memory entry.
+     */
     @Test(timeout = 10000)
     public void testGetThreadTsReturnsNullWhenNoStoreAndNoInMemoryEntry() {
         SlackNotifier notifier = new SlackNotifier(null);

@@ -42,8 +42,12 @@ import java.util.List;
  */
 public class HeapPatternRenderingTest extends AudioSceneTestBase {
 
+	/** Size of the heap for test operations in bytes. */
 	private static final int HEAP_SIZE = 64 * 1024 * 1024;
 
+	/**
+	 * Initializes audio processing before running tests.
+	 */
 	@BeforeClass
 	public static void initProcessing() {
 		AudioProcessingUtils.init();
@@ -226,6 +230,11 @@ public class HeapPatternRenderingTest extends AudioSceneTestBase {
 		assertNonSilent(dest, "cloneAndRenderInHeap");
 	}
 
+	/**
+	 * Creates a scene with a valid genome for testing.
+	 *
+	 * @return configured AudioScene with working genome
+	 */
 	private AudioScene<?> createSceneWithGenome() {
 		AudioScene<?> scene = createBaselineScene(getSamplesDir(), 2);
 		long seed = findWorkingGenomeSeed(scene, getSamplesDir());
@@ -234,6 +243,12 @@ public class HeapPatternRenderingTest extends AudioSceneTestBase {
 		return scene;
 	}
 
+	/**
+	 * Finds a pattern layer manager with elements for testing.
+	 *
+	 * @param scene the scene to search
+	 * @return a pattern layer with elements
+	 */
 	private PatternLayerManager findRequiredLayer(AudioScene<?> scene) {
 		PatternLayerManager best = null;
 		int bestCount = 0;
@@ -248,6 +263,18 @@ public class HeapPatternRenderingTest extends AudioSceneTestBase {
 		return best;
 	}
 
+	/**
+	 * Renders a pattern layer to the destination buffer.
+	 *
+	 * @param plm the pattern layer manager
+	 * @param scene the audio scene
+	 * @param destination the destination buffer
+	 * @param totalFrames total frames to render
+	 * @param voicing the voicing to use
+	 * @param stereo the stereo channel
+	 * @param startFrame starting frame
+	 * @param frameCount number of frames to render
+	 */
 	private void renderLayer(PatternLayerManager plm, AudioScene<?> scene,
 							 PackedCollection destination, int totalFrames,
 							 ChannelInfo.Voicing voicing, ChannelInfo.StereoChannel stereo,
@@ -258,6 +285,17 @@ public class HeapPatternRenderingTest extends AudioSceneTestBase {
 				() -> startFrame, frameCount).get().run();
 	}
 
+	/**
+	 * Builds an AudioSceneContext for pattern rendering.
+	 *
+	 * @param plm the pattern layer manager
+	 * @param scene the audio scene
+	 * @param destination the destination buffer
+	 * @param totalFrames total frames
+	 * @param voicing the voicing
+	 * @param stereo the stereo channel
+	 * @return configured context
+	 */
 	private AudioSceneContext buildContext(PatternLayerManager plm, AudioScene<?> scene,
 										  PackedCollection destination, int totalFrames,
 										  ChannelInfo.Voicing voicing,
@@ -283,6 +321,12 @@ public class HeapPatternRenderingTest extends AudioSceneTestBase {
 		return ctx;
 	}
 
+	/**
+	 * Checks whether the collection contains any non-zero samples.
+	 *
+	 * @param collection the collection to check
+	 * @return true if any sample is non-zero
+	 */
 	private boolean hasNonZeroSamples(PackedCollection collection) {
 		for (int i = 0; i < collection.getMemLength(); i++) {
 			if (collection.toDouble(i) != 0.0) return true;
@@ -290,6 +334,12 @@ public class HeapPatternRenderingTest extends AudioSceneTestBase {
 		return false;
 	}
 
+	/**
+	 * Asserts that the collection contains non-zero audio.
+	 *
+	 * @param collection the collection to check
+	 * @param label label for error messages
+	 */
 	private void assertNonSilent(PackedCollection collection, String label) {
 		Assert.assertTrue(label + ": output is completely silent",
 				hasNonZeroSamples(collection));

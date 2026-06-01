@@ -46,7 +46,14 @@ import java.util.Arrays;
 import java.util.stream.IntStream;
 
 
+/**
+ * Tests for audio sequence cells and temporal runners.
+ */
 public class SequenceTest extends TestSuiteBase implements CellFeatures {
+
+	/**
+	 * Test value sequence push operation.
+	 */
 	@Test(timeout = 10_000)
 	public void valueSequencePush() {
 		PolymorphicAudioData data = new PolymorphicAudioData();
@@ -59,6 +66,9 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		assertEquals(2.0, out);
 	}
 
+	/**
+	 * Test value sequence tick operation.
+	 */
 	@Test(timeout = 10_000)
 	public void valueSequenceTick() {
 		PolymorphicAudioData data = new PolymorphicAudioData();
@@ -70,6 +80,9 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		assertEquals(1.0, data.wavePosition().toDouble(0));
 	}
 
+	/**
+	 * Test value sequence cell push and tick operations.
+	 */
 	@Test(timeout = 30_000)
 	public void valueSequenceCell() {
 		ValueSequenceCell cell = new ValueSequenceCell(i -> c(i + 1), c(0.1), 2);
@@ -84,6 +97,9 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		});
 	}
 
+	/**
+	 * Test value sequence CSV export.
+	 */
 	@Test(timeout = 30_000)
 	public void valueSequenceCsv() {
 		CellList cells = seq(i -> c(i + 1), c(0.1), 2).csv(i -> new File("results/value-sequence-test.csv"));
@@ -93,6 +109,9 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		cells.reset();
 	}
 
+	/**
+	 * Test value sequence assignment to receptor.
+	 */
 	@Test(timeout = 30_000)
 	public void valueSequenceAssign() {
 		PackedCollection out = new PackedCollection(1);
@@ -106,6 +125,12 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		cells.reset();
 	}
 
+	/**
+	 * Creates a sine wave cell with the specified frequency.
+	 *
+	 * @param freq the frequency in Hz
+	 * @return the configured sine wave cell
+	 */
 	protected SineWaveCell cell(int freq) {
 		SineWaveCell cell = new SineWaveCell();
 		cell.setFreq(freq);
@@ -115,6 +140,9 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		return cell;
 	}
 
+	/**
+	 * Test value sequence with dynamic cell switching.
+	 */
 	@Test(timeout = 120_000)
 	public void valueSequenceWithDynamicCell() {
 		SineWaveCell cell1 = cell(196);
@@ -138,6 +166,9 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		log(String.valueOf(out));
 	}
 
+	/**
+	 * Test sequence note playback.
+	 */
 	@Test(timeout = 60_000)
 	public void notes() {
 		CellList cells = w(new Frequency(196), new Frequency(196));
@@ -150,6 +181,9 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		cells.sec(2).get().run();
 	}
 
+	/**
+	 * Test sequence with audio samples.
+	 */
 	@Test(timeout = 120_000)
 	public void samples() {
 		Assume.assumeTrue(new File("Library/GT_HAT_31.wav").exists());
@@ -164,6 +198,9 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
+	/**
+	 * Test sequence stem rendering to multiple files.
+	 */
 	@Test(timeout = 120_000)
 	public void stems() {
 		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
@@ -183,6 +220,9 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		r.run();
 	}
 
+	/**
+	 * Test sequence mixing with multiple audio sources.
+	 */
 	@Test(timeout = 120_000)
 	public void mix() {
 		Assume.assumeTrue(new File("Library/BD 909 Color 06.wav").exists());
@@ -203,6 +243,9 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
+	/**
+	 * Test sequence mix with parameterized functions.
+	 */
 	@Test(timeout = 120_000)
 	public void parameterizedMix() {
 		Assume.assumeTrue(new File("Library/BD 909 Color 06.wav").exists());
@@ -227,6 +270,9 @@ public class SequenceTest extends TestSuiteBase implements CellFeatures {
 		cells.sec(bpm(128).l(count)).get().run();
 	}
 
+	/**
+	 * Test sequence mix export to WAV file.
+	 */
 	@Test(timeout = 120_000)
 	public void mixExport() throws IOException {
 		Assume.assumeTrue(new File("Library/BD 909 Color 06.wav").exists());

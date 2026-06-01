@@ -8,3 +8,8 @@ include:
 exclude:
   - name: SingleClassImport
   - name: UNCHECKED_WARNING
+  # PackedCollection / CollectionProducer* are handles to GPU/native memory whose
+  # lifecycle is owned by the computation graph (captured, returned, or field-held),
+  # not by the constructing block — try-with-resources would free them prematurely.
+  # This inspection only produces false positives against the Producer pattern.
+  - name: AutoCloseableResource

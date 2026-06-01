@@ -26,8 +26,14 @@ import org.junit.Test;
 
 import java.util.stream.IntStream;
 
+/**
+ * Tests for repeated traversable computation operations.
+ */
 public class RepeatedTraversableComputationTests extends TestSuiteBase {
 
+	/**
+	 * Tests addition of repeated traversable computations.
+	 */
 	@Test(timeout = 60000)
 	public void add() {
 		OperationProfile profile = new OperationProfile("HardwareOperator");

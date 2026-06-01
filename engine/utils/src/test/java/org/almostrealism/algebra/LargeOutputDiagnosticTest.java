@@ -19,6 +19,7 @@ package org.almostrealism.algebra;
 import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.CompiledModel;
@@ -44,7 +45,7 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 		int inputSize = 128;
 		int outputSize = 60000;  // Below 65536 default
 
-		log("=== Test 1: Matmul Below Limit ===");
+		log("Test 1: Matmul Below Limit");
 		log("maxStatements default: " + ScopeSettings.maxStatements);
 		log("Input: " + inputSize + ", Output: " + outputSize);
 
@@ -57,7 +58,7 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 			result.get();  // Compile
 			long compileTime = System.currentTimeMillis() - start;
 			log("Compile time: " + compileTime + "ms");
-			log("=== PASSED ===\n");
+			log("Test 1 passed\n");
 		} catch (Exception e) {
 			log("Exception: " + e.getClass().getSimpleName() + " - " + e.getMessage());
 			throw e;
@@ -73,7 +74,7 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 		int inputSize = 128;
 		int outputSize = 70000;  // Above 65536 default
 
-		log("=== Test 2: Matmul Above Limit ===");
+		log("Test 2: Matmul Above Limit");
 		log("maxStatements default: " + ScopeSettings.maxStatements);
 		log("Input: " + inputSize + ", Output: " + outputSize);
 
@@ -86,14 +87,14 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 			result.get();  // Compile
 			long compileTime = System.currentTimeMillis() - start;
 			log("Compile time: " + compileTime + "ms");
-			log("WARNING: Expected exception but compilation succeeded!");
+			log("Expected exception but compilation succeeded");
 		} catch (IllegalArgumentException e) {
 			log("Got expected IllegalArgumentException: " + e.getMessage());
-			log("=== PASSED (protection worked) ===\n");
+			log("Test 2 passed - protection worked\n");
 			return;
 		} catch (Exception e) {
 			log("Got different exception: " + e.getClass().getSimpleName() + " - " + e.getMessage());
-			e.printStackTrace();
+			Console.root().alert("Exception at matmul above limit", e);
 		}
 	}
 
@@ -106,7 +107,7 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 		int inputSize = 128;
 		int outputSize = 70000;  // Above 65536 default
 
-		log("=== Test 3: Dense Model Above Limit ===");
+		log("Test 3: Dense Model Above Limit");
 		log("maxStatements default: " + ScopeSettings.maxStatements);
 		log("Input: " + inputSize + ", Output: " + outputSize);
 
@@ -121,14 +122,14 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 			model.compile(false);  // inference only
 			long compileTime = System.currentTimeMillis() - start;
 			log("Compile time: " + compileTime + "ms");
-			log("WARNING: Expected exception but model compiled!");
+			log("Expected exception but model compiled");
 		} catch (IllegalArgumentException e) {
 			log("Got expected IllegalArgumentException: " + e.getMessage());
-			log("=== PASSED (protection worked) ===\n");
+			log("Test 3 passed - protection worked\n");
 			return;
 		} catch (Exception e) {
 			log("Got exception: " + e.getClass().getSimpleName() + " - " + e.getMessage());
-			e.printStackTrace();
+			Console.root().alert("Exception at dense model above limit", e);
 		}
 	}
 
@@ -140,7 +141,7 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 		int inputSize = 128;
 		int outputSize = ScopeSettings.maxStatements;
 
-		log("=== Test 4: At Exact Limit ===");
+		log("Test 4: At Exact Limit");
 		log("maxStatements: " + ScopeSettings.maxStatements);
 		log("Input: " + inputSize + ", Output: " + outputSize);
 
@@ -153,7 +154,7 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 			result.get();
 			long compileTime = System.currentTimeMillis() - start;
 			log("Compile time: " + compileTime + "ms");
-			log("=== PASSED ===\n");
+			log("Test 4 passed\n");
 		} catch (Exception e) {
 			log("Exception at exact limit: " + e.getClass().getSimpleName() + " - " + e.getMessage());
 		}
@@ -167,7 +168,7 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 		int inputSize = 128;
 		int outputSize = 5000;  // Above 1000 threshold for weightedSum
 
-		log("=== Test 5: Verify WeightedSum Path ===");
+		log("Test 5: Verify WeightedSum Path");
 		log("Input: " + inputSize + ", Output: " + outputSize);
 		log("Expected: Should use weightedSum path (not repeat+multiply+sum)");
 
@@ -184,9 +185,9 @@ public class LargeOutputDiagnosticTest extends TestSuiteBase implements MatrixFe
 		// If using repeat+multiply+sum O(n^2) path, compile would be very slow
 		// With weightedSum, it should be fast
 		if (compileTime < 5000) {
-			log("=== PASSED (fast compile suggests weightedSum path) ===\n");
+			log("Test 5 passed - fast compile suggests weightedSum path\n");
 		} else {
-			log("WARNING: Slow compile suggests O(n^2) path may be used\n");
+			log("Slow compile suggests O(n^2) path may be used\n");
 		}
 	}
 }

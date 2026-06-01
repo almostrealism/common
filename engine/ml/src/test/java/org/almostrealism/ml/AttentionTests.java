@@ -37,8 +37,17 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Tests for attention mechanisms including self-attention, cross-attention,
+ * scaled dot-product attention, and comparison against reference implementations.
+ */
 public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 
+	/**
+	 * Tests the attention key computation with direct verification.
+	 * Uses query and key cache to compute attention scores manually and
+	 * compares against the computed result.
+	 */
 	@Test(timeout = 120000)
 	public void attentionKeys() {
 		int seqLength = 128;
@@ -86,6 +95,10 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	}
 
 
+	/**
+	 * Tests the attention value computation with a larger sequence length.
+	 * Verifies that value-weighted sum produces correct results.
+	 */
 	@Test(timeout = 120000)
 	public void attentionValues() {
 		int seqLength = 1024;
@@ -138,6 +151,10 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		}
 	}
 
+	/**
+	 * Tests the linear attention mechanism with a simple model.
+	 * Verifies that the linear attention block can be set up and executed.
+	 */
 	@Test(timeout = 120000)
 	public void linearAttention() {
 		int batchSize = 1;
@@ -158,6 +175,10 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		Process.optimized(b.forward(cp(input))).get().run();
 	}
 
+	/**
+	 * Tests the QKV split operation using subset operations on a SequentialBlock.
+	 * Verifies that input can be correctly split into query, key, and value components.
+	 */
 	@Test(timeout = 120000)
 	public void qkvSplitOperation() {
 		int batchSize = 1;
@@ -216,6 +237,8 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	/**
 	 * Tests isolated QK normalization against Python LayerNorm reference.
 	 * This helps debug the norm step in sequenceAttention by testing it in isolation.
+	 *
+	 * @throws Exception if reference data cannot be loaded
 	 */
 	@Test(timeout = 120000)
 	public void qkNormCompare() throws Exception {
@@ -283,6 +306,8 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	/**
 	 * Tests scaledDotProductAttention against PyTorch's F.scaled_dot_product_attention
 	 * to isolate and verify just the attention computation mechanism.
+	 *
+	 * @throws Exception if reference data cannot be loaded
 	 */
 	@Test(timeout = 120000)
 	public void scaledDotProductAttentionCompare() throws Exception {
@@ -334,6 +359,10 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 		assertTrue("Scaled dot-product attention output does not match PyTorch reference within tolerance", diff < 1e-5);
 	}
 
+	/**
+	 * Tests sequenceAttention with a simplified configuration using near-identity weights.
+	 * This is useful for debugging attention behavior with predictable weights.
+	 */
 	@Test(timeout = 120000)
 	public void sequenceAttentionSimplified() {
 		// Use smaller dimensions for easier debugging
@@ -399,6 +428,8 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * Tests sequenceAttention against reference data generated from the actual
 	 * DiT Attention class in stable-audio-tools. This ensures our Java implementation
 	 * matches the real Python behavior rather than a made-up reference.
+	 *
+	 * @throws Exception if reference data cannot be loaded
 	 */
 	@Test(timeout = 120000)
 	public void sequenceAttentionCompare() throws Exception {
@@ -488,6 +519,8 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * Tests sequenceCrossAttention against reference data generated from the actual
 	 * DiT Attention class in cross-attention mode. This ensures our Java implementation
 	 * matches the real Python cross-attention behavior.
+	 *
+	 * @throws Exception if reference data cannot be loaded
 	 */
 	@Test(timeout = 120000)
 	public void sequenceCrossAttentionCompare() throws Exception {
@@ -596,6 +629,8 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * Tests feedForward against reference data generated from the actual
 	 * DiT FeedForward class. This ensures our Java SwiGLU implementation
 	 * matches the real Python behavior.
+	 *
+	 * @throws Exception if reference data cannot be loaded
 	 */
 	@Test(timeout = 120000)
 	public void feedForwardCompare() throws Exception {
@@ -676,6 +711,8 @@ public class AttentionTests extends TestSuiteBase implements AttentionFeatures {
 	 * DiT TransformerBlock class. This ensures our Java implementation of the
 	 * complete transformer block (self-attention + cross-attention + feed-forward)
 	 * matches the real Python behavior.
+	 *
+	 * @throws Exception if reference data cannot be loaded
 	 */
 	@Test(timeout = 120000)
 	public void transformerBlockCompare() throws Exception {

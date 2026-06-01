@@ -102,10 +102,13 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 			"utils/src/main/java"
 	);
 
+	/**
+	 * Walks up from the Surefire working directory until the project root is found,
+	 * identified by the presence of both the base/ and engine/ directories alongside pom.xml.
+	 *
+	 * @return the resolved project root path, or the current directory if not found
+	 */
 	private static Path findProjectRoot() {
-		// Walk up from the Surefire working directory (the tools module directory)
-		// until we find the project root, identified by the presence of both the
-		// base/ and engine/ layer directories alongside pom.xml.
 		Path current = Path.of("").toAbsolutePath();
 
 		while (current != null) {
@@ -128,7 +131,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 	 */
 	@Test
 	public void enforceCodePolicies() throws IOException {
-		log("=== Code Policy Enforcement ===");
+		log("Code Policy Enforcement");
 		log("Project root: " + PROJECT_ROOT);
 
 		CodePolicyViolationDetector detector = new CodePolicyViolationDetector(PROJECT_ROOT);
@@ -144,7 +147,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 		}
 
 		if (filesScanned == 0) {
-			log("WARNING: No source directories found. Project root may be incorrect.");
+			log("No source directories found. Project root may be incorrect.");
 			log("Attempting to scan from: " + PROJECT_ROOT);
 			detector.scan();
 		}
@@ -161,7 +164,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 		}
 
 		log("No code policy violations detected.");
-		log("=== Code Policy Enforcement PASSED ===");
+		log("Code Policy Enforcement passed.");
 	}
 
 	/**
@@ -451,7 +454,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 	 */
 	@Test
 	public void enforceTestTimeouts() throws IOException {
-		log("=== Test Timeout Enforcement ===");
+		log("Test Timeout Enforcement");
 		log("Project root: " + PROJECT_ROOT);
 
 		TestTimeoutEnforcementScanner scanner = new TestTimeoutEnforcementScanner(PROJECT_ROOT);
@@ -468,7 +471,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 		}
 
 		log("All @Test annotations include a timeout parameter.");
-		log("=== Test Timeout Enforcement PASSED ===");
+		log("Test Timeout Enforcement passed.");
 	}
 
 	/**
@@ -482,7 +485,7 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 	 */
 	@Test
 	public void enforceNoDuplicateCode() throws IOException {
-		log("=== Duplicate Code Detection ===");
+		log("Duplicate Code Detection");
 		log("Project root: " + PROJECT_ROOT);
 
 		DuplicateCodeDetector detector = new DuplicateCodeDetector(PROJECT_ROOT);
@@ -500,6 +503,6 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 		}
 
 		log("No duplicate code blocks detected.");
-		log("=== Duplicate Code Detection PASSED ===");
+		log("Duplicate Code Detection passed.");
 	}
 }

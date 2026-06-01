@@ -42,6 +42,9 @@ import java.io.IOException;
  */
 public class MoonbeamWeightVerificationTest extends TestSuiteBase implements ConsoleFeatures {
 
+	/**
+	 * Path to the extracted Moonbeam protobuf weights directory.
+	 */
 	private static final String WEIGHTS_DIR = "/workspace/project/moonbeam-weights-protobuf";
 
 	/**

@@ -32,10 +32,14 @@ import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * Test to verify RoPE rotation with dynamic position.
+ * Test to verify RoPE rotation with dynamic position updates.
  */
 public class RopePositionTest extends TestSuiteBase implements AttentionFeatures, ConsoleFeatures {
 
+	/**
+	 * Tests that RoPE rotation produces different outputs at different positions.
+	 * This verifies that position is being read dynamically rather than baked in.
+	 */
 	@Test(timeout = 30000)
 	public void testRopeWithDynamicPosition() throws Exception {
 		String logFile = "/workspace/project/common/ml/results/rope_position_test.txt";
@@ -125,7 +129,7 @@ public class RopePositionTest extends TestSuiteBase implements AttentionFeatures
 		double angle1 = 3.0 * (1.0 / Math.pow(10000.0, 2.0 / headSize));
 		log("  Expected (cos(3*freq), sin(3*freq)): [" +
 			Math.cos(angle0) + ", " + Math.sin(angle0) + ", " +
-			Math.cos(angle1) + ", " + Math.sin(angle1) + ", ...]");
+				Math.cos(angle1) + ", " + Math.sin(angle1) + ", ...]");
 
 		// Check if results are different
 		log("\nComparing position 0 vs position 3:");

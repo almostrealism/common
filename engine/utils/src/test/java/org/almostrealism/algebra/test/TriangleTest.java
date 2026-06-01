@@ -39,7 +39,14 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for triangle intersection and geometry operations.
+ */
 public class TriangleTest extends TestSuiteBase {
+
+	/**
+	 * Creates a basic triangle for testing.
+	 */
 	protected Triangle basicTriangle() {
 		return new Triangle(
 				new Vector(1.0, 1.0, -1.0),
@@ -47,6 +54,9 @@ public class TriangleTest extends TestSuiteBase {
 				new Vector(0.0, -1.0, -1.0));
 	}
 
+	/**
+	 * Tests extracting a point from triangle data.
+	 */
 	@Test(timeout = 10000)
 	public void point() {
 		PackedCollection data = Vector.bank(3);
@@ -61,6 +71,7 @@ public class TriangleTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests extracting triangle data.
 	 * This test will not pass unless {@link #point()} passes first.
 	 */
 	@Test(timeout = 10000)
@@ -75,6 +86,7 @@ public class TriangleTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests calculating distance to triangle intersection.
 	 * This test will not pass unless {@link #intersectAtDistance()} passes first.
 	 */
 	@Test(timeout = 10000)
@@ -90,6 +102,7 @@ public class TriangleTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests intersection distance calculation.
 	 * If {@link #data()} does not pass, then it is likely the values for
 	 * {@link #triangle()} are wrong and so this test will also not pass.
 	 */
@@ -103,11 +116,17 @@ public class TriangleTest extends TestSuiteBase {
 		assertEquals(1.0, distance.toDouble());
 	}
 
+	/**
+	 * Creates the intersect at producer for testing.
+	 */
 	protected Producer<Ray> intersectAt() {
 		return (Producer) basicTriangle().intersectAt(
 				ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get(0);
 	}
 
+	/**
+	 * Creates the origin producer from the triangle computation.
+	 */
 	protected CollectionProducer originProducer() {
 		Producer noRank = ((ProducerWithRank) intersectAt()).getProducer();
 		if (noRank instanceof ReshapeProducer)
@@ -123,6 +142,9 @@ public class TriangleTest extends TestSuiteBase {
 		return (CollectionProducer) ((CollectionProducerComputationBase) originVector).getInputs().get(1);
 	}
 
+	/**
+	 * Tests extracting the origin point from triangle intersection.
+	 */
 	@Test(timeout = 10000)
 	public void origin() {
 		CollectionProducer at = vector(originProducer());
@@ -133,6 +155,9 @@ public class TriangleTest extends TestSuiteBase {
 		Assert.assertEquals(new Vector(0.0, 0.0, -1.0), p);
 	}
 
+	/**
+	 * Creates a triangle collection for testing.
+	 */
 	protected PackedCollection triangle() {
 		Ray in = new Ray((PackedCollection) ((Producer) ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get().evaluate(), 0);
 		log(String.valueOf(in));
@@ -165,6 +190,9 @@ public class TriangleTest extends TestSuiteBase {
 		return td;
 	}
 
+	/**
+	 * Tests the choice test for triangle intersection.
+	 */
 	@Test(timeout = 10000)
 	public void choiceTest() {
 		Ray in = new Ray((PackedCollection) ((Producer) ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get().evaluate(), 0);
@@ -183,6 +211,9 @@ public class TriangleTest extends TestSuiteBase {
 		assertEquals(1.0, distance.toDouble());
 	}
 
+	/**
+	 * Tests triangle intersection calculation.
+	 */
 	@Test(timeout = 10000)
 	@TestProperties(knownIssue = true)
 	public void intersection() {

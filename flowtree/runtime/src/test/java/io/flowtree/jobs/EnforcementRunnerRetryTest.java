@@ -51,6 +51,7 @@ public class EnforcementRunnerRetryTest extends TestSuiteBase {
 	 * observations, calling {@link #trackChange()} to signal that changes were made.
 	 */
 	private abstract static class TrackingJob extends CodingAgentJob {
+		/** Whether the job has uncommitted changes, controlled by {@link #trackChange()}. */
 		private boolean hasChanges = false;
 
 		TrackingJob() { super("t1", "do the work"); }

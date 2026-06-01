@@ -71,18 +71,28 @@ import java.util.Random;
  */
 public class AggressiveFineTuningTest extends TestSuiteBase {
 
+	/** Directory for generated audio output files. */
 	private static final Path OUTPUT_DIR = Path.of("/workspace/project/generated_audio");
 
 	// Production model parameters (from Stable Audio Open)
+	/** IO channel count for production model. */
 	private static final int PROD_IO_CHANNELS = 64;
+	/** Embed dimension for production model. */
 	private static final int PROD_EMBED_DIM = 1024;
+	/** Number of transformer layers for production model. */
 	private static final int PROD_DEPTH = 16;
+	/** Number of attention heads for production model. */
 	private static final int PROD_NUM_HEADS = 8;
+	/** Cross-attention conditioning dimension for production model. */
 	private static final int PROD_COND_TOKEN_DIM = 768;
+	/** Global conditioning dimension for production model. */
 	private static final int PROD_GLOBAL_COND_DIM = 768;
 
+	/** Patch size for diffusion transformer. */
 	private static final int PATCH_SIZE = 1;
+	/** Diffusion objective identifier. */
 	private static final String DIFFUSION_OBJECTIVE = "rf_denoiser";
+	/** Latent sequence length for training. */
 	private static final int LATENT_LENGTH = 4;
 
 	/**

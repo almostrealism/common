@@ -30,10 +30,20 @@ import java.util.function.Consumer;
  */
 public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleFeatures {
 
+	/** Directory for results and profile output. */
 	private static final String RESULTS_DIR = "results";
+
+	/** Path for saved profile XML. */
 	private static final String PROFILE_PATH = RESULTS_DIR + "/qwen3_inference_profile.xml";
+
+	/** Path for test log file. */
 	private static final String LOG_PATH = RESULTS_DIR + "/qwen3_inference_profile.txt";
 
+	/**
+	 * Runs profiling test for Qwen3 inference with reduced configuration.
+	 * Creates synthetic weights, compiles model, runs warm-up and profiled passes,
+	 * and saves profile data.
+	 */
 	@Test(timeout = 300000)
 	public void profileInference() throws IOException {
 		new File(RESULTS_DIR).mkdirs();
@@ -134,6 +144,14 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 		log("\n=== Profile Test Complete ===");
 	}
 
+	/**
+	 * Creates an input collection from token embedding.
+	 *
+	 * @param embeddings the token embeddings
+	 * @param token the token index
+	 * @param dim the embedding dimension
+	 * @return input collection for the model
+	 */
 	private PackedCollection createInput(PackedCollection embeddings, int token, int dim) {
 		PackedCollection input = new PackedCollection(shape(1, dim));
 		for (int i = 0; i < dim; i++) {
@@ -142,6 +160,13 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 		return input;
 	}
 
+	/**
+	 * Creates a StateDictionary with random weights matching the given config.
+	 *
+	 * @param config the model configuration
+	 * @param seed random seed for reproducibility
+	 * @return StateDictionary populated with random weights
+	 */
 	private static StateDictionary createRandomWeights(Qwen3Config config, long seed) {
 		Random random = new Random(seed);
 		Map<String, PackedCollection> weights = new HashMap<>();
@@ -193,6 +218,13 @@ public class Qwen3InferenceProfileTest extends TestSuiteBase implements ConsoleF
 		return new StateDictionary(weights);
 	}
 
+	/**
+	 * Creates a PackedCollection with random values.
+	 *
+	 * @param random the random number generator
+	 * @param dims the tensor dimensions
+	 * @return collection filled with random values
+	 */
 	private static PackedCollection randomCollection(Random random, int... dims) {
 		TraversalPolicy shape = new TraversalPolicy(dims);
 		PackedCollection collection = new PackedCollection(shape);

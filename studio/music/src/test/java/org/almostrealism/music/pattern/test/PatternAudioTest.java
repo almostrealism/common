@@ -41,8 +41,14 @@ import org.junit.Test;
 
 import java.io.File;
 
+/**
+ * Tests for pattern-based audio rendering with envelopes and note providers.
+ */
 public class PatternAudioTest extends TestSuiteBase implements EnvelopeFeatures {
 
+	/**
+	 * Test basic note audio rendering from a sample library.
+	 */
 	@Test(timeout = 60_000)
 	public void noteAudio() {
 		Assume.assumeTrue(new File("Library/SN_Forever_Future.wav").exists());
@@ -58,6 +64,9 @@ public class PatternAudioTest extends TestSuiteBase implements EnvelopeFeatures 
 				.save(new File("results/pattern-note.wav"));
 	}
 
+	/**
+	 * Test note audio rendering with reverse playback filter.
+	 */
 	@Test(timeout = 60_000)
 	public void noteAudioReversed() {
 		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
@@ -74,6 +83,9 @@ public class PatternAudioTest extends TestSuiteBase implements EnvelopeFeatures 
 				.save(new File("results/pattern-note-reversed.wav"));
 	}
 
+	/**
+	 * Test envelope applied to pattern note audio.
+	 */
 	@Test(timeout = 60_000)
 	public void envelope() {
 		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
@@ -90,6 +102,9 @@ public class PatternAudioTest extends TestSuiteBase implements EnvelopeFeatures 
 				.save(new File("results/pattern-note-envelope.wav"));
 	}
 
+	/**
+	 * Test conditional envelope based on audio parameters.
+	 */
 	@Test(timeout = 120_000)
 	public void conditionalEnvelope() {
 		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
@@ -122,6 +137,9 @@ public class PatternAudioTest extends TestSuiteBase implements EnvelopeFeatures 
 				.save(new File("results/pattern-note-conditional-envelope.wav"));
 	}
 
+	/**
+	 * Test envelope pass-through rendering.
+	 */
 	@Test(timeout = 60_000)
 	public void envelopePassThrough() {
 		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
@@ -151,6 +169,9 @@ public class PatternAudioTest extends TestSuiteBase implements EnvelopeFeatures 
 				.save(new File("results/pattern-note-envelope-passthrough.wav"));
 	}
 
+	/**
+	 * Test envelope sections with attack and sustain.
+	 */
 	@Test(timeout = 60_000)
 	public void envelopeSections() {
 		Assume.assumeTrue(new File("Library/Snare Perc DD.wav").exists());
@@ -170,6 +191,9 @@ public class PatternAudioTest extends TestSuiteBase implements EnvelopeFeatures 
 				.save(new File("results/pattern-note-envelope-sections.wav"));
 	}
 
+	/**
+	 * Test parameterized volume envelope with random parameters.
+	 */
 	@Test(timeout = 60_000)
 	public void parameterizedEnvelope() {
 		Assume.assumeTrue(new File("Library/SN_Forever_Future.wav").exists());

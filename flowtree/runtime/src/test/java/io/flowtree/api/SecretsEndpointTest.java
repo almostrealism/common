@@ -59,23 +59,34 @@ import static org.junit.Assert.assertTrue;
  */
 public class SecretsEndpointTest extends TestSuiteBase {
 
+    /** Shared secret for authenticating test requests. */
     private static final String SHARED_SECRET = "test-shared-secret-for-unit-tests";
+    /** Workspace ID for workspace A (test fixtures). */
     private static final String WORKSPACE_A = "T_WORKSPACE_A";
+    /** Workspace ID for workspace B (test fixtures). */
     private static final String WORKSPACE_B = "T_WORKSPACE_B";
+    /** Workstream ID for workstream A (test fixtures). */
     private static final String WORKSTREAM_A = "ws-test-aaa";
+    /** Workstream ID for workstream B (test fixtures). */
     private static final String WORKSTREAM_B = "ws-test-bbb";
 
+    /** Live API endpoint under test. */
     private FlowTreeApiEndpoint endpoint;
+    /** Temporary directory for secret files. */
     private Path secretsDir;
+    /** Path to the test secret file. */
     private Path secretFile;
+    /** Listening port assigned by NanoHTTPD. */
     private int port;
 
     /** Captures messages written to {@link Console#root()} so tests can
      *  verify the audit log content. {@code SecretsRequestHandler} logs via
      *  {@code ConsoleFeatures.log()} which routes through {@code Console.root()}. */
     private final List<String> auditMessages = new ArrayList<>();
+    /** Consumer that records audit messages for test verification. */
     private Consumer<String> auditListener;
 
+    /** Sets up the test endpoint with a temporary secrets directory and cache. */
     @Before
     public void setUp() throws Exception {
         secretsDir = Files.createTempDirectory("ar-secrets-test-");
@@ -127,6 +138,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         port = endpoint.getListeningPort();
     }
 
+    /** Stops the endpoint and cleans up temporary files. */
     @After
     public void tearDown() throws Exception {
         if (endpoint != null) endpoint.stop();
@@ -138,6 +150,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
     // Retrieve endpoint tests
     // ----------------------------------------------------------------
 
+    /** GET /api/secrets/{name} with valid token returns HTTP 200 and payload. */
     @Test(timeout = 10000)
     public void testValidRetrieveReturnsPayload() throws Exception {
         String token = generateToken(WORKSTREAM_A);
@@ -151,6 +164,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         assertTrue("Response should contain key name", body.contains("access_key_id"));
     }
 
+    /** GET /api/secrets/{name} with invalid token returns HTTP 403. */
     @Test(timeout = 10000)
     public void testInvalidTokenReturns403() throws Exception {
         HttpURLConnection conn = openGet(
@@ -158,6 +172,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         assertEquals(403, conn.getResponseCode());
     }
 
+    /** GET /api/secrets/{name} with expired token returns HTTP 403. */
     @Test(timeout = 10000)
     public void testExpiredTokenReturns403() throws Exception {
         // Generate a token that expires in -1 seconds (already expired)
@@ -168,6 +183,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         assertEquals(403, conn.getResponseCode());
     }
 
+    /** GET /api/secrets/{name} with workstream mismatch returns HTTP 403. */
     @Test(timeout = 10000)
     public void testTokenWorkstreamMismatchReturns403() throws Exception {
         // Token for workspace-A's workstream, but request claims workspace-B's workstream
@@ -177,6 +193,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         assertEquals(403, conn.getResponseCode());
     }
 
+    /** GET /api/secrets/{name} for wrong workspace returns HTTP 404. */
     @Test(timeout = 10000)
     public void testWorkstreamFromWrongWorkspaceReturns403() throws Exception {
         // Token for WORKSTREAM_B (workspace B), secret belongs to workspace A
@@ -187,6 +204,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         assertEquals(404, conn.getResponseCode());
     }
 
+    /** GET /api/secrets/{name} for unknown secret returns HTTP 404. */
     @Test(timeout = 10000)
     public void testUnknownSecretReturns404() throws Exception {
         String token = generateToken(WORKSTREAM_A);
@@ -195,6 +213,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         assertEquals(404, conn.getResponseCode());
     }
 
+    /** GET /api/secrets/{name} when file is missing returns HTTP 500 without leaking secret. */
     @Test(timeout = 10000)
     public void testMissingFileReturns500() throws Exception {
         // Delete the file to simulate a missing file
@@ -208,6 +227,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         assertFalse("Error response must not contain secret values", body.contains("AKIATEST123"));
     }
 
+    /** Audit log contains secret name and workstream ID but not secret values. */
     @Test(timeout = 10000)
     public void testAuditLogContainsNameAndWorkstreamButNotValues() throws Exception {
         auditMessages.clear();
@@ -243,6 +263,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
     // Admin list endpoint tests
     // ----------------------------------------------------------------
 
+    /** GET /api/secrets?workspace_id= returns HTTP 200 with secret names but no payloads. */
     @Test(timeout = 10000)
     public void testAdminListReturnsNames() throws Exception {
         HttpURLConnection conn = openGet(
@@ -253,6 +274,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         assertFalse("Response must not contain payload values", body.contains("AKIATEST123"));
     }
 
+    /** GET /api/secrets?workspace_id= with bad token returns HTTP 403. */
     @Test(timeout = 10000)
     public void testAdminListWithBadTokenReturns403() throws Exception {
         HttpURLConnection conn = openGet(
@@ -260,6 +282,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         assertEquals(403, conn.getResponseCode());
     }
 
+    /** GET /api/secrets?workstream_id= with workstream token returns secret names. */
     @Test(timeout = 10000)
     public void testWorkstreamTokenListReturnsNames() throws Exception {
         String token = generateToken(WORKSTREAM_A);
@@ -275,6 +298,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
     // Admin create/update endpoint tests
     // ----------------------------------------------------------------
 
+    /** PUT /api/secrets/{name} creates a new secret file. */
     @Test(timeout = 10000)
     public void testAdminCreateWritesFile() throws Exception {
         Path newFile = secretsDir.resolve(WORKSPACE_A + "__gh-token.json");
@@ -316,6 +340,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         assertTrue(written.contains("FAKE_TOKEN_VALUE"));
     }
 
+    /** PUT /api/secrets/{name} with bad token returns HTTP 403. */
     @Test(timeout = 10000)
     public void testAdminCreateWithBadTokenReturns403() throws Exception {
         HttpURLConnection conn = openPut(
@@ -328,6 +353,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
     // Admin delete endpoint tests
     // ----------------------------------------------------------------
 
+    /** DELETE /api/secrets/{name} removes the secret file. */
     @Test(timeout = 10000)
     public void testAdminDeleteRemovesFile() throws Exception {
         assertTrue("File should exist before delete", Files.exists(secretFile));
@@ -341,6 +367,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
     // Permission check tests (startup warning)
     // ----------------------------------------------------------------
 
+    /** GET /api/secrets/{name} works even when file has 0644 permissions. */
     @Test(timeout = 10000)
     public void testSecretsFileWith0644PermissionsIsReadable() throws Exception {
         // Even if the permission check would warn, the retrieve still works (just unsafe).
@@ -362,11 +389,13 @@ public class SecretsEndpointTest extends TestSuiteBase {
     // Helpers
     // ----------------------------------------------------------------
 
+    /** Generates a short-lived bearer token for the given workstream. */
     private String generateToken(String workstreamId) {
         return SecretsRequestHandler.generateTemporaryToken(
                 workstreamId, "job-test-001", SHARED_SECRET, 3600);
     }
 
+    /** Opens a GET request with optional bearer token. */
     private HttpURLConnection openGet(String path, String bearerToken) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) new URL(
                 "http://localhost:" + port + path).openConnection();
@@ -377,6 +406,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         return conn;
     }
 
+    /** Opens a PUT request with bearer token and JSON body. */
     private HttpURLConnection openPut(String path, String bearerToken, String body) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) new URL(
                 "http://localhost:" + port + path).openConnection();
@@ -392,6 +422,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         return conn;
     }
 
+    /** Opens a DELETE request with bearer token. */
     private HttpURLConnection openDelete(String path, String bearerToken) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) new URL(
                 "http://localhost:" + port + path).openConnection();
@@ -402,10 +433,12 @@ public class SecretsEndpointTest extends TestSuiteBase {
         return conn;
     }
 
+    /** Reads the response body from an HTTP connection. */
     private static String readBody(HttpURLConnection conn) throws IOException {
         return new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
     }
 
+    /** Reads the error stream from an HTTP connection. */
     private static String readErrorBody(HttpURLConnection conn) throws IOException {
         InputStream err = conn.getErrorStream();
         if (err != null) {
@@ -414,6 +447,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
         return "";
     }
 
+    /** Recursively deletes a directory and its contents. */
     private static void deleteRecursively(File dir) {
         if (dir == null) return;
         File[] files = dir.listFiles();

@@ -25,7 +25,14 @@ import org.junit.Test;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Tests for weighted sum and batch matrix multiplication operations.
+ */
 public class WeightedSumTests extends TestSuiteBase {
+
+	/**
+	 * Tests broadcast operation in weighted sum.
+	 */
 	@Test(timeout = 30000)
 	public void broadcast() {
 		int c1 = 3;
@@ -83,6 +90,9 @@ public class WeightedSumTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests sum column operation.
+	 */
 	@Test(timeout = 30000)
 	public void sumColumn() {
 		int r = 3;
@@ -125,6 +135,9 @@ public class WeightedSumTests extends TestSuiteBase {
 				out.reshape(1, c1, c2));
 	}
 
+	/**
+	 * Tests sum column batch operation.
+	 */
 	@Test(timeout = 30000)
 	public void sumColumnBatch() {
 		int bs = 1;
@@ -157,6 +170,9 @@ public class WeightedSumTests extends TestSuiteBase {
 				out.reshape(bs, c1, c2));
 	}
 
+	/**
+	 * Tests sum column repeat batch operation.
+	 */
 	@Test(timeout = 30000)
 	public void sumColumnRepeatBatch() {
 		int bs = 1;
@@ -187,6 +203,9 @@ public class WeightedSumTests extends TestSuiteBase {
 				out.evaluate().reshape(bs, c1, c2));
 	}
 
+	/**
+	 * Validates sum column results against expected values.
+	 */
 	protected void sumColumnAssertions(PackedCollection a, PackedCollection b, PackedCollection out) {
 		int bs = a.getShape().length(0);
 		int r = a.getShape().length(1);
@@ -210,6 +229,9 @@ public class WeightedSumTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests similarity computation using weighted sum.
+	 */
 	@Test(timeout = 30000)
 	public void similarity() {
 		int bs = 3;
@@ -256,6 +278,9 @@ public class WeightedSumTests extends TestSuiteBase {
 	}
 
 
+	/**
+	 * Tests scaled dot product attention operation.
+	 */
 	@Test(timeout = 30000)
 	public void scaledDotProduct() {
 		int batchSize = 2;
@@ -307,6 +332,9 @@ public class WeightedSumTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests scaled dot product with K permutation.
+	 */
 	@Test(timeout = 30000)
 	public void scaledDotProductPermute() {
 		int batchSize = 2;
@@ -360,6 +388,9 @@ public class WeightedSumTests extends TestSuiteBase {
 		assertTrue("Batch matrix multiplication with transpose differs from expected", diff < 1e-6);
 	}
 
+	/**
+	 * Tests scaled dot product with transpose flag.
+	 */
 	@Test(timeout = 30000)
 	public void scaledDotProductTranspose() {
 		int batchSize = 2;

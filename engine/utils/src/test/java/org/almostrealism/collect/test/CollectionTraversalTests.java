@@ -24,8 +24,14 @@ import org.junit.Test;
 
 import java.util.Arrays;
 
+/**
+ * Tests for collection traversal operations.
+ */
 public class CollectionTraversalTests extends TestSuiteBase {
 
+	/**
+	 * Tests stride 1 traversal operation.
+	 */
 	@Test(timeout = 10000)
 	public void stride1() {
 		PackedCollection root = new PackedCollection(shape(4, 4)).randFill();
@@ -47,6 +53,9 @@ public class CollectionTraversalTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests stride 2 traversal operation.
+	 */
 	@Test(timeout = 10000)
 	public void stride2() {
 		PackedCollection root = new PackedCollection(shape(4, 4)).randFill();
@@ -67,6 +76,9 @@ public class CollectionTraversalTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests stride 3 traversal operation.
+	 */
 	@Test(timeout = 10000)
 	public void stride3() {
 		PackedCollection root = new PackedCollection(shape(4, 4)).randFill();
@@ -88,6 +100,9 @@ public class CollectionTraversalTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests stride 4 traversal operation.
+	 */
 	@Test(timeout = 10000)
 	public void stride4() {
 		PackedCollection root = new PackedCollection(shape(4, 4)).randFill();
@@ -109,6 +124,9 @@ public class CollectionTraversalTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests stride 5 traversal operation.
+	 */
 	@Test(timeout = 10000)
 	public void stride5() {
 		int m = 2;
@@ -136,6 +154,9 @@ public class CollectionTraversalTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests stride 6 traversal operation.
+	 */
 	@Test(timeout = 10000)
 	public void stride6() {
 		int m = 4;
@@ -165,6 +186,9 @@ public class CollectionTraversalTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests stride 7 traversal operation.
+	 */
 	@Test(timeout = 10000)
 	public void stride7() {
 		TraversalPolicy left = shape(2, 1)
@@ -192,6 +216,9 @@ public class CollectionTraversalTests extends TestSuiteBase {
 		Assert.assertEquals("[0, 0][0, 1][0, 0][0, 1]", result.toString());
 	}
 
+	/**
+	 * Tests stride 8 traversal operation.
+	 */
 	@Test(timeout = 10000)
 	public void stride8() {
 		TraversalPolicy policy = shape(2, 4)
@@ -210,6 +237,9 @@ public class CollectionTraversalTests extends TestSuiteBase {
 				.forEach(System.out::println);
 	}
 
+	/**
+	 * Tests stride 9 traversal operation.
+	 */
 	@Test(timeout = 10000)
 	public void stride9() {
 		int bs = 1;
