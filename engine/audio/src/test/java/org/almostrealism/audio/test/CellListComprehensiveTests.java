@@ -1117,6 +1117,8 @@ public class CellListComprehensiveTests extends TestSuiteBase implements CellFea
 	private static class TestTemporal implements Cell<PackedCollection>, Temporal {
 		/** Name identifier for this temporal */
 		private final String name;
+		/** Shared list that records the order in which temporals tick */
+		private final List<String> tickOrder;
 
 		/**
 		 * Creates a test temporal with the given name and shared tick order list.
