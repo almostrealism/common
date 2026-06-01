@@ -58,7 +58,15 @@ public class NoteAudioCache {
 	 * @param audio the evaluated audio data
 	 */
 	public void put(int noteOffset, PackedCollection audio) {
-		cache.put(noteOffset, audio);
+		// Destroy any previously cached audio displaced at this offset. Multiple
+		// notes can share a frame offset (chords, layered voices); each cached entry is
+		// a standalone copy owned by the cache (renderPerNote copies the evaluated note
+		// audio into a fresh PackedCollection before caching), so the displaced entry
+		// would otherwise be orphaned and leak native memory.
+		PackedCollection previous = cache.put(noteOffset, audio);
+		if (previous != null && previous != audio) {
+			previous.destroy();
+		}
 	}
 
 	/**
@@ -73,7 +81,15 @@ public class NoteAudioCache {
 		cache.entrySet().removeIf(entry -> {
 			int noteStart = entry.getKey();
 			int noteEnd = noteStart + entry.getValue().getShape().getCount();
-			return noteEnd <= currentStartFrame;
+			if (noteEnd <= currentStartFrame) {
+				// Free the GPU/native memory backing the evicted note audio; without
+				// this the buffers leak and a long-running render eventually exhausts
+				// device memory. The cache owns this audio outright — each entry is a
+				// standalone copy (see put), so nothing else references it after eviction.
+				entry.getValue().destroy();
+				return true;
+			}
+			return false;
 		});
 	}
 
@@ -88,6 +104,7 @@ public class NoteAudioCache {
 	 * Removes all cached entries.
 	 */
 	public void clear() {
+		cache.values().forEach(PackedCollection::destroy);
 		cache.clear();
 	}
 }

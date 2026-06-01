@@ -68,10 +68,10 @@ public class PatternNoteLayer extends PatternNoteAudioAdapter implements Keyboar
 	}
 
 	@Override
-	protected PatternNoteAudio getDelegate() { return delegate; }
+	public PatternNoteAudio getDelegate() { return delegate; }
 
 	@Override
-	protected NoteAudioFilter getFilter() { return filter; }
+	public NoteAudioFilter getFilter() { return filter; }
 
 	@Override
 	protected PatternNoteAudio getProvider(KeyPosition<?> target,

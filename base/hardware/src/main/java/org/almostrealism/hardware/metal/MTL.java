@@ -480,4 +480,27 @@ public class MTL {
 	 * @param device Native device pointer
 	 */
 	public static native void releaseDevice(long device);
+
+	/**
+	 * Creates an Objective-C autorelease pool on the calling thread and returns an
+	 * opaque handle to it.
+	 *
+	 * <p>metal-cpp factory methods such as {@code commandBuffer()} and
+	 * {@code computeCommandEncoder()} return autoreleased objects. On a long-lived JNI
+	 * worker thread with no pool in place these are never reclaimed and accumulate in
+	 * the Metal driver until it stalls. Wrap each kernel dispatch between this call and
+	 * {@link #autoreleasePoolPop(long)} (on the same thread) to drain the per-dispatch
+	 * command buffers and encoders.</p>
+	 *
+	 * @return an opaque handle to the new autorelease pool, for {@link #autoreleasePoolPop(long)}
+	 */
+	public static native long autoreleasePoolPush();
+
+	/**
+	 * Drains and releases the autorelease pool created by {@link #autoreleasePoolPush()},
+	 * freeing every object autoreleased on this thread since the matching push.
+	 *
+	 * @param pool the handle returned by {@link #autoreleasePoolPush()}
+	 */
+	public static native void autoreleasePoolPop(long pool);
 }

@@ -142,6 +142,36 @@ The hardware module includes comprehensive implementations for multiple accelera
 
 > **API Documentation:** Comprehensive JavaDoc is available for all 128+ classes in the hardware module. Generate it with `mvn javadoc:aggregate` and view at `target/site/apidocs/index.html`.
 
+### Native Libraries: libMTL and libNIO
+
+The Metal backend and shared-memory helpers are backed by two native libraries whose
+source lives **in this repository** under [`src/main/cpp`](src/main/cpp):
+
+| Library | Source | Backs |
+|---------|--------|-------|
+| **libMTL.dylib** | [`src/main/cpp/MTL.cpp`](src/main/cpp/MTL.cpp) | The `native` methods of [`org.almostrealism.hardware.metal.MTL`](src/main/java/org/almostrealism/hardware/metal/MTL.java) — device/queue/buffer/pipeline creation, command-buffer dispatch, autorelease-pool management |
+| **libNIO.dylib** | [`src/main/cpp/NIO.cpp`](src/main/cpp/NIO.cpp) | Shared-memory (`mmap`) helpers used by `NativeBuffer` |
+
+`MTL.cpp` is Objective-C++ built against [metal-cpp](https://developer.apple.com/metal/cpp/).
+The amalgamated metal-cpp single header is committed as
+[`src/main/cpp/Metal.hpp`](src/main/cpp/Metal.hpp), so the build is **self-contained** —
+no external metal-cpp installation is required. Both libraries are rebuilt with
+[`src/main/cpp/compile.sh`](src/main/cpp/compile.sh) (auto-discovers `JAVA_HOME`); the
+resulting `.dylib` files are written to `src/main/resources/` and packaged into the
+`ar-hardware` jar, from which `MTL`/`NIO` load them at runtime.
+
+**Command-buffer lifecycle (important).** metal-cpp factory methods such as
+`MTL::CommandQueue::commandBuffer()` and `MTL::CommandBuffer::computeCommandEncoder()`
+return **autoreleased** objects. On a long-lived JNI worker thread (the single-threaded
+executor in `MetalCommandRunner`) there is no Objective-C autorelease pool in place, so
+without intervention these per-dispatch command buffers and encoders are never reclaimed
+and accumulate in the Metal driver until it stalls — fatal for sustained real-time
+rendering (thousands of sequential dispatches). `MTL.cpp` therefore exposes
+`autoreleasePoolPush()`/`autoreleasePoolPop(long)`, and `MetalCommandRunner.submit(...)`
+wraps every dispatch between them so the command buffer and encoder drain after each
+dispatch. Add the equivalent pool wrapping to any new code path that issues Metal
+dispatches off this thread.
+
 ## Core Concepts
 
 ### MemoryData: Hardware-Accessible Data
