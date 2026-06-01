@@ -40,14 +40,28 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for layer operations including dense layers, RMSNorm, and attention mechanisms.
+ */
 public class LayersTests extends TestSuiteBase implements LayerFeatures, DistributionFeatures {
+	/** Size for test collections. */
 	private static final int SIZE = 768;
 
+	/** CPU output buffer for comparison tests. */
 	private float[] cpuOut;
+
+	/** GPU output buffer for comparison tests. */
 	private float[] gpuOut;
+
+	/** Expected CPU sum for validation. */
 	private final double cpuSum = -1.0;
+
+	/** Expected GPU sum for validation. */
 	private final double gpuSum = -1.0;
 
+	/**
+	 * Tests exponent operation with random input and weights.
+	 */
 	@Test(timeout = 30000)
 	public void exponent() {
 		PackedCollection in = new PackedCollection(SIZE).traverseEach();
@@ -85,6 +99,9 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 		});
 	}
 
+	/**
+	 * Tests RMSNorm layer with CPU and GPU backends.
+	 */
 	@Test(timeout = 30000)
 	public void rmsnorm() {
 		PackedCollection in = new PackedCollection(shape(SIZE));
@@ -132,6 +149,9 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 		}
 	}
 
+	/**
+	 * Tests dense layer with model optimizer.
+	 */
 	@Test(timeout = 30000)
 	@TestProperties(knownIssue = true)
 	public void dense() {
@@ -161,6 +181,9 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 		}
 	}
 
+	/**
+	 * Tests SiLU activation training with model optimizer.
+	 */
 	@Test(timeout = 30000)
 	@TestDepth(3)
 	public void siluTrain() throws IOException {
@@ -191,6 +214,9 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 		}
 	}
 
+	/**
+	 * Tests SiLU transformation against expected sigmoid-based computation.
+	 */
 	@Test(timeout = 30000)
 	public void siluTransformation() {
 		int size = 100;

@@ -49,9 +49,16 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Tests for StatelessSourceNote audio rendering.
+ */
 public class StatelessSourceNoteTests extends TestSuiteBase implements CellFeatures, SamplingFeatures, PatternFeatures, AudioTestFeatures {
+	/** Sample rate for audio processing. */
 	int sampleRate = OutputLine.sampleRate;
 
+	/**
+	 * Test that sine and snare notes render correctly in a composition.
+	 */
 	@Test(timeout = 120_000)
 	public void sineAndSnare() {
 		// Define the shared parameters, including how notes should be
@@ -131,6 +138,9 @@ public class StatelessSourceNoteTests extends TestSuiteBase implements CellFeatu
 				.save(new File("results/sine-notes.wav"));
 	}
 
+	/**
+	 * Test that riser audio effect renders correctly.
+	 */
 	@Test(timeout = 120_000)
 	public void riser() {
 		double duration = 8.0;

@@ -44,6 +44,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class OpencodeTranscriptWriterTest extends TestSuiteBase {
 
+    /** Shared ObjectMapper for JSON round-trip tests. */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     // --- Basic transcript creation ---

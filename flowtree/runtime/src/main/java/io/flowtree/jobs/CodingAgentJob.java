@@ -40,6 +40,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 /**
  * A {@link Job} implementation that executes a Claude Code prompt.
  *
@@ -173,6 +176,21 @@ public class CodingAgentJob extends GitManagedJob {
     private int maxReviewPasses = DEFAULT_MAX_REVIEW_PASSES;
     /** Active {@link ReviewRule} instance set by {@link EnforcementRunner} while assembling rules; owns review telemetry. */
     private ReviewRule activeReviewRule;
+
+    /**
+     * When {@code true}, a retrospective session runs after all other phases,
+     * analyzing the primary phase transcript for tool-use and context-efficiency
+     * improvement opportunities. Defaults to {@code false}; opt in per-job.
+     */
+    private boolean reflectionEnabled = false;
+    /** {@code true} after {@link #runReflectionPhase()} has executed; reset on each {@link #doWork()} call. */
+    private boolean reflectionRan;
+    /** {@code true} when the retrospective agent found and analyzed a primary-phase transcript. */
+    private boolean reflectionTranscriptFound;
+    /** Number of improvement findings emitted as memories by the retrospective agent. */
+    private int reflectionFindingsCount;
+    /** Cost (USD) of the retrospective session alone; computed as the delta in costByModel. */
+    private double reflectionCostUsd;
 
     /** Shell command run after the agent completes; non-empty activates {@link PostCompletionCommandRule}. */
     private String postCompletionCommand;
@@ -602,6 +620,11 @@ public class CodingAgentJob extends GitManagedJob {
         this.maxReviewPasses = maxReviewPasses;
     }
 
+    /** Returns whether the retrospective phase is active for this job; default {@code false}. */
+    public boolean isReflectionEnabled() { return reflectionEnabled; }
+    /** Sets whether the retrospective phase is active for this job; {@code true} to enable retrospective analysis. */
+    public void setReflectionEnabled(boolean reflectionEnabled) { this.reflectionEnabled = reflectionEnabled; }
+
     /** Returns the post-completion command; non-empty activates {@link PostCompletionCommandRule}. */
     public String getPostCompletionCommand() { return postCompletionCommand; }
 
@@ -920,10 +943,14 @@ public class CodingAgentJob extends GitManagedJob {
         if (sessionStartedAt == null) sessionStartedAt = Instant.now();
         executeSingleRun();
 
-        // Git integrity violations are handled by onGitTampering() in GitManagedJob;
-        // bail out immediately to let that path take over.
+        // Git integrity violations handled by onGitTampering in GitManagedJob.
         if (!hasAgentCommitted()) {
             runEnforcementRules();
+        }
+        // Retrospective phase runs after enforcement rules; produces memories, not code.
+        reflectionRan = false;
+        if (reflectionEnabled) {
+            runReflectionPhase();
         }
     }
 
@@ -941,6 +968,78 @@ public class CodingAgentJob extends GitManagedJob {
      */
     void runEnforcementRules() {
         new EnforcementRunner(this).run();
+    }
+
+    /**
+     * Runs the retrospective phase — a single agent session that analyzes the
+     * primary phase transcript for tool-use and context-efficiency improvement
+     * opportunities.
+     *
+     * <p>The session runs after all enforcement rules have completed, regardless
+     * of whether the agent produced a commit. It produces memories, not code
+     * changes, so it cannot trigger re-entry into the enforcement loop even
+     * when {@link #hasAgentCommitted()} returns {@code false}.</p>
+     *
+     * <p>The session uses the standard per-phase configuration resolution:
+     * {@link #resolveEffectivePhaseConfig(Phase#RETROSPECTIVE)} applies the
+     * {@code phase_configs["retrospective"]} override, falling back to
+     * {@code default_phase_config} and then to the system default.</p>
+     */
+    void runReflectionPhase() {
+        String originalPrompt = this.prompt, previousActivity = this.currentActivity;
+        this.currentActivity = Phase.RETROSPECTIVE.wireName();
+        Path commitFile = resolveWorkingPath("commit.txt");
+        String savedMsg = (commitFile != null && Files.exists(commitFile))
+                ? readStringSafely(commitFile) : null;
+        PhaseConfig retroConfig = resolveEffectivePhaseConfig(Phase.RETROSPECTIVE);
+        double costBefore = costByModel.getOrDefault(retroConfig.toModelKey(), 0.0);
+
+        reflectionRan = reflectionTranscriptFound = false; reflectionFindingsCount = 0; reflectionCostUsd = 0.0;
+
+        try {
+            this.prompt = RetrospectivePromptBuilder.build(this);
+            reflectionRan = true;
+            executeSingleRun();
+            reflectionCostUsd = Math.max(0.0, costByModel.getOrDefault(retroConfig.toModelKey(), 0.0) - costBefore);
+            readReflectionResults();
+        } finally {
+            this.prompt = originalPrompt;
+            this.currentActivity = previousActivity;
+            if (commitFile != null && !Files.exists(commitFile) && savedMsg != null) {
+                writeStringSafely(commitFile, savedMsg);
+                log("Restored commit message from commit.txt after retrospective phase");
+            }
+        }
+    }
+
+    /** Reads commit.txt safely, returning null on error. */
+    private String readStringSafely(Path path) {
+        try { return Files.readString(path, StandardCharsets.UTF_8); }
+        catch (IOException e) { warn("Could not read commit.txt: " + e.getMessage()); return null; }
+    }
+
+    /** Writes commit.txt safely, logging errors. */
+    private void writeStringSafely(Path path, String content) {
+        try { Files.writeString(path, content, StandardCharsets.UTF_8); }
+        catch (IOException e) { warn("Could not restore commit.txt: " + e.getMessage()); }
+    }
+
+    /** Result file written by the retrospective agent. */
+    private static final String RETROSPECTIVE_RESULTS_FILE = "retrospective-results.json";
+
+    /** Reads the retrospective agent's structured result file. */
+    private void readReflectionResults() {
+        Path resultsFile = resolveWorkingPath(RETROSPECTIVE_RESULTS_FILE);
+        if (resultsFile == null || !Files.exists(resultsFile)) return;
+        try {
+            String json = Files.readString(resultsFile, StandardCharsets.UTF_8);
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode node = mapper.readTree(json);
+            reflectionTranscriptFound = node.has("transcriptFound") && node.get("transcriptFound").asBoolean();
+            reflectionFindingsCount = node.has("findingsCount") ? node.get("findingsCount").asInt() : 0;
+        } catch (Exception e) {
+            warn("Could not read " + RETROSPECTIVE_RESULTS_FILE + ": " + e.getMessage());
+        }
     }
 
     /**
@@ -1339,6 +1438,10 @@ public class CodingAgentJob extends GitManagedJob {
             if (activeReviewRule != null && activeReviewRule.hasRun()) {
                 ccEvent.withReviewInfo(true, activeReviewRule.getFilesModified(),
                         activeReviewRule.getMemoriesStored(), activeReviewRule.isExitedCleanly());
+            }
+            if (reflectionRan) {
+                ccEvent.withReflectionInfo(true, reflectionCostUsd,
+                        reflectionTranscriptFound, reflectionFindingsCount);
             }
         }
     }

@@ -25,7 +25,13 @@ import org.junit.Test;
 
 import java.util.Arrays;
 
+/**
+ * Tests for interpolation operations.
+ */
 public class InterpolateTest extends TestSuiteBase {
+	/**
+	 * Tests interpolating between two series.
+	 */
 	@Test(timeout = 10000)
 	public void interpolateTwoSeries() {
 		PackedCollection series = new PackedCollection(2, 10);
@@ -53,6 +59,9 @@ public class InterpolateTest extends TestSuiteBase {
 		assertEquals(11, dest.toArray(1, 1)[0]);
 	}
 
+	/**
+	 * Tests interpolate kernel pass-through.
+	 */
 	@Test(timeout = 10000)
 	public void interpolateKernelPassThrough() {
 		PackedCollection series = new PackedCollection(10);
@@ -79,6 +88,9 @@ public class InterpolateTest extends TestSuiteBase {
 		assertEquals(10.5, dest.toArray(1, 1)[0]);
 	}
 
+	/**
+	 * Tests interpolate kernel computation.
+	 */
 	@Test(timeout = 10000)
 	public void interpolateKernel() {
 		PackedCollection series = new PackedCollection(10);
@@ -100,6 +112,9 @@ public class InterpolateTest extends TestSuiteBase {
 		assertEquals(10.5, dest.toDouble(1));
 	}
 
+	/**
+	 * Tests interpolate pass-through with explicit shape.
+	 */
 	@Test(timeout = 10000)
 	public void interpolatePassThroughWithShape() {
 		PackedCollection series = new PackedCollection(10);
@@ -123,6 +138,9 @@ public class InterpolateTest extends TestSuiteBase {
 		assertEquals(15, dest.toArray(0, 1)[0]);
 	}
 
+	/**
+	 * Tests interpolate pass-through without explicit shape.
+	 */
 	@Test(timeout = 10000)
 	public void interpolatePassThroughWithoutShape() {
 		PackedCollection series = new PackedCollection(10);

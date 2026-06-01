@@ -156,7 +156,7 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 			log("Realtime factor: " + String.format("%.2f", realtimeFactor) + "x");
 
 			if (realtimeFactor < 1.0) {
-				log("WARNING: Slower than realtime! Audio will underrun.");
+				log("Performance: Slower than realtime! Audio will underrun.");
 			} else {
 				log("OK: Faster than realtime (" + String.format("%.1f", realtimeFactor) + "x headroom)");
 			}
@@ -267,7 +267,7 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 			log("Required tick time for realtime: " + String.format("%.2f", framesPerTick * 1000.0 / SAMPLE_RATE) + " ms");
 
 			if (realtimeFactor < 1.0) {
-				log("WARNING: Slower than realtime! Audio will underrun.");
+				log("Performance: Slower than realtime! Audio will underrun.");
 				log("Need " + String.format("%.1f", 1.0 / realtimeFactor) + "x speedup for realtime.");
 			} else {
 				log("OK: Faster than realtime (" + String.format("%.1f", realtimeFactor) + "x headroom)");
@@ -370,7 +370,7 @@ public class PolyphonicSynthesizerPerformanceTest extends TestSuiteBase implemen
 			log("Realtime factor: " + String.format("%.2f", realtimeFactor) + "x");
 
 			if (realtimeFactor < 1.0) {
-				log("WARNING: Slower than realtime!");
+				log("Performance: Slower than realtime!");
 			} else {
 				log("OK: Faster than realtime (" + String.format("%.1f", realtimeFactor) + "x headroom)");
 			}

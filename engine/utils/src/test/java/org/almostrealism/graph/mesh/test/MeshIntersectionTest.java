@@ -34,14 +34,28 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Before;
 import org.junit.Test;
 
+/**
+ * Tests for mesh intersection operations.
+ */
 public class MeshIntersectionTest extends TestSuiteBase {
+	/** Origin for test ray 1. */
 	private final Producer<PackedCollection> origin1 = vector(0.0, 1.0, 1.0);
+
+	/** Direction for test ray 1. */
 	private final Producer<PackedCollection> direction1 = vector(0.0, 0.0, -1.0);
+
+	/** Origin for test ray 2. */
 	private final Producer<PackedCollection> origin2 = vector( -0.1, -1.0, 1.0);
+
+	/** Direction for test ray 2. */
 	private final Producer<PackedCollection> direction2 = vector(0.0, 0.0, -1.0);
 
+	/** Mesh data for test 1. */
 	private MeshData data1, data2;
 
+	/**
+	 * Creates first test mesh.
+	 */
 	protected Mesh mesh1() {
 		DefaultVertexData data = new DefaultVertexData(3, 1);
 		data.getVertices().set(0, new Vector(0.0, 100.0, 0.0));
@@ -52,6 +66,9 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		return new Mesh(data);
 	}
 
+	/**
+	 * Creates second test mesh.
+	 */
 	protected Mesh mesh2() {
 		DefaultVertexData data = new DefaultVertexData(3, 1);
 		data.getVertices().set(0, new Vector(0.0, 1.0, 0.0));
@@ -62,29 +79,56 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		return new Mesh(data);
 	}
 
+	/**
+	 * Initializes test mesh data.
+	 */
 	@Before
 	public void init() {
 		data1 = mesh1().getMeshData();
 		data2 = mesh2().getMeshData();
 	}
 
+	/**
+	 * Extracts point A from mesh data.
+	 */
 	protected Producer<PackedCollection> abc(MeshData data) { return v(new Vector(data.get(0).get(0), 0)); }
+
+	/**
+	 * Extracts point B from mesh data.
+	 */
 	protected Producer<PackedCollection> def(MeshData data) { return v(new Vector(data.get(0).get(1), 0)); }
+
+	/**
+	 * Extracts point C from mesh data.
+	 */
 	protected Producer<PackedCollection> jkl(MeshData data) { return v(new Vector(data.get(0).get(2), 0)); }
+
+	/**
+	 * Extracts normal from mesh data.
+	 */
 	protected Producer<PackedCollection> normal(MeshData data) { return v(new Vector(data.get(0).get(3), 0)); }
 
+	/**
+	 * Creates triangle intersection operation.
+	 */
 	protected TriangleIntersectAt intersection() {
 		return TriangleIntersectAt.construct(Input.value(shape(4, 3), 0),
 										(Producer) ray(Input.value(shape(-1, 3), 1),
 															Input.value(shape(-1, 3), 2)));
 	}
 
+	/**
+	 * Tests normal extraction for test data 1.
+	 */
 	@Test(timeout = 10000)
 	public void normal1() {
 		Vector normal = new Vector(normal(data1).get().evaluate(), 0);
 		log("normal = " + normal);
 	}
 
+	/**
+	 * Tests triangle intersection components for data 1.
+	 */
 	@Test(timeout = 10000)
 	public void data1() {
 		log(String.valueOf(def(data1).get().evaluate()));
@@ -102,6 +146,9 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		log("u = " + u.get().evaluate().toDouble());
 	}
 
+	/**
+	 * Tests triangle intersection components for data 2.
+	 */
 	@Test(timeout = 10000)
 	@TestDepth(1)
 	public void data2() {
@@ -135,6 +182,9 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		log("v = " + v.get().evaluate().toDouble());
 	}
 
+	/**
+	 * Tests triangle intersection distance calculation for data 1.
+	 */
 	@Test(timeout = 10000)
 	public void intersectAt1() {
 		TriangleIntersectAt intersect = intersection();
@@ -143,6 +193,9 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		assertEquals(1.0, distance);
 	}
 
+	/**
+	 * Tests intersection kernel for test data 1.
+	 */
 	@Test(timeout = 10000)
 	public void intersectionKernel1() {
 		PackedCollection distances = new PackedCollection(shape(1, 1).traverse(1));
@@ -152,6 +205,9 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		assertEquals(1.0, distances.get(0).toDouble());
 	}
 
+	/**
+	 * Tests triangle intersection distance calculation for data 2.
+	 */
 	@Test(timeout = 10000)
 	public void intersectAt2() {
 		double distance = intersection().get().evaluate(
@@ -160,6 +216,9 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		assertEquals(1.0, distance);
 	}
 
+	/**
+	 * Tests intersection kernel for test data 2.
+	 */
 	@Test(timeout = 10000)
 	public void intersectionKernel2() {
 		PackedCollection distances = new PackedCollection(shape(1, 1).traverse(1));
@@ -169,6 +228,9 @@ public class MeshIntersectionTest extends TestSuiteBase {
 		assertEquals(1.0, distances.get(0));
 	}
 
+	/**
+	 * Tests intersection kernel with random rays.
+	 */
 	@Test(timeout = 10000)
 	public void intersectionKernel3() {
 		Evaluable<Ray> ray = (Evaluable) new DynamicProducerForMemoryData<PackedCollection>(args -> (PackedCollection) ((Producer) ray(i -> Math.random())).get().evaluate()).get();

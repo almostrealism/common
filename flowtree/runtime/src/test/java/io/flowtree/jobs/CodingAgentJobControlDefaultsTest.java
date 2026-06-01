@@ -36,12 +36,18 @@ public class CodingAgentJobControlDefaultsTest extends TestSuiteBase {
 
     // ── Deduplication — disabled by default ─────────────────────────────────
 
+    /**
+     * Verifies that a newly created factory reports DEDUP_NONE as its deduplication mode.
+     */
     @Test(timeout = 30000)
     public void factoryDeduplicationDisabledByDefault() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
         assertEquals(CodingAgentJob.DEDUP_NONE, factory.getDeduplicationMode());
     }
 
+    /**
+     * Verifies that a job produced by a default factory inherits the DEDUP_NONE deduplication mode.
+     */
     @Test(timeout = 30000)
     public void jobCreatedByFactoryInheritsNoneDeduplication() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
@@ -52,6 +58,9 @@ public class CodingAgentJobControlDefaultsTest extends TestSuiteBase {
 
     // ── Deduplication — explicit opt-in ─────────────────────────────────────
 
+    /**
+     * Verifies that setting DEDUP_LOCAL on a factory is reflected by its getter.
+     */
     @Test(timeout = 30000)
     public void factoryDeduplicationOptInLocal() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
@@ -59,6 +68,9 @@ public class CodingAgentJobControlDefaultsTest extends TestSuiteBase {
         assertEquals(CodingAgentJob.DEDUP_LOCAL, factory.getDeduplicationMode());
     }
 
+    /**
+     * Verifies that setting DEDUP_SPAWN on a factory is reflected by its getter.
+     */
     @Test(timeout = 30000)
     public void factoryDeduplicationOptInSpawn() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
@@ -66,6 +78,9 @@ public class CodingAgentJobControlDefaultsTest extends TestSuiteBase {
         assertEquals(CodingAgentJob.DEDUP_SPAWN, factory.getDeduplicationMode());
     }
 
+    /**
+     * Verifies that a job produced by a factory with DEDUP_LOCAL inherits that deduplication mode.
+     */
     @Test(timeout = 30000)
     public void jobCreatedByFactoryInheritsLocalOptIn() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
@@ -75,6 +90,9 @@ public class CodingAgentJobControlDefaultsTest extends TestSuiteBase {
         assertEquals(CodingAgentJob.DEDUP_LOCAL, job.getDeduplicationMode());
     }
 
+    /**
+     * Verifies that DEDUP_NONE survives a serialization and deserialization round-trip.
+     */
     @Test(timeout = 30000)
     public void deduplicationNoneWireRoundTrip() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
@@ -82,6 +100,9 @@ public class CodingAgentJobControlDefaultsTest extends TestSuiteBase {
         assertEquals(CodingAgentJob.DEDUP_NONE, decoded.getDeduplicationMode());
     }
 
+    /**
+     * Verifies that DEDUP_LOCAL survives a serialization and deserialization round-trip.
+     */
     @Test(timeout = 30000)
     public void deduplicationLocalWireRoundTrip() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
@@ -92,18 +113,27 @@ public class CodingAgentJobControlDefaultsTest extends TestSuiteBase {
 
     // ── Organizational placement — disabled by default ───────────────────────
 
+    /**
+     * Verifies that a directly constructed job has organizational placement enforcement disabled.
+     */
     @Test(timeout = 30000)
     public void jobOrganizationalPlacementDisabledByDefault() {
         CodingAgentJob job = new CodingAgentJob("t1", "do something");
         assertFalse(job.isEnforceOrganizationalPlacement());
     }
 
+    /**
+     * Verifies that a newly created factory has organizational placement enforcement disabled.
+     */
     @Test(timeout = 30000)
     public void factoryOrganizationalPlacementDisabledByDefault() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
         assertFalse(factory.isEnforceOrganizationalPlacement());
     }
 
+    /**
+     * Verifies that a job produced by a default factory inherits the disabled placement enforcement.
+     */
     @Test(timeout = 30000)
     public void jobCreatedByFactoryInheritsPlacementDisabled() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
@@ -114,6 +144,9 @@ public class CodingAgentJobControlDefaultsTest extends TestSuiteBase {
 
     // ── Organizational placement — explicit opt-in ───────────────────────────
 
+    /**
+     * Verifies that enabling organizational placement enforcement on a factory is reflected by its getter.
+     */
     @Test(timeout = 30000)
     public void factoryOrganizationalPlacementOptIn() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
@@ -121,6 +154,9 @@ public class CodingAgentJobControlDefaultsTest extends TestSuiteBase {
         assertTrue(factory.isEnforceOrganizationalPlacement());
     }
 
+    /**
+     * Verifies that a job produced by a factory with placement enforcement enabled inherits that setting.
+     */
     @Test(timeout = 30000)
     public void jobCreatedByFactoryInheritsPlacementOptIn() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
@@ -130,6 +166,9 @@ public class CodingAgentJobControlDefaultsTest extends TestSuiteBase {
         assertTrue(job.isEnforceOrganizationalPlacement());
     }
 
+    /**
+     * Verifies that organizational placement enforcement survives a serialization and deserialization round-trip.
+     */
     @Test(timeout = 30000)
     public void organizationalPlacementOptInWireRoundTrip() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
@@ -138,6 +177,9 @@ public class CodingAgentJobControlDefaultsTest extends TestSuiteBase {
         assertTrue(decoded.isEnforceOrganizationalPlacement());
     }
 
+    /**
+     * Verifies that the default disabled placement enforcement survives a serialization and deserialization round-trip.
+     */
     @Test(timeout = 30000)
     public void organizationalPlacementDisabledDefaultWireRoundTrip() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");

@@ -263,6 +263,13 @@ public class CollectionZerosComputationTest extends TestSuiteBase {
 				((CollectionZerosComputation) deltaZeros).isZero());
 	}
 
+	/**
+	 * Asserts that two objects are the same instance.
+	 *
+	 * @param msg Error message
+	 * @param expected Expected object
+	 * @param actual Actual object
+	 */
 	private void assertSame(String msg, Object expected, Object actual) {
 		if (expected != actual) {
 			throw new AssertionError(msg + ": Expected same object instance");

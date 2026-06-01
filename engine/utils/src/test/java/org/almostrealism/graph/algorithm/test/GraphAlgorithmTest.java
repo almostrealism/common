@@ -39,12 +39,25 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 	 * Simple test node implementation.
 	 */
 	static class TestNode implements Node {
+		/**
+		 * Node identifier.
+		 */
 		private final String id;
 
+		/**
+		 * Creates a test node with the given id.
+		 *
+		 * @param id Node identifier
+		 */
 		TestNode(String id) {
 			this.id = id;
 		}
 
+		/**
+		 * Gets the node identifier.
+		 *
+		 * @return Node identifier
+		 */
 		String getId() {
 			return id;
 		}
@@ -59,16 +72,37 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 	 * Simple adjacency-list based graph for testing.
 	 */
 	static class TestGraph implements IndexedGraph<TestNode> {
+		/**
+		 * List of nodes in the graph.
+		 */
 		private final List<TestNode> nodes = new ArrayList<>();
+		/**
+		 * Map from node id to node index.
+		 */
 		private final Map<String, Integer> nodeIndex = new HashMap<>();
+		/**
+		 * Map of edges keyed by node index.
+		 */
 		private final Map<Integer, Map<Integer, Double>> edges = new HashMap<>();
 
+		/**
+		 * Adds a node to the graph.
+		 *
+		 * @param node Node to add
+		 */
 		void addNode(TestNode node) {
 			nodeIndex.put(node.getId(), nodes.size());
 			nodes.add(node);
 			edges.put(nodes.size() - 1, new HashMap<>());
 		}
 
+		/**
+		 * Adds an undirected edge between two nodes.
+		 *
+		 * @param from Starting node index
+		 * @param to Ending node index
+		 * @param weight Edge weight
+		 */
 		void addEdge(int from, int to, double weight) {
 			edges.get(from).put(to, weight);
 			edges.get(to).put(from, weight); // Undirected
@@ -199,6 +233,9 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		return graph;
 	}
 
+	/**
+	 * Tests PageRank on a triangle graph.
+	 */
 	@Test(timeout = 30000)
 	public void testPageRankTriangle() {
 		TestGraph graph = createTriangleGraph();
@@ -214,6 +251,9 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertEquals(1.0, sum, 0.01);
 	}
 
+	/**
+	 * Tests degree centrality calculation.
+	 */
 	@Test(timeout = 30000)
 	public void testDegreeCentrality() {
 		TestGraph graph = createTriangleGraph();
@@ -227,6 +267,9 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertEquals(2, degrees[2]);
 	}
 
+	/**
+	 * Tests betweenness centrality calculation.
+	 */
 	@Test(timeout = 30000)
 	public void testBetweennessCentrality() {
 		TestGraph graph = createLinearGraph();
@@ -242,6 +285,9 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertEquals(0.0, betweenness[4], 0.01);
 	}
 
+	/**
+	 * Tests top-K selection.
+	 */
 	@Test(timeout = 30000)
 	public void testTopK() {
 		double[] values = {0.1, 0.5, 0.3, 0.8, 0.2};
@@ -253,6 +299,9 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertEquals(1, (int) top2.get(1)); // 0.5
 	}
 
+	/**
+	 * Tests Louvain community detection on two clusters.
+	 */
 	@Test(timeout = 30000)
 	public void testLouvainTwoClusters() {
 		TestGraph graph = createTwoClusterGraph();
@@ -269,6 +318,9 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertNotEquals(communities[0], communities[3]);
 	}
 
+	/**
+	 * Tests modularity calculation.
+	 */
 	@Test(timeout = 30000)
 	public void testModularity() {
 		TestGraph graph = createTwoClusterGraph();
@@ -285,12 +337,18 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertTrue(goodModularity > badModularity);
 	}
 
+	/**
+	 * Tests community counting.
+	 */
 	@Test(timeout = 30000)
 	public void testCountCommunities() {
 		int[] communities = {0, 0, 1, 1, 2, 0};
 		assertEquals(3, countCommunities(communities));
 	}
 
+	/**
+	 * Tests getting community members.
+	 */
 	@Test(timeout = 30000)
 	public void testGetCommunityMembers() {
 		int[] communities = {0, 0, 1, 1, 2, 0};
@@ -302,6 +360,9 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertEquals(List.of(4), members.get(2));
 	}
 
+	/**
+	 * Tests shortest path on linear graph.
+	 */
 	@Test(timeout = 30000)
 	public void testShortestPathLinear() {
 		TestGraph graph = createLinearGraph();
@@ -311,6 +372,9 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertEquals(List.of(0, 1, 2, 3, 4), path);
 	}
 
+	/**
+	 * Tests shortest path when no path exists.
+	 */
 	@Test(timeout = 30000)
 	public void testShortestPathNoPath() {
 		TestGraph graph = new TestGraph();
@@ -323,6 +387,9 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertTrue(path.isEmpty());
 	}
 
+	/**
+	 * Tests personalized PageRank.
+	 */
 	@Test(timeout = 30000)
 	public void testPersonalizedPageRank() {
 		TestGraph graph = createTwoClusterGraph();
@@ -338,6 +405,9 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertTrue(ppr[0] >= ppr[1]);
 	}
 
+	/**
+	 * Tests finding bridge nodes.
+	 */
 	@Test(timeout = 30000)
 	public void testFindBridges() {
 		TestGraph graph = createTwoClusterGraph();
@@ -350,6 +420,9 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertTrue(bridges.contains(2) || bridges.contains(5));
 	}
 
+	/**
+	 * Tests BFS with depth limit.
+	 */
 	@Test(timeout = 30000)
 	public void testBFS() {
 		TestGraph graph = createLinearGraph();
@@ -364,6 +437,9 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertFalse(bfs.contains(4));
 	}
 
+	/**
+	 * Tests BFS without depth limit.
+	 */
 	@Test(timeout = 30000)
 	public void testBFSUnlimited() {
 		TestGraph graph = createLinearGraph();
@@ -375,6 +451,9 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertEquals(0, (int) bfs.get(0));
 	}
 
+	/**
+	 * Tests algorithms on empty graph.
+	 */
 	@Test(timeout = 30000)
 	public void testEmptyGraph() {
 		TestGraph graph = new TestGraph();
@@ -388,6 +467,9 @@ public class GraphAlgorithmTest extends TestSuiteBase implements GraphFeatures {
 		assertTrue(path.isEmpty());
 	}
 
+	/**
+	 * Tests algorithms on single node graph.
+	 */
 	@Test(timeout = 30000)
 	public void testSingleNodeGraph() {
 		TestGraph graph = new TestGraph();

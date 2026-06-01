@@ -23,9 +23,15 @@ import java.nio.file.StandardOpenOption;
  */
 public class FullAttentionMethodTest extends TestSuiteBase implements AttentionFeatures, ConsoleFeatures {
 
+	/** Directory containing exported model weights. */
 	private static final String WEIGHTS_DIR = "/workspace/project/common/ml/qwen3_weights";
+
+	/** Directory containing PyTorch reference outputs for comparison. */
 	private static final String REFERENCE_DIR = "/workspace/project/common/ml/qwen3_reference/layer_outputs";
 
+	/**
+	 * Test the attention method for layer 0.
+	 */
 	@Test(timeout = 120000)
 	public void testLayer0AttentionMethod() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
@@ -40,6 +46,9 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 		runAttentionMethodTest(0);
 	}
 
+	/**
+	 * Test the attention method for layer 1.
+	 */
 	@Test(timeout = 120000)
 	public void testLayer1AttentionMethod() throws Exception {
 		Assume.assumeTrue("Skipping comparison test in pipeline profile", TestUtils.isComparisonTestEnabled());
@@ -54,6 +63,12 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 		runAttentionMethodTest(1);
 	}
 
+	/**
+	 * Runs the attention method test for a specified layer.
+	 *
+	 * @param layerNum the layer number to test
+	 * @throws Exception if test execution fails
+	 */
 	private void runAttentionMethodTest(int layerNum) throws Exception {
 		Qwen3Config config = new Qwen3Config(
 				896, 4864, 24, 14, 2, 151936, 32768, true, 1000000.0
@@ -143,6 +158,14 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 		stateDict.destroy();
 	}
 
+	/**
+	 * Computes RoPE frequency tensor for the given sequence length and head size.
+	 *
+	 * @param seqLen the sequence length
+	 * @param headSize the head size
+	 * @param theta the theta parameter for RoPE
+	 * @return the frequency tensor with shape (seqLen, headSize/2, 2)
+	 */
 	private PackedCollection computeRopeFreqs(int seqLen, int headSize, double theta) {
 		int freqDim = headSize / 2;
 		double[] freqs = new double[freqDim];
@@ -162,6 +185,13 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 		return freqCis;
 	}
 
+	/**
+	 * Formats the first n elements of a collection as a string.
+	 *
+	 * @param c the collection to format
+	 * @param n the number of elements to include
+	 * @return formatted string representation
+	 */
 	private String formatFirst(PackedCollection c, int n) {
 		StringBuilder sb = new StringBuilder("[");
 		for (int i = 0; i < Math.min(n, c.getShape().getTotalSize()); i++) {
@@ -172,6 +202,13 @@ public class FullAttentionMethodTest extends TestSuiteBase implements AttentionF
 		return sb.toString();
 	}
 
+	/**
+	 * Loads reference output data from a binary file.
+	 *
+	 * @param filename the name of the reference file
+	 * @return array of float values from the file
+	 * @throws Exception if file reading fails
+	 */
 	private float[] loadReferenceOutput(String filename) throws Exception {
 		try (FileChannel channel = FileChannel.open(
 				Paths.get(REFERENCE_DIR, filename), StandardOpenOption.READ)) {

@@ -186,12 +186,12 @@ public class PatternNote extends PatternNoteAudioAdapter {
 	}
 
 	@Override
-	protected PatternNoteAudio getDelegate() {
+	public PatternNoteAudio getDelegate() {
 		return delegate;
 	}
 
 	@Override
-	protected NoteAudioFilter getFilter() {
+	public NoteAudioFilter getFilter() {
 		return filter;
 	}
 

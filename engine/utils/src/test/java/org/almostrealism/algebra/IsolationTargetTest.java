@@ -72,7 +72,7 @@ public class IsolationTargetTest extends TestSuiteBase {
 				cp(input),
 				cp(weights));
 
-		log("=== Test 1: LoopedWeightedSumComputation alone ===");
+		log("Test 1: LoopedWeightedSumComputation alone");
 		log("outerCount=" + outerCount + ", innerCount=" + innerCount);
 		log("isIsolationTarget: " + computation.isIsolationTarget(null));
 
@@ -92,7 +92,7 @@ public class IsolationTargetTest extends TestSuiteBase {
 
 		r.run();
 		log("Output[0]: " + output.toDouble(0));
-		log("Test 1 PASSED - compilation completed without timeout\n");
+		log("Test 1 passed - compilation completed without timeout\n");
 	}
 
 	/**
@@ -132,7 +132,7 @@ public class IsolationTargetTest extends TestSuiteBase {
 				cp(input),
 				cp(weights));
 
-		log("=== Test 2: LoopedWeightedSumComputation wrapped with traverseEach ===");
+		log("Test 2: LoopedWeightedSumComputation wrapped with traverseEach");
 		log("outerCount=" + outerCount + ", innerCount=" + innerCount);
 		log("isIsolationTarget: " + computation.isIsolationTarget(null));
 
@@ -156,7 +156,7 @@ public class IsolationTargetTest extends TestSuiteBase {
 
 		r.run();
 		log("Output[0]: " + output.toDouble(0));
-		log("Test 2 PASSED - compilation completed without timeout\n");
+		log("Test 2 passed - compilation completed without timeout\n");
 	}
 
 	/**
@@ -200,7 +200,7 @@ public class IsolationTargetTest extends TestSuiteBase {
 				cp(input),
 				cp(weights));
 
-		log("=== Test 3: Large LoopedWeightedSumComputation (2048 * 16 = 32K ops) ===");
+		log("Test 3: Large LoopedWeightedSumComputation (2048 * 16 = 32K ops)");
 		log("outerCount=" + outerCount + ", innerCount=" + innerCount);
 		log("Total ops per output element: " + (outerCount * innerCount));
 		log("isIsolationTarget: " + computation.isIsolationTarget(null));
@@ -220,7 +220,7 @@ public class IsolationTargetTest extends TestSuiteBase {
 		log("Compilation took " + elapsed + "ms");
 
 		if (elapsed > 10000) {
-			log("WARNING: Compilation took >10s - likely using getValueAt() instead of getScope()");
+			log("Compilation took >10s - likely using getValueAt() instead of getScope()");
 		}
 
 		r.run();
@@ -269,7 +269,7 @@ public class IsolationTargetTest extends TestSuiteBase {
 				cp(input),
 				cp(weights));
 
-		log("=== Test 4: Large outerCount, small innerCount (2048 * 4) ===");
+		log("Test 4: Large outerCount, small innerCount (2048 * 4)");
 		log("outerCount=" + outerCount + ", innerCount=" + innerCount);
 		log("Total ops per output element: " + (outerCount * innerCount));
 		log("isIsolationTarget: " + computation.isIsolationTarget(null));
@@ -289,9 +289,9 @@ public class IsolationTargetTest extends TestSuiteBase {
 		log("Compilation took " + elapsed + "ms");
 
 		if (elapsed > 5000) {
-			log("WARNING: Compilation took >5s - native loop may not be working!");
+			log("Compilation took >5s - native loop may not be working");
 		} else {
-			log("GOOD: Compilation was fast - native loop is working");
+			log("Compilation was fast - native loop is working");
 		}
 
 		r.run();

@@ -41,10 +41,19 @@ import org.junit.Test;
 
 import java.io.File;
 
+/**
+ * Tests for AudioSynthesizer audio generation functionality.
+ */
 public class AudioSynthesizerTests extends TestSuiteBase {
+	/** Name of the library directory containing model files. */
 	private static final String LIBRARY = "Library";
+
+	/** Destination for the generated audio library. */
 	private final LibraryDestination library = new LibraryDestination("model");
 
+	/**
+	 * Test that synthesizer generates audio correctly.
+	 */
 	@Test(timeout = 120_000)
 	@TestProperties(knownIssue = true)
 	public void generate() {
@@ -73,24 +82,36 @@ public class AudioSynthesizerTests extends TestSuiteBase {
 				.save(new File("results/test-synth.wav"));
 	}
 
+	/**
+	 * Test that synthesizer generates audio from file with sine pattern.
+	 */
 	@Test(timeout = 120_000)
 	public void generateFromFile1() {
 		generateFromFile("model-synth", "SinePattern",
 						WesternChromatic.A4, WesternChromatic.A4);
 	}
 
+	/**
+	 * Test that synthesizer generates audio from file with acid pattern at C3.
+	 */
 	@Test(timeout = 120_000)
 	public void generateFromFile2() {
 		generateFromFile("model-synth-acid-c3", "Acid",
 				WesternChromatic.C3, WesternChromatic.C3);
 	}
 
+	/**
+	 * Test that synthesizer generates audio from file with acid pattern from C3 to G3.
+	 */
 	@Test(timeout = 120_000)
 	public void generateFromFile3() {
 		generateFromFile("model-synth-acid-g3", "Acid",
 				WesternChromatic.C3, WesternChromatic.G3);
 	}
 
+	/**
+	 * Generates audio from a file using the specified pattern and key positions.
+	 */
 	public void generateFromFile(String name, String pattern, KeyPosition<?> origin, KeyPosition<?> target) {
 		Assume.assumeTrue("Library directory required", new File(LIBRARY).exists());
 		KeyboardTuning tuning = new DefaultKeyboardTuning();

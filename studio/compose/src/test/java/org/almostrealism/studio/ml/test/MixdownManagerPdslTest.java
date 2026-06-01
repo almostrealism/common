@@ -1147,9 +1147,17 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * sum-of-squares for normalisation.
 	 */
 	private static final class AutomationResult {
+		/** Sum-of-squared differences between producer and baseline outputs. */
 		final double diffEnergy;
+		/** Sum-of-squares of the baseline output. */
 		final double baselineEnergy;
 
+		/**
+		 * Constructs an AutomationResult with the specified energy values.
+		 *
+		 * @param diffEnergy sum-of-squared differences
+		 * @param baselineEnergy baseline sum-of-squares
+		 */
 		AutomationResult(double diffEnergy, double baselineEnergy) {
 			this.diffEnergy = diffEnergy;
 			this.baselineEnergy = baselineEnergy;

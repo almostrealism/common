@@ -43,8 +43,11 @@ import java.util.concurrent.TimeoutException;
  */
 public class LoopedSumPerformanceTest extends TestSuiteBase {
 
+	/** Timeout in seconds for each test configuration */
 	private static final int TIMEOUT_SECONDS = 600; // 10 minutes max per test
+	/** Size of output collections */
 	private static final int OUTPUT_SIZE = 8;
+	/** Path for CSV output file */
 	private static final String CSV_PATH = "target/looped_sum_performance.csv";
 
 	/**
@@ -151,6 +154,12 @@ public class LoopedSumPerformanceTest extends TestSuiteBase {
 		log("\n=== Results written to " + CSV_PATH + " ===");
 	}
 
+	/**
+	 * Runs a timed test for given configuration.
+	 * @param outerCount outer loop count
+	 * @param innerCount inner loop count
+	 * @return test result with timing data
+	 */
 	private TestResult runTimedTest(int outerCount, int innerCount) {
 		TestResult result = new TestResult();
 		result.outerCount = outerCount;
@@ -180,6 +189,12 @@ public class LoopedSumPerformanceTest extends TestSuiteBase {
 		return result;
 	}
 
+	/**
+	 * Compiles and times a weighted sum computation.
+	 * @param outerCount outer loop count
+	 * @param innerCount inner loop count
+	 * @return compilation time in milliseconds
+	 */
 	private long compileAndTime(int outerCount, int innerCount) {
 		TraversalPolicy outputShape = shape(OUTPUT_SIZE).traverseEach();
 		TraversalPolicy inputShape = shape(outerCount, OUTPUT_SIZE + innerCount - 1);
@@ -225,6 +240,10 @@ public class LoopedSumPerformanceTest extends TestSuiteBase {
 		return elapsed;
 	}
 
+	/**
+	 * Prints a test result to log.
+	 * @param result the test result to print
+	 */
 	private void printResult(TestResult result) {
 		if (result.timedOut) {
 			log(String.format("  outer=%4d, inner=%4d, total=%7d ops -> TIMEOUT (>%ds)%n", result.outerCount, result.innerCount, result.totalOps, TIMEOUT_SECONDS));
@@ -233,6 +252,9 @@ public class LoopedSumPerformanceTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Writes test results to CSV file.
+	 */
 	private void writeCSV(List<TestResult> results) throws IOException {
 		try (PrintWriter writer = new PrintWriter(new FileWriter(CSV_PATH))) {
 			writer.println("outerCount,innerCount,totalOps,compilationTimeMs,timedOut,error");
@@ -244,12 +266,21 @@ public class LoopedSumPerformanceTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Holds test result data for a single configuration.
+	 */
 	private static class TestResult {
+		/** Number of outer loop iterations. */
 		int outerCount;
+		/** Number of inner loop iterations. */
 		int innerCount;
+		/** Total operations. */
 		int totalOps;
+		/** Compilation time in milliseconds. */
 		long compilationTimeMs;
+		/** Whether test timed out. */
 		boolean timedOut;
+		/** Error message if test failed. */
 		String error;
 	}
 }

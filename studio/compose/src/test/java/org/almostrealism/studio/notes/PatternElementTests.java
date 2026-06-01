@@ -41,9 +41,16 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Tests for PatternElement composition functionality.
+ */
 public class PatternElementTests extends TestSuiteBase implements CellFeatures, SamplingFeatures, PatternFeatures, AudioTestFeatures {
+	/** Sample rate for audio processing. */
 	int sampleRate = OutputLine.sampleRate;
 
+	/**
+	 * Test that PatternElement renders audio composition correctly.
+	 */
 	@Test(timeout = 120_000)
 	public void pattern() {
 		// Define the shared parameters, including how notes should be

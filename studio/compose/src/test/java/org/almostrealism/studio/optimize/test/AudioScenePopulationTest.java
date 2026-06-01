@@ -29,6 +29,7 @@ import org.almostrealism.music.pattern.PatternElementFactory;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.heredity.Genome;
+import org.almostrealism.io.Console;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.time.TemporalRunner;
@@ -47,7 +48,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for AudioScenePopulation genome management.
+ */
 public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryTest {
+	/**
+	 * Creates an AudioScenePopulation for testing.
+	 */
 	protected AudioScenePopulation population(AudioScene<?> scene, MultiChannelAudioOutput output) {
 		int params = 8;
 		List<Genome<PackedCollection>> genomes = new ArrayList<>();
@@ -61,6 +68,9 @@ public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryT
 		return pop;
 	}
 
+	/**
+	 * Test that genomes can be retrieved and run from population.
+	 */
 	@Test(timeout = 300_000)
 	@TestDepth(1)
 	public void genomesFromPopulation() {
@@ -85,6 +95,9 @@ public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryT
 		});
 	}
 
+	/**
+	 * Test that health computation works across population genomes.
+	 */
 	@Test(timeout = 600_000)
 	@TestDepth(1)
 	public void genomesFromPopulationHealth() {
@@ -103,11 +116,17 @@ public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryT
 		});
 	}
 
+	/**
+	 * Test that genomes can be created and stored.
+	 */
 	@Test(timeout = 120_000)
 	public void createGenomes() throws IOException {
 		createGenomes(12);
 	}
 
+	/**
+	 * Creates and stores a specified number of genomes.
+	 */
 	public void createGenomes(int count) throws IOException {
 		File settings = new File(SystemUtils.getLocalDestination("scene-settings.json"));
 
@@ -127,6 +146,9 @@ public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryT
 		pop.store(new FileOutputStream(AudioSceneOptimizer.POPULATION_FILE));
 	}
 
+	/**
+	 * Test that population generates audio correctly.
+	 */
 	@Test(timeout = 600_000)
 	public void generate() throws Exception {
 		AudioSceneOptimizer.setFeatureLevel(4);
@@ -179,6 +201,9 @@ public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryT
 		}
 	}
 
+	/**
+	 * Loads population from file.
+	 */
 	protected AudioScenePopulation loadPopulation(AudioScene<?> scene) throws FileNotFoundException {
 		File file = new File(AudioSceneOptimizer.POPULATION_FILE);
 
@@ -188,7 +213,7 @@ public class AudioScenePopulationTest extends AdjustmentLayerOrganSystemFactoryT
 				log("Loaded " + genomes.size() + " genomes from " + file);
 				return new AudioScenePopulation(scene, genomes);
 			} catch (IOException e) {
-				e.printStackTrace();
+				Console.root().alert("AudioScenePopulation read exception", e);
 				return new AudioScenePopulation(scene);
 			}
 		}

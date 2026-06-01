@@ -53,7 +53,9 @@ public enum Phase {
     /** Restart triggered when the agent tampered with git state. */
     GIT_TAMPERING_RESTART("git-tampering-restart", "Restart triggered when the agent tampered with git state."),
     /** Focused session that resolves merge conflicts encountered while reconciling a push against an advanced target branch. */
-    PUSH_CONFLICT_RESOLUTION("push-conflict-resolution", "Focused session that resolves merge conflicts encountered while reconciling a push against an advanced target branch.");
+    PUSH_CONFLICT_RESOLUTION("push-conflict-resolution", "Focused session that resolves merge conflicts encountered while reconciling a push against an advanced target branch."),
+    /** Retrospective session — analyzes the primary phase transcript for improvement opportunities. */
+    RETROSPECTIVE("retrospective", "Retrospective session — analyzes the primary phase transcript for improvement opportunities.");
 
     /** Canonical kebab-case identifier used on the wire. */
     private final String wireName;
@@ -191,6 +193,7 @@ public enum Phase {
             case "no-maven-dependency-changes":return MAVEN_DEPENDENCY_PROTECTION;
             case "post-completion-command":    return POST_COMPLETION;
             case "commit-message":             return COMMIT_MESSAGE;
+            case "retrospective":               return RETROSPECTIVE;
             default:                            return null;
         }
     }

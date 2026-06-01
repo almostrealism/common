@@ -38,6 +38,9 @@ import static org.junit.Assert.fail;
  */
 public class PushedToolsSelfTestTest {
 
+    /**
+     * Starts an in-process HTTP stub that maps tool names to response codes and bodies.
+     */
     private static HttpServer startStub(Map<String, Integer> codes, Map<String, String> bodies)
             throws Exception {
         HttpServer http = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -58,6 +61,9 @@ public class PushedToolsSelfTestTest {
         return http;
     }
 
+    /**
+     * Verifies that the self-test passes when the mandatory tool endpoint returns HTTP 200 with a non-empty body.
+     */
     @Test(timeout = 30000)
     public void passesWhenMandatoryToolReturns200WithBody() throws Exception {
         Map<String, Integer> codes = new HashMap<>();
@@ -72,6 +78,9 @@ public class PushedToolsSelfTestTest {
         }
     }
 
+    /**
+     * Verifies that the self-test throws {@link IllegalStateException} naming the failing tool when the endpoint returns 404.
+     */
     @Test(timeout = 30000)
     public void failsWhenMandatoryToolReturns404() throws Exception {
         HttpServer http = startStub(new HashMap<>(), new HashMap<>());
@@ -87,6 +96,9 @@ public class PushedToolsSelfTestTest {
         }
     }
 
+    /**
+     * Verifies that the self-test throws {@link IllegalStateException} mentioning an empty body when the endpoint returns 200 with no content.
+     */
     @Test(timeout = 30000)
     public void failsWhenMandatoryToolReturnsEmptyBody() throws Exception {
         Map<String, Integer> codes = new HashMap<>();
@@ -106,6 +118,9 @@ public class PushedToolsSelfTestTest {
         }
     }
 
+    /**
+     * Verifies that the self-test throws {@link IllegalStateException} when called with port zero (unassigned port).
+     */
     @Test(timeout = 30000)
     public void failsWhenPortIsZero() {
         try {

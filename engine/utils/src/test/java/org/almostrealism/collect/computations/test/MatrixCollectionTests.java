@@ -21,7 +21,13 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for matrix multiplication operations on PackedCollection.
+ */
 public class MatrixCollectionTests extends TestSuiteBase {
+	/**
+	 * Tests matrix multiply with mapping.
+	 */
 	@Test(timeout = 30000)
 	public void matrixMultiplyMap() {
 		int size = 48;
@@ -49,6 +55,9 @@ public class MatrixCollectionTests extends TestSuiteBase {
 				}, false, false, true);
 	}
 
+	/**
+	 * Tests matrix multiply with repeat.
+	 */
 	@Test(timeout = 30000)
 	public void matrixMultiplyRepeat() {
 		int size = 768;

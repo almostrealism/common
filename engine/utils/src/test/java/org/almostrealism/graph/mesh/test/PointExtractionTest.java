@@ -26,8 +26,14 @@ import io.almostrealism.collect.Shape;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for point extraction from mesh data.
+ */
 public class PointExtractionTest extends TestSuiteBase {
 
+	/**
+	 * Tests batch edge computation from extracted vertices.
+	 */
 	@Test(timeout = 10000)
 	public void batchEdgeComputation() {
 		// Test computing edges from extracted vertices
@@ -92,6 +98,9 @@ public class PointExtractionTest extends TestSuiteBase {
 		assertEquals(0.0, normals.toDouble(5));
 	}
 
+	/**
+	 * Tests batch subtraction of vectors.
+	 */
 	@Test(timeout = 10000)
 	public void batchSubtract() {
 		// Test batch subtraction
@@ -134,6 +143,9 @@ public class PointExtractionTest extends TestSuiteBase {
 		assertEquals(3.0, result.toDouble(5));
 	}
 
+	/**
+	 * Tests extracting vertex 1 from batch triangles.
+	 */
 	@Test(timeout = 10000)
 	public void batchPointExtractionVertex1() {
 		// Test extracting vertex 1 from batch
@@ -177,6 +189,9 @@ public class PointExtractionTest extends TestSuiteBase {
 		assertEquals(0.0, output.toDouble(5));
 	}
 
+	/**
+	 * Tests batch point extraction of vertices.
+	 */
 	@Test(timeout = 10000)
 	public void batchPointExtraction() {
 		// Create test data: 2 triangles with distinct vertices
@@ -221,6 +236,9 @@ public class PointExtractionTest extends TestSuiteBase {
 		assertEquals(0.0, output.toDouble(5));
 	}
 
+	/**
+	 * Tests batch triangle computation with normals.
+	 */
 	@Test(timeout = 10000)
 	public void batchTriangleComputation() {
 		// Create test data: 2 triangles with different orientations
@@ -340,6 +358,9 @@ public class PointExtractionTest extends TestSuiteBase {
 		assertEquals(0.0, output.get(1).get(3).toDouble(2));
 	}
 
+	/**
+	 * Tests batch cross product computation.
+	 */
 	@Test(timeout = 10000)
 	public void batchCrossProduct() {
 		// Create test data: 2 pairs of vectors to cross
@@ -385,6 +406,9 @@ public class PointExtractionTest extends TestSuiteBase {
 		assertEquals(0.0, result.toDouble(5));
 	}
 
+	/**
+	 * Tests batch vector normalization.
+	 */
 	@Test(timeout = 10000)
 	public void batchNormalize() {
 		// Create test data: 2 vectors with different magnitudes
@@ -448,6 +472,9 @@ public class PointExtractionTest extends TestSuiteBase {
 		assertEquals(12.0 / 13.0, normalized.toDouble(5));
 	}
 
+	/**
+	 * Tests mesh data structure with reshaped data.
+	 */
 	@Test(timeout = 10000)
 	public void meshDataStructure() {
 		// Test with proper (N, 3, 3) shape: N triangles, 3 vertices per triangle, 3 components per vertex

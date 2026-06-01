@@ -29,7 +29,14 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for kernel operation optimization and hardware acceleration.
+ */
 public class KernelOperationTests extends TestSuiteBase implements KernelAssertions {
+
+	/**
+	 * Tests basic assignment operation.
+	 */
 	@Test(timeout = 30000)
 	public void assignment() {
 		PackedCollection x = new PackedCollection(shape(10)).traverse();
@@ -47,6 +54,9 @@ public class KernelOperationTests extends TestSuiteBase implements KernelAsserti
 		}
 	}
 
+	/**
+	 * Tests double assignment operation.
+	 */
 	@Test(timeout = 30000)
 	public void doubleAssignment() {
 		PackedCollection x = new PackedCollection(shape(10)).traverse();
@@ -67,6 +77,9 @@ public class KernelOperationTests extends TestSuiteBase implements KernelAsserti
 		}
 	}
 
+	/**
+	 * Tests double assignment with multiple count.
+	 */
 	@Test(timeout = 30000)
 	public void doubleAssignmentMultipleCount() {
 		PackedCollection x = new PackedCollection(shape(10)).traverse();
@@ -90,6 +103,9 @@ public class KernelOperationTests extends TestSuiteBase implements KernelAsserti
 		}
 	}
 
+	/**
+	 * Tests double assignment with reduce count.
+	 */
 	@Test(timeout = 30000)
 	public void doubleAssignmentReduceCount() {
 		PackedCollection x = new PackedCollection(shape(1)).traverse();
@@ -119,6 +135,9 @@ public class KernelOperationTests extends TestSuiteBase implements KernelAsserti
 		assertEquals(expected, x.toDouble(0));
 	}
 
+	/**
+	 * Tests kernel list operations.
+	 */
 	// @Test(timeout = 30000)
 	public void kernelList() {
 		PackedCollection timeline = new PackedCollection(shape(10), 1);
@@ -134,6 +153,9 @@ public class KernelOperationTests extends TestSuiteBase implements KernelAsserti
 		log(Arrays.toString(destination.toArray(20, 10)));
 	}
 
+	/**
+	 * Tests enumerate repeat map reduce operation.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateRepeatMapReduce() {
 		int r = 10;

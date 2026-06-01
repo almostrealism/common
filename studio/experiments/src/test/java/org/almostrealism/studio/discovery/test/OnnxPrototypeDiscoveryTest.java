@@ -62,15 +62,22 @@ import java.util.Set;
  */
 public class OnnxPrototypeDiscoveryTest extends TestSuiteBase {
 
+	/** Audio sample rate in Hz. */
 	private static final int SAMPLE_RATE = 44100;
 
+	/** Container path for samples in the deployed app. */
 	private static final String DEFAULT_SAMPLES_CONTAINER = "/samples";
+	/** Local fallback path for samples in the developer's home directory. */
 	private static final String DEFAULT_SAMPLES_LOCAL =
 			System.getProperty("user.home") + "/Music/Samples";
+	/** Local path for the protobuf feature store. */
 	private static final String DEFAULT_STORE =
 			System.getProperty("user.home") + "/.ar/onnx-discovery-store";
+	/** Container path for ONNX models in the deployed app. */
 	private static final String DEFAULT_MODELS_CONTAINER = "/models";
+	/** Local path for ONNX models relative to the project. */
 	private static final String DEFAULT_MODELS_LOCAL = "../models";
+	/** Maximum number of prototypes to discover per run. */
 	private static final int DEFAULT_MAX_PROTOTYPES = 10;
 
 	/**
@@ -104,15 +111,15 @@ public class OnnxPrototypeDiscoveryTest extends TestSuiteBase {
 
 		// Validate prerequisites
 		if (!samplesDir.isDirectory()) {
-			log("ERROR: Samples directory not found: " + samplesDir.getAbsolutePath());
+			log("Samples directory not found: " + samplesDir.getAbsolutePath());
 			Assert.fail("Samples directory required: " + samplesDir.getAbsolutePath());
 		}
 		if (!encoderFile.exists()) {
-			log("ERROR: ONNX encoder model not found: " + encoderFile.getAbsolutePath());
+			log("Encoder model not found: " + encoderFile.getAbsolutePath());
 			Assert.fail("ONNX encoder model required: " + encoderFile.getAbsolutePath());
 		}
 		if (!decoderFile.exists()) {
-			log("ERROR: ONNX decoder model not found: " + decoderFile.getAbsolutePath());
+			log("Decoder model not found: " + decoderFile.getAbsolutePath());
 			Assert.fail("ONNX decoder model required: " + decoderFile.getAbsolutePath());
 		}
 
@@ -129,7 +136,7 @@ public class OnnxPrototypeDiscoveryTest extends TestSuiteBase {
 		long startOnnx = System.currentTimeMillis();
 		OnnxAutoEncoder autoencoder = createAutoEncoder(encoderFile, decoderFile);
 		long onnxMs = System.currentTimeMillis() - startOnnx;
-		log("ONNX autoencoder loaded in " + onnxMs + " ms");
+		log("Autoencoder loaded in " + onnxMs + " ms");
 
 		AutoEncoderFeatureProvider featureProvider = new AutoEncoderFeatureProvider(autoencoder);
 
@@ -208,7 +215,7 @@ public class OnnxPrototypeDiscoveryTest extends TestSuiteBase {
 
 		// Final summary
 		log("=== Final Summary ===");
-		log("ONNX model load:      " + onnxMs + " ms");
+		log("Model load:      " + onnxMs + " ms");
 		log("Library refresh:      " + refreshMs + " ms");
 		log("Prototype discovery:  " + discoveryMs + " ms");
 		log("Total time:           " + totalMs + " ms");

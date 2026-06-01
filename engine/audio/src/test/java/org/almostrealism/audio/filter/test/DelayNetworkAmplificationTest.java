@@ -44,6 +44,7 @@ import static org.junit.Assert.assertTrue;
  */
 public class DelayNetworkAmplificationTest extends TestSuiteBase implements CellFeatures {
 
+	/** Audio sample rate from {@link OutputLine}. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
 	/** Default {@code size=128, gain=0.1}: DC steady-state output should be ~0.1 (= input * gain). */

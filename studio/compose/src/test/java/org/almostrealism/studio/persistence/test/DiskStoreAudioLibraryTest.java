@@ -68,16 +68,34 @@ import java.util.stream.Stream;
  */
 public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 
+	/** Sample rate for audio files in Hz. */
 	private static final int SAMPLE_RATE = 44100;
+
+	/** Number of sample files to generate for testing. */
 	private static final int SAMPLE_COUNT = 1000;
+
+	/** Duration of each generated sample in seconds. */
 	private static final double SAMPLE_DURATION = 0.25;
+
+	/** Number of frames in feature data. */
 	private static final int FEATURE_FRAMES = 16;
+
+	/** Number of bins in feature data. */
 	private static final int FEATURE_BINS = 32;
 
+	/** Temporary directory for test files. */
 	private Path tempDir;
+
+	/** Directory containing generated audio sample files. */
 	private Path samplesDir;
+
+	/** Directory for the Protobuf store. */
 	private Path storeDir;
 
+	/**
+	 * Sets up temporary directories for disk store testing.
+	 * @throws IOException if directory creation fails
+	 */
 	@Before
 	public void setUp() throws IOException {
 		tempDir = Files.createTempDirectory("diskstore-audio-test");
@@ -86,6 +104,10 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 		Files.createDirectories(samplesDir);
 	}
 
+	/**
+	 * Tears down test resources and cleans up temporary directories.
+	 * @throws IOException if directory traversal fails
+	 */
 	@After
 	public void tearDown() throws IOException {
 		if (tempDir != null && Files.exists(tempDir)) {

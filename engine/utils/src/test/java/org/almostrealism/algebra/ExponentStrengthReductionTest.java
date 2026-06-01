@@ -45,6 +45,7 @@ import org.junit.Test;
  */
 public class ExponentStrengthReductionTest extends TestSuiteBase {
 
+	/** Language operations stub for code generation tests. */
 	private static final LanguageOperationsStub LANG = new LanguageOperationsStub();
 
 	/**

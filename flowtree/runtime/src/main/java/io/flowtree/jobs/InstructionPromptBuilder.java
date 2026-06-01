@@ -492,6 +492,15 @@ public class InstructionPromptBuilder {
         sb.append("There is no TTY and no interactive session --do not attempt to wait ");
         sb.append("for user input or interactive chat responses.\n\n");
 
+        // Language requirement -- all output must be in English.  This prevents
+        // models (particularly MiniMax) from drifting into other languages for
+        // longer-form generation.  It is placed near the top so the agent sees it
+        // before any other content.
+        sb.append("**Language:** All output must be in English.  All code comments, ");
+        sb.append("commit messages, documentation, planning documents, memories, Slack ");
+        sb.append("messages, and any other generated text must be in English.  Do not ");
+        sb.append("write in any other language.\n\n");
+
         // Git workflow reminder -- injected before caller-supplied prompt text so
         // every agent runner sees this regardless of which runner handles the job.
         sb.append("**Note on git workflow.** You edit the working tree; the harness ");

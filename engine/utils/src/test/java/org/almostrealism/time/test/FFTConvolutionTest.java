@@ -28,6 +28,7 @@ import org.junit.Test;
  */
 public class FFTConvolutionTest extends TestSuiteBase implements TemporalFeatures, TestFeatures {
 
+	/** Tolerance for floating-point comparisons. */
 	private static final double TOLERANCE = 1e-6;
 
 	/**

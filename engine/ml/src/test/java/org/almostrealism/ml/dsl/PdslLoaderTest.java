@@ -36,12 +36,25 @@ import java.util.Map;
  */
 public class PdslLoaderTest extends TestSuiteBase {
 
+	/** Embedding dimension for transformer layers. */
 	private static final int DIM = 64;
+
+	/** Output dimension for transformer layers. */
 	private static final int HIDDEN_DIM = 128;
+
+	/** Number of attention heads. */
 	private static final int HEADS = 4;
+
+	/** Number of key/value heads for grouped query attention. */
 	private static final int KV_HEADS = 1;
+
+	/** Size of each attention head. */
 	private static final int HEAD_SIZE = DIM / HEADS;
+
+	/** Maximum sequence length for rotary embeddings. */
 	private static final int SEQ_LEN = 32;
+
+	/** Epsilon value for layer normalization. */
 	private static final double EPSILON = 1e-6;
 
 	/**

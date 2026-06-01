@@ -43,9 +43,14 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
 
     /** A captured post: the URL and JSON body handed to the poster sink. */
     private static final class Posted {
+        /** The URL of the post. */
         private final String url;
+        /** The JSON body of the post. */
         private final String body;
 
+        /**
+         * Creates a Posted with the given URL and body.
+         */
         private Posted(String url, String body) {
             this.url = url;
             this.body = body;
@@ -65,6 +70,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
                 Collections.emptyMap());
     }
 
+    /** phaseEntry message carries gear prefix, phase-entry emoji, phase name, runner, model, and activity tag. */
     @Test(timeout = 30000)
     public void phaseEntryMessageCarriesDistinctivePrefix() {
         List<Posted> posts = new ArrayList<>();
@@ -87,6 +93,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
                 post.body.contains(HarnessStatusReporter.ACTIVITY));
     }
 
+    /** phaseExit message carries gear prefix, phase-exit emoji, phase name, and outcome. */
     @Test(timeout = 30000)
     public void phaseExitMessageSummarisesOutcome() {
         List<Posted> posts = new ArrayList<>();
@@ -102,6 +109,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
         assertTrue("phase-exit reports success", body.contains("success"));
     }
 
+    /** inactivitySuspended posts a message with gear prefix, pause emoji, runner name, and activity tag. */
     @Test(timeout = 30000)
     public void inactivityMessagePostedOnSuspension() {
         List<Posted> posts = new ArrayList<>();
@@ -118,6 +126,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
                 body.contains(HarnessStatusReporter.ACTIVITY));
     }
 
+    /** formatInactivity announces relaunch for non-final attempt and abandoning for final attempt. */
     @Test(timeout = 30000)
     public void inactivityMessageDistinguishesRestartFromAbandon() {
         String relaunch = HarnessStatusReporter.formatInactivity("opencode", 0, 3);
@@ -129,6 +138,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
                 abandon.contains("abandoning"));
     }
 
+    /** unusual posts carry gear prefix and warning emoji. */
     @Test(timeout = 30000)
     public void unusualMessageCarriesWarningEmoji() {
         List<Posted> posts = new ArrayList<>();
@@ -141,6 +151,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
         assertTrue(body.contains("Git tampering"));
     }
 
+    /** null or empty URL disables the reporter; no posts are made when disabled. */
     @Test(timeout = 30000)
     public void disabledReporterIsSilentNoOp() {
         List<Posted> posts = new ArrayList<>();
@@ -157,6 +168,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
         assertTrue("a disabled reporter must never post", posts.isEmpty());
     }
 
+    /** formatDuration produces compact m/s representations for typical durations. */
     @Test(timeout = 30000)
     public void durationFormatsCompactly() {
         assertEquals("2m 5s", HarnessStatusReporter.formatDuration(125000));
@@ -164,6 +176,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
         assertEquals("0s", HarnessStatusReporter.formatDuration(-10));
     }
 
+    /** No formatted message contains Unicode replacement character U+FFFD. */
     @Test(timeout = 30000)
     public void noUnicodeReplacementCharactersInAnyMessage() {
         String replacementChar = "\uFFFD";
@@ -191,6 +204,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
                 unusual.contains(replacementChar));
     }
 
+    /** Em-dash character is preserved in all formatted messages. */
     @Test(timeout = 30000)
     public void emDashPreservedInFormattedMessages() {
         String emDash = "\u2014";
@@ -205,6 +219,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
         assertTrue("inactivity-abandon must contain em-dash separator", abandon.contains(emDash));
     }
 
+    /** Unicode emoji markers are preserved in phase entry/exit and inactivity messages. */
     @Test(timeout = 30000)
     public void unicodeMarkersPreservedInFormattedMessages() {
         String entry = HarnessStatusReporter.formatPhaseEntry(
@@ -227,6 +242,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
                 && HarnessStatusReporter.SYSTEM_PREFIX.chars().anyMatch(c -> c > 127));
     }
 
+    /** JSON round-trip through JsonFieldExtractor preserves all Unicode markers exactly. */
     @Test(timeout = 30000)
     public void jsonRoundTripPreservesUnicodeMarkers() {
         ObjectMapper mapper = new ObjectMapper();
@@ -251,6 +267,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
         }
     }
 
+    /** formatPhaseExit preserves phase name, success status, and formatted duration. */
     @Test(timeout = 30000)
     public void phaseExitPreservesPhaseNameStatusAndDuration() {
         AgentRunResult success = successResult(151000, 0.20);

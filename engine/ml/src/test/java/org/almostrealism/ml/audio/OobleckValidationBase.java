@@ -31,8 +31,13 @@ import java.nio.file.Paths;
  */
 public abstract class OobleckValidationBase extends TestSuiteBase {
 
+	/** Path to test data directory containing weights and reference outputs. */
 	protected static final Path TEST_DATA_DIR = Paths.get("test_data/stable_audio");
+
+	/** Path to the Stable Audio Open model weights directory. */
 	protected static final Path WEIGHTS_DIR = TEST_DATA_DIR.resolve("weights");
+
+	/** Path to PyTorch reference output files for validation. */
 	protected static final Path REFERENCE_DIR = TEST_DATA_DIR.resolve("reference");
 
 	/**

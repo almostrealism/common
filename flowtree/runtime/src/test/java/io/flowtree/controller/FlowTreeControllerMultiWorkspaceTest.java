@@ -48,6 +48,10 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
     // Backward compat: zero workspaces (single-token / simulation mode)
     // -------------------------------------------------------------------------
 
+    /**
+     * Verifies that constructing a controller with null tokens creates an empty workspace
+     * connection map and a non-null default connection and notifier.
+     */
     @Test(timeout = 10000)
     public void testControllerInitZeroWorkspacesNullTokens() {
         FlowTreeController controller = new FlowTreeController(null, null);
@@ -65,6 +69,10 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
                 controller.getNotifier());
     }
 
+    /**
+     * Verifies that constructing a controller with explicit tokens stores them in the
+     * default connection and leaves the workspace connections map empty.
+     */
     @Test(timeout = 10000)
     public void testControllerInitZeroWorkspacesWithTokens() {
         FlowTreeController controller = new FlowTreeController("xoxb-test", "xapp-test");
@@ -79,6 +87,10 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
         assertNotNull("Notifier should be created for default connection", conn.notifier);
     }
 
+    /**
+     * Verifies that a listener is created and correctly ignores messages sent to
+     * channels that have no registered workstream.
+     */
     @Test(timeout = 10000)
     public void testControllerListenerCreatedWithDefaultNotifier() {
         FlowTreeController controller = new FlowTreeController("xoxb-bot", "xapp-app");
@@ -102,6 +114,10 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
     // One workspace loaded from config
     // -------------------------------------------------------------------------
 
+    /**
+     * Verifies that loading a config file with one workspace entry creates exactly one
+     * workspace connection with the correct tokens and a non-null notifier.
+     */
     @Test(timeout = 10000)
     public void testLoadConfigOneWorkspace() throws IOException {
         String yaml = "slackWorkspaces:\n" +
@@ -132,6 +148,10 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
         assertNotNull("Notifier should be created for T111", conn.notifier);
     }
 
+    /**
+     * Verifies that after loading a config with one workspace, the default connection
+     * points to that workspace and its notifier is non-null.
+     */
     @Test(timeout = 10000)
     public void testLoadConfigOneWorkspaceReplacesDefaultConnection() throws IOException {
         String yaml = "slackWorkspaces:\n" +
@@ -159,6 +179,10 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
     // Multiple workspaces loaded from config
     // -------------------------------------------------------------------------
 
+    /**
+     * Verifies that loading a config file with two workspace entries creates two
+     * workspace connections each holding the correct bot token.
+     */
     @Test(timeout = 10000)
     public void testLoadConfigMultipleWorkspaces() throws IOException {
         String yaml = "slackWorkspaces:\n" +
@@ -190,6 +214,10 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
         assertEquals("xoxb-beta", beta.botToken);
     }
 
+    /**
+     * Verifies that each workspace connection receives a distinct {@link SlackNotifier}
+     * instance rather than sharing a single one.
+     */
     @Test(timeout = 10000)
     public void testEachWorkspaceGetsOwnNotifierInstance() throws IOException {
         String yaml = "slackWorkspaces:\n" +
@@ -216,6 +244,10 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
                 alpha.notifier, beta.notifier);
     }
 
+    /**
+     * Verifies that when the config contains no slackWorkspaces entries, the controller
+     * stays in single-workspace mode using the tokens provided at construction time.
+     */
     @Test(timeout = 10000)
     public void testFallbackWhenSlackWorkspacesEmpty() throws IOException {
         String yaml = "workstreams:\n" +
@@ -245,6 +277,10 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
     // Event routing includes workspace ID
     // -------------------------------------------------------------------------
 
+    /**
+     * Verifies that the workspace-aware {@code handleMessage} overload exists and
+     * returns false for unknown channels without throwing an exception.
+     */
     @Test(timeout = 10000)
     public void testHandleMessagePassesWorkspaceId() {
         FlowTreeController controller = new FlowTreeController(null, null);
@@ -272,6 +308,10 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
         // The test verifies the overload exists and does not throw.
     }
 
+    /**
+     * Verifies that the workspace-aware {@code handleSlashCommand} overload is callable
+     * with both a null and a non-null workspace ID without throwing an exception.
+     */
     @Test(timeout = 10000)
     public void testHandleSlashCommandPassesWorkspaceId() throws IOException {
         FlowTreeController controller = new FlowTreeController(null, null);
@@ -290,6 +330,10 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
         // The key test is that both overloads are callable without error
     }
 
+    /**
+     * Verifies that a loaded {@link FlowTreeController.WorkspaceConnection} stores
+     * the workspace ID exactly as declared in the config file.
+     */
     @Test(timeout = 10000)
     public void testWorkspaceConnectionHoldsWorkspaceId() throws IOException {
         String yaml = "slackWorkspaces:\n" +
@@ -313,6 +357,10 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
     // Config reload rebuilds workspace connections
     // -------------------------------------------------------------------------
 
+    /**
+     * Verifies that calling {@code reloadConfig()} after updating the config file on
+     * disk results in the new workspace connections being present on the controller.
+     */
     @Test(timeout = 10000)
     public void testConfigReloadRebuildsWorkspaceConnections() throws IOException {
         String yaml = "slackWorkspaces:\n" +
@@ -468,6 +516,10 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
     // Per-workspace notifier settings from config
     // -------------------------------------------------------------------------
 
+    /**
+     * Verifies that workspace-specific settings such as {@code defaultChannel} and
+     * {@code channelOwnerUserId} are propagated to the workspace's notifier instance.
+     */
     @Test(timeout = 10000)
     public void testPerWorkspaceNotifierSettings() throws IOException {
         String yaml = "slackWorkspaces:\n" +
@@ -495,6 +547,9 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
     // Helper
     // -------------------------------------------------------------------------
 
+    /**
+     * Writes the given YAML string to a temporary file and schedules it for deletion on JVM exit.
+     */
     private File writeYamlTempFile(String yaml) throws IOException {
         File tmp = File.createTempFile("flowtree-test-", ".yaml");
         tmp.deleteOnExit();

@@ -24,20 +24,39 @@ import java.text.NumberFormat;
 import java.text.ParseException;
 import java.util.ArrayList;
 
+/**
+ * Tests for ray marching rendering functionality.
+ */
 public class RayMarchingTest extends TestSuiteBase {
+	/** Enable animation mode for ray marching output. */
 	public static final boolean enableAnimation = false;
 
+	/** Minimum radius squared for sphere folding. */
 	public static double minRadius2 = 0.25;
 
+	/** Fixed radius squared for sphere folding. */
 	public static double fixedRadius2 = 1.0;
+
+	/** Folding limit for box folding. */
 	public static double foldingLimit = 1.0;
+
+	/** Number of iterations for ray marching. */
 	public static int Iterations = 50;
+
 	//	public static double POWER = 9.53;
+	/** Power parameter for Mandelbrot-style fractal computation. */
 	public static double POWER = 7.80;
+
+	/** Offset vector for ray marching. */
 	public static Vector Offset = new Vector(1.0, 1.0, 1.0);
 
+	/** Number formatter for animation filenames. */
 	private static NumberFormatter format = new NumberFormatter(NumberFormat.getPercentInstance());
 
+	/**
+	 * Main entry point for manual ray marching tests.
+	 * @param args Command line arguments
+	 */
 	public static void main(String args[]) {
 		ShaderSet s = new ShaderSet();
 		s.add(DiffuseShader.defaultDiffuseShader);
@@ -127,7 +146,12 @@ public class RayMarchingTest extends TestSuiteBase {
 		System.exit(0);
 	}
 
-	// simply scale the dual vectors
+	/**
+	 * Applies sphere folding transformation to the given vector and its derivatives.
+	 * Simply scales the dual vectors when folding.
+	 * @param z The vector to transform
+	 * @param dz The derivative vectors
+	 */
 	static void sphereFold(Vector z, Vector[] dz) {
 		double r2 = z.dotProduct(z);
 
@@ -149,7 +173,12 @@ public class RayMarchingTest extends TestSuiteBase {
 		}
 	}
 
-	// reverse signs for dual vectors when folding
+	/**
+	 * Applies box folding transformation to the given vector and its derivatives.
+	 * Reverses signs for dual vectors when folding.
+	 * @param z The vector to transform
+	 * @param dz The derivative vectors
+	 */
 	static void boxFold(Vector z, Vector[] dz) {
 		if (Math.abs(z.getX()) > foldingLimit) {
 			dz[0].setX(dz[0].getX() * -1.0);
@@ -172,6 +201,13 @@ public class RayMarchingTest extends TestSuiteBase {
 		z.setTo(clamp(z, -foldingLimit, foldingLimit).multiply(2.0).subtract(z));
 	}
 
+	/**
+	 * Clamps the given vector to have length within the specified range.
+	 * @param x The vector to clamp
+	 * @param min Minimum allowed length
+	 * @param max Maximum allowed length
+	 * @return The clamped vector
+	 */
 	static Vector clamp(Vector x, double min, double max) {
 		if (x.length() < min)
 			return x.multiply(min / x.length());

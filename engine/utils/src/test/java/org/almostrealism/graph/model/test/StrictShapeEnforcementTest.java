@@ -58,8 +58,14 @@ import java.util.stream.IntStream;
  */
 public class StrictShapeEnforcementTest extends TestSuiteBase implements ModelTestFeatures {
 
+	/**
+	 * Coefficients for linear function.
+	 */
 	private final double[] coeff = { 0.24, -0.1, 0.36 };
 
+	/**
+	 * Linear function that applies coefficient-based transformation.
+	 */
 	private final UnaryOperator<PackedCollection> linearFunc =
 			in -> {
 				PackedCollection out = new PackedCollection(in.getShape());

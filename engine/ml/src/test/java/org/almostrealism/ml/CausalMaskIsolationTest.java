@@ -13,9 +13,15 @@ import org.junit.Test;
 /**
  * Test to verify that the causal mask lambda approach works correctly
  * in a minimal model without any transformer complexity.
+ *
+ * @see AttentionFeatures
  */
 public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionFeatures {
 
+	/**
+	 * Tests the causal mask in a minimal model with 4 heads and sequence length 8.
+	 * Verifies that position 0 is unmasked while position 1 is masked with -10000.
+	 */
 	@Test(timeout = 30000)
 	public void testCausalMaskInMinimalModel() {
 		log("\n=== Causal Mask Isolation Test ===\n");
@@ -99,6 +105,10 @@ public class CausalMaskIsolationTest extends TestSuiteBase implements AttentionF
 		log("\n[OK] Causal mask lambda approach works correctly!");
 	}
 
+	/**
+	 * Tests dynamic position updates for the causal mask.
+	 * Verifies that the mask correctly responds to position changes across the full sequence.
+	 */
 	@Test(timeout = 30000)
 	public void testCausalMaskDynamicPositionUpdates() {
 		log("\n=== Testing Dynamic Position Updates ===\n");

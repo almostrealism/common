@@ -48,11 +48,16 @@ import java.io.IOException;
  */
 public class ResidualBlockSubComponentTest extends OobleckValidationBase {
 
+	/** Tolerance for mean absolute error validation. */
 	private static final double TOLERANCE = 0.01;
 
-	// Common dimensions for Block 1's residual blocks
+	/** Batch size used across all tests. */
 	private static final int BATCH_SIZE = 1;
+
+	/** Channel count for decoder block 1 residual blocks. */
 	private static final int CHANNELS = 1024;
+
+	/** Sequence length for decoder block 1. */
 	private static final int SEQ_LENGTH = 33;
 
 	/**
@@ -462,6 +467,13 @@ public class ResidualBlockSubComponentTest extends OobleckValidationBase {
 	 */
 	@FunctionalInterface
 	private interface BlockBuilder {
+		/**
+		 * Builds a sub-component block using the given weights and layer prefix.
+		 *
+		 * @param weights the StateDictionary containing model weights
+		 * @param prefix the layer prefix within the weights dictionary
+		 * @return the constructed Block
+		 */
 		Block build(StateDictionary weights, String prefix);
 	}
 

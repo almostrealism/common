@@ -207,6 +207,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests sum reduce one by one operation.
+	 */
 	@Test(timeout = 30000)
 	public void sumReduceOneByOne() {
 		int size = 1;
@@ -239,6 +242,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests sum reduce 2D operation.
+	 */
 	@Test(timeout = 30000)
 	public void sumReduce2d() {
 		int size = 4;
@@ -271,6 +277,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests max reduce operation.
+	 */
 	@Test(timeout = 30000)
 	public void maxReduce() {
 		int size = 4;
@@ -303,6 +312,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests map reduce operation.
+	 */
 	@Test(timeout = 30000)
 	public void mapReduce() {
 		PackedCollection input = tensor(shape(8, 3, 3)).pack();
@@ -379,6 +391,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		kernelTest(product, validate);
 	}
 
+	/**
+	 * Tests map enumerate operation.
+	 */
 	@Test(timeout = 30000)
 	public void mapEnumerate() {
 		int w = 128;
@@ -419,6 +434,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests enumerate map with small dimensions.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateMapSmall() {
 		int r = 3;
@@ -474,6 +492,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests enumerate map operation.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateMap() {
 		int r = 10;
@@ -516,6 +537,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests enumerate map with traverse each operation.
+	 */
 	// @Test(timeout = 30000)
 	private void enumerateMapTraverseEach() {
 		int r = 10;
@@ -557,6 +581,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests enumerate map reduce operation.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateMapReduce() {
 		int r = 10;
@@ -599,6 +626,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 	}
 
 
+	/**
+	 * Tests enumerate repeat map with small dimensions.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateRepeatMapSmall() {
 		int r = 3;
@@ -668,6 +698,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests enumerate repeat map reduce with small dimensions.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateRepeatMapReduceSmall() {
 //		Known to fail
@@ -745,6 +778,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 	}
 
 
+	/**
+	 * Tests enumerate repeat map reduce operation.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateRepeatMapReduce() {
 		int r = 10;
@@ -816,6 +852,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests enumerate repeat reduce operation.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateRepeatReduce() {
 		int r = 10;
@@ -890,6 +929,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests enumerate reduce enumerate operation.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateReduceEnumerate() {
 		int r = 12;
@@ -940,6 +982,9 @@ public class PackedCollectionMapTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests map concat operation.
+	 */
 	// @Test(timeout = 30000)
 	private void mapConcat() {
 		int r = 10;

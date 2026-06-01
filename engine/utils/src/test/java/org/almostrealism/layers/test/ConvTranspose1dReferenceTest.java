@@ -46,11 +46,18 @@ import java.util.Arrays;
  */
 public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 
+	/** Base directory for reference test data. */
 	private static final Path BASE_DIR = Paths.get("../ml/test_data/conv_transpose");
+	/** Tolerance for floating-point comparisons. */
 	private static final double TOLERANCE = 0.001;
 
 	/**
 	 * Loads a reference file (format: int32 count followed by float32 values).
+	 *
+	 * @param testCase Test case directory name
+	 * @param filename Name of the reference file
+	 * @return Array of float values from the file
+	 * @throws IOException If file cannot be read
 	 */
 	private float[] loadReference(String testCase, String filename) throws IOException {
 		Path filepath = BASE_DIR.resolve(testCase).resolve(filename);
@@ -75,6 +82,13 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Converts a float array to a PackedCollection with the given dimensions.
+	 *
+	 * @param data Source float array
+	 * @param dims Dimensions for the collection
+	 * @return PackedCollection with the data
+	 */
 	private PackedCollection arrayToCollection(float[] data, int... dims) {
 		PackedCollection c = new PackedCollection(dims);
 		for (int i = 0; i < data.length; i++) {
@@ -83,6 +97,13 @@ public class ConvTranspose1dReferenceTest extends TestSuiteBase {
 		return c;
 	}
 
+	/**
+	 * Compares actual output against expected reference values.
+	 *
+	 * @param testName Name of the test for logging
+	 * @param actual Actual output collection
+	 * @param expected Expected reference values
+	 */
 	private void compareOutputs(String testName, PackedCollection actual, float[] expected) {
 		int size = (int) actual.getMemLength();
 		assertEquals(testName + " size mismatch", expected.length, size);

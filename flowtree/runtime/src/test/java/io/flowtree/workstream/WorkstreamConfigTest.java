@@ -38,6 +38,10 @@ import static org.junit.Assert.*;
  */
 public class WorkstreamConfigTest extends TestSuiteBase {
 
+    /**
+     * Verifies that a multi-workstream YAML string loads all entries with the
+     * correct channel IDs, agent lists, branches, turn limits, and budget values.
+     */
     @Test(timeout = 10000)
     public void testYamlConfigLoading() throws IOException {
         String yaml = "workstreams:\n" +
@@ -90,6 +94,10 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals("feature/alpha", ws1.getDefaultBranch());
     }
 
+    /**
+     * Verifies that a JSON-format config string is parsed into the correct
+     * workstream entries.
+     */
     @Test(timeout = 10000)
     public void testJsonConfigLoading() throws IOException {
         String json = "{\"workstreams\":[" +
@@ -104,6 +112,10 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals("main", config.getWorkstreams().get(0).getDefaultBranch());
     }
 
+    /**
+     * Verifies that {@link SlackTokens#loadFromFile} reads bot and app tokens
+     * correctly from a JSON file on disk.
+     */
     @Test(timeout = 10000)
     public void testTokensLoadFromFile() throws IOException {
         File tempFile = File.createTempFile("slack-tokens-test", ".json");
@@ -119,6 +131,10 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals("xapp-test-app-token", tokens.getAppToken());
     }
 
+    /**
+     * Verifies that {@link SlackTokens#resolve(File)} loads tokens from an
+     * explicitly supplied file path.
+     */
     @Test(timeout = 10000)
     public void testTokensResolveFromExplicitFile() throws IOException {
         File tempFile = File.createTempFile("slack-tokens-explicit", ".json");
@@ -133,6 +149,10 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals("xapp-explicit", tokens.getAppToken());
     }
 
+    /**
+     * Verifies that extra unknown fields in a Slack tokens JSON file are
+     * silently ignored and do not prevent the known fields from loading.
+     */
     @Test(timeout = 10000)
     public void testTokensIgnoresUnknownFields() throws IOException {
         File tempFile = File.createTempFile("slack-tokens-extra", ".json");
@@ -148,6 +168,11 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals("xapp-456", tokens.getAppToken());
     }
 
+    /**
+     * Verifies that a minimal YAML config with only required fields produces
+     * correct default values for port, max turns, budget, push-to-origin, and
+     * allowed tools.
+     */
     @Test(timeout = 10000)
     public void testConfigDefaults() throws IOException {
         // Minimal config - should use defaults
@@ -167,6 +192,11 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals("Read,Edit,Write,Bash,Glob,Grep", entry.getAllowedTools()); // default tools
     }
 
+    /**
+     * Verifies that {@link WorkstreamConfig#addWorkstream} stores a
+     * {@link Workstream} as a correctly populated entry with all fields
+     * preserved.
+     */
     @Test(timeout = 10000)
     public void testWorkstreamConfigAddWorkstream() {
         WorkstreamConfig config = new WorkstreamConfig();
@@ -190,6 +220,11 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals(ws.getWorkstreamId(), entry.getWorkstreamId());
     }
 
+    /**
+     * Verifies that {@link WorkstreamConfig#syncFromWorkstreams} propagates
+     * in-memory changes (branch, budget, working directory) back into the
+     * config entries.
+     */
     @Test(timeout = 10000)
     public void testWorkstreamConfigSyncFromWorkstreams() throws IOException {
         // Start with a config that has one workstream
@@ -219,6 +254,11 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals("/new/path", entry.getWorkingDirectory());
     }
 
+    /**
+     * Verifies that a config containing {@code slackWorkspaces} and a
+     * {@code slackWorkspaceId}-linked workstream survives a save-and-reload
+     * round-trip with all fields intact.
+     */
     @Test(timeout = 10000)
     public void testMultiWorkspaceSaveAndReload() throws IOException {
         String yaml = "slackWorkspaces:\n" +
@@ -258,6 +298,11 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals("T111", reloaded.getWorkstreams().get(0).getWorkspaceId());
     }
 
+    /**
+     * Verifies that a YAML file in the post-migration format (produced by the
+     * Python migration tool) loads correctly, including multi-workspace entries,
+     * GitHub org tokens, and per-workstream workspace IDs.
+     */
     @Test(timeout = 10000)
     public void testMigratedConfigParsesCorrectly() throws IOException {
         // Simulate the output of the Python migration tool and verify it loads
@@ -314,6 +359,11 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that {@code effectiveChannelOwnerUserIds()} wraps the legacy
+     * singular {@code channelOwnerUserId} field into a one-element list at
+     * both the top-level config and workspace-entry level.
+     */
     @Test(timeout = 10000)
     public void testEffectiveChannelOwnerUserIdsResolvesFromSingular() throws IOException {
         // Legacy config shape: only the singular channelOwnerUserId is set.
@@ -331,6 +381,11 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals(List.of("U0222"), ws.effectiveChannelOwnerUserIds());
     }
 
+    /**
+     * Verifies that the plural {@code channelOwnerUserIds} list takes
+     * precedence over the legacy singular field when both are set, at both the
+     * top-level config and workspace-entry level.
+     */
     @Test(timeout = 10000)
     public void testEffectiveChannelOwnerUserIdsResolvesFromPlural() throws IOException {
         // When both the plural list and the legacy singular are set, the
@@ -354,12 +409,21 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals(List.of("U0BBB", "U0CCC"), ws.effectiveChannelOwnerUserIds());
     }
 
+    /**
+     * Verifies that {@code effectiveChannelOwnerUserIds()} returns an empty
+     * list when neither the singular nor the plural field is set.
+     */
     @Test(timeout = 10000)
     public void testEffectiveChannelOwnerUserIdsEmptyWhenUnset() throws IOException {
         WorkstreamConfig cfg = WorkstreamConfig.loadFromYamlString("workstreams: []\n");
         assertTrue(cfg.effectiveChannelOwnerUserIds().isEmpty());
     }
 
+    /**
+     * Verifies that the legacy {@link SlackNotifier#setChannelOwnerUserId(String)}
+     * setter is internally treated as a one-element list and that the plural
+     * setter supersedes it.
+     */
     @Test(timeout = 10000)
     public void testSlackNotifierPreservesBackwardCompatSetter() {
         // The legacy setChannelOwnerUserId(String) must still behave as a
@@ -383,6 +447,10 @@ public class WorkstreamConfigTest extends TestSuiteBase {
 
     // ── model/effort defaults on Workstream ───────────────────────────────────
 
+    /**
+     * Verifies that {@link Workstream#toSummaryJson()} includes an
+     * {@code "archived":true} flag when the workstream is archived.
+     */
     @Test(timeout = 10000)
     public void testWorkstreamSummaryJsonEmitsArchivedFlagWhenSet() {
         Workstream ws = new Workstream("C_A", "#archived");
@@ -392,6 +460,10 @@ public class WorkstreamConfigTest extends TestSuiteBase {
             json.contains("\"archived\":true"));
     }
 
+    /**
+     * Verifies that {@link Workstream#toSummaryJson()} omits the
+     * {@code "archived"} field entirely when the workstream is not archived.
+     */
     @Test(timeout = 10000)
     public void testWorkstreamSummaryJsonOmitsArchivedWhenFalse() {
         Workstream ws = new Workstream("C_A", "#live");
@@ -400,6 +472,11 @@ public class WorkstreamConfigTest extends TestSuiteBase {
             json.contains("\"archived\""));
     }
 
+    /**
+     * Verifies that the {@code archived} flag on a workstream entry survives
+     * YAML deserialization and is carried through to the runtime
+     * {@link Workstream} object.
+     */
     @Test(timeout = 10000)
     public void testYamlRoundTripsArchivedFlag() throws IOException {
         String yaml = "workstreams:\n"
@@ -417,6 +494,10 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertTrue("workstream conversion must preserve archived", ws.isArchived());
     }
 
+    /**
+     * Verifies that {@link WorkstreamConfig#addWorkstream} preserves the
+     * {@code archived} flag from the supplied {@link Workstream}.
+     */
     @Test(timeout = 10000)
     public void testAddWorkstreamCarriesArchivedFlag() {
         WorkstreamConfig config = new WorkstreamConfig();

@@ -26,7 +26,14 @@ import org.junit.Test;
 
 import java.util.stream.IntStream;
 
+/**
+ * Tests for chord progression management and genome integration.
+ */
 public class ChordProgressionManagerTest extends TestSuiteBase {
+
+	/**
+	 * Test chord progression refresh and parameter assignment.
+	 */
 	@Test(timeout = 10_000)
 	public void progression() {
 		int params = 8;

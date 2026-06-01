@@ -35,6 +35,9 @@ import javax.sound.sampled.SourceDataLine;
  */
 public class MultiChannelOutputLineTest extends TestSuiteBase {
 
+	/**
+	 * Tests that ChannelPairView returns correct pair labels for stereo channel pairs.
+	 */
 	@Test(timeout = 60000)
 	public void channelPairViewLabel() {
 		// Create a minimal multi-channel line for testing pair views
@@ -52,6 +55,9 @@ public class MultiChannelOutputLineTest extends TestSuiteBase {
 		Assert.assertEquals("7-8", view3.getPairLabel());
 	}
 
+	/**
+	 * Tests that getPairCount() returns correct count and getOutputChannels() returns total channels.
+	 */
 	@Test(timeout = 60000)
 	public void pairCountCalculation() {
 		MultiChannelOutputLine mcLine = createMockMultiChannelLine(8);
@@ -61,6 +67,9 @@ public class MultiChannelOutputLineTest extends TestSuiteBase {
 		Assert.assertEquals(8, mcLine.getOutputChannels());
 	}
 
+	/**
+	 * Tests that getView() throws IllegalArgumentException for out-of-range pair indices.
+	 */
 	@Test(timeout = 60000, expected = IllegalArgumentException.class)
 	public void invalidPairIndexThrows() {
 		MultiChannelOutputLine mcLine = createMockMultiChannelLine(4);
@@ -69,6 +78,9 @@ public class MultiChannelOutputLineTest extends TestSuiteBase {
 		mcLine.getView(2); // only pairs 0 and 1 exist
 	}
 
+	/**
+	 * Tests that ChannelPairView buffer size matches parent MultiChannelOutputLine buffer size.
+	 */
 	@Test(timeout = 60000)
 	public void viewBufferSizeMatchesParent() {
 		MultiChannelOutputLine mcLine = createMockMultiChannelLine(8);
@@ -78,6 +90,9 @@ public class MultiChannelOutputLineTest extends TestSuiteBase {
 		Assert.assertEquals(mcLine.getBufferSize(), view.getBufferSize());
 	}
 
+	/**
+	 * Tests that destroying a ChannelPairView does not affect the parent MultiChannelOutputLine.
+	 */
 	@Test(timeout = 60000)
 	public void viewDestroyDoesNotDestroyParent() {
 		MultiChannelOutputLine mcLine = createMockMultiChannelLine(4);

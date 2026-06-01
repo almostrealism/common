@@ -39,54 +39,117 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Granular synthesizer that generates audio from grain sets.
+ */
 public class GranularSynthesizer implements StatelessSource, CellFeatures {
+
+	/** Minimum wavelength for amplitude modulation in seconds. */
 	public static double ampModWavelengthMin = 0.1;
+
+	/** Maximum wavelength for amplitude modulation in seconds. */
 	public static double ampModWavelengthMax = 10;
+
+	/** Default duration for grain processing in seconds. */
 	public static double duration = 10;
 
+	/** Amplitude gain factor applied to all output. */
 	private double gain;
+
+	/** List of grain sets used by this synthesizer. */
 	private List<GrainSet> grains;
 
+	/** The grain processor handling audio generation. */
 	private final GrainProcessor processor;
 
+	/**
+	 * Creates a granular synthesizer with the specified sample rate.
+	 *
+	 * @param sampleRate the audio sample rate in Hz
+	 */
 	public GranularSynthesizer(int sampleRate) {
 		gain = 1.0;
 		grains = new ArrayList<>();
 		processor = new GrainProcessor(duration, sampleRate);
 	}
 
+	/**
+	 * Returns the grain duration.
+	 *
+	 * @return the duration in seconds
+	 */
 	@JsonIgnore
 	public double getDuration() {
 		return 10;
 	}
 
+	/**
+	 * Returns the amplitude gain factor.
+	 *
+	 * @return the gain value
+	 */
 	public double getGain() {
 		return gain;
 	}
 
+	/**
+	 * Sets the amplitude gain factor.
+	 *
+	 * @param gain the gain value to set
+	 */
 	public void setGain(double gain) {
 		this.gain = gain;
 	}
 
+	/**
+	 * Returns the list of grain sets.
+	 *
+	 * @return the list of grain sets
+	 */
 	public List<GrainSet> getGrains() {
 		return grains;
 	}
 
+	/**
+	 * Sets the list of grain sets.
+	 *
+	 * @param grains the grain sets to set
+	 */
 	public void setGrains(List<GrainSet> grains) {
 		this.grains = grains;
 	}
 
+	/**
+	 * Adds a grain set from a file.
+	 *
+	 * @param file the path to the audio file
+	 * @return the created grain set
+	 */
 	public GrainSet addFile(String file) {
 		GrainSet g = new GrainSet(new FileWaveDataProvider(file));
 		grains.add(g);
 		return g;
 	}
 
+	/**
+	 * Adds a grain with the specified settings to a random grain set.
+	 *
+	 * @param settings the grain generation settings
+	 * @throws UnsupportedOperationException if no grain sets exist
+	 */
 	public void addGrain(GrainGenerationSettings settings) {
 		if (grains.isEmpty()) throw new UnsupportedOperationException();
 		grains.get((int) (Math.random() * grains.size())).addGrain(settings);
 	}
 
+	/**
+	 * Generates audio output for the given buffer.
+	 *
+	 * @param buffer the buffer details
+	 * @param params the parameter producer
+	 * @param frequency the frequency factor
+	 * @return the generated audio producer
+	 */
 	@Override
 	public Producer<PackedCollection> generate(BufferDetails buffer,
 												  Producer<PackedCollection> params,
@@ -94,6 +157,16 @@ public class GranularSynthesizer implements StatelessSource, CellFeatures {
 		return null;
 	}
 
+	/**
+	 * Creates a wave data provider list for granular synthesis.
+	 *
+	 * @param x the x parameter producer
+	 * @param y the y parameter producer
+	 * @param z the z parameter producer
+	 * @param playbackRates the list of playback frequencies
+	 * @return the wave data provider list
+	 * @deprecated use grain-based processing instead
+	 */
 	@Deprecated
 	public WaveDataProviderList create(Producer<PackedCollection> x, Producer<PackedCollection> y, Producer<PackedCollection> z, List<Frequency> playbackRates) {
 		Evaluable<PackedCollection> evX = x.get();

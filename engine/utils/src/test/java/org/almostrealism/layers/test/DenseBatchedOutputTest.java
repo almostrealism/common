@@ -51,7 +51,7 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 	 */
 	@Test(timeout = 10000)
 	public void testDenseSingleSample() {
-		log("=== Test 1: Dense Single Sample ===");
+		log("Test 1: Dense Single Sample");
 
 		// Simple 2 -> 3 dense layer, batch size = 1
 		int inputSize = 2;
@@ -113,7 +113,7 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 	 */
 	@Test(timeout = 10000)
 	public void testDenseBatchedSamples() {
-		log("=== Test 2: Dense Batched Samples (batch=3) ===");
+		log("Test 2: Dense Batched Samples (batch=3)");
 
 		int inputSize = 2;
 		int outputSize = 4;
@@ -229,7 +229,7 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 	 */
 	@Test(timeout = 10000)
 	public void testMatmulSemantics() {
-		log("=== Test 3: Matmul Semantics Verification ===");
+		log("Test 3: Matmul Semantics Verification");
 
 		// This test verifies the semantics by testing through a dense layer
 		// We've proven in Test 2 that the output is correct, so matmul must
@@ -278,7 +278,7 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 	 */
 	@Test(timeout = 10000)
 	public void testReshapeVsPermute() {
-		log("=== Test 4: Reshape vs Permute Comparison ===");
+		log("Test 4: Reshape vs Permute Comparison");
 
 		// Create a (4, 3) matrix where we know exactly what each element is
 		// data[i][j] = i * 10 + j
@@ -341,7 +341,7 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 	 */
 	@Test(timeout = 10000)
 	public void testDenseOperatorCorrectness() {
-		log("=== Test 5: Dense Operator Correctness Verification ===");
+		log("Test 5: Dense Operator Correctness Verification");
 
 		int inputSize = 2;
 		int outputSize = 4;
@@ -392,7 +392,7 @@ public class DenseBatchedOutputTest extends TestSuiteBase implements LayerFeatur
 		// The matmul actually produces (batched, nodes) for batched inputs.
 
 		log("");
-		log("CONCLUSION:");
+		log("Conclusion");
 		log("Since Test 2 passed with correct sample-by-sample values,");
 		log("and Test 4 showed reshape does NOT transpose data,");
 		log("the matmul must produce (batch, output_nodes) directly.");

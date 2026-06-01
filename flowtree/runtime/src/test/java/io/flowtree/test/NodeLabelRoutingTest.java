@@ -317,15 +317,28 @@ public class NodeLabelRoutingTest extends TestSuiteBase {
      * A {@link Job} with configurable required labels that tracks execution.
      */
     static class LabelledJob implements Job {
+        /** The unique task identifier for this job. */
         private final String taskId;
+
+        /** The label key-value pairs that a Node must satisfy to run this job. */
         private final Map<String, String> requiredLabels;
+
+        /** Latch counted down when the job executes, or null if not needed. */
         private final CountDownLatch executedLatch;
+
+        /** Future completed when the job finishes execution. */
         private final CompletableFuture<Void> future = new CompletableFuture<>();
 
+        /**
+         * Creates a LabelledJob without an execution latch.
+         */
         LabelledJob(String taskId, Map<String, String> requiredLabels) {
             this(taskId, requiredLabels, null);
         }
 
+        /**
+         * Creates a LabelledJob with the given task id, required labels, and execution latch.
+         */
         LabelledJob(String taskId, Map<String, String> requiredLabels,
                      CountDownLatch executedLatch) {
             this.taskId = taskId;
@@ -334,6 +347,7 @@ public class NodeLabelRoutingTest extends TestSuiteBase {
             this.executedLatch = executedLatch;
         }
 
+        /** Counts down the execution latch (if any) and completes the future. */
         @Override
         public void run() {
             if (executedLatch != null) {
@@ -342,25 +356,31 @@ public class NodeLabelRoutingTest extends TestSuiteBase {
             future.complete(null);
         }
 
+        /** Returns the required label map for this job. */
         @Override
         public Map<String, String> getRequiredLabels() {
             return requiredLabels;
         }
 
+        /** Returns an encoded string representation of this job. */
         @Override
         public String encode() {
             return "LabelledJob::" + taskId;
         }
 
+        /** No-op property setter required by the Job interface. */
         @Override
         public void set(String key, String value) { }
 
+        /** Returns the task identifier. */
         @Override
         public String getTaskId() { return taskId; }
 
+        /** Returns the task string (same as task id for this stub). */
         @Override
         public String getTaskString() { return taskId; }
 
+        /** Returns the completable future for this job. */
         @Override
         public CompletableFuture<Void> getCompletableFuture() { return future; }
     }
@@ -369,36 +389,47 @@ public class NodeLabelRoutingTest extends TestSuiteBase {
      * A no-op {@link JobFactory} that never produces jobs.
      */
     static class NoOpFactory implements JobFactory {
+        /** Always returns null; no jobs are produced by this factory. */
         @Override
         public Job nextJob() { return null; }
 
+        /** Always returns null; no jobs are created by this factory. */
         @Override
         public Job createJob(String data) { return null; }
 
+        /** Returns an encoded string identifier for this factory. */
         @Override
         public String encode() { return "NoOpFactory"; }
 
+        /** No-op property setter required by the JobFactory interface. */
         @Override
         public void set(String key, String value) { }
 
+        /** Always returns false; this factory never completes. */
         @Override
         public boolean isComplete() { return false; }
 
+        /** Returns the fixed task identifier for this factory. */
         @Override
         public String getTaskId() { return "noop"; }
 
+        /** Returns the display name for this factory. */
         @Override
         public String getName() { return "NoOp"; }
 
+        /** Returns 0.0 to indicate no work has been completed. */
         @Override
         public double getCompleteness() { return 0; }
 
+        /** No-op priority setter required by the JobFactory interface. */
         @Override
         public void setPriority(double p) { }
 
+        /** Returns the default priority of 1.0. */
         @Override
         public double getPriority() { return 1.0; }
 
+        /** Returns a new incomplete future since this factory produces no real jobs. */
         @Override
         public CompletableFuture<Void> getCompletableFuture() {
             return new CompletableFuture<>();

@@ -31,9 +31,17 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for dense layer operations and batch training.
+ */
 public class DenseLayerTests extends TestSuiteBase implements ModelTestFeatures {
+
+	/** Coefficients for the 3x3 function. */
 	private final double[] coeff = {0.24, -0.1, 0.36};
 
+	/**
+	 * Applies a 3x3 convolution-like function to the input.
+	 */
 	public PackedCollection func3x3(PackedCollection input) {
 		TraversalPolicy shape = padDimensions(input.getShape(), 2);
 		input = input.reshape(shape);
@@ -50,6 +58,9 @@ public class DenseLayerTests extends TestSuiteBase implements ModelTestFeatures 
 		return result;
 	}
 
+	/**
+	 * Tests dense layer batch training.
+	 */
 	@Test(timeout = 120000)
 	public void denseBatch() throws FileNotFoundException {
 		int bs = 10;

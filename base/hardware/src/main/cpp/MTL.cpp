@@ -13,9 +13,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include <Foundation/Foundation.hpp>
-#include <Metal/Metal.hpp>
-#include <QuartzCore/QuartzCore.hpp>
+// The amalgamated metal-cpp single header (committed alongside this file) provides
+// the NS, MTL and CA namespaces, so the build is self-contained and does not depend
+// on an external metal-cpp installation path.
+#include "Metal.hpp"
 
 // Convert single float to bfloat16
 uint16_t float32_to_bfloat16(float src) {
@@ -413,4 +414,26 @@ extern "C"
 JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_releaseDevice(JNIEnv* env, jclass, jlong device) {
     MTL::Device* dev = (MTL::Device*) device;
     dev->release();
+}
+
+// Creates a new Objective-C autorelease pool on the calling thread and returns an
+// opaque handle to it. metal-cpp factory methods such as MTL::CommandQueue::commandBuffer()
+// and MTL::CommandBuffer::computeCommandEncoder() return autoreleased objects; when
+// they are created on a long-lived JNI worker thread with no pool in place they are
+// never reclaimed, accumulating in the Metal driver until it stalls. Wrapping each
+// kernel dispatch between autoreleasePoolPush()/autoreleasePoolPop() drains those
+// per-dispatch command buffers and encoders. The push/pop must occur on the same
+// thread that performs the dispatch.
+extern "C"
+JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_autoreleasePoolPush(JNIEnv* env, jclass cls) {
+    NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
+    return (jlong) pool;
+}
+
+// Drains and releases the autorelease pool created by autoreleasePoolPush(), freeing
+// every object autoreleased on this thread since the matching push.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_autoreleasePoolPop(JNIEnv* env, jclass cls, jlong poolPtr) {
+    NS::AutoreleasePool* pool = (NS::AutoreleasePool*) poolPtr;
+    if (pool != nullptr) pool->release();
 }

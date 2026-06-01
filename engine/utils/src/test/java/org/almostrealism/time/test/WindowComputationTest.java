@@ -98,6 +98,9 @@ public class WindowComputationTest extends TestSuiteBase {
 
 	// ==================== Hann Window Tests ====================
 
+	/**
+	 * Tests Hann window with small size.
+	 */
 	@Test(timeout = 30000)
 	public void testHannWindowSmall() {
 		int size = 64;
@@ -109,6 +112,9 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests Hann window with medium size.
+	 */
 	@Test(timeout = 30000)
 	public void testHannWindowMedium() {
 		int size = 512;
@@ -120,6 +126,9 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests Hann window with large size.
+	 */
 	@Test(timeout = 30000)
 	public void testHannWindowLarge() {
 		int size = 2048;
@@ -131,6 +140,9 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests Hann window properties.
+	 */
 	@Test(timeout = 30000)
 	public void testHannWindowProperties() {
 		int size = 256;
@@ -153,6 +165,9 @@ public class WindowComputationTest extends TestSuiteBase {
 
 	// ==================== Hamming Window Tests ====================
 
+	/**
+	 * Tests Hamming window with small size.
+	 */
 	@Test(timeout = 30000)
 	public void testHammingWindowSmall() {
 		int size = 64;
@@ -164,6 +179,9 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests Hamming window with medium size.
+	 */
 	@Test(timeout = 30000)
 	public void testHammingWindowMedium() {
 		int size = 512;
@@ -175,6 +193,9 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests Hamming window properties.
+	 */
 	@Test(timeout = 30000)
 	public void testHammingWindowProperties() {
 		int size = 256;
@@ -196,6 +217,9 @@ public class WindowComputationTest extends TestSuiteBase {
 
 	// ==================== Blackman Window Tests ====================
 
+	/**
+	 * Tests Blackman window with small size.
+	 */
 	@Test(timeout = 30000)
 	public void testBlackmanWindowSmall() {
 		int size = 64;
@@ -207,6 +231,9 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests Blackman window with medium size.
+	 */
 	@Test(timeout = 30000)
 	public void testBlackmanWindowMedium() {
 		int size = 512;
@@ -218,6 +245,9 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests Blackman window properties.
+	 */
 	@Test(timeout = 30000)
 	public void testBlackmanWindowProperties() {
 		int size = 256;
@@ -239,6 +269,9 @@ public class WindowComputationTest extends TestSuiteBase {
 
 	// ==================== Bartlett Window Tests ====================
 
+	/**
+	 * Tests Bartlett window with small size.
+	 */
 	@Test(timeout = 30000)
 	public void testBartlettWindowSmall() {
 		int size = 64;
@@ -250,6 +283,9 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests Bartlett window with medium size.
+	 */
 	@Test(timeout = 30000)
 	public void testBartlettWindowMedium() {
 		int size = 512;
@@ -261,6 +297,9 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests Bartlett window properties.
+	 */
 	@Test(timeout = 30000)
 	public void testBartlettWindowProperties() {
 		int size = 256;
@@ -291,6 +330,9 @@ public class WindowComputationTest extends TestSuiteBase {
 
 	// ==================== Flat-top Window Tests ====================
 
+	/**
+	 * Tests Flat-top window with small size.
+	 */
 	@Test(timeout = 30000)
 	public void testFlattopWindowSmall() {
 		int size = 64;
@@ -302,6 +344,9 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests Flat-top window with medium size.
+	 */
 	@Test(timeout = 30000)
 	public void testFlattopWindowMedium() {
 		int size = 512;
@@ -313,6 +358,9 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests Flat-top window properties.
+	 */
 	@Test(timeout = 30000)
 	public void testFlattopWindowProperties() {
 		int size = 256;
@@ -331,6 +379,9 @@ public class WindowComputationTest extends TestSuiteBase {
 
 	// ==================== Generic Window Type Tests ====================
 
+	/**
+	 * Tests window creation by type enum.
+	 */
 	@Test(timeout = 30000)
 	public void testWindowByType() {
 		int size = 128;
@@ -346,6 +397,9 @@ public class WindowComputationTest extends TestSuiteBase {
 
 	// ==================== Apply Window Tests ====================
 
+	/**
+	 * Tests applying window to a signal.
+	 */
 	@Test(timeout = 30000)
 	public void testApplyWindow() {
 		int size = 64;
@@ -366,6 +420,9 @@ public class WindowComputationTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests applying window to a sine wave signal.
+	 */
 	@Test(timeout = 30000)
 	public void testApplyWindowToSineWave() {
 		int size = 256;

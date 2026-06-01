@@ -42,30 +42,71 @@ import java.io.IOException;
 
 import static org.junit.Assert.assertTrue;
 
+/**
+ * Tests for AudioScene optimization and pattern generation.
+ */
 public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFeatures {
+
+	/** Enable delay processing in tests. */
 	public static final boolean enableDelay = true;
+
+	/** Enable filter processing in tests. */
 	public static final boolean enableFilter = true;
 
+	/** Delay parameter for temporal processing. */
 	public static final double delayParam = 0.35;
+
+	/** Computed delay in seconds based on delayParam. */
 	public static final double delay = 60 * ((1 / (1 - Math.pow(delayParam, 3))) - 1);
+
+	/** First speed-up duration in seconds. */
 	public static final double speedUpDuration1 = 10.0;
+
+	/** First speed-up percentage. */
 	public static final double speedUpPercentage1 = 0.0;
+
+	/** First slow-down duration in seconds. */
 	public static final double slowDownDuration1 = 10.0;
+
+	/** First slow-down percentage. */
 	public static final double slowDownPercentage1 = 0.0;
+
+	/** First polynomial speed-up duration in seconds. */
 	public static final double polySpeedUpDuration1 = 3;
+
+	/** First polynomial speed-up exponent. */
 	public static final double polySpeedUpExponent1 = 1.5;
+
+	/** Second speed-up duration in seconds. */
 	public static final double speedUpDuration2 = 10.0;
+
+	/** Second speed-up percentage. */
 	public static final double speedUpPercentage2 = 0.0;
+
+	/** Second slow-down duration in seconds. */
 	public static final double slowDownDuration2 = 10.0;
+
+	/** Second slow-down percentage. */
 	public static final double slowDownPercentage2 = 0.0;
+
+	/** Second polynomial speed-up duration in seconds. */
 	public static final double polySpeedUpDuration2 = 2;
+
+	/** Second polynomial speed-up exponent. */
 	public static final double polySpeedUpExponent2 = 1.1;
 
+	/** Feedback parameter for audio processing. */
 	public static final double feedbackParam = 0.1;
 
+	/** Path to first sample file for testing. */
 	public static final String sampleFile1 = "Library/Snare Perc DD.wav";
+
+	/** Path to second sample file for testing. */
 	public static final String sampleFile2 = "Library/GT_HAT_31.wav";
 
+	/**
+	 * Checks that required resources exist before running tests.
+	 */
 	@Before
 	public void checkResources() {
 		Assume.assumeTrue("Library directory required",
@@ -74,10 +115,16 @@ public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFea
 				new File(SystemUtils.getLocalDestination("pattern-factory.json")).exists());
 	}
 
+	/**
+	 * Creates an AudioScene with patterns for testing.
+	 */
 	public AudioScene<?> pattern(int sources, int delayLayers) {
 		return pattern(sources, delayLayers, false);
 	}
 
+	/**
+	 * Creates an AudioScene with optional sections for testing.
+	 */
 	protected AudioScene<?> pattern(int sources, int delayLayers, boolean sections) {
 		try {
 			AudioScene<?> scene = new AudioScene<>(120, sources, delayLayers, OutputLine.sampleRate);
@@ -100,6 +147,9 @@ public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFea
 		}
 	}
 
+	/**
+	 * Test that pattern channel generates valid audio output.
+	 */
 	@Test(timeout = 300_000)
 	public void pattern() {
 		AudioScene<?> pattern = pattern(2, 2, true);
@@ -118,11 +168,21 @@ public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFea
 		assertTrue("Pattern channel WAV should not be empty", outFile.length() > 1024);
 	}
 
+	/**
+	 * Creates a random organ for testing.
+	 */
 	public TemporalCellular randomOrgan(AudioScene<?> scene, MultiChannelAudioOutput output, int bufferSize) {
 		scene.assignGenome(scene.getGenome().random());
 		return scene.runnerRealTime(output, bufferSize);
 	}
 
+	/**
+	 * Renders audio for the specified duration.
+	 *
+	 * @param runner the temporal cellular runner
+	 * @param bufferSize frames per buffer
+	 * @param seconds duration to render in seconds
+	 */
 	private static void render(TemporalCellular runner, int bufferSize, double seconds) {
 		runner.setup().get().run();
 		Runnable tick = runner.tick().get();
@@ -133,6 +193,9 @@ public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFea
 		}
 	}
 
+	/**
+	 * Test that organ renders with output correctly.
+	 */
 	@Test(timeout = 180_000)
 	@TestDepth(1)
 	public void withOutput() {
@@ -153,6 +216,9 @@ public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFea
 		assertTrue("Output WAV should not be empty", outFile.length() > 1024);
 	}
 
+	/**
+	 * Test that multiple renders produce consistent output.
+	 */
 	@Test(timeout = 600_000)
 	@TestDepth(2)
 	public void many() {
@@ -173,6 +239,9 @@ public class AudioSceneOptimizationTest extends TestSuiteBase implements CellFea
 		assertTrue("Output WAV should not be empty", outFile.length() > 1024);
 	}
 
+	/**
+	 * Test that random organ produces valid audio output.
+	 */
 	@Test(timeout = 180_000)
 	@TestDepth(1)
 	public void random() {

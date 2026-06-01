@@ -34,10 +34,25 @@ import java.util.concurrent.ThreadLocalRandom;
  * @author Michael Murray
  */
 public class DefaultProducer implements UrlProfilingTask.Producer, ConsoleFeatures {
-	private String dir, uri, sufix;
+	/** The URL of the remote directory listing file used to populate the file list. */
+	private String dir;
+
+	/** The URI prefix prepended to each randomly selected file name. */
+	private String uri;
+
+	/** The suffix appended to each randomly selected file name. */
+	private String sufix;
+
+	/** The list of file names loaded from the remote directory listing. */
 	private List<String> files;
+
+	/** The number of items to process per task, defaulting to 10. */
 	private int size = 10;
 
+	/**
+	 * Initializes the producer by fetching the remote directory listing
+	 * and populating the list of available file names.
+	 */
 	public void init() {
 		InputStream is = null;
 

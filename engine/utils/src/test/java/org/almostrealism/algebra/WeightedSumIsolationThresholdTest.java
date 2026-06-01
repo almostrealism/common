@@ -41,8 +41,12 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 	 * A testable version of WeightedSumComputation that allows controlling isolation.
 	 */
 	static class TestableWeightedSumComputation extends WeightedSumComputation {
+		/** Whether to force isolation. */
 		private final boolean forceIsolation;
 
+		/**
+		 * Creates a testable weighted sum with forced isolation setting.
+		 */
 		public TestableWeightedSumComputation(TraversalPolicy resultShape,
 											  TraversalPolicy inputPositions,
 											  TraversalPolicy weightPositions,
@@ -203,6 +207,14 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 	 *
 	 * <p>For each (1, i, j) in result, compute sum over r of input[r, i, 1] * weight[r, 1, j]</p>
 	 */
+	/**
+	 * Measures compilation time for a weighted sum computation with given parameters.
+	 *
+	 * @param outputSize Size of output
+	 * @param groupSize Size of group for reduction
+	 * @param isolate Whether to force isolation mode
+	 * @return Compilation time in milliseconds
+	 */
 	private long measureCompilation(int outputSize, int groupSize, boolean isolate) {
 		int c1 = outputSize;
 		int c2 = 1;  // Simplified to 1 for cleaner test
@@ -243,6 +255,14 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 		return System.currentTimeMillis() - start;
 	}
 
+	/**
+	 * Measures compilation time for weighted sum embedded in multiply operation.
+	 *
+	 * @param outputSize Size of output
+	 * @param groupSize Size of group for reduction
+	 * @param isolate Whether to force isolation mode
+	 * @return Compilation time in milliseconds
+	 */
 	private long measureEmbeddedMultiply(int outputSize, int groupSize, boolean isolate) {
 		int c1 = outputSize;
 		int c2 = 1;
@@ -283,6 +303,14 @@ public class WeightedSumIsolationThresholdTest extends TestSuiteBase implements 
 		return System.currentTimeMillis() - start;
 	}
 
+	/**
+	 * Measures compilation time for weighted sum embedded in add operation.
+	 *
+	 * @param outputSize Size of output
+	 * @param groupSize Size of group for reduction
+	 * @param isolate Whether to force isolation mode
+	 * @return Compilation time in milliseconds
+	 */
 	private long measureEmbeddedAdd(int outputSize, int groupSize, boolean isolate) {
 		int c1 = outputSize;
 		int c2 = 1;

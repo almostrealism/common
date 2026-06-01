@@ -79,6 +79,7 @@ public class RealTimeTestHelper implements CellFeatures, RGBFeatures, ConsoleFea
 	/** Maximum number of genome seeds to try before giving up. */
 	public static final int MAX_GENOME_ATTEMPTS = 20;
 
+	/** Reference to the test base for scene operations. */
 	private final AudioSceneTestBase testBase;
 
 	/**

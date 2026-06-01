@@ -35,6 +35,9 @@ import java.util.function.Supplier;
  */
 public class ConvolutionDeltaComputationTests extends TestSuiteBase implements GradientTestFeatures {
 
+	/**
+	 * Tests 2D enumeration for convolution operations.
+	 */
 	@Test(timeout = 60000)
 	public void enumerate2d() {
 		int dim = 6;
@@ -61,6 +64,9 @@ public class ConvolutionDeltaComputationTests extends TestSuiteBase implements G
 		result.print();
 	}
 
+	/**
+	 * Tests 2D convolution with enumerate-based gradient computation.
+	 */
 	@Test(timeout = 60000)
 	public void conv2d() {
 		int size = 3;
@@ -82,6 +88,9 @@ public class ConvolutionDeltaComputationTests extends TestSuiteBase implements G
 		// TODO  assertions
 	}
 
+	/**
+	 * Tests 2D convolution with enumerate product for weight gradient computation.
+	 */
 	@Test(timeout = 60000)
 	public void conv2dEnumerateProduct() {
 		int h = 3; // 10;

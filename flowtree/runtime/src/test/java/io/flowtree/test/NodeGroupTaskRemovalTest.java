@@ -107,12 +107,24 @@ public class NodeGroupTaskRemovalTest extends TestSuiteBase {
 	 * externally for testing purposes.
 	 */
 	static class CompletableJobFactory implements JobFactory {
+		/** The unique identifier for this factory and its associated tasks. */
 		private final String id;
+
+		/** Tracks whether this factory has been marked as complete. */
 		private final AtomicBoolean complete = new AtomicBoolean(false);
+
+		/**
+		 * Constructs a new {@link CompletableJobFactory} with the given task identifier.
+		 *
+		 * @param id the identifier used for this factory's task
+		 */
 		CompletableJobFactory(String id) {
 			this.id = id;
 		}
 
+		/**
+		 * Marks this factory as complete so that {@link #isComplete()} returns true.
+		 */
 		void markComplete() {
 			complete.set(true);
 		}

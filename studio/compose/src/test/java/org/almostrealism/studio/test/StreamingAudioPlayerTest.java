@@ -48,14 +48,28 @@ import static org.junit.Assert.assertSame;
  * Direct (hardware) and DAW (streaming) modes.
  */
 public class StreamingAudioPlayerTest extends TestSuiteBase {
+
+	/** Number of audio players to create. */
 	private static final int PLAYER_COUNT = 4;
+
+	/** Audio sample rate in Hz. */
 	private static final int SAMPLE_RATE = 44100;
+
+	/** Maximum number of audio frames. */
 	private static final int MAX_FRAMES = 44100 * 180;
 
+	/** The buffered audio player under test. */
 	private BufferedAudioPlayer player;
+
+	/** The delegated audio line for testing. */
 	private DelegatedAudioLine delegatedLine;
+
+	/** The streaming audio player configuration under test. */
 	private StreamingAudioPlayer config;
 
+	/**
+	 * Sets up the test fixtures before each test.
+	 */
 	@Before
 	public void setUp() {
 		player = new BufferedAudioPlayer(PLAYER_COUNT, SAMPLE_RATE, MAX_FRAMES);
@@ -72,6 +86,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		return new StreamingAudioPlayer(scheduledPlayer, delegatedLine, recordingLine);
 	}
 
+	/**
+	 * Test that the player starts in direct mode.
+	 */
 	@Test(timeout = 10_000)
 	public void testInitialDirectMode() {
 		assumeAudioHardware();
@@ -84,6 +101,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertFalse(config.hasDawConnection());
 	}
 
+	/**
+	 * Test that the player starts in DAW mode.
+	 */
 	@Test(timeout = 10_000)
 	public void testInitialDawMode() {
 		config = createPlayer(null);
@@ -95,6 +115,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertFalse(config.hasDawConnection());
 	}
 
+	/**
+	 * Test switching from direct mode to DAW mode.
+	 */
 	@Test(timeout = 10_000)
 	public void testSwitchFromDirectToDaw() {
 		assumeAudioHardware();
@@ -109,6 +132,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertFalse(config.isDirectMode());
 	}
 
+	/**
+	 * Test switching from DAW mode to direct mode.
+	 */
 	@Test(timeout = 10_000)
 	public void testSwitchFromDawToDirect() {
 		assumeAudioHardware();
@@ -123,6 +149,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertFalse(config.isDawMode());
 	}
 
+	/**
+	 * Test that setDirectMode is idempotent.
+	 */
 	@Test(timeout = 10_000)
 	public void testSetDirectModeIdempotent() {
 		assumeAudioHardware();
@@ -137,6 +166,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertEquals(OutputMode.DIRECT, config.getActiveMode());
 	}
 
+	/**
+	 * Test that setDawMode is idempotent.
+	 */
 	@Test(timeout = 10_000)
 	public void testSetDawModeIdempotent() {
 		config = createPlayer(null);
@@ -150,6 +182,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertEquals(OutputMode.SHARED, config.getActiveMode());
 	}
 
+	/**
+	 * Test that DAW connection is stored but not activated in direct mode.
+	 */
 	@Test(timeout = 10_000)
 	public void testDawConnectionStoredButNotActivatedInDirectMode() {
 		assumeAudioHardware();
@@ -176,6 +211,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		// the delegate remains as it was (could be null initially)
 	}
 
+	/**
+	 * Test that DAW connection is activated when switching to DAW mode.
+	 */
 	@Test(timeout = 10_000)
 	public void testDawConnectionActivatedWhenSwitchingToDaw() {
 		assumeAudioHardware();
@@ -194,6 +232,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertEquals(dawLine, delegatedLine.getOutputDelegate());
 	}
 
+	/**
+	 * Test that DAW connection is immediately active in DAW mode.
+	 */
 	@Test(timeout = 10_000)
 	public void testDawConnectionImmediatelyActiveInDawMode() {
 		config = createPlayer(null);
@@ -208,6 +249,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertEquals(dawLine, delegatedLine.getOutputDelegate());
 	}
 
+	/**
+	 * Test that DAW connection is replaced properly.
+	 */
 	@Test(timeout = 10_000)
 	public void testDawConnectionReplacedProperly() {
 		config = createPlayer(null);
@@ -226,6 +270,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertEquals(secondDaw, delegatedLine.getOutputDelegate());
 	}
 
+	/**
+	 * Test that null DAW connection is handled properly.
+	 */
 	@Test(timeout = 10_000)
 	public void testNullDawConnectionHandled() {
 		config = createPlayer(null);
@@ -243,6 +290,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertNull(config.getDawConnection());
 	}
 
+	/**
+	 * Test switching to DAW with no connection.
+	 */
 	@Test(timeout = 10_000)
 	public void testSwitchToDawWithNoConnection() {
 		assumeAudioHardware();
@@ -258,6 +308,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertNull(delegatedLine.getOutputDelegate());
 	}
 
+	/**
+	 * Test that mode is preserved across DAW connections.
+	 */
 	@Test(timeout = 10_000)
 	public void testModePreservedAcrossDawConnections() {
 		assumeAudioHardware();
@@ -291,6 +344,9 @@ public class StreamingAudioPlayerTest extends TestSuiteBase {
 		assertTrue(config.hasDawConnection()); // DAW connection still stored
 	}
 
+	/**
+	 * Test with a recording line.
+	 */
 	@Test(timeout = 10_000)
 	@TestProperties(knownIssue = true)
 	public void testWithRecordingLine() {

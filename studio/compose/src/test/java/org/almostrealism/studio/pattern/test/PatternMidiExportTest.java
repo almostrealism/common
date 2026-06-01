@@ -81,6 +81,9 @@ public class PatternMidiExportTest extends TestSuiteBase {
 		return context;
 	}
 
+	/**
+	 * Tests exporting a single note to MIDI.
+	 */
 	@Test(timeout = 60000)
 	public void singleNoteExport() {
 		Scale<?> scale = Scale.of(WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
@@ -108,6 +111,9 @@ public class PatternMidiExportTest extends TestSuiteBase {
 		assertEquals("Instrument should be 0 (piano)", 0, event.getInstrument());
 	}
 
+	/**
+	 * Tests exporting a chord (multiple simultaneous notes) to MIDI.
+	 */
 	@Test(timeout = 60000)
 	public void chordExport() {
 		Scale<?> scale = Scale.of(WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
@@ -138,6 +144,9 @@ public class PatternMidiExportTest extends TestSuiteBase {
 				events.stream().allMatch(e -> e.getOnset() == events.get(0).getOnset()));
 	}
 
+	/**
+	 * Tests exporting a sequence of notes (repeated pattern) to MIDI.
+	 */
 	@Test(timeout = 60000)
 	public void sequenceExport() {
 		Scale<?> scale = Scale.of(WesternChromatic.C4, WesternChromatic.E4, WesternChromatic.G4);
@@ -169,6 +178,9 @@ public class PatternMidiExportTest extends TestSuiteBase {
 		assertEquals("Fourth note should be E4 (wraps)", pitchE4, events.get(3).getPitch());
 	}
 
+	/**
+	 * Tests exporting percussive (drum) notes to MIDI with drum instrument.
+	 */
 	@Test(timeout = 60000)
 	public void percussiveExport() {
 		Scale<?> scale = Scale.of(WesternChromatic.C4);
@@ -191,6 +203,9 @@ public class PatternMidiExportTest extends TestSuiteBase {
 				events.stream().allMatch(e -> e.getInstrument() == MidiNoteEvent.DRUM_INSTRUMENT));
 	}
 
+	/**
+	 * Tests that velocity automation is applied correctly to MIDI events.
+	 */
 	@Test(timeout = 60000)
 	public void automationVelocity() {
 		Scale<?> scale = Scale.of(WesternChromatic.C4);
@@ -218,6 +233,9 @@ public class PatternMidiExportTest extends TestSuiteBase {
 				expectedVelocity, events.get(0).getVelocity());
 	}
 
+	/**
+	 * Tests timing accuracy for MIDI event onset and duration.
+	 */
 	@Test(timeout = 60000)
 	public void timingAccuracy() {
 		Scale<?> scale = Scale.of(WesternChromatic.C4);
@@ -244,6 +262,9 @@ public class PatternMidiExportTest extends TestSuiteBase {
 				expectedDurationTicks, events.get(0).getDuration());
 	}
 
+	/**
+	 * Tests timing accuracy with pattern offsets.
+	 */
 	@Test(timeout = 60000)
 	public void offsetTimingAccuracy() {
 		Scale<?> scale = Scale.of(WesternChromatic.C4);
@@ -266,6 +287,9 @@ public class PatternMidiExportTest extends TestSuiteBase {
 				expectedOnsetTicks, events.get(0).getOnset());
 	}
 
+	/**
+	 * Tests round-trip MIDI file read/write integrity.
+	 */
 	@Test(timeout = 60000)
 	public void roundTripMidiFile() throws Exception {
 		Scale<?> scale = Scale.of(
@@ -313,6 +337,9 @@ public class PatternMidiExportTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests compatibility between MIDI tokenizer and pattern elements.
+	 */
 	@Test(timeout = 60000)
 	public void tokenizerCompatibility() {
 		Scale<?> scale = Scale.of(
@@ -351,6 +378,9 @@ public class PatternMidiExportTest extends TestSuiteBase {
 				originalPitches, roundTrippedPitches);
 	}
 
+	/**
+	 * Tests pitch mapping from musical notes to MIDI numbers.
+	 */
 	@Test(timeout = 60000)
 	public void pitchMapping() {
 		assertEquals("C4 should map to MIDI 60",

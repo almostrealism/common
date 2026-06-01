@@ -87,6 +87,15 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     /** {@code true} when at least one review session ran during this job. */
     private boolean reviewRan;
 
+    /** {@code true} when the retrospective phase ran (reflectionEnabled was true and doWork ran it). */
+    private boolean reflectionRan;
+    /** USD cost of the retrospective session, accumulated via absorbResult() into costByRunner/costByModel. */
+    private double reflectionCostUsd;
+    /** {@code true} when the retrospective agent found and analyzed a primary-phase transcript. */
+    private boolean reflectionTranscriptFound;
+    /** Number of improvement findings emitted as memories by the retrospective agent. */
+    private int reflectionFindingsCount;
+
     /**
      * Creates a new Claude Code job completion event.
      *
@@ -434,4 +443,34 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
 
     /** Returns whether the review phase ran at any point during this job. */
     public boolean isReviewRan() { return reviewRan; }
+
+    /**
+     * Records retrospective-phase telemetry on this event.
+     *
+     * @param ran              whether the retrospective phase ran
+     * @param costUsd          USD cost of the retrospective session
+     * @param transcriptFound  whether a primary-phase transcript was found and analyzed
+     * @param findingsCount    number of improvement findings stored as memories
+     * @return this event for chaining
+     */
+    public CodingAgentJobEvent withReflectionInfo(boolean ran, double costUsd,
+                                                   boolean transcriptFound, int findingsCount) {
+        this.reflectionRan = ran;
+        this.reflectionCostUsd = costUsd;
+        this.reflectionTranscriptFound = transcriptFound;
+        this.reflectionFindingsCount = findingsCount;
+        return this;
+    }
+
+    /** Returns whether the retrospective phase ran during this job. */
+    public boolean isReflectionRan() { return reflectionRan; }
+
+    /** Returns the USD cost of the retrospective session. */
+    public double getReflectionCostUsd() { return reflectionCostUsd; }
+
+    /** Returns whether the retrospective agent found and analyzed a primary-phase transcript. */
+    public boolean isReflectionTranscriptFound() { return reflectionTranscriptFound; }
+
+    /** Returns the number of improvement findings emitted as memories by the retrospective agent. */
+    public int getReflectionFindingsCount() { return reflectionFindingsCount; }
 }
