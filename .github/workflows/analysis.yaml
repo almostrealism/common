@@ -1123,6 +1123,8 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      checks: write
+      security-events: write
 
     steps:
       - name: Checkout Code
@@ -1194,30 +1196,10 @@ jobs:
           path: .qodana/code-coverage/
           retention-days: 30
 
-  qodana:
-    needs: [analysis]
-    runs-on: ubuntu-latest
-    permissions:
-      checks: write
-      security-events: write
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'adopt'
-          cache: 'maven'
-
-      - name: Build for Analysis
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
-
+      # Qodana runs as part of this job (rather than a separate one) so it
+      # analyzes the same workspace the coverage was just merged into: the
+      # report at .qodana/code-coverage/coverage.xml is picked up directly,
+      # and we avoid a redundant checkout and `mvn install`.
       - name: Qodana Scan
         uses: JetBrains/qodana-action@main
         env:
@@ -1818,7 +1800,6 @@ jobs:
       - test-mac
       - test-media-mac
       - analysis
-      - qodana
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -1842,7 +1823,6 @@ jobs:
           TEST_MAC_RESULT: ${{ needs.test-mac.result }}
           TEST_MEDIA_MAC_RESULT: ${{ needs.test-media-mac.result }}
           ANALYSIS_RESULT: ${{ needs.analysis.result }}
-          QODANA_RESULT: ${{ needs.qodana.result }}
         run: |
           FAILED=""
 
@@ -1878,7 +1858,6 @@ jobs:
           check_job "test-mac"                "$TEST_MAC_RESULT"
           check_job "test-media-mac"          "$TEST_MEDIA_MAC_RESULT"
           check_job "analysis"                "$ANALYSIS_RESULT"
-          check_job "qodana"                  "$QODANA_RESULT"
 
           # checkstyle uses continue-on-error so its job result is always
           # "success". Check its outputs.passed instead.
@@ -1917,4 +1896,3 @@ jobs:
           echo "| test-mac | ${{ needs.test-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-media-mac | ${{ needs.test-media-mac.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| analysis | ${{ needs.analysis.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| qodana | ${{ needs.qodana.result }} |" >> "$GITHUB_STEP_SUMMARY"
