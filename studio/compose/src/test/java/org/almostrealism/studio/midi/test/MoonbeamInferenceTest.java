@@ -49,6 +49,7 @@ import java.util.List;
  */
 public class MoonbeamInferenceTest extends TestSuiteBase implements ConsoleFeatures {
 
+	/** Path to the Moonbeam model weights directory. */
 	private static final String WEIGHTS_DIR = "/workspace/project/moonbeam-weights-protobuf";
 
 	/**

@@ -41,11 +41,19 @@ import org.junit.Test;
  */
 public class OobleckComponentTests extends TestSuiteBase {
 
+	/** Batch size used across all component tests. */
 	private static final int BATCH_SIZE = 1;
+
+	/** Channel count for small/single-channel tests. */
 	private static final int CHANNELS_SMALL = 128;
 
 	/**
 	 * Helper to time and report component performance.
+	 *
+	 * @param name the component name for logging
+	 * @param channels the number of channels
+	 * @param seqLen the sequence length
+	 * @param block the block to measure
 	 */
 	private void timeComponent(String name, int channels, int seqLen, Block block) {
 		log(String.format("\n=== %s (channels=%d, seqLen=%d) ===", name, channels, seqLen));
@@ -81,6 +89,9 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	/**
 	 * Creates random weights for testing.
+	 *
+	 * @param dims the tensor dimensions
+	 * @return a PackedCollection with random small values
 	 */
 	private PackedCollection randomWeights(int... dims) {
 		PackedCollection w = new PackedCollection(dims);
@@ -90,6 +101,9 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	// ==================== Snake Tests ====================
 
+	/**
+	 * Tests Snake activation with small sequence length (32 samples).
+	 */
 	@Test(timeout = 120000)
 	public void testSnakeSmall() {
 		Console.root().addListener(OutputFeatures.fileOutput(
@@ -109,6 +123,9 @@ public class OobleckComponentTests extends TestSuiteBase {
 		timeComponent("Snake Small", channels, seqLen, snake);
 	}
 
+	/**
+	 * Tests Snake activation with medium sequence length (4096 samples).
+	 */
 	@Test(timeout = 120000)
 	public void testSnakeMedium() {
 		Console.root().addListener(OutputFeatures.fileOutput(
@@ -128,6 +145,9 @@ public class OobleckComponentTests extends TestSuiteBase {
 		timeComponent("Snake Medium", channels, seqLen, snake);
 	}
 
+	/**
+	 * Tests Snake activation with large sequence length (135461 samples).
+	 */
 	@Test(timeout = 120000)
 	@TestDepth(2)
 	@TestProperties(knownIssue = true)
@@ -152,6 +172,9 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	// ==================== WNConv1d Tests ====================
 
+	/**
+	 * Tests weight-normalized 1D convolution with small sequence length (32 samples).
+	 */
 	@Test(timeout = 120000)
 	public void testWNConv1dSmall() {
 		Console.root().addListener(OutputFeatures.fileOutput(
@@ -171,6 +194,9 @@ public class OobleckComponentTests extends TestSuiteBase {
 		timeComponent("WNConv1d Small", channels, seqLen, conv);
 	}
 
+	/**
+	 * Tests weight-normalized 1D convolution with large sequence length (135461 samples).
+	 */
 	@Test(timeout = 120000)
 	public void testWNConv1dLarge() {
 		Console.root().addListener(OutputFeatures.fileOutput(
@@ -192,6 +218,9 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	// ==================== WNConvTranspose1d Tests ====================
 
+	/**
+	 * Tests transposed weight-normalized 1D convolution with 16x upsampling factor.
+	 */
 	@Test(timeout = 120000)
 	@TestProperties(knownIssue = true)
 	public void testWNConvTranspose16x() {
@@ -218,6 +247,9 @@ public class OobleckComponentTests extends TestSuiteBase {
 		timeComponent("WNConvTranspose 16x", inChannels, seqLen, conv);
 	}
 
+	/**
+	 * Tests transposed weight-normalized 1D convolution with 4x upsampling factor and large output (32768 samples).
+	 */
 	@Test(timeout = 120000)
 	public void testWNConvTranspose4xLarge() {
 		Console.root().addListener(OutputFeatures.fileOutput(
@@ -245,6 +277,9 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	// ==================== Residual Block Tests ====================
 
+	/**
+	 * Tests residual block with small sequence length (32 samples, 128 channels).
+	 */
 	@Test(timeout = 120000)
 	public void testResidualBlockSmall() {
 		Console.root().addListener(OutputFeatures.fileOutput(
@@ -258,6 +293,9 @@ public class OobleckComponentTests extends TestSuiteBase {
 		timeComponent("ResidualBlock Small", channels, seqLen, resBlock);
 	}
 
+	/**
+	 * Tests residual block with large sequence length (135461 samples, 128 channels).
+	 */
 	@Test(timeout = 120000)
 	public void testResidualBlockLarge() {
 		Console.root().addListener(OutputFeatures.fileOutput(
@@ -274,6 +312,10 @@ public class OobleckComponentTests extends TestSuiteBase {
 	/**
 	 * Builds a residual block with random weights.
 	 * Structure: Snake -> WNConv(k=7) -> Snake -> WNConv(k=1) + skip
+	 *
+	 * @param channels the number of channels
+	 * @param seqLen the sequence length
+	 * @return a residual block with random weights
 	 */
 	private Block buildRandomResidualBlock(int channels, int seqLen) {
 		TraversalPolicy inputShape = shape(BATCH_SIZE, channels, seqLen);
@@ -308,6 +350,9 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	// ==================== Decoder Block Tests ====================
 
+	/**
+	 * Tests decoder block 1 (first block: small input, 2048 to 1024 channels).
+	 */
 	@Test(timeout = 6 * 60000)
 	public void testDecoderBlock1() {
 		Console.root().addListener(OutputFeatures.fileOutput(
@@ -324,6 +369,9 @@ public class OobleckComponentTests extends TestSuiteBase {
 		timeComponent("DecoderBlock 1", inChannels, seqLen, block);
 	}
 
+	/**
+	 * Tests decoder block 5 (last block: largest output, 32768 samples, 128 channels).
+	 */
 	@Test(timeout = 5 * 60000)
 	@TestProperties(highMemory = true)
 	@TestDepth(2)
@@ -346,6 +394,12 @@ public class OobleckComponentTests extends TestSuiteBase {
 	/**
 	 * Builds a decoder block with random weights.
 	 * Structure: Snake -> WNConvTranspose -> 3x ResidualBlock
+	 *
+	 * @param inChannels the input channel count
+	 * @param outChannels the output channel count
+	 * @param seqLen the input sequence length
+	 * @param stride the upsampling stride
+	 * @return a decoder block with random weights
 	 */
 	private Block buildRandomDecoderBlock(int inChannels, int outChannels,
 										  int seqLen, int stride) {
@@ -379,6 +433,10 @@ public class OobleckComponentTests extends TestSuiteBase {
 
 	/**
 	 * Helper to build residual block at the output size of the decoder block.
+	 *
+	 * @param channels the number of channels
+	 * @param seqLen the sequence length
+	 * @return a residual block with random weights
 	 */
 	private Block buildRandomResidualBlockForDecoderBlock(int channels, int seqLen) {
 		TraversalPolicy inputShape = shape(BATCH_SIZE, channels, seqLen);

@@ -60,7 +60,7 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 	/** Threshold below which a sample is considered silent. */
 	private static final double SILENCE_THRESHOLD = 0.001;
 
-	/** Results directory. */
+	/** Results directory for test output. */
 	private static final String RESULTS_DIR = "results/fixed-pattern";
 
 	/**
@@ -478,6 +478,9 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 		log("\nTest PASSED: 2-minute audio has " + String.format("%.1f%%", overallNonZero * 100) + " non-zero coverage");
 	}
 
+	/**
+	 * Ensures the results directory exists.
+	 */
 	private void ensureResultsDir() {
 		File dir = new File(RESULTS_DIR);
 		if (!dir.exists()) {
@@ -485,6 +488,12 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 		}
 	}
 
+	/**
+	 * Saves audio data to a WAV file.
+	 *
+	 * @param audio the audio data to save
+	 * @param path the file path to save to
+	 */
 	private void saveAudio(PackedCollection audio, String path) {
 		WaveData data = new WaveData(audio, SAMPLE_RATE);
 		boolean success = data.save(new File(path));
@@ -499,12 +508,30 @@ public class FixedPatternCorrectnessTest extends TestSuiteBase implements CellFe
 	 * Statistics for a time segment of audio.
 	 */
 	private static class SegmentStats {
+		/** Time segment index in seconds. */
 		final int second;
+
+		/** Maximum amplitude in this segment. */
 		final double maxAmplitude;
+
+		/** Root mean square of samples in this segment. */
 		final double rms;
+
+		/** Ratio of non-zero samples to total in this segment. */
 		final double nonZeroRatio;
+
+		/** First frame with non-zero amplitude. */
 		final int firstNonZeroFrame;
 
+		/**
+		 * Creates segment statistics.
+		 *
+		 * @param second time segment index
+		 * @param maxAmplitude maximum amplitude
+		 * @param rms root mean square
+		 * @param nonZeroRatio non-zero sample ratio
+		 * @param firstNonZeroFrame first non-zero frame index
+		 */
 		SegmentStats(int second, double maxAmplitude, double rms, double nonZeroRatio, int firstNonZeroFrame) {
 			this.second = second;
 			this.maxAmplitude = maxAmplitude;

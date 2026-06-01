@@ -33,7 +33,13 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 
+/**
+ * Tests for DefaultChannelSectionFactory and ChannelSection processing.
+ */
 public class DefaultChannelSectionTest extends TestSuiteBase implements CellFeatures, AudioTestFeatures {
+	/**
+	 * Test that ChannelSection processes audio data correctly.
+	 */
 	@Test(timeout = 120_000)
 	public void section() throws IOException {
 		int samples = 2 * 8 * OutputLine.sampleRate;

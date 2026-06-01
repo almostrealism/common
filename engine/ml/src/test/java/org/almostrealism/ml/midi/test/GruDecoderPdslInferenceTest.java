@@ -60,6 +60,9 @@ import java.util.Random;
  */
 public class GruDecoderPdslInferenceTest extends TestSuiteBase implements ConsoleFeatures {
 
+	/**
+	 * Path to the Moonbeam protobuf weights directory.
+	 */
 	private static final String WEIGHTS_DIR = "/Users/Shared/models/moonbeam-weights-protobuf";
 
 	// -----------------------------------------------------------------------
@@ -127,7 +130,7 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase implements Consol
 			Assert.assertTrue("Token " + i + " must be < vocabSize", tokens[i] < vocabSize);
 		}
 
-		log("[GruDecoderPdslInferenceTest] synthetic decode: "
+		log("synthetic decode: "
 				+ Arrays.toString(tokens));
 	}
 
@@ -194,11 +197,11 @@ public class GruDecoderPdslInferenceTest extends TestSuiteBase implements Consol
 
 		int[] attrValues = decoder.toAttributeValues(tokens);
 
-		log("[GruDecoderPdslInferenceTest] output tokens (flat vocab): "
+		log("output tokens (flat vocab): "
 				+ Arrays.toString(tokens));
-		log("[GruDecoderPdslInferenceTest] attribute values: "
+		log("attribute values: "
 				+ Arrays.toString(attrValues));
-		log("[GruDecoderPdslInferenceTest] inference test passed.");
+		log("inference test passed.");
 	}
 
 	// -----------------------------------------------------------------------

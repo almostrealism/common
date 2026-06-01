@@ -42,13 +42,22 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for AudioSceneOptimizer optimization functionality.
+ */
 public class AudioSceneOptimizerTest extends TestSuiteBase implements CellFeatures {
+	/**
+	 * Creates an AudioScene for testing.
+	 */
 	protected AudioScene<?> scene() {
 		// DesirablesProvider desirables = new DefaultDesirablesProvider<>(120, WesternScales.major(WesternChromatic.G3, 1));
 		// return () -> new GeneticTemporalFactoryFromDesirables().from(desirables);
 		return new AudioScene<>(null, 120, 2, 2, OutputLine.sampleRate, new ArrayList<>(), new NoOpGenerationProvider());
 	}
 
+	/**
+	 * Creates an AudioSceneOptimizer for testing.
+	 */
 	protected AudioSceneOptimizer optimizer() {
 		int cycles = 1;
 
@@ -75,6 +84,9 @@ public class AudioSceneOptimizerTest extends TestSuiteBase implements CellFeatur
 		return optimizer;
 	}
 
+	/**
+	 * Test that optimizer runs successfully.
+	 */
 	@Test(timeout = 600_000)
 	@TestProperties(knownIssue = true)
 	@TestDepth(1)
@@ -83,6 +95,9 @@ public class AudioSceneOptimizerTest extends TestSuiteBase implements CellFeatur
 		optimizer().run();
 	}
 
+	/**
+	 * Test that health computation runs correctly.
+	 */
 	@Test(timeout = 900_000)
 	@TestProperties(knownIssue = true)
 	@TestDepth(1)

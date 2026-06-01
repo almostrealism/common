@@ -255,7 +255,7 @@ public class SpatialDrawingTest extends TestSuiteBase {
 
 		// This test documents the current behavior - time is negative
 		Assert.assertTrue("Time should be negative for negative X", coords.time() < 0);
-		log("ISSUE: Negative time values are skipped in applyValues()");
+		log("Negative time values are skipped in applyValues()");
 	}
 
 	/**
@@ -537,6 +537,9 @@ public class SpatialDrawingTest extends TestSuiteBase {
 		Assert.assertTrue("Should have non-zero cells after transformed strokes", nonZeroCells > 0);
 	}
 
+	/**
+	 * Computes the Euclidean distance between two vectors.
+	 */
 	private double distanceTo(Vector a, Vector b) {
 		return Math.sqrt(
 				Math.pow(a.getX() - b.getX(), 2) +

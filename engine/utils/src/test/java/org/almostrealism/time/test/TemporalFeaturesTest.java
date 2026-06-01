@@ -23,8 +23,14 @@ import org.almostrealism.util.FirFilterTestFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for temporal features including filter coefficients.
+ */
 public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTestFeatures {
 
+	/**
+	 * Computes high-pass filter coefficients from low-pass coefficients.
+	 */
 	protected double[] highPassCoefficients(double cutoff, int sampleRate, int filterOrder) {
 		double[] lowPassCoefficients = referenceLowPassCoefficients(cutoff, sampleRate, filterOrder);
 
@@ -36,6 +42,9 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 		return highPassCoefficients;
 	}
 
+	/**
+	 * Tests low-pass filter coefficient computation.
+	 */
 	@Test(timeout = 10000)
 	public void lowPassCoefficients() {
 		int filterOrder = 30;
@@ -50,6 +59,9 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 		}
 	}
 
+	/**
+	 * Tests low-pass filter coefficients for multiple cutoffs.
+	 */
 	@Test(timeout = 10000)
 	public void lowPassCoefficientsMultiple() {
 		int filterOrder = 30;
@@ -70,6 +82,9 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 		}
 	}
 
+	/**
+	 * Tests high-pass filter coefficients for multiple cutoffs.
+	 */
 	@Test(timeout = 10000)
 	public void highPassCoefficientsMultiple() {
 		int filterOrder = 30;
@@ -90,6 +105,9 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 		}
 	}
 
+	/**
+	 * Tests low-pass coefficients with producer arguments.
+	 */
 	@Test(timeout = 10000)
 	public void lowPassCoefficientsArguments() {
 		int filterOrder = 30;
@@ -119,12 +137,18 @@ public class TemporalFeaturesTest extends TestSuiteBase implements FirFilterTest
 		}
 	}
 
+	/**
+	 * Tests coefficient selection based on decision value.
+	 */
 	@Test(timeout = 25000)
 	public void chooseCoefficients() {
 		chooseCoefficients(0.1);
 		chooseCoefficients(0.9);
 	}
 
+	/**
+	 * Helper for coefficient selection testing.
+	 */
 	public void chooseCoefficients(double c) {
 		int sampleRate = 44100;
 		int filterOrder = 20;

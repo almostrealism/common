@@ -45,6 +45,7 @@ public class BatchedSamplingOffsetTest extends TestSuiteBase implements Temporal
 	/** Audio sample rate. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
+	/** Returns a single-element {@link PackedCollection} containing the given value. */
 	private PackedCollection single(double value) {
 		PackedCollection c = new PackedCollection(1);
 		c.setMem(new double[] { value });

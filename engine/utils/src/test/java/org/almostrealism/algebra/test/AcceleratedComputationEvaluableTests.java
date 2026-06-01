@@ -24,7 +24,14 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for accelerated computation evaluable operations.
+ */
 public class AcceleratedComputationEvaluableTests extends TestSuiteBase {
+
+	/**
+	 * Tests static producer evaluation.
+	 */
 	@Test(timeout = 30000)
 	public void staticProducer() {
 		Producer<PackedCollection> res = vector(0.0, 1.0, 2.0);
@@ -35,6 +42,9 @@ public class AcceleratedComputationEvaluableTests extends TestSuiteBase {
 		assert v.getZ() == 2.0;
 	}
 
+	/**
+	 * Tests scalar extraction from vector.
+	 */
 	@Test(timeout = 30000)
 	public void scalarFromVector() {
 		CollectionProducer res = y(vector(0.0, 1.0, 2.0));
@@ -45,6 +55,9 @@ public class AcceleratedComputationEvaluableTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests scalar product operation.
+	 */
 	@Test(timeout = 30000)
 	public void scalarProduct() {
 		CollectionProducer x = c(3.0);

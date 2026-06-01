@@ -26,12 +26,13 @@ import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for DiffusionTransformer architecture and components.
+ */
 public class DiffusionTransformerTests extends TestSuiteBase implements DiffusionTransformerFeatures {
 
 	/**
 	 * Tests that the transformerBlock can be built and compiled with proper shapes.
-	 * This isolates the transformer block from the full DiffusionTransformer to
-	 * identify shape mismatch issues.
 	 */
 	@Test(timeout = 120000)
 	public void transformerBlockShapes() {

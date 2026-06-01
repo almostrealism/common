@@ -293,8 +293,13 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 	 * Minimal {@link RAM} subclass for testing that returns a fixed content pointer.
 	 */
 	private static class StubRAM extends RAM {
+		/** The content pointer address returned by this stub. */
 		private final long address;
 
+		/**
+		 * Creates a StubRAM with the specified content pointer address.
+		 * @param address the content pointer value to return
+		 */
 		StubRAM(long address) {
 			super(0);
 			this.address = address;
@@ -315,6 +320,10 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 	 * used to test the non-RAM code path in resolveRAM.
 	 */
 	private static class NonRamMemory implements Memory {
+		/**
+		 * Returns null since this is a minimal stub implementation.
+		 * @return null
+		 */
 		@Override
 		public MemoryProvider getProvider() { return null; }
 	}
@@ -323,8 +332,13 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 	 * Minimal {@link MemoryData} implementation backed by a given {@link Memory}.
 	 */
 	private static class StubMemoryData implements MemoryData {
+		/** The Memory backing this data. */
 		private final Memory mem;
 
+		/**
+		 * Creates a StubMemoryData backed by the specified Memory.
+		 * @param mem the Memory backing this data
+		 */
 		StubMemoryData(Memory mem) { this.mem = mem; }
 
 		@Override
@@ -357,11 +371,18 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 	 * {@link MemoryData#destroy()} between acquire and release.
 	 */
 	private static class MutableMemoryData implements MemoryData {
+		/** The Memory backing this data, can be cleared. */
 		private Memory mem;
 
+		/**
+		 * Creates a MutableMemoryData backed by the specified Memory.
+		 * @param mem the Memory backing this data
+		 */
 		MutableMemoryData(Memory mem) { this.mem = mem; }
 
-		/** Clears the memory reference, simulating a destroyed MemoryData. */
+		/**
+		 * Clears the memory reference, simulating a destroyed MemoryData.
+		 */
 		void clearMem() { this.mem = null; }
 
 		@Override
@@ -393,6 +414,11 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 	 * {@link MemoryData} that throws on getMem(), used to test exception handling.
 	 */
 	private static class FailingMemoryData implements MemoryData {
+		/**
+		 * Always throws a RuntimeException to simulate a failing MemoryData.
+		 * @return never returns
+		 * @throws RuntimeException always
+		 */
 		@Override
 		public Memory getMem() { throw new RuntimeException("Simulated failure"); }
 

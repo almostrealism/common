@@ -81,15 +81,25 @@ public class SkyTntGenerationDemo extends TestSuiteBase implements ConsoleFeatur
     //  Synthetic config constants (used when real weights are absent)
     // -----------------------------------------------------------------------
 
+    /** Vocabulary size for the synthetic model. */
     private static final int VOCAB = SkyTntTokenizerV2.VOCAB_SIZE;
+    /** Hidden dimension for the synthetic model. */
     private static final int DIM = 64;
+    /** FFN dimension for the net model. */
     private static final int FFN = 256;
+    /** FFN dimension for the token model. */
     private static final int FFN_TOKEN = 64;
+    /** Number of attention heads for the net model. */
     private static final int HEADS = 4;
+    /** Number of attention heads for the token model. */
     private static final int HEADS_TOKEN = 2;
+    /** Maximum sequence length. */
     private static final int SEQ_LEN = 128;
+    /** Number of layers in the net model. */
     private static final int NET_LAYERS = 1;
+    /** Number of layers in the token model. */
     private static final int NET_TOKEN_LAYERS = 1;
+    /** Epsilon value for numerical stability. */
     private static final double EPSILON = 1e-5;
 
     /**

@@ -64,6 +64,7 @@ public class BatchedSssPlaybackTest extends TestSuiteBase implements TemporalFea
 	/** FIR filter order matching production {@code EfxManager.filterOrder}. */
 	private static final int FILTER_ORDER = 40;
 
+	/** Creates a flat {@link PackedCollection} pre-loaded with the given values. */
 	private PackedCollection col(double[] values) {
 		PackedCollection c = new PackedCollection(values.length);
 		c.setMem(values);
@@ -79,6 +80,11 @@ public class BatchedSssPlaybackTest extends TestSuiteBase implements TemporalFea
 		return col(data);
 	}
 
+	/**
+	 * Verifies that a single batched SSS chain dispatch produces output within 1e-4 RMS
+	 * of a per-note reference that applies resampling, layer envelopes, filter-cutoff
+	 * envelope, and volume envelope note by note.
+	 */
 	@Test(timeout = 240000)
 	@TestDepth(2)
 	public void testFullSssPlaybackChain() {

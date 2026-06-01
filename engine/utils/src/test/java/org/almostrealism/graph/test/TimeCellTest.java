@@ -25,7 +25,13 @@ import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for TimeCell temporal operations.
+ */
 public class TimeCellTest extends TestSuiteBase {
+	/**
+	 * Tests time cell frame counting.
+	 */
 	@Test(timeout = 10000)
 	public void timeCell() {
 		TimeCell cell = new TimeCell(null, c(44100));
@@ -39,6 +45,9 @@ public class TimeCellTest extends TestSuiteBase {
 		assertEquals(100.0, cell.frame().evaluate());
 	}
 
+	/**
+	 * Tests time cell frame modulo operation.
+	 */
 	@Test(timeout = 10000)
 	public void fmod() {
 		Pair time = new Pair();

@@ -51,11 +51,18 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
     /** Registered alongside {@code "claude"} for tests that need a second runner. */
     private static final String TEST_RUNNER = "phase-config-resolver-test-runner";
 
+    /**
+     * Registers the test runner with {@link AgentRunnerRegistry} before each test.
+     */
     @Before
     public void registerTestRunner() {
         AgentRunnerRegistry.register(TEST_RUNNER, () -> null);
     }
 
+    /**
+     * Convenience factory that builds a {@link PhaseConfigBundle} from a default config and
+     * an optional single per-phase override entry.
+     */
     private static PhaseConfigBundle bundle(PhaseConfig def, Phase phase, PhaseConfig override) {
         Map<Phase, PhaseConfig> overrides = new EnumMap<>(Phase.class);
         if (phase != null && override != null) overrides.put(phase, override);
@@ -64,6 +71,9 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
 
     // --- Runner resolution (mirror SubmissionRunnerResolverTest cases) -------
 
+    /**
+     * Verifies that all-empty bundles resolve to the controller's hard-coded default runner.
+     */
     @Test(timeout = 5000)
     public void allEmptyResolvesToControllerDefault() {
         PhaseConfigResolver r = PhaseConfigResolver.resolve(
@@ -75,6 +85,9 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         assertNull(resolved.effort());
     }
 
+    /**
+     * Verifies that a job-level per-phase override takes precedence over workstream and workspace defaults.
+     */
     @Test(timeout = 5000)
     public void jobOverrideBeatsAllOtherLevels() {
         PhaseConfigBundle job = bundle(null, Phase.PRIMARY,
@@ -86,6 +99,9 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         assertEquals(TEST_RUNNER, r.forPhase(Phase.PRIMARY).runner());
     }
 
+    /**
+     * Verifies that a job-level default config beats a workstream per-phase override.
+     */
     @Test(timeout = 5000)
     public void jobDefaultBeatsWorkstreamOverride() {
         PhaseConfigBundle job = bundle(new PhaseConfig(TEST_RUNNER, null, null), null, null);
@@ -96,6 +112,10 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         assertEquals(TEST_RUNNER, r.forPhase(Phase.PRIMARY).runner());
     }
 
+    /**
+     * Verifies that a workstream per-phase override beats the workstream default for that phase
+     * while other phases continue to use the workstream default.
+     */
     @Test(timeout = 5000)
     public void workstreamOverrideBeatsWorkstreamDefault() {
         PhaseConfigBundle ws = bundle(new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null),
@@ -107,6 +127,9 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         assertEquals(AgentRunnerRegistry.CLAUDE, r.forPhase(Phase.PRIMARY).runner());
     }
 
+    /**
+     * Verifies that the workstream default runner beats the workspace default runner.
+     */
     @Test(timeout = 5000)
     public void workstreamDefaultBeatsWorkspaceDefault() {
         PhaseConfigBundle ws = bundle(new PhaseConfig(TEST_RUNNER, null, null), null, null);
@@ -117,6 +140,10 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         assertEquals(TEST_RUNNER, r.forPhase(Phase.PRIMARY).runner());
     }
 
+    /**
+     * Verifies that a workspace per-phase override beats the workspace default for that phase
+     * while other phases continue to use the workspace default.
+     */
     @Test(timeout = 5000)
     public void workspaceOverrideBeatsWorkspaceDefault() {
         PhaseConfigBundle wsp = bundle(new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null),
@@ -130,6 +157,9 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
 
     // --- Model resolution -----------------------------------------------------
 
+    /**
+     * Verifies that the model field resolves correctly from a workstream default bundle.
+     */
     @Test(timeout = 5000)
     public void modelResolvesFromWorkstreamDefault() {
         PhaseConfigBundle ws = bundle(new PhaseConfig(null, "claude-opus-4-7", null), null, null);
@@ -139,6 +169,9 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         assertEquals("claude-opus-4-7", r.forPhase(Phase.PRIMARY).model());
     }
 
+    /**
+     * Verifies that a per-phase model override beats the bundle's default model for that phase.
+     */
     @Test(timeout = 5000)
     public void modelPerPhaseOverrideBeatsDefault() {
         PhaseConfigBundle job = bundle(new PhaseConfig(null, "claude-opus-4-7", null),
@@ -152,6 +185,9 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
 
     // --- Effort resolution ----------------------------------------------------
 
+    /**
+     * Verifies that a per-phase effort override beats the bundle's default effort for that phase.
+     */
     @Test(timeout = 5000)
     public void effortPerPhaseOverrideBeatsDefault() {
         PhaseConfigBundle job = bundle(new PhaseConfig(null, null, "high"),
@@ -165,6 +201,10 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
 
     // --- Independent per-field fall-through -----------------------------------
 
+    /**
+     * Verifies that runner, model, and effort fall through the precedence ladder independently
+     * from different bundle levels.
+     */
     @Test(timeout = 5000)
     public void independentFieldsFallThroughIndependently() {
         // Job sets effort only, workstream sets runner only, workspace sets model only.
@@ -206,6 +246,10 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
 
     // --- Validation -----------------------------------------------------------
 
+    /**
+     * Verifies that specifying an unknown runner name produces a non-null error
+     * that mentions the unrecognized runner identifier.
+     */
     @Test(timeout = 5000)
     public void unknownRunnerReturnsError() {
         PhaseConfigBundle job = bundle(new PhaseConfig("no-such-runner", null, null), null, null);
@@ -216,6 +260,10 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
                 r.error().contains("no-such-runner"));
     }
 
+    /**
+     * Verifies that specifying an invalid effort value produces a non-null error
+     * that mentions the word "effort".
+     */
     @Test(timeout = 5000)
     public void invalidEffortReturnsError() {
         PhaseConfigBundle job = bundle(new PhaseConfig(null, null, "nonsense"), null, null);
@@ -228,6 +276,10 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
 
     // --- applyTo --------------------------------------------------------------
 
+    /**
+     * Verifies that {@code applyTo(CodingAgentJobFactory)} populates the factory's bundle
+     * with the fully-resolved default config and per-phase entries.
+     */
     @Test(timeout = 5000)
     public void applyToFactoryPopulatesBundle() {
         PhaseConfigBundle job = bundle(new PhaseConfig(null, "claude-opus-4-7", "high"),
@@ -338,6 +390,10 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
 
     // --- resolveLegacyRunners convenience overload ----------------------------
 
+    /**
+     * Verifies that {@code resolveLegacyRunners} mirrors the runner-only precedence ladder
+     * from per-phase request map entries.
+     */
     @Test(timeout = 5000)
     public void resolveLegacyRunnersMirrorsRunnerOnlyLadder() {
         Map<String, String> requestRunners = new LinkedHashMap<>();
@@ -351,6 +407,10 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
 
     // --- rejectLegacyRequestFields: the clean-break HTTP guard ----------------
 
+    /**
+     * Verifies that {@code rejectLegacyRequestFields} accepts null, empty string, and
+     * request bodies that contain only the new-shape fields.
+     */
     @Test(timeout = 5000)
     public void rejectLegacyRequestFieldsAcceptsNullEmptyAndCleanBody() {
         assertNull(PhaseConfigResolver.rejectLegacyRequestFields(null));
@@ -361,6 +421,10 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
                         + "\"phaseConfigs\":{\"review\":{\"model\":\"opus\"}}}"));
     }
 
+    /**
+     * Verifies that {@code rejectLegacyRequestFields} returns a non-null error for each
+     * removed legacy field and that the error message names both the field and its replacement.
+     */
     @Test(timeout = 5000)
     public void rejectLegacyRequestFieldsRejectsEachRemovedField() {
         for (String field : new String[] {"model", "effort", "runners", "defaultRunner"}) {
@@ -373,6 +437,10 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that when multiple legacy fields are present, {@code rejectLegacyRequestFields}
+     * names the first removed field encountered in the defined check order.
+     */
     @Test(timeout = 5000)
     public void rejectLegacyRequestFieldsNamesFirstRemovedFieldPresent() {
         String err = PhaseConfigResolver.rejectLegacyRequestFields(
@@ -381,6 +449,10 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         assertTrue("model/effort are checked before runners", err.contains("effort"));
     }
 
+    /**
+     * Verifies that {@code rejectLegacyRequestFields} returns null (no error) for malformed
+     * JSON strings that cannot be parsed as an object.
+     */
     @Test(timeout = 5000)
     public void rejectLegacyRequestFieldsIgnoresMalformedJson() {
         assertNull(PhaseConfigResolver.rejectLegacyRequestFields("not-json"));
@@ -407,6 +479,10 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         assertEquals("high", reqBundle.defaultPhaseConfig().effort());
     }
 
+    /**
+     * Verifies that {@code requestBundle()} exposes per-phase overrides exactly as supplied
+     * in the request, before any merging with higher-level bundles.
+     */
     @Test(timeout = 5000)
     public void requestBundleExposesRawRequestPerPhaseOverrides() {
         PhaseConfigBundle req = bundle(
@@ -421,6 +497,10 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
         assertEquals(TEST_RUNNER, review.runner());
     }
 
+    /**
+     * Verifies that {@code requestBundle()} returns a non-null empty bundle when no request
+     * config was supplied to the resolver.
+     */
     @Test(timeout = 5000)
     public void requestBundleReturnsEmptyForNoRequestConfig() {
         PhaseConfigResolver r = PhaseConfigResolver.resolve(
@@ -790,6 +870,11 @@ public class PhaseConfigResolverTest extends TestSuiteBase {
                         || result.contains("effectiveDefaultPhaseConfig"));
     }
 
+    /**
+     * Regression test verifying that a workstream with no phase config of its own inherits
+     * the workspace-level defaultPhaseConfig and phaseConfigs through the full YAML
+     * deserialization and resolver path.
+     */
     @Test(timeout = 10000)
     public void workspaceLevelPhaseConfigInheritedWhenWorkstreamHasNone() throws IOException {
         // Reproduces the reported regression: a workstream with NO phase config

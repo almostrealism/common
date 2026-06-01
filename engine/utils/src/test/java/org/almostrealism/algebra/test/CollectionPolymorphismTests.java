@@ -26,13 +26,23 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Tests for collection polymorphism and tensor operations.
+ */
 public class CollectionPolymorphismTests extends TestSuiteBase {
+
+	/**
+	 * Tests traversal stream operations.
+	 */
 	// @Test(timeout = 10000)
 	public void traversalStream() {
 		TraversalPolicy shape = new TraversalPolicy(2, 3, 3);
 		shape.stream().map(Arrays::toString).forEach(System.out::println);
 	}
 
+	/**
+	 * Tests converting tensor to scalar bank.
+	 */
 	@Test(timeout = 10000)
 	public void tensorToScalarBank() {
 		Tensor<PackedCollection> t = new Tensor<>();

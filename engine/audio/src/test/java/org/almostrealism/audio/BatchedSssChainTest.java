@@ -57,10 +57,15 @@ public class BatchedSssChainTest extends TestSuiteBase implements TemporalFeatur
 
 	/** Batched inputs plus the per-note reference voiced rows for one workload. */
 	private static final class Workload {
+		/** Per-layer batched source audio, shape {@code [N, SOURCE_LENGTH]} each. */
 		private final PackedCollection[] sources = new PackedCollection[LAYERS];
+		/** Per-layer per-note resampling ratios, length {@code N} each. */
 		private final PackedCollection[] ratios = new PackedCollection[LAYERS];
+		/** Per-layer per-note amplitude envelopes, shape {@code [N, TARGET_LENGTH]} each. */
 		private final PackedCollection[] layerEnvelopes = new PackedCollection[LAYERS];
+		/** Per-note filter cutoff envelopes, shape {@code [N, TARGET_LENGTH]}. */
 		private PackedCollection filterCutoffs;
+		/** Per-note volume envelopes, shape {@code [N, TARGET_LENGTH]}. */
 		private PackedCollection volumeEnvelopes;
 		/** Per-note reference voiced output, shape {@code [N][TARGET_LENGTH]}. */
 		private final double[][] voiced = new double[N][TARGET_LENGTH];

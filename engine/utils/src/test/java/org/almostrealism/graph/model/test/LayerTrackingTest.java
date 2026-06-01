@@ -36,6 +36,14 @@ import java.util.stream.IntStream;
  */
 public class LayerTrackingTest extends TestSuiteBase {
 
+	/**
+	 * Creates a dense model with two layers.
+	 *
+	 * @param inputSize Input size
+	 * @param hiddenSize Hidden layer size
+	 * @param outputSize Output size
+	 * @return Created model
+	 */
 	private Model createDenseModel(int inputSize, int hiddenSize, int outputSize) {
 		Model model = new Model(shape(inputSize));
 		CellularLayer dense1 = dense(inputSize, hiddenSize).apply(shape(inputSize));
@@ -56,6 +64,9 @@ public class LayerTrackingTest extends TestSuiteBase {
 		return model;
 	}
 
+	/**
+	 * Tests that inference mode produces correct output.
+	 */
 	@Test(timeout = 120000)
 	public void testInferenceProducesCorrectOutput() {
 		int inputSize = 4;
@@ -83,6 +94,9 @@ public class LayerTrackingTest extends TestSuiteBase {
 		compiled.destroy();
 	}
 
+	/**
+	 * Tests that training mode produces correct output.
+	 */
 	@Test(timeout = 120000)
 	public void testTrainingProducesCorrectOutput() {
 		int inputSize = 4;
@@ -117,6 +131,9 @@ public class LayerTrackingTest extends TestSuiteBase {
 		trainingCompiled.destroy();
 	}
 
+	/**
+	 * Tests inference vs training tracking performance.
+	 */
 	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void testInferenceTrackingPerformance() {
@@ -191,6 +208,9 @@ public class LayerTrackingTest extends TestSuiteBase {
 				inferenceMs < trainingMs);
 	}
 
+	/**
+	 * Tests inference operation count is less than training.
+	 */
 	@Test(timeout = 120000)
 	public void testInferenceOperationCount() {
 		int inputSize = 8;

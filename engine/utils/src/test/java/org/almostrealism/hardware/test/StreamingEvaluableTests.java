@@ -23,7 +23,14 @@ import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for streaming evaluable operations.
+ */
 public class StreamingEvaluableTests extends TestSuiteBase {
+
+	/**
+	 * Tests streaming product operation.
+	 */
 	@Test(timeout = 10000)
 	public void product() {
 		int count = 1;
@@ -48,6 +55,9 @@ public class StreamingEvaluableTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests streaming sum operation.
+	 */
 	@Test(timeout = 10000)
 	public void sum() {
 		int size = 768;
@@ -67,6 +77,9 @@ public class StreamingEvaluableTests extends TestSuiteBase {
 		assertEquals(expected, out.valueAt(0));
 	}
 
+	/**
+	 * Tests streaming sum product operation.
+	 */
 	@Test(timeout = 10000)
 	public void sumProduct() {
 		int count = 100;

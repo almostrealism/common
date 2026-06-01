@@ -7,13 +7,22 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for GraphPersist database store and retrieve operations.
+ */
 public class DatabaseTest extends TestSuiteBase {
+	/**
+	 * Creates a scalar PackedCollection with the given value.
+	 */
 	private static PackedCollection scalarValue(double value) {
 		PackedCollection s = new PackedCollection(1);
 		s.setMem(0, value);
 		return s;
 	}
 
+	/**
+	 * Tests storing and retrieving a tensor of values.
+	 */
 	@Test(timeout = 10000)
 	public void storeAndRetrieve() {
 		Tensor<PackedCollection> t = new Tensor<>();

@@ -53,12 +53,30 @@ import java.util.regex.Pattern;
  */
 public class Llama2InferenceTest extends TestSuiteBase implements ConsoleFeatures {
 
+	/**
+	 * Directory where model weights and tokenizer are stored.
+	 */
 	private static final String WEIGHTS_DIR = "/tmp/llama2_test";
+
+	/**
+	 * Path to the stories110M checkpoint file.
+	 */
 	private static final String CHECKPOINT_PATH = WEIGHTS_DIR + "/stories110M.bin";
+
+	/**
+	 * Path to the tokenizer binary file.
+	 */
 	private static final String TOKENIZER_PATH = WEIGHTS_DIR + "/tokenizer.bin";
 
+	/**
+	 * URL from which the tokenizer binary is downloaded.
+	 */
 	private static final String TOKENIZER_URL =
 			"https://raw.githubusercontent.com/almostrealism/llama2/master/tokenizer.bin";
+
+	/**
+	 * URL from which the checkpoint is downloaded.
+	 */
 	private static final String CHECKPOINT_URL =
 			"https://www.dropbox.com/scl/fi/romns8veg67agl5czmtww/stories110M.bin"
 					+ "?rlkey=sbspy97d2j1p3jilgaff190pz&st=kak6t2uo&dl=1";

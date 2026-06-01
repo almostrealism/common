@@ -32,12 +32,21 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.function.Function;
 
+/**
+ * Tests for collection enumeration operations.
+ */
 public class CollectionEnumerateTests extends TestSuiteBase {
+	/**
+	 * Tests transpose operation.
+	 */
 	@Test(timeout = 30000)
 	public void transpose() {
 		transpose(64, 256, input -> cp(input).transpose().get().evaluate());
 	}
 
+	/**
+	 * Tests transpose pass-through operation.
+	 */
 	@Test(timeout = 30000)
 	public void transposePassThrough() {
 		int n = 64;
@@ -52,6 +61,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Helper for transpose testing.
+	 */
 	public void transpose(int n, int m, Function<PackedCollection, PackedCollection> operate) {
 		PackedCollection input = new PackedCollection(shape(n, m)).randFill();
 		PackedCollection output = operate.apply(input);
@@ -66,6 +78,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests small enumerate operation.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateSmall() {
 		PackedCollection input = integers(1, 17).evaluate().reshape(4, 4);
@@ -97,6 +112,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		assertEquals(16.0, out.valueAt(7, 1));
 	}
 
+	/**
+	 * Tests 2D enumeration.
+	 */
 	@Test(timeout = 30000)
 	public void enumerate2d() {
 		Tensor<Double> t = tensor(shape(10, 10), (int[] c) -> c[1] < 2);
@@ -125,6 +143,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests 4D enumeration with explicit shape.
+	 */
 	@Test(timeout = 30000)
 	public void enumerate4dExplicitShape() {
 		int n = 2;
@@ -156,26 +177,46 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests 4D enumeration with parameters n=2, c=5, d=4, len=2, stride=2.
+	 */
 	@Test(timeout = 30000)
 	public void enumerate4d1() {
 		enumerate4d(2, 5, 4, 2, 2);
 	}
 
+	/**
+	 * Tests 4D enumeration with parameters n=1, c=2, d=3, len=2, stride=1.
+	 */
 	@Test(timeout = 30000)
 	public void enumerate4d2() {
 		enumerate4d(1, 2, 3, 2, 1);
 	}
 
+	/**
+	 * Tests 4D enumeration with parameters n=2, c=5, d=10, len=2, stride=2.
+	 */
 	@Test(timeout = 30000)
 	public void enumerate4d3() {
 		enumerate4d(2, 5, 10, 2, 2);
 	}
 
+	/**
+	 * Tests 4D enumeration with parameters n=2, c=5, d=10, len=2, stride=1.
+	 */
 	@Test(timeout = 30000)
 	public void enumerate4d4() {
 		enumerate4d(2, 5, 10, 2, 1);
 	}
 
+	/**
+	 * Helper for 4D enumeration testing.
+	 * @param n batch size
+	 * @param c channel size
+	 * @param d depth dimension
+	 * @param len enumeration length
+	 * @param stride enumeration stride
+	 */
 	public void enumerate4d(int n, int c, int d, int len, int stride) {
 		PackedCollection input = new PackedCollection(n, c, d, d).randFill();
 
@@ -211,6 +252,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests slice enumeration.
+	 */
 	@Test(timeout = 30000)
 	public void slices() {
 		int size = 4;
@@ -239,6 +283,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests dynamic sum operation.
+	 */
 	@Test(timeout = 30000)
 	@TestProperties(knownIssue = true)
 	public void dynamicSum() {
@@ -270,6 +317,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests enumeration with product operation.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateProduct() {
 		PackedCollection input = tensor(shape(6, 4)).pack();
@@ -292,6 +342,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests enumeration with divide operation.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateDivide() {
 		int w = 4; // 1024;
@@ -337,6 +390,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests 2D enumeration with first product variant.
+	 */
 	@Test(timeout = 30000)
 	public void enumerate2dProduct1() {
 		Tensor<Double> t = tensor(shape(4, 6));
@@ -359,6 +415,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests 2D enumeration with second product variant.
+	 */
 	@Test(timeout = 30000)
 	public void enumerate2dProduct2() {
 		int c = 2;
@@ -401,6 +460,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests 2D enumeration with third product variant.
+	 */
 	@Test(timeout = 30000)
 	public void enumerate2dProduct3() {
 		int c = 2;
@@ -444,6 +506,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests 2D enumeration with fourth product variant.
+	 */
 	@Test(timeout = 30000)
 	public void enumerate2dProduct4() {
 		int c = 2;
@@ -490,6 +555,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests diagonal enumeration.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateDiagonal() {
 		PackedCollection input = new PackedCollection(shape(12)).fill(1);
@@ -511,6 +579,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests strided 2D product enumeration.
+	 */
 	@Test(timeout = 30000)
 	public void stride2dProduct() {
 		Tensor<Double> t = tensor(shape(8, 10));
@@ -541,6 +612,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests double enumeration with small dimensions.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateTwiceSmall() {
 		PackedCollection input = tensor(shape(4, 4)).pack();
@@ -570,6 +644,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests double enumeration with small dimensions.
+	 */
 	@Test(timeout = 30000)
 	public void doubleEnumerateSmall() {
 		int r = 4;
@@ -601,6 +678,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests single 4D enumeration.
+	 */
 	@Test(timeout = 30000)
 	public void singleEnumerate4d() {
 		int n = 2;
@@ -655,6 +735,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 	}
 
 
+	/**
+	 * Tests double 4D enumeration.
+	 */
 	@Test(timeout = 30000)
 	public void doubleEnumerate4d() {
 		int n = 2;
@@ -699,6 +782,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests double enumeration.
+	 */
 	@Test(timeout = 30000)
 	public void enumerateTwice() {
 		PackedCollection input = tensor(shape(10, 10)).pack();
@@ -730,6 +816,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests double strided 2D product.
+	 */
 	// @Test(timeout = 30000)
 	public void doubleStride2dProduct() {
 		Tensor<Double> t = tensor(shape(8, 10));

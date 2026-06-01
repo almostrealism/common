@@ -40,15 +40,28 @@ import java.util.List;
  */
 public class PrototypeDiscoveryApiTest extends TestSuiteBase {
 
+	/** Temporary directory for test audio library. */
 	private File tempDir;
+
+	/** Audio library populated during test setup. */
 	private AudioLibrary library;
 
+	/**
+	 * Sets up the test environment by creating a temporary directory
+	 * and initializing an AudioLibrary.
+	 *
+	 * @throws IOException if temp directory creation fails
+	 */
 	@Before
 	public void setUp() throws IOException {
 		tempDir = Files.createTempDirectory("proto-discovery-api-test").toFile();
 		library = new AudioLibrary(tempDir, 44100);
 	}
 
+	/**
+	 * Tears down the test environment by stopping the library
+	 * and deleting the temporary directory.
+	 */
 	@After
 	public void tearDown() {
 		if (library != null) {
@@ -219,6 +232,13 @@ public class PrototypeDiscoveryApiTest extends TestSuiteBase {
 
 	// ── Helpers ─────────────────────────────────────────────────────────
 
+	/**
+	 * Creates a {@link WaveDetails} instance with the given identifier and
+	 * empty feature/similarity data.
+	 *
+	 * @param identifier the unique identifier for the wave details
+	 * @return a new WaveDetails instance
+	 */
 	private WaveDetails createDetails(String identifier) {
 		WaveDetails details = new WaveDetails(identifier, 44100);
 		details.setFreqData(new PackedCollection(1));
@@ -227,6 +247,13 @@ public class PrototypeDiscoveryApiTest extends TestSuiteBase {
 		return details;
 	}
 
+	/**
+	 * Sets the mutual similarity between two {@link WaveDetails} objects.
+	 *
+	 * @param a     the first wave details
+	 * @param b     the second wave details
+	 * @param value the similarity value to set bidirectionally
+	 */
 	private void setSimilarity(WaveDetails a, WaveDetails b, double value) {
 		a.getSimilarities().put(b.getIdentifier(), value);
 		b.getSimilarities().put(a.getIdentifier(), value);

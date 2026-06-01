@@ -54,8 +54,12 @@ public class BatchedChainSeamTest extends TestSuiteBase implements TemporalFeatu
 	/** Production FIR order; the seam half-width is {@code filterOrder / 2}. */
 	private static final int FILTER_ORDER = MultiOrderFilterEnvelopeProcessor.filterOrder;
 
+	/** Number of SSS layers rendered in the batched chain. */
 	private static final int LAYERS = 3;
 
+	/**
+	 * Creates a single-element {@link PackedCollection} holding the given scalar value.
+	 */
 	private PackedCollection single(double value) {
 		PackedCollection c = new PackedCollection(1);
 		c.setMem(new double[] { value });
@@ -73,6 +77,11 @@ public class BatchedChainSeamTest extends TestSuiteBase implements TemporalFeatu
 		return c;
 	}
 
+	/**
+	 * Verifies that rendering a note across two sub-windows reproduces the single-window
+	 * reference exactly in the interior and that any divergence is confined to the FIR seam
+	 * band of {@code +/- filterOrder/2} samples around the window boundary.
+	 */
 	@Test(timeout = 120000)
 	@TestDepth(2)
 	public void chainSplitsAcrossWindowsWithBoundedSeam() {

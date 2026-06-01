@@ -35,7 +35,13 @@ import java.util.Arrays;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for matrix delta computations (gradients of matrix operations).
+ */
 public class MatrixDeltaComputationTests extends TestSuiteBase {
+	/**
+	 * Tests matmul gradient with 2D input.
+	 */
 	@Test(timeout = 60000)
 	public void matmul1() {
 		int dim = 2;
@@ -69,6 +75,9 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		assertEquals(3.0, dout.toDouble(7));
 	}
 
+	/**
+	 * Tests matmul gradient with optimized computation.
+	 */
 	@Test(timeout = 60000)
 	public void matmul2() {
 		int dim = 10;
@@ -103,6 +112,9 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		// assertEquals(3.0, dout.toDouble(7));
 	}
 
+	/**
+	 * Tests matmul gradient with traversed input.
+	 */
 	@Test(timeout = 60000)
 	public void matmul3() {
 		int count = 1;
@@ -131,6 +143,9 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		assertEquals(3.0, dout.toDouble(7));
 	}
 
+	/**
+	 * Tests matmul gradient with optimized delta computation.
+	 */
 	@Test(timeout = 60000)
 	public void matmul4() {
 		int count = 1;
@@ -154,6 +169,9 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		assertEquals(3.0, dout.toDouble(7));
 	}
 
+	/**
+	 * Tests matmul gradient with large values.
+	 */
 	@Test(timeout = 60000)
 	public void matmul5() {
 		int dim = 3;
@@ -171,6 +189,9 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		out.print();
 	}
 
+	/**
+	 * Tests matmul gradient with rectangular matrices.
+	 */
 	@Test(timeout = 60000)
 	public void matmul6() {
 		int rows = 3;
@@ -203,6 +224,9 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests matmul with sum operation gradient.
+	 */
 	@Test(timeout = 60000)
 	public void matmulSum() {
 		int size = 8;
@@ -234,38 +258,65 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests small matmul with profiling.
+	 */
 	@Test(timeout = 60000)
 	public void matmulSmall1() throws IOException {
 		matmal("matmulSmall1", 48, 10, false);
 	}
 
+	/**
+	 * Tests small matmul with delta input and profiling.
+	 */
 	@Test(timeout = 60000)
 	public void matmulSmall2() throws IOException {
 		matmal("matmulSmall2", 48, 10, true);
 	}
 
+	/**
+	 * Tests medium matmul with profiling.
+	 */
 	@Test(timeout = 60000)
 	public void matmulMedium1() throws IOException {
 		matmal("matmulMedium1", 210, 10, false);
 	}
 
+	/**
+	 * Tests medium matmul with delta input and profiling.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(1)
 	public void matmulMedium2() throws IOException {
 		matmal("matmulMedium2", 210, 10, true);
 	}
 
+	/**
+	 * Tests large matmul with profiling.
+	 */
 	@Test(timeout = 60000)
 	public void matmulLarge1() throws IOException {
 		matmal("matmulLarge1", 392, 10, false);
 	}
 
+	/**
+	 * Tests large matmul with delta input and profiling.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(3)
 	public void matmulLarge2() throws IOException {
 		matmal("matmulLarge2", 392, 10, true);
 	}
 
+	/**
+	 * Helper method to run matmul profiling tests with given parameters.
+	 *
+	 * @param name Test name for profiling
+	 * @param size Matrix size
+	 * @param nodes Number of nodes
+	 * @param dIn Whether to use delta input
+	 * @throws IOException If profiling fails
+	 */
 	public void matmal(String name, int size, int nodes, boolean dIn) throws IOException {
 		OperationProfileNode profile = new OperationProfileNode( name);
 
@@ -285,6 +336,9 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests matmul enumerate gradient.
+	 */
 	@Test(timeout = 60000)
 	public void matmulEnumerate() {
 		int count = 2;
@@ -316,16 +370,27 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		assertEquals(11.0, dout.toDouble(5));
 	}
 
+	/**
+	 * Tests matmul enumerate product gradient.
+	 */
 	@Test(timeout = 60000)
 	public void matmulEnumerateProduct() {
 		matmulEnumerateProduct(false);
 	}
 
+	/**
+	 * Tests matmul enumerate product gradient with optimization.
+	 */
 	@Test(timeout = 60000)
 	public void matmulEnumerateProductOptimized() {
 		matmulEnumerateProduct(true);
 	}
 
+	/**
+	 * Tests matmul enumerate product gradient.
+	 *
+	 * @param optimize Whether to use optimized computation
+	 */
 	public void matmulEnumerateProduct(boolean optimize) {
 		int count = 1;
 		int dim = 3;
@@ -395,6 +460,9 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		assertEquals(999.996, w.toDouble(8));
 	}
 
+	/**
+	 * Tests dense weights gradient with smallest size.
+	 */
 	@Test(timeout = 60000)
 	public void denseWeightsSmallest() throws IOException {
 		try {
@@ -408,16 +476,25 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests dense weights gradient with small size.
+	 */
 	@Test(timeout = 60000)
 	public void denseWeightsSmall() throws IOException {
 		denseWeights("denseWeightsSmall", 120, 10);
 	}
 
+	/**
+	 * Tests dense weights gradient with medium size.
+	 */
 	@Test(timeout = 60000)
 	public void denseWeightsMedium() throws IOException {
 		denseWeights("denseWeightsMedium", 600, 10);
 	}
 
+	/**
+	 * Tests dense weights gradient with large size.
+	 */
 	@Test(timeout = 60000)
 	@TestProperties(knownIssue = true)
 	public void denseWeightsLarge() throws IOException {
@@ -425,6 +502,14 @@ public class MatrixDeltaComputationTests extends TestSuiteBase {
 		denseWeights("denseWeightsLarge", 7688, 10);
 	}
 
+	/**
+	 * Helper method to run dense weights gradient tests with given parameters.
+	 *
+	 * @param name Test name for profiling
+	 * @param size Input size
+	 * @param nodes Number of nodes
+	 * @throws IOException If profiling fails
+	 */
 	public void denseWeights(String name, int size, int nodes) throws IOException {
 		PackedCollection v = new PackedCollection(shape(size)).fill(Math::random);
 		PackedCollection g = new PackedCollection(shape(nodes)).fill(Math::random);

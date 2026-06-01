@@ -52,10 +52,14 @@ import static org.junit.Assert.assertTrue;
  */
 public class WorkstreamLifecycleEndpointTest extends TestSuiteBase {
 
+    /** JSON parser for response bodies. */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** Live API endpoint under test. */
     private FlowTreeApiEndpoint endpoint;
+    /** Slack notifier for the workstream. */
     private SlackNotifier notifier;
+    /** Listening port assigned by NanoHTTPD. */
     private int port;
 
     /** Spins up the endpoint on an ephemeral port. */
@@ -238,6 +242,7 @@ public class WorkstreamLifecycleEndpointTest extends TestSuiteBase {
         assertTrue(err.get("error").asText().contains("Unknown workstream"));
     }
 
+    /** Creates a minimal workstream for testing purposes. */
     private Workstream registerBare(String branch, String channelName) {
         Workstream ws = new Workstream(null, channelName);
         ws.setDefaultBranch(branch);
@@ -245,6 +250,7 @@ public class WorkstreamLifecycleEndpointTest extends TestSuiteBase {
         return ws;
     }
 
+    /** Performs a GET request and returns the parsed JSON response. */
     private JsonNode getJson(String path) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(
                 "http://localhost:" + port + path).openConnection();
@@ -254,6 +260,7 @@ public class WorkstreamLifecycleEndpointTest extends TestSuiteBase {
                 new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
     }
 
+    /** Performs a POST request with JSON body and returns the parsed JSON response. */
     private JsonNode postJson(String path, String body) throws IOException {
         HttpURLConnection conn = openPost(path, body);
         assertEquals(200, conn.getResponseCode());
@@ -261,6 +268,7 @@ public class WorkstreamLifecycleEndpointTest extends TestSuiteBase {
                 new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8));
     }
 
+    /** Opens a POST connection with a JSON body. */
     private HttpURLConnection openPost(String path, String body) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) new URL(
                 "http://localhost:" + port + path).openConnection();
@@ -273,6 +281,7 @@ public class WorkstreamLifecycleEndpointTest extends TestSuiteBase {
         return conn;
     }
 
+    /** Reads the error stream from an HTTP connection as a string. */
     private static String readErrorBody(HttpURLConnection conn) throws IOException {
         return new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
     }

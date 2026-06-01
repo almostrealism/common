@@ -30,8 +30,14 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for sphere intersection operations.
+ */
 public class SphereTest extends TestSuiteBase {
 
+	/**
+	 * Tests sphere intersection with rays at various angles.
+	 */
 	@Test(timeout = 10000)
 	public void intersectionTests() {
 		Sphere s = new Sphere();
@@ -61,6 +67,9 @@ public class SphereTest extends TestSuiteBase {
 		log(String.valueOf(r));
 	}
 
+	/**
+	 * Tests discriminant calculation with a single ray.
+	 */
 	@Test(timeout = 10000)
 	public void discriminantSingleRay() {
 		// Test discriminant with a single ray that should hit
@@ -83,6 +92,9 @@ public class SphereTest extends TestSuiteBase {
 		Assert.assertEquals(1.0, result.valueAt(0, 0), 0.01);
 	}
 
+	/**
+	 * Tests discriminant calculation with a small batch of rays.
+	 */
 	@Test(timeout = 10000)
 	public void discriminantSmallBatch() {
 		// Test discriminant with 3 rays to isolate batch issue
@@ -136,6 +148,9 @@ public class SphereTest extends TestSuiteBase {
 		Assert.assertEquals(-1.0, result.valueAt(2, 0), 0.01);
 	}
 
+	/**
+	 * Tests intersection with a small batch of rays.
+	 */
 	@Test(timeout = 10000)
 	@TestProperties(knownIssue = true)
 	public void intersectionSmallBatch() {
@@ -169,6 +184,9 @@ public class SphereTest extends TestSuiteBase {
 		Assert.assertEquals(-1.0, distances.valueAt(2, 0), 0.01);
 	}
 
+	/**
+	 * Tests discriminant sqrt calculation with a small batch of rays.
+	 */
 	@Test(timeout = 10000)
 	public void discriminantSqrtSmallBatch() {
 		// Test sqrt(discriminant) with 3 rays
@@ -196,6 +214,9 @@ public class SphereTest extends TestSuiteBase {
 		Assert.assertTrue("Ray 1 sqrt should be close to 0.99", sqrtVals.valueAt(1, 0) > 0.95 && sqrtVals.valueAt(1, 0) < 1.0);
 	}
 
+	/**
+	 * Tests t calculation for intersection distances.
+	 */
 	@Test(timeout = 10000)
 	public void tCalculationSmallBatch() {
 		// Test the t(ray) calculation that computes both intersection distances
@@ -242,6 +263,9 @@ public class SphereTest extends TestSuiteBase {
 		Assert.assertEquals(1.0, dDotDInvVals.valueAt(0, 0), 0.01);
 	}
 
+	/**
+	 * Tests intersection with a 1D batch of 256 rays.
+	 */
 	@Test(timeout = 10000)
 	public void intersection1DBatch256() {
 		// Test intersection with exactly 256 rays in 1D batch (not 2D grid)
@@ -281,6 +305,9 @@ public class SphereTest extends TestSuiteBase {
 		Assert.assertTrue("Center rays should hit", distances.valueAt(batchSize / 2, 0) > 0.0);
 	}
 
+	/**
+	 * Tests closest intersection with a batch of 256 rays.
+	 */
 	@Test(timeout = 10000)
 	public void closestBatch256() {
 		// Test Sphere.closest() with >128 elements to verify it doesn't hit the legacy limit
@@ -346,6 +373,9 @@ public class SphereTest extends TestSuiteBase {
 		Assert.assertTrue("Should handle at least 200 elements correctly", correct >= 200);
 	}
 
+	/**
+	 * Tests pair creation from batch producers.
+	 */
 	@Test(timeout = 10000)
 	public void pairCreationSmallBatch() {
 		// Test creating a Pair from batch producers
@@ -379,6 +409,9 @@ public class SphereTest extends TestSuiteBase {
 		Assert.assertEquals(-15.0, pairResult.valueAt(2, 1), 0.01);
 	}
 
+	/**
+	 * Tests discriminant kernel computation.
+	 */
 	@Test(timeout = 10000)
 	public void discriminantKernel() {
 		Producer<Ray> ray = v(shape(-1, 6), 0);
@@ -414,6 +447,9 @@ public class SphereTest extends TestSuiteBase {
 		Assert.assertEquals(305, hits);
 	}
 
+	/**
+	 * Tests intersection with a single ray.
+	 */
 	@Test(timeout = 10000)
 	public void intersectionSingleRay() {
 		// Test full intersection with a single ray that should hit
@@ -436,6 +472,9 @@ public class SphereTest extends TestSuiteBase {
 		Assert.assertEquals(2.0, distance, 0.1);
 	}
 
+	/**
+	 * Tests intersection kernel computation.
+	 */
 	@Test(timeout = 10000)
 	public void intersectionKernel() {
 		int w = 100;
@@ -491,6 +530,9 @@ public class SphereTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests camera intersection kernel with sphere.
+	 */
 	// @Test(timeout = 10000)
 	public void cameraIntersectionKernel() {
 		int w = 100;

@@ -63,6 +63,9 @@ public class GitOperationsTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Tests that a clean committed repository reports no uncommitted changes.
+     */
     @Test(timeout = 10000)
     public void returnsFalseOnCleanRepo() throws Exception {
         Path repo = initRepo();
@@ -75,6 +78,9 @@ public class GitOperationsTest extends TestSuiteBase {
                 GitOperations.hasUncommittedChanges(repo.toString()));
     }
 
+    /**
+     * Tests that an untracked file is detected as an uncommitted change.
+     */
     @Test(timeout = 10000)
     public void returnsTrueForUntrackedFile() throws Exception {
         Path repo = initRepo();
@@ -91,6 +97,9 @@ public class GitOperationsTest extends TestSuiteBase {
                 GitOperations.hasUncommittedChanges(repo.toString()));
     }
 
+    /**
+     * Tests that a staged but uncommitted change is detected.
+     */
     @Test(timeout = 10000)
     public void returnsTrueForStagedUncommittedFile() throws Exception {
         Path repo = initRepo();
@@ -107,6 +116,9 @@ public class GitOperationsTest extends TestSuiteBase {
                 GitOperations.hasUncommittedChanges(repo.toString()));
     }
 
+    /**
+     * Tests that a modified tracked file is detected as an uncommitted change.
+     */
     @Test(timeout = 10000)
     public void returnsTrueForModifiedTrackedFile() throws Exception {
         Path repo = initRepo();
@@ -121,6 +133,9 @@ public class GitOperationsTest extends TestSuiteBase {
                 GitOperations.hasUncommittedChanges(repo.toString()));
     }
 
+    /**
+     * Tests that files in excluded paths do not trigger uncommitted-changes detection.
+     */
     @Test(timeout = 10000)
     public void ignoredExcludedPathsDoNotTrigger() throws Exception {
         Path repo = initRepo();
@@ -140,6 +155,9 @@ public class GitOperationsTest extends TestSuiteBase {
                 GitOperations.hasUncommittedChanges(repo.toString()));
     }
 
+    /**
+     * Tests that changes in dependent repositories are detected separately.
+     */
     @Test(timeout = 10000)
     public void dependentRepoChangesDetectedSeparately() throws Exception {
         Path primaryRepo = initRepo();

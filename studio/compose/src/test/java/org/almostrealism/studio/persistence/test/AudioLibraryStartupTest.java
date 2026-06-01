@@ -54,11 +54,22 @@ import java.util.Map;
  */
 public class AudioLibraryStartupTest extends TestSuiteBase {
 
+	/** Temporary directory for test files. */
 	private Path tempDir;
+
+	/** Directory containing old-format batch files for migration. */
 	private Path oldDataDir;
+
+	/** Directory for the new Protobuf store. */
 	private Path storeDir;
+
+	/** Directory containing audio sample files. */
 	private Path samplesDir;
 
+	/**
+	 * Sets up temporary directories for testing.
+	 * @throws IOException if directory creation fails
+	 */
 	@Before
 	public void setUp() throws IOException {
 		tempDir = Files.createTempDirectory("startup-test");
@@ -73,6 +84,9 @@ public class AudioLibraryStartupTest extends TestSuiteBase {
 		AudioLibraryPersistence.resetCallRateLimit();
 	}
 
+	/**
+	 * Tears down test resources and cleans up temporary directories.
+	 */
 	@After
 	public void tearDown() {
 		AudioLibraryPersistence.resetCallRateLimit();
@@ -244,6 +258,12 @@ public class AudioLibraryStartupTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Creates a complete WaveDetails instance with freq data, feature data,
+	 * and empty similarities map.
+	 * @param identifier the identifier for the details
+	 * @return WaveDetails with complete data
+	 */
 	private WaveDetails createCompleteDetails(String identifier) {
 		WaveDetails details = new WaveDetails(identifier, 44100);
 		details.setFreqData(new PackedCollection(8, 16, 1));
@@ -272,6 +292,11 @@ public class AudioLibraryStartupTest extends TestSuiteBase {
 		return embedding;
 	}
 
+	/**
+	 * Recursively deletes a file or directory and all its contents.
+	 *
+	 * @param file the file or directory to delete
+	 */
 	private void deleteRecursive(File file) {
 		if (file.isDirectory()) {
 			File[] children = file.listFiles();

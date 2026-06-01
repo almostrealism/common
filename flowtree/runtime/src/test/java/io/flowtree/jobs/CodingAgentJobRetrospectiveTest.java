@@ -36,16 +36,19 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
 
     // ── Phase wire mapping ──────────────────────────────────────────────────
 
+    /** Verifies that Phase.fromWireName("retrospective") returns Phase.RETROSPECTIVE. */
     @Test(timeout = 30000)
     public void phaseRetrospectiveExists() {
         assertEquals(Phase.RETROSPECTIVE, Phase.fromWireName("retrospective"));
     }
 
+    /** Verifies that Phase.fromRuleName("retrospective") resolves to Phase.RETROSPECTIVE. */
     @Test(timeout = 30000)
     public void fromRuleNameRetrospectiveResolvesToPhaseRetrospective() {
         assertEquals(Phase.RETROSPECTIVE, Phase.fromRuleName("retrospective"));
     }
 
+    /** Verifies that Phase.RETROSPECTIVE.wireName() returns "retrospective". */
     @Test(timeout = 30000)
     public void retrospectivePhaseWireName() {
         assertEquals("retrospective", Phase.RETROSPECTIVE.wireName());
@@ -53,11 +56,13 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
 
     // ── reflectionEnabled on CodingAgentJob ────────────────────────────────
 
+    /** CodingAgentJob isReflectionEnabled defaults to false. */
     @Test(timeout = 30000)
     public void reflectionEnabledDefaultIsFalse() {
         assertFalse(new CodingAgentJob("t1", "p").isReflectionEnabled());
     }
 
+    /** CodingAgentJob.setReflectionEnabled(true) is reflected in isReflectionEnabled(). */
     @Test(timeout = 30000)
     public void setReflectionEnabledTrue() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -65,6 +70,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
         assertTrue(job.isReflectionEnabled());
     }
 
+    /** CodingAgentJob.setReflectionEnabled(false) toggles off after true. */
     @Test(timeout = 30000)
     public void setReflectionEnabledFalse() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -75,6 +81,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
 
     // ── Wire format — defaults absent ───────────────────────────────────────
 
+    /** reflectionEnabled absent from wire format when default (false). */
     @Test(timeout = 30000)
     public void reflectionEnabledAbsentFromWireFormatWhenFalse() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -83,6 +90,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
                 encoded.contains("reflectionEnabled"));
     }
 
+    /** reflectionEnabled appears in wire format when set to true. */
     @Test(timeout = 30000)
     public void reflectionEnabledAppearsInWireFormatWhenTrue() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -92,6 +100,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
                 encoded.contains("reflectionEnabled:=true"));
     }
 
+    /** reflectionEnabled round-trips correctly via job.set(). */
     @Test(timeout = 30000)
     public void reflectionEnabledRoundTripViaSet() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -101,6 +110,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
         assertFalse(job.isReflectionEnabled());
     }
 
+    /** CodingAgentJob reflectionEnabled survives encode/decode round-trip. */
     @Test(timeout = 30000)
     public void encodeDecodeRoundTrip() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -111,11 +121,13 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
 
     // ── Factory propagation ────────────────────────────────────────────────
 
+    /** CodingAgentJobFactory isReflectionEnabled defaults to false. */
     @Test(timeout = 30000)
     public void factoryReflectionEnabledDefaultFalse() {
         assertFalse(new CodingAgentJobFactory("prompt").isReflectionEnabled());
     }
 
+    /** CodingAgentJobFactory.setReflectionEnabled propagates to nextJob(). */
     @Test(timeout = 30000)
     public void factoryReflectionEnabledPropagatesToJob() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("p");
@@ -125,6 +137,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
         assertTrue(job.isReflectionEnabled());
     }
 
+    /** CodingAgentJobFactory reflectionEnabled round-trips via set(). */
     @Test(timeout = 30000)
     public void factoryReflectionEnabledRoundTripViaSet() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("p");
@@ -134,6 +147,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
 
     // ── RetrospectivePromptBuilder ──────────────────────────────────────────
 
+    /** RetrospectivePromptBuilder includes RETROSPECTIVE ANALYSIS header. */
     @Test(timeout = 30000)
     public void promptBuilderIncludesRetrospectivePhaseHeader() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -142,6 +156,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
                 prompt.contains("RETROSPECTIVE ANALYSIS"));
     }
 
+    /** RetrospectivePromptBuilder includes role statement about studying transcript. */
     @Test(timeout = 30000)
     public void promptBuilderIncludesRoleStatement() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -150,6 +165,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
                 prompt.contains("You are reviewing a transcript of another agent"));
     }
 
+    /** RetrospectivePromptBuilder instructs to use list_transcripts tool. */
     @Test(timeout = 30000)
     public void promptBuilderIncludesListTranscriptsInstruction() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -160,6 +176,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
                 prompt.contains("/agent-transcripts"));
     }
 
+    /** RetrospectivePromptBuilder includes TOOL USE QUALITY focus area. */
     @Test(timeout = 30000)
     public void promptBuilderIncludesToolUseFocusArea() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -172,6 +189,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
                 prompt.contains("send_message"));
     }
 
+    /** RetrospectivePromptBuilder includes CONTEXT EFFICIENCY focus area. */
     @Test(timeout = 30000)
     public void promptBuilderIncludesContextEfficiencyFocusArea() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -182,6 +200,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
                 prompt.contains("redundant reads"));
     }
 
+    /** RetrospectivePromptBuilder includes memory_store call with workstream tags. */
     @Test(timeout = 30000)
     public void promptBuilderIncludesMemoryStoreInstructions() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -197,6 +216,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
                 prompt.contains("workstream:ws-test"));
     }
 
+    /** RetrospectivePromptBuilder explains graceful degradation when no transcript found. */
     @Test(timeout = 30000)
     public void promptBuilderIncludesGracefulDegradationInstructions() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -207,6 +227,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
                 prompt.contains("no-transcript"));
     }
 
+    /** RetrospectivePromptBuilder forbids git commands and code changes. */
     @Test(timeout = 30000)
     public void promptBuilderIncludesForbiddenActions() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -217,6 +238,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
                 prompt.contains("No Read, Edit, Write"));
     }
 
+    /** RetrospectivePromptBuilder states expected outcome is memories, not code. */
     @Test(timeout = 30000)
     public void promptBuilderIncludesExpectedOutcome() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -227,6 +249,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
                 prompt.contains("no commits"));
     }
 
+    /** RetrospectivePromptBuilder explicitly states what is NOT in v1 scope. */
     @Test(timeout = 30000)
     public void promptBuilderIncludesV1ScopeBoundary() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
@@ -237,28 +260,33 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
                 prompt.contains("Code quality or correctness"));
     }
 
+    /** WorkstreamUtils.extractWorkstreamId parses typical URL with /jobs/ segment. */
     @Test(timeout = 30000)
     public void extractWorkstreamIdFromTypicalUrl() {
         String url = "http://0.0.0.0:7700/api/workstreams/ws-1/jobs/job-abc";
         assertEquals("ws-1", WorkstreamUtils.extractWorkstreamId(url));
     }
 
+    /** WorkstreamUtils.extractWorkstreamId parses URL without /jobs/ segment. */
     @Test(timeout = 30000)
     public void extractWorkstreamIdNoJobsSegment() {
         String url = "http://host/api/workstreams/mystream";
         assertEquals("mystream", WorkstreamUtils.extractWorkstreamId(url));
     }
 
+    /** WorkstreamUtils.extractWorkstreamId returns null when no /workstreams/ segment. */
     @Test(timeout = 30000)
     public void extractWorkstreamIdNoWorkstreamsSegmentReturnsNull() {
         assertEquals(null, WorkstreamUtils.extractWorkstreamId("http://host:7700/api/submit"));
     }
 
+    /** WorkstreamUtils.extractWorkstreamId returns null for empty string. */
     @Test(timeout = 30000)
     public void extractWorkstreamIdEmptyStringReturnsNull() {
         assertEquals(null, WorkstreamUtils.extractWorkstreamId(""));
     }
 
+    /** WorkstreamUtils.extractWorkstreamId returns null for null input. */
     @Test(timeout = 30000)
     public void extractWorkstreamIdNullReturnsNull() {
         assertEquals(null, WorkstreamUtils.extractWorkstreamId(null));
@@ -296,31 +324,39 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
      * reflection call ordering invariant.
      */
     static class SpyCodingAgentJob extends CodingAgentJob {
+        /** Tracks whether runEnforcementRules() was called during doWork(). */
         boolean enforcementRulesCalled;
+        /** Tracks whether runReflectionPhase() was called during doWork(). */
         boolean reflectionPhaseCalled;
+        /** Counts how many times runReflectionPhase() was called during doWork(). */
         int reflectionPhaseCallCount;
 
+        /** Constructs a spy job with the given task identifier and prompt. */
         SpyCodingAgentJob(String taskId, String prompt) {
             super(taskId, prompt);
         }
 
+        /** Records that runEnforcementRules() was invoked. */
         @Override
         void runEnforcementRules() {
             enforcementRulesCalled = true;
         }
 
+        /** Records that runReflectionPhase() was invoked and increments the call counter. */
         @Override
         void runReflectionPhase() {
             reflectionPhaseCalled = true;
             reflectionPhaseCallCount++;
         }
 
+        /** No-op override that suppresses actual agent execution during structural tests. */
         @Override
         void executeSingleRun() {
             // No-op: we only track call ordering, not actual agent execution
         }
     }
 
+    /** CodingAgentJob retrospective phase uses Phase.RETROSPECTIVE.wireName(). */
     @Test(timeout = 30000)
     public void retrospectivePhaseUsesPhaseEnumWireName() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");

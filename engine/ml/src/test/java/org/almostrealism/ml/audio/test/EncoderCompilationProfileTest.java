@@ -40,7 +40,10 @@ import java.nio.file.Path;
  */
 public class EncoderCompilationProfileTest extends TestSuiteBase {
 
+	/** Directory containing autoencoder weights. */
 	private static final Path AUTOENCODER_DIR = Path.of("/workspace/project/weights/autoencoder");
+
+	/** Audio sample rate in Hz. */
 	private static final int SAMPLE_RATE = 44100;
 
 	/**
@@ -100,7 +103,7 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 			log("Creating VAEBottleneck...");
 			start = System.currentTimeMillis();
 			VAEBottleneck bottleneck = new VAEBottleneck(1, encoder.getOutputLength());
-			log("VAEBottleneck created in " + (System.currentTimeMillis() - start) + " ms");
+			log("Created VAEBottleneck in " + (System.currentTimeMillis() - start) + " ms");
 
 			log("Creating Model and adding layers...");
 			start = System.currentTimeMillis();
@@ -159,6 +162,12 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 		log("Profile saved to: " + profilePath);
 	}
 
+	/**
+	 * Profiles encoder compilation with the specified audio duration.
+	 *
+	 * @param seconds audio duration in seconds
+	 * @param profileName name for the output profile file
+	 */
 	private void profileEncoder(double seconds, String profileName) throws IOException {
 		if (!Files.exists(AUTOENCODER_DIR)) {
 			log("Autoencoder weights not found at " + AUTOENCODER_DIR + ", skipping");
@@ -183,7 +192,7 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 			log("Creating VAEBottleneck...");
 			start = System.currentTimeMillis();
 			VAEBottleneck bottleneck = new VAEBottleneck(1, encoder.getOutputLength());
-			log("VAEBottleneck created in " + (System.currentTimeMillis() - start) + " ms");
+			log("Created VAEBottleneck in " + (System.currentTimeMillis() - start) + " ms");
 
 			log("Building model...");
 			start = System.currentTimeMillis();

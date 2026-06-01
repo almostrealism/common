@@ -47,6 +47,10 @@ public class BatchedDispatchSentinelTest extends TestSuiteBase implements AudioT
 	/** Measure duration in seconds at 120 BPM, 4 beats per measure. */
 	private static final double MEASURE_DURATION = 2.0;
 
+	/**
+	 * Builds a {@link NoteAudioChoice} with three synthetic file note sources
+	 * spanning the lower octaves, using the supplied tuning.
+	 */
 	private NoteAudioChoice melodicChoice(DefaultKeyboardTuning tuning) {
 		NoteAudioChoice choice = NoteAudioChoice.fromSource("Harmony",
 				new FileNoteSource(getNamedTestWavPath("sentinel_c0.wav", 27.5, 2.0, false),
@@ -61,6 +65,11 @@ public class BatchedDispatchSentinelTest extends TestSuiteBase implements AudioT
 		return choice;
 	}
 
+	/**
+	 * Verifies that rendering a melodic pattern with {@code PatternLayerManager.enableBatched}
+	 * set to {@code true} causes {@link BatchedPatternLayerRenderer#batchedDispatchCount}
+	 * to be greater than zero.
+	 */
 	@Test(timeout = 180000)
 	@TestDepth(2)
 	public void batchedDispatchFires() {

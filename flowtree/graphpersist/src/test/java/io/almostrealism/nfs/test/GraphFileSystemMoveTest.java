@@ -156,16 +156,26 @@ public class GraphFileSystemMoveTest extends TestSuiteBase {
 	 * Minimal Resource stub for testing move operations.
 	 */
 	private static class StubResource implements Resource<byte[]> {
+		/** URI identifying this resource. */
 		private String uri;
+		/** Permissions for this resource. */
 		private Permissions permissions;
+		/** Content data of this resource. */
 		private byte[] content;
+		/** Loaded data from the resource. */
 		byte[] loadedData;
 
+		/**
+		 * Creates a StubResource with the given URI.
+		 */
 		StubResource(String uri) {
 			this.uri = uri;
 			this.permissions = new Permissions();
 		}
 
+		/**
+		 * Sets the content data for this resource.
+		 */
 		void setContent(byte[] content) {
 			this.content = content;
 		}

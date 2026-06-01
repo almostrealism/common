@@ -36,12 +36,18 @@ import static org.junit.Assert.assertTrue;
  */
 public class NotifierRegistryTest extends TestSuiteBase {
 
+    /**
+     * Creates a minimal {@link Workstream} whose default branch is derived from its id.
+     */
     private static Workstream newWorkstream(String id, String channelId) {
         Workstream ws = new Workstream(id, channelId, channelId);
         ws.setDefaultBranch("feature/" + id);
         return ws;
     }
 
+    /**
+     * Creates a {@link Workstream} with an explicit default branch and repository URL.
+     */
     private static Workstream newWorkstream(String id, String channelId,
                                             String branch, String repoUrl) {
         Workstream ws = new Workstream(id, channelId, channelId);
@@ -50,6 +56,9 @@ public class NotifierRegistryTest extends TestSuiteBase {
         return ws;
     }
 
+    /**
+     * Creates a {@link SlackNotifier} pre-populated with the given workstreams.
+     */
     private static SlackNotifier notifierWith(Workstream... workstreams) {
         SlackNotifier notifier = new SlackNotifier(null);
         for (Workstream ws : workstreams) {
@@ -58,6 +67,10 @@ public class NotifierRegistryTest extends TestSuiteBase {
         return notifier;
     }
 
+    /**
+     * Verifies that a registry with no workspace map always returns the primary notifier
+     * and reports isMultiWorkspace as false.
+     */
     @Test(timeout = 10000)
     public void testSingleWorkspaceModeFallsBackToPrimary() {
         SlackNotifier primary = notifierWith(newWorkstream("ws-a", "C-a"));
@@ -71,6 +84,10 @@ public class NotifierRegistryTest extends TestSuiteBase {
                 !registry.isMultiWorkspace());
     }
 
+    /**
+     * Verifies that a multi-workspace registry routes workstream lookups to the
+     * correct per-workspace notifier and resolves workspace ids accurately.
+     */
     @Test(timeout = 10000)
     public void testMultiWorkspaceLookupRoutesByWorkstreamId() {
         SlackNotifier a = notifierWith(newWorkstream("ws-a", "C-a"));
@@ -90,6 +107,10 @@ public class NotifierRegistryTest extends TestSuiteBase {
                 registry.workspaceIdFor("ws-missing"));
     }
 
+    /**
+     * Verifies that {@code allWorkstreams()} aggregates entries from every workspace
+     * into a single map.
+     */
     @Test(timeout = 10000)
     public void testAllWorkstreamsMergesAcrossWorkspaces() {
         SlackNotifier a = notifierWith(
@@ -108,6 +129,10 @@ public class NotifierRegistryTest extends TestSuiteBase {
         assertNotNull(all.get("ws-b"));
     }
 
+    /**
+     * Verifies that {@code findByBranch} locates a workstream registered in a
+     * non-primary workspace.
+     */
     @Test(timeout = 10000)
     public void testFindByBranchSearchesAllWorkspaces() {
         SlackNotifier a = notifierWith(newWorkstream("ws-a", "C-a"));
@@ -123,6 +148,10 @@ public class NotifierRegistryTest extends TestSuiteBase {
         assertEquals("ws-b", found.getWorkstreamId());
     }
 
+    /**
+     * Verifies that {@code findAllByBranch} returns all workstreams sharing a branch name
+     * and that {@code findByBranchAndRepo} disambiguates by repository URL.
+     */
     @Test(timeout = 10000)
     public void testFindAllByBranchReturnsEveryWorkstreamSharingBranch() {
         // Two workstreams on different repositories register the same
@@ -162,6 +191,10 @@ public class NotifierRegistryTest extends TestSuiteBase {
                 "git@github.com:almostrealism/nope.git"));
     }
 
+    /**
+     * Verifies that {@code findAllByBranch} works correctly in single-workspace mode
+     * when multiple workstreams share the same branch name.
+     */
     @Test(timeout = 10000)
     public void testFindAllByBranchSingleWorkspaceMode() {
         Workstream wsA = newWorkstream("ws-a", "C-a",
@@ -177,6 +210,10 @@ public class NotifierRegistryTest extends TestSuiteBase {
         assertTrue(matches.contains(wsB));
     }
 
+    /**
+     * Verifies that {@code findAllByBranch} returns an empty list for a branch name
+     * that is not registered, as well as for null and empty inputs.
+     */
     @Test(timeout = 10000)
     public void testFindAllByBranchEmptyResults() {
         SlackNotifier primary = notifierWith(newWorkstream("ws-a", "C-a"));
@@ -187,6 +224,10 @@ public class NotifierRegistryTest extends TestSuiteBase {
         assertTrue(registry.findAllByBranch("").isEmpty());
     }
 
+    /**
+     * Verifies that {@code notifierForWorkspace} returns the notifier registered for the
+     * given workspace id and falls back to the primary notifier for unknown ids.
+     */
     @Test(timeout = 10000)
     public void testNotifierForWorkspaceReturnsMatchingNotifier() {
         SlackNotifier a = new SlackNotifier(null);

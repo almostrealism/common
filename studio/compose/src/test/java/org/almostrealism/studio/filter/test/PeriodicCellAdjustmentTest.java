@@ -32,19 +32,31 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 
+/**
+ * Tests for PeriodicCellAdjustment health computation.
+ */
 public class PeriodicCellAdjustmentTest extends TestSuiteBase {
+	/**
+	 * Initializes test environment before all tests.
+	 */
 	@BeforeClass
 	public static void init() {
 		// AcceleratedTimeSeries.defaultCacheLevel = CacheLevel.ALL;
 		StableDurationHealthComputation.enableVerbose = true;
 	}
 
+	/**
+	 * Cleans up test environment after all tests.
+	 */
 	@AfterClass
 	public static void shutdown() {
 		AcceleratedTimeSeries.defaultCacheLevel = CacheLevel.NONE;
 		StableDurationHealthComputation.enableVerbose = false;
 	}
 
+	/**
+	 * Creates an AudioScene for testing.
+	 */
 	protected AudioScene<?> scene() {
 //		DefaultDesirablesProvider<WesternChromatic> provider = new DefaultDesirablesProvider<>(120, WesternScales.major(WesternChromatic.G3, 1));
 //		provider.getSamples().add(new File("src/main/resources/health-test-in.wav"));
@@ -52,6 +64,9 @@ public class PeriodicCellAdjustmentTest extends TestSuiteBase {
 		return new AudioScene<>(null, 120, 2, 2, OutputLine.sampleRate, new ArrayList<>(), new NoOpGenerationProvider());
 	}
 
+	/**
+	 * Test health computation without periodic adjustment.
+	 */
 	@Test(timeout = 300_000)
 	@TestProperties(knownIssue = true)
 	@TestDepth(1)
@@ -68,6 +83,9 @@ public class PeriodicCellAdjustmentTest extends TestSuiteBase {
 		health.computeHealth();
 	}
 
+	/**
+	 * Test health computation with periodic adjustment enabled.
+	 */
 	@Test(timeout = 300_000)
 	@TestProperties(knownIssue = true)
 	@TestDepth(1)

@@ -51,12 +51,17 @@ import static org.junit.Assert.assertTrue;
  */
 public class AgentsEndpointTest extends TestSuiteBase {
 
+    /** JSON parser for response bodies. */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /** Live API endpoint under test. */
     private FlowTreeApiEndpoint endpoint;
+    /** Slack notifier for the workstream. */
     private SlackNotifier notifier;
+    /** Listening port assigned by NanoHTTPD. */
     private int port;
 
+    /** Starts the API endpoint on an ephemeral port. */
     @Before
     public void setUp() throws Exception {
         notifier = new SlackNotifier(null);
@@ -65,11 +70,13 @@ public class AgentsEndpointTest extends TestSuiteBase {
         port = endpoint.getListeningPort();
     }
 
+    /** Stops the endpoint. */
     @After
     public void tearDown() {
         if (endpoint != null) endpoint.stop();
     }
 
+    /** GET /api/agents returns a valid JSON object with HTTP 200. */
     @Test(timeout = 10000)
     public void testResponseIsValidJson() throws Exception {
         HttpURLConnection conn = openGet("/api/agents");
@@ -83,6 +90,7 @@ public class AgentsEndpointTest extends TestSuiteBase {
         assertTrue("Response must be a JSON object", root.isObject());
     }
 
+    /** GET /api/agents response contains ok, runners, phases, models, and defaultRunner. */
     @Test(timeout = 10000)
     public void testResponseContainsTopLevelFields() throws Exception {
         JsonNode root = getAgentsJson();
@@ -94,6 +102,7 @@ public class AgentsEndpointTest extends TestSuiteBase {
         assertTrue("Response must contain 'defaultRunner' field", root.has("defaultRunner"));
     }
 
+    /** GET /api/agents runners list contains both claude and opencode. */
     @Test(timeout = 10000)
     public void testRunnersListContainsClaudeAndOpencode() throws Exception {
         JsonNode root = getAgentsJson();
@@ -112,6 +121,7 @@ public class AgentsEndpointTest extends TestSuiteBase {
         assertTrue("runners must contain 'opencode'", foundOpencode);
     }
 
+    /** GET /api/agents each runner has capability flags: reportsCost, reportsTurns, etc. */
     @Test(timeout = 10000)
     public void testRunnersHaveCapabilityFlags() throws Exception {
         JsonNode root = getAgentsJson();
@@ -142,6 +152,7 @@ public class AgentsEndpointTest extends TestSuiteBase {
         }
     }
 
+    /** GET /api/agents phases list has exactly the expected number of phase entries. */
     @Test(timeout = 10000)
     public void testPhaseListHasAllPhases() throws Exception {
         JsonNode root = getAgentsJson();
@@ -151,6 +162,7 @@ public class AgentsEndpointTest extends TestSuiteBase {
                 Phase.values().length, phases.size());
     }
 
+    /** GET /api/agents each phase entry has a non-empty name and description. */
     @Test(timeout = 10000)
     public void testPhaseEntriesHaveNameAndDescription() throws Exception {
         JsonNode root = getAgentsJson();
@@ -164,6 +176,7 @@ public class AgentsEndpointTest extends TestSuiteBase {
         }
     }
 
+    /** GET /api/agents phase names match the Phase enum wire names. */
     @Test(timeout = 10000)
     public void testPhaseNamesMatchEnum() throws Exception {
         JsonNode root = getAgentsJson();
@@ -179,12 +192,14 @@ public class AgentsEndpointTest extends TestSuiteBase {
         }
     }
 
+    /** GET /api/agents defaultRunner is claude. */
     @Test(timeout = 10000)
     public void testDefaultRunnerIsClaude() throws Exception {
         JsonNode root = getAgentsJson();
         assertEquals(AgentRunnerRegistry.CLAUDE, root.get("defaultRunner").asText());
     }
 
+    /** GET /api/agents models list is a non-empty array. */
     @Test(timeout = 10000)
     public void testModelsListIsNonEmpty() throws Exception {
         JsonNode root = getAgentsJson();
@@ -197,6 +212,7 @@ public class AgentsEndpointTest extends TestSuiteBase {
     // Register/update round-trip tests for per-phase configuration
     // ----------------------------------------------------------------
 
+    /** POST /api/workstreams persists per-phase configs (phaseConfigs field). */
     @Test(timeout = 10000)
     public void testRegisterPersistsPerPhaseConfigs() throws Exception {
         String body = "{\"defaultBranch\":\"feature/register-runners\","
@@ -211,6 +227,7 @@ public class AgentsEndpointTest extends TestSuiteBase {
         assertEquals("opencode", bundle.forPhase(Phase.DEDUPLICATION).runner());
     }
 
+    /** POST /api/workstreams persists default runner via defaultPhaseConfig field. */
     @Test(timeout = 10000)
     public void testRegisterPersistsDefaultViaDefaultPhaseConfig() throws Exception {
         String body = "{\"defaultBranch\":\"feature/register-default\","
@@ -222,6 +239,7 @@ public class AgentsEndpointTest extends TestSuiteBase {
         assertEquals("opencode", ws.getPhaseConfigBundle().defaultPhaseConfig().runner());
     }
 
+    /** POST /api/workstreams rejects the legacy 'runners' field with HTTP 400. */
     @Test(timeout = 10000)
     public void testRegisterRejectsLegacyRunnersField() throws Exception {
         String body = "{\"defaultBranch\":\"feature/register-legacy\","
@@ -236,6 +254,7 @@ public class AgentsEndpointTest extends TestSuiteBase {
                         && response.get("error").asText().contains("phaseConfigs"));
     }
 
+    /** POST /api/workstreams rejects an unknown runner name with HTTP 400. */
     @Test(timeout = 10000)
     public void testRegisterRejectsUnknownRunner() throws Exception {
         String body = "{\"defaultBranch\":\"feature/register-bad-runner\","
@@ -248,6 +267,7 @@ public class AgentsEndpointTest extends TestSuiteBase {
         assertTrue(response.get("error").asText().contains("Unknown runner"));
     }
 
+    /** POST /api/workstreams/{id}/update applies phase and default configs. */
     @Test(timeout = 10000)
     public void testUpdateAppliesPhaseConfigs() throws Exception {
         Workstream ws = registerBareWorkstream("feature/update-runners", "w-update-runners");
@@ -262,6 +282,7 @@ public class AgentsEndpointTest extends TestSuiteBase {
         assertEquals("opencode", bundle.forPhase(Phase.DEDUPLICATION).runner());
     }
 
+    /** POST /api/workstreams/{id}/update rejects the legacy 'model' field with HTTP 400. */
     @Test(timeout = 10000)
     public void testUpdateRejectsLegacyModelField() throws Exception {
         Workstream ws = registerBareWorkstream("feature/update-skip", "w-update-skip");
@@ -275,6 +296,7 @@ public class AgentsEndpointTest extends TestSuiteBase {
         assertTrue(response.get("error").asText().contains("model"));
     }
 
+    /** POST /api/workstreams/{id}/update without phaseConfig leaves existing config untouched. */
     @Test(timeout = 10000)
     public void testUpdateWithoutPhaseConfigLeavesConfigUntouched() throws Exception {
         Workstream ws = registerBareWorkstream("feature/update-keep", "w-update-keep");
@@ -292,24 +314,28 @@ public class AgentsEndpointTest extends TestSuiteBase {
     // Helpers
     // ----------------------------------------------------------------
 
+    /** GET /api/agents and parse the JSON response. */
     private JsonNode getAgentsJson() throws Exception {
         HttpURLConnection conn = openGet("/api/agents");
         assertEquals(200, conn.getResponseCode());
         return MAPPER.readTree(readBody(conn));
     }
 
+    /** POST JSON and parse the response. */
     private JsonNode postJson(String path, String body) throws IOException {
         HttpURLConnection conn = openPost(path, body);
         assertEquals(200, conn.getResponseCode());
         return MAPPER.readTree(readBody(conn));
     }
 
+    /** Lookup a workstream by ID from the notifier. */
     private Workstream lookupWorkstream(String workstreamId) {
         Workstream ws = notifier.getWorkstream(workstreamId);
         assertNotNull("Workstream " + workstreamId + " must be registered on the notifier", ws);
         return ws;
     }
 
+    /** Register a minimal workstream for testing. */
     private Workstream registerBareWorkstream(String branch, String channelName) {
         Workstream ws = new Workstream(null, channelName);
         ws.setDefaultBranch(branch);
@@ -317,6 +343,7 @@ public class AgentsEndpointTest extends TestSuiteBase {
         return ws;
     }
 
+    /** Open a GET connection to the local endpoint. */
     private HttpURLConnection openGet(String path) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) new URL(
                 "http://localhost:" + port + path).openConnection();
@@ -324,6 +351,7 @@ public class AgentsEndpointTest extends TestSuiteBase {
         return conn;
     }
 
+    /** Open a POST connection with JSON body to the local endpoint. */
     private HttpURLConnection openPost(String path, String body) throws IOException {
         HttpURLConnection conn = (HttpURLConnection) new URL(
                 "http://localhost:" + port + path).openConnection();
@@ -336,10 +364,12 @@ public class AgentsEndpointTest extends TestSuiteBase {
         return conn;
     }
 
+    /** Read the response body from an HTTP connection. */
     private static String readBody(HttpURLConnection conn) throws IOException {
         return new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
     }
 
+    /** Read the error stream from an HTTP connection. */
     private static String readErrorBody(HttpURLConnection conn) throws IOException {
         return new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
     }

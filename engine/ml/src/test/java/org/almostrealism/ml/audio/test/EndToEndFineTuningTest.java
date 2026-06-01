@@ -48,16 +48,31 @@ import java.util.List;
  */
 public class EndToEndFineTuningTest extends TestSuiteBase {
 
+	/** Directory containing pre-trained model weights. */
 	private static final Path WEIGHTS_DIR = Path.of("/workspace/project/weights");
 
-	// Model parameters (from ConditionalAudioSystem)
+	/** Number of input/output channels for the diffusion transformer. */
 	private static final int IO_CHANNELS = 64;
+
+	/** Embedding dimension for transformer layers. */
 	private static final int EMBED_DIM = 1024;
+
+	/** Number of transformer layers. */
 	private static final int DEPTH = 16;
+
+	/** Number of attention heads. */
 	private static final int NUM_HEADS = 8;
+
+	/** Patch size for convolution operations. */
 	private static final int PATCH_SIZE = 1;
+
+	/** Dimension of conditioning tokens for cross-attention. */
 	private static final int COND_TOKEN_DIM = 768;
+
+	/** Dimension of global conditioning vector. */
 	private static final int GLOBAL_COND_DIM = 768;
+
+	/** The diffusion objective used by the model. */
 	private static final String DIFFUSION_OBJECTIVE = "rf_denoiser";
 
 	/**

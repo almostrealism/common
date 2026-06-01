@@ -31,7 +31,13 @@ import java.io.File;
 
 import static org.junit.Assert.assertTrue;
 
+/**
+ * Tests for {@link AudioScene} rendering and genome-based scene generation.
+ */
 public class AudioSceneTest extends TestSuiteBase {
+	/**
+	 * Test that an audio scene can be rendered to a WAV file.
+	 */
 	@Test(timeout = 600_000)
 	public void runScene() {
 		File samplesDir = new File(AudioSceneOptimizer.LIBRARY);

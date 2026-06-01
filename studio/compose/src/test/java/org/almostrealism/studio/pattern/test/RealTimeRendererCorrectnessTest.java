@@ -39,12 +39,21 @@ import static org.junit.Assume.assumeTrue;
  */
 public class RealTimeRendererCorrectnessTest extends AudioSceneTestBase {
 
+	/** Directory for test result files. */
 	private static final String RESULTS_DIR = "results/renderer-correctness";
+
+	/** Threshold below which a sample is considered silent. */
 	private static final double SILENCE_THRESHOLD = 0.001;
 
+	/** Test helper for real-time scene operations. */
 	private RealTimeTestHelper helper;
+
+	/** Directory containing audio samples. */
 	private File samplesDir;
 
+	/**
+	 * Sets up test fixtures including the real-time test helper and sample directory.
+	 */
 	@Before
 	public void setup() {
 		helper = new RealTimeTestHelper(this);
@@ -148,6 +157,12 @@ public class RealTimeRendererCorrectnessTest extends AudioSceneTestBase {
 
 	/**
 	 * Renders using the real-time method.
+	 *
+	 * @param scene the scene to render
+	 * @param bufferSize frames per buffer
+	 * @param duration duration in seconds
+	 * @param path output file path
+	 * @return audio statistics for the rendered output
 	 */
 	private AudioStats renderRealTime(AudioScene<?> scene, int bufferSize, double duration, String path) {
 		// Ensure parent directory exists
@@ -174,6 +189,9 @@ public class RealTimeRendererCorrectnessTest extends AudioSceneTestBase {
 
 	/**
 	 * Analyzes an audio file and returns statistics.
+	 *
+	 * @param path the path to the audio file
+	 * @return audio statistics, or null if analysis fails
 	 */
 	private AudioStats analyzeFile(String path) {
 		try {
@@ -219,12 +237,30 @@ public class RealTimeRendererCorrectnessTest extends AudioSceneTestBase {
 	 * Audio statistics.
 	 */
 	private static class AudioStats {
+		/** Total number of frames. */
 		final int frames;
+
+		/** Maximum amplitude across all samples. */
 		final double maxAmplitude;
+
+		/** Root mean square of all samples. */
 		final double rms;
+
+		/** Ratio of non-zero samples to total samples. */
 		final double nonZeroRatio;
+
+		/** Per-second breakdown of non-zero sample ratios. */
 		final List<Double> perSecondNonZero;
 
+		/**
+		 * Creates audio statistics.
+		 *
+		 * @param frames total number of frames
+		 * @param maxAmplitude maximum amplitude
+		 * @param rms root mean square
+		 * @param nonZeroRatio ratio of non-zero samples
+		 * @param perSecond per-second non-zero ratios
+		 */
 		AudioStats(int frames, double maxAmplitude, double rms, double nonZeroRatio, List<Double> perSecond) {
 			this.frames = frames;
 			this.maxAmplitude = maxAmplitude;

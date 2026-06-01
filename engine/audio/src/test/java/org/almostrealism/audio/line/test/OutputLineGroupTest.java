@@ -28,6 +28,9 @@ import org.junit.Test;
  */
 public class OutputLineGroupTest extends TestSuiteBase {
 
+	/**
+	 * Tests that getReadPosition() returns the minimum position across all members.
+	 */
 	@Test(timeout = 60000)
 	public void readPositionReturnsMinimum() {
 		SlowMockOutputLine fast = new SlowMockOutputLine(1024, 700);
@@ -41,12 +44,18 @@ public class OutputLineGroupTest extends TestSuiteBase {
 				300, group.getReadPosition());
 	}
 
+	/**
+	 * Tests that an empty group returns 0 for getReadPosition().
+	 */
 	@Test(timeout = 60000)
 	public void readPositionEmptyGroupReturnsZero() {
 		OutputLineGroup group = new OutputLineGroup();
 		Assert.assertEquals(0, group.getReadPosition());
 	}
 
+	/**
+	 * Tests that getReadPosition() returns correct position for a single-member group.
+	 */
 	@Test(timeout = 60000)
 	public void readPositionSingleMember() {
 		SlowMockOutputLine line = new SlowMockOutputLine(1024, 300);
@@ -56,6 +65,9 @@ public class OutputLineGroupTest extends TestSuiteBase {
 		Assert.assertEquals(300, group.getReadPosition());
 	}
 
+	/**
+	 * Tests that write() forwards samples to all members.
+	 */
 	@Test(timeout = 60000)
 	public void writeForwardsToAllMembers() {
 		MockOutputLine a = new MockOutputLine(1024);
@@ -75,6 +87,9 @@ public class OutputLineGroupTest extends TestSuiteBase {
 		Assert.assertEquals(512, c.getFramesWritten());
 	}
 
+	/**
+	 * Tests that getBufferSize() returns the minimum buffer size across all members.
+	 */
 	@Test(timeout = 60000)
 	public void bufferSizeReturnsMinimum() {
 		MockOutputLine small = new MockOutputLine(512);
@@ -87,6 +102,9 @@ public class OutputLineGroupTest extends TestSuiteBase {
 		Assert.assertEquals(512, group.getBufferSize());
 	}
 
+	/**
+	 * Tests that removeMember() correctly removes a member and stops forwarding to it.
+	 */
 	@Test(timeout = 60000)
 	public void removeMember() {
 		MockOutputLine a = new MockOutputLine(1024);
@@ -109,6 +127,9 @@ public class OutputLineGroupTest extends TestSuiteBase {
 		Assert.assertEquals(256, b.getFramesWritten());
 	}
 
+	/**
+	 * Tests that start() and stop() delegate to all members.
+	 */
 	@Test(timeout = 60000)
 	public void startStopDelegatesToAllMembers() {
 		MockOutputLine a = new MockOutputLine(1024);
@@ -130,6 +151,9 @@ public class OutputLineGroupTest extends TestSuiteBase {
 		Assert.assertFalse(b.isActive());
 	}
 
+	/**
+	 * Tests that destroy() clears all members.
+	 */
 	@Test(timeout = 60000)
 	public void destroyClearsMembers() {
 		MockOutputLine a = new MockOutputLine(1024);
@@ -148,8 +172,15 @@ public class OutputLineGroupTest extends TestSuiteBase {
 	 * synchronization without timing dependencies.
 	 */
 	private static class SlowMockOutputLine extends MockOutputLine {
+		/** Fixed read position returned by this mock. */
 		private final int fixedReadPosition;
 
+		/**
+		 * Creates a SlowMockOutputLine with the specified buffer size and fixed read position.
+		 *
+		 * @param bufferSize the buffer size
+		 * @param fixedReadPosition the fixed read position to return
+		 */
 		SlowMockOutputLine(int bufferSize, int fixedReadPosition) {
 			super(bufferSize);
 			this.fixedReadPosition = fixedReadPosition;

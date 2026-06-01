@@ -51,20 +51,35 @@ import java.util.function.DoubleFunction;
  */
 public class BatchedNoteInputsResampleTest extends TestSuiteBase implements AudioTestFeatures {
 
+	/** Number of note-audio layers exercised in this test. */
 	private static final int LAYERS = 3;
+
+	/** Length of the raw source buffer used to fit wave data for comparison. */
 	private static final int SOURCE_LENGTH = 2048;
 
+	/**
+	 * Creates a {@link NoteAudioProvider} for a named test WAV rooted at C2.
+	 */
 	private NoteAudioProvider provider(String name, double freq) {
 		return NoteAudioProvider.create(getNamedTestWavPath(name, freq, 2.0, false),
 				WesternChromatic.C2, new DefaultKeyboardTuning());
 	}
 
+	/**
+	 * Copies up to {@link #SOURCE_LENGTH} samples from {@code raw} into a new
+	 * fixed-length {@link PackedCollection} for deterministic comparison.
+	 */
 	private PackedCollection fit(PackedCollection raw) {
 		PackedCollection out = new PackedCollection(SOURCE_LENGTH);
 		out.setMem(0, raw, 0, Math.min(raw.getMemLength(), SOURCE_LENGTH));
 		return out;
 	}
 
+	/**
+	 * Verifies that {@link BatchedNoteInputs#from} returns the un-resampled raw
+	 * channel data together with the correct per-note effective resample ratio for a
+	 * note pitched one octave below the sample root (ratio &lt; 1.0).
+	 */
 	@Test(timeout = 120000)
 	@TestDepth(2)
 	public void gatherSuppliesRawSourceAndEffectiveRatio() {

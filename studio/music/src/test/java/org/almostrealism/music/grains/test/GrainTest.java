@@ -42,9 +42,17 @@ import java.io.IOException;
 import java.util.List;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for grain-based audio synthesis and processing.
+ */
 public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFeatures {
+
+	/** Path to the organ audio sample used in tests. */
 	private static final String ORGAN_FILE = "Library/organ.wav";
 
+	/**
+	 * Test grain time series rendering with a single grain.
+	 */
 	@Test(timeout = 120_000)
 	public void grainsTimeSeries() {
 		Assume.assumeTrue(new File(ORGAN_FILE).exists());
@@ -77,6 +85,9 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 		log("GrainTest: Done");
 	}
 
+	/**
+	 * Test grain rendering with oscillator and envelope.
+	 */
 	@Test(timeout = 120_000)
 	public void grains() throws IOException {
 		Assume.assumeTrue(new File(ORGAN_FILE).exists());
@@ -119,6 +130,9 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 		log("GrainTest: Done");
 	}
 
+	/**
+	 * Test grain processor with multiple randomized grains.
+	 */
 	@Test(timeout = 300_000)
 	public void grainProcessor() throws IOException {
 		Assume.assumeTrue(new File(ORGAN_FILE).exists());
@@ -158,6 +172,9 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 				.sec(5).get().run();
 	}
 
+	/**
+	 * Test grain processor with envelope applied.
+	 */
 	@Test(timeout = 300_000)
 	@TestDepth(1)
 	public void grainProcessorEnvelope() throws IOException {
@@ -204,6 +221,9 @@ public class GrainTest extends TestSuiteBase implements CellFeatures, EnvelopeFe
 				.sec(5).get().run();
 	}
 
+	/**
+	 * Test granular synthesizer integration.
+	 */
 	@Test(timeout = 120_000)
 	public void granularSynth() {
 		Assume.assumeTrue(new File(ORGAN_FILE).exists());

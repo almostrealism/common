@@ -42,21 +42,31 @@ import java.util.concurrent.TimeUnit;
  */
 public class ReproduceRefreshBug extends TestSuiteBase {
 
+	/** Path prefix for the protobuf library file on the local machine. */
 	private static final String PROTOBUF_PREFIX = "/Users/michael/Projects/AlmostRealism/library";
+
+	/** Root directory containing audio sample files on the local machine. */
 	private static final String SAMPLES_ROOT = "/Users/michael/Music/Samples";
+
+	/** Sample rate for audio playback. */
 	private static final int SAMPLE_RATE = 44100;
 
+	/**
+	 * Verifies that refresh() does not recompute features for entries that already
+	 * have complete data in the protobuf store.
+	 * @throws Exception if the test fails
+	 */
 	@Test(timeout = 600000) @TestDepth(10)
 	public void refreshDoesNotRecomputeCompleteEntries() throws Exception {
 		File samplesDir = new File(SAMPLES_ROOT);
 		if (!samplesDir.isDirectory()) {
-			log("SKIP: Samples directory not found: " + SAMPLES_ROOT);
+			log("Samples directory not found, skipping: " + SAMPLES_ROOT);
 			return;
 		}
 
 		File protobufFile = new File(PROTOBUF_PREFIX + "_0.bin");
 		if (!protobufFile.exists()) {
-			log("SKIP: Protobuf file not found: " + protobufFile);
+			log("Protobuf file not found, skipping: " + protobufFile);
 			return;
 		}
 

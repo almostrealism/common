@@ -24,7 +24,14 @@ import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+/**
+ * Tests for collection traversal ordering implementations.
+ */
 public class CollectionOrderingTests extends TestSuiteBase {
+
+	/**
+	 * Tests repeat ordering traversal.
+	 */
 	@Test(timeout = 10000)
 	@TestProperties(knownIssue = true)
 	public void repeatOrdering() {
@@ -42,6 +49,9 @@ public class CollectionOrderingTests extends TestSuiteBase {
 		assertEquals(1.0, repeated.valueAt(1, 2));
 	}
 
+	/**
+	 * Tests repeat ordering with product operation.
+	 */
 	@Test(timeout = 10000)
 	public void repeatOrderingProduct() {
 		PackedCollection root = pack(2.0, 3.0, 1.0);
@@ -61,6 +71,9 @@ public class CollectionOrderingTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests compact ordering traversal.
+	 */
 	@Test(timeout = 10000)
 	@TestProperties(knownIssue = true)
 	public void compactOrdering() {
@@ -78,6 +91,9 @@ public class CollectionOrderingTests extends TestSuiteBase {
 		assertEquals(3.0, compact.valueAt(1, 1));
 	}
 
+	/**
+	 * Tests mask ordering traversal.
+	 */
 	@Test(timeout = 10000)
 	@TestProperties(knownIssue = true)
 	public void maskOrdering() {

@@ -466,7 +466,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 		log("With such small variance, argmax is essentially RANDOM across all 8487 tokens.");
 		log("The argmax has no reason to stay within the correct attribute sub-range.");
 		log("");
-		log("ROOT CAUSE HYPOTHESIS: The decoder picks argmax over the FULL 8487 vocab");
+		log("Root cause hypothesis: The decoder picks argmax over the FULL 8487 vocab");
 		log("at every step, but each step should only pick from its attribute's sub-range.");
 		log("With random/trained weights, the argmax token at step i (e.g. 'octave')");
 		log("could land anywhere in the 8487-token space, not just in the 13-token");
@@ -1020,7 +1020,7 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 		return indices;
 	}
 
-	/** Print min/max/mean/std statistics for an array. */
+	/** Prints min/max/mean/std statistics for an array. */
 	private static void printStats(String label, double[] arr) {
 		Console.root().println(String.format("%s:%n", label));
 		Console.root().println(String.format("  size=%d, min=%.6f, max=%.6f, mean=%.6f, std=%.6f%n",
@@ -1038,24 +1038,48 @@ public class MoonbeamValueDistributionTest extends TestSuiteBase implements Cons
 		}
 	}
 
+	/**
+	 * Computes the minimum value in an array.
+	 *
+	 * @param arr the array to search
+	 * @return minimum value
+	 */
 	private static double arrayMin(double[] arr) {
 		double min = arr[0];
 		for (int i = 1; i < arr.length; i++) if (arr[i] < min) min = arr[i];
 		return min;
 	}
 
+	/**
+	 * Computes the maximum value in an array.
+	 *
+	 * @param arr the array to search
+	 * @return maximum value
+	 */
 	private static double arrayMax(double[] arr) {
 		double max = arr[0];
 		for (int i = 1; i < arr.length; i++) if (arr[i] > max) max = arr[i];
 		return max;
 	}
 
+	/**
+	 * Computes the arithmetic mean of an array.
+	 *
+	 * @param arr the array to average
+	 * @return mean value
+	 */
 	private static double arrayMean(double[] arr) {
 		double sum = 0;
 		for (double v : arr) sum += v;
 		return sum / arr.length;
 	}
 
+	/**
+	 * Computes the standard deviation of an array.
+	 *
+	 * @param arr the array to analyze
+	 * @return standard deviation
+	 */
 	private static double arrayStd(double[] arr) {
 		double mean = arrayMean(arr);
 		double sumSq = 0;

@@ -45,7 +45,13 @@ import java.util.Arrays;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
+/**
+ * Tests for softmax operations including computation and backward pass.
+ */
 public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, DistributionFeatures {
+	/**
+	 * Tests basic softmax computation across multiple heads.
+	 */
 	@Test(timeout = 60000)
 	public void softmaxComputation() {
 		int heads = 12;
@@ -96,16 +102,25 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		}
 	}
 
+	/**
+	 * Tests log softmax delta computation.
+	 */
 	@Test(timeout = 60000)
 	public void logSoftmaxDelta() {
 		logSoftmaxDelta(false);
 	}
 
+	/**
+	 * Tests log softmax delta computation with optimization.
+	 */
 	@Test(timeout = 60000)
 	public void logSoftmaxDeltaOptimized() {
 		logSoftmaxDelta(true);
 	}
 
+	/**
+	 * Helper for log softmax delta testing.
+	 */
 	protected void logSoftmaxDelta(boolean optimize) {
 		PackedCollection input = new PackedCollection(4).fill(2.0);
 
@@ -123,6 +138,9 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		}
 	}
 
+	/**
+	 * Tests softmax backward pass with gradient computation.
+	 */
 	@Test(timeout = 60000)
 	public void softmaxBackwards() {
 		PackedCollection input = new PackedCollection(10);
@@ -165,6 +183,9 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		}
 	}
 
+	/**
+	 * Tests softmax backward pass with large input shape.
+	 */
 	@Test(timeout = 2 * 60000)
 	@TestDepth(1)
 	public void softmaxBackwardsLarge() throws IOException {
@@ -202,6 +223,9 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 //		}
 	}
 
+	/**
+	 * Tests log softmax backward pass with small input.
+	 */
 	@Test(timeout = 60000)
 	public void logSoftmaxBackwards1() {
 		int size = 2;
@@ -240,6 +264,9 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		}
 	}
 
+	/**
+	 * Tests log softmax backward pass with gradient at specific index.
+	 */
 	@Test(timeout = 60000)
 	public void logSoftmaxBackwards2() {
 		int size = 10;
@@ -286,6 +313,9 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		}
 	}
 
+	/**
+	 * Tests log softmax as part of a model.
+	 */
 	@Test(timeout = 60000)
 	public void logSoftmaxModel() throws IOException {
 		int size = 2;
@@ -333,6 +363,9 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		}
 	}
 
+	/**
+	 * Tests softmax computation with sequence input.
+	 */
 	@Test(timeout = 60000)
 	public void softmaxTest() {
 		int seqLen = 20;
@@ -355,6 +388,9 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		compare(null, result.evaluate(), values);
 	}
 
+	/**
+	 * Tests softmax layer computation.
+	 */
 	@Test(timeout = 60000)
 	public void softmaxLayer() {
 		int seqLength = 20;
@@ -372,6 +408,9 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		compare(null, destination, values);
 	}
 
+	/**
+	 * Tests softmax computation on a subset of input.
+	 */
 	@Test(timeout = 60000)
 	public void softmaxSubset() {
 		int heads = 1;
@@ -398,6 +437,13 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		});
 	}
 
+	/**
+	 * Applies softmax to an array in-place.
+	 *
+	 * @param x Array to transform
+	 * @param offset Starting offset in array
+	 * @param size Number of elements to process
+	 */
 	protected static void softmax(double[] x, int offset, int size) {
 		double max = x[offset];
 		for (int i = 1; i < size; i++) {
@@ -427,6 +473,13 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		}
 	}
 
+	/**
+	 * Compares computed softmax output against expected values.
+	 *
+	 * @param op Optional operation to run before comparison
+	 * @param dest Destination collection with computed values
+	 * @param values Expected values
+	 */
 	protected void compare(Supplier<Runnable> op, PackedCollection dest, double[] values) {
 		if (op != null) {
 			op.get().run();
@@ -440,6 +493,12 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		}
 	}
 
+	/**
+	 * Creates a copy of the input collection.
+	 *
+	 * @param input Collection to copy
+	 * @return Copy of the input collection
+	 */
 	private PackedCollection copy(PackedCollection input) {
 		PackedCollection output = new PackedCollection(input.getShape());
 		output.fill(pos -> input.valueAt(pos));

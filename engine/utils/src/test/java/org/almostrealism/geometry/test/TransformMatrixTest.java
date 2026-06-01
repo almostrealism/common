@@ -22,6 +22,9 @@ import org.junit.Test;
  */
 public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, TransformMatrixFeatures {
 
+	/**
+	 * Tests transform matrix inverse and ray transformation.
+	 */
 	@Test(timeout = 10000)
 	public void testTransformMatrixInverse() {
 		log("Testing TransformMatrix inverse and ray transformation...");
@@ -94,6 +97,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Transform matrix inverse test passed!");
 	}
 
+	/**
+	 * Tests sphere intersection with transform matrices.
+	 */
 	@Test(timeout = 25000)
 	public void testSphereIntersectionWithTransform() {
 		log("Testing sphere intersection WITH transforms enabled...");
@@ -181,6 +187,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("All transform tests passed!");
 	}
 
+	/**
+	 * Tests ray origin translation with transform matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testRayOriginTranslation() {
 		log("Testing ray origin translation...");
@@ -208,6 +217,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Ray origin translation test passed!");
 	}
 
+	/**
+	 * Tests ray origin inverse translation with transform matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testRayOriginInverseTranslation() {
 		log("Testing ray origin inverse translation...");
@@ -235,6 +247,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Ray origin inverse translation test passed!");
 	}
 
+	/**
+	 * Tests that ray direction is unaffected by translation.
+	 */
 	@Test(timeout = 10000)
 	public void testRayDirectionUnaffectedByTranslation() {
 		log("Testing ray direction unaffected by translation...");
@@ -262,6 +277,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Direction unaffected by translation test passed!");
 	}
 
+	/**
+	 * Tests scaled sphere intersection distance calculation.
+	 */
 	@Test(timeout = 10000)
 	public void testScaledSphereIntersectionDistance() {
 		log("Testing that scaled sphere intersection returns correct WORLD SPACE distance...");
@@ -300,6 +318,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 	// This test may have incorrect expectations about how TransformMatrix.transform() works.
 	// Need to investigate the actual transform implementation first.
 
+	/**
+	 * Tests combined transform on ray.
+	 */
 	@Test(timeout = 10000)
 	public void testCombinedTransformOnRay() {
 		log("Testing combined transform (translate + scale) on ray...");
@@ -336,6 +357,9 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Combined transform test passed!");
 	}
 
+	/**
+	 * Tests intersection with translated sphere.
+	 */
 	@Test(timeout = 10000)
 	public void testIntersectionWithTranslatedSphere() {
 		log("Testing intersection experiment: translated sphere requires inverse transform...");
@@ -393,11 +417,12 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("  Inverse transform hit test passed!");
 	}
 
+	/**
+	 * Tests how Sphere.calculateTransform() creates the transform matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testSphereTransformMatrixCreation() {
-		log("========================================");
-		log("COMPONENT TEST 1: How Sphere.calculateTransform() creates the matrix");
-		log("========================================");
+		log("How Sphere.calculateTransform() creates the matrix");
 
 		Sphere sphere = new Sphere();
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
@@ -426,11 +451,12 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		assertTrue("M[3,3] should be 1.0", Math.abs(matData[15] - 1.0) < 0.001);
 	}
 
+	/**
+	 * Tests the inverse transform matrix for a scaled sphere.
+	 */
 	@Test(timeout = 10000)
 	public void testSphereInverseTransformMatrix() {
-		log("========================================");
-		log("COMPONENT TEST 2: Inverse transform matrix for scaled sphere");
-		log("========================================");
+		log("Inverse transform matrix for scaled sphere");
 
 		Sphere sphere = new Sphere();
 		sphere.setLocation(new Vector(0.0, 0.0, 0.0));
@@ -459,11 +485,12 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		assertTrue("M[3,3] should be 1.0", Math.abs(invData[15] - 1.0) < 0.001);
 	}
 
+	/**
+	 * Tests ray transformation by an inverse scale matrix.
+	 */
 	@Test(timeout = 10000)
 	public void testRayTransformationByInverseScale() {
-		log("========================================");
-		log("COMPONENT TEST 3: Ray transformation by inverse scale matrix");
-		log("========================================");
+		log("Ray transformation by inverse scale matrix");
 
 		// Create scale(2,2,2) sphere
 		Sphere sphere = new Sphere();
@@ -507,11 +534,12 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		assertTrue("Direction length should be 0.5", Math.abs(dirLength - 0.5) < 0.001);
 	}
 
+	/**
+	 * Performs manual intersection calculation step-by-step to verify math.
+	 */
 	@Test(timeout = 10000)
 	public void testManualIntersectionCalculation() {
-		log("========================================");
-		log("COMPONENT TEST 4: Manual intersection calculation step-by-step");
-		log("========================================");
+		log("Manual intersection calculation step-by-step");
 
 		// Manually compute intersection for transformed ray with unit sphere
 		// Ray: origin=(0,0,5), direction=(0,0,-0.5) [from test above]
@@ -1119,16 +1147,25 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 		log("Batch element-wise test passed!");
 	}
 
+	/**
+	 * Tests the adjoint matrix computation.
+	 */
 	@Test(timeout = 10000)
 	public void adjoint() {
 		new TransformMatrix().adjoint();
 	}
 
+	/**
+	 * Tests the determinant computation for a transform matrix.
+	 */
 	@Test(timeout = 10000)
 	public void determinant() {
 		new TransformMatrix().determinant();
 	}
 
+	/**
+	 * Tests behavior when a scale transform has zero in one dimension.
+	 */
 	@Test(timeout = 10000)
 	public void testZeroScaleDetection() {
 		log("Testing edge case: zero scale transform...");

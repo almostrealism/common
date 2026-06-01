@@ -25,7 +25,13 @@ import org.junit.Test;
 
 import java.io.IOException;
 
+/**
+ * Tests event delivery functionality via HTTP.
+ */
 public class EventDeliveryTest extends TestSuiteBase {
+	/**
+	 * Tests that events can be delivered via HTTP.
+	 */
 	@Test(timeout = 60000)
 	public void deliver() throws IOException, InterruptedException {
 		SimpleEventServer server = new SimpleEventServer();

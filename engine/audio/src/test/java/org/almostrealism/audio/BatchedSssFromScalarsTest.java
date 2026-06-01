@@ -38,20 +38,40 @@ import java.util.Random;
  */
 public class BatchedSssFromScalarsTest extends TestSuiteBase implements TemporalFeatures {
 
+	/** Number of notes in each batch. */
 	private static final int N = 4;
+
+	/** Number of layers in the SSS chain. */
 	private static final int LAYERS = 3;
+
+	/** Number of samples in each source audio buffer. */
 	private static final int SOURCE_LENGTH = 2048;
+
+	/** Number of samples in the target output buffer. */
 	private static final int TARGET_LENGTH = 1024;
+
+	/** Number of output samples written by the placement window. */
 	private static final int WINDOW_WIDTH = 1536;
+
+	/** Audio sample rate used for envelope curve construction. */
 	private static final int SAMPLE_RATE = OutputLine.sampleRate;
+
+	/** Filter order used when constructing the multi-order filter processor. */
 	private static final int FILTER_ORDER = 40;
 
+	/**
+	 * Creates a {@link PackedCollection} populated with the given double values.
+	 */
 	private PackedCollection col(double[] values) {
 		PackedCollection c = new PackedCollection(values.length);
 		c.setMem(values);
 		return c;
 	}
 
+	/**
+	 * Verifies that the fused scalar-driven path produces output identical
+	 * to the pre-materialized envelope-curve path within a tight RMS threshold.
+	 */
 	@Test(timeout = 240000)
 	@TestDepth(2)
 	public void testFromScalarsMatchesMaterialized() {

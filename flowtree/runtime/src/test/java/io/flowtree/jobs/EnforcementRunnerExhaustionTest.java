@@ -52,13 +52,16 @@ import static org.junit.Assert.assertTrue;
  */
 public class EnforcementRunnerExhaustionTest extends TestSuiteBase {
 
+    /** Temporary directory used by each test to host a working-directory sandbox. */
     private Path tempDir;
 
+    /** Creates a fresh temporary directory before each test. */
     @Before
     public void setUp() throws IOException {
         tempDir = Files.createTempDirectory("enforce-exhaust-test");
     }
 
+    /** Recursively deletes the temporary directory after each test. */
     @After
     public void tearDown() throws IOException {
         if (tempDir != null && Files.exists(tempDir)) {
@@ -69,19 +72,23 @@ public class EnforcementRunnerExhaustionTest extends TestSuiteBase {
         }
     }
 
+    /** Returns the path to the {@code commit.txt} file inside the temporary directory. */
     private Path commitTxt() {
         return tempDir.resolve("commit.txt");
     }
 
+    /** Writes the given content to {@code commit.txt} in the temporary directory. */
     private void writeCommitTxt(String content) throws IOException {
         Files.writeString(commitTxt(), content, StandardCharsets.UTF_8);
     }
 
+    /** Reads and returns the content of {@code commit.txt}, or {@code null} if it does not exist. */
     private String readCommitTxt() throws IOException {
         if (!Files.exists(commitTxt())) return null;
         return Files.readString(commitTxt(), StandardCharsets.UTF_8);
     }
 
+    /** Deletes {@code commit.txt} from the temporary directory if it exists. */
     private void deleteCommitTxt() throws IOException {
         Files.deleteIfExists(commitTxt());
     }

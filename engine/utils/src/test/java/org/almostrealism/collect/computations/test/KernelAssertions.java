@@ -21,7 +21,20 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.TestSettings;
 import org.junit.Assert;
 
+/**
+ * Interface for kernel-based computation assertions including pooling validation.
+ */
 public interface KernelAssertions extends TestSettings, ConsoleFeatures {
+	/**
+	 * Validates 2D pooling output by comparing against expected max values.
+	 *
+	 * @param r Input rows
+	 * @param c Input columns
+	 * @param d Depth (channels)
+	 * @param w Pooling window size
+	 * @param input Input collection
+	 * @param output Output collection
+	 */
 	default void pool2d(int r, int c, int d, int w, PackedCollection input, PackedCollection output) {
 		log("Validate Pool2D: Output shape = " + output.getShape());
 		log("Validate Pool2D: Output size = " + output.getShape().getSize());

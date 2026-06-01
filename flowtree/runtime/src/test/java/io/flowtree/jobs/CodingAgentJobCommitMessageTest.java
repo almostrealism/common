@@ -48,11 +48,13 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
     /** Temporary working directory recreated for each test. */
     private Path tempDir;
 
+    /** Creates a fresh temporary directory before each test. */
     @Before
     public void setUp() throws IOException {
         tempDir = Files.createTempDirectory("commit-msg-test");
     }
 
+    /** Deletes the temporary directory and all its contents after each test. */
     @After
     public void tearDown() throws IOException {
         if (tempDir != null && Files.exists(tempDir)) {
@@ -65,10 +67,12 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
+    /** Writes {@code content} to {@code commit.txt} in the temporary directory. */
     private void writeCommitTxt(String content) throws IOException {
         Files.write(tempDir.resolve("commit.txt"), content.getBytes(StandardCharsets.UTF_8));
     }
 
+    /** Reads and returns the contents of {@code commit.txt}, or {@code null} if it does not exist. */
     private String readCommitTxt() throws IOException {
         Path p = tempDir.resolve("commit.txt");
         if (!Files.exists(p)) return null;
@@ -100,6 +104,7 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
 
     // ── CommitMessageRule.isViolated() ────────────────────────────────────────
 
+    /** Verifies that {@link CommitMessageRule} reports a violation when {@code commit.txt} is absent. */
     @Test(timeout = 30000)
     public void commitMessageRuleViolatedWhenCommitTxtMissing() {
         CommitMessageRule rule = new CommitMessageRule();
@@ -109,6 +114,7 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
                 rule.isViolated(job));
     }
 
+    /** Verifies that {@link CommitMessageRule} reports a violation when {@code commit.txt} contains only whitespace. */
     @Test(timeout = 30000)
     public void commitMessageRuleViolatedWhenCommitTxtEmpty() throws IOException {
         writeCommitTxt("   ");
@@ -119,6 +125,7 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
                 rule.isViolated(job));
     }
 
+    /** Verifies that {@link CommitMessageRule} reports a violation when the agent copies the task prompt verbatim. */
     @Test(timeout = 30000)
     public void commitMessageRuleViolatedWhenCommitTxtEqualsTaskPrompt() throws IOException {
         String prompt = "Fix the authentication bug in UserService";
@@ -130,6 +137,7 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
                 rule.isViolated(job));
     }
 
+    /** Verifies that a well-formed, agent-authored commit message does not trigger a rule violation. */
     @Test(timeout = 30000)
     public void commitMessageRuleNotViolatedOnNormalMessage() throws IOException {
         writeCommitTxt("Fix auth bug: validate token expiry before session creation\n\nAdded expiry check in UserService.authenticate().");
@@ -140,6 +148,7 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
                 rule.isViolated(job));
     }
 
+    /** Verifies that the rule is still violated when the agent writes the correction prompt text as its commit message. */
     @Test(timeout = 30000)
     public void commitMessageRuleViolatedWhenAgentEchoesOwnPrompt() throws IOException {
         CommitMessageRule rule = new CommitMessageRule();
@@ -157,6 +166,7 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
                 rule.isViolated(job));
     }
 
+    /** Verifies that {@link CommitMessageRule#MAX_RETRIES} and the instance value are both {@code 2}. */
     @Test(timeout = 30000)
     public void commitMessageRuleMaxRetriesIsTwo() {
         assertEquals(2, CommitMessageRule.MAX_RETRIES);
@@ -164,6 +174,7 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
         assertEquals(2, rule.getMaxRetries());
     }
 
+    /** Verifies that {@link CommitMessageRule#getName()} returns {@code "commit-message"}. */
     @Test(timeout = 30000)
     public void commitMessageRuleNameIsCommitMessage() {
         assertEquals("commit-message", new CommitMessageRule().getName());
@@ -171,6 +182,7 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
 
     // ── CommitMessageRule.onCorrectionAttempted ────────────────────────────────
 
+    /** Verifies that {@code onCorrectionAttempted} sets the source to {@link CommitMessageRule#SOURCE_RECOVERED} when the violation is resolved. */
     @Test(timeout = 30000)
     public void onCorrectionAttemptedSetsRecoveredSourceWhenResolved() throws IOException {
         writeCommitTxt("Add validation for pushed-tools server names");
@@ -182,6 +194,7 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
         assertEquals(CommitMessageRule.SOURCE_RECOVERED, job.getCommitMessageSource());
     }
 
+    /** Verifies that {@code onCorrectionAttempted} does not set the source when the violation is still present. */
     @Test(timeout = 30000)
     public void onCorrectionAttemptedDoesNotSetSourceWhenStillViolated() {
         CommitMessageRule rule = new CommitMessageRule();
@@ -195,6 +208,7 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
 
     // ── getCommitMessage() source tagging ─────────────────────────────────────
 
+    /** Verifies that {@code getCommitMessageSource()} returns {@code "agent"} when {@code commit.txt} is present. */
     @Test(timeout = 30000)
     public void getCommitMessageSourceIsAgentWhenCommitTxtPresent() throws IOException {
         writeCommitTxt("Add validation for server name format");
@@ -205,6 +219,7 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
         assertEquals("agent", job.getCommitMessageSource());
     }
 
+    /** Verifies that {@code getCommitMessageSource()} returns {@code "prompt_fallback"} when {@code commit.txt} is absent. */
     @Test(timeout = 30000)
     public void getCommitMessageSourceIsPromptFallbackWhenCommitTxtMissing() {
         CodingAgentJob job = new CodingAgentJob("t1", "do something");
@@ -369,12 +384,14 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
 
     // ── CodingAgentJobEvent — commitMessageSource ─────────────────────────────
 
+    /** Verifies that the default {@code commitMessageSource} on a new event is {@code null}. */
     @Test(timeout = 30000)
     public void commitMessageSourcePropagatesIntoEventDefault() {
         CodingAgentJobEvent event = CodingAgentJobEvent.success("j1", "desc");
         assertNull("Default commitMessageSource must be null", event.getCommitMessageSource());
     }
 
+    /** Verifies that {@code withCommitMessageSource} stores and exposes the source value on the event. */
     @Test(timeout = 30000)
     public void commitMessageSourcePropagatesIntoEventViaBuilder() {
         CodingAgentJobEvent event = CodingAgentJobEvent.success("j1", "desc");
@@ -382,6 +399,7 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
         assertEquals("agent", event.getCommitMessageSource());
     }
 
+    /** Verifies that the {@code commitMessageSource} field and its value appear in the JSON representation of an event. */
     @Test(timeout = 30000)
     public void commitMessageSourceAppearsInEventJson() {
         CodingAgentJobEvent event = CodingAgentJobEvent.success("j1", "desc");
@@ -409,16 +427,19 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
         assertCommitMessageSourceRoundTrip("agent");
     }
 
+    /** Verifies that the {@code "prompt_fallback"} source survives a full serialize-parse-reconstruct round-trip. */
     @Test(timeout = 30000)
     public void commitMessageSourceSurvivesSerializeParseRoundTripPromptFallback() {
         assertCommitMessageSourceRoundTrip("prompt_fallback");
     }
 
+    /** Verifies that the {@code "commit_rule_recovered"} source survives a full serialize-parse-reconstruct round-trip. */
     @Test(timeout = 30000)
     public void commitMessageSourceSurvivesSerializeParseRoundTripCommitRuleRecovered() {
         assertCommitMessageSourceRoundTrip("commit_rule_recovered");
     }
 
+    /** Asserts that the given commit-message source value survives a JSON serialize-parse-reconstruct round-trip. */
     private void assertCommitMessageSourceRoundTrip(String source) {
         CodingAgentJobEvent original = CodingAgentJobEvent.success("j-rt-" + source, "round-trip");
         original.withCommitMessageSource(source);

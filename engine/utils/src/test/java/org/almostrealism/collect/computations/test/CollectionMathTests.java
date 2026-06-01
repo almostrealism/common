@@ -25,7 +25,13 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for collection math operations.
+ */
 public class CollectionMathTests extends TestSuiteBase {
+	/**
+	 * Tests broadcast product with scalar.
+	 */
 	@Test(timeout = 30000)
 	public void broadcastProduct1() {
 		PackedCollection a = new PackedCollection(shape(10));
@@ -41,6 +47,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests broadcast product with different shapes.
+	 */
 	@Test(timeout = 30000)
 	public void broadcastProduct2() {
 		PackedCollection a = new PackedCollection(shape(10));
@@ -61,6 +70,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests traverse product operation.
+	 */
 	@Test(timeout = 30000)
 	public void traverseProduct() {
 		PackedCollection a = new PackedCollection(shape(10)).randFill();
@@ -77,6 +89,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests repeat product operation.
+	 */
 	@Test(timeout = 30000)
 	public void repeatProduct() {
 		PackedCollection a = new PackedCollection(shape(2, 5)).randFill();
@@ -94,6 +109,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Tests double broadcast product.
+	 */
 	@Test(timeout = 30000)
 	public void doubleBroadcastProduct() {
 		int r = 6;
@@ -111,6 +129,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests double broadcast product with arguments.
+	 */
 	@Test(timeout = 30000)
 	public void doubleBroadcastProductArguments() {
 		int r = 3;
@@ -136,6 +157,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests sum operation on collections.
+	 */
 	@Test(timeout = 30000)
 	public void sum() {
 		int size = 768;
@@ -154,6 +178,9 @@ public class CollectionMathTests extends TestSuiteBase {
 				}, false, false, true);
 	}
 
+	/**
+	 * Tests linear collection generation.
+	 */
 	@Test(timeout = 30000)
 	public void linear() {
 		PackedCollection out = linear(0, 5, 10).evaluate();
@@ -163,6 +190,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		assertEquals(5.0, out.valueAt(9));
 	}
 
+	/**
+	 * Tests cumulative product operation.
+	 */
 	@Test(timeout = 30000)
 	public void cumulativeProduct() {
 		int steps = 300;
@@ -185,6 +215,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests squaring operation on collections.
+	 */
 	@Test(timeout = 30000)
 	public void squares() {
 		int size = 768;
@@ -210,6 +243,9 @@ public class CollectionMathTests extends TestSuiteBase {
 				}, false, false, true);
 	}
 
+	/**
+	 * Tests sum of squares operation.
+	 */
 	@Test(timeout = 30000)
 	public void sumOfSquares() {
 		int size = 768;
@@ -243,6 +279,9 @@ public class CollectionMathTests extends TestSuiteBase {
 				}, false, false, true);
 	}
 
+	/**
+	 * Tests sum of squares product operation.
+	 */
 	@Test(timeout = 30000)
 	public void sumOfSquaresProduct() {
 		int size = 768;
@@ -278,6 +317,9 @@ public class CollectionMathTests extends TestSuiteBase {
 				}, false, false, true);
 	}
 
+	/**
+	 * Tests mean calculation across specified axis.
+	 */
 	@Test(timeout = 30000)
 	public void mean() {
 		int c = 5;
@@ -303,6 +345,9 @@ public class CollectionMathTests extends TestSuiteBase {
 				});
 	}
 
+	/**
+	 * Tests subtract mean operation.
+	 */
 	@Test(timeout = 30000)
 	public void subtractMean() {
 		int c = 5;
@@ -333,6 +378,9 @@ public class CollectionMathTests extends TestSuiteBase {
 				});
 	}
 
+	/**
+	 * Tests subtract mean squared operation.
+	 */
 	@Test(timeout = 30000)
 	public void subtractMeanSq() {
 		int c = 5;
@@ -363,17 +411,27 @@ public class CollectionMathTests extends TestSuiteBase {
 				});
 	}
 
+	/**
+	 * Tests variance calculation with one component.
+	 */
 	@Test(timeout = 30000)
 	@TestDepth(2)
 	public void variance1() {
 		variance(1);
 	}
 
+	/**
+	 * Tests variance calculation with five components.
+	 */
 	@Test(timeout = 30000)
 	public void variance2() {
 		variance(5);
 	}
 
+	/**
+	 * Helper method to test variance calculation with specified component count.
+	 * @param c the number of components
+	 */
 	public void variance(int c) {
 		int g = 4;
 		int v = 10;
@@ -408,6 +466,9 @@ public class CollectionMathTests extends TestSuiteBase {
 				});
 	}
 
+	/**
+	 * Tests mean variance quotient operation.
+	 */
 	@Test(timeout = 30000)
 	public void meanVarianceQuotient() {
 		int n = 1;
@@ -455,6 +516,9 @@ public class CollectionMathTests extends TestSuiteBase {
 				});
 	}
 
+	/**
+	 * Tests in-place addition operation.
+	 */
 	@Test(timeout = 30000)
 	public void addInPlace() {
 		int size = 10;
@@ -476,6 +540,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests lessThan comparison with single scalar values.
+	 */
 	@Test(timeout = 30000)
 	public void lessThanSingleValue() {
 		// Test lessThan with single scalar values
@@ -491,6 +558,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Tests lessThan comparison with a small batch of elements.
+	 */
 	@Test(timeout = 30000)
 	public void lessThanSmallBatch() {
 		// Test lessThan with a small batch of 3 elements
@@ -524,6 +594,9 @@ public class CollectionMathTests extends TestSuiteBase {
 		Assert.assertEquals(5.0, resultData.valueAt(2, 0), 0.001);
 	}
 
+	/**
+	 * Tests lessThan comparison with 256 elements to check batch size limits.
+	 */
 	@Test(timeout = 30000)
 	public void lessThanLargeBatch() {
 		// Test lessThan with 256 elements to check for batch size limits

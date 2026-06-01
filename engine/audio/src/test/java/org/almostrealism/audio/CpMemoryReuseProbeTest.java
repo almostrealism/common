@@ -37,6 +37,12 @@ import org.junit.Test;
  */
 public class CpMemoryReuseProbeTest extends TestSuiteBase implements CollectionFeatures, TemporalFeatures {
 
+	/**
+	 * Verifies that a compiled {@link Evaluable} produced from {@code cp(buffer)}
+	 * re-reads the buffer's native memory on each evaluation, so that mutating the
+	 * buffer via {@code setMem} is reflected in subsequent evaluations without
+	 * recompiling the kernel.
+	 */
 	@Test(timeout = 60000)
 	@TestDepth(1)
 	public void cpRereadsBufferMemoryOnReevaluate() {

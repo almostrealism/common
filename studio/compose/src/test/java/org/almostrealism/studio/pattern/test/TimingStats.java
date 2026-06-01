@@ -46,14 +46,25 @@ import java.util.List;
  */
 public class TimingStats {
 
+	/** Per-buffer render times in nanoseconds. */
 	private final List<Long> bufferTimingsNanos;
+
+	/** Target buffer duration in milliseconds. */
 	private final double targetBufferMs;
+
+	/** Total render time in nanoseconds. */
 	private final long totalTimeNanos;
 
-	// Computed values
+	/** Computed average buffer time in milliseconds. */
 	private final double avgBufferMs;
+
+	/** Computed minimum buffer time in milliseconds. */
 	private final double minBufferMs;
+
+	/** Computed maximum buffer time in milliseconds. */
 	private final double maxBufferMs;
+
+	/** Number of buffers that exceeded target time. */
 	private final long overrunCount;
 
 	/**

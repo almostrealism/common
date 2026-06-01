@@ -50,6 +50,12 @@ import java.util.List;
  */
 public class MoonbeamInferenceRunner {
 
+	/**
+	 * Standalone inference runner entry point.
+	 *
+	 * @param args command line arguments: weights_dir output.mid max_tokens [options]
+	 * @throws Exception if inference fails
+	 */
 	public static void main(String[] args) throws Exception {
 		if (args.length < 3) {
 			log("Usage: MoonbeamInferenceRunner <weights_dir> <output.mid> <max_tokens> [options]");
@@ -113,7 +119,7 @@ public class MoonbeamInferenceRunner {
 		// Validate weights directory
 		File weightsFile = new File(weightsDir);
 		if (!weightsFile.isDirectory()) {
-			log("ERROR: Weights directory not found: " + weightsDir);
+			log("Weights directory not found: " + weightsDir);
 			log("Run extract_moonbeam_weights.py first to create protobuf weights.");
 			System.exit(1);
 		}
@@ -129,11 +135,11 @@ public class MoonbeamInferenceRunner {
 		log("");
 
 		// Load model
-		log("[1/4] Loading model weights...");
+		log("Loading model weights...");
 		long startLoad = System.currentTimeMillis();
 		MoonbeamMidi model = new MoonbeamMidi(weightsDir, config);
 		long loadTime = System.currentTimeMillis() - startLoad;
-		log("[1/4] Model loaded and compiled in " + formatTime(loadTime));
+		log("Model loaded and compiled in " + formatTime(loadTime));
 		log("");
 
 		// Create autoregressive model
@@ -147,7 +153,7 @@ public class MoonbeamInferenceRunner {
 
 		// Set prompt if provided
 		if (inputPath != null) {
-			log("[2/4] Loading MIDI prompt: " + inputPath);
+			log("Loading MIDI prompt: " + inputPath);
 			long startPrompt = System.currentTimeMillis();
 
 			MidiFileReader reader = new MidiFileReader();
@@ -166,7 +172,7 @@ public class MoonbeamInferenceRunner {
 
 			gen.setPrompt(promptTokens.toArray(new MidiCompoundToken[0]));
 
-			log("[2/4] Processing prompt through transformer...");
+			log("Processing prompt through transformer...");
 			long promptProcessStart = System.currentTimeMillis();
 			// Process prompt tokens (builds KV cache)
 			for (int i = 0; i < promptTokens.size(); i++) {
@@ -179,14 +185,14 @@ public class MoonbeamInferenceRunner {
 			}
 
 			long promptTime = System.currentTimeMillis() - startPrompt;
-			log("[2/4] Prompt processed in " + formatTime(promptTime));
+			log("Prompt processed in " + formatTime(promptTime));
 		} else {
-			log("[2/4] Skipping prompt (unconditional generation)");
+			log("Skipping prompt (unconditional generation)");
 		}
 		log("");
 
 		// Generate tokens
-		log("[3/4] Generating " + maxTokens + " tokens...");
+		log("Generating " + maxTokens + " tokens...");
 		long startGen = System.currentTimeMillis();
 		List<MidiCompoundToken> generated = new ArrayList<>();
 
@@ -223,12 +229,12 @@ public class MoonbeamInferenceRunner {
 		long genTime = System.currentTimeMillis() - startGen;
 		int genCount = generated.size();
 		double tokensPerSec = genCount / (genTime / 1000.0);
-		log("[3/4] Generated " + genCount + " tokens in " + formatTime(genTime)
+		log("Generated " + genCount + " tokens in " + formatTime(genTime)
 				+ " (" + String.format("%.2f", tokensPerSec) + " tok/s)");
 		log("");
 
 		// Write output MIDI
-		log("[4/4] Writing MIDI output to " + outputPath);
+		log("Writing MIDI output to " + outputPath);
 		MidiTokenizer tokenizer = new MidiTokenizer();
 		List<MidiCompoundToken> outputTokens = new ArrayList<>();
 
@@ -240,25 +246,36 @@ public class MoonbeamInferenceRunner {
 		}
 
 		if (outputTokens.isEmpty()) {
-			log("WARNING: No non-special tokens generated. Output will be empty.");
+			log("No non-special tokens generated. Output will be empty.");
 		}
 
 		List<MidiNoteEvent> events = tokenizer.detokenize(outputTokens);
 		MidiFileReader writer = new MidiFileReader();
 		writer.write(events, new File(outputPath));
 
-		log("[4/4] Wrote " + events.size() + " MIDI note events to " + outputPath);
+		log("Wrote " + events.size() + " MIDI note events to " + outputPath);
 		log("");
 		log("=== Inference complete ===");
 		log("Profile summary:");
 		log(model.getProfilingSummary());
 	}
 
+	/**
+	 * Prints a timestamped log message to the console.
+	 *
+	 * @param message the message to log
+	 */
 	private static void log(String message) {
 		String timestamp = String.format("[%tT]", System.currentTimeMillis());
 		Console.root().println(timestamp + " " + message);
 	}
 
+	/**
+	 * Formats a duration in milliseconds to a human-readable string.
+	 *
+	 * @param millis the duration in milliseconds
+	 * @return a formatted string (e.g., "1.5s", "2m 0.5s")
+	 */
 	private static String formatTime(long millis) {
 		if (millis < 1000) return millis + "ms";
 		if (millis < 60000) return String.format("%.1fs", millis / 1000.0);

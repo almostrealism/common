@@ -41,11 +41,20 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 
+/**
+ * Tests for audio envelope generation and processing.
+ */
 public class EnvelopeTests extends TestSuiteBase implements CellFeatures, EnvelopeFeatures {
+
+	/** Path to the test input audio file. */
 	public static String TEST_INPUT = "Library/Res Multi Acid C3 01.wav";
 
+	/** Filter order for multi-order filter tests. */
 	int filterOrder = 40;
 
+	/**
+	 * Test attack envelope applied to an audio sample.
+	 */
 	@Test(timeout = 60_000)
 	public void attackSample() throws IOException {
 		Assume.assumeTrue(new File("Library/organ.wav").exists());
@@ -54,6 +63,9 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.save(new File("results/attack-sample.wav"));
 	}
 
+	/**
+	 * Test basic attack envelope generation.
+	 */
 	@Test(timeout = 60_000)
 	public void attack() {
 		double attack = 0.5;
@@ -67,6 +79,9 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.sample(0,env).save(new File("results/attack.wav"));
 	}
 
+	/**
+	 * Test ADSR (attack, decay, sustain, release) envelope.
+	 */
 	@Test(timeout = 60_000)
 	public void adsr() {
 		double duration = 8.0;
@@ -88,6 +103,9 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.sample(0,env).save(new File("results/adsr.wav"));
 	}
 
+	/**
+	 * Test ASR (attack, sustain, release) envelope.
+	 */
 	@Test(timeout = 60_000)
 	public void asr() {
 		double d0 = 0.5;
@@ -111,6 +129,9 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.sample(0,env).save(new File("results/asr.wav"));
 	}
 
+	/**
+	 * Test ADSR envelope with low-pass filter.
+	 */
 	@Test(timeout = 60_000)
 	public void adsrFilter() throws IOException {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
@@ -134,6 +155,9 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.get().run();
 	}
 
+	/**
+	 * Test ADSR with multi-order filter processing.
+	 */
 	@Test(timeout = 60_000)
 	public void adsrMultiOrderFilter() throws IOException {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
@@ -160,6 +184,9 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.save(new File("results/adsr-multi-order-filter.wav"));
 	}
 
+	/**
+	 * Test ADSR multi-order filter with first argument configuration.
+	 */
 	@Test(timeout = 60_000)
 	public void adsrMultiOrderFilterArguments1() throws IOException {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
@@ -189,6 +216,9 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.save(new File("results/adsr-multi-order-filter-args1.wav"));
 	}
 
+	/**
+	 * Test ADSR multi-order filter with second argument configuration.
+	 */
 	@Test(timeout = 60_000)
 	public void adsrMultiOrderFilterArguments2() throws IOException {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
@@ -222,6 +252,9 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.save(new File("results/adsr-multi-order-filter-args2.wav"));
 	}
 
+	/**
+	 * Test ADSR multi-order filter with coefficient arguments.
+	 */
 	@Test(timeout = 60_000)
 	public void adsrMultiOrderFilterCoefficientArguments() throws IOException {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
@@ -254,6 +287,9 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.save(new File("results/adsr-multi-order-filter-coeff.wav"));
 	}
 
+	/**
+	 * Test parameterized volume envelope with random parameters.
+	 */
 	@Test(timeout = 60_000)
 	public void parameterizedVolumeEnvelope() {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
@@ -271,6 +307,9 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.save(new File("results/parameterized-volume-envelope.wav"));
 	}
 
+	/**
+	 * Test parameterized filter envelope with random parameters.
+	 */
 	@Test(timeout = 60_000)
 	public void parameterizedFilterEnvelope() {
 		Assume.assumeTrue(new File(TEST_INPUT).exists());
@@ -289,6 +328,9 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.save(new File("results/parameterized-filter-envelope.wav"));
 	}
 
+	/**
+	 * Test envelope with custom duration and ADSR parameters.
+	 */
 	@Test(timeout = 60_000)
 	public void envelope() {
 		double duration = 8.0;
@@ -306,6 +348,9 @@ public class EnvelopeTests extends TestSuiteBase implements CellFeatures, Envelo
 				.sample(0,env).save(new File("results/envelope.wav"));
 	}
 
+	/**
+	 * Test envelope extraction from audio data.
+	 */
 	@Test(timeout = 60_000)
 	public void extractEnvelope() throws IOException {
 		Assume.assumeTrue(new File("Library/Snare Gold 1.wav").exists());

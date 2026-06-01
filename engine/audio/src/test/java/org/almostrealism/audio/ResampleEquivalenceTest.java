@@ -47,9 +47,16 @@ import java.util.Random;
  */
 public class ResampleEquivalenceTest extends TestSuiteBase implements TemporalFeatures {
 
+	/** Number of samples in the randomly generated source buffer used for resampling tests. */
 	private static final int SOURCE_LENGTH = 2048;
+
+	/** Number of output samples produced by the resampler under test. */
 	private static final int TARGET_LENGTH = 1024;
 
+	/**
+	 * Creates a {@link PackedCollection} filled with random values in [-1, 1]
+	 * using the given seed, providing a reproducible source signal for comparison.
+	 */
 	private PackedCollection randomSource(long seed) {
 		Random rng = new Random(seed);
 		double[] data = new double[SOURCE_LENGTH];
@@ -61,6 +68,11 @@ public class ResampleEquivalenceTest extends TestSuiteBase implements TemporalFe
 		return c;
 	}
 
+	/**
+	 * Verifies that the batched kernel resample matches the production
+	 * {@link NoteAudioProvider} resample for pitch-up and unity ratios,
+	 * and that pitch-down divergence stays within its known bounded gap.
+	 */
 	@Test(timeout = 120000)
 	@TestDepth(2)
 	public void testResampleMatchesProduction() {

@@ -28,12 +28,22 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+/**
+ * Tests for vector mathematical operations.
+ */
 public class VectorMathTest extends TestSuiteBase {
+
+	/**
+	 * Tests scalar power operation.
+	 */
 	@Test(timeout = 30000)
 	public void scalarPow() {
 		assertEquals(27, c(3).pow(3).evaluate());
 	}
 
+	/**
+	 * Tests scalar power with dynamic collection.
+	 */
 	@Test(timeout = 30000)
 	public void scalarPowDynamic() {
 		Producer<PackedCollection> d = new DynamicCollectionProducer(shape(1), args -> {
@@ -49,6 +59,9 @@ public class VectorMathTest extends TestSuiteBase {
 		assertEquals(27, result);
 	}
 
+	/**
+	 * Tests scalar multiplication.
+	 */
 	@Test(timeout = 30000)
 	public void scalarMultiply() {
 		CollectionProducer product = vector(1, 2, 3).multiply(c(2));
@@ -58,6 +71,9 @@ public class VectorMathTest extends TestSuiteBase {
 		assertEquals(6, result.toDouble(2));
 	}
 
+	/**
+	 * Tests product from vectors operation 2.
+	 */
 	@Test(timeout = 30000)
 	public void productFromVectors2() {
 		Producer<PackedCollection> a = vector(1.0, 2.0, 3.0);
@@ -68,6 +84,9 @@ public class VectorMathTest extends TestSuiteBase {
 		Assert.assertEquals(1, so.getArgsCount());
 	}
 
+	/**
+	 * Tests product from vectors operation 3.
+	 */
 	@Test(timeout = 30000)
 	public void productFromVectors3() {
 		Producer<PackedCollection> a = vector(1.0, 2.0, 3.0);
@@ -78,6 +97,9 @@ public class VectorMathTest extends TestSuiteBase {
 		Assert.assertEquals(1, so.getArgsCount());
 	}
 
+	/**
+	 * Tests product difference operation.
+	 */
 	@Test(timeout = 30000)
 	public void productDifference() {
 		verboseLog(() -> {
@@ -90,10 +112,16 @@ public class VectorMathTest extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Creates a cross product producer with a default vector.
+	 */
 	protected CollectionProducer crossProduct(Producer<PackedCollection> v) {
 		return crossProduct(vector(0.0, 0.0, -1.0), v);
 	}
 
+	/**
+	 * Tests cross product operation.
+	 */
 	@Test(timeout = 30000)
 	public void crossProduct() {
 		CollectionProducer cp = crossProduct(vector(100.0, -200.0, 0.0));
@@ -109,6 +137,9 @@ public class VectorMathTest extends TestSuiteBase {
 		assertEquals(0, v.toDouble(2));
 	}
 
+	/**
+	 * Tests normalized cross product operation 1.
+	 */
 	@Test(timeout = 30000)
 	public void normalizedCrossProduct1() {
 		CollectionProducer cp = normalize(crossProduct(vector(100.0, -200.0, 0.0)));
@@ -125,6 +156,9 @@ public class VectorMathTest extends TestSuiteBase {
 		assertEquals(0, v.toDouble(2));
 	}
 
+	/**
+	 * Tests normalized cross product operation 2.
+	 */
 	@Test(timeout = 30000)
 	public void normalizedCrossProduct2() {
 		CollectionProducer cp = normalize(crossProduct(v(shape(3), 0)));
@@ -139,6 +173,9 @@ public class VectorMathTest extends TestSuiteBase {
 		assertEquals(0, v.toDouble(2));
 	}
 
+	/**
+	 * Tests vector power operation.
+	 */
 	@Test(timeout = 30000)
 	public void vectorPow() {
 		Vector in = new Vector(3, 4, 5);
@@ -148,6 +185,9 @@ public class VectorMathTest extends TestSuiteBase {
 		assertEquals(25, result.toDouble(2));
 	}
 
+	/**
+	 * Tests vector normalization.
+	 */
 	@Test(timeout = 30000)
 	public void normalize() {
 		PackedCollection v = new PackedCollection(3).randFill();
@@ -156,6 +196,9 @@ public class VectorMathTest extends TestSuiteBase {
 		assertEquals(1.0, length);
 	}
 
+	/**
+	 * Tests normalization with random vector.
+	 */
 	@Test(timeout = 30000)
 	public void normalizeRandom() {
 		PackedCollection result = normalize(new Random(shape(2))).evaluate();
