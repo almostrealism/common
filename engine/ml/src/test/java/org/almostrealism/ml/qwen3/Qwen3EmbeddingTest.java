@@ -64,9 +64,9 @@ public class Qwen3EmbeddingTest extends TestSuiteBase implements AttentionFeatur
 		log("\nEmbedding L1 norm: " + sum);
 
 		if (sum < 0.001) {
-			log("[ERROR] WARNING: Embedding appears to be all zeros!");
+			log("Embedding appears to be all zeros!");
 		} else {
-			log("[OK] Embedding looks valid");
+			log("Embedding looks valid");
 		}
 
 		// Test a few more tokens

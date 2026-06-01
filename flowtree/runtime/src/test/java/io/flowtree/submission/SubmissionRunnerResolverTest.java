@@ -55,6 +55,10 @@ public class SubmissionRunnerResolverTest extends TestSuiteBase {
     @After
     public void noop() { /* registry is process-wide; nothing to clean */ }
 
+    /**
+     * Verifies that when both the request runners map and the workstream are empty,
+     * the resolved runner falls back to the built-in "claude" default.
+     */
     @Test(timeout = 5000)
     public void emptyRunnersAndEmptyWorkstreamFallsBackToClaudeDefault() {
         SubmissionRunnerResolver r = SubmissionRunnerResolver.resolve(
@@ -67,6 +71,10 @@ public class SubmissionRunnerResolverTest extends TestSuiteBase {
                 f.getRunnerByPhase().isEmpty());
     }
 
+    /**
+     * Verifies that a "default" entry in the per-job runners map overrides the
+     * workstream's default runner.
+     */
     @Test(timeout = 5000)
     public void requestDefaultRunnerOverridesWorkstreamDefault() {
         Map<String, String> req = new LinkedHashMap<>();
@@ -79,6 +87,10 @@ public class SubmissionRunnerResolverTest extends TestSuiteBase {
         assertEquals(TEST_RUNNER, f.getDefaultRunner());
     }
 
+    /**
+     * Verifies that when the per-job runners map omits a "default" key, the
+     * workstream's configured default runner is applied.
+     */
     @Test(timeout = 5000)
     public void workstreamDefaultUsedWhenRequestOmitsDefault() {
         SubmissionRunnerResolver r = SubmissionRunnerResolver.resolve(
@@ -89,6 +101,10 @@ public class SubmissionRunnerResolverTest extends TestSuiteBase {
         assertEquals(TEST_RUNNER, f.getDefaultRunner());
     }
 
+    /**
+     * Verifies that a per-job phase entry takes precedence over the same phase
+     * entry in the workstream runners map.
+     */
     @Test(timeout = 5000)
     public void perJobPhaseOverridesWorkstreamPhase() {
         Map<String, String> req = new LinkedHashMap<>();
@@ -102,6 +118,10 @@ public class SubmissionRunnerResolverTest extends TestSuiteBase {
         assertEquals(TEST_RUNNER, f.getRunnerForPhase(Phase.PRIMARY));
     }
 
+    /**
+     * Verifies that when the per-job runners map does not specify a phase, the
+     * workstream's per-phase runner is applied for that phase.
+     */
     @Test(timeout = 5000)
     public void workstreamPhaseUsedWhenRequestOmitsPhase() {
         Map<String, String> ws = new LinkedHashMap<>();
@@ -117,6 +137,10 @@ public class SubmissionRunnerResolverTest extends TestSuiteBase {
                 f.getRunnerForPhase(Phase.PRIMARY));
     }
 
+    /**
+     * Verifies that specifying an unregistered runner name in the per-job
+     * request map results in a non-null error containing the unknown name.
+     */
     @Test(timeout = 5000)
     public void unknownRunnerNameInRequestReturnsError() {
         Map<String, String> req = new LinkedHashMap<>();
@@ -128,6 +152,10 @@ public class SubmissionRunnerResolverTest extends TestSuiteBase {
                 r.error().contains("no-such-runner"));
     }
 
+    /**
+     * Verifies that specifying an unrecognised phase key in the per-job request
+     * map results in a non-null error containing the unknown phase name.
+     */
     @Test(timeout = 5000)
     public void unknownPhaseNameInRequestReturnsError() {
         Map<String, String> req = new LinkedHashMap<>();
@@ -139,6 +167,10 @@ public class SubmissionRunnerResolverTest extends TestSuiteBase {
                 r.error().contains("not-a-phase"));
     }
 
+    /**
+     * Verifies that an unrecognised phase key in the workstream runners map is
+     * silently skipped rather than causing a fatal error, so valid phases still resolve.
+     */
     @Test(timeout = 5000)
     public void unknownPhaseInWorkstreamMapIsIgnoredNotFatal() {
         // Config-side bad entries must not be able to brick a submission.

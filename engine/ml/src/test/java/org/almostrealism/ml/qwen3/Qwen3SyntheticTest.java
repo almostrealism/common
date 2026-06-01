@@ -147,7 +147,7 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 
 		try {
 			config.validate();
-			log("[OK] Config validation passed");
+			log("Config validation passed");
 		} catch (Exception e) {
 			fail("Config validation failed: " + e.getMessage());
 		}
@@ -156,7 +156,7 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 		StateDictionary stateDict;
 		try {
 			stateDict = createRandomWeights(config, 12345L);
-			log("[OK] Random weights created");
+			log("Random weights created");
 		} catch (Exception e) {
 			fail("Failed to create random weights: " + e.getMessage());
 			return;
@@ -164,19 +164,19 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 
 		// Create tokenizer
 		Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
-		log("[OK] Test tokenizer created");
+		log("Test tokenizer created");
 
 		// Try to create model
 		try {
 			Qwen3 model = new Qwen3(config, stateDict, tokenizer);
-			log("[OK] Model instance created");
+			log("Model instance created");
 			assertNotNull("Model should not be null", model);
 		} catch (Exception e) {
 			warn(e.getMessage(), e);
 			fail("Model construction failed: " + e.getMessage());
 		}
 
-		log("[OK] All construction tests passed!\n");
+		log("All construction tests passed!\n");
 	}
 
 	/**
@@ -196,18 +196,18 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 
 		try {
 			new Qwen3(config, stateDict, tokenizer);
-			log("[OK] Model created");
+			log("Model created");
 
 			// The model should compile when we try to run it
 			// We won't actually run it yet, just create it
-			log("[OK] Model ready for compilation (happens on first run)");
+			log("Model ready for compilation (happens on first run)");
 
 		} catch (Exception e) {
 			warn(e.getMessage(), e);
 			fail("Model compilation setup failed: " + e.getMessage());
 		}
 
-		log("[OK] Compilation test passed!\n");
+		log("Compilation test passed!\n");
 	}
 
 	/**
@@ -256,13 +256,13 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 				config.kvHeadCount * config.headSize,
 				qkNormK.getShape().getTotalSize());
 
-		log("[OK] All weight shapes correct");
+		log("All weight shapes correct");
 		log("  Token embeddings: " + embeddings.getShape());
 		log("  Query weights (layer 0): " + wq.getShape());
 		log("  Key weights (layer 0, GQA): " + wk.getShape());
 		log("  QK-Norm Q (layer 0): " + qkNormQ.getShape());
 		log("  QK-Norm K (layer 0): " + qkNormK.getShape());
-		log("[OK] Shape verification passed!\n");
+		log("Shape verification passed!\n");
 	}
 
 	/**
@@ -285,7 +285,7 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 			test.testTinyModelConstruction();
 			passed++;
 		} catch (AssertionError | Exception e) {
-			Console.root().warn("[FAIL] Test 1 FAILED: " + e.getMessage(), e);
+			Console.root().warn("Test 1 FAILED: " + e.getMessage(), e);
 			failed++;
 		}
 
@@ -294,7 +294,7 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 			test.testModelCompilation();
 			passed++;
 		} catch (AssertionError | Exception e) {
-			Console.root().warn("[FAIL] Test 2 FAILED: " + e.getMessage(), e);
+			Console.root().warn("Test 2 FAILED: " + e.getMessage(), e);
 			failed++;
 		}
 
@@ -303,7 +303,7 @@ public class Qwen3SyntheticTest extends TestSuiteBase {
 			test.testWeightShapes();
 			passed++;
 		} catch (AssertionError | Exception e) {
-			Console.root().warn("[FAIL] Test 3 FAILED: " + e.getMessage(), e);
+			Console.root().warn("Test 3 FAILED: " + e.getMessage(), e);
 			failed++;
 		}
 

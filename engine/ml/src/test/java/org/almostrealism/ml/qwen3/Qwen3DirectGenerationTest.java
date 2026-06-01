@@ -64,7 +64,7 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 		if (pytorchLogits0 != null) {
 			log("Loaded PyTorch reference logits for position 0: " + pytorchLogits0.length + " values");
 		} else {
-			log("WARNING: Could not load PyTorch reference logits");
+			log("Could not load PyTorch reference logits");
 		}
 
 		// Expected tokens from PyTorch autoregressive generation starting from "Hello"
@@ -159,9 +159,9 @@ public class Qwen3DirectGenerationTest extends TestSuiteBase implements ConsoleF
 
 			// Check against expected
 			if (top5[0] == expectedOutputs[step]) {
-				log("[PASS] Generated token " + top5[0] + " matches expected " + expectedOutputs[step]);
+				log("Generated token " + top5[0] + " matches expected " + expectedOutputs[step]);
 			} else {
-				log("[FAIL] Generated token " + top5[0] + " but expected " + expectedOutputs[step]);
+				log("Generated token " + top5[0] + " but expected " + expectedOutputs[step]);
 			}
 
 			log("");

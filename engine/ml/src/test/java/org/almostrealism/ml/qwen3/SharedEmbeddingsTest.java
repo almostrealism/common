@@ -78,9 +78,9 @@ public class SharedEmbeddingsTest extends TestSuiteBase implements ConsoleFeatur
 				}
 
 				if (identical) {
-					log("[INFO] Content appears identical (copy, not reference)");
+					log("Content appears identical (copy, not reference)");
 				} else {
-					log("[FAIL] Content is DIFFERENT!");
+					log("Content is DIFFERENT!");
 				}
 			}
 		}
@@ -120,9 +120,9 @@ public class SharedEmbeddingsTest extends TestSuiteBase implements ConsoleFeatur
 
 		if (embeddings.getShape().length(0) == vocabSize &&
 				embeddings.getShape().length(1) == dim) {
-			log("[PASS] Embeddings shape matches expected");
+			log("Embeddings shape matches expected");
 		} else {
-			log("[FAIL] Embeddings shape mismatch!");
+			log("Embeddings shape mismatch!");
 		}
 
 		// The model should use embeddings as lm_head with transpose

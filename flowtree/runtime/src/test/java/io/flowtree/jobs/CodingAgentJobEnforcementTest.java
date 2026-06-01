@@ -508,6 +508,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 
 	// ── Backward compatibility ───────────────────────────────────────────────
 
+	/** Verifies that setEnforceChanges and isEnforceChanges still work correctly after any refactor. */
 	@Test(timeout = 30000)
 	public void enforceChangesStillFunctionsAfterRefactor() {
 		CodingAgentJob job = new CodingAgentJob("t1", "hello");
@@ -519,6 +520,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 
 	// ── OrganizationalPlacementRule — flag defaults ──────────────────────────
 
+	/** Verifies that setEnforceOrganizationalPlacement(false) causes isEnforceOrganizationalPlacement to return false. */
 	@Test(timeout = 30000)
 	public void setEnforceOrganizationalPlacementFalse() {
 		CodingAgentJob job = new CodingAgentJob("t1", "do something");
@@ -526,6 +528,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 		assertFalse(job.isEnforceOrganizationalPlacement());
 	}
 
+	/** Verifies that enforceOrganizationalPlacement can be toggled true then false and reflects the correct value each time. */
 	@Test(timeout = 30000)
 	public void setEnforceOrganizationalPlacementRoundTrip() {
 		CodingAgentJob job = new CodingAgentJob("t1", "do something");
@@ -538,6 +541,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 
 	// ── OrganizationalPlacementRule — serialisation ──────────────────────────
 
+	/** Verifies that enforceOrgPlacement does not appear in the wire format when left at its default value of false. */
 	@Test(timeout = 30000)
 	public void enforceOrgPlacementAbsentInWireFormatWhenDefault() {
 		CodingAgentJob job = new CodingAgentJob("t1", "hello");
@@ -548,6 +552,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 				encoded.contains("enforceOrgPlacement"));
 	}
 
+	/** Verifies that enforceOrgPlacement:=true appears in the wire format when the flag is set to true. */
 	@Test(timeout = 30000)
 	public void enforceOrgPlacementAppearsInWireFormatWhenTrue() {
 		CodingAgentJob job = new CodingAgentJob("t1", "hello");
@@ -558,6 +563,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 				encoded.contains("enforceOrgPlacement:=true"));
 	}
 
+	/** Verifies that enforceOrganizationalPlacement round-trips correctly through serialization and deserialization. */
 	@Test(timeout = 30000)
 	public void enforceOrgPlacementDeserialises() {
 		CodingAgentJob job = new CodingAgentJob("t1", "hello");
@@ -569,6 +575,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 
 	// ── OrganizationalPlacementRule — factory propagation ───────────────────
 
+	/** Verifies that CodingAgentJobFactory.setEnforceOrganizationalPlacement(false) propagates false to jobs created by nextJob(). */
 	@Test(timeout = 30000)
 	public void factorySetEnforceOrganizationalPlacementFalsePropagatesToJob() {
 		CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
@@ -578,6 +585,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 		assertFalse(job.isEnforceOrganizationalPlacement());
 	}
 
+	/** Verifies that enforceOrgPlacement on CodingAgentJobFactory round-trips correctly through the set() deserialization path. */
 	@Test(timeout = 30000)
 	public void factoryEnforceOrgPlacementRoundTripViaSet() {
 		CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
@@ -718,6 +726,7 @@ public class CodingAgentJobEnforcementTest extends TestSuiteBase {
 		assertEquals(CodingAgentJob.DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS, attempts);
 	}
 
+	/** Pins the DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS constant to 25 so silent regressions are caught. */
 	@Test(timeout = 30000)
 	public void totalEnforcementAttemptCapDefaultValue() {
 		// Pin the constant so silent regressions (e.g., raising the cap by an

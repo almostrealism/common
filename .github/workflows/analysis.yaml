@@ -585,9 +585,14 @@ jobs:
   # Runs the default checkstyle rules (no var, no @SuppressWarnings)
   # as a dedicated job for clear violation reporting in the PR summary.
   checkstyle:
-    needs: [changes, build, checkstyle-integrity-check]
-    # Skipped automatically if checkstyle-integrity-check fails (tampered config):
-    # there is no point running checkstyle against a config that was modified.
+    needs: [changes, build]
+    # Intentionally NOT gated on checkstyle-integrity-check. Correctness and
+    # integrity are independent concerns: integrity protects the config from
+    # unauthorized *modification* (which can be overridden when a modification
+    # is legitimately intended), but a real checkstyle *violation* must ALWAYS
+    # fail the pipeline. Coupling the two would let an overridden or failed
+    # integrity check suppress the correctness gate, so this job runs against
+    # whatever config exists on the branch regardless of the integrity result.
     if: needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
     continue-on-error: true

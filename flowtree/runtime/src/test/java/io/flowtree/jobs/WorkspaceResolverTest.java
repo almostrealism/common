@@ -28,12 +28,18 @@ import static org.junit.Assert.assertTrue;
  */
 public class WorkspaceResolverTest extends TestSuiteBase {
 
+	/**
+	 * Verifies that a configured workspace path is used as the base when resolving the workspace directory.
+	 */
 	@Test(timeout = 30000)
 	public void usesConfiguredPathFirst() {
 		String result = WorkspaceResolver.resolve("/my/path", "https://github.com/owner/repo.git");
 		assertEquals("/my/path/owner-repo", result);
 	}
 
+	/**
+	 * Verifies that resolution falls back to a temp directory suffixed with the repo name when no path is configured.
+	 */
 	@Test(timeout = 30000)
 	public void fallsBackToTempWithRepoName() {
 		String result = WorkspaceResolver.resolve(null, "https://github.com/owner/repo.git");
@@ -41,18 +47,27 @@ public class WorkspaceResolverTest extends TestSuiteBase {
 			result.endsWith("owner-repo"));
 	}
 
+	/**
+	 * Verifies that the repository name is correctly extracted from an SSH-style remote URL.
+	 */
 	@Test(timeout = 30000)
 	public void extractsRepoNameFromSSH() {
 		String result = WorkspaceResolver.extractRepoName("git@github.com:owner/repo.git");
 		assertEquals("owner-repo", result);
 	}
 
+	/**
+	 * Verifies that the repository name is correctly extracted from an HTTPS remote URL.
+	 */
 	@Test(timeout = 30000)
 	public void extractsRepoNameFromHTTPS() {
 		String result = WorkspaceResolver.extractRepoName("https://github.com/owner/repo.git");
 		assertEquals("owner-repo", result);
 	}
 
+	/**
+	 * Verifies that a workstream URL is returned unchanged when no root host replacement is configured.
+	 */
 	@Test(timeout = 30000)
 	public void resolvesWorkstreamUrl() {
 		// When FLOWTREE_ROOT_HOST is not set, the URL is returned unchanged

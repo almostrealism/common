@@ -56,6 +56,7 @@ public class BatchedRealtimeTickTest extends TestSuiteBase implements AudioTestF
 	/** Number of consecutive ticks rendered. */
 	private static final int TICKS = 3;
 
+	/** Creates a {@link NoteAudioChoice} with three octave-spanning file sources for melodic rendering. */
 	private NoteAudioChoice melodicChoice(DefaultKeyboardTuning tuning) {
 		NoteAudioChoice choice = NoteAudioChoice.fromSource("Harmony",
 				new FileNoteSource(getNamedTestWavPath("rt_c0.wav", 27.5, 2.0, false),
@@ -70,6 +71,7 @@ public class BatchedRealtimeTickTest extends TestSuiteBase implements AudioTestF
 		return choice;
 	}
 
+	/** Builds an {@link AudioSceneContext} configured for the given measure count and frame-per-measure rate. */
 	private AudioSceneContext context(int measures, double measureFrames) {
 		AudioSceneContext context = new AudioSceneContext();
 		context.setMeasures(measures);
@@ -113,6 +115,10 @@ public class BatchedRealtimeTickTest extends TestSuiteBase implements AudioTestF
 		return total;
 	}
 
+	/**
+	 * Verifies that the batched tick-by-tick renderer produces audio that agrees with
+	 * the per-note renderer within 5% relative RMS across all rendered ticks.
+	 */
 	@Test(timeout = 180000)
 	@TestDepth(2)
 	public void batchedTickByTickMatchesPerNote() {

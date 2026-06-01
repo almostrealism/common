@@ -39,6 +39,9 @@ import static org.junit.Assert.assertTrue;
  */
 public class McpToolDiscoveryTest extends TestSuiteBase {
 
+	/**
+	 * Verifies that tool names are correctly discovered from the {@code @mcp.tool()} decorator pattern.
+	 */
 	@Test(timeout = 30000)
 	public void discoverDecoratorPattern() throws IOException {
 		Path tempFile = Files.createTempFile("mcp_decorator_", ".py");
@@ -65,6 +68,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Verifies that tool names are correctly discovered from the {@code @server.list_tools()} handler pattern.
+	 */
 	@Test(timeout = 30000)
 	public void discoverListToolsPattern() throws IOException {
 		Path tempFile = Files.createTempFile("mcp_list_tools_", ".py");
@@ -109,6 +115,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Verifies that at least the expected minimum number of tools are discovered from the actual ar-test-runner server.
+	 */
 	@Test(timeout = 30000)
 	public void discoverFromActualTestRunner() {
 		Path serverFile = Path.of("tools/mcp/test-runner/server.py");
@@ -125,6 +134,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("Expected cancel_run", tools.contains("cancel_run"));
 	}
 
+	/**
+	 * Verifies that at least the expected minimum number of tools are discovered from the actual ar-docs server.
+	 */
 	@Test(timeout = 30000)
 	public void discoverFromActualDocs() {
 		Path serverFile = Path.of("docs/mcp/server.py");
@@ -136,6 +148,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("Expected search_ar_docs", tools.contains("search_ar_docs"));
 	}
 
+	/**
+	 * Verifies that at least the expected minimum number of tools are discovered from the actual ar-jmx server.
+	 */
 	@Test(timeout = 30000)
 	public void discoverFromActualJmx() {
 		Path serverFile = Path.of("tools/mcp/jmx/server.py");
@@ -148,6 +163,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("Expected get_heap_summary", tools.contains("get_heap_summary"));
 	}
 
+	/**
+	 * Verifies that tool names are correctly discovered from the dynamic {@code .tool()(fn)} registration pattern.
+	 */
 	@Test(timeout = 30000)
 	public void discoverDynamicRegistrationPattern() throws IOException {
 		Path tempFile = Files.createTempFile("mcp_dynamic_", ".py");
@@ -192,18 +210,27 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Verifies that an empty list is returned when the specified server file does not exist.
+	 */
 	@Test(timeout = 30000)
 	public void missingFileReturnsEmpty() {
 		List<String> tools = McpToolDiscovery.discoverToolNames(Path.of("/nonexistent/server.py"));
 		assertTrue(tools.isEmpty());
 	}
 
+	/**
+	 * Verifies that an empty list is returned when a null path is provided.
+	 */
 	@Test(timeout = 30000)
 	public void nullFileReturnsEmpty() {
 		List<String> tools = McpToolDiscovery.discoverToolNames(null);
 		assertTrue(tools.isEmpty());
 	}
 
+	/**
+	 * Verifies that parameter names are correctly extracted from a multi-line tool function signature.
+	 */
 	@Test(timeout = 30000)
 	public void discoverToolParametersFromSignature() throws IOException {
 		Path tempFile = Files.createTempFile("mcp_params_", ".py");
@@ -231,6 +258,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Verifies that an empty list is returned when parameters are requested for a tool name that does not exist.
+	 */
 	@Test(timeout = 30000)
 	public void discoverToolParametersMissingToolReturnsEmpty() throws IOException {
 		Path tempFile = Files.createTempFile("mcp_params_missing_", ".py");
@@ -589,6 +619,10 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			secretRenderParams.contains("mode"));
 	}
 
+	/**
+	 * Verifies that the {@code workstream_register} and {@code workstream_update_config} tools
+	 * declare the {@code required_labels} and {@code dependent_repos} parameters in their signatures.
+	 */
 	@Test(timeout = 30000)
 	public void managerRegisterAndUpdateConfigHaveRequiredLabelsAndDependentRepos() {
 		Path serverFile = Path.of("tools/mcp/manager/server.py");

@@ -184,13 +184,9 @@ public class MigrationClassLoaderTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that the class name migration in networks.xml content is
-	 * applied correctly. Full deserialization requires the ringsdesktop
-	 * classpath (GenomicNetwork lives in studio/spatial), so this test
-	 * only checks that the content transformation is correct.
-	 */
-	/**
-	 * Test that migrateContent correctly translates class names in networks.xml content.
+	 * Verifies that the class name migration in networks.xml content is applied correctly.
+	 * Full deserialization requires the ringsdesktop classpath, so this test only checks
+	 * that the content transformation is correct.
 	 */
 	@Test(timeout = 120000)
 	public void migrateNetworksXmlContent() throws Exception {

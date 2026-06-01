@@ -56,6 +56,10 @@ public class BatchedVsPerNoteRmsTest extends TestSuiteBase implements AudioTestF
 	/** Measure duration in seconds at 120 BPM, 4 beats per measure. */
 	private static final double MEASURE_DURATION = 2.0;
 
+	/**
+	 * Builds a {@link NoteAudioChoice} with three pitched note sources spanning the range
+	 * A0–C2 and the given keyboard tuning applied.
+	 */
 	private NoteAudioChoice melodicChoice(DefaultKeyboardTuning tuning) {
 		NoteAudioChoice choice = NoteAudioChoice.fromSource("Harmony",
 				new FileNoteSource(getNamedTestWavPath("rms_c0.wav", 27.5, 2.0, false),
@@ -70,6 +74,10 @@ public class BatchedVsPerNoteRmsTest extends TestSuiteBase implements AudioTestF
 		return choice;
 	}
 
+	/**
+	 * Creates an {@link AudioSceneContext} configured for the given measure count,
+	 * frame rate, total frame count, and output destination buffer.
+	 */
 	private AudioSceneContext context(int measures, double measureFrames, int frameCount,
 									  PackedCollection destination) {
 		AudioSceneContext context = new AudioSceneContext();
@@ -84,6 +92,11 @@ public class BatchedVsPerNoteRmsTest extends TestSuiteBase implements AudioTestF
 		return context;
 	}
 
+	/**
+	 * Renders a single window of the pattern into the destination buffer contained in
+	 * {@code context}, switching the batched-dispatch flag to the requested mode and
+	 * restoring the previous value afterwards.
+	 */
 	private void render(PatternLayerManager manager, AudioSceneContext context, int frameCount,
 						boolean batched) {
 		boolean previous = PatternLayerManager.enableBatched;
@@ -97,6 +110,10 @@ public class BatchedVsPerNoteRmsTest extends TestSuiteBase implements AudioTestF
 		}
 	}
 
+	/**
+	 * Verifies that the batched renderer produces output within 5% relative RMS of the
+	 * per-note renderer for the same pattern window.
+	 */
 	@Test(timeout = 180000)
 	@TestDepth(2)
 	public void batchedMatchesPerNote() {

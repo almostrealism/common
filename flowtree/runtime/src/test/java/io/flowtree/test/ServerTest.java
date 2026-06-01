@@ -27,7 +27,13 @@ import org.junit.Test;
 import java.io.IOException;
 import java.util.Properties;
 
+/**
+ * Tests for {@link io.flowtree.Server} startup and job instantiation behavior.
+ */
 public class ServerTest extends TestSuiteBase {
+	/**
+	 * Verifies that a {@link io.flowtree.Server} can be started on a configured port.
+	 */
 	@Ignore("Interactive test — starts a server and sleeps for 2 hours")
 	@Test(timeout = 10000)
 	@TestProperties(longRunning = true)
@@ -42,6 +48,9 @@ public class ServerTest extends TestSuiteBase {
 		Thread.sleep(2 * 60 * 60 * 1000L);
 	}
 
+	/**
+	 * Verifies that a Base64-encoded job descriptor is correctly decoded into an {@link ExternalProcessJob}.
+	 */
 	@Test(timeout = 10000)
 	public void decodeJobTest() {
 		String data = "io.flowtree.jobs.ExternalProcessJob::cmd:=c2xlZXA7MzA=";

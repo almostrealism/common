@@ -169,9 +169,9 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 
 		// PyTorch reference: token_id = 9707 for "Hello"
 		if (helloTokens.length == 1 && helloTokens[0] == 9707) {
-			log("[PASS] 'Hello' encodes to 9707 (matches PyTorch)");
+			log("'Hello' encodes to 9707 (matches PyTorch)");
 		} else {
-			log("[INFO] 'Hello' did not encode to 9707 (got " + Arrays.toString(helloTokens) + ")");
+			log("'Hello' did not encode to 9707 (got " + Arrays.toString(helloTokens) + ")");
 			// Show what token 9707 decodes to
 			String token9707 = tokenizer.decode(new int[]{9707});
 			log("Token 9707 decodes to: '" + token9707 + "'");

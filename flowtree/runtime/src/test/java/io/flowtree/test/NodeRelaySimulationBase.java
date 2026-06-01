@@ -338,8 +338,13 @@ public abstract class NodeRelaySimulationBase extends ServerTestBase {
      */
     static class TrackingJobFactory implements JobFactory {
 
+        /** Unique task identifier for this factory. */
         private final String taskId;
+
+        /** Queue of jobs to emit, consumed in insertion order. */
         private final ArrayDeque<TrackingJob> pending;
+
+        /** Future completed when all jobs have been dispatched and executed. */
         private final CompletableFuture<Void> future = new CompletableFuture<>();
 
         /**

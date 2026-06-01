@@ -37,9 +37,18 @@ public class ReviewRuleTest extends TestSuiteBase {
 
 	/** A {@link CodingAgentJob} that stubs the new-file scan to a fixed list. */
 	private static final class StubJob extends CodingAgentJob {
+		/** The fixed list of new file paths returned by {@link #extractNewFilePaths()}. */
 		private final List<String> newFiles;
+
+		/** Whether the stub reports uncommitted changes via {@link #hasUncommittedChanges()}. */
 		private final boolean dirty;
 
+		/**
+		 * Creates a {@link StubJob} with the given new-file list and dirty flag.
+		 *
+		 * @param newFiles the list of new file paths to return
+		 * @param dirty    whether the stub should report uncommitted changes
+		 */
 		StubJob(List<String> newFiles, boolean dirty) {
 			super("t1", "p");
 			this.newFiles = newFiles;
@@ -341,6 +350,7 @@ public class ReviewRuleTest extends TestSuiteBase {
 		assertFalse(factory.isReviewEnabled());
 	}
 
+	/** CodingAgentJobFactory maxReviewPasses round-trips via set(), including empty-string fallback. */
 	@Test(timeout = 30000)
 	public void factoryMaxReviewPassesRoundTripViaSet() {
 		CodingAgentJobFactory factory = new CodingAgentJobFactory("p");

@@ -33,6 +33,9 @@ import static org.junit.Assert.assertTrue;
  */
 public class GitJobConfigTest extends TestSuiteBase {
 
+	/**
+	 * Verifies that the builder correctly sets all config fields and produces an immutable config.
+	 */
 	@Test(timeout = 30000)
 	public void builderCreatesImmutableConfig() {
 		GitJobConfig config = GitJobConfig.builder()
@@ -58,6 +61,9 @@ public class GitJobConfigTest extends TestSuiteBase {
 		assertEquals("agent@test.com", config.getGitUserEmail());
 	}
 
+	/**
+	 * Verifies that the builder produces correct default values when no options are specified.
+	 */
 	@Test(timeout = 30000)
 	public void defaultValues() {
 		GitJobConfig config = GitJobConfig.builder().build();
@@ -69,6 +75,9 @@ public class GitJobConfigTest extends TestSuiteBase {
 		assertEquals(GitJobConfig.DEFAULT_MAX_FILE_SIZE, config.getMaxFileSizeBytes());
 	}
 
+	/**
+	 * Verifies that git operations are disabled when no target branch is set, and enabled when one is provided.
+	 */
 	@Test(timeout = 30000)
 	public void nullBranchMeansNoGitOps() {
 		GitJobConfig config = GitJobConfig.builder().build();
@@ -80,6 +89,9 @@ public class GitJobConfigTest extends TestSuiteBase {
 		assertTrue(enabled.isGitEnabled());
 	}
 
+	/**
+	 * Verifies that getAllExcludedPatterns returns the union of default and additional excluded patterns.
+	 */
 	@Test(timeout = 30000)
 	public void allExcludedPatternsCombinesDefaultAndAdditional() {
 		Set<String> additional = new HashSet<>(Arrays.asList("*.tmp", "scratch/**"));

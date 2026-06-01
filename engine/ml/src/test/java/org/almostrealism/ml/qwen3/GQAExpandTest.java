@@ -100,9 +100,9 @@ public class GQAExpandTest extends TestSuiteBase implements AttentionFeatures, C
 
 		log("\n=== Summary ===");
 		if (allCorrect) {
-			log("[PASS] GQA expansion is correct");
+			log("GQA expansion is correct");
 		} else {
-			log("[FAIL] GQA expansion has errors");
+			log("GQA expansion has errors");
 		}
 	}
 

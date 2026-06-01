@@ -103,7 +103,7 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 			log("Creating VAEBottleneck...");
 			start = System.currentTimeMillis();
 			VAEBottleneck bottleneck = new VAEBottleneck(1, encoder.getOutputLength());
-			log("VAEBottleneck created in " + (System.currentTimeMillis() - start) + " ms");
+			log("Created VAEBottleneck in " + (System.currentTimeMillis() - start) + " ms");
 
 			log("Creating Model and adding layers...");
 			start = System.currentTimeMillis();
@@ -192,7 +192,7 @@ public class EncoderCompilationProfileTest extends TestSuiteBase {
 			log("Creating VAEBottleneck...");
 			start = System.currentTimeMillis();
 			VAEBottleneck bottleneck = new VAEBottleneck(1, encoder.getOutputLength());
-			log("VAEBottleneck created in " + (System.currentTimeMillis() - start) + " ms");
+			log("Created VAEBottleneck in " + (System.currentTimeMillis() - start) + " ms");
 
 			log("Building model...");
 			start = System.currentTimeMillis();

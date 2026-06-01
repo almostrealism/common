@@ -36,16 +36,19 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
 
     // ── Phase wire mapping ──────────────────────────────────────────────────
 
+    /** Verifies that Phase.fromWireName("retrospective") returns Phase.RETROSPECTIVE. */
     @Test(timeout = 30000)
     public void phaseRetrospectiveExists() {
         assertEquals(Phase.RETROSPECTIVE, Phase.fromWireName("retrospective"));
     }
 
+    /** Verifies that Phase.fromRuleName("retrospective") resolves to Phase.RETROSPECTIVE. */
     @Test(timeout = 30000)
     public void fromRuleNameRetrospectiveResolvesToPhaseRetrospective() {
         assertEquals(Phase.RETROSPECTIVE, Phase.fromRuleName("retrospective"));
     }
 
+    /** Verifies that Phase.RETROSPECTIVE.wireName() returns "retrospective". */
     @Test(timeout = 30000)
     public void retrospectivePhaseWireName() {
         assertEquals("retrospective", Phase.RETROSPECTIVE.wireName());
@@ -321,25 +324,32 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
      * reflection call ordering invariant.
      */
     static class SpyCodingAgentJob extends CodingAgentJob {
+        /** Tracks whether runEnforcementRules() was called during doWork(). */
         boolean enforcementRulesCalled;
+        /** Tracks whether runReflectionPhase() was called during doWork(). */
         boolean reflectionPhaseCalled;
+        /** Counts how many times runReflectionPhase() was called during doWork(). */
         int reflectionPhaseCallCount;
 
+        /** Constructs a spy job with the given task identifier and prompt. */
         SpyCodingAgentJob(String taskId, String prompt) {
             super(taskId, prompt);
         }
 
+        /** Records that runEnforcementRules() was invoked. */
         @Override
         void runEnforcementRules() {
             enforcementRulesCalled = true;
         }
 
+        /** Records that runReflectionPhase() was invoked and increments the call counter. */
         @Override
         void runReflectionPhase() {
             reflectionPhaseCalled = true;
             reflectionPhaseCallCount++;
         }
 
+        /** No-op override that suppresses actual agent execution during structural tests. */
         @Override
         void executeSingleRun() {
             // No-op: we only track call ordering, not actual agent execution

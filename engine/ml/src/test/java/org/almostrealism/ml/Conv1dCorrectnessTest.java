@@ -360,7 +360,7 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		}
 
 		if (allSame) {
-			log("CONFIRMED: Bug reproduced - all outputs are the same!");
+			log("Bug reproduced - all outputs are the same!");
 			log("This proves the missing .withRate(3, stride, 1) is the cause.");
 		} else {
 			log("Bug NOT reproduced - outputs vary. Checking correctness...");
@@ -425,7 +425,7 @@ public class Conv1dCorrectnessTest extends TestSuiteBase implements LayerFeature
 		}
 
 		if (allEqual) {
-			log("ERROR: All outputs are identical! Position indexing is broken.");
+			log("All outputs are identical! Position indexing is broken.");
 		} else {
 			log("OK: Outputs vary across sequence positions.");
 		}

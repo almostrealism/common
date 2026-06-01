@@ -23,7 +23,7 @@ public class Qwen3GenerationDemo extends TestSuiteBase {
 	@Test(timeout = 300000)
 	public void testGeneration() throws Exception {
 		log("\n" + "=".repeat(70));
-		log("QWEN3 GENERATION TEST WITH FIXED TOKENIZER");
+		log("Qwen3 generation test with fixed tokenizer");
 		log("=".repeat(70) + "\n");
 
 		// Load model
@@ -35,7 +35,7 @@ public class Qwen3GenerationDemo extends TestSuiteBase {
 		Qwen3Tokenizer tokenizer = new Qwen3Tokenizer(TOKENIZER_PATH);
 		Qwen3 model = new Qwen3(config, stateDict, tokenizer);
 
-		log("[Model loaded successfully]\n");
+		log("Model loaded successfully\n");
 
 		// Test different prompts
 		String[] prompts = {
@@ -46,7 +46,7 @@ public class Qwen3GenerationDemo extends TestSuiteBase {
 
 		for (String prompt : prompts) {
 			log("-".repeat(70));
-			log("PROMPT: \"" + prompt + "\"");
+			log("Prompt: \"" + prompt + "\"");
 			log("-".repeat(70));
 
 			// Show tokenization
@@ -65,14 +65,14 @@ public class Qwen3GenerationDemo extends TestSuiteBase {
 			});
 
 			log("\n");
-			log("FULL OUTPUT: " + output.toString());
+			log("Full output: " + output.toString());
 			log("");
 		}
 
 		stateDict.destroy();
 
 		log("=".repeat(70));
-		log("TEST COMPLETE");
+		log("Test complete");
 		log("=".repeat(70) + "\n");
 	}
 }

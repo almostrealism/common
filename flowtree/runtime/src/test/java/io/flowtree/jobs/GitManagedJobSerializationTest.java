@@ -77,6 +77,10 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 		return restored;
 	}
 
+	/**
+	 * Encodes {@code original} and decodes into a fresh {@link CodingAgentJob.Factory}
+	 * by replaying every key-value pair through {@code set()}.
+	 */
 	static CodingAgentJob.Factory roundTripFactory(CodingAgentJob.Factory original) {
 		String encoded = original.encode();
 		CodingAgentJob.Factory restored = new CodingAgentJob.Factory();
@@ -112,6 +116,10 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 
 	// ── Field-level tests ────────────────────────────────────────────────────
 
+	/**
+	 * Verifies that {@link CodingAgentJob#encode()} produces a string containing
+	 * the class name prefix and all expected field keys.
+	 */
 	@Test(timeout = 30000)
 	public void encodeIncludesAllFields() {
 		CodingAgentJob job = new CodingAgentJob("task-1", "Fix the bug");
@@ -136,6 +144,10 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 			encoded.contains("baseBranch:="));
 	}
 
+	/**
+	 * Verifies that calling {@link CodingAgentJob#set(String, String)} with
+	 * each known key correctly populates the corresponding field on the job.
+	 */
 	@Test(timeout = 30000)
 	public void setRestoresAllFields() {
 		CodingAgentJob job = new CodingAgentJob();
@@ -155,6 +167,10 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 		assertEquals("feature/test", job.getTargetBranch());
 	}
 
+	/**
+	 * Verifies that a {@link CodingAgentJob} survives an encode/decode round-trip
+	 * with all basic fields intact.
+	 */
 	@Test(timeout = 30000)
 	public void encodeDecodeRoundTrip() {
 		CodingAgentJob original = new CodingAgentJob("task-rt", "Round trip prompt");
@@ -205,6 +221,10 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 		assertEquals("https://github.com/org/repo-b", repos.get(1));
 	}
 
+	/**
+	 * Verifies that {@code encode()} omits the {@code depRepos} key when
+	 * {@code dependentRepos} is {@code null} or an empty list.
+	 */
 	@Test(timeout = 30000)
 	public void jobDependentReposAbsentWhenEmpty() {
 		CodingAgentJob job = new CodingAgentJob("task-nodep", "No deps");
@@ -307,6 +327,10 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 
 	// ── Factory tests ────────────────────────────────────────────────────────
 
+	/**
+	 * Verifies that a {@link CodingAgentJob.Factory} encodes its key fields and
+	 * that the encoded string contains the factory class name prefix.
+	 */
 	@Test(timeout = 30000)
 	public void factoryEncodeDecodeRoundTrip() {
 		CodingAgentJob.Factory factory = new CodingAgentJob.Factory("Prompt A", "Prompt B");
@@ -327,6 +351,10 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 			encoded.contains("tools:="));
 	}
 
+	/**
+	 * Verifies that a {@link CodingAgentJob.Factory}'s {@code dependentRepos}
+	 * list survives a full encode/decode round-trip with all entries intact.
+	 */
 	@Test(timeout = 30000)
 	public void factoryDependentReposRoundTrip() {
 		CodingAgentJob.Factory factory = new CodingAgentJob.Factory("Prompt");
@@ -347,6 +375,10 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 		assertEquals("https://github.com/org/repo-b", repos.get(1));
 	}
 
+	/**
+	 * Verifies that {@link CodingAgentJob.Factory#encode()} omits the
+	 * {@code dependentRepos} key when the list is {@code null} or empty.
+	 */
 	@Test(timeout = 30000)
 	public void factoryDependentReposAbsentWhenEmpty() {
 		CodingAgentJob.Factory factory = new CodingAgentJob.Factory("Prompt");

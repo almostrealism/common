@@ -71,7 +71,7 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 		log("Permutation compilation difference: " + diff);
 
 		if (Math.abs(diff) > 1e-6) {
-			log("ERROR: SequentialBlock permutation compilation is broken!");
+			log("SequentialBlock permutation compilation is broken!");
 
 			// Print detailed comparison
 			for (int i = 0; i < Math.min(20, input.getShape().getTotalSize()); i++) {

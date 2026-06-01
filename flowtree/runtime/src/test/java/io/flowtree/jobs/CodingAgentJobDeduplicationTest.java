@@ -29,24 +29,26 @@ import static org.junit.Assert.assertNotNull;
  */
 public class CodingAgentJobDeduplicationTest extends TestSuiteBase {
 
-	// ── Mode constants and setter ────────────────────────────────────────────
-
+	/** Verifies that a freshly constructed job has no deduplication mode set. */
 	@Test(timeout = 30000)
 	public void dedupModeDefaultIsNull() {
 		CodingAgentJob job = new CodingAgentJob("t1", "do something");
 		assertNull(job.getDeduplicationMode());
 	}
 
+	/** Verifies that the DEDUP_LOCAL constant has the expected string value. */
 	@Test(timeout = 30000)
 	public void dedupModeLocalConstant() {
 		assertEquals("local", CodingAgentJob.DEDUP_LOCAL);
 	}
 
+	/** Verifies that the DEDUP_SPAWN constant has the expected string value. */
 	@Test(timeout = 30000)
 	public void dedupModeSpawnConstant() {
 		assertEquals("spawn", CodingAgentJob.DEDUP_SPAWN);
 	}
 
+	/** Verifies that setting the deduplication mode to DEDUP_LOCAL is reflected by the getter. */
 	@Test(timeout = 30000)
 	public void setDedupModeLocal() {
 		CodingAgentJob job = new CodingAgentJob("t1", "do something");
@@ -54,6 +56,7 @@ public class CodingAgentJobDeduplicationTest extends TestSuiteBase {
 		assertEquals(CodingAgentJob.DEDUP_LOCAL, job.getDeduplicationMode());
 	}
 
+	/** Verifies that setting the deduplication mode to DEDUP_SPAWN is reflected by the getter. */
 	@Test(timeout = 30000)
 	public void setDedupModeSpawn() {
 		CodingAgentJob job = new CodingAgentJob("t1", "do something");
@@ -61,6 +64,7 @@ public class CodingAgentJobDeduplicationTest extends TestSuiteBase {
 		assertEquals(CodingAgentJob.DEDUP_SPAWN, job.getDeduplicationMode());
 	}
 
+	/** Verifies that setting the deduplication mode back to null clears the previous value. */
 	@Test(timeout = 30000)
 	public void setDedupModeNullDisables() {
 		CodingAgentJob job = new CodingAgentJob("t1", "do something");
@@ -69,8 +73,7 @@ public class CodingAgentJobDeduplicationTest extends TestSuiteBase {
 		assertNull(job.getDeduplicationMode());
 	}
 
-	// ── Serialisation round-trip ─────────────────────────────────────────────
-
+	/** Verifies that the deduplication mode is included in the encoded wire format. */
 	@Test(timeout = 30000)
 	public void encodedModeAppearsInWireFormat() {
 		CodingAgentJob job = new CodingAgentJob("t1", "hello");
@@ -81,6 +84,7 @@ public class CodingAgentJobDeduplicationTest extends TestSuiteBase {
 			"Expected dedupMode:=local in: " + encoded;
 	}
 
+	/** Verifies that no deduplication mode key appears in the encoded wire format when mode is null. */
 	@Test(timeout = 30000)
 	public void nullModeOmittedFromWireFormat() {
 		CodingAgentJob job = new CodingAgentJob("t1", "hello");
@@ -92,8 +96,7 @@ public class CodingAgentJobDeduplicationTest extends TestSuiteBase {
 
 
 
-	// ── extractControllerBaseUrl ─────────────────────────────────────────────
-
+	/** Verifies that extractControllerBaseUrl returns scheme and host with port from a typical job URL. */
 	@Test(timeout = 30000)
 	public void extractControllerBaseUrl_typicalUrl() {
 		String url = "http://0.0.0.0:7700/api/workstreams/ws-1/jobs/job-abc";
@@ -101,6 +104,7 @@ public class CodingAgentJobDeduplicationTest extends TestSuiteBase {
 				DeduplicationSpawner.extractControllerBaseUrl(url));
 	}
 
+	/** Verifies that extractControllerBaseUrl returns only the scheme and host when no port is present. */
 	@Test(timeout = 30000)
 	public void extractControllerBaseUrl_hostOnly() {
 		String url = "http://controller.local/api/workstreams/mystream/jobs/j1";
@@ -108,24 +112,26 @@ public class CodingAgentJobDeduplicationTest extends TestSuiteBase {
 				DeduplicationSpawner.extractControllerBaseUrl(url));
 	}
 
+	/** Verifies that extractControllerBaseUrl returns null when the URL contains no workstreams segment. */
 	@Test(timeout = 30000)
 	public void extractControllerBaseUrl_noWorkstreamsSegment_returnsNull() {
 		assertNull(DeduplicationSpawner.extractControllerBaseUrl("http://host:7700/api/submit"));
 	}
 
+	/** Verifies that extractControllerBaseUrl returns null when given an empty string. */
 	@Test(timeout = 30000)
 	public void extractControllerBaseUrl_emptyString_returnsNull() {
 		assertNull(DeduplicationSpawner.extractControllerBaseUrl(""));
 	}
 
-	// ── extractWorkstreamId ──────────────────────────────────────────────────
-
+	/** Verifies that extractWorkstreamId returns the workstream identifier from a typical job URL. */
 	@Test(timeout = 30000)
 	public void extractWorkstreamId_typicalUrl() {
 		String url = "http://0.0.0.0:7700/api/workstreams/ws-1/jobs/job-abc";
 		assertEquals("ws-1", DeduplicationSpawner.extractWorkstreamId(url));
 	}
 
+	/** Verifies that extractWorkstreamId returns the workstream id even when there is no trailing jobs segment. */
 	@Test(timeout = 30000)
 	public void extractWorkstreamId_noJobsSegment() {
 		// URL has workstream but no /jobs/... suffix
@@ -133,11 +139,13 @@ public class CodingAgentJobDeduplicationTest extends TestSuiteBase {
 		assertEquals("mystream", DeduplicationSpawner.extractWorkstreamId(url));
 	}
 
+	/** Verifies that extractWorkstreamId returns null when the URL contains no workstreams segment. */
 	@Test(timeout = 30000)
 	public void extractWorkstreamId_noWorkstreamsSegment_returnsNull() {
 		assertNull(DeduplicationSpawner.extractWorkstreamId("http://host:7700/api/submit"));
 	}
 
+	/** Verifies that extractWorkstreamId returns null when given an empty string. */
 	@Test(timeout = 30000)
 	public void extractWorkstreamId_emptyString_returnsNull() {
 		assertNull(DeduplicationSpawner.extractWorkstreamId(""));

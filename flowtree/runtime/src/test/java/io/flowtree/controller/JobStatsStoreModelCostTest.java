@@ -74,6 +74,10 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
                 0, "success", false, 0, null, null, null, null);
     }
 
+    /**
+     * Verifies that cost recorded for two distinct models in a single job is
+     * correctly stored and retrievable via {@link JobStatsStore#getWeeklyStats}.
+     */
     @Test(timeout = 30000)
     public void singleJobWithTwoModelsBreaksDownByModel() throws Exception {
         JobStatsStore store = newStore();
@@ -95,6 +99,10 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that model costs from multiple jobs are summed correctly when
+     * the same model appears in more than one job within the same workstream.
+     */
     @Test(timeout = 30000)
     public void costSumsAcrossJobsPerModel() throws Exception {
         JobStatsStore store = newStore();
@@ -124,6 +132,10 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that calling {@code recordModelCosts} a second time for the same job
+     * replaces the previous values rather than accumulating a double count.
+     */
     @Test(timeout = 30000)
     public void reRecordingReplacesRatherThanDoubleCounts() throws Exception {
         JobStatsStore store = newStore();
@@ -147,6 +159,10 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that recording an empty cost map for a job removes any previously
+     * stored per-model cost rows for that job.
+     */
     @Test(timeout = 30000)
     public void emptyBreakdownClearsExistingRows() throws Exception {
         JobStatsStore store = newStore();
@@ -168,6 +184,10 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that the {@code /api/stats} HTTP endpoint exposes a {@code costByModel}
+     * JSON object containing the recorded per-model costs for a workstream.
+     */
     @Test(timeout = 30000)
     public void apiStatsEndpointIncludesPerModelBreakdown() throws Exception {
         JobStatsStore store = newStore();
@@ -209,6 +229,10 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that {@link JobStatsStore#getWeeklyStatsByWorkstream} returns per-model
+     * cost breakdowns for every workstream that recorded model costs in the given week.
+     */
     @Test(timeout = 30000)
     public void allWorkstreamsPathPopulatesCostByModel() throws Exception {
         JobStatsStore store = newStore();
@@ -240,6 +264,10 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Verifies that {@code formatModelCostLines} strips the leading provider prefix
+     * (e.g., {@code openrouter/}) from model names when formatting cost lines.
+     */
     @Test(timeout = 30000)
     public void formatModelCostLinesStripsProviderPrefix() {
         assertEquals("", JobStatsStore.formatModelCostLines(null));
@@ -255,6 +283,10 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
             formatted);
     }
 
+    /**
+     * Verifies that {@code formatModelCostLines} omits entries whose cost is zero
+     * or {@code null} from the formatted output.
+     */
     @Test(timeout = 30000)
     public void formatModelCostLinesOmitsZeroCostEntries() {
         Map<String, Double> costs = new LinkedHashMap<>();
@@ -267,6 +299,10 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
             formatted);
     }
 
+    /**
+     * Verifies that {@code formatModelCostLines} strips only the first slash-delimited
+     * segment of a multi-segment model name, preserving any remaining segments.
+     */
     @Test(timeout = 30000)
     public void formatModelCostLinesStripsOnlyFirstProviderSegment() {
         Map<String, Double> costs = new LinkedHashMap<>();
@@ -277,6 +313,10 @@ public class JobStatsStoreModelCostTest extends TestSuiteBase {
             formatted);
     }
 
+    /**
+     * Verifies {@code formatModelCostLines} correctly strips provider prefixes for
+     * models from multiple providers such as {@code anthropic/} and {@code google/}.
+     */
     @Test(timeout = 30000)
     public void formatModelCostLinesWithProviderPrefixEdgeCases() {
         Map<String, Double> costs = new LinkedHashMap<>();

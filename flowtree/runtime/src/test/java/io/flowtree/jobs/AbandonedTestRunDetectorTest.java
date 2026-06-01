@@ -48,13 +48,16 @@ import static org.junit.Assert.assertTrue;
  */
 public class AbandonedTestRunDetectorTest extends TestSuiteBase {
 
+    /** Temporary directory used as the {@code runs/} root for each test. */
     private Path runsDir;
 
+    /** Creates the temporary runs directory before each test. */
     @Before
     public void setUp() throws IOException {
         runsDir = Files.createTempDirectory("ar-test-runner-runs-");
     }
 
+    /** Deletes the temporary runs directory after each test. */
     @After
     public void tearDown() throws IOException {
         deleteRecursive(runsDir);
@@ -86,6 +89,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
 
     // ── Detector behavior ──────────────────────────────────────────────────
 
+    /** Verifies that an empty runs directory yields an empty abandoned list. */
     @Test(timeout = 30000)
     public void emptyRunsDirReturnsEmpty() {
         List<String> abandoned = AbandonedTestRunDetector.findAbandonedRuns(
@@ -94,6 +98,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         assertTrue(abandoned.isEmpty());
     }
 
+    /** Verifies that a non-existent runs directory yields an empty abandoned list. */
     @Test(timeout = 30000)
     public void missingRunsDirReturnsEmpty() {
         Path nonexistent = runsDir.resolve("nonexistent");
@@ -103,6 +108,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         assertTrue(abandoned.isEmpty());
     }
 
+    /** Verifies that a running run started within the session window is reported as abandoned. */
     @Test(timeout = 30000)
     public void runningRunInsideSessionWindowIsAbandoned() throws IOException {
         Instant sessionStart = Instant.now().minusSeconds(120);
@@ -111,6 +117,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         assertEquals(List.of("aa000001"), abandoned);
     }
 
+    /** Verifies that a run in {@code pending} status is reported as abandoned. */
     @Test(timeout = 30000)
     public void pendingRunIsAbandoned() throws IOException {
         Instant sessionStart = Instant.now().minusSeconds(120);
@@ -119,6 +126,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         assertEquals(List.of("aa000002"), abandoned);
     }
 
+    /** Verifies that a run already marked {@code abandoned} is still included in the result. */
     @Test(timeout = 30000)
     public void atexitAbandonedRunStillCountsAsAbandoned() throws IOException {
         Instant sessionStart = Instant.now().minusSeconds(120);
@@ -127,6 +135,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         assertEquals(List.of("aa000003"), abandoned);
     }
 
+    /** Verifies that a completed run is not reported as abandoned. */
     @Test(timeout = 30000)
     public void completedRunIsNotAbandoned() throws IOException {
         Instant sessionStart = Instant.now().minusSeconds(120);
@@ -135,6 +144,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         assertTrue(abandoned.isEmpty());
     }
 
+    /** Verifies that failed, timeout, and cancelled runs are not reported as abandoned. */
     @Test(timeout = 30000)
     public void failedAndTimeoutRunsAreNotAbandoned() throws IOException {
         Instant sessionStart = Instant.now().minusSeconds(120);
@@ -145,6 +155,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         assertTrue("Expected empty, got: " + abandoned, abandoned.isEmpty());
     }
 
+    /** Verifies that a run started before the session window is ignored by the detector. */
     @Test(timeout = 30000)
     public void runStartedBeforeSessionWindowIsIgnored() throws IOException {
         Instant sessionStart = Instant.now().minusSeconds(60);
@@ -154,6 +165,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
                 abandoned.isEmpty());
     }
 
+    /** Verifies that multiple abandoned runs are returned in sorted order. */
     @Test(timeout = 30000)
     public void multipleAbandonedRunsAreReportedSorted() throws IOException {
         Instant sessionStart = Instant.now().minusSeconds(120);
@@ -167,6 +179,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         assertEquals(List.of("aa000001", "mm000001", "zz000001"), abandoned);
     }
 
+    /** Verifies that a run directory with malformed metadata is skipped without error. */
     @Test(timeout = 30000)
     public void malformedMetadataIsSkipped() throws IOException {
         Path badRun = runsDir.resolve("baddata1");
@@ -180,6 +193,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         assertEquals(List.of("aa000010"), abandoned);
     }
 
+    /** Verifies that passing {@code null} for sessionStart disables the time-window filter. */
     @Test(timeout = 30000)
     public void nullSessionStartDisablesTimeFilter() throws IOException {
         // Run from "long ago" should still be detected when sessionStart is null.
@@ -198,12 +212,18 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
      * filter") and rely on workdir contents alone.
      */
     static class TestableCodingAgentJob extends CodingAgentJob {
-        /** @param taskId task identifier; @param prompt initial prompt. */
+        /**
+         * Constructs a testable coding agent job with the given task identifier and prompt.
+         */
         TestableCodingAgentJob(String taskId, String prompt) { super(taskId, prompt); }
-        /** @param error optional error; @return the event produced by createEvent. */
+
+        /**
+         * Delegates to the protected {@link CodingAgentJob#createEvent} with the given error.
+         */
         JobCompletionEvent createEventNow(Exception error) { return createEvent(error); }
     }
 
+    /** Creates a temporary job working directory pre-populated with a single synthetic run. */
     private static Path makeTempJobWorkDirWithRun(String runId, String status)
             throws IOException {
         Path workDir = Files.createTempDirectory("ccj-workdir-");
@@ -212,6 +232,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         return workDir;
     }
 
+    /** Recursively deletes a directory tree, silently ignoring individual deletion errors. */
     private static void deleteRecursive(Path dir) throws IOException {
         if (dir == null || !Files.exists(dir)) return;
         try (Stream<Path> walk = Files.walk(dir)) {
@@ -220,6 +241,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         }
     }
 
+    /** Verifies that {@code createEvent} returns DEGRADED status when an abandoned run is detected. */
     @Test(timeout = 30000)
     public void claudeCodeJobCreateEventReturnsDegradedWhenRunAbandoned()
             throws IOException {
@@ -237,6 +259,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         }
     }
 
+    /** Verifies that {@code createEvent} returns SUCCESS when all runs are in a terminal state. */
     @Test(timeout = 30000)
     public void claudeCodeJobCreateEventReturnsSuccessWhenAllRunsTerminal()
             throws IOException {
@@ -251,6 +274,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         }
     }
 
+    /** Verifies that an explicit error causes {@code createEvent} to return FAILED even when a run is abandoned. */
     @Test(timeout = 30000)
     public void claudeCodeJobCreateEventReturnsFailedOnErrorRegardlessOfAbandoned()
             throws IOException {
@@ -268,6 +292,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
 
     // ── DEGRADED factory methods on the event types ────────────────────────
 
+    /** Verifies that the {@code degraded} factory method on {@link JobCompletionEvent} sets DEGRADED status. */
     @Test(timeout = 30000)
     public void degradedFactoryHasDegradedStatus() {
         JobCompletionEvent event = JobCompletionEvent.degraded("j", "d", "agent abandoned 1 run");
@@ -275,6 +300,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         assertEquals("agent abandoned 1 run", event.getErrorMessage());
     }
 
+    /** Verifies that the {@code degraded} factory method on {@link CodingAgentJobEvent} sets DEGRADED status. */
     @Test(timeout = 30000)
     public void claudeCodeDegradedFactoryHasDegradedStatus() {
         CodingAgentJobEvent event = CodingAgentJobEvent.degraded("j", "d", "abandoned 2");
@@ -282,6 +308,7 @@ public class AbandonedTestRunDetectorTest extends TestSuiteBase {
         assertEquals("abandoned 2", event.getErrorMessage());
     }
 
+    /** Verifies that the DEGRADED status is distinct from both SUCCESS and FAILED. */
     @Test(timeout = 30000)
     public void degradedIsDistinctFromSuccessAndFailed() {
         assertFalse(JobCompletionEvent.Status.DEGRADED == JobCompletionEvent.Status.SUCCESS);

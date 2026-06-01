@@ -183,10 +183,10 @@ public class MultiTokenGenerationTest extends TestSuiteBase implements Attention
 
 			if (step < expectedTokens.length) {
 				if (nextToken == expectedTokens[step]) {
-					log("[MATCH] Generated token " + nextToken + " matches expected");
+					log("Generated token " + nextToken + " matches expected");
 					matches++;
 				} else {
-					log("[MISMATCH] Generated " + nextToken + " but expected " + expectedTokens[step]);
+					log("Generated " + nextToken + " but expected " + expectedTokens[step]);
 				}
 				total++;
 			}
