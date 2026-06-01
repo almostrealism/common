@@ -455,7 +455,14 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());
 			}
 
-			return apply(null, new Object[0], dependsOn).getSemaphore();
+			AcceleratedProcessDetails process = apply(null, new Object[0], dependsOn);
+
+			// Ensure this operation is encoded/dispatched before returning, so a subsequent
+			// chained operation is encoded after it (preserving order). The completion wait
+			// itself stays deferred — that is what the returned semaphore carries.
+			process.awaitReady();
+
+			return process.getSemaphore();
 		} finally {
 			if (getComputeRequirements() != null) {
 				Hardware.getLocalHardware().getComputer().popRequirements();

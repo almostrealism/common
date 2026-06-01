@@ -628,12 +628,17 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * <p>Chaining engages only for members whose provider reports a deferrable device completion
 	 * via {@link io.almostrealism.concurrent.Submittable#isCompletionDeferred()} (e.g. batched
 	 * Metal); every other member runs sequentially, exactly as when chaining is off. This gate
-	 * is what makes the flag safe to leave on by default: on synchronous providers the
-	 * completion is a host latch driven by the {@link Hardware#isAsync() async} arg-loading
-	 * executor, and threading it through {@code dependsOn.waitFor()} would serialize across
-	 * executor tasks — so those members are never chained. Defaults to {@code true}; set
-	 * {@code AR_HARDWARE_SEMAPHORE_CHAINING=disabled} to force the legacy per-operation wait
-	 * even for deferring providers.</p>
+	 * makes the flag harmless on synchronous providers — their completion is a host latch driven
+	 * by the {@link Hardware#isAsync() async} arg-loading executor, and threading it through
+	 * {@code dependsOn.waitFor()} would serialize across executor tasks, so those members are
+	 * never chained.</p>
+	 *
+	 * <p><strong>Defaults on.</strong> The gate keeps it inert on synchronous providers; the only
+	 * provider that defers is batched Metal
+	 * ({@link io.almostrealism.code.ComputeContext#isCompletionDeferred()}). Dependent chained
+	 * members are encoded in order (see {@code AcceleratedOperation.submit()} ->
+	 * {@code AcceleratedProcessDetails.awaitReady()}), so ordering is correct. Set
+	 * {@code AR_HARDWARE_SEMAPHORE_CHAINING=disabled} to force the legacy per-operation wait.</p>
 	 */
 	public static boolean enableSemaphoreChaining =
 			SystemUtils.isEnabled("AR_HARDWARE_SEMAPHORE_CHAINING").orElse(true);

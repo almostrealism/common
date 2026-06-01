@@ -59,8 +59,13 @@ public class MetalCommandRunner {
 	 * (at a completion wait or the {@link #maxBatchSize} cap); when {@code false}, each command
 	 * is committed and waited immediately (one buffer per dispatch). Enabling this also makes
 	 * {@link MetalComputeContext#isCompletionDeferred()} report {@code true}, so an
-	 * {@code OperationList} chains batched Metal dispatches. Controlled by {@code AR_METAL_BATCH};
-	 * defaults on. Set {@code AR_METAL_BATCH=disabled} to restore one-buffer-per-dispatch.
+	 * {@code OperationList} chains batched Metal dispatches.
+	 *
+	 * <p>Controlled by {@code AR_METAL_BATCH}; <strong>defaults on</strong>. Ordering of dependent
+	 * dispatches is correct because chained members are encoded in order (see
+	 * {@code AcceleratedProcessDetails.awaitReady()} and {@code AcceleratedOperation.submit()})
+	 * and Metal's same-buffer hazard tracking serializes dependents within the committed buffer.
+	 * Set {@code AR_METAL_BATCH=disabled} to restore one-buffer-per-dispatch.</p>
 	 */
 	public static boolean enableBatching = SystemUtils.isEnabled("AR_METAL_BATCH").orElse(true);
 

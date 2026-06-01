@@ -155,11 +155,60 @@ and (on Metal) ~one command buffer instead of N.
    The `Runner` chains a member **only** when `isCompletionDeferred()` is true; every other
    member runs sequentially exactly as before. This honors the `Submittable` contract's existing
    promise that synchronous providers "degrade transparently to sequential synchronous
-   execution," and makes the flag **safe to default on**. `OperationList.enableSemaphoreChaining`
-   now **defaults on** (`AR_HARDWARE_SEMAPHORE_CHAINING=disabled` to force legacy per-op waits).
-   Verified with the new defaults on: native = 92.95 µs/dispatch (no regression — chaining inert
-   on JNI), `*` = 141.72 µs (routes to JNI, inert, no regression), `mtl` = 97.05 µs (batches),
-   `MatrixMathTests` 10/10 green on Metal (dependent kernels ordered correctly).
+   execution." The provider gate is correct and verified inert on synchronous providers: with
+   both flags briefly defaulted on, native = 92.95 µs/dispatch (no regression — chaining inert on
+   JNI), `*` = 141.72 µs (routes to JNI, inert, no regression), `mtl` = 97.05 µs (batches), and
+   `MatrixMathTests` 10/10 green on Metal.
+   **Root cause of the broad-run correctness gap — FOUND and FIXED (encode ordering).**
+   The stale-zero failures (e.g. `CollectionComputationTests.integersIndexAssignmentOperation`,
+   `0.0 != 3.5`) were **not** command-buffer mis-ordering and **not** a stale host read.
+   Proven by two diagnostics: forcing every dispatch into its own command buffer (no batching)
+   still failed, and forcing all dispatches to share one buffer (no batch breaks) passed — so
+   Metal's same-buffer hazard tracking orders dependent kernels correctly. The real bug: when
+   batching is on, `OperationList.Runner` chains members via `Submittable.submit()`, but
+   `submit()` returned *before the kernel was encoded* (encoding happens in the async
+   `AcceleratedProcessDetails.whenReady` callback), so a dependent op2 could be encoded/dispatched
+   before op1 — reading stale inputs. **Fix:** `AcceleratedProcessDetails.awaitReady()` waits the
+   host-readiness latch (encode done, commit still deferred) and `AcceleratedOperation.submit()`
+   calls it before returning, so chained members are encoded in order. Validated: 7 collection/
+   matrix/kernel classes forced to `mtl` with `AR_METAL_BATCH=enabled
+   AR_HARDWARE_SEMAPHORE_CHAINING=enabled` go from 2 batching failures to **0** (the remaining 7
+   `FourierTransformTests` "Failed to compile f_fourierTransform_*" errors are **pre-existing** —
+   they fail with batching off too — as is the `Convolution2dDeltaComputationTests` compile-hang).
+   The completion-wait fix in `getSemaphore()` is retained (commit-before-read for the run/evaluate
+   path). The dependency-gating experiment (per-op read/write hazard tracking in the runner) was
+   removed as unnecessary once `awaitReady` was in place.
+   **Defaults now ON** (`AR_METAL_BATCH` and `AR_HARDWARE_SEMAPHORE_CHAINING` both `orElse(true)`).
+   Validated under the test-mac backend config `AR_HARDWARE_DRIVER=*`: the previously-failing
+   collection/matrix/kernel/enumerate/repeated/Fourier classes pass **81/81** (the forced-`mtl`
+   Fourier compile errors do not occur under `*`, where those ops route to JNI), and forced `mtl`
+   with batching is correctness-clean. The provider gate keeps chaining inert on JNI, so the
+   ubuntu/native CI jobs are unaffected.
+   **PERF CAVEAT (follow-up, non-blocking):** `awaitReady` serializes per-op encode, which erased
+   most of the per-dispatch *latency* speedup (microbenchmark forced `mtl`: batched ON ≈ 205 µs vs
+   OFF ≈ 216 µs, versus 97 vs 209 before the fix). Crucially batched-ON is still ≈ OFF, so enabling
+   the default adds **no slowdown** versus the prior state; batching also still reduces
+   command-buffer *count* (the original stall-avoidance goal). Recovering the latency win needs
+   encode-ordering that doesn't block arg-loading (order only dependent members) — left as a
+   follow-up that does not block the default.
+
+   **(historical) Defaults reverted to OFF — broad-run correctness gap.** A full multi-backend
+   (`AR_HARDWARE_DRIVER=*`) suite run with the defaults on produced stale-zero reads in many
+   evaluate-based tests (`CollectionComputationTests.integersIndex`, `CollectionEnumerateTests
+   .transpose`, `SphereTest.discriminantKernel/intersectionKernel`, several
+   `FourierTransformTests`) **plus a 240 s timeout in `SyntheticActivationTrainingTest
+   .denseWithSiLU`**. The failures do **not** reproduce when those same classes run in isolation
+   (forced `mtl` or `*`, both green), so the cause is not a single missing flush but
+   deferred-commit state that survives across operations/tests in a shared JVM (an uncommitted
+   open command buffer / executor / autorelease pool) and a hang in long training chains.
+   `MetalOperator.run()`/`AcceleratedComputationEvaluable.evaluate()` already wait on
+   `process.getSemaphore()`, so the gap is that with batching the waited semaphore can be the
+   host-readiness latch rather than the deferred `FlushSemaphore` (a race set during the
+   `whenReady` callback) — i.e. the result is read before the batch commits. **Both flags now
+   default off again; batching remains validated and opt-in (`AR_METAL_BATCH=enabled` +
+   `AR_HARDWARE_SEMAPHORE_CHAINING=enabled`).** Next: make the host read of Metal memory flush
+   the open command buffer (or make the deferred completion the authoritative wait), then
+   reproduce the full-suite failures before re-enabling.
 3. **Metal command-buffer batching — DONE (measured 2.1× on the microbenchmark).**
    - **(DONE) Encode/commit split.** `MetalCommand` now *encodes only* (`encode(cmdBuf)`);
      `MetalCommandRunner` owns the command-buffer lifecycle. With batching off
