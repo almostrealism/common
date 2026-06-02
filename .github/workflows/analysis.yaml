@@ -595,7 +595,6 @@ jobs:
     # whatever config exists on the branch regardless of the integrity result.
     if: needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
-    continue-on-error: true
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
     steps:
@@ -626,8 +625,11 @@ jobs:
 
       - name: Run Checkstyle
         id: check
-        continue-on-error: true
         run: |
+          # The default GitHub shell does not set pipefail, so `mvn | tee` would
+          # otherwise return tee's exit code (0). exit ${PIPESTATUS[0]} propagates
+          # Maven's real exit code so a violation fails this step — and, with no
+          # continue-on-error, the whole job.
           mvn checkstyle:check -B 2>&1 | tee ${RUNNER_TEMP}/checkstyle-output.txt
           exit ${PIPESTATUS[0]}
 
@@ -1886,12 +1888,9 @@ jobs:
           check_job "test-media-mac"          "$TEST_MEDIA_MAC_RESULT"
           check_job "analysis"                "$ANALYSIS_RESULT"
 
-          # checkstyle uses continue-on-error so its job result is always
-          # "success". Check its outputs.passed instead.
-          if [ "$CHECKSTYLE_PASSED" != "true" ] && [ "$CHECKSTYLE_RESULT" != "skipped" ]; then
-            FAILED="${FAILED} checkstyle"
-            echo "::error::checkstyle reported violations (passed=false)"
-          fi
+          # checkstyle now fails hard (no continue-on-error), so its job result
+          # is authoritative — evaluate it like any other job.
+          check_job "checkstyle"              "$CHECKSTYLE_RESULT"
 
           if [ -n "$FAILED" ]; then
             echo "::error::The following jobs failed:${FAILED}"

@@ -24,12 +24,26 @@ import io.almostrealism.profile.OperationProfile;
  * to record and format timing data.
  */
 class TimingResult {
+	/** Build phase duration in nanoseconds. */
 	final long buildTimeNs;
+	/** Optimize phase duration in nanoseconds. */
 	final long optimizeTimeNs;
+	/** Compile phase duration in nanoseconds. */
 	final long compileTimeNs;
+	/** Run phase duration in nanoseconds. */
 	final long runTimeNs;
+	/** Profile capturing operation timing details for the measured run. */
 	final OperationProfile profile;
 
+	/**
+	 * Records the timing measurements for a single test operation.
+	 *
+	 * @param build    build phase duration in nanoseconds
+	 * @param optimize optimize phase duration in nanoseconds
+	 * @param compile  compile phase duration in nanoseconds
+	 * @param run      run phase duration in nanoseconds
+	 * @param profile  operation profile captured for the run
+	 */
 	TimingResult(long build, long optimize, long compile, long run, OperationProfile profile) {
 		this.buildTimeNs = build;
 		this.optimizeTimeNs = optimize;
