@@ -608,6 +608,30 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 			// Prepare the operator
 			Execution operator = setupOperator(process);
+
+			// "processing" means this operation needs argument AGGREGATION: its arguments are copied
+			// into a single shared memory reservation (prepare/preApply, below) to keep the kernel's
+			// argument count low, and the result is copied back out afterward (postprocess/postApply).
+			//
+			// Aggregation is the signal that this operation CANNOT be batched into the provider's
+			// shared command buffer. The de-aggregation copies between memory in DIFFERENT
+			// MemoryProviders — the aggregated buffer is provider-owned (e.g. a Metal command buffer's
+			// memory) while the originals usually are not — so it must run only after this kernel has
+			// actually completed. That forces a per-operation completion wait below (and, on Metal, a
+			// per-operation command-buffer commit). This per-op commit is correct and intended; it is
+			// also why a Metal command buffer that carries an aggregated op is not shared with others.
+			//
+			// The inverse is the case that matters for performance: when "processing" is false there
+			// is NO per-op wait here, so the dispatch simply accumulates into the provider's open
+			// command buffer and is committed ONCE at the genuine boundary (the OperationList runner's
+			// trailing wait, or a top-level run()/evaluate()). That is where Metal command-buffer
+			// batching happens. Aggregation rarely occurs for performance-critical work because those
+			// buffers exceed the off-heap threshold (AR_HARDWARE_OFF_HEAP_SIZE); setting it to 0 keeps
+			// every reservation provider-owned and avoids aggregation entirely.
+			//
+			// IMPORTANT: do NOT add a per-op wait for non-aggregated operations, and do NOT treat the
+			// mere presence of an aggregated operation as a reason to stop batching the others — only
+			// the aggregated operation itself pays the per-op commit.
 			boolean processing = isPreprocessingRequired(process);
 
 			// Preprocessing
@@ -630,13 +654,15 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			// unchanged.
 			process.setCompletionSemaphore(nextSemaphore);
 
-			// Postprocessing
+			// Postprocessing. This per-op wait is required, NOT batching being switched off
+			// arbitrarily: the de-aggregation below crosses MemoryProviders and must run after the
+			// kernel completes (see the "processing" explanation above). It only applies to
+			// aggregated operations; non-aggregated ones never reach here and stay batched.
 			if (processing) {
 				if (nextSemaphore != null) {
 					// TODO  This should actually result in a new Semaphore
 					// TODO  that performs the post processing whenever the
 					// TODO  original semaphore is finished
-					// warn("Postprocessing will wait for semaphore");
 					nextSemaphore.waitFor();
 				}
 

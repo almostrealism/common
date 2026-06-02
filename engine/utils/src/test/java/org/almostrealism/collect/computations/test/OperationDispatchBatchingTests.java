@@ -79,6 +79,29 @@ public class OperationDispatchBatchingTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Regression guard for a Metal command-buffer completion bug. A list of independent operations
+	 * whose arguments are aggregated (tiny memory reservations) commits one Metal command buffer per
+	 * operation. A defect in {@code MetalCommandRunner}'s Objective-C autorelease handling — it
+	 * pushed an autorelease pool per open command buffer and popped it at commit, so the pool spanned
+	 * the runner's separate encode and commit/await executor tasks — wedged the <em>second</em> such
+	 * command buffer's completion forever in {@code MTL.waitUntilCompleted}, hanging the whole run. A
+	 * single operation always completed; two were the minimal trigger. The fix wraps each executor
+	 * task in its own autorelease pool and retains the command buffer explicitly across tasks (see
+	 * {@code MetalCommandRunner.runInPool} and {@code MTLCommandBuffer.release}). This test is small
+	 * and fast on purpose, and its short timeout makes any recurrence fail fast instead of hanging
+	 * the suite. (Only meaningful on the Metal backend; on synchronous backends it passes trivially.)
+	 */
+	@Test(timeout = 60000)
+	public void independentDispatchesComplete() {
+		// Tiny reservations (count*dim = 4 elements, below the off-heap threshold) force argument
+		// aggregation, which correctly commits one command buffer per operation instead of batching
+		// — i.e. this deliberately exercises the multi-command-buffer path that regressed. A warmup
+		// run plus one timed iteration of four operations is more than enough buffers to retrigger
+		// the wedge if it ever returns; measure() asserts each output equals twice its input.
+		measure(4, 1, 4, 1);
+	}
+
+	/**
 	 * Runs an {@link OperationList} of {@code ops} independent element-wise operations
 	 * (each output element = input element + input element) {@code iterations} times and
 	 * reports the per-dispatch wall-clock overhead.
