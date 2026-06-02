@@ -509,6 +509,15 @@ public class MTL {
 	public static native void releaseBuffer(long buffer);
 
 	/**
+	 * Releases a command buffer obtained from {@link #commandBuffer(long)}. The command buffer is
+	 * retained on creation so it survives the runner's per-task autorelease pools; this drops that
+	 * explicit retain once the buffer has completed.
+	 *
+	 * @param commandBuffer Native command buffer pointer
+	 */
+	public static native void releaseCommandBuffer(long commandBuffer);
+
+	/**
 	 * Releases a compute pipeline state and frees its resources.
 	 *
 	 * @param pipeline Native pipeline state pointer

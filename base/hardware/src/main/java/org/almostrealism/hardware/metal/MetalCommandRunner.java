@@ -44,9 +44,14 @@ import java.util.concurrent.Future;
  *
  * <p>Memory referenced by an encoded kernel must stay alive until its command buffer has completed.
  * Callers pass an {@code onCommit} callback to {@link #submit} that releases that memory; the runner
- * runs it only after the buffer the dispatch was encoded into has completed. The Objective-C
- * autorelease pool spans an open buffer's encoding and is drained once that buffer is committed (the
- * queue then retains the committed buffer until it completes).</p>
+ * runs it only after the buffer the dispatch was encoded into has completed.</p>
+ *
+ * <p>Objective-C memory: every executor task runs inside its own autorelease pool (see
+ * {@link #runInPool}) so transient autoreleased Metal objects (encoders, the command buffer's own
+ * autorelease reference) are drained per task and do not accumulate in the driver. The open command
+ * buffer outlives its creating task, so it is retained explicitly when created
+ * ({@link MTL#commandBuffer(long)}) and released ({@link MTLCommandBuffer#release()}) once it has
+ * completed.</p>
  */
 public class MetalCommandRunner {
 	/** Maximum number of kernel arguments a single command may bind. */
@@ -73,8 +78,6 @@ public class MetalCommandRunner {
 
 	/** The open (encoded, not yet committed) command buffer, or {@code null}. Executor-thread only. */
 	private MTLCommandBuffer openBuffer;
-	/** Autorelease pool spanning the open buffer's encoding. Executor-thread only. */
-	private long openPool;
 	/** Number of dispatches encoded into the open buffer. Executor-thread only. */
 	private int openCount;
 	/** Released-memory callbacks for dispatches in the open buffer. Executor-thread only. */
@@ -82,6 +85,16 @@ public class MetalCommandRunner {
 
 	/** Committed-but-not-yet-completed buffers, in commit (queue) order. Executor-thread only. */
 	private final List<CommittedBuffer> committed = new ArrayList<>();
+
+	/**
+	 * True while an open (created but not yet committed) command buffer exists. Enforces the
+	 * one-open-buffer-per-{@link MetalComputeContext} invariant: a single context must never have a
+	 * second uncommitted command buffer in flight (cross-buffer coordination is only meaningful
+	 * <em>between</em> contexts, and a Computation tree compiles against a single Metal context).
+	 * Tracked explicitly so an attempt to open a second buffer fails fast instead of silently
+	 * producing the kind of wedged-completion state this work has repeatedly hit.
+	 */
+	private boolean bufferOpen;
 
 	/**
 	 * Creates a Metal command runner.
@@ -110,7 +123,7 @@ public class MetalCommandRunner {
 	public MetalSemaphore submit(MetalCommand command, Semaphore dependsOn, Runnable onComplete) {
 		List<MetalSemaphore> result = new ArrayList<>(1);
 
-		await(executor.submit(() -> {
+		await(executor.submit(() -> runInPool(() -> {
 			MetalSemaphore dependency =
 					dependsOn instanceof MetalSemaphore && ((MetalSemaphore) dependsOn).getRunner() == this
 							? (MetalSemaphore) dependsOn : null;
@@ -139,7 +152,7 @@ public class MetalCommandRunner {
 			if (openCount >= MAX_OPEN) {
 				commitOpenOnExecutor();
 			}
-		}));
+		})));
 
 		return result.get(0);
 	}
@@ -152,28 +165,55 @@ public class MetalCommandRunner {
 	 * @param commandBuffer the dispatch's command buffer
 	 */
 	public void complete(MTLCommandBuffer commandBuffer) {
-		await(executor.submit(() -> completeOnExecutor(commandBuffer)));
+		await(executor.submit(() -> runInPool(() -> completeOnExecutor(commandBuffer))));
 	}
 
-	/** Opens a fresh command buffer (and its autorelease pool) if none is currently open. */
+	/**
+	 * Runs {@code task} on the executor's thread inside a per-task Objective-C autorelease pool, so
+	 * transient autoreleased Metal objects (compute command encoders, and the command buffer's own
+	 * autorelease reference) are drained when the task ends rather than accumulating in the driver
+	 * until it stalls. The open command buffer survives across tasks because it is retained
+	 * explicitly when created (see {@link MTL#commandBuffer(long)}) and released by
+	 * {@link #completeOnExecutor} once it has completed. A pool scoped to each task (rather than one
+	 * spanning a buffer's whole open lifetime across several tasks) is required: spanning a pool
+	 * across the executor's task boundaries wedged command-buffer completion.
+	 *
+	 * @param task the work to run inside a fresh autorelease pool
+	 */
+	private void runInPool(Runnable task) {
+		long pool = MTL.autoreleasePoolPush();
+
+		try {
+			task.run();
+		} finally {
+			MTL.autoreleasePoolPop(pool);
+		}
+	}
+
+	/** Opens a fresh command buffer if none is currently open. */
 	private void ensureOpenBuffer() {
 		if (openBuffer == null) {
-			openPool = MTL.autoreleasePoolPush();
+			if (bufferOpen) {
+				throw new IllegalStateException("A second open command buffer was requested while " +
+						"one is still open on this ComputeContext — the one-open-buffer-per-context " +
+						"invariant is violated");
+			}
+
 			openBuffer = queue.commandBuffer();
 			openCount = 0;
+			bufferOpen = true;
 		}
 	}
 
 	/**
-	 * Commits the open buffer (if any) and moves it to the committed list, draining its autorelease
-	 * pool. Does not wait for completion. Must run on the executor thread.
+	 * Commits the open buffer (if any) and moves it to the committed list. Does not wait for
+	 * completion. Must run on the executor thread.
 	 */
 	private void commitOpenOnExecutor() {
 		if (openBuffer == null) return;
 
 		openBuffer.commit();
-		MTL.autoreleasePoolPop(openPool);
-		openPool = 0;
+		bufferOpen = false;
 
 		committed.add(new CommittedBuffer(openBuffer, openOnComplete));
 		openBuffer = null;
@@ -201,6 +241,7 @@ public class MetalCommandRunner {
 			CommittedBuffer c = committed.remove(0);
 			c.buffer.waitUntilCompleted();
 			c.onComplete.forEach(Runnable::run);
+			c.buffer.release();
 		}
 	}
 
@@ -223,15 +264,16 @@ public class MetalCommandRunner {
 	 */
 	public void destroy() {
 		if (executor != null) {
-			await(executor.submit(() -> {
+			await(executor.submit(() -> runInPool(() -> {
 				commitOpenOnExecutor();
 				while (!committed.isEmpty()) {
 					CommittedBuffer c = committed.remove(0);
 					c.buffer.waitUntilCompleted();
 					c.onComplete.forEach(Runnable::run);
+					c.buffer.release();
 				}
 				event.release();
-			}));
+			})));
 			executor.shutdown();
 		}
 		executor = null;

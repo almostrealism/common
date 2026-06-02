@@ -68,7 +68,18 @@ extern "C"
 JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_commandBuffer(JNIEnv* env, jclass cls, jlong queue) {
     MTL::CommandQueue* que = (MTL::CommandQueue*) queue;
     MTL::CommandBuffer* buffer = que->commandBuffer();
+    // The command buffer is returned autoreleased. It must outlive the per-task autorelease pool
+    // the runner drains around each unit of work (it is created in one task and committed/awaited
+    // in a later one), so retain it explicitly; the runner calls releaseCommandBuffer once the
+    // buffer has completed.
+    buffer->retain();
     return (jlong) buffer;
+}
+
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_releaseCommandBuffer(JNIEnv* env, jclass cls, jlong cmdBuffer) {
+    MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
+    buf->release();
 }
 
 extern "C"
