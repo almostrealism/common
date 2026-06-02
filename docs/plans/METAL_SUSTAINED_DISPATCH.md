@@ -72,6 +72,16 @@ Validated: forced `mtl` 73/73 correct; native 43/43; checkstyle + code_policy cl
 > shorthand. Whether a given test produces one kernel or many is a **compiler outcome** — confirm
 > with `get_source` before depending on it.
 
+> ⚠️ **The redo violates the one-buffer invariant on one path — flag for review.** The bullet above
+> ("a same-runner `MetalSemaphore` dependency → commit the open buffer + `encodeWaitForEvent`")
+> describes splitting into a **second command buffer with a cross-buffer event-wait for a dependency
+> that is on the SAME context (same runner).** Per the invariant below, that is the mistake: a
+> same-context dependent should just keep encoding into the one open buffer and let hazard tracking
+> order it — never commit + event-wait. First **verify whether this path ever executes** (does
+> anything thread a same-runner `dependsOn`? log it); if it does, it is a source of unnecessary
+> commits and should be removed in favor of single-buffer accumulation. If it never executes, delete
+> the dead branch. Either way it should not survive as written.
+
 ## What "dispatch count" actually means here — GROUND THIS FIRST
 
 > ⚠️ This entire section is the thing that was skipped. Do it before anything else.
@@ -115,15 +125,68 @@ not deterministic (stall buffer varies 1792/2304/2560 → a *cumulative* effect 
 submissions accumulates and wedges the pipeline. Fewer, batched submissions + not blocking per
 dispatch is the fix.
 
-## The general goal
+## INVARIANT: at most ONE active command buffer per ComputeContext
 
-Let an operation's **completion wait live in the provider**. The host should *submit* work and only
-*await* it where a result is actually consumed, while consecutive operations chain on each other
-inside the provider (GPU-side), not via host round-trips.
+> ⚠️ This is the load-bearing fact. If a design here ever has two command buffers live on one
+> ComputeContext, the design is wrong — stop and fix it.
 
-> ⚠️ Reminder: "consecutive operations" means consecutive nodes **in the compiled graph**, which
-> may be far fewer (or differently shaped) than the operations you added. Don't design the chaining
-> around your source order; design it around what the compiler actually emits.
+For any given `ComputeContext` there is **at most one active (open, uncommitted) command buffer.**
+A second active command buffer on the same context is a **bug**, and — emphatically — any code that
+tries to **synchronize across two command buffers within one context** (commit one buffer and have
+another `encodeWaitForEvent` it, etc.) is a bug, because that situation must never arise inside a
+single context:
+
+- Within one command buffer, Metal's **same-buffer hazard tracking already orders** every real
+  read-after-write among the dispatches encoded into it (and runs the independent ones
+  concurrently). There is nothing left to "synchronize" across buffers.
+- Two command buffers that need ordering only make sense across **two different ComputeContexts**.
+  And **you cannot have two Metal ComputeContexts active at once for the same `Computation` tree** —
+  a single Computation tree compiles against a single Metal context. So a cross-buffer event-wait is
+  meaningful **only** at a genuine boundary *between* contexts (e.g. GPU↔CPU), never within one.
+
+Consequence for this work: within one Metal context, **everything accumulates into the one open
+buffer.** `encodeWaitForEvent` / shared-event cross-buffer synchronization is a *cross-context*
+mechanism only. If you catch yourself committing a buffer and opening another to "order" two
+dispatches that live on the same context, the second buffer **is** the mistake — delete the split,
+keep encoding into the one buffer, and let hazard tracking do the ordering.
+
+> ⚠️ This is exactly the mistake the reverted attempt 2 made (and then "debugged"): it manufactured
+> extra command buffers on one context and then invented a cross-buffer failure mode to explain the
+> hang. The fix is not to make two buffers work — it is to never create the second buffer.
+
+## What we are actually trying to achieve
+
+The goal is **not** to make many dispatches go fast individually; it is to make the **number of
+command-buffer commits** for a complex system of operations **as low as possible** — ideally one
+commit per genuine boundary, not one per dispatch.
+
+When a Metal `Computation` (e.g. an `OperationList`) **does not automatically compile into a single
+kernel program**, it becomes **multiple kernel dispatches.** Today those multiple dispatches can end
+up each forcing a commit (the "too many commits" behavior we are eliminating). What we want: those
+multiple dispatches all **encode into the one open command buffer for the context**, and that buffer
+**commits only when a commit is actually required to make the data available beyond the buffer** —
+namely:
+
+1. an **explicit host wait** — `run()` / `evaluate()` (or any consumption that reads the result back
+   on the host), or
+2. the data must be **operated on from a different `ComputeContext`** that does not share this
+   command buffer (a real cross-context boundary).
+
+Everything else just keeps encoding into the open buffer. So a long chain of Metal operations that
+the compiler could not fuse should still cost **~one commit at the end**, not N.
+
+> ⚠️ Reminder: "consecutive operations" / "the dispatches" here means nodes **in the compiled
+> graph**. Design the batching around what the compiler actually emits and where the host/cross-
+> context boundaries actually fall — not around the operations you typed.
+
+### Why a Computation may legitimately NOT fuse into one kernel
+
+A single kernel program runs over a single global work-size (`global_id`) range. If the operations
+have **different counts** (different global work sizes), there is **no universally correct
+`global_id` range** for one program, so the compiler **cannot** collapse them into one kernel — it
+must emit **one dispatch per (differently-counted) operation.** That is the realistic, important
+case: many genuine dispatches that nonetheless all run on **one** Metal context and therefore should
+share **one** command buffer with commits only at the boundaries above.
 
 ## Architectural framing (read before touching code)
 
@@ -155,17 +218,31 @@ A provider that supports async returns a **live** `Semaphore`; one that does not
 **already-completed** one (trailing `waitFor` is a no-op). Same calling convention for every
 backend; participation is opt-in; non-participants degrade transparently.
 
-## Approach: Options A + C combined
+## Approach — distinguish WITHIN-context batching from CROSS-context chaining
 
-- **C — async completion / chaining.** `apply()` returns the provider's *live* `Semaphore`; thread
-  `dependsOn` so consecutive (compiled-graph) operations chain provider-side.
-- **A — group submission + single barrier.** A `ParallelProcess`'s executable dispatches its group
-  chaining on the prior, with **one** host `waitFor` at the boundary.
+These are two different mechanisms and must not be conflated (conflating them is how attempt 2
+ended up manufacturing extra buffers):
+
+- **WITHIN one Metal context (the primary win here): batch into the one open command buffer, commit
+  only at a boundary.** Every dispatch the compiler emits for this context is encoded into the
+  single open buffer; **no per-dispatch `dependsOn`/event chaining is needed or wanted** — same-
+  buffer hazard tracking orders the dependents. The buffer commits only at a genuine boundary (host
+  `run()`/`evaluate()` wait, or a cross-context hand-off). Target: commits ≈ number of boundaries,
+  not number of dispatches.
+- **ACROSS ComputeContexts (the only place chaining/events apply): one host `waitFor` (or an event
+  hand-off) at the boundary.** This is where a `dependsOn`/`cl_event`/`MTLSharedEvent` actually
+  earns its keep — ordering work in one context after work produced in another. It is *not* a
+  within-context tool.
+
+So: the provider's `dependsOn` chaining (the `CLOperator` `cl_event` model) is a **cross-context /
+cross-provider** capability. For the Metal single-context batching goal, the mechanism is simply
+"keep encoding into the open buffer; commit at boundaries" — not event chaining.
 
 Kernel **fusion (Option B)** — collapsing many operations into one kernel — is *out of scope here*,
-**but note that the compiler already does a great deal of this on its own.** That is precisely why
-you cannot reason about dispatch counts from source: fusion (and other restructuring) has already
-happened by the time anything reaches a `ComputeContext`.
+**but note the compiler already does a great deal of this on its own.** That is precisely why you
+cannot reason about dispatch counts from source: fusion (and other restructuring) has already
+happened by the time anything reaches a `ComputeContext`. Batching is the *complement* of fusion: it
+handles the dispatches the compiler **could not** fuse (e.g. differently-counted operations).
 
 ## Attempt 1 (reverted — deadlocks)
 
@@ -213,16 +290,40 @@ then re-observe the hang with verified knowledge of the kernel/dispatch structur
 ## Validation harness
 
 > ⚠️ Reminder: the descriptions below state *intent*. Whether a harness actually produces the shape
-> it intends (e.g. "N unfused dispatches") is a compiled-output fact you MUST verify with
-> `get_source` — the comment in the test is not evidence, and at least one such comment
-> ("1024 dispatches") is contradicted by how the platform actually compiles it.
+> it intends (e.g. "N separate dispatches") is a compiled-output fact you MUST verify with
+> `get_source` — the comment in a test is not evidence, and the previous "1024 dispatches" framing
+> was contradicted by how the platform actually compiles it.
 
-- **`OperationDispatchBatchingTests`** — *intended* as N tiny ops run M times. **Verify the actual
-  compiled kernel/dispatch count before using its numbers.**
+**The metric that matters is the number of command-buffer COMMITS, not µs/dispatch.** A correct
+batched design issues ~one commit per genuine boundary; the failure we are eliminating is one commit
+per dispatch. Instrument `MetalCommandRunner` (count `commit` calls) or read it from the profile —
+and assert on the commit count, not just on timing.
+
+### The harness that actually elicits "too many commits" (build this; verify it first)
+
+An `OperationList` whose members **cannot be fused into one kernel**, so the compiler must emit
+**multiple dispatches** that nonetheless all run on **one** Metal context:
+
+- Construct members with **different counts** — e.g. member *i* operates on a collection of a
+  different size — so there is no single `global_id` range and the compiler cannot collapse them.
+- **FIRST capture `get_source` and confirm** the OperationList actually compiles to N dispatches (N
+  distinct kernels / N distinct global work sizes), *not* one fused kernel and *not* a path that
+  routes through some other structure. If it fused, the harness is not exercising the behavior —
+  fix the harness, do not reinterpret the result.
+- Run it with no intervening host consumption, then `run()`/`evaluate()` once at the end.
+- **Expected correct behavior:** all N dispatches encode into the **one** open command buffer and
+  the buffer commits **once** (at the trailing wait) — commit count ≈ 1, **not** N. A second active
+  command buffer appearing at any point is a bug (see the one-buffer invariant).
+
+> ⚠️ Do not trust `OperationDispatchBatchingTests` / `OperationSemaphoreTests` dispatch counts as
+> previously documented — verify each against `get_source` before using its numbers. They remain
+> useful as **correctness** gates (output numerically unchanged); their dispatch/commit shape must
+> be re-established empirically.
+
 - **`OperationSemaphoreTests`**, **`BatchedVsPerNoteRmsTest`**, audio RMS checks — correctness gates;
   output must be numerically unchanged.
-- **`RealtimeContinuousRenderer`** on Metal — the sustained-dispatch outcome (blow past the
-  ~2560-buffer stall).
+- **`RealtimeContinuousRenderer`** on Metal — the sustained-dispatch outcome (must blow past the
+  ~2560-buffer stall once commits are minimized).
 
 ## Open questions (later)
 
