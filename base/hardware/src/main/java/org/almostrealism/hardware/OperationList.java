@@ -36,6 +36,7 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.profile.OperationTimingListener;
+import io.almostrealism.profile.OperationWithInfo;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
@@ -653,6 +654,38 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 */
 	public static boolean enableNonUniformCompilation = false;
 
+	/**
+	 * When {@code true}, {@link #flatten()} labels each inlined child operation with the
+	 * provenance of its originating sub-list by wrapping it in an
+	 * {@link io.almostrealism.profile.OperationWithInfo}. This aids profile diagnostics by
+	 * carrying a "parent ==&gt; child" description through the flattened operation stream.
+	 *
+	 * <p><strong>Disabled by default, and do not flip it back on without addressing the
+	 * problem below.</strong> Wrapping an operation in {@link io.almostrealism.profile.OperationWithInfo}
+	 * does not merely attach a label &mdash; it inserts a decorator into the
+	 * {@link io.almostrealism.compute.Process} tree, and that decorator <em>changes how the
+	 * wrapped {@link io.almostrealism.compute.Process} is optimized and ultimately executed</em>.
+	 * Optimization proceeds by calling {@code optimize(...)}, then {@code isolate()} /
+	 * {@code generate(...)} on each node; a wrapper that does not faithfully delegate every
+	 * one of these (and re-wrap the result) silently alters the optimization path. The
+	 * concrete failure we hit: with the wrapper in place on the model-compilation path,
+	 * expression embedding was no longer broken up where the optimizer intended, the emitted
+	 * kernel exploded, and {@code Model.compile()} hung to the test timeout
+	 * (see {@code LoRALinearTests.testModelCompilation}). Even when the wrapper's
+	 * {@code optimize}/{@code isolate}/{@code generate} are made to delegate, the wrapper still
+	 * participates in the process tree and can change which {@link Computation}s are fused,
+	 * isolated, or inlined &mdash; i.e. it changes what is actually executed, not just what is
+	 * reported. Re-enabling this requires proving (with a model-compilation regression test,
+	 * not just provenance-string assertions) that the wrapping is transparent to optimization
+	 * for every path that flows through {@link #flatten()}.</p>
+	 *
+	 * <p>The rest of the provenance infrastructure
+	 * ({@link io.almostrealism.profile.OperationMetadata#withProvenance(String)} and the
+	 * profile-analysis tooling) does not insert wrappers into the process tree and is
+	 * unaffected by this flag &mdash; it remains available regardless of this setting.</p>
+	 */
+	public static boolean enableProvenance = false;
+
 	/** Thread-local flag set when a kernel abort has been triggered; holds the offending MemoryData. */
 	private static ThreadLocal<MemoryData> abortFlag;
 	/** If true, abort when argument evaluation fails; if false, abort when scope construction fails. */
@@ -736,6 +769,13 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 */
 	@Override
 	public String getFunctionName() { return this.functionName; }
+
+	/**
+	 * Returns the description of this operation list.
+	 *
+	 * @return The description, or null if not set
+	 */
+	public String getDescription() { return this.description; }
 
 	/**
 	 * Returns the operation metadata for profiling and identification.
@@ -1026,9 +1066,14 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		OperationList flat = stream()
 				.flatMap(o -> {
 					if (o instanceof OperationList) {
-						OperationList op = ((OperationList) o).flatten();
+						OperationList original = (OperationList) o;
+						String provenance = original.getDescription();
+						OperationList op = original.flatten();
 
 						if (op.getComputeRequirements() == null) {
+							if (enableProvenance && provenance != null) {
+								return op.stream().map(child -> withProvenance(child, provenance));
+							}
 							return op.stream();
 						} else {
 							return Stream.of(op);
@@ -1041,6 +1086,41 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		flat.enableCompilation = enableCompilation;
 		flat.setComputeRequirements(getComputeRequirements());
 		return flat;
+	}
+
+	/**
+	 * Returns an operation labelled with the given provenance, without mutating the
+	 * input or any metadata it shares with other holders.
+	 *
+	 * <p>When {@code op} is a leaf {@link OperationInfo} with non-null metadata, this
+	 * returns an {@link OperationWithInfo} wrapping {@code op} with a fresh
+	 * {@link OperationMetadata#withProvenance(String)} copy, so the original metadata
+	 * (which may still be referenced by the un-flattened nested lists, or read again on
+	 * a subsequent {@link #flatten()}) is left untouched and provenance prefixes cannot
+	 * accumulate across repeated flattens.</p>
+	 *
+	 * <p>A nested {@link OperationList} child (which arises when a sub-list carried its
+	 * own {@link #getComputeRequirements() compute requirements} and was therefore kept
+	 * intact during the recursive flatten) is returned unchanged: wrapping it in an
+	 * {@link OperationWithInfo} would discard its list structure and compute
+	 * requirements, and its leaf operations already received provenance when that
+	 * sub-list was flattened. Operations that are not {@link OperationInfo} or have no
+	 * metadata are also returned unchanged.</p>
+	 *
+	 * @param op         the operation to label
+	 * @param provenance the provenance string to prepend to the short description
+	 * @return a provenance-labelled wrapper, or {@code op} unchanged when it is a nested
+	 *         list or carries no metadata
+	 */
+	private static Supplier<Runnable> withProvenance(Supplier<Runnable> op, String provenance) {
+		if (op instanceof OperationInfo && !(op instanceof OperationList)) {
+			OperationMetadata metadata = ((OperationInfo) op).getMetadata();
+			if (metadata != null) {
+				return OperationWithInfo.of(metadata.withProvenance(provenance), op);
+			}
+		}
+
+		return op;
 	}
 
 	public void run() { get().run(); }
