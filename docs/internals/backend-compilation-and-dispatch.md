@@ -173,9 +173,11 @@ The `AR_HARDWARE_DRIVER` environment variable controls which backends are loaded
 | `gpu` | GPU-optimized backend |
 | `*` or unset | Auto-detect best available |
 
-**Auto-detection by platform:**
-- **ARM64 (Apple Silicon):** JNI → Metal → OpenCL
-- **x86/x64 (Linux/Windows):** OpenCL → JNI
+**Backends LOADED by platform under `*`/unset** (this is the set of providers made
+available — **NOT** a per-operation priority order; see "Per-operation provider selection"
+below for how a backend is actually chosen for each operation):
+- **ARM64 (Apple Silicon):** JNI, Metal, OpenCL
+- **x86/x64 (Linux/Windows):** OpenCL, JNI
 - **x86/x64 (macOS):** OpenCL (no JNI)
 
 ### Backend Coverage in CI
@@ -193,11 +195,42 @@ backend** — do not assume CI is Linux/JNI-only:
   `engine/render`, and the audio/music/studio suites.
 
 Consequence: Metal-specific code **is** reachable in CI, but only on the macOS
-runners, and only for operations the auto-selector actually routes to Metal.
-Under `AR_HARDWARE_DRIVER=*` on Apple Silicon the auto-selection order is
-JNI → Metal → OpenCL, so small/simple operations commonly execute on JNI even
-on the macOS runners; to guarantee a kernel runs on Metal in a test, force it
-with `-DAR_HARDWARE_DRIVER=mtl`.
+runners, and only for operations the selector actually routes to Metal. To guarantee a
+kernel runs on Metal in a test, force it with `-DAR_HARDWARE_DRIVER=mtl`.
+
+### Per-operation provider selection (the actual mechanism)
+
+> ⚠️ There is **no fixed backend priority order** and **no "try one, fall back to the next".**
+> The whole point of this framework is to make an *intelligent, per-operation* decision about
+> where each computation runs. Loading JNI+Metal+OpenCL under `*` only makes those providers
+> *available*; the choice for each operation is made by `DefaultComputer.getContext(Computation)`.
+
+For every computation, `DefaultComputer.getContext` decides the target provider from:
+
+1. **The active `ComputeRequirement`s** — the thread-local requirement stack
+   (`DefaultComputer.getActiveRequirements()`), populated by `pushRequirements`
+   (`AcceleratedOperation.run`/`submit`, `OperationList.Runner.run`) from an operation's
+   `getComputeRequirements()` and from `OperationList.setComputeRequirements(...)`. These
+   **filter the candidate contexts** via `Hardware.getComputeContexts(... , requirements)`. A
+   computation whose requirement differs from its parent context becomes an **isolation target**
+   (`ComputableParallelProcess.isIsolationTarget`) and is executed on the required hardware.
+2. **The computation's parallelism** — `count = Countable.countLong(c)` and
+   `fixed = Countable.isFixedCount(c)`. Among the candidate contexts:
+   - a **parallel** computation (`!fixed || count > 1`) prefers a **non-CPU (GPU)** context;
+   - a **scalar/sequential** computation (`fixed && count == 1`) prefers a **CPU** context.
+
+So whether an operation runs on Metal vs JNI is a function of *that operation's* requirements and
+shape — it is decided when the operation/evaluable is created (`getContext` is called from
+`compileRunnable`/`compileProducer`), and there is **no cross-backend retry** afterward (see
+"Fallback Behavior"). An operation whose generated code a provider cannot express **must** carry a
+`ComputeRequirement` that keeps it on a compatible provider — e.g. `FourierTransform` emits a
+**recursive** kernel, which Metal forbids (Metal has no recursion), so it is run with a **CPU**
+requirement; if that requirement is ever lost, the selector will route it to Metal and Metal
+compilation fails ("no matching function for call to f_fourierTransform_*_radix2").
+
+To observe the decision for every computation, set `-DAR_LOG_COMPUTE_TARGETING=enabled`; each
+selection logs `computeTarget <op> count=.. fixed=.. requirements=[..] available=[..] -> <context>`
+via `DefaultComputer.getContext`.
 
 ### Key Environment Variables
 
@@ -401,13 +434,18 @@ dispatch). This is why warm-up runs matter for benchmarking.
 
 ## Fallback Behavior
 
-When a preferred backend is unavailable:
+> ⚠️ "Fallback" here is about which providers are **loaded/available**, not about per-operation
+> selection. Per-operation selection is the intelligent decision described in "Per-operation
+> provider selection" above — it does **not** try one backend and fall back to another.
 
-1. **Hardware auto-detection** tries backends in priority order (platform-dependent)
-2. If no GPU backend is available, falls back to JNI/CPU
-3. If compilation fails on one backend, the error propagates — there is no automatic
-   retry on a different backend
-4. `ComputeContext.isCPU()` allows code to adapt behavior based on the active backend
+1. Which backends are **loaded** depends on `AR_HARDWARE_DRIVER` and the platform (e.g. on x86
+   macOS there is no JNI, so only OpenCL is loaded).
+2. Once loaded, each operation is routed by `DefaultComputer.getContext` (requirements +
+   parallelism). There is **no automatic retry on a different backend**: if an operation is routed
+   to a provider and compilation fails there, the error propagates. Routing an operation to a
+   provider that cannot express it is therefore a **bug in the operation's `ComputeRequirement`s or
+   in how they are preserved**, not something the runtime silently recovers from.
+3. `ComputeContext.isCPU()` lets code adapt behavior based on the chosen provider.
 
 ## Debugging Compilation
 
