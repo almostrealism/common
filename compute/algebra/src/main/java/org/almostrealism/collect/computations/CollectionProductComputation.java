@@ -21,7 +21,6 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
-
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -240,7 +239,6 @@ public class CollectionProductComputation extends TraversableExpressionComputati
 
 		CollectionProducer u = operands.get(0);
 		CollectionProducer v = operands.get(1);
-
 		CollectionProducer uDelta = u.delta(target);
 		CollectionProducer vDelta = v.delta(target);
 
