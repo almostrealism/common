@@ -75,6 +75,7 @@ import java.util.function.Supplier;
  */
 public class OptimizationStrategyPerformanceTests extends TestSuiteBase {
 
+	/** When true, per-phase timing details are logged during the performance tests. */
 	private static final boolean VERBOSE = true;
 
 	/**
@@ -530,12 +531,23 @@ public class OptimizationStrategyPerformanceTests extends TestSuiteBase {
 		return new TimingResult(buildTime, optimizeTime, compileTime, runTime, profile);
 	}
 
+	/**
+	 * Logs a message, but only when {@link #VERBOSE} is enabled.
+	 *
+	 * @param message the message to log
+	 */
 	private void logResult(String message) {
 		if (VERBOSE) {
 			log(message);
 		}
 	}
 
+	/**
+	 * Logs the per-phase timing breakdown (build, optimize, compile, run, total)
+	 * for a single measured operation.
+	 *
+	 * @param result the timing measurements to log
+	 */
 	private void logTiming(TimingResult result) {
 		logResult(String.format("  Build:    %8.2f ms", result.buildTimeMs()));
 		logResult(String.format("  Optimize: %8.2f ms", result.optimizeTimeMs()));
@@ -544,6 +556,12 @@ public class OptimizationStrategyPerformanceTests extends TestSuiteBase {
 		logResult(String.format("  Total:    %8.2f ms", result.totalTimeMs()));
 	}
 
+	/**
+	 * Identifies which of the supplied results has the lowest compile time.
+	 *
+	 * @param results the timing results to compare
+	 * @return a label describing the result with the fastest compile phase
+	 */
 	private String findFastest(TimingResult... results) {
 		double minCompile = Double.MAX_VALUE;
 		int minIndex = 0;
