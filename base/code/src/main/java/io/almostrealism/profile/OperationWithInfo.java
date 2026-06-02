@@ -17,6 +17,7 @@
 package io.almostrealism.profile;
 
 import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.relation.Operation;
 
 import java.util.Collection;
@@ -54,8 +55,8 @@ public class OperationWithInfo implements Operation, OperationInfo {
 	/** The metadata describing this operation. */
 	private final OperationMetadata metadata;
 
-	/** The underlying operation being wrapped. */
-	private final Operation operation;
+	/** The underlying process being wrapped. */
+	private final Process<Process<?, ?>, Runnable> operation;
 
 	/**
 	 * Creates a wrapper pairing the given metadata with the given operation.
@@ -64,6 +65,18 @@ public class OperationWithInfo implements Operation, OperationInfo {
 	 * @param operation the underlying operation to delegate to
 	 */
 	public OperationWithInfo(OperationMetadata metadata, Operation operation) {
+		this(metadata, (Process<Process<?, ?>, Runnable>) operation);
+	}
+
+	/**
+	 * Creates a wrapper pairing the given metadata with the given process. Used when
+	 * re-wrapping the result of {@link #isolate()} or {@link #generate(List)}, which
+	 * return a {@link Process} rather than an {@link Operation}.
+	 *
+	 * @param metadata  the metadata to associate with this operation
+	 * @param operation the underlying process to delegate to
+	 */
+	private OperationWithInfo(OperationMetadata metadata, Process<Process<?, ?>, Runnable> operation) {
 		this.metadata = metadata;
 		this.operation = operation;
 	}
@@ -83,13 +96,18 @@ public class OperationWithInfo implements Operation, OperationInfo {
 	}
 
 	@Override
+	public Process<Process<?, ?>, Runnable> optimize(ProcessContext context) {
+		return new OperationWithInfo(metadata, operation.optimize(context));
+	}
+
+	@Override
 	public Process<Process<?, ?>, Runnable> isolate() {
-		return this;
+		return new OperationWithInfo(metadata, operation.isolate());
 	}
 
 	@Override
 	public Process<Process<?, ?>, Runnable> generate(List<Process<?, ?>> children) {
-		return this;
+		return new OperationWithInfo(metadata, operation.generate(children));
 	}
 
 	@Override

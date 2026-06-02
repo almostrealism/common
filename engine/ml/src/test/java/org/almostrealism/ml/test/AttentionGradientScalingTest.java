@@ -62,6 +62,7 @@ import java.util.Random;
  */
 public class AttentionGradientScalingTest extends TestSuiteBase implements AttentionFeatures {
 
+	/** Directory where this test writes its operation profile output. */
 	private static final Path RESULTS_DIR = Path.of("target/test-profiles");
 
 	/**
