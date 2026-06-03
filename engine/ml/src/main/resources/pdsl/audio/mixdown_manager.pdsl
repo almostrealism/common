@@ -94,11 +94,11 @@ state mixdown_reverb_state {
 //   filter_order   FIR filter order (40 typically)
 // ---------------------------------------------------------------------------
 layer mixdown_main_bus(channels: int, signal_size: int,
-                       hp_cutoff: producer([1]), volume: producer([1]),
+                       hp_cutoff: producer([channels]), volume: producer([channels]),
                        sample_rate: scalar, filter_order: scalar) -> [1, signal_size] {
     for each channel {
-        highpass(hp_cutoff, sample_rate, filter_order)
-        scale(volume)
+        highpass(hp_cutoff[channel], sample_rate, filter_order)
+        scale(volume[channel])
     }
     sum_channels()
 }
@@ -332,7 +332,7 @@ layer mixdown_hetero_branch(signal_size: int,
 // Requires mixdown_efx_state populated as in mixdown_efx_bus.
 // ---------------------------------------------------------------------------
 layer mixdown_master(channels: int, signal_size: int, fir_taps: int,
-                     hp_cutoff: producer([1]), volume: producer([1]),
+                     hp_cutoff: producer([channels]), volume: producer([channels]),
                      lp_cutoff: producer([1]),
                      sample_rate: scalar, filter_order: scalar,
                      wet_filter_coeffs: producer([channels, fir_taps]), wet_level: scalar,
@@ -342,8 +342,8 @@ layer mixdown_master(channels: int, signal_size: int, fir_taps: int,
     accum_blocks(
         {
             for each channel {
-                highpass(hp_cutoff, sample_rate, filter_order)
-                scale(volume)
+                highpass(hp_cutoff[channel], sample_rate, filter_order)
+                scale(volume[channel])
             }
             sum_channels()
         },

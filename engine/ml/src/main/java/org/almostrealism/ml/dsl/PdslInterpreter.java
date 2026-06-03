@@ -199,41 +199,35 @@ public class PdslInterpreter {
 	 */
 	static CollectionProducer normalizeToProducer(
 			Object value, TraversalPolicy expectedShape, String contextName) {
+		CollectionProducer base;
 		if (value instanceof Number) {
-			if (expectedShape != null && expectedShape.getTotalSize() != 1) {
-				throw new PdslParseException(contextName + " expects shape "
-						+ expectedShape + " but a Number literal can only be supplied for shape [1]");
-			}
-			return FEATURES.c(((Number) value).doubleValue());
+			base = FEATURES.c(((Number) value).doubleValue());
+		} else if (value instanceof PackedCollection) {
+			base = FEATURES.cp((PackedCollection) value);
+		} else if (value instanceof Producer) {
+			base = FEATURES.c((Producer<PackedCollection>) value);
+		} else {
+			throw new PdslParseException(contextName + " expects Number, PackedCollection, or Producer; got "
+					+ (value == null ? "null" : value.getClass().getSimpleName()));
 		}
-		if (value instanceof PackedCollection) {
-			PackedCollection coll = (PackedCollection) value;
-			if (expectedShape != null
-					&& coll.getShape().getTotalSize() != expectedShape.getTotalSize()) {
-				throw new PdslParseException(contextName + " expects shape "
-						+ expectedShape + " but PackedCollection has shape " + coll.getShape());
-			}
-			CollectionProducer result = FEATURES.cp(coll);
-			if (expectedShape != null && !coll.getShape().equals(expectedShape)) {
-				result = result.reshape(expectedShape);
-			}
-			return result;
+
+		if (expectedShape == null) {
+			return base;
 		}
-		if (value instanceof Producer) {
-			Producer<PackedCollection> producer = (Producer<PackedCollection>) value;
-			TraversalPolicy actual = FEATURES.shape(producer);
-			if (expectedShape != null && actual.getTotalSize() != expectedShape.getTotalSize()) {
-				throw new PdslParseException(contextName + " expects shape "
-						+ expectedShape + " but Producer has shape " + actual);
-			}
-			CollectionProducer result = FEATURES.c(producer);
-			if (expectedShape != null && !actual.equals(expectedShape)) {
-				result = result.reshape(expectedShape);
-			}
-			return result;
+
+		TraversalPolicy actual = FEATURES.shape(base);
+		if (actual.getTotalSize() == expectedShape.getTotalSize()) {
+			return actual.equals(expectedShape) ? base : base.reshape(expectedShape);
 		}
-		throw new PdslParseException(contextName + " expects Number, PackedCollection, or Producer; got "
-				+ (value == null ? "null" : value.getClass().getSimpleName()));
+		if (actual.getTotalSize() == 1) {
+			// Scalar broadcast: a size-1 value satisfies any declared shape. A
+			// per-channel argument (e.g. producer([channels])) supplied as a single
+			// scalar is shared across every channel — the per-channel subscript
+			// (arg[channel]) returns the scalar as-is for each channel.
+			return base;
+		}
+		throw new PdslParseException(contextName + " expects shape " + expectedShape
+				+ " but value has total size " + actual.getTotalSize());
 	}
 
 	/**
@@ -695,10 +689,14 @@ public class PdslInterpreter {
 			}
 			if (obj instanceof CollectionProducer) {
 				CollectionProducer producer = (CollectionProducer) obj;
-				int index = toInt(evaluateExpression(subscript.getIndex(), env));
 				int channels = toInt(env.get("channels"));
-				TraversalPolicy producerShape = FEATURES.shape(producer);
-				int totalSize = producerShape.getTotalSize();
+				int totalSize = FEATURES.shape(producer).getTotalSize();
+				if (totalSize < channels) {
+					// Scalar/sub-channel broadcast: a size-1 producer is shared
+					// across every channel, so each channel reads the same value.
+					return producer;
+				}
+				int index = toInt(evaluateExpression(subscript.getIndex(), env));
 				int stride = totalSize / channels;
 				CollectionProducer flat = producer.reshape(FEATURES.shape(totalSize));
 				return FEATURES.subset(FEATURES.shape(stride), flat, index * stride);

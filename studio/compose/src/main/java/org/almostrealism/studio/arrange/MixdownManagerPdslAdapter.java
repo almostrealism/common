@@ -31,6 +31,7 @@ import org.almostrealism.util.FirFilterTestFeatures;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.IntFunction;
 
 /**
  * Boundary-layer glue between {@link MixdownManager}'s genome state and the
@@ -136,10 +137,12 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * Builds the argument map for the {@code mixdown_master} PDSL layer from
 	 * a constructed {@link MixdownManager}.
 	 *
-	 * <p>Producer-typed parameters are sampled from channel 0's gene state.
-	 * The PDSL layer applies the same producer to every channel inside
-	 * {@code for each channel}, so this is necessarily an approximation of
-	 * the per-channel-distinct envelopes in {@code MixdownManager.createCells()}.</p>
+	 * <p>The per-channel automation parameters (HP cutoff, volume) are supplied as
+	 * shape-{@code [channels]} producers — one gene-driven producer per channel —
+	 * which the PDSL layers read as {@code arg[channel]} inside {@code for each
+	 * channel}, matching the per-channel-distinct envelopes in
+	 * {@code MixdownManager.createCells()}. The master low-pass cutoff is a single
+	 * post-sum stage and remains shape-{@code [1]}.</p>
 	 *
 	 * @param manager constructed mixdown manager (chromosomes already populated)
 	 * @param config  structural configuration (channels, signal size, sample rate, FIR order, wet level, delay)
@@ -155,20 +158,19 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		args.put("wet_level", config.wetLevel);
 		args.put("delay_samples", config.delaySamples);
 
-		// hp_cutoff: producer([1])
-		// Mirrors MixdownManager.createCells() line 519-523:
+		// hp_cutoff: producer([channels]) — one cutoff producer per channel, so the
+		// PDSL layer reads hp_cutoff[channel] inside `for each channel` and each
+		// channel gets its own gene-driven cutoff (closing the former channel-0
+		// approximation). Each channel mirrors MixdownManager.createCells() line 519-523:
 		//   v = automation.getAggregatedValue(mainFilterUpSimple.valueAt(channel),
 		//                                     p(mainFilterUpAdjustmentScale), -40.0)
 		//   cutoff_hz = scalar(20000) * v
-		args.put("hp_cutoff", hpCutoffProducer(manager, 0));
+		args.put("hp_cutoff", perChannelProducer(config.channels, ch -> hpCutoffProducer(manager, ch)));
 
-		// volume: producer([1])
-		// Mirrors MixdownManager.createCells() line 535-537:
-		//   factor(toAdjustmentGene(clock, sampleRate, p(volumeAdjustmentScale),
-		//                            volumeSimple, channel).valueAt(0))
-		// The factor multiplies its input by f.getResultant(c(1.0)), so the volume
-		// multiplier producer is exactly that resultant.
-		args.put("volume", volumeProducer(manager, 0));
+		// volume: producer([channels]) — one volume multiplier per channel. Each
+		// channel mirrors MixdownManager.createCells() line 535-537: the factor
+		// multiplies its input by f.getResultant(c(1.0)), the per-channel volume.
+		args.put("volume", perChannelProducer(config.channels, ch -> volumeProducer(manager, ch)));
 
 		// lp_cutoff: producer([1])
 		// Mirrors MixdownManager.createEfx() line 720-725:
@@ -217,6 +219,25 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		args.put("heads", heads);
 
 		return args;
+	}
+
+	/**
+	 * Builds a shape-{@code [channels]} producer by concatenating one
+	 * shape-{@code [1]} producer per channel. Used to supply the per-channel
+	 * automation arguments (HP cutoff, volume) that the PDSL layers subscript
+	 * as {@code arg[channel]} inside {@code for each channel}.
+	 *
+	 * @param channels   number of channels
+	 * @param perChannel supplies the shape-{@code [1]} producer for a channel index
+	 * @return a shape-{@code [channels]} producer
+	 */
+	private static Producer<PackedCollection> perChannelProducer(
+			int channels, IntFunction<Producer<PackedCollection>> perChannel) {
+		Producer<PackedCollection>[] cols = new Producer[channels];
+		for (int ch = 0; ch < channels; ch++) {
+			cols[ch] = perChannel.apply(ch);
+		}
+		return ADAPTER.concat(cols).reshape(new TraversalPolicy(channels));
 	}
 
 	/**

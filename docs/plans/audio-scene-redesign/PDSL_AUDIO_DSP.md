@@ -1267,21 +1267,29 @@ own envelope row — see the per-channel-automation gap in Section 8.
 
 ## 15. EfxManager PDSL Rendition
 
-`EfxManager` is the remaining DSP surface not yet expressed in PDSL.
-`efx_channel.pdsl` renders only the **feedforward** wet chain — `efx_wet_chain`,
-`efx_lowpass_wet`, `efx_highpass_wet`, `efx_dry_path`, `efx_delay`, and
-`efx_wet_dry_mix` apply a FIR/biquad filter and scale by a static wet/dry level.
-There is no automation-driven wet/dry path: the live `EfxManager`
-(`studio/compose/.../arrange/EfxManager.java`) is fully Cell-based and drives
-its delay feedback, wet level, and delay-time modulation from clock- and
-gene-derived producers (Section 11.4 lists the EFX rows).
+The **feedforward** EFX chain is now rendered by the composite `efx_channel`
+layer in `efx_channel.pdsl` (closed 2026-06-03):
 
-The work mirrors the `MixdownManager` migration: bind the EFX bus's
-producer-valued parameters (wet feedback level, delay time, automation
-modulation) through `producer([shape])` arguments, render the wet/dry summation
-and feedback loop as a PDSL layer, and build the matching genome→args adapter.
-This is the last DSP surface standing between the audio scene and a fully
-declarative signal path.
+```
+efx_channel = accum_blocks( { identity() },                              // dry
+                            { fir(filter_coeffs); scale(wet_level);      // wet
+                              scale(automation); delay(...) } )
+```
+
+This reproduces `EfxManager.apply()` (`studio/compose/.../arrange/EfxManager.java:215-250`)
+**minus the recursive feedback loop**: the gene-chosen HP/LP filter (the adapter
+precomputes the `decision`/`cutoff`-selected bank), the wet level (`delayLevels[0]`),
+the `0.5·(1+automation_curve)` modulation (`EfxManager.java:236-240`, supplied as a
+`producer([1])`), the single feedforward delay tap, and the wet/dry sum. Validated by
+`PdslAudioDspTest#testEfxChannelFeedforward` (builds, renders finite non-silent audio,
+wet path demonstrably contributes).
+
+**What remains: the `.mself` delay-feedback loop** (`EfxManager.java:245`,
+`g(delayLevels[1])`) — the recursive echo regeneration. This is the same
+self-feedback-grid construct that PDSL cannot yet express (inventory item 5); it is
+the genuinely hard piece and is the subject of the feedback-grid phase. A
+genome→args adapter (analogous to `MixdownManagerPdslAdapter`, sourcing `delayTimes`
+/ `delayLevels` / `delayAutomation`) is the remaining feedforward wiring.
 
 ---
 
@@ -1300,18 +1308,18 @@ construct and current fidelity. **Covered** = expressible and acoustically equiv
 
 | # | DSP element | Java location | PDSL construct | Status |
 |---|---|---|---|---|
-| 1 | Per-channel main HP filter (automation-driven cutoff) | `createCells` ~519 | `highpass` + `producer([1])` cutoff | **Approx** — adapter samples channel-0 cutoff (§14 per-channel gap) |
-| 2 | Per-channel volume (automation) | `createCells` ~535 | `scale` / volume `producer([1])` | **Approx** — channel-0 envelope |
+| 1 | Per-channel main HP filter (automation-driven cutoff) | `createCells` ~519 | `highpass` + `producer([channels])` cutoff, subscripted `hp_cutoff[channel]` | **Covered** — adapter supplies one gene-driven cutoff per channel (closed 2026-06-03) |
+| 2 | Per-channel volume (automation) | `createCells` ~535 | `scale(volume[channel])`, `producer([channels])` | **Covered** — per-channel volume (closed 2026-06-03) |
 | 3 | Master LP filter (automation) | `createEfx` ~720 | `lowpass` + `producer([1])` cutoff | **Approx** — channel-0 cutoff |
-| 4 | Wet-bus filter | `FixedFilterChromosome` (IIR HP+LP) | `fir` static coeffs | **Approx** — IIR→FIR structural mismatch |
+| 4 | Wet-bus filter | `FixedFilterChromosome` (IIR HP+LP) | `fir` static coeffs | **Approx — accepted** (owner decision 2026-06-03): the FIR rendition stands; the parity band stays loose on the wet bus rather than matching the IIR with biquads |
 | 5 | Cross-channel routing / transmission | `createEfx` ~677 (`mself` feedback grid) | `route(matrix)` + transmission slot | **Approx** — static routing covered; the `mself` self-feedback grid is the one genuinely hard construct (§6B) |
 | 6 | Wet/dry mix + static wet level | `createEfx` | `scale` + sum | **Covered** |
 | 7 | Delay (`AdjustableDelayCell`) | `createEfx` ~665 | `delay` (static `delay_samples`) | **Approx** — static vs gene-modulated delay time |
 | 8 | Reverb (`DelayNetwork`) | `createCells` ~583–613 | `delay_network` / `mixdown_reverb_bus` | **Approx** — primitive implemented; acoustic parity unverified (knownIssue test); reverb OFF in the current gate |
 | 9 | Master gain + saturation | `createEfx` ~770–782 (gain × hard-clip) | `scale(master_gain)` + `tanh_act()` | **Covered** — soft-sat replaces hard clip |
-| 10 | EFX feedforward wet chain | `EfxManager` (FIR/biquad) | `efx_channel.pdsl` | **Partial** — feedforward only |
-| 11 | EFX automation-driven wet/dry + delay feedback + delay-time modulation | `EfxManager` | — | **Gap** (§15) |
-| 12 | Dynamic channel count (gene activation) | `MixdownManager` | fixed `channels` | **Gap** |
+| 10 | EFX feedforward wet chain | `EfxManager` (FIR/biquad) | `efx_channel.pdsl` `efx_channel` layer | **Covered** — composite feedforward chain (closed 2026-06-03) |
+| 11 | EFX automation-driven wet/dry + delay-time modulation | `EfxManager.apply()` | `efx_channel` layer: dry + delay(automation·wet·fir(input)) | **Covered (feedforward)** — filter + wet + automation modulation + delay + dry sum rendered (closed 2026-06-03). The recursive `.mself` delay-feedback loop (`delayLevels[1]`) is the one deferred piece → item 5 / the feedback-grid phase |
+| 12 | Dynamic channel count (gene activation) | `MixdownManager` | fixed `channels` | **Not needed** (owner decision 2026-06-03) — compile for a fixed channel count up front; gene-driven channel activation is out of scope |
 
 **Conclusion of step 1:** the *structure* of the full signal path is expressible in
 PDSL, but parity is currently gated on six items — per-channel automation (1–3), the
