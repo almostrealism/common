@@ -47,5 +47,6 @@
         "ONYX_MCP_PORT": "19432"
       }
     }
-  }
+  },
+  "plugin": ["./plugins/block-mvn-test-direct.ts"]
 }
