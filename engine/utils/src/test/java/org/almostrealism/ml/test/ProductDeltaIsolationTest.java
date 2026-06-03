@@ -55,6 +55,7 @@ import java.util.Random;
  */
 public class ProductDeltaIsolationTest extends TestSuiteBase implements TestFeatures {
 
+	/** Directory where per-test operation profiles are written. */
 	private static final Path RESULTS_DIR = Path.of("target/test-profiles");
 
 	/**

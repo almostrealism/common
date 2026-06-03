@@ -48,7 +48,7 @@ RUNS_DIR = Path(__file__).parent / "runs"
 # is in progress and reaps its MCP stdio children).
 WATCHER_SCRIPT = Path(__file__).parent / "watcher.py"
 MAX_RUNS = 50
-DEFAULT_MODULE = "utils"
+DEFAULT_MODULE = "engine/utils"
 # Default test timeout in minutes. The harness inactivity monitor
 # (ClaudeCodeJob.java:146) kills the agent process after 20 minutes of stdout
 # silence, so the test-runner default is set 5 minutes below that ceiling so a
