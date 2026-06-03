@@ -601,7 +601,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		// Load the inputs
 		AcceleratedProcessDetails process = getProcessDetails(output, args);
-		process.setSemaphore(new DefaultLatchSemaphore(getMetadata(), 1));
+		process.setReadyLatch(new DefaultLatchSemaphore(getMetadata(), 1));
 
 		process.whenReady(() -> {
 			MemoryData input[] = process.getArguments(MemoryData[]::new);
@@ -652,7 +652,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			// rather than the host-readiness latch. When the operator returns null (fully
 			// synchronous providers) the host latch remains the completion — behavior is
 			// unchanged.
-			process.setCompletionSemaphore(nextSemaphore);
+			process.setSemaphore(nextSemaphore);
 
 			// Postprocessing. This per-op wait is required, NOT batching being switched off
 			// arbitrarily: the de-aggregation below crosses MemoryProviders and must run after the
