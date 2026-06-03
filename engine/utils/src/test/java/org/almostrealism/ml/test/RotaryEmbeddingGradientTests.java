@@ -143,6 +143,16 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 		ropeFormulaGradient("ropeRealistic", 1, 2, 16, 16);
 	}
 
+	/**
+	 * Measures the gradient of the full RoPE formula for the given configuration.
+	 *
+	 * @param name      profile label
+	 * @param batchSize batch size
+	 * @param heads     number of attention heads
+	 * @param seqLen    sequence length
+	 * @param rotaryDim rotary embedding dimension
+	 * @throws IOException if the profile cannot be saved
+	 */
 	private void ropeFormulaGradient(String name, int batchSize, int heads, int seqLen, int rotaryDim)
 			throws IOException {
 		log("Testing RoPE gradient: batch=" + batchSize + ", heads=" + heads +
@@ -199,6 +209,16 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 		rotateHalfGradient("rotateHalfMedium", 1, 4, 8, 16);
 	}
 
+	/**
+	 * Measures the gradient of the rotate-half operation for the given configuration.
+	 *
+	 * @param name      profile label
+	 * @param batchSize batch size
+	 * @param heads     number of attention heads
+	 * @param seqLen    sequence length
+	 * @param rotaryDim rotary embedding dimension
+	 * @throws IOException if the profile cannot be saved
+	 */
 	private void rotateHalfGradient(String name, int batchSize, int heads, int seqLen, int rotaryDim)
 			throws IOException {
 		log("Testing rotateHalf gradient: batch=" + batchSize + ", heads=" + heads +
@@ -229,12 +249,23 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 		inputTimesCosGradient("inputCosGradTiny", 1, 1, 4, 8);
 	}
 
+	/** Medium-scale gradient of {@code input * cos(freqs)}. */
 	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void inputTimesCosGradientMedium() throws IOException {
 		inputTimesCosGradient("inputCosGradMedium", 1, 4, 16, 32);
 	}
 
+	/**
+	 * Measures the gradient of {@code input * cos(freqs)} for the given configuration.
+	 *
+	 * @param name      profile label
+	 * @param batchSize batch size
+	 * @param heads     number of attention heads
+	 * @param seqLen    sequence length
+	 * @param rotaryDim rotary embedding dimension
+	 * @throws IOException if the profile cannot be saved
+	 */
 	private void inputTimesCosGradient(String name, int batchSize, int heads, int seqLen, int rotaryDim)
 			throws IOException {
 		log("Testing input*cos(freqs) gradient: batch=" + batchSize + ", heads=" + heads +
@@ -273,12 +304,23 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 		rotateHalfTimesSinGradient("rotateHalfSinGradTiny", 1, 1, 4, 8);
 	}
 
+	/** Medium-scale gradient of {@code rotateHalf(input) * sin(freqs)}. */
 	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void rotateHalfTimesSinGradientMedium() throws IOException {
 		rotateHalfTimesSinGradient("rotateHalfSinGradMedium", 1, 2, 8, 16);
 	}
 
+	/**
+	 * Measures the gradient of {@code rotateHalf(input) * sin(freqs)} for the given configuration.
+	 *
+	 * @param name      profile label
+	 * @param batchSize batch size
+	 * @param heads     number of attention heads
+	 * @param seqLen    sequence length
+	 * @param rotaryDim rotary embedding dimension
+	 * @throws IOException if the profile cannot be saved
+	 */
 	private void rotateHalfTimesSinGradient(String name, int batchSize, int heads, int seqLen, int rotaryDim)
 			throws IOException {
 		log("Testing rotateHalf(input)*sin(freqs) gradient: batch=" + batchSize + ", heads=" + heads +
@@ -322,12 +364,23 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 		subsetGradient("subsetGradTiny", 1, 2, 4, 16);
 	}
 
+	/** Medium-scale gradient of a subset (slice) operation. */
 	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void subsetGradientMedium() throws IOException {
 		subsetGradient("subsetGradMedium", 1, 4, 16, 64);
 	}
 
+	/**
+	 * Measures the gradient of a subset (slice) operation for the given configuration.
+	 *
+	 * @param name      profile label
+	 * @param batchSize batch size
+	 * @param heads     number of attention heads
+	 * @param seqLen    sequence length
+	 * @param dim       feature dimension
+	 * @throws IOException if the profile cannot be saved
+	 */
 	private void subsetGradient(String name, int batchSize, int heads, int seqLen, int dim)
 			throws IOException {
 		int halfDim = dim / 2;
@@ -360,12 +413,23 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 		concatGradient("concatGradTiny", 1, 2, 4, 8);
 	}
 
+	/** Medium-scale gradient of a concatenation operation. */
 	@Test(timeout = 300000)
 	@TestDepth(1)
 	public void concatGradientMedium() throws IOException {
 		concatGradient("concatGradMedium", 1, 4, 8, 8);
 	}
 
+	/**
+	 * Measures the gradient of a concatenation operation for the given configuration.
+	 *
+	 * @param name      profile label
+	 * @param batchSize batch size
+	 * @param heads     number of attention heads
+	 * @param seqLen    sequence length
+	 * @param halfDim   half the feature dimension (size of each concatenated half)
+	 * @throws IOException if the profile cannot be saved
+	 */
 	private void concatGradient(String name, int batchSize, int heads, int seqLen, int halfDim)
 			throws IOException {
 		int fullDim = halfDim * 2;

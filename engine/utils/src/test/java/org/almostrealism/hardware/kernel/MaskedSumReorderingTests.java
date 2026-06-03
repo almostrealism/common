@@ -77,6 +77,7 @@ public class MaskedSumReorderingTests extends TestSuiteBase implements Expressio
 	/** Width (number of distinct child nodes) at/above which {@code generateReordering} rewrites. */
 	private static final int REORDER_THRESHOLD = 16;
 
+	/** Language operations used to render expressions to strings for size assertions. */
 	private final LanguageOperations lang = new LanguageOperationsStub();
 
 	/** Reused so {@link Expression#withIndex(io.almostrealism.kernel.Index, int)} matches the guards. */

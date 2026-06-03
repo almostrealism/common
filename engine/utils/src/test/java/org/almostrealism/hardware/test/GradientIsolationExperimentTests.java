@@ -71,10 +71,15 @@ import java.util.stream.Stream;
  */
 public class GradientIsolationExperimentTests extends TestSuiteBase {
 
+	/** Batch size of the synthetic input tensor. */
 	private static final int BATCH = 1;
+	/** Number of attention heads in the synthetic input tensor. */
 	private static final int HEADS = 4;
+	/** Sequence length of the synthetic input tensor. */
 	private static final int SEQ_LEN = 16;
+	/** Feature dimension of the synthetic input tensor. */
 	private static final int DIM = 32;
+	/** Half of {@link #DIM}, the split point used by the rotate-half operation. */
 	private static final int HALF_DIM = DIM / 2;
 
 	/**
@@ -708,6 +713,14 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 		return concat(3, x2.minus(), x1);
 	}
 
+	/**
+	 * Builds a gradient via the supplier, wraps it in an assignment operation, and measures
+	 * its build/optimize/compile/run timings.
+	 *
+	 * @param name            label for the operation list
+	 * @param gradientBuilder supplies the gradient producer to measure
+	 * @return the measured timings
+	 */
 	private TimingResult measureGradient(String name, Supplier<CollectionProducer> gradientBuilder) {
 		return measureOperation(() -> {
 			CollectionProducer gradient = gradientBuilder.get();
@@ -718,6 +731,13 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 		});
 	}
 
+	/**
+	 * Measures the build, optimize, compile, and run phases of the operation produced by the
+	 * given supplier, returning the per-phase timings.
+	 *
+	 * @param opBuilder supplies the operation list to measure
+	 * @return the measured timings
+	 */
 	private TimingResult measureOperation(Supplier<OperationList> opBuilder) {
 		long buildStart = System.nanoTime();
 		OperationList op = opBuilder.get();
@@ -739,10 +759,20 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 		return new TimingResult(buildTime, optimizeTime, compileTime, runTime, profile);
 	}
 
+	/**
+	 * Logs a single result line.
+	 *
+	 * @param message the message to log
+	 */
 	private void logResult(String message) {
 		log(message);
 	}
 
+	/**
+	 * Logs the per-phase and total timings of a measurement.
+	 *
+	 * @param result the timings to log
+	 */
 	private void logTiming(TimingResult result) {
 		logResult(String.format("  Build:    %8.2f ms", result.buildTimeMs()));
 		logResult(String.format("  Optimize: %8.2f ms", result.optimizeTimeMs()));
@@ -751,6 +781,12 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 		logResult(String.format("  Total:    %8.2f ms", result.totalTimeMs()));
 	}
 
+	/**
+	 * Formats a nanosecond duration as a millisecond string.
+	 *
+	 * @param nanos the duration in nanoseconds
+	 * @return the formatted milliseconds string
+	 */
 	private String formatMs(long nanos) {
 		return String.format("%.2f ms", nanos / 1_000_000.0);
 	}
@@ -759,9 +795,17 @@ public class GradientIsolationExperimentTests extends TestSuiteBase {
 	 * Wrapper that logs strategy decisions.
 	 */
 	private static class LoggingStrategyWrapper implements ProcessOptimizationStrategy {
+		/** The wrapped strategy to which optimization is delegated. */
 		private final ProcessOptimizationStrategy delegate;
+		/** Receives a log message describing each optimization decision. */
 		private final Consumer<String> logger;
 
+		/**
+		 * Creates a wrapper that logs each decision made by the delegate strategy.
+		 *
+		 * @param delegate the strategy to delegate to
+		 * @param logger   the consumer that receives decision log messages
+		 */
 		LoggingStrategyWrapper(ProcessOptimizationStrategy delegate, Consumer<String> logger) {
 			this.delegate = delegate;
 			this.logger = logger;
