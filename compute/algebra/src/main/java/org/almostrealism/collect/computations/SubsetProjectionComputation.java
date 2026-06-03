@@ -205,6 +205,19 @@ public class SubsetProjectionComputation extends TraversableExpressionComputatio
 	}
 
 	/**
+	 * Reports that this subset-projection Jacobian is row-monomial. By construction every
+	 * output row {@code i} has exactly one non-zero column (a {@code 1}) at the input index
+	 * the subset maps that output to ({@code Conditional(inputIdx == expectedInputIdx, 1, 0)}),
+	 * so a contraction against it collapses to a gather of one element per row.
+	 *
+	 * @return true - every row has exactly one non-zero entry
+	 */
+	@Override
+	public boolean isRowMonomial() {
+		return true;
+	}
+
+	/**
 	 * Generates a new projection computation with the specified child processes.
 	 *
 	 * @param children The child processes (unused - this computation has no inputs)

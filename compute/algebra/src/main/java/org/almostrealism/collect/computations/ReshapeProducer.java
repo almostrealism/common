@@ -365,6 +365,15 @@ public class ReshapeProducer
 	}
 
 	@Override
+	public boolean isRowMonomial() {
+		if (producer instanceof Algebraic) {
+			return ((Algebraic) producer).isRowMonomial();
+		}
+
+		return TraversableExpression.super.isRowMonomial();
+	}
+
+	@Override
 	public Optional<Computable> getDiagonalScalar(int width) {
 		if (producer instanceof Algebraic) {
 			return ((Algebraic) producer).getDiagonalScalar(width);
