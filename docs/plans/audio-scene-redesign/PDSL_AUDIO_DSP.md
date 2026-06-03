@@ -1219,21 +1219,29 @@ The structural and time-varying renditions exist and pass tests, but
 `MixdownManager.createCells()`
 (`studio/compose/.../arrange/MixdownManager.java`) is still the production
 path. The missing piece is the swap: how the compiled PDSL model replaces the
-live cell graph. The bridge already exists —
-`MixdownManagerPdslAdapter.buildArgsMap(MixdownManager, Config)` sources every
-PDSL parameter from the manager's constructed chromosomes, and
-`MixdownManagerPdslAdapter.wrapBlockAsCellList(Block)` exposes a compiled PDSL
-block's forward `Cell` as the single-element `CellList` that
-`MixdownManager.cells(...)` hands back to `AudioScene`.
+live cell graph. `MixdownManagerPdslAdapter.buildArgsMap(MixdownManager, Config)`
+already sources every PDSL parameter from the manager's constructed chromosomes.
 
-**A/B feature-flagged cutover.** Run both paths behind a flag rather than
-replacing the Java body wholesale:
+> **Direction principle — Block-outward (do NOT wrap Block in Cell/CellList).** A
+> `Block` is essentially a `Cell` (forward) plus a second cell that runs the other
+> direction (backprop); audio DSP needs no backprop, so a `Block` and a `Cell` are
+> approximately the same thing. The existing
+> `MixdownManagerPdslAdapter.wrapBlockAsCellList(Block)` goes the **wrong way** and
+> must NOT be the cutover mechanism. The universal solution is to make the
+> **consumer accept a `Block`** (or `List<Block>` if the list aspect is essential) —
+> a consumer that accepts `Block` can hold any `Cell` implementation. If a
+> compatibility adapter is unavoidable, **`Block` stays on the outside** (adapt
+> `Cell` → `Block`, never the reverse). See [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+
+**Parity first, then a Block-outward A/B cutover.** Do not wire anything into the
+render path until the PDSL DSP is confidently acoustically correct (the §16 gates).
+Only then add the cutover, behind a flag:
 
 1. The default path stays `createCells()`.
-2. With the flag enabled, `cells(...)` builds the PDSL model via the adapter,
-   compiles it (in a background thread during scene init, double-buffered so the
-   audio path only swaps once compilation completes), and returns
-   `wrapBlockAsCellList(...)`.
+2. With the flag enabled, `cells(...)` builds and compiles the PDSL model via the
+   adapter (in a background thread during scene init, double-buffered so the audio
+   path only swaps once compilation completes) and hands the resulting `Block` to a
+   consumer that accepts `Block` directly — never re-wrapped as a `CellList`.
 
 **Two gates before the flag can flip to default-on:**
 
@@ -1274,6 +1282,78 @@ modulation) through `producer([shape])` arguments, render the wet/dry summation
 and feedback loop as a PDSL layer, and build the matching genome→args adapter.
 This is the last DSP surface standing between the audio scene and a fully
 declarative signal path.
+
+---
+
+## 16. Confirmation Plan — can all signal processing move to PDSL?
+
+The objective of this phase: **confirm that the entire signal path can be defined
+in PDSL with acoustic parity and at/under the real-time budget on hybrid routing.**
+Four steps (the optimization payoff — actually splitting the loop across JNI/Metal —
+is a separate, later effort and is explicitly out of scope here).
+
+### Step 1 — Coverage inventory (the gate)
+
+Every DSP element in the live `MixdownManager`/`EfxManager` path, mapped to its PDSL
+construct and current fidelity. **Covered** = expressible and acoustically equivalent;
+**Approx** = expressible but a documented approximation; **Gap** = not yet expressible.
+
+| # | DSP element | Java location | PDSL construct | Status |
+|---|---|---|---|---|
+| 1 | Per-channel main HP filter (automation-driven cutoff) | `createCells` ~519 | `highpass` + `producer([1])` cutoff | **Approx** — adapter samples channel-0 cutoff (§14 per-channel gap) |
+| 2 | Per-channel volume (automation) | `createCells` ~535 | `scale` / volume `producer([1])` | **Approx** — channel-0 envelope |
+| 3 | Master LP filter (automation) | `createEfx` ~720 | `lowpass` + `producer([1])` cutoff | **Approx** — channel-0 cutoff |
+| 4 | Wet-bus filter | `FixedFilterChromosome` (IIR HP+LP) | `fir` static coeffs | **Approx** — IIR→FIR structural mismatch |
+| 5 | Cross-channel routing / transmission | `createEfx` ~677 (`mself` feedback grid) | `route(matrix)` + transmission slot | **Approx** — static routing covered; the `mself` self-feedback grid is the one genuinely hard construct (§6B) |
+| 6 | Wet/dry mix + static wet level | `createEfx` | `scale` + sum | **Covered** |
+| 7 | Delay (`AdjustableDelayCell`) | `createEfx` ~665 | `delay` (static `delay_samples`) | **Approx** — static vs gene-modulated delay time |
+| 8 | Reverb (`DelayNetwork`) | `createCells` ~583–613 | `delay_network` / `mixdown_reverb_bus` | **Approx** — primitive implemented; acoustic parity unverified (knownIssue test); reverb OFF in the current gate |
+| 9 | Master gain + saturation | `createEfx` ~770–782 (gain × hard-clip) | `scale(master_gain)` + `tanh_act()` | **Covered** — soft-sat replaces hard clip |
+| 10 | EFX feedforward wet chain | `EfxManager` (FIR/biquad) | `efx_channel.pdsl` | **Partial** — feedforward only |
+| 11 | EFX automation-driven wet/dry + delay feedback + delay-time modulation | `EfxManager` | — | **Gap** (§15) |
+| 12 | Dynamic channel count (gene activation) | `MixdownManager` | fixed `channels` | **Gap** |
+
+**Conclusion of step 1:** the *structure* of the full signal path is expressible in
+PDSL, but parity is currently gated on six items — per-channel automation (1–3), the
+IIR-vs-FIR wet filter (4), reverb-bus parity (8), gene-modulated delay time (7), the
+EfxManager automation path (11), and variable channel count (12). None are
+"can't-be-done"; each is bounded implementation work. The `mself` feedback grid (5) is
+the only construct whose PDSL expression is genuinely novel design.
+
+### Step 2 — Acoustic-parity gate
+
+Extend `MixdownManagerPdslVerificationTest` from its current single loose
+energy-ratio check (reverb OFF, 1/6×–6× band) toward the full surface: reverb ON,
+per-channel automation, EfxManager included; tighten the tolerance as each step-1
+Approx/Gap is closed. The test reports the honest residual divergence at each stage —
+it must never be loosened to manufacture a pass. Detail and current caveats: §14.
+
+### Step 3 — Real-time / perf gate (hybrid routing)
+
+The PDSL path must hold the real-time budget *under default hybrid routing* (§13) —
+measured warm steady-state via the continuous-render harness with
+`AR_PATTERN_CACHE_PERSIST=true`, the same method that established the current ~1.1×
+baseline. A regression vs. the Cell path on hybrid routing blocks the cutover. Never
+force `AR_HARDWARE_DRIVER`.
+
+### Step 4 — A/B cutover mechanism (Block-outward, after parity)
+
+Once the DSP is confidently correct, an `enablePdsl`-style flag (default **off**,
+matching the existing `enableEfx` / `enableReverb` static-flag convention) routes
+`MixdownManager.cells(...)` through the adapter-built, compiled PDSL `Block` instead
+of `createCells()`. The consumer must accept a `Block` (or `List<Block>`) — **never
+wrap the Block in a Cell/CellList** (§14 direction principle). Mechanism and the
+per-channel-automation gap: §14.
+
+### Sequencing
+
+Step 1 is complete (this section). **Close the parity gaps first** — be confident the
+PDSL DSP path reproduces the Java path before touching the render path. The order:
+(a) extend the parity gate (step 2) to the full surface to quantify the current
+divergence; (b) close the step-1 Approx/Gap items, tightening the parity tolerance as
+each lands; (c) stand up the perf gate (step 3) — which needs the cutover to measure
+the PDSL path in the real render; (d) add the Block-outward A/B cutover (step 4),
+shipping default-off until both gates pass.
 
 ---
 

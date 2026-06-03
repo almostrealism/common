@@ -56,3 +56,16 @@ them — it regenerates the envelope curves in-kernel from the `[N]` ADSR scalar
 plan called for refactoring these into pure Producers; that was deliberately **not**
 done because the batched path bypasses them. Only revisit if the legacy per-note path is
 retired.
+
+## 5. Design constraint — Block-outward (never wrap a Block in a Cell/CellList)
+
+A `Block` is essentially a `Cell` (forward) plus a second cell that runs the other
+direction (backprop); audio DSP needs no backprop, so a `Block` and a `Cell` are
+approximately the same thing. When integrating a compiled PDSL `Block` into a
+`Cell`/`CellList` consumer (e.g. the MixdownManager → AudioScene path), **make the
+consumer accept a `Block`** (or `List<Block>`), do not make the `Block` masquerade as a
+`CellList`. The existing `MixdownManagerPdslAdapter.wrapBlockAsCellList(Block)` is the
+wrong direction and must not be the cutover mechanism. If a compatibility adapter is
+unavoidable, `Block` stays on the outside (adapt `Cell` → `Block`, never the reverse) —
+a consumer that accepts `Block` can hold any `Cell` implementation, so this is the
+universal direction. See `PDSL_AUDIO_DSP.md` §14.
