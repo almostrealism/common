@@ -311,7 +311,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
         SpyCodingAgentJob job = new SpyCodingAgentJob("t1", "p");
         job.setRetrospectiveEnabled(true);
         job.doWork();
-        assertTrue("runEnforcementRules() must be called when reflection is enabled",
+        assertTrue("runEnforcementRules() must be called when retrospective is enabled",
                 job.enforcementRulesCalled);
         assertTrue("runReflectionPhase() must be called after runEnforcementRules()",
                 job.reflectionPhaseCalled);
