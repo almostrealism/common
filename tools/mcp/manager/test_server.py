@@ -665,6 +665,38 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertIs(payload["reviewEnabled"], False)
 
     @patch.object(server, "_controller_post")
+    def test_submit_retrospective_enabled_omitted_by_default(self, mock_post):
+        """retrospective_enabled is opt-in (default false), so the wire payload
+        must omit retrospectiveEnabled when the caller did not pass it."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-rt1"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("retrospectiveEnabled", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_retrospective_enabled_true_forwarded(self, mock_post):
+        """retrospective_enabled=True must reach the controller as
+        retrospectiveEnabled=True so the controller can opt the job into the
+        retrospective phase."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-rt2"}
+        server.workstream_submit_task(prompt="Task", retrospective_enabled=True)
+        payload = mock_post.call_args[0][1]
+        self.assertIs(payload["retrospectiveEnabled"], True)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_retrospective_enabled_false_omitted(self, mock_post):
+        """retrospective_enabled=False is the default; the wire payload must
+        omit the key rather than forward an explicit false (matches the
+        organizational_placement_enabled behaviour)."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-rt3"}
+        server.workstream_submit_task(prompt="Task", retrospective_enabled=False)
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("retrospectiveEnabled", payload)
+
+    @patch.object(server, "_controller_post")
     def test_submit_preserves_job_id_in_next_steps(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {

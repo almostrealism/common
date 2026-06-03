@@ -87,7 +87,7 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     /** {@code true} when at least one review session ran during this job. */
     private boolean reviewRan;
 
-    /** {@code true} when the retrospective phase ran (reflectionEnabled was true and doWork ran it). */
+    /** {@code true} when the retrospective phase ran (retrospectiveEnabled was true and doWork ran it). */
     private boolean reflectionRan;
     /** USD cost of the retrospective session, accumulated via absorbResult() into costByRunner/costByModel. */
     private double reflectionCostUsd;

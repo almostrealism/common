@@ -182,7 +182,7 @@ public class CodingAgentJob extends GitManagedJob {
      * analyzing the primary phase transcript for tool-use and context-efficiency
      * improvement opportunities. Defaults to {@code false}; opt in per-job.
      */
-    private boolean reflectionEnabled = false;
+    private boolean retrospectiveEnabled = false;
     /** {@code true} after {@link #runReflectionPhase()} has executed; reset on each {@link #doWork()} call. */
     private boolean reflectionRan;
     /** {@code true} when the retrospective agent found and analyzed a primary-phase transcript. */
@@ -621,9 +621,9 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /** Returns whether the retrospective phase is active for this job; default {@code false}. */
-    public boolean isReflectionEnabled() { return reflectionEnabled; }
+    public boolean isRetrospectiveEnabled() { return retrospectiveEnabled; }
     /** Sets whether the retrospective phase is active for this job; {@code true} to enable retrospective analysis. */
-    public void setReflectionEnabled(boolean reflectionEnabled) { this.reflectionEnabled = reflectionEnabled; }
+    public void setRetrospectiveEnabled(boolean retrospectiveEnabled) { this.retrospectiveEnabled = retrospectiveEnabled; }
 
     /** Returns the post-completion command; non-empty activates {@link PostCompletionCommandRule}. */
     public String getPostCompletionCommand() { return postCompletionCommand; }
@@ -949,7 +949,7 @@ public class CodingAgentJob extends GitManagedJob {
         }
         // Retrospective phase runs after enforcement rules; produces memories, not code.
         reflectionRan = false;
-        if (reflectionEnabled) {
+        if (retrospectiveEnabled) {
             runReflectionPhase();
         }
     }
