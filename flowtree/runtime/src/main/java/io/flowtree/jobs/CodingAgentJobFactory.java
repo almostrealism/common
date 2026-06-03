@@ -1379,7 +1379,6 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             case "reviewEnabled":
                 this.reviewEnabled = Boolean.parseBoolean(value);
                 return;
-            // TODO(review): add case "reflectionEnabled" as a backward-compat alias for factories serialized with the old key
             case "retrospectiveEnabled":
                 this.retrospectiveEnabled = Boolean.parseBoolean(value);
                 return;

@@ -238,7 +238,6 @@ final class CodingAgentJobCodec {
             case "reviewEnabled":
                 job.setReviewEnabled(Boolean.parseBoolean(value));
                 return true;
-            // TODO(review): add case "reflectionEnabled" as a backward-compat alias for jobs serialized with the old key
             case "retrospectiveEnabled":
                 job.setRetrospectiveEnabled(Boolean.parseBoolean(value));
                 return true;
