@@ -45,7 +45,7 @@ Start a new test run asynchronously.
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `depth` | int (0-10) | No | AR_TEST_DEPTH value |
-| `module` | string | No | Maven module (default: "utils") |
+| `module` | string | No | Maven module (default: "engine/utils") |
 | `test_classes` | string[] | No | Specific test class names |
 | `test_methods` | object[] | No | Specific methods: `[{"class": "...", "method": "..."}]` |
 | `timeout_minutes` | int | No | Max run time (default: 30) |
