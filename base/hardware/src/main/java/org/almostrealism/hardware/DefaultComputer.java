@@ -427,12 +427,12 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 * When enabled, {@link #getContext(Computation)} logs the compute-target decision for every
 	 * computation — its count/parallelism, the active {@link ComputeRequirement}s, the available
 	 * contexts, and the chosen one — so the platform's per-operation provider selection can be
-	 * inspected (e.g. on CI). TEMPORARY DIAGNOSTIC: defaults to ON so CI runs capture it without a
-	 * workflow change; disable with {@code AR_LOG_COMPUTE_TARGETING=disabled}. Remove once the
-	 * FourierTransform routing regression is diagnosed.
+	 * inspected (e.g. on CI). TEMPORARY DIAGNOSTIC: defaults to OFF so it stays dormant on master;
+	 * enable with {@code AR_LOG_COMPUTE_TARGETING=enabled} when investigating a routing question
+	 * (e.g. the FourierTransform shared-JVM routing regression). Remove once that is diagnosed.
 	 */
 	public static boolean enableTargetingLog =
-			SystemUtils.isEnabled("AR_LOG_COMPUTE_TARGETING").orElse(true);
+			SystemUtils.isEnabled("AR_LOG_COMPUTE_TARGETING").orElse(false);
 
 	/** The hardware instance this computer is associated with. */
 	private Hardware hardware;
