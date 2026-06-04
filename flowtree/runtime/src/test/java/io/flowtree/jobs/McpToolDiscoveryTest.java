@@ -444,9 +444,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_submit_task must declare organizational_placement_enabled in"
 			+ " signature so callers can opt in to placement review for pre-merge jobs",
 			submitParams.contains("organizational_placement_enabled"));
-		assertTrue("workstream_submit_task must declare reflection_enabled in signature"
+		assertTrue("workstream_submit_task must declare retrospective_enabled in signature"
 			+ " so callers can opt in to the retrospective phase",
-			submitParams.contains("reflection_enabled"));
+			submitParams.contains("retrospective_enabled"));
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
