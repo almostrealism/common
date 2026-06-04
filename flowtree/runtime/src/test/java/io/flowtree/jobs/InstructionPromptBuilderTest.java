@@ -412,4 +412,96 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 		assertTrue("Language requirement must also appear in correction sessions",
 			result.contains("All output must be in English"));
 	}
+
+	// TODO(review): These tests were added to InstructionPromptBuilderTest.java which exists
+	// on master. The agent-commit-validation CI gate blocks modifications to base-branch test
+	// files (validate-agent-commit.sh RULE 1). Consider moving these methods to a new class
+	// (e.g., InstructionPromptBuilderEfficiencyTest) to avoid the CI block. See memory
+	// f09fd42a-e889-4ddb-bb6e-d3b3503ae4c7 for details.
+
+	/** InstructionPromptBuilder includes the Working Efficiently section in primary prompts. */
+	@Test(timeout = 30000)
+	public void workingEfficientlySectionAppearsInPrimaryPrompt() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("Do some work")
+			.build();
+		assertTrue("Working Efficiently section must appear in primary prompts",
+			result.contains("## Working Efficiently"));
+	}
+
+	/** Working Efficiently section mentions all eight principles. */
+	@Test(timeout = 30000)
+	public void workingEfficientlySectionIncludesAllEightPrinciples() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("Do some work")
+			.build();
+		// Phrase anchors that uniquely identify each principle in the rendered
+		// prompt. Each one is a short, distinctive substring from the principle's
+		// lead clause; together they assert all eight points are present.
+		String[] anchors = new String[] {
+			"Read small files whole; don't grep-thrash",
+			"One comprehensive git query beats many",
+			"Treat confirmed facts as established",
+			"Keep an outline of large files",
+			"Parallelize independent work",
+			"Recall before re-deriving",
+			"Hypothesis tree for diagnosis",
+			"Set up toolchains in the right order"
+		};
+		for (String anchor : anchors) {
+			assertTrue("Working Efficiently section must include principle: " + anchor,
+				result.contains(anchor));
+		}
+	}
+
+	/** Working Efficiently section appears even when no target branch is set. */
+	@Test(timeout = 30000)
+	public void workingEfficientlySectionAppearsWithoutTargetBranch() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("Do some work")
+			.build();
+		assertTrue("Working Efficiently section is unconditional and must appear without a target branch",
+			result.contains("## Working Efficiently"));
+	}
+
+	/** Working Efficiently section appears in correction-session prompts. */
+	@Test(timeout = 30000)
+	public void workingEfficientlySectionAppearsInCorrectionSession() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("rule correction prompt")
+			.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1")
+			.setCorrectionSession(true)
+			.build();
+		assertTrue("Working Efficiently section must also appear in correction sessions",
+			result.contains("## Working Efficiently"));
+	}
+
+	/** Working Efficiently section appears before the user request marker. */
+	@Test(timeout = 30000)
+	public void workingEfficientlySectionAppearsBeforeUserRequestMarker() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("task body")
+			.build();
+		int sectionIdx = result.indexOf("## Working Efficiently");
+		int requestIdx = result.indexOf("--- BEGIN USER REQUEST ---");
+		assertTrue("Working Efficiently section should appear in the prompt", sectionIdx >= 0);
+		assertTrue("User request marker should appear in the prompt", requestIdx >= 0);
+		assertTrue("Working Efficiently section should precede the user request marker",
+			sectionIdx < requestIdx);
+	}
+
+	/** Working Efficiently section follows Branch Awareness when a target branch is set. */
+	@Test(timeout = 30000)
+	public void workingEfficientlySectionFollowsBranchAwareness() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("task body")
+			.setTargetBranch("feature/my-branch")
+			.build();
+		int branchIdx = result.indexOf("Branch Awareness");
+		int workingIdx = result.indexOf("## Working Efficiently");
+		assertTrue("Branch Awareness section should appear when target branch is set", branchIdx >= 0);
+		assertTrue("Working Efficiently section should appear in the prompt", workingIdx >= 0);
+		assertTrue("Working Efficiently section should follow Branch Awareness",
+			workingIdx > branchIdx);
+	}
 }

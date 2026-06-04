@@ -400,6 +400,7 @@ public class InstructionPromptBuilder {
      *   <li>Branch Context (always)</li>
      *   <li>Working directory and branch info</li>
      *   <li>Branch Awareness and Continuity (when target branch is set)</li>
+     *   <li>Working Efficiently (always) — short, general efficiency principles</li>
      *   <li>Test Verification Reminder (always)</li>
      *   <li>Budget and turn limits (when applicable)</li>
      *   <li>Task ID and Workstream URL info</li>
@@ -743,6 +744,57 @@ public class InstructionPromptBuilder {
             sb.append("on the branch from prior sessions), investigate whether it's a ");
             sb.append("real bug that needs fixing vs. an environment/configuration issue.\n\n");
         }
+
+        // Working efficiently -- general principles distilled from
+        // retrospective analyses of past sessions. Phrased as short, general
+        // rules applicable to any runner/model; deliberately brief so the
+        // guidance itself does not waste context.
+        sb.append("## Working Efficiently\n");
+        sb.append("Apply these principles to keep the session focused. If a tool pattern ");
+        sb.append("starts to feel repetitive, stop and re-read this list; the problem is ");
+        sb.append("usually a known anti-pattern.\n\n");
+
+        sb.append("1. **Read small files whole; don't grep-thrash.** For files under a few ");
+        sb.append("KB, read them entirely instead of issuing repeated greps. Use grep only ");
+        sb.append("to locate a section in a large file, then read that section once. If you ");
+        sb.append("find yourself running the same grep with a widening window (`-A 30` then ");
+        sb.append("`-A 80`), read the file whole instead.\n\n");
+
+        sb.append("2. **One comprehensive git query beats many.** For \"what landed in / ");
+        sb.append("touched this path,\" prefer a single `git log --all -p -- <path>` (or ");
+        sb.append("`git log --format=... -- <path>`) over many sequential `git show` / ");
+        sb.append("`git ls-tree` calls on individual commits.\n\n");
+
+        sb.append("3. **Treat confirmed facts as established.** Once a fact is verified ");
+        sb.append("(e.g., \"this file is absent from that tree\"), do not re-verify the ");
+        sb.append("same thing from multiple angles -- re-reads and redundant checks waste ");
+        sb.append("context.\n\n");
+
+        sb.append("4. **Keep an outline of large files.** When reading a large plan or ");
+        sb.append("doc, capture its section headers (e.g., `grep -nE '^#+ ' file`) and ");
+        sb.append("reuse those anchors for targeted re-reads, rather than navigating by ");
+        sb.append("trial-and-error window shifts.\n\n");
+
+        sb.append("5. **Parallelize independent work.** Run independent operations ");
+        sb.append("concurrently -- independent test files, installs, validations -- using ");
+        sb.append("background bash (`run_in_background`) or `&` / `wait`. Long installs ");
+        sb.append("should run in the background so a reasoning pause doesn't risk an ");
+        sb.append("inactivity timeout.\n\n");
+
+        sb.append("6. **Recall before re-deriving.** At session start, after loading ");
+        sb.append("workstream context, call `memory_recall` with the task or symptom ");
+        sb.append("phrased as a query to surface prior knowledge before exploring from ");
+        sb.append("scratch. The cost is one call even when it returns nothing.\n\n");
+
+        sb.append("7. **Hypothesis tree for diagnosis.** For \"why did X happen\" tasks, ");
+        sb.append("list the few plausible causes early and test the most likely with ");
+        sb.append("targeted searches, rather than exhaustively re-confirming the symptom ");
+        sb.append("from many angles.\n\n");
+
+        sb.append("8. **Set up toolchains in the right order.** When installing a ");
+        sb.append("toolchain mid-session, install everything needed in one step and pick ");
+        sb.append("the install location first; write config files (e.g., `tsconfig.json`) ");
+        sb.append("only after the tool that consumes them is installed, not before.\n\n");
 
         // Test verification reminder -- always included for coding tasks
         sb.append("## CRITICAL: Run Targeted Tests Before Declaring Work Complete\n");
