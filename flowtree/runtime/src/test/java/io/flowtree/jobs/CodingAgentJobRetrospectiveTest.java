@@ -27,7 +27,7 @@ import static org.junit.Assert.assertTrue;
 
 /**
  * Unit tests for the retrospective phase: {@link Phase#RETROSPECTIVE} wire
- * mapping, the {@code reflectionEnabled} flag on {@link CodingAgentJob} and
+ * mapping, the {@code retrospectiveEnabled} flag on {@link CodingAgentJob} and
  * {@link CodingAgentJobFactory}, the wire-format serialisation round-trip,
  * the {@link RetrospectivePromptBuilder}, and the non-code-producing phase
  * completion invariant.
@@ -54,95 +54,95 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
         assertEquals("retrospective", Phase.RETROSPECTIVE.wireName());
     }
 
-    // ── reflectionEnabled on CodingAgentJob ────────────────────────────────
+    // ── retrospectiveEnabled on CodingAgentJob ────────────────────────────────
 
-    /** CodingAgentJob isReflectionEnabled defaults to false. */
+    /** CodingAgentJob isRetrospectiveEnabled defaults to false. */
     @Test(timeout = 30000)
-    public void reflectionEnabledDefaultIsFalse() {
-        assertFalse(new CodingAgentJob("t1", "p").isReflectionEnabled());
+    public void retrospectiveEnabledDefaultIsFalse() {
+        assertFalse(new CodingAgentJob("t1", "p").isRetrospectiveEnabled());
     }
 
-    /** CodingAgentJob.setReflectionEnabled(true) is reflected in isReflectionEnabled(). */
+    /** CodingAgentJob.setRetrospectiveEnabled(true) is reflected in isRetrospectiveEnabled(). */
     @Test(timeout = 30000)
-    public void setReflectionEnabledTrue() {
+    public void setRetrospectiveEnabledTrue() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
-        job.setReflectionEnabled(true);
-        assertTrue(job.isReflectionEnabled());
+        job.setRetrospectiveEnabled(true);
+        assertTrue(job.isRetrospectiveEnabled());
     }
 
-    /** CodingAgentJob.setReflectionEnabled(false) toggles off after true. */
+    /** CodingAgentJob.setRetrospectiveEnabled(false) toggles off after true. */
     @Test(timeout = 30000)
-    public void setReflectionEnabledFalse() {
+    public void setRetrospectiveEnabledFalse() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
-        job.setReflectionEnabled(true);
-        job.setReflectionEnabled(false);
-        assertFalse(job.isReflectionEnabled());
+        job.setRetrospectiveEnabled(true);
+        job.setRetrospectiveEnabled(false);
+        assertFalse(job.isRetrospectiveEnabled());
     }
 
     // ── Wire format — defaults absent ───────────────────────────────────────
 
-    /** reflectionEnabled absent from wire format when default (false). */
+    /** retrospectiveEnabled absent from wire format when default (false). */
     @Test(timeout = 30000)
-    public void reflectionEnabledAbsentFromWireFormatWhenFalse() {
+    public void retrospectiveEnabledAbsentFromWireFormatWhenFalse() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
         String encoded = job.encode();
-        assertFalse("reflectionEnabled must not appear when default (false): " + encoded,
-                encoded.contains("reflectionEnabled"));
+        assertFalse("retrospectiveEnabled must not appear when default (false): " + encoded,
+                encoded.contains("retrospectiveEnabled"));
     }
 
-    /** reflectionEnabled appears in wire format when set to true. */
+    /** retrospectiveEnabled appears in wire format when set to true. */
     @Test(timeout = 30000)
-    public void reflectionEnabledAppearsInWireFormatWhenTrue() {
+    public void retrospectiveEnabledAppearsInWireFormatWhenTrue() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
-        job.setReflectionEnabled(true);
+        job.setRetrospectiveEnabled(true);
         String encoded = job.encode();
-        assertTrue("Expected reflectionEnabled:=true in: " + encoded,
-                encoded.contains("reflectionEnabled:=true"));
+        assertTrue("Expected retrospectiveEnabled:=true in: " + encoded,
+                encoded.contains("retrospectiveEnabled:=true"));
     }
 
-    /** reflectionEnabled round-trips correctly via job.set(). */
+    /** retrospectiveEnabled round-trips correctly via job.set(). */
     @Test(timeout = 30000)
-    public void reflectionEnabledRoundTripViaSet() {
+    public void retrospectiveEnabledRoundTripViaSet() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
-        job.set("reflectionEnabled", "true");
-        assertTrue(job.isReflectionEnabled());
-        job.set("reflectionEnabled", "false");
-        assertFalse(job.isReflectionEnabled());
+        job.set("retrospectiveEnabled", "true");
+        assertTrue(job.isRetrospectiveEnabled());
+        job.set("retrospectiveEnabled", "false");
+        assertFalse(job.isRetrospectiveEnabled());
     }
 
-    /** CodingAgentJob reflectionEnabled survives encode/decode round-trip. */
+    /** CodingAgentJob retrospectiveEnabled survives encode/decode round-trip. */
     @Test(timeout = 30000)
     public void encodeDecodeRoundTrip() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
-        job.setReflectionEnabled(true);
+        job.setRetrospectiveEnabled(true);
         CodingAgentJob restored = GitManagedJobSerializationTest.roundTrip(job);
-        assertTrue(restored.isReflectionEnabled());
+        assertTrue(restored.isRetrospectiveEnabled());
     }
 
     // ── Factory propagation ────────────────────────────────────────────────
 
-    /** CodingAgentJobFactory isReflectionEnabled defaults to false. */
+    /** CodingAgentJobFactory isRetrospectiveEnabled defaults to false. */
     @Test(timeout = 30000)
-    public void factoryReflectionEnabledDefaultFalse() {
-        assertFalse(new CodingAgentJobFactory("prompt").isReflectionEnabled());
+    public void factoryRetrospectiveEnabledDefaultFalse() {
+        assertFalse(new CodingAgentJobFactory("prompt").isRetrospectiveEnabled());
     }
 
-    /** CodingAgentJobFactory.setReflectionEnabled propagates to nextJob(). */
+    /** CodingAgentJobFactory.setRetrospectiveEnabled propagates to nextJob(). */
     @Test(timeout = 30000)
-    public void factoryReflectionEnabledPropagatesToJob() {
+    public void factoryRetrospectiveEnabledPropagatesToJob() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("p");
-        factory.setReflectionEnabled(true);
+        factory.setRetrospectiveEnabled(true);
         CodingAgentJob job = (CodingAgentJob) factory.nextJob();
         assertNotNull(job);
-        assertTrue(job.isReflectionEnabled());
+        assertTrue(job.isRetrospectiveEnabled());
     }
 
-    /** CodingAgentJobFactory reflectionEnabled round-trips via set(). */
+    /** CodingAgentJobFactory retrospectiveEnabled round-trips via set(). */
     @Test(timeout = 30000)
-    public void factoryReflectionEnabledRoundTripViaSet() {
+    public void factoryRetrospectiveEnabledRoundTripViaSet() {
         CodingAgentJobFactory factory = new CodingAgentJobFactory("p");
-        factory.set("reflectionEnabled", "true");
-        assertTrue(factory.isReflectionEnabled());
+        factory.set("retrospectiveEnabled", "true");
+        assertTrue(factory.isRetrospectiveEnabled());
     }
 
     // ── RetrospectivePromptBuilder ──────────────────────────────────────────
@@ -309,14 +309,34 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void retrospectivePhaseIsOutsideEnforcementRuleLoop() {
         SpyCodingAgentJob job = new SpyCodingAgentJob("t1", "p");
-        job.setReflectionEnabled(true);
+        job.setRetrospectiveEnabled(true);
         job.doWork();
-        assertTrue("runEnforcementRules() must be called when reflection is enabled",
+        assertTrue("runEnforcementRules() must be called when retrospective is enabled",
                 job.enforcementRulesCalled);
         assertTrue("runReflectionPhase() must be called after runEnforcementRules()",
                 job.reflectionPhaseCalled);
         assertTrue("runReflectionPhase() must be called exactly once (not looped)",
                 job.reflectionPhaseCallCount == 1);
+    }
+
+    /**
+     * Verifies the orchestrator gate: when {@code retrospectiveEnabled} is false
+     * (the default), {@code doWork()} must NOT invoke {@code runReflectionPhase()}.
+     * This is the negative path of the activation gate that {@code retrospective_enabled}
+     * on the submit tool controls end-to-end.
+     */
+    @Test(timeout = 30000)
+    public void retrospectivePhaseSkippedWhenRetrospectiveEnabledFalse() {
+        SpyCodingAgentJob job = new SpyCodingAgentJob("t1", "p");
+        // retrospectiveEnabled defaults to false; assert that explicitly.
+        assertFalse(job.isRetrospectiveEnabled());
+        job.doWork();
+        assertTrue("runEnforcementRules() must still be called when retrospective is disabled",
+                job.enforcementRulesCalled);
+        assertFalse("runReflectionPhase() must NOT be called when retrospectiveEnabled is false",
+                job.reflectionPhaseCalled);
+        assertEquals("runReflectionPhase() must not be called at all when gate is off",
+                0, job.reflectionPhaseCallCount);
     }
 
     /**
@@ -360,7 +380,7 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void retrospectivePhaseUsesPhaseEnumWireName() {
         CodingAgentJob job = new CodingAgentJob("t1", "p");
-        job.setReflectionEnabled(true);
+        job.setRetrospectiveEnabled(true);
         assertEquals(Phase.RETROSPECTIVE.wireName(), "retrospective");
     }
 }

@@ -18,7 +18,6 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
-import io.almostrealism.profile.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.io.Console;
@@ -125,19 +124,30 @@ import java.util.stream.Stream;
  * // -> Listeners run on executor thread pool
  * }</pre>
  *
- * <h2>Semaphore Integration</h2>
+ * <h2>Two-stage synchronization: readiness latch vs. completion semaphore</h2>
  *
- * <p>Optional {@link Semaphore} integration for coordinating multiple kernel executions:</p>
+ * <p>Because {@code apply} returns this process <em>before</em> its {@link #whenReady(Runnable)}
+ * listener has run (the listener may run later on an {@link Executor} thread), two distinct
+ * synchronization points are tracked. They are <em>not</em> the same event:</p>
+ *
+ * <ul>
+ *   <li><b>Readiness latch</b> ({@link #setReadyLatch}/{@link #awaitReady()}) — a host-thread
+ *       {@link DefaultLatchSemaphore} that fires once the {@code whenReady} listener has run,
+ *       meaning the arguments are processed and the dispatch has been <em>issued</em>. This is an
+ *       internal gate, not the operation's result.</li>
+ *   <li><b>Completion semaphore</b> ({@link #setSemaphore(Semaphore)}/{@link #getSemaphore()}) —
+ *       the device-completion {@link Semaphore} published by the operator dispatch, which fires
+ *       once the kernel has actually <em>finished</em>. This is the operation's true completion
+ *       and the handle a dependent operation chains on.</li>
+ * </ul>
+ *
+ * <p>Under fully synchronous dispatch these two collapse to the same instant; under batched
+ * (sustained) dispatch the kernel completion comes strictly after the dispatch is issued, which is
+ * why the two are tracked separately. A typical caller waits for both, in order:</p>
  * <pre>{@code
- * DefaultLatchSemaphore sem = new DefaultLatchSemaphore(3);  // 3 permits
- * details.setSemaphore(sem);
- *
- * details.whenReady(() -> kernel1.execute());
- * details.whenReady(() -> kernel2.execute());
- * details.whenReady(() -> kernel3.execute());
- *
- * // After all listeners execute
- * // sem.countDown() called 3 times -> semaphore released
+ * AcceleratedProcessDetails details = operation.apply(output, args);
+ * details.awaitReady();                 // dispatch has been issued
+ * details.getSemaphore().waitFor();     // kernel has completed
  * }</pre>
  *
  * <h2>Memory Replacement Operations</h2>
@@ -174,17 +184,30 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	/** Executes completion listeners asynchronously when {@link Hardware#isAsync()} is true. */
 	private Executor executor;
 
-	/** Optional semaphore for coordinating kernel execution completion. */
-	private DefaultLatchSemaphore semaphore;
+	/**
+	 * Host-thread readiness latch for the asynchronous {@link #whenReady(Runnable)} mechanism.
+	 *
+	 * <p>This is <em>not</em> the operation's completion. It is counted down by
+	 * {@link #notifyListeners()} once the {@code whenReady} listener has finished running — i.e.
+	 * once the arguments have been processed and the dispatch has been issued (and the
+	 * {@link #semaphore completion semaphore} has been published). Because {@code apply} returns
+	 * the process before that listener runs (it may run later on an {@link Executor} thread),
+	 * callers use {@link #awaitReady()} to block on this latch and guarantee the dispatch has
+	 * happened before they read {@link #getSemaphore()} or issue a dependent operation.</p>
+	 */
+	private DefaultLatchSemaphore readyLatch;
 
 	/**
-	 * Optional device-completion semaphore published by the operator dispatch (e.g. an
-	 * OpenCL {@code cl_event}-backed semaphore). When set it is the operation's true
-	 * completion and is returned by {@link #getSemaphore()} in preference to the
-	 * host-readiness {@link #semaphore latch}, so callers wait on (and can chain) actual
-	 * kernel completion rather than the host enqueue.
+	 * The operation's completion {@link Semaphore}, published by the operator dispatch (e.g. a
+	 * {@code MetalSemaphore} or {@code CLSemaphore} backing a device event). When set it is the
+	 * operation's true completion and is returned by {@link #getSemaphore()}, so callers wait on
+	 * (and can chain via {@code dependsOn}) actual kernel completion rather than the host enqueue.
+	 *
+	 * <p>It may be {@code null} for a fully synchronous provider whose dispatch returns no device
+	 * event; in that case {@link #getSemaphore()} falls back to the {@link #readyLatch}, which by
+	 * the time it is read has already fired (so it behaves as an already-completed latch).</p>
 	 */
-	private Semaphore completionSemaphore;
+	private Semaphore semaphore;
 
 	/** Listeners to notify when all arguments are ready. */
 	private List<Runnable> listeners;
@@ -229,45 +252,51 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	public boolean isEmpty() { return replacementManager.isEmpty(); }
 
 	/**
-	 * Returns the operation's completion {@link Semaphore} — the one published by the operator
-	 * dispatch (every provider returns a real semaphore: a {@code MetalSemaphore}, a
-	 * {@code CLSemaphore}, or an already-completed native latch). It is valid once
-	 * {@link #awaitReady()} has returned (which {@code apply} ensures before handing the process
-	 * back). The host-readiness {@link #semaphore latch} is a fallback only.
+	 * Returns the operation's completion {@link Semaphore} — the {@link #semaphore} published by
+	 * the operator dispatch (a {@code MetalSemaphore}, a {@code CLSemaphore}, or another device
+	 * event). It is valid once {@link #awaitReady()} has returned, which {@code apply} ensures
+	 * before handing the process back.
 	 *
-	 * @return the completion semaphore, or null if none is set
+	 * <p>When the provider published no completion (a fully synchronous dispatch), this falls back
+	 * to the host {@link #readyLatch}; because {@code awaitReady} has already returned, that latch
+	 * has fired, so waiting on it returns immediately.</p>
+	 *
+	 * @return the completion semaphore, or the already-fired readiness latch as a fallback
 	 */
 	public Semaphore getSemaphore() {
-		return completionSemaphore != null ? completionSemaphore : semaphore;
+		return semaphore != null ? semaphore : readyLatch;
 	}
 
 	/**
-	 * Blocks until this operation's arguments have been processed and the dispatch has been
-	 * issued — i.e. until {@link #setCompletionSemaphore} has been called with the operator's
-	 * completion. This is an internal readiness gate (it is not the operation's completion);
-	 * {@code apply} waits on it before returning so the completion from {@link #getSemaphore()}
-	 * is available, and so a chained dependent operation is issued after the one it depends on.
+	 * Blocks on the {@link #readyLatch} until this operation's arguments have been processed and
+	 * the dispatch has been issued — i.e. until {@link #setSemaphore(Semaphore)} has been called
+	 * with the operator's completion. This is an internal readiness gate, <em>not</em> the
+	 * operation's completion; {@code apply} waits on it before returning so the completion from
+	 * {@link #getSemaphore()} is available, and so a chained dependent operation is issued after
+	 * the one it depends on.
 	 */
 	public void awaitReady() {
-		if (semaphore != null) semaphore.waitFor();
+		if (readyLatch != null) readyLatch.waitFor();
 	}
 
 	/**
-	 * Sets the {@link Semaphore} for coordinating kernel completion notifications.
+	 * Sets the host-thread {@link #readyLatch readiness latch} that {@link #awaitReady()} blocks
+	 * on. It is counted down by {@link #notifyListeners()} once the {@link #whenReady(Runnable)}
+	 * listener has run and the dispatch has been issued.
 	 *
-	 * @param semaphore the semaphore to set
+	 * @param readyLatch the readiness latch to set
 	 */
-	public void setSemaphore(DefaultLatchSemaphore semaphore) { this.semaphore = semaphore; }
+	public void setReadyLatch(DefaultLatchSemaphore readyLatch) { this.readyLatch = readyLatch; }
 
 	/**
-	 * Sets the device-completion {@link Semaphore} published by the operator dispatch.
-	 * When non-null this is returned by {@link #getSemaphore()} in preference to the
-	 * host-readiness latch, so callers wait on actual kernel completion.
+	 * Sets the operation's completion {@link Semaphore}, as published by the operator dispatch.
+	 * When non-null this is returned by {@link #getSemaphore()} so callers wait on (and can chain)
+	 * actual kernel completion rather than the host {@link #readyLatch readiness latch}.
 	 *
-	 * @param completionSemaphore the operator's completion semaphore, or null
+	 * @param semaphore the operator's completion semaphore, or null for a synchronous provider
 	 */
-	public void setCompletionSemaphore(Semaphore completionSemaphore) {
-		this.completionSemaphore = completionSemaphore;
+	public void setSemaphore(Semaphore semaphore) {
+		this.semaphore = semaphore;
 	}
 
 	/**
@@ -305,16 +334,16 @@ public class AcceleratedProcessDetails implements ConsoleFeatures {
 	/**
 	 * Notifies all registered listeners that arguments are ready.
 	 *
-	 * <p>Executes each listener and counts down the semaphore (if set) after each execution.
-	 * This method is synchronized to prevent concurrent notification.</p>
+	 * <p>Executes each listener and counts down the {@link #readyLatch readiness latch} (if set)
+	 * after each execution. This method is synchronized to prevent concurrent notification.</p>
 	 */
 	private synchronized void notifyListeners() {
 		listeners.forEach(r -> {
 			try {
 				r.run();
 			} finally {
-				if (semaphore != null) {
-					semaphore.countDown();
+				if (readyLatch != null) {
+					readyLatch.countDown();
 				}
 			}
 		});
