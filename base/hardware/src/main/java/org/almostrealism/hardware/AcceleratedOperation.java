@@ -26,6 +26,7 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
 import org.almostrealism.c.NativeMemoryProvider;
@@ -193,7 +194,7 @@ import java.util.List;
  * @see AcceleratedProcessDetails
  */
 public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T>
-							implements Runnable, ScopeLifecycle, Countable, HardwareFeatures {
+							implements Runnable, Submittable, ScopeLifecycle, Countable, HardwareFeatures {
 
 	/** Console for logging accelerated operation events. */
 	public static Console console = Computation.console.child();
@@ -202,13 +203,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public static TimingMetric retrieveOperatorMetric = console.timing("retrieveOperator");
 	/** Timing metric for wrapped evaluation. */
 	public static TimingMetric wrappedEvalMetric = console.timing("wrappedEval");
-
-	/**
-	 * Thread-local storage for {@link Semaphore} instances used to control concurrent access to
-	 * accelerated operations. Each thread maintains its own semaphore to prevent race conditions
-	 * during parallel execution.
-	 */
-	private static final ThreadLocal<Semaphore> semaphores = new ThreadLocal<>();
 
 	/** Indicates whether this operation executes as a kernel (GPU/OpenCL/Metal) or JNI native code. */
 	private final boolean kernel;
@@ -437,7 +431,39 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			}
 
 			AcceleratedProcessDetails process = apply(null, new Object[0]);
+			process.awaitReady();
 			waitFor(process.getSemaphore());
+		} finally {
+			if (getComputeRequirements() != null) {
+				Hardware.getLocalHardware().getComputer().popRequirements();
+			}
+		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Dispatches this operation chaining on {@code dependsOn} (via
+	 * {@link #apply(MemoryBank, Object[], Semaphore)}) and returns its completion
+	 * {@link Semaphore} <em>without</em> blocking the host. This is the non-blocking
+	 * counterpart to {@link #run()} (which is {@code submit(null)} followed by a wait); it
+	 * lets a composite chain operations and defer the completion wait into the provider.</p>
+	 */
+	@Override
+	public Semaphore submit(Semaphore dependsOn) {
+		try {
+			if (getComputeRequirements() != null) {
+				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());
+			}
+
+			AcceleratedProcessDetails process = apply(null, new Object[0], dependsOn);
+
+			// Ensure this operation is encoded/dispatched before returning, so a subsequent
+			// chained operation is encoded after it (preserving order). The completion wait
+			// itself stays deferred — that is what the returned semaphore carries.
+			process.awaitReady();
+
+			return process.getSemaphore();
 		} finally {
 			if (getComputeRequirements() != null) {
 				Hardware.getLocalHardware().getComputer().popRequirements();
@@ -523,31 +549,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @return Process details ready for execution
 	 */
 	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
-		Semaphore lastSemaphore = getSemaphore();
-
-		try {
-			pushSemaphore();
-			return getDetailsFactory().init(output, args).construct();
-		} finally {
-			semaphores.set(lastSemaphore);
-		}
-	}
-
-	/**
-	 * Pushes a new semaphore onto the thread-local stack for this operation.
-	 *
-	 * <p>If no semaphore exists for the current thread, creates a new {@link DefaultLatchSemaphore}
-	 * with zero permits. Otherwise, creates a child semaphore linked to the current one using
-	 * this operation's metadata as the requester.</p>
-	 */
-	protected void pushSemaphore() {
-		Semaphore current = getSemaphore();
-
-		if (current == null) {
-			semaphores.set(new DefaultLatchSemaphore(getMetadata(), 0));
-		} else {
-			semaphores.set(current.withRequester(getMetadata()));
-		}
+		return getDetailsFactory().init(output, args).construct();
 	}
 
 	/**
@@ -572,20 +574,64 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @return Process details containing execution state and semaphore for synchronization
 	 * @throws UnsupportedOperationException if the operation was not compiled
 	 */
-	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
+	protected AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
+		return apply(output, args, null);
+	}
+
+	/**
+	 * Applies this operation, chaining on a prior operation's completion.
+	 *
+	 * <p>Equivalent to {@link #apply(MemoryBank, Object[])} except that {@code dependsOn},
+	 * when non-null, is passed to the operator so the provider can make this dispatch wait
+	 * on the prior operation's completion <em>inside the provider</em> (e.g. an OpenCL
+	 * {@code cl_event} wait-list) rather than blocking the host. The returned details'
+	 * {@link AcceleratedProcessDetails#getSemaphore() completion semaphore} is this
+	 * operation's completion, suitable for use as the next operation's {@code dependsOn}.</p>
+	 *
+	 * @param output    The destination memory bank for operation results, or null
+	 * @param args      The input arguments for the operation
+	 * @param dependsOn The prior operation's completion {@link Semaphore} to chain on, or null
+	 * @return Process details containing execution state and the completion semaphore
+	 * @throws UnsupportedOperationException if the operation was not compiled
+	 */
+	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args, Semaphore dependsOn) {
 		if (getArguments() == null && getInstructionSetManager() == null) {
 			throw new UnsupportedOperationException("Operation was not compiled");
 		}
 
 		// Load the inputs
 		AcceleratedProcessDetails process = getProcessDetails(output, args);
-		process.setSemaphore(new DefaultLatchSemaphore(getMetadata(), 1));
+		process.setReadyLatch(new DefaultLatchSemaphore(getMetadata(), 1));
 
 		process.whenReady(() -> {
 			MemoryData input[] = process.getArguments(MemoryData[]::new);
 
 			// Prepare the operator
 			Execution operator = setupOperator(process);
+
+			// "processing" means this operation needs argument AGGREGATION: its arguments are copied
+			// into a single shared memory reservation (prepare/preApply, below) to keep the kernel's
+			// argument count low, and the result is copied back out afterward (postprocess/postApply).
+			//
+			// Aggregation is the signal that this operation CANNOT be batched into the provider's
+			// shared command buffer. The de-aggregation copies between memory in DIFFERENT
+			// MemoryProviders — the aggregated buffer is provider-owned (e.g. a Metal command buffer's
+			// memory) while the originals usually are not — so it must run only after this kernel has
+			// actually completed. That forces a per-operation completion wait below (and, on Metal, a
+			// per-operation command-buffer commit). This per-op commit is correct and intended; it is
+			// also why a Metal command buffer that carries an aggregated op is not shared with others.
+			//
+			// The inverse is the case that matters for performance: when "processing" is false there
+			// is NO per-op wait here, so the dispatch simply accumulates into the provider's open
+			// command buffer and is committed ONCE at the genuine boundary (the OperationList runner's
+			// trailing wait, or a top-level run()/evaluate()). That is where Metal command-buffer
+			// batching happens. Aggregation rarely occurs for performance-critical work because those
+			// buffers exceed the off-heap threshold (AR_HARDWARE_OFF_HEAP_SIZE); setting it to 0 keeps
+			// every reservation provider-owned and avoids aggregation entirely.
+			//
+			// IMPORTANT: do NOT add a per-op wait for non-aggregated operations, and do NOT treat the
+			// mere presence of an aggregated operation as a reason to stop batching the others — only
+			// the aggregated operation itself pays the per-op commit.
 			boolean processing = isPreprocessingRequired(process);
 
 			// Preprocessing
@@ -594,20 +640,29 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				process.getPrepare().get().run();
 			}
 
-			// Run the operator
-			Semaphore nextSemaphore = operator.accept(input, null);
+			// Run the operator, chaining on the prior operation's completion when provided
+			Semaphore nextSemaphore = operator.accept(input, dependsOn);
 
 			// Register kernel semaphore with the active heap stage so
 			// that pop() waits for kernel completion before destroying memory
 			Heap.addPendingKernel(nextSemaphore);
 
-			// Postprocessing
+			// Adopt the operator's device-completion semaphore as the process completion so
+			// callers wait on (and can chain via dependsOn) the actual kernel completion
+			// rather than the host-readiness latch. When the operator returns null (fully
+			// synchronous providers) the host latch remains the completion — behavior is
+			// unchanged.
+			process.setSemaphore(nextSemaphore);
+
+			// Postprocessing. This per-op wait is required, NOT batching being switched off
+			// arbitrarily: the de-aggregation below crosses MemoryProviders and must run after the
+			// kernel completes (see the "processing" explanation above). It only applies to
+			// aggregated operations; non-aggregated ones never reach here and stay batched.
 			if (processing) {
 				if (nextSemaphore != null) {
 					// TODO  This should actually result in a new Semaphore
 					// TODO  that performs the post processing whenever the
 					// TODO  original semaphore is finished
-					// warn("Postprocessing will wait for semaphore");
 					nextSemaphore.waitFor();
 				}
 
@@ -690,28 +745,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	@Override
 	public Console console() { return console; }
 
-	/**
-	 * Returns the thread-local semaphore for the current thread, or null if none is set.
-	 *
-	 * @return the current thread's semaphore, or null
-	 */
-	public static Semaphore getSemaphore() { return semaphores.get(); }
-
-	/**
-	 * Waits for the current thread's semaphore to complete and clears it.
-	 *
-	 * <p>If a semaphore exists for the current thread, this method blocks until it
-	 * is released, then clears the thread-local reference. If no semaphore exists,
-	 * this method returns immediately.</p>
-	 */
-	public static void waitFor() {
-		Semaphore s = getSemaphore();
-
-		if (s != null) {
-			s.waitFor();
-			semaphores.set(null);
-		}
-	}
 
 	/** Prints timing statistics. */
 	public static void printTimes() {

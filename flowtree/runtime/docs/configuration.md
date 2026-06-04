@@ -211,19 +211,26 @@ The directory where hardware acceleration libraries (JNI `.so` files, OpenCL ker
 
 ### AR_HARDWARE_DRIVER
 
-Selects the hardware backend for computation. Available drivers:
+Selects the hardware backend(s) for computation. The value is a comma-separated
+list of driver tokens, parsed in `Hardware.java`. The recognized tokens are:
 
 | Value | Description |
 |-------|-------------|
-| `native` | Standard JNI operations with runtime-generated native code |
-| `opencl` | OpenCL acceleration (CPU/GPU) |
-| `metal` | Metal GPU acceleration (Apple Silicon) |
-| `external` | Generated executable approach |
+| `native` | JNI operations with runtime-generated native code (clang) |
+| `cl` | OpenCL acceleration (CPU/GPU) |
+| `mtl` | Metal GPU acceleration (Apple Silicon, macOS only) |
+| `cpu` | CPU-optimized backend |
+| `gpu` | GPU-optimized backend |
+| `*` | Auto-detect and load all available backends (the default when unset) |
 
-This variable is best left unset to auto-detect the best available backend. To override:
+The tokens are matched case-insensitively and are the *only* accepted spellings —
+`opencl`/`metal` are **not** recognized and select no backend. This variable is
+best left unset (equivalent to `*`) to auto-detect the best available backend. To
+override:
 
 ```bash
-export AR_HARDWARE_DRIVER=opencl  # Example: force OpenCL
+export AR_HARDWARE_DRIVER=cl        # force OpenCL
+export AR_HARDWARE_DRIVER=cl,native # try OpenCL, fall back to JNI
 ```
 
 ### AR_HARDWARE_MEMORY_SCALE

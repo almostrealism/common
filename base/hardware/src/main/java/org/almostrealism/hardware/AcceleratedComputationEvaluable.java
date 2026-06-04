@@ -418,6 +418,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 
 		try {
 			AcceleratedProcessDetails process = apply(null, args);
+			process.awaitReady();
 			waitFor(process.getSemaphore());
 
 			T result = postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
@@ -451,6 +452,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 		int offset = getInstructionSetManager().getOutputOffset(getExecutionKey());
 
 		AcceleratedProcessDetails process = apply(null, args);
+		process.awaitReady();
 		process.getSemaphore().onComplete(() -> {
 			T result = postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
 			downstream.accept(validate(result));

@@ -68,7 +68,18 @@ extern "C"
 JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_commandBuffer(JNIEnv* env, jclass cls, jlong queue) {
     MTL::CommandQueue* que = (MTL::CommandQueue*) queue;
     MTL::CommandBuffer* buffer = que->commandBuffer();
+    // The command buffer is returned autoreleased. It must outlive the per-task autorelease pool
+    // the runner drains around each unit of work (it is created in one task and committed/awaited
+    // in a later one), so retain it explicitly; the runner calls releaseCommandBuffer once the
+    // buffer has completed.
+    buffer->retain();
     return (jlong) buffer;
+}
+
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_releaseCommandBuffer(JNIEnv* env, jclass cls, jlong cmdBuffer) {
+    MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
+    buf->release();
 }
 
 extern "C"
@@ -81,6 +92,41 @@ extern "C"
 JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_waitUntilCompleted(JNIEnv* env, jclass cls, jlong cmdBuffer) {
     MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
     buf->waitUntilCompleted();
+}
+
+// Creates an MTLSharedEvent on the device, used to order dispatches across command buffers
+// on the GPU (the analog of an OpenCL cl_event). The caller owns the returned event and must
+// release it with releaseSharedEvent.
+extern "C"
+JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_createSharedEvent(JNIEnv* env, jclass cls, jlong device) {
+    MTL::Device* dev = (MTL::Device*) device;
+    MTL::SharedEvent* event = dev->newSharedEvent();
+    return (jlong) event;
+}
+
+// Encodes, into the command buffer, a signal of the event to the given value once the buffer's
+// prior work completes. Must be called when no encoder is active on the buffer.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_encodeSignalEvent(JNIEnv* env, jclass cls, jlong cmdBuffer, jlong event, jlong value) {
+    MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
+    MTL::SharedEvent* ev = (MTL::SharedEvent*) event;
+    buf->encodeSignalEvent(ev, (uint64_t) value);
+}
+
+// Encodes, into the command buffer, a wait until the event reaches the given value before the
+// buffer's subsequent work runs. Must be called when no encoder is active on the buffer.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_encodeWaitForEvent(JNIEnv* env, jclass cls, jlong cmdBuffer, jlong event, jlong value) {
+    MTL::CommandBuffer* buf = (MTL::CommandBuffer*) cmdBuffer;
+    MTL::SharedEvent* ev = (MTL::SharedEvent*) event;
+    buf->encodeWait(ev, (uint64_t) value);
+}
+
+// Releases an event created by createSharedEvent.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_releaseSharedEvent(JNIEnv* env, jclass cls, jlong event) {
+    MTL::SharedEvent* ev = (MTL::SharedEvent*) event;
+    ev->release();
 }
 
 extern "C"
@@ -390,6 +436,19 @@ JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setBuffer(JNIEn
     MTL::ComputeCommandEncoder* enc = (MTL::ComputeCommandEncoder*) cmdEnc;
     MTL::Buffer* buf = (MTL::Buffer*) buffer;
     enc->setBuffer(buf, 0, (NS::UInteger) index);
+}
+
+// Binds a small array of ints directly into the kernel's argument table at the given index,
+// without a backing MTL::Buffer. Metal copies the bytes into the command at encode time, so
+// each encoded command captures its own values — unlike a shared, reused buffer, this is safe
+// when many commands are batched into one command buffer and committed together.
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setBytes(JNIEnv* env, jclass, jlong cmdEnc, jint index, jintArray data) {
+    MTL::ComputeCommandEncoder* enc = (MTL::ComputeCommandEncoder*) cmdEnc;
+    jsize len = env->GetArrayLength(data);
+    jint* elems = env->GetIntArrayElements(data, nullptr);
+    enc->setBytes(elems, (NS::UInteger) (len * sizeof(jint)), (NS::UInteger) index);
+    env->ReleaseIntArrayElements(data, elems, JNI_ABORT);
 }
 
 extern "C"

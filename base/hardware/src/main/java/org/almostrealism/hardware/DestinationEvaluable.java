@@ -281,6 +281,13 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 		} else if (operation instanceof AcceleratedOperation && ((AcceleratedOperation) operation).isKernel()) {
 			AcceleratedProcessDetails details = ((AcceleratedOperation) operation)
 					.apply(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
+			// Wait for the dispatch to be issued before reading the completion: until the whenReady
+			// callback runs, getSemaphore() returns the host-readiness latch (which fires once the
+			// kernel is encoded, not once its command buffer commits), so waiting it would let the
+			// host read a deferred/uncommitted result as stale zeros. awaitReady() ensures the
+			// operator's real device-completion semaphore is published first, so the wait below
+			// commits and completes the work. (AcceleratedComputationEvaluable.evaluate does the same.)
+			details.awaitReady();
 			details.getSemaphore().waitFor();
 		} else {
 			String name = operation instanceof Named ? ((Named) operation).getName() : OperationAdapter.operationName(null, getClass(), "function");
