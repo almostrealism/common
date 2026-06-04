@@ -204,6 +204,20 @@ class BashWritesCheckstyleTests(unittest.TestCase):
             )
         )
 
+    def test_redirect_overwrite_no_space_blocks(self):
+        self.assertTrue(
+            self.core.bash_command_writes_checkstyle(
+                "echo '<module/>' >checkstyle.xml"
+            )
+        )
+
+    def test_dd_of_blocks(self):
+        self.assertTrue(
+            self.core.bash_command_writes_checkstyle(
+                "dd if=/dev/zero of=checkstyle.xml bs=1 count=1"
+            )
+        )
+
     def test_redirect_append_blocks(self):
         self.assertTrue(
             self.core.bash_command_writes_checkstyle(
@@ -215,7 +229,6 @@ class BashWritesCheckstyleTests(unittest.TestCase):
         self.assertTrue(
             self.core.bash_command_writes_checkstyle("> checkstyle.xml")
         )
-
     def test_sed_in_place_blocks(self):
         # `sed -i` rewrites the file in place, so the path is the
         # target even with no `>` redirect in sight.
