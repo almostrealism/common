@@ -126,20 +126,16 @@ def is_checkstyle_path(path):
 # cheat going through.
 BASH_WRITE_HINT = re.compile(
     r"(?:"
-    r"\s>>\s"             # append redirect
-    r"|\s>\s"             # write redirect
-    r"|^>"                # leading redirect
-    r"|\btee\b"           # tee
-    r"|\bsed\s+-i\b"      # in-place sed
-    r"|\bdd\s+of="        # dd output file
-    r"|\bcp\s"            # copy
-    r"|\bmv\s"            # move / rename
-    r"|\binstall\s"       # install(1) copy
-    r"|\bcat\s+>"         # cat into redirect
-    r"|\bcat\s+>>"        # cat into append
-    r"|\bprintf\b"        # printf (often paired with redirect)
-    r"|\becho\s+>"        # echo into redirect
-    r"|\becho\s+>>"       # echo into append
+    r"(?<!['\"])>>(?!['\"])"    # append redirect (whitespace optional)
+    r"|(?<!['\"])>(?!['\"])"    # write redirect (whitespace optional)
+    r"|\btee\b"                   # tee
+    r"|\bsed\s+-i\b"              # in-place sed
+    r"|\bdd\s+of="                 # dd output file
+    r"|\bcp\s"                     # copy
+    r"|\bmv\s"                     # move / rename
+    r"|\binstall\s"                # install(1) copy
+    r"|\bcat\s+>"                  # cat into redirect
+    r"|\bcat\s+>>"                 # cat into append
     r")"
 )
 
@@ -163,17 +159,19 @@ def _tokens_that_could_be_paths(command):
         clean = tok.strip("'\"")
         if not clean:
             continue
-        if clean.lower().endswith(".xml"):
+        lower = clean.lower()
+        if lower.endswith(".xml"):
             yield clean
-        # A redirect target is the token after `>`, `>>`, `<>`, or `2>`.
-        # shlex may or may not keep the operator attached to the
-        # following path, so we also yield the operator+next-token
-        # pair below.
+        # Handle key=value tokens like `of=checkstyle.xml` (e.g. dd of=...)
+        if "=" in clean:
+            _, value = clean.split("=", 1)
+            if value and value.lower().endswith(".xml"):
+                yield value.strip("'\"")
+        # A redirect target is the token after `>`, `>>`, `<>`, `2>`, `2>>`, etc.
     # Walk the raw command again to catch redirect targets that shlex
     # may have detached (e.g. `>  checkstyle.xml` with extra spaces).
-    for m in re.finditer(r"(?:\>\>|\>|\<\<\>|\d\>)\s*(\S+)", command):
+    for m in re.finditer(r"(?:\d?>>|\d?>|<>)\s*(\S+)", command):
         yield m.group(1).strip("'\"")
-
 
 def bash_command_targets_checkstyle(command):
     """True if `command` references any checkstyle config file path.

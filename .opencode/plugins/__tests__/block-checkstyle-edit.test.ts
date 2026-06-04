@@ -103,6 +103,17 @@ async function run(): Promise<void> {
     expect(threw !== null, "bash `echo x > checkstyle.xml` should throw (block)")
   }
 
+  // 3b. `bash` with redirect to checkstyle.xml (no space) must throw.
+  {
+    let threw: Error | null = null
+    try {
+      await before({ tool: "bash", sessionID, callID }, { args: { command: "echo x >checkstyle.xml" } })
+    } catch (e) {
+      threw = e as Error
+    }
+    expect(threw !== null, "bash `echo x >checkstyle.xml` should throw (block)")
+  }
+
   // 4. `bash` with sed -i on checkstyle.xml must throw.
   {
     let threw: Error | null = null
