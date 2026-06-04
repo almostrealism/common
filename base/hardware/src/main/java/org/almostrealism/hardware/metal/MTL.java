@@ -166,6 +166,42 @@ public class MTL {
 	public static native long computeCommandEncoder(long commandBuffer);
 
 	/**
+	 * Creates an {@code MTLSharedEvent} on the device, used to order dispatches across command
+	 * buffers on the GPU (the analog of an OpenCL {@code cl_event}).
+	 *
+	 * @param device Native device pointer
+	 * @return Native pointer to the shared event
+	 */
+	public static native long createSharedEvent(long device);
+
+	/**
+	 * Encodes a signal of the event to {@code value} once the command buffer's prior work
+	 * completes. Must be called when no encoder is active on the buffer.
+	 *
+	 * @param commandBuffer Native command buffer pointer
+	 * @param event Native shared-event pointer
+	 * @param value Value to signal
+	 */
+	public static native void encodeSignalEvent(long commandBuffer, long event, long value);
+
+	/**
+	 * Encodes a wait until the event reaches {@code value} before the command buffer's
+	 * subsequent work runs. Must be called when no encoder is active on the buffer.
+	 *
+	 * @param commandBuffer Native command buffer pointer
+	 * @param event Native shared-event pointer
+	 * @param value Value to wait for
+	 */
+	public static native void encodeWaitForEvent(long commandBuffer, long event, long value);
+
+	/**
+	 * Releases a shared event created by {@link #createSharedEvent(long)}.
+	 *
+	 * @param event Native shared-event pointer
+	 */
+	public static native void releaseSharedEvent(long event);
+
+	/**
 	 * Creates an integer buffer (32-bit) from array data.
 	 *
 	 * @param device Native device pointer
@@ -403,6 +439,18 @@ public class MTL {
 	public static native void setBuffer(long commandEncoder, int index, long buffer);
 
 	/**
+	 * Binds a small array of ints directly into the kernel argument table at the given index,
+	 * without a backing buffer. Metal copies the bytes into the command at encode time, so each
+	 * encoded command captures its own values — safe when many commands are batched into one
+	 * command buffer. Subject to Metal's inline-argument size limit (typically 4&nbsp;KB).
+	 *
+	 * @param commandEncoder Native command encoder pointer
+	 * @param index Buffer binding index
+	 * @param data The integer values to bind inline
+	 */
+	public static native void setBytes(long commandEncoder, int index, int[] data);
+
+	/**
 	 * Dispatches compute threads with explicit threadgroup and grid dimensions.
 	 *
 	 * @param commandEncoder Native command encoder pointer
@@ -459,6 +507,15 @@ public class MTL {
 	 * @param buffer Native buffer pointer
 	 */
 	public static native void releaseBuffer(long buffer);
+
+	/**
+	 * Releases a command buffer obtained from {@link #commandBuffer(long)}. The command buffer is
+	 * retained on creation so it survives the runner's per-task autorelease pools; this drops that
+	 * explicit retain once the buffer has completed.
+	 *
+	 * @param commandBuffer Native command buffer pointer
+	 */
+	public static native void releaseCommandBuffer(long commandBuffer);
 
 	/**
 	 * Releases a compute pipeline state and frees its resources.

@@ -87,6 +87,19 @@ public class MTLComputeCommandEncoder extends MTLObject {
 	}
 
 	/**
+	 * Binds a small array of ints directly into the kernel argument table at the given index,
+	 * without a backing {@link MTLBuffer}. Metal copies the values into the command at encode
+	 * time, so each command captures its own — safe when commands are batched into one command
+	 * buffer. Subject to Metal's inline-argument size limit (typically 4&nbsp;KB).
+	 *
+	 * @param index Kernel argument index (0-based)
+	 * @param data  The integer values to bind inline
+	 */
+	public void setBytes(int index, int[] data) {
+		MTL.setBytes(getNativePointer(), index, data);
+	}
+
+	/**
 	 * Dispatches a 1D grid of threadgroups.
 	 *
 	 * <p>Convenience method that sets height and depth to 1.</p>

@@ -16,93 +16,285 @@
 
 package org.almostrealism.hardware.metal;
 
+import io.almostrealism.concurrent.Semaphore;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /**
- * Executor service for {@link MetalCommand} instances.
+ * Owns the Metal command-buffer lifecycle for a {@link MetalComputeContext}.
  *
- * <p>Manages pre-allocated offset and size buffers for kernel arguments and
- * submits commands to a single-threaded executor.</p>
+ * <p>Dispatches are <em>encoded</em> into an open command buffer (not committed per dispatch) on a
+ * single-threaded executor, so independent dispatches accumulate into one command buffer. Each
+ * dispatch returns a {@link MetalSemaphore} — the operation's single completion handle — and
+ * signals a {@link MTLEvent} timeline value. Ordering between dependent dispatches is expressed at
+ * the GPU level: when a dispatch is submitted with a {@link MetalSemaphore} dependency, the open
+ * buffer is committed and a fresh buffer encodes a wait for the dependency's event value, so the
+ * GPU serializes the dependent after the dependency across buffers without a host stall.</p>
  *
- * <h2>Buffer Management</h2>
+ * <p>{@link MetalSemaphore#waitFor()} is the only thing that blocks the host: it commits the
+ * dispatch's buffer if still open and waits for it (and every buffer committed before it, since the
+ * queue is serial) to complete.</p>
  *
- * <pre>{@code
- * // Pre-allocated buffers avoid repeated allocation overhead
- * MTLBuffer offset;  // int[MAX_ARGS] for argument offsets
- * MTLBuffer size;    // int[MAX_ARGS] for argument sizes
+ * <h2>Memory lifetime</h2>
  *
- * // Commands reuse these buffers
- * offset.setContents(new int[]{0, 10, 20});
- * size.setContents(new int[]{10, 10, 10});
- * }</pre>
+ * <p>Memory referenced by an encoded kernel must stay alive until its command buffer has completed.
+ * Callers pass an {@code onCommit} callback to {@link #submit} that releases that memory; the runner
+ * runs it only after the buffer the dispatch was encoded into has completed.</p>
  *
- * @see MetalCommand
- * @see MetalOperator
+ * <p>Objective-C memory: every executor task runs inside its own autorelease pool (see
+ * {@link #runInPool}) so transient autoreleased Metal objects (encoders, the command buffer's own
+ * autorelease reference) are drained per task and do not accumulate in the driver. The open command
+ * buffer outlives its creating task, so it is retained explicitly when created
+ * ({@link MTL#commandBuffer(long)}) and released ({@link MTLCommandBuffer#release()}) once it has
+ * completed.</p>
  */
 public class MetalCommandRunner {
-	/** Maximum number of kernel arguments supported by the pre-allocated offset and size buffers. */
+	/** Maximum number of kernel arguments a single command may bind. */
 	public static final int MAX_ARGS = 512;
 
-	/** Single-threaded executor that serializes Metal command submission to avoid concurrency issues. */
+	/**
+	 * Maximum dispatches encoded into one open command buffer before it is committed. This is a
+	 * memory bound (it caps how much encoded-but-uncompleted work and how large an autorelease pool
+	 * accumulate), not a behavioural switch — correctness does not depend on its value.
+	 */
+	private static final int MAX_OPEN = 256;
+
+	/** Single-threaded executor that serializes all command-buffer operations. */
 	private ExecutorService executor;
 
-	/** Pre-allocated integer buffer holding the byte offset of each kernel argument. */
-	private MTLBuffer offset;
-	/** Pre-allocated integer buffer holding the element count (size) of each kernel argument. */
-	private MTLBuffer size;
 	/** The command queue used to submit encoded Metal compute commands. */
 	private final MTLCommandQueue queue;
 
+	/** Timeline event used to order dependent dispatches across command buffers on the GPU. */
+	private final MTLEvent event;
+
+	/** Monotonic value last signaled on {@link #event}. Executor-thread only. */
+	private long signaled;
+
+	/** The open (encoded, not yet committed) command buffer, or {@code null}. Executor-thread only. */
+	private MTLCommandBuffer openBuffer;
+	/** Number of dispatches encoded into the open buffer. Executor-thread only. */
+	private int openCount;
+	/** Released-memory callbacks for dispatches in the open buffer. Executor-thread only. */
+	private List<Runnable> openOnComplete = new ArrayList<>();
+
+	/** Committed-but-not-yet-completed buffers, in commit (queue) order. Executor-thread only. */
+	private final List<CommittedBuffer> committed = new ArrayList<>();
+
 	/**
-	 * Creates a Metal command runner with pre-allocated argument buffers.
+	 * True while an open (created but not yet committed) command buffer exists. Enforces the
+	 * one-open-buffer-per-{@link MetalComputeContext} invariant: a single context must never have a
+	 * second uncommitted command buffer in flight (cross-buffer coordination is only meaningful
+	 * <em>between</em> contexts, and a Computation tree compiles against a single Metal context).
+	 * Tracked explicitly so an attempt to open a second buffer fails fast instead of silently
+	 * producing the kind of wedged-completion state this work has repeatedly hit.
+	 */
+	private boolean bufferOpen;
+
+	/**
+	 * Creates a Metal command runner.
 	 *
 	 * @param queue The {@link MTLCommandQueue} for submitting commands
 	 */
 	public MetalCommandRunner(MTLCommandQueue queue) {
 		this.executor = Executors.newSingleThreadExecutor();
 		this.queue = queue;
-		offset = queue.getDevice().newIntBuffer32(MAX_ARGS);
-		size = queue.getDevice().newIntBuffer32(MAX_ARGS);
+		this.event = queue.getDevice().newSharedEvent();
 	}
 
 	/**
-	 * Submits a Metal command for asynchronous execution.
+	 * Encodes a dispatch into the open command buffer and returns its completion semaphore.
 	 *
-	 * <p>Commands execute on a single-threaded executor to avoid concurrency issues.
-	 * The command receives pre-allocated offset and size buffers.</p>
+	 * <p>When {@code dependsOn} is a {@link MetalSemaphore} from this runner, the open buffer is
+	 * committed first and the dispatch encodes a GPU wait for that dependency's event value, so the
+	 * dependent runs after the dependency without the host blocking. (A foreign dependency must be
+	 * waited by the caller before calling this method.)</p>
 	 *
-	 * @param command The {@link MetalCommand} to execute
-	 * @return {@link Future} for tracking command completion
+	 * @param command   encodes the kernel into the supplied command buffer
+	 * @param dependsOn  a prior {@link MetalSemaphore} this dispatch depends on, or {@code null}
+	 * @param onComplete released-memory callback to run after this dispatch's buffer completes, or null
+	 * @return this dispatch's completion semaphore
 	 */
-	public Future<?> submit(MetalCommand command) {
-		return executor.submit(() -> {
-			// Wrap each dispatch in an Objective-C autorelease pool on this worker
-			// thread. metal-cpp's commandBuffer()/computeCommandEncoder() return
-			// autoreleased objects; without a pool on this long-lived thread they
-			// accumulate in the Metal driver and stall sustained real-time rendering
-			// after a few thousand dispatches. The pool drains them after every dispatch.
-			long pool = MTL.autoreleasePoolPush();
-			try {
-				command.run(offset, size, queue);
-			} finally {
-				MTL.autoreleasePoolPop(pool);
+	public MetalSemaphore submit(MetalCommand command, Semaphore dependsOn, Runnable onComplete) {
+		List<MetalSemaphore> result = new ArrayList<>(1);
+
+		await(executor.submit(() -> runInPool(() -> {
+			MetalSemaphore dependency =
+					dependsOn instanceof MetalSemaphore && ((MetalSemaphore) dependsOn).getRunner() == this
+							? (MetalSemaphore) dependsOn : null;
+
+			// Order a dependent dispatch after its dependency across buffers: commit the open buffer
+			// (so the dependency's signal lands in an earlier, committed buffer) then wait its value.
+			if (dependency != null && dependency.getCommandBuffer() == openBuffer) {
+				commitOpenOnExecutor();
 			}
-		});
+
+			ensureOpenBuffer();
+
+			if (dependency != null) {
+				openBuffer.encodeWaitForEvent(event, dependency.getValue());
+			}
+
+			command.encode(openBuffer);
+
+			signaled++;
+			openBuffer.encodeSignalEvent(event, signaled);
+			openCount++;
+			if (onComplete != null) openOnComplete.add(onComplete);
+
+			result.add(new MetalSemaphore(null, this, openBuffer, event, signaled));
+
+			if (openCount >= MAX_OPEN) {
+				commitOpenOnExecutor();
+			}
+		})));
+
+		return result.get(0);
+	}
+
+	/**
+	 * Commits (if still open) the buffer the given dispatch was encoded into and blocks until it,
+	 * and every buffer committed before it, has completed; then runs their released-memory
+	 * callbacks. Invoked by {@link MetalSemaphore#waitFor()}.
+	 *
+	 * @param commandBuffer the dispatch's command buffer
+	 */
+	public void complete(MTLCommandBuffer commandBuffer) {
+		await(executor.submit(() -> runInPool(() -> completeOnExecutor(commandBuffer))));
+	}
+
+	/**
+	 * Runs {@code task} on the executor's thread inside a per-task Objective-C autorelease pool, so
+	 * transient autoreleased Metal objects (compute command encoders, and the command buffer's own
+	 * autorelease reference) are drained when the task ends rather than accumulating in the driver
+	 * until it stalls. The open command buffer survives across tasks because it is retained
+	 * explicitly when created (see {@link MTL#commandBuffer(long)}) and released by
+	 * {@link #completeOnExecutor} once it has completed. A pool scoped to each task (rather than one
+	 * spanning a buffer's whole open lifetime across several tasks) is required: spanning a pool
+	 * across the executor's task boundaries wedged command-buffer completion.
+	 *
+	 * @param task the work to run inside a fresh autorelease pool
+	 */
+	private void runInPool(Runnable task) {
+		long pool = MTL.autoreleasePoolPush();
+
+		try {
+			task.run();
+		} finally {
+			MTL.autoreleasePoolPop(pool);
+		}
+	}
+
+	/** Opens a fresh command buffer if none is currently open. */
+	private void ensureOpenBuffer() {
+		if (openBuffer == null) {
+			if (bufferOpen) {
+				throw new IllegalStateException("A second open command buffer was requested while " +
+						"one is still open on this ComputeContext — the one-open-buffer-per-context " +
+						"invariant is violated");
+			}
+
+			openBuffer = queue.commandBuffer();
+			openCount = 0;
+			bufferOpen = true;
+		}
+	}
+
+	/**
+	 * Commits the open buffer (if any) and moves it to the committed list. Does not wait for
+	 * completion. Must run on the executor thread.
+	 */
+	private void commitOpenOnExecutor() {
+		if (openBuffer == null) return;
+
+		openBuffer.commit();
+		bufferOpen = false;
+
+		committed.add(new CommittedBuffer(openBuffer, openOnComplete));
+		openBuffer = null;
+		openCount = 0;
+		openOnComplete = new ArrayList<>();
+	}
+
+	/**
+	 * Commits the target buffer if it is still open, then waits for it and every earlier committed
+	 * buffer to complete, running their callbacks in order. Must run on the executor thread.
+	 */
+	private void completeOnExecutor(MTLCommandBuffer target) {
+		if (target == openBuffer) commitOpenOnExecutor();
+
+		int index = -1;
+		for (int i = 0; i < committed.size(); i++) {
+			if (committed.get(i).buffer == target) {
+				index = i;
+				break;
+			}
+		}
+
+		// Not found means it already completed and was drained by an earlier wait.
+		for (int i = 0; i <= index; i++) {
+			CommittedBuffer c = committed.remove(0);
+			c.buffer.waitUntilCompleted();
+			c.onComplete.forEach(Runnable::run);
+			c.buffer.release();
+		}
+	}
+
+	/** Waits for the given executor task to finish, rethrowing any execution failure. */
+	private static void await(Future<?> f) {
+		try {
+			f.get();
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		} catch (ExecutionException e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	/**
 	 * Destroys this command runner and releases all resources.
 	 *
-	 * <p>Releases offset and size buffers and shuts down the executor service.</p>
+	 * <p>Commits and waits for any open and committed buffers, runs their callbacks, releases the
+	 * timeline event, and shuts down the executor service.</p>
 	 */
 	public void destroy() {
-		if (offset != null) offset.release();
-		if (size != null) size.release();
-		if (executor != null) executor.shutdown();
-		offset = null;
-		size = null;
+		if (executor != null) {
+			await(executor.submit(() -> runInPool(() -> {
+				commitOpenOnExecutor();
+				while (!committed.isEmpty()) {
+					CommittedBuffer c = committed.remove(0);
+					c.buffer.waitUntilCompleted();
+					c.onComplete.forEach(Runnable::run);
+					c.buffer.release();
+				}
+				event.release();
+			})));
+			executor.shutdown();
+		}
 		executor = null;
+	}
+
+	/** A committed command buffer and the released-memory callbacks to run once it completes. */
+	private static final class CommittedBuffer {
+		/** The committed command buffer. */
+		private final MTLCommandBuffer buffer;
+		/** Released-memory callbacks to run once the buffer completes. */
+		private final List<Runnable> onComplete;
+
+		/**
+		 * Creates a committed-buffer record.
+		 *
+		 * @param buffer     the committed command buffer
+		 * @param onComplete callbacks to run once it completes
+		 */
+		private CommittedBuffer(MTLCommandBuffer buffer, List<Runnable> onComplete) {
+			this.buffer = buffer;
+			this.onComplete = onComplete;
+		}
 	}
 }
