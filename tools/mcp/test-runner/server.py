@@ -39,6 +39,12 @@ if _COMMON_DIR not in sys.path:
     sys.path.insert(0, _COMMON_DIR)
 from polling import block_until_terminal, resolve_block_timeout  # noqa: E402
 
+# Preflight seeding of upstream module artifacts. Lives alongside server.py
+# so the import is cheap and unambiguous regardless of where python is launched
+# from. See preflight.py for the full rationale.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import preflight  # noqa: E402
+
 # Configuration - derive project root from script location (tools/mcp/test-runner/server.py -> project root)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.resolve()
 RUNS_DIR = Path(__file__).parent / "runs"
@@ -117,6 +123,116 @@ class TestRunner:
     def generate_run_id(self) -> str:
         """Generate a short unique run ID."""
         return uuid.uuid4().hex[:8]
+
+    def _write_preflight_section(self, output_file: Path, header: str,
+                                  body: str = "") -> None:
+        """Write a clearly-delimited preflight section to the run's output file.
+
+        The banner mirrors the section markers used by ar-build-validator
+        so an agent scrolling through ``output.txt`` can immediately see
+        which steps are preflight vs. test execution.
+        """
+        with open(output_file, "a") as handle:
+            handle.write(f"\n{'=' * 60}\n")
+            handle.write(f"[ar-test-runner] PREFLIGHT: {header}\n")
+            handle.write(f"{'=' * 60}\n")
+            if body:
+                if not body.endswith("\n"):
+                    body = body + "\n"
+                handle.write(body)
+            handle.write("\n")
+
+    def _run_preflight(self, run_id: str, run_dir: Path,
+                       module: str) -> "preflight.PreflightResult":
+        """Run the upstream-artifact preflight and persist its output.
+
+        Returns the :class:`preflight.PreflightResult` produced by
+        :func:`preflight.seed_upstream_artifacts`. Output emitted by
+        Maven during the seed is appended to ``run_dir/output.txt`` so
+        ``get_run_output`` shows it alongside (and before) the test run
+        output.
+
+        Failures inside the preflight helper itself (for example, a
+        ``pom.xml`` that fails to parse for a reason the helper does
+        not already swallow) are reported as a synthetic ``"failed"``
+        result so the caller can short-circuit cleanly without
+        spawning Maven on a broken setup.
+        """
+        output_file = run_dir / "output.txt"
+
+        try:
+            missing = preflight.find_missing_upstream_artifacts(
+                PROJECT_ROOT, module)
+        except Exception as exc:  # noqa: BLE001
+            # TODO(review): Inspection failures short-circuit the run (action="failed") which
+            # mirrors seed failures, but the find_missing_upstream_artifacts function already
+            # returns [] on all expected filesystem errors — so this branch only fires on
+            # truly unexpected exceptions. Consider whether those should fall through (attempt
+            # the test anyway) rather than hard-fail the entire run.
+            result = preflight.PreflightResult(
+                action="failed",
+                reason=f"preflight inspection failed: {exc}",
+            )
+            self._write_preflight_section(
+                output_file,
+                "INSPECTION FAILED",
+                f"Could not determine upstream dependencies: {exc}\n"
+                "The test invocation is aborted due to this inspection error.",
+            )
+            return result
+
+        if not missing:
+            self._write_preflight_section(
+                output_file,
+                "skipped (upstream artifacts present)",
+                f"All direct org.almostrealism dependencies of {module}\n"
+                "are already installed in ~/.m2; no seed needed.",
+            )
+            return preflight.PreflightResult(
+                action="skipped",
+                reason="All direct org.almostrealism dependencies already installed",
+            )
+
+        missing_summary = ", ".join(
+            f"{m.artifact_id}:{m.version}" for m in missing[:8])
+        if len(missing) > 8:
+            missing_summary += f", ... (+{len(missing) - 8} more)"
+        self._write_preflight_section(
+            output_file,
+            f"seeding {len(missing)} upstream artifact(s)",
+            f"Missing direct dependencies for {module}: {missing_summary}\n"
+            f"Running: {' '.join(preflight.build_seed_command(module))}\n"
+            "(This makes the FIRST ar-test-runner call in a fresh worktree "
+            "self-sufficient — subsequent calls skip this step.)",
+        )
+
+        def _writer(chunk: str) -> None:
+            try:
+                with open(output_file, "a") as handle:
+                    handle.write(chunk)
+            except OSError:
+                # An output-write failure must never break the preflight.
+                pass
+
+        result = preflight.seed_upstream_artifacts(
+            PROJECT_ROOT, module, output_writer=_writer)
+
+        if result.action == "seeded":
+            self._write_preflight_section(
+                output_file,
+                f"seeded {len(result.missing)} artifact(s) in "
+                f"{result.duration_seconds:.1f}s",
+                "Test invocation will now proceed.",
+            )
+        elif result.action == "failed":
+            self._write_preflight_section(
+                output_file,
+                f"FAILED (mvn install exited {result.exit_code})",
+                "The upstream artifacts could not be installed. The test "
+                "invocation is skipped because Maven would fail with the "
+                "same dependency-resolution error.",
+            )
+        return result
 
     def cleanup_old_runs(self):
         """Remove oldest runs if we exceed MAX_RUNS."""
@@ -213,7 +329,26 @@ class TestRunner:
         return cmd
 
     def start_run(self, config: RunConfig) -> tuple[str, str]:
-        """Start a new test run. Returns (run_id, command)."""
+        """Start a new test run. Returns (run_id, command).
+
+        The first time this is invoked in a fresh worktree, the
+        upstream ``ar-*`` modules referenced by ``config.module`` may
+        not yet be installed in ``~/.m2/repository/``. To avoid the
+        previous fail→install→retry cycle (which pushes agents toward
+        bash ``mvn``), the run launches a preflight step that seeds
+        any missing upstream artifacts via
+        ``mvn -pl <module> -am install -DskipTests``. The preflight is
+        a no-op when every direct ``org.almostrealism`` dependency is
+        already present, so subsequent calls in the same worktree pay
+        only an inspection cost (a few milliseconds).
+
+        When the preflight install fails the run is short-circuited:
+        the run is marked ``failed`` with the preflight banner left
+        in ``output.txt``, and no Maven test process is launched. The
+        agent sees a clear ``status == "failed"`` with the seed log
+        attached, instead of a duplicate dependency-resolution error
+        from the test invocation.
+        """
         self.cleanup_old_runs()
 
         run_id = self.generate_run_id()
@@ -237,6 +372,33 @@ class TestRunner:
                 iset_output_dir = part[len(iset_prefix):]
                 break
 
+        # Touch the output file so the preflight banner has somewhere to land.
+        output_file = run_dir / "output.txt"
+        output_file.write_text("")
+
+        # Preflight: install missing upstream artifacts. Synchronous because
+        # it must finish before the test process launches against the same
+        # module. Skipped path is a few-millisecond pom scan; only the
+        # genuinely-uninstalled case blocks for the duration of mvn install.
+        preflight_result = self._run_preflight(run_id, run_dir, config.module)
+        if preflight_result.action == "failed":
+            # Short-circuit: mark the run failed and return early. The
+            # preflight banner already explains the failure in output.txt.
+            metadata = RunMetadata(
+                run_id=run_id,
+                config=asdict(config),
+                status="failed",
+                started_at=datetime.now().isoformat(),
+                completed_at=datetime.now().isoformat(),
+                exit_code=preflight_result.exit_code,
+                command=cmd_str,
+                jmx_monitoring=config.jmx_monitoring,
+                instruction_set_output_dir=iset_output_dir,
+                repetitions=config.repetitions,
+            )
+            self._save_metadata(run_id, metadata)
+            return run_id, cmd_str
+
         # Multi-invocation path: delegate to _watch_repetitions thread
         if config.repetitions > 1:
             metadata = RunMetadata(
@@ -252,9 +414,6 @@ class TestRunner:
                 invocations=[]
             )
             self._save_metadata(run_id, metadata)
-
-            # Touch empty output file
-            (run_dir / "output.txt").write_text("")
 
             # Start timeout timer (applies to entire run)
             if config.timeout_minutes:
@@ -290,9 +449,9 @@ class TestRunner:
             instruction_set_output_dir=iset_output_dir
         )
 
-        # Start process
-        output_file = run_dir / "output.txt"
-        with open(output_file, "w") as f:
+        # Start process. The preflight banner is already in output.txt;
+        # open in append mode so mvn output follows it instead of clobbering it.
+        with open(output_file, "a") as f:
             process = subprocess.Popen(
                 cmd,
                 stdout=f,
