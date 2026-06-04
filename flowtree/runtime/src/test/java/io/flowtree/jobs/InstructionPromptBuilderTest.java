@@ -458,6 +458,7 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			.setPrompt("Do some work")
 			.setTargetBranch("")
 			.build();
+		assertTrue("Working Efficiently section must appear without a target branch",
 			result.contains("## Working Efficiently"));
 	}
 
