@@ -391,8 +391,14 @@ final class OpencodeConfigBuilder {
                     // Code's behaviour for the same MCP config and giving
                     // ``send_message`` the temp token it needs to resolve
                     // the workstream/job context automatically.
-                    if (headers.has("Authorization")
-                            || headers.has("authorization")) {
+                    boolean hasAuthorization = false;
+                    for (Iterator<String> names = headers.fieldNames(); names.hasNext(); ) {
+                        if ("authorization".equalsIgnoreCase(names.next())) {
+                            hasAuthorization = true;
+                            break;
+                        }
+                    }
+                    if (hasAuthorization) {
                         dst.put("oauth", false);
                     }
                 }
