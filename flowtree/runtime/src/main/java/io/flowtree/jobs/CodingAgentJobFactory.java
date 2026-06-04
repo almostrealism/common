@@ -133,6 +133,28 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private boolean retrospectiveEnabled = false;
 
     /**
+     * When {@code true} (the default), jobs created by this factory activate the
+     * sensitive-file protections: the harness-side {@link FileStager} refuses to
+     * stage test files that exist on the base branch, {@link CodingAgentJob#validateChanges()}
+     * runs the {@code TestHidingAudit}, and no bypass trailer is appended to
+     * the commit message. Set to {@code false} only when the operator has
+     * explicitly authorized the job to modify the protected files (e.g. a job
+     * that intentionally edits a base-branch test or updates a policy
+     * validator). The flag is operator-controlled at job submission time and
+     * is never settable by the agent itself.
+     */
+    private boolean sensitiveFileProtectionEnabled = true;
+
+    /**
+     * Controller-signed HMAC-SHA256 bypass signature propagated to jobs created
+     * by this factory. {@code null} when no signature is available. Used by
+     * the harness to append a {@code Sensitive-File-Bypass} trailer to the
+     * commit message after stripping any agent-supplied instance; verified by
+     * CI using the same shared secret ({@code AR_AGENT_BYPASS_SECRET}).
+     */
+    private String sensitiveFileBypassSignature;
+
+    /**
      * Per-job cap on review passes propagated to jobs created by this factory.
      * Defaults to {@link CodingAgentJob#DEFAULT_MAX_REVIEW_PASSES}.
      */
@@ -750,6 +772,55 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
+     * Returns whether the per-job sensitive-file protections are active for jobs
+     * created by this factory.
+     *
+     * @return {@code true} when sensitive-file protections are active (the default)
+     */
+    public boolean isSensitiveFileProtectionEnabled() {
+        return sensitiveFileProtectionEnabled;
+    }
+
+    /**
+     * Sets whether the per-job sensitive-file protections are active for jobs
+     * created by this factory. Operator-controlled at job submission time;
+     * never settable by the agent itself.
+     *
+     * @param sensitiveFileProtectionEnabled {@code false} to authorize this
+     *        job to modify test files / CI files that exist on the base branch
+     */
+    public void setSensitiveFileProtectionEnabled(boolean sensitiveFileProtectionEnabled) {
+        this.sensitiveFileProtectionEnabled = sensitiveFileProtectionEnabled;
+        set("sensitiveFileProtectionEnabled", String.valueOf(sensitiveFileProtectionEnabled));
+    }
+
+    /**
+     * Returns the controller-signed HMAC bypass signature for jobs created by
+     * this factory, or {@code null} when no signature is available.
+     *
+     * @return the Base64-encoded HMAC signature, or {@code null}
+     */
+    public String getSensitiveFileBypassSignature() {
+        return sensitiveFileBypassSignature;
+    }
+
+    /**
+     * Sets the controller-signed HMAC bypass signature for jobs created by
+     * this factory. Only the controller should call this — the agent never
+     * has access to the signing secret.
+     *
+     * @param sensitiveFileBypassSignature Base64-encoded HMAC signature, or {@code null} to clear
+     */
+    public void setSensitiveFileBypassSignature(String sensitiveFileBypassSignature) {
+        this.sensitiveFileBypassSignature = sensitiveFileBypassSignature;
+        if (sensitiveFileBypassSignature != null && !sensitiveFileBypassSignature.isEmpty()) {
+            set("sensitiveFileBypassSignature", GitManagedJob.base64Encode(sensitiveFileBypassSignature));
+        } else {
+            set("sensitiveFileBypassSignature", null);
+        }
+    }
+
+    /**
      * Returns the maximum number of review passes for jobs created by this factory.
      *
      * @return the pass cap; defaults to {@link CodingAgentJob#DEFAULT_MAX_REVIEW_PASSES}
@@ -1213,6 +1284,8 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         job.setReviewEnabled(reviewEnabled);
         job.setMaxReviewPasses(maxReviewPasses);
         job.setRetrospectiveEnabled(retrospectiveEnabled);
+        job.setSensitiveFileProtectionEnabled(sensitiveFileProtectionEnabled);
+        job.setSensitiveFileBypassSignature(sensitiveFileBypassSignature);
         if (postCompletionCommand != null && !postCompletionCommand.isEmpty()) {
             job.setPostCompletionCommand(postCompletionCommand);
             if (postCompletionWorkingDir != null) {
@@ -1381,6 +1454,12 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 return;
             case "retrospectiveEnabled":
                 this.retrospectiveEnabled = Boolean.parseBoolean(value);
+                return;
+            case "sensitiveFileProtectionEnabled":
+                this.sensitiveFileProtectionEnabled = Boolean.parseBoolean(value);
+                return;
+            case "sensitiveFileBypassSignature":
+                this.sensitiveFileBypassSignature = GitManagedJob.base64Decode(value);
                 return;
             case "maxReviewPasses":
                 this.maxReviewPasses = CodingAgentJobCodec.parsePositiveOrDefault(

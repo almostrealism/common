@@ -697,6 +697,41 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertNotIn("retrospectiveEnabled", payload)
 
     @patch.object(server, "_controller_post")
+    def test_submit_sensitive_file_protection_default_omitted(self, mock_post):
+        """sensitive_file_protection_enabled defaults to TRUE (protections
+        active), so the wire payload must omit the key when the caller
+        did not opt out. Mirrors the inverted semantics of
+        retrospective_enabled/organizational_placement_enabled."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-sfp1"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("sensitiveFileProtectionEnabled", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_sensitive_file_protection_default_true_explicit_omitted(self, mock_post):
+        """sensitive_file_protection_enabled=True is the default; the wire
+        payload must omit the key rather than forward an explicit true."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-sfp2"}
+        server.workstream_submit_task(prompt="Task",
+                                      sensitive_file_protection_enabled=True)
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("sensitiveFileProtectionEnabled", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_sensitive_file_protection_disabled_forwarded(self, mock_post):
+        """sensitive_file_protection_enabled=False must reach the controller
+        as sensitiveFileProtectionEnabled=False so the controller can opt the
+        job out of the per-job protections and compute a bypass signature."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-sfp3"}
+        server.workstream_submit_task(prompt="Task",
+                                      sensitive_file_protection_enabled=False)
+        payload = mock_post.call_args[0][1]
+        self.assertIs(payload["sensitiveFileProtectionEnabled"], False)
+
+    @patch.object(server, "_controller_post")
     def test_submit_preserves_job_id_in_next_steps(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {

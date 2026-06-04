@@ -185,6 +185,23 @@ public class CodingAgentJob extends GitManagedJob {
     private boolean retrospectiveEnabled = false;
     /** {@code true} after {@link #runReflectionPhase()} has executed; reset on each {@link #doWork()} call. */
     private boolean reflectionRan;
+
+    /**
+     * Sensitive-file protection flag (default {@code true}): the harness-side
+     * FileStager, validateChanges TestHidingAudit, and commit-trailer signing
+     * are all gated on this flag. Operator-controlled at submission time;
+     * never settable by the agent itself.
+     */
+    private boolean sensitiveFileProtectionEnabled = true;
+
+    /**
+     * Controller-signed HMAC-SHA256 bypass signature, populated by the
+     * controller at submission time when the flag is false. Verified by CI
+     * via {@code tools/ci/agent-protection/verify-sensitive-bypass.sh} using
+     * the same shared secret ({@code AR_AGENT_BYPASS_SECRET}). {@code null}
+     * when the flag is true or when the controller has no signing key.
+     */
+    private String sensitiveFileBypassSignature;
     /** {@code true} when the retrospective agent found and analyzed a primary-phase transcript. */
     private boolean reflectionTranscriptFound;
     /** Number of improvement findings emitted as memories by the retrospective agent. */
@@ -624,6 +641,31 @@ public class CodingAgentJob extends GitManagedJob {
     public boolean isRetrospectiveEnabled() { return retrospectiveEnabled; }
     /** Sets whether the retrospective phase is active for this job; {@code true} to enable retrospective analysis. */
     public void setRetrospectiveEnabled(boolean retrospectiveEnabled) { this.retrospectiveEnabled = retrospectiveEnabled; }
+
+    /** Returns whether the per-job sensitive-file protections are active; default {@code true}. */
+    public boolean isSensitiveFileProtectionEnabled() { return sensitiveFileProtectionEnabled; }
+
+    /**
+     * Sets whether the per-job sensitive-file protections are active.
+     * Operator-controlled; the agent must not be able to set this. CI
+     * honours the controller's HMAC-signed bypass signature (see
+     * {@link #setSensitiveFileBypassSignature(String)}); the agent has no
+     * access to the signing secret.
+     */
+    public void setSensitiveFileProtectionEnabled(boolean v) {
+        this.sensitiveFileProtectionEnabled = v;
+    }
+
+    /** Returns the controller-signed HMAC bypass signature, or {@code null} if absent. */
+    public String getSensitiveFileBypassSignature() { return sensitiveFileBypassSignature; }
+
+    /**
+     * Sets the controller-signed HMAC bypass signature. Only the controller
+     * should call this; the agent never has access to the signing secret.
+     */
+    public void setSensitiveFileBypassSignature(String sensitiveFileBypassSignature) {
+        this.sensitiveFileBypassSignature = sensitiveFileBypassSignature;
+    }
 
     /** Returns the post-completion command; non-empty activates {@link PostCompletionCommandRule}. */
     public String getPostCompletionCommand() { return postCompletionCommand; }
@@ -1448,15 +1490,15 @@ public class CodingAgentJob extends GitManagedJob {
 
     @Override
     protected boolean validateChanges() throws Exception {
-        // Test-hiding audit (only when protect-test-files is enabled)
-        if (isProtectTestFiles()
+        // Test-hiding audit gated on BOTH protectTestFiles AND the new
+        // sensitiveFileProtectionEnabled flag.
+        if (isProtectTestFiles() && sensitiveFileProtectionEnabled
                 && !TestHidingAudit.passes(getWorkingDirectory(), getBaseBranch(), this)) {
             return false;
         }
 
         // Deduplication SPAWN mode: fire-and-forget follow-up job after primary work.
-        // Note: DEDUP_LOCAL is handled inline by DeduplicationRule in the enforcement
-        // framework (runEnforcementRules), which runs in doWork() before the commit.
+        // DEDUP_LOCAL is handled inline by DeduplicationRule in runEnforcementRules().
         if (DEDUP_SPAWN.equals(deduplicationMode)) {
             DeduplicationSpawner.submitSpawnJob(extractNewMethodNames(),
                     getBaseBranch(),

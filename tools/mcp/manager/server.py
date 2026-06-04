@@ -1590,6 +1590,7 @@ def workstream_submit_task(
     max_deduplication_passes: int = 0,
     organizational_placement_enabled: bool = False,
     retrospective_enabled: bool = False,
+    sensitive_file_protection_enabled: bool = True,
     review_enabled: bool = True,
     max_review_passes: int = 0,
     post_completion_command: str = "",
@@ -1677,6 +1678,21 @@ def workstream_submit_task(
             or stronger, since analyzing a transcript benefits from strong
             reasoning. Configure via
             ``phase_configs='{"retrospective":{"model":"claude-sonnet-4-7"}}'``.
+        sensitive_file_protection_enabled: When ``True`` (the default), the
+            per-job sensitive-file protections are active: harness-side
+            test-file / CI-file staging is blocked, the ``TestHidingAudit``
+            runs as part of ``validateChanges``, and no bypass trailer is
+            appended to the commit message. Set to ``False`` ONLY for an
+            operator-authorized job that legitimately needs to modify
+            protected files (e.g. a job that intentionally edits a base-branch
+            test or updates a policy validator). When ``False``, the controller
+            pre-signs a per-job HMAC bypass token using ``AR_AGENT_BYPASS_SECRET``;
+            the harness appends a ``Sensitive-File-Bypass`` trailer to the
+            commit message after stripping any agent-supplied instance, and CI
+            verifies the signature with the same secret. The agent cannot
+            forge or substitute the bypass because it does not have access to
+            the signing secret. This flag is operator-controlled at job
+            submission time and is NEVER settable by the agent itself.
         review_enabled: When ``True`` (the default), a second-pass review
             session runs after the primary phase. The reviewer is told to
             make surgical fixes only when unambiguous and to defer
@@ -1914,6 +1930,11 @@ def workstream_submit_task(
         payload["enforceOrganizationalPlacement"] = True
     if retrospective_enabled:
         payload["retrospectiveEnabled"] = True
+    # sensitiveFileProtectionEnabled defaults to TRUE; forward only when the
+    # operator has explicitly disabled it. Mirrors the inverted semantics of
+    # the other activation booleans (which default to false and forward on true).
+    if not sensitive_file_protection_enabled:
+        payload["sensitiveFileProtectionEnabled"] = False
     if not review_enabled:
         payload["reviewEnabled"] = False
     if max_review_passes > 0:

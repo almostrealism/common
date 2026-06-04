@@ -238,7 +238,13 @@ class GitCommitHandler implements ConsoleFeatures {
         FileStagingConfig config = FileStagingConfig.builder()
                 .excludedPatterns(job.getAllExcludedPatterns())
                 .protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
-                .protectTestFiles(job.isProtectTestFiles())
+                // The harness-side test-file staging guardrail is gated on
+                // BOTH the legacy protectTestFiles flag AND the new
+                // sensitiveFileProtectionEnabled flag. Either one being off
+                // disables the guardrail — they are ANDed, not ORed, so a
+                // default-default job (both true) gets the full protection.
+                .protectTestFiles(job.isProtectTestFiles()
+                        && isSensitiveFileProtectionEnabled(job))
                 .baseBranch(job.getBaseBranch())
                 .maxFileSizeBytes(job.getMaxFileSizeBytes())
                 .build();
@@ -286,6 +292,31 @@ class GitCommitHandler implements ConsoleFeatures {
      */
     private void commit() throws IOException, InterruptedException {
         String message = job.getCommitMessage();
+
+        // Apply the controller-signed sensitive-file bypass trailer when the
+        // job has the protection disabled. The strip-then-replace order is
+        // what prevents the agent from forging a bypass: any
+        // agent-supplied "Sensitive-File-Bypass:" line in commit.txt is
+        // removed first, then the controller-signed trailer (bound to the
+        // job ID) is appended. See SensitiveFileBypassTrailer javadoc for
+        // the full threat model.
+        String bypassSignature = null;
+        String bypassJobId = null;
+        if (job instanceof CodingAgentJob caj) {
+            if (!caj.isSensitiveFileProtectionEnabled()) {
+                bypassSignature = caj.getSensitiveFileBypassSignature();
+                bypassJobId = caj.getTaskId();
+                if (bypassSignature != null && !bypassSignature.isEmpty()) {
+                    log("Appending controller-signed Sensitive-File-Bypass trailer"
+                            + " (jobId=" + bypassJobId + ")");
+                } else {
+                    log("Sensitive-file protection disabled but no bypass signature"
+                            + " present on the job; commit will be blocked by CI");
+                }
+            }
+        }
+        message = SensitiveFileBypassTrailer.applyToMessage(
+                message, bypassJobId, bypassSignature);
 
         if (job.isDryRun()) {
             log("DRY RUN: Would commit with message: " + message);
@@ -491,5 +522,22 @@ class GitCommitHandler implements ConsoleFeatures {
             return "GitCommitHandler [" + taskId + "]: " + msg;
         }
         return "GitCommitHandler: " + msg;
+    }
+
+    /**
+     * Returns whether the broader per-job sensitive-file protections are
+     * active. {@link CodingAgentJob} (the only job type that runs an
+     * agent) implements the flag explicitly; for any other job type we
+     * conservatively assume the protection is enabled so that the
+     * harness-side guardrails remain on by default.
+     *
+     * @param job the job whose protection state is being queried
+     * @return {@code true} when the protection is active
+     */
+    private static boolean isSensitiveFileProtectionEnabled(GitManagedJob job) {
+        if (job instanceof CodingAgentJob caj) {
+            return caj.isSensitiveFileProtectionEnabled();
+        }
+        return true;
     }
 }
