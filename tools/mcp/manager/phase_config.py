@@ -35,6 +35,7 @@ _KNOWN_PHASE_WIRE_NAMES = (
     "post-completion",
     "commit-message",
     "git-tampering-restart",
+    "retrospective",
 )
 
 # Runner identifiers mirrored from io.flowtree.jobs.agent.AgentRunnerRegistry.
