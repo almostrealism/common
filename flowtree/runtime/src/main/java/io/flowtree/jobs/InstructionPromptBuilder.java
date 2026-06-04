@@ -777,7 +777,7 @@ public class InstructionPromptBuilder {
 
         sb.append("5. **Parallelize independent work.** Run independent operations ");
         sb.append("concurrently -- independent test files, installs, validations -- using ");
-        sb.append("background bash (`run_in_background`) or `&` / `wait`. Long installs ");
+        sb.append("background bash (`&` / `wait`). Long installs ");
         sb.append("should run in the background so a reasoning pause doesn't risk an ");
         sb.append("inactivity timeout.\n\n");
 
