@@ -710,6 +710,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (extractJsonHasField(body, "enforceOrganizationalPlacement"))
             factory.setEnforceOrganizationalPlacement(
                     extractJsonBooleanField(body, "enforceOrganizationalPlacement"));
+        // Retrospective phase — disabled by default; opt in explicitly
+        if (extractJsonHasField(body, "retrospectiveEnabled"))
+            factory.setRetrospectiveEnabled(
+                    extractJsonBooleanField(body, "retrospectiveEnabled"));
         if (extractJsonHasField(body, "reviewEnabled"))
             factory.setReviewEnabled(extractJsonBooleanField(body, "reviewEnabled"));
         int maxReviewPasses = extractJsonIntField(body, "maxReviewPasses");
@@ -821,6 +825,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         json.append(",\"deduplicationEnabled\":").append(dedupEnabled);
         json.append(",\"organizationalPlacementEnabled\":")
                 .append(factory.isEnforceOrganizationalPlacement());
+        json.append(",\"retrospectiveEnabled\":")
+                .append(factory.isRetrospectiveEnabled());
         json.append("}");
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", json.toString());

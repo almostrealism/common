@@ -26,6 +26,8 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
+import io.almostrealism.concurrent.Semaphore;
+import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lifecycle.Destroyable;
@@ -617,6 +619,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * @see <a href="docs/internals/operationlist-optimization-flags.md">Detailed Documentation</a>
 	 */
 	public static boolean enableSegmenting = false;
+
 
 	/**
 	 * Enable non-uniform compilation where operations with different counts can be compiled
@@ -1372,16 +1375,51 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					Hardware.getLocalHardware().getComputer().pushRequirements(requirements);
 				}
 
-				if (timingListener == null) {
-					for (int i = 0; i < run.size(); i++) {
-						run.get(i).run();
+				Semaphore pending = null;
+
+				for (int i = 0; i < run.size(); i++) {
+					Runnable r = run.get(i);
+
+					if (r instanceof Submittable) {
+						// Issue the dispatch without waiting; carry its completion forward so a
+						// single wait at the end (or before the next non-submittable member) covers
+						// the whole group. Members are issued in order (the dispatch is issued before
+						// submit() returns, see AcceleratedOperation.submit), so the provider keeps
+						// them in order — a synchronous provider runs each before the next is issued,
+						// while Metal encodes them into one command buffer where issue order and
+						// hazard tracking serialize any real read-after-write dependency. No artificial
+						// dependency is threaded between members (that would force a provider to treat
+						// independent dispatches as dependent and defeat batching).
+						Submittable s = (Submittable) r;
+
+						if (timingListener == null) {
+							pending = s.submit(null);
+						} else {
+							if (enableRunLogging) log("Running " + OperationInfo.display(r));
+							Semaphore[] completion = { null };
+							timingListener.recordDuration(getMetadata(),
+									() -> completion[0] = s.submit(null));
+							pending = completion[0];
+						}
+					} else {
+						// Non-submittable member: complete any outstanding group first to preserve
+						// sequential ordering, then run synchronously.
+						if (pending != null) {
+							pending.waitFor();
+							pending = null;
+						}
+
+						if (timingListener == null) {
+							r.run();
+						} else {
+							if (enableRunLogging) log("Running " + OperationInfo.display(r));
+							timingListener.recordDuration(getMetadata(), r);
+						}
 					}
-				} else {
-					for (int i = 0; i < run.size(); i++) {
-						if (enableRunLogging)
-							log("Running " + OperationInfo.display(run.get(i)));
-						timingListener.recordDuration(getMetadata(), run.get(i));
-					}
+				}
+
+				if (pending != null) {
+					pending.waitFor();
 				}
 			} finally {
 				if (requirements != null) {

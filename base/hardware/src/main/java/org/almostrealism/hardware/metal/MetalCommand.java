@@ -17,28 +17,27 @@
 package org.almostrealism.hardware.metal;
 
 /**
- * Functional interface for executing Metal compute commands.
+ * Functional interface for encoding a Metal compute command into a command buffer.
  *
- * <p>Provides access to pre-allocated offset/size buffers and the Metal command queue
- * for encoding and submitting GPU work.</p>
+ * <p>Implementations <em>encode only</em> — they create a {@link MTLComputeCommandEncoder}
+ * on the supplied {@link MTLCommandBuffer}, set the pipeline/buffers, dispatch, and
+ * {@code endEncoding()}. They must <strong>not</strong> commit or wait: the
+ * {@link MetalCommandRunner} owns the command buffer lifecycle so that many commands can be
+ * batched into a single buffer (one encoder each, so Metal's cross-encoder hazard tracking
+ * orders dependent kernels) and committed once.</p>
  *
  * <h2>Typical Usage</h2>
  *
  * <pre>{@code
- * MetalCommand cmd = (offset, size, queue) -> {
- *     MTLCommandBuffer cmdBuf = queue.commandBuffer();
+ * MetalCommand cmd = cmdBuf -> {
  *     MTLComputeCommandEncoder encoder = cmdBuf.encoder();
- *
- *     // Set pipeline, buffers, and dispatch
  *     encoder.setComputePipelineState(kernel);
  *     encoder.setBuffer(0, dataBuffer);
- *     encoder.setBuffer(1, offset);  // Pre-allocated
- *     encoder.setBuffer(2, size);    // Pre-allocated
+ *     encoder.setBytes(1, offsets);  // inline, captured at encode time
+ *     encoder.setBytes(2, sizes);    // inline, captured at encode time
  *     encoder.dispatchThreads(...);
- *
  *     encoder.endEncoding();
- *     cmdBuf.commit();
- *     cmdBuf.waitUntilCompleted();
+ *     // No commit / waitUntilCompleted here — the runner commits the (possibly batched) buffer.
  * };
  * }</pre>
  *
@@ -48,14 +47,12 @@ package org.almostrealism.hardware.metal;
 @FunctionalInterface
 public interface MetalCommand {
 	/**
-	 * Executes this Metal compute command using the provided pre-allocated buffers and queue.
+	 * Encodes this Metal compute command into the supplied command buffer. Per-dispatch scalar
+	 * arguments (offsets, sizes) are bound inline via
+	 * {@link MTLComputeCommandEncoder#setBytes(int, int[])} so that batched commands do not share
+	 * mutable argument buffers.
 	 *
-	 * <p>Implementations should encode all GPU work into a command buffer obtained from
-	 * {@code queue}, then commit and wait for completion.</p>
-	 *
-	 * @param offset Pre-allocated integer buffer containing per-argument byte offsets
-	 * @param size Pre-allocated integer buffer containing per-argument element counts
-	 * @param queue The Metal command queue for obtaining command buffers
+	 * @param cmdBuf The command buffer to encode into (committed later by the runner)
 	 */
-	void run(MTLBuffer offset, MTLBuffer size, MTLCommandQueue queue);
+	void encode(MTLCommandBuffer cmdBuf);
 }

@@ -39,6 +39,18 @@ above this layer depends on it; nothing here depends on higher layers.
 - Never return null from `getValueAt()` in any Process implementation
 - Only `IsolatedProcess` should break expression embedding
 
+## Native handles are typed — using JNI is not a license to drop the type system
+
+A native object (an `id<MTLBuffer>`, an `MTLSharedEvent`, a `cl_event`, a device pointer, …) is
+represented by a **Java object** of a type that means that thing — e.g. `MTLBuffer`, `MTLEvent`,
+`MTLCommandBuffer`, `CLSemaphore`. The raw `long`/`int` native pointer lives **only** inside the
+thin JNI binding class (`MTL`, `CL`) as the argument/return type of the `native` methods; it does
+**not** leak into any higher-level code. Never carry native objects around as bare `long`s, never
+key collections on them (`Set<Long>`, `Map<Long, …>`), and never compare or store native addresses
+outside the wrapper. If you need identity or bookkeeping for a native object, hold the wrapper
+object and use it. The fact that a value crosses JNI does not make it acceptable to stop caring
+about its type.
+
 ## Modules
 
 - [meta](meta/README.md) — Foundational interfaces for naming, identity, lifecycle, no dependencies
