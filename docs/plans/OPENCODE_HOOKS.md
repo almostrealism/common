@@ -1,8 +1,9 @@
 # OpenCode Hooks — Study, Plan, and Proof of Concept
 
-**Status:** study + plan + one proof-of-concept implementation
+**Status:** study + plan + PoC + Class A migration (4 of 18 hooks done)
 **Branch:** `feature/opencode-hooks`
-**Author:** coding agent session 9a40614a
+**Author:** coding agent session 9a40614a (initial), follow-up sessions
+(see §7 Changelog)
 
 ---
 
@@ -394,12 +395,29 @@ fundamentally different event model):**
 
 In order, easy → hard, and only after the PoC is in:
 
-1. **PoC (this job):** `block-mvn-test-direct.sh` refactored to a shared
-   core + opencode plugin. See §5.
-2. **Class A migration (one commit, three hooks):**
-   `block-git-commit.ts`, `block-git-worktree.ts`, `warn-git-log.ts`. All
-   three can share a common `command-pattern-block.ts` helper that takes
-   a regex and a message — basically a 1-page templating exercise.
+1. **PoC** — `block-mvn-test-direct.sh` refactored to a shared core +
+   opencode plugin. See §5. **Status: COMPLETED 2026-06-04.** The PoC
+   was originally committed in `1b1c9b009` (2026-06-03) but the shared
+   core was missing from disk; this step was finished in a follow-up
+   commit that created `.claude/hooks/lib/mvn_test_check.py` and
+   `.claude/hooks/lib/test_mvn_test_check.py`, refactored the .sh
+   adapter to a thin wrapper, and applied the deferred performance
+   fix to the .ts adapter (module-level `Map<callID, Decision>` cache
+   to halve python3 subprocess spawns on the warn path).
+2. **Class A migration (one commit, three hooks)** —
+   `block-git-commit.ts`, `block-git-worktree.ts`, `warn-git-log.ts`.
+   **Status: COMPLETED 2026-06-04.** The three hooks share a single
+   Python core (`.claude/hooks/lib/git_command_check.py`) and a single
+   TypeScript helper (`.opencode/plugins/_lib/command_pattern.ts`).
+   The helper is a `makeCommandPatternPlugin(policy)` factory; each
+   .ts plugin is a one-liner that calls it with the policy name. The
+   helper also implements the deferred `Map<callID, Decision>` cache
+   (namespaced by policy) so the warn path runs the python3 core once
+   per call, not twice. The three .sh adapters are thin wrappers that
+   pipe the harness stdin JSON into `git_command_check.py --stdin
+   <policy>`. 26 unit tests on the core; 3 smoke tests + 3 TS tests
+   on the adapters; bit-for-bit equivalence with the original .sh
+   patterns verified on a sample of 27 commands.
 3. **File-inspection hooks:** `scan-producer-violations.ts`,
    `warn-assertion-free-test.ts`, `warn-defensive-guard.ts`,
    `file-length-advisory.ts`. All read a just-written/read file. The
@@ -650,6 +668,29 @@ for the PoC. Captured here so they don't get lost.
 ---
 
 ## 7. Changelog
+
+- 2026-06-04: Class A migration landed. Added
+  `.claude/hooks/lib/git_command_check.py` (shared core for the three
+  Class A policies), 26 unit tests, and a `.opencode/plugins/_lib/command_pattern.ts`
+  helper that exposes `makeCommandPatternPlugin(policy)` and implements
+  the deferred `Map<callID, Decision>` cache (namespaced by policy).
+  Refactored `.claude/hooks/block-git-commit.sh`,
+  `.claude/hooks/block-git-worktree.sh`, and `.claude/hooks/warn-git-log.sh`
+  to thin shell wrappers that call the core. Added
+  `.opencode/plugins/block-git-commit.ts`,
+  `.opencode/plugins/block-git-worktree.ts`, and
+  `.opencode/plugins/warn-git-log.ts` (each a one-liner calling
+  `makeCommandPatternPlugin(<policy>)`), with smoke tests and TS
+  tests. Registered the three new plugins in `.opencode/opencode.json`.
+  All shell behavior preserved bit-for-bit (verified by 27-case
+  comparison against the original .sh patterns). Also in this change:
+  finished the in-progress PoC by creating
+  `.claude/hooks/lib/mvn_test_check.py` (the file was missing from
+  disk; the opencode .ts plugin was effectively a no-op until now),
+  refactored the .sh adapter, applied the deferred callID cache to
+  the .ts adapter, and fixed a syntax error in the existing
+  `block-mvn-test-direct.test.ts` (a `??` after `||` without
+  parentheses that broke `npx tsx`).
 
 - 2026-06-03: Initial version (this document). Created alongside the
   PoC commit on `feature/opencode-hooks`.

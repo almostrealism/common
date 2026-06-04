@@ -48,5 +48,10 @@
       }
     }
   },
-  "plugin": ["./plugins/block-mvn-test-direct.ts"]
+  "plugin": [
+    "./plugins/block-mvn-test-direct.ts",
+    "./plugins/block-git-commit.ts",
+    "./plugins/block-git-worktree.ts",
+    "./plugins/warn-git-log.ts"
+  ]
 }

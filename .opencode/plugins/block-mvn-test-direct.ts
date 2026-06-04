@@ -11,6 +11,16 @@
 // opencode-native mechanism (throw to block, mutate output.output to
 // inject context).
 //
+// Performance: the .before and .after handlers run for the same call
+// share a module-level Map<callID, Decision> cache. The .before handler
+// populates the cache; the .after handler consumes-and-deletes it.
+// This halves the per-call python3 subprocess count from 2 to 1 (a
+// cold Python interpreter is 50–100ms, so this is ~50–100ms saved per
+// Bash tool call when the warn path is hit). On any cache miss
+// (e.g. .after ran without a matching .before, which can happen if
+// .before's throw was somehow swallowed), the .after falls back to
+// running the core again — fail-safe.
+//
 // See docs/plans/OPENCODE_HOOKS.md for the architecture.
 
 import type { Plugin } from "@opencode-ai/plugin"
@@ -38,6 +48,19 @@ interface Decision {
   stderr: string
 }
 
+// Module-level callID → Decision cache. Populated in tool.execute.before,
+// consumed-and-deleted in tool.execute.after for the same callID. This
+// avoids a second python3 subprocess spawn for the warn path, where
+// .before and .after both need the Decision. The cache key (callID) is
+// unique per opencode tool invocation, so there's no cross-contamination
+// risk between concurrent tool calls.
+//
+// Why module-level (not closure-scoped): a closure would be a per-plugin-
+// instance variable; module-level ensures all .before/.after pairs for
+// the same Plugin object share the same Map. The plugin is loaded once
+// at startup.
+const decisionCache = new Map<string, Decision>()
+
 /**
  * Call the shared core. Returns a Decision object. On any internal
  * error (Python missing, core crashed, bad JSON), returns an "allow"
@@ -50,19 +73,16 @@ function callCore(command: string): Decision {
   })
 
   if (result.error) {
-    logDecision({ action: "allow", reason: "", context: "", stderr: `core spawn failed: ${result.error.message}` })
-    return { action: "allow", reason: "", context: "", stderr: "" }
+    return { action: "allow", reason: "", context: "", stderr: `core spawn failed: ${result.error.message}` }
   }
   if (result.status !== 0) {
-    logDecision({ action: "allow", reason: "", context: "", stderr: `core exited ${result.status}: ${result.stderr}` })
-    return { action: "allow", reason: "", context: "", stderr: "" }
+    return { action: "allow", reason: "", context: "", stderr: `core exited ${result.status}: ${result.stderr}` }
   }
 
   try {
     return JSON.parse(result.stdout) as Decision
   } catch (e) {
-    logDecision({ action: "allow", reason: "", context: "", stderr: `core returned non-JSON: ${String(e)}` })
-    return { action: "allow", reason: "", context: "", stderr: "" }
+    return { action: "allow", reason: "", context: "", stderr: `core returned non-JSON: ${String(e)}` }
   }
 }
 
@@ -100,35 +120,56 @@ export const BlockMvnTestDirectPlugin: Plugin = async () => {
       if (!command) return
 
       const decision = callCore(command)
+      // Populate the cache so .after for the same callID can re-use
+      // the Decision without a second subprocess spawn. We delete any
+      // stale entry first (callID reuse is rare but possible if
+      // opencode re-issues an ID after a long delay).
+      decisionCache.set(input.callID, decision)
       logDecision(decision)
 
       if (decision.action === "block") {
         // opencode's plugin runner propagates thrown errors as the
         // tool's failure message — which is what the model sees as
         // the block reason. This matches Claude Code's "exit 2 with
-        // the reason on stderr" semantics.
+        // the reason on stderr" semantics. We delete the cache entry
+        // here because .after will not run for a tool that threw in
+        // .before.
+        decisionCache.delete(input.callID)
         throw new Error(decision.reason || decision.stderr)
       }
       // "warn" is deferred to the .after hook: the model should see
       // the warning alongside (not before) the (presumably empty)
-      // tool output.
+      // tool output. The Decision is already in the cache.
     },
 
-    // TODO(review): callCore is called in both .before and .after; cache by
-    // callID in a module-level Map to halve python3 subprocess cost per call.
     "tool.execute.after": async (input, output) => {
       if (input.tool !== "bash") return
 
+      const cached = decisionCache.get(input.callID)
+      if (cached !== undefined) {
+        // Fast path: .before ran for this callID and we have its
+        // Decision cached. Consume-and-delete so the Map doesn't
+        // grow without bound.
+        decisionCache.delete(input.callID)
+        if (cached.action === "warn") {
+          const note = cached.context || cached.stderr
+          if (note) {
+            output.output = `${output.output}\n\n[ar-hooks] ${note}`
+          }
+        }
+        return
+      }
+
+      // Slow path: no cache entry. This can happen if the plugin
+      // was reloaded mid-call, or if .before's throw was swallowed
+      // by some external handler. Re-run the core to stay correct.
+      // (We do NOT throw on cache miss — that would block legitimate
+      // work on a transient plugin-state issue.)
       const command = extractBashCommand(input.args)
       if (!command) return
 
       const decision = callCore(command)
-
       if (decision.action === "warn") {
-        // Append the warning to the tool's output so the model sees
-        // it on its next turn. This matches Claude Code's
-        // `additionalContext` semantics: the harness surfaces the
-        // appended text to the model as a follow-up message.
         const note = decision.context || decision.stderr
         if (note) {
           output.output = `${output.output}\n\n[ar-hooks] ${note}`
