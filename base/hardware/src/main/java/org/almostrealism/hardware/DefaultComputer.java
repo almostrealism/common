@@ -21,6 +21,7 @@ import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Computer;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.Process;
+import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -31,6 +32,7 @@ import org.almostrealism.hardware.instructions.ScopeSignatureExecutionKey;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.Collections;
 import java.util.List;
@@ -421,6 +423,17 @@ import java.util.function.Supplier;
  * @author  Michael Murray
  */
 public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
+	/**
+	 * When enabled, {@link #getContext(Computation)} logs the compute-target decision for every
+	 * computation — its count/parallelism, the active {@link ComputeRequirement}s, the available
+	 * contexts, and the chosen one — so the platform's per-operation provider selection can be
+	 * inspected (e.g. on CI). TEMPORARY DIAGNOSTIC: defaults to OFF so it stays dormant on master;
+	 * enable with {@code AR_LOG_COMPUTE_TARGETING=enabled} when investigating a routing question
+	 * (e.g. the FourierTransform shared-JVM routing regression). Remove once that is diagnosed.
+	 */
+	public static boolean enableTargetingLog =
+			SystemUtils.isEnabled("AR_LOG_COMPUTE_TARGETING").orElse(false);
+
 	/** The hardware instance this computer is associated with. */
 	private Hardware hardware;
 
@@ -464,23 +477,42 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		boolean fixed = Countable.isFixedCount(c);
 		boolean sequential = fixed && count == 1;
 		boolean accelerator = !fixed || count > 128;
+		List<ComputeRequirement> active = getActiveRequirements();
 		List<ComputeContext<MemoryData>> contexts = hardware
 				.getComputeContexts(sequential, accelerator,
-					getActiveRequirements().toArray(ComputeRequirement[]::new));
+					active.toArray(ComputeRequirement[]::new));
 		if (contexts.isEmpty()) throw new RuntimeException("No compute contexts available");
-		if (contexts.size() == 1) return contexts.get(0);
 
-		if (!fixed || count > 1) {
-			return contexts.stream()
+		ComputeContext<MemoryData> chosen;
+
+		if (contexts.size() == 1) {
+			chosen = contexts.get(0);
+		} else if (!fixed || count > 1) {
+			chosen = contexts.stream()
 					.filter(cc -> !cc.isCPU())
 					.findFirst()
 					.orElse(contexts.get(0));
 		} else {
-			return contexts.stream()
+			chosen = contexts.stream()
 					.filter(cc -> cc.isCPU())
 					.findFirst()
 					.orElse(contexts.get(0));
 		}
+
+		if (enableTargetingLog) {
+			StringBuilder avail = new StringBuilder();
+			for (ComputeContext<MemoryData> cc : contexts) {
+				if (avail.length() > 0) avail.append(",");
+				avail.append(cc.getClass().getSimpleName()).append(cc.isCPU() ? "[cpu]" : "[gpu]");
+			}
+
+			log("computeTarget " + OperationInfo.name(c) + " count=" + count + " fixed=" + fixed
+					+ " sequential=" + sequential + " accelerator=" + accelerator
+					+ " requirements=" + active + " available=[" + avail + "]"
+					+ " -> " + chosen.getClass().getSimpleName() + (chosen.isCPU() ? "[cpu]" : "[gpu]"));
+		}
+
+		return chosen;
 	}
 
 	/**

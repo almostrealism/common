@@ -71,11 +71,44 @@ public class MTLCommandBuffer extends MTLObject {
 	}
 
 	/**
+	 * Releases the explicit retain taken when this command buffer was created (see
+	 * {@link MTL#commandBuffer(long)}). Call once the buffer has completed and is no longer
+	 * referenced, so it is freed rather than accumulating in the driver.
+	 */
+	@Override
+	public void release() {
+		MTL.releaseCommandBuffer(getNativePointer());
+		super.release();
+	}
+
+	/**
 	 * Blocks the calling thread until all GPU commands have completed.
 	 *
 	 * <p>Must be called after {@link #commit()}. Synchronizes CPU with GPU execution.</p>
 	 */
 	public void waitUntilCompleted() {
 		MTL.waitUntilCompleted(getNativePointer());
+	}
+
+	/**
+	 * Encodes a signal of {@code event} to {@code value} once this buffer's prior work
+	 * completes. Must be called when no encoder is active on this buffer.
+	 *
+	 * @param event The {@link MTLEvent} to signal
+	 * @param value The value to signal
+	 */
+	public void encodeSignalEvent(MTLEvent event, long value) {
+		MTL.encodeSignalEvent(getNativePointer(), event.getNativePointer(), value);
+	}
+
+	/**
+	 * Encodes a wait until {@code event} reaches {@code value} before this buffer's subsequent
+	 * work runs. Must be called when no encoder is active on this buffer.
+	 *
+	 * @param event The {@link MTLEvent} to wait on
+	 * @param value The value to wait for
+	 */
+	public void encodeWaitForEvent(MTLEvent event, long value) {
+		MTL.encodeWaitForEvent(getNativePointer(), event.getNativePointer(), value);
 	}
 }
