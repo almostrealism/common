@@ -3279,6 +3279,13 @@ def _resolve_branch_context(
 ) -> tuple[str, str, Optional[dict]]:
     """Resolve repo_url and branch from workstream_id if needed.
 
+    When neither ``workstream_id`` nor ``repo_url`` is supplied, falls back
+    to the workstream identified by the in-flight request's HMAC temp token
+    (see :func:`_get_token_workstream_id`). This lets job-scoped callers
+    (Claude Code / opencode agents) invoke branch-aware tools like
+    :func:`memory_store` with only the content payload — the workstream the
+    job is bound to is inferred from the bearer.
+
     Args:
         workstream_id: Workstream to look up repo/branch from.
         repo_url: Explicit repository URL.
@@ -3303,8 +3310,16 @@ def _resolve_branch_context(
         repo_url = repo_url or ws.get("repoUrl", "")
         branch = branch or ws.get("defaultBranch", "")
 
-    if not repo_url and not require_branch:
-        # Try to resolve repo from the token's workstream context
+    # Token-context fallback: when neither the workstream_id arg nor an
+    # explicit repo_url was provided, try the workstream bound to the
+    # in-flight request's HMAC temp token. This used to fire only for
+    # ``require_branch=False`` callers; extending it to the strict
+    # ``require_branch=True`` path means job-scoped tools like
+    # :func:`memory_store` can be called with just the content payload —
+    # the workstream the job runs on supplies the repo/branch automatically
+    # via the temp token's payload. Explicit ``workstream_id`` /
+    # ``repo_url`` arguments still win when provided (override path).
+    if not repo_url and not workstream_id:
         token_ws_id = _get_token_workstream_id()
         if token_ws_id:
             ws = _find_workstream(token_ws_id)
@@ -3321,12 +3336,17 @@ def _resolve_branch_context(
         if require_branch:
             next_steps = [
                 "Provide repo_url and branch directly, or",
-                "Provide workstream_id to resolve them from the workstream config",
+                "Provide workstream_id to resolve them from the workstream config, or",
+                "Call from a job session whose HMAC token resolves to a"
+                " registered workstream",
             ]
         else:
             next_steps = [
                 "Provide repo_url directly, or",
-                "Provide workstream_id to resolve the repo URL from the workstream config",
+                "Provide workstream_id to resolve the repo URL from the"
+                " workstream config, or",
+                "Call from a job session whose HMAC token resolves to a"
+                " registered workstream",
             ]
         return ("", "", {
             "ok": False,
@@ -3863,8 +3883,11 @@ def memory_store(
 ) -> dict:
     """Store a memory from an external client.
 
-    Either workstream_id or (repo_url + branch) is required to identify
-    the branch context for the memory.
+    Either ``workstream_id`` or (``repo_url`` + ``branch``) is required to
+    identify the branch context for the memory.  When neither is supplied,
+    the workstream bound to the in-flight request's HMAC temp token is
+    used — so a job-scoped agent call with only ``content`` succeeds and
+    stores the memory against the job's workstream branch automatically.
 
     Args:
         content: The text content to store.
@@ -3945,12 +3968,26 @@ def send_message(
     report status updates, results, or errors back to the user who
     initiated this task.
 
+    ``workstream_id`` and ``job_id`` are both optional. In a job session
+    (Claude Code or opencode launched by the controller) the in-flight
+    request's HMAC temp token already binds the call to a specific
+    workstream and job, and both are derived from the bearer
+    automatically — so a call with just ``{text, activity}`` posts to the
+    correct workstream thread. Explicit values, when supplied, override
+    the token-derived ones (the override path is preserved for
+    operator/admin callers that hold a static bearer with no
+    workstream binding).
+
     Args:
         text: The message text to send.
         workstream_id: Workstream to send the message to.  Defaults to
-            the workstream from the auth token when available.
+            the workstream resolved from the in-flight request's HMAC
+            temp token.  Only required when no resolvable token context
+            exists (e.g. a static-token admin call).
         job_id: Job to thread the message under.  Defaults to the job
-            from the auth token when available.
+            resolved from the in-flight request's HMAC temp token.  When
+            absent the message lands at the top of the workstream's
+            channel rather than inside a job thread.
         activity: Optional tag identifying the phase or activity this
             message belongs to (e.g. ``"deduplication"``,
             ``"organizational_placement"``,
@@ -4033,7 +4070,21 @@ def send_message(
             effective_activity or "")
 
     if not effective_ws:
-        return {"ok": False, "error": "workstream_id is required (pass explicitly or use a job token)"}
+        return {
+            "ok": False,
+            "error": (
+                "workstream_id could not be resolved. Pass workstream_id"
+                " explicitly, or call from a job session whose HMAC"
+                " temp token resolves to a registered workstream."
+            ),
+            "next_steps": [
+                "Use workstream_list to find the workstream ID and pass"
+                " workstream_id=<id>",
+                "If calling from a job session, verify the bearer token"
+                " is an armt_tmp_ HMAC token (a static admin bearer"
+                " carries no workstream binding)",
+            ],
+        }
 
     if effective_activity:
         err = _check_length(effective_activity, "activity", MAX_SHORT_STRING_LEN)
