@@ -333,6 +333,13 @@ final class OpencodeConfigBuilder {
      * for stdio servers. The exact field names are evolving; the translation
      * is isolated here so it can be adjusted in one place.</p>
      *
+     * <p>Remote entries that carry an {@code Authorization} header are emitted
+     * with {@code oauth: false} so opencode's MCP client does not attach an
+     * {@code McpOAuthProvider} and trigger Dynamic Client Registration on the
+     * first 401 — see the inline comment in this method for the bug this
+     * prevents (silent {@code send_message} failures in opencode primary
+     * phases).</p>
+     *
      * @param mcpConfigJson the orchestrator-built JSON (may be null/empty)
      * @return an object node ready to embed under the top-level {@code mcp} key;
      *         empty when no servers were declared
@@ -366,6 +373,28 @@ final class OpencodeConfigBuilder {
                 JsonNode headers = spec.get("headers");
                 if (headers != null && headers.isObject()) {
                     dst.set("headers", headers.deepCopy());
+                    // When the orchestrator pre-supplies an Authorization
+                    // header (as ar-manager does with its HMAC temp token),
+                    // disable opencode's OAuth auto-discovery for this
+                    // entry. Without ``oauth: false`` opencode attaches an
+                    // McpOAuthProvider to the transport, sees ar-manager's
+                    // 401 ``WWW-Authenticate: Bearer ...`` advertising the
+                    // RFC 9728 protected-resource metadata, and initiates a
+                    // DCR/OAuth flow that ar-manager does not host. The
+                    // pre-supplied bearer is then never sent on tool calls,
+                    // ``_decode_current_request_token_full`` returns
+                    // ``no_auth_header``/``non_bearer_scheme``, and the
+                    // first ``send_message`` call fails with
+                    // ``workstream_id is required (pass explicitly or use a
+                    // job token)``. Disabling OAuth here forces opencode to
+                    // use the static bearer verbatim — matching Claude
+                    // Code's behaviour for the same MCP config and giving
+                    // ``send_message`` the temp token it needs to resolve
+                    // the workstream/job context automatically.
+                    if (headers.has("Authorization")
+                            || headers.has("authorization")) {
+                        dst.put("oauth", false);
+                    }
                 }
             } else {
                 dst.put("type", "local");
