@@ -1239,8 +1239,14 @@ jobs:
           args: "-i,.,--linter,jetbrains/qodana-jvm"
           pr-mode: false
 
+      # Uploading the Qodana SARIF to GitHub code scanning is best-effort: the
+      # report regularly exceeds code scanning's 25,000-results-per-run limit and
+      # is rejected, and the merge-commit ref it resolves is not always present.
+      # Neither failure should fail the analysis job, so this step is allowed to
+      # fail. Pinned to the CodeQL Action v4 (v3 is deprecated as of Dec 2026).
       - name: Github Scan
-        uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ${{ runner.temp }}/qodana/results/qodana.sarif.json
 
