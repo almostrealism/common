@@ -164,13 +164,13 @@ class TestRunner:
             missing = preflight.find_missing_upstream_artifacts(
                 PROJECT_ROOT, module)
         except Exception as exc:  # noqa: BLE001
-            # TODO(review): Inspection failures short-circuit the run (action="failed") which
-            # mirrors seed failures, but the find_missing_upstream_artifacts function already
-            # returns [] on all expected filesystem errors — so this branch only fires on
-            # truly unexpected exceptions. Consider whether those should fall through (attempt
-            # the test anyway) rather than hard-fail the entire run.
+            # Inspection failures short-circuit the run (action="failed"), mirroring seed failures.
+            # find_missing_upstream_artifacts already returns [] on expected filesystem errors, so this
+            # branch should only fire on truly unexpected exceptions.
+            # If that behavior is undesirable, consider letting the test invocation proceed instead.
             result = preflight.PreflightResult(
                 action="failed",
+                exit_code=1,
                 reason=f"preflight inspection failed: {exc}",
             )
             self._write_preflight_section(
