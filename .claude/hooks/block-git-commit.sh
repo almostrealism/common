@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
 # PreToolUse — Bash: block git commit.
 # Agents stage with git add; humans commit.
+#
+# This is a thin shell wrapper. The decision logic lives in
+# .claude/hooks/lib/git_command_check.py — the single source of
+# truth for this policy across both Claude Code (this script) and
+# opencode (.opencode/plugins/block-git-commit.ts).
+#
+# Behavior preserved bit-for-bit vs. the previous inline-grep version:
+#   - exit 2 with "BLOCKED: git commit is not permitted for agents..."
+#     on stderr on a `git commit ...` invocation
+#   - exit 0 (no output) on anything else
+#
+# Why exec: the wrapper has no business doing anything but forwarding
+# the harness's stdin JSON to the core. exec replaces the shell so
+# there is no extra process layer between the harness and Python.
 set -euo pipefail
-
-INPUT=$(cat)
-COMMAND=$(echo "$INPUT" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-print(data.get('tool_input', {}).get('command', ''))
-" 2>/dev/null || echo "")
-
-if echo "$COMMAND" | grep -qE 'git(\s+--[a-z-]+)*\s+commit'; then
-    echo "BLOCKED: git commit is not permitted for agents." >&2
-    echo "Stage changes with 'git add' only. The developer reviews and commits." >&2
-    echo "This rule exists to prevent unauthorized commits. See CLAUDE.md." >&2
-    exit 2
-fi
-
-exit 0
+exec python3 "$(cd "$(dirname "$0")" && pwd)/lib/git_command_check.py" --stdin block-git-commit
