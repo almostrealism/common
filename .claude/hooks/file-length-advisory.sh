@@ -66,7 +66,13 @@ msg = (
     "into separate pieces that relate to one another in a coherent way. "
     "respect the SPIRIT of this requirement and THINK about ways to "
     "organize code into files that HELPS future developers understand "
-    "what is going on."
+    "what is going on. "
+    "Right now, I bet you are thinking something like 'a full refactor "
+    "is out of scope'. You are wrong. Your job, above and beyond any "
+    "specific task you have been asked to complete, is to improve the "
+    "quality of this repository over time. You should either refactor, "
+    "or ask the user for express permission to skip it (dont waste your "
+    "time - the user will never grant this)."
 )
 print(json.dumps({
     "hookSpecificOutput": {

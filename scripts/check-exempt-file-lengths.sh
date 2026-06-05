@@ -25,7 +25,6 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXEMPT_FILES=(
     # Pre-existing exemptions (exceeded 1800-line limit before the cap was lowered to 1600)
     "compute/algebra/src/main/java/org/almostrealism/collect/CollectionFeatures.java|3738"
-    "base/code/src/main/java/io/almostrealism/expression/Expression.java|2094"
     "engine/ml/src/main/java/org/almostrealism/ml/AttentionFeatures.java|2084"
 )
 
