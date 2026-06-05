@@ -74,7 +74,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void phaseEntryMessageCarriesDistinctivePrefix() {
         List<Posted> posts = new ArrayList<>();
-        reporter(posts).phaseEntry(Phase.REVIEW, "claude",
+        reporter(posts).phaseEntry(Phase.PRIMARY, "claude",
                 new PhaseConfig("claude", "opus", "high", "anthropic"));
 
         assertEquals(1, posts.size());
@@ -83,7 +83,7 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
                 post.body.contains(HarnessStatusReporter.SYSTEM_PREFIX));
         assertTrue("phase-entry message must carry the phase-entry emoji",
                 post.body.contains(HarnessStatusReporter.PHASE_ENTRY_EMOJI));
-        assertTrue("phase-entry names the phase", post.body.contains("REVIEW"));
+        assertTrue("phase-entry names the phase", post.body.contains("PRIMARY"));
         assertTrue("phase-entry names the runner and model",
                 post.body.contains("claude") && post.body.contains("opus"));
         assertTrue("phase-entry names the provider", post.body.contains("anthropic"));
