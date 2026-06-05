@@ -1539,7 +1539,19 @@ blocks for which feedback would cause infinite regress."
    `feedback()` surface with a multi-frame echo (~300 ms) and writes
    `results/pdsl-audio-dsp/pdsl_feedback_comb_looped_sample.wav`. Output is all-finite,
    non-silent, and stable (peak ≈ 0.90 — the feedback decays rather than blowing up).
-3. **Next** — lift `feedback_comb` to the M×M mixdown grid by feeding it the
-   MixdownManager `createEfx` transmission gene (an `EfxManager`/`MixdownManager`
-   adapter producing the `[channels, channels]` matrix); `mself(input_level, T, P) =
-   scale(input_level)` then `feedback(T, …, P)`.
+3. **Landed (DSP)** — M×M grid via `feedback()`. `feedbackNetworkBlock`'s passthrough
+   matrix is validated numerically (`DelayNetworkBehaviorTest` `test11` scalar scaling,
+   `test12` cross-channel swap), and `MixdownManagerPdslVerificationTest
+   .pdslFeedbackGridLoopedSampleDemo` renders a 4-tap grid (prime multi-frame delays, a
+   scaled-Householder transmission matrix, spectral radius 0.7) on a real looped sample →
+   `pdsl_feedback_grid_looped_sample.wav`: all-finite, stable (peak 0.63), and
+   `couplingDiff` vs a diagonal-only matrix is large (≈5000), proving the off-diagonal
+   feedback routes energy across channels. So `createEfx`'s `.mself(fi(), transmission,
+   fc(wetOut))` is fully expressible as `route(tg) → feedback(delay, transmission,
+   wetOut·I) → sum_channels`.
+4. **Next (integration)** — wire the *live* `MixdownManager.createEfx` genes into this
+   path: an `EfxManager`/`MixdownManager` adapter that produces the `[channels, channels]`
+   transmission matrix from the `transmission` chromosome, the `[channels]` delay vector
+   from the `delay` chromosome, and the `wetOut` passthrough — plus the `route(tg)` input
+   fan-in. `mself(input_level, T, P) = scale(input_level)` then `feedback(T, …, P)`. This
+   is the production cutover step (§14), separate from the now-proven DSP construct.

@@ -17,6 +17,7 @@
 package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
@@ -142,6 +143,26 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 	 */
 	private Harness build(int channels, int signalSize, int bufSize,
 						  double[] tapDelays, double[] feedbackMatrixRowMajor) {
+		return build(channels, signalSize, bufSize, tapDelays, feedbackMatrixRowMajor, null);
+	}
+
+	/**
+	 * Builds a delay-network test harness, optionally with a passthrough matrix applied to the
+	 * emitted (delayed) output. A {@code null} passthrough means the delayed output is emitted
+	 * unchanged (the {@code delay_network} behaviour); a non-null passthrough exercises
+	 * {@link MultiChannelDspFeatures#feedbackNetworkBlock}'s output routing.
+	 *
+	 * @param channels                  number of channels
+	 * @param signalSize                signal size per channel
+	 * @param bufSize                   buffer size in samples
+	 * @param tapDelays                 per-channel tap delay values
+	 * @param feedbackMatrixRowMajor    row-major feedback matrix (channels x channels)
+	 * @param passthroughMatrixRowMajor row-major passthrough matrix (channels x channels), or null
+	 * @return configured test harness
+	 */
+	private Harness build(int channels, int signalSize, int bufSize,
+						  double[] tapDelays, double[] feedbackMatrixRowMajor,
+						  double[] passthroughMatrixRowMajor) {
 		Assert.assertEquals("delaySamples length must equal channels",
 				channels, tapDelays.length);
 		Assert.assertEquals("feedback matrix length must be channels*channels",
@@ -157,8 +178,18 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 		PackedCollection heads = new PackedCollection(channels);
 		heads.setMem(new double[channels]);
 
-		Block block = delayNetworkBlock(
-				cp(delays), cp(feedback), cp(buffer), cp(heads),
+		CollectionProducer passthrough = null;
+		if (passthroughMatrixRowMajor != null) {
+			Assert.assertEquals("passthrough matrix length must be channels*channels",
+					channels * channels, passthroughMatrixRowMajor.length);
+			PackedCollection pass = new PackedCollection(
+					new TraversalPolicy(channels, channels));
+			pass.setMem(passthroughMatrixRowMajor);
+			passthrough = cp(pass);
+		}
+
+		Block block = feedbackNetworkBlock(
+				cp(delays), cp(feedback), passthrough, cp(buffer), cp(heads),
 				channels, signalSize);
 		Model m = new Model(new TraversalPolicy(channels, signalSize));
 		m.add(block);
@@ -557,5 +588,79 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 				"at least one pass must observe a non-zero feedback echo; "
 						+ "max-observed=" + anyNonZeroEcho,
 				anyNonZeroEcho > EPS);
+	}
+
+	// =====================================================================
+	// Test 11 — passthrough matrix scales the emitted output only
+	// =====================================================================
+	/**
+	 * Single channel, feedback={@code [[0.5]]}. Runs the same impulse through two networks that
+	 * differ only in the passthrough matrix: identity ({@code null}) versus {@code [[2.0]]}. The
+	 * passthrough scales the emitted (delayed) output but NOT the signal written back to the ring,
+	 * so the {@code [[2.0]]} output must equal exactly twice the identity output at every sample
+	 * across many passes — proving the passthrough routes the output without altering the feedback
+	 * recurrence.
+	 */
+	@Test(timeout = 60000)
+	public void test11PassthroughScalesOutput() {
+		Harness identity = build(1, 4, 8, new double[]{2.0}, new double[]{0.5}, null);
+		Harness doubled = build(1, 4, 8, new double[]{2.0}, new double[]{0.5},
+				new double[]{2.0});
+
+		double[] impulse = new double[]{1.0, 0.0, 0.0, 0.0};
+		double[] silence = new double[]{0.0, 0.0, 0.0, 0.0};
+
+		double[] idOut = identity.forwardMulti(impulse);
+		double[] dblOut = doubled.forwardMulti(impulse);
+		for (int pass = 0; pass < 8; pass++) {
+			for (int i = 0; i < idOut.length; i++) {
+				Assert.assertEquals(
+						"passthrough [[2.0]] output must be 2x identity output at pass " + pass
+								+ " sample " + i,
+						2.0 * idOut[i], dblOut[i], EPS);
+			}
+			idOut = identity.forwardMulti(silence);
+			dblOut = doubled.forwardMulti(silence);
+		}
+	}
+
+	// =====================================================================
+	// Test 12 — passthrough matrix routes across channels
+	// =====================================================================
+	/**
+	 * Two channels, zero feedback. The passthrough swap matrix {@code [[0,1],[1,0]]} must route
+	 * channel 0's delayed output to output channel 1 and vice versa, so the swapped network's
+	 * per-channel output equals the identity network's output with the two channels exchanged.
+	 * This proves the passthrough matrix performs genuine cross-channel routing of the emitted
+	 * signal (the next-layer routing the mixdown grid's {@code mself} passthrough provides).
+	 */
+	@Test(timeout = 60000)
+	public void test12PassthroughRoutesCrossChannel() {
+		double[] zeroFb = zeroFeedback(2);
+		double[] swap = {0.0, 1.0, 1.0, 0.0};
+		Harness identity = build(2, 4, 8, new double[]{2.0, 2.0}, zeroFb, null);
+		Harness swapped = build(2, 4, 8, new double[]{2.0, 2.0}, zeroFb, swap);
+
+		// Distinct per-channel input so the swap is observable.
+		double[] in = {1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0};
+
+		double[] idOut = identity.forwardMulti(in);
+		double[] swOut = swapped.forwardMulti(in);
+		double[] silence = new double[8];
+		boolean observedDifference = false;
+		for (int pass = 0; pass < 6; pass++) {
+			for (int i = 0; i < 4; i++) {
+				// swapped channel 0 == identity channel 1; swapped channel 1 == identity channel 0
+				Assert.assertEquals("swap: out ch0[" + i + "] must equal identity ch1 at pass " + pass,
+						idOut[4 + i], swOut[i], EPS);
+				Assert.assertEquals("swap: out ch1[" + i + "] must equal identity ch0 at pass " + pass,
+						idOut[i], swOut[4 + i], EPS);
+				if (Math.abs(idOut[i] - idOut[4 + i]) > EPS) observedDifference = true;
+			}
+			idOut = identity.forwardMulti(silence);
+			swOut = swapped.forwardMulti(silence);
+		}
+		Assert.assertTrue("the two channels must differ at some point so the swap is meaningful",
+				observedDifference);
 	}
 }

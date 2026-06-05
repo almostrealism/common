@@ -153,6 +153,15 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	/** Feedback-comb output level ({@code passthrough[[wet]]}). */
 	private static final double COMB_WET_LEVEL = 1.0;
 
+	/** Channel count for the M×M feedback-grid demo (the cross-channel mixdown reverb structure). */
+	private static final int GRID_CHANNELS = 4;
+
+	/** Grid feedback gain; the scaled-Householder transmission matrix has spectral radius = this, so &lt; 1 is a stable decaying tail. */
+	private static final double GRID_FEEDBACK_GAIN = 0.7;
+
+	/** Grid output level (diagonal {@code passthrough}). */
+	private static final double GRID_WET_LEVEL = 0.5;
+
 	/** Automation manager of the most recently built fixture (see {@link #buildFixtureMixdown()}). */
 	private AutomationManager fixtureAutomation;
 
@@ -502,23 +511,132 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		File outputDir = new File("results/pdsl-audio-dsp");
 		outputDir.mkdirs();
 
-		int channels = 1;
-		int sig = DEMO_SIGNAL_SIZE;
-		int bufSize = COMB_BUFFER_FRAMES * sig;
+		IntToDoubleFunction looped = loopedSource();
+		double[] mono = renderFeedbackCombMono(1, DEMO_SIGNAL_SIZE, COMB_BUFFER_FRAMES,
+				new double[]{COMB_DELAY_SAMPLES}, new double[]{COMB_FEEDBACK_GAIN},
+				new double[]{COMB_WET_LEVEL}, looped, (int) (DEMO_SECONDS * SAMPLE_RATE));
 
+		File demoWav = new File(outputDir, "pdsl_feedback_comb_looped_sample.wav");
+		writeMonoWav(demoWav, mono);
+
+		int firstBad = firstNonFinite(mono);
+		double e = energy(mono, 0);
+		log(String.format("feedback comb demo: samples=%d firstNonFinite=%d energy=%.6f peak=%.6f wav=%s",
+				mono.length, firstBad, e, peakOf(mono), demoWav.getAbsolutePath()));
+
+		Assert.assertEquals("feedback comb produced a non-finite sample at index " + firstBad,
+				-1, firstBad);
+		Assert.assertTrue("demo WAV must be non-empty", demoWav.length() > 0);
+		Assert.assertTrue("feedback comb output must be non-silent (energy=" + e + ")", e > 1e-9);
+	}
+
+	/**
+	 * Sanity-listen demo for the M×M cross-channel feedback grid — the PDSL rendition of
+	 * MixdownManager.createEfx's {@code .mself(fi(), transmission, fc(wetOut))} reverb/transmission
+	 * grid. Runs {@link #GRID_CHANNELS} taps with prime-ish multi-frame delays and a scaled-
+	 * Householder transmission matrix (orthogonal → spectral radius {@link #GRID_FEEDBACK_GAIN},
+	 * so a guaranteed-stable decaying tail with full cross-channel mixing), summed to mono and
+	 * written to {@code results/pdsl-audio-dsp/pdsl_feedback_grid_looped_sample.wav}.
+	 *
+	 * <p>Beyond finite/non-silent/bounded, this asserts the cross-channel coupling is actually
+	 * doing something: the coupled grid's output must differ from a diagonal-only matrix of the
+	 * same per-tap self-gain (four independent combs). If the off-diagonal feedback were ignored
+	 * the two would be identical, so a non-zero difference proves the M×M transmission grid routes
+	 * energy across channels.</p>
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void pdslFeedbackGridLoopedSampleDemo() throws IOException {
+		File outputDir = new File("results/pdsl-audio-dsp");
+		outputDir.mkdirs();
+
+		int channels = GRID_CHANNELS;
+		IntToDoubleFunction looped = loopedSource();
+		int totalFrames = (int) (DEMO_SECONDS * SAMPLE_RATE);
+
+		// Prime-ish per-tap delays, all longer than one frame and shorter than the ring, for
+		// natural (non-metallic) diffusion.
+		double[] delays = {11000, 13003, 16007, 19001};
+		double[] grid = householderGrid(channels, GRID_FEEDBACK_GAIN);
+		double[] passthrough = scaledIdentity(channels, GRID_WET_LEVEL);
+
+		// Reference: same per-tap self-gain (the Householder diagonal) but NO cross-channel
+		// coupling — four independent combs. Used to prove the off-diagonals matter.
+		double selfGain = grid[0];  // diagonal entry of the scaled Householder
+		double[] diagonalOnly = scaledIdentity(channels, selfGain);
+
+		double[] mono = renderFeedbackCombMono(channels, DEMO_SIGNAL_SIZE, COMB_BUFFER_FRAMES,
+				delays, grid, passthrough, looped, totalFrames);
+		double[] diag = renderFeedbackCombMono(channels, DEMO_SIGNAL_SIZE, COMB_BUFFER_FRAMES,
+				delays, diagonalOnly, passthrough, looped, totalFrames);
+
+		File demoWav = new File(outputDir, "pdsl_feedback_grid_looped_sample.wav");
+		writeMonoWav(demoWav, mono);
+
+		int firstBad = firstNonFinite(mono);
+		double e = energy(mono, 0);
+		double couplingDiff = 0.0;
+		for (int i = 0; i < mono.length; i++) {
+			double d = mono[i] - diag[i];
+			couplingDiff += d * d;
+		}
+		log(String.format("feedback grid demo (%dch): samples=%d firstNonFinite=%d energy=%.6f "
+						+ "peak=%.6f couplingDiff=%.6f wav=%s",
+				channels, mono.length, firstBad, e, peakOf(mono), couplingDiff,
+				demoWav.getAbsolutePath()));
+
+		Assert.assertEquals("feedback grid produced a non-finite sample at index " + firstBad,
+				-1, firstBad);
+		Assert.assertTrue("demo WAV must be non-empty", demoWav.length() > 0);
+		Assert.assertTrue("grid output must be non-silent (energy=" + e + ")", e > 1e-9);
+		Assert.assertTrue("grid peak must stay bounded — feedback must decay, not blow up (peak="
+				+ peakOf(mono) + ")", peakOf(mono) < 50.0);
+		Assert.assertTrue("cross-channel coupling must change the output vs independent combs "
+				+ "(couplingDiff=" + couplingDiff + ")", couplingDiff > 1e-6);
+	}
+
+	/**
+	 * Builds the every-1-second retrigger function over the curated loop source. Shared by the
+	 * feedback-comb and feedback-grid demos.
+	 *
+	 * @return a function mapping absolute frame index to the looped source sample
+	 * @throws IOException if the source clip cannot be loaded
+	 */
+	private IntToDoubleFunction loopedSource() throws IOException {
 		double[] source = loadLoopSource();
 		int loopFrames = SAMPLE_RATE; // retrigger the clip every 1 second
-		IntToDoubleFunction looped = t -> {
+		return t -> {
 			int pos = t % loopFrames;
 			return pos < source.length ? source[pos] : 0.0;
 		};
+	}
 
+	/**
+	 * Compiles the {@code feedback_comb} PDSL layer for the given channel count and matrices, then
+	 * runs {@code totalFrames} of {@code sampleAt} (broadcast to every channel) through it with a
+	 * multi-frame ring, summing all channels to a mono signal. Shared by the single-channel comb
+	 * and the M×M grid demos.
+	 *
+	 * @param channels             number of feedback taps/channels
+	 * @param sig                  samples per frame
+	 * @param bufFrames            ring depth in frames ({@code bufSize = bufFrames * sig})
+	 * @param delaySamplesData     per-channel delay in samples, length {@code channels}
+	 * @param transmissionRowMajor row-major transmission matrix, length {@code channels*channels}
+	 * @param passthroughRowMajor  row-major passthrough matrix, length {@code channels*channels}
+	 * @param sampleAt             input sample at an absolute frame index (shared across channels)
+	 * @param totalFrames          number of frames to render
+	 * @return the mono (channel-summed) output samples
+	 */
+	private double[] renderFeedbackCombMono(int channels, int sig, int bufFrames,
+			double[] delaySamplesData, double[] transmissionRowMajor,
+			double[] passthroughRowMajor, IntToDoubleFunction sampleAt, int totalFrames) {
+		int bufSize = bufFrames * sig;
 		PackedCollection delaySamples = new PackedCollection(channels);
-		delaySamples.setMem(new double[]{COMB_DELAY_SAMPLES});
+		delaySamples.setMem(delaySamplesData);
 		PackedCollection transmission = new PackedCollection(new TraversalPolicy(channels, channels));
-		transmission.setMem(new double[]{COMB_FEEDBACK_GAIN});
+		transmission.setMem(transmissionRowMajor);
 		PackedCollection passthrough = new PackedCollection(new TraversalPolicy(channels, channels));
-		passthrough.setMem(new double[]{COMB_WET_LEVEL});
+		passthrough.setMem(passthroughRowMajor);
 		PackedCollection buffers = new PackedCollection(channels * bufSize);
 		buffers.setMem(new double[channels * bufSize]);
 		PackedCollection heads = new PackedCollection(channels);
@@ -542,41 +660,89 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		int totalFrames = (int) (DEMO_SECONDS * SAMPLE_RATE);
 		int passes = totalFrames / sig;
-		double[] out = new double[passes * sig];
-		float[] floatSamples = new float[out.length];
+		double[] mono = new double[passes * sig];
 		PackedCollection input = new PackedCollection(inputShape);
-		double[] inData = new double[sig];
+		double[] inData = new double[channels * sig];
 
 		for (int pass = 0; pass < passes; pass++) {
 			int off = pass * sig;
 			for (int t = 0; t < sig; t++) {
-				inData[t] = looped.applyAsDouble(off + t);
+				double v = sampleAt.applyAsDouble(off + t);
+				for (int c = 0; c < channels; c++) {
+					inData[c * sig + t] = v;
+				}
 			}
 			input.setMem(inData);
-			double[] passOut = compiled.forward(input).toArray(0, sig);
-			System.arraycopy(passOut, 0, out, off, sig);
-			for (int i = 0; i < sig; i++) {
-				floatSamples[off + i] = (float) Math.max(-1.0, Math.min(1.0, passOut[i]));
+			double[] passOut = compiled.forward(input).toArray(0, channels * sig);
+			for (int t = 0; t < sig; t++) {
+				double s = 0.0;
+				for (int c = 0; c < channels; c++) {
+					s += passOut[c * sig + t];
+				}
+				mono[off + t] = s;
 			}
 		}
+		return mono;
+	}
 
-		File demoWav = new File(outputDir, "pdsl_feedback_comb_looped_sample.wav");
-		PdslAudioDemoTest.writeDemoWav(demoWav, floatSamples, SAMPLE_RATE);
-
-		int firstBad = -1;
-		for (int i = 0; i < out.length; i++) {
-			if (!Double.isFinite(out[i])) { firstBad = i; break; }
+	/** Clamps a mono signal to [-1, 1] floats and writes it as a WAV. */
+	private void writeMonoWav(File f, double[] mono) throws IOException {
+		float[] floats = new float[mono.length];
+		for (int i = 0; i < mono.length; i++) {
+			floats[i] = (float) Math.max(-1.0, Math.min(1.0, mono[i]));
 		}
-		double e = energy(out, 0);
-		log(String.format("feedback comb demo: samples=%d firstNonFinite=%d energy=%.6f peak=%.6f wav=%s",
-				out.length, firstBad, e, peakOf(out), demoWav.getAbsolutePath()));
+		PdslAudioDemoTest.writeDemoWav(f, floats, SAMPLE_RATE);
+	}
 
-		Assert.assertEquals("feedback comb produced a non-finite sample at index " + firstBad,
-				-1, firstBad);
-		Assert.assertTrue("demo WAV must be non-empty", demoWav.length() > 0);
-		Assert.assertTrue("feedback comb output must be non-silent (energy=" + e + ")", e > 1e-9);
+	/**
+	 * Returns the index of the first non-finite sample, or {@code -1} if all samples are finite.
+	 *
+	 * @param x the signal to scan
+	 * @return the first non-finite index, or -1
+	 */
+	private static int firstNonFinite(double[] x) {
+		for (int i = 0; i < x.length; i++) {
+			if (!Double.isFinite(x[i])) return i;
+		}
+		return -1;
+	}
+
+	/**
+	 * Builds a row-major scaled Householder reflection {@code gain * (I - 2 v vᵀ)} with
+	 * {@code v} the unit vector of all {@code 1/√n}. The reflection is orthogonal (eigenvalues
+	 * ±1), so the scaled matrix has spectral radius {@code gain} — a guaranteed-stable feedback
+	 * matrix (for {@code gain < 1}) that nonetheless mixes every channel into every other.
+	 *
+	 * @param n    matrix dimension (channel count)
+	 * @param gain scale factor; the resulting spectral radius
+	 * @return the row-major {@code n*n} transmission matrix
+	 */
+	private static double[] householderGrid(int n, double gain) {
+		double[] m = new double[n * n];
+		double off = 2.0 / n;  // 2 * (1/√n)^2
+		for (int i = 0; i < n; i++) {
+			for (int j = 0; j < n; j++) {
+				double h = (i == j ? 1.0 : 0.0) - off;
+				m[i * n + j] = gain * h;
+			}
+		}
+		return m;
+	}
+
+	/**
+	 * Builds a row-major {@code n*n} diagonal matrix with {@code scale} on the diagonal.
+	 *
+	 * @param n     matrix dimension
+	 * @param scale the diagonal value
+	 * @return the row-major diagonal matrix
+	 */
+	private static double[] scaledIdentity(int n, double scale) {
+		double[] m = new double[n * n];
+		for (int i = 0; i < n; i++) {
+			m[i * n + i] = scale;
+		}
+		return m;
 	}
 
 	/**
