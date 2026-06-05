@@ -77,7 +77,18 @@ public final class GitJobConfig {
 
         // Claude Code agent outputs and settings
         "claude-output/**", "commit.txt",
-        ".claude/**", "settings.local.json",
+        // Per-project local memory/session state (Claude Code writes per-user
+        // session state under <project>/.claude/projects/<id>/). This is
+        // genuinely machine-local and must not be committed. The remaining
+        // contents of .claude/ (hooks/, agents/, commands/, settings.json) are
+        // project-shared and MUST be committable.
+        ".claude/projects/**",
+        // Machine-local settings (per-user overrides of settings.json).
+        ".claude/*.local.json",
+        // Lock file regenerated on every Claude Code run.
+        ".claude/scheduled_tasks.lock",
+        // Bare-machine-local settings.json (e.g. at the project root, outside .claude/).
+        "settings.local.json",
 
         // FlowTree internal lock files (placed in <parent>/.flowtree-locks/ outside the workspace)
         ".flowtree.lock", ".flowtree-locks/**"

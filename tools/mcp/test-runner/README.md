@@ -10,6 +10,42 @@ An MCP server for running and managing Almost Realism test executions. This serv
 - **Selective Testing**: Run specific classes or methods
 - **Result Parsing**: Parse surefire XML reports for detailed results
 - **Output Capture**: Access console output with filtering options
+- **Preflight Seeding**: On the first invocation in a fresh worktree, the
+  upstream `ar-*` module artifacts for the target Maven module are seeded
+  into `~/.m2/repository/` automatically. This avoids the previous
+  fail→install→retry cycle that pushed agents toward bash `mvn install`.
+  Subsequent invocations skip the seed (idempotent).
+
+## Preflight Seeding
+
+Maven's `mvn test -pl <module>` (without `-am`) assumes the upstream
+modules' jars are already installed in `~/.m2`. In a fresh worktree
+they aren't — the first test invocation used to fail with an
+unresolvable-dependency error, forcing the agent to drop to bash
+`mvn install` to seed them.
+
+The test runner now performs that seed itself, lazily, before the
+first test invocation. Implementation: `preflight.py`.
+
+The flow per `start_test_run`:
+
+1. Parse the target module's `pom.xml` for direct `<dependency>`
+   entries with `<groupId>org.almostrealism</groupId>`.
+2. Look for each artifact's `.jar` in `~/.m2/repository/...`.
+3. If every direct dep is already present, **skip** the seed (a few
+   milliseconds of inspection).
+4. Otherwise, run `mvn -pl <module> -am install -DskipTests -B` from
+   the project root. `-am` ensures Maven builds the entire upstream
+   reactor chain — so the next test invocation has everything it needs.
+
+The seed's stdout/stderr is captured in the run's `output.txt`
+between two `PREFLIGHT:` banners, so an agent inspecting
+`get_run_output` sees clearly what was done.
+
+When the seed itself fails (e.g., a build error in an upstream
+module), the run is marked `failed` immediately and no Maven test
+process is launched — the agent gets a fast, accurate failure
+instead of a redundant dependency-resolution error from `mvn test`.
 
 ## Installation
 

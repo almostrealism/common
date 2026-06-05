@@ -141,6 +141,81 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
         assertTrue(manager.path("enabled").asBoolean());
     }
 
+    /**
+     * Regression test for the silent-{@code send_message} bug on opencode
+     * primary phases: a remote MCP entry that carries a pre-supplied
+     * {@code Authorization} header must be emitted with {@code oauth: false}
+     * so opencode's MCP client uses the bearer verbatim instead of attaching
+     * an {@code McpOAuthProvider} and triggering Dynamic Client Registration.
+     *
+     * <p>The failure mode this prevents: ar-manager returns 401 with
+     * {@code WWW-Authenticate: Bearer ...} (RFC 9728), opencode's auth
+     * provider starts an OAuth flow that ar-manager does not host, the
+     * connection enters {@code needs_auth}, and every subsequent tool call
+     * (including the agent's very first {@code send_message}) lacks the temp
+     * token — so {@code _decode_current_request_token_full} returns an empty
+     * workstream and {@code send_message} fails with
+     * {@code "workstream_id is required (pass explicitly or use a job
+     * token)"}.</p>
+     *
+     * <p>The case-insensitive header check covers the lowercase form too,
+     * since RFC 7235 declares the header name case-insensitive and a proxy
+     * may normalise it.</p>
+     */
+    @Test(timeout = 5000)
+    public void translateMcpServersDisablesOauthWhenAuthorizationHeaderPresent() {
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
+        ObjectNode mcp = b.translateMcpServers(MCP_INPUT);
+        JsonNode manager = mcp.get("ar-manager");
+        assertNotNull(manager);
+        assertTrue("remote entry with Authorization header must declare oauth: false "
+                        + "so opencode skips OAuth auto-discovery and uses the bearer verbatim",
+                manager.has("oauth"));
+        assertFalse("oauth must be the boolean literal false, not an OAuth config object",
+                manager.path("oauth").asBoolean(true));
+    }
+
+    /**
+     * The {@code oauth: false} guard fires for the lowercase ``authorization``
+     * header as well — RFC 7235 declares the header name case-insensitive and
+     * an intermediate proxy may normalise it.
+     */
+    @Test(timeout = 5000)
+    public void translateMcpServersDisablesOauthForLowercaseAuthorizationHeader() {
+        String input = "{"
+                + "\"mcpServers\":{"
+                + "\"ar-manager\":{\"type\":\"http\",\"url\":\"http://localhost:7780\","
+                + "\"headers\":{\"authorization\":\"Bearer abc\"}}"
+                + "}}";
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
+        ObjectNode mcp = b.translateMcpServers(input);
+        JsonNode manager = mcp.get("ar-manager");
+        assertNotNull(manager);
+        assertTrue(manager.has("oauth"));
+        assertFalse(manager.path("oauth").asBoolean(true));
+    }
+
+    /**
+     * Remote MCP entries without any pre-supplied {@code Authorization} header
+     * must NOT have {@code oauth: false} forced on them — these are real
+     * OAuth-capable servers (Sentry, Linear, etc.) where opencode's
+     * auto-discovery is the only way for a user to authenticate. Forcing
+     * {@code oauth: false} here would break those servers.
+     */
+    @Test(timeout = 5000)
+    public void translateMcpServersKeepsOauthEnabledForServersWithoutAuthorizationHeader() {
+        String input = "{"
+                + "\"mcpServers\":{"
+                + "\"sentry-mcp\":{\"type\":\"http\",\"url\":\"https://mcp.sentry.dev/mcp\"}"
+                + "}}";
+        OpencodeConfigBuilder b = new OpencodeConfigBuilder(new HashMap<String, String>()::get);
+        ObjectNode mcp = b.translateMcpServers(input);
+        JsonNode sentry = mcp.get("sentry-mcp");
+        assertNotNull(sentry);
+        assertFalse("server without Authorization header must not have oauth forced off",
+                sentry.has("oauth"));
+    }
+
     /** Stdio MCP servers become opencode {@code type=local} entries with a flattened command list. */
     @Test(timeout = 5000)
     public void translateMcpServersHandlesStdioEntries() {
@@ -226,6 +301,16 @@ public class OpencodeConfigBuilderTest extends TestSuiteBase {
         assertNull(root.path("provider").path("local").path("options").get("apiKey"));
         assertTrue(root.path("provider").path("local").path("models").has("custom-model"));
         assertTrue(root.path("mcp").has("ar-manager"));
+        // The Bearer-bearing ar-manager entry must arrive at opencode with
+        // ``oauth: false`` — see the inline comment in
+        // OpencodeConfigBuilder.translateMcpServers for the silent-agent bug
+        // this guard prevents.
+        JsonNode managerEntry = root.path("mcp").path("ar-manager");
+        assertTrue("ar-manager entry must declare oauth field",
+                managerEntry.has("oauth"));
+        assertFalse("ar-manager entry must declare oauth=false so opencode "
+                        + "uses the supplied bearer instead of attempting DCR",
+                managerEntry.path("oauth").asBoolean(true));
         assertEquals("allow", root.path("permission").path("tools").path("Read").asText());
         assertEquals("allow", root.path("permission").path("mcp").path("ar-manager").asText());
         // external_directory is always granted in the full build so headless

@@ -260,6 +260,118 @@ public class FileStagerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that project-shared {@code .claude/hooks/**},
+	 * {@code .claude/agents/**}, and {@code .claude/commands/**} content is
+	 * NOT excluded from staging when the harness uses the production
+	 * {@link GitJobConfig#DEFAULT_EXCLUDED_PATTERNS}.
+	 *
+	 * <p>This is a regression guard for a bug where the blanket
+	 * {@code .claude/**} exclusion silently dropped
+	 * {@code .claude/hooks/lib/*.py} and other project-shared content from
+	 * agent commits (see memory {@code harness-commit-investigation} /
+	 * {@code root-cause} and {@code docs/plans/OPENCODE_HOOKS.md}). The
+	 * blanket pattern was replaced with narrow patterns targeting only
+	 * machine-local paths, so hooks / agents / commands must be committable.</p>
+	 */
+	@Test(timeout = 30000)
+	public void allowsProjectSharedClaudeContent() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			// Materialize representative project-shared files so the stager's
+			// on-disk size / binary guardrails are satisfied.
+			Files.createDirectories(tempDir.resolve(".claude/hooks/lib"));
+			Files.createDirectories(tempDir.resolve(".claude/agents"));
+			Files.createDirectories(tempDir.resolve(".claude/commands"));
+			Files.writeString(tempDir.resolve(".claude/hooks/lib/mvn_test_check.py"), "def decide(cmd):\n    pass\n");
+			Files.writeString(tempDir.resolve(".claude/hooks/block-git-commit.sh"), "#!/bin/sh\nexit 0\n");
+			Files.writeString(tempDir.resolve(".claude/agents/code-reviewer.md"), "agent body\n");
+			Files.writeString(tempDir.resolve(".claude/commands/review-policy.md"), "command body\n");
+
+			FileStagingConfig config = FileStagingConfig.builder()
+				.excludedPatterns(GitJobConfig.DEFAULT_EXCLUDED_PATTERNS)
+				.build();
+
+			FileStager stager = new FileStager();
+			List<String> changed = Arrays.asList(
+				".claude/hooks/lib/mvn_test_check.py",
+				".claude/hooks/block-git-commit.sh",
+				".claude/agents/code-reviewer.md",
+				".claude/commands/review-policy.md"
+			);
+			StagingResult result = stager.evaluateFiles(
+				changed, config, tempDir.toFile(), (String... args) -> 0
+			);
+
+			assertEquals("All four project-shared .claude/ files must be staged; "
+				+ "got staged=" + result.getStagedFiles()
+				+ " skipped=" + result.getSkippedFiles(),
+				changed.size(), result.getStagedFiles().size());
+			for (String path : changed) {
+				assertTrue("Expected " + path + " to be staged",
+					result.getStagedFiles().contains(path));
+			}
+			assertTrue("No project-shared .claude/ file should be skipped; got "
+				+ result.getSkippedFiles(),
+				result.getSkippedFiles().isEmpty());
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that genuinely machine-local paths under {@code .claude/}
+	 * (per-project session state, machine-local settings, the lock file)
+	 * ARE still excluded by the production
+	 * {@link GitJobConfig#DEFAULT_EXCLUDED_PATTERNS}.
+	 *
+	 * <p>This is the second half of the regression guard: replacing the
+	 * blanket {@code .claude/**} pattern must not accidentally start
+	 * committing per-user state. The narrow patterns are
+	 * {@code .claude/projects/**}, {@code .claude/*.local.json}, and
+	 * {@code .claude/scheduled_tasks.lock} (matching what
+	 * {@code .gitignore} already treats as local).</p>
+	 */
+	@Test(timeout = 30000)
+	public void excludesMachineLocalClaudeContent() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			Files.createDirectories(tempDir.resolve(".claude/projects/abc"));
+			Files.writeString(tempDir.resolve(".claude/settings.local.json"), "{}\n");
+			Files.writeString(tempDir.resolve(".claude/scheduled_tasks.lock"), "locked\n");
+			Files.writeString(tempDir.resolve(".claude/projects/abc/state.json"), "{}\n");
+
+			FileStagingConfig config = FileStagingConfig.builder()
+				.excludedPatterns(GitJobConfig.DEFAULT_EXCLUDED_PATTERNS)
+				.build();
+
+			FileStager stager = new FileStager();
+			List<String> changed = Arrays.asList(
+				".claude/settings.local.json",
+				".claude/scheduled_tasks.lock",
+				".claude/projects/abc/state.json"
+			);
+			StagingResult result = stager.evaluateFiles(
+				changed, config, tempDir.toFile(), (String... args) -> 0
+			);
+
+			assertTrue("No machine-local .claude/ file should be staged; got "
+				+ result.getStagedFiles(),
+				result.getStagedFiles().isEmpty());
+			assertEquals("All three machine-local .claude/ files must be skipped; "
+				+ "got skipped=" + result.getSkippedFiles(),
+				changed.size(), result.getSkippedFiles().size());
+			for (String path : changed) {
+				boolean found = result.getSkippedFiles().stream()
+					.anyMatch(s -> s.startsWith(path));
+				assertTrue("Expected " + path + " to be skipped, got "
+					+ result.getSkippedFiles(), found);
+			}
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
+	/**
 	 * Recursively deletes a directory and all its contents.
 	 */
 	private static void deleteRecursively(Path path) throws IOException {
