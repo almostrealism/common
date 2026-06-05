@@ -136,6 +136,23 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	/** Higher wet-bus level for the demo so the delayed signal is clearly audible against the dry. */
 	private static final double DEMO_WET_LEVEL = 0.55;
 
+	/**
+	 * Feedback-comb echo delay (~300 ms at 44.1 kHz). Deliberately longer than
+	 * {@link #DEMO_SIGNAL_SIZE} (one frame) so the multi-frame ring is exercised — a delay
+	 * shorter than one frame cannot be expressed by the block-parallel feedback (it would be
+	 * an intra-frame recurrence that cannot run as a single parallel kernel).
+	 */
+	private static final int COMB_DELAY_SAMPLES = 13230;
+
+	/** Feedback-comb ring depth in frames; {@code bufSize = COMB_BUFFER_FRAMES * signal_size} must exceed the delay. */
+	private static final int COMB_BUFFER_FRAMES = 4;
+
+	/** Feedback-comb regeneration gain ({@code transmission[[g]]}); &lt; 1 for a decaying echo train. */
+	private static final double COMB_FEEDBACK_GAIN = 0.55;
+
+	/** Feedback-comb output level ({@code passthrough[[wet]]}). */
+	private static final double COMB_WET_LEVEL = 1.0;
+
 	/** Automation manager of the most recently built fixture (see {@link #buildFixtureMixdown()}). */
 	private AutomationManager fixtureAutomation;
 
@@ -466,6 +483,100 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 
 		Assert.assertTrue("demo WAV must be non-empty", demoWav.length() > 0);
 		Assert.assertTrue("demo output must be non-silent (energy=" + e + ")", e > 1e-9);
+	}
+
+	/**
+	 * Sanity-listen demo for the closed-loop {@code feedback_comb} layer (the PDSL rendition of
+	 * EfxManager's recursive {@code .mself} echo). Retriggers a real source clip every second for
+	 * {@link #DEMO_SECONDS} seconds through {@code feedback(...)} with a multi-frame ring
+	 * ({@link #COMB_DELAY_SAMPLES} &gt; one frame), writing
+	 * {@code results/pdsl-audio-dsp/pdsl_feedback_comb_looped_sample.wav} so the regenerating echo
+	 * train can be heard. This is the acoustic gate before the EfxManager feedback migration. The
+	 * numeric decay of the feedback path is proven separately by {@code DelayNetworkBehaviorTest};
+	 * here we assert only that the closed loop stays finite (does not blow up) and produces
+	 * non-silent output through the real PDSL surface.
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void pdslFeedbackCombLoopedSampleDemo() throws IOException {
+		File outputDir = new File("results/pdsl-audio-dsp");
+		outputDir.mkdirs();
+
+		int channels = 1;
+		int sig = DEMO_SIGNAL_SIZE;
+		int bufSize = COMB_BUFFER_FRAMES * sig;
+
+		double[] source = loadLoopSource();
+		int loopFrames = SAMPLE_RATE; // retrigger the clip every 1 second
+		IntToDoubleFunction looped = t -> {
+			int pos = t % loopFrames;
+			return pos < source.length ? source[pos] : 0.0;
+		};
+
+		PackedCollection delaySamples = new PackedCollection(channels);
+		delaySamples.setMem(new double[]{COMB_DELAY_SAMPLES});
+		PackedCollection transmission = new PackedCollection(new TraversalPolicy(channels, channels));
+		transmission.setMem(new double[]{COMB_FEEDBACK_GAIN});
+		PackedCollection passthrough = new PackedCollection(new TraversalPolicy(channels, channels));
+		passthrough.setMem(new double[]{COMB_WET_LEVEL});
+		PackedCollection buffers = new PackedCollection(channels * bufSize);
+		buffers.setMem(new double[channels * bufSize]);
+		PackedCollection heads = new PackedCollection(channels);
+		heads.setMem(new double[channels]);
+
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
+
+		TraversalPolicy inputShape = new TraversalPolicy(channels, sig);
+		Map<String, Object> args = new HashMap<>();
+		args.put("channels", channels);
+		args.put("signal_size", sig);
+		args.put("delay_samples", delaySamples);
+		args.put("transmission", transmission);
+		args.put("passthrough", passthrough);
+		args.put("buffers", buffers);
+		args.put("heads", heads);
+
+		Block block = loader.buildLayer(program, "feedback_comb", inputShape, args);
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		int totalFrames = (int) (DEMO_SECONDS * SAMPLE_RATE);
+		int passes = totalFrames / sig;
+		double[] out = new double[passes * sig];
+		float[] floatSamples = new float[out.length];
+		PackedCollection input = new PackedCollection(inputShape);
+		double[] inData = new double[sig];
+
+		for (int pass = 0; pass < passes; pass++) {
+			int off = pass * sig;
+			for (int t = 0; t < sig; t++) {
+				inData[t] = looped.applyAsDouble(off + t);
+			}
+			input.setMem(inData);
+			double[] passOut = compiled.forward(input).toArray(0, sig);
+			System.arraycopy(passOut, 0, out, off, sig);
+			for (int i = 0; i < sig; i++) {
+				floatSamples[off + i] = (float) Math.max(-1.0, Math.min(1.0, passOut[i]));
+			}
+		}
+
+		File demoWav = new File(outputDir, "pdsl_feedback_comb_looped_sample.wav");
+		PdslAudioDemoTest.writeDemoWav(demoWav, floatSamples, SAMPLE_RATE);
+
+		int firstBad = -1;
+		for (int i = 0; i < out.length; i++) {
+			if (!Double.isFinite(out[i])) { firstBad = i; break; }
+		}
+		double e = energy(out, 0);
+		log(String.format("feedback comb demo: samples=%d firstNonFinite=%d energy=%.6f peak=%.6f wav=%s",
+				out.length, firstBad, e, peakOf(out), demoWav.getAbsolutePath()));
+
+		Assert.assertEquals("feedback comb produced a non-finite sample at index " + firstBad,
+				-1, firstBad);
+		Assert.assertTrue("demo WAV must be non-empty", demoWav.length() > 0);
+		Assert.assertTrue("feedback comb output must be non-silent (energy=" + e + ")", e > 1e-9);
 	}
 
 	/**

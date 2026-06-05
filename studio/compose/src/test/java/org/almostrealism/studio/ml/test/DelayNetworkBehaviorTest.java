@@ -24,7 +24,6 @@ import org.almostrealism.model.Model;
 import org.almostrealism.studio.dsl.audio.MultiChannelDspFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -491,30 +490,15 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 	 * Pass 3 head=0: output[0]=buffer[0+0-1+4]=buffer[3]=0,
 	 * output[1]=buffer[0+1-1]=buffer[0]=1 → THE IMPULSE.
 	 */
-	/*
-	 * TODO Re-enable once the delay_network kernel relaxes the
-	 * {@code bufSize == signalSize} constraint asserted at
-	 * {@link MultiChannelDspFeatures#delayNetworkBlock} (currently
-	 * MultiChannelDspFeatures.java:181). This test is fundamentally about
-	 * verifying read-position wrap arithmetic when the head advances past
-	 * {@code bufSize} — that scenario cannot occur unless
-	 * {@code bufSize > signalSize} (and {@code bufSize >= max_tap_delay}).
-	 * Under the current kernel constraint the harness cannot construct a
-	 * buffer larger than one frame, so the test is meaningless. The kernel
-	 * work to relax the constraint is tracked alongside the broader
-	 * {@code MixdownManagerPdslTest.testMixdownManagerReverbPath} reverb
-	 * fix; once that lands, this test should be restored as-is.
-	 */
 	/**
 	 * Tests buffer wrap-around correctness when head advances past bufSize.
 	 *
-	 * <p>This test is ignored while the delay_network kernel requires
-	 * bufSize == signalSize. Re-enable when the kernel is relaxed to
-	 * allow bufSize > signalSize.</p>
+	 * <p>Exercises a multi-frame ring ({@code bufSize=4 > signalSize=2}): the head
+	 * advances 0 → 2 → 0 (mod 4) across three passes, and pass 3 must read the impulse
+	 * written on pass 1 from {@code buffer[0]}. This verifies the read-position wrap
+	 * arithmetic and the per-slot windowed write now supported by
+	 * {@link MultiChannelDspFeatures#delayNetworkBlock}.</p>
 	 */
-	@Ignore("Cannot exercise wrap-around while delay_network kernel "
-			+ "requires bufSize == signalSize (MultiChannelDspFeatures.java:181). "
-			+ "Re-enable when the kernel is relaxed to allow bufSize > signalSize.")
 	@Test(timeout = 60000)
 	public void test09BufferWrapAround() {
 		Harness h = build(1, 2, 4, new double[]{1.0}, zeroFeedback(1));

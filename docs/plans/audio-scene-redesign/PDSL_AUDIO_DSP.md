@@ -1445,3 +1445,101 @@ the test that generates it must pass in CI.
 If the PDSL pipeline cannot produce audio, the workstream has not achieved its goal regardless
 of what the tests assert. Every agent working on this branch should ask: *"Can I listen to the
 output?"* If the answer is no, the work is not done.
+
+---
+
+## 17. Feedback / `mself` in PDSL (the recursive grid)
+
+The last DSP construct PDSL could not express is `mself` — the recursive self/cross-channel
+feedback that produces echo trains (EfxManager) and the reverb transmission grid (MixdownManager).
+This section records the design we agreed on and the plan to land it.
+
+### 17.1 What `mself` is, mechanically
+
+`CellFeatures.mself(cells, adapter, transmission, passthrough)` → `m(cells, adapter, cells,
+transmission, passthrough)`: the routing **destinations are the source cells themselves**
+(`CellFeatures.java:901`, `:944`). Per cell, `MultiCell.split` (`MultiCell.java:134`) wires:
+
+- source output → `passthrough` cell → **next layer** (one linear map of the output),
+- source output → `adapter` → `MultiCell[transmission]` → **back into the same cells**, which
+  *accumulate* it (another linear map of the same output).
+
+The loop terminates not because of the routing but because `CachedStateCell` accumulates on
+receipt and only pushes on `tick()` — that tick boundary is a **unit delay** that turns an
+algebraic loop into a recurrence. Your `feedback(transmission, block, passthrough)` mirrors this
+exactly: `transmission` = routing back into the block, `passthrough` = routing out to the next
+layer, both applied to the same block output.
+
+### 17.2 Granularity: PDSL DSP is per-frame, not per-sample
+
+Every stateful PDSL primitive (`delay`, `biquad`, `lfo`, `delay_network`) processes a whole frame
+of `n` samples in **one parallel op per tick** and carries state across frames in a ring buffer
+(`AudioDspPrimitives.java:196`, `MultiChannelDspFeatures.java:168`). A "tick" = one frame. The
+recurrence we implement is therefore **frame-to-frame**, exactly the DAW block-processing model.
+
+### 17.3 The block-parallel-feedback trade-off (accepted)
+
+For `y[n] = x[n] + g·y[n−D]` with frame size `F`:
+
+- **D ≥ F:** every `y[n−D]` lives in an already-computed prior frame → the whole frame computes in
+  **one parallel kernel** (gather, apply matrix, add input, write back). Sample-accurate,
+  GPU-friendly. This is what `delay_network` already does.
+- **D < F:** `y[n−D]` refers to same-frame samples → intra-frame recurrence → must scan
+  sample-by-sample. This is CellList `mself`'s per-sample loop, i.e. the a3 `Loop x4096 [JNI]`
+  bottleneck (99.6% of tick).
+
+**Decision:** block-parallel feedback has a **minimum loop delay = block size** (~93 ms at
+4096 frames). We **accept** this floor. It is below the shortest real EFX echo: EfxManager
+`delayTimes` choices `{2^(i−2), 1.5·2^(i−2)}` (`EfxManager.java:118`) have a minimum ≈ 0.25
+(~11,025 samples ≈ 2.7 frames), so EFX echoes are firmly multi-frame and need **no** sequential
+scan. Sub-frame feedback (some reverb modes) stays frame-quantized for now; if parity later
+demands sample-accurate sub-frame feedback we add a separately-clocked smaller-frame stage — not
+in scope now.
+
+### 17.4 What already exists vs. what we build
+
+`delay_network(delay_samples, feedback_matrix, buffer, heads)` is already the block-parallel
+feedback FDN: it reads delayed outputs, applies an **arbitrary** matrix per frame, and writes
+`in + fb` back to the ring. It currently locks `bufSize == signalSize` (ring = exactly one frame),
+so the feedback delay snaps to ~1 frame. The work:
+
+1. **Multi-frame ring.** Relax `bufSize == signalSize` to `bufSize == k·signalSize` (k ≥ 1) so
+   real echo lengths (1–3+ frames) are sample-accurate rather than snapped to one frame.
+2. **`feedback(transmission, block, passthrough)` surface construct.** Lower it to the FDN
+   write-back-to-ring structure. For the common case where the wrapped block *is* a delay, it
+   collapses onto the (now multi-frame) `delay_network` machinery. `mself(input_level,
+   transmission, passthrough) = scale(input_level)` then `feedback(...)`.
+3. **Single-channel first.** Validate the 1×1 feedback comb against the EfxManager echo
+   (acoustic + numeric), then lift to the M×M grid by feeding the transmission gene matrix for the
+   MixdownManager `createEfx` path.
+4. **Arbitrary-block generality later.** `feedback` over a general causal block (delay+filter,
+   etc.) reintroduces the "must be per-sample-evaluable" constraint; defer until the delay case
+   works.
+
+### 17.5 Well-posedness
+
+`feedback` requires the loop path to contain ≥ 1 frame of delay (the multi-frame ring guarantees
+this). A zero-delay loop is an algebraic cycle and is rejected — this is the precise form of "some
+blocks for which feedback would cause infinite regress."
+
+### Sequencing (tasks)
+
+1. **Landed** — multi-frame ring + `feedback()` construct, single-channel comb.
+   `MultiChannelDspFeatures.delayNetworkBlock` was relaxed from `bufSize == signalSize`
+   to `bufSize == k·signalSize` via a new per-frame-slot windowed write (`ringWrite`);
+   the head is frame-aligned so the target slot is selected with `equals`, keeping the
+   whole update one parallel `into`. The FDN was generalized to `feedbackNetworkBlock`
+   (transmission + optional passthrough matrix, shared `channelMatrixMultiply`), exposed
+   as the `feedback(delay_samples, transmission, passthrough, buffers, heads)` PDSL
+   primitive, with a channel-parametric `feedback_comb` layer in `efx_channel.pdsl`.
+   Validated: `DelayNetworkBehaviorTest` 10/10 (the previously-ignored multi-frame
+   wrap-around `test09` re-enabled and passing).
+2. **Landed** — acoustic validation. `MixdownManagerPdslVerificationTest
+   .pdslFeedbackCombLoopedSampleDemo` loops a real library sample through the
+   `feedback()` surface with a multi-frame echo (~300 ms) and writes
+   `results/pdsl-audio-dsp/pdsl_feedback_comb_looped_sample.wav`. Output is all-finite,
+   non-silent, and stable (peak ≈ 0.90 — the feedback decays rather than blowing up).
+3. **Next** — lift `feedback_comb` to the M×M mixdown grid by feeding it the
+   MixdownManager `createEfx` transmission gene (an `EfxManager`/`MixdownManager`
+   adapter producing the `[channels, channels]` matrix); `mself(input_level, T, P) =
+   scale(input_level)` then `feedback(T, …, P)`.

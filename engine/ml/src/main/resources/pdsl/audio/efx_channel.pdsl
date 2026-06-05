@@ -196,3 +196,46 @@ layer efx_channel(signal_size: int, fir_taps: int,
         }
     )
 }
+
+// State for the closed-loop feedback comb: the per-channel ring buffers and
+// write-head counters supplied by the caller (zero-initialised). `buffers`
+// spans channels * bufSize, where bufSize is a multiple of signal_size.
+state feedback_comb_state {
+    buffers: weight
+    heads: weight
+}
+
+// ---------------------------------------------------------------------------
+// Closed-loop feedback comb / echo — the PDSL rendition of EfxManager's
+// recursive `.mself(fi(), g(delayLevels[1]))` (EfxManager.java:245). Where
+// efx_delay is a single feedforward tap, feedback() routes the delayed output
+// back into the ring through `transmission` (the feedback gain) added to the
+// incoming signal, and emits it through `passthrough` (the wet/output level),
+// producing the decaying echo train that efx_delay cannot.
+//
+// The feedback delay must be at least one frame (the block-parallel constraint:
+// a sub-frame feedback loop would be an intra-frame recurrence that cannot run as
+// a single parallel kernel), so `buffers` must span an integer number of frames
+// (bufSize = k * signal_size) to hold echo lengths longer than one frame.
+//
+// channels=1 is the single-channel echo comb: transmission=[[g]],
+// passthrough=[[wet]]. The same layer renders the M×M mixdown feedback grid for
+// channels>1 (the MixdownManager createEfx .mself transmission grid).
+// mself(input_level, T, P) = scale(input_level) then feedback_comb(...).
+//
+// Parameters:
+//   channels       Number of feedback taps/channels
+//   signal_size    Samples per audio frame
+//   delay_samples  Per-channel delay in samples, producer([channels]) (< bufSize)
+//   transmission   Feedback routing matrix, producer([channels, channels])
+//   passthrough    Output routing matrix, producer([channels, channels])
+//
+// Requires args: buffers (channels*bufSize, zero-init, bufSize a multiple of
+// signal_size) and heads (channels, zero-init).
+// ---------------------------------------------------------------------------
+layer feedback_comb(channels: int, signal_size: int,
+                    delay_samples: producer([channels]),
+                    transmission: producer([channels, channels]),
+                    passthrough: producer([channels, channels])) -> [channels, signal_size] {
+    feedback(delay_samples, transmission, passthrough, buffers, heads)
+}
