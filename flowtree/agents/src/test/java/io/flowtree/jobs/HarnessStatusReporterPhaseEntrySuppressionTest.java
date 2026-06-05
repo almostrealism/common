@@ -46,8 +46,8 @@ import static org.junit.Assert.assertTrue;
  * </ul>
  *
  * <p>This test class is branch-introduced (no equivalent exists on the base
- * branch) so that the new verbosity policy has explicit coverage without
- * modifying the base-branch test file that originally asserted the more
+ * branch) so that the new verbosity policy has explicit coverage alongside
+ * updates to the existing reporter tests that previously asserted the more
  * verbose behavior.</p>
  */
 public class HarnessStatusReporterPhaseEntrySuppressionTest extends TestSuiteBase {
@@ -173,10 +173,21 @@ public class HarnessStatusReporterPhaseEntrySuppressionTest extends TestSuiteBas
                 posts.isEmpty());
     }
 
-    // TODO(review): Phase.MAVEN_DEPENDENCY_PROTECTION and Phase.PUSH_CONFLICT_RESOLUTION are listed
-    // in this class's javadoc as having suppressed entry messages but lack dedicated test methods.
-    // Add mavenDependencyProtectionPhaseEntryIsSuppressed and pushConflictResolutionPhaseEntryIsSuppressed
-    // following the same pattern as the other per-phase suppression tests above.
+    /** Entering MAVEN_DEPENDENCY_PROTECTION and PUSH_CONFLICT_RESOLUTION is silent — no entry message is posted. */
+    @Test(timeout = 30000)
+    public void remainingNonPrimaryPhaseEntriesAreSuppressed() {
+        Phase[] phases = {
+                Phase.MAVEN_DEPENDENCY_PROTECTION,
+                Phase.PUSH_CONFLICT_RESOLUTION
+        };
+        for (Phase phase : phases) {
+            List<Posted> posts = new ArrayList<>();
+            reporter(posts).phaseEntry(phase, "claude",
+                    new PhaseConfig("claude", "opus", "high", "anthropic"));
+            assertTrue("entering " + phase + " must NOT post an entry message",
+                    posts.isEmpty());
+        }
+    }
 
     /** Completion messages are still emitted for every non-PRIMARY phase. */
     @Test(timeout = 30000)

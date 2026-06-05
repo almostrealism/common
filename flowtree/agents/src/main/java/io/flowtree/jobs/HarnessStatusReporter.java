@@ -114,7 +114,7 @@ public final class HarnessStatusReporter {
      * announcements are emitted only for the {@link Phase#PRIMARY PRIMARY}
      * phase. Every other phase still publishes a phase-exit message via
      * {@link #phaseExit(Phase, AgentRunResult)} when it finishes, so the
-     * operator still sees when each phase ends and on which runner/model.</p>
+     * operator still sees when each phase ends.</p>
      *
      * @param phase  the lifecycle phase being dispatched
      * @param runner the runner name that will run it
