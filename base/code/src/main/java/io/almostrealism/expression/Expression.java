@@ -871,16 +871,47 @@ public abstract class Expression<T> implements
 	}
 
 	/**
-	 * Computes the concrete value of this expression for given index assignments.
+	 * Computes the concrete value of this expression for given index assignments,
+	 * memoizing the result per evaluation.
 	 *
-	 * <p>This method recursively evaluates children and combines their results
-	 * using {@link #evaluate(Number...)}.</p>
+	 * <p>Expression graphs are DAGs: a single subexpression instance may be reachable by
+	 * many paths from the root. The recursive evaluation in {@link #computeValue(IndexValues)}
+	 * would therefore recompute a shared node once per path, which is exponential in tree
+	 * depth for deeply nested expressions (e.g. convolution gradients). To avoid this, the
+	 * result for each composite node is cached in the supplied {@link IndexValues} (keyed by
+	 * node identity) for the duration of the evaluation. Leaf nodes are evaluated directly,
+	 * since they are O(1) and the most numerous.</p>
+	 *
+	 * <p>This method is {@code final}; subclasses customize evaluation by overriding
+	 * {@link #computeValue(IndexValues)}.</p>
 	 *
 	 * @param indexValues the index value assignments
 	 * @return the computed value
 	 */
 	@Override
-	public Number value(IndexValues indexValues) {
+	public final Number value(IndexValues indexValues) {
+		if (getChildren().isEmpty()) return computeValue(indexValues);
+
+		Number cached = indexValues.getCachedValue(this);
+		if (cached != null) return cached;
+
+		Number result = computeValue(indexValues);
+		indexValues.putCachedValue(this, result);
+		return result;
+	}
+
+	/**
+	 * Computes the concrete value of this expression for given index assignments by
+	 * recursively evaluating children and combining their results via
+	 * {@link #evaluate(Number...)}.
+	 *
+	 * <p>Subclasses override this to define their evaluation semantics; callers and recursive
+	 * descent should invoke {@link #value(IndexValues)}, which adds DAG-aware memoization.</p>
+	 *
+	 * @param indexValues the index value assignments
+	 * @return the computed value
+	 */
+	protected Number computeValue(IndexValues indexValues) {
 		return evaluate(getChildren().stream().map(e -> e.value(indexValues)).toArray(Number[]::new));
 	}
 

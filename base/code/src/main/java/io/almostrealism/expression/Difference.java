@@ -68,7 +68,7 @@ public class Difference<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Number value(IndexValues indexValues) {
+	public Number computeValue(IndexValues indexValues) {
 		List<Number> values = getChildren().stream()
 				.map(e -> e.value(indexValues))
 				.collect(Collectors.toList());

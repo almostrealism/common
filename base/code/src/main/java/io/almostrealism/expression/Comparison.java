@@ -109,7 +109,7 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 	 * @return 1 if the comparison is true, 0 if false
 	 */
 	@Override
-	public Number value(IndexValues indexValues) {
+	public Number computeValue(IndexValues indexValues) {
 		return compare(getLeft().value(indexValues), getRight().value(indexValues)) ? 1 : 0;
 	}
 

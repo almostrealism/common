@@ -69,7 +69,7 @@ public class Floor extends Expression<Double> {
 	}
 
 	@Override
-	public Number value(IndexValues indexValues) {
+	public Number computeValue(IndexValues indexValues) {
 		return Math.floor((double) getChildren().get(0).value(indexValues));
 	}
 

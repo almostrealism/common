@@ -278,16 +278,8 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 
 	/**
 	 * Tests small convolution delta operation.
-	 *
-	 * <p>Timeout temporarily doubled (7 -&gt; 14 minutes) as a CI diagnostic: this test
-	 * fails ~100% on this branch's CI runner (6-core/16GB Docker on an M4) but passes on
-	 * master, while reproducing well under the original 420s limit on faster local
-	 * hardware. Doubling discriminates between (a) the run simply being near the timeout on
-	 * the slower CI machine — in which case it now passes — and (b) the failure stemming
-	 * from full-suite interaction (e.g. Expression-cache state) rather than this test's own
-	 * runtime — in which case it still fails. Revert once the cause is identified.</p>
 	 */
-	@Test(timeout = 14 * 60000)
+	@Test(timeout = 7 * 60000)
 	@TestDepth(2)
 	public void convDeltaSmall() throws IOException {
 		int l = 2; int d = 6;
@@ -382,36 +374,10 @@ public class RepeatedDeltaComputationTests extends TestSuiteBase {
 			PackedCollection grad = new PackedCollection(r).randFill();
 			d = Process.optimized(combineGradient(result, cp(input), cp(grad)));
 		} else {
-			// Phase-split diagnostics: this method's CI timeout (convDelta:380) does not
-			// reproduce in isolation locally, so log per-phase wall-clock and heap so the
-			// CI run reveals which phase (delta construction / optimize / compile / runtime)
-			// diverges and whether it is memory-bound. Tokens are greppable; remove once
-			// the convDeltaSmall CI failure is understood.
-			Runtime rt = Runtime.getRuntime();
-			long t0 = System.nanoTime();
-			CollectionProducer deltaProducer = result.delta(cp(input));
-			long t1 = System.nanoTime();
-			log("convDeltaPhase=delta ms=" + (t1 - t0) / 1_000_000 +
-					" heapUsedMb=" + (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024) +
-					" heapMaxMb=" + rt.maxMemory() / (1024 * 1024));
-
-			d = Process.optimized(deltaProducer);
-			long t2 = System.nanoTime();
-			log("convDeltaPhase=optimize ms=" + (t2 - t1) / 1_000_000 +
-					" heapUsedMb=" + (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024));
+			d = Process.optimized(result.delta(cp(input)));
 		}
 
-		long tg = System.nanoTime();
-		Evaluable<? extends PackedCollection> compiled = d.get();
-		long tc = System.nanoTime();
-		Runtime rt2 = Runtime.getRuntime();
-		log("convDeltaPhase=compile ms=" + (tc - tg) / 1_000_000 +
-				" heapUsedMb=" + (rt2.totalMemory() - rt2.freeMemory()) / (1024 * 1024));
-
-		PackedCollection out = compiled.evaluate();
-		long te = System.nanoTime();
-		log("convDeltaPhase=runtime ms=" + (te - tc) / 1_000_000 +
-				" heapUsedMb=" + (rt2.totalMemory() - rt2.freeMemory()) / (1024 * 1024));
+		PackedCollection out = d.get().evaluate();
 		log(out.getShape());
 	}
 

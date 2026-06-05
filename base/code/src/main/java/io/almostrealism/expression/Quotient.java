@@ -228,7 +228,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Number value(IndexValues indexValues) {
+	public Number computeValue(IndexValues indexValues) {
 		if (getChildren().size() > 2)
 			throw new UnsupportedOperationException();
 

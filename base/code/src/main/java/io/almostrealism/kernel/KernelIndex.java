@@ -168,7 +168,7 @@ public class KernelIndex extends DefaultIndex {
 
 	/** {@inheritDoc} */
 	@Override
-	public Number value(IndexValues values) {
+	public Number computeValue(IndexValues values) {
 		Number idx = values.getKernelIndex();
 		if (idx != null) return idx;
 		throw new UnsupportedOperationException();
