@@ -53,6 +53,7 @@
     "./plugins/block-git-commit.ts",
     "./plugins/block-git-worktree.ts",
     "./plugins/warn-git-log.ts",
-    "./plugins/block-checkstyle-edit.ts"
+    "./plugins/block-checkstyle-edit.ts",
+    "./plugins/warn-mvn-build.ts"
   ]
 }
