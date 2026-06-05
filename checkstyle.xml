@@ -70,18 +70,6 @@
         <property name="checks" value="FileLength"/>
         <property name="files" value="AttentionFeatures\.java"/>
     </module>
-    <!-- CodingAgentJob was at the 1600-line cap before the per-job
-         sensitiveFileProtectionEnabled flag and the controller-signed
-         bypass signature were added. Both fields are operator-controlled
-         at submission time and cannot be refactored out without breaking
-         the public API (the flag is read by FileStager, validateChanges,
-         GitCommitHandler, and the wire-format codec). The exempt line
-         count is fixed at the current size — any future growth is
-         blocked by scripts/check-exempt-file-lengths.sh. -->
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="FileLength"/>
-        <property name="files" value="CodingAgentJob\.java"/>
-    </module>
     <!-- Console.java is the logging system itself — it must write to System.out/err
          directly to deliver output.  The DirectSystemOut rule is suppressed for it. -->
     <module name="SuppressionSingleFilter">
