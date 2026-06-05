@@ -170,6 +170,17 @@ public interface TraversableExpression<T> extends IndexSet, Algebraic, Expressio
 		if (localIndex.getLimit().orElse(-1) == 1)
 			return new IntegerConstant(0);
 
+		// The gather-collapse analysis below materialises one expression per matrix entry (via
+		// ExpressionMatrix.populate -> Expression.withIndex, whose simplification also calls
+		// upperBound etc.). Each is a traversal of the target, so for the deep shared-DAG gradients
+		// produced on this branch the cost (counted over paths) is exponential in depth and explodes
+		// at compile time. Bound it by tree depth (with a node-count backstop) and fall back to the
+		// normal compilation path for pathological targets; legitimate gather targets are shallow.
+		if (targetIndex.treeDepth() > ScopeSettings.maxGatherAnalysisDepth ||
+				targetIndex.countNodes() > ScopeSettings.maxGatherAnalysisNodes) {
+			return null;
+		}
+
 		ExpressionMatrix<?> indices = ExpressionMatrix.create(globalIndex, localIndex, targetIndex);
 		if (indices == null) {
 			if (ScopeSettings.enableExpressionWarnings)
