@@ -389,6 +389,7 @@ public class InstructionPromptBuilder {
      * <ol>
      *   <li>Opening paragraph (autonomous agent context)</li>
      *   <li>Git workflow reminder (always) — agent does not control commits</li>
+     *   <li>Enforcement Configuration (always) — abandon-before-tamper rule for checkstyle / policy / test-integrity config</li>
      *   <li>Communication (when workstream URL is set)</li>
      *   <li>Permission Denials (when workstream URL is set)</li>
      *   <li>Non-Code Requests (when workstream URL is set)</li>
@@ -513,6 +514,20 @@ public class InstructionPromptBuilder {
         sb.append("still perform — but understand that they will all end up in a single final ");
         sb.append("commit, and your job is to leave the working tree in a state that reflects ");
         sb.append("all of those phases together.\n\n");
+
+        // Enforcement configuration -- placed near the top so the agent
+        // sees the abandon-before-tamper rule before reaching for the
+        // edit-checkstyle hook.  Complement to the structural block in
+        // .claude/hooks/block-checkstyle-edit.sh and the opencode
+        // plugin .opencode/plugins/block-checkstyle-edit.ts.
+        sb.append("## Enforcement Configuration\n");
+        sb.append("Enforcement configuration (checkstyle rules and suppressions, policy ");
+        sb.append("validators, test integrity checks) must NEVER be weakened, exempted, or ");
+        sb.append("disabled to make a task succeed. If you conclude a task cannot be completed ");
+        sb.append("without modifying enforcement config, ABANDON the task and report it as ");
+        sb.append("impossible — declaring failure is always preferable to tampering with ");
+        sb.append("enforcement. Attempts to edit checkstyle configuration are blocked; do not ");
+        sb.append("try to circumvent the block.\n\n");
 
         // Messaging instructions - only when a workstream URL is configured
         if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
