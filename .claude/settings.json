@@ -4,7 +4,6 @@
     "ar-test-runner",
     "ar-build-validator",
     "ar-profile-analyzer",
-    "ar-memory",
     "ar-consultant",
     "ar-jmx",
     "ar-manager"
