@@ -269,11 +269,27 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
             "errors": errors,
         })
 
+    async def namespaces_endpoint(request: Request) -> JSONResponse:
+        """GET /api/memory/namespaces - Per-namespace counts and latest timestamp.
+
+        Optional ``repo_url`` and ``branch`` query params scope the summary.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+
+        repo_url = request.query_params.get("repo_url") or None
+        branch = request.query_params.get("branch") or None
+
+        stats = store.namespace_stats(repo_url=repo_url, branch=branch)
+        return JSONResponse({"namespaces": stats, "count": len(stats)})
+
     routes = [
         Route("/api/health", health, methods=["GET"]),
         Route("/api/memory/store", memory_store_endpoint, methods=["POST"]),
         Route("/api/memory/search", memory_search_endpoint, methods=["POST"]),
         Route("/api/memory/branch", memory_branch_endpoint, methods=["POST"]),
+        Route("/api/memory/namespaces", namespaces_endpoint, methods=["GET"]),
         Route("/api/memory/{entry_id}", memory_delete_endpoint, methods=["DELETE"]),
         Route("/api/memory/list", memory_list_endpoint, methods=["GET"]),
         Route("/api/memory/import", memory_import_endpoint, methods=["POST"]),

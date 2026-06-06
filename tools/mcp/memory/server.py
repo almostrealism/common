@@ -150,6 +150,28 @@ def _create_mcp_server():
         """
         return store.list_entries(namespace=namespace, tag=tag, limit=limit, offset=offset)
 
+    @mcp.tool()
+    def memory_namespaces(
+        repo_url: Optional[str] = None,
+        branch: Optional[str] = None,
+    ) -> list[dict]:
+        """
+        List every namespace with its entry count and most-recent timestamp.
+
+        Use this to discover which namespaces exist and when each was last
+        written, so locating where a recent memory landed is one call rather
+        than a search per namespace. Ordered newest-namespace-first.
+
+        Args:
+            repo_url: Optional repository URL filter.
+            branch: Optional branch name filter.
+
+        Returns:
+            List of dicts, each with namespace, count, latest_created_at, and
+            latest_id, ordered by latest_created_at descending.
+        """
+        return store.namespace_stats(repo_url=repo_url, branch=branch)
+
     return mcp
 
 

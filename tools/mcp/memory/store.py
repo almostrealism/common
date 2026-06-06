@@ -462,3 +462,64 @@ class MemoryStore:
                 results.append(entry)
 
         return results
+
+    def namespace_stats(
+        self,
+        repo_url: Optional[str] = None,
+        branch: Optional[str] = None,
+    ) -> list[dict]:
+        """Summarize every namespace by entry count and most-recent entry.
+
+        Lets a caller discover which namespaces exist and, crucially, when each
+        was last written — so locating "where did the latest memory land?" is a
+        single call instead of guessing namespaces and issuing one search each.
+
+        Args:
+            repo_url: Optional repository URL filter (normalized to canonical
+                SSH form before matching). When provided, only entries for that
+                repository are counted.
+            branch: Optional branch name filter. When provided, only entries on
+                that branch are counted.
+
+        Returns:
+            A list of dicts, one per namespace, ordered by ``latest_created_at``
+            descending (most recently written namespace first). Each dict has:
+            ``namespace``, ``count``, ``latest_created_at`` (ISO-8601 string),
+            and ``latest_id`` (the id of that newest entry). Returns an empty
+            list when no entries match.
+        """
+        repo_url = _normalize_repo_url(repo_url)
+        filters = []
+        params: list = []
+        if repo_url:
+            filters.append("repo_url = ?")
+            params.append(repo_url)
+        if branch:
+            filters.append("branch = ?")
+            params.append(branch)
+        where = (" WHERE " + " AND ".join(filters)) if filters else ""
+
+        grouped = self._conn.execute(
+            "SELECT namespace, COUNT(*) AS count, MAX(created_at) AS latest "
+            f"FROM entries{where} GROUP BY namespace ORDER BY latest DESC",
+            params,
+        ).fetchall()
+
+        stats = []
+        for row in grouped:
+            # Resolve the id of the newest entry in this namespace. created_at
+            # is an ISO-8601 string, so MAX()/ORDER BY DESC are lexicographically
+            # correct; a tie just returns one of the simultaneous entries.
+            id_row = self._conn.execute(
+                "SELECT id FROM entries WHERE namespace = ?"
+                + ("".join(f" AND {f}" for f in filters))
+                + " ORDER BY created_at DESC LIMIT 1",
+                [row["namespace"], *params],
+            ).fetchone()
+            stats.append({
+                "namespace": row["namespace"],
+                "count": row["count"],
+                "latest_created_at": row["latest"],
+                "latest_id": id_row["id"] if id_row else None,
+            })
+        return stats
