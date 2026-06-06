@@ -106,7 +106,7 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 	 *
 	 * <p>When {@code inputChannels == outputChannels} this is the square cross-channel
 	 * feedback case. When they differ, it implements the {@code N efx → M delay layers}
-	 * fan-routing pattern from {@code MixdownManager.createEfx()} line 660-664
+	 * fan-routing pattern from {@code MixdownManager.createEfx()}
 	 * ({@code efx.m(fi(), delays, transmissionGene)}).</p>
 	 *
 	 * @param matrix          routing matrix producer (shape

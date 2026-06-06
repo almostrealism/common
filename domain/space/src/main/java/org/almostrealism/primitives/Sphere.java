@@ -149,7 +149,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	 *
 	 * <p>A critical question: <b>Does the ray direction need to be unit length?</b></p>
 	 *
-	 * <p>The intersection math (lines 154-169) uses the formula:</p>
+	 * <p>The intersection math uses the formula:</p>
 	 * <pre>
 	 * g = D.D  (direction dot direction = squared length of direction)
 	 * discriminant = b^2 - g(c - 1)

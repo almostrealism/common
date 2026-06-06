@@ -60,9 +60,10 @@ import java.util.stream.IntStream;
  * backend forced via {@code -DAR_HARDWARE_DRIVER=mtl} to measure GPU behaviour.</p>
  *
  * <p><strong>Disabled in CI (this branch).</strong> These full-scene integration renders
- * recompile thousands of native kernels with no signature-based reuse (per-instance
- * compilation is not deduplicated — the argument-aggregation / null-signature gap analysed
- * in {@code docs/plans/SIGNATURE_AGGREGATION_GAP.md}), which exhausts the fixed
+ * recompile thousands of native kernels with no signature-based reuse: per-instance
+ * compilation is not deduplicated because the small per-value buffers these scenes reference
+ * are argument-aggregation targets, for which a structural signature is not computed, so the
+ * instruction cache cannot reuse them across scene instances. The result exhausts the fixed
  * {@code GeneratedOperation} pool and cascades into failures of unrelated {@code AudioScene}
  * tests. A second, independent gap is that batched dispatch does not yet fire for the real
  * pattern path (some methods render {@code peak=0.0}). The test is retained for local use and
@@ -70,9 +71,9 @@ import java.util.stream.IntStream;
  * by removing the {@link Ignore} annotation.</p>
  */
 @Ignore("Disabled on this branch: full-scene batched renders exhaust the GeneratedOperation "
-		+ "pool (no per-instance compile reuse — see docs/plans/SIGNATURE_AGGREGATION_GAP.md) "
-		+ "and batched dispatch does not yet fire for the real pattern path. Re-enable after "
-		+ "the compile-reuse fix.")
+		+ "pool because per-instance compilation is not reused (aggregation-target buffers have "
+		+ "no structural signature), and batched dispatch does not yet fire for the real pattern "
+		+ "path. Re-enable after the compile-reuse fix.")
 public class BatchedRealSceneRenderTest extends TestSuiteBase {
 
 	/** Curated sample library root. */

@@ -38,8 +38,8 @@
 //     → [1, signal_size]
 //
 // Reference:
-//   - MixdownManager.createCells()  (studio/compose, lines 498-627)
-//   - MixdownManager.createEfx()    (studio/compose, lines 643-732)
+//   - MixdownManager.createCells()  (studio/compose,)
+//   - MixdownManager.createEfx()    (studio/compose,)
 
 // ---------------------------------------------------------------------------
 // Per-channel delay state for the efx bus
@@ -73,9 +73,9 @@ state mixdown_reverb_state {
 //
 // Renders rows 4, 5, and 14 of Section 10.1:
 //   * per-channel HP filter (fixed cutoff) — structural rendition of
-//     MixdownManager.createCells() line 504-521 (enableMainFilterUp),
-//   * per-channel volume (fixed scalar) — structural rendition of line 524-526,
-//   * sum to mono — line 610 (main = main.sum()).
+//     MixdownManager.createCells() (enableMainFilterUp),
+//   * per-channel volume (fixed scalar) — structural rendition of,
+//   * sum to mono — (main = main.sum()).
 //
 // Input shape:  [channels, signal_size]
 // Output shape: [1, signal_size]
@@ -88,7 +88,7 @@ state mixdown_reverb_state {
 //                  slot (mutated between renders), or a Producer expression
 //                  (e.g. AutomationManager.getAggregatedValue(...)).
 //   volume         Per-channel linear gain. producer([1]) — same forms as
-//                  hp_cutoff. Drives MixdownManager.createCells() line 524-526
+//                  hp_cutoff. Drives MixdownManager.createCells()
 //                  in the time-varying case.
 //   sample_rate    Audio sample rate in Hz
 //   filter_order   FIR filter order (40 typically)
@@ -109,16 +109,16 @@ layer mixdown_main_bus(channels: int, signal_size: int,
 //
 // Renders rows 18, 21, 22 of Section 10.2:
 //   * per-channel wet FIR filter (fixed coefficients per channel) — structural
-//     rendition of FixedFilterChromosome-driven wet filter at line 574-595,
+//     rendition of FixedFilterChromosome-driven wet filter at,
 //   * per-channel wet send level (fixed scalar) — wetFilter-wrapped factor,
 //   * per-channel delay (fixed sample count) — structural rendition of
-//     AdjustableDelayCell array at line 654-658 (dynamic delay is PDSL-blocked),
+//     AdjustableDelayCell array at (dynamic delay is PDSL-blocked),
 //   * cross-channel transmission matrix (square N×N) — rendition of
-//     mself(fi(), transmission, ...) at line 665-666,
-//   * sum to mono — line 667 (.sum()).
+//     mself(fi(), transmission, ...) at,
+//   * sum to mono — (.sum()).
 //
 // The N efx cells → M delay layers rectangular routing from `m(fi(), delays, tg)`
-// at line 664 is NOT rendered here; this bus uses M = N (square routing) as the
+// at is NOT rendered here; this bus uses M = N (square routing) as the
 // structural case that PDSL currently supports.  The rectangular case is
 // PDSL-blocked and covered by testMixdownManagerRectangularRoute.
 //
@@ -141,11 +141,11 @@ layer mixdown_main_bus(channels: int, signal_size: int,
 //                      constant), a 1-element PackedCollection slot, or a
 //                      Producer expression for time-varying delay (the
 //                      AdjustableDelayCell rendition at
-//                      MixdownManager.createEfx() line 654-658).
+//                      MixdownManager.createEfx()).
 //   transmission       Cross-channel routing matrix, shape [channels, channels].
 //                      producer([channels, channels]) — accepts a PackedCollection
 //                      slot (the genome-driven `transmission` chromosome at
-//                      MixdownManager.java:258-260,677), or a Producer expression
+//                      MixdownManager.java), or a Producer expression
 //                      driving the matrix from the audio clock.
 //                      Indexed as transmission[input_channel, output_channel]:
 //                      output channel m gets sum over input channels n of
@@ -175,7 +175,7 @@ layer mixdown_efx_bus(channels: int, signal_size: int, fir_taps: int,
 // transmission matrix into M delay layers, then summed to mono.
 //
 // This is the PDSL rendition of `efx.m(fi(), delays, transmissionGene)` at
-// MixdownManager.createEfx() line 660-664 (Section 10.2 rows 19-20). The
+// MixdownManager.createEfx() (Section 10.2 rows 19-20). The
 // production gene generates a [N, M] matrix that fans each of the N efx
 // outputs into a weighted combination of the M delay-layer inputs; N and M
 // are independent in the live system (row 19 in Section 10).
@@ -240,8 +240,8 @@ layer rect_route_probe(channels: int, signal_size: int,
 // the same mono input and producing one output channel each, summed into
 // a single mono output.
 //
-// Renders rows 10-11 of Section 10.1 (MixdownManager.createCells() lines
-// 567-602). The production code does:
+// Renders rows 10-11 of Section 10.1 (MixdownManager.createCells()).
+// The production code does:
 //
 //     wetSources.branch(v · wetFilter, reverbFactor)
 //     cells.branch(v, v · wetFilter, reverbFactor)
@@ -306,7 +306,7 @@ layer mixdown_hetero_branch(signal_size: int,
 // each produces [1, signal_size]; accum sums them into a single mono bus,
 // which the master LP then rolls off. The master-gain stage and the bounded-
 // saturation stage replicate the master-bus shaping at MixdownManager.java
-// lines 770-782, where the Java path multiplies by `masterBusGain` and
+//, where the Java path multiplies by `masterBusGain` and
 // applies `bound(., -1, 1)`. PDSL has no hard-clip primitive; tanh_act() is
 // the closest existing bounded-saturation primitive — its energy footprint
 // matches the Java hard clip within numerical drift for the typical
@@ -320,12 +320,12 @@ layer mixdown_hetero_branch(signal_size: int,
 //   lp_cutoff      Master low-pass cutoff in Hz. producer([1]) — accepts the
 //                  same forms as hp_cutoff. The producer-driven form mirrors
 //                  the master filter-down automation at
-//                  MixdownManager.createEfx() line 707-714.
+//                  MixdownManager.createEfx().
 //   master_gain    Master headroom multiplier. producer([1]) — accepts a
 //                  Number literal (folded as a constant), a 1-element
 //                  PackedCollection slot, or a Producer expression. Mirrors
-//                  MixdownManager.masterBusGain (default 0.5) at line
-//                  770-781. Setting it to 1.0 disables the gain stage but
+//                  MixdownManager.masterBusGain (default 0.5). Setting it to 1.0
+//                  disables the gain stage but
 //                  the saturation stage still bounds runaway peaks; the
 //                  Java path skips both if masterBusGain == 1.0.
 //

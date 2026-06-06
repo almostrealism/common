@@ -277,7 +277,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 
 		// The PDSL master stage now applies scale(master_gain) + tanh_act() to
 		// match the Java master-bus stage (masterBusGain * bound(., -1, 1)) at
-		// MixdownManager.java:770-782. The remaining structural mismatches — IIR
+		// MixdownManager.java. The remaining structural mismatches — IIR
 		// vs FIR wet filter and per-channel vs shared HP cutoff — produce a
 		// sub-octave (≤ ~6×) energy gap that cannot be closed without changing
 		// either path. This bound is tight enough to catch a regression that

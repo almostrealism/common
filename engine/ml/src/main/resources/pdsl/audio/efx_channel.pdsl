@@ -151,7 +151,7 @@ layer efx_wet_dry_mix(signal_size: int, delay_samples: int, wet_level: scalar) -
 // ---------------------------------------------------------------------------
 // Full per-channel EFX feedforward chain
 //
-// Renders EfxManager.apply() (EfxManager.java:215-250) MINUS the mself delay-
+// Renders EfxManager.apply() (EfxManager.java) MINUS the mself delay-
 // feedback loop (the .mself(...) with delayLevels[1]), which is deferred to the
 // feedback-grid work. Everything else of the per-channel EFX is here:
 //
@@ -166,7 +166,7 @@ layer efx_wet_dry_mix(signal_size: int, delay_samples: int, wet_level: scalar) -
 //     layer is filter-agnostic (same pattern as the mixdown wet filter).
 //   * scale(wet_level): wet output level (delayLevels[0]).
 //   * scale(automation): the 0.5*(1 + automation_curve) modulation
-//     EfxManager.apply() applies per buffer (EfxManager.java:236-240); supplied as
+//     EfxManager.apply() applies per buffer (EfxManager.java); supplied as
 //     a producer([1]) so it can be a clock-driven envelope.
 //   * delay(delay_samples, buffer, head): the adjustable delay tap
 //     (AdjustableDelayCell), here a single feedforward tap. The recursive feedback
@@ -207,7 +207,7 @@ state feedback_comb_state {
 
 // ---------------------------------------------------------------------------
 // Closed-loop feedback comb / echo — the PDSL rendition of EfxManager's
-// recursive `.mself(fi(), g(delayLevels[1]))` (EfxManager.java:245). Where
+// recursive `.mself(fi(), g(delayLevels[1]))` (EfxManager.java). Where
 // efx_delay is a single feedforward tap, feedback() routes the delayed output
 // back into the ring through `transmission` (the feedback gain) added to the
 // incoming signal, and emits it through `passthrough` (the wet/output level),

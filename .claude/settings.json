@@ -190,6 +190,11 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-assertion-free-test.sh",
             "description": "Warn on @Test methods with no assertion (see .claude/hooks/rules/fail-loud.md)"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-line-number-refs.sh",
+            "description": "Warn on line-number references in source comments (e.g. Foo.java:123, 'line 660-664') — they go stale on the next edit"
           }
         ]
       },
@@ -205,6 +210,21 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-assertion-free-test.sh",
             "description": "Warn on @Test methods with no assertion (see .claude/hooks/rules/fail-loud.md)"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-line-number-refs.sh",
+            "description": "Warn on line-number references in source comments (e.g. Foo.java:123, 'line 660-664') — they go stale on the next edit"
+          }
+        ]
+      },
+      {
+        "matcher": "MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-line-number-refs.sh",
+            "description": "Warn on line-number references in source comments (e.g. Foo.java:123, 'line 660-664') — they go stale on the next edit"
           }
         ]
       },

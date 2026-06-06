@@ -37,6 +37,8 @@ import java.nio.file.Path;
  *   <li>{@link PlanningDocumentReferenceDetector} — pointers to planning
  *       documents (e.g. {@code docs/plans/...}, {@code FOO_BAR.md}) embedded
  *       in source files</li>
+ *   <li>{@link LineNumberReferenceDetector} — source-line references in comments
+ *       (e.g. {@code Foo.java:123}, "line 660-664") that go stale on the next edit</li>
  * </ul>
  *
  * <p><b>This tool exists because documentation alone does not prevent violations.</b>
@@ -54,6 +56,7 @@ import java.nio.file.Path;
  *   <li>Classes named *Block that don't implement org.almostrealism.model.Block</li>
  *   <li>Release version markers (e.g. "Common 0.74") in comments or string literals</li>
  *   <li>Planning-document references (e.g. {@code docs/plans/FOO.md}) in source files</li>
+ *   <li>Source-line references in comments (e.g. {@code Foo.java:123}, "line 42")</li>
  * </ul>
  *
  * @see PackedCollectionDetector
@@ -61,6 +64,7 @@ import java.nio.file.Path;
  * @see NamingConventionDetector
  * @see VersionReferenceDetector
  * @see PlanningDocumentReferenceDetector
+ * @see LineNumberReferenceDetector
  * @see PolicyViolationDetector
  */
 public class CodePolicyViolationDetector extends PolicyViolationDetector {
@@ -108,6 +112,10 @@ public class CodePolicyViolationDetector extends PolicyViolationDetector {
 		planning.scan();
 		violations.addAll(planning.getViolations());
 
+		LineNumberReferenceDetector lineNumbers = new LineNumberReferenceDetector(rootDir);
+		lineNumbers.scan();
+		violations.addAll(lineNumbers.getViolations());
+
 		return this;
 	}
 
@@ -140,6 +148,10 @@ public class CodePolicyViolationDetector extends PolicyViolationDetector {
 		PlanningDocumentReferenceDetector planning = new PlanningDocumentReferenceDetector(rootDir);
 		planning.scanFile(file);
 		violations.addAll(planning.getViolations());
+
+		LineNumberReferenceDetector lineNumbers = new LineNumberReferenceDetector(rootDir);
+		lineNumbers.scanFile(file);
+		violations.addAll(lineNumbers.getViolations());
 
 		return this;
 	}

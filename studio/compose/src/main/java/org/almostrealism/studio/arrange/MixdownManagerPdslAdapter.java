@@ -110,7 +110,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		 * Creates a configuration record with an explicit master-bus gain. The PDSL
 		 * {@code mixdown_master} layer applies {@code scale(master_gain)} followed by
 		 * {@code tanh_act()} as its master shaping stage, mirroring
-		 * {@code MixdownManager.createEfx()} lines 770-782.
+		 * {@code MixdownManager.createEfx()}.
 		 *
 		 * @param channels      audio channel count
 		 * @param signalSize    samples per pass
@@ -161,33 +161,33 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// hp_cutoff: producer([channels]) — one cutoff producer per channel, so the
 		// PDSL layer reads hp_cutoff[channel] inside `for each channel` and each
 		// channel gets its own gene-driven cutoff (closing the former channel-0
-		// approximation). Each channel mirrors MixdownManager.createCells() line 519-523:
+		// approximation). Each channel mirrors MixdownManager.createCells():
 		//   v = automation.getAggregatedValue(mainFilterUpSimple.valueAt(channel),
 		//                                     p(mainFilterUpAdjustmentScale), -40.0)
 		//   cutoff_hz = scalar(20000) * v
 		args.put("hp_cutoff", perChannelProducer(config.channels, ch -> hpCutoffProducer(manager, ch)));
 
 		// volume: producer([channels]) — one volume multiplier per channel. Each
-		// channel mirrors MixdownManager.createCells() line 535-537: the factor
+		// channel mirrors MixdownManager.createCells(): the factor
 		// multiplies its input by f.getResultant(c(1.0)), the per-channel volume.
 		args.put("volume", perChannelProducer(config.channels, ch -> volumeProducer(manager, ch)));
 
 		// lp_cutoff: producer([1])
-		// Mirrors MixdownManager.createEfx() line 720-725:
+		// Mirrors MixdownManager.createEfx():
 		//   f = toAdjustmentGene(clock, sampleRate, p(mainFilterDownAdjustmentScale),
 		//                        mainFilterDownSimple, channel).valueAt(0)
 		//   cutoff_hz = scalar(20000) * f.getResultant(c(1.0))
 		args.put("lp_cutoff", lpCutoffProducer(manager, 0));
 
 		// wet_filter_coeffs: producer([channels, fir_taps])
-		// Mirrors MixdownManager.createCells() line 583-587 / 605-607 — the
-		// FixedFilterChromosome at line 280-283 supplies dynamic IIR filters in
+		// Mirrors MixdownManager.createCells() — the
+		// FixedFilterChromosome at supplies dynamic IIR filters in
 		// the Java path; the PDSL path renders these as static FIR coefficients
 		// per channel by sampling the gene's HP/LP frequencies at args-build time.
 		args.put("wet_filter_coeffs", wetFilterCoefficients(manager, config));
 
 		// transmission: producer([channels, channels])
-		// Mirrors MixdownManager.createEfx() line 677:
+		// Mirrors MixdownManager.createEfx():
 		//   .mself(fi(), transmission, fc(wetOut.valueAt(0)))
 		// The transmission chromosome's gene[n].valueAt(m).getResultant(c(1.0))
 		// supplies the matrix element at row n, column m. Sampled here as a
@@ -197,7 +197,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		args.put("transmission", transmissionMatrix(manager, config));
 
 		// master_gain: producer([1])
-		// Mirrors MixdownManager.createEfx() line 770-781:
+		// Mirrors MixdownManager.createEfx():
 		//   if (masterBusGain != 1.0) main = main.map(... bound(in*gain, -1, 1) ...)
 		// Sourced from Config.masterBusGain (defaults to MixdownManager.masterBusGain).
 		// The PDSL master path also applies tanh_act() after this scale to bound the
@@ -209,7 +209,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// buffers, heads — fresh state slots, sized to match the PDSL subscript
 		// convention (buffers indexed by channel via 'buffers[channel]' carves
 		// signal_size samples per channel; heads indexed similarly carves 1 head
-		// per channel). Mirrors MixdownManager.createEfx() line 665-669, where
+		// per channel). Mirrors MixdownManager.createEfx(), where
 		// each AdjustableDelayCell owns its own internal delay state.
 		PackedCollection buffers = new PackedCollection(config.channels * config.signalSize);
 		buffers.setMem(new double[config.channels * config.signalSize]);
@@ -329,7 +329,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * Builds a {@code [channels, channels]} cross-channel transmission matrix
 	 * producer from the wet-bus transmission chromosome. Mirrors the
 	 * {@code mself(fi(), transmission, ...)} call at
-	 * {@link MixdownManager#createEfx} line 677 by composing each gene-pair's
+	 * {@link MixdownManager#createEfx} by composing each gene-pair's
 	 * resultant producer into a single {@code [channels, channels]} producer
 	 * via {@code concat} and {@code reshape}. The PDSL substrate re-evaluates
 	 * the producer on every forward pass, so chromosome-state changes flow

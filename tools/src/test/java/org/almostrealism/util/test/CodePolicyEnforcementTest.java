@@ -250,6 +250,40 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that the detector catches a source-line reference in a comment.
+	 */
+	@Test
+	public void testDetectorCatchesLineNumberReference() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-linenum");
+		Path testFile = tempDir.resolve("LineRefViolation.java");
+
+		String violatingCode = """
+				package test;
+				public class LineRefViolation {
+					// mirrors the original at MixdownManager.createEfx() line 660-664
+					public void method() { }
+				}
+				""";
+
+		Files.writeString(testFile, violatingCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			Assert.assertTrue("Detector should flag a line-number reference in a comment",
+					detector.getViolations().stream()
+							.anyMatch(v -> "LINE_NUMBER_REFERENCE_IN_COMMENT".equals(v.getRule())));
+
+			log("Detector correctly identified a line-number reference.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
 	 * Verifies that the detector catches Features interfaces with abstract methods.
 	 */
 	@Test
