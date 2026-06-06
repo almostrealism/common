@@ -136,6 +136,37 @@ public class McpToolDiscovery {
     }
 
     /**
+     * Reports whether the given parameter of the named tool has a default value
+     * in its Python function signature — i.e. whether the parameter is
+     * <em>optional</em> from the MCP client's perspective.
+     *
+     * <p>FastMCP derives the JSON schema {@code required} list from parameters
+     * that have no default. A parameter declared as
+     * {@code workstream_id: str = ""} is optional and will not appear in the
+     * schema's {@code required} list; one declared as
+     * {@code workstream_id: str} (no default) is required. This helper lets
+     * the discovery tests assert the policy intent — "this parameter is
+     * intentionally optional" — without having to embed the full FastMCP
+     * runtime in the build.</p>
+     *
+     * <p>Returns {@code false} when the file does not exist, the tool is not
+     * found, or the parameter is not declared in the signature.</p>
+     *
+     * @param serverFile path to the Python server source file
+     * @param toolName   the tool function name to inspect
+     * @param paramName  the parameter name to check
+     * @return {@code true} when the parameter declares a default value,
+     *         {@code false} otherwise
+     */
+    public static boolean isOptionalToolParameter(Path serverFile,
+                                                  String toolName,
+                                                  String paramName) {
+        List<String> lines = readLines(serverFile);
+        if (lines.isEmpty()) return false;
+        return discoverParameterHasDefault(lines, toolName, paramName);
+    }
+
+    /**
      * Reads all UTF-8 lines from the given Python server source file.
      *
      * @param serverFile path to the file; may be {@code null}
@@ -330,5 +361,59 @@ public class McpToolDiscovery {
         }
 
         return params;
+    }
+
+    /**
+     * Reports whether the given parameter of the named tool declares a default
+     * value in its Python function signature.
+     *
+     * <p>A parameter with a default — for example
+     * {@code workstream_id: str = ""} on a multi-line signature, or
+     * {@code limit: int = 10} on a single-line signature — is optional from
+     * FastMCP's perspective (it will not appear in the generated schema's
+     * {@code required} list). A parameter without a default is required.</p>
+     *
+     * @param lines     all lines of the server source file
+     * @param toolName  the tool function name to inspect
+     * @param paramName the parameter name to check
+     * @return {@code true} when the parameter is declared with {@code = ...}
+     *         in the signature, {@code false} otherwise
+     */
+    private static boolean discoverParameterHasDefault(List<String> lines,
+                                                       String toolName,
+                                                       String paramName) {
+        Pattern funcDefStart = Pattern.compile("def\\s+" + Pattern.quote(toolName) + "\\s*\\(");
+        // TODO(review): [^=,]+ stops at any comma, so parameterized generics like
+        // Dict[str, str] or Tuple[int, str] in the type annotation cause a false
+        // "required" result even when a default is present. Fix with bracket-depth
+        // awareness when this helper is extended beyond simple str/int annotations.
+        Pattern paramLine = Pattern.compile(
+            "^\\s+" + Pattern.quote(paramName) + "\\s*:\\s*[^=,]+=\\s*\\S");
+        Pattern inlineParamWithDefault = Pattern.compile(
+            "(?:^|[\\s,(])" + Pattern.quote(paramName)
+                + "\\s*:\\s*[^=,]+=\\s*\\S");
+
+        for (int i = 0; i < lines.size(); i++) {
+            String defLine = lines.get(i);
+            if (!funcDefStart.matcher(defLine).find()) continue;
+
+            int openParen = defLine.indexOf('(');
+            int closeParen = defLine.lastIndexOf(')');
+            if (openParen >= 0 && closeParen > openParen) {
+                // Single-line signature.
+                String paramSection = defLine.substring(openParen + 1, closeParen);
+                return inlineParamWithDefault.matcher(paramSection).find();
+            }
+            // Multi-line signature.
+            for (int j = i + 1; j < lines.size(); j++) {
+                String trimmed = lines.get(j).trim();
+                if (trimmed.startsWith(") ->") || trimmed.startsWith("):")) break;
+                if (paramLine.matcher(lines.get(j)).find()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return false;
     }
 }

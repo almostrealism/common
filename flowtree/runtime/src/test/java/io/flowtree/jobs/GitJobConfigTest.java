@@ -117,4 +117,41 @@ public class GitJobConfigTest extends TestSuiteBase {
 			all.size()
 		);
 	}
+
+	/**
+	 * Verifies that the default exclusion set does NOT contain the
+	 * blanket {@code .claude/**} pattern, so that project-shared
+	 * {@code .claude/hooks/**}, {@code .claude/agents/**}, and
+	 * {@code .claude/commands/**} content remains committable.
+	 *
+	 * <p>This is a regression guard for a bug where the blanket
+	 * exclusion silently dropped {@code .claude/hooks/lib/*.py} and
+	 * other project-shared content from agent commits. The blanket
+	 * pattern must be replaced with narrow patterns targeting only
+	 * machine-local paths (per-project state, local settings, lock
+	 * files). See {@code docs/plans/OPENCODE_HOOKS.md} for context.</p>
+	 */
+	@Test(timeout = 30000)
+	public void defaultExclusionsDoNotContainBlanketClaudePattern() {
+		assertFalse(".claude/** must not be a blanket exclusion — it dropped "
+				+ "project-shared .claude/hooks/** content from agent commits",
+			GitJobConfig.DEFAULT_EXCLUDED_PATTERNS.contains(".claude/**"));
+	}
+
+	/**
+	 * Verifies that the default exclusion set contains narrow patterns
+	 * covering the genuinely machine-local paths under {@code .claude/}
+	 * that {@code .gitignore} already treats as local: per-project
+	 * session state, machine-local settings, and the scheduled-tasks
+	 * lock file.
+	 */
+	@Test(timeout = 30000)
+	public void defaultExclusionsIncludeNarrowClaudeLocalPatterns() {
+		assertTrue("Expected .claude/projects/** to exclude per-project session state",
+			GitJobConfig.DEFAULT_EXCLUDED_PATTERNS.contains(".claude/projects/**"));
+		assertTrue("Expected .claude/*.local.json to exclude machine-local settings",
+			GitJobConfig.DEFAULT_EXCLUDED_PATTERNS.contains(".claude/*.local.json"));
+		assertTrue("Expected .claude/scheduled_tasks.lock to exclude the per-run lock",
+			GitJobConfig.DEFAULT_EXCLUDED_PATTERNS.contains(".claude/scheduled_tasks.lock"));
+	}
 }

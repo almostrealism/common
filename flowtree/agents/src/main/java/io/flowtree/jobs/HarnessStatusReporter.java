@@ -110,11 +110,20 @@ public final class HarnessStatusReporter {
      * Publishes a phase-entry message naming the phase and the runner/model/
      * provider/effort that will execute it.
      *
+     * <p>To keep channel traffic focused on lifecycle outcomes, entry
+     * announcements are emitted only for the {@link Phase#PRIMARY PRIMARY}
+     * phase. Every other phase still publishes a phase-exit message via
+     * {@link #phaseExit(Phase, AgentRunResult)} when it finishes, so the
+     * operator still sees when each phase ends.</p>
+     *
      * @param phase  the lifecycle phase being dispatched
      * @param runner the runner name that will run it
      * @param config the effective phase configuration (model/provider/effort)
      */
     public void phaseEntry(Phase phase, String runner, PhaseConfig config) {
+        if (phase != Phase.PRIMARY) {
+            return;
+        }
         post(formatPhaseEntry(phase, runner, config));
     }
 

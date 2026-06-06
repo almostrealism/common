@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "noEmit": true,
+    "strict": false,
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "block-mvn-test-direct.ts",
+    "block-git-commit.ts",
+    "block-git-worktree.ts",
+    "warn-git-log.ts",
+    "block-checkstyle-edit.ts",
+    "_lib/command_pattern.ts"
+  ]
+}

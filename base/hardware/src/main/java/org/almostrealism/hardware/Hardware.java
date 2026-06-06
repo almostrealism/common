@@ -27,6 +27,7 @@ import io.almostrealism.compute.ExpansionWidthTargetOptimization;
 import io.almostrealism.compute.ParallelismDiversityOptimization;
 import io.almostrealism.compute.ParallelismTargetOptimization;
 import io.almostrealism.compute.ProcessContextBase;
+import io.almostrealism.compute.RowMonomialOptimization;
 import io.almostrealism.compute.TraversableDepthTargetOptimization;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelPreferences;
@@ -560,6 +561,7 @@ public final class Hardware implements ConsoleFeatures {
 		// once its behaviour is validated in CI, the expansion-width strategy
 		// can be reinstated here without touching its implementation.
 		ProcessContextBase.setDefaultOptimizationStrategy(new CascadingOptimizationStrategy(
+				new RowMonomialOptimization(),
 				new ParallelismDiversityOptimization(),
 				new TraversableDepthTargetOptimization(),
 				new ParallelismTargetOptimization()

@@ -543,6 +543,32 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			sendMessageParams.contains("text"));
 		assertTrue("send_message must declare activity in signature",
 			sendMessageParams.contains("activity"));
+		assertTrue("send_message must declare workstream_id in signature so the"
+				+ " parameter is part of the MCP schema and operator-side callers"
+				+ " can still override the token-derived value",
+			sendMessageParams.contains("workstream_id"));
+		assertTrue("send_message must declare job_id in signature for the same"
+				+ " operator-override reason",
+			sendMessageParams.contains("job_id"));
+		// workstream_id and job_id must be OPTIONAL on send_message so a
+		// job-scoped agent call with only {text, activity} succeeds — the
+		// in-flight request's HMAC temp token then supplies the workstream
+		// and job automatically. The retrospective opencode/MiniMax failure
+		// (silent agent after a first send_message returning
+		// "workstream_id is required ...") is prevented from regressing by
+		// keeping these parameters defaulted in the function signature.
+		assertTrue("send_message workstream_id must be optional (default value"
+				+ " present) so job-scoped agents can call with only {text, activity}",
+			McpToolDiscovery.isOptionalToolParameter(
+				serverFile, "send_message", "workstream_id"));
+		assertTrue("send_message job_id must be optional (default value"
+				+ " present) so job-scoped agents do not have to supply it",
+			McpToolDiscovery.isOptionalToolParameter(
+				serverFile, "send_message", "job_id"));
+		assertTrue("send_message activity must be optional (default value"
+				+ " present) — primary-phase calls omit it",
+			McpToolDiscovery.isOptionalToolParameter(
+				serverFile, "send_message", "activity"));
 
 		List<String> workstreamContextParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_context");
@@ -641,5 +667,81 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			updateParams.contains("required_labels"));
 		assertTrue("workstream_update_config must declare dependent_repos parameter",
 			updateParams.contains("dependent_repos"));
+	}
+
+	/**
+	 * Unit test for {@link McpToolDiscovery#isOptionalToolParameter}: a
+	 * multi-line signature must report {@code true} for parameters declared
+	 * with a default value and {@code false} for parameters without one.
+	 * This is the helper that the {@code send_message} optionality assertion
+	 * above relies on, so a regression in the regex would otherwise silently
+	 * weaken that test.
+	 */
+	@Test(timeout = 30000)
+	public void isOptionalToolParameterIdentifiesDefaultsInMultiLineSignature() throws IOException {
+		Path tempFile = Files.createTempFile("mcp_optional_", ".py");
+		try {
+			Files.writeString(tempFile, String.join("\n",
+				"from mcp.server.fastmcp import FastMCP",
+				"mcp = FastMCP(\"test\")",
+				"",
+				"@mcp.tool()",
+				"def example_tool(",
+				"    required_text: str,",
+				"    workstream_id: str = \"\",",
+				"    activity: str = \"\",",
+				"    limit: int = 10,",
+				") -> dict:",
+				"    return {}",
+				""), StandardCharsets.UTF_8);
+
+			assertFalse("required_text has no default — must be required",
+				McpToolDiscovery.isOptionalToolParameter(
+					tempFile, "example_tool", "required_text"));
+			assertTrue("workstream_id defaults to empty string — must be optional",
+				McpToolDiscovery.isOptionalToolParameter(
+					tempFile, "example_tool", "workstream_id"));
+			assertTrue("activity defaults to empty string — must be optional",
+				McpToolDiscovery.isOptionalToolParameter(
+					tempFile, "example_tool", "activity"));
+			assertTrue("limit defaults to 10 — must be optional",
+				McpToolDiscovery.isOptionalToolParameter(
+					tempFile, "example_tool", "limit"));
+			assertFalse("missing parameter must return false",
+				McpToolDiscovery.isOptionalToolParameter(
+					tempFile, "example_tool", "does_not_exist"));
+		} finally {
+			Files.deleteIfExists(tempFile);
+		}
+	}
+
+	/**
+	 * Single-line signatures are equally supported by
+	 * {@link McpToolDiscovery#isOptionalToolParameter} — some MCP servers
+	 * use a compact one-line form for tools with few parameters and the
+	 * discovery helper must not silently treat them as required.
+	 */
+	@Test(timeout = 30000)
+	public void isOptionalToolParameterIdentifiesDefaultsInSingleLineSignature() throws IOException {
+		Path tempFile = Files.createTempFile("mcp_optional_inline_", ".py");
+		try {
+			Files.writeString(tempFile, String.join("\n",
+				"from mcp.server.fastmcp import FastMCP",
+				"mcp = FastMCP(\"test\")",
+				"",
+				"@mcp.tool()",
+				"def inline_tool(name: str, namespace: str = \"default\") -> dict:",
+				"    return {}",
+				""), StandardCharsets.UTF_8);
+
+			assertFalse("name has no default — must be required",
+				McpToolDiscovery.isOptionalToolParameter(
+					tempFile, "inline_tool", "name"));
+			assertTrue("namespace defaults to \"default\" — must be optional",
+				McpToolDiscovery.isOptionalToolParameter(
+					tempFile, "inline_tool", "namespace"));
+		} finally {
+			Files.deleteIfExists(tempFile);
+		}
 	}
 }

@@ -2592,8 +2592,48 @@ class TestMemoryStore(unittest.TestCase):
 
     def test_requires_branch_context(self):
         _grant_all_scopes()
-        result = server.memory_store(content="test")
+        # Make sure no leftover thread-local / ContextVar / per-request
+        # bearer survives from another test class — otherwise the new
+        # token fallback in _resolve_branch_context would resolve here.
+        server._set_token_context("", "")
+        server._request_workstream_id.set(None)
+        server._request_job_id.set(None)
+        with patch.object(server.mcp, "get_context",
+                          side_effect=LookupError("no active request")):
+            result = server.memory_store(content="test")
         self.assertFalse(result["ok"])
+
+    @patch.object(server, "_find_workstream")
+    @patch.object(server, "_get_memory_client")
+    def test_store_resolves_repo_branch_from_token_workstream(
+            self, mock_client_fn, mock_find_ws):
+        """Regression: memory_store with only ``content`` and a valid token
+        context must resolve repo_url and branch from the workstream the
+        temp token is bound to. This mirrors the
+        :func:`send_message` fix — job-scoped tools should accept a minimal
+        payload because the workstream is already implicit in the bearer."""
+        _grant_all_scopes()
+        # Simulate the auth middleware having decoded a temp token bound to
+        # workstream ``ws-token``.
+        server._set_token_context("ws-token", "job-token")
+        mock_find_ws.return_value = {
+            "workstreamId": "ws-token",
+            "repoUrl": "https://github.com/org/repo",
+            "defaultBranch": "feature/x",
+        }
+        client = MagicMock()
+        client.store.return_value = {"id": "auto-resolved"}
+        mock_client_fn.return_value = client
+
+        # No workstream_id, no repo_url, no branch — only content.
+        result = server.memory_store(content="Note from a job session")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        call_kwargs = client.store.call_args[1]
+        self.assertEqual(call_kwargs["repo_url"],
+                         "https://github.com/org/repo")
+        self.assertEqual(call_kwargs["branch"], "feature/x")
+        # Clean up to avoid leaking state into sibling tests.
+        server._set_token_context("", "")
 
     def test_rejects_oversized_content(self):
         _grant_all_scopes()
@@ -2875,6 +2915,162 @@ class TestPerRequestTokenDecoding(unittest.TestCase):
         self.assertIn("/api/workstreams/ws-A/jobs/job-7/messages",
                       called_path)
         self.assertNotIn("ws-STALE", called_path)
+
+
+# -----------------------------------------------------------------------
+# send_message workstream_id is optional when a temp token resolves it
+# -----------------------------------------------------------------------
+
+
+class TestSendMessageWorkstreamIdOptional(unittest.TestCase):
+    """Regression tests for the silent-opencode fix: ``send_message`` must
+    accept a call with only ``{text, activity}`` when the in-flight request's
+    HMAC temp token resolves to a workstream and job. The reported failure
+    mode was the agent's very first ``send_message`` call returning
+    ``"workstream_id is required ..."`` and the agent then giving up on
+    operator status updates for the entire session. The fix ensures that
+    token-based resolution is the default path; the explicit
+    ``workstream_id`` argument remains an operator-side override.
+    """
+
+    def setUp(self):
+        # Clear any leftover ContextVar / thread-local state so the
+        # resolution paths are tested in isolation. The base behaviour
+        # of opencode primary-phase jobs is "no prior state on the
+        # server-task" since the streamable-HTTP transport is stateless.
+        server._request_workstream_id.set(None)
+        server._request_job_id.set(None)
+        if hasattr(server._thread_local, "workstream_id"):
+            del server._thread_local.workstream_id
+        if hasattr(server._thread_local, "job_id"):
+            del server._thread_local.job_id
+
+    def tearDown(self):
+        server._request_workstream_id.set(None)
+        server._request_job_id.set(None)
+        if hasattr(server._thread_local, "workstream_id"):
+            del server._thread_local.workstream_id
+        if hasattr(server._thread_local, "job_id"):
+            del server._thread_local.job_id
+
+    @staticmethod
+    def _fake_context_with_bearer(token_value):
+        """Build a stand-in MCP context whose request carries ``token_value``
+        as its Bearer header — the same shape as a real opencode/Claude
+        Code stateless-HTTP request."""
+        headers = {}
+        if token_value is not None:
+            headers["authorization"] = "Bearer " + token_value
+        fake_request = MagicMock()
+        fake_request.headers = headers
+        fake_request_context = MagicMock()
+        fake_request_context.request = fake_request
+        fake_ctx = MagicMock()
+        fake_ctx.request_context = fake_request_context
+        return fake_ctx
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    @patch.object(server, "_controller_post")
+    def test_resolves_workstream_from_temp_token_with_only_text(self, mock_post):
+        """The headline regression: a job session's ``send_message`` call with
+        only ``text`` (no workstream_id, no job_id) must succeed and post to
+        the workstream/job the temp token resolves to.
+        """
+        _grant_all_scopes()
+        token = server._mint_temp_token("ws-A", "job-7", ttl_seconds=60)
+        mock_post.return_value = {"ok": True}
+        with patch.object(server.mcp, "get_context",
+                          return_value=self._fake_context_with_bearer(token)):
+            result = server.send_message(text="Hello from opencode")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_post.assert_called_once()
+        called_path = mock_post.call_args[0][0]
+        self.assertIn("/api/workstreams/ws-A/jobs/job-7/messages",
+                      called_path)
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    @patch.object(server, "_controller_post")
+    def test_text_and_activity_only_resolves_via_token(self, mock_post):
+        """A call with ``{text, activity}`` only — the exact shape an
+        opencode agent emits during its first status update — must succeed
+        when the bearer is a valid temp token."""
+        _grant_all_scopes()
+        token = server._mint_temp_token("ws-B", "job-9", ttl_seconds=60)
+        mock_post.return_value = {"ok": True}
+        with patch.object(server.mcp, "get_context",
+                          return_value=self._fake_context_with_bearer(token)):
+            result = server.send_message(
+                text="Starting work", activity="primary")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        body = mock_post.call_args[0][1]
+        self.assertEqual(body["text"], "Starting work")
+        self.assertEqual(body["activity"], "primary")
+        called_path = mock_post.call_args[0][0]
+        self.assertIn("ws-B", called_path)
+        self.assertIn("job-9", called_path)
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    @patch.object(server, "_controller_post")
+    def test_explicit_workstream_id_overrides_token(self, mock_post):
+        """The override path: an explicit workstream_id still wins when
+        supplied, even if the bearer resolves to a different workstream.
+        This preserves the operator-side ability to route messages
+        deliberately."""
+        _grant_all_scopes()
+        token = server._mint_temp_token("ws-TOKEN", "job-TOKEN", ttl_seconds=60)
+        mock_post.return_value = {"ok": True}
+        with patch.object(server.mcp, "get_context",
+                          return_value=self._fake_context_with_bearer(token)):
+            result = server.send_message(
+                text="Routed elsewhere", workstream_id="ws-OVERRIDE")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        called_path = mock_post.call_args[0][0]
+        self.assertIn("ws-OVERRIDE", called_path)
+        self.assertNotIn("ws-TOKEN", called_path)
+
+    @patch.object(server, "SHARED_SECRET", "test-secret")
+    @patch.object(server, "_controller_post")
+    def test_falls_back_to_thread_local_when_token_decode_fails(
+            self, mock_post):
+        """When the per-request bearer decode finds nothing (e.g. a static
+        admin token on the wire), the legacy ContextVar/thread-local set by
+        the auth middleware is still consulted. This keeps in-process tests
+        and stdio-transport callers working."""
+        _grant_all_scopes()
+        server._set_token_context("ws-LOCAL", "job-LOCAL")
+        mock_post.return_value = {"ok": True}
+        # No request context → per-request decode returns ``no_context``;
+        # the call must still resolve via the thread-local fallback.
+        with patch.object(server.mcp, "get_context",
+                          side_effect=LookupError("no active request")):
+            result = server.send_message(text="Fallback path")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        called_path = mock_post.call_args[0][0]
+        self.assertIn("ws-LOCAL", called_path)
+        self.assertIn("job-LOCAL", called_path)
+
+    @patch.object(server, "_controller_post")
+    def test_genuinely_unresolvable_call_returns_clear_error(self, mock_post):
+        """When there is no explicit workstream_id, no resolvable bearer,
+        and no ContextVar/thread-local context, the call must error with a
+        message that names both the override path and the token path so
+        the caller can fix the missing context. This is the genuinely-
+        unresolvable case — not the common opencode failure mode the
+        token-fallback fix addresses."""
+        _grant_all_scopes()
+        # Explicitly clear any leftover state so this is truly unresolvable.
+        server._set_token_context("", "")
+        # No MCP context at all (the typical out-of-request test path).
+        with patch.object(server.mcp, "get_context",
+                          side_effect=LookupError("no active request")):
+            result = server.send_message(text="Nowhere to go")
+        self.assertFalse(result["ok"])
+        self.assertIn("workstream_id", result["error"])
+        # The new error message names both the explicit arg and the token
+        # path so the caller knows the two ways to provide context.
+        self.assertIn("token", result["error"].lower())
+        # No POST attempted — the call short-circuits at validation.
+        mock_post.assert_not_called()
 
 
 # -----------------------------------------------------------------------
