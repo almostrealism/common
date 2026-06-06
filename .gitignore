@@ -47,6 +47,7 @@ claude-output/**
 **/pattern-factory.json
 **/pattern-factory-new.json
 **/scene-settings.json
+retrospective-results.json
 commit.txt
 workstreams.yaml
 flowtree-controller.log

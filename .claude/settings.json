@@ -51,6 +51,11 @@
           },
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-checkstyle-edit.sh",
+            "description": "Block bash manipulation of checkstyle configuration (checkstyle.xml, checkstyle-suppressions.xml, any /checkstyle/ dir, etc.) — abandon the task rather than tamper with enforcement"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
             "description": "Block shell writes into ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
           },
@@ -79,6 +84,11 @@
       {
         "matcher": "Edit",
         "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-checkstyle-edit.sh",
+            "description": "Block edits to checkstyle configuration — abandon the task rather than tamper with enforcement"
+          },
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-pom-write.sh",
@@ -116,6 +126,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-checkstyle-edit.sh",
+            "description": "Block MultiEdit of checkstyle configuration — abandon the task rather than tamper with enforcement"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
             "description": "Block MultiEdit in ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
           }
@@ -126,6 +141,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-checkstyle-edit.sh",
+            "description": "Block NotebookEdit of checkstyle configuration — abandon the task rather than tamper with enforcement"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
             "description": "Block NotebookEdit in ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
           }
@@ -134,6 +154,11 @@
       {
         "matcher": "Write",
         "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-checkstyle-edit.sh",
+            "description": "Block writes of checkstyle configuration — abandon the task rather than tamper with enforcement"
+          },
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-pom-write.sh",

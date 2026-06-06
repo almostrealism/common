@@ -13,6 +13,7 @@
     "block-git-commit.ts",
     "block-git-worktree.ts",
     "warn-git-log.ts",
+    "block-checkstyle-edit.ts",
     "_lib/command_pattern.ts"
   ]
 }

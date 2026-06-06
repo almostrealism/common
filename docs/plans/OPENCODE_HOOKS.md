@@ -669,6 +669,16 @@ for the PoC. Captured here so they don't get lost.
 
 ## 7. Changelog
 
+- 2026-06-04: Added `.opencode/plugins/warn-mvn-build.ts` + shared
+  core `.claude/hooks/lib/mvn_build_check.py` to cover the
+  ar-build-validator steer that was previously Claude-only via
+  `.claude/hooks/mvn-artifact-staleness.py`. Detects artifact-producing
+  mvn goals (`install`, `compile`, `package`, …) in the bash tool's
+  `command` string and appends a soft note pointing at the
+  `ar-build-validator` MCP tool. Never blocks — the steer text
+  explicitly says so — and never modifies command flags. Closes the
+  opencode-side gap identified by the test-runner-preflight retro.
+
 - 2026-06-04: Class A migration landed. Added
   `.claude/hooks/lib/git_command_check.py` (shared core for the three
   Class A policies), 26 unit tests, and a `.opencode/plugins/_lib/command_pattern.ts`
