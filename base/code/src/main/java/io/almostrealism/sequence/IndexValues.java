@@ -52,6 +52,11 @@ public class IndexValues {
 	 * {@code IndexValues} is created per evaluation (and the same instance is passed down the
 	 * recursion), this cache is automatically scoped to one evaluation and confined to one
 	 * thread. Allocated lazily so leaf-only evaluations pay nothing.
+	 *
+	 * <p>Populated only when {@link io.almostrealism.scope.ScopeSettings#enableValueMemoization}
+	 * is {@code true}; it is {@code false} by default because the deep-DAG case it targeted is
+	 * now covered by the gather-analysis gate, and the per-node bookkeeping otherwise slowed the
+	 * common shallow case.</p>
 	 */
 	private Map<Expression, Number> valueCache;
 

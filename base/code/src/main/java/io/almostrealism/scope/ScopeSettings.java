@@ -161,6 +161,23 @@ public class ScopeSettings {
 	public static int maxGatherAnalysisNodes = 1 << 12;
 
 	/**
+	 * When {@code true}, {@link Expression#value(io.almostrealism.sequence.IndexValues)} memoizes
+	 * each node's value per evaluation (keyed by node identity in the supplied
+	 * {@link io.almostrealism.sequence.IndexValues}), so a subexpression shared by many paths of a
+	 * DAG is computed once rather than once per path.
+	 *
+	 * <p>Off by default. The deep shared-DAG gradient case this memoization targeted (e.g.
+	 * {@code convDelta}) is now bounded earlier by the gather-analysis gate
+	 * ({@link #maxGatherAnalysisDepth}/{@link #maxGatherAnalysisNodes}), so the cache no longer
+	 * pays for itself: for the common shallow expressions enumerated per kernel index during
+	 * {@link io.almostrealism.kernel.KernelSeriesProvider} series detection it only added
+	 * per-node map bookkeeping (measured ~1.8x slower compile for {@code DiffusionFeaturesTests.upsample}).
+	 * The machinery is retained behind this flag so it can be re-enabled if a future workload
+	 * benefits from it.</p>
+	 */
+	public static boolean enableValueMemoization = false;
+
+	/**
 	 * When {@code true}, parent {@link Expression} constructors canonicalise
 	 * their children array via {@link LeafInternTable#canonicalize(Expression[])}.
 	 * Each freshly-allocated leaf whose value has already been seen collapses

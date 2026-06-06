@@ -768,26 +768,25 @@ public abstract class Expression<T> implements
 	}
 
 	/**
-	 * Computes the concrete value of this expression for given index assignments,
-	 * memoizing the result per evaluation.
-	 *
-	 * <p>Expression graphs are DAGs: a single subexpression instance may be reachable by
-	 * many paths from the root. The recursive evaluation in {@link #computeValue(IndexValues)}
-	 * would therefore recompute a shared node once per path, which is exponential in tree
-	 * depth for deeply nested expressions (e.g. convolution gradients). To avoid this, the
-	 * result for each composite node is cached in the supplied {@link IndexValues} (keyed by
-	 * node identity) for the duration of the evaluation. Leaf nodes are evaluated directly,
-	 * since they are O(1) and the most numerous.</p>
+	 * Computes the concrete value of this expression for given index assignments.
 	 *
 	 * <p>This method is {@code final}; subclasses customize evaluation by overriding
-	 * {@link #computeValue(IndexValues)}.</p>
+	 * {@link #computeValue(IndexValues)}. By default it delegates straight to
+	 * {@link #computeValue(IndexValues)} without caching. When
+	 * {@link io.almostrealism.scope.ScopeSettings#enableValueMemoization} is {@code true} it
+	 * instead memoizes each composite node's result in the supplied {@link IndexValues} (keyed
+	 * by node identity) for the duration of the evaluation, so a node shared by many DAG paths
+	 * is computed once; leaf nodes are always evaluated directly. The cache is off by default
+	 * because the deep-DAG case it targeted is now bounded by the gather-analysis gate and the
+	 * bookkeeping otherwise slowed the common shallow case.</p>
 	 *
 	 * @param indexValues the index value assignments
 	 * @return the computed value
 	 */
 	@Override
 	public final Number value(IndexValues indexValues) {
-		if (getChildren().isEmpty()) return computeValue(indexValues);
+		if (!ScopeSettings.enableValueMemoization || getChildren().isEmpty())
+			return computeValue(indexValues);
 
 		Number cached = indexValues.getCachedValue(this);
 		if (cached != null) return cached;

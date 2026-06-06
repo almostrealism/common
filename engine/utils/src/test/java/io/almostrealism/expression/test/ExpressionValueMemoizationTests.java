@@ -19,51 +19,88 @@ package io.almostrealism.expression.test;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.sequence.IndexValues;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 /**
- * Regression tests for the DAG-aware memoization in {@link Expression#value(IndexValues)}.
+ * Regression tests for the optional DAG-aware memoization in {@link Expression#value(IndexValues)}.
  *
  * <p>Expression graphs are DAGs: a single subexpression instance is frequently reachable by
  * many paths from the root (for example the sparse Jacobians produced by convolution
  * gradients). The recursive evaluation in {@link Expression#computeValue(IndexValues)} visits
  * children directly, so without memoization a shared node is recomputed once per path to it —
- * a cost that is exponential in tree depth and that has timed out compilation in CI. These
- * tests pin the invariant that each distinct composite node is evaluated exactly once per
- * call to {@link Expression#value(IndexValues)}.</p>
+ * a cost that is exponential in tree depth. The memoization that collapses this is gated behind
+ * {@link ScopeSettings#enableValueMemoization} (off by default, since the gather-analysis gate
+ * now bounds the deep-DAG case and the cache otherwise slows the common shallow case). These
+ * tests pin both behaviours: each distinct composite node is evaluated exactly once when the
+ * flag is enabled, and the flag genuinely toggles that memoization.</p>
  */
 public class ExpressionValueMemoizationTests extends TestSuiteBase implements ExpressionFeatures {
 
 	/**
 	 * Builds a balanced binary DAG of depth 24 in which every internal node shares a single
 	 * child instance with itself, so the graph has 25 distinct nodes but a tree-node count of
-	 * roughly {@code 2^25}. Verifies that evaluating it invokes {@code computeValue} exactly
-	 * once per distinct node (25 times) rather than once per path (millions of times), and that
-	 * the computed value is correct.
+	 * roughly {@code 2^25}. With memoization enabled, verifies that evaluating it invokes
+	 * {@code computeValue} exactly once per distinct node (25 times) rather than once per path
+	 * (millions of times), and that the computed value is correct.
 	 */
 	@Test(timeout = 30000)
 	public void sharedSubexpressionEvaluatedOncePerNode() {
-		int[] evaluations = { 0 };
+		boolean previous = ScopeSettings.enableValueMemoization;
+		ScopeSettings.enableValueMemoization = true;
+		try {
+			int[] evaluations = { 0 };
 
-		Expression<Integer> node = new CountingExpression(e(2), e(3), evaluations);
-		for (int i = 0; i < 24; i++) {
-			node = new CountingExpression(node, node, evaluations);
+			Expression<Integer> node = new CountingExpression(e(2), e(3), evaluations);
+			for (int i = 0; i < 24; i++) {
+				node = new CountingExpression(node, node, evaluations);
+			}
+
+			// 25 distinct nodes, but the tree-node count (counted per path) is exponential.
+			Assert.assertTrue("expected an exponential tree-node count",
+					node.countNodes() > 1_000_000);
+
+			Number result = node.value(new IndexValues());
+
+			// Memoization collapses the per-path recompute to one evaluation per distinct node.
+			Assert.assertEquals(25, evaluations[0]);
+
+			// Leaf value 2 + 3 = 5, doubled once per level for 24 levels.
+			Assert.assertEquals(5L << 24, result.longValue());
+		} finally {
+			ScopeSettings.enableValueMemoization = previous;
 		}
+	}
 
-		// 25 distinct nodes, but the tree-node count (counted per path) is exponential.
-		Assert.assertTrue("expected an exponential tree-node count",
-				node.countNodes() > 1_000_000);
+	/**
+	 * Verifies that the memoization is genuinely controlled by the flag: with it disabled (the
+	 * default), a node shared across both children of its parent is recomputed once per path,
+	 * so a small shared DAG evaluates more times than it has distinct nodes.
+	 */
+	@Test(timeout = 30000)
+	public void memoizationDisabledRecomputesSharedNodesPerPath() {
+		boolean previous = ScopeSettings.enableValueMemoization;
+		ScopeSettings.enableValueMemoization = false;
+		try {
+			int[] evaluations = { 0 };
 
-		Number result = node.value(new IndexValues());
+			// Three distinct composite nodes; the depth-1 node is shared by both children of
+			// the root, so without memoization the leaf-summing node is visited twice.
+			Expression<Integer> shared = new CountingExpression(e(2), e(3), evaluations);
+			Expression<Integer> root = new CountingExpression(shared, shared, evaluations);
 
-		// Memoization collapses the per-path recompute to one evaluation per distinct node.
-		Assert.assertEquals(25, evaluations[0]);
+			Number result = root.value(new IndexValues());
 
-		// Leaf value 2 + 3 = 5, doubled once per level for 24 levels.
-		Assert.assertEquals(5L << 24, result.longValue());
+			Assert.assertTrue("without memoization the shared node is recomputed per path",
+					evaluations[0] > 2);
+			// Value is independent of caching: (2 + 3) + (2 + 3) = 10.
+			Assert.assertEquals(10L, result.longValue());
+		} finally {
+			ScopeSettings.enableValueMemoization = previous;
+		}
 	}
 
 	/**
