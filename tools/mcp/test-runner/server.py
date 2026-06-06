@@ -162,6 +162,17 @@ class TestRunner:
         """
         output_file = run_dir / "output.txt"
 
+        # Always surface installed-artifact ages first: `mvn test -pl <module>`
+        # recompiles only <module>, so a dependency edited but not reinstalled
+        # runs stale. This banner makes that obvious before the test launches.
+        try:
+            age_report = preflight.format_artifact_age_report(
+                PROJECT_ROOT, module)
+            self._write_preflight_section(
+                output_file, "dependency artifact ages (~/.m2)", age_report)
+        except Exception:  # noqa: BLE001 - a reporting error must never break a run
+            pass
+
         try:
             missing = preflight.find_missing_upstream_artifacts(
                 PROJECT_ROOT, module)

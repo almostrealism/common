@@ -441,5 +441,66 @@ class ArtifactPathTests(unittest.TestCase):
         )
 
 
+class ArtifactAgeReportTests(unittest.TestCase):
+    """Cover :func:`find_repo_module_artifacts` and :func:`format_artifact_age_report`."""
+
+    def _scaffold(self, tmp: str):
+        """Build a sandbox repo: a pom-packaging root plus two jar modules."""
+        project_root = Path(tmp)
+        _write_root_pom(project_root, version="0.74")  # packaging=pom
+        _write_module_pom(project_root, "base/code", deps=[])
+        _write_module_pom(project_root, "engine/ml", deps=[])
+        repository = project_root / ".m2" / "repository"
+        return project_root, repository
+
+    def test_find_excludes_pom_packaging_and_reports_missing(self):
+        with TemporaryDirectory() as tmp:
+            project_root, repository = self._scaffold(tmp)
+            # Install only base/code's jar; engine/ml's is absent.
+            jar = _install_jar(repository, "org.almostrealism", "ar-base-code", "0.74")
+            os.utime(jar, (1_000_000, 1_000_000))
+
+            rows = preflight.find_repo_module_artifacts(
+                project_root, repository=repository)
+            by_artifact = {r[1]: r for r in rows}
+
+            # The pom-packaging root ("common") must not appear.
+            self.assertNotIn("common", by_artifact)
+            self.assertEqual(1_000_000, by_artifact["ar-base-code"][3])
+            self.assertIsNone(by_artifact["ar-engine-ml"][3])
+
+    def test_report_marks_module_under_test_and_sorts_oldest_first(self):
+        with TemporaryDirectory() as tmp:
+            project_root, repository = self._scaffold(tmp)
+            old = _install_jar(repository, "org.almostrealism", "ar-base-code", "0.74")
+            new = _install_jar(repository, "org.almostrealism", "ar-engine-ml", "0.74")
+            os.utime(old, (1_000_000, 1_000_000))
+            os.utime(new, (2_000_000, 2_000_000))
+
+            report = preflight.format_artifact_age_report(
+                project_root, "engine/ml", repository=repository)
+
+            # The recompiled module is flagged; the dependency is not.
+            self.assertRegex(report, r"\*\s+\S+ \S+\s+ar-engine-ml\s+engine/ml")
+            self.assertRegex(report, r"\n\s{2}\s+\S+ \S+\s+ar-base-code\s+base/code")
+            # Oldest (base/code) listed before newest (engine/ml).
+            self.assertLess(report.index("ar-base-code"), report.index("ar-engine-ml"))
+            # The disclaimer explains the implicit-vs-manual rebuild distinction.
+            self.assertIn("recompiles ONLY engine/ml", report)
+            self.assertIn("NOT rebuilt", report)
+
+    def test_report_shows_not_installed_for_absent_jar(self):
+        with TemporaryDirectory() as tmp:
+            project_root, repository = self._scaffold(tmp)
+            _install_jar(repository, "org.almostrealism", "ar-engine-ml", "0.74")
+            # base/code intentionally not installed.
+
+            report = preflight.format_artifact_age_report(
+                project_root, "engine/ml", repository=repository)
+            self.assertIn("NOT INSTALLED", report)
+            # A missing dependency sorts to the very top (before installed ones).
+            self.assertLess(report.index("ar-base-code"), report.index("ar-engine-ml"))
+
+
 if __name__ == "__main__":
     unittest.main()
