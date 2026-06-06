@@ -351,7 +351,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * Exercises a PDSL {@code mixdown_main_bus} whose per-channel HP cutoff is
 	 * a time-varying scalar {@link Producer} (a 1-element {@link PackedCollection}
 	 * slot mutated between forward passes) rather than a compile-time constant.
-	 * Mirrors {@code MixdownManager.createCells()} lines 504-521 (Section 10 rows 1-2):
+	 * Mirrors {@code MixdownManager.createCells()} (Section 10 rows 1-2):
 	 * the production path drives the cutoff via
 	 * {@code AutomationManager.getAggregatedValue(...)} which returns a
 	 * shape-{@code [1]} {@code Producer<PackedCollection>}; this test mocks that
@@ -389,7 +389,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	/**
 	 * Exercises a PDSL {@code mixdown_main_bus} whose per-channel volume is a
 	 * time-varying scalar {@link Producer}. Mirrors
-	 * {@code MixdownManager.createCells()} line 524-526 (Section 10 row 3):
+	 * {@code MixdownManager.createCells()} (Section 10 row 3):
 	 * the production path drives the volume via
 	 * {@code AutomationManager.getAggregatedValue(...)}; this test mocks that
 	 * shape with a mutable slot.
@@ -423,7 +423,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	/**
 	 * Exercises a PDSL {@code mixdown_master} whose master LP cutoff is a
 	 * time-varying scalar {@link Producer}. Mirrors
-	 * {@code MixdownManager.createEfx()} line 707-714 (Section 10 row 28): the
+	 * {@code MixdownManager.createEfx()} (Section 10 row 28): the
 	 * production path drives the master filter-down via
 	 * {@code AutomationManager.getAggregatedValue(...)}; this test mocks that
 	 * shape with a mutable slot.
@@ -469,7 +469,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	/**
 	 * Exercises a PDSL {@code mixdown_efx_bus} whose per-channel delay length
 	 * is a time-varying scalar {@link Producer}. Mirrors
-	 * {@code MixdownManager.createEfx()} line 654-658 (Section 10 row 17): the
+	 * {@code MixdownManager.createEfx()} (Section 10 row 17): the
 	 * production path uses {@code AdjustableDelayCell} whose delay is driven
 	 * by a polycyclic gene scaled by the audio clock.
 	 *
@@ -504,12 +504,12 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * When Capability C (rectangular routing) lands, verify that a PDSL
 	 * {@code route(matrix)} with a rectangular {@code [rows, cols]} matrix
 	 * (N ≠ M) works — equivalent to {@code CellFeatures.m(fi(), delays, tg)}
-	 * at {@code MixdownManager.createEfx()} line 664 (Section 10 rows 19-20).
+	 * at {@code MixdownManager.createEfx()} (Section 10 rows 19-20).
 	 */
 	/**
 	 * Exercises the rectangular {@code route(transmission)} capability — the PDSL
 	 * rendition of {@code efx.m(fi(), delays, transmissionGene)} at
-	 * {@code MixdownManager.createEfx()} line 660-664 (Section 10 rows 19-20). The
+	 * {@code MixdownManager.createEfx()} (Section 10 rows 19-20). The
 	 * production code routes N efx outputs through a {@code [N, M]} gene-driven
 	 * matrix into M delay layers; N and M are independent.
 	 *
@@ -690,13 +690,13 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * When Capability D (heterogeneous fan-out) lands, verify that a PDSL
 	 * construct can apply a *different* sub-block to each branch of a fan-out —
 	 * equivalent to {@code CellList.branch(IntFunction<Cell>...)} at
-	 * {@code MixdownManager.createCells()} lines 572-578 and 592-601
+	 * {@code MixdownManager.createCells()}
 	 * (Section 10 rows 10-11).
 	 */
 	/**
 	 * Exercises the heterogeneous fan-out capability — the PDSL rendition of
 	 * {@code CellList.branch(IntFunction<Cell>...)} at
-	 * {@code MixdownManager.createCells()} lines 572-602 (Section 10 rows 10-11).
+	 * {@code MixdownManager.createCells()} (Section 10 rows 10-11).
 	 * The production code sends the same input through structurally different
 	 * processing per branch (different filter coefficients, different gains).
 	 *
@@ -850,7 +850,7 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 	 * feedback matrix's spectral radius &lt; 1 must produce a contraction). A
 	 * stitched WAV file is written so the reverb tail is audible.</p>
 	 *
-	 * <p>Targets Section 10 rows 9, 24, 25 (MixdownManager.java:546-561, 672-683).
+	 * <p>Targets Section 10 rows 9, 24, 25 (MixdownManager.java).
 	 * Capability A (per-channel automation for the reverb wet factor) is
 	 * orthogonal to {@code delay_network}'s structural correctness and is
 	 * exercised by {@code testMixdownManagerAutomatedVolume} elsewhere in this

@@ -173,13 +173,39 @@ A computation signature encodes the **structural identity** of an operation -- e
 | Included in Signature | Not Included |
 |----------------------|--------------|
 | Operation type name (e.g., "Add", "Multiply") | Actual data values |
-| Input shapes and dimensions | Memory addresses/pointers |
+| Input shapes and dimensions | Raw native pointers/addresses |
 | Precision (FP32/FP64) | Runtime arguments |
 | Compute requirements (GPU, CPU) | Object identity/hashCode |
 | Input operation signatures (recursive) | Thread or timing info |
 | Number of distinct children | |
+| **Referenced buffer `offset` and `memLength` (provider leaves — see caveat below)** | |
 
-Two operations with the same signature produce **identical kernel code**. They differ only in which memory buffers they operate on.
+Two operations with the same signature produce **identical kernel code**.
+
+> **Implementation caveat — leaf (provider) signatures include buffer layout, and may be null.**
+> The recursive signature above bottoms out at *provider* leaves that reference a
+> `PackedCollection` by reference (`cp(x)` expands to `c(p(x))`, producing a
+> `CollectionProviderProducer`). That leaf's `signature()`
+> (`CollectionProviderProducer.signature()`, `compute/algebra/.../computations/CollectionProviderProducer.java`)
+> is **not** purely structural:
+>
+> - For a `MemoryData` value it returns `offset + ":" + memLength + "|" + shapeDetail` — it
+>   **includes the referenced buffer's `getOffset()` and `getMemLength()`**. Two structurally
+>   identical computations that reference *different* buffers therefore share a signature only
+>   when those buffers have the same offset and length. References into buffers at different
+>   offsets (for example, the freshly allocated buffers of two independent `Model`/scene
+>   instances) get **different** signatures and do **not** reuse the compiled kernel.
+> - For a buffer that is an argument-aggregation target
+>   (`MemoryDataArgumentMap.isAggregationTarget`) it returns **`null`**, which propagates up and
+>   nulls the entire enclosing computation's signature, disabling caching for it. The code marks
+>   this a known limitation: *"It should actually be possible to compute a valid signature for
+>   this anyway, but because argument aggregation for Computations depends on the other
+>   Computation arguments, it requires more information than is available here."*
+>
+> As a result, the "compile once, substitute the memory pointers" reuse described below is
+> realized for operations whose referenced buffers are non-aggregated and share the same
+> offset/length, but it does **not** currently deduplicate compilation across independent
+> `Model`/scene instances whose data buffers are separately allocated.
 
 ### Signature Generation
 
@@ -548,6 +574,27 @@ If any input in a computation tree does not implement `Signature` or returns nul
 
 **Symptom:** Every evaluation triggers a fresh compilation.
 **Diagnosis:** Check whether `signature()` returns null for the computation.
+
+**Common concrete cause — provider leaves referencing aggregation-target buffers.** A frequent
+source of unexpected null signatures is a `CollectionProviderProducer` (the leaf produced by
+`cp(x)`/`p(x)`) whose referenced `PackedCollection` is an argument-aggregation target: its
+`signature()` returns `null` (see the *Signatures* caveat), which nulls every enclosing
+computation. Because data buffers are aggregated by default
+(`AR_HARDWARE_ARGUMENT_AGGREGATION`), this disables caching broadly for computations that read
+small off-heap buffers. To diagnose, log `Signature.of(producer)`; a `null` here points at a
+provider leaf (aggregation target) rather than a missing `Signature` implementation.
+
+### Buffer Offset Defeats Cross-Instance Reuse
+
+Even when signatures are non-null, the provider leaf includes the referenced buffer's `offset`
+and `memLength`. Two structurally identical computations built in *separate* `Model`/scene
+instances reference freshly allocated buffers at different offsets, so they get different
+signatures and recompile rather than share a kernel.
+
+**Symptom:** Rebuilding the same computation graph in a new instance recompiles every kernel;
+`NativeCompiler.getTotalInstructionSets()` grows by the full kernel count on each rebuild.
+**Diagnosis:** Compare `signature()` strings across instances; differing `offset:memLength`
+prefixes confirm the cause.
 
 ### Eviction Triggers Recompilation
 

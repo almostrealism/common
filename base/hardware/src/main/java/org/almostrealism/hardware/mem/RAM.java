@@ -133,8 +133,8 @@ import java.util.stream.Stream;
  *     System.err.println("  at " + frame);
  * }
  * // Output:
- * //   at DirectBuffer.<init>(DirectBuffer.java:25)
- * //   at MyClass.processData(MyClass.java:42)  <-- Source of leak!
+ * //   at DirectBuffer.<init>(DirectBuffer.java:NN)
+ * //   at MyClass.processData(MyClass.java:NN)  <-- Source of leak!
  * }</pre>
  *
  * <h2>Performance Considerations</h2>

@@ -35,8 +35,8 @@ public abstract class PdslNode {
 	/**
 	 * Constructs a node with source location information.
 	 *
-	 * @param line   1-based source line number
-	 * @param column 1-based source column number
+	 * @param line   one-based source line number
+	 * @param column one-based source column number
 	 */
 	protected PdslNode(int line, int column) {
 		this.line = line;

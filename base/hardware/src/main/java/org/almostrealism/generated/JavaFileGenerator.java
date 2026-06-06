@@ -11,8 +11,8 @@ import java.io.OutputStreamWriter;
 import java.util.stream.IntStream;
 
 public class JavaFileGenerator {
-	public static final int start = 3999;
-	public static final int count = 1000;
+	public static final int start = 4999;
+	public static final int count = 1001;
 
 	public static void main(String[] args) {
 		StringBuilder template = new StringBuilder();

@@ -154,7 +154,7 @@ public class LoopedSumDiagnosticTest extends TestSuiteBase {
 			log("");
 
 			// Explicitly call optimize() to trigger isolation logic
-			// The automatic optimization only runs for non-uniform lists (line 684 in OperationList)
+			// The automatic optimization only runs for non-uniform lists (OperationList)
 			log("Optimizing...");
 			OperationList optimized = (OperationList) ops.optimize();
 

@@ -106,7 +106,7 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 	 *
 	 * <p>When {@code inputChannels == outputChannels} this is the square cross-channel
 	 * feedback case. When they differ, it implements the {@code N efx → M delay layers}
-	 * fan-routing pattern from {@code MixdownManager.createEfx()} line 660-664
+	 * fan-routing pattern from {@code MixdownManager.createEfx()}
 	 * ({@code efx.m(fi(), delays, transmissionGene)}).</p>
 	 *
 	 * @param matrix          routing matrix producer (shape
@@ -170,6 +170,45 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 									CollectionProducer buffer,
 									CollectionProducer heads,
 									int channels, int signalSize) {
+		return feedbackNetworkBlock(delaySamples, feedbackMatrix, null,
+				buffer, heads, channels, signalSize);
+	}
+
+	/**
+	 * Builds a block-parallel feedback delay network — the PDSL analogue of
+	 * {@code CellList.mself}. Each frame reads the per-channel delayed output from the
+	 * ring, routes it back into the ring through {@code feedbackMatrix} (the transmission
+	 * grid) added to the incoming signal, and emits the delayed output routed through
+	 * {@code passthroughMatrix} (the next-layer routing). With a {@code null}
+	 * {@code passthroughMatrix} the delayed output is emitted unchanged (identity
+	 * passthrough), which is the {@code delay_network} behaviour.
+	 *
+	 * <p>The recurrence is frame-to-frame: a sample at output position {@code i} reads
+	 * {@code output[i - delay]}, which (for {@code delay >= signalSize}) lives in an
+	 * already-computed prior frame, so the whole frame computes as one parallel kernel.
+	 * This requires the feedback delay to be at least one frame; the multi-frame ring
+	 * ({@code bufSize = k * signalSize}) lets the delay span several frames so real echo
+	 * lengths are sample-accurate. A feedback delay shorter than one frame would create an
+	 * intra-frame recurrence that cannot be evaluated as a single parallel kernel, so it is
+	 * not supported by this block-parallel construct.</p>
+	 *
+	 * @param delaySamples      per-channel delay in samples, shape {@code [channels]}
+	 * @param feedbackMatrix    transmission grid routing output back to input,
+	 *                          shape {@code [channels, channels]}
+	 * @param passthroughMatrix output routing to the next layer, shape
+	 *                          {@code [channels, channels]}, or {@code null} for identity
+	 * @param buffer            flat ring buffer, total {@code channels * bufSize}
+	 * @param heads             per-channel write head positions, shape {@code [channels]}
+	 * @param channels          number of channels
+	 * @param signalSize        samples per frame
+	 * @return a feedback delay network {@link Block}
+	 */
+	default Block feedbackNetworkBlock(CollectionProducer delaySamples,
+									   CollectionProducer feedbackMatrix,
+									   CollectionProducer passthroughMatrix,
+									   CollectionProducer buffer,
+									   CollectionProducer heads,
+									   int channels, int signalSize) {
 		int totalBuf = shape(buffer).getTotalSize();
 		int bufSize = totalBuf / channels;
 		if (totalBuf != channels * bufSize) {
@@ -177,10 +216,12 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 					"delay_network buffer size " + totalBuf
 							+ " is not divisible by channels=" + channels);
 		}
-		if (bufSize != signalSize) {
+		if (bufSize % signalSize != 0) {
 			throw new IllegalArgumentException(
 					"delay_network requires per-channel buffer size (" + bufSize
-							+ ") to equal signal_size (" + signalSize + ")");
+							+ ") to be a positive multiple of signal_size (" + signalSize
+							+ "); the buffer spans bufSize/signalSize whole frames and the "
+							+ "maximum per-channel delay must be < bufSize");
 		}
 		if (shape(heads).getTotalSize() != channels) {
 			throw new IllegalArgumentException(
@@ -190,7 +231,6 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 		TraversalPolicy multiShape = shape(channels, signalSize);
 		TraversalPolicy sigShape = shape(1, signalSize);
 		TraversalPolicy oneShape = shape(1);
-		TraversalPolicy elemShape = shape(1, 1);
 		CollectionProducer delays1D = delaySamples.reshape(shape(channels));
 		CollectionProducer heads1D = heads.reshape(shape(channels));
 		Cell<PackedCollection> forward = Cell.of(
@@ -209,24 +249,18 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 							.reshape(sigShape);
 						yAll = yAll == null ? yN : (CollectionProducer) concat(yAll, yN);
 					}
-					CollectionProducer fbAll = null;
-					for (int n = 0; n < channels; n++) {
-						CollectionProducer fbN = null;
-						for (int m = 0; m < channels; m++) {
-							CollectionProducer matNm =
-									subset(elemShape, feedbackMatrix, n, m);
-							CollectionProducer yM = subset(sigShape, yAll, m, 0);
-							CollectionProducer contribution = matNm.multiply(yM);
-							fbN = fbN == null ? contribution : fbN.add(contribution);
-						}
-						fbAll = fbAll == null ? fbN : (CollectionProducer) concat(fbAll, fbN);
-					}
-					CollectionProducer newBuffer = c(in).add(fbAll)
+					CollectionProducer fbAll = channelMatrixMultiply(
+							feedbackMatrix, yAll, channels, signalSize);
+					CollectionProducer output = passthroughMatrix == null ? yAll
+							: channelMatrixMultiply(passthroughMatrix, yAll, channels, signalSize);
+					CollectionProducer framesAll = c(in).add(fbAll)
 							.reshape(shape(channels * signalSize));
+					CollectionProducer newBuffer = ringWrite(buffer, framesAll,
+							heads1D, channels, signalSize, bufSize);
 					CollectionProducer newHeads = heads1D.add(c((double) signalSize))
 							.mod(c((double) bufSize));
 					OperationList ops = new OperationList("delay_network");
-					ops.add(next.push(yAll));
+					ops.add(next.push(output));
 					ops.add(into("delay-network-buffer-write", newBuffer,
 							buffer, false));
 					ops.add(into("delay-network-head-write", newHeads,
@@ -237,6 +271,84 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
 						Supplier<Runnable>>) (in, next) -> new OperationList("delay-network-backward"));
 		return new DefaultBlock(multiShape, multiShape, forward, backward);
+	}
+
+	/**
+	 * Applies an {@code [channels, channels]} routing matrix to a {@code [channels, signalSize]}
+	 * multi-channel signal: {@code out[n] = sum_m matrix[n][m] * signal[m]}. Shared by the
+	 * feedback (transmission) and passthrough routing of {@link #feedbackNetworkBlock}.
+	 *
+	 * @param matrix     routing matrix, shape {@code [channels, channels]}
+	 * @param signalAll  multi-channel signal, shape {@code [channels, signalSize]}
+	 * @param channels   number of channels
+	 * @param signalSize samples per channel
+	 * @return the routed signal, shape {@code [channels, signalSize]}
+	 */
+	private CollectionProducer channelMatrixMultiply(CollectionProducer matrix,
+													 CollectionProducer signalAll,
+													 int channels, int signalSize) {
+		TraversalPolicy sigShape = shape(1, signalSize);
+		TraversalPolicy elemShape = shape(1, 1);
+		CollectionProducer out = null;
+		for (int n = 0; n < channels; n++) {
+			CollectionProducer rowN = null;
+			for (int m = 0; m < channels; m++) {
+				CollectionProducer matNm = subset(elemShape, matrix, n, m);
+				CollectionProducer sigM = subset(sigShape, signalAll, m, 0);
+				CollectionProducer contribution = matNm.multiply(sigM);
+				rowN = rowN == null ? contribution : rowN.add(contribution);
+			}
+			out = out == null ? rowN : (CollectionProducer) concat(out, rowN);
+		}
+		return out;
+	}
+
+	/**
+	 * Builds the next ring-buffer contents for a feedback delay line whose per-channel
+	 * buffer spans an integer number of frames ({@code bufSize == frames * signalSize}).
+	 *
+	 * <p>The write head advances by {@code signalSize} each tick, so it is always
+	 * frame-aligned: it points at the start of exactly one frame slot. Only that slot is
+	 * replaced with the channel's new frame ({@code framesAll}); every other slot is
+	 * preserved. The target slot is chosen by comparing the head to each slot's start
+	 * offset via {@link #equals}, which keeps the whole update a single parallel
+	 * {@code into} over the buffer rather than a sequential per-sample scan. When
+	 * {@code bufSize == signalSize} (a one-frame ring) this collapses to overwriting the
+	 * buffer with {@code framesAll}, matching the original single-frame behaviour.</p>
+	 *
+	 * @param buffer     flat per-channel-concatenated ring buffer, total {@code channels * bufSize}
+	 * @param framesAll  flat new frame contents, total {@code channels * signalSize}
+	 * @param heads1D    per-channel write head positions (in samples), shape {@code [channels]}
+	 * @param channels   number of channels
+	 * @param signalSize samples per frame
+	 * @param bufSize    per-channel buffer size in samples (a multiple of {@code signalSize})
+	 * @return a producer for the updated flat ring buffer, total {@code channels * bufSize}
+	 */
+	private CollectionProducer ringWrite(CollectionProducer buffer, CollectionProducer framesAll,
+										 CollectionProducer heads1D, int channels,
+										 int signalSize, int bufSize) {
+		int frames = bufSize / signalSize;
+		if (frames == 1) {
+			return framesAll;
+		}
+
+		CollectionProducer flatBuffer = buffer.reshape(shape(channels * bufSize));
+		CollectionProducer newBuffer = null;
+		for (int n = 0; n < channels; n++) {
+			CollectionProducer headN = subset(shape(1), heads1D, n);
+			CollectionProducer frameN = subset(shape(signalSize), framesAll, n * signalSize);
+			for (int s = 0; s < frames; s++) {
+				CollectionProducer oldSlot =
+						subset(shape(signalSize), flatBuffer, n * bufSize + s * signalSize);
+				CollectionProducer mask = equals(headN, c((double) (s * signalSize)),
+						c(1.0), c(0.0));
+				CollectionProducer newSlot = mask.multiply(frameN)
+						.add(c(1.0).subtract(mask).multiply(oldSlot));
+				newBuffer = newBuffer == null ? newSlot
+						: (CollectionProducer) concat(newBuffer, newSlot);
+			}
+		}
+		return newBuffer;
 	}
 
 }

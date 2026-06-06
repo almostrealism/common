@@ -55,7 +55,7 @@ import java.lang.ref.ReferenceQueue;
  * even after the memory object is garbage collected:</p>
  * <pre>{@code
  * // At allocation
- * RAM memory = new DirectBuffer(1000);  // Line 42 in MyClass.java
+ * RAM memory = new DirectBuffer(1000);  // Line NN in MyClass.java
  * MemoryReference<RAM> ref = new NativeRef<>(memory, queue);
  * ref.setAllocationStackTrace(memory.getAllocationStackTrace());
  *
@@ -65,7 +65,7 @@ import java.lang.ref.ReferenceQueue;
  *
  * // Stack trace still available for leak debugging
  * StackTraceElement[] trace = ref.getAllocationStackTrace();
- * // Shows: MyClass.java:42
+ * // Shows: MyClass.java:NN
  * }</pre>
  *
  * @param <T> Memory type, must extend {@link Memory}

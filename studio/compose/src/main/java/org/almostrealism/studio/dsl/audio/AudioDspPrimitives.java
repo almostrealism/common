@@ -96,6 +96,7 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 		interpreter.registerPrimitive("lfo", self::dispatchLfo);
 		interpreter.registerPrimitive("route", self::dispatchRoute);
 		interpreter.registerPrimitive("delay_network", self::dispatchDelayNetwork);
+		interpreter.registerPrimitive("feedback", self::dispatchFeedback);
 		interpreter.setMultiChannelDispatcher(self::perChannelBlock);
 	}
 
@@ -326,5 +327,37 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 		CollectionProducer heads = ctx.toProducer(args.get(3), shape(channels),
 				"delay_network() heads");
 		return delayNetworkBlock(delays, feedback, buffer, heads, channels, signalSize);
+	}
+
+	/**
+	 * {@code feedback(delay_samples, transmission_matrix, passthrough_matrix, buffer, heads)}
+	 * — the block-parallel feedback delay network, the PDSL analogue of {@code CellList.mself}.
+	 *
+	 * <p>The delayed output is routed back into the ring through {@code transmission_matrix}
+	 * (added to the incoming signal) and emitted to the next layer through
+	 * {@code passthrough_matrix}. For the single-channel feedback comb both matrices are
+	 * {@code [1, 1]}: {@code transmission = [[g]]} (the feedback gain) and {@code passthrough}
+	 * the output level. {@code mself(input_level, T, P)} is {@code scale(input_level)} followed
+	 * by {@code feedback(T, ..., P)}.</p>
+	 */
+	private Block dispatchFeedback(List<Object> args, PdslPrimitiveContext ctx) {
+		if (args.size() != 5) {
+			throw new PdslParseException(
+					"feedback() expects 5 arguments (delay_samples, transmission_matrix, "
+							+ "passthrough_matrix, buffer, heads), got " + args.size());
+		}
+		int channels = ctx.channels();
+		int signalSize = ctx.signalSize();
+		CollectionProducer delays = ctx.toProducer(args.get(0), shape(channels),
+				"feedback() delay_samples");
+		CollectionProducer transmission = ctx.toProducer(args.get(1),
+				shape(channels, channels), "feedback() transmission_matrix");
+		CollectionProducer passthrough = ctx.toProducer(args.get(2),
+				shape(channels, channels), "feedback() passthrough_matrix");
+		CollectionProducer buffer = ctx.toProducer(args.get(3), null, "feedback() buffer");
+		CollectionProducer heads = ctx.toProducer(args.get(4), shape(channels),
+				"feedback() heads");
+		return feedbackNetworkBlock(delays, transmission, passthrough,
+				buffer, heads, channels, signalSize);
 	}
 }

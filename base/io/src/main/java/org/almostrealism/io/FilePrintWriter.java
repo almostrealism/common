@@ -31,7 +31,7 @@ import java.io.FileOutputStream;
  * <h2>Usage</h2>
  * <pre>{@code
  * try (FilePrintWriter writer = new FilePrintWriter(new File("output.txt"))) {
- *     writer.println("Line 1");
+ *     writer.println("first line");
  *     writer.moreIndent();
  *     writer.println("Indented line");
  *     writer.lessIndent();

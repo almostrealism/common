@@ -48,8 +48,10 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.IntToDoubleFunction;
 
 /**
  * Real-audio comparison between {@link MixdownManager#cells} (the production Java path)
@@ -119,18 +121,63 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	/** Source sine frequency for the deterministic test signal. */
 	private static final double SOURCE_FREQ_BASE = 220.0;
 
-	/**
-	 * Renders identical fixtures through the Java MixdownManager.cells() path
-	 * and the PDSL mixdown_master layer, writes both WAVs, and asserts that
-	 * neither path collapses to silence. The comparison is documented as
-	 * structurally lossy (see class javadoc), so the assertion is loose.
-	 */
-	@Test(timeout = 300_000)
-	@TestDepth(2)
-	public void compareJavaAndPdslMixdownPaths() throws IOException {
-		File outputDir = new File("results/pdsl-audio-dsp");
-		outputDir.mkdirs();
+	/** Duration of the audible looped-sample demo, long enough to hear automation + delay evolve. */
+	private static final double DEMO_SECONDS = 24.0;
 
+	/**
+	 * Larger PDSL ring/buffer for the demo. The {@code delay} primitive's echo length is bounded
+	 * by the ring size (= signal size), so a bigger buffer is needed for an audible delay tap.
+	 */
+	private static final int DEMO_SIGNAL_SIZE = 8192;
+
+	/** Demo delay length (~147 ms at 44.1 kHz), under {@link #DEMO_SIGNAL_SIZE} — a clear slapback. */
+	private static final int DEMO_DELAY_SAMPLES = 6500;
+
+	/** Higher wet-bus level for the demo so the delayed signal is clearly audible against the dry. */
+	private static final double DEMO_WET_LEVEL = 0.55;
+
+	/**
+	 * Feedback-comb echo delay (~300 ms at 44.1 kHz). Deliberately longer than
+	 * {@link #DEMO_SIGNAL_SIZE} (one frame) so the multi-frame ring is exercised — a delay
+	 * shorter than one frame cannot be expressed by the block-parallel feedback (it would be
+	 * an intra-frame recurrence that cannot run as a single parallel kernel).
+	 */
+	private static final int COMB_DELAY_SAMPLES = 13230;
+
+	/** Feedback-comb ring depth in frames; {@code bufSize = COMB_BUFFER_FRAMES * signal_size} must exceed the delay. */
+	private static final int COMB_BUFFER_FRAMES = 4;
+
+	/** Feedback-comb regeneration gain ({@code transmission[[g]]}); &lt; 1 for a decaying echo train. */
+	private static final double COMB_FEEDBACK_GAIN = 0.55;
+
+	/** Feedback-comb output level ({@code passthrough[[wet]]}). */
+	private static final double COMB_WET_LEVEL = 1.0;
+
+	/** Channel count for the M×M feedback-grid demo (the cross-channel mixdown reverb structure). */
+	private static final int GRID_CHANNELS = 4;
+
+	/** Grid feedback gain; the scaled-Householder transmission matrix has spectral radius = this, so &lt; 1 is a stable decaying tail. */
+	private static final double GRID_FEEDBACK_GAIN = 0.7;
+
+	/** Grid output level (diagonal {@code passthrough}). */
+	private static final double GRID_WET_LEVEL = 0.5;
+
+	/** Automation manager of the most recently built fixture (see {@link #buildFixtureMixdown()}). */
+	private AutomationManager fixtureAutomation;
+
+	/** Time manager of the most recently built fixture (see {@link #buildFixtureMixdown()}). */
+	private GlobalTimeManager fixtureTime;
+
+	/**
+	 * Builds the shared test fixture: the standard MixdownManager feature-flag configuration
+	 * plus a populated {@link MixdownManager} (reverb disabled to keep the Java/PDSL comparison
+	 * meaningful). The fixture's {@link AutomationManager} and {@link GlobalTimeManager} are
+	 * exposed via {@link #fixtureAutomation} / {@link #fixtureTime} for callers that drive the
+	 * Java path.
+	 *
+	 * @return the constructed mixdown manager
+	 */
+	private MixdownManager buildFixtureMixdown() {
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;
 		MixdownManager.enableEfxFilters = true;
@@ -145,18 +192,53 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		MixdownManager.enableRiser = false;
 
 		double measureDuration = Frequency.forBPM(120).l(4);
-		GlobalTimeManager time = new GlobalTimeManager(
+		fixtureTime = new GlobalTimeManager(
 				measure -> (int) (measure * measureDuration * SAMPLE_RATE));
 		ProjectedGenome genome = new ProjectedGenome(GENOME_PARAMS);
-		AutomationManager automation = new AutomationManager(
-				genome.addChromosome(), time.getClock(),
+		fixtureAutomation = new AutomationManager(
+				genome.addChromosome(), fixtureTime.getClock(),
 				() -> measureDuration, SAMPLE_RATE);
 		MixdownManager mixdown = new MixdownManager(genome.addChromosome(),
-				CHANNELS, DELAY_LAYERS, automation, time.getClock(), SAMPLE_RATE);
+				CHANNELS, DELAY_LAYERS, fixtureAutomation, fixtureTime.getClock(), SAMPLE_RATE);
 		genome.consolidateGeneValues();
 
 		PackedCollection params = new PackedCollection(GENOME_PARAMS).fill(0.5);
 		genome.assignTo(params);
+		return mixdown;
+	}
+
+	/**
+	 * Runs the manager setup ({@link AutomationManager#setup()}, {@link MixdownManager#setup()},
+	 * {@link GlobalTimeManager#setup()}) for the most recently built fixture. The adapter's
+	 * gene/automation producers read state that this setup initialises; without it they evaluate
+	 * to non-finite values. {@link #compareJavaAndPdslMixdownPaths()} runs this implicitly as part
+	 * of its Java-path setup, so only the PDSL-only demos need to call it.
+	 *
+	 * @param mixdown the fixture mixdown manager
+	 */
+	private void runFixtureSetup(MixdownManager mixdown) {
+		OperationList setup = new OperationList("fixture setup");
+		setup.add(fixtureAutomation.setup());
+		setup.add(mixdown.setup());
+		setup.add(fixtureTime.setup());
+		setup.get().run();
+	}
+
+	/**
+	 * Renders identical fixtures through the Java MixdownManager.cells() path
+	 * and the PDSL mixdown_master layer, writes both WAVs, and asserts that
+	 * neither path collapses to silence. The comparison is documented as
+	 * structurally lossy (see class javadoc), so the assertion is loose.
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void compareJavaAndPdslMixdownPaths() throws IOException {
+		File outputDir = new File("results/pdsl-audio-dsp");
+		outputDir.mkdirs();
+
+		MixdownManager mixdown = buildFixtureMixdown();
+		AutomationManager automation = fixtureAutomation;
+		GlobalTimeManager time = fixtureTime;
 
 		File javaWav = new File(outputDir, "mixdown_manager_java_path.wav");
 		File pdslWav = new File(outputDir, "mixdown_manager_pdsl_path.wav");
@@ -195,7 +277,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 
 		// The PDSL master stage now applies scale(master_gain) + tanh_act() to
 		// match the Java master-bus stage (masterBusGain * bound(., -1, 1)) at
-		// MixdownManager.java:770-782. The remaining structural mismatches — IIR
+		// MixdownManager.java. The remaining structural mismatches — IIR
 		// vs FIR wet filter and per-channel vs shared HP cutoff — produce a
 		// sub-octave (≤ ~6×) energy gap that cannot be closed without changing
 		// either path. This bound is tight enough to catch a regression that
@@ -297,13 +379,33 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
 				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
 				WET_LEVEL, PDSL_DELAY_SAMPLES);
+		return renderPdslMaster(mixdown, "mixdown_master", config,
+				t -> Math.sin(2.0 * Math.PI * SOURCE_FREQ_BASE * t / SAMPLE_RATE),
+				TOTAL_FRAMES, false, outputFile);
+	}
+
+	/**
+	 * Compiles the PDSL {@code mixdown_master} layer from {@code mixdown}'s genome and renders
+	 * {@link #TOTAL_FRAMES} frames through it, drawing each input sample (shared across channels)
+	 * from {@code sampleAt} indexed by absolute frame. Writes the mono output to {@code outputFile}
+	 * and returns the samples.
+	 *
+	 * @param mixdown    constructed mixdown manager whose chromosomes drive the args
+	 * @param sampleAt   supplies the input sample value at an absolute frame index
+	 * @param outputFile destination WAV file
+	 * @return mono audio samples
+	 */
+	private double[] renderPdslMaster(MixdownManager mixdown, String layerName,
+			MixdownManagerPdslAdapter.Config config, IntToDoubleFunction sampleAt,
+			int totalFrames, boolean advanceClock, File outputFile) throws IOException {
+		int sig = config.signalSize;
 		Map<String, Object> args = MixdownManagerPdslAdapter.buildArgsMap(mixdown, config);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_manager.pdsl");
 
-		TraversalPolicy inputShape = new TraversalPolicy(CHANNELS, PDSL_SIGNAL_SIZE);
-		Block block = loader.buildLayer(program, "mixdown_master", inputShape, args);
+		TraversalPolicy inputShape = new TraversalPolicy(CHANNELS, sig);
+		Block block = loader.buildLayer(program, layerName, inputShape, args);
 
 		Model model = new Model(inputShape);
 		model.add(block);
@@ -317,33 +419,431 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		Assert.assertEquals("wrapBlockAsCellList must produce a single-cell list",
 				1, wrapped.size());
 
-		int passes = TOTAL_FRAMES / PDSL_SIGNAL_SIZE;
-		double[] samples = new double[passes * PDSL_SIGNAL_SIZE];
+		int passes = totalFrames / sig;
+		double[] samples = new double[passes * sig];
 		float[] floatSamples = new float[samples.length];
 
 		PackedCollection input = new PackedCollection(inputShape);
-		double[] inData = new double[CHANNELS * PDSL_SIGNAL_SIZE];
+		double[] inData = new double[CHANNELS * sig];
+
+		// When advanceClock is set, step the shared clock forward one buffer's worth of frames
+		// after each forward pass, so the genome/automation producers (HP/LP cutoffs, volume)
+		// evaluate at the buffer's playback time and the automation sweeps over the render.
+		Runnable clockAdvance = advanceClock
+				? loop(fixtureTime.tick(), sig).get() : null;
 
 		for (int pass = 0; pass < passes; pass++) {
-			int sampleOffset = pass * PDSL_SIGNAL_SIZE;
-			for (int t = 0; t < PDSL_SIGNAL_SIZE; t++) {
-				double v = Math.sin(2.0 * Math.PI * SOURCE_FREQ_BASE
-						* (sampleOffset + t) / SAMPLE_RATE);
+			int sampleOffset = pass * sig;
+			for (int t = 0; t < sig; t++) {
+				double v = sampleAt.applyAsDouble(sampleOffset + t);
 				for (int c = 0; c < CHANNELS; c++) {
-					inData[c * PDSL_SIGNAL_SIZE + t] = v;
+					inData[c * sig + t] = v;
 				}
 			}
 			input.setMem(inData);
-			double[] passOut = compiled.forward(input).toArray(0, PDSL_SIGNAL_SIZE);
-			System.arraycopy(passOut, 0, samples, sampleOffset, PDSL_SIGNAL_SIZE);
-			for (int i = 0; i < PDSL_SIGNAL_SIZE; i++) {
+			double[] passOut = compiled.forward(input).toArray(0, sig);
+			System.arraycopy(passOut, 0, samples, sampleOffset, sig);
+			for (int i = 0; i < sig; i++) {
 				floatSamples[sampleOffset + i] = (float) Math.max(-1.0,
 						Math.min(1.0, passOut[i]));
 			}
+			if (clockAdvance != null) clockAdvance.run();
 		}
 
 		PdslAudioDemoTest.writeDemoWav(outputFile, floatSamples, SAMPLE_RATE);
 		return samples;
+	}
+
+	/**
+	 * Sanity-listen demo: retriggers a source clip every second for {@link #DEMO_SECONDS} seconds,
+	 * runs it through the PDSL {@code mixdown_master} process with the clock advancing per buffer
+	 * (so the gene/automation-driven HP/LP cutoffs and volume sweep over time), and writes
+	 * {@code results/pdsl-audio-dsp/pdsl_mixdown_looped_sample.wav} for manual listening. The long
+	 * duration lets time-evolving behaviour — automation sweeps and the efx delay/feedback tail —
+	 * be heard, which a two-second clip cannot show. Confirms the PDSL DSP path produces
+	 * non-silent, expected-sounding output before further migration work; asserts only non-silence.
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void pdslMixdownLoopedSampleDemo() throws IOException {
+		File outputDir = new File("results/pdsl-audio-dsp");
+		outputDir.mkdirs();
+
+		MixdownManager mixdown = buildFixtureMixdown();
+		runFixtureSetup(mixdown);
+
+		double[] source = loadLoopSource();
+		int loopFrames = SAMPLE_RATE; // retrigger the clip every 1 second
+		IntToDoubleFunction looped = t -> {
+			int pos = t % loopFrames;
+			return pos < source.length ? source[pos] : 0.0;
+		};
+
+		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
+				CHANNELS, DEMO_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
+				DEMO_WET_LEVEL, DEMO_DELAY_SAMPLES);
+		File demoWav = new File(outputDir, "pdsl_mixdown_looped_sample.wav");
+		double[] out = renderPdslMaster(mixdown, "mixdown_master", config, looped,
+				(int) (DEMO_SECONDS * SAMPLE_RATE), true, demoWav);
+		double e = energy(out, 0);
+
+		log(String.format("PDSL looped-sample demo: %d samples, energy=%.6f, peak=%.6f, wav=%s",
+				out.length, e, peakOf(out), demoWav.getAbsolutePath()));
+
+		Assert.assertTrue("demo WAV must be non-empty", demoWav.length() > 0);
+		Assert.assertTrue("demo output must be non-silent (energy=" + e + ")", e > 1e-9);
+	}
+
+	/**
+	 * Sanity-listen demo for the closed-loop {@code feedback_comb} layer (the PDSL rendition of
+	 * EfxManager's recursive {@code .mself} echo). Retriggers a real source clip every second for
+	 * {@link #DEMO_SECONDS} seconds through {@code feedback(...)} with a multi-frame ring
+	 * ({@link #COMB_DELAY_SAMPLES} &gt; one frame), writing
+	 * {@code results/pdsl-audio-dsp/pdsl_feedback_comb_looped_sample.wav} so the regenerating echo
+	 * train can be heard. This is the acoustic gate before the EfxManager feedback migration. The
+	 * numeric decay of the feedback path is proven separately by {@code DelayNetworkBehaviorTest};
+	 * here we assert only that the closed loop stays finite (does not blow up) and produces
+	 * non-silent output through the real PDSL surface.
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void pdslFeedbackCombLoopedSampleDemo() throws IOException {
+		File outputDir = new File("results/pdsl-audio-dsp");
+		outputDir.mkdirs();
+
+		IntToDoubleFunction looped = loopedSource();
+		double[] mono = renderFeedbackCombMono(1, DEMO_SIGNAL_SIZE, COMB_BUFFER_FRAMES,
+				new double[]{COMB_DELAY_SAMPLES}, new double[]{COMB_FEEDBACK_GAIN},
+				new double[]{COMB_WET_LEVEL}, looped, (int) (DEMO_SECONDS * SAMPLE_RATE));
+
+		File demoWav = new File(outputDir, "pdsl_feedback_comb_looped_sample.wav");
+		writeMonoWav(demoWav, mono);
+
+		int firstBad = firstNonFinite(mono);
+		double e = energy(mono, 0);
+		log(String.format("feedback comb demo: samples=%d firstNonFinite=%d energy=%.6f peak=%.6f wav=%s",
+				mono.length, firstBad, e, peakOf(mono), demoWav.getAbsolutePath()));
+
+		Assert.assertEquals("feedback comb produced a non-finite sample at index " + firstBad,
+				-1, firstBad);
+		Assert.assertTrue("demo WAV must be non-empty", demoWav.length() > 0);
+		Assert.assertTrue("feedback comb output must be non-silent (energy=" + e + ")", e > 1e-9);
+	}
+
+	/**
+	 * Sanity-listen demo for the M×M cross-channel feedback grid — the PDSL rendition of
+	 * MixdownManager.createEfx's {@code .mself(fi(), transmission, fc(wetOut))} reverb/transmission
+	 * grid. Runs {@link #GRID_CHANNELS} taps with prime-ish multi-frame delays and a scaled-
+	 * Householder transmission matrix (orthogonal → spectral radius {@link #GRID_FEEDBACK_GAIN},
+	 * so a guaranteed-stable decaying tail with full cross-channel mixing), summed to mono and
+	 * written to {@code results/pdsl-audio-dsp/pdsl_feedback_grid_looped_sample.wav}.
+	 *
+	 * <p>Beyond finite/non-silent/bounded, this asserts the cross-channel coupling is actually
+	 * doing something: the coupled grid's output must differ from a diagonal-only matrix of the
+	 * same per-tap self-gain (four independent combs). If the off-diagonal feedback were ignored
+	 * the two would be identical, so a non-zero difference proves the M×M transmission grid routes
+	 * energy across channels.</p>
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void pdslFeedbackGridLoopedSampleDemo() throws IOException {
+		File outputDir = new File("results/pdsl-audio-dsp");
+		outputDir.mkdirs();
+
+		int channels = GRID_CHANNELS;
+		IntToDoubleFunction looped = loopedSource();
+		int totalFrames = (int) (DEMO_SECONDS * SAMPLE_RATE);
+
+		// Prime-ish per-tap delays, all longer than one frame and shorter than the ring, for
+		// natural (non-metallic) diffusion.
+		double[] delays = {11000, 13003, 16007, 19001};
+		double[] grid = householderGrid(channels, GRID_FEEDBACK_GAIN);
+		double[] passthrough = scaledIdentity(channels, GRID_WET_LEVEL);
+
+		// Reference: same per-tap self-gain (the Householder diagonal) but NO cross-channel
+		// coupling — four independent combs. Used to prove the off-diagonals matter.
+		double selfGain = grid[0];  // diagonal entry of the scaled Householder
+		double[] diagonalOnly = scaledIdentity(channels, selfGain);
+
+		double[] mono = renderFeedbackCombMono(channels, DEMO_SIGNAL_SIZE, COMB_BUFFER_FRAMES,
+				delays, grid, passthrough, looped, totalFrames);
+		double[] diag = renderFeedbackCombMono(channels, DEMO_SIGNAL_SIZE, COMB_BUFFER_FRAMES,
+				delays, diagonalOnly, passthrough, looped, totalFrames);
+
+		File demoWav = new File(outputDir, "pdsl_feedback_grid_looped_sample.wav");
+		writeMonoWav(demoWav, mono);
+
+		int firstBad = firstNonFinite(mono);
+		double e = energy(mono, 0);
+		double couplingDiff = 0.0;
+		for (int i = 0; i < mono.length; i++) {
+			double d = mono[i] - diag[i];
+			couplingDiff += d * d;
+		}
+		log(String.format("feedback grid demo (%dch): samples=%d firstNonFinite=%d energy=%.6f "
+						+ "peak=%.6f couplingDiff=%.6f wav=%s",
+				channels, mono.length, firstBad, e, peakOf(mono), couplingDiff,
+				demoWav.getAbsolutePath()));
+
+		Assert.assertEquals("feedback grid produced a non-finite sample at index " + firstBad,
+				-1, firstBad);
+		Assert.assertTrue("demo WAV must be non-empty", demoWav.length() > 0);
+		Assert.assertTrue("grid output must be non-silent (energy=" + e + ")", e > 1e-9);
+		Assert.assertTrue("grid peak must stay bounded — feedback must decay, not blow up (peak="
+				+ peakOf(mono) + ")", peakOf(mono) < 50.0);
+		Assert.assertTrue("cross-channel coupling must change the output vs independent combs "
+				+ "(couplingDiff=" + couplingDiff + ")", couplingDiff > 1e-6);
+	}
+
+	/**
+	 * Builds the every-1-second retrigger function over the curated loop source. Shared by the
+	 * feedback-comb and feedback-grid demos.
+	 *
+	 * @return a function mapping absolute frame index to the looped source sample
+	 * @throws IOException if the source clip cannot be loaded
+	 */
+	private IntToDoubleFunction loopedSource() throws IOException {
+		double[] source = loadLoopSource();
+		int loopFrames = SAMPLE_RATE; // retrigger the clip every 1 second
+		return t -> {
+			int pos = t % loopFrames;
+			return pos < source.length ? source[pos] : 0.0;
+		};
+	}
+
+	/**
+	 * Compiles the {@code feedback_comb} PDSL layer for the given channel count and matrices, then
+	 * runs {@code totalFrames} of {@code sampleAt} (broadcast to every channel) through it with a
+	 * multi-frame ring, summing all channels to a mono signal. Shared by the single-channel comb
+	 * and the M×M grid demos.
+	 *
+	 * @param channels             number of feedback taps/channels
+	 * @param sig                  samples per frame
+	 * @param bufFrames            ring depth in frames ({@code bufSize = bufFrames * sig})
+	 * @param delaySamplesData     per-channel delay in samples, length {@code channels}
+	 * @param transmissionRowMajor row-major transmission matrix, length {@code channels*channels}
+	 * @param passthroughRowMajor  row-major passthrough matrix, length {@code channels*channels}
+	 * @param sampleAt             input sample at an absolute frame index (shared across channels)
+	 * @param totalFrames          number of frames to render
+	 * @return the mono (channel-summed) output samples
+	 */
+	private double[] renderFeedbackCombMono(int channels, int sig, int bufFrames,
+			double[] delaySamplesData, double[] transmissionRowMajor,
+			double[] passthroughRowMajor, IntToDoubleFunction sampleAt, int totalFrames) {
+		int bufSize = bufFrames * sig;
+		PackedCollection delaySamples = new PackedCollection(channels);
+		delaySamples.setMem(delaySamplesData);
+		PackedCollection transmission = new PackedCollection(new TraversalPolicy(channels, channels));
+		transmission.setMem(transmissionRowMajor);
+		PackedCollection passthrough = new PackedCollection(new TraversalPolicy(channels, channels));
+		passthrough.setMem(passthroughRowMajor);
+		PackedCollection buffers = new PackedCollection(channels * bufSize);
+		buffers.setMem(new double[channels * bufSize]);
+		PackedCollection heads = new PackedCollection(channels);
+		heads.setMem(new double[channels]);
+
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
+
+		TraversalPolicy inputShape = new TraversalPolicy(channels, sig);
+		Map<String, Object> args = new HashMap<>();
+		args.put("channels", channels);
+		args.put("signal_size", sig);
+		args.put("delay_samples", delaySamples);
+		args.put("transmission", transmission);
+		args.put("passthrough", passthrough);
+		args.put("buffers", buffers);
+		args.put("heads", heads);
+
+		Block block = loader.buildLayer(program, "feedback_comb", inputShape, args);
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		int passes = totalFrames / sig;
+		double[] mono = new double[passes * sig];
+		PackedCollection input = new PackedCollection(inputShape);
+		double[] inData = new double[channels * sig];
+
+		for (int pass = 0; pass < passes; pass++) {
+			int off = pass * sig;
+			for (int t = 0; t < sig; t++) {
+				double v = sampleAt.applyAsDouble(off + t);
+				for (int c = 0; c < channels; c++) {
+					inData[c * sig + t] = v;
+				}
+			}
+			input.setMem(inData);
+			double[] passOut = compiled.forward(input).toArray(0, channels * sig);
+			for (int t = 0; t < sig; t++) {
+				double s = 0.0;
+				for (int c = 0; c < channels; c++) {
+					s += passOut[c * sig + t];
+				}
+				mono[off + t] = s;
+			}
+		}
+		return mono;
+	}
+
+	/** Clamps a mono signal to [-1, 1] floats and writes it as a WAV. */
+	private void writeMonoWav(File f, double[] mono) throws IOException {
+		float[] floats = new float[mono.length];
+		for (int i = 0; i < mono.length; i++) {
+			floats[i] = (float) Math.max(-1.0, Math.min(1.0, mono[i]));
+		}
+		PdslAudioDemoTest.writeDemoWav(f, floats, SAMPLE_RATE);
+	}
+
+	/**
+	 * Returns the index of the first non-finite sample, or {@code -1} if all samples are finite.
+	 *
+	 * @param x the signal to scan
+	 * @return the first non-finite index, or -1
+	 */
+	private static int firstNonFinite(double[] x) {
+		for (int i = 0; i < x.length; i++) {
+			if (!Double.isFinite(x[i])) return i;
+		}
+		return -1;
+	}
+
+	/**
+	 * Builds a row-major scaled Householder reflection {@code gain * (I - 2 v vᵀ)} with
+	 * {@code v} the unit vector of all {@code 1/√n}. The reflection is orthogonal (eigenvalues
+	 * ±1), so the scaled matrix has spectral radius {@code gain} — a guaranteed-stable feedback
+	 * matrix (for {@code gain < 1}) that nonetheless mixes every channel into every other.
+	 *
+	 * @param n    matrix dimension (channel count)
+	 * @param gain scale factor; the resulting spectral radius
+	 * @return the row-major {@code n*n} transmission matrix
+	 */
+	private static double[] householderGrid(int n, double gain) {
+		double[] m = new double[n * n];
+		double off = 2.0 / n;  // 2 * (1/√n)^2
+		for (int i = 0; i < n; i++) {
+			for (int j = 0; j < n; j++) {
+				double h = (i == j ? 1.0 : 0.0) - off;
+				m[i * n + j] = gain * h;
+			}
+		}
+		return m;
+	}
+
+	/**
+	 * Builds a row-major {@code n*n} diagonal matrix with {@code scale} on the diagonal.
+	 *
+	 * @param n     matrix dimension
+	 * @param scale the diagonal value
+	 * @return the row-major diagonal matrix
+	 */
+	private static double[] scaledIdentity(int n, double scale) {
+		double[] m = new double[n * n];
+		for (int i = 0; i < n; i++) {
+			m[i * n + i] = scale;
+		}
+		return m;
+	}
+
+	/**
+	 * Regression guard: runs a retriggered real sample through the main bus only
+	 * ({@code mixdown_main_bus} = per-channel HP + volume + sum) and asserts every output sample
+	 * is finite. This guards the requirement that the fixture's {@code setup()} be run before
+	 * rendering the PDSL path — without it the adapter's gene/automation producers read
+	 * uninitialised state and the whole render collapses to NaN. Logs the first non-finite sample
+	 * index (-1 when clean) and the energy.
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void pdslMainBusRealAudioProbe() throws IOException {
+		new File("results/pdsl-audio-dsp").mkdirs();
+		MixdownManager mixdown = buildFixtureMixdown();
+		runFixtureSetup(mixdown);
+		double[] source = loadLoopSource();
+		int loopFrames = SAMPLE_RATE;
+		IntToDoubleFunction looped = t -> {
+			int pos = t % loopFrames;
+			return pos < source.length ? source[pos] : 0.0;
+		};
+		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
+				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
+				WET_LEVEL, PDSL_DELAY_SAMPLES);
+		File probeWav = new File("results/pdsl-audio-dsp/pdsl_main_bus_probe.wav");
+		double[] out = renderPdslMaster(mixdown, "mixdown_main_bus", config, looped,
+				TOTAL_FRAMES, false, probeWav);
+
+		int firstBad = -1;
+		for (int i = 0; i < out.length; i++) {
+			if (!Double.isFinite(out[i])) { firstBad = i; break; }
+		}
+		log(String.format("main_bus probe: samples=%d firstNonFinite=%d energy=%.6f peak=%.6f",
+				out.length, firstBad, energy(out, 0), peakOf(out)));
+		Assert.assertEquals("main_bus (HP+volume+sum) produced a non-finite sample at index "
+				+ firstBad, -1, firstBad);
+	}
+
+	/**
+	 * Loads a clip (capped at one second) to retrigger through the demo. Prefers the first
+	 * loadable {@code .wav} in the curated library when present; otherwise falls back to a short
+	 * synthesised tone so the demo runs anywhere.
+	 *
+	 * @return mono sample data, at most {@link #SAMPLE_RATE} frames
+	 */
+	private double[] loadLoopSource() throws IOException {
+		File library = new File("/Users/Shared/Music/Samples");
+		if (library.isDirectory()) {
+			File[] wavs = library.listFiles((d, n) -> n.toLowerCase().endsWith(".wav"));
+			if (wavs != null) {
+				Arrays.sort(wavs);
+				for (int i = 0; i < wavs.length && i < 25; i++) {
+					double[] clip = tryLoadClip(wavs[i]);
+					if (clip != null) return clip;
+				}
+			}
+		}
+		double[] synthetic = tryLoadClip(getTestWavFile(SOURCE_FREQ_BASE, 0.5));
+		if (synthetic == null) {
+			throw new IOException("no loadable source clip for the PDSL demo");
+		}
+		return synthetic;
+	}
+
+	/**
+	 * Attempts to load a {@code .wav} file's first channel, capped at one second of frames.
+	 *
+	 * @param f the WAV file to load
+	 * @return mono sample data, or {@code null} if the file cannot be loaded
+	 */
+	private double[] tryLoadClip(File f) {
+		try {
+			WaveData wav = WaveData.load(f);
+			try {
+				PackedCollection data = wav.getData();
+				int n = Math.min(data.getMemLength(), SAMPLE_RATE);
+				if (n <= 0) return null;
+				double[] clip = new double[n];
+				double peak = 0.0;
+				for (int i = 0; i < n; i++) {
+					double v = data.toDouble(i);
+					// Drop non-finite samples (some library files carry odd formats); a
+					// single NaN propagates through the DSP and corrupts the whole render.
+					if (!Double.isFinite(v)) v = 0.0;
+					clip[i] = v;
+					peak = Math.max(peak, Math.abs(v));
+				}
+				if (peak < 1.0e-6) return null;  // silent / garbage — try the next file
+				// Normalise to a safe peak so the DSP always sees a sane input range
+				// regardless of the source file's native scale.
+				double norm = 0.9 / peak;
+				for (int i = 0; i < n; i++) clip[i] *= norm;
+				log("loop source: " + f.getName() + " (" + n + " frames, peak " + peak + ")");
+				return clip;
+			} finally {
+				wav.destroy();
+			}
+		} catch (Exception e) {
+			return null;
+		}
 	}
 
 }

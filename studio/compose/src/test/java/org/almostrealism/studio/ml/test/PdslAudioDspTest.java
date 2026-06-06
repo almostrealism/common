@@ -480,6 +480,71 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	}
 
 	/**
+	 * Verifies that the composite {@code efx_channel} layer (the EfxManager feedforward
+	 * rendition: dry + delay(automation * wet_level * fir(input)), the mself feedback loop
+	 * deferred) builds, compiles, and produces finite, non-silent output in which the wet
+	 * path demonstrably contributes on top of the dry signal. Uses a pass-through FIR
+	 * (impulse coefficients) so the assertion does not depend on a particular filter shape.
+	 */
+	@Test(timeout = 60000)
+	@TestDepth(2)
+	public void testEfxChannelFeedforward() {
+		int firTaps = 9;
+		int delaySamples = 4;
+
+		PackedCollection coeffs = new PackedCollection(firTaps);
+		double[] cd = new double[firTaps];
+		cd[0] = 1.0; // pass-through FIR (impulse) — keeps the test filter-shape agnostic
+		coeffs.setMem(cd);
+		PackedCollection wetLevel = new PackedCollection(1);
+		wetLevel.setMem(new double[]{0.5});
+		PackedCollection automation = new PackedCollection(1);
+		automation.setMem(new double[]{1.0});
+		PackedCollection delaySlot = new PackedCollection(1);
+		delaySlot.setMem(new double[]{delaySamples});
+		PackedCollection buffer = new PackedCollection(SIGNAL_SIZE);
+		buffer.setMem(new double[SIGNAL_SIZE]);
+		PackedCollection head = new PackedCollection(1);
+		head.setMem(new double[]{0.0});
+
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/efx_channel.pdsl");
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("signal_size", SIGNAL_SIZE);
+		args.put("fir_taps", firTaps);
+		args.put("filter_coeffs", coeffs);
+		args.put("wet_level", wetLevel);
+		args.put("automation", automation);
+		args.put("delay_samples", delaySlot);
+		args.put("buffer", buffer);
+		args.put("head", head);
+
+		TraversalPolicy inputShape = new TraversalPolicy(1, SIGNAL_SIZE);
+		Block block = loader.buildLayer(program, "efx_channel", inputShape, args);
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		PackedCollection signal = createSignal(SIGNAL_SIZE, i -> 1.0);
+		PackedCollection out = compiled.forward(signal);
+		Assert.assertNotNull("efx_channel output must not be null", out);
+
+		double maxAbs = 0.0;
+		double diffFromDry = 0.0;
+		for (int i = 0; i < SIGNAL_SIZE; i++) {
+			double v = out.toDouble(i);
+			Assert.assertTrue("efx_channel output must be finite at " + i, Double.isFinite(v));
+			maxAbs = Math.max(maxAbs, Math.abs(v));
+			diffFromDry += Math.abs(v - 1.0); // dry path alone would be the all-ones input
+		}
+		Assert.assertTrue("efx_channel output must be non-silent (maxAbs=" + maxAbs + ")",
+				maxAbs > 1.0e-3);
+		Assert.assertTrue("wet path must contribute on top of dry (diffFromDry=" + diffFromDry + ")",
+				diffFromDry > 1.0e-3);
+	}
+
+	/**
 	 * Verifies that LFO phase is continuous across successive forward passes.
 	 *
 	 * <p>The first call produces samples starting at phase zero; the second call
