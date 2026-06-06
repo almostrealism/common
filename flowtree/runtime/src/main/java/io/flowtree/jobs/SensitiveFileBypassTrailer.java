@@ -120,15 +120,19 @@ public final class SensitiveFileBypassTrailer implements ConsoleFeatures {
      * tolerated so the harness reliably strips any agent attempt to
      * disguise the trailer key.
      *
+     * <p>Trailer lines are removed without disturbing the rest of the
+     * message: each surviving line keeps its trailing newline and the
+     * separator that preceded the next surviving line. This makes the
+     * method robust against an arbitrary number of consecutive trailers
+     * (the agent can write 0, 1, 2, 3+ back-to-back {@code
+     * Sensitive-File-Bypass:} lines and surrounding non-trailer content
+     * will still appear on its own line). The security property &mdash;
+     * every agent-supplied instance of the trailer is removed &mdash; is
+     * preserved unconditionally.</p>
+     *
      * @param message the original commit message
      * @return the message with bypass trailer lines removed
      */
-    // TODO(review): When two consecutive Sensitive-File-Bypass lines appear in
-    // the message, stripTrailer strips two newlines (one per trailer) but the
-    // trailing "" from split only restores one. Non-trailer content immediately
-    // after two consecutive trailers becomes concatenated to the preceding line
-    // without a separator. Security property is preserved; message structure is
-    // corrupted. Fix: track newline debt separately from the out buffer.
     public static String stripTrailer(String message) {
         if (message == null || message.isEmpty()) return "";
         StringBuilder out = new StringBuilder(message.length());
@@ -136,14 +140,18 @@ public final class SensitiveFileBypassTrailer implements ConsoleFeatures {
             // -1 keeps trailing empty fields so we preserve the final newline
             // of the original message. The last element may be "" when the
             // input ends with a newline; we re-emit it so the message structure
-            // is preserved.
+            // is preserved. The trailer line itself is dropped entirely and
+            // we do NOT mutate the previous line's trailing newline. A prior
+            // version of this method stripped the preceding newline so the
+            // appended controller trailer would not introduce a blank gap,
+            // but that approach was incorrect for an arbitrary number of
+            // consecutive trailers: the second (and later) trailers would not
+            // find a trailing newline to strip, so the next non-trailer line
+            // ended up concatenated to the previous non-trailer line. Leaving
+            // the previous newline in place and skipping the trailer line
+            // entirely preserves the original message structure exactly,
+            // regardless of how many trailers appear consecutively.
             if (TRAILER_LINE.matcher(line).matches()) {
-                // Strip a single trailing newline that immediately follows a
-                // stripped trailer so the appended trailer lands on its own
-                // line without introducing a blank gap.
-                if (out.length() > 0 && out.charAt(out.length() - 1) == '\n') {
-                    out.setLength(out.length() - 1);
-                }
                 continue;
             }
             out.append(line).append('\n');

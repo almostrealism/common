@@ -155,6 +155,71 @@ else
     printf '  PASS  missing secret exits non-zero\n'
 fi
 
+# ── python3-missing error path ─────────────────────────────────
+# A previous version of verify-sensitive-bypass.sh invoked python3
+# inside an `EXPECTED_SIG=$(...)` command substitution. With
+# `set -e`, a failing python3 (e.g. python3 not on PATH) terminated
+# the script immediately so the intended "python3 missing?" error
+# path was unreachable. The fix runs the substitution with
+# `|| EXPECTED_SIG=""` so a failure is captured and the explicit
+# error message below is reachable. This test shadows the system
+# python3 with a stub that exits non-zero, and confirms the script
+# still emits a diagnostic error on stderr (rather than aborting
+# with a `set -e` traceback) AND exits non-zero so the caller
+# observes the failure.
+
+# Find the system python3 so we know which path to shadow. Use
+# `command -v` rather than relying on the test's own PATH lookup
+# to keep this test self-contained.
+SYSTEM_PY="$(command -v python3 2>/dev/null || true)"
+if [ -n "$SYSTEM_PY" ]; then
+    tmpdir=$(mktemp -d)
+    shadowdir="$tmpdir/shadow"
+    mkdir -p "$shadowdir"
+    # Create a stub python3 that always exits non-zero. This
+    # mimics a python3 binary that crashes on launch without
+    # requiring the test to manipulate the real python install.
+    cat > "$shadowdir/python3" <<'STUB'
+#!/bin/sh
+exit 1
+STUB
+    chmod +x "$shadowdir/python3"
+
+    # Build a trailer the script will find and try to verify.
+    msgfile="$tmpdir/msg.txt"
+    SIG7=$(expected_sig "$SECRET" "job-py-missing")
+    printf 'title\n\nSensitive-File-Bypass: job-py-missing=%s\n' "$SIG7" > "$msgfile"
+
+    # Run with PATH where python3 resolves to the failing stub.
+    # The script must reach the explicit error branch on stderr
+    # AND exit non-zero. The exact message can be either
+    # "python3 is required" (when python3 is not on PATH) or
+    # "could not compute expected signature" (when python3 is
+    # present but produces no output); both indicate the same
+    # underlying problem and either is acceptable.
+    set +e
+    stderr_text=$(PATH="$shadowdir:$PATH" AR_AGENT_BYPASS_SECRET="$SECRET" \
+        bash "$VERIFY" "$msgfile" 2>&1 1>/dev/null)
+    py_exit=$?
+    set -e
+    if [ "$py_exit" -ne 0 ] \
+            && { echo "$stderr_text" | grep -qi "python3" \
+                 || echo "$stderr_text" | grep -qi "could not compute"; }; then
+        PASS=$((PASS + 1))
+        printf '  PASS  python3-failure path emits diagnostic on stderr and exits non-zero\n'
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=("python3-failure path: expected non-zero exit with diagnostic on stderr (exit=$py_exit, stderr='$stderr_text')")
+        printf '  FAIL  python3-failure path: exit=%d stderr=%s\n' "$py_exit" "$stderr_text"
+    fi
+
+    rm -rf "$tmpdir"
+else
+    # No system python3 to shadow — skip the test gracefully.
+    PASS=$((PASS + 1))
+    printf '  PASS  python3-failure path (skipped: no system python3 to shadow)\n'
+fi
+
 # ── Summary ────────────────────────────────────────────────────
 
 printf '\nResults: %d passed, %d failed\n' "$PASS" "$FAIL"

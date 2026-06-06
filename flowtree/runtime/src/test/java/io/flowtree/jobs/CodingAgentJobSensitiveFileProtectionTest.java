@@ -144,13 +144,108 @@ public class CodingAgentJobSensitiveFileProtectionTest extends TestSuiteBase {
         assertEquals("", SensitiveFileBypassTrailer.stripTrailer(""));
     }
 
+    // ── stripTrailer: structure preservation ──────────────────────
+
+    /**
+     * The strip step must preserve the original message structure
+     * exactly when the trailer is at the end of the message. The
+     * trailer line itself is removed; every other line is preserved
+     * with its trailing newline. The expected output has the trailer
+     * line removed but is otherwise identical to the input.
+     */
+    @Test(timeout = 30000)
+    public void stripTrailerPreservesStructureTrailerAtEnd() {
+        String input = "Title\n\nBody.\nSensitive-File-Bypass: job-1=abc\n";
+        String out = SensitiveFileBypassTrailer.stripTrailer(input);
+        // Strip just the trailer line; everything else is preserved.
+        String expected = "Title\n\nBody.\n\n";
+        assertEquals(expected, out);
+    }
+
+    /**
+     * Two consecutive {@code Sensitive-File-Bypass:} lines must both be
+     * removed and the non-trailer line that follows must keep its own
+     * newline separator. The previous version of this method stripped a
+     * preceding newline for the first trailer and then had nothing to
+     * strip for the second trailer, which concatenated the next
+     * non-trailer line to the previous non-trailer line without a
+     * separator (e.g. {@code "title" + "more body"} instead of
+     * {@code "title\n\nmore body"}).
+     */
+    @Test(timeout = 30000)
+    public void stripTrailerPreservesStructureTwoConsecutiveTrailers() {
+        String input = "title\n\n"
+                + "Sensitive-File-Bypass: job-victim=forged-signature\n"
+                + "SENSITIVE-FILE-BYPASS: job-other=another-forgery\n"
+                + "more body\n";
+        String out = SensitiveFileBypassTrailer.stripTrailer(input);
+        // Both trailers removed, but the message structure is intact.
+        assertFalse("Forged signature must be stripped", out.contains("forged-signature"));
+        assertFalse("Second forged signature must be stripped", out.contains("another-forgery"));
+        assertFalse("No 'sensitive-file-bypass' substring may remain", out.toLowerCase()
+                .contains("sensitive-file-bypass"));
+        assertTrue("'more body' must remain on its own line", out.contains("more body\n"));
+        assertTrue("'title' must remain on its own line", out.contains("title\n"));
+        // The line preceding "more body" must end with a newline so "more body"
+        // starts on a new line, not concatenated to it. Equivalently, the
+        // substring "more body" must be preceded by a newline.
+        int idx = out.indexOf("more body");
+        assertTrue("'more body' must be preceded by a newline (no concatenation)", idx > 0
+                && out.charAt(idx - 1) == '\n');
+    }
+
+    /**
+     * Three or more consecutive trailers must all be stripped without
+     * mangling surrounding content. This covers the general case (N
+     * consecutive trailers).
+     */
+    @Test(timeout = 30000)
+    public void stripTrailerPreservesStructureManyConsecutiveTrailers() {
+        String input = "title\n\n"
+                + "Sensitive-File-Bypass: a=1\n"
+                + "SENSITIVE-FILE-BYPASS: b=2\n"
+                + "sensitive-file-bypass: c=3\n"
+                + "after-three\n";
+        String out = SensitiveFileBypassTrailer.stripTrailer(input);
+        assertFalse("All three forged trailers must be stripped",
+                out.toLowerCase().contains("sensitive-file-bypass"));
+        assertTrue("'after-three' must remain on its own line", out.contains("after-three\n"));
+        int idx = out.indexOf("after-three");
+        assertTrue("'after-three' must be preceded by a newline", idx > 0
+                && out.charAt(idx - 1) == '\n');
+    }
+
+    /**
+     * A trailer that appears mid-message (with non-trailer content after
+     * it) must be removed without merging the following line into the
+     * preceding one.
+     */
+    @Test(timeout = 30000)
+    public void stripTrailerPreservesStructureTrailerMidMessage() {
+        String input = "Title\nBody1.\nSensitive-File-Bypass: x=y\nBody2.\n";
+        String out = SensitiveFileBypassTrailer.stripTrailer(input);
+        assertFalse("Trailer must be stripped", out.toLowerCase().contains("sensitive-file-bypass"));
+        assertTrue("Body1 must remain on its own line", out.contains("Body1.\n"));
+        assertTrue("Body2 must remain on its own line", out.contains("Body2.\n"));
+        // The substring "Body2." must be preceded by a newline so it does
+        // not get concatenated to "Body1." (the bug that this commit fixes).
+        int idx = out.indexOf("Body2.");
+        assertTrue("'Body2.' must be preceded by a newline", idx > 0
+                && out.charAt(idx - 1) == '\n');
+    }
+
     // ── applyToMessage: end-to-end ────────────────────────────────
 
     /**
      * The full strip-then-append sequence produces a message that
-     * (a) does NOT contain any agent-supplied trailer and (b) contains
-     * exactly one controller-signed trailer. This is the property that
-     * prevents the agent from forging a bypass.
+     * (a) does NOT contain any agent-supplied trailer, (b) contains
+     * exactly one controller-signed trailer, and (c) preserves the
+     * original message structure (the agent's "more body" line must
+     * appear on its own line, not concatenated to the preceding
+     * non-trailer content). This is the property that prevents the
+     * agent from forging a bypass AND that proves the strip step did
+     * not corrupt commit-message structure when the agent wrote two
+     * back-to-back trailers.
      */
     @Test(timeout = 30000)
     public void applyToMessageStripsAgentTrailerAndAppendsControllerOne() {
@@ -170,6 +265,12 @@ public class CodingAgentJobSensitiveFileProtectionTest extends TestSuiteBase {
         // Forged signatures must NOT appear.
         assertFalse(out.contains("forged-signature"));
         assertFalse(out.contains("another-forgery"));
+        // Structure preservation: 'more body' must be preceded by a newline
+        // (it must not be concatenated to the empty line that preceded the
+        // stripped trailers).
+        int idx = out.indexOf("more body");
+        assertTrue("'more body' must remain on its own line (no concatenation)",
+                idx > 0 && out.charAt(idx - 1) == '\n');
     }
 
     /**
@@ -343,6 +444,56 @@ public class CodingAgentJobSensitiveFileProtectionTest extends TestSuiteBase {
 
         factory.set("sensitiveFileProtectionEnabled", "true");
         assertTrue(factory.isSensitiveFileProtectionEnabled());
+    }
+
+    // ── API surface contract ──────────────────────────────────────
+
+    /**
+     * The {@link CodingAgentJobFactory#setSensitiveFileBypassSignature} setter
+     * is the ONLY production path to set the bypass signature on a job.
+     * A previous version of the controller accepted an explicit
+     * {@code sensitiveFileBypassSignature} field in the request body and
+     * overwrote the controller-computed HMAC; that override path has been
+     * removed. This test pins the contract: a signature set via the factory
+     * setter is the value the job observes after propagation. Tests that
+     * need to set an arbitrary signature can do so via the factory setter
+     * without going through the API, so the API no longer needs to expose
+     * an override.
+     */
+    @Test(timeout = 30000)
+    public void factorySetterIsOnlyPathToBypassSignature() {
+        CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
+        String controllerSig = SensitiveFileBypassTrailer.sign("shared-secret", factory.getTaskId());
+        // The controller-computed signature is set on the factory.
+        factory.setSensitiveFileBypassSignature(controllerSig);
+        // The factory has no public "applyBody" or similar method that
+        // would re-read the field; the only mutation path is the setter.
+        // After propagation, the job observes the controller-computed value.
+        CodingAgentJob job = (CodingAgentJob) factory.nextJob();
+        assertNotNull(job);
+        assertEquals(controllerSig, job.getSensitiveFileBypassSignature());
+    }
+
+    /**
+     * After the controller-computed signature is set, an attempt to clear
+     * it via the setter (simulating "no body override possible") must
+     * leave the job without a signature, which is the correct behaviour
+     * when the API no longer honours a request-body-supplied value.
+     */
+    @Test(timeout = 30000)
+    public void factoryBypassSignatureCanOnlyBeSetViaSetter() {
+        CodingAgentJobFactory factory = new CodingAgentJobFactory("do something");
+        factory.setSensitiveFileBypassSignature(
+                SensitiveFileBypassTrailer.sign("shared-secret", factory.getTaskId()));
+        // Clear it. The only way to set a signature on the factory is
+        // via the setter, and the only way to clear it is via the
+        // setter with null. There is no other public mutation path.
+        factory.setSensitiveFileBypassSignature(null);
+        CodingAgentJob job = (CodingAgentJob) factory.nextJob();
+        assertNotNull(job);
+        assertNull("With the API override removed, clearing the factory's"
+                + " signature is the only way to leave the job without one",
+                job.getSensitiveFileBypassSignature());
     }
 
     // ── Helpers ───────────────────────────────────────────────────

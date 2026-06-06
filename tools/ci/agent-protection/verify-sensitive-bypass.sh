@@ -74,10 +74,17 @@ fi
 # Reproduce the controller's signature and compare. The controller
 # uses Java's Mac with HmacSHA256 then base64-URL-safe-no-padding,
 # so the expected signature is the URL-safe base64 alphabet
-# (A-Z a-z 0-9 - _) without trailing '='. We use openssl for
-# the HMAC and a small python helper for the URL-safe-no-padding
-# base64 encoding because base64(1) doesn't expose a URL-safe
-# option on every platform.
+# (A-Z a-z 0-9 - _) without trailing '='. Both the HMAC and the
+# base64-URL-safe-no-padding encoding are produced by a small python
+# helper, because base64(1) does not expose a URL-safe option on
+# every platform and using openssl for the HMAC only would still
+# leave us shelling out to python for the encoding. The python
+# invocation runs in its own process so a missing python3 (or any
+# failure inside the script) is caught by an explicit error path
+# below rather than by `set -e` terminating the verify script
+# silently mid-substitution. The `|| EXPECTED_SIG=""` clears python3's
+# non-zero exit status so the rest of the script can decide what
+# to do based on whether the expected signature was produced.
 
 EXPECTED_SIG=$(SECRET="$SECRET" JOB_ID="$JOB_ID" python3 - <<'PY' 2>/dev/null
 import base64
@@ -89,10 +96,14 @@ secret = os.environ["SECRET"].encode("utf-8")
 job_id = os.environ["JOB_ID"].encode("utf-8")
 print(base64.urlsafe_b64encode(hmac.new(secret, job_id, hashlib.sha256).digest()).rstrip(b"=").decode("ascii"))
 PY
-)
+) || EXPECTED_SIG=""
 
 if [ -z "$EXPECTED_SIG" ]; then
-    echo "verify-sensitive-bypass: could not compute expected signature (python3 missing?)" >&2
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "verify-sensitive-bypass: python3 is required but was not found in PATH" >&2
+    else
+        echo "verify-sensitive-bypass: could not compute expected signature" >&2
+    fi
     exit 1
 fi
 

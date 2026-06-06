@@ -717,11 +717,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                     extractJsonBooleanField(body, "retrospectiveEnabled"));
         // Sensitive-file protections — enabled by default; only forwarded
         // when the operator has explicitly disabled them for this job. The
-        // bypass signature is controller-computed (the agent never sees the
-        // signing secret) from AR_AGENT_BYPASS_SECRET. A separate field
-        // override is also accepted for tests and operator-controlled
-        // explicit signatures, but the typical path is the controller
-        // computing it automatically when the flag is false.
+        // bypass signature is controller-computed from AR_AGENT_BYPASS_SECRET
+        // (the agent never sees the signing secret) and is the ONLY source
+        // of the signature on the factory. A previous version of this code
+        // also accepted an explicit `sensitiveFileBypassSignature` from the
+        // request body as an override, but that path defeated the forgery
+        // defence: any caller with API access could inject a signature
+        // value that bypassed the controller's HMAC computation. Tests can
+        // set the signature directly on the CodingAgentJobFactory (which
+        // already exposes a setter) without going through the API, so the
+        // override path is not needed in production. It has been removed.
         if (extractJsonHasField(body, "sensitiveFileProtectionEnabled")) {
             factory.setSensitiveFileProtectionEnabled(
                     extractJsonBooleanField(body, "sensitiveFileProtectionEnabled"));
@@ -738,14 +743,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 log("sensitiveFileProtectionEnabled=false but AR_AGENT_BYPASS_SECRET"
                         + " is unset or jobId is empty; commit will be blocked by CI");
             }
-        }
-        // TODO(review): Any caller with API access can supply an explicit
-        // sensitiveFileBypassSignature that overrides the controller-computed
-        // HMAC. Intentional for tests, but consider restricting to admin scope
-        // or removing the override path for production callers.
-        if (extractJsonHasField(body, "sensitiveFileBypassSignature")) {
-            factory.setSensitiveFileBypassSignature(
-                    extractJsonField(body, "sensitiveFileBypassSignature"));
         }
         if (extractJsonHasField(body, "reviewEnabled"))
             factory.setReviewEnabled(extractJsonBooleanField(body, "reviewEnabled"));
