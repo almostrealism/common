@@ -23,6 +23,7 @@ import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
+import io.flowtree.jobs.SensitiveFileBypassTrailer;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
@@ -714,6 +715,35 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (extractJsonHasField(body, "retrospectiveEnabled"))
             factory.setRetrospectiveEnabled(
                     extractJsonBooleanField(body, "retrospectiveEnabled"));
+        // Sensitive-file protections — enabled by default; only forwarded
+        // when the operator has explicitly disabled them for this job. The
+        // bypass signature is controller-computed from AR_AGENT_BYPASS_SECRET
+        // (the agent never sees the signing secret) and is the ONLY source
+        // of the signature on the factory. A previous version of this code
+        // also accepted an explicit `sensitiveFileBypassSignature` from the
+        // request body as an override, but that path defeated the forgery
+        // defence: any caller with API access could inject a signature
+        // value that bypassed the controller's HMAC computation. Tests can
+        // set the signature directly on the CodingAgentJobFactory (which
+        // already exposes a setter) without going through the API, so the
+        // override path is not needed in production. It has been removed.
+        if (extractJsonHasField(body, "sensitiveFileProtectionEnabled")) {
+            factory.setSensitiveFileProtectionEnabled(
+                    extractJsonBooleanField(body, "sensitiveFileProtectionEnabled"));
+        }
+        if (!factory.isSensitiveFileProtectionEnabled()) {
+            String secret = System.getenv("AR_AGENT_BYPASS_SECRET");
+            String jobId = factory.getTaskId();
+            if (secret != null && !secret.isEmpty() && jobId != null && !jobId.isEmpty()) {
+                String sig = SensitiveFileBypassTrailer.sign(secret, jobId);
+                if (sig != null) {
+                    factory.setSensitiveFileBypassSignature(sig);
+                }
+            } else {
+                log("sensitiveFileProtectionEnabled=false but AR_AGENT_BYPASS_SECRET"
+                        + " is unset or jobId is empty; commit will be blocked by CI");
+            }
+        }
         if (extractJsonHasField(body, "reviewEnabled"))
             factory.setReviewEnabled(extractJsonBooleanField(body, "reviewEnabled"));
         int maxReviewPasses = extractJsonIntField(body, "maxReviewPasses");
@@ -827,6 +857,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 .append(factory.isEnforceOrganizationalPlacement());
         json.append(",\"retrospectiveEnabled\":")
                 .append(factory.isRetrospectiveEnabled());
+        json.append(",\"sensitiveFileProtectionEnabled\":")
+                .append(factory.isSensitiveFileProtectionEnabled());
         json.append("}");
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", json.toString());

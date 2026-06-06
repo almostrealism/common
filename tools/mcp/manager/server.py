@@ -1590,6 +1590,7 @@ def workstream_submit_task(
     max_deduplication_passes: int = 0,
     organizational_placement_enabled: bool = False,
     retrospective_enabled: bool = False,
+    sensitive_file_protection_enabled: bool = True,
     review_enabled: bool = True,
     max_review_passes: int = 0,
     post_completion_command: str = "",
@@ -1677,6 +1678,21 @@ def workstream_submit_task(
             or stronger, since analyzing a transcript benefits from strong
             reasoning. Configure via
             ``phase_configs='{"retrospective":{"model":"claude-sonnet-4-7"}}'``.
+        sensitive_file_protection_enabled: When ``True`` (the default), the
+            per-job sensitive-file protections are active: harness-side
+            test-file / CI-file staging is blocked, the ``TestHidingAudit``
+            runs as part of ``validateChanges``, and no bypass trailer is
+            appended to the commit message. Set to ``False`` ONLY for an
+            operator-authorized job that legitimately needs to modify
+            protected files (e.g. a job that intentionally edits a base-branch
+            test or updates a policy validator). When ``False``, the controller
+            pre-signs a per-job HMAC bypass token using ``AR_AGENT_BYPASS_SECRET``;
+            the harness appends a ``Sensitive-File-Bypass`` trailer to the
+            commit message after stripping any agent-supplied instance, and CI
+            verifies the signature with the same secret. The agent cannot
+            forge or substitute the bypass because it does not have access to
+            the signing secret. This flag is operator-controlled at job
+            submission time and is NEVER settable by the agent itself.
         review_enabled: When ``True`` (the default), a second-pass review
             session runs after the primary phase. The reviewer is told to
             make surgical fixes only when unambiguous and to defer
@@ -1883,6 +1899,40 @@ def workstream_submit_task(
            target_branch=target_branch, repo_url=repo_url,
            prompt_len=len(prompt))
 
+    # In-flight agent guard for sensitive-file protection. When this
+    # tool is called from inside a running agent session (the caller
+    # has a workstream-bound armt_tmp_ HMAC token), the agent must never
+    # be allowed to forward `sensitiveFileProtectionEnabled=False` to
+    # the controller. Doing so would cause the controller to compute a
+    # controller-signed bypass HMAC for the new job, and the resulting
+    # job's commit would be allowed to modify normally-protected files
+    # (test files, CI/workflow files) on its target workstream. The
+    # sensitive-file protection flag is therefore operator-only: only a
+    # bearer without a workstream binding (an admin/operator) may opt
+    # out. The default for `sensitive_file_protection_enabled` is True
+    # anyway, so this is a no-op for callers that leave it at the
+    # default. The check is placed BEFORE the payload is built so a
+    # rejected call is never forwarded to the controller at all.
+    if caller_workstream_id and not sensitive_file_protection_enabled:
+        return {
+            "ok": False,
+            "error": (
+                "sensitive_file_protection_enabled=False is not settable by an "
+                "in-flight coding agent. The current Claude Code session is "
+                f"bound to workstream '{caller_workstream_id}' via a workstream-"
+                "scoped HMAC token; opting out of sensitive-file protection "
+                "for a delegated job would let the agent self-authorise a "
+                "controller-signed bypass HMAC for that other workstream. The "
+                "flag is operator-only. Leave it at the default (True) and "
+                "re-submit, or have an operator with admin scope disable the "
+                "protection explicitly for the target workstream."
+            ),
+            "next_steps": [
+                "Leave sensitive_file_protection_enabled at its default (True) and re-submit",
+                "Or ask an operator to disable the protection out-of-band for the target workstream",
+            ],
+        }
+
     payload = {"prompt": prompt}
     if workstream_id:
         payload["workstreamId"] = workstream_id
@@ -1914,6 +1964,14 @@ def workstream_submit_task(
         payload["enforceOrganizationalPlacement"] = True
     if retrospective_enabled:
         payload["retrospectiveEnabled"] = True
+    # sensitiveFileProtectionEnabled defaults to TRUE; forward only when the
+    # operator has explicitly disabled it. Mirrors the inverted semantics of
+    # the other activation booleans (which default to false and forward on true).
+    # NOTE: the in-flight-agent rejection above ensures this branch is only
+    # reached for non-agent callers (admin/operator with no workstream binding),
+    # so the controller never mints a bypass HMAC at the request of an agent.
+    if not sensitive_file_protection_enabled:
+        payload["sensitiveFileProtectionEnabled"] = False
     if not review_enabled:
         payload["reviewEnabled"] = False
     if max_review_passes > 0:

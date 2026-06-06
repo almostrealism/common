@@ -153,6 +153,15 @@ final class CodingAgentJobCodec {
         if (job.isRetrospectiveEnabled()) {
             sb.append("::retrospectiveEnabled:=true");
         }
+        // sensitiveFileProtectionEnabled defaults to TRUE; emit only when false.
+        if (!job.isSensitiveFileProtectionEnabled()) {
+            sb.append("::sensitiveFileProtectionEnabled:=false");
+        }
+        String bypassSig = job.getSensitiveFileBypassSignature();
+        if (bypassSig != null && !bypassSig.isEmpty()) {
+            sb.append("::sensitiveFileBypassSignature:=")
+                    .append(GitManagedJob.base64Encode(bypassSig));
+        }
         if (job.getMaxReviewPasses() != CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES) {
             sb.append("::maxReviewPasses:=").append(job.getMaxReviewPasses());
         }
@@ -240,6 +249,12 @@ final class CodingAgentJobCodec {
                 return true;
             case "retrospectiveEnabled":
                 job.setRetrospectiveEnabled(Boolean.parseBoolean(value));
+                return true;
+            case "sensitiveFileProtectionEnabled":
+                job.setSensitiveFileProtectionEnabled(Boolean.parseBoolean(value));
+                return true;
+            case "sensitiveFileBypassSignature":
+                job.setSensitiveFileBypassSignature(GitManagedJob.base64Decode(value));
                 return true;
             case "maxReviewPasses":
                 job.setMaxReviewPasses(parsePositiveOrDefault(value, CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES));

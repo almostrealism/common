@@ -447,6 +447,10 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_submit_task must declare retrospective_enabled in signature"
 			+ " so callers can opt in to the retrospective phase",
 			submitParams.contains("retrospective_enabled"));
+		assertTrue("workstream_submit_task must declare sensitive_file_protection_enabled"
+			+ " in signature so callers can opt out of the per-job sensitive-file"
+			+ " protections (test/CI write lock, harness-side staging block, etc.)",
+			submitParams.contains("sensitive_file_protection_enabled"));
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");

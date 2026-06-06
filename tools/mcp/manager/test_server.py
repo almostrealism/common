@@ -697,6 +697,41 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertNotIn("retrospectiveEnabled", payload)
 
     @patch.object(server, "_controller_post")
+    def test_submit_sensitive_file_protection_default_omitted(self, mock_post):
+        """sensitive_file_protection_enabled defaults to TRUE (protections
+        active), so the wire payload must omit the key when the caller
+        did not opt out. Mirrors the inverted semantics of
+        retrospective_enabled/organizational_placement_enabled."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-sfp1"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("sensitiveFileProtectionEnabled", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_sensitive_file_protection_default_true_explicit_omitted(self, mock_post):
+        """sensitive_file_protection_enabled=True is the default; the wire
+        payload must omit the key rather than forward an explicit true."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-sfp2"}
+        server.workstream_submit_task(prompt="Task",
+                                      sensitive_file_protection_enabled=True)
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("sensitiveFileProtectionEnabled", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_sensitive_file_protection_disabled_forwarded(self, mock_post):
+        """sensitive_file_protection_enabled=False must reach the controller
+        as sensitiveFileProtectionEnabled=False so the controller can opt the
+        job out of the per-job protections and compute a bypass signature."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-sfp3"}
+        server.workstream_submit_task(prompt="Task",
+                                      sensitive_file_protection_enabled=False)
+        payload = mock_post.call_args[0][1]
+        self.assertIs(payload["sensitiveFileProtectionEnabled"], False)
+
+    @patch.object(server, "_controller_post")
     def test_submit_preserves_job_id_in_next_steps(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {
@@ -1223,6 +1258,110 @@ class TestWorkstreamSubmitSelfCollision(unittest.TestCase):
         with self.assertRaises(PermissionError):
             server.workstream_submit_task(
                 prompt="Task", workstream_id="ws-foreign")
+
+
+class TestWorkstreamSubmitAgentSensitiveFileProtectionGuard(unittest.TestCase):
+    """An in-flight coding agent (workstream-bound armt_tmp_ HMAC token)
+    must never be allowed to forward ``sensitive_file_protection_enabled``
+    =False to the controller. Doing so would cause the controller to
+    compute a controller-signed bypass HMAC for the new job, and the
+    resulting commit would be allowed to modify normally-protected
+    files on the target workstream. The flag is operator-only.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+        server._set_workspace_scopes(["TAAA"])
+        server._set_token_context(workstream_id="ws-self", job_id="job-self")
+        server._workspace_map_cache["map"] = None
+        server._workspace_map_cache["fetched"] = 0.0
+
+    def tearDown(self):
+        server._set_token_context(workstream_id=None, job_id=None)
+        server._request_workspace_scopes.set(None)
+        if hasattr(server._thread_local, "workspace_scopes"):
+            del server._thread_local.workspace_scopes
+        server._workspace_map_cache["map"] = None
+        server._workspace_map_cache["fetched"] = 0.0
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
+    def test_rejects_agent_disabling_protection(self, mock_post, mock_get):
+        """An agent with a workstream-bound token must be rejected when
+        it asks for sensitive_file_protection_enabled=False. The call
+        must be refused before the controller is contacted at all so
+        the controller never mints a bypass signature on the agent's
+        behalf."""
+        mock_get.return_value = [
+            {"workstreamId": "ws-self", "slackWorkspaceId": "TAAA"},
+            {"workstreamId": "ws-other", "slackWorkspaceId": "TAAA"},
+        ]
+        result = server.workstream_submit_task(
+            prompt="Delegated task",
+            workstream_id="ws-other",
+            sensitive_file_protection_enabled=False,
+        )
+        self.assertFalse(result["ok"])
+        # Error must explain why and reference the operator-only nature
+        # of the flag.
+        self.assertIn("sensitive_file_protection_enabled", result["error"])
+        self.assertIn("operator", result["error"].lower())
+        self.assertIn("next_steps", result)
+        # Controller must NOT have been called — the rejection is
+        # local so a bypass signature can never be minted.
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_controller_get")
+    @patch.object(server, "_controller_post")
+    def test_allows_agent_to_leave_protection_default(self, mock_post, mock_get):
+        """An agent must still be able to submit to other workstreams
+        while leaving ``sensitive_file_protection_enabled`` at its
+        default (True). The default is harmless: the controller sees
+        no field at all, computes no bypass, and applies the standard
+        protections on the new job."""
+        mock_get.return_value = [
+            {"workstreamId": "ws-self", "slackWorkspaceId": "TAAA"},
+            {"workstreamId": "ws-other", "slackWorkspaceId": "TAAA"},
+        ]
+        mock_post.return_value = {
+            "ok": True, "jobId": "job-1", "workstreamId": "ws-other"}
+        result = server.workstream_submit_task(
+            prompt="Delegated task", workstream_id="ws-other")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_post.assert_called_once()
+        payload = mock_post.call_args[0][1]
+        # The default (True) must NOT appear in the wire payload, mirroring
+        # the existing test_submit_sensitive_file_protection_default_omitted
+        # contract: the wire format only carries explicit opt-outs.
+        self.assertNotIn("sensitiveFileProtectionEnabled", payload)
+
+
+class TestWorkstreamSubmitUnscopedCallerCanOptOut(unittest.TestCase):
+    """Unscoped operator callers (no workstream-bound token) must still
+    be able to opt out of sensitive-file protection — that is the
+    legitimate production path for the bypass HMAC. The
+    operator-only restriction is enforced by the presence of a
+    workstream binding on the token, not by the opt-out itself.
+    """
+
+    def setUp(self):
+        _grant_all_scopes()
+        # No token context — this simulates a static admin bearer that
+        # is not bound to any workstream.
+
+    @patch.object(server, "_controller_post")
+    def test_unscoped_operator_can_disable_protection(self, mock_post):
+        mock_post.return_value = {"ok": True, "jobId": "job-op1"}
+        result = server.workstream_submit_task(
+            prompt="Operator task",
+            sensitive_file_protection_enabled=False,
+        )
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_post.assert_called_once()
+        payload = mock_post.call_args[0][1]
+        # The opt-out must be forwarded so the controller can compute
+        # a bypass HMAC.
+        self.assertIs(payload["sensitiveFileProtectionEnabled"], False)
 
 
 class TestWorkstreamSubmitUnscopedCallerUnaffected(unittest.TestCase):
