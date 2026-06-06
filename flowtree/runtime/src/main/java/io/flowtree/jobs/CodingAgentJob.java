@@ -34,14 +34,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * A {@link Job} implementation that executes a Claude Code prompt.
@@ -183,8 +179,8 @@ public class CodingAgentJob extends GitManagedJob {
      * improvement opportunities. Defaults to {@code false}; opt in per-job.
      */
     private boolean retrospectiveEnabled = false;
-    /** {@code true} after {@link #runReflectionPhase()} has executed; reset on each {@link #doWork()} call. */
-    private boolean reflectionRan;
+    /** Owns retrospective-phase state and execution. Reset at the top of each {@link #doWork()} call. */
+    private final RetrospectivePhase retrospective = new RetrospectivePhase();
 
     /**
      * Sensitive-file protection flag (default {@code true}): the harness-side
@@ -202,12 +198,6 @@ public class CodingAgentJob extends GitManagedJob {
      * when the flag is true or when the controller has no signing key.
      */
     private String sensitiveFileBypassSignature;
-    /** {@code true} when the retrospective agent found and analyzed a primary-phase transcript. */
-    private boolean reflectionTranscriptFound;
-    /** Number of improvement findings emitted as memories by the retrospective agent. */
-    private int reflectionFindingsCount;
-    /** Cost (USD) of the retrospective session alone; computed as the delta in costByModel. */
-    private double reflectionCostUsd;
 
     /** Shell command run after the agent completes; non-empty activates {@link PostCompletionCommandRule}. */
     private String postCompletionCommand;
@@ -267,10 +257,8 @@ public class CodingAgentJob extends GitManagedJob {
     private long durationApiMs;
     /** Total cost of the Claude Code session in US dollars. */
     private double costUsd;
-    /** Cumulative USD cost per runner name, summed across every phase invocation in this job. */
-    private final Map<String, Double> costByRunner = new LinkedHashMap<>();
-    /** Cumulative USD cost per model (provider/model identifier), summed across every phase invocation in this job. */
-    private final Map<String, Double> costByModel = new LinkedHashMap<>();
+    /** Per-runner and per-model USD cost accumulation across every phase invocation. */
+    private final JobCostTracker costTracker = new JobCostTracker();
     /** Number of agentic turns taken during the Claude Code session. */
     private int numTurns;
     /** Session subtype / stop reason reported by Claude Code (e.g. "success"). */
@@ -990,7 +978,7 @@ public class CodingAgentJob extends GitManagedJob {
             runEnforcementRules();
         }
         // Retrospective phase runs after enforcement rules; produces memories, not code.
-        reflectionRan = false;
+        retrospective.reset();
         if (retrospectiveEnabled) {
             runReflectionPhase();
         }
@@ -1022,66 +1010,16 @@ public class CodingAgentJob extends GitManagedJob {
      * changes, so it cannot trigger re-entry into the enforcement loop even
      * when {@link #hasAgentCommitted()} returns {@code false}.</p>
      *
-     * <p>The session uses the standard per-phase configuration resolution:
-     * {@link #resolveEffectivePhaseConfig(Phase#RETROSPECTIVE)} applies the
-     * {@code phase_configs["retrospective"]} override, falling back to
-     * {@code default_phase_config} and then to the system default.</p>
+     * <p>Delegates to {@link RetrospectivePhase#run(CodingAgentJob)}; package-private
+     * so test spies can override it to suppress real session dispatch.</p>
      */
     void runReflectionPhase() {
-        String originalPrompt = this.prompt, previousActivity = this.currentActivity;
-        this.currentActivity = Phase.RETROSPECTIVE.wireName();
-        Path commitFile = resolveWorkingPath("commit.txt");
-        String savedMsg = (commitFile != null && Files.exists(commitFile))
-                ? readStringSafely(commitFile) : null;
-        PhaseConfig retroConfig = resolveEffectivePhaseConfig(Phase.RETROSPECTIVE);
-        double costBefore = costByModel.getOrDefault(retroConfig.toModelKey(), 0.0);
-
-        reflectionRan = reflectionTranscriptFound = false; reflectionFindingsCount = 0; reflectionCostUsd = 0.0;
-
-        try {
-            this.prompt = RetrospectivePromptBuilder.build(this);
-            reflectionRan = true;
-            executeSingleRun();
-            reflectionCostUsd = Math.max(0.0, costByModel.getOrDefault(retroConfig.toModelKey(), 0.0) - costBefore);
-            readReflectionResults();
-        } finally {
-            this.prompt = originalPrompt;
-            this.currentActivity = previousActivity;
-            if (commitFile != null && !Files.exists(commitFile) && savedMsg != null) {
-                writeStringSafely(commitFile, savedMsg);
-                log("Restored commit message from commit.txt after retrospective phase");
-            }
-        }
+        retrospective.run(this);
     }
 
-    /** Reads commit.txt safely, returning null on error. */
-    private String readStringSafely(Path path) {
-        try { return Files.readString(path, StandardCharsets.UTF_8); }
-        catch (IOException e) { warn("Could not read commit.txt: " + e.getMessage()); return null; }
-    }
-
-    /** Writes commit.txt safely, logging errors. */
-    private void writeStringSafely(Path path, String content) {
-        try { Files.writeString(path, content, StandardCharsets.UTF_8); }
-        catch (IOException e) { warn("Could not restore commit.txt: " + e.getMessage()); }
-    }
-
-    /** Result file written by the retrospective agent. */
-    private static final String RETROSPECTIVE_RESULTS_FILE = "retrospective-results.json";
-
-    /** Reads the retrospective agent's structured result file. */
-    private void readReflectionResults() {
-        Path resultsFile = resolveWorkingPath(RETROSPECTIVE_RESULTS_FILE);
-        if (resultsFile == null || !Files.exists(resultsFile)) return;
-        try {
-            String json = Files.readString(resultsFile, StandardCharsets.UTF_8);
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode node = mapper.readTree(json);
-            reflectionTranscriptFound = node.has("transcriptFound") && node.get("transcriptFound").asBoolean();
-            reflectionFindingsCount = node.has("findingsCount") ? node.get("findingsCount").asInt() : 0;
-        } catch (Exception e) {
-            warn("Could not read " + RETROSPECTIVE_RESULTS_FILE + ": " + e.getMessage());
-        }
+    /** Returns the cumulative cost for {@code modelKey}; used by {@link RetrospectivePhase} to isolate session cost. */
+    double getCostForModel(String modelKey) {
+        return costTracker.costForModel(modelKey);
     }
 
     /**
@@ -1248,8 +1186,7 @@ public class CodingAgentJob extends GitManagedJob {
 
         if (finalResult != null) {
             absorbResult(finalResult);
-            costByRunner.merge(runner.getName(), finalResult.costUsd(), Double::sum);
-            costByModel.merge(modelKey, finalResult.costUsd(), Double::sum);
+            costTracker.record(runner.getName(), modelKey, finalResult.costUsd());
         }
         harnessStatus().phaseExit(currentPhase, finalResult);
         log("Output saved to: " + outputFile);
@@ -1392,12 +1329,12 @@ public class CodingAgentJob extends GitManagedJob {
 
     /** Returns an immutable snapshot of the cumulative per-runner USD cost for this job. */
     Map<String, Double> getCostByRunner() {
-        return Collections.unmodifiableMap(new LinkedHashMap<>(costByRunner));
+        return costTracker.snapshotByRunner();
     }
 
     /** Returns an immutable snapshot of the cumulative per-model USD cost for this job. */
     Map<String, Double> getCostByModel() {
-        return Collections.unmodifiableMap(new LinkedHashMap<>(costByModel));
+        return costTracker.snapshotByModel();
     }
 
     /**
@@ -1474,16 +1411,16 @@ public class CodingAgentJob extends GitManagedJob {
                 ccEvent.withCommitMessageSource(commitMessageSource);
             }
             ccEvent.withRunnerName(runnerName);
-            ccEvent.withCostByRunner(costByRunner);
-            ccEvent.withCostByModel(costByModel);
+            ccEvent.withCostByRunner(costTracker.liveByRunner());
+            ccEvent.withCostByModel(costTracker.liveByModel());
             if (postCompletionCapHit) ccEvent.withPostCompletionCapHit(true);
             if (activeReviewRule != null && activeReviewRule.hasRun()) {
                 ccEvent.withReviewInfo(true, activeReviewRule.getFilesModified(),
                         activeReviewRule.getMemoriesStored(), activeReviewRule.isExitedCleanly());
             }
-            if (reflectionRan) {
-                ccEvent.withReflectionInfo(true, reflectionCostUsd,
-                        reflectionTranscriptFound, reflectionFindingsCount);
+            if (retrospective.ran()) {
+                ccEvent.withReflectionInfo(true, retrospective.costUsd(),
+                        retrospective.transcriptFound(), retrospective.findingsCount());
             }
         }
     }
@@ -1538,44 +1475,7 @@ public class CodingAgentJob extends GitManagedJob {
 
     @Override
     protected String getCommitMessage() {
-        // Check if the agent wrote a commit.txt
-        Path commitFile = resolveWorkingPath("commit.txt");
-        if (commitFile != null && Files.exists(commitFile)) {
-            try {
-                String agentMessage = Files.readString(commitFile, StandardCharsets.UTF_8).trim();
-                if (!agentMessage.isEmpty()) {
-                    log("Using commit message from commit.txt");
-                    if (commitMessageSource == null) {
-                        commitMessageSource = "agent";
-                    }
-                    return agentMessage;
-                }
-            } catch (IOException e) {
-                warn("Failed to read commit.txt: " + e.getMessage());
-            }
-        }
-
-        // Fallback: generate commit message from prompt
-        warn("No commit.txt found or it was empty — falling back to task prompt as commit message");
-        commitMessageSource = "prompt_fallback";
-        StringBuilder msg = new StringBuilder();
-        msg.append("Claude Code: ");
-
-        String summary = prompt;
-        if (summary.length() > 72) {
-            summary = summary.substring(0, 69) + "...";
-        }
-        msg.append(summary);
-
-        msg.append("\n\nPrompt: ").append(prompt);
-
-        if (sessionId != null) {
-            msg.append("\nSession: ").append(sessionId);
-        }
-
-        msg.append("\nExit code: ").append(exitCode);
-
-        return msg.toString();
+        return CommitMessageBuilder.resolve(this);
     }
 
     /**
