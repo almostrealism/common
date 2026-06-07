@@ -177,6 +177,15 @@ public class DiffusionSampler implements ConsoleFeatures {
 			throw new IllegalArgumentException("Strength must be between 0.0 and 1.0");
 		}
 
+		// The sampler operates in latentShape (the model's latent input shape). Reject
+		// a start latent of any other shape rather than silently reshaping it: a
+		// mismatch means the caller produced the wrong tensor and must be corrected at
+		// the source.
+		if (!startLatent.getShape().equalsIgnoreAxis(latentShape)) {
+			throw new IllegalArgumentException("Start latent shape " + startLatent.getShape() +
+					" does not match the expected latent shape " + latentShape);
+		}
+
 		// Special case: strength = 0.0 means no diffusion
 		if (strength == 0.0) {
 			if (verbose) log("Strength is 0.0 - returning input latent directly");
@@ -225,7 +234,10 @@ public class DiffusionSampler implements ConsoleFeatures {
 		long modelTotal = 0;
 		long samplingTotal = 0;
 
-		PackedCollection tTensor = new PackedCollection(1);
+		// Timestep is a per-batch scalar; supply it in the model's declared
+		// (batchSize, 1) shape rather than a bare 1-D tensor so the model receives
+		// exactly the rank it was compiled for.
+		PackedCollection tTensor = new PackedCollection(new TraversalPolicy(latentShape.length(0), 1));
 		int totalSteps = numInferenceSteps - startStep;
 
 		for (int step = startStep; step < numInferenceSteps; step++) {

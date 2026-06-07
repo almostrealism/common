@@ -253,10 +253,14 @@ public class AudioGenerator extends ConditionalAudioSystem {
 			PackedCollection crossAttnCond = conditionerOutputs.getCrossAttentionInput();
 			PackedCollection globalCond = conditionerOutputs.getGlobalCond();
 
-			// 2. Generate interpolated latent from samples (if position provided)
+			// 2. Generate interpolated latent from samples (if position provided).
+			// The composer works in unbatched autoencoder-latent space (e.g. [64, 256]);
+			// reshape it into the diffusion model's batched latent shape so the sampler
+			// and model receive exactly the shape they expect.
 			PackedCollection interpolatedLatent = null;
 			if (position != null) {
-				interpolatedLatent = composer.getInterpolatedLatent(cp(position)).evaluate();
+				interpolatedLatent = composer.getInterpolatedLatent(cp(position)).evaluate()
+						.reshape(DIT_X_SHAPE);
 			}
 
 			// 3. Run diffusion - DELEGATE TO AudioDiffusionGenerator - NO LOOP HERE

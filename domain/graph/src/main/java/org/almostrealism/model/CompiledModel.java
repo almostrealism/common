@@ -371,9 +371,16 @@ public class CompiledModel implements Destroyable, CodeFeatures {
 		public void accept(PackedCollection input) {
 			if (input == null) {
 				warn("null input");
-			} else if (input.getShape().getTotalSizeLong() != shape.getTotalSizeLong()) {
-				throw new IllegalArgumentException("Provided " + input.getShape() +
-						" input when " + shape + " was expected");
+			} else if (!input.getShape().equalsIgnoreAxis(shape)) {
+				// The compiled graph was built for `shape`. Reject any input whose shape
+				// (including its number of dimensions) differs, rather than silently
+				// reshaping it: a mismatched input means the caller built the wrong
+				// tensor, and conforming it here only hides the defect and produces a
+				// cryptic failure deeper in the graph (e.g. traverse(3) on a rank-2
+				// collection). The caller must supply a correctly-shaped input.
+				throw new IllegalArgumentException(
+						"Model input shape mismatch: expected " + shape +
+						" but received " + input.getShape());
 			}
 
 			this.input = input;
