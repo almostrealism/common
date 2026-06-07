@@ -298,7 +298,9 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		if (!maximum.isPresent() || maximum.getAsLong() <= 0) return true;
 		long count = maximum.getAsLong();
 		long nodes = 1L + children.stream().mapToLong(Expression::countNodes).sum();
-		return count * nodes <= ScopeSettings.maxReorderingBudget;
+		long budget = ScopeSettings.maxReorderingBudget;
+		if (budget > 0 && count > budget / Math.max(1L, nodes)) return false;
+		return count * nodes <= budget;
 	}
 
 	@Override

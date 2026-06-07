@@ -170,8 +170,11 @@ class TestRunner:
                 PROJECT_ROOT, module)
             self._write_preflight_section(
                 output_file, "dependency artifact ages (~/.m2)", age_report)
-        except Exception:  # noqa: BLE001 - a reporting error must never break a run
-            pass
+        except Exception as exc:  # noqa: BLE001 - a reporting error must never break a run
+            self._write_preflight_section(
+                output_file,
+                "dependency artifact ages (~/.m2)",
+                f"Artifact-age report unavailable: {exc}")
 
         try:
             missing = preflight.find_missing_upstream_artifacts(

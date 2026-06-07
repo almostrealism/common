@@ -570,8 +570,7 @@ def format_artifact_age_report(
     name_w = max(len(r[1]) for r in rows)
     lines.append("Installed module artifacts in ~/.m2 (oldest first; "
                  "* = recompiled by this run):")
-    for rel, artifact_id, version, mtime in rows:
-        when = (datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+        when = (datetime.utcfromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
                 if mtime else "NOT INSTALLED      ")
         marker = "*" if rel == module_norm else " "
         lines.append(f"  {marker} {when}  {artifact_id.ljust(name_w)}  {rel}")

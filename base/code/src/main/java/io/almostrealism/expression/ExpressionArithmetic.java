@@ -104,7 +104,7 @@ public interface ExpressionArithmetic<T> {
 	 * @return an expression representing {@code this * operand}
 	 */
 	public default Expression<? extends Number> multiply(long operand) {
-		return operand == 1.0 ? (Expression) self() : multiply(ExpressionFeatures.getInstance().e(operand));
+		return operand == 1 ? (Expression) self() : multiply(ExpressionFeatures.getInstance().e(operand));
 	}
 
 	/**

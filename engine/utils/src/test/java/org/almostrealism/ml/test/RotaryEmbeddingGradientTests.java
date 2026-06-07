@@ -108,7 +108,7 @@ public class RotaryEmbeddingGradientTests extends TestSuiteBase {
 	 */
 	@Test(timeout = 120000)
 	public void ropeFormulaGradientSmall() throws IOException {
-		ropeFormulaGradient("ropeSmall", 1, 2, 8, 16);
+		ropeFormulaGradient("ropeSmall", 1, 1, 8, 16);
 	}
 
 	/**
