@@ -17,6 +17,7 @@
 package org.almostrealism.studio.ml;
 import org.almostrealism.ml.audio.PingPongSamplingStrategy;
 import org.almostrealism.ml.audio.AudioAttentionConditioner;
+import org.almostrealism.ml.audio.DiffusionModel;
 import org.almostrealism.ml.audio.DiffusionSampler;
 import org.almostrealism.ml.audio.AutoEncoder;
 
@@ -60,10 +61,10 @@ public class AudioGenerator extends ConditionalAudioSystem {
 	private DoubleConsumer progressMonitor;
 
 	/** Composer used to interpolate between latent audio representations. */
-	private final AudioComposer composer;
+	private AudioComposer composer;
 
 	/** The underlying diffusion generator that drives latent denoising. */
-	private final AudioDiffusionGenerator generator;
+	private AudioDiffusionGenerator generator;
 
 	/** Strength parameter controlling how much the seed audio is preserved (0 = preserve, 1 = full noise). */
 	private double strength;
@@ -100,6 +101,39 @@ public class AudioGenerator extends ConditionalAudioSystem {
 						  int composerDim,
 						  long composerSeed) {
 		super(tokenizer, conditioner, autoencoder, ditStates);
+		initialize(composerDim, composerSeed);
+	}
+
+	/**
+	 * Creates an AudioGenerator backed by an explicitly provided diffusion model.
+	 *
+	 * <p>Primarily intended for testing the full generation pipeline with a
+	 * smaller-capacity model that preserves the production input shapes.</p>
+	 *
+	 * @param tokenizer the tokenizer for text processing
+	 * @param conditioner the conditioner for generating attention inputs
+	 * @param autoencoder the audio encoder/decoder for latent space operations
+	 * @param ditModel the diffusion model to drive denoising
+	 * @param composerDim dimension of the latent interpolation space
+	 * @param composerSeed random seed for the audio composer
+	 */
+	public AudioGenerator(Tokenizer tokenizer,
+						  AudioAttentionConditioner conditioner,
+						  AutoEncoder autoencoder,
+						  DiffusionModel ditModel,
+						  int composerDim,
+						  long composerSeed) {
+		super(tokenizer, conditioner, autoencoder, ditModel);
+		initialize(composerDim, composerSeed);
+	}
+
+	/**
+	 * Initializes the composer and diffusion generator shared by all constructors.
+	 *
+	 * @param composerDim dimension of the latent interpolation space
+	 * @param composerSeed random seed for the audio composer
+	 */
+	private void initialize(int composerDim, long composerSeed) {
 		composer = new AudioComposer(getAutoencoder(), composerDim, composerSeed);
 		audioDurationSeconds = 10.0;
 		strength = 0.5;

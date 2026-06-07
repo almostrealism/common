@@ -16,14 +16,18 @@
 
 package org.almostrealism.studio.ml.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.ml.Tokenizer;
 import org.almostrealism.ml.audio.*;
 import org.almostrealism.studio.ml.AudioGenerator;
+import org.almostrealism.studio.ml.ConditionalAudioSystem;
 import org.almostrealism.studio.ml.LegacyAudioGenerator;
+import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -138,6 +142,75 @@ public class AudioGeneratorRefactoringTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Exercises the full "generate from samples" (img2img) pipeline end-to-end with
+	 * the production input shapes, which is exactly the path that produced the
+	 * "Axis 3 is greater than the number of dimensions (2)" crash in the desktop app.
+	 *
+	 * <p>The autoencoder latent space is 2-D ({@code [LATENT_DIMENSIONS, LATENT_TIME_STEPS]});
+	 * the diffusion model's primary input is 3-D ({@code (1, LATENT_DIMENSIONS, LATENT_TIME_STEPS)}).
+	 * This test adds a 2-D latent feature (as the real autoencoder produces), runs the
+	 * from-samples generation path, and verifies audio is produced — i.e. that the 2-D
+	 * latent is correctly batched before reaching the (strictly shape-validated) model.
+	 * A smaller-capacity model is used, but every model input keeps its production shape
+	 * (latent {@code (1,64,256)}, cross {@code (1,65,768)}, global {@code (1,768)},
+	 * timestep {@code (1,1)}).</p>
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(1)
+	public void generatesAudioFromSamplesWithProductionShapes() {
+		log("=== Testing from-samples generation with production shapes ===");
+
+		int ioChannels = ConditionalAudioSystem.LATENT_DIMENSIONS;
+		int audioSeqLen = ConditionalAudioSystem.LATENT_TIME_STEPS;
+		int condSeqLen = 65;
+		int condTokenDim = 768;
+		int globalCondDim = 768;
+		int composerDim = 8;
+
+		MockTokenizer tokenizer = new MockTokenizer();
+		MockConditioner conditioner = new MockConditioner(condSeqLen);
+		MockAutoEncoder autoencoder = new MockAutoEncoder();
+
+		// Small-capacity diffusion model that preserves the production input shapes.
+		// Random (non-zero) weights keep the full process tree intact. ioChannels and
+		// audioSeqLen match the production latent so the primary input is (1, 64, 256).
+		DiffusionTransformer ditModel = new DiffusionTransformer(
+				ioChannels, 64, 2, 2, 1,
+				condTokenDim, globalCondDim, "rf_denoiser",
+				audioSeqLen, condSeqLen, null, false) {
+			@Override
+			protected PackedCollection createWeight(String key, TraversalPolicy expectedShape) {
+				PackedCollection weight = new PackedCollection(expectedShape);
+				weight.fill(pos -> Math.random() * 0.02 - 0.01);
+				return weight;
+			}
+		};
+
+		AudioGenerator generator = new AudioGenerator(
+				tokenizer, conditioner, autoencoder, ditModel, composerDim, 1234L);
+		generator.setStrength(0.4);
+		generator.setAudioDurationSeconds(2.0);
+
+		// Add a latent feature in the autoencoder's 2-D latent shape (the production
+		// composer/autoencoder representation), reproducing the data shape that triggered
+		// the original failure.
+		PackedCollection features = new PackedCollection(ioChannels, audioSeqLen);
+		features.fill(pos -> Math.random());
+		generator.addFeatures(features);
+
+		PackedCollection position = new PackedCollection(composerDim);
+		position.fill(pos -> Math.random());
+
+		log("Running from-samples generateAudio...");
+		WaveData audio = generator.generateAudio(position, "a test sound", 1234L);
+
+		assertNotNull("generateAudio should produce audio via the from-samples path", audio);
+		assertNotNull("generated audio should contain data", audio.getData());
+
+		log("From-samples generation produced audio - PASSED");
+	}
+
+	/**
 	 * Mock tokenizer for testing without actual model weights.
 	 */
 	private static class MockTokenizer implements Tokenizer {
@@ -156,11 +229,29 @@ public class AudioGeneratorRefactoringTest extends TestSuiteBase {
 	 * Mock conditioner for testing without actual model weights.
 	 */
 	private static class MockConditioner implements AudioAttentionConditioner {
+		/** Cross-attention sequence length the mock emits (matches the DiT condSeqLen). */
+		private final int condSeqLen;
+
+		/** Creates a mock conditioner with a default cross-attention sequence length. */
+		MockConditioner() {
+			this(77);
+		}
+
+		/**
+		 * Creates a mock conditioner emitting the given cross-attention sequence length.
+		 *
+		 * @param condSeqLen the cross-attention sequence length to emit
+		 */
+		MockConditioner(int condSeqLen) {
+			this.condSeqLen = condSeqLen;
+		}
+
 		@Override
 		public ConditionerOutput runConditioners(long[] tokenIds, double audioDuration) {
-			// Return mock conditioning tensors
-			PackedCollection crossAttn = new PackedCollection(1, 77, 768);
-			PackedCollection crossAttnMask = new PackedCollection(1, 77);
+			// Return mock conditioning tensors with the real ONNX conditioner ranks:
+			// cross_attention_input [batch, seqLen, 768], global_cond [batch, 768].
+			PackedCollection crossAttn = new PackedCollection(1, condSeqLen, 768);
+			PackedCollection crossAttnMask = new PackedCollection(1, condSeqLen);
 			PackedCollection globalCond = new PackedCollection(1, 768);
 			return new ConditionerOutput(crossAttn, crossAttnMask, globalCond);
 		}
