@@ -43,6 +43,8 @@ public class RetrospectivePhaseTest extends TestSuiteBase {
         assertFalse("ran() defaults to false", phase.ran());
         assertFalse("transcriptFound() defaults to false", phase.transcriptFound());
         assertEquals("findingsCount() defaults to 0", 0, phase.findingsCount());
+        assertEquals("contextUpfrontTokenEstimate() defaults to 0", 0, phase.contextUpfrontTokenEstimate());
+        assertEquals("contextPressureEvents() defaults to 0", 0, phase.contextPressureEvents());
         assertEquals("costUsd() defaults to 0.0", 0.0, phase.costUsd(), 0.0);
     }
 
@@ -54,6 +56,8 @@ public class RetrospectivePhaseTest extends TestSuiteBase {
         assertFalse(phase.ran());
         assertFalse(phase.transcriptFound());
         assertEquals(0, phase.findingsCount());
+        assertEquals(0, phase.contextUpfrontTokenEstimate());
+        assertEquals(0, phase.contextPressureEvents());
         assertEquals(0.0, phase.costUsd(), 0.0);
     }
 

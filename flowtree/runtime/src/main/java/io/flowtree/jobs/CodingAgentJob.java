@@ -1421,6 +1421,9 @@ public class CodingAgentJob extends GitManagedJob {
             if (retrospective.ran()) {
                 ccEvent.withReflectionInfo(true, retrospective.costUsd(),
                         retrospective.transcriptFound(), retrospective.findingsCount());
+                ccEvent.withReflectionContextUsage(
+                        retrospective.contextUpfrontTokenEstimate(),
+                        retrospective.contextPressureEvents());
             }
         }
     }

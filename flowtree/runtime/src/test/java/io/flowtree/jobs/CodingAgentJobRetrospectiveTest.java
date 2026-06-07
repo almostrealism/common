@@ -249,6 +249,25 @@ public class CodingAgentJobRetrospectiveTest extends TestSuiteBase {
                 prompt.contains("no commits"));
     }
 
+    /** RetrospectivePromptBuilder includes the required transcript-meta assessment section. */
+    @Test(timeout = 30000)
+    public void promptBuilderIncludesTranscriptMetaAssessmentSection() {
+        CodingAgentJob job = new CodingAgentJob("t1", "p");
+        String prompt = RetrospectivePromptBuilder.build(job);
+        assertTrue("Prompt must include the TRANSCRIPT-META ASSESSMENT header",
+                prompt.contains("TRANSCRIPT-META ASSESSMENT"));
+        assertTrue("Prompt must require the upfront context cost figure",
+                prompt.contains("Upfront context cost"));
+        assertTrue("Prompt must require the context-pressure frequency figure",
+                prompt.contains("Context-pressure frequency"));
+        assertTrue("Prompt must reference the new transcript-meta memory tag",
+                prompt.contains("transcript-meta"));
+        assertTrue("Prompt must require both context-* result-file fields",
+                prompt.contains("contextUpfrontTokenEstimate"));
+        assertTrue("Prompt must require both context-* result-file fields",
+                prompt.contains("contextPressureEvents"));
+    }
+
     /** RetrospectivePromptBuilder explicitly states what is NOT in v1 scope. */
     @Test(timeout = 30000)
     public void promptBuilderIncludesV1ScopeBoundary() {

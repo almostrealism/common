@@ -95,6 +95,10 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     private boolean reflectionTranscriptFound;
     /** Number of improvement findings emitted as memories by the retrospective agent. */
     private int reflectionFindingsCount;
+    /** Estimated token cost of system prompt + standing instructions + job prompt consumed before the agent acted. */
+    private int reflectionContextUpfrontTokenEstimate;
+    /** Number of times the primary session had to compact or summarize context. */
+    private int reflectionContextPressureEvents;
 
     /**
      * Creates a new Claude Code job completion event.
@@ -462,6 +466,24 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
         return this;
     }
 
+    /**
+     * Records the two new context-usage figures on this event. Called
+     * alongside {@link #withReflectionInfo}; either call can come first.
+     *
+     * @param contextUpfrontTokenEstimate  ballpark token cost of the
+     *     system prompt + standing instructions + job prompt consumed
+     *     before the primary agent acted
+     * @param contextPressureEvents        number of times the primary
+     *     session had to compact or summarize context mid-session
+     * @return this event for chaining
+     */
+    public CodingAgentJobEvent withReflectionContextUsage(int contextUpfrontTokenEstimate,
+                                                           int contextPressureEvents) {
+        this.reflectionContextUpfrontTokenEstimate = contextUpfrontTokenEstimate;
+        this.reflectionContextPressureEvents = contextPressureEvents;
+        return this;
+    }
+
     /** Returns whether the retrospective phase ran during this job. */
     public boolean isReflectionRan() { return reflectionRan; }
 
@@ -473,4 +495,17 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
 
     /** Returns the number of improvement findings emitted as memories by the retrospective agent. */
     public int getReflectionFindingsCount() { return reflectionFindingsCount; }
+
+    /**
+     * Returns the agent's ballpark token estimate of the upfront context
+     * cost (system prompt + standing instructions + job prompt) consumed
+     * before the primary agent acted. 0 when not reported.
+     */
+    public int getReflectionContextUpfrontTokenEstimate() { return reflectionContextUpfrontTokenEstimate; }
+
+    /**
+     * Returns the number of times the primary session had to compact or
+     * summarize context. 0 when not reported.
+     */
+    public int getReflectionContextPressureEvents() { return reflectionContextPressureEvents; }
 }

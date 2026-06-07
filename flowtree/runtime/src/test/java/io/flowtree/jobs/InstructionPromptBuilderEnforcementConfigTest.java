@@ -42,7 +42,11 @@ public class InstructionPromptBuilderEnforcementConfigTest extends TestSuiteBase
 	 * Phrase anchors taken from the abandon-before-tamper principle
 	 * text.  Each anchor is a short, distinctive substring that
 	 * uniquely identifies a clause in the rendered section; together
-	 * they assert that the entire principle is present.
+	 * they assert that the entire principle is present.  The
+	 * checkstyle-specific backstop sentence ("Attempts to edit
+	 * checkstyle configuration are blocked; do not try to circumvent
+	 * the block.") was removed in the prompt trim because the
+	 * block-checkstyle-edit hook enforces it structurally.
 	 */
 	private static final String[] ANCHORS = new String[] {
 		"Enforcement configuration",
@@ -50,7 +54,6 @@ public class InstructionPromptBuilderEnforcementConfigTest extends TestSuiteBase
 		"NEVER be weakened, exempted, or disabled",
 		"ABANDON the task",
 		"declaring failure is always preferable",
-		"do not try to circumvent the block"
 	};
 
 	/** The bare prompt must contain the section header. */
@@ -175,9 +178,9 @@ public class InstructionPromptBuilderEnforcementConfigTest extends TestSuiteBase
 		assertTrue("Section must be present", start >= 0);
 		// Within 1500 characters of the section header, the rule's
 		// close phrase must appear.  This is a soft cap: the current
-		// rendering is ~500 chars, so 1500 gives room for natural
-		// wording tweaks without becoming an essay.
-		int close = result.indexOf("do not try to circumvent the block", start);
+		// rendering is well under 1000 chars, so 1500 gives room for
+		// natural wording tweaks without becoming an essay.
+		int close = result.indexOf("declaring failure is always preferable", start);
 		assertTrue("Principle close phrase must appear soon after the header",
 			close >= 0 && close - start < 1500);
 		// And it must not be the very last thing in the prompt.

@@ -79,6 +79,11 @@
           },
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/steer-ls-grep.sh",
+            "description": "Block simple `ls <path>` / `grep <pattern> <file>` — use the structured `glob` / `grep` tools instead (compound shell features are allowed through)"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
             "description": "Block shell writes into ~/.claude/projects/*/memory/ \u2014 use ar-consultant/ar-manager"
           },

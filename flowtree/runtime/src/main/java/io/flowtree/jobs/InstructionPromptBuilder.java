@@ -516,18 +516,19 @@ public class InstructionPromptBuilder {
         sb.append("all of those phases together.\n\n");
 
         // Enforcement configuration -- placed near the top so the agent
-        // sees the abandon-before-tamper rule before reaching for the
-        // edit-checkstyle hook.  Complement to the structural block in
-        // .claude/hooks/block-checkstyle-edit.sh and the opencode
-        // plugin .opencode/plugins/block-checkstyle-edit.ts.
+        // sees the abandon-before-tamper rule before reaching for any
+        // enforcement-config edit.  The specific checkstyle-edit
+        // enforcement is now handled by .claude/hooks/block-checkstyle-edit.sh
+        // and .opencode/plugins/block-checkstyle-edit.ts, so the
+        // prompt only states the general principle (the part with no
+        // structural backstop).
         sb.append("## Enforcement Configuration\n");
         sb.append("Enforcement configuration (checkstyle rules and suppressions, policy ");
         sb.append("validators, test integrity checks) must NEVER be weakened, exempted, or ");
         sb.append("disabled to make a task succeed. If you conclude a task cannot be completed ");
         sb.append("without modifying enforcement config, ABANDON the task and report it as ");
         sb.append("impossible — declaring failure is always preferable to tampering with ");
-        sb.append("enforcement. Attempts to edit checkstyle configuration are blocked; do not ");
-        sb.append("try to circumvent the block.\n\n");
+        sb.append("enforcement.\n\n");
 
         // Messaging instructions - only when a workstream URL is configured
         if (workstreamUrl != null && !workstreamUrl.isEmpty()) {
@@ -550,29 +551,13 @@ public class InstructionPromptBuilder {
             sb.append("Reporting them is critical for diagnosing configuration issues.\n\n");
 
             sb.append("## Using MCP Tools (ar-build-validator, ar-test-runner, ar-consultant, ...)\n");
-            sb.append("Every `mcp__*` tool listed in your allowed-tools list is a stdio MCP tool ");
-            sb.append("spawned as a local subprocess. None of them expose an HTTP endpoint. ");
-            sb.append("There is NO `http://localhost:<port>/api/build-validator/...`, ");
-            sb.append("`/api/test-runner/...`, or similar URL anywhere in this environment. ");
-            sb.append("Attempting to curl such a URL will either fail immediately or, if the port ");
-            sb.append("happens to be in use by another service, return junk that your code cannot parse.\n\n");
-
-            sb.append("Specifically: when an MCP tool like `mcp__ar-build-validator__start_validation` ");
-            sb.append("returns a `run_id`, poll for its completion by calling ");
-            sb.append("`mcp__ar-build-validator__get_validation_status` with that `run_id`. ");
-            sb.append("Do the same for `mcp__ar-test-runner__start_test_run` + ");
-            sb.append("`mcp__ar-test-runner__get_run_status`. NEVER shell out to `curl` to poll these ");
-            sb.append("services. NEVER write a bash `until` loop over curl to wait for a run to ");
-            sb.append("finish — it will never finish because the URL you invented does not exist, ");
-            sb.append("and your session will hang until the turn budget is exhausted. ");
-            sb.append("If the MCP status call reports `running`, call it again after a brief pause; ");
-            sb.append("call it directly, not through a shell loop.\n\n");
-
-            sb.append("More broadly: every capability you have is exposed through either the built-in ");
-            sb.append("tools (Read, Edit, Write, Bash, Glob, Grep) or the `mcp__*` tools in the list ");
-            sb.append("you were given. If you find yourself reaching for `curl` to talk to a service ");
-            sb.append("named in that list, stop — you are about to invent an API that does not exist. ");
-            sb.append("Use the MCP tool instead.\n\n");
+            sb.append("MCP tools are stdio subprocesses, NOT HTTP endpoints. There is no ");
+            sb.append("`http://localhost:<port>/api/...` for any of them. To poll a run, call its ");
+            sb.append("`get_*_status` tool with the `run_id`; if it reports `running`, call again. ");
+            sb.append("NEVER `curl` an invented URL and NEVER wrap status polling in a bash ");
+            sb.append("`while`/`until` loop -- it will hang until the turn budget is exhausted. ");
+            sb.append("If you find yourself reaching for `curl` to talk to a service in your ");
+            sb.append("allowed-tools list, stop -- use the MCP tool instead.\n\n");
 
             if (enforceChanges && !correctionSession) {
                 // When changes are enforced, replace the permissive sections with
@@ -618,18 +603,12 @@ public class InstructionPromptBuilder {
             sb.append("Use these to check for code review feedback and address it.\n\n");
 
             sb.append("## When to Post PR Replies\n");
-            sb.append("Do NOT post a `github_pr_reply` claiming you have fixed a review comment ");
-            sb.append("until the fix is actually landed. 'Landed' means: the code change is on ");
-            sb.append("disk AND the relevant verification has succeeded (compile clean and, where ");
-            sb.append("applicable, the affected tests or the build validator passed). You will not ");
-            sb.append("see the commit or the push in your working copy — the harness performs both ");
-            sb.append("AFTER you exit — but your session will only lead to a real commit if you ");
-            sb.append("exit without the session hanging, crashing, or being killed. ");
-            sb.append("A reply that says 'I fixed X' that was posted while the claude process then ");
-            sb.append("got stuck in a polling loop is a lie to the reviewer: no commit is ever made.\n\n");
-            sb.append("Rule of thumb: edit first, verify second, reply LAST — immediately before ");
-            sb.append("you exit. If the verification fails, either fix it or reply honestly that the ");
-            sb.append("attempted fix did not pass checks. Never reply based on your intent alone.\n\n");
+        sb.append("Do NOT post a `github_pr_reply` claiming a fix is landed until the change is ");
+        sb.append("on disk AND the relevant verification (compile clean, affected tests, build ");
+        sb.append("validator) has passed. You will not see the commit or the push -- the harness ");
+        sb.append("performs both AFTER you exit -- so a reply that precedes a hang or crash is ");
+        sb.append("a lie: no commit is ever made. Edit first, verify second, reply LAST ");
+        sb.append("immediately before you exit. Never reply based on intent alone.\n\n");
         }
 
         // Test integrity policy -only when protectTestFiles is enabled
@@ -770,46 +749,39 @@ public class InstructionPromptBuilder {
         sb.append("usually a known anti-pattern.\n\n");
 
         sb.append("1. **Read small files whole; don't grep-thrash.** For files under a few ");
-        sb.append("KB, read them entirely instead of issuing repeated greps. Use grep only ");
-        sb.append("to locate a section in a large file, then read that section once. If you ");
-        sb.append("find yourself running the same grep with a widening window (`-A 30` then ");
-        sb.append("`-A 80`), read the file whole instead.\n\n");
+        sb.append("KB, read them entirely instead of issuing repeated greps. Use the `Grep` ");
+        sb.append("tool only to locate a section in a large file, then read that section ");
+        sb.append("once.\n\n");
 
         sb.append("2. **One comprehensive git query beats many.** For \"what landed in / ");
-        sb.append("touched this path,\" prefer a single `git log --all -p -- <path>` (or ");
-        sb.append("`git log --format=... -- <path>`) over many sequential `git show` / ");
-        sb.append("`git ls-tree` calls on individual commits.\n\n");
+        sb.append("touched this path,\" prefer a single `git log --all -p -- <path>` over ");
+        sb.append("many sequential `git show` / `git ls-tree` calls on individual commits.\n\n");
 
-        sb.append("3. **Treat confirmed facts as established.** Once a fact is verified ");
-        sb.append("(e.g., \"this file is absent from that tree\"), do not re-verify the ");
-        sb.append("same thing from multiple angles -- re-reads and redundant checks waste ");
-        sb.append("context.\n\n");
+        sb.append("3. **Treat confirmed facts as established.** Once a fact is verified, do ");
+        sb.append("not re-verify it from multiple angles -- re-reads and redundant checks ");
+        sb.append("waste context.\n\n");
 
-        sb.append("4. **Keep an outline of large files.** When reading a large plan or ");
-        sb.append("doc, capture its section headers (e.g., `grep -nE '^#+ ' file`) and ");
-        sb.append("reuse those anchors for targeted re-reads, rather than navigating by ");
-        sb.append("trial-and-error window shifts.\n\n");
+        sb.append("4. **Keep an outline of large files.** When reading a large plan or doc, ");
+        sb.append("capture its section headers and reuse those anchors for targeted re-reads ");
+        sb.append("rather than navigating by trial-and-error window shifts.\n\n");
 
         sb.append("5. **Parallelize independent work.** Run independent operations ");
-        sb.append("concurrently -- independent test files, installs, validations -- using ");
-        sb.append("background bash (`&` / `wait`). Long installs ");
-        sb.append("should run in the background so a reasoning pause doesn't risk an ");
-        sb.append("inactivity timeout.\n\n");
+        sb.append("concurrently using background bash (`&` / `wait`). Long installs should ");
+        sb.append("run in the background so a reasoning pause doesn't risk an inactivity ");
+        sb.append("timeout.\n\n");
 
-        sb.append("6. **Recall before re-deriving.** At session start, after loading ");
-        sb.append("workstream context, call `memory_recall` with the task or symptom ");
-        sb.append("phrased as a query to surface prior knowledge before exploring from ");
-        sb.append("scratch. The cost is one call even when it returns nothing.\n\n");
+        sb.append("6. **Recall before re-deriving.** At session start, after loading workstream ");
+        sb.append("context, call `memory_recall` with the task phrased as a query. The cost ");
+        sb.append("is one call even when it returns nothing.\n\n");
 
-        sb.append("7. **Hypothesis tree for diagnosis.** For \"why did X happen\" tasks, ");
-        sb.append("list the few plausible causes early and test the most likely with ");
-        sb.append("targeted searches, rather than exhaustively re-confirming the symptom ");
-        sb.append("from many angles.\n\n");
+        sb.append("7. **Hypothesis tree for diagnosis.** For \"why did X happen\" tasks, list ");
+        sb.append("the few plausible causes early and test the most likely with targeted ");
+        sb.append("searches, rather than exhaustively re-confirming the symptom.\n\n");
 
-        sb.append("8. **Set up toolchains in the right order.** When installing a ");
-        sb.append("toolchain mid-session, install everything needed in one step and pick ");
-        sb.append("the install location first; write config files (e.g., `tsconfig.json`) ");
-        sb.append("only after the tool that consumes them is installed, not before.\n\n");
+        sb.append("8. **Set up toolchains in the right order.** When installing a toolchain ");
+        sb.append("mid-session, install everything needed in one step and pick the install ");
+        sb.append("location first; write config files only after the tool that consumes ");
+        sb.append("them is installed, not before.\n\n");
 
         // Test verification reminder -- always included for coding tasks
         sb.append("## CRITICAL: Run Targeted Tests Before Declaring Work Complete\n");
@@ -822,18 +794,14 @@ public class InstructionPromptBuilder {
         sb.append("and run them.\n");
         sb.append("2. Look for any tests in the same package that import the file you ");
         sb.append("changed and run those too.\n");
-        sb.append("3. If you split or moved classes, the original tests still apply to the ");
-        sb.append("split pieces — find them and run them.\n");
-        sb.append("4. For Python changes in `tools/`, run the corresponding pytest module ");
+        sb.append("3. For Python changes in `tools/`, run the corresponding pytest module ");
         sb.append("(e.g., `python -m pytest tools/mcp/manager/test_server.py`).\n");
-        sb.append("5. Use `mcp__ar-test-runner__start_test_run` with `test_classes` to run ");
-        sb.append("a specific class quickly. Use the full module run only when you've ");
-        sb.append("touched many files in one module.\n\n");
-        sb.append("Do NOT use `-DskipTests` to declare a refactor or bug fix complete. ");
-        sb.append("`-DskipTests` is only for the initial compile-check pass. ");
-        sb.append("You MUST run the relevant tests before declaring work complete.\n\n");
-        sb.append("If a test fails, fix the underlying cause. Do NOT add `@Disabled`, ");
-        sb.append("comment out assertions, or weaken tests to make them green.\n\n");
+        sb.append("4. Use `mcp__ar-test-runner__start_test_run` with `test_classes` to run ");
+        sb.append("a specific class quickly; full module runs only when you've touched many ");
+        sb.append("files in one module.\n\n");
+        sb.append("Do NOT use `-DskipTests` to declare a refactor or bug fix complete. If a ");
+        sb.append("test fails, fix the underlying cause. Do NOT add `@Disabled`, comment ");
+        sb.append("out assertions, or weaken tests to make them green.\n\n");
 
         // Budget and turn limits
         if (maxBudgetUsd > 0 || maxTurns > 0) {
