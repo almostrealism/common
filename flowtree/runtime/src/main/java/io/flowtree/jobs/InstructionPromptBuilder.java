@@ -603,6 +603,7 @@ public class InstructionPromptBuilder {
             sb.append("Use these to check for code review feedback and address it.\n\n");
 
             sb.append("## When to Post PR Replies\n");
+            // TODO(review): lines 606-611 were de-indented from 12 to 8 spaces during the trim pass; should be 12 to match the enclosing if block body
         sb.append("Do NOT post a `github_pr_reply` claiming a fix is landed until the change is ");
         sb.append("on disk AND the relevant verification (compile clean, affected tests, build ");
         sb.append("validator) has passed. You will not see the commit or the push -- the harness ");
