@@ -14,6 +14,7 @@
     "block-git-worktree.ts",
     "warn-git-log.ts",
     "block-checkstyle-edit.ts",
+    "memory-reminder.ts",
     "_lib/command_pattern.ts"
   ]
 }
