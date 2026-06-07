@@ -201,7 +201,7 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 				return Math.sin(2.0 * Math.PI * 50.0 * t);
 			});
 			double[] lo = lowInput.toArray(0, SIGNAL_SIZE);
-			double[] loOut = compiled.forward(lowInput).toArray(0, SIGNAL_SIZE);
+			double[] loOut = compiled.forward(lowInput.reshape(compiled.getInputShape())).toArray(0, SIGNAL_SIZE);
 
 			// Mid tone at 1 kHz (in passband — should pass through near unity)
 			PackedCollection midInput = createSignal(SIGNAL_SIZE, i -> {
@@ -209,7 +209,7 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 				return Math.sin(2.0 * Math.PI * 1000.0 * t);
 			});
 			double[] mi = midInput.toArray(0, SIGNAL_SIZE);
-			double[] miOut = compiled.forward(midInput).toArray(0, SIGNAL_SIZE);
+			double[] miOut = compiled.forward(midInput.reshape(compiled.getInputShape())).toArray(0, SIGNAL_SIZE);
 
 			// High tone at 14 kHz (above LP cutoff — should be attenuated)
 			PackedCollection highInput = createSignal(SIGNAL_SIZE, i -> {
@@ -217,7 +217,7 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 				return Math.sin(2.0 * Math.PI * 14000.0 * t);
 			});
 			double[] hi = highInput.toArray(0, SIGNAL_SIZE);
-			double[] hiOut = compiled.forward(highInput).toArray(0, SIGNAL_SIZE);
+			double[] hiOut = compiled.forward(highInput.reshape(compiled.getInputShape())).toArray(0, SIGNAL_SIZE);
 
 			for (int i = 0; i < SIGNAL_SIZE; i++) {
 				inLow[offset + i] = lo[i];
@@ -300,8 +300,8 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 				return Math.sin(2.0 * Math.PI * 440.0 * t);
 			});
 
-			double[] mainOut = mainCompiled.forward(input).toArray(0, SIGNAL_SIZE);
-			double[] chanOut = channelCompiled.forward(input).toArray(0, SIGNAL_SIZE);
+			double[] mainOut = mainCompiled.forward(input.reshape(mainCompiled.getInputShape())).toArray(0, SIGNAL_SIZE);
+			double[] chanOut = channelCompiled.forward(input.reshape(channelCompiled.getInputShape())).toArray(0, SIGNAL_SIZE);
 
 			for (int i = 0; i < SIGNAL_SIZE; i++) {
 				mainSignal[offset + i] = (float) mainOut[i];
@@ -369,8 +369,8 @@ public class MixdownChannelPdslTest extends TestSuiteBase implements FirFilterTe
 			});
 
 			double[] inArr = input.toArray(0, SIGNAL_SIZE);
-			double[] mainOut = mainCompiled.forward(input).toArray(0, SIGNAL_SIZE);
-			double[] chanOut = channelCompiled.forward(input).toArray(0, SIGNAL_SIZE);
+			double[] mainOut = mainCompiled.forward(input.reshape(mainCompiled.getInputShape())).toArray(0, SIGNAL_SIZE);
+			double[] chanOut = channelCompiled.forward(input.reshape(channelCompiled.getInputShape())).toArray(0, SIGNAL_SIZE);
 
 			for (int i = 0; i < SIGNAL_SIZE; i++) {
 				drySignal[offset + i] = (float) inArr[i];

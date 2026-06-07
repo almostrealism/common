@@ -261,14 +261,28 @@ public class AudioGeneratorRefactoringTest extends TestSuiteBase {
 	 * Mock autoencoder for testing without actual model weights.
 	 */
 	private static class MockAutoEncoder implements AutoEncoder, CollectionFeatures {
+		/** The unbatched latent shape this autoencoder produces and consumes, matching OnnxAutoEncoder. */
+		private static final TraversalPolicy LATENT_SHAPE = new TraversalPolicy(
+				ConditionalAudioSystem.LATENT_DIMENSIONS, ConditionalAudioSystem.LATENT_TIME_STEPS);
+
 		@Override
 		public Producer<PackedCollection> encode(Producer<PackedCollection> input) {
-			// Return mock latent
-			return c(new PackedCollection(1, 64, 256));
+			// The real OnnxAutoEncoder.encode produces an UNBATCHED 2-D latent (LATENT_DIMENSIONS, 256).
+			return c(new PackedCollection(LATENT_SHAPE));
 		}
 
 		@Override
 		public Producer<PackedCollection> decode(Producer<PackedCollection> latent) {
+			// Mirror OnnxAutoEncoder.decode's contract exactly: it accepts only an unbatched 2-D
+			// latent (LATENT_DIMENSIONS, 256) and rejects any other rank. This is precisely the
+			// boundary that crashed the desktop app, so the mock must enforce it for the test to
+			// be a faithful reproduction of the production generation path.
+			if (!shape(latent).equalsIgnoreAxis(LATENT_SHAPE)) {
+				throw new IllegalArgumentException(
+						"Autoencoder expected latent " + LATENT_SHAPE +
+								" but received " + shape(latent));
+			}
+
 			// Return mock audio (stereo, ~1 second at 44100Hz)
 			return c(new PackedCollection(2, 44100));
 		}
