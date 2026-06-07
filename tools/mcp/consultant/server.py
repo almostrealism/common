@@ -389,6 +389,50 @@ def recall(query: str, namespace: str = "default", limit: int = 5) -> dict:
 
 
 @mcp.tool()
+@tracked_tool(history, "recall_namespaces")
+def recall_namespaces(branch: str = "", all_repos: bool = False) -> dict:
+    """List every memory namespace with its entry count and latest-write time.
+
+    Use this to discover where memories live and when each namespace was last
+    written — for example to find which namespace a recent hand-off note landed
+    in, without guessing namespace names and issuing a separate ``recall`` for
+    each. Namespaces are ordered most-recently-written first, so the freshest
+    activity is at the top.
+
+    By default results are scoped to the current repository (best-effort git
+    detection), matching ``recall``'s scoping. This avoids mixing in namespaces
+    from unrelated projects that share the store.
+
+    Args:
+        branch: Optional branch name to further restrict the counts. Empty
+            (default) counts every branch in the repository.
+        all_repos: When true, do not scope to the current repository — report
+            namespaces across every repository in the store.
+
+    Returns:
+        Dictionary with ``namespaces`` (a list of
+        ``{namespace, count, latest_created_at, latest_id}`` dicts, newest
+        first) and ``count`` (the number of namespaces).
+    """
+    detected_repo_url = None
+    if not all_repos:
+        try:
+            _common_dir = os.path.join(os.path.dirname(__file__), "..", "common")
+            if _common_dir not in sys.path:
+                sys.path.insert(0, _common_dir)
+            from git_context import detect_git_context
+            detected_repo_url, _ = detect_git_context()
+        except (ValueError, ImportError):
+            pass  # Git detection is best-effort
+
+    stats = memory.namespace_stats(
+        repo_url=detected_repo_url,
+        branch=branch or None,
+    )
+    return {"namespaces": stats, "count": len(stats)}
+
+
+@mcp.tool()
 @tracked_tool(history, "remember")
 def remember(
     content: str,

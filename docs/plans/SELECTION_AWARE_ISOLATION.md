@@ -28,10 +28,6 @@ The correctness harness exists: `SelectionContractionCollapseTests` (7 oracle +
 differential tests over subset / weighted-subset / concat / multiply-sum delta),
 green on the master baseline (run `528e7971`).
 
-> A note for whoever repoints it: `SubsetDeltaCollapseTests.java:29` (already on
-> master) has a Javadoc prose reference to `docs/plans/SUBSET_DELTA_SPARSITY.md`.
-> That reference now dangles; it should be updated to point here.
-
 ## The normative stance this document assumes
 
 A *masked sum* — a reduction `sum_k Mask(guard(k), value(k))` — has a "shape"

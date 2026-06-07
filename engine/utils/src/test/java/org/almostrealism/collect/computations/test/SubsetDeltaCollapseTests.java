@@ -25,8 +25,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
- * Tests for the gather-collapse of a contracted subset-selection gradient, as described in
- * {@code docs/plans/SUBSET_DELTA_SPARSITY.md}.
+ * Tests for the gather-collapse of a contracted subset-selection gradient.
  *
  * <p>The contracted path {@code subset(x).sum().delta(x)} builds an
  * {@link AggregatedProducerComputation} whose reduction summand is a single-index mask

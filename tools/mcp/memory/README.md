@@ -138,7 +138,7 @@ FAISS: One flat L2 index per namespace. Dimension is 384 for both default backen
 
 ```
 tools/mcp/memory/
-  server.py          # Startup and mode selection (--http-only, --mcp-only)
+  server.py          # HTTP service entrypoint (the only mode)
   store.py           # SQLite metadata + FAISS vector indices + URL normalization
   http_api.py        # Starlette REST endpoints
   embedder.py        # Embedder interface + backend implementations

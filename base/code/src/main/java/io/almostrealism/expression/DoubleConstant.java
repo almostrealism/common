@@ -64,7 +64,7 @@ public class DoubleConstant extends Constant<Double> {
 	}
 
 	@Override
-	public Number value(IndexValues indexValues) {
+	public Number computeValue(IndexValues indexValues) {
 		return value;
 	}
 

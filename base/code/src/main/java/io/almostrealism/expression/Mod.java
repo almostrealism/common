@@ -139,7 +139,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	@Override
-	public Number value(IndexValues indexValues) {
+	public Number computeValue(IndexValues indexValues) {
 		if (fp) {
 			return getChildren().get(0).value(indexValues).doubleValue() % getChildren().get(1).value(indexValues).doubleValue();
 		} else {

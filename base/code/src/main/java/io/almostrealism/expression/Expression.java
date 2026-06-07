@@ -127,7 +127,8 @@ import java.util.stream.IntStream;
  */
 public abstract class Expression<T> implements
 		KernelTree<Expression<?>>, SequenceGenerator, Signature,
-		ExpressionFeatures, ConsoleFeatures {
+		ExpressionFeatures, ConsoleFeatures, ExpressionArithmetic<T>,
+		ExpressionProperties<T>, ExpressionRendering<T> {
 
 	/**
 	 * Optional listener for recording timing metrics of expression operations.
@@ -339,110 +340,6 @@ public abstract class Expression<T> implements
 	 * @return the total compute cost of this subtree
 	 */
 	public long totalComputeCost() { return computeCost; }
-
-	/**
-	 * Checks if this expression produces an integer result.
-	 *
-	 * @return {@code true} if the result type is {@link Integer}
-	 */
-	public boolean isInt() { return getType() == Integer.class; }
-
-	/**
-	 * Checks if this expression produces a floating-point result.
-	 *
-	 * @return {@code true} if the result type is {@link Double}
-	 */
-	public boolean isFP() { return getType() == Double.class; }
-
-	/**
-	 * Checks if this expression represents a null value.
-	 *
-	 * @return {@code true} if this is a null expression; default implementation returns {@code false}
-	 */
-	public boolean isNull() { return false; }
-
-	/**
-	 * Checks if this expression is masked (e.g., wrapped in a conditional or guard).
-	 *
-	 * @return {@code true} if this expression is masked; default implementation returns {@code false}
-	 */
-	public boolean isMasked() { return false; }
-
-	/**
-	 * Checks if this expression consists of exactly one index reference.
-	 *
-	 * @return {@code true} if this is a single index expression; default implementation returns {@code false}
-	 */
-	public boolean isSingleIndex() { return false; }
-
-	/**
-	 * Checks if this expression is a masked single index (a guard around a single index reference).
-	 *
-	 * @return {@code true} if this is a masked expression whose first child is a single index
-	 */
-	public boolean isSingleIndexMasked() { return isMasked() && getChildren().get(0).isSingleIndex(); }
-
-	/**
-	 * Checks if this expression can produce a concrete value given the specified index assignments.
-	 *
-	 * <p>This is used to determine if the expression can be evaluated with the given
-	 * index values, which is important for sequence generation and optimization.</p>
-	 *
-	 * @param values the index value assignments to check against
-	 * @return {@code true} if this expression can produce a value with these assignments;
-	 *         default implementation returns {@code false}
-	 */
-	public boolean isValue(IndexValues values) { return false; }
-
-	/**
-	 * Returns the compile-time boolean value of this expression, if known.
-	 *
-	 * <p>This method enables constant folding for boolean expressions. Subclasses
-	 * representing constant boolean values should override this method.</p>
-	 *
-	 * @return an {@link Optional} containing the boolean value if this expression
-	 *         represents a compile-time constant; empty otherwise
-	 */
-	public Optional<Boolean> booleanValue() { return Optional.empty(); }
-
-	/**
-	 * Returns the compile-time integer value of this expression, if known.
-	 *
-	 * <p>This method enables constant folding for integer expressions. Subclasses
-	 * representing constant integer values should override this method.</p>
-	 *
-	 * @return an {@link OptionalInt} containing the integer value if this expression
-	 *         represents a compile-time constant; empty otherwise
-	 */
-	public OptionalInt intValue() { return OptionalInt.empty(); }
-
-	/**
-	 * Returns the compile-time long value of this expression, if known.
-	 *
-	 * <p>By default, this returns the integer value promoted to long. Subclasses
-	 * representing constant long values should override this method.</p>
-	 *
-	 * @return an {@link OptionalLong} containing the long value if this expression
-	 *         represents a compile-time constant; empty otherwise
-	 */
-	public OptionalLong longValue() {
-		OptionalInt intValue = intValue();
-		return intValue.isPresent() ? OptionalLong.of(intValue.getAsInt()) : OptionalLong.empty();
-	}
-
-	/**
-	 * Returns the compile-time double value of this expression, if known.
-	 *
-	 * <p>By default, this returns the integer value promoted to double. Subclasses
-	 * representing constant floating-point values should override this method.</p>
-	 *
-	 * @return an {@link OptionalDouble} containing the double value if this expression
-	 *         represents a compile-time constant; empty otherwise
-	 */
-	public OptionalDouble doubleValue() {
-		OptionalInt intValue = intValue();
-		return intValue.isPresent() ? OptionalDouble.of(intValue.getAsInt()) : OptionalDouble.empty();
-	}
 
 	/**
 	 * Creates a new expression with all occurrences of a named variable replaced by a constant value.
@@ -873,14 +770,44 @@ public abstract class Expression<T> implements
 	/**
 	 * Computes the concrete value of this expression for given index assignments.
 	 *
-	 * <p>This method recursively evaluates children and combines their results
-	 * using {@link #evaluate(Number...)}.</p>
+	 * <p>This method is {@code final}; subclasses customize evaluation by overriding
+	 * {@link #computeValue(IndexValues)}. By default it delegates straight to
+	 * {@link #computeValue(IndexValues)} without caching. When
+	 * {@link io.almostrealism.scope.ScopeSettings#enableValueMemoization} is {@code true} it
+	 * instead memoizes each composite node's result in the supplied {@link IndexValues} (keyed
+	 * by node identity) for the duration of the evaluation, so a node shared by many DAG paths
+	 * is computed once; leaf nodes are always evaluated directly. The cache is off by default
+	 * because the deep-DAG case it targeted is now bounded by the gather-analysis gate and the
+	 * bookkeeping otherwise slowed the common shallow case.</p>
 	 *
 	 * @param indexValues the index value assignments
 	 * @return the computed value
 	 */
 	@Override
-	public Number value(IndexValues indexValues) {
+	public final Number value(IndexValues indexValues) {
+		if (!ScopeSettings.enableValueMemoization || getChildren().isEmpty())
+			return computeValue(indexValues);
+
+		Number cached = indexValues.getCachedValue(this);
+		if (cached != null) return cached;
+
+		Number result = computeValue(indexValues);
+		indexValues.putCachedValue(this, result);
+		return result;
+	}
+
+	/**
+	 * Computes the concrete value of this expression for given index assignments by
+	 * recursively evaluating children and combining their results via
+	 * {@link #evaluate(Number...)}.
+	 *
+	 * <p>Subclasses override this to define their evaluation semantics; callers and recursive
+	 * descent should invoke {@link #value(IndexValues)}, which adds DAG-aware memoization.</p>
+	 *
+	 * @param indexValues the index value assignments
+	 * @return the computed value
+	 */
+	protected Number computeValue(IndexValues indexValues) {
 		return evaluate(getChildren().stream().map(e -> e.value(indexValues)).toArray(Number[]::new));
 	}
 
@@ -1067,85 +994,6 @@ public abstract class Expression<T> implements
 	}
 
 	/**
-	 * Returns the simplified expression rendered as target language code.
-	 *
-	 * <p>This is a convenience method that first simplifies the expression and then
-	 * renders it using the specified language operations.</p>
-	 *
-	 * @param lang the language operations for code generation
-	 * @return the simplified expression as code, or {@code null} if simplification fails
-	 */
-	public String getSimpleExpression(LanguageOperations lang) {
-		return Optional.ofNullable(getSimplified())
-				.map(e -> e.getExpression(lang)).orElse(null);
-	}
-
-	/**
-	 * Renders this expression as code in the target language.
-	 *
-	 * <p>This is the primary code generation method. Each expression subclass must
-	 * implement this to produce the appropriate syntax for the target language.
-	 * The {@link LanguageOperations} parameter provides language-specific operators,
-	 * type names, and syntax rules.</p>
-	 *
-	 * @param lang the language operations defining the target language syntax
-	 * @return the expression rendered as code
-	 */
-	public abstract String getExpression(LanguageOperations lang);
-
-	/**
-	 * Returns this expression rendered as code wrapped in parentheses.
-	 *
-	 * <p>This is useful for ensuring correct operator precedence when the expression
-	 * is used as a subexpression.</p>
-	 *
-	 * @param lang the language operations for code generation
-	 * @return the expression as code wrapped in parentheses
-	 */
-	public String getWrappedExpression(LanguageOperations lang) {
-		return "(" + getExpression(lang) + ")";
-	}
-
-	/**
-	 * Returns a brief summary of this expression for debugging and logging.
-	 *
-	 * <p>For shallow expressions (depth less than 10), returns the full expression.
-	 * For deeper expressions, returns a summary showing the class name, type, and depth
-	 * to avoid generating excessively long strings.</p>
-	 *
-	 * @return a human-readable summary of this expression
-	 */
-	public String getExpressionSummary() {
-		if (depth < 10) return getExpression(lang);
-		return getClass().getSimpleName() + "<" +
-					getType().getSimpleName() +
-				">[depth=" + depth + "]";
-	}
-
-	/**
-	 * Searches for subexpressions whose code representation contains the specified text.
-	 *
-	 * <p>This method performs a depth-first search, returning the deepest (most specific)
-	 * subexpressions that contain the text. If no children contain the text but this
-	 * expression does, returns this expression.</p>
-	 *
-	 * @param text the text to search for in the expression code
-	 * @return a list of expressions whose code contains the text
-	 */
-	public List<Expression> find(String text) {
-		List<Expression> found = new ArrayList<>();
-		for (Expression e : getChildren()) {
-			found.addAll(e.find(text));
-		}
-
-		if (found.isEmpty() && getExpression(new LanguageOperationsStub()).contains(text)) {
-			found.add(this);
-		}
-
-		return found;
-	}
-
-	/**
 	 * Returns all variables that this expression depends on.
 	 *
 	 * <p>This method recursively collects all variable references from this expression
@@ -1192,468 +1040,6 @@ public abstract class Expression<T> implements
 	 */
 	public ExpressionAssignment<T> assign(Expression exp) {
 		throw new UnsupportedOperationException();
-	}
-
-	/**
-	 * Returns the arithmetic negation of this expression.
-	 *
-	 * @return an expression representing {@code -this}
-	 */
-	public Expression minus() { return Minus.of(this); }
-
-	/**
-	 * Returns the sum of this expression and an integer constant.
-	 *
-	 * @param operand the integer value to add
-	 * @return an expression representing {@code this + operand}
-	 */
-	public Expression<? extends Number> add(int operand) { return add(new IntegerConstant(operand)); }
-
-	/**
-	 * Returns the sum of this expression and another expression.
-	 *
-	 * @param operand the expression to add
-	 * @return an expression representing {@code this + operand}
-	 */
-	public Expression<? extends Number> add(Expression<?> operand) { return Sum.of(this, operand); }
-
-	/**
-	 * Returns the difference of this expression and another expression.
-	 *
-	 * @param operand the expression to subtract
-	 * @return an expression representing {@code this - operand}
-	 */
-	public Expression<? extends Number> subtract(Expression<? extends Number> operand) { return Difference.of(this, operand); }
-
-	/**
-	 * Returns the difference of this expression and an integer constant.
-	 *
-	 * @param operand the integer value to subtract
-	 * @return an expression representing {@code this - operand}
-	 */
-	public Expression<? extends Number> subtract(int operand) { return Difference.of(this, new IntegerConstant(operand)); }
-
-	/**
-	 * Returns the product of this expression and an integer constant.
-	 *
-	 * <p>Optimizes the identity case: if operand is 1, returns this expression unchanged.</p>
-	 *
-	 * @param operand the integer value to multiply by
-	 * @return an expression representing {@code this * operand}
-	 */
-	public Expression<? extends Number> multiply(int operand) {
-		return operand == 1 ? (Expression) this : multiply(new IntegerConstant(operand));
-	}
-
-	/**
-	 * Returns the product of this expression and a long constant.
-	 *
-	 * <p>Optimizes the identity case: if operand is 1, returns this expression unchanged.</p>
-	 *
-	 * @param operand the long value to multiply by
-	 * @return an expression representing {@code this * operand}
-	 */
-	public Expression<? extends Number> multiply(long operand) {
-		return operand == 1.0 ? (Expression) this : multiply(ExpressionFeatures.getInstance().e(operand));
-	}
-
-	/**
-	 * Returns the product of this expression and a double constant.
-	 *
-	 * <p>Optimizes the identity case: if operand is 1.0, returns this expression unchanged.</p>
-	 *
-	 * @param operand the double value to multiply by
-	 * @return an expression representing {@code this * operand}
-	 */
-	public Expression<? extends Number> multiply(double operand) {
-		return operand == 1.0 ? (Expression) this : multiply(Constant.of(operand));
-	}
-
-	/**
-	 * Returns the product of this expression and another expression.
-	 *
-	 * @param operand the expression to multiply by
-	 * @return an expression representing {@code this * operand}
-	 */
-	public Expression<? extends Number> multiply(Expression<?> operand) {
-		return (Expression) Product.of(this, operand);
-	}
-
-	/**
-	 * Returns the quotient of this expression divided by an integer constant.
-	 *
-	 * <p>Optimizes the identity case: if operand is 1, returns this expression unchanged.</p>
-	 *
-	 * @param operand the integer divisor
-	 * @return an expression representing {@code this / operand}
-	 */
-	public Expression<? extends Number> divide(int operand) {
-		return operand == 1 ? (Expression) this : divide(new IntegerConstant(operand));
-	}
-
-	/**
-	 * Returns the quotient of this expression divided by a long constant.
-	 *
-	 * <p>Optimizes the identity case: if operand is 1, returns this expression unchanged.</p>
-	 *
-	 * @param operand the long divisor
-	 * @return an expression representing {@code this / operand}
-	 */
-	public Expression<? extends Number> divide(long operand) {
-		return operand == 1 ? (Expression) this : divide(ExpressionFeatures.getInstance().e(operand));
-	}
-
-	/**
-	 * Returns the quotient of this expression divided by a double constant.
-	 *
-	 * <p>Optimizes the identity case: if operand is 1.0, returns this expression unchanged.</p>
-	 *
-	 * @param operand the double divisor
-	 * @return an expression representing {@code this / operand}
-	 */
-	public Expression<? extends Number> divide(double operand) {
-		return operand == 1.0 ? (Expression) this : divide(Constant.of(operand));
-	}
-
-	/**
-	 * Returns the quotient of this expression divided by another expression.
-	 *
-	 * @param operand the expression divisor
-	 * @return an expression representing {@code this / operand}
-	 */
-	public Expression<? extends Number> divide(Expression<?> operand) {
-		return (Expression)Quotient.of(this, operand);
-	}
-
-	/**
-	 * Returns the reciprocal (multiplicative inverse) of this expression.
-	 *
-	 * @return an expression representing {@code 1.0 / this}
-	 */
-	public Expression<? extends Number> reciprocal() { return (Expression) Quotient.of(new DoubleConstant(1.0), this); }
-
-	/**
-	 * Returns this expression raised to the power of another expression.
-	 *
-	 * @param operand the exponent expression
-	 * @return an expression representing {@code this ^ operand}
-	 */
-	public Expression<Double> pow(Expression<Double> operand) { return Exponent.of((Expression) this, operand); }
-
-	/**
-	 * Returns the exponential function (e^x) applied to this expression.
-	 *
-	 * @return an expression representing {@code e^this}
-	 */
-	public Expression<Double> exp() { return Exp.of(this); }
-
-	/**
-	 * Returns the natural logarithm of this expression.
-	 *
-	 * @return an expression representing {@code ln(this)}
-	 */
-	public Expression<Double> log() { return Logarithm.of(this); }
-
-	/**
-	 * Returns the floor (largest integer not greater than) of this expression.
-	 *
-	 * <p>For integer expressions, returns this expression unchanged.
-	 * For constant double expressions, computes the floor at compile time.</p>
-	 *
-	 * @return an expression representing {@code floor(this)}
-	 */
-	public Expression floor() { return Floor.of(this); }
-
-	/**
-	 * Returns the ceiling (smallest integer not less than) of this expression.
-	 *
-	 * <p>For integer expressions, returns this expression unchanged.
-	 * For constant double expressions, computes the ceiling at compile time.</p>
-	 *
-	 * @return an expression representing {@code ceil(this)}
-	 */
-	public Expression ceil() { return Ceiling.of(this); }
-
-	/**
-	 * Returns the floating-point modulo of this expression by another.
-	 *
-	 * @param operand the divisor expression
-	 * @return an expression representing {@code this % operand}
-	 */
-	public Expression mod(Expression<Double> operand) { return Mod.of(this, operand); }
-
-	/**
-	 * Returns the modulo of this expression by another, with configurable floating-point behavior.
-	 *
-	 * @param operand the divisor expression
-	 * @param fp if {@code true}, uses floating-point modulo; otherwise uses integer modulo
-	 * @return an expression representing {@code this % operand}
-	 */
-	public Expression mod(Expression<?> operand, boolean fp) { return Mod.of(this, operand, fp); }
-
-	/**
-	 * Returns the integer modulo of this expression by another.
-	 *
-	 * @param operand the divisor expression
-	 * @return an expression representing {@code this % operand} with integer semantics
-	 */
-	public Expression<Integer> imod(Expression<? extends Number> operand) { return mod(operand, false); }
-
-	/**
-	 * Returns the integer modulo of this expression by an integer constant.
-	 *
-	 * @param operand the integer divisor
-	 * @return an expression representing {@code this % operand}
-	 */
-	public Expression<Integer> imod(int operand) { return imod(new IntegerConstant(operand)); }
-
-	/**
-	 * Returns the integer modulo of this expression by a long constant.
-	 *
-	 * <p>If the operand fits in an integer, uses integer modulo; otherwise uses long modulo.</p>
-	 *
-	 * @param operand the long divisor
-	 * @return an expression representing {@code this % operand}
-	 */
-	public Expression<Integer> imod(long operand) {
-		if (operand > Integer.MAX_VALUE) {
-			return imod(new LongConstant(operand));
-		} else {
-			return imod((int) operand);
-		}
-	}
-
-	/**
-	 * Returns the sine of this expression.
-	 *
-	 * @return an expression representing {@code sin(this)}
-	 */
-	public Expression<Double> sin() { return Sine.of((Expression) this); }
-
-	/**
-	 * Returns the cosine of this expression.
-	 *
-	 * @return an expression representing {@code cos(this)}
-	 */
-	public Expression<Double> cos() { return Cosine.of((Expression) this); }
-
-	/**
-	 * Returns the tangent of this expression.
-	 *
-	 * @return an expression representing {@code tan(this)}
-	 */
-	public Expression<Double> tan() { return Tangent.of((Expression) this); }
-
-	/**
-	 * Returns the hyperbolic tangent of this expression.
-	 *
-	 * @return an expression representing {@code tanh(this)}
-	 */
-	public Expression<Double> tanh() { return Tangent.of((Expression) this, true); }
-
-	/**
-	 * Returns the logical negation of this boolean expression.
-	 *
-	 * @return an expression representing {@code !this}
-	 * @throws IllegalArgumentException if this expression is not boolean-typed
-	 */
-	public Expression not() {
-		if (getType() != Boolean.class)
-			throw new IllegalArgumentException();
-
-		return Negation.of(this);
-	}
-
-	/**
-	 * Returns an equality comparison of this expression with zero.
-	 *
-	 * @return an expression representing {@code this == 0.0}
-	 */
-	public Expression eqZero() { return eq(0.0); }
-
-	/**
-	 * Returns an equality comparison of this expression with an integer constant.
-	 *
-	 * @param operand the integer value to compare against
-	 * @return an expression representing {@code this == operand}
-	 */
-	public Expression eq(int operand) { return eq(new IntegerConstant(operand)); }
-
-	/**
-	 * Returns an equality comparison of this expression with a long constant.
-	 *
-	 * @param operand the long value to compare against
-	 * @return an expression representing {@code this == operand}
-	 */
-	public Expression eq(long operand) { return eq(ExpressionFeatures.getInstance().e(operand)); }
-
-	/**
-	 * Returns an equality comparison of this expression with a double constant.
-	 *
-	 * @param operand the double value to compare against
-	 * @return an expression representing {@code this == operand}
-	 */
-	public Expression eq(double operand) { return eq(new DoubleConstant(operand)); }
-
-	/**
-	 * Returns an equality comparison of this expression with another expression.
-	 *
-	 * @param operand the expression to compare against
-	 * @return an expression representing {@code this == operand}
-	 */
-	public Expression eq(Expression<?> operand) { return Equals.of(this, operand); }
-
-	/**
-	 * Returns an inequality comparison of this expression with another expression.
-	 *
-	 * @param operand the expression to compare against
-	 * @return an expression representing {@code this != operand}
-	 */
-	public Expression neq(Expression<?> operand) {
-		return Equals.of(this, operand).not();
-	}
-
-	/**
-	 * Returns the logical conjunction (AND) of this expression with another boolean expression.
-	 *
-	 * @param operand the boolean expression to AND with
-	 * @return an expression representing {@code this && operand}
-	 */
-	public Expression and(Expression<Boolean> operand) { return Conjunction.of((Expression) this, operand); }
-
-	/**
-	 * Returns a conditional expression (ternary operator) using this boolean as the condition.
-	 *
-	 * @param positive the expression to return if this condition is true
-	 * @param negative the expression to return if this condition is false
-	 * @return an expression representing {@code this ? positive : negative}
-	 * @throws IllegalArgumentException if this expression is not boolean-typed
-	 */
-	public Expression conditional(Expression<?> positive, Expression<?> negative) {
-		if (getType() != Boolean.class) throw new IllegalArgumentException();
-		return Conditional.of((Expression<Boolean>) this, positive, negative);
-	}
-
-	/**
-	 * Returns a greater-than comparison of this expression with another.
-	 *
-	 * @param operand the expression to compare against
-	 * @return an expression representing {@code this > operand}
-	 */
-	public Expression<Boolean> greaterThan(Expression<?> operand) { return Greater.of(this, operand); }
-
-	/**
-	 * Returns a greater-than-or-equal comparison of this expression with another.
-	 *
-	 * @param operand the expression to compare against
-	 * @return an expression representing {@code this >= operand}
-	 */
-	public Expression<Boolean> greaterThanOrEqual(Expression<?> operand) { return Greater.of(this, operand, true); }
-
-	/**
-	 * Returns a greater-than-or-equal comparison of this expression with an integer constant.
-	 *
-	 * @param operand the integer value to compare against
-	 * @return an expression representing {@code this >= operand}
-	 */
-	public Expression<Boolean> greaterThanOrEqual(int operand) { return Greater.of(this, new IntegerConstant(operand), true); }
-
-	/**
-	 * Returns a less-than comparison of this expression with another.
-	 *
-	 * @param operand the expression to compare against
-	 * @return an expression representing {@code this < operand}
-	 */
-	public Expression<Boolean> lessThan(Expression<?> operand) { return Less.of(this, operand); }
-
-	/**
-	 * Returns a less-than comparison of this expression with an integer constant.
-	 *
-	 * @param operand the integer value to compare against
-	 * @return an expression representing {@code this < operand}
-	 */
-	public Expression<Boolean> lessThan(int operand) { return Less.of(this, new IntegerConstant(operand)); }
-
-	/**
-	 * Returns a less-than-or-equal comparison of this expression with another.
-	 *
-	 * @param operand the expression to compare against
-	 * @return an expression representing {@code this <= operand}
-	 */
-	public Expression<Boolean> lessThanOrEqual(Expression<?> operand) { return Less.of(this, operand, true); }
-
-	/**
-	 * Casts this expression to a double-precision floating-point type.
-	 *
-	 * <p>If this expression is already double-typed, returns it unchanged.</p>
-	 *
-	 * @return an expression representing {@code (double) this}
-	 */
-	public Expression<Double> toDouble() {
-		if (getType() == Double.class) return (Expression<Double>) this;
-		return Cast.of(Double.class, Cast.FP_NAME, this);
-	}
-
-	/**
-	 * Casts this expression to a 32-bit integer type.
-	 *
-	 * <p>Only applies a cast if this expression is floating-point typed.</p>
-	 *
-	 * @return an expression representing {@code (int) this}
-	 */
-	// TODO  This should also return Expression<? extends Number>
-	public Expression<Integer> toInt() {
-		return (Expression) toInt(false);
-	}
-
-	/**
-	 * Casts this expression to a 32-bit integer type with configurable strictness.
-	 *
-	 * @param require32 if {@code true}, always applies cast unless already Integer;
-	 *                  if {@code false}, only casts floating-point types
-	 * @return an expression representing {@code (int) this}, or this expression if no cast needed
-	 */
-	public Expression<? extends Number> toInt(boolean require32) {
-		boolean cast = require32 ? getType() != Integer.class : isFP();
-		return cast ? Cast.of(Integer.class, Cast.INT_NAME, this) : (Expression) this;
-	}
-
-	/**
-	 * Casts this expression to a 64-bit long integer type.
-	 *
-	 * <p>Only applies a cast if this expression is floating-point typed.</p>
-	 *
-	 * @return an expression representing {@code (long) this}
-	 */
-	public Expression<? extends Number> toLong() {
-		return toLong(false);
-	}
-
-	/**
-	 * Casts this expression to a 64-bit long integer type with configurable strictness.
-	 *
-	 * @param require64 if {@code true}, always applies cast unless already Long;
-	 *                  if {@code false}, only casts floating-point types
-	 * @return an expression representing {@code (long) this}, or this expression if no cast needed
-	 */
-	public Expression<? extends Number> toLong(boolean require64) {
-		boolean cast = require64 ? getType() != Long.class : isFP();
-		return cast ? Cast.of(Long.class, Cast.LONG_NAME, this) : (Expression) this;
-	}
-
-	/**
-	 * Computes the derivative of this expression with respect to the target collection expression.
-	 *
-	 * <p>This method is used for automatic differentiation. The default implementation
-	 * throws {@link UnsupportedOperationException}; subclasses that support differentiation
-	 * should override this method.</p>
-	 *
-	 * @param target the collection expression to differentiate with respect to
-	 * @return the derivative expression
-	 * @throws UnsupportedOperationException if this expression type does not support differentiation
-	 */
-	public CollectionExpression<?> delta(CollectionExpression<?> target) {
-		throw new UnsupportedOperationException(getClass().getSimpleName());
 	}
 
 	/**

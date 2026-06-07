@@ -22,6 +22,7 @@ import io.almostrealism.expression.Expression;
 
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -42,6 +43,22 @@ public class IndexValues {
 	private Integer kernelIndex;
 	/** The values of named indices, keyed by index name. */
 	private Map<String, Integer> values;
+
+	/**
+	 * Memoizes {@link Expression#value(IndexValues)} results for the duration of a single
+	 * evaluation, keyed by expression node identity. Expression graphs are DAGs with shared
+	 * subexpressions; without memoization a shared node is recomputed once per path to it,
+	 * which is exponential in tree depth for deeply nested gradients. Because a fresh
+	 * {@code IndexValues} is created per evaluation (and the same instance is passed down the
+	 * recursion), this cache is automatically scoped to one evaluation and confined to one
+	 * thread. Allocated lazily so leaf-only evaluations pay nothing.
+	 *
+	 * <p>Populated only when {@link io.almostrealism.scope.ScopeSettings#enableValueMemoization}
+	 * is {@code true}; it is {@code false} by default because the deep-DAG case it targeted is
+	 * now covered by the gather-analysis gate, and the per-node bookkeeping otherwise slowed the
+	 * common shallow case.</p>
+	 */
+	private Map<Expression, Number> valueCache;
 
 	/**
 	 * Creates an empty index values container with no kernel index.
@@ -96,6 +113,30 @@ public class IndexValues {
 	}
 
 	/**
+	 * Returns the memoized value previously computed for the given expression node during
+	 * this evaluation, or {@code null} if it has not yet been computed.
+	 *
+	 * @param key the expression node (compared by identity)
+	 * @return the cached value, or {@code null} if absent
+	 */
+	public Number getCachedValue(Expression key) {
+		return valueCache == null ? null : valueCache.get(key);
+	}
+
+	/**
+	 * Memoizes the value computed for the given expression node so that revisits of the same
+	 * node within this evaluation reuse it rather than recomputing. The backing map is
+	 * allocated on first use.
+	 *
+	 * @param key the expression node (compared by identity)
+	 * @param value the computed value to cache
+	 */
+	public void putCachedValue(Expression key, Number value) {
+		if (valueCache == null) valueCache = new IdentityHashMap<>();
+		valueCache.put(key, value);
+	}
+
+	/**
 	 * Associates the given name with the given integer index value.
 	 *
 	 * @param name the name of the index
@@ -104,6 +145,7 @@ public class IndexValues {
 	 */
 	public IndexValues addIndex(String name, Integer index) {
 		values.put(name, index);
+		valueCache = null;
 		return this;
 	}
 
@@ -120,6 +162,7 @@ public class IndexValues {
 	 * @throws IllegalArgumentException if the kernel index conflicts with a previously set value
 	 */
 	public IndexValues put(Index idx, Integer value) {
+		valueCache = null;
 		if (idx instanceof KernelIndex) {
 			kernelIndex = value;
 		} else {

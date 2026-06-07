@@ -211,7 +211,7 @@ public class Cast<T> extends UnaryExpression<T> {
 	 * @return the computed value as an Integer for "int" casts, Double otherwise
 	 */
 	@Override
-	public Number value(IndexValues indexValues) {
+	public Number computeValue(IndexValues indexValues) {
 		double v = getChildren().get(0).value(indexValues).doubleValue();
 
 		if (typeName.equals("int")) {

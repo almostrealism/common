@@ -121,6 +121,63 @@ public class ScopeSettings {
 	public static int maxConditionSize = 32;
 
 	/**
+	 * Maximum {@code count * nodeCount} budget for invoking
+	 * {@link io.almostrealism.kernel.KernelTraversalProvider#generateReordering(Expression)}
+	 * from {@link io.almostrealism.expression.Sum#simplify(KernelStructureContext, int)}.
+	 *
+	 * <p>The reordering rewrite simplifies the wide masked sum once per kernel index, so its
+	 * compile-time cost scales as {@code count * nodeCount} (empirically ~0.25 microseconds
+	 * per unit on the reference machine). When the predicted product exceeds this budget the
+	 * Sum is left inlined: reordering would shrink the emitted kernel body but cost more in
+	 * compile time than the runtime saving justifies. This stops sparse-Jacobian gradient
+	 * expansions (subset/concat/product) from triggering pathological simplification work
+	 * when the contracted dimension is large.</p>
+	 *
+	 * <p>Default {@code 1 << 17} (131072) caps each first-time reorder at roughly 30 ms on
+	 * the reference machine.</p>
+	 */
+	public static int maxReorderingBudget = 1 << 17;
+
+	/**
+	 * Maximum {@link Expression#treeDepth() tree depth} of a target expression for which the
+	 * gather-collapse analysis in {@link io.almostrealism.collect.TraversableExpression#uniqueNonZeroOffset}
+	 * will build an {@link io.almostrealism.kernel.ExpressionMatrix}.
+	 *
+	 * <p>That analysis materialises one expression per matrix entry (via {@link Expression#withIndex},
+	 * with simplification calling {@link Expression#upperBound} etc.), each a traversal of the target.
+	 * The sparse Jacobians produced by convolution/projection gradients are deep shared DAGs whose
+	 * per-traversal cost (counted over paths) is exponential in depth, making the analysis explode at
+	 * compile time. Observed gradient targets reach depth 21-27 while legitimate gather targets are
+	 * shallow (depth &le; 5), so a depth bound cleanly separates them. When the target exceeds this
+	 * bound the analysis is skipped and {@code uniqueNonZeroOffset} returns {@code null}, falling back
+	 * to the normal (non-collapsed) compilation path.</p>
+	 */
+	public static int maxGatherAnalysisDepth = 12;
+
+	/**
+	 * Backstop companion to {@link #maxGatherAnalysisDepth} for shallow-but-wide targets: maximum
+	 * {@link Expression#countNodes() node count} for which the gather-collapse analysis will proceed.
+	 */
+	public static int maxGatherAnalysisNodes = 1 << 12;
+
+	/**
+	 * When {@code true}, {@link Expression#value(io.almostrealism.sequence.IndexValues)} memoizes
+	 * each node's value per evaluation (keyed by node identity in the supplied
+	 * {@link io.almostrealism.sequence.IndexValues}), so a subexpression shared by many paths of a
+	 * DAG is computed once rather than once per path.
+	 *
+	 * <p>Off by default. The deep shared-DAG gradient case this memoization targeted (e.g.
+	 * {@code convDelta}) is now bounded earlier by the gather-analysis gate
+	 * ({@link #maxGatherAnalysisDepth}/{@link #maxGatherAnalysisNodes}), so the cache no longer
+	 * pays for itself: for the common shallow expressions enumerated per kernel index during
+	 * {@link io.almostrealism.kernel.KernelSeriesProvider} series detection it only added
+	 * per-node map bookkeeping (measured ~1.8x slower compile for {@code DiffusionFeaturesTests.upsample}).
+	 * The machinery is retained behind this flag so it can be re-enabled if a future workload
+	 * benefits from it.</p>
+	 */
+	public static boolean enableValueMemoization = false;
+
+	/**
 	 * When {@code true}, parent {@link Expression} constructors canonicalise
 	 * their children array via {@link LeafInternTable#canonicalize(Expression[])}.
 	 * Each freshly-allocated leaf whose value has already been seen collapses

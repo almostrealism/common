@@ -92,6 +92,8 @@ class RunConfig:
     jmx_monitoring: bool = False
     jfr_settings: str = "default"
     repetitions: int = 1
+    test_group: Optional[int] = None
+    test_groups: Optional[int] = None
 
 
 @dataclass
@@ -159,6 +161,20 @@ class TestRunner:
         spawning Maven on a broken setup.
         """
         output_file = run_dir / "output.txt"
+
+        # Always surface installed-artifact ages first: `mvn test -pl <module>`
+        # recompiles only <module>, so a dependency edited but not reinstalled
+        # runs stale. This banner makes that obvious before the test launches.
+        try:
+            age_report = preflight.format_artifact_age_report(
+                PROJECT_ROOT, module)
+            self._write_preflight_section(
+                output_file, "dependency artifact ages (~/.m2)", age_report)
+        except Exception as exc:  # noqa: BLE001 - a reporting error must never break a run
+            self._write_preflight_section(
+                output_file,
+                "dependency artifact ages (~/.m2)",
+                f"Artifact-age report unavailable: {exc}")
 
         try:
             missing = preflight.find_missing_upstream_artifacts(
@@ -303,6 +319,19 @@ class TestRunner:
         if config.depth is not None:
             cmd.append(f"-DAR_TEST_DEPTH={config.depth}")
 
+        # Reproduce a CI test-matrix group. The CI `test` job runs the whole module
+        # (no -Dtest filter) in a single surefire JVM with AR_TEST_GROUP/AR_TEST_GROUPS
+        # set; TestDepthRule then skips every class whose name does not hash to the
+        # group (Math.abs(className.hashCode()) % AR_TEST_GROUPS). Because the classes
+        # that DO run share one JVM (surefire reuseForks=true, forkCount=1), static
+        # state (interning tables, kernel/expression caches) accumulates across them
+        # exactly as it does on CI -- which a single -Dtest=Class run can never
+        # reproduce. Set test_group (and optionally test_groups) to run a group this way.
+        if config.test_group is not None:
+            cmd.append(f"-DAR_TEST_GROUP={config.test_group}")
+            if config.test_groups is not None:
+                cmd.append(f"-DAR_TEST_GROUPS={config.test_groups}")
+
         # Add test profile (e.g., "pipeline" to skip comparison tests)
         if config.profile:
             cmd.append(f"-DAR_TEST_PROFILE={config.profile}")
@@ -319,12 +348,17 @@ class TestRunner:
                 output_dir = str(PROJECT_ROOT / config.module / "results" / run_id)
                 cmd.append(f"-DAR_INSTRUCTION_SET_OUTPUT_DIR={output_dir}")
 
-        # Add test class/method filters
-        if config.test_classes:
-            cmd.append(f"-Dtest={','.join(config.test_classes)}")
-        elif config.test_methods:
-            tests = [f"{m['class']}#{m['method']}" for m in config.test_methods]
-            cmd.append(f"-Dtest={','.join(tests)}")
+        # Add test class/method filters. A -Dtest filter is mutually exclusive with a
+        # group run: passing -Dtest restricts surefire to the named class(es), which
+        # would defeat the whole point of test_group (running every class that hashes
+        # to the group together in one JVM). When test_group is set, ignore class/method
+        # filters so the full group runs.
+        if config.test_group is None:
+            if config.test_classes:
+                cmd.append(f"-Dtest={','.join(config.test_classes)}")
+            elif config.test_methods:
+                tests = [f"{m['class']}#{m['method']}" for m in config.test_methods]
+                cmd.append(f"-Dtest={','.join(tests)}")
 
         return cmd
 
@@ -598,6 +632,8 @@ class TestRunner:
             jvm_args=list(config.jvm_args),
             profile=config.profile,
             jmx_monitoring=False,
+            test_group=config.test_group,
+            test_groups=config.test_groups,
         )
         cmd = self.build_maven_command(degraded_config, run_dir, run_id)
 
@@ -872,7 +908,9 @@ class TestRunner:
                     jvm_args=list(config.jvm_args),
                     profile=config.profile,
                     jmx_monitoring=False,
-                    repetitions=config.repetitions
+                    repetitions=config.repetitions,
+                    test_group=config.test_group,
+                    test_groups=config.test_groups
                 )
                 cmd = self.build_maven_command(degraded_config, run_dir, run_id)
 
@@ -1579,6 +1617,16 @@ async def list_tools():
                         "minimum": 1,
                         "maximum": 100,
                         "description": "Number of times to run the test (default: 1). When > 1, runs the test N times sequentially under one run_id. Use get_run_timing to get statistical analysis of results."
+                    },
+                    "test_group": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Reproduce a CI test-matrix group: run the WHOLE module in one JVM with AR_TEST_GROUP set, so only classes hashing to this group run but they share JVM state exactly as on CI. Use this to reproduce failures that only appear when a test runs after others in the same JVM (static cache/intern-table pollution) -- a single test_classes run cannot reproduce these. Mutually exclusive with test_classes/test_methods (those are ignored when test_group is set). The CI `test` job uses groups 0..6 with test_groups=7."
+                    },
+                    "test_groups": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "Total number of groups for test_group partitioning (AR_TEST_GROUPS). Must match CI to reproduce a specific group; the CI `test` job uses 7. Only used when test_group is set."
                     }
                 }
             }
@@ -1733,7 +1781,9 @@ async def call_tool(name: str, arguments: dict):
                 profile=arguments.get("profile"),
                 jmx_monitoring=arguments.get("jmx_monitoring", False),
                 jfr_settings=arguments.get("jfr_settings", "default"),
-                repetitions=arguments.get("repetitions", 1)
+                repetitions=arguments.get("repetitions", 1),
+                test_group=arguments.get("test_group"),
+                test_groups=arguments.get("test_groups")
             )
             run_id, command = runner.start_run(config)
             response = {

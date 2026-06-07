@@ -113,6 +113,29 @@ class JmxMonitoringJvmArgsTest(unittest.TestCase):
             config, run_dir=Path(self._tmpdir), run_id="r3")
         self.assertIn("-Xmx4g", self._arg_line(cmd))
 
+    def test_test_group_injects_group_properties(self):
+        config = server.RunConfig(module="engine/utils", test_group=5, test_groups=7)
+        cmd = self._runner.build_maven_command(
+            config, run_dir=Path(self._tmpdir), run_id="g1")
+        self.assertIn("-DAR_TEST_GROUP=5", cmd)
+        self.assertIn("-DAR_TEST_GROUPS=7", cmd)
+
+    def test_test_group_suppresses_test_filter(self):
+        # A group run must run the whole module so grouped classes share a JVM;
+        # a -Dtest filter would defeat that, so it is omitted when test_group is set.
+        config = server.RunConfig(
+            module="engine/utils", test_group=5, test_groups=7,
+            test_classes=["org.example.FooTest"])
+        cmd = self._runner.build_maven_command(
+            config, run_dir=Path(self._tmpdir), run_id="g2")
+        self.assertFalse(any(part.startswith("-Dtest=") for part in cmd))
+
+    def test_no_group_properties_when_unset(self):
+        config = server.RunConfig(module="engine/utils")
+        cmd = self._runner.build_maven_command(
+            config, run_dir=Path(self._tmpdir), run_id="g3")
+        self.assertFalse(any("AR_TEST_GROUP" in part for part in cmd))
+
 
 class WatcherInferStatusTest(unittest.TestCase):
     """Fix 1: watcher.infer_exit_status reads BUILD SUCCESS / BUILD FAILURE."""

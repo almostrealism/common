@@ -87,7 +87,7 @@ public class LongConstant extends Constant<Long> {
 	public KernelSeries kernelSeries() { return KernelSeries.constant(value); }
 
 	@Override
-	public Number value(IndexValues indexValues) { return value; }
+	public Number computeValue(IndexValues indexValues) { return value; }
 
 	@Override
 	public IndexSequence sequence(Index index, long len, long limit) {

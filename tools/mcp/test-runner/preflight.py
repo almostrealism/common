@@ -41,6 +41,7 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 from xml.etree import ElementTree
@@ -425,3 +426,152 @@ def seed_upstream_artifacts(
         duration_seconds=duration,
         reason=reason,
     )
+
+
+# --------------------------------------------------------------------- #
+# Installed-artifact age reporting
+# --------------------------------------------------------------------- #
+#
+# ``mvn test -pl <module>`` (the command this server runs) compiles *only*
+# the module under test. Every ``org.almostrealism`` dependency — direct or
+# transitive — is resolved from whatever jar is already installed in
+# ``~/.m2``. If the working tree for one of those dependencies was edited but
+# not reinstalled, the test silently runs against stale bytecode. (This is
+# not hypothetical: a base-layer ``ar-code`` change was a *transitive* dep of
+# ``engine/ml`` and ran stale for a whole session before anyone noticed.)
+#
+# The report below mirrors the Claude PreToolUse staleness hook
+# (``.claude/hooks/mvn-artifact-staleness.py``) but is emitted from inside
+# ar-test-runner so the same age table is visible to every client, not just
+# Claude's Bash channel. It lists every module artifact (not just direct
+# dependencies) precisely because the dangerous case is usually a transitive
+# one, and marks the single module this run recompiles.
+
+
+def _parse_module_coords(pom_path: Path) -> Optional[tuple]:
+    """Return ``(groupId, artifactId, version, packaging)`` for a ``pom.xml``.
+
+    Resolves parent inheritance for ``groupId`` and ``version`` (internal
+    ``ar-*`` modules omit both and inherit them from the reactor parent).
+    ``packaging`` defaults to ``"jar"`` when unspecified.
+
+    Args:
+        pom_path: Path to the module's ``pom.xml``.
+
+    Returns:
+        The coordinate tuple, or ``None`` when the pom cannot be parsed
+        or declares no ``artifactId``.
+    """
+    try:
+        root = ElementTree.parse(str(pom_path)).getroot()
+    except (ElementTree.ParseError, OSError):
+        return None
+    artifact_id = _child_text(root, "artifactId")
+    if not artifact_id:
+        return None
+    group_id = _child_text(root, "groupId")
+    version = _child_text(root, "version")
+    packaging = _child_text(root, "packaging") or "jar"
+    parent = _parent_element(root)
+    if parent is not None:
+        if not group_id:
+            group_id = _child_text(parent, "groupId")
+        if not version:
+            version = _child_text(parent, "version")
+    return (group_id, artifact_id, version, packaging)
+
+
+def find_repo_module_artifacts(
+        project_root: Path,
+        repository: Optional[Path] = None) -> list:
+    """Return the installed-artifact age of every ``org.almostrealism`` module.
+
+    Walks the project tree for ``pom.xml`` files, and for each
+    ``org.almostrealism`` module looks up the corresponding jar in the local
+    Maven repository.
+
+    Args:
+        project_root: Absolute path to the project root.
+        repository: Local Maven repository to inspect. Defaults to
+            ``~/.m2/repository`` (resolved at call time so tests can
+            monkey-patch :data:`DEFAULT_M2_REPOSITORY`).
+
+    Returns:
+        A list of ``(rel_path, artifact_id, version, mtime)`` tuples, where
+        ``rel_path`` is the module directory relative to ``project_root`` and
+        ``mtime`` is the jar's last-modified time in epoch seconds, or
+        ``None`` when the artifact is not installed. Order follows the
+        filesystem walk; callers sort as needed.
+    """
+    repository = _resolve_repository(repository)
+    project_root = Path(project_root)
+    skip = {"target", ".git", "node_modules", ".idea"}
+    rows = []
+    for dirpath, dirnames, filenames in os.walk(str(project_root)):
+        dirnames[:] = [d for d in dirnames if d not in skip]
+        if "pom.xml" not in filenames:
+            continue
+        coords = _parse_module_coords(Path(dirpath) / "pom.xml")
+        if not coords:
+            continue
+        group_id, artifact_id, version, packaging = coords
+        # Aggregator/parent poms (packaging=pom) install no jar and are never
+        # test dependencies, so they would only add misleading NOT-INSTALLED
+        # rows. Restrict the report to installable ar-* jar artifacts.
+        if group_id != AR_GROUP_ID or not version or packaging == "pom":
+            continue
+        rel = os.path.relpath(dirpath, str(project_root))
+        jar = artifact_jar_path(repository, group_id, artifact_id, version)
+        mtime = jar.stat().st_mtime if jar.is_file() else None
+        rows.append((rel, artifact_id, version, mtime))
+    return rows
+
+
+def format_artifact_age_report(
+        project_root: Path,
+        module: str,
+        repository: Optional[Path] = None) -> str:
+    """Render the installed-artifact staleness banner for a test run.
+
+    Explains that ``mvn test -pl <module>`` recompiles only ``module`` and
+    resolves all dependencies from ``~/.m2``, then tabulates every module
+    artifact's installed age (oldest first) so a stale dependency is obvious.
+    The module recompiled by this run is flagged with ``*``.
+
+    Args:
+        project_root: Absolute path to the project root.
+        module: Module path under test, relative to the project root
+            (e.g. ``engine/ml``).
+        repository: Local Maven repository to inspect. Defaults to
+            ``~/.m2/repository``.
+
+    Returns:
+        A multi-line string suitable for writing into the run's output as a
+        preflight section body.
+    """
+    module_norm = module.rstrip("/")
+    rows = find_repo_module_artifacts(project_root, repository)
+    # Oldest installed first; NOT-INSTALLED artifacts float to the very top.
+    rows.sort(key=lambda r: (r[3] is not None, r[3] if r[3] else 0.0))
+
+    lines = [
+        f"`mvn test -pl {module_norm}` (no -am) recompiles ONLY {module_norm}.",
+        "Every org.almostrealism dependency below — direct or transitive — is",
+        "resolved from its already-installed ~/.m2 jar and is NOT rebuilt by",
+        "this run. If you edited a dependency's sources, its jar is stale until",
+        "you reinstall it, e.g. `mvn install -DskipTests -pl <module> -am`",
+        "(or `mvn clean install -DskipTests` from the root to refresh all).",
+        "",
+    ]
+    if not rows:
+        lines.append("No org.almostrealism module artifacts were found to report.")
+        return "\n".join(lines)
+
+    name_w = max(len(r[1]) for r in rows)
+    lines.append("Installed module artifacts in ~/.m2 (oldest first; "
+                 "* = recompiled by this run):")
+        when = (datetime.utcfromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+                if mtime else "NOT INSTALLED      ")
+        marker = "*" if rel == module_norm else " "
+        lines.append(f"  {marker} {when}  {artifact_id.ljust(name_w)}  {rel}")
+    return "\n".join(lines)

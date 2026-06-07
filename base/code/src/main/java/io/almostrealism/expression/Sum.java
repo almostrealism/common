@@ -26,6 +26,7 @@ import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.scope.ScopeSettings;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -53,10 +54,17 @@ import java.util.stream.Stream;
  */
 public class Sum<T extends Number> extends NAryExpression<T> {
 	/**
-	 * When {@code true}, arithmetic generators are allowed to reorder their operands
-	 * to aid further simplification.
+	 * When {@code true}, a {@link Sum} all of whose children are
+	 * {@link Expression#isSingleIndexMasked() single-index masked} is rewritten by the
+	 * active {@link io.almostrealism.kernel.KernelTraversalProvider} during
+	 * {@link #simplify(KernelStructureContext, int)}. This collapses a wide sparse-Jacobian
+	 * sum (the shape produced by subset/concat/product gradient deltas) into a single
+	 * precomputed lookup, preventing the inlined expression from exploding in size.
+	 *
+	 * <p>When {@code false}, that same case throws {@link UnsupportedOperationException}
+	 * rather than falling through, so reordering is treated as required wherever it applies.</p>
 	 */
-	public static boolean enableGenerateReordering = false;
+	public static boolean enableGenerateReordering = true;
 
 	/**
 	 * When {@code true}, a repeated sum (i.e. {@code a + a}) is always flattened to
@@ -251,20 +259,52 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 
 		if (context.getTraversalProvider() != null &&
 				children.stream().allMatch(Expression::isSingleIndexMasked)) {
-			if (enableGenerateReordering) {
-				return context.getTraversalProvider()
-						.generateReordering(generate(children))
-						.populate(this);
-			} else {
-				throw new UnsupportedOperationException();
+			if (withinReorderingBudget(context, children)) {
+				if (enableGenerateReordering) {
+					return context.getTraversalProvider()
+							.generateReordering(generate(children))
+							.populate(this);
+				} else {
+					throw new UnsupportedOperationException();
+				}
 			}
+			// Over budget: fall through to the inlined sum below. Reordering would shrink the
+			// emitted kernel body, but its compile-time cost (count * nodeCount per the
+			// per-index simplify in KernelTraversalOperationGenerator) exceeds the configured
+			// budget. See ScopeSettings.maxReorderingBudget.
 		}
 
 		return generate(children).populate(this);
 	}
 
+	/**
+	 * Predicts the compile-time cost of invoking
+	 * {@link io.almostrealism.kernel.KernelTraversalProvider#generateReordering(Expression)}
+	 * on a Sum with the given children and compares it to
+	 * {@link ScopeSettings#maxReorderingBudget}. The cost proxy is
+	 * {@code count * (1 + Sigma child.countNodes())}, matching the actual work done by the
+	 * generator (one full per-index simplification pass per kernel index, each visiting every
+	 * node once). If the kernel count is unknown the budget is considered satisfied and the
+	 * generator's own internal gating (fixed-count check, minimumChildren, defaultMaxEntries)
+	 * takes over.
+	 *
+	 * @param context  the simplification context, used for the kernel maximum
+	 * @param children the flattened, sorted children of the Sum being simplified
+	 * @return {@code true} if the predicted product is within budget
+	 */
+	private static boolean withinReorderingBudget(KernelStructureContext context,
+												  List<Expression<?>> children) {
+		OptionalLong maximum = context.getKernelMaximum();
+		if (!maximum.isPresent() || maximum.getAsLong() <= 0) return true;
+		long count = maximum.getAsLong();
+		long nodes = 1L + children.stream().mapToLong(Expression::countNodes).sum();
+		long budget = ScopeSettings.maxReorderingBudget;
+		if (budget > 0 && count > budget / Math.max(1L, nodes)) return false;
+		return count * nodes <= budget;
+	}
+
 	@Override
-	public Number value(IndexValues indexValues) {
+	public Number computeValue(IndexValues indexValues) {
 		List<Number> values = getChildren().stream()
 				.map(e -> e.value(indexValues))
 				.collect(Collectors.toList());

@@ -133,12 +133,12 @@ public class IndexChild extends Sum<Integer> implements Index {
 	}
 
 	@Override
-	public Number value(IndexValues indexValues) {
+	public Number computeValue(IndexValues indexValues) {
 		if (indexValues.containsIndex(getName())) {
 			return indexValues.getIndex(getName());
 		}
 
-		return super.value(indexValues);
+		return super.computeValue(indexValues);
 	}
 
 	@Override

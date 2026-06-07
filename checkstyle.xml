@@ -64,10 +64,6 @@
     </module>
     <module name="SuppressionSingleFilter">
         <property name="checks" value="FileLength"/>
-        <property name="files" value="Expression\.java"/>
-    </module>
-    <module name="SuppressionSingleFilter">
-        <property name="checks" value="FileLength"/>
         <property name="files" value="AttentionFeatures\.java"/>
     </module>
     <!-- Console.java is the logging system itself — it must write to System.out/err

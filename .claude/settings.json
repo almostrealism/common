@@ -1,5 +1,13 @@
 {
-  "enabledMcpjsonServers": ["ar-docs", "ar-test-runner", "ar-build-validator", "ar-profile-analyzer", "ar-memory", "ar-consultant", "ar-jmx", "ar-manager"],
+  "enabledMcpjsonServers": [
+    "ar-docs",
+    "ar-test-runner",
+    "ar-build-validator",
+    "ar-profile-analyzer",
+    "ar-consultant",
+    "ar-jmx",
+    "ar-manager"
+  ],
   "permissions": {
     "allow": [
       "Bash(mvn:*)",
@@ -32,7 +40,12 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-git-commit.sh",
-            "description": "Block git commit — agents stage only, humans commit"
+            "description": "Block git commit \u2014 agents stage only, humans commit"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-git-worktree.sh",
+            "description": "Block 'git worktree add' \u2014 all changes must stay in the single working tree the developer can see (read-only 'git worktree list' allowed)"
           },
           {
             "type": "command",
@@ -47,7 +60,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-mvn-test-direct.sh",
-            "description": "Block direct mvn test — must use mcp__ar-test-runner__start_test_run"
+            "description": "Block direct mvn test \u2014 must use mcp__ar-test-runner__start_test_run"
           },
           {
             "type": "command",
@@ -57,12 +70,12 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
-            "description": "Block shell writes into ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
+            "description": "Block shell writes into ~/.claude/projects/*/memory/ \u2014 use ar-consultant/ar-manager"
           },
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-git-log.sh",
-            "description": "Warn on `git log` — workstream narrative lives in memory_branch_context, not commit titles"
+            "description": "Warn on `git log` \u2014 workstream narrative lives in memory_branch_context, not commit titles"
           }
         ]
       },
@@ -92,7 +105,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-pom-write.sh",
-            "description": "Block dependency/module/parent structural changes in pom.xml — dependency graph is externally controlled (non-structural edits pass through)"
+            "description": "Block dependency/module/parent structural changes in pom.xml \u2014 dependency graph is externally controlled (non-structural edits pass through)"
           },
           {
             "type": "command",
@@ -117,7 +130,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
-            "description": "Block edits to ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
+            "description": "Block edits to ~/.claude/projects/*/memory/ \u2014 use ar-consultant/ar-manager"
           }
         ]
       },
@@ -132,7 +145,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
-            "description": "Block MultiEdit in ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
+            "description": "Block MultiEdit in ~/.claude/projects/*/memory/ \u2014 use ar-consultant/ar-manager"
           }
         ]
       },
@@ -147,7 +160,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
-            "description": "Block NotebookEdit in ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
+            "description": "Block NotebookEdit in ~/.claude/projects/*/memory/ \u2014 use ar-consultant/ar-manager"
           }
         ]
       },
@@ -162,7 +175,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-pom-write.sh",
-            "description": "Block dependency/module/parent structural changes in pom.xml — dependency graph is externally controlled (non-structural edits pass through)"
+            "description": "Block dependency/module/parent structural changes in pom.xml \u2014 dependency graph is externally controlled (non-structural edits pass through)"
           },
           {
             "type": "command",
@@ -187,7 +200,16 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
-            "description": "Block writes to ~/.claude/projects/*/memory/ — use ar-consultant/ar-manager"
+            "description": "Block writes to ~/.claude/projects/*/memory/ \u2014 use ar-consultant/ar-manager"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/mvn-artifact-staleness.py\""
           }
         ]
       }
@@ -199,7 +221,7 @@
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/file-length-advisory.sh",
-            "description": "Warn when a just-read source file (java/py/ts/etc.) is within 100 lines of the 1500 soft limit — refactor signal, not a compaction target"
+            "description": "Warn when a just-read source file (java/py/ts/etc.) is within 100 lines of the 1500 soft limit \u2014 refactor signal, not a compaction target"
           }
         ]
       },
