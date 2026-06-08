@@ -66,7 +66,7 @@ interface Decision {
   reason: string
   context: string
   stderr: string
-  new_state: Record<string, number> | null
+  new_state: SessionState | null
 }
 
 interface SessionState {
@@ -209,12 +209,10 @@ export const MemoryReminderPlugin: Plugin = async () => {
         // in .before mixes the reminder in with the (yet-to-be-
         // produced) tool output, which is fine: the model sees both
         // in the same turn and can act on the reminder.
-        // TODO(review): verify output.output is guaranteed to be "" (not undefined) in
-        // opencode's before-handler; if undefined is possible, use (output.output ?? "")
-        // to avoid emitting "undefined\n\n..." into the model's context.
         const note = decision.context || decision.stderr
         if (note) {
-          output.output = `${output.output}\n\n[ar-hooks/memory-reminder] ${note}`
+          const base = output.output ?? ""
+          output.output = `${base}\n\n[ar-hooks/memory-reminder] ${note}`
         }
       }
     },

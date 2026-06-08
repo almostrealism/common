@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse + PostToolUse (no tool_name matcher): nudge the agent to
+# PreToolUse (matcher "*"): nudge the agent to
 # call memory_store (or consultant remember) when a long stretch of
 # work has happened without one.
 #

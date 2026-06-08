@@ -3,11 +3,11 @@
 `ar-consultant` analogue `remember`).
 
 This module is the single source of truth for the "memory reminder
+This module is the single source of truth for the "memory reminder
 nudge" policy. It is invoked by:
 
-  - .claude/hooks/memory-reminder.sh       (Claude Code, --stdin)
+  - .claude/hooks/memory-reminder.sh       (Claude Code, argv)
   - .opencode/plugins/memory-reminder.ts   (opencode, argv)
-
 The decision logic is purely a function of the *current* state and the
 new tool event. The core is **stateless** — it does not read or write
 the on-disk / in-memory state store itself. Each adapter persists the
@@ -24,10 +24,10 @@ Two CLI entry points:
       harness-native rendering (mutate output.output on warn).
 
   python3 memory_reminder_check.py --stdin
-      Used by the .sh adapter. Reads a Claude-Code-style hook
-      payload from stdin (one JSON object: {"tool_name": "...",
-      "session_id": "..."}), computes the Decision, and renders
-      natively (exit 0 + JSON additionalContext on warn; exit 0
+      Alternate entry point (used by unit tests and available for
+      adapters that want to provide tool/session/state via stdin).
+      Reads a JSON payload from stdin, computes the Decision, and
+      renders natively (exit 0 + JSON additionalContext on warn; exit 0
       silent on allow).
 
 The Decision shape (always JSON, no trailing newline required):

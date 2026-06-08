@@ -603,13 +603,12 @@ public class InstructionPromptBuilder {
             sb.append("Use these to check for code review feedback and address it.\n\n");
 
             sb.append("## When to Post PR Replies\n");
-            // TODO(review): lines 606-611 were de-indented from 12 to 8 spaces during the trim pass; should be 12 to match the enclosing if block body
-        sb.append("Do NOT post a `github_pr_reply` claiming a fix is landed until the change is ");
-        sb.append("on disk AND the relevant verification (compile clean, affected tests, build ");
-        sb.append("validator) has passed. You will not see the commit or the push -- the harness ");
-        sb.append("performs both AFTER you exit -- so a reply that precedes a hang or crash is ");
-        sb.append("a lie: no commit is ever made. Edit first, verify second, reply LAST ");
-        sb.append("immediately before you exit. Never reply based on intent alone.\n\n");
+            sb.append("Do NOT post a `github_pr_reply` claiming a fix is landed until the change is ");
+            sb.append("on disk AND the relevant verification (compile clean, affected tests, build ");
+            sb.append("validator) has passed. You will not see the commit or the push -- the harness ");
+            sb.append("performs both AFTER you exit -- so a reply that precedes a hang or crash is ");
+            sb.append("a lie: no commit is ever made. Edit first, verify second, reply LAST ");
+            sb.append("immediately before you exit. Never reply based on intent alone.\n\n");
         }
 
         // Test integrity policy -only when protectTestFiles is enabled

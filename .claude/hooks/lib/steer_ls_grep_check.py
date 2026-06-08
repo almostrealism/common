@@ -34,11 +34,10 @@ tools cannot express:
   - `grep -P ...` (perl regex, unsupported by the structured grep
     tool) is allowed.
   - `grep ... | xargs ...` (multi-stage processing) is allowed.
-  - `grep -r ...` (recursive across the tree) is allowed; the
-    structured grep tool's `path` arg is already a directory or
-    glob and handles recursion itself, but blocking the bash
-    form would over-block legitimate work — we let it pass.
+  - `grep -r ...` (simple recursive search) is blocked when it is a
+    substitutable use of the structured `grep` tool.
   - `grep --include ...` / `--exclude` (filters the structured tool
+    doesn't expose): allowed.
     doesn't expose): allowed.
 
 The hard block is intentional. The retros repeatedly show that
@@ -328,7 +327,7 @@ def _is_simple_grep_like(tokens, base):
         return False
     # If there are more than 2 positionals, the agent is doing
     # a multi-file search; the structured tool handles that with
-    # a path glob, so it's still substitutable. Allow through.
+    # a path glob, so it's still substitutable (and therefore blocked).
     return True
 
 
