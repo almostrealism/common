@@ -14,6 +14,9 @@ Usage: flowtree/runtime/rebuild.sh [services...] [--agents] [--with-llm]
   No args        Rebuild all controller-stack containers
   --agents       Also rebuild and restart the agent pool
   --agents-only  Rebuild only the agent pool (skip controller stack)
+  --cache        Allow Docker to reuse cached build layers (omit --no-cache).
+                 Use this to sidestep transient apt/GPG signature errors from
+                 ports.ubuntu.com when a previously cached layer is usable.
   --with-llm     Also start a local OpenAI-compatible LLM server (ollama)
                  and pull the default model. Used by the OpencodeRunner.
                  Override the model with LLM_MODEL (default: qwen3-coder:30b).
@@ -41,6 +44,7 @@ EOF
 AGENTS=false
 AGENTS_ONLY=false
 WITH_LLM=false
+USE_CACHE=false
 SERVICES=()
 
 for arg in "$@"; do
@@ -49,9 +53,19 @@ for arg in "$@"; do
     --agents)       AGENTS=true ;;
     --agents-only)  AGENTS_ONLY=true ;;
     --with-llm|--llm) WITH_LLM=true ;;
+    --cache)        USE_CACHE=true ;;
     *)              SERVICES+=("${arg}") ;;
   esac
 done
+
+# When --cache is set, drop --no-cache so Docker reuses existing build
+# layers. This sidesteps transient "GPG error ... is not signed" failures
+# from ports.ubuntu.com that occur when apt-get runs in a fresh layer.
+if [ "${USE_CACHE}" = true ]; then
+  NO_CACHE_FLAG=""
+else
+  NO_CACHE_FLAG="--no-cache"
+fi
 
 # ── Shared secret ──────────────────────────────────────────────────
 
@@ -104,12 +118,12 @@ fi
 
 if [ "${AGENTS_ONLY}" = false ]; then
   if [ ${#SERVICES[@]} -eq 0 ]; then
-    echo "Rebuilding all controller-stack containers (no cache)..."
-    docker compose -f flowtree/runtime/controller/docker-compose.yml build --no-cache --pull
+    echo "Rebuilding all controller-stack containers (cache=${USE_CACHE})..."
+    docker compose -f flowtree/runtime/controller/docker-compose.yml build ${NO_CACHE_FLAG} --pull
     docker compose -f flowtree/runtime/controller/docker-compose.yml up -d --force-recreate
   else
-    echo "Rebuilding (no cache): ${SERVICES[*]}"
-    docker compose -f flowtree/runtime/controller/docker-compose.yml build --no-cache --pull "${SERVICES[@]}"
+    echo "Rebuilding (cache=${USE_CACHE}): ${SERVICES[*]}"
+    docker compose -f flowtree/runtime/controller/docker-compose.yml build ${NO_CACHE_FLAG} --pull "${SERVICES[@]}"
     docker compose -f flowtree/runtime/controller/docker-compose.yml up -d --force-recreate "${SERVICES[@]}"
   fi
 fi
@@ -273,8 +287,8 @@ if [ "${AGENTS}" = true ] || [ "${AGENTS_ONLY}" = true ]; then
     mkdir -p "${TRANSCRIPT_DIR_HOST}${sub}"
   done
 
-  echo "Rebuilding agent pool (no cache); transcripts at ${TRANSCRIPT_DIR_HOST}/<agent>/..."
-  docker compose -f "${AGENT_COMPOSE}" build --no-cache --pull
+  echo "Rebuilding agent pool (cache=${USE_CACHE}); transcripts at ${TRANSCRIPT_DIR_HOST}/<agent>/..."
+  docker compose -f "${AGENT_COMPOSE}" build ${NO_CACHE_FLAG} --pull
   # --remove-orphans clears containers from services no longer in the compose
   # file — notably the flowtree-agent-1/-2 containers left by the old `agent`
   # replica service, whose names the explicit agent-N services now reuse.
