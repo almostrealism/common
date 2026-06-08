@@ -268,7 +268,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		PackedCollection output = compiled.forward(signal);
+		PackedCollection output = compiled.forward(signal.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("Output should not be null", output);
 
 		// Compare to reference: lowpass(signal) * wet_level
@@ -311,7 +311,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		model.add(block);
 		CompiledModel compiled = model.compile();
 
-		PackedCollection output = compiled.forward(signal);
+		PackedCollection output = compiled.forward(signal.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("Output should not be null", output);
 
 		// The LP filter should heavily attenuate a ~11025 Hz signal when cutoff is 5000 Hz.
@@ -412,7 +412,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		// First call: all-ones input, history starts at zero
 		PackedCollection signal1 = createSignal(SIGNAL_SIZE, i -> 1.0);
-		PackedCollection output1 = compiled.forward(signal1);
+		PackedCollection output1 = compiled.forward(signal1.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("First output should not be null", output1);
 		// output1[0] must be 0 (no prior history), rest must be 1.0
 		Assert.assertEquals("First call output[0] should be 0 (no history yet)",
@@ -420,7 +420,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		// Second call: all-twos input; output[0] must reflect last sample from first call
 		PackedCollection signal2 = createSignal(SIGNAL_SIZE, i -> 2.0);
-		PackedCollection output2 = compiled.forward(signal2);
+		PackedCollection output2 = compiled.forward(signal2.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("Second output should not be null", output2);
 		// history[0] was set to 1.0 by the first call, so output2[0] = x[-1] = 1.0
 		Assert.assertEquals("Second call output[0] should be 1.0 (persisted from first call)",
@@ -462,7 +462,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		// First call: all-ones; first 2 outputs are 0 (empty buffer), rest are 1.0
 		PackedCollection signal1 = createSignal(SIGNAL_SIZE, i -> 1.0);
-		PackedCollection output1 = compiled.forward(signal1);
+		PackedCollection output1 = compiled.forward(signal1.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("First output should not be null", output1);
 		Assert.assertEquals("First call output[0] should be 0 (empty buffer)",
 				0.0, output1.toDouble(0), 1e-6);
@@ -471,7 +471,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		// Second call: all-twos; first 2 outputs must come from first-call buffer (value 1.0)
 		PackedCollection signal2 = createSignal(SIGNAL_SIZE, i -> 2.0);
-		PackedCollection output2 = compiled.forward(signal2);
+		PackedCollection output2 = compiled.forward(signal2.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("Second output should not be null", output2);
 		Assert.assertEquals("Second call output[0] should be 1.0 (from first-call buffer)",
 				1.0, output2.toDouble(0), 1e-6);
@@ -527,7 +527,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		CompiledModel compiled = model.compile();
 
 		PackedCollection signal = createSignal(SIGNAL_SIZE, i -> 1.0);
-		PackedCollection out = compiled.forward(signal);
+		PackedCollection out = compiled.forward(signal.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("efx_channel output must not be null", out);
 
 		double maxAbs = 0.0;
@@ -579,7 +579,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		CompiledModel compiled = model.compile();
 
 		// First call: LFO starts at phase=0
-		PackedCollection output1 = compiled.forward(signal);
+		PackedCollection output1 = compiled.forward(signal.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("First LFO output should not be null", output1);
 		Assert.assertEquals("LFO output[0] in first call should be sin(0)",
 				Math.sin(0.0), output1.toDouble(0), 1e-6);
@@ -595,7 +595,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		}
 
 		// Second call must start at the expected continuation phase
-		PackedCollection output2 = compiled.forward(signal);
+		PackedCollection output2 = compiled.forward(signal.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("Second LFO output should not be null", output2);
 		Assert.assertEquals("Second LFO call output[0] must continue from first call's end phase",
 				Math.sin(expectedPhase), output2.toDouble(0), 1e-6);
@@ -635,12 +635,12 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		PackedCollection signal = createSignal(SIGNAL_SIZE,
 				i -> Math.sin(2.0 * Math.PI * i / 32.0));
-		PackedCollection output = compiled.forward(signal);
+		PackedCollection output = compiled.forward(signal.reshape(compiled.getInputShape()));
 		Assert.assertNotNull("Output must not be null", output);
 
 		for (int i = 0; i < SIGNAL_SIZE; i++) {
-			Assert.assertEquals("Output[" + i + "] must equal 0.5 * input[" + i + "]",
-					0.5 * signal.toDouble(i), output.toDouble(i), 1e-9);
+			assertEquals("Output[" + i + "] must equal 0.5 * input[" + i + "]",
+					0.5 * signal.toDouble(i), output.toDouble(i));
 		}
 	}
 
@@ -673,19 +673,19 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PackedCollection signal = createSignal(SIGNAL_SIZE,
 				i -> Math.sin(2.0 * Math.PI * i / 32.0));
 
-		PackedCollection output1 = compiled.forward(signal);
+		PackedCollection output1 = compiled.forward(signal.reshape(compiled.getInputShape()));
 		for (int i = 0; i < SIGNAL_SIZE; i++) {
-			Assert.assertEquals("Pass 1 output[" + i + "] must equal 0.25 * input[" + i + "]",
-					0.25 * signal.toDouble(i), output1.toDouble(i), 1e-9);
+			assertEquals("Pass 1 output[" + i + "] must equal 0.25 * input[" + i + "]",
+					0.25 * signal.toDouble(i), output1.toDouble(i));
 		}
 
 		// Mutate the slot between forward calls — the second pass must reflect it.
 		volumeSlot.setMem(0, 0.75);
 
-		PackedCollection output2 = compiled.forward(signal);
+		PackedCollection output2 = compiled.forward(signal.reshape(compiled.getInputShape()));
 		for (int i = 0; i < SIGNAL_SIZE; i++) {
-			Assert.assertEquals("Pass 2 output[" + i + "] must equal 0.75 * input[" + i + "]",
-					0.75 * signal.toDouble(i), output2.toDouble(i), 1e-9);
+			assertEquals("Pass 2 output[" + i + "] must equal 0.75 * input[" + i + "]",
+					0.75 * signal.toDouble(i), output2.toDouble(i));
 		}
 	}
 
@@ -726,11 +726,11 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		PackedCollection signal = createSignal(SIGNAL_SIZE, i -> 1.0);
 
 		// "Clock" tick 1 — counter = 0.1, expected scale = 0.05
-		PackedCollection output1 = compiled.forward(signal);
+		PackedCollection output1 = compiled.forward(signal.reshape(compiled.getInputShape()));
 		double expected1 = 0.1 * 0.5;
 		for (int i = 0; i < SIGNAL_SIZE; i++) {
-			Assert.assertEquals("Tick 1 output[" + i + "] must equal counter * 0.5",
-					expected1, output1.toDouble(i), 1e-9);
+			assertEquals("Tick 1 output[" + i + "] must equal counter * 0.5",
+					expected1, output1.toDouble(i));
 		}
 
 		// Snapshot the value before pass 2 overwrites the shared buffer.
@@ -738,11 +738,11 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		// Advance the "clock" — counter = 0.4, expected scale = 0.2
 		counter.setMem(0, 0.4);
-		PackedCollection output2 = compiled.forward(signal);
+		PackedCollection output2 = compiled.forward(signal.reshape(compiled.getInputShape()));
 		double expected2 = 0.4 * 0.5;
 		for (int i = 0; i < SIGNAL_SIZE; i++) {
-			Assert.assertEquals("Tick 2 output[" + i + "] must equal counter * 0.5",
-					expected2, output2.toDouble(i), 1e-9);
+			assertEquals("Tick 2 output[" + i + "] must equal counter * 0.5",
+					expected2, output2.toDouble(i));
 		}
 
 		Assert.assertNotEquals("Outputs across clock ticks must differ",
@@ -825,9 +825,9 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 
 		double[] out1 = identityCompiled.forward(input).toArray(0, channels * SIGNAL_SIZE);
 		for (int c = 0; c < channels; c++) {
-			Assert.assertEquals(
+			assertEquals(
 					"identity routing on channel " + c + " must pass input unchanged",
-					(c + 1) * 0.1, out1[c * SIGNAL_SIZE + 0], 1e-9);
+					(c + 1) * 0.1, out1[c * SIGNAL_SIZE + 0]);
 		}
 
 		// Mutate the slot to swap channels 0 and 1; the next forward pass must
@@ -840,12 +840,12 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		identitySlot.setMem(swapped);
 
 		double[] out2 = identityCompiled.forward(input).toArray(0, channels * SIGNAL_SIZE);
-		Assert.assertEquals("output channel 0 must now read input channel 1",
-				(2) * 0.1, out2[0 * SIGNAL_SIZE + 0], 1e-9);
-		Assert.assertEquals("output channel 1 must now read input channel 0",
-				(1) * 0.1, out2[1 * SIGNAL_SIZE + 0], 1e-9);
-		Assert.assertEquals("output channel 2 must still read input channel 2",
-				(3) * 0.1, out2[2 * SIGNAL_SIZE + 0], 1e-9);
+		assertEquals("output channel 0 must now read input channel 1",
+				(2) * 0.1, out2[0 * SIGNAL_SIZE + 0]);
+		assertEquals("output channel 1 must now read input channel 0",
+				(1) * 0.1, out2[1 * SIGNAL_SIZE + 0]);
+		assertEquals("output channel 2 must still read input channel 2",
+				(3) * 0.1, out2[2 * SIGNAL_SIZE + 0]);
 	}
 
 	/**
@@ -883,7 +883,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 				i -> Math.sin(2.0 * Math.PI * 1000.0 * i / SAMPLE_RATE)
 						+ Math.sin(2.0 * Math.PI * 12000.0 * i / SAMPLE_RATE));
 
-		double[] lpOut = compiled.forward(signal).toArray(0, SIGNAL_SIZE);
+		double[] lpOut = compiled.forward(signal.reshape(compiled.getInputShape())).toArray(0, SIGNAL_SIZE);
 		double lpEnergy = 0.0;
 		for (int i = FILTER_ORDER; i < SIGNAL_SIZE; i++) {
 			lpEnergy += lpOut[i] * lpOut[i];
@@ -895,7 +895,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 		double[] narrowCoeffs = referenceLowPassCoefficients(500.0, SAMPLE_RATE, FILTER_ORDER);
 		coeffSlot.setMem(narrowCoeffs);
 
-		double[] narrowOut = compiled.forward(signal).toArray(0, SIGNAL_SIZE);
+		double[] narrowOut = compiled.forward(signal.reshape(compiled.getInputShape())).toArray(0, SIGNAL_SIZE);
 		double diffEnergy = 0.0;
 		for (int i = FILTER_ORDER; i < SIGNAL_SIZE; i++) {
 			double d = narrowOut[i] - lpOut[i];

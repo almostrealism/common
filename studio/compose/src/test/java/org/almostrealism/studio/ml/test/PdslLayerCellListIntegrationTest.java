@@ -106,7 +106,7 @@ public class PdslLayerCellListIntegrationTest extends TestSuiteBase
 		PackedCollection[] lastOutput = {null};
 
 		// First tick: wrap forward() as Temporal, run it
-		Temporal firstTick = () -> () -> () -> { lastOutput[0] = compiled.forward(signal1); };
+		Temporal firstTick = () -> () -> () -> { lastOutput[0] = compiled.forward(signal1.reshape(compiled.getInputShape())); };
 		firstTick.tick().get().run();
 
 		Assert.assertNotNull("First tick output must not be null", lastOutput[0]);
@@ -116,7 +116,7 @@ public class PdslLayerCellListIntegrationTest extends TestSuiteBase
 				0.0, lastOutput[0].toDouble(1), 1e-6);
 
 		// Second tick: state must carry over — the delay buffer now holds 1.0 values
-		Temporal secondTick = () -> () -> () -> { lastOutput[0] = compiled.forward(signal2); };
+		Temporal secondTick = () -> () -> () -> { lastOutput[0] = compiled.forward(signal2.reshape(compiled.getInputShape())); };
 		secondTick.tick().get().run();
 
 		Assert.assertNotNull("Second tick output must not be null", lastOutput[0]);
@@ -167,7 +167,7 @@ public class PdslLayerCellListIntegrationTest extends TestSuiteBase
 		PackedCollection[] output = {null};
 
 		// Minimal Temporal adapter wrapping CompiledModel.forward()
-		Temporal adapter = () -> () -> () -> { output[0] = compiled.forward(input); };
+		Temporal adapter = () -> () -> () -> { output[0] = compiled.forward(input.reshape(compiled.getInputShape())); };
 		adapter.tick().get().run();
 
 		Assert.assertNotNull("Adapter output must not be null", output[0]);

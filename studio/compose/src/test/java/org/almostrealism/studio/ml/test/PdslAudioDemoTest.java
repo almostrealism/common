@@ -118,7 +118,7 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 						+ 0.33 * Math.sin(2.0 * Math.PI * 2000.0 * t)
 						+ 0.33 * Math.sin(2.0 * Math.PI * 12000.0 * t);
 			});
-			PackedCollection output = lpCompiled.forward(input);
+			PackedCollection output = lpCompiled.forward(input.reshape(lpCompiled.getInputShape()));
 			double[] inArr = input.toArray(0, SIGNAL_SIZE);
 			double[] outArr = output.toArray(0, SIGNAL_SIZE);
 			for (int i = 0; i < SIGNAL_SIZE; i++) {
@@ -168,7 +168,7 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 				double t = (double) (sampleOffset + i) / SAMPLE_RATE;
 				return t < 0.5 ? Math.sin(2.0 * Math.PI * 440.0 * t) : 0.0;
 			});
-			PackedCollection output = delayCompiled.forward(input);
+			PackedCollection output = delayCompiled.forward(input.reshape(delayCompiled.getInputShape()));
 			double[] outArr = output.toArray(0, SIGNAL_SIZE);
 			for (int i = 0; i < SIGNAL_SIZE; i++) {
 				delaySignal[sampleOffset + i] = (float) outArr[i];
@@ -233,7 +233,7 @@ public class PdslAudioDemoTest extends TestSuiteBase implements FirFilterTestFea
 				double t = (double) (sampleOffset + i) / SAMPLE_RATE;
 				return Math.sin(2.0 * Math.PI * 440.0 * t);
 			});
-			PackedCollection output = mixCompiled.forward(input);
+			PackedCollection output = mixCompiled.forward(input.reshape(mixCompiled.getInputShape()));
 			double[] inArr = input.toArray(0, SIGNAL_SIZE);
 			double[] outArr = output.toArray(0, SIGNAL_SIZE);
 			for (int i = 0; i < SIGNAL_SIZE; i++) {
