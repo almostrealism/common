@@ -53,15 +53,35 @@ _MANAGER_DIR = os.path.dirname(_TESTS_DIR)
 if _MANAGER_DIR not in sys.path:
     sys.path.insert(0, _MANAGER_DIR)
 
-# NOTE: env vars required by the real-transport tests are set by
-# ``conftest.py`` at ``pytest_configure`` time. The conftest runs
-# before any test file imports ``server``, which is necessary because
-# ``server._load_shared_secret()`` reads the env var at import time
-# and the module is then cached. Setting the env var in this file's
-# module body would be too late if another test file (e.g. the
-# alphabetical neighbours) imports ``server`` first.
+# The real-transport tests mint HMAC temp tokens against the shared
+# secret and drive a real FastMCP streamable-HTTP server. The HMAC
+# path uses ``server.SHARED_SECRET`` (a module-level constant loaded
+# at import time from ``AR_MANAGER_SHARED_SECRET``). The conftest
+# hook only fires under pytest; the CI runner (``python3 -m unittest
+# discover -v -s tools/mcp/manager -p "test_*.py"``) does not load
+# conftest.py at all. We therefore re-bind the two module-level
+# constants this test needs directly on the imported ``server``
+# module so the test thread and the uvicorn server thread (which
+# share the same module object) agree on the values. We do NOT
+# re-import the module — a re-import would create a second module
+# object, leaving earlier test files' ``import server`` reference
+# pointing at the old module and breaking their ``@patch("server.urlopen")``
+# mocks (which resolve ``server`` via ``sys.modules`` at call time
+# and would target a different module object than the one whose
+# ``_controller_post`` is actually being called).
+_TEST_SHARED_SECRET = "real-transport-test-secret"
+_TEST_CONTROLLER_URL = "http://127.0.0.1:1"
 
-import server
+import server  # noqa: E402  (intentional: module is loaded by sibling test files first)
+
+# Overwrite the constants this test cares about. ``SHARED_SECRET`` is
+# read by both ``_mint_temp_token`` and ``_validate_temp_token`` on
+# every call (not memoised at the call site), and ``CONTROLLER_URL``
+# is interpolated into the URL string at call time, so the rebind
+# takes effect for any subsequent call regardless of which thread
+# runs it.
+server.SHARED_SECRET = _TEST_SHARED_SECRET
+server.CONTROLLER_URL = _TEST_CONTROLLER_URL
 
 
 def _free_port():
@@ -70,63 +90,18 @@ def _free_port():
         return s.getsockname()[1]
 
 
-# TODO(review): _build_mcp_app() is defined but never called by any test class.
-# Each test class has its own _build_app() static method instead. Either remove
-# this helper or wire it up; as-is it registers "call_send_message" but
-# _send_send_message_tool_call looks for "invoke_send_message", so it would
-# fail at runtime even if a test did call it.
-def _build_mcp_app():
-    """Return a FastMCP instance whose tool can read the per-request
-    bearer, wrapped in the production BearerAuthMiddleware, ready to be
-    served by uvicorn. Each test gets a fresh instance to keep state
-    isolation easy."""
-    from mcp.server.fastmcp import FastMCP
-
-    mcp_instance = FastMCP("real-transport-research")
-    mcp_instance.settings.streamable_http_path = "/"
-
-    @mcp_instance.tool()
-    def echo_bearer_and_resolution() -> dict:
-        """Report what the per-request decode sees, plus the four-way
-        resolution that send_message would compute."""
-        ws, job, label, reason = server._decode_current_request_token_full()
-        ctx_ws = server._request_workstream_id.get(None)
-        ctx_job = server._request_job_id.get(None)
-        tl_ws = getattr(server._thread_local, "workstream_id", None)
-        tl_job = getattr(server._thread_local, "job_id", None)
-        return {
-            "per_request": {
-                "workstream_id": ws,
-                "job_id": job,
-                "label": label,
-                "reason": reason,
-            },
-            "contextvar": {"workstream_id": ctx_ws, "job_id": ctx_job},
-            "thread_local": {"workstream_id": tl_ws, "job_id": tl_job},
-        }
-
-    @mcp_instance.tool()
-    def call_send_message(text: str = "hello") -> dict:
-        """Invoke the real send_message function in this request's
-        context. Returns whatever send_message returns so the test can
-        observe the loud-fail guard end-to-end."""
-        return server.send_message(text=text)
-
-    app = mcp_instance.streamable_http_app()
-    # The production stack uses static admin tokens for the no-bearer
-    # test path and HMAC temp tokens for the happy path. We
-    # pre-register one static admin token so the auth middleware
-    # accepts the requests, and the HMAC temp tokens are minted via
-    # ``server._mint_temp_token`` against the shared secret set above.
-    tokens = [{
-        "value": "real-transport-admin-bearer",
-        "scopes": [
-            "read", "write", "submit", "github",
-            "memory-read", "memory-write",
-        ],
-        "label": "real-transport-admin",
-    }]
-    return server.BearerAuthMiddleware(app, tokens, issuer_url=None), mcp_instance
+# NOTE: the previous module-level ``_build_mcp_app()`` helper was
+# removed: no test class in this file calls it. Each of the two
+# real-transport test classes (``TestRealTransportPerRequestDecode``,
+# ``TestRealTransportSendMessageLoudFail``) builds its own FastMCP
+# instance via a class-level ``_build_app()`` static method so the
+# test gets a fresh mcp instance per case and the per-request /
+# loud-fail paths can be exercised independently. The old helper also
+# registered a tool named ``call_send_message`` while
+# ``_send_send_message_tool_call()`` looks for ``invoke_send_message``,
+# so even if a future test wanted to reuse it the helper would fail
+# at runtime with a "tool not found" error. Keeping it around as dead
+# code invited a misleading future wiring-up.
 
 
 async def _start_uvicorn(app, port, ready_event):
@@ -548,11 +523,16 @@ class TestSendMessageLoudFailOnPartialResolution(unittest.TestCase):
         via the ContextVar so the second-guard is exercised
         directly.
         """
-        # TODO(review): the _mint_temp_token patch below exits before the
-        # send_message call, so it has no effect on this test. Either remove
-        # it or expand the `with` to cover the full assertion block.
-        with patch.object(server, "_mint_temp_token") as mint:
-            mint.return_value = "armt_tmp_irrelevant"
+        # The previous ``with patch.object(server, "_mint_temp_token")``
+        # block was a no-op: it exited before any code that could
+        # trigger the mint, and the actual ``server.send_message`` call
+        # below runs AFTER the ``with`` block is closed, so the patch
+        # was already undone. The mint function is never reached on
+        # this test path (per-request decode returns ``no_context``
+        # and there is no caller-bound workstream to mint a token
+        # for), so removing the patch is the correct fix. The
+        # behaviour the test exercises is the loud-fail second-guard
+        # under partial-resolution, not token minting.
         # Force the per-request path to fail AND seed the
         # ContextVar with only the workstream half of the pair, to
         # simulate a partial-resolution leak (the production

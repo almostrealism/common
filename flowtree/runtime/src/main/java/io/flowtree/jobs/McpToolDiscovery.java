@@ -383,15 +383,15 @@ public class McpToolDiscovery {
                                                        String toolName,
                                                        String paramName) {
         Pattern funcDefStart = Pattern.compile("def\\s+" + Pattern.quote(toolName) + "\\s*\\(");
-        // TODO(review): [^=,]+ stops at any comma, so parameterized generics like
-        // Dict[str, str] or Tuple[int, str] in the type annotation cause a false
-        // "required" result even when a default is present. Fix with bracket-depth
-        // awareness when this helper is extended beyond simple str/int annotations.
-        Pattern paramLine = Pattern.compile(
-            "^\\s+" + Pattern.quote(paramName) + "\\s*:\\s*[^=,]+=\\s*\\S");
-        Pattern inlineParamWithDefault = Pattern.compile(
-            "(?:^|[\\s,(])" + Pattern.quote(paramName)
-                + "\\s*:\\s*[^=,]+=\\s*\\S");
+        // Match the parameter token and the start of its type hint; the
+        // ``=`` that follows the type hint may sit at an arbitrary
+        // offset once the type contains parameterized generics
+        // (e.g. ``Dict[str, str]``, ``Optional[Union[str, int]]``), so
+        // the regex does not try to consume the type — it anchors on
+        // the param name + colon and lets the post-scan below find
+        // the equals sign while tracking bracket depth.
+        Pattern paramStart = Pattern.compile(
+            "(^|[\\s,(])" + Pattern.quote(paramName) + "\\s*:");
 
         for (int i = 0; i < lines.size(); i++) {
             String defLine = lines.get(i);
@@ -400,20 +400,89 @@ public class McpToolDiscovery {
             int openParen = defLine.indexOf('(');
             int closeParen = defLine.lastIndexOf(')');
             if (openParen >= 0 && closeParen > openParen) {
-                // Single-line signature.
+                // Single-line signature: walk the ( ... ) section
+                // and ask whether the named parameter has a default.
                 String paramSection = defLine.substring(openParen + 1, closeParen);
-                return inlineParamWithDefault.matcher(paramSection).find();
+                return paramHasDefaultInSlice(paramSection, paramStart);
             }
-            // Multi-line signature.
+            // Multi-line signature: scan successive indented lines
+            // until the closing ``) ->`` / ``):`` line.
             for (int j = i + 1; j < lines.size(); j++) {
                 String trimmed = lines.get(j).trim();
                 if (trimmed.startsWith(") ->") || trimmed.startsWith("):")) break;
-                if (paramLine.matcher(lines.get(j)).find()) {
+                if (paramHasDefaultInSlice(lines.get(j), paramStart)) {
                     return true;
                 }
             }
             return false;
         }
         return false;
+    }
+
+    /**
+     * Scans ``slice`` for a parameter matched by ``paramStart`` whose
+     * declaration has a default value, where the equals sign that
+     * separates type hint from default may sit inside or after a
+     * parameterized generic type such as ``Dict[str, str]`` or
+     * ``Optional[Union[str, int]]``. The regex ``paramStart`` already
+     * encodes the parameter name, so no name argument is required here.
+     * Tracks bracket depth so commas inside ``[ ]`` or ``( )`` are not
+     * mistaken for the boundary between parameters.
+     *
+     * <p>Returns {@code true} only when the named parameter is the
+     * one carrying the default — a later parameter with a default
+     * does not make an earlier no-default parameter "optional."</p>
+     */
+    private static boolean paramHasDefaultInSlice(String slice, Pattern paramStart) {
+        Matcher m = paramStart.matcher(slice);
+        if (!m.find()) return false;
+        int afterColon = m.end();
+        int boundary = findTopLevelBoundary(slice, afterColon);
+        if (boundary < 0) return false;
+        return slice.charAt(boundary) == '=';
+    }
+
+    /**
+     * Walks ``text`` starting at ``start`` and returns the index of
+     * the first top-level {@code =} or {@code ,} — i.e., the first
+     * boundary character that is not inside a {@code [ ... ]}
+     * generic argument list, a {@code ( ... )} call, or a quoted
+     * string. The character at the returned index is the boundary
+     * itself: callers compare against {@code '='} to decide whether
+     * the parameter has a default. Returns {@code -1} when neither
+     * is found (e.g., the parameter is the last in the slice and has
+     * no default — that means the parameter is required).
+     */
+    private static int findTopLevelBoundary(String text, int start) {
+        int depth = 0;
+        boolean inSingle = false;
+        boolean inDouble = false;
+        for (int i = start; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (inSingle) {
+                if (c == '\\' && i + 1 < text.length()) { i++; continue; }
+                if (c == '\'') inSingle = false;
+                continue;
+            }
+            if (inDouble) {
+                if (c == '\\' && i + 1 < text.length()) { i++; continue; }
+                if (c == '"') inDouble = false;
+                continue;
+            }
+            if (c == '\'') { inSingle = true; continue; }
+            if (c == '"') { inDouble = true; continue; }
+            if (c == '[' || c == '(') { depth++; continue; }
+            if (c == ']' || c == ')') {
+                if (depth > 0) depth--;
+                continue;
+            }
+            if (c == '#') {
+                // Trailing comment — neither '=' nor ',' past here
+                // is meaningful for parameter parsing.
+                return -1;
+            }
+            if (depth == 0 && (c == '=' || c == ',')) return i;
+        }
+        return -1;
     }
 }

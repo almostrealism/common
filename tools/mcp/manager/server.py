@@ -360,15 +360,6 @@ def _decode_current_request_token_full(
     # version breaks the per-request propagation, the resolution still
     # succeeds. The reason slot surfaces the fallback so operators can
     # see when the per-request path is broken.
-    # TODO(review): dead guard — primary_reason can only be "no_context" or
-    # "no_request" when request is None; there is no code path that sets
-    # request=None with any other reason. Either remove the guard or add a
-    # comment explaining the future-proofing intent so maintainers don't
-    # think there is a third reachable state.
-    if primary_reason not in ("no_request", "no_context"):
-        # Some other path produced no request; do not pretend the
-        # middleware's value applies.
-        return None, None, None, primary_reason
     ctx_ws = _request_workstream_id.get(None)
     ctx_job = _request_job_id.get(None)
     if ctx_ws and ctx_job:
