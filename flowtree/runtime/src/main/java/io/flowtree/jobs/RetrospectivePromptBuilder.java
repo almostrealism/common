@@ -194,7 +194,8 @@ final class RetrospectivePromptBuilder {
 
         sb.append("IMPORTANT — WRITE RESULTS FILE\n\n");
         sb.append("After storing all findings (and the REQUIRED transcript-meta assessment\n");
-        sb.append("memory below), write a JSON file to the working directory:\n\n");
+        sb.append("memory described in the TRANSCRIPT-META ASSESSMENT section), write a\n");
+        sb.append("JSON file to the working directory:\n\n");
         sb.append("  File: retrospective-results.json\n");
         sb.append("  Content: {\n");
         sb.append("    \"transcriptFound\": true,\n");
@@ -203,10 +204,11 @@ final class RetrospectivePromptBuilder {
         sb.append("    \"contextPressureEvents\": <int>\n");
         sb.append("  }\n\n");
         sb.append("Replace <N> with the number of finding memories you stored. The two\n");
-        sb.append("context-* fields are REQUIRED; see TRANSCRIPT-META ASSESSMENT below\n");
-        sb.append("for how to compute them. The parent job reads these fields to track\n");
-        sb.append("context-usage trends across jobs, so omitting them means the trend\n");
-        sb.append("data is missing for this job. This file is the ONLY file you may write.\n\n");
+        sb.append("context-* fields are REQUIRED; see the TRANSCRIPT-META ASSESSMENT\n");
+        sb.append("section for how to compute them. The parent job reads these fields\n");
+        sb.append("to track context-usage trends across jobs, so omitting them means\n");
+        sb.append("the trend data is missing for this job. This file is the ONLY file\n");
+        sb.append("you may write.\n\n");
     }
 
     /**
