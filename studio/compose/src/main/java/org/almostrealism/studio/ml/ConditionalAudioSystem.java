@@ -136,6 +136,28 @@ public abstract class ConditionalAudioSystem implements Destroyable, CodeFeature
 	}
 
 	/**
+	 * Creates a ConditionalAudioSystem with an explicitly provided diffusion model.
+	 *
+	 * <p>This is primarily intended for testing, where a smaller-capacity diffusion
+	 * model that preserves the production input shapes (latent, conditioning, and
+	 * timestep ranks) can be substituted for the full production model.</p>
+	 *
+	 * @param tokenizer the tokenizer for text processing
+	 * @param conditioner the conditioner for generating attention inputs
+	 * @param autoencoder the audio encoder/decoder for latent space operations
+	 * @param ditModel the diffusion model to use
+	 */
+	protected ConditionalAudioSystem(Tokenizer tokenizer,
+									 AudioAttentionConditioner conditioner,
+									 AutoEncoder autoencoder,
+									 DiffusionModel ditModel) {
+		this.tokenizer = tokenizer;
+		this.conditioner = conditioner;
+		this.autoencoder = autoencoder;
+		this.ditModel = ditModel;
+	}
+
+	/**
 	 * Returns the tokenizer used for text processing.
 	 */
 	public Tokenizer getTokenizer() { return tokenizer; }

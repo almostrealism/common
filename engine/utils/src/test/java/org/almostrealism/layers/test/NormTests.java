@@ -817,7 +817,8 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 
 		try {
 			CompiledModel compiled = model.compile(profile);
-			PackedCollection out = compiled.forward(in);
+			// Supply the input in the model's declared (flattened) input shape.
+			PackedCollection out = compiled.forward(in.reshape(compiled.getInputShape()));
 			validate(groups, c / groups, v, in, out, weights, biases);
 		} finally {
 			profile.save("results/normModel.xml");

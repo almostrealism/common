@@ -167,7 +167,8 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 		PackedCollection input = t.pack();
 
 		PackedCollection in = input;
-		verboseLog(() -> model.compile().forward(in));
+		CompiledModel compiled = model.compile();
+		verboseLog(() -> compiled.forward(in.reshape(compiled.getInputShape())));
 
 		PackedCollection filter = conv.getWeights().get(0);
 
@@ -376,7 +377,8 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 			for (int i = 0; i < count; i++) {
 				input.fill(pos -> 0.5 + 0.5 * Math.random());
 
-				compiled.forward(input);
+				// Supply the input in the model's declared shape (e.g. batched/channeled).
+				compiled.forward(input.reshape(compiled.getInputShape()));
 
 				if (i % 1000 == 0) {
 					log("Input Size = " + input.getShape() +
