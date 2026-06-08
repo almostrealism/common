@@ -246,7 +246,12 @@ public class AudioDiffusionGenerator implements ConsoleFeatures, CollectionFeatu
 		if (verbose) log("Decoding latent to audio...");
 
 		long start = System.currentTimeMillis();
-		PackedCollection audioData = autoEncoder.decode(cp(latent)).get().evaluate();
+
+		// The diffusion model operates in batched latent space (e.g. (1, 64, 256)) while
+		// the autoencoder decodes a single, unbatched latent (e.g. (64, 256)). Drop the
+		// leading batch axis so the autoencoder receives exactly the rank it requires.
+		PackedCollection latentItem = latent.reshape(latent.getShape().subset(1));
+		PackedCollection audioData = autoEncoder.decode(cp(latentItem)).get().evaluate();
 
 		int audioLength = (int) (audioData.getMemLength() / 2); // 2 channels
 

@@ -75,7 +75,9 @@ public class ConvolutionModelTests extends TestSuiteBase implements ModelFeature
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection input = t.pack();
 
-		model.compile().forward(input);
+		// The convolution model's declared input is (batch, channels, h, w); supply the
+		// input in that shape rather than the bare (h, w) image.
+		model.compile().forward(input.reshape(1, 1, h, w));
 
 		PackedCollection filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();

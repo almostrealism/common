@@ -348,8 +348,8 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		OperationProfileNode profile = initKernelMetrics(new OperationProfileNode("logSoftmaxModel"));
 		try {
 			CompiledModel compiled = model.compile(profile);
-			compiled.forward(input);
-			compiled.backward(gradient);
+			compiled.forward(input.reshape(compiled.getInputShape()));
+			compiled.backward(gradient.reshape(compiled.getOutputShape()));
 
 			double tot = input.doubleStream().map(Math::exp).sum();
 			double[] expected = IntStream.range(0, size).mapToDouble(i -> Math.exp(input.valueAt(i)) / tot).toArray();

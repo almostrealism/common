@@ -923,7 +923,7 @@ public class AttentionGradientScalingTest extends TestSuiteBase implements Atten
 			Random rng = new Random(42);
 			PackedCollection x = new PackedCollection(1, ioChannels, latentLen);
 			PackedCollection t = new PackedCollection(1, 1);
-			PackedCollection globalCond = new PackedCollection(globalCondDim);
+			PackedCollection globalCond = new PackedCollection(1, globalCondDim);
 			x.randnFill(rng);
 			t.fill(0.5);  // Middle of diffusion timestep
 

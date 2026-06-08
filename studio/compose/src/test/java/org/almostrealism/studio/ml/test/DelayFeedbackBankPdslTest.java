@@ -134,7 +134,7 @@ public class DelayFeedbackBankPdslTest extends TestSuiteBase implements FirFilte
 				double t = (double) (offset + i) / SAMPLE_RATE;
 				return Math.sin(2.0 * Math.PI * 440.0 * t);
 			});
-			PackedCollection output = compiled.forward(input);
+			PackedCollection output = compiled.forward(input.reshape(compiled.getInputShape()));
 			double[] inArr = input.toArray(0, SIGNAL_SIZE);
 			double[] outArr = output.toArray(0, SIGNAL_SIZE);
 			for (int i = 0; i < SIGNAL_SIZE; i++) {
