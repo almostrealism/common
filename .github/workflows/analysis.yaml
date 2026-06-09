@@ -1225,30 +1225,36 @@ jobs:
           path: .qodana/code-coverage/
           retention-days: 30
 
+      # Qodana DISABLED: the Qodana product has been cancelled and the scan was
+      # failing the whole analysis job. Re-enable by uncommenting both steps
+      # below once a replacement (or a renewed Qodana subscription) is in place.
+      #
       # Qodana runs as part of this job (rather than a separate one) so it
       # analyzes the same workspace the coverage was just merged into: the
       # report at .qodana/code-coverage/coverage.xml is picked up directly,
       # and we avoid a redundant checkout and `mvn install`.
-      - name: Qodana Scan
-        uses: JetBrains/qodana-action@main
-        env:
-          QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          args: "-i,.,--linter,jetbrains/qodana-jvm"
-          pr-mode: false
+      # - name: Qodana Scan
+      #   uses: JetBrains/qodana-action@main
+      #   env:
+      #     QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
+      #   with:
+      #     ref: ${{ github.event.pull_request.head.sha }}
+      #     fetch-depth: 0
+      #     args: "-i,.,--linter,jetbrains/qodana-jvm"
+      #     pr-mode: false
 
       # Uploading the Qodana SARIF to GitHub code scanning is best-effort: the
       # report regularly exceeds code scanning's 25,000-results-per-run limit and
       # is rejected, and the merge-commit ref it resolves is not always present.
       # Neither failure should fail the analysis job, so this step is allowed to
       # fail. Pinned to the CodeQL Action v4 (v3 is deprecated as of Dec 2026).
-      - name: Github Scan
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: ${{ runner.temp }}/qodana/results/qodana.sarif.json
+      # Disabled alongside the Qodana Scan above — there is no SARIF to upload
+      # without it.
+      # - name: Github Scan
+      #   continue-on-error: true
+      #   uses: github/codeql-action/upload-sarif@v4
+      #   with:
+      #     sarif_file: ${{ runner.temp }}/qodana/results/qodana.sarif.json
 
   # ─── Auto-Resolve Job ─────────────────────────────────────────────────
   # Downloads Surefire reports from all test jobs, parses them for
