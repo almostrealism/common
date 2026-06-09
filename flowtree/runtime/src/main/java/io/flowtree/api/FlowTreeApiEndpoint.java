@@ -24,6 +24,7 @@ import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
 import io.flowtree.jobs.SensitiveFileBypassTrailer;
+import io.flowtree.jobs.ShellCommandJob;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
@@ -502,8 +503,19 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         String legacyConfigErr = PhaseConfigResolver.rejectLegacyRequestFields(body);
         if (legacyConfigErr != null) return errorResponse(legacyConfigErr);
 
+        // A shell-command job runs a single command against the repository
+        // instead of a coding agent. It is selected by jobType="shell" or by
+        // the mere presence of a "command" field, and requires no prompt.
+        String jobType = extractJsonField(body, "jobType");
+        String command = extractJsonField(body, "command");
+        boolean shellJob = "shell".equals(jobType) || (command != null && !command.isEmpty());
+
         String prompt = extractJsonField(body, "prompt");
-        if (prompt == null || prompt.isEmpty()) {
+        if (shellJob) {
+            if (command == null || command.isEmpty()) {
+                return errorResponse("Missing required field: command for jobType=shell");
+            }
+        } else if (prompt == null || prompt.isEmpty()) {
             return errorResponse("Missing required field: prompt");
         }
 
@@ -554,14 +566,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return errorResponse(detail);
         }
 
-        // Validate git identity before submitting - commits will fail without it
-        String gitUserName = workstream.getGitUserName();
-        String gitUserEmail = workstream.getGitUserEmail();
-        if (gitUserName == null || gitUserName.isEmpty()
-                || gitUserEmail == null || gitUserEmail.isEmpty()) {
-            return errorResponse("Git identity not configured for workstream "
-                + resolvedWorkstreamId + ". Set gitUserName and gitUserEmail "
-                + "in the workstream config or via /flowtree config.");
+        // Validate git identity before submitting - commits will fail without it.
+        // Shell-command jobs never commit, so git identity is not required.
+        if (!shellJob) {
+            String gitUserName = workstream.getGitUserName();
+            String gitUserEmail = workstream.getGitUserEmail();
+            if (gitUserName == null || gitUserName.isEmpty()
+                    || gitUserEmail == null || gitUserEmail.isEmpty()) {
+                return errorResponse("Git identity not configured for workstream "
+                    + resolvedWorkstreamId + ". Set gitUserName and gitUserEmail "
+                    + "in the workstream config or via /flowtree config.");
+            }
         }
 
         String workstreamId = resolvedWorkstreamId;
@@ -636,6 +651,12 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         int postCompletionTimeoutSeconds = extractJsonIntField(body, "postCompletionTimeoutSeconds");
         int maxPostCompletionPasses = extractJsonIntField(body, "maxPostCompletionPasses");
         int delaySeconds = extractJsonIntField(body, "delaySeconds");
+
+        if (shellJob) {
+            return submitShellCommandJob(body, workstream, workstreamId, command,
+                    targetBranch, repoUrl, delaySeconds);
+        }
+
         // Create job factory with workstream defaults, overridden by request values
         CodingAgentJob.Factory factory = new CodingAgentJob.Factory(prompt);
         if (jobDescription != null && !jobDescription.isEmpty()) {
@@ -862,6 +883,81 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         json.append("}");
         return newFixedLengthResponse(Response.Status.OK,
                 "application/json", json.toString());
+    }
+
+    /**
+     * Builds and submits a {@link ShellCommandJob} that runs a single command
+     * against the workstream's repository. Unlike a coding-agent job, it carries
+     * no agent configuration and never commits; only the repository, branch,
+     * working directory, required labels, and workstream URL are propagated.
+     *
+     * @param body          the raw request body (for required-label extraction)
+     * @param workstream    the resolved target workstream
+     * @param workstreamId  the resolved workstream identifier
+     * @param command       the shell command to execute
+     * @param targetBranch  the requested branch, or {@code null} for the default
+     * @param repoUrl       the requested repository URL, or {@code null}
+     * @param delaySeconds  delay before dispatch, or {@code 0} for immediate
+     * @return the JSON submission response
+     */
+    private Response submitShellCommandJob(String body, Workstream workstream,
+            String workstreamId, String command, String targetBranch,
+            String repoUrl, int delaySeconds) {
+        ShellCommandJob.Factory factory = new ShellCommandJob.Factory(command);
+
+        String effectiveRepoUrl = repoUrl != null ? repoUrl : workstream.getRepoUrl();
+        if (effectiveRepoUrl != null) {
+            factory.setRepoUrl(effectiveRepoUrl);
+        }
+        if (workstream.getWorkingDirectory() != null) {
+            factory.setWorkingDirectory(workstream.getWorkingDirectory());
+        }
+        String effectiveBranch = targetBranch != null ? targetBranch : workstream.getDefaultBranch();
+        if (effectiveBranch != null) {
+            factory.setTargetBranch(effectiveBranch);
+        }
+
+        Map<String, String> requiredLabels = extractJsonObjectFields(body, "requiredLabels");
+        if (requiredLabels.isEmpty() && workstream.getRequiredLabels() != null
+                && !workstream.getRequiredLabels().isEmpty()) {
+            requiredLabels = workstream.getRequiredLabels();
+        }
+        for (Map.Entry<String, String> entry : requiredLabels.entrySet()) {
+            factory.setRequiredLabel(entry.getKey(), entry.getValue());
+        }
+
+        int listeningPort = getListeningPort();
+        if (listeningPort > 0) {
+            factory.setWorkstreamUrl("http://0.0.0.0:" + listeningPort
+                + "/api/workstreams/" + workstream.getWorkstreamId()
+                + "/jobs/" + factory.getTaskId());
+        }
+
+        JobCompletionEvent startEvent = JobCompletionEvent.started(
+                factory.getTaskId(), ShellCommandJob.summarizeCommand(command));
+        startEvent.withGitInfo(effectiveBranch, null, null, null, false);
+        notifiers.notifierFor(workstream.getWorkstreamId())
+                .onJobSubmitted(workstream.getWorkstreamId(), startEvent);
+
+        if (delaySeconds > 0) {
+            pendingDelayedJobs.put(factory.getTaskId(), delayedJobExecutor.schedule(
+                    () -> {
+                        try {
+                            server.addTask(factory);
+                        } finally {
+                            pendingDelayedJobs.remove(factory.getTaskId());
+                        }
+                    }, delaySeconds, TimeUnit.SECONDS));
+            log("Delayed shell-command job via API: " + factory.getTaskId()
+                + " (delaySeconds=" + delaySeconds + ")");
+        } else {
+            server.addTask(factory);
+            log("Submitted shell-command job via API: " + factory.getTaskId());
+        }
+
+        String json = "{\"ok\":true,\"jobId\":\"" + factory.getTaskId()
+            + "\",\"workstreamId\":\"" + workstreamId + "\",\"jobType\":\"shell\"}";
+        return newFixedLengthResponse(Response.Status.OK, "application/json", json);
     }
 
     /**
