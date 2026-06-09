@@ -554,6 +554,13 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertEqual(payload["jobType"], "shell")
         self.assertEqual(payload["command"], "ls -la")
 
+    def test_submit_rejects_unknown_job_type(self):
+        _grant_all_scopes()
+        result = server.workstream_submit_task(
+            job_type="bogus", command="ls", workstream_id="ws-test")
+        self.assertFalse(result["ok"])
+        self.assertIn("Unknown job_type", result["error"])
+
     def test_submit_shell_requires_command(self):
         _grant_all_scopes()
         result = server.workstream_submit_task(

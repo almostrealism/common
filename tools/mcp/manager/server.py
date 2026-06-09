@@ -1840,11 +1840,17 @@ def workstream_submit_task(
         Dictionary with job_id and workstream_id on success.
     """
     _require_scope("submit")
+    if job_type not in ("", "coding", "shell"):
+        return {"ok": False,
+                "error": f"Unknown job_type '{job_type}'; expected 'coding' or 'shell'"}
     shell_job = job_type == "shell" or bool(command)
     if shell_job:
         if not command:
             return {"ok": False,
                     "error": "command is required when job_type='shell'"}
+        # A shell job ignores the prompt; blank it so the downstream
+        # commit-language linter never fires on a value that is not used.
+        prompt = ""
     elif not prompt:
         return {"ok": False, "error": "prompt is required"}
     err = _check_length(command, "command", MAX_PROMPT_LEN)

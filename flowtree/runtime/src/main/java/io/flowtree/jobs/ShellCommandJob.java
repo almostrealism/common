@@ -20,14 +20,14 @@ import io.flowtree.JsonFieldExtractor;
 import io.flowtree.job.AbstractJobFactory;
 import io.flowtree.job.Job;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A {@link Job} implementation that executes a single shell command against a
@@ -71,6 +71,25 @@ public class ShellCommandJob extends GitManagedJob {
 
 	/** Maximum number of characters of the command echoed in the message. */
 	private static final int COMMAND_TRUNCATE_LENGTH = 200;
+
+	/** Maximum characters in a short single-line command summary. */
+	private static final int COMMAND_SUMMARY_LENGTH = 60;
+
+	/**
+	 * Wall-clock limit, in seconds, before a running command is forcibly
+	 * killed. Bounds the time a hung command can block the agent.
+	 */
+	private static final int DEFAULT_TIMEOUT_SECONDS = 1800;
+
+	/**
+	 * Maximum number of bytes read from each of the command's stdout and stderr
+	 * streams. The tail is kept so failure messages near the end survive; this
+	 * bounds heap usage for a command that emits very large output.
+	 */
+	private static final int MAX_CAPTURE_BYTES = 65536;
+
+	/** Suffix appended to truncated strings. */
+	private static final String TRUNCATION_MARKER = " [truncated]";
 
 	/** The shell command to execute. */
 	private String command;
@@ -155,9 +174,12 @@ public class ShellCommandJob extends GitManagedJob {
 
 	/**
 	 * Executes the configured shell command in the job's working directory
-	 * (the cloned repository) and captures its output. The result is published
-	 * as a workstream message when a workstream URL is configured, regardless of
-	 * whether the command succeeds or fails.
+	 * (the cloned repository) and captures its output. stdout and stderr are
+	 * redirected to temporary files so a noisy command cannot exhaust heap, the
+	 * process is killed if it exceeds {@link #DEFAULT_TIMEOUT_SECONDS}, and only
+	 * the trailing {@link #MAX_CAPTURE_BYTES} of each stream are read back. The
+	 * result is published as a workstream message when a workstream URL is
+	 * configured, regardless of whether the command succeeds or fails.
 	 */
 	@Override
 	protected void doWork() {
@@ -172,62 +194,90 @@ public class ShellCommandJob extends GitManagedJob {
 
 		log("Executing command: " + command);
 
+		File outFile = null;
+		File errFile = null;
 		try {
+			outFile = File.createTempFile("shellcmd-out-", ".log");
+			errFile = File.createTempFile("shellcmd-err-", ".log");
+
 			ProcessBuilder pb = new ProcessBuilder("sh", "-c", command);
 			if (getWorkingDirectory() != null) {
 				pb.directory(new File(getWorkingDirectory()));
 			}
-			pb.redirectErrorStream(false);
+			pb.redirectOutput(outFile);
+			pb.redirectError(errFile);
 
 			GitOperations.augmentPath(pb);
 
 			Process process = pb.start();
-
-			// Drain stderr on a separate thread so the command cannot deadlock
-			// when it writes more than the OS pipe buffer to stderr while we are
-			// still reading stdout.
-			StreamCollector errorCollector = new StreamCollector(process.getErrorStream());
-			Thread errorThread = new Thread(errorCollector, "shell-stderr-" + getTaskId());
-			errorThread.start();
-
-			stdout = readStream(process.getInputStream());
-
-			exitCode = process.waitFor();
-			errorThread.join();
-			stderr = errorCollector.getResult();
-
-			log("Command completed with exit code " + exitCode);
-		} catch (IOException | InterruptedException e) {
+			boolean finished = process.waitFor(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+			stdout = readCapped(outFile);
+			if (finished) {
+				exitCode = process.exitValue();
+				stderr = readCapped(errFile);
+				log("Command completed with exit code " + exitCode);
+			} else {
+				process.destroyForcibly();
+				exitCode = -1;
+				stderr = "Command timed out after " + DEFAULT_TIMEOUT_SECONDS
+						+ " seconds (process killed).\n" + readCapped(errFile);
+				warn("Command timed out after " + DEFAULT_TIMEOUT_SECONDS + " seconds: " + command);
+			}
+		} catch (IOException e) {
 			warn("Command execution failed: " + e.getMessage(), e);
 			exitCode = -1;
 			stderr = e.getMessage();
 			stdout = stdout == null ? "" : stdout;
-			if (e instanceof InterruptedException) {
-				Thread.currentThread().interrupt();
-			}
+		} catch (InterruptedException e) {
+			warn("Command execution interrupted: " + e.getMessage(), e);
+			exitCode = -1;
+			stderr = e.getMessage();
+			stdout = stdout == null ? "" : stdout;
+			Thread.currentThread().interrupt();
+		} finally {
+			deleteQuietly(outFile);
+			deleteQuietly(errFile);
 		}
 
 		publishOutput();
 	}
 
 	/**
-	 * Fully reads a process stream as UTF-8 text, normalizing line endings to
-	 * {@code \n}.
+	 * Reads a redirected output file as UTF-8 text, keeping at most the trailing
+	 * {@link #MAX_CAPTURE_BYTES} bytes so that a runaway command cannot exhaust
+	 * the agent's heap.
 	 *
-	 * @param stream the stream to read
-	 * @return the captured text
-	 * @throws IOException if reading fails
+	 * @param file the redirected output file
+	 * @return the (possibly tail-only) file contents, or an error message if it
+	 *         cannot be read
 	 */
-	private static String readStream(InputStream stream) throws IOException {
-		StringBuilder sb = new StringBuilder();
-		try (BufferedReader reader = new BufferedReader(
-				new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-			String line;
-			while ((line = reader.readLine()) != null) {
-				sb.append(line).append("\n");
+	private static String readCapped(File file) {
+		try {
+			long size = file.length();
+			if (size <= MAX_CAPTURE_BYTES) {
+				return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
 			}
+			try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+				raf.seek(size - MAX_CAPTURE_BYTES);
+				byte[] buf = new byte[MAX_CAPTURE_BYTES];
+				raf.readFully(buf);
+				return new String(buf, StandardCharsets.UTF_8);
+			}
+		} catch (IOException e) {
+			return "Failed to read command output: " + e.getMessage();
 		}
-		return sb.toString();
+	}
+
+	/**
+	 * Deletes a temporary file if it exists, ignoring failures (the OS purges
+	 * the temp directory on a schedule).
+	 *
+	 * @param file the file to delete, or {@code null}
+	 */
+	private static void deleteQuietly(File file) {
+		if (file != null && file.exists()) {
+			file.delete();
+		}
 	}
 
 	/**
@@ -295,7 +345,9 @@ public class ShellCommandJob extends GitManagedJob {
 
 	/**
 	 * Truncates a string to at most {@code maxLength} characters, appending
-	 * {@code " [truncated]"} when shortened.
+	 * {@link #TRUNCATION_MARKER} when shortened. Small or non-positive limits are
+	 * handled without overflow: a non-positive limit yields an empty string, and
+	 * a limit too small to hold the marker yields a bare prefix of the input.
 	 *
 	 * @param s         the string to truncate, or {@code null}
 	 * @param maxLength maximum number of characters to retain
@@ -303,8 +355,27 @@ public class ShellCommandJob extends GitManagedJob {
 	 */
 	static String truncate(String s, int maxLength) {
 		if (s == null) return "";
+		if (maxLength <= 0) return "";
 		if (s.length() <= maxLength) return s;
-		return s.substring(0, maxLength - " [truncated]".length()) + " [truncated]";
+		if (maxLength <= TRUNCATION_MARKER.length()) {
+			return s.substring(0, maxLength);
+		}
+		return s.substring(0, maxLength - TRUNCATION_MARKER.length()) + TRUNCATION_MARKER;
+	}
+
+	/**
+	 * Produces a short, single-line summary of a command suitable for status
+	 * notifications. Whitespace is collapsed and the result is truncated to
+	 * {@link #COMMAND_SUMMARY_LENGTH} characters.
+	 *
+	 * @param command the command, or {@code null}
+	 * @return a single-line summary, never {@code null}
+	 */
+	public static String summarizeCommand(String command) {
+		if (command == null || command.isEmpty()) {
+			return "(no command)";
+		}
+		return truncate(command.replaceAll("\\s+", " ").trim(), COMMAND_SUMMARY_LENGTH);
 	}
 
 	/**
@@ -337,45 +408,6 @@ public class ShellCommandJob extends GitManagedJob {
 			this.command = base64Decode(value);
 		} else {
 			super.set(key, value);
-		}
-	}
-
-	/**
-	 * Reads a process stream to completion on its own thread so that stdout and
-	 * stderr can be drained concurrently.
-	 */
-	private static final class StreamCollector implements Runnable {
-		/** The stream to drain. */
-		private final InputStream stream;
-
-		/** The captured text, populated once {@link #run()} completes. */
-		private String result = "";
-
-		/**
-		 * Creates a collector for the given stream.
-		 *
-		 * @param stream the stream to drain
-		 */
-		private StreamCollector(InputStream stream) {
-			this.stream = stream;
-		}
-
-		/**
-		 * Returns the captured text.
-		 *
-		 * @return the captured stream contents
-		 */
-		private String getResult() {
-			return result;
-		}
-
-		@Override
-		public void run() {
-			try {
-				result = readStream(stream);
-			} catch (IOException e) {
-				result = e.getMessage();
-			}
 		}
 	}
 

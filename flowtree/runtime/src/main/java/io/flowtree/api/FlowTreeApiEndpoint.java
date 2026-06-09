@@ -934,7 +934,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         JobCompletionEvent startEvent = JobCompletionEvent.started(
-                factory.getTaskId(), CodingAgentJob.summarizePrompt(command));
+                factory.getTaskId(), ShellCommandJob.summarizeCommand(command));
         startEvent.withGitInfo(effectiveBranch, null, null, null, false);
         notifiers.notifierFor(workstream.getWorkstreamId())
                 .onJobSubmitted(workstream.getWorkstreamId(), startEvent);

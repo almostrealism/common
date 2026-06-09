@@ -133,6 +133,28 @@ public class ShellCommandJobTest extends TestSuiteBase {
 		assertTrue(truncated.endsWith(" [truncated]"));
 	}
 
+	/** Verifies small and non-positive limits are handled without overflow. */
+	@Test(timeout = 30000)
+	public void testTruncateSmallLimit() {
+		assertEquals("abc", ShellCommandJob.truncate("abcdef", 3));
+		assertEquals("", ShellCommandJob.truncate("abcdef", 0));
+		assertEquals("", ShellCommandJob.truncate("abcdef", -5));
+	}
+
+	/** Verifies command summaries collapse whitespace, truncate, and handle null. */
+	@Test(timeout = 30000)
+	public void testSummarizeCommand() {
+		assertEquals("(no command)", ShellCommandJob.summarizeCommand(null));
+		assertEquals("(no command)", ShellCommandJob.summarizeCommand(""));
+		assertEquals("echo hi", ShellCommandJob.summarizeCommand("echo   hi"));
+		StringBuilder sb = new StringBuilder("run ");
+		for (int i = 0; i < 200; i++) {
+			sb.append('x');
+		}
+		String summary = ShellCommandJob.summarizeCommand(sb.toString());
+		assertTrue(summary.length() <= 60);
+	}
+
 	/** Verifies the job wire encoding preserves the command and all git fields. */
 	@Test(timeout = 30000)
 	public void testJobEncodeRoundTripPreservesAllFields() {
