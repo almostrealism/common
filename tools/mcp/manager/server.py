@@ -266,72 +266,109 @@ def _decode_current_request_token_full(
       * ``reason`` is a short identifier describing which path was taken
         — ``"ok"`` on success, otherwise one of
         ``"no_context"``, ``"no_request"``, ``"no_auth_header"``,
-        ``"non_bearer_scheme"``, ``"not_temp_token"`` — for diagnostic
-        logging. This is the only return slot meant for an operator to
-        read; the body of the token is never echoed.
-
-    The auth middleware also writes the decoded ``(workstream_id, job_id)``
-    into a :class:`contextvars.ContextVar` plus a :mod:`threading` local —
-    both intended to be read back by :func:`_get_token_workstream_id` and
-    :func:`_get_token_job_id` from inside tool handlers. That mechanism is
-    not reliable under FastMCP's streamable-HTTP **stateful** transport.
-    In stateful mode, the per-session "server task" that dispatches tool
-    handlers inherits its context from whichever HTTP request created the
-    session (the MCP ``initialize`` call). Subsequent HTTP requests on the
-    same session set the ContextVar on a *different* asyncio task — the
-    server task continues running in its original context. The
-    :mod:`threading` local is racy across concurrent requests on a single
-    event-loop thread for the same reason.
+        ``"non_bearer_scheme"``, ``"not_temp_token"``, ``"ctx_fallback"``,
+        ``"tl_fallback"`` — for diagnostic logging. This is the only
+        return slot meant for an operator to read; the body of the token
+        is never echoed.
 
     Decoding the token directly from the current request's HTTP
-    ``Authorization`` header sidesteps this entirely: the lowlevel MCP
-    server propagates the originating :class:`starlette.requests.Request`
-    via ``ServerMessageMetadata`` into the dispatch-time ``RequestContext``
-    (accessible via :meth:`FastMCP.get_context`), so every tool call sees
-    the bearer that the client actually sent on that call.
+    ``Authorization`` header is the primary path: the FastMCP streamable
+    HTTP transport wraps every inbound JSON-RPC request's
+    :class:`starlette.requests.Request` in a ``ServerMessageMetadata``
+    object that the lowlevel MCP server stores in the dispatch-time
+    ``RequestContext`` (accessible via :meth:`FastMCP.get_context`). That
+    propagation works in BOTH the ``stateless_http`` mode ar-manager
+    ships with and the default stateful mode — the bearer the client
+    sent on this call is visible to the tool handler in either case.
 
-    A diagnostic 0de652686 fix landed for this in ``feature/pluggable-agents``
-    but the production symptom (``send_message`` from an ``opencode``-driven
-    enforcement phase landing at the top of the Slack channel rather than
-    in the job's thread) recurred. The investigation could reproduce the
-    success case end-to-end but not the failure, so this function carries
-    the diagnostic ``reason`` slot so the next opencode job lands the
-    evidence in the controller log on its own.
+    A defensive fallback to the auth middleware's
+    :class:`contextvars.ContextVar` and :mod:`threading` local is also
+    attempted when the per-request path is unavailable (``no_request``
+    / ``no_context``). Those fallbacks are the legacy mechanism that
+    pre-dates the ServerMessageMetadata propagation. They are not
+    reliable in stateful mode because the long-lived server task that
+    runs the tool handler does not see ContextVar mutations from later
+    HTTP requests — but if the FastMCP transport ever stops
+    propagating the request (or a future version changes the wire
+    shape), the ContextVar/thread-local is still set by the
+    :class:`BearerAuthMiddleware` for the lifetime of that middleware
+    call. Reaching this fallback on a stateful production request is
+    itself evidence the per-request path is broken; the ``ctx_fallback``
+    and ``tl_fallback`` reasons let operators see that in the audit log
+    without the tool silently failing.
+
+    The reason vocabulary is intentionally small. ``send_message`` uses
+    it to decide when to fail loudly (a job-binding the caller expected
+    is missing) versus when to post at the workstream top level (the
+    caller didn't bind a job and threading was not expected).
     """
+    # Primary path: read the bearer from the per-request HTTP request
+    # that the FastMCP transport propagated into the dispatch-time
+    # RequestContext. This is the only path that reflects the call the
+    # client actually made (rather than whatever ContextVar/thread-local
+    # state a prior request left behind).
     try:
         ctx = mcp.get_context()
     except (LookupError, AttributeError):
-        return None, None, None, "no_context"
-    # ``Context.request_context`` raises ``ValueError`` when invoked
-    # outside of a live MCP request (e.g. unit tests that call the tool
-    # function directly). Treat that as "no request" and fall back.
-    try:
-        request_context = ctx.request_context
-    except (LookupError, ValueError, AttributeError):
-        return None, None, None, "no_request"
-    if request_context is None:
-        return None, None, None, "no_request"
-    request = getattr(request_context, "request", None)
-    if request is None:
-        return None, None, None, "no_request"
-    try:
-        auth_header = request.headers.get("authorization", "")
-    except Exception:
-        return None, None, None, "no_auth_header"
-    if not auth_header:
-        return None, None, None, "no_auth_header"
-    # RFC 7235 declares the scheme name case-insensitive; opencode and
-    # Claude Code both emit "Bearer " but a proxy could lowercase the
-    # value en route, so match either casing rather than failing closed
-    # on a cosmetic difference.
-    if not (auth_header.startswith("Bearer ") or auth_header.startswith("bearer ")):
-        return None, None, None, "non_bearer_scheme"
-    token_value = auth_header[7:].strip()
-    result = _validate_temp_token(token_value)
-    if result is None:
-        return None, None, None, "not_temp_token"
-    _, label, ws_id, job_id = result
-    return ws_id, job_id, label, "ok"
+        primary_reason = "no_context"
+        request = None
+    else:
+        try:
+            request_context = ctx.request_context
+        except (LookupError, ValueError, AttributeError):
+            primary_reason = "no_request"
+            request = None
+        else:
+            if request_context is None:
+                primary_reason = "no_request"
+                request = None
+            else:
+                request = getattr(request_context, "request", None)
+                if request is None:
+                    primary_reason = "no_request"
+                    request = None
+                else:
+                    primary_reason = None  # signal "proceed"
+
+    if request is not None:
+        try:
+            auth_header = request.headers.get("authorization", "")
+        except Exception:
+            return None, None, None, "no_auth_header"
+        if not auth_header:
+            return None, None, None, "no_auth_header"
+        # RFC 7235 declares the scheme name case-insensitive; opencode
+        # and Claude Code both emit "Bearer " but a proxy could
+        # lowercase the value en route, so match either casing rather
+        # than failing closed on a cosmetic difference.
+        if not (auth_header.startswith("Bearer ")
+                or auth_header.startswith("bearer ")):
+            return None, None, None, "non_bearer_scheme"
+        token_value = auth_header[7:].strip()
+        result = _validate_temp_token(token_value)
+        if result is None:
+            return None, None, None, "not_temp_token"
+        _, label, ws_id, job_id = result
+        return ws_id, job_id, label, "ok"
+
+    # Per-request path is unavailable. The auth middleware still wrote
+    # the decoded (ws, job) into the ContextVar and thread-local for
+    # every request carrying a valid temp token, so consult those as
+    # a defensive fallback. This is the path that originally ran
+    # before the ServerMessageMetadata propagation was added and is
+    # retained purely as belt-and-braces coverage: if a future FastMCP
+    # version breaks the per-request propagation, the resolution still
+    # succeeds. The reason slot surfaces the fallback so operators can
+    # see when the per-request path is broken.
+    ctx_ws = _request_workstream_id.get(None)
+    ctx_job = _request_job_id.get(None)
+    if ctx_ws and ctx_job:
+        return ctx_ws, ctx_job, f"tmp:{ctx_ws}/{ctx_job}", "ctx_fallback"
+    tl_ws = getattr(_thread_local, "workstream_id", None)
+    tl_job = getattr(_thread_local, "job_id", None)
+    if tl_ws and tl_job:
+        return tl_ws, tl_job, f"tmp:{tl_ws}/{tl_job}", "tl_fallback"
+    return None, None, None, primary_reason
 
 
 def _decode_current_request_token() -> tuple[Optional[str], Optional[str]]:
@@ -4141,6 +4178,87 @@ def send_message(
                 "If calling from a job session, verify the bearer token"
                 " is an armt_tmp_ HMAC token (a static admin bearer"
                 " carries no workstream binding)",
+            ],
+        }
+
+    if not effective_job and not workstream_id and not job_id:
+        # The caller asked for automatic job-thread routing (passed
+        # neither workstream_id nor job_id explicitly) but every
+        # resolution path returned an empty job_id. Two scenarios:
+        #
+        #   1. The caller is a static-token admin whose bearer carries
+        #      no workstream/job binding at all — ``per_req_reason`` is
+        #      ``not_temp_token`` / ``no_auth_header`` / ``non_bearer_scheme``
+        #      and they did not pass an explicit workstream_id. In that
+        #      case the system cannot tell where to thread, but it also
+        #      has no expectation of threading. Fail loudly with a
+        #      clear "pass workstream_id" instruction so the caller
+        #      knows how to recover — silently posting to the channel
+        #      top-level is the silent-degradation the prior
+        #      ``send_message_missing_job_id`` warning logged but
+        #      swallowed.
+        #
+        #   2. The caller is a job session whose temp token should have
+        #      resolved a job (and the agent expects threading), but
+        #      resolution failed — the FastMCP stateful-transport
+        #      request-propagation hazard the per-request decoder
+        #      exists to handle, or a token-issuance problem upstream.
+        #      This is the production bug the loud-fail guards
+        #      against: previously the tool would post at the channel
+        #      top-level and return success, leaving the agent to
+        #      assume the message threaded. Returning an explicit
+        #      ``ok=false`` with named next-steps gives the agent a
+        #      recovery path (``workstream_id`` + ``job_id`` explicit)
+        #      and surfaces the failure to the operator via the
+        #      ``send_message_unthreaded`` audit line.
+        #
+        # A caller who genuinely wants workstream top-level posting
+        # must pass ``workstream_id`` explicitly; the default-empty
+        # ``workstream_id`` is the "I expect auto-resolution" signal.
+        audit_log.error(
+            "send_message_unthreaded "
+            "explicit_workstream_id=%s explicit_job_id=%s "
+            "per_request_workstream_id=%s per_request_job_id=%s "
+            "per_request_label=%s per_request_decode_reason=%s "
+            "contextvar_workstream_id=%s contextvar_job_id=%s "
+            "thread_local_workstream_id=%s thread_local_job_id=%s "
+            "effective_workstream_id=%s effective_job_id=%s "
+            "activity=%s",
+            workstream_id or "", job_id or "",
+            per_req_ws or "", per_req_job or "",
+            per_req_label or "", per_req_reason,
+            ctx_ws or "", ctx_job or "",
+            tl_ws or "", tl_job or "",
+            effective_ws, effective_job,
+            effective_activity or "")
+        return {
+            "ok": False,
+            "error": (
+                "send_message could not resolve a job_id. The tool"
+                " advertises job_id as optional because it auto-resolves"
+                " from the in-flight request's HMAC temp token, but the"
+                " resolution failed and the call did not supply explicit"
+                " workstream_id/job_id. Posting at the workstream top"
+                " level silently would be deceptive; the message has"
+                " NOT been sent. Pass workstream_id AND job_id"
+                " explicitly (e.g. workstream_id=<id>, job_id=<id>),"
+                " or fix the bearer so the per-request decode can"
+                " resolve them."
+            ),
+            "per_request_decode_reason": per_req_reason,
+            "next_steps": [
+                "Pass workstream_id and job_id explicitly in the call",
+                "If calling from a job session, verify the bearer is"
+                " an armt_tmp_ HMAC temp token and that it is being"
+                " sent on the request (the controller log line"
+                " 'temp_token_request' is written by the auth"
+                " middleware on every authenticated request — if it"
+                " is absent for the failing call, the bearer is not"
+                " reaching the server)",
+                "If the bearer IS a temp token, the per-request"
+                " decode may have hit a transport-level issue. Pass"
+                " workstream_id and job_id explicitly as a safe"
+                " fallback until the upstream transport is fixed.",
             ],
         }
 
