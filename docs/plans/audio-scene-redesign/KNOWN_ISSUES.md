@@ -1,9 +1,9 @@
 # Known Issues & Platform Constraints
 
 > Live constraints relevant to the audio scene redesign / real-time / PDSL DSP work,
-> as of 2026-06-03 (branch `feature/batched-audio-mtl`). These are referenced from
-> [STATE_OF_PLAY.md](STATE_OF_PLAY.md) and the other docs in this folder. Verify
-> against current code before acting — these reflect what was true when written.
+> as of 2026-06-09 (`master`; the `feature/batched-audio-mtl` work is merged). These are
+> referenced from [STATE_OF_PLAY.md](STATE_OF_PLAY.md) and the other docs in this folder.
+> Verify against current code before acting — these reflect what was true when written.
 
 ## 1. Hybrid routing is mandatory — never force `AR_HARDWARE_DRIVER`
 
@@ -69,3 +69,57 @@ wrong direction and must not be the cutover mechanism. If a compatibility adapte
 unavoidable, `Block` stays on the outside (adapt `Cell` → `Block`, never the reverse) —
 a consumer that accepts `Block` can hold any `Cell` implementation, so this is the
 universal direction. See `PDSL_AUDIO_DSP.md` §14.
+
+**In practice the chosen cutover does not adapt at the cell level at all.** The
+integration contract for real-time rendering is `TemporalCellular`
+(`setup()`/`tick()`/`reset()`), **not** `CellList` — every consumer outside `AudioScene`
+(the health computation, `BufferedOutputScheduler`, `RealtimeContinuousRenderer`) drives
+that contract and is blind to whatever backs it. So the PDSL path is a **Block-forward
+`TemporalCellular` runner**: its `tick()` keeps the Java pattern-prepare phase
+(`PatternAudioBuffer.prepareBatch`), calls `compiledModel.forward(buffer)` once per buffer
+for the DSP, and writes the result straight to the output line. `wrapBlockAsCellList` is
+**not** used. This is why the Block never needs to masquerade as a `CellList`.
+
+## 6. Compile-reuse / `GeneratedOperation` pool exhaustion (cross-cutting blocker)
+
+Structurally-identical computations do **not** reuse a compiled native kernel: building
+the *same* `AudioScene` twice with the same genome produces ~44 then ~43 fresh native
+programs (essentially no reuse). The cause is that `CollectionProviderProducer.signature()`
+returns `null` for argument-aggregation-target buffers (and one null leaf nulls the whole
+graph's signature), which disables instruction-set caching; every rebuild then consumes a
+slot from a fixed, monotonically-consumed `GeneratedOperation` pool. A full-scene render
+climbs past the pool size and **cascades into failures of unrelated `AudioScene` tests**.
+
+The pool was expanded (currently up to `GeneratedOperation5999`) to buy headroom, but that
+is a **stopgap, not a fix** — the underlying recompilation churn remains. This gap gates
+re-enabling `BatchedRealSceneRenderTest` and any sustained full-scene render. Full analysis
+and candidate fixes: [../SIGNATURE_AGGREGATION_GAP.md](../SIGNATURE_AGGREGATION_GAP.md).
+
+## 7. a2 batched dispatch does not fire for the full real-scene pattern path
+
+The batched-pattern *mechanism* is correctness-validated on the **synthetic** sentinel
+path (`studio/music`: `BatchedDispatchSentinelTest`, `BatchedVsPerNoteRmsTest`,
+`BatchedRealtimeTickTest` — all passing, batched matches per-note within <1% RMS, 3000
+sustained dispatches). But on the **full curated-library scene**, batched dispatch does not
+reliably fire for the real pattern path — some methods render `peak=0.0` (silence). This is
+why `studio/compose/.../pattern/test/BatchedRealSceneRenderTest.java` is `@Ignore`d (it also
+trips issue §6). The a1→a2 seam is "classify-and-dispatch" over a closed set of note shapes
+(see `NOTE_GRAPH_SHAPES.md`); an unhandled real shape falls through to silence rather than
+erroring, so the fix is to ensure every production note shape is classified and dispatched.
+
+## 8. Curated samples present on the M1, but the pattern factory is empty
+
+The real-scene tests and any full-render experiment read an absolute-path curated library:
+`/Users/Shared/Music/Samples` and `/Users/Shared/Music/pattern-factory.json` (samples via
+`AudioSceneOptimizer.LIBRARY`; patterns via
+`AudioScene.loadPatterns(SystemUtils.getLocalDestination("pattern-factory.json"))`,
+`AudioSceneOptimizer.java:425`).
+
+As of 2026-06-09 on the M1: **`/Users/Shared/Music/Samples` is present (~6097 `.wav`
+files)** — real-sample rendering works (verified: `MixdownManagerPdslVerificationTest`
+renders real audio) — and **`/Users/Shared/Music/pattern-factory.json` has been replaced
+with a valid factory** (it was briefly `[]`; the owner populated it the same day). Both the
+mixdown-path verification (constructed genome + real loop samples) and the **full real-scene
+by-ear A/B** (`RealtimeContinuousRenderer` → `createScene()` → `loadPatterns(...)`) are
+therefore unblocked on this machine. If a future render comes out silent / "no working
+genome," re-check that this file is still a valid non-empty factory.
