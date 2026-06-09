@@ -35,12 +35,22 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/memory-reminder.sh",
+            "description": "Soft nudge the agent to call memory_store (or consultant remember) when a long stretch of work has happened without one — see docs/plans/MEMORY_REMINDER_HOOK.md"
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-git-commit.sh",
-            "description": "Block git commit \u2014 agents stage only, humans commit"
+            "description": "Block git commit — agents stage only, humans commit"
           },
           {
             "type": "command",
@@ -66,6 +76,11 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-checkstyle-edit.sh",
             "description": "Block bash manipulation of checkstyle configuration (checkstyle.xml, checkstyle-suppressions.xml, any /checkstyle/ dir, etc.) — abandon the task rather than tamper with enforcement"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/steer-ls-grep.sh",
+            "description": "Block simple `ls <path>` / `grep <pattern> <file>` — use the structured `glob` / `grep` tools instead (compound shell features are allowed through)"
           },
           {
             "type": "command",

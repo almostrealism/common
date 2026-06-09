@@ -54,6 +54,8 @@
     "./plugins/block-git-worktree.ts",
     "./plugins/warn-git-log.ts",
     "./plugins/block-checkstyle-edit.ts",
-    "./plugins/warn-mvn-build.ts"
+    "./plugins/warn-mvn-build.ts",
+    "./plugins/memory-reminder.ts",
+    "./plugins/steer-ls-grep.ts"
   ]
 }

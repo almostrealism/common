@@ -38,9 +38,11 @@ import java.util.function.Consumer;
  *
  * <p>The collaborator carries the per-run telemetry counters
  * ({@link #ran()}, {@link #transcriptFound()}, {@link #findingsCount()},
- * {@link #costUsd()}) so {@link CodingAgentJob} itself does not need to
- * declare four separate fields just for retrospective bookkeeping. Reset
- * each {@link CodingAgentJob#doWork()} call via {@link #reset()}.</p>
+ * {@link #contextUpfrontTokenEstimate()},
+ * {@link #contextPressureEvents()}, {@link #costUsd()}) so
+ * {@link CodingAgentJob} itself does not need to declare a separate field
+ * for each. Reset each {@link CodingAgentJob#doWork()} call via
+ * {@link #reset()}.</p>
  */
 final class RetrospectivePhase {
 
@@ -56,6 +58,22 @@ final class RetrospectivePhase {
     /** Number of improvement findings emitted as memories by the retrospective agent. */
     private int findingsCount;
 
+    /**
+     * Estimated token cost of the system prompt + standing instructions +
+     * job prompt consumed before the primary agent acted. Reported by the
+     * retrospective agent from the initial transcript messages; 0 when not
+     * reported (e.g. no transcript available).
+     */
+    private int contextUpfrontTokenEstimate;
+
+    /**
+     * Number of times during the primary session the agent had to summarize,
+     * compact, or otherwise dispose of earlier context. Counted by the
+     * retrospective agent from the transcript's compaction events; 0 when
+     * not reported.
+     */
+    private int contextPressureEvents;
+
     /** Cost (USD) of the retrospective session alone; computed as the delta in costByModel. */
     private double costUsd;
 
@@ -68,6 +86,19 @@ final class RetrospectivePhase {
     /** Returns the number of improvement findings emitted by the retrospective agent. */
     int findingsCount() { return findingsCount; }
 
+    /**
+     * Returns the agent's ballpark token estimate of the upfront context
+     * cost (system prompt + standing instructions + job prompt) consumed
+     * before the primary agent acted. 0 when not reported.
+     */
+    int contextUpfrontTokenEstimate() { return contextUpfrontTokenEstimate; }
+
+    /**
+     * Returns the number of times the primary agent had to compact or
+     * summarize context mid-session. 0 when not reported.
+     */
+    int contextPressureEvents() { return contextPressureEvents; }
+
     /** Returns the USD cost of the retrospective session in isolation. */
     double costUsd() { return costUsd; }
 
@@ -76,6 +107,8 @@ final class RetrospectivePhase {
         ran = false;
         transcriptFound = false;
         findingsCount = 0;
+        contextUpfrontTokenEstimate = 0;
+        contextPressureEvents = 0;
         costUsd = 0.0;
     }
 
@@ -122,9 +155,14 @@ final class RetrospectivePhase {
 
     /**
      * Reads the retrospective agent's structured result file, populating
-     * {@link #transcriptFound} and {@link #findingsCount}. Silent on absence
-     * or parse failure — the agent may legitimately exit without writing a
-     * result file (e.g. no transcript available).
+     * {@link #transcriptFound}, {@link #findingsCount},
+     * {@link #contextUpfrontTokenEstimate}, and
+     * {@link #contextPressureEvents}. Silent on absence or parse failure —
+     * the agent may legitimately exit without writing a result file (e.g.
+     * no transcript available). The two context-* fields are missing-tolerant
+     * so a result file written by an older prompt version (which only
+     * reported transcriptFound / findingsCount) still parses cleanly; the
+     * new fields just default to 0 in that case.
      *
      * @param job the orchestrator used to resolve the working-directory path
      */
@@ -137,6 +175,10 @@ final class RetrospectivePhase {
             JsonNode node = mapper.readTree(json);
             transcriptFound = node.has("transcriptFound") && node.get("transcriptFound").asBoolean();
             findingsCount = node.has("findingsCount") ? node.get("findingsCount").asInt() : 0;
+            contextUpfrontTokenEstimate = node.has("contextUpfrontTokenEstimate")
+                    ? node.get("contextUpfrontTokenEstimate").asInt() : 0;
+            contextPressureEvents = node.has("contextPressureEvents")
+                    ? node.get("contextPressureEvents").asInt() : 0;
         } catch (Exception e) {
             job.warn("Could not read " + RESULTS_FILE + ": " + e.getMessage());
         }

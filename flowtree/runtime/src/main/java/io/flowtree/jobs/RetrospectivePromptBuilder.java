@@ -32,13 +32,19 @@ import io.flowtree.jobs.agent.Phase;
  * <ul>
  *   <li>Tool-use quality — effective tool use, missed tools, inefficient calls</li>
  *   <li>Context efficiency — redundant reads, re-reading files, exploring irrelevant areas</li>
+ *   <li>Context-usage meta — upfront context cost (system + standing + job
+ *       prompt) and the frequency of mid-session context-pressure events
+ *       (compaction / summarization / budget-exceeded). Reported as a
+ *       dedicated "transcript-meta" memory and as structured fields in the
+ *       results file, alongside the existing turns/cost/tool-counts.</li>
  * </ul>
  *
  * <p>Out of scope for v1: code quality/correctness, architectural decisions,
  * cost efficiency, error recovery behavior.</p>
  *
  * <p>Graceful degradation: when no transcript is found, emits a single
- * "no transcript" memory and exits cleanly.</p>
+ * "no transcript" memory, writes the results file with the two new
+ * context-usage fields set to 0, and exits cleanly.</p>
  *
  * <p>Package-private; tests use {@link #build(CodingAgentJob)}.</p>
  *
@@ -65,6 +71,7 @@ final class RetrospectivePromptBuilder {
         appendRole(sb);
         appendWhatToStudy(sb, job);
         appendFocusAreas(sb);
+        appendTranscriptMetaAssessment(sb, job);
         appendHowToStoreFindings(sb, job);
         appendGracefulDegradation(sb, job);
         appendForbidden(sb);
@@ -186,12 +193,105 @@ final class RetrospectivePromptBuilder {
         sb.append("when the model information is available.\n\n");
 
         sb.append("IMPORTANT — WRITE RESULTS FILE\n\n");
-        sb.append("After storing all findings, write a JSON file to the working directory:\n\n");
+        sb.append("After storing all findings (and the REQUIRED transcript-meta assessment\n");
+        sb.append("memory described in the TRANSCRIPT-META ASSESSMENT section), write a\n");
+        sb.append("JSON file to the working directory:\n\n");
         sb.append("  File: retrospective-results.json\n");
-        sb.append("  Content: {\"transcriptFound\": true, \"findingsCount\": <N>}\n\n");
-        sb.append("Replace <N> with the number of finding memories you stored.\n");
-        sb.append("This file communicates structured results to the parent job\n");
-        sb.append("and is the ONLY file you may write.\n\n");
+        sb.append("  Content: {\n");
+        sb.append("    \"transcriptFound\": true,\n");
+        sb.append("    \"findingsCount\": <N>,\n");
+        sb.append("    \"contextUpfrontTokenEstimate\": <int>,\n");
+        sb.append("    \"contextPressureEvents\": <int>\n");
+        sb.append("  }\n\n");
+        sb.append("Replace <N> with the number of finding memories you stored. The two\n");
+        sb.append("context-* fields are REQUIRED; see the TRANSCRIPT-META ASSESSMENT\n");
+        sb.append("section for how to compute them. The parent job reads these fields\n");
+        sb.append("to track context-usage trends across jobs, so omitting them means\n");
+        sb.append("the trend data is missing for this job. This file is the ONLY file\n");
+        sb.append("you may write.\n\n");
+    }
+
+    /**
+     * Appends the required transcript-meta assessment section. The retrospective
+     * is the only place where we can read the *primary phase's* transcript and
+     * quantify the context-usage figures the harness itself cannot observe at
+     * runtime. Every retro must report:
+     *
+     *   (a) Upfront context cost -- a ballpark token estimate of what was
+     *       consumed before the agent acted: system prompt + mandatory /
+     *       standing instructions + the job prompt. The retro derives this
+     *       from the initial messages in the transcript (the system prompt
+     *       and the first user-role message before the agent's first tool
+     *       call). A coarse estimate is fine; \"not visible\" is acceptable
+     *       when the transcript format does not expose the prompt directly.
+     *
+     *   (b) Context-pressure frequency -- the number of times during the
+     *       session the agent had to summarize, compact, or otherwise
+     *       dispose of earlier context to make room. Count the events
+     *       visible in the transcript (e.g. compact-tool calls, \"context
+     *       budget exceeded\" tool messages, or any explicit
+     *       summarization invocations). If none are detectable, report 0
+     *       and say so in the memory's content.
+     *
+     * Both fields are required in the results file and in a separate
+     * memory tagged with \"transcript-meta\" so the trend data is queryable
+     * even when the results file is missing or corrupted.
+     */
+    private static void appendTranscriptMetaAssessment(StringBuilder sb, CodingAgentJob job) {
+        String wsId = WorkstreamUtils.extractWorkstreamId(job.resolveWorkstreamUrl());
+        String jobId = job.getTaskId();
+
+        sb.append("TRANSCRIPT-META ASSESSMENT (REQUIRED)\n\n");
+        sb.append("Every retrospective must report two context-usage figures. These are\n");
+        sb.append("recorded alongside the existing turns/cost/tool-counts so we can track\n");
+        sb.append("how much context the agent burns before acting and how often it is\n");
+        sb.append("forced to compact mid-session.\n\n");
+
+        sb.append("(a) Upfront context cost. A ballpark token estimate of what is\n");
+        sb.append("    consumed BEFORE the agent acts: system prompt + mandatory /\n");
+        sb.append("    standing instructions + the job prompt. Estimate this from the\n");
+        sb.append("    transcript's initial messages -- the system prompt and the\n");
+        sb.append("    first user-role message, before the agent's first tool call.\n");
+        sb.append("    A coarse estimate (rounded to the nearest 500 tokens) is fine;\n");
+        sb.append("    if the transcript does not expose the prompt directly, report\n");
+        sb.append("    the byte length / 4 and note the approximation in the memory.\n\n");
+
+        sb.append("(b) Context-pressure frequency. The number of times during the\n");
+        sb.append("    session the agent had to summarize, compact, or otherwise\n");
+        sb.append("    dispose of earlier context to make room. Count the events\n");
+        sb.append("    visible in the transcript (e.g. explicit compact-tool calls,\n");
+        sb.append("    \"context budget exceeded\" tool messages, summarization\n");
+        sb.append("    invocations). If none are detectable, report 0 and say so.\n\n");
+
+        sb.append("Store these figures as a single dedicated memory tagged\n");
+        sb.append("\"transcript-meta\" (alongside the per-finding memories). The\n");
+        sb.append("content follows the same OBSERVED / WHY_SUBOPTIMAL /\n");
+        sb.append("SUGGESTED_IMPROVEMENT structure for downstream parsing, but the\n");
+        sb.append("OBSERVED section MUST lead with both numbers explicitly so a\n");
+        sb.append("trend query can grep them out:\n\n");
+
+        sb.append("  memory_store(\n");
+        sb.append("    namespace=\"self-improvement\",\n");
+        sb.append("    tags=[\"retrospective\", \"transcript-meta\",\n");
+        sb.append("            \"workstream:").append(wsId != null ? wsId : "").append("\",\n");
+        sb.append("            \"job:").append(jobId != null ? jobId : "").append("\",\n");
+        sb.append("            \"context-upfront\",\n");
+        sb.append("            \"context-pressure\"],\n");
+        sb.append("    content=(\"OBSERVED: upfront context cost = <N> tokens; \"\n");
+        sb.append("            \"context-pressure events = <M>.\\n\"\n");
+        sb.append("            \"WHY_SUBOPTIMAL: <why these figures matter, e.g.\\n\"\n");
+        sb.append("            \"'upfront cost dominates session budget' or 'no pressure\\n\"\n");
+        sb.append("            \"events in a <T>-turn session' or similar>\\n\"\n");
+        sb.append("            \"SUGGESTED_IMPROVEMENT: <one concrete action, e.g.\\n\"\n");
+        sb.append("            \"'trim the per-job prompt by <X> tokens' or 'no action\\n\"\n");
+        sb.append("            \"needed at this volume'>\")\n");
+        sb.append("  )\n\n");
+
+        sb.append("AND also write the same two numbers into the results file's\n");
+        sb.append("\"contextUpfrontTokenEstimate\" and \"contextPressureEvents\" fields\n");
+        sb.append("(see HOW TO STORE FINDINGS). Both the memory AND the result-file\n");
+        sb.append("fields are required; a missing entry means the trend data is\n");
+        sb.append("missing for this job.\n\n");
     }
 
     /** Appends graceful degradation instructions when no transcript is found. */
@@ -214,9 +314,17 @@ final class RetrospectivePromptBuilder {
         sb.append("            \"transcript recording failed, or session was very short.\")\n");
         sb.append("  )\n\n");
 
-        sb.append("Then write the results file and exit:\n");
+        sb.append("Then write the results file and exit. Because no transcript is\n");
+        sb.append("available, the context-upfront and context-pressure figures cannot\n");
+        sb.append("be measured -- record 0 for both so the trend data records a gap:\n\n");
+
         sb.append("  File: retrospective-results.json\n");
-        sb.append("  Content: {\"transcriptFound\": false, \"findingsCount\": 0}\n\n");
+        sb.append("  Content: {\n");
+        sb.append("    \"transcriptFound\": false,\n");
+        sb.append("    \"findingsCount\": 0,\n");
+        sb.append("    \"contextUpfrontTokenEstimate\": 0,\n");
+        sb.append("    \"contextPressureEvents\": 0\n");
+        sb.append("  }\n\n");
     }
 
     /** Appends forbidden actions. */
