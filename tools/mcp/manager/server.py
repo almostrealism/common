@@ -1612,7 +1612,9 @@ def _lint_prompt_for_commit_sequencing(prompt: str) -> list:
 
 @mcp.tool()
 def workstream_submit_task(
-    prompt: str,
+    prompt: str = "",
+    job_type: str = "",
+    command: str = "",
     workstream_id: str = "",
     target_branch: str = "",
     repo_url: str = "",
@@ -1652,14 +1654,31 @@ def workstream_submit_task(
     using Claude Code. The agent inherits the workstream's configuration
     (branch, repo, environment, allowed tools).
 
+    Two job types are supported:
+    - The default coding-agent job runs Claude Code against the repository
+      using ``prompt``.
+    - A shell-command job (``job_type="shell"`` or simply providing
+      ``command``) clones the repository (and optionally checks out a
+      branch), runs a single shell command in that working directory, and
+      publishes the command's stdout/stderr and exit code as a workstream
+      message. It never commits or pushes, so it is suited to read-only
+      commands such as running tests, builds, or inspection commands.
+
     You can resolve the target workstream by either:
     - Providing workstream_id explicitly
     - Providing target_branch (matched against registered workstreams)
 
     Args:
-        prompt: The task description for the coding agent. Be specific
-            about what files to change, what behavior to implement, and
-            any constraints.
+        prompt: The task description for the coding agent. Required for the
+            default coding-agent job; ignored for a shell-command job. Be
+            specific about what files to change, what behavior to implement,
+            and any constraints.
+        job_type: The job type to submit. Empty (default) or "coding" submits
+            a coding-agent job; "shell" submits a shell-command job that runs
+            ``command``. Providing ``command`` implies "shell".
+        command: The shell command to run for a shell-command job. Required
+            when job_type="shell" (or when used to imply a shell job); ignored
+            for a coding-agent job.
         workstream_id: Explicit workstream to submit to (from workstream_list).
         target_branch: Git branch to resolve workstream by (alternative to
             workstream_id). Must be paired with ``repo_url`` when more than
@@ -1821,6 +1840,16 @@ def workstream_submit_task(
         Dictionary with job_id and workstream_id on success.
     """
     _require_scope("submit")
+    shell_job = job_type == "shell" or bool(command)
+    if shell_job:
+        if not command:
+            return {"ok": False,
+                    "error": "command is required when job_type='shell'"}
+    elif not prompt:
+        return {"ok": False, "error": "prompt is required"}
+    err = _check_length(command, "command", MAX_PROMPT_LEN)
+    if err:
+        return err
     err = _check_length(prompt, "prompt", MAX_PROMPT_LEN)
     if err:
         return err
@@ -1970,7 +1999,10 @@ def workstream_submit_task(
             ],
         }
 
-    payload = {"prompt": prompt}
+    if shell_job:
+        payload = {"jobType": "shell", "command": command}
+    else:
+        payload = {"prompt": prompt}
     if workstream_id:
         payload["workstreamId"] = workstream_id
     if target_branch:

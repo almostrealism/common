@@ -534,6 +534,40 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertNotIn("startedAfter", payload)
 
     @patch.object(server, "_controller_post")
+    def test_submit_shell_job_type(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-s1", "jobType": "shell"}
+        result = server.workstream_submit_task(
+            job_type="shell", command="mvn -q test", workstream_id="ws-test")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["jobType"], "shell")
+        self.assertEqual(payload["command"], "mvn -q test")
+        self.assertNotIn("prompt", payload)
+        self.assertTrue(result["ok"])
+
+    @patch.object(server, "_controller_post")
+    def test_submit_shell_implied_by_command(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-s2"}
+        server.workstream_submit_task(command="ls -la", workstream_id="ws-test")
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["jobType"], "shell")
+        self.assertEqual(payload["command"], "ls -la")
+
+    def test_submit_shell_requires_command(self):
+        _grant_all_scopes()
+        result = server.workstream_submit_task(
+            job_type="shell", workstream_id="ws-test")
+        self.assertFalse(result["ok"])
+        self.assertIn("command is required", result["error"])
+
+    def test_submit_requires_prompt_or_command(self):
+        _grant_all_scopes()
+        result = server.workstream_submit_task(workstream_id="ws-test")
+        self.assertFalse(result["ok"])
+        self.assertIn("prompt is required", result["error"])
+
+    @patch.object(server, "_controller_post")
     def test_submit_error(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {"ok": False, "error": "No agents"}
