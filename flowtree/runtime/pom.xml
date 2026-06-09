@@ -5,7 +5,7 @@
 	<parent>
 		<artifactId>common</artifactId>
 		<groupId>org.almostrealism</groupId>
-		<version>0.74</version>
+		<version>0.75</version>
 		<relativePath>../../pom.xml</relativePath>
 	</parent>
 	<modelVersion>4.0.0</modelVersion>
@@ -19,37 +19,37 @@
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-flowtreeapi</artifactId>
-			<version>0.74</version>
+			<version>0.75</version>
 		</dependency>
 
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-flowtree-base</artifactId>
-			<version>0.74</version>
+			<version>0.75</version>
 		</dependency>
 
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-flowtree-agents</artifactId>
-			<version>0.74</version>
+			<version>0.75</version>
 		</dependency>
 
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-flowtree-python</artifactId>
-			<version>0.74</version>
+			<version>0.75</version>
 		</dependency>
 
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-graphpersist</artifactId>
-			<version>0.74</version>
+			<version>0.75</version>
 		</dependency>
 
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-utils-http</artifactId>
-			<version>0.74</version>
+			<version>0.75</version>
 		</dependency>
 
 		<!-- https://mvnrepository.com/artifact/org.apache.commons/commons-lang3 -->
