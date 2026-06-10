@@ -80,6 +80,19 @@ that contract and is blind to whatever backs it. So the PDSL path is a **Block-f
 for the DSP, and writes the result straight to the output line. `wrapBlockAsCellList` is
 **not** used. This is why the Block never needs to masquerade as a `CellList`.
 
+**Implemented (wire-first).** This runner now exists as `AudioSceneRealtimeRunner`
+(`org.almostrealism.studio`, `studio/compose`); `AudioScene.runnerRealTime` delegates to it,
+and the two strategies are selected by `MixdownManager.enablePdslMixdown`. Validated on the
+real curated library by `AudioScenePdslCutoverTest` (both paths non-silent and finite).
+Two runtime constraints surfaced and must be respected by callers/parity work:
+- **`channels ≥ 2`.** `MixdownManagerPdslAdapter.buildArgsMap` concatenates one per-channel
+  producer; `CollectionFeatures.concat` throws `UnsupportedOperationException` on a single
+  input (no differing axis). So the PDSL runner cannot drive a single-channel render
+  (`AudioScene.renderChannel`, which uses `List.of(channel)`, would trip this).
+- **Stereo write gating.** `WaveOutput.write` gates on the *minimum* frame count across
+  channels; the mono `mixdown_master` output is streamed to **both** stereo writers
+  (dual-mono) so the file is actually written.
+
 ## 6. Compile-reuse / `GeneratedOperation` pool exhaustion (cross-cutting blocker)
 
 Structurally-identical computations do **not** reuse a compiled native kernel: building

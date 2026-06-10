@@ -684,6 +684,15 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	public MixdownManager getMixdownManager() { return mixdown; }
 
 	/**
+	 * Returns the {@link PatternAudioBuffer} render cells created by the most recent
+	 * {@link #getCells} call. Used by {@link AudioSceneRealtimeRunner} to drive the
+	 * per-buffer pattern-prepare phase.
+	 *
+	 * @return the live render-cell list (not a copy)
+	 */
+	List<PatternAudioBuffer> getRenderCells() { return renderCells; }
+
+	/**
 	 * Returns the generation manager for ML-based audio generation integration.
 	 *
 	 * @return the generation manager
@@ -1227,67 +1236,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	public TemporalCellular runnerRealTime(MultiChannelAudioOutput output,
 										   List<Integer> channels,
 										   int bufferSize) {
-		final int[] currentFrame = {0};
-
-		if (channels == null) {
-			channels = IntStream.range(0, getChannelCount()).boxed().collect(Collectors.toList());
-		}
-
-		// Create per-buffer frame index for WaveCell external frame control
-		// This tracks position 0 to bufferSize-1 within each buffer
-		PackedCollection bufferFrameIndex = new PackedCollection(1);
-		Producer<PackedCollection> bufferFrameProducer = cp(bufferFrameIndex);
-
-		CellList cells = (CellList) getCells(output, channels, bufferSize,
-				() -> currentFrame[0], bufferFrameProducer);
-
-		// Per-frame operation (must be compilable)
-		Supplier<Runnable> frameOp = cells.tick();
-
-		// Create loop body: tick + increment buffer frame index
-		OperationList loopBody = new OperationList("RealTime Per-Frame Body");
-		loopBody.add(frameOp);
-		// Increment buffer frame index: bufferFrameIndex = bufferFrameIndex + 1
-		loopBody.add(a(1, cp(bufferFrameIndex), c(1.0).add(cp(bufferFrameIndex))));
-
-		return new TemporalCellular() {
-			@Override
-			public Supplier<Runnable> setup() {
-				return cells.setup();
-			}
-
-			@Override
-			public Supplier<Runnable> tick() {
-				OperationList tick = new OperationList("AudioScene RealTime Runner Tick");
-
-				// OUTSIDE LOOP: Reset buffer frame index and prepare pattern data
-				tick.add(() -> () -> bufferFrameIndex.setMem(0, 0));
-				for (PatternAudioBuffer renderCell : renderCells) {
-					tick.add(renderCell.prepareBatch());
-				}
-
-				// INSIDE LOOP: Compilable per-frame processing with frame index increment
-				tick.add(loop(loopBody, bufferSize));
-
-				// AFTER LOOP: Advance global frame position
-				tick.add(() -> () -> currentFrame[0] += bufferSize);
-				return tick;
-			}
-
-			@Override
-			public void reset() {
-				currentFrame[0] = 0;
-				cells.reset();
-				// Rewind the global clock so time-driven envelopes (volume,
-				// filter, AutomationManager outputs) start fresh on the next
-				// genome. Without this, evaluating multiple genomes in
-				// sequence makes every genome after the first run with the
-				// clock parked in the post-decay region of the volume
-				// envelope (gene 4 has scale = -1, a fade-out), so pattern
-				// channels come out near-silent.
-				time.getClock().setFrame(0);
-			}
-		};
+		return new AudioSceneRealtimeRunner(this).create(output, channels, bufferSize);
 	}
 
 	/**

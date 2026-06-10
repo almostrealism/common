@@ -182,21 +182,36 @@ allows) instead of being stuck with one sequential JNI loop.
   experiment need `/Users/Shared/Music/Samples` and `/Users/Shared/Music/pattern-factory.json`,
   which are absent on the M1. Copy them over before attempting real-scene verification.
 
-**Then the redesign work itself (open):**
-- **Production cutover (Block-forward runner, A/B flag).** `MixdownManager.createCells()` /
-  `createEfx()` and `EfxManager.apply()` are still the live Java path; the PDSL substrate
-  exists but is never invoked from production. The cutover is **not** a CellList splice: the
-  integration contract for real-time rendering is `TemporalCellular` (`setup`/`tick`/`reset`),
-  not `CellList`, and `runnerRealTime` already separates the pattern-prepare phase
-  (`PatternAudioBuffer.prepareBatch`) from the per-frame DSP loop. So the flag
-  (`MixdownManager.enablePdslMixdown` / `AR_PDSL_MIXDOWN`, default off) selects an
-  alternative `TemporalCellular` runner whose `tick()` keeps prepare unchanged, replaces the
-  DSP phase with one per-buffer `compiledPdslModel.forward(patternBuffer)`, and writes the
-  result straight to the output line. `wrapBlockAsCellList` is **not** the mechanism (see
-  [KNOWN_ISSUES.md](KNOWN_ISSUES.md) §5). The CellList runner stays as the A/B baseline.
-  Runner construction is being extracted into its own collaborator (AudioScene is over the
-  file-length limit). Known parity gap: the adapter applies one shared producer across
-  channels — per-channel-distinct automation is still open.
+**Then the redesign work itself:**
+- **Production cutover (Block-forward runner, A/B flag) — WIRED (wire-first), validated on
+  real samples.** Runner construction has been extracted from `AudioScene` into
+  `AudioSceneRealtimeRunner` (same package); `AudioScene.runnerRealTime` delegates to it, and
+  `AudioScene` is back under the file-length limit. The runner houses both strategies behind
+  `MixdownManager.enablePdslMixdown` (`AR_PDSL_MIXDOWN`, default off): the established CellList
+  path and a Block-forward PDSL path. The PDSL path keeps the pattern-prepare phase unchanged
+  (it still calls `getCells`, but does **not** tick the returned Java mixdown `CellList`),
+  feeds the consolidated render buffer's LEFT/MAIN region as a zero-copy `[channels,bufferSize]`
+  input to a once-compiled `mixdown_master` `CompiledModel`, runs one `forward()` per buffer,
+  and streams the output frame-by-frame to the master line. `wrapBlockAsCellList` is **not**
+  the mechanism (see [KNOWN_ISSUES.md](KNOWN_ISSUES.md) §5). Validated by
+  `AudioScenePdslCutoverTest` (real curated library): both paths render the same genome
+  non-silent and finite (CellList peak ≈ 1.0, PDSL peak ≈ 1.0), WAVs written to
+  `results/pdsl-cutover/` for by-ear A/B. **By-ear A/B confirmed (owner, 2026-06-09):** with
+  both paths rendered from a *single shared scene* (`AudioScenePdslCutoverTest.realSceneAbReview`
+  builds one scene and renders both DSP paths — a separate scene per path does **not** reproduce
+  the arrangement because scene construction uses unseeded chromosome factories) the **arrangement
+  is identical**; the PDSL render is the same track with *less DSP* and a hotter master, which is
+  the expected wire-first state. The remaining work is closing the DSP gap, not the pattern path.
+  **Accepted wire-first gaps:** PDSL input is the
+  LEFT/MAIN dry signal with wet derived internally (no separate WET voicing — not bit-parity);
+  mono master duplicated to both stereo writers (dual-mono); the unused Java mixdown CellList
+  is still built as a side effect of reusing `getCells`; the adapter requires `channels ≥ 2`
+  (single-channel `concat` is unsupported); automation (filter sweep, volume) advances once
+  per buffer rather than per frame (the PDSL runner ticks the clock by `bufferSize` each
+  `forward`, versus the CellList path's per-frame `time::tick`); and the master stage differs
+  (PDSL `scale(gain)+tanh` runs hotter than Java `masterBusGain+hard-clip`). Most importantly,
+  **the DSP is `mixdown_master` only — the full per-channel `EfxManager` chain is not yet in
+  PDSL.** Acoustic parity (next bullet) is the next pass.
 - **EfxManager PDSL rendition.** No PDSL file renders the EFX bus's automation-driven
   wet/dry path yet; `efx_channel.pdsl` is feedforward-only.
 - **Live genome swapping (goal #1) — mechanism exists, correctness not yet validated.**
