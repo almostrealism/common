@@ -222,6 +222,156 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	}
 
 	/**
+	 * Builds the argument map for the {@code mixdown_master_wet} layer, adding the
+	 * per-channel {@link EfxManager} feedforward parameters on top of the mixdown
+	 * parameters from {@link #buildArgsMap(MixdownManager, Config)}.
+	 *
+	 * <p>The added arguments render {@link EfxManager#apply} (the per-channel chain applied to
+	 * each voicing before the mixdown bus): the feedforward portion (gene-chosen filter, wet
+	 * level, automation) plus the recursive feedback grid — the PDSL analogue of the mixdown
+	 * efx bus's {@code .mself(transmission)} ({@code MixdownManager.createEfx}).</p>
+	 *
+	 * @param manager constructed mixdown manager (chromosomes already populated)
+	 * @param efx     constructed effects manager (chromosomes already populated)
+	 * @param config  structural configuration
+	 * @return populated argument map for {@code PdslLoader.buildLayer(..., "mixdown_master_wet", ...)}
+	 */
+	public static Map<String, Object> buildArgsMap(MixdownManager manager, EfxManager efx, Config config) {
+		Map<String, Object> args = buildArgsMap(manager, config);
+
+		// efx_filter_coeffs: producer([channels, fir_taps]) — the per-channel gene-chosen
+		// HP/LP coefficient bank from EfxManager.applyMixdownManager.java filter.
+		args.put("efx_filter_coeffs", efxFilterCoefficients(efx, config));
+
+		// efx_wet_level: producer([channels]) — delayLevels[ch,0] (maxWet already folded
+		// into the gene transform), the per-channel wet send level in EfxManager.apply().
+		args.put("efx_wet_level", perChannelProducer(config.channels, ch -> efxWetLevelProducer(efx, ch)));
+
+		// efx_automation: producer([channels]) — the 0.5*(1+automation_curve) modulation
+		// EfxManager.apply() applies to the wet path per buffer.
+		args.put("efx_automation", perChannelProducer(config.channels, ch -> efxAutomationProducer(efx, ch)));
+
+		// Recursive feedback grid — the PDSL analogue of MixdownManager.createEfx's
+		// .mself(fi(), transmission, fc(wetOut)). PDSL feedback is block-parallel
+		// (frame-quantized), so it approximates the per-sample Java recurrence.
+		//
+		// efx_fb_delay: producer([channels]) — per-channel feedback delay in samples
+		// (constant = config.delaySamples; must be < the ring buffer = signal_size).
+		PackedCollection fbDelay = new PackedCollection(config.channels);
+		double[] fbDelayData = new double[config.channels];
+		for (int ch = 0; ch < config.channels; ch++) {
+			fbDelayData[ch] = config.delaySamples;
+		}
+		fbDelay.setMem(fbDelayData);
+		args.put("efx_fb_delay", fbDelay);
+
+		// efx_fb_transmission: producer([channels, channels]) — the genome routing matrix
+		// scaled to a guaranteed-contraction (max row sum <= FEEDBACK_GAIN < 1) so the
+		// block-parallel feedback decays rather than diverges. Preserves the genome's
+		// channel-to-channel routing pattern from MixdownManager's transmission chromosome.
+		args.put("efx_fb_transmission", ADAPTER.multiply(transmissionMatrix(manager, config),
+				ADAPTER.c(FEEDBACK_GAIN / config.channels)));
+
+		// efx_fb_passthrough: producer([channels, channels]) — diagonal output level
+		// (the wet/output gain of the echo), mirroring fc(wetOut) as a static wet level.
+		args.put("efx_fb_passthrough", diagonalMatrix(config.channels, config.wetLevel));
+
+		// Fresh feedback ring state: buffers span channels * signal_size (one frame; the
+		// delay is < signal_size), heads one write position per channel.
+		PackedCollection fbBuffers = new PackedCollection(config.channels * config.signalSize);
+		fbBuffers.setMem(new double[config.channels * config.signalSize]);
+		PackedCollection fbHeads = new PackedCollection(config.channels);
+		fbHeads.setMem(new double[config.channels]);
+		args.put("fb_buffers", fbBuffers);
+		args.put("fb_heads", fbHeads);
+
+		return args;
+	}
+
+	/**
+	 * Feedback-grid contraction target: the scaled genome transmission's maximum row sum is
+	 * bounded by this value, keeping the block-parallel feedback stable (spectral radius is
+	 * bounded by the induced infinity-norm, i.e. the max row sum).
+	 */
+	private static final double FEEDBACK_GAIN = 0.6;
+
+	/**
+	 * Builds a row-major {@code [n, n]} diagonal matrix slot with {@code value} on the diagonal.
+	 *
+	 * @param n     matrix dimension
+	 * @param value the diagonal value
+	 * @return a {@code [n, n]} {@link PackedCollection} diagonal matrix
+	 */
+	private static PackedCollection diagonalMatrix(int n, double value) {
+		PackedCollection matrix = new PackedCollection(new TraversalPolicy(n, n));
+		double[] data = new double[n * n];
+		for (int i = 0; i < n; i++) {
+			data[i * n + i] = value;
+		}
+		matrix.setMem(data);
+		return matrix;
+	}
+
+	/**
+	 * Builds the {@code [channels, fir_taps]} per-channel efx filter coefficient bank from the
+	 * gene-driven cutoff ({@code 20000 * delayLevels[ch,3]}, clamped to a valid Nyquist range).
+	 *
+	 * <p><b>Wire-first approximation:</b> {@link EfxManager#applyFilter} selects high-pass OR
+	 * low-pass per channel via the decision gene ({@code delayLevels[ch,2]}) using a runtime
+	 * {@code choice(...)}. That selector is not generatable inside the compiled PDSL model
+	 * graph, so this renders a per-channel low-pass only (the same shape as the mixdown wet
+	 * filter). The high-pass option is dropped pending a graph-compatible per-channel filter
+	 * selection.</p>
+	 *
+	 * @param efx    the effects manager whose chromosomes are sampled
+	 * @param config structural configuration
+	 * @return shape-{@code [channels, fir_taps]} coefficient producer
+	 */
+	private static Producer<PackedCollection> efxFilterCoefficients(EfxManager efx, Config config) {
+		int firTaps = config.filterOrder + 1;
+		Chromosome<PackedCollection> levels = efx.getDelayLevels();
+		Producer<PackedCollection>[] perChannel = new Producer[config.channels];
+		for (int ch = 0; ch < config.channels; ch++) {
+			Producer<PackedCollection> cutoffUnit = levels.valueAt(ch, 3).getResultant(ADAPTER.c(1.0));
+			Producer<PackedCollection> cutoffHz = ADAPTER.multiply(cutoffUnit, ADAPTER.c(20000.0));
+			Producer<PackedCollection> clamped = ADAPTER.max(ADAPTER.c(20.0),
+					ADAPTER.min(cutoffHz, ADAPTER.c(0.49 * config.sampleRate)));
+			perChannel[ch] = ADAPTER.lowPassCoefficients(clamped, config.sampleRate, config.filterOrder);
+		}
+		CollectionProducer concatenated = ADAPTER.concat(perChannel);
+		return concatenated.reshape(new TraversalPolicy(config.channels, firTaps));
+	}
+
+	/**
+	 * Produces a shape-{@code [1]} per-channel efx wet-level multiplier
+	 * ({@code delayLevels[ch,0]}).
+	 *
+	 * @param efx     the effects manager whose chromosomes are sampled
+	 * @param channel the source channel index
+	 * @return wet-level producer
+	 */
+	private static Producer<PackedCollection> efxWetLevelProducer(EfxManager efx, int channel) {
+		return efx.getDelayLevels().valueAt(channel, 0).getResultant(ADAPTER.c(1.0));
+	}
+
+	/**
+	 * Produces a shape-{@code [1]} per-channel efx automation modulation
+	 * ({@code 0.5 * (1 + automation_curve)}), or unity when automation is disabled.
+	 *
+	 * @param efx     the effects manager whose chromosomes are sampled
+	 * @param channel the source channel index
+	 * @return automation modulation producer
+	 */
+	private static Producer<PackedCollection> efxAutomationProducer(EfxManager efx, int channel) {
+		if (!EfxManager.enableAutomation) {
+			return ADAPTER.c(1.0);
+		}
+		Producer<PackedCollection> value = efx.getAutomationManager().getAggregatedValue(
+				efx.getDelayAutomation().valueAt(channel), null, 0.0);
+		return ADAPTER.multiply(ADAPTER.c(0.5), ADAPTER.add(ADAPTER.c(1.0), value));
+	}
+
+	/**
 	 * Builds a shape-{@code [channels]} producer by concatenating one
 	 * shape-{@code [1]} producer per channel. Used to supply the per-channel
 	 * automation arguments (HP cutoff, volume) that the PDSL layers subscript

@@ -286,6 +286,9 @@ makes a graph-analysis pass unnecessary. Do not revive these; build on PDSL.
 - **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** — live platform constraints (Metal 31-buffer
   limit, `floor()` resample ambiguity, cache-persist requirement, compile-reuse /
   kernel-pool exhaustion, real-scene dispatch gap).
+- **[EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md)** — phased plan for the next phase:
+  bringing the full per-channel `EfxManager` chain + WET voicing + master parity into the
+  PDSL path (the cutover's remaining DSP gap). Source-grounded, A/B-testable per stage.
 - **[../SIGNATURE_AGGREGATION_GAP.md](../SIGNATURE_AGGREGATION_GAP.md)** — the cross-cutting
   compile-reuse blocker (null signature on argument-aggregation targets →
   `GeneratedOperation` pool exhaustion). Lives one level up because it is not

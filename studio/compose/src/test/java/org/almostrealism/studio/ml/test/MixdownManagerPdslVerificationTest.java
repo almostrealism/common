@@ -49,6 +49,7 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.IntToDoubleFunction;
@@ -291,6 +292,92 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	}
 
 	/**
+	 * Smoke test for the {@code mixdown_master_wet} layer: it slices the MAIN rows
+	 * {@code [0, channels)} into the dry arm and the WET rows {@code [channels, 2*channels)}
+	 * into the efx arm, then runs the per-channel efx feedforward chain and the recursive
+	 * feedback grid. This builds the full wet layer (with the efx feedforward neutralised and a
+	 * stable no-regeneration feedback) and asserts it compiles, runs, and produces finite,
+	 * non-silent output. (Exact equality against the single-input {@code mixdown_master} no
+	 * longer holds: the wet layer's efx arm now applies the feedback grid rather than the
+	 * feedforward {@code route} of the single-input layer.) The full efx behaviour is judged
+	 * by ear via the real-scene A/B.
+	 *
+	 * @throws IOException if a WAV cannot be written
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void mixdownMasterWetRoutesMainAndWetHalves() throws IOException {
+		File outputDir = new File("results/pdsl-audio-dsp");
+		outputDir.mkdirs();
+
+		MixdownManager mixdown = buildFixtureMixdown();
+		runFixtureSetup(mixdown);
+
+		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
+				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
+				WET_LEVEL, PDSL_DELAY_SAMPLES);
+		IntToDoubleFunction source =
+				t -> Math.sin(2.0 * Math.PI * SOURCE_FREQ_BASE * t / SAMPLE_RATE);
+
+		double[] single = renderPdslMaster(mixdown, "mixdown_master", config, CHANNELS,
+				source, TOTAL_FRAMES, false,
+				new File(outputDir, "mixdown_master_single.wav"));
+
+		// Neutralise the per-channel efx feedforward (wet level 0 -> accum_blocks(identity, 0)
+		// reduces to dry) and supply a stable no-regeneration feedback (transmission 0 ->
+		// the feedback grid passes the delayed signal through without recirculating), so the
+		// layer exercises the full slice + efx + feedback path without diverging. The efx and
+		// feedback behaviour is judged by ear via the real-scene A/B.
+		int firTaps = PDSL_FILTER_ORDER + 1;
+		PackedCollection efxCoeffs = new PackedCollection(new TraversalPolicy(CHANNELS, firTaps));
+		PackedCollection efxWet = new PackedCollection(new TraversalPolicy(CHANNELS));
+		PackedCollection efxAuto = new PackedCollection(new TraversalPolicy(CHANNELS));
+		double[] ones = new double[CHANNELS];
+		Arrays.fill(ones, 1.0);
+		efxAuto.setMem(ones);
+
+		PackedCollection fbDelay = new PackedCollection(new TraversalPolicy(CHANNELS));
+		double[] fbDelayData = new double[CHANNELS];
+		Arrays.fill(fbDelayData, PDSL_DELAY_SAMPLES);
+		fbDelay.setMem(fbDelayData);
+		PackedCollection fbTransmission = new PackedCollection(new TraversalPolicy(CHANNELS, CHANNELS));
+		PackedCollection fbPassthrough = new PackedCollection(new TraversalPolicy(CHANNELS, CHANNELS));
+		double[] passthroughData = new double[CHANNELS * CHANNELS];
+		for (int i = 0; i < CHANNELS; i++) passthroughData[i * CHANNELS + i] = 1.0;
+		fbPassthrough.setMem(passthroughData);
+		PackedCollection fbBuffers = new PackedCollection(CHANNELS * PDSL_SIGNAL_SIZE);
+		PackedCollection fbHeads = new PackedCollection(CHANNELS);
+
+		Map<String, Object> neutralEfx = new HashMap<>();
+		neutralEfx.put("efx_filter_coeffs", efxCoeffs);
+		neutralEfx.put("efx_wet_level", efxWet);
+		neutralEfx.put("efx_automation", efxAuto);
+		neutralEfx.put("efx_fb_delay", fbDelay);
+		neutralEfx.put("efx_fb_transmission", fbTransmission);
+		neutralEfx.put("efx_fb_passthrough", fbPassthrough);
+		neutralEfx.put("fb_buffers", fbBuffers);
+		neutralEfx.put("fb_heads", fbHeads);
+
+		double[] wet = renderPdslMaster(mixdown, "mixdown_master_wet", config, 2 * CHANNELS,
+				neutralEfx, source, TOTAL_FRAMES, false,
+				new File(outputDir, "mixdown_master_wet_equal.wav"));
+
+		Assert.assertEquals("Both layers must produce the same sample count",
+				single.length, wet.length);
+
+		double energy = 0.0;
+		for (int i = 0; i < wet.length; i++) {
+			Assert.assertTrue("mixdown_master_wet produced a non-finite sample at " + i,
+					Double.isFinite(wet[i]));
+			energy += wet[i] * wet[i];
+		}
+		log(String.format("mixdown_master_wet smoke: samples=%d energy=%.6f", wet.length, energy));
+
+		Assert.assertTrue("mixdown_master_wet output must be non-silent (energy=" + energy + ")",
+				energy > 1e-9);
+	}
+
+	/**
 	 * Writes a WAV file containing the sample-by-sample difference between the Java and
 	 * PDSL paths, normalised so the loudest absolute value sits at ±0.95 (so the diff
 	 * is audible even when the absolute deviation is small). The applied scale factor
@@ -379,7 +466,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
 				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
 				WET_LEVEL, PDSL_DELAY_SAMPLES);
-		return renderPdslMaster(mixdown, "mixdown_master", config,
+		return renderPdslMaster(mixdown, "mixdown_master", config, CHANNELS,
 				t -> Math.sin(2.0 * Math.PI * SOURCE_FREQ_BASE * t / SAMPLE_RATE),
 				TOTAL_FRAMES, false, outputFile);
 	}
@@ -396,15 +483,41 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @return mono audio samples
 	 */
 	private double[] renderPdslMaster(MixdownManager mixdown, String layerName,
-			MixdownManagerPdslAdapter.Config config, IntToDoubleFunction sampleAt,
+			MixdownManagerPdslAdapter.Config config, int inputChannels, IntToDoubleFunction sampleAt,
+			int totalFrames, boolean advanceClock, File outputFile) throws IOException {
+		return renderPdslMaster(mixdown, layerName, config, inputChannels,
+				Collections.emptyMap(), sampleAt, totalFrames, advanceClock, outputFile);
+	}
+
+	/**
+	 * Compiles {@code layerName} from {@code mixdown}'s genome (with {@code extraArgs} merged
+	 * over the adapter-built argument map) and renders {@code totalFrames} frames through it,
+	 * drawing each input sample (shared across all {@code inputChannels} rows) from
+	 * {@code sampleAt}. Writes the mono output to {@code outputFile} and returns the samples.
+	 *
+	 * @param mixdown       constructed mixdown manager whose chromosomes drive the args
+	 * @param layerName     the PDSL layer to build
+	 * @param config        structural configuration
+	 * @param inputChannels number of input rows to fill (e.g. {@code 2*channels} for the wet layer)
+	 * @param extraArgs     extra argument-map entries merged over the adapter args (may be empty)
+	 * @param sampleAt      supplies the input sample value at an absolute frame index
+	 * @param totalFrames   number of frames to render
+	 * @param advanceClock  whether to advance the shared clock one buffer per pass
+	 * @param outputFile    destination WAV file
+	 * @return mono audio samples
+	 */
+	private double[] renderPdslMaster(MixdownManager mixdown, String layerName,
+			MixdownManagerPdslAdapter.Config config, int inputChannels,
+			Map<String, Object> extraArgs, IntToDoubleFunction sampleAt,
 			int totalFrames, boolean advanceClock, File outputFile) throws IOException {
 		int sig = config.signalSize;
 		Map<String, Object> args = MixdownManagerPdslAdapter.buildArgsMap(mixdown, config);
+		args.putAll(extraArgs);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_manager.pdsl");
 
-		TraversalPolicy inputShape = new TraversalPolicy(CHANNELS, sig);
+		TraversalPolicy inputShape = new TraversalPolicy(inputChannels, sig);
 		Block block = loader.buildLayer(program, layerName, inputShape, args);
 
 		Model model = new Model(inputShape);
@@ -424,7 +537,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		float[] floatSamples = new float[samples.length];
 
 		PackedCollection input = new PackedCollection(inputShape);
-		double[] inData = new double[CHANNELS * sig];
+		double[] inData = new double[inputChannels * sig];
 
 		// When advanceClock is set, step the shared clock forward one buffer's worth of frames
 		// after each forward pass, so the genome/automation producers (HP/LP cutoffs, volume)
@@ -436,7 +549,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 			int sampleOffset = pass * sig;
 			for (int t = 0; t < sig; t++) {
 				double v = sampleAt.applyAsDouble(sampleOffset + t);
-				for (int c = 0; c < CHANNELS; c++) {
+				for (int c = 0; c < inputChannels; c++) {
 					inData[c * sig + t] = v;
 				}
 			}
@@ -483,7 +596,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 				CHANNELS, DEMO_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
 				DEMO_WET_LEVEL, DEMO_DELAY_SAMPLES);
 		File demoWav = new File(outputDir, "pdsl_mixdown_looped_sample.wav");
-		double[] out = renderPdslMaster(mixdown, "mixdown_master", config, looped,
+		double[] out = renderPdslMaster(mixdown, "mixdown_master", config, CHANNELS, looped,
 				(int) (DEMO_SECONDS * SAMPLE_RATE), true, demoWav);
 		double e = energy(out, 0);
 
@@ -769,7 +882,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
 				WET_LEVEL, PDSL_DELAY_SAMPLES);
 		File probeWav = new File("results/pdsl-audio-dsp/pdsl_main_bus_probe.wav");
-		double[] out = renderPdslMaster(mixdown, "mixdown_main_bus", config, looped,
+		double[] out = renderPdslMaster(mixdown, "mixdown_main_bus", config, CHANNELS, looped,
 				TOTAL_FRAMES, false, probeWav);
 
 		int firstBad = -1;

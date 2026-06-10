@@ -213,16 +213,19 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 	 * <p>The Java pattern-prepare phase is reused unchanged (via
 	 * {@link AudioScene#getCells}, which populates the render cells and the consolidated
 	 * render buffer), but the per-frame {@link CellList} it returns is <em>not</em> ticked.
-	 * Instead, each tick runs the compiled PDSL {@code mixdown_master} {@link Block} once
-	 * over the whole buffer and streams its output to the master line.</p>
+	 * Instead, each tick runs a compiled PDSL mixdown {@link Block} once over the whole
+	 * buffer and streams its output to the master line. When effects are enabled the layer
+	 * is {@code mixdown_master_wet}, which reads the MAIN voicing (rows {@code [0,channels)}
+	 * of the consolidated buffer) for the dry mix and the separately-rendered WET voicing
+	 * (rows {@code [channels,2*channels)}) for the efx bus, matching the Java MAIN+WET
+	 * routing; with effects off it is the single-input {@code mixdown_master}.</p>
 	 *
 	 * <p><b>Wire-first scope.</b> This path currently:</p>
 	 * <ul>
-	 *   <li>feeds the per-channel <em>dry</em> input from the LEFT/MAIN pattern audio
-	 *       (the first {@code channels} ranges of the consolidated buffer) and lets the
-	 *       PDSL layer derive the wet bus internally — it does not consume a separately
-	 *       rendered WET voicing, so it is not bit-parity with the Java MAIN+WET path;</li>
-	 *   <li>writes a mono master (the LEFT writer);</li>
+	 *   <li>writes a mono master (the LEFT writer) duplicated to both stereo channels;</li>
+	 *   <li>renders the {@code mixdown_master}/{@code mixdown_master_wet} DSP only — the
+	 *       full per-channel {@code EfxManager} chain and the reverb network are not yet in
+	 *       PDSL, so it is not bit-parity with the Java path;</li>
 	 *   <li>still builds (and compiles) the unused Java mixdown {@link CellList} as a
 	 *       side effect of reusing {@code getCells} for pattern preparation.</li>
 	 * </ul>
@@ -248,27 +251,40 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		CellList cells = (CellList) scene.getCells(output, channels, bufferSize,
 				() -> currentFrame[0], bufferFrameProducer);
 
-		// LEFT/MAIN pattern audio occupies the first channelCount ranges of the
-		// consolidated buffer, so a zero-copy [channels, bufferSize] view over offset 0
-		// is exactly the per-channel dry input the PDSL mixdown_master layer consumes.
-		PackedCollection consolidated = scene.getConsolidatedRenderBuffer();
-		PackedCollection pdslInput = consolidated.range(
-				new TraversalPolicy(channelCount, bufferSize), 0);
+		// Choose the DSP layer based on whether a separate WET voicing was rendered.
+		// AudioScene fills the consolidated buffer in the order
+		// [LEFT-MAIN(N), LEFT-WET(N), RIGHT-MAIN(N), RIGHT-WET(N)] when efx is enabled, so:
+		//   - efx on:  the first 2*N ranges (LEFT-MAIN then LEFT-WET) are contiguous, and
+		//              mixdown_master_wet reads MAIN from rows [0,N) and WET from rows [N,2N).
+		//   - efx off: there are no WET ranges; mixdown_master reads the single MAIN region
+		//              and derives wet internally.
+		// Either way a single zero-copy view over offset 0 is the model input.
+		boolean wetVoicing = MixdownManager.enableEfx;
+		int inputChannels = wetVoicing ? channelCount * 2 : channelCount;
+		String layerName = wetVoicing ? "mixdown_master_wet" : "mixdown_master";
 
-		// Compile the PDSL mixdown_master layer once. Structurally independent of the
-		// genome — only the chromosome-backed PackedCollection contents change on
-		// assignGenome — so the compiled model survives genome swaps without recompilation.
+		PackedCollection consolidated = scene.getConsolidatedRenderBuffer();
+		TraversalPolicy inputShape = new TraversalPolicy(inputChannels, bufferSize);
+		PackedCollection pdslInput = consolidated.range(inputShape, 0);
+
+		// Compile the PDSL mixdown layer once. Structurally independent of the genome —
+		// only the chromosome-backed PackedCollection contents change on assignGenome —
+		// so the compiled model survives genome swaps without recompilation. The args are
+		// keyed by the per-region channel count regardless of the doubled input rows.
 		MixdownManager mixdown = scene.getMixdownManager();
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
 				channelCount, bufferSize, scene.getSampleRate(),
 				pdslFilterOrder, pdslWetLevel, pdslDelaySamples);
-		Map<String, Object> args = MixdownManagerPdslAdapter.buildArgsMap(mixdown, config);
+		// The wet layer also renders the per-channel EfxManager feedforward chain, so it
+		// needs the efx genome args; the single-input layer does not.
+		Map<String, Object> args = wetVoicing
+				? MixdownManagerPdslAdapter.buildArgsMap(mixdown, scene.getEfxManager(), config)
+				: MixdownManagerPdslAdapter.buildArgsMap(mixdown, config);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource(MIXDOWN_PDSL_RESOURCE);
 
-		TraversalPolicy inputShape = new TraversalPolicy(channelCount, bufferSize);
-		Block block = loader.buildLayer(program, "mixdown_master", inputShape, args);
+		Block block = loader.buildLayer(program, layerName, inputShape, args);
 
 		Model model = new Model(inputShape);
 		model.add(block);

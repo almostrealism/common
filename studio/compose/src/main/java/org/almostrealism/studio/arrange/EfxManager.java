@@ -192,6 +192,53 @@ public class EfxManager implements CellFeatures {
 	public List<Integer> getWetChannels() { return wetChannels; }
 
 	/**
+	 * Returns the per-channel delay-time genes (delay length as a beat multiple).
+	 * Exposed for {@link MixdownManagerPdslAdapter} to source the PDSL efx delay length.
+	 *
+	 * @return the delay-time chromosome
+	 */
+	Chromosome<PackedCollection> getDelayTimes() { return delayTimes; }
+
+	/**
+	 * Returns the per-channel delay-level genes (index 0 = wet level, 1 = feedback gain,
+	 * 2 = HP/LP filter decision, 3 = cutoff). Exposed for {@link MixdownManagerPdslAdapter}.
+	 *
+	 * @return the delay-level chromosome
+	 */
+	Chromosome<PackedCollection> getDelayLevels() { return delayLevels; }
+
+	/**
+	 * Returns the per-channel delay-automation genes. Exposed for
+	 * {@link MixdownManagerPdslAdapter} to source the PDSL efx automation modulation.
+	 *
+	 * @return the delay-automation chromosome
+	 */
+	Chromosome<PackedCollection> getDelayAutomation() { return delayAutomation; }
+
+	/**
+	 * Returns the automation manager driving time-varying effect modulation.
+	 * Exposed for {@link MixdownManagerPdslAdapter}.
+	 *
+	 * @return the automation manager
+	 */
+	AutomationManager getAutomationManager() { return automation; }
+
+	/**
+	 * Returns the current beat duration in seconds. Exposed for
+	 * {@link MixdownManagerPdslAdapter} to convert beat-multiple delays to samples.
+	 *
+	 * @return the beat duration in seconds
+	 */
+	double getBeatDuration() { return beatDuration.getAsDouble(); }
+
+	/**
+	 * Returns the audio sample rate. Exposed for {@link MixdownManagerPdslAdapter}.
+	 *
+	 * @return the sample rate in Hz
+	 */
+	int getSampleRate() { return sampleRate; }
+
+	/**
 	 * Sets the list of channel indices that should receive wet effects processing.
 	 *
 	 * @param wetChannels list of zero-based channel indices
