@@ -323,14 +323,8 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	/** One-shot setup operation compiled during the first {@link #getCells} call. */
 	private OperationList setup;
 
-	/** Pattern audio buffers created for each channel during setup. */
-	private List<PatternAudioBuffer> renderCells = new ArrayList<>();
-
-	/** Consolidated backing buffer for all render cell outputs; allocated during {@code getCells}. */
-	private PackedCollection consolidatedRenderBuffer;
-
-	/** Index into the consolidated render buffer for the next allocation. */
-	private int renderBufferIndex;
+	/** Consolidated pattern-render storage and render-cell tracking for runner builds. */
+	private final PatternRenderBuffers renderBuffers = new PatternRenderBuffers();
 
 	/** The active cell list produced by the most recent {@code getCells} call. */
 	private CellList activeCells;
@@ -675,7 +669,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 *
 	 * <p>Exposed for testing to verify that output buffer consolidation is active.</p>
 	 */
-	public PackedCollection getConsolidatedRenderBuffer() { return consolidatedRenderBuffer; }
+	public PackedCollection getConsolidatedRenderBuffer() { return renderBuffers.getBuffer(); }
 	/**
 	 * Returns the mixdown manager that handles delay, reverb, and final mix bus processing.
 	 *
@@ -688,9 +682,9 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 * {@link #getCells} call. Used by {@link AudioSceneRealtimeRunner} to drive the
 	 * per-buffer pattern-prepare phase.
 	 *
-	 * @return the live render-cell list (not a copy)
+	 * @return the render cells from the current build
 	 */
-	List<PatternAudioBuffer> getRenderCells() { return renderCells; }
+	List<PatternAudioBuffer> getRenderCells() { return renderBuffers.getCells(); }
 
 	/**
 	 * Returns the generation manager for ML-based audio generation integration.
@@ -1029,14 +1023,13 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		long start = System.nanoTime();
 		try {
 			setup = new OperationList("AudioScene Setup");
-			renderCells = new ArrayList<>();
 			addCommonSetup(setup);
 			setup.add(() -> () -> patterns.setTuning(tuning));
 			setup.add(sections.setup());
 
 			// Consolidate render buffers into one root so the compiled Loop collapses
 			// all PatternAudioBuffer arguments into a single kernel argument.
-			consolidateRenderBuffers(channels.size(), bufferSize);
+			renderBuffers.consolidate(channels.size(), bufferSize);
 			efx.consolidateFilterBuffers(channels.size(), bufferSize);
 
 			if (activeCells != null) {
@@ -1056,33 +1049,6 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		} finally {
 			getCellsTime.addEntry(System.nanoTime() - start);
 		}
-	}
-
-	/**
-	 * Pre-allocates a single contiguous buffer for all {@link PatternAudioBuffer}
-	 * output buffers.
-	 *
-	 * <p>Each {@link PatternAudioBuffer} receives a delegate (range) into this
-	 * consolidated buffer instead of its own independent {@link PackedCollection}.
-	 * When the compiled {@code Loop} scope collects arguments, the scope's
-	 * deduplication resolves each delegate to the shared root, collapsing all
-	 * render buffer arguments into a single kernel argument.</p>
-	 *
-	 * <p>The total number of render cells is {@code channelCount x 4}
-	 * (MAIN + WET voicing x LEFT + RIGHT stereo).</p>
-	 *
-	 * @param channelCount number of audio channels
-	 * @param bufferSize   frames per render buffer
-	 */
-	private void consolidateRenderBuffers(int channelCount, int bufferSize) {
-		int totalRenderCells = channelCount * 4;
-		consolidatedRenderBuffer = new PackedCollection(bufferSize * totalRenderCells);
-		// Freshly allocated device memory is not guaranteed to be zeroed. This buffer is
-		// read before every region has been rendered (the PDSL runner performs a forward
-		// pass at build time to obtain its output handle), and any garbage read there is
-		// written into stateful DSP rings where feedback can recirculate it indefinitely.
-		consolidatedRenderBuffer.fill(0.0);
-		renderBufferIndex = 0;
 	}
 
 	/**
@@ -1176,22 +1142,16 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 									  Producer<PackedCollection> waveCellFrame) {
 		Supplier<AudioSceneContext> ctx = () -> getContext(List.of(channel));
 
-		PackedCollection outputBuffer = null;
-		if (consolidatedRenderBuffer != null) {
-			outputBuffer = consolidatedRenderBuffer.range(
-					shape(bufferSize), renderBufferIndex * bufferSize);
-			renderBufferIndex++;
-		}
-
 		PatternAudioBuffer renderCell = new PatternAudioBuffer(
-				patterns, ctx, channel, bufferSize, frameSupplier, outputBuffer);
+				patterns, ctx, channel, bufferSize, frameSupplier,
+				renderBuffers.nextRegion(bufferSize));
 
 		setup.add(renderCell.setup());
 		setup.add(renderCell.prepareBatch());
 
 		CellList cells = efx.apply(channel, renderCell.getOutputProducer(),
 				getTotalDuration(), setup, waveCellFrame);
-		renderCells.add(renderCell);
+		renderBuffers.add(renderCell);
 
 		return cells;
 	}
@@ -1356,11 +1316,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			activeCells = null;
 		}
 
-		if (consolidatedRenderBuffer != null) {
-			consolidatedRenderBuffer.destroy();
-			consolidatedRenderBuffer = null;
-		}
-
+		renderBuffers.destroy();
 		efx.destroyConsolidatedBuffers();
 		activeInstances.remove(this);
 	}

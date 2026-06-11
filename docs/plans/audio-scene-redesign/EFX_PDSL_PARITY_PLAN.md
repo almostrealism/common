@@ -349,11 +349,13 @@ stage), `MixdownManagerPdslVerificationTest` (energy/peak parity, new probes).
   sharing identical prep).
 
 ## G. Repo-health note
-`AudioScene.java` is ~1486/1500 lines. Add new WET-routing/lean-prep behavior to
-`AudioSceneRealtimeRunner`, not back into `AudioScene`. Consider extracting consolidated
-render-buffer management (`consolidateRenderBuffers` + `getConsolidatedRenderBuffer` +
-render-cell tracking) into its own collaborator to drop `AudioScene` under the threshold;
-raise with the owner before any edit that would push it over 1500.
+**DONE (2026-06-11, merge prep):** consolidated render-buffer management was extracted
+from `AudioScene` into the `PatternRenderBuffers` collaborator (region hand-out defines
+the voicing layout; zero-filled at allocation), dropping `AudioScene` to ~1447 lines,
+and `PdslInterpreter` (which had hit the 1600-line checkstyle cap) was split: the
+built-in function library now lives in `PdslBuiltins` with the shared `PdslFeatures`
+mixin, leaving the interpreter at ~1120 lines. Add new WET-routing/lean-prep behavior to
+`AudioSceneRealtimeRunner`, not back into `AudioScene`.
 
 ## H. efx-path divergence — candidate mechanisms (investigation 2026-06-10)
 
