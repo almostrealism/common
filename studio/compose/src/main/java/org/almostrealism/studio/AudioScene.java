@@ -1077,6 +1077,11 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	private void consolidateRenderBuffers(int channelCount, int bufferSize) {
 		int totalRenderCells = channelCount * 4;
 		consolidatedRenderBuffer = new PackedCollection(bufferSize * totalRenderCells);
+		// Freshly allocated device memory is not guaranteed to be zeroed. This buffer is
+		// read before every region has been rendered (the PDSL runner performs a forward
+		// pass at build time to obtain its output handle), and any garbage read there is
+		// written into stateful DSP rings where feedback can recirculate it indefinitely.
+		consolidatedRenderBuffer.fill(0.0);
 		renderBufferIndex = 0;
 	}
 

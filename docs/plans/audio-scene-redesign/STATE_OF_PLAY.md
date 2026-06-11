@@ -215,6 +215,23 @@ allows) instead of being stuck with one sequential JNI loop.
   validated by ear — see [EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md) for the per-stage
   detail and the remaining follow-ups (true stereo, graph-compatible HP/LP filter choice,
   per-frame automation).
+  **Status update (2026-06-11): LEVEL/SWEEP PARITY REACHED on the full 40s A/B with a
+  faithful (reverb-ON) control.** Six independent defects were found and fixed (the
+  `sum_channels` channel-conflation that collapsed the whole mix to channel 0; NaN
+  poisoning of stateful rings via the pre-setup warm-up forward; the missing
+  `AudioPassFilter` ±0.99 input clamps and [10, 20000] cutoff bound; windowed-sinc FIR
+  slope replaced by the truncated impulse response of Java's exact biquad; per-buffer
+  slot delivery for all time-varying automation; and the reverb arm's gain structure
+  mirrored to Java's `DelayNetwork`). The master is now `clip(±0.99); lowpass;
+  scale(gain); clip(±1)`, matching Java's hard limiter (the earlier tanh choice was
+  superseded once levels mattered). Windowed RMS ratios 0.88–1.03 across the render,
+  overall 0.94; the audible high-pass sweep tracks in both. The A/B scene is now
+  reproducible across runs (persisted `scene-settings.json` + fixed genome seed); the
+  PDSL steady-state tick is ~20 ms per 8192-frame buffer (~9× faster than real time),
+  with render wall-clock dominated by one-time compilation (mostly the unused Java
+  CellList that pattern prep still builds). Details + remaining accepted approximations
+  (per-channel apply-echo on the dry bus, per-buffer automation steps, reverb diffusion
+  texture) in [EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md) §0b.
 - **Stereo (wanted, not yet implemented).** The PDSL path is currently dual-mono (one master
   duplicated to both writers). True stereo IS a real, expected feature — many input samples
   are stereo with distinct L/R channels that users expect carried through independently. It

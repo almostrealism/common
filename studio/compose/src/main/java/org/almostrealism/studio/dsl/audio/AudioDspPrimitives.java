@@ -92,6 +92,7 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 		interpreter.registerPrimitive("lowpass", self::dispatchLowpass);
 		interpreter.registerPrimitive("highpass", self::dispatchHighpass);
 		interpreter.registerPrimitive("biquad", self::dispatchBiquad);
+		interpreter.registerPrimitive("clip", self::dispatchClip);
 		interpreter.registerPrimitive("delay", self::dispatchDelay);
 		interpreter.registerPrimitive("lfo", self::dispatchLfo);
 		interpreter.registerPrimitive("route", self::dispatchRoute);
@@ -141,6 +142,36 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 		int sampleRate = PdslPrimitiveContext.toInt(args.get(1));
 		int order = PdslPrimitiveContext.toInt(args.get(2));
 		return firFilterBlock("highpass", highPassCoefficients(cutoff, sampleRate, order));
+	}
+
+	/**
+	 * {@code clip(lo, hi)} — element-wise hard clamp of the signal into {@code [lo, hi]}.
+	 * This is the PDSL counterpart of the two hard bounds in the Java mixdown chain:
+	 * {@link org.almostrealism.audio.filter.AudioPassFilter} clamps its input to
+	 * {@code [-MAX_INPUT, MAX_INPUT]} every sample before filtering, and the master bus
+	 * applies {@code bound(in * gain, -1, 1)} as its limiter. Stateless and fully
+	 * vectorised, so it composes with any buffer shape.
+	 *
+	 * @param args the two bound arguments (lo, hi)
+	 * @param ctx  the primitive context
+	 * @return a clamp block factory
+	 */
+	private Function<TraversalPolicy, Block> dispatchClip(List<Object> args, PdslPrimitiveContext ctx) {
+		if (args.size() != 2) {
+			throw new PdslParseException(
+					"clip() expects 2 arguments (lo, hi), got " + args.size());
+		}
+		double lo = toDouble(args.get(0));
+		double hi = toDouble(args.get(1));
+		if (lo >= hi) {
+			throw new PdslParseException(
+					"clip() requires lo < hi, got lo=" + lo + " hi=" + hi);
+		}
+		// bound() delegates to min()/max(), which collapse to a scalar shape when the two
+		// operand sizes differ — so the bounds must be expanded to the block shape for the
+		// clamp to stay element-wise over the whole buffer.
+		return shape -> new ForwardOnlyBlock(layer("clip", shape, shape,
+				input -> min(max(input, constant(shape, lo)), constant(shape, hi))));
 	}
 
 	/** {@code biquad(b0, b1, b2, a1, a2, history)} — stateful biquad IIR. */

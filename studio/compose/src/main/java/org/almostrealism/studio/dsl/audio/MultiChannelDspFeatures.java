@@ -76,7 +76,11 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 							captured.set(c(protein).reshape(singleShape));
 							return new OperationList();
 						};
-						CollectionProducer channelInput = subset(singleShape, c(in), ch * signalSize);
+						// Position arguments are per-dimension coordinates (row, column), not a
+						// flat offset: (ch, 0) selects channel ch's row. A flat offset here
+						// silently selected row 0 for every channel, collapsing the whole
+						// multi-channel dispatch to channel 0's signal.
+						CollectionProducer channelInput = subset(singleShape, c(in), ch, 0);
 						Cell<PackedCollection> channelCell = channelBlocks.get(ch).getForward();
 						channelCell.setReceptor(channelReceptor);
 						allOps.add(channelCell.push(channelInput));

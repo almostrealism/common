@@ -226,6 +226,58 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	}
 
 	/**
+	 * Measures the broadband RMS gain of the FIR {@code highPass}/{@code lowPass} coefficients
+	 * used by the PDSL {@code highpass}/{@code lowpass} primitives. The PDSL mixdown main arm
+	 * applies a {@code highpass} per channel; if that FIR has a passband gain &gt; 1 it would
+	 * inflate the dry mix relative to the Java resonant-IIR path. Logs gain at several cutoffs
+	 * so a level divergence can be attributed to (or cleared of) the filter coefficients.
+	 */
+	@Test(timeout = 120_000)
+	public void firFilterGainProbe() {
+		int n = 16384;
+		double[] s = new double[n];
+		double inEnergy = 0.0;
+		for (int i = 0; i < n; i++) {
+			double t = i;
+			double v = Math.sin(2 * Math.PI * 100 * t / 44100)
+					+ Math.sin(2 * Math.PI * 1000 * t / 44100)
+					+ Math.sin(2 * Math.PI * 6000 * t / 44100);
+			s[i] = v;
+			inEnergy += v * v;
+		}
+		double inRms = Math.sqrt(inEnergy / n);
+		PackedCollection signal = new PackedCollection(n);
+		signal.setMem(s);
+
+		for (double cutoff : new double[] {50.0, 200.0, 1000.0, 5000.0}) {
+			PackedCollection out = highPass(cp(signal), c(cutoff), 44100, 40).get().evaluate();
+			log("highpass cutoff=" + cutoff + " order=40 inRms=" + inRms
+					+ " outRms=" + rmsOf(out) + " gain=" + (rmsOf(out) / inRms));
+		}
+		for (double cutoff : new double[] {20000.0, 12000.0, 5000.0}) {
+			PackedCollection out = lowPass(cp(signal), c(cutoff), 44100, 40).get().evaluate();
+			log("lowpass cutoff=" + cutoff + " order=40 inRms=" + inRms
+					+ " outRms=" + rmsOf(out) + " gain=" + (rmsOf(out) / inRms));
+		}
+	}
+
+	/**
+	 * Computes the RMS of a rendered collection.
+	 *
+	 * @param data the collection to measure
+	 * @return the root-mean-square of all elements
+	 */
+	private double rmsOf(PackedCollection data) {
+		double energy = 0.0;
+		int len = data.getMemLength();
+		for (int i = 0; i < len; i++) {
+			double x = data.toDouble(i);
+			energy += x * x;
+		}
+		return Math.sqrt(energy / Math.max(1, len));
+	}
+
+	/**
 	 * Renders identical fixtures through the Java MixdownManager.cells() path
 	 * and the PDSL mixdown_master layer, writes both WAVs, and asserts that
 	 * neither path collapses to silence. The comparison is documented as
@@ -323,11 +375,36 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 				source, TOTAL_FRAMES, false,
 				new File(outputDir, "mixdown_master_single.wav"));
 
-		// Neutralise the per-channel efx feedforward (wet level 0 -> accum_blocks(identity, 0)
-		// reduces to dry) and supply a stable no-regeneration feedback (transmission 0 ->
-		// the feedback grid passes the delayed signal through without recirculating), so the
-		// layer exercises the full slice + efx + feedback path without diverging. The efx and
-		// feedback behaviour is judged by ear via the real-scene A/B.
+		Map<String, Object> neutralEfx = neutralEfxArgs();
+
+		double[] wet = renderPdslMaster(mixdown, "mixdown_master_wet", config, 2 * CHANNELS,
+				neutralEfx, source, TOTAL_FRAMES, false,
+				new File(outputDir, "mixdown_master_wet_equal.wav"));
+
+		Assert.assertEquals("Both layers must produce the same sample count",
+				single.length, wet.length);
+
+		double energy = 0.0;
+		for (int i = 0; i < wet.length; i++) {
+			Assert.assertTrue("mixdown_master_wet produced a non-finite sample at " + i,
+					Double.isFinite(wet[i]));
+			energy += wet[i] * wet[i];
+		}
+		log(String.format("mixdown_master_wet smoke: samples=%d energy=%.6f", wet.length, energy));
+
+		Assert.assertTrue("mixdown_master_wet output must be non-silent (energy=" + energy + ")",
+				energy > 1e-9);
+	}
+
+	/**
+	 * Builds the neutral efx/reverb argument entries for {@code mixdown_master_wet}: wet level
+	 * 0 (the per-channel feedforward reduces to dry), transmission 0 (the feedback grid passes
+	 * the delayed signal once without recirculating), identity passthrough, and a zero reverb
+	 * send, plus validly-shaped state buffers for every ring.
+	 *
+	 * @return argument entries to merge over the adapter-built map
+	 */
+	private Map<String, Object> neutralEfxArgs() {
 		int firTaps = PDSL_FILTER_ORDER + 1;
 		PackedCollection efxCoeffs = new PackedCollection(new TraversalPolicy(CHANNELS, firTaps));
 		PackedCollection efxWet = new PackedCollection(new TraversalPolicy(CHANNELS));
@@ -348,8 +425,6 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		PackedCollection fbBuffers = new PackedCollection(CHANNELS * PDSL_SIGNAL_SIZE);
 		PackedCollection fbHeads = new PackedCollection(CHANNELS);
 
-		// Neutral reverb send (reverb_send 0 -> the reverb arm contributes nothing); the
-		// remaining reverb args just have to be valid shapes (a 4-frame ring, taps < ring).
 		int reverbFrames = 4;
 		PackedCollection reverbSend = new PackedCollection(new TraversalPolicy(CHANNELS));
 		PackedCollection reverbDelays = new PackedCollection(new TraversalPolicy(CHANNELS));
@@ -374,24 +449,241 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		neutralEfx.put("reverb_feedback", reverbFeedback);
 		neutralEfx.put("reverb_buffers", reverbBuffers);
 		neutralEfx.put("reverb_heads", reverbHeads);
+		neutralEfx.put("main_arm_gain", 1.0);
+		neutralEfx.put("efx_arm_gain", 1.0);
+		neutralEfx.put("reverb_arm_gain", 1.0);
+		neutralEfx.put("reverb_network_gain", 0.1);
+		neutralEfx.put("reverb_tap_mean", 1.0 / CHANNELS);
+		return neutralEfx;
+	}
 
-		double[] wet = renderPdslMaster(mixdown, "mixdown_master_wet", config, 2 * CHANNELS,
-				neutralEfx, source, TOTAL_FRAMES, false,
-				new File(outputDir, "mixdown_master_wet_equal.wav"));
+	/**
+	 * Verifies that a collection-valued layer argument is read LIVE on every forward pass
+	 * of the compiled model rather than being baked into the graph at build time. The
+	 * real-time runner depends on this: all time-varying automation (filter cutoffs,
+	 * volume, sends) is delivered through collection slots mutated between forwards.
+	 */
+	@Test(timeout = 600_000)
+	@TestDepth(2)
+	public void collectionArgIsReadLivePerForward() {
+		int sig = 8;
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
+		String src = "layer live_test(signal_size: int, gain: producer([1])) "
+				+ "-> [1, signal_size] { scale(gain) }";
+		PdslNode.Program program = loader.parse(src);
 
-		Assert.assertEquals("Both layers must produce the same sample count",
-				single.length, wet.length);
+		PackedCollection gain = new PackedCollection(1).fill(2.0);
+		Map<String, Object> args = new HashMap<>();
+		args.put("signal_size", sig);
+		args.put("gain", gain);
 
-		double energy = 0.0;
-		for (int i = 0; i < wet.length; i++) {
-			Assert.assertTrue("mixdown_master_wet produced a non-finite sample at " + i,
-					Double.isFinite(wet[i]));
-			energy += wet[i] * wet[i];
+		TraversalPolicy inputShape = new TraversalPolicy(1, sig);
+		Block block = loader.buildLayer(program, "live_test", inputShape, args);
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		PackedCollection input = new PackedCollection(inputShape);
+		double[] ones = new double[sig];
+		Arrays.fill(ones, 1.0);
+		input.setMem(ones);
+
+		double first = compiled.forward(input).toArray(0, sig)[0];
+		gain.setMem(0, 3.0);
+		double second = compiled.forward(input).toArray(0, sig)[0];
+		log(String.format("live-arg probe: first=%.4f (expect 2) second=%.4f (expect 3)",
+				first, second));
+		Assert.assertEquals("initial gain must apply", 2.0, first, 1e-6);
+		Assert.assertEquals(
+				"the compiled model must re-read the gain slot on every forward pass; "
+						+ "2.0 here means the slot value was baked into the graph at build",
+				3.0, second, 1e-6);
+
+		// Same liveness property for fir() coefficients — the delivery mechanism for the
+		// per-buffer swept filter responses (coefficient PRODUCERS are input-independent
+		// subgraphs and get frozen at compile, so the runner refreshes coefficient VALUES
+		// into slots instead; that only works if fir() re-reads its slot per forward).
+		int taps = 3;
+		String firSrc = "layer fir_live(signal_size: int, fir_taps: int, "
+				+ "coeffs: producer([fir_taps])) -> [1, signal_size] { fir(coeffs) }";
+		PdslNode.Program firProgram = loader.parse(firSrc);
+		PackedCollection coeffs = new PackedCollection(taps);
+		coeffs.setMem(new double[]{1.0, 0.0, 0.0});
+		Map<String, Object> firArgs = new HashMap<>();
+		firArgs.put("signal_size", sig);
+		firArgs.put("fir_taps", taps);
+		firArgs.put("coeffs", coeffs);
+		Block firBlock = loader.buildLayer(firProgram, "fir_live", inputShape, firArgs);
+		Model firModel = new Model(inputShape);
+		firModel.add(firBlock);
+		CompiledModel firCompiled = firModel.compile();
+
+		double firFirst = firCompiled.forward(input).toArray(0, sig)[sig - 1];
+		coeffs.setMem(new double[]{0.5, 0.0, 0.0});
+		double firSecond = firCompiled.forward(input).toArray(0, sig)[sig - 1];
+		log(String.format("live-fir probe: first=%.4f (expect 1) second=%.4f (expect 0.5)",
+				firFirst, firSecond));
+		Assert.assertEquals("initial coefficients must apply", 1.0, firFirst, 1e-6);
+		Assert.assertEquals(
+				"fir() must re-read its coefficient slot on every forward pass",
+				0.5, firSecond, 1e-6);
+	}
+
+	/**
+	 * Minimal bisection of the per-channel row-0 collapse: a bare {@code for each channel}
+	 * over {@code scale(volume[channel])} (no reshape/slice prefix), fed distinct rows. If
+	 * this sums correctly while {@link #mixdownMasterWetSumsDistinctChannels} collapses to
+	 * row 0, the collapse comes from the arm's {@code reshape -> slice -> reshape} prefix;
+	 * if this also collapses, the {@code for each channel} construct itself is at fault.
+	 */
+	@Test(timeout = 600_000)
+	@TestDepth(2)
+	public void forEachChannelSumsDistinctRows() {
+		int channels = 2;
+		int sig = 64;
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
+		String src = "layer fe_rows(channels: int, signal_size: int, "
+				+ "volume: producer([channels])) -> [channels, signal_size] { "
+				+ "for each channel { scale(volume[channel]) } }\n"
+				+ "layer fe_test(channels: int, signal_size: int, "
+				+ "volume: producer([channels])) -> [1, signal_size] { "
+				+ "for each channel { scale(volume[channel]) } sum_channels() }";
+		PdslNode.Program program = loader.parse(src);
+
+		PackedCollection volume = new PackedCollection(new TraversalPolicy(channels));
+		volume.setMem(new double[]{2.0, 3.0});
+		Map<String, Object> args = new HashMap<>();
+		args.put("channels", channels);
+		args.put("signal_size", sig);
+		args.put("volume", volume);
+
+		TraversalPolicy inputShape = new TraversalPolicy(channels, sig);
+		PackedCollection input = new PackedCollection(inputShape);
+		double[] inData = new double[channels * sig];
+		Arrays.fill(inData, 0, sig, 0.01);
+		Arrays.fill(inData, sig, 2 * sig, 0.02);
+		input.setMem(inData);
+
+		// Stage A: rows preserved (no sum) — shows exactly which input row each chain saw.
+		Block rowsBlock = loader.buildLayer(program, "fe_rows", inputShape, args);
+		Model rowsModel = new Model(inputShape);
+		rowsModel.add(rowsBlock);
+		double[] rows = rowsModel.compile().forward(input).toArray(0, channels * sig);
+		double row0 = rows[0];
+		double row1 = rows[sig];
+		log(String.format("forEach rows: row0=%.6f (expect 0.020000) row1=%.6f (expect 0.060000; "
+				+ "0.030000 means chain 1 received row 0)", row0, row1));
+
+		// Stage B: summed — the production usage.
+		Block sumBlock = loader.buildLayer(program, "fe_test", inputShape, args);
+		Model sumModel = new Model(inputShape);
+		sumModel.add(sumBlock);
+		double[] out = sumModel.compile().forward(input).toArray(0, sig);
+		double mean = 0.0;
+		for (double v : out) mean += v;
+		mean /= sig;
+		log(String.format("forEach sum: expected=0.080000 measured=%.6f", mean));
+
+		Assert.assertEquals("chain 0 must process its own row times its own gain",
+				0.02, row0, 1e-6);
+		Assert.assertEquals("chain 1 must process ITS OWN row (0.02 x 3); 0.03 means it "
+				+ "received channel 0's row", 0.06, row1, 1e-6);
+		Assert.assertEquals("`for each channel` + sum_channels must sum the distinct rows",
+				0.08, mean, 1e-6);
+	}
+
+	/**
+	 * Routing regression with DISTINCT per-channel content: feeds each MAIN row a different DC
+	 * value (with the WET rows zero and every gene-driven stage neutralised) and asserts the
+	 * master output equals the SUM of the distinct rows. Every earlier routing check fed
+	 * identical content to all channels, which cannot detect a dispatch that feeds channel 0's
+	 * row to every per-channel chain (the steady output is then {@code channels * row0} —
+	 * asserted against explicitly below).
+	 *
+	 * @throws IOException if the layer cannot be built
+	 */
+	@Test(timeout = 600_000)
+	@TestDepth(2)
+	public void mixdownMasterWetSumsDistinctChannels() throws IOException {
+		MixdownManager mixdown = buildFixtureMixdown();
+		runFixtureSetup(mixdown);
+
+		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
+				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
+				WET_LEVEL, PDSL_DELAY_SAMPLES, 1.0);
+
+		Map<String, Object> args = MixdownManagerPdslAdapter.buildArgsMap(mixdown, config);
+		args.putAll(neutralEfxArgs());
+
+		// Neutralise the gene-driven main-arm stages so the expected output is exact
+		// arithmetic: unity volume, identity (delta) FIR coefficients for the per-channel
+		// high-pass and the master low-pass, unity master gain.
+		PackedCollection unityVolume = new PackedCollection(new TraversalPolicy(CHANNELS));
+		double[] ones = new double[CHANNELS];
+		Arrays.fill(ones, 1.0);
+		unityVolume.setMem(ones);
+		args.put("volume", unityVolume);
+		int taps = PDSL_FILTER_ORDER + 1;
+		PackedCollection identityHp = new PackedCollection(new TraversalPolicy(CHANNELS, taps));
+		double[] identityHpData = new double[CHANNELS * taps];
+		for (int ch = 0; ch < CHANNELS; ch++) {
+			identityHpData[ch * taps + taps / 2] = 1.0;
 		}
-		log(String.format("mixdown_master_wet smoke: samples=%d energy=%.6f", wet.length, energy));
+		identityHp.setMem(identityHpData);
+		args.put("hp_coeffs", identityHp);
+		PackedCollection identityLp = new PackedCollection(taps);
+		double[] identityLpData = new double[taps];
+		identityLpData[taps / 2] = 1.0;
+		identityLp.setMem(identityLpData);
+		args.put("lp_coeffs", identityLp);
+		args.put("master_gain", 1.0);
 
-		Assert.assertTrue("mixdown_master_wet output must be non-silent (energy=" + energy + ")",
-				energy > 1e-9);
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_manager.pdsl");
+		TraversalPolicy inputShape = new TraversalPolicy(2 * CHANNELS, PDSL_SIGNAL_SIZE);
+		Block block = loader.buildLayer(program, "mixdown_master_wet", inputShape, args);
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		// MAIN rows carry DISTINCT DC values; WET rows are silent.
+		double[] channelValues = new double[CHANNELS];
+		double expected = 0.0;
+		for (int ch = 0; ch < CHANNELS; ch++) {
+			// Row 0 deliberately SILENT: a dispatch that feeds every chain row 0 then
+			// produces total silence, which is unmistakable in the failure message.
+			channelValues[ch] = 0.01 * ch;
+			expected += channelValues[ch];
+		}
+		double conflated = CHANNELS * channelValues[0];
+
+		PackedCollection input = new PackedCollection(inputShape);
+		double[] inData = new double[2 * CHANNELS * PDSL_SIGNAL_SIZE];
+		for (int ch = 0; ch < CHANNELS; ch++) {
+			Arrays.fill(inData, ch * PDSL_SIGNAL_SIZE, (ch + 1) * PDSL_SIGNAL_SIZE,
+					channelValues[ch]);
+		}
+		input.setMem(inData);
+
+		double[] out = compiled.forward(input).toArray(0, PDSL_SIGNAL_SIZE);
+		// Skip the FIR settling region at the start of the buffer.
+		int settle = 4 * (PDSL_FILTER_ORDER + 1);
+		double mean = 0.0;
+		for (int i = settle; i < PDSL_SIGNAL_SIZE; i++) {
+			mean += out[i];
+		}
+		mean /= (PDSL_SIGNAL_SIZE - settle);
+
+		log(String.format("distinct-channel sum: expected=%.6f conflated=%.6f measured=%.6f",
+				expected, conflated, mean));
+		Assert.assertTrue(
+				"master output (" + mean + ") must NOT equal channels x row0 ("
+						+ conflated + ") — that indicates every per-channel chain "
+						+ "received channel 0's row",
+				Math.abs(mean - conflated) > Math.abs(expected - conflated) / 2.0);
+		Assert.assertEquals(
+				"master output must equal the sum of the distinct per-channel rows",
+				expected, mean, 0.1 * expected);
 	}
 
 	/**

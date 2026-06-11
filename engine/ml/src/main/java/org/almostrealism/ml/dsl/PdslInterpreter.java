@@ -1007,9 +1007,11 @@ public class PdslInterpreter {
 			int signalSize = inputShape.length(1);
 			TraversalPolicy singleShape = FEATURES.shape(1, signalSize);
 			return FEATURES.layer("sum_channels", inputShape, singleShape, input -> {
-				CollectionProducer sum = FEATURES.subset(singleShape, FEATURES.c(input), 0);
+				// subset() positions are per-dimension coordinates — (i, 0) selects row i.
+				// A flat offset here resolved every term to row 0 (channels * row0).
+				CollectionProducer sum = FEATURES.subset(singleShape, FEATURES.c(input), 0, 0);
 				for (int i = 1; i < channels; i++) {
-					sum = sum.add(FEATURES.subset(singleShape, FEATURES.c(input), i * signalSize));
+					sum = sum.add(FEATURES.subset(singleShape, FEATURES.c(input), i, 0));
 				}
 				return sum;
 			});

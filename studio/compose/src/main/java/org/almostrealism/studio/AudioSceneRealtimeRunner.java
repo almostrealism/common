@@ -281,8 +281,16 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource(MIXDOWN_PDSL_RESOURCE);
 
-		CompiledModel compiled = compileMixdownModel(loader, program, layerName, inputShape,
-				buildMixdownArgs(wetVoicing, mixdown, config));
+		Map<String, Object> args = buildMixdownArgs(wetVoicing, mixdown, config);
+		CompiledModel compiled = compileMixdownModel(loader, program, layerName, inputShape, args);
+
+		// Per-buffer automation refresh: the time-varying gene/clock-driven values
+		// (filter cutoffs, volume, efx automation, reverb send) live in collection slots
+		// the compiled graph reads every forward pass; this re-evaluates them for the
+		// buffer's clock position. Producer-valued model args are frozen at build time,
+		// so without this the filter sweeps would never engage.
+		Supplier<Runnable> automationRefresh = MixdownManagerPdslAdapter.automationRefresh(
+				mixdown, wetVoicing ? scene.getEfxManager() : null, config, args);
 
 		// forward() copies into a stable output buffer (CompiledModel returns the same instance
 		// every pass), so a single throwaway pass captures the handle the streaming loop reads.
@@ -317,9 +325,11 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 					tick.add(renderCell.prepareBatch());
 				}
 
-				// DSP: run the whole-buffer PDSL forward pass (writes into masterOutput). The
-				// automation producers read the global clock, so the value used for this buffer
-				// reflects the clock's position at the buffer start — see the clock advance below.
+				// AUTOMATION: evaluate the clock-driven values (cutoffs, volume, sends) into
+				// their argument slots for this buffer's clock position.
+				tick.add(automationRefresh);
+
+				// DSP: run the whole-buffer PDSL forward pass (writes into masterOutput).
 				tick.add(() -> () -> compiled.forward(pdslInput));
 
 				// STREAM: drain masterOutput to both writers frame-by-frame
