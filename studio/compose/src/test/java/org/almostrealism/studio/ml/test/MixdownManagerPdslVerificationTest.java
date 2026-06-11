@@ -119,6 +119,9 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	/** Genome parameter count. Oversized so any chromosome layout fits. */
 	private static final int GENOME_PARAMS = 256;
 
+	/** Test-only PDSL layers (slot liveness probes and distinct-row routing regressions). */
+	private static final String VERIFICATION_PDSL = "/pdsl/audio/test_mixdown_verification.pdsl";
+
 	/** Source sine frequency for the deterministic test signal. */
 	private static final double SOURCE_FREQ_BASE = 220.0;
 
@@ -468,9 +471,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	public void collectionArgIsReadLivePerForward() {
 		int sig = 8;
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
-		String src = "layer live_test(signal_size: int, gain: producer([1])) "
-				+ "-> [1, signal_size] { scale(gain) }";
-		PdslNode.Program program = loader.parse(src);
+		PdslNode.Program program = loader.parseResource(VERIFICATION_PDSL);
 
 		PackedCollection gain = new PackedCollection(1).fill(2.0);
 		Map<String, Object> args = new HashMap<>();
@@ -504,16 +505,13 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		// subgraphs and get frozen at compile, so the runner refreshes coefficient VALUES
 		// into slots instead; that only works if fir() re-reads its slot per forward).
 		int taps = 3;
-		String firSrc = "layer fir_live(signal_size: int, fir_taps: int, "
-				+ "coeffs: producer([fir_taps])) -> [1, signal_size] { fir(coeffs) }";
-		PdslNode.Program firProgram = loader.parse(firSrc);
 		PackedCollection coeffs = new PackedCollection(taps);
 		coeffs.setMem(new double[]{1.0, 0.0, 0.0});
 		Map<String, Object> firArgs = new HashMap<>();
 		firArgs.put("signal_size", sig);
 		firArgs.put("fir_taps", taps);
 		firArgs.put("coeffs", coeffs);
-		Block firBlock = loader.buildLayer(firProgram, "fir_live", inputShape, firArgs);
+		Block firBlock = loader.buildLayer(program, "fir_live", inputShape, firArgs);
 		Model firModel = new Model(inputShape);
 		firModel.add(firBlock);
 		CompiledModel firCompiled = firModel.compile();
@@ -542,13 +540,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		int channels = 2;
 		int sig = 64;
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
-		String src = "layer fe_rows(channels: int, signal_size: int, "
-				+ "volume: producer([channels])) -> [channels, signal_size] { "
-				+ "for each channel { scale(volume[channel]) } }\n"
-				+ "layer fe_test(channels: int, signal_size: int, "
-				+ "volume: producer([channels])) -> [1, signal_size] { "
-				+ "for each channel { scale(volume[channel]) } sum_channels() }";
-		PdslNode.Program program = loader.parse(src);
+		PdslNode.Program program = loader.parseResource(VERIFICATION_PDSL);
 
 		PackedCollection volume = new PackedCollection(new TraversalPolicy(channels));
 		volume.setMem(new double[]{2.0, 3.0});
