@@ -266,11 +266,11 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		args.put("efx_fb_delay", fbDelay);
 
 		// efx_fb_transmission: producer([channels, channels]) — the genome routing matrix
-		// scaled to a guaranteed-contraction (max row sum <= FEEDBACK_GAIN < 1) so the
+		// scaled to a guaranteed-contraction (max row sum <= feedbackGain < 1) so the
 		// block-parallel feedback decays rather than diverges. Preserves the genome's
 		// channel-to-channel routing pattern from MixdownManager's transmission chromosome.
 		args.put("efx_fb_transmission", ADAPTER.multiply(transmissionMatrix(manager, config),
-				ADAPTER.c(FEEDBACK_GAIN / config.channels)));
+				ADAPTER.c(feedbackGain / config.channels)));
 
 		// efx_fb_passthrough: producer([channels, channels]) — diagonal output level
 		// (the wet/output gain of the echo), mirroring fc(wetOut) as a static wet level.
@@ -285,15 +285,125 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		args.put("fb_buffers", fbBuffers);
 		args.put("fb_heads", fbHeads);
 
+		// Reverb bus — the PDSL analogue of MixdownManager.createEfx's
+		// reverb.sum().map(DelayNetwork): a mono send through a multi-tap closed-loop
+		// feedback delay network (the `delay_network` primitive). The send is summed into
+		// the master alongside the dry and efx arms.
+		//
+		// reverb_send: producer([channels]) — the per-channel reverb SEND, mirroring Java's
+		// reverbFactor (MixdownManager.createCells/createEfx): wetSources.branch(..., reverbFactor)
+		// sends only the reverb-channel subset, scaled by the reverb gene × reverbLevel × the
+		// reverb automation. Channels not in reverbChannels send 0. This replaces the previous
+		// "whole mix at a flat send" approximation that drowned the mix in reverb.
+		args.put("reverb_send", perChannelProducer(config.channels, ch -> reverbSendProducer(manager, ch)));
+
+		// reverb_delays: producer([channels]) — per-tap delay lengths spanning the multi-frame
+		// reverb ring, spread across taps for diffusion (uniform taps give a metallic comb).
+		args.put("reverb_delays", reverbTapDelays(config));
+
+		// reverb_feedback: producer([channels, channels]) — a scaled Householder reflection
+		// (orthogonal → spectral radius = REVERB_GAIN < 1), the canonical stable, fully-mixing
+		// feedback matrix the Java DelayNetwork uses.
+		args.put("reverb_feedback", householderMatrix(config.channels, REVERB_GAIN));
+
+		// Reverb ring state: a multi-frame ring (REVERB_FRAMES * signal_size) so the tail can
+		// extend beyond one buffer; heads one write position per tap.
+		int reverbRing = config.channels * REVERB_FRAMES * config.signalSize;
+		PackedCollection reverbBuffers = new PackedCollection(reverbRing);
+		reverbBuffers.setMem(new double[reverbRing]);
+		PackedCollection reverbHeads = new PackedCollection(config.channels);
+		reverbHeads.setMem(new double[config.channels]);
+		args.put("reverb_buffers", reverbBuffers);
+		args.put("reverb_heads", reverbHeads);
+
 		return args;
 	}
 
 	/**
 	 * Feedback-grid contraction target: the scaled genome transmission's maximum row sum is
 	 * bounded by this value, keeping the block-parallel feedback stable (spectral radius is
-	 * bounded by the induced infinity-norm, i.e. the max row sum).
+	 * bounded by the induced infinity-norm, i.e. the max row sum). Mutable so diagnostics can
+	 * bisect the efx feedback stage (set to 0 to disable feedback regeneration).
 	 */
-	private static final double FEEDBACK_GAIN = 0.6;
+	public static double feedbackGain = 0.6;
+
+	/**
+	 * Global trim multiplier applied on top of the per-channel reverb send (the gene-driven
+	 * {@code reverbFactor}). {@code 1.0} is the faithful Java level; mutable so diagnostics can
+	 * bisect the reverb stage (set to 0 to disable the reverb bus).
+	 */
+	public static double reverbSend = 1.0;
+
+	/** Reverb feedback spectral radius (Householder scale); &lt; 1 for a decaying tail. */
+	private static final double REVERB_GAIN = 0.7;
+
+	/** Reverb ring depth in frames; the per-tap delays span this multiple of signal_size. */
+	private static final int REVERB_FRAMES = 2;
+
+	/**
+	 * Produces the shape-{@code [1]} per-channel reverb send level, mirroring the
+	 * {@code reverbFactor} in {@link MixdownManager#createEfx}: a channel sends to the reverb
+	 * bus only if it is in {@link MixdownManager#getReverbChannels()}, scaled by the reverb
+	 * automation gene and {@link MixdownManager#reverbLevel}; all other channels send zero. The
+	 * mutable {@link #reverbSend} trim is folded in so diagnostics can disable the bus.
+	 *
+	 * @param manager the mixdown manager whose reverb chromosomes are sampled
+	 * @param channel the source channel index
+	 * @return the per-channel reverb send producer
+	 */
+	private static Producer<PackedCollection> reverbSendProducer(MixdownManager manager, int channel) {
+		if (reverbSend <= 0.0 || !manager.getReverbChannels().contains(channel)) {
+			return ADAPTER.c(0.0);
+		}
+		Producer<PackedCollection> value = manager.getAutomationManager().getAggregatedValue(
+				manager.getReverbAutomation().valueAt(channel),
+				ADAPTER.p(manager.getReverbAdjustmentScale()), 0.0);
+		return ADAPTER.multiply(value, ADAPTER.c(MixdownManager.reverbLevel * reverbSend));
+	}
+
+	/**
+	 * Builds the {@code [channels]} per-tap reverb delay lengths, spread across the multi-frame
+	 * ring (0.3 … 0.85 of the ring) so the taps are distinct and produce diffusion rather than a
+	 * single coherent echo.
+	 *
+	 * @param config structural configuration
+	 * @return a {@code [channels]} {@link PackedCollection} of per-tap delay sample counts
+	 */
+	private static PackedCollection reverbTapDelays(Config config) {
+		int ring = REVERB_FRAMES * config.signalSize;
+		PackedCollection delays = new PackedCollection(config.channels);
+		double[] data = new double[config.channels];
+		for (int ch = 0; ch < config.channels; ch++) {
+			double fraction = 0.3 + 0.55 * (ch + 1.0) / (config.channels + 1.0);
+			data[ch] = (int) (fraction * ring);
+		}
+		delays.setMem(data);
+		return delays;
+	}
+
+	/**
+	 * Builds a row-major scaled Householder reflection {@code gain * (I - 2 v vᵀ)} with
+	 * {@code v} the unit vector of all {@code 1/√n}. The reflection is orthogonal (eigenvalues
+	 * ±1), so the scaled matrix has spectral radius {@code gain} — a guaranteed-stable, fully
+	 * channel-mixing feedback matrix for {@code gain < 1}.
+	 *
+	 * @param n    matrix dimension (tap count)
+	 * @param gain scale factor / resulting spectral radius
+	 * @return an {@code [n, n]} {@link PackedCollection} feedback matrix
+	 */
+	private static PackedCollection householderMatrix(int n, double gain) {
+		PackedCollection matrix = new PackedCollection(new TraversalPolicy(n, n));
+		double[] data = new double[n * n];
+		double off = 2.0 / n;
+		for (int i = 0; i < n; i++) {
+			for (int j = 0; j < n; j++) {
+				double h = (i == j ? 1.0 : 0.0) - off;
+				data[i * n + j] = gain * h;
+			}
+		}
+		matrix.setMem(data);
+		return matrix;
+	}
 
 	/**
 	 * Builds a row-major {@code [n, n]} diagonal matrix slot with {@code value} on the diagonal.

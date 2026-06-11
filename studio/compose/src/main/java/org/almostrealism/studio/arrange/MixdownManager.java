@@ -381,6 +381,30 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	}
 
 	/**
+	 * Returns the per-channel reverb genes. Exposed for {@link MixdownManagerPdslAdapter} to
+	 * source the PDSL reverb send level.
+	 *
+	 * @return the reverb chromosome
+	 */
+	Chromosome<PackedCollection> getReverb() { return reverb; }
+
+	/**
+	 * Returns the per-channel reverb automation genes. Exposed for
+	 * {@link MixdownManagerPdslAdapter} to drive the time-varying reverb send.
+	 *
+	 * @return the reverb automation chromosome
+	 */
+	Chromosome<PackedCollection> getReverbAutomation() { return reverbAutomation; }
+
+	/**
+	 * Returns the reverb-level adjustment scale collection. Exposed for
+	 * {@link MixdownManagerPdslAdapter}.
+	 *
+	 * @return the reverb adjustment scale
+	 */
+	PackedCollection getReverbAdjustmentScale() { return reverbAdjustmentScale; }
+
+	/**
 	 * Sets the list of channel indices to which reverb is applied.
 	 *
 	 * @param reverbChannels the channel indices

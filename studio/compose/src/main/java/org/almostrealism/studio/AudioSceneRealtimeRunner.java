@@ -263,47 +263,34 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 		int inputChannels = wetVoicing ? channelCount * 2 : channelCount;
 		String layerName = wetVoicing ? "mixdown_master_wet" : "mixdown_master";
 
-		PackedCollection consolidated = scene.getConsolidatedRenderBuffer();
-		TraversalPolicy inputShape = new TraversalPolicy(inputChannels, bufferSize);
-		PackedCollection pdslInput = consolidated.range(inputShape, 0);
-
-		// Compile the PDSL mixdown layer once. Structurally independent of the genome —
-		// only the chromosome-backed PackedCollection contents change on assignGenome —
-		// so the compiled model survives genome swaps without recompilation. The args are
-		// keyed by the per-region channel count regardless of the doubled input rows.
+		// Dual-mono master: the consolidated buffer also holds the RIGHT-side regions, but for
+		// this content the per-stereo-side pattern audio is (near-)identical — both the Java
+		// CellList path and a true per-side PDSL render produce essentially mono output — so
+		// processing the two sides separately costs 2x for no audible benefit. A genuine stereo
+		// image would require per-channel PAN in the PDSL mixdown (not separate-region
+		// processing); until that exists, render one master and stream it to both writers.
 		MixdownManager mixdown = scene.getMixdownManager();
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
 				channelCount, bufferSize, scene.getSampleRate(),
 				pdslFilterOrder, pdslWetLevel, pdslDelaySamples);
-		// The wet layer also renders the per-channel EfxManager feedforward chain, so it
-		// needs the efx genome args; the single-input layer does not.
-		Map<String, Object> args = wetVoicing
-				? MixdownManagerPdslAdapter.buildArgsMap(mixdown, scene.getEfxManager(), config)
-				: MixdownManagerPdslAdapter.buildArgsMap(mixdown, config);
+
+		PackedCollection consolidated = scene.getConsolidatedRenderBuffer();
+		TraversalPolicy inputShape = new TraversalPolicy(inputChannels, bufferSize);
+		PackedCollection pdslInput = consolidated.range(inputShape, 0);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource(MIXDOWN_PDSL_RESOURCE);
 
-		Block block = loader.buildLayer(program, layerName, inputShape, args);
+		CompiledModel compiled = compileMixdownModel(loader, program, layerName, inputShape,
+				buildMixdownArgs(wetVoicing, mixdown, config));
 
-		Model model = new Model(inputShape);
-		model.add(block);
-		CompiledModel compiled = model.compile();
-
-		// forward() copies into a stable output buffer (CompiledModel returns the same
-		// instance every pass), so a single throwaway pass captures the handle the
-		// streaming loop reads from. The contents written here are discarded.
+		// forward() copies into a stable output buffer (CompiledModel returns the same instance
+		// every pass), so a single throwaway pass captures the handle the streaming loop reads.
 		PackedCollection masterOutput = compiled.forward(pdslInput);
 
-		// Stream the buffer to the master output one frame at a time. Each push writes a
-		// single frame at the WaveOutput cursor and advances it (WaveOutput's Writer
-		// contract is one frame per push), so a bufferSize-iteration loop drains the whole
-		// forward output. The slot idiom matches WaveOutput's own writer.
-		//
-		// The PDSL mixdown_master is mono; the master output is stereo. WaveOutput.write
-		// gates on the minimum frame count across channels, so the mono result is streamed
-		// to BOTH the LEFT and RIGHT writers (dual-mono). This is a wire-first stand-in for
-		// a true stereo master.
+		// Stream the mono master to both writers one frame at a time (WaveOutput's Writer
+		// contract is one frame per push, advancing the cursor; WaveOutput.write gates on the
+		// minimum frame count across channels, so both writers must be fed).
 		Receptor<PackedCollection> masterLeft = output.getMaster(ChannelInfo.StereoChannel.LEFT);
 		Receptor<PackedCollection> masterRight = output.getMaster(ChannelInfo.StereoChannel.RIGHT);
 		OperationList outputLoopBody = new OperationList("PDSL Output Stream Body");
@@ -330,13 +317,12 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 					tick.add(renderCell.prepareBatch());
 				}
 
-				// DSP: run the whole-buffer PDSL forward pass (writes into masterOutput).
-				// The mixdown_master automation producers (filter cutoffs, volume) read the
-				// global clock, so the value used for this buffer reflects the clock's
-				// position at the start of the buffer — see the clock advance below.
+				// DSP: run the whole-buffer PDSL forward pass (writes into masterOutput). The
+				// automation producers read the global clock, so the value used for this buffer
+				// reflects the clock's position at the buffer start — see the clock advance below.
 				tick.add(() -> () -> compiled.forward(pdslInput));
 
-				// STREAM: drain masterOutput to the master line frame-by-frame
+				// STREAM: drain masterOutput to both writers frame-by-frame
 				tick.add(loop(outputLoopBody, bufferSize));
 
 				// Advance the global clock by one buffer. The CellList path ticks the clock
@@ -360,5 +346,40 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				scene.getTimeManager().getClock().setFrame(0);
 			}
 		};
+	}
+
+	/**
+	 * Builds the argument map for the mixdown model, selecting the wet or single-input
+	 * argument set.
+	 *
+	 * @param wetVoicing whether a separate WET voicing was rendered (selects the layer/args)
+	 * @param mixdown    the mixdown manager whose genome drives the args
+	 * @param config     structural configuration
+	 * @return a populated argument map
+	 */
+	private Map<String, Object> buildMixdownArgs(boolean wetVoicing, MixdownManager mixdown,
+												 MixdownManagerPdslAdapter.Config config) {
+		return wetVoicing
+				? MixdownManagerPdslAdapter.buildArgsMap(mixdown, scene.getEfxManager(), config)
+				: MixdownManagerPdslAdapter.buildArgsMap(mixdown, config);
+	}
+
+	/**
+	 * Compiles a mixdown layer into a {@link CompiledModel} for the given input shape and args.
+	 *
+	 * @param loader     the PDSL loader
+	 * @param program    the parsed PDSL program
+	 * @param layerName  the layer to build
+	 * @param inputShape the model input shape
+	 * @param args       the argument map
+	 * @return the compiled model
+	 */
+	private CompiledModel compileMixdownModel(PdslLoader loader, PdslNode.Program program,
+											  String layerName, TraversalPolicy inputShape,
+											  Map<String, Object> args) {
+		Block block = loader.buildLayer(program, layerName, inputShape, args);
+		Model model = new Model(inputShape);
+		model.add(block);
+		return model.compile();
 	}
 }

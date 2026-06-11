@@ -17,12 +17,16 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionZerosComputation;
 import org.almostrealism.collect.computations.SingleConstantComputation;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Collections;
@@ -34,7 +38,7 @@ import java.util.Collections;
  *
  * @author Michael Murray
  */
-public class CollectionZerosComputationTest extends TestSuiteBase {
+public class CollectionZerosComputationTest extends TestSuiteBase implements CollectionFeatures {
 
 	/**
 	 * Tests basic creation and evaluation of zero computations.
@@ -180,17 +184,47 @@ public class CollectionZerosComputationTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Tests the isolation operation behavior.
-	 * Demonstrates that zero computations cannot be isolated as they are already
-	 * optimally isolated by nature.
+	 * A zeros computation is a constant leaf, so {@code isolate()} must return a process
+	 * (itself) rather than throw — it is already maximally independent and needs no isolation,
+	 * matching {@link SingleConstantComputation#isolate()}.
+	 *
+	 * <p><strong>Regression:</strong> this method previously threw
+	 * {@link UnsupportedOperationException}, and this test previously asserted that throw. That
+	 * was a real defect: the optimization cascade ({@code ParallelProcess.optimize} /
+	 * {@code ReshapeProducer.optimize}) calls {@code isolate()} on every reachable process, so
+	 * the throw broke compilation of <em>any</em> graph containing a zeros computation — most
+	 * commonly a producer multiplied by a literal {@code 0.0}, which folds to one. See
+	 * {@link #multiplyByZeroConstantOptimizesAndEvaluatesToZero()}.</p>
 	 */
-	@Test(timeout = 5000, expected = UnsupportedOperationException.class)
-	public void isolationNotSupported() {
+	@Test(timeout = 30000)
+	public void isolateReturnsProcessRatherThanThrowing() {
 		CollectionZerosComputation zeros =
 				new CollectionZerosComputation(new TraversalPolicy(3));
 
-		// This should throw UnsupportedOperationException
-		zeros.isolate();
+		Process<?, ?> isolated = zeros.isolate();
+
+		Assert.assertNotNull("zeros.isolate() must return a process, not throw", isolated);
+	}
+
+	/**
+	 * End-to-end regression for the optimization cascade: multiplying a producer by a literal
+	 * {@code 0.0} folds to a {@link CollectionZerosComputation}, and evaluating the surrounding
+	 * (reshaped) graph drives the optimization that calls {@code isolate()} on it. Before the
+	 * fix this threw {@link UnsupportedOperationException} during compilation; it must now
+	 * compile and evaluate to all zeros.
+	 */
+	@Test(timeout = 30000)
+	public void multiplyByZeroConstantOptimizesAndEvaluatesToZero() {
+		PackedCollection input = new PackedCollection(new TraversalPolicy(2, 3));
+		input.fill(1.0);
+
+		PackedCollection result = cp(input).multiply(c(0.0))
+				.reshape(new TraversalPolicy(6)).get().evaluate();
+
+		Assert.assertEquals(6, result.getMemLength());
+		for (int i = 0; i < result.getMemLength(); i++) {
+			Assert.assertEquals(0.0, result.toDouble(i), 1e-9);
+		}
 	}
 
 	/**

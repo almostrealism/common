@@ -348,6 +348,18 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		PackedCollection fbBuffers = new PackedCollection(CHANNELS * PDSL_SIGNAL_SIZE);
 		PackedCollection fbHeads = new PackedCollection(CHANNELS);
 
+		// Neutral reverb send (reverb_send 0 -> the reverb arm contributes nothing); the
+		// remaining reverb args just have to be valid shapes (a 4-frame ring, taps < ring).
+		int reverbFrames = 4;
+		PackedCollection reverbSend = new PackedCollection(new TraversalPolicy(CHANNELS));
+		PackedCollection reverbDelays = new PackedCollection(new TraversalPolicy(CHANNELS));
+		double[] reverbDelayData = new double[CHANNELS];
+		Arrays.fill(reverbDelayData, PDSL_SIGNAL_SIZE);
+		reverbDelays.setMem(reverbDelayData);
+		PackedCollection reverbFeedback = new PackedCollection(new TraversalPolicy(CHANNELS, CHANNELS));
+		PackedCollection reverbBuffers = new PackedCollection(CHANNELS * reverbFrames * PDSL_SIGNAL_SIZE);
+		PackedCollection reverbHeads = new PackedCollection(CHANNELS);
+
 		Map<String, Object> neutralEfx = new HashMap<>();
 		neutralEfx.put("efx_filter_coeffs", efxCoeffs);
 		neutralEfx.put("efx_wet_level", efxWet);
@@ -357,6 +369,11 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		neutralEfx.put("efx_fb_passthrough", fbPassthrough);
 		neutralEfx.put("fb_buffers", fbBuffers);
 		neutralEfx.put("fb_heads", fbHeads);
+		neutralEfx.put("reverb_send", reverbSend);
+		neutralEfx.put("reverb_delays", reverbDelays);
+		neutralEfx.put("reverb_feedback", reverbFeedback);
+		neutralEfx.put("reverb_buffers", reverbBuffers);
+		neutralEfx.put("reverb_heads", reverbHeads);
 
 		double[] wet = renderPdslMaster(mixdown, "mixdown_master_wet", config, 2 * CHANNELS,
 				neutralEfx, source, TOTAL_FRAMES, false,

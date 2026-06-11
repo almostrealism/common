@@ -209,11 +209,17 @@ allows) instead of being stuck with one sequential JNI loop.
   (single-channel `concat` is unsupported); automation (filter sweep, volume) advances once
   per buffer rather than per frame (the PDSL runner ticks the clock by `bufferSize` each
   `forward`, versus the CellList path's per-frame `time::tick`); and the master stage differs
-  (PDSL `scale(gain)+tanh` runs hotter than Java `masterBusGain+hard-clip`). Most importantly,
-  **the DSP is `mixdown_master` only — the full per-channel `EfxManager` chain is not yet in
-  PDSL.** Acoustic parity (next bullet) is the next pass.
-- **EfxManager PDSL rendition.** No PDSL file renders the EFX bus's automation-driven
-  wet/dry path yet; `efx_channel.pdsl` is feedforward-only.
+  (PDSL `scale(gain)+tanh` runs hotter than Java `masterBusGain+hard-clip`, kept by owner
+  choice). **Status update (2026-06-10):** the per-channel `EfxManager` feedforward chain,
+  the recursive feedback echo, and the reverb (DelayNetwork) bus are now rendered in PDSL and
+  validated by ear — see [EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md) for the per-stage
+  detail and the remaining follow-ups (true stereo, graph-compatible HP/LP filter choice,
+  per-frame automation).
+- **Stereo (wanted, not yet implemented).** The PDSL path is currently dual-mono (one master
+  duplicated to both writers). True stereo IS a real, expected feature — many input samples
+  are stereo with distinct L/R channels that users expect carried through independently. It
+  must be one model carrying twice the channels in a single forward (never the whole pipeline
+  run twice). See [EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md) Stereo entry.
 - **Live genome swapping (goal #1) — mechanism exists, correctness not yet validated.**
   In-place genome reassignment on a live runner is already implemented and exercised:
   `AudioSceneMultiGenomeTest.multiGenomeFullRunner` builds `scene.runnerRealTime(...)`

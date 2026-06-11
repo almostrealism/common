@@ -193,21 +193,26 @@ public class CollectionZerosComputation extends CollectionConstantComputation {
 	}
 
 	/**
-	 * Isolation is not supported for zero computations.
+	 * Returns this instance unchanged: a zeros computation is a constant leaf, so isolating it
+	 * provides no benefit (it is already maximally independent) while adding an unnecessary
+	 * computation step and wasting memory.
 	 *
-	 * <p>In practice, constant computations are so trivial that isolation
-	 * would provide no benefit and might actually reduce performance
-	 * by adding unnecessary computation steps while wasting memory.</p>
+	 * <p>This mirrors {@link SingleConstantComputation#isolate()}. Previously this method threw
+	 * {@link UnsupportedOperationException}, which contradicted the contract of
+	 * {@link Process#isolate()} — it must return a process that behaves identically but is safe
+	 * to execute independently — and broke optimization of any graph containing a zeros
+	 * computation (e.g. a producer multiplied by a literal {@code 0.0}, which folds to a zeros
+	 * computation), because the optimization cascade ({@code ReshapeProducer.optimize},
+	 * {@code ParallelProcess.optimize}) calls {@code isolate()} on every reachable process.</p>
 	 *
-	 * @return Never returns normally
-	 * @throws UnsupportedOperationException Always thrown as isolation is not
-	 *                                       applicable to zero computations
+	 * @return this instance, as a constant requires no isolation
 	 *
 	 * @see Process#isolate()
+	 * @see SingleConstantComputation#isolate()
 	 */
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends PackedCollection>> isolate() {
-		throw new UnsupportedOperationException();
+		return this;
 	}
 
 	/**

@@ -420,7 +420,10 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
                          efx_automation: producer([channels]),
                          efx_fb_delay: producer([channels]),
                          efx_fb_transmission: producer([channels, channels]),
-                         efx_fb_passthrough: producer([channels, channels])) -> [1, signal_size] {
+                         efx_fb_passthrough: producer([channels, channels]),
+                         reverb_send: producer([channels]),
+                         reverb_delays: producer([channels]),
+                         reverb_feedback: producer([channels, channels])) -> [1, signal_size] {
     accum_blocks(
         {
             // MAIN region: rows [0, channels). slice() subsets a flat 1-D view (it
@@ -460,6 +463,25 @@ layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
             // delayed output is routed back through efx_fb_transmission and emitted through
             // efx_fb_passthrough. Frame-quantized (block-parallel) and contraction-scaled.
             feedback(efx_fb_delay, efx_fb_transmission, efx_fb_passthrough, fb_buffers, fb_heads)
+            sum_channels()
+        },
+        {
+            // Reverb bus — MixdownManager.createEfx's reverb.sum().map(DelayNetwork). Java sends
+            // only the reverb-channel SUBSET, scaled per channel by reverbFactor, from the WET
+            // voicing (wetSources.branch(..., reverbFactor)). So slice the WET region, apply the
+            // per-channel reverb send (reverb_send[channel], 0 for non-reverb channels), sum to a
+            // mono send, then fan across the reverb taps and run the closed-loop multi-tap
+            // feedback delay network (Householder feedback for a stable, diffuse tail), summed
+            // back to mono. Reverb state is the mixdown_reverb_state ring.
+            reshape(shape(2 * channels * signal_size))
+            slice(channels * signal_size, channels * signal_size)
+            reshape(shape(channels, signal_size))
+            for each channel {
+                scale(reverb_send[channel])
+            }
+            sum_channels()
+            repeat(channels)
+            delay_network(reverb_delays, reverb_feedback, reverb_buffers, reverb_heads)
             sum_channels()
         }
     )

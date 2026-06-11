@@ -26,6 +26,7 @@ import org.almostrealism.music.notes.NoteAudioSource;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.AudioSceneRealtimeRunner;
 import org.almostrealism.studio.arrange.MixdownManager;
+import org.almostrealism.studio.arrange.MixdownManagerPdslAdapter;
 import org.almostrealism.studio.health.MultiChannelAudioOutput;
 import org.almostrealism.music.pattern.PatternLayerManager;
 import org.almostrealism.music.pattern.PatternSystemManager;
@@ -76,6 +77,9 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	/** Buffer size for the review render (matches RealtimeContinuousRenderer's default). */
 	private static final int REVIEW_BUFFER = 8192;
 
+	/** Shorter duration for the stage-bisection diagnostic (enough to hear the character). */
+	private static final double MUD_SECONDS = 10.0;
+
 	/** Total measures rendered in the review scene. */
 	private static final int REVIEW_MEASURES = 64;
 
@@ -114,6 +118,9 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 		MixdownManager.enableMainFilterUp = true;
 		MixdownManager.enableEfx = true;
 		MixdownManager.enableEfxFilters = true;
+		// The PDSL path always renders its own reverb send arm (independent of this flag); the
+		// Java reverb bus is left off here so the CellList baseline compiles/renders quickly
+		// enough to finish within the test-runner window. The PDSL reverb is heard regardless.
 		MixdownManager.enableReverb = false;
 		PatternSystemManager.enableWarnings = false;
 
@@ -196,6 +203,123 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 		} finally {
 			MixdownManager.enablePdslMixdown = previous;
 		}
+	}
+
+	/**
+	 * Fast no-render diagnostic: loads the real scene exactly as the review/bisection do and logs
+	 * its actual channel configuration (wet and reverb channels), so we can verify the scene is
+	 * configured like production (default settings send channels 1-5 to reverb, 2-5 wet) rather
+	 * than an empty/misconfigured scene.
+	 *
+	 * @throws IOException if the scene cannot be loaded
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void logSceneChannelConfig() throws IOException {
+		File library = getSamplesDir();
+		File patternFactory = new File(PATTERN_FACTORY);
+		if (library == null || !patternFactory.exists()) {
+			log("Skipping logSceneChannelConfig - need the curated library and pattern factory");
+			return;
+		}
+
+		AudioScene<?> scene = loadRealScene(library, patternFactory);
+		log("channelCount=" + scene.getChannelCount());
+		log("reverbChannels=" + scene.getMixdownManager().getReverbChannels());
+		log("wetChannels=" + scene.getEfxManager().getWetChannels());
+	}
+
+	/**
+	 * Stage-bisection diagnostic for the PDSL "mud" vs the clean CellList render. Renders the
+	 * SAME scene and genome through: the CellList reference; the full PDSL path; PDSL with the
+	 * reverb bus disabled; and PDSL with both reverb and the efx feedback grid disabled. Writes
+	 * a named WAV for each and logs peak/RMS so the offending stage can be localized by ear and
+	 * by level. Uses a short clip so all four renders fit one test-runner window.
+	 *
+	 * @throws IOException if the scene cannot be loaded or a WAV read back
+	 */
+	@Test(timeout = 1_080_000)
+	@TestDepth(2)
+	public void pdslMudBisection() throws IOException {
+		File library = getSamplesDir();
+		File patternFactory = new File(PATTERN_FACTORY);
+		if (library == null || !patternFactory.exists()) {
+			log("Skipping pdslMudBisection - need the curated library and pattern factory");
+			return;
+		}
+
+		MixdownManager.enableMainFilterUp = true;
+		MixdownManager.enableEfx = true;
+		MixdownManager.enableEfxFilters = true;
+		MixdownManager.enableReverb = false;
+		PatternSystemManager.enableWarnings = false;
+
+		File outDir = new File("results/pdsl-cutover");
+		outDir.mkdirs();
+
+		AudioScene<?> scene = loadRealScene(library, patternFactory);
+		long seed = findWorkingGenomeSeed(scene, library);
+		Assert.assertTrue("No working genome found in the real arrangement", seed >= 0);
+		applyGenome(scene, seed);
+
+		int frames = (int) (MUD_SECONDS * SAMPLE_RATE);
+		double prevReverb = MixdownManagerPdslAdapter.reverbSend;
+		double prevFeedback = MixdownManagerPdslAdapter.feedbackGain;
+		boolean previous = MixdownManager.enablePdslMixdown;
+		boolean prevEnableReverb = MixdownManager.enableReverb;
+		try {
+			// Java reference, reverb OFF then ON: the (on - off) difference is how much the Java
+			// reverb actually contributes for this genome — the yardstick for the PDSL reverb.
+			MixdownManager.enablePdslMixdown = false;
+			MixdownManager.enableReverb = false;
+			reportLevels("celllist-reverb-off", renderAndRead(scene, null, frames, REVIEW_BUFFER,
+					new File(outDir, "mud_celllist_reverboff.wav")));
+
+			MixdownManager.enableReverb = true;
+			reportLevels("celllist-reverb-on", renderAndRead(scene, null, frames, REVIEW_BUFFER,
+					new File(outDir, "mud_celllist_reverbon.wav")));
+
+			// PDSL reverb on (reverbChannels drive the send) then off (send trim 0). The PDSL
+			// reverb is independent of MixdownManager.enableReverb.
+			MixdownManager.enablePdslMixdown = true;
+			MixdownManagerPdslAdapter.reverbSend = prevReverb;
+			MixdownManagerPdslAdapter.feedbackGain = prevFeedback;
+			reportLevels("pdsl-reverb-on", renderAndRead(scene, null, frames, REVIEW_BUFFER,
+					new File(outDir, "mud_pdsl_reverbon.wav")));
+
+			MixdownManagerPdslAdapter.reverbSend = 0.0;
+			reportLevels("pdsl-reverb-off", renderAndRead(scene, null, frames, REVIEW_BUFFER,
+					new File(outDir, "mud_pdsl_reverboff.wav")));
+		} finally {
+			MixdownManagerPdslAdapter.reverbSend = prevReverb;
+			MixdownManagerPdslAdapter.feedbackGain = prevFeedback;
+			MixdownManager.enablePdslMixdown = previous;
+			MixdownManager.enableReverb = prevEnableReverb;
+		}
+	}
+
+	/**
+	 * Logs the peak amplitude, RMS, and non-finite count of a rendered signal for the
+	 * stage-bisection diagnostic.
+	 *
+	 * @param label   the variant label
+	 * @param samples the rendered samples
+	 */
+	private void reportLevels(String label, double[] samples) {
+		double peak = 0.0;
+		double energy = 0.0;
+		int nonFinite = 0;
+		for (double sample : samples) {
+			if (!Double.isFinite(sample)) {
+				nonFinite++;
+				continue;
+			}
+			peak = Math.max(peak, Math.abs(sample));
+			energy += sample * sample;
+		}
+		double rms = Math.sqrt(energy / Math.max(1, samples.length));
+		log(String.format("bisection stage=%s peak=%.4f rms=%.4f nonFinite=%d",
+				label, peak, rms, nonFinite));
 	}
 
 	/**

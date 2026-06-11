@@ -1,13 +1,45 @@
 # EfxManager → PDSL: DSP Parity Plan
 
 > Phase plan for closing the DSP gap between the PDSL Block-forward runner and the
-> Java CellList path on `feature/audio-scene-pdsl`. The pattern path + runner
-> plumbing are done and by-ear-validated (same arrangement, less DSP); this plan
-> covers ONLY the remaining DSP-parity work. Companion docs:
+> Java CellList path on `feature/audio-scene-pdsl`. Companion docs:
 > [STATE_OF_PLAY.md](STATE_OF_PLAY.md) §5, [PDSL_AUDIO_DSP.md](PDSL_AUDIO_DSP.md)
 > (substrate + MixdownManager migration map), [KNOWN_ISSUES.md](KNOWN_ISSUES.md)
-> §5/§6/§7. Last updated 2026-06-09. Verify line numbers against current source
+> §5/§6/§7. Last updated 2026-06-10. Verify line numbers against current source
 > before editing — they drift.
+
+## 0. THE PARITY STANDARD (read first)
+
+This is a project to **replace one mixdown process with another that produces the same
+result.** The PDSL output must be **indistinguishable from the Java output to a normal
+listener.** The bar is: *you should have to be a sound engineer doing careful A/B listening
+to notice any difference at all.* If a non-expert can hear a difference, something is wrong.
+
+Concretely:
+- The ONLY acceptable differences are sub-perceptual approximations whose mechanism is
+  understood and bounded: FIR vs Java's IIR filter shape; block/frame-quantized delay and
+  feedback vs per-sample; floating-point ordering. These must be *barely* audible at most.
+- A **level/energy difference of more than a few percent is a DEFECT, not a "hotter mix."**
+  "1.4 vs 1.15" or "PDSL is ~2.5× the Java energy" is a HUGE, disqualifying gap — it means
+  the PDSL path is computing the signal structurally differently from Java.
+- **Never compensate for a divergence by trimming a gain.** Scaling the output to make a
+  meter match hides the defect (it will reappear under a different genome/input) and destroys
+  the very signal that tells us the model is wrong. A divergence is always localized and
+  fixed at its structural source so the level comes out right *on its own*.
+- Verification is by **per-stage A/B against the Java equivalent** (energy/RMS/peak AND by
+  ear), not by "is it non-silent / finite."
+
+## 0b. KNOWN DEFECTS (open)
+
+- **efx path ~1.5–2.5× hotter than Java (OPEN, under investigation).** Bisection runs
+  5f1a90b2 / 9b0a79c6: PDSL RMS 0.19–0.26 vs CellList 0.16–0.17, peak 0.86 vs 0.57 — i.e.
+  the PDSL summed mix is ~2.3× hotter going into the master (back-computed via `atanh` from
+  the post-`tanh` peak), driving the master saturator into its nonlinear region (audible
+  distortion). This is a structural divergence in the efx/wet/feedback rendering, NOT a level
+  to trim. Candidate mechanisms in §H below.
+- **Reverb parity unverified.** Reverb is now modeled faithfully (per-channel `reverbFactor`
+  send on `reverbChannels=[1,2,3,4,5]`), but for the random-seed test genomes the reverb send
+  evaluates to ~0 in BOTH paths (Java reverb-on ≡ reverb-off), so reverb parity is not yet
+  exercised by audio. Needs a genome (or forced send) that actually drives reverb.
 
 ## A. Verified facts that ground the plan
 
@@ -110,9 +142,35 @@ Gate each stage by ear via `AudioScenePdslCutoverTest.realSceneAbReview` (real l
   matching `.mself(... g(delayLevels[...,1]))`. Sub-frame feedback stays frame-quantized
   (accepted, PDSL_AUDIO_DSP §17.3). May be split as its own follow-up if Stage 3 already
   satisfies by ear.
-- **Stage 5 — true stereo (follow-up).** Run the master over both L/R regions (RIGHT at
-  offsets `2*channelCount` / `3*channelCount` * bufferSize) and stream distinct L/R.
-  Doubles the graph; interacts with the 31-arg ceiling. Defer.
+- **Reverb bus — DONE (2026-06-10).** A third `accum_blocks` arm in `mixdown_master_wet`
+  renders `MixdownManager.createEfx`'s `reverb.sum().map(DelayNetwork)`: MAIN region → mono
+  send → `scale(reverb_send)` → `repeat(channels)` → `delay_network(reverb_delays,
+  reverb_feedback, reverb_buffers, reverb_heads)` → `sum_channels`, reusing the existing
+  `mixdown_reverb_state`. Adapter supplies `reverb_send` (0.25), `reverb_delays` (per-tap
+  multi-frame, spread for diffusion), `reverb_feedback` (scaled Householder, spectral radius
+  `REVERB_GAIN` 0.7 → stable), and a `REVERB_FRAMES`-frame ring (set to 2 to limit compile
+  re-optimization). Audible decaying tail; validated by the smoke + real-scene A/B.
+- **Stereo — currently DUAL-MONO (stopgap); true stereo is wanted and valuable.** The PDSL
+  path renders one master and streams it to both writers.
+  **Why stereo matters (do not dismiss it):** many audio samples are themselves stereo, with
+  genuinely different left and right channels. Users who load a stereo sample expect the L and
+  R channels carried through the signal path independently and delivered as a matching stereo
+  result. Stereo support is therefore a real, expected feature — independent of any particular
+  test arrangement.
+  **A prior measurement is NOT evidence against stereo.** An earlier A/B happened to use
+  near-mono content, so its output was near-mono (Java L−R rms ~0.003%). That is tautological —
+  mono-ish input yields mono-ish output — and says nothing about the value of stereo support.
+  Validate stereo with samples that have deliberately different L/R channels, not with the
+  default arrangement.
+  **REQUIREMENT for the implementation:** stereo means *twice the channels inside a SINGLE
+  compiled model and a SINGLE forward pass* — one graph that carries the L and R channels
+  together (process `[2*channels, ...]` / emit a `[2, bufferSize]` master). Running the whole
+  mixdown pipeline twice (two compiles / two forwards) is never acceptable; that earlier
+  attempt was reverted.
+  **Sources of L/R difference to carry through:** (1) stereo input samples — the primary one —
+  whose distinct channels must flow through the per-channel chain and mixdown without being
+  collapsed to mono; (2) per-channel pan in the mixdown. Both belong in the single stereo-width
+  graph.
 - **Stage 6 — automation granularity (follow-up).** Keep per-buffer (~186ms at 8192) this
   phase; only sub-divide if the owner hears stepping.
 
@@ -162,3 +220,46 @@ stage), `MixdownManagerPdslVerificationTest` (energy/peak parity, new probes).
 render-buffer management (`consolidateRenderBuffers` + `getConsolidatedRenderBuffer` +
 render-cell tracking) into its own collaborator to drop `AudioScene` under the threshold;
 raise with the owner before any edit that would push it over 1500.
+
+## H. efx-path divergence — candidate mechanisms (investigation 2026-06-10)
+
+The PDSL summed mix is ~2.5× hotter than Java (§0b). This is a structural mismatch in how
+the PDSL efx/main arms layer their gains versus Java — NOT a level to trim. Java signal flow:
+
+- **Per channel (before mixdown):** `EfxManager.apply(voicing)` (EfxManager.java:215-249) =
+  `dry + feedback(automatedDelay(delayLevels[ch,0] · (HP|LP)(dry)))`. Applied to BOTH the MAIN
+  and WET voicing render cells (`AudioScene.getPatternChannel:1187`), gated by
+  `wetChannels`.
+- **Main bus:** `main = (efx.apply'd MAIN) × v` (the per-channel volume), with `mainFilterUp`
+  HP, then `sum` (createCells:585-668, 691).
+- **Efx bus:** `efx = (efx.apply'd WET) × efxFactor` where `efxFactor = v ∘ wetFilter`
+  (createCells:654-656), then `.m(delays).mself(transmission, fc(wetOut)).sum()`
+  (createEfx:745-748).
+- **Reverb bus:** `(WET) × reverbFactor → DelayNetwork` (createCells:629-657, createEfx:754-756).
+- **Master:** `(main + efx + reverb) → masterFilterDown LP → × masterBusGain(0.5) → bound(±1)`.
+
+PDSL `mixdown_master_wet` divergences (energy errors), prime-suspect first:
+
+1. **[PRIME] The efx arm never applies the per-channel volume `v`.** Java scales the entire
+   efx bus by `efxFactor = v ∘ wetFilter` (v < 1). The PDSL efx arm applies `efx_wet_level`
+   and a static `wet_level` but NOT `volume[ch]`. The main arm DOES apply volume. That
+   asymmetry alone makes the efx bus hotter than Java by ~`1/v` — the most likely source of
+   the ~2.5× summed-mix excess.
+2. **Spurious static `wet_level` on the efx arm.** PDSL multiplies the efx arm by
+   `config.wetLevel` (0.35–0.5), which has no counterpart in Java's efx bus (Java's wet
+   scaling is `v × wetFilter` on input and `wetOut` on the feedback output). Redundant /
+   mis-scaled.
+3. **`EfxManager.apply` is not applied to the MAIN voicing in PDSL.** Java applies it (dry+wet)
+   to BOTH voicings; the PDSL main arm uses the raw MAIN region. Wrong main/efx balance.
+4. **Feedback output level.** Java's efx feedback output factor is `wetOut.valueAt(0)`; the
+   PDSL feedback `passthrough` is the static `wetLevel`.
+5. **Filter layering / shape.** Java: per-channel `EfxManager.applyFilter` (gene HP/LP) +
+   branch `wetFilter`. PDSL: `efx_filter_coeffs` (apply-replica, LP-only due to the `choice`
+   limitation) + `wet_filter_coeffs` (mixdown). Shape divergence (≈unity energy), plus the
+   accepted LP-only approximation.
+
+**Fix (structural, never a trim):** re-derive the PDSL efx/main arms to mirror Java's exact
+gain chain — apply `v` to the efx bus (`efxFactor = v ∘ wetFilter`), remove the spurious
+static `wet_level`, use `wetOut` for the feedback output, and apply `EfxManager.apply` to the
+MAIN voicing too. Then verify **per-stage RMS against the Java equivalent** — target: PDSL
+within a few percent of CellList with no audible difference (§0 standard), not "close enough".
