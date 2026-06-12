@@ -38,11 +38,13 @@ import java.util.List;
  * {@code [LEFT-MAIN(N), LEFT-WET(N), RIGHT-MAIN(N), RIGHT-WET(N)]} layout consumers
  * rely on.</p>
  *
- * <p>The buffer is zero-filled at allocation: freshly allocated device memory is not
- * guaranteed to be zeroed, and the buffer is read before every region has been rendered
- * (the PDSL runner performs a forward pass at build time to obtain its output handle);
- * any garbage read there would be written into stateful DSP rings where feedback can
- * recirculate it indefinitely.</p>
+ * <p>The buffer is explicitly zero-filled at allocation. Plain provider allocations are
+ * already zero-initialized on every standard backend, but this buffer is read before
+ * every region has been rendered (the PDSL runner performs a forward pass at build time
+ * to obtain its output handle) and any non-zero content read there would be written into
+ * stateful DSP rings where feedback can recirculate it indefinitely — so the zero
+ * invariant is stated here directly rather than left to the allocation context (a
+ * Heap-carved or shared-file-backed allocation would not be cleared).</p>
  */
 class PatternRenderBuffers implements Destroyable {
 

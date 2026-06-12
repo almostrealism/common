@@ -125,10 +125,34 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 				IntStream.range(0, scene.getChannelCount()).boxed().collect(Collectors.toList());
 
 		if (MixdownManager.enablePdslMixdown) {
-			return createPdsl(output, resolved, bufferSize);
+			if (supportsPdsl(resolved)) {
+				return createPdsl(output, resolved, bufferSize);
+			}
+
+			log("channels=" + resolved + " is outside the PDSL mixdown's supported"
+					+ " configurations; using the CellList runner for this build");
 		}
 
 		return createCellList(output, resolved, bufferSize);
+	}
+
+	/**
+	 * Returns whether the PDSL mixdown path supports the given channel selection. The
+	 * compiled mixdown model requires at least two channels (the adapter's per-channel
+	 * argument construction uses {@code concat}, which needs two or more inputs), and the
+	 * adapter reads genome and automation genes by list position, so the selection must
+	 * be the zero-based contiguous prefix {@code [0, 1, ..., n-1]} for gene reads to map
+	 * to the right pattern channels. Anything else (e.g. the single-channel selection
+	 * from {@link AudioScene#renderChannel}) renders through the CellList runner instead.
+	 *
+	 * @param channels the resolved channel indices
+	 * @return true when the PDSL path can faithfully render this selection
+	 */
+	private boolean supportsPdsl(List<Integer> channels) {
+		if (channels.size() < 2) return false;
+
+		return IntStream.range(0, channels.size())
+				.allMatch(i -> channels.get(i) != null && channels.get(i) == i);
 	}
 
 	/**

@@ -402,6 +402,45 @@ The framework uses `MemoryProvider` instances to allocate memory. Which provider
 is used depends on the hardware backend and configuration. You do not choose
 directly — the system selects the appropriate provider.
 
+### Memory initialization guarantees
+
+These guarantees have evolved over time; the table below reflects the current
+implementations (verify against the cited sources if in doubt).
+
+A plain constructor (`new PackedCollection(shape)`) always allocates directly
+from the active `MemoryProvider` and is **zero-initialized** on every standard
+backend:
+
+| Backend | Mechanism |
+|---|---|
+| JVM (`JVMMemoryProvider`) | `new double[len]` — zeroed by the Java language spec |
+| Native CPU/JNI (`NativeMemoryProvider`) | `calloc` (see `Malloc.getFunctionDefinition`) |
+| Metal (`MetalMemoryProvider`, default mode) | `newBufferWithLength` — zero-filled per the Metal API contract (`MTL.cpp createBuffer32`) |
+| NIO (`NativeBufferMemoryProvider`) | `ByteBuffer.allocateDirect` — zeroed by the JVM spec |
+| OpenCL `HEAP`/`DELEGATE` locations | `CL_MEM_USE_HOST_PTR` over zeroed host memory |
+
+The exceptions, where zero contents are **NOT** guaranteed:
+
+- **OpenCL `DEVICE` (the default CL location) and `HOST` locations** — bare
+  `clCreateBuffer` / `CL_MEM_ALLOC_HOST_PTR`; the OpenCL specification leaves
+  the contents undefined.
+- **Heap-carved allocations** — `PackedCollection.factory()` under an active
+  `Heap` (or inside `Heap.stage(...)`) carves bump-pointer views from the
+  stage's backing block without clearing them. The block is zeroed when first
+  allocated, but once a stage resets, the next allocations reuse the region
+  with prior writes intact. Code that requires zeroed factory allocations
+  inside heap scopes must clear them itself.
+- **File-backed shared memory** — inside an explicit
+  `sharedMemory(file, ...)` scope, buffers map a file (`O_CREAT` without
+  `O_TRUNC`); newly-extended bytes read as zero, but existing file contents
+  are preserved. This is by design: shared memory exists to share content
+  with another process.
+
+Providers do not pool freed chunks (deallocation destroys the memory), so a
+fresh provider allocation always comes from one of the zeroing allocators
+above — earlier contents of destroyed collections cannot reappear through the
+plain constructor.
+
 ### Why destroy() matters
 
 When a `PackedCollection` is no longer needed and holds significant memory, call
