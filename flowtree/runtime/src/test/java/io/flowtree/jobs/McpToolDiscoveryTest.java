@@ -451,6 +451,12 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			+ " in signature so callers can opt out of the per-job sensitive-file"
 			+ " protections (test/CI write lock, harness-side staging block, etc.)",
 			submitParams.contains("sensitive_file_protection_enabled"));
+		assertTrue("workstream_submit_task must declare job_type in signature so callers"
+			+ " can select a shell-command job instead of a coding-agent job",
+			submitParams.contains("job_type"));
+		assertTrue("workstream_submit_task must declare command in signature so callers"
+			+ " can supply the shell command for a shell-command job",
+			submitParams.contains("command"));
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
