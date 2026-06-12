@@ -45,7 +45,7 @@ full-scene work.
 | **a2 batching — real-scene integration** | **OPEN.** On the full curated-library scene, batched dispatch does **not** reliably fire for the real pattern path (some methods render `peak=0.0` / silence), and full-scene renders exhaust the native kernel pool (next row). The full-scene test `BatchedRealSceneRenderTest` is `@Ignore`d for this reason. This is integration/scaling work, *not* a defect in the batching kernel. |
 | **Compile-reuse / `GeneratedOperation` pool** | **OPEN (cross-cutting blocker).** Structurally-identical computations recompile instead of reusing a cached kernel because argument-aggregation-target buffers have a `null` signature; each rebuild consumes a slot from a fixed pool. The pool was expanded (to `GeneratedOperation5999`) as a **stopgap, not a fix**. See [../SIGNATURE_AGGREGATION_GAP.md](../SIGNATURE_AGGREGATION_GAP.md). |
 | **Metal dispatch ceiling** (host wedged forever past ~2300–2560 cumulative dispatches) | **SOLVED.** Fixed and merged; 3000+ sustained Metal dispatches verified, re-confirmed (M1) by the sustained-dispatch sentinel test. See [METAL_SUSTAINED_DISPATCH.md](METAL_SUSTAINED_DISPATCH.md). |
-| **a3 — frame-buffer DSP/mixdown** | **MIGRATED TO PDSL, parity validated by ear, and WELL UNDER the realtime budget (2026-06-12).** The full mixdown/efx/reverb DSP runs as one compiled PDSL model per buffer (`mixdown_master_wet`). After the dispatch-fragmentation fixes (§5), the PDSL tick is 66–139 ms vs the 185.76 ms budget at 8192 frames (1.34–2.81×, and 2.12× at 4096) — several times faster than the CellList tick (298–370 ms). Acoustic gaps are accepted approximations, inventoried in [PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md). |
+| **a3 — frame-buffer DSP/mixdown** | **MIGRATED TO PDSL, parity validated by ear, and WELL UNDER the realtime budget (2026-06-12).** The full mixdown/efx/reverb DSP runs as one compiled PDSL model per buffer (`mixdown_master_wet`). After the dispatch-fragmentation fixes (§5), the PDSL tick is 161–228 ms vs the 185.76 ms budget at 8192 frames by default (0.81–1.15×; 66–139 ms / 1.34–2.81× with opt-in vectorized for-each) — faster than the CellList tick (305–373 ms). Acoustic gaps are accepted approximations, inventoried in [PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md). |
 
 **Verified (M1, 2026-06-09) — synthetic sentinel path, `studio/music`:** the batched
 pattern mechanism fires and is correct in isolation. `BatchedDispatchSentinelTest`
@@ -198,10 +198,18 @@ The defect history (six masking defects) and durable lessons:
 [PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md).
 
 **Outstanding work (the actual to-do list):**
-- **PDSL tick performance — FIXED (2026-06-11/12): comfortably under budget at both
-  buffer sizes.** The PDSL full tick was ≈1.9 s vs the CellList's ≈0.3 s; it is now
-  66–139 ms at 8192 frames (1.34–2.81× realtime) and 44 ms at 4096 (2.12×), parity
-  unchanged (windowed-RMS overall 0.97 on the re-run A/B). Root cause (confirmed by
+- **PDSL tick performance — FIXED (2026-06-11/12): at ratio-of-1 by default,
+  comfortably under budget with vectorization opted in.** The PDSL full tick was
+  ≈1.9 s vs the CellList's ≈0.3 s; the default configuration now runs 161–228 ms at
+  8192 frames (0.81–1.15×, the densest genome at ratio-of-1), and enabling
+  `AR_PDSL_VECTOR_FOREACH` reaches 66–139 ms (1.34–2.81×; 44 ms / 2.12× at 4096) —
+  parity unchanged (windowed-RMS overall 0.97 on the re-run A/B). Vectorized
+  for-each is OFF by default because structurally-identical kernels built for
+  different channel layouts in one JVM are mis-rebound by the signature-keyed
+  instruction reuse (KNOWN_ISSUES §6 — reproduced by `MixdownManagerPdslTest`'s
+  square + rectangular efx tests in one JVM; `AR_INSTRUCTION_SET_REUSE=disabled`
+  makes the combination safe); flip the default once instruction rebinding handles
+  structural twins. Root cause (confirmed by
   thread dumps, not the profile — the cost was invisible to OperationProfile):
   `Process.optimize` fragmented composed producer trees into many `IsolatedProcess`
   stages, and every forward evaluated them serially — each a dispatch on a freshly

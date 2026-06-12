@@ -20,6 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.ml.dsl.PdslInterpreter;
 import org.almostrealism.ml.dsl.PdslLoader;
 import org.almostrealism.ml.dsl.PdslNode;
 import org.almostrealism.model.Block;
@@ -171,6 +172,84 @@ public class MixdownLayerPerformanceTest extends TestSuiteBase
 		soakLayerForward("mixdown_master_wet",
 				new TraversalPolicy(2 * CHANNELS, SIGNAL_SIZE),
 				masterWetArgs(CHANNELS, SIGNAL_SIZE), 600);
+	}
+
+	/**
+	 * Diagnostic A/B for the rectangular efx bus: builds the same
+	 * {@code mixdown_efx_bus_rectangular} model with vectorized for-each enabled and
+	 * disabled, forwards the same tone through both, and logs per-stage energies so a
+	 * vectorization defect can be attributed to a specific stage.
+	 *
+	 * @throws IOException if the layer cannot be built
+	 */
+	@Test(timeout = 600_000)
+	@TestDepth(2)
+	public void rectangularBusVectorizationProbe() throws IOException {
+		int inChannels = 4;
+		int outChannels = 3;
+		int signal = 256;
+		int taps = PDSL_FILTER_ORDER + 1;
+
+		boolean previous = PdslInterpreter.enableVectorizedForEach;
+		try {
+			for (boolean vectorized : new boolean[] { false, true }) {
+				PdslInterpreter.enableVectorizedForEach = vectorized;
+
+				// Mirror the minimal failing pair: the SQUARE efx bus (2-D coefficient
+				// bank) is built and run before the rectangular bus, reproducing the
+				// cross-model compilation interaction that silences the latter.
+				Map<String, Object> squareArgs = new HashMap<>();
+				squareArgs.put("channels", inChannels);
+				squareArgs.put("signal_size", signal);
+				squareArgs.put("fir_taps", taps);
+				squareArgs.put("wet_filter_coeffs", identityFirBank(inChannels, taps)
+						.reshape(new TraversalPolicy(inChannels * taps)));
+				squareArgs.put("wet_level", WET_LEVEL);
+				squareArgs.put("delay_samples", 64);
+				squareArgs.put("transmission", new PackedCollection(
+						new TraversalPolicy(inChannels, inChannels)).fill(0.25));
+				squareArgs.put("buffers",
+						new PackedCollection(inChannels * signal).fill(0.0));
+				squareArgs.put("heads", new PackedCollection(inChannels).fill(0.0));
+				CompiledModel square = compileLayer("mixdown_efx_bus",
+						new TraversalPolicy(inChannels, signal), squareArgs);
+
+				PackedCollection input = new PackedCollection(
+						new TraversalPolicy(inChannels, signal));
+				input.fill(0.25);
+				double squareEnergy = 0.0;
+				for (double v : square.forward(input).toArray(0, signal)) {
+					squareEnergy += v * v;
+				}
+				log("rectProbe vectorized=" + vectorized
+						+ " squareEnergy=" + squareEnergy);
+
+				PackedCollection transmission = new PackedCollection(
+						new TraversalPolicy(inChannels, outChannels)).fill(0.5);
+				Map<String, Object> args = new HashMap<>();
+				args.put("channels", inChannels);
+				args.put("signal_size", signal);
+				args.put("wet_filter_coeffs", identityFirBank(inChannels, taps)
+						.reshape(new TraversalPolicy(inChannels * taps)));
+				args.put("wet_level", WET_LEVEL);
+				args.put("delay_samples", 64);
+				args.put("transmission", transmission);
+				args.put("buffers", new PackedCollection(outChannels * signal).fill(0.0));
+				args.put("heads", new PackedCollection(outChannels).fill(0.0));
+
+				CompiledModel compiled = compileLayer("mixdown_efx_bus_rectangular",
+						new TraversalPolicy(inChannels, signal), args);
+
+				double energy = 0.0;
+				for (int pass = 0; pass < 4; pass++) {
+					double[] out = compiled.forward(input).toArray(0, signal);
+					for (double v : out) energy += v * v;
+				}
+				log("rectProbe vectorized=" + vectorized + " energy=" + energy);
+			}
+		} finally {
+			PdslInterpreter.enableVectorizedForEach = previous;
+		}
 	}
 
 	/**

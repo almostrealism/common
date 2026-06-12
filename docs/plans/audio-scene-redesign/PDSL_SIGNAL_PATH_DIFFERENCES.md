@@ -215,26 +215,29 @@ window, `AR_PATTERN_CACHE_PERSIST=true`; raw lines in
 
 | Path | Buffer | Median tick | vs budget |
 |---|---|---|---|
-| PDSL | 8192 | 66–139 ms | **1.34–2.81× realtime** |
-| CellList | 8192 | 298–370 ms | 0.50–0.62× realtime |
-| PDSL | 4096 | 44 ms | **2.12× realtime** |
+| PDSL (default) | 8192 | 161–228 ms | **0.81–1.15× realtime** |
+| PDSL (`AR_PDSL_VECTOR_FOREACH=enabled`) | 8192 | 66–139 ms | **1.34–2.81× realtime** |
+| PDSL (vectorized) | 4096 | 44 ms | **2.12× realtime** |
+| CellList | 8192 | 298–373 ms | 0.50–0.62× realtime |
 
 What the numbers say:
 
-- **The PDSL tick is well under budget on every benchmarked genome and at both buffer
-  sizes** — including the lower-latency 4096-frame configuration — and is ~3–5× faster
-  than the CellList tick. Two fixes got it here (STATE_OF_PLAY §5): the `delay_network`
-  ring update was de-fragmented into single-expression computations
-  (`CollectionSlotUpdateComputation` + fused ring read/route, 1382 ms → 3 ms), and
-  `for each channel` bodies of channel-uniform primitives now compile ONCE over
-  `[channels, signalSize]` with bank-form arguments (`fir`/`scale`/`delay`) instead of
-  per-channel blocks (`mixdown_master_wet` forward 77 ms → 21 ms; build 2.3 s → 0.8 s).
-  Bodies that cannot take the bank form fall back to per-channel dispatch
-  automatically (`PdslInterpreter.enableVectorizedForEach`).
+- **The default PDSL tick reaches ratio-of-1 on the densest genome** and is faster
+  than the CellList tick everywhere, after the `delay_network` ring update was
+  de-fragmented into single-expression computations
+  (`CollectionSlotUpdateComputation` + fused ring read/route, 1382 ms → 3 ms).
+- **Vectorized `for each channel` (opt-in) gives a further ~2–3×** by compiling
+  channel-uniform bodies ONCE over `[channels, signalSize]` with bank-form
+  arguments (`fir`/`scale`/`delay`) instead of per-channel blocks
+  (`mixdown_master_wet` forward 77 ms → 21 ms; build 2.3 s → 0.8 s). It is OFF by
+  default because structurally-identical vectorized kernels built for different
+  channel layouts in one JVM are mis-rebound by the signature-keyed instruction
+  reuse (see KNOWN_ISSUES §6 — `AR_INSTRUCTION_SET_REUSE=disabled` makes the
+  combination safe); flip it on once instruction rebinding handles structural twins.
 - The remaining per-tick cost is dominated by per-note pattern preparation
   (~64 ms, one busy channel accounts for half) — the open a2 batched-dispatch
   integration, tracked separately.
-- Build time (one-time): PDSL ≈42 s, CellList ≈67 s.
+- Build time (one-time): PDSL ≈46 s, CellList ≈69 s.
 
 ---
 
@@ -249,6 +252,7 @@ What a listener gets after flipping `enablePdslMixdown` on:
 4. Reproducible renders run-to-run.
 5. Buffer-quantized automation (inaudible at production envelope rates).
 6. Mono-equivalent stereo, as before in practice.
-7. **A far faster tick than the CellList path** (§6) — 1.34–2.81× realtime at 8192
-   frames (2.12× at 4096) vs the CellList's 0.50–0.62×.
+7. **A faster tick than the CellList path** (§6) — 0.81–1.15× realtime at 8192 by
+   default, 1.34–2.81× with vectorized for-each enabled, vs the CellList's
+   0.50–0.62×.
 8. Single-channel renders (`renderChannel`) unchanged — they fall back to CellList.

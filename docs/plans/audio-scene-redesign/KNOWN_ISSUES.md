@@ -103,9 +103,20 @@ slot from a fixed, monotonically-consumed `GeneratedOperation` pool. A full-scen
 climbs past the pool size and **cascades into failures of unrelated `AudioScene` tests**.
 
 The pool was expanded (currently up to `GeneratedOperation5999`) to buy headroom, but that
-is a **stopgap, not a fix** — the underlying recompilation churn remains. This gap gates
-re-enabling `BatchedRealSceneRenderTest` and any sustained full-scene render. Full analysis
-and candidate fixes: [../SIGNATURE_AGGREGATION_GAP.md](../SIGNATURE_AGGREGATION_GAP.md).
+is a **stopgap, not a fix** — the underlying recompilation churn remains.
+
+The reuse path has the inverse defect as well: when two models DO contain
+structurally-identical computations (identical generated expressions, differing only
+in work-item count or bound buffers), the signature-keyed instruction reuse rebinds
+them incorrectly and the second model silently computes wrong results (observed as
+exactly-zero output). Concrete reproducer: enable `AR_PDSL_VECTOR_FOREACH` and run
+`MixdownManagerPdslTest`'s `testMixdownEfxBusProducesOutput` followed by
+`testMixdownManagerRectangularRoute` in one JVM; `AR_INSTRUCTION_SET_REUSE=disabled`
+makes the pair pass. This is why the PDSL vectorized for-each ships opt-in.
+
+This gap gates re-enabling `BatchedRealSceneRenderTest` and any sustained full-scene
+render. Full analysis and candidate fixes:
+[../SIGNATURE_AGGREGATION_GAP.md](../SIGNATURE_AGGREGATION_GAP.md).
 
 ## 7. a2 batched dispatch does not fire for the full real-scene pattern path
 

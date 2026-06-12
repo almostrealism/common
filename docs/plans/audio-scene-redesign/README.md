@@ -6,10 +6,11 @@
 > **Where it stands (2026-06-12, `feature/audio-scene-pdsl`):** the **a3 DSP/mixdown
 > migration to PDSL is done, parity-validated by ear, and well under the realtime budget** — the full
 > mixdown/efx/reverb path runs as one compiled PDSL model per buffer behind the
-> `MixdownManager.enablePdslMixdown` A/B flag (default off), ticking at 1.34–2.81×
-> realtime at 8192 frames and 2.12× at 4096 (several times faster than the CellList
-> path) after the dispatch-fragmentation fixes. What remains: true stereo and the
-> accepted-difference review before flipping the default.
+> `MixdownManager.enablePdslMixdown` A/B flag (default off), ticking at 0.81–1.15×
+> realtime at 8192 frames by default and 1.34–2.81× with opt-in vectorized for-each
+> (faster than the CellList path either way) after the dispatch-fragmentation fixes.
+> What remains: the instruction-rebinding fix that lets vectorization default on,
+> true stereo, and the accepted-difference review before flipping the default.
 > See STATE_OF_PLAY §5 for the to-do list and PDSL_SIGNAL_PATH_DIFFERENCES for the
 > swap impact.
 

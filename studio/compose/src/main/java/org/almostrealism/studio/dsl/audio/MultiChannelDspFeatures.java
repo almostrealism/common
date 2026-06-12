@@ -251,10 +251,12 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 					// leaves many small computations for Process.optimize to isolate, and
 					// every isolated stage is then dispatched-and-awaited separately on
 					// every forward — the cost is the per-dispatch glue, not the math.
-					CollectionProducer output = routedRingRead("delay-network-output",
+					CollectionProducer output = routedRingRead(
+							"delay-network-output-" + channels + "x" + signalSize + "x" + bufSize,
 							flatBuffer, heads1D, delays1D, false, passthroughMatrix,
 							channels, signalSize, bufSize);
-					CollectionProducer fbAll = routedRingRead("delay-network-feedback",
+					CollectionProducer fbAll = routedRingRead(
+							"delay-network-feedback-" + channels + "x" + signalSize + "x" + bufSize,
 							flatBuffer, heads1D, delays1D, false, feedbackMatrix,
 							channels, signalSize, bufSize);
 					CollectionProducer framesAll = c(in).add(fbAll)
@@ -267,8 +269,8 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 						// One-frame ring: the new frame replaces the whole buffer. Every
 						// feedback read targets the element being rewritten, so the
 						// read-then-write stays within one work item and is safe in place.
-						ops.add(into("delay-network-buffer-write", framesAll,
-								buffer, false));
+						ops.add(into("delay-network-buffer-write-" + channels + "x" + bufSize,
+								framesAll, buffer, false));
 					} else {
 						// Multi-frame ring: the feedback reads OTHER slots than the one
 						// being rewritten, so the new frame must be materialized before
@@ -276,9 +278,9 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 						// reading the ring would race against itself across work items.
 						PackedCollection frameScratch =
 								new PackedCollection(channels * signalSize);
-						ops.add(into("delay-network-frames", framesAll,
-								cp(frameScratch), false));
-						ops.add(into("delay-network-buffer-write",
+						ops.add(into("delay-network-frames-" + channels + "x" + signalSize,
+								framesAll, cp(frameScratch), false));
+						ops.add(into("delay-network-buffer-write-" + channels + "x" + bufSize,
 								new CollectionSlotUpdateComputation(
 										shape(channels * bufSize),
 										channels, bufSize, signalSize,
@@ -286,7 +288,7 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 								buffer, false));
 					}
 
-					ops.add(into("delay-network-head-write",
+					ops.add(into("delay-network-head-write-" + channels + "x" + bufSize,
 							ringHeadAdvance(heads1D, channels, signalSize, bufSize),
 							heads, false));
 					return ops;
@@ -337,7 +339,8 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 		Cell<PackedCollection> forward = Cell.of(
 				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
 						Supplier<Runnable>>) (in, next) -> {
-					CollectionProducer output = routedRingRead("delay-bank-read",
+					CollectionProducer output = routedRingRead(
+							"delay-bank-read-" + channels + "x" + signalSize + "x" + bufSize,
 							flatBuffer, heads1D, delaySamples, scalarDelay, null,
 							channels, signalSize, bufSize);
 					CollectionProducer framesAll = c(in)
@@ -347,9 +350,14 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 									shape(channels * bufSize), channels, bufSize, signalSize,
 									flatBuffer, framesAll, heads1D);
 					OperationList ops = new OperationList("delay-bank");
+					// The ring is written BEFORE the delayed read is emitted, matching the
+					// per-channel delay primitive's effective semantics: a delay shorter
+					// than the frame reads back into the frame being processed, so the
+					// current input must already be in the ring when the read evaluates.
+					ops.add(into("delay-bank-buffer-write-" + channels + "x" + bufSize,
+							newBuffer, buffer, false));
 					ops.add(next.push(output));
-					ops.add(into("delay-bank-buffer-write", newBuffer, buffer, false));
-					ops.add(into("delay-bank-head-write",
+					ops.add(into("delay-bank-head-write-" + channels + "x" + bufSize,
 							ringHeadAdvance(heads1D, channels, signalSize, bufSize),
 							heads, false));
 					return ops;
@@ -395,10 +403,22 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 				? new Producer[] { flatBuffer, heads, delays }
 				: new Producer[] { flatBuffer, heads, delays, matrix };
 
+		// The expression text is identical across channel counts (the count only sets
+		// the number of work items), so cross-model instruction reuse would bind one
+		// layout's compiled form to another's buffers. A null signature opts these
+		// small per-model kernels out of instruction caching entirely.
 		return new DefaultTraversableExpressionComputation(name, outShape,
 				(Function<TraversableExpression[], CollectionExpression>) exprArgs ->
 						DefaultCollectionExpression.create(outShape, idx -> {
-							Expression<?> n = idx.divide((long) signalSize);
+							// The imod is a no-op (the channel index is always below the
+							// channel count), but it embeds the channel count in the
+							// expression structure: two layouts that differ ONLY in channel
+							// count otherwise produce structurally identical expressions,
+							// and structural identity is what compiled-instruction reuse
+							// keys on — reuse across different counts binds one layout's
+							// kernel to the other's buffers.
+							Expression<?> n = idx.divide((long) signalSize)
+									.imod((long) channels);
 							Expression<?> i = idx.imod((long) signalSize);
 
 							if (matrix == null) {
@@ -416,7 +436,10 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 							}
 							return result;
 						}),
-				args);
+				args) {
+			@Override
+			public String signature() { return null; }
+		};
 	}
 
 	/**
@@ -455,14 +478,18 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 	private CollectionProducer ringHeadAdvance(CollectionProducer heads,
 											   int channels, int signalSize, int bufSize) {
 		TraversalPolicy outShape = shape(channels);
-		return new DefaultTraversableExpressionComputation("delay-network-head-advance",
+		return new DefaultTraversableExpressionComputation(
+				"delay-network-head-advance-" + channels + "x" + signalSize + "x" + bufSize,
 				outShape,
 				(Function<TraversableExpression[], CollectionExpression>) exprArgs ->
 						DefaultCollectionExpression.create(outShape, idx ->
-								exprArgs[1].getValueAt(idx)
+								exprArgs[1].getValueAt(idx.imod((long) channels))
 										.add(e((double) signalSize))
 										.mod(e((double) bufSize))),
-				heads);
+				heads) {
+			@Override
+			public String signature() { return null; }
+		};
 	}
 
 }

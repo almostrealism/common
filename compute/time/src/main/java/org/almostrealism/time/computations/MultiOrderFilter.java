@@ -324,10 +324,13 @@ public class MultiOrderFilter extends CollectionProducerComputationBase {
 
 				if (channels > 1) {
 					// Window position within this channel's row; reads are clamped to the
-					// row so the convolution never bleeds into a neighboring channel.
+					// row so the convolution never bleeds into a neighboring channel. The
+					// coefficient bank is addressed flat so both [channels, taps] and
+					// flat [channels * taps] coefficient declarations work.
 					Expression offset = body.declareInteger("offset",
 							pos.add(i.subtract(e(filterOrder / 2))));
-					Expression coeff = coefficients.getValue(row, i);
+					Expression coeff = coefficients.getValueAt(
+							row.multiply(e(filterOrder + 1)).add(i));
 
 					body.addCase(offset.greaterThanOrEqual(e(0)).and(offset.lessThan(e(rowSize))),
 							result.assign(result.add(input.getValueAt(index).multiply(coeff))));
@@ -359,6 +362,16 @@ public class MultiOrderFilter extends CollectionProducerComputationBase {
 	@Override
 	public MultiOrderFilter generate(List<Process<?, ?>> children) {
 		return new MultiOrderFilter(getShape(), (Producer) children.get(1), (Producer) children.get(2), channels);
+	}
+
+	@Override
+	public String signature() {
+		String signature = super.signature();
+		if (signature == null) {
+			return null;
+		}
+
+		return signature + "{order=" + filterOrder + ",channels=" + channels + "}";
 	}
 
 	/**

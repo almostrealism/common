@@ -19,6 +19,8 @@ package org.almostrealism.ml.dsl;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.ml.AttentionFeatures;
@@ -111,8 +113,17 @@ public class PdslInterpreter {
 	 * standard argument paths, so non-bank-aware primitives fail loudly rather than
 	 * misinterpret it). Vectorized bodies avoid the per-channel slice/dispatch/concat
 	 * structure, whose per-stage dispatch overhead dominates small per-channel kernels.
+	 *
+	 * <p>OFF BY DEFAULT (enable via {@code AR_PDSL_VECTOR_FOREACH=enabled}): vectorized
+	 * bodies built for different channel layouts in one JVM can be structurally
+	 * identical, and the signature-keyed instruction reuse currently rebinds such twins
+	 * incorrectly across models (silent wrong results — reproduced by running
+	 * {@code MixdownManagerPdslTest}'s square and rectangular efx bus tests together;
+	 * {@code AR_INSTRUCTION_SET_REUSE=disabled} makes the combination safe). Flip the
+	 * default once instruction rebinding handles structural twins.</p>
 	 */
-	public static boolean enableVectorizedForEach = true;
+	public static boolean enableVectorizedForEach =
+			SystemUtils.isEnabled("AR_PDSL_VECTOR_FOREACH").orElse(false);
 
 	/**
 	 * Sentinel bound to {@code channel} during vectorized {@code for each channel}
@@ -924,7 +935,13 @@ public class PdslInterpreter {
 				? currentShape.length(currentShape.getDimensions() - 1)
 				: currentShape.getSize() / channels;
 
-		if (enableVectorizedForEach) {
+		// Vectorization assumes the upstream signal actually spans `channels` rows; a
+		// rectangular route can leave a DIFFERENT channel count flowing into a later
+		// for-each, which only the per-channel dispatch handles.
+		boolean channelAligned = currentShape.getDimensions() >= 2
+				&& currentShape.length(0) == channels;
+
+		if (enableVectorizedForEach && channelAligned) {
 			// Attempt to compile the body ONCE over [channels, signalSize]: subscripted
 			// per-channel arguments resolve to whole banks, and bank-aware primitives
 			// apply them in a single computation. Any construct that cannot take the
@@ -936,9 +953,15 @@ public class PdslInterpreter {
 						new SequentialBlock(FEATURES.shape(channels, signalSize));
 				interpretBody(stmt.getBody(), bankBlock, bankEnv);
 				block.add(bankBlock);
+				Console.root().features(PdslInterpreter.class)
+						.log("forEachChannel vectorized=true channels=" + channels
+								+ " signalSize=" + signalSize);
 				return;
 			} catch (PdslParseException | UnsupportedOperationException
 					| IllegalArgumentException e) {
+				Console.root().features(PdslInterpreter.class)
+						.log("forEachChannel vectorized=false channels=" + channels
+								+ " signalSize=" + signalSize + " cause=" + e.getMessage());
 				// Fall through to per-channel dispatch.
 			}
 		}
