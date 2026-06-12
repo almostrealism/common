@@ -3,13 +3,13 @@
 > **The goal:** render an `AudioScene` at ratio-of-1 (render time per tick ≤ the audio
 > duration of that tick; ~92.9 ms/tick at 44.1 kHz / 4096 frames).
 >
-> **Where it stands (2026-06-11, `feature/audio-scene-pdsl`):** the **a3 DSP/mixdown
-> migration to PDSL is done and parity-validated by ear** — the full mixdown/efx/reverb
-> path runs as one compiled PDSL model per buffer behind the
-> `MixdownManager.enablePdslMixdown` A/B flag (default off). **Performance is the open
-> front:** the PDSL full tick is ~10× over the realtime budget (vs ~1.6–2× for the
-> CellList tick) due to a constant per-tick overhead — eliminating it is the top item,
-> alongside true stereo and the accepted-difference review before flipping the default.
+> **Where it stands (2026-06-12, `feature/audio-scene-pdsl`):** the **a3 DSP/mixdown
+> migration to PDSL is done, parity-validated by ear, and at ratio-of-1** — the full
+> mixdown/efx/reverb path runs as one compiled PDSL model per buffer behind the
+> `MixdownManager.enablePdslMixdown` A/B flag (default off), ticking at 0.80–1.05×
+> realtime at 8192 frames (faster than the CellList path) after the
+> dispatch-fragmentation fix. What remains: shaving the ~100–150 ms fixed per-tick
+> cost, true stereo, and the accepted-difference review before flipping the default.
 > See STATE_OF_PLAY §5 for the to-do list and PDSL_SIGNAL_PATH_DIFFERENCES for the
 > swap impact.
 

@@ -16,10 +16,16 @@
 
 package org.almostrealism.studio.dsl.audio;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.DefaultCollectionExpression;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionSlotUpdateComputation;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
@@ -31,6 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -233,41 +240,54 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 							+ " must equal channels=" + channels);
 		}
 		TraversalPolicy multiShape = shape(channels, signalSize);
-		TraversalPolicy sigShape = shape(1, signalSize);
-		TraversalPolicy oneShape = shape(1);
 		CollectionProducer delays1D = delaySamples.reshape(shape(channels));
 		CollectionProducer heads1D = heads.reshape(shape(channels));
+		CollectionProducer flatBuffer = buffer.reshape(shape(channels * bufSize));
 		Cell<PackedCollection> forward = Cell.of(
 				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
 						Supplier<Runnable>>) (in, next) -> {
-					CollectionProducer yAll = null;
-					for (int n = 0; n < channels; n++) {
-						CollectionProducer headN = subset(oneShape, heads1D, n);
-						CollectionProducer delayN = subset(oneShape, delays1D, n);
-						CollectionProducer readPositions = mod(
-								headN.add(integers(0, signalSize))
-										.subtract(delayN)
-										.add(c(bufSize)),
-								c(bufSize)).add(c(n * bufSize));
-						CollectionProducer yN = c(shape(signalSize), buffer, readPositions)
-							.reshape(sigShape);
-						yAll = yAll == null ? yN : (CollectionProducer) concat(yAll, yN);
-					}
-					CollectionProducer fbAll = channelMatrixMultiply(
-							feedbackMatrix, yAll, channels, signalSize);
-					CollectionProducer output = passthroughMatrix == null ? yAll
-							: channelMatrixMultiply(passthroughMatrix, yAll, channels, signalSize);
+					// Each stage below is ONE computation over the raw state collections.
+					// Composing the same result from per-channel subset/mask/concat trees
+					// leaves many small computations for Process.optimize to isolate, and
+					// every isolated stage is then dispatched-and-awaited separately on
+					// every forward — the cost is the per-dispatch glue, not the math.
+					CollectionProducer output = routedRingRead("delay-network-output",
+							flatBuffer, heads1D, delays1D, passthroughMatrix,
+							channels, signalSize, bufSize);
+					CollectionProducer fbAll = routedRingRead("delay-network-feedback",
+							flatBuffer, heads1D, delays1D, feedbackMatrix,
+							channels, signalSize, bufSize);
 					CollectionProducer framesAll = c(in).add(fbAll)
 							.reshape(shape(channels * signalSize));
-					CollectionProducer newBuffer = ringWrite(buffer, framesAll,
-							heads1D, channels, signalSize, bufSize);
-					CollectionProducer newHeads = heads1D.add(c((double) signalSize))
-							.mod(c((double) bufSize));
+
 					OperationList ops = new OperationList("delay_network");
 					ops.add(next.push(output));
-					ops.add(into("delay-network-buffer-write", newBuffer,
-							buffer, false));
-					ops.add(into("delay-network-head-write", newHeads,
+
+					if (bufSize == signalSize) {
+						// One-frame ring: the new frame replaces the whole buffer. Every
+						// feedback read targets the element being rewritten, so the
+						// read-then-write stays within one work item and is safe in place.
+						ops.add(into("delay-network-buffer-write", framesAll,
+								buffer, false));
+					} else {
+						// Multi-frame ring: the feedback reads OTHER slots than the one
+						// being rewritten, so the new frame must be materialized before
+						// the in-place buffer update — a kernel that wrote the slot while
+						// reading the ring would race against itself across work items.
+						PackedCollection frameScratch =
+								new PackedCollection(channels * signalSize);
+						ops.add(into("delay-network-frames", framesAll,
+								cp(frameScratch), false));
+						ops.add(into("delay-network-buffer-write",
+								new CollectionSlotUpdateComputation(
+										shape(channels * bufSize),
+										channels, bufSize, signalSize,
+										flatBuffer, cp(frameScratch), heads1D),
+								buffer, false));
+					}
+
+					ops.add(into("delay-network-head-write",
+							ringHeadAdvance(heads1D, channels, signalSize, bufSize),
 							heads, false));
 					return ops;
 				});
@@ -278,81 +298,101 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 	}
 
 	/**
-	 * Applies an {@code [channels, channels]} routing matrix to a {@code [channels, signalSize]}
-	 * multi-channel signal: {@code out[n] = sum_m matrix[n][m] * signal[m]}. Shared by the
-	 * feedback (transmission) and passthrough routing of {@link #feedbackNetworkBlock}.
+	 * Builds a single computation that reads every channel's delayed ring value and
+	 * (optionally) routes the channels through an {@code [channels, channels]} matrix:
+	 * {@code out[n, i] = sum_m matrix[n, m] * ring_m(i)} where
+	 * {@code ring_m(i) = buffer[m * bufSize + (heads[m] + i - delays[m] + bufSize) % bufSize]}.
+	 * With a {@code null} matrix the channels pass through unrouted
+	 * ({@code out[n, i] = ring_n(i)}).
 	 *
-	 * @param matrix     routing matrix, shape {@code [channels, channels]}
-	 * @param signalAll  multi-channel signal, shape {@code [channels, signalSize]}
+	 * <p>The whole read-and-route is one expression over the raw state collections, so
+	 * the process tree has nothing to isolate and the stage compiles to one kernel.</p>
+	 *
+	 * @param name       operation name
+	 * @param flatBuffer flat ring buffer, total {@code channels * bufSize}
+	 * @param heads      per-channel write head positions, shape {@code [channels]}
+	 * @param delays     per-channel delay in samples, shape {@code [channels]}
+	 * @param matrix     routing matrix, shape {@code [channels, channels]}, or {@code null}
 	 * @param channels   number of channels
-	 * @param signalSize samples per channel
-	 * @return the routed signal, shape {@code [channels, signalSize]}
+	 * @param signalSize samples per channel per pass
+	 * @param bufSize    per-channel ring size in samples
+	 * @return the routed delayed signal, shape {@code [channels, signalSize]}
 	 */
-	private CollectionProducer channelMatrixMultiply(CollectionProducer matrix,
-													 CollectionProducer signalAll,
-													 int channels, int signalSize) {
-		TraversalPolicy sigShape = shape(1, signalSize);
-		TraversalPolicy elemShape = shape(1, 1);
-		CollectionProducer out = null;
-		for (int n = 0; n < channels; n++) {
-			CollectionProducer rowN = null;
-			for (int m = 0; m < channels; m++) {
-				CollectionProducer matNm = subset(elemShape, matrix, n, m);
-				CollectionProducer sigM = subset(sigShape, signalAll, m, 0);
-				CollectionProducer contribution = matNm.multiply(sigM);
-				rowN = rowN == null ? contribution : rowN.add(contribution);
-			}
-			out = out == null ? rowN : (CollectionProducer) concat(out, rowN);
-		}
-		return out;
+	private CollectionProducer routedRingRead(String name,
+											  CollectionProducer flatBuffer,
+											  CollectionProducer heads,
+											  CollectionProducer delays,
+											  CollectionProducer matrix,
+											  int channels, int signalSize, int bufSize) {
+		TraversalPolicy outShape = shape(channels, signalSize);
+		Producer[] args = matrix == null
+				? new Producer[] { flatBuffer, heads, delays }
+				: new Producer[] { flatBuffer, heads, delays, matrix };
+
+		return new DefaultTraversableExpressionComputation(name, outShape,
+				(Function<TraversableExpression[], CollectionExpression>) exprArgs ->
+						DefaultCollectionExpression.create(outShape, idx -> {
+							Expression<?> n = idx.divide((long) signalSize);
+							Expression<?> i = idx.imod((long) signalSize);
+
+							if (matrix == null) {
+								return ringValueAt(exprArgs, n, i, bufSize);
+							}
+
+							Expression<?> result = null;
+							for (int m = 0; m < channels; m++) {
+								Expression<?> value = ringValueAt(exprArgs, e(m), i, bufSize);
+								Expression<?> weight = exprArgs[4].getValueAt(
+										n.multiply((long) channels).add(m));
+								Expression<?> term = weight.multiply(value);
+								result = result == null ? term : result.add(term);
+							}
+							return result;
+						}),
+				args);
 	}
 
 	/**
-	 * Builds the next ring-buffer contents for a feedback delay line whose per-channel
-	 * buffer spans an integer number of frames ({@code bufSize == frames * signalSize}).
+	 * Expression for one channel's delayed ring value:
+	 * {@code buffer[channel * bufSize + (heads[channel] + i - delays[channel] + bufSize) % bufSize]}.
 	 *
-	 * <p>The write head advances by {@code signalSize} each tick, so it is always
-	 * frame-aligned: it points at the start of exactly one frame slot. Only that slot is
-	 * replaced with the channel's new frame ({@code framesAll}); every other slot is
-	 * preserved. The target slot is chosen by comparing the head to each slot's start
-	 * offset via {@link #equals}, which keeps the whole update a single parallel
-	 * {@code into} over the buffer rather than a sequential per-sample scan. When
-	 * {@code bufSize == signalSize} (a one-frame ring) this collapses to overwriting the
-	 * buffer with {@code framesAll}, matching the original single-frame behaviour.</p>
+	 * @param args    traversable arguments where {@code args[1]} is the flat ring buffer,
+	 *                {@code args[2]} the heads, and {@code args[3]} the delays
+	 * @param channel the channel index expression
+	 * @param i       the sample offset expression within the pass
+	 * @param bufSize per-channel ring size in samples
+	 * @return the delayed value expression
+	 */
+	private Expression<?> ringValueAt(TraversableExpression[] args,
+									  Expression<?> channel, Expression<?> i, int bufSize) {
+		Expression<Integer> head = args[2].getValueAt(channel).toInt();
+		Expression<Integer> delay = args[3].getValueAt(channel).toInt();
+		Expression<?> position = head.add(i).subtract(delay).add(bufSize)
+				.imod((long) bufSize);
+		return args[1].getValueAt(channel.multiply((long) bufSize).add(position));
+	}
+
+	/**
+	 * Builds a single computation advancing every ring head by one frame:
+	 * {@code (heads[n] + signalSize) % bufSize}.
 	 *
-	 * @param buffer     flat per-channel-concatenated ring buffer, total {@code channels * bufSize}
-	 * @param framesAll  flat new frame contents, total {@code channels * signalSize}
-	 * @param heads1D    per-channel write head positions (in samples), shape {@code [channels]}
+	 * @param heads      per-channel write head positions, shape {@code [channels]}
 	 * @param channels   number of channels
 	 * @param signalSize samples per frame
-	 * @param bufSize    per-channel buffer size in samples (a multiple of {@code signalSize})
-	 * @return a producer for the updated flat ring buffer, total {@code channels * bufSize}
+	 * @param bufSize    per-channel ring size in samples
+	 * @return the advanced head positions, shape {@code [channels]}
 	 */
-	private CollectionProducer ringWrite(CollectionProducer buffer, CollectionProducer framesAll,
-										 CollectionProducer heads1D, int channels,
-										 int signalSize, int bufSize) {
-		int frames = bufSize / signalSize;
-		if (frames == 1) {
-			return framesAll;
-		}
-
-		CollectionProducer flatBuffer = buffer.reshape(shape(channels * bufSize));
-		CollectionProducer newBuffer = null;
-		for (int n = 0; n < channels; n++) {
-			CollectionProducer headN = subset(shape(1), heads1D, n);
-			CollectionProducer frameN = subset(shape(signalSize), framesAll, n * signalSize);
-			for (int s = 0; s < frames; s++) {
-				CollectionProducer oldSlot =
-						subset(shape(signalSize), flatBuffer, n * bufSize + s * signalSize);
-				CollectionProducer mask = equals(headN, c((double) (s * signalSize)),
-						c(1.0), c(0.0));
-				CollectionProducer newSlot = mask.multiply(frameN)
-						.add(c(1.0).subtract(mask).multiply(oldSlot));
-				newBuffer = newBuffer == null ? newSlot
-						: (CollectionProducer) concat(newBuffer, newSlot);
-			}
-		}
-		return newBuffer;
+	private CollectionProducer ringHeadAdvance(CollectionProducer heads,
+											   int channels, int signalSize, int bufSize) {
+		TraversalPolicy outShape = shape(channels);
+		return new DefaultTraversableExpressionComputation("delay-network-head-advance",
+				outShape,
+				(Function<TraversableExpression[], CollectionExpression>) exprArgs ->
+						DefaultCollectionExpression.create(outShape, idx ->
+								exprArgs[1].getValueAt(idx)
+										.add(e((double) signalSize))
+										.mod(e((double) bufSize))),
+				heads);
 	}
 
 }

@@ -48,6 +48,7 @@ import org.almostrealism.collect.computations.ArithmeticSequenceComputation;
 import org.almostrealism.collect.computations.AtomicConstantComputation;
 import org.almostrealism.collect.computations.CollectionAddComputation;
 import org.almostrealism.collect.computations.CollectionComparisonComputation;
+import org.almostrealism.collect.computations.CollectionConcatenateComputation;
 import org.almostrealism.collect.computations.CollectionConjunctionComputation;
 import org.almostrealism.collect.computations.CollectionExponentComputation;
 import org.almostrealism.collect.computations.CollectionExponentialComputation;
@@ -296,6 +297,15 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 
 	/** When true, enables subdivision of collections for block-based aggregation. */
 	boolean enableSubdivide = enableUnaryWeightedSum;
+
+	/**
+	 * When true, {@link #concat(TraversalPolicy, Producer[])} produces a single
+	 * index-select {@link CollectionConcatenateComputation} whenever the inputs exactly
+	 * cover the output along the concatenation axis, instead of zero-padding every input
+	 * to the output shape and summing (which fragments the compiled graph into a pad+add
+	 * chain per input and inflates gradient expression trees).
+	 */
+	boolean enableConcatenateComputation = true;
 
 	/**
 	 * Returns whether the alternative index projection delta computation path is enabled.
@@ -929,7 +939,13 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 
 	/**
 	 * Concatenates the given producers into an output with the given explicit shape.
-	 * Inputs are zero-padded to the output shape and summed to produce the concatenated output.
+	 *
+	 * <p>When the inputs exactly cover the output along the concatenation axis (and
+	 * {@link #enableConcatenateComputation} is set), this produces a single
+	 * {@link CollectionConcatenateComputation} that selects the source for each output
+	 * position by index — one kernel, with a sparse-projection gradient. Otherwise
+	 * (the output is longer than the inputs' total, leaving a zero tail), inputs are
+	 * zero-padded to the output shape and summed.</p>
 	 *
 	 * @param shape the shape of the concatenated output
 	 * @param producers the producers to concatenate
@@ -976,6 +992,14 @@ public interface CollectionFeatures extends GradientFeatures, CollectionCreation
 			pos[axis] = total;
 			total += s.length(axis);
 			positions.add(new TraversalPolicy(true, pos));
+		}
+
+		if (enableConcatenateComputation && total == shape.length(axis)) {
+			// The inputs exactly cover the output along the axis, so the dedicated
+			// index-select computation applies. (A shorter total leaves an implicit
+			// zero tail that the select form does not represent; only the padded
+			// sum below preserves that.)
+			return new CollectionConcatenateComputation(shape, axis, producers);
 		}
 
 		return add(IntStream.range(0, shapes.size())

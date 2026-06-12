@@ -208,33 +208,30 @@ banks to per-buffer slot refresh (same mechanism as `hp_coeffs`).
 
 Realtime budget: a buffer must render in under `bufferSize / sampleRate` seconds —
 185.76 ms at 8192/44.1 kHz, 92.88 ms at 4096. Measured by
-`AudioScenePdslBenchmarkTest` (M1, 2026-06-11, full tick = pattern prep + DSP +
+`AudioScenePdslBenchmarkTest` (M1, 2026-06-12, full tick = pattern prep + DSP +
 streaming, three genomes spanning 318–1126 elements, medians of a 6 s steady-state
 window, `AR_PATTERN_CACHE_PERSIST=true`; raw lines in
 `studio/compose/results/pdsl-cutover/benchmark.txt`):
 
 | Path | Buffer | Median tick | vs budget |
 |---|---|---|---|
-| PDSL | 8192 | 1.84–1.91 s | ~10× over (0.10× realtime) |
-| CellList | 8192 | 294–366 ms | ~1.6–2× over (0.51–0.63× realtime) |
-| PDSL | 4096 | 1.97 s | ~21× over (0.05× realtime) |
+| PDSL | 8192 | 177–231 ms | **0.80–1.05× realtime** |
+| CellList | 8192 | 300–369 ms | 0.50–0.62× realtime |
+| PDSL | 4096 | 144 ms | 0.64× realtime |
 
 What the numbers say:
 
-- **The PDSL full tick is currently ~6× slower than the CellList tick**, and ~10× over
-  the realtime budget. An earlier "~20 ms steady state" figure referred to the DSP
-  portion in isolation, not the full tick — the full tick is the realtime criterion.
-- **The PDSL overhead is a constant ~1.5–1.6 s per tick, localized to the reverb
-  `delay_network`'s multi-frame ring update** (`MultiChannelDspFeatures.ringWrite`):
-  stage timing put 2067 ms of the 2134 ms tick in `compiled.forward`, and layer
-  bisection put that in the reverb bus (1382 ms at the production 2-frame ring vs
-  128 ms at 1 frame; main bus 22 ms, efx bus 66 ms). The multi-frame ring rebuild
-  compiles to a masked per-slot `concat` chain — hundreds of tiny kernels whose
-  dispatch overhead dwarfs their kernel time. **Replacing it with a single-kernel
-  index-expression update is the top open performance item** — see STATE_OF_PLAY §5.
-- Neither path currently meets ratio-of-1 in this harness; the CellList path is in the
-  same order as the historical ~1.1×-of-budget M4 measurement (the M1 is slower).
-- Build time (one-time): PDSL ≈51–53 s, CellList ≈70 s — the PDSL build is *faster*
+- **The PDSL tick is now the faster path** (~1.6× faster than CellList) and reaches
+  ratio-of-1 at 8192 frames on the densest genome. This is after the
+  dispatch-fragmentation fix (STATE_OF_PLAY §5): the `delay_network` ring update had
+  been fragmented by `Process.optimize` into hundreds of isolated stages evaluated
+  serially per forward (1.4–1.6 s of dispatch/latch glue); it is now a handful of
+  single-expression computations (`CollectionSlotUpdateComputation` + fused ring
+  read/route), taking ~3 ms.
+- The remaining gap to comfortable headroom is a ~100–150 ms fixed per-tick cost
+  (pattern prepare ≈66 ms plus residual stages), which is also why 4096-frame ticks
+  sit at 0.64× — the fixed cost doesn't halve with the buffer.
+- Build time (one-time): PDSL ≈47–50 s, CellList ≈68 s — the PDSL build is *faster*
   because it never compiles the CellList's per-frame tick loop, even though it still
   builds the unused CellList structure (§4.4).
 
@@ -251,7 +248,7 @@ What a listener gets after flipping `enablePdslMixdown` on:
 4. Reproducible renders run-to-run.
 5. Buffer-quantized automation (inaudible at production envelope rates).
 6. Mono-equivalent stereo, as before in practice.
-7. **A ~6× slower tick than the CellList path today** (§6) — acceptable for offline
-   rendering, not yet for live output; the constant per-tick overhead must be
-   eliminated before the swap can claim realtime.
+7. **A faster tick than the CellList path** (§6) — 0.80–1.05× realtime at 8192
+   frames vs the CellList's 0.50–0.62×; the remaining fixed per-tick cost is the
+   gap to comfortable headroom.
 8. Single-channel renders (`renderChannel`) unchanged — they fall back to CellList.

@@ -17,6 +17,7 @@
 package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
@@ -24,6 +25,7 @@ import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.layers.LayerFeatures;
@@ -517,21 +519,9 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		// rebuild every slot through a masked concat chain. Time 1, 2 (production
 		// REVERB_FRAMES), and 4 frame rings to expose the scaling.
 		for (int frames : new int[] { 1, 2, 4 }) {
-			Map<String, Object> reverb = new HashMap<>();
-			reverb.put("channels", channels);
-			reverb.put("signal_size", signal);
-			PackedCollection reverbDelays = new PackedCollection(new TraversalPolicy(channels));
-			double[] delayData = new double[channels];
-			Arrays.fill(delayData, signal);
-			reverbDelays.setMem(delayData);
-			reverb.put("delay_samples", reverbDelays);
-			reverb.put("feedback_matrix", new PackedCollection(
-					new TraversalPolicy(channels, channels)).fill(0.0));
-			reverb.put("reverb_buffers",
-					new PackedCollection(channels * frames * signal).fill(0.0));
-			reverb.put("reverb_heads", new PackedCollection(channels).fill(0.0));
 			timeLayerForward("mixdown_reverb_bus[frames=" + frames + "]",
-					"mixdown_reverb_bus", new TraversalPolicy(1, signal), reverb);
+					"mixdown_reverb_bus", new TraversalPolicy(1, signal),
+					reverbBusArgs(channels, signal, frames));
 		}
 
 		Map<String, Object> wet = new HashMap<>(neutralEfxArgs(channels, signal));
@@ -551,6 +541,105 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		wet.put("heads", new PackedCollection(channels).fill(0.0));
 		timeLayerForward("mixdown_master_wet", "mixdown_master_wet",
 				new TraversalPolicy(2 * channels, signal), wet);
+	}
+
+	/**
+	 * Captures an {@link OperationProfileNode} over the production-ring (2-frame) reverb
+	 * bus alone — build plus a short forward window — so the layer's ~1.4s forward can be
+	 * attributed precisely. The profile must be assigned before the layer is built,
+	 * because operations bind to the active profile at compile time.
+	 *
+	 * @throws IOException if the layer cannot be built or the profile cannot be saved
+	 */
+	@Test(timeout = 1_080_000)
+	@TestDepth(2)
+	public void reverbBusForwardProfile() throws IOException {
+		int channels = 6;
+		int signal = 8192;
+		int frames = 2;
+
+		OperationProfileNode profile = new OperationProfileNode("reverb_bus_forward");
+		Hardware.getLocalHardware().assignProfile(profile);
+
+		try {
+			timeLayerForward("mixdown_reverb_bus[profiled,frames=" + frames + "]",
+					"mixdown_reverb_bus", new TraversalPolicy(1, signal),
+					reverbBusArgs(channels, signal, frames));
+		} finally {
+			Hardware.getLocalHardware().assignProfile(null);
+		}
+
+		File profileFile = new File("results/pdsl-cutover/reverb_bus_profile.xml");
+		profileFile.getParentFile().mkdirs();
+		profile.save(profileFile.getPath());
+		log("Reverb bus profile written to " + profileFile.getAbsolutePath());
+	}
+
+	/**
+	 * Runs a sustained loop of forward passes over the production-ring (2-frame) reverb
+	 * bus so a JVM-level profiler (thread dumps, JFR via ar-jmx) can observe where the
+	 * per-forward wall time goes. The operation profile cannot see this cost — compiled
+	 * operations record microseconds while the forward takes ~1.4s — so the answer is in
+	 * Java frames between operations.
+	 *
+	 * @throws IOException if the layer cannot be built
+	 */
+	@Test(timeout = 600_000)
+	@TestDepth(2)
+	public void reverbBusForwardSoak() throws IOException {
+		int channels = 6;
+		int signal = 8192;
+		int frames = 2;
+		int forwards = 60;
+
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_manager.pdsl");
+		TraversalPolicy inputShape = new TraversalPolicy(1, signal);
+		Block block = loader.buildLayer(program, "mixdown_reverb_bus", inputShape,
+				reverbBusArgs(channels, signal, frames));
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		PackedCollection input = new PackedCollection(inputShape);
+		input.fill(0.1);
+		compiled.forward(input);
+
+		log("soak starting forwards=" + forwards);
+		long start = System.nanoTime();
+		for (int i = 0; i < forwards; i++) {
+			compiled.forward(input);
+		}
+		double totalMs = (System.nanoTime() - start) / 1e6;
+		log(String.format("soak complete forwards=%d totalMs=%.2f perForwardMs=%.2f",
+				forwards, totalMs, totalMs / forwards));
+	}
+
+	/**
+	 * Builds the synthetic argument map for a standalone {@code mixdown_reverb_bus} build:
+	 * per-tap delays of one frame, a zero feedback matrix, and a ring spanning the given
+	 * number of frames.
+	 *
+	 * @param channels number of delay lines
+	 * @param signal   samples per forward pass
+	 * @param frames   ring length in frames
+	 * @return the argument map
+	 */
+	private Map<String, Object> reverbBusArgs(int channels, int signal, int frames) {
+		Map<String, Object> reverb = new HashMap<>();
+		reverb.put("channels", channels);
+		reverb.put("signal_size", signal);
+		PackedCollection reverbDelays = new PackedCollection(new TraversalPolicy(channels));
+		double[] delayData = new double[channels];
+		Arrays.fill(delayData, signal);
+		reverbDelays.setMem(delayData);
+		reverb.put("delay_samples", reverbDelays);
+		reverb.put("feedback_matrix", new PackedCollection(
+				new TraversalPolicy(channels, channels)).fill(0.0));
+		reverb.put("reverb_buffers",
+				new PackedCollection(channels * frames * signal).fill(0.0));
+		reverb.put("reverb_heads", new PackedCollection(channels).fill(0.0));
+		return reverb;
 	}
 
 	/**

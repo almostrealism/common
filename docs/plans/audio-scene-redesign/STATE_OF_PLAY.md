@@ -45,7 +45,7 @@ full-scene work.
 | **a2 batching — real-scene integration** | **OPEN.** On the full curated-library scene, batched dispatch does **not** reliably fire for the real pattern path (some methods render `peak=0.0` / silence), and full-scene renders exhaust the native kernel pool (next row). The full-scene test `BatchedRealSceneRenderTest` is `@Ignore`d for this reason. This is integration/scaling work, *not* a defect in the batching kernel. |
 | **Compile-reuse / `GeneratedOperation` pool** | **OPEN (cross-cutting blocker).** Structurally-identical computations recompile instead of reusing a cached kernel because argument-aggregation-target buffers have a `null` signature; each rebuild consumes a slot from a fixed pool. The pool was expanded (to `GeneratedOperation5999`) as a **stopgap, not a fix**. See [../SIGNATURE_AGGREGATION_GAP.md](../SIGNATURE_AGGREGATION_GAP.md). |
 | **Metal dispatch ceiling** (host wedged forever past ~2300–2560 cumulative dispatches) | **SOLVED.** Fixed and merged; 3000+ sustained Metal dispatches verified, re-confirmed (M1) by the sustained-dispatch sentinel test. See [METAL_SUSTAINED_DISPATCH.md](METAL_SUSTAINED_DISPATCH.md). |
-| **a3 — frame-buffer DSP/mixdown** | **MIGRATED TO PDSL (this branch, 2026-06-11), parity validated by ear — but NOT yet realtime.** The full mixdown/efx/reverb DSP runs as one compiled PDSL model per buffer (`mixdown_master_wet`). Benchmarked (M1): the PDSL full tick is ~1.9 s vs the CellList's ~0.3 s at 8192 frames (budget 185.76 ms) — a constant per-tick overhead independent of buffer size and pattern density that must be eliminated (§5). Acoustic gaps are accepted approximations, inventoried in [PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md). |
+| **a3 — frame-buffer DSP/mixdown** | **MIGRATED TO PDSL, parity validated by ear, and AT RATIO-OF-1 (2026-06-12).** The full mixdown/efx/reverb DSP runs as one compiled PDSL model per buffer (`mixdown_master_wet`). After the dispatch-fragmentation fix (§5), the PDSL tick is 177–231 ms vs the 185.76 ms budget at 8192 frames (0.80–1.05×) — faster than the CellList tick (300–369 ms). Acoustic gaps are accepted approximations, inventoried in [PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md). |
 
 **Verified (M1, 2026-06-09) — synthetic sentinel path, `studio/music`:** the batched
 pattern mechanism fires and is correct in isolation. `BatchedDispatchSentinelTest`
@@ -198,26 +198,27 @@ The defect history (six masking defects) and durable lessons:
 [PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md).
 
 **Outstanding work (the actual to-do list):**
-- **Fix `ringWrite`'s multi-frame ring rebuild (top performance item — ROOT CAUSE
-  LOCALIZED 2026-06-11).** The PDSL full tick is ≈1.9 s vs the CellList's ≈0.3 s at
-  8192 frames (M1, `AudioScenePdslBenchmarkTest`,
-  `studio/compose/results/pdsl-cutover/benchmark.txt`; constant per tick, genome- and
-  buffer-size-independent). Stage timing
-  (`AudioScenePdslBenchmarkTest.pdslTickStageTiming`) attributed 2067 ms of the
-  2134 ms tick to `compiled.forward`; layer bisection
-  (`MixdownManagerPdslVerificationTest.mixdownLayerForwardTiming`, synthetic args at
-  6×8192) attributed THAT to the reverb `delay_network`: main bus 22 ms, efx bus
-  66 ms, reverb 1382 ms at the production 2-frame ring (128 ms at 1 frame, 2921 ms at
-  4 frames — ≈1.4 s per additional ring frame). The cause is
-  `MultiChannelDspFeatures.ringWrite`: for rings longer than one frame it rebuilds the
-  ENTIRE ring as a per-slot masked `concat` chain (concat compiles to pad+add, so the
-  graph becomes hundreds of tiny kernels whose per-dispatch overhead dwarfs their
-  ~0.01 ms kernel time — the OperationProfile shows ops invoked ~500× per forward).
-  Fix: express the ring update as ONE kernel over `[channels * bufSize]` using
-  index-derived masks (compare `floor(offset/signalSize)` to the frame-aligned head)
-  and gathers, with no concat; then re-validate parity (the construct is in the
-  validated signal path) and re-run the benchmark. An earlier "~20 ms steady state"
-  note measured the DSP portion alone and must not be cited as the tick rate.
+- **PDSL tick performance — FIXED (2026-06-11/12): ratio-of-1 reached at 8192.**
+  The PDSL full tick was ≈1.9 s vs the CellList's ≈0.3 s. Root cause (confirmed by
+  thread dumps, not the profile — the cost was invisible to OperationProfile): the
+  `delay_network` ring update was composed from per-channel subset/mask/concat trees
+  that `Process.optimize` fragmented into hundreds of `IsolatedProcess` stages, and
+  every forward evaluated them serially — each one a dispatch plus a synchronous
+  completion-latch wait (`ProcessDetailsFactory.construct` →
+  `DestinationEvaluable.request` → `awaitReady` nesting). Fix: the update is now
+  expressed as single computations over the raw state collections (nothing left to
+  isolate) — `CollectionSlotUpdateComputation` (new, general: replaces one
+  runtime-positioned slot per block; also the KV-cache-update shape) for the ring
+  write, plus fused ring-read+routing and head-advance expressions in
+  `MultiChannelDspFeatures`. One subtlety: the fused in-place ring write needed an
+  explicit one-op materialization of the new frame (the old fragmentation had been
+  *accidentally* providing it), caught by `DelayNetworkBehaviorTest.test11`.
+  Results (M1, `studio/compose/results/pdsl-cutover/benchmark.txt`): reverb bus
+  forward 1382 ms → 3.2 ms; full `mixdown_master_wet` forward 3463 ms → 77 ms;
+  production PDSL tick 177–231 ms vs the 185.76 ms budget (0.80–1.05× — the densest
+  genome is at ratio-of-1) and now FASTER than the CellList tick (300–369 ms).
+  Remaining: a ~100–150 ms fixed per-tick cost (pattern prep ≈66 ms + residual
+  stages) keeps 4096-frame ticks at 0.64×; shaving it is the next increment.
 - **Lean pattern prep.** `createPdsl` still builds the unused Java mixdown CellList as
   a side effect of reusing `getCells` for pattern preparation. Build-time-only cost
   (PDSL build ≈52 s vs CellList ≈70 s — the PDSL build already skips compiling the
