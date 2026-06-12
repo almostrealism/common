@@ -24,6 +24,7 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.ml.dsl.PdslChannelBank;
 import org.almostrealism.ml.dsl.PdslInterpreter;
 import org.almostrealism.ml.dsl.PdslParseException;
 import org.almostrealism.ml.dsl.PdslPrimitiveContext;
@@ -110,12 +111,24 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 
 	// ---- Single-channel DSP primitives ------------------------------------
 
-	/** {@code fir(coefficients)}. */
+	/** {@code fir(coefficients)} — accepts a per-channel coefficient bank when vectorized. */
 	private Function<TraversalPolicy, Block> dispatchFir(List<Object> args, PdslPrimitiveContext ctx) {
 		if (args.size() != 1) {
 			throw new PdslParseException(
 					"fir() expects 1 coefficients argument, got " + args.size());
 		}
+
+		if (args.get(0) instanceof PdslChannelBank) {
+			// Vectorized for-each: the [channels, taps] bank is applied to every channel
+			// of the [channels, signalSize] input in a single kernel.
+			PdslChannelBank bank = (PdslChannelBank) args.get(0);
+			CollectionProducer coefficients =
+					ctx.toProducer(bank.getSource(), null, "fir() coefficients");
+			int channels = bank.getChannels();
+			return shape -> new ForwardOnlyBlock(layer("fir", shape, shape,
+					input -> MultiOrderFilter.createMultiChannel(input, coefficients, channels)));
+		}
+
 		CollectionProducer coefficients = ctx.toProducer(args.get(0), null, "fir() coefficients");
 		return firFilterBlock("fir", coefficients);
 	}
@@ -230,6 +243,30 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 			throw new PdslParseException(
 					"delay() expects 3 arguments (delaySamples, buffer, head), got " + args.size());
 		}
+
+		if (args.get(1) instanceof PdslChannelBank || args.get(2) instanceof PdslChannelBank) {
+			// Vectorized for-each: every channel's ring state arrives as one bank, and
+			// the whole multi-channel delay runs as one read and one write per pass.
+			if (!(args.get(1) instanceof PdslChannelBank)
+					|| !(args.get(2) instanceof PdslChannelBank)) {
+				throw new PdslParseException("delay() requires the buffer and head"
+						+ " to both be per-channel banks when vectorized");
+			}
+			PdslChannelBank bufferBank = (PdslChannelBank) args.get(1);
+			PdslChannelBank headBank = (PdslChannelBank) args.get(2);
+			Object delayArg = args.get(0) instanceof PdslChannelBank
+					? ((PdslChannelBank) args.get(0)).getSource() : args.get(0);
+			CollectionProducer delaySamples =
+					ctx.toProducer(delayArg, null, "delay() delaySamples");
+			CollectionProducer bankBuffer =
+					ctx.toProducer(bufferBank.getSource(), null, "delay() buffer");
+			CollectionProducer bankHeads =
+					ctx.toProducer(headBank.getSource(), null, "delay() head");
+			int channels = bufferBank.getChannels();
+			return shape -> multiChannelDelayBlock(delaySamples, bankBuffer, bankHeads,
+					channels, shape.getTotalSize() / channels);
+		}
+
 		CollectionProducer delaySamplesP = ctx.toProducer(args.get(0), shape(1),
 				"delay() delaySamples");
 		CollectionProducer buffer = ctx.toProducer(args.get(1), null, "delay() buffer");

@@ -102,6 +102,25 @@ public class PdslInterpreter {
 	 */
 	private final Map<String, PdslPrimitive<?>> registeredPrimitives;
 
+	/**
+	 * When true, {@code for each channel} first attempts to compile its body ONCE over
+	 * the full {@code [channels, signalSize]} shape, with {@code [channel]} subscripts
+	 * yielding whole {@link PdslChannelBank banks} for bank-aware primitives. Bodies
+	 * containing any construct that cannot take the bank form fall back to the
+	 * per-channel dispatch automatically (the bank wrapper cannot pass through the
+	 * standard argument paths, so non-bank-aware primitives fail loudly rather than
+	 * misinterpret it). Vectorized bodies avoid the per-channel slice/dispatch/concat
+	 * structure, whose per-stage dispatch overhead dominates small per-channel kernels.
+	 */
+	public static boolean enableVectorizedForEach = true;
+
+	/**
+	 * Sentinel bound to {@code channel} during vectorized {@code for each channel}
+	 * interpretation; subscripts that resolve their index to this value produce a
+	 * {@link PdslChannelBank} instead of a single channel's row.
+	 */
+	private static final Object ALL_CHANNELS = new Object();
+
 	/** Builds the multi-channel block backing the {@code for each channel} statement. */
 	private PdslMultiChannelDispatcher multiChannelDispatcher;
 
@@ -680,9 +699,17 @@ public class PdslInterpreter {
 		} else if (expr instanceof PdslNode.Subscript) {
 			PdslNode.Subscript subscript = (PdslNode.Subscript) expr;
 			Object obj = evaluateExpression(subscript.getObject(), env);
+			Object indexValue = evaluateExpression(subscript.getIndex(), env);
+			if (indexValue == ALL_CHANNELS
+					&& (obj instanceof PackedCollection || obj instanceof CollectionProducer)) {
+				// Vectorized for-each: the subscript covers every channel at once, so the
+				// whole per-channel bank is handed to the primitive (wrapped, so only
+				// bank-aware primitives can accept it).
+				return new PdslChannelBank(obj, toInt(env.get("channels")));
+			}
 			if (obj instanceof PackedCollection) {
 				PackedCollection coll = (PackedCollection) obj;
-				int index = toInt(evaluateExpression(subscript.getIndex(), env));
+				int index = toInt(indexValue);
 				int channels = toInt(env.get("channels"));
 				int stride = coll.getShape().getSize() / channels;
 				return coll.range(FEATURES.shape(stride), index * stride);
@@ -696,7 +723,7 @@ public class PdslInterpreter {
 					// across every channel, so each channel reads the same value.
 					return producer;
 				}
-				int index = toInt(evaluateExpression(subscript.getIndex(), env));
+				int index = toInt(indexValue);
 				int stride = totalSize / channels;
 				CollectionProducer flat = producer.reshape(FEATURES.shape(totalSize));
 				return FEATURES.subset(FEATURES.shape(stride), flat, index * stride);
@@ -883,7 +910,7 @@ public class PdslInterpreter {
 	// {@link PdslMultiChannelDispatcher} so the interpreter does not have to know
 	// about audio-domain block construction.
 
-	/** Interprets {@code for each channel} by building per-channel sub-blocks and wrapping them. */
+	/** Interprets {@code for each channel}, vectorizing the body when its primitives allow. */
 	private void interpretForEachChannel(PdslNode.ForEachChannelStatement stmt,
 										  SequentialBlock block, Environment env) {
 		if (multiChannelDispatcher == null) {
@@ -896,6 +923,26 @@ public class PdslInterpreter {
 		int signalSize = currentShape.getDimensions() >= 2
 				? currentShape.length(currentShape.getDimensions() - 1)
 				: currentShape.getSize() / channels;
+
+		if (enableVectorizedForEach) {
+			// Attempt to compile the body ONCE over [channels, signalSize]: subscripted
+			// per-channel arguments resolve to whole banks, and bank-aware primitives
+			// apply them in a single computation. Any construct that cannot take the
+			// bank form rejects it, and the per-channel dispatch below applies instead.
+			try {
+				Environment bankEnv = new Environment(env);
+				bankEnv.set("channel", ALL_CHANNELS);
+				SequentialBlock bankBlock =
+						new SequentialBlock(FEATURES.shape(channels, signalSize));
+				interpretBody(stmt.getBody(), bankBlock, bankEnv);
+				block.add(bankBlock);
+				return;
+			} catch (PdslParseException | UnsupportedOperationException
+					| IllegalArgumentException e) {
+				// Fall through to per-channel dispatch.
+			}
+		}
+
 		TraversalPolicy singleChannelShape = FEATURES.shape(1, signalSize);
 		List<Block> channelBlocks = new ArrayList<>();
 		for (int i = 0; i < channels; i++) {

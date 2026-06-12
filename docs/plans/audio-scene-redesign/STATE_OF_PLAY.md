@@ -45,7 +45,7 @@ full-scene work.
 | **a2 batching — real-scene integration** | **OPEN.** On the full curated-library scene, batched dispatch does **not** reliably fire for the real pattern path (some methods render `peak=0.0` / silence), and full-scene renders exhaust the native kernel pool (next row). The full-scene test `BatchedRealSceneRenderTest` is `@Ignore`d for this reason. This is integration/scaling work, *not* a defect in the batching kernel. |
 | **Compile-reuse / `GeneratedOperation` pool** | **OPEN (cross-cutting blocker).** Structurally-identical computations recompile instead of reusing a cached kernel because argument-aggregation-target buffers have a `null` signature; each rebuild consumes a slot from a fixed pool. The pool was expanded (to `GeneratedOperation5999`) as a **stopgap, not a fix**. See [../SIGNATURE_AGGREGATION_GAP.md](../SIGNATURE_AGGREGATION_GAP.md). |
 | **Metal dispatch ceiling** (host wedged forever past ~2300–2560 cumulative dispatches) | **SOLVED.** Fixed and merged; 3000+ sustained Metal dispatches verified, re-confirmed (M1) by the sustained-dispatch sentinel test. See [METAL_SUSTAINED_DISPATCH.md](METAL_SUSTAINED_DISPATCH.md). |
-| **a3 — frame-buffer DSP/mixdown** | **MIGRATED TO PDSL, parity validated by ear, and AT RATIO-OF-1 (2026-06-12).** The full mixdown/efx/reverb DSP runs as one compiled PDSL model per buffer (`mixdown_master_wet`). After the dispatch-fragmentation fix (§5), the PDSL tick is 177–231 ms vs the 185.76 ms budget at 8192 frames (0.80–1.05×) — faster than the CellList tick (300–369 ms). Acoustic gaps are accepted approximations, inventoried in [PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md). |
+| **a3 — frame-buffer DSP/mixdown** | **MIGRATED TO PDSL, parity validated by ear, and WELL UNDER the realtime budget (2026-06-12).** The full mixdown/efx/reverb DSP runs as one compiled PDSL model per buffer (`mixdown_master_wet`). After the dispatch-fragmentation fixes (§5), the PDSL tick is 66–139 ms vs the 185.76 ms budget at 8192 frames (1.34–2.81×, and 2.12× at 4096) — several times faster than the CellList tick (298–370 ms). Acoustic gaps are accepted approximations, inventoried in [PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md). |
 
 **Verified (M1, 2026-06-09) — synthetic sentinel path, `studio/music`:** the batched
 pattern mechanism fires and is correct in isolation. `BatchedDispatchSentinelTest`
@@ -198,27 +198,35 @@ The defect history (six masking defects) and durable lessons:
 [PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md).
 
 **Outstanding work (the actual to-do list):**
-- **PDSL tick performance — FIXED (2026-06-11/12): ratio-of-1 reached at 8192.**
-  The PDSL full tick was ≈1.9 s vs the CellList's ≈0.3 s. Root cause (confirmed by
-  thread dumps, not the profile — the cost was invisible to OperationProfile): the
-  `delay_network` ring update was composed from per-channel subset/mask/concat trees
-  that `Process.optimize` fragmented into hundreds of `IsolatedProcess` stages, and
-  every forward evaluated them serially — each one a dispatch plus a synchronous
-  completion-latch wait (`ProcessDetailsFactory.construct` →
-  `DestinationEvaluable.request` → `awaitReady` nesting). Fix: the update is now
-  expressed as single computations over the raw state collections (nothing left to
-  isolate) — `CollectionSlotUpdateComputation` (new, general: replaces one
-  runtime-positioned slot per block; also the KV-cache-update shape) for the ring
-  write, plus fused ring-read+routing and head-advance expressions in
-  `MultiChannelDspFeatures`. One subtlety: the fused in-place ring write needed an
-  explicit one-op materialization of the new frame (the old fragmentation had been
-  *accidentally* providing it), caught by `DelayNetworkBehaviorTest.test11`.
-  Results (M1, `studio/compose/results/pdsl-cutover/benchmark.txt`): reverb bus
-  forward 1382 ms → 3.2 ms; full `mixdown_master_wet` forward 3463 ms → 77 ms;
-  production PDSL tick 177–231 ms vs the 185.76 ms budget (0.80–1.05× — the densest
-  genome is at ratio-of-1) and now FASTER than the CellList tick (300–369 ms).
-  Remaining: a ~100–150 ms fixed per-tick cost (pattern prep ≈66 ms + residual
-  stages) keeps 4096-frame ticks at 0.64×; shaving it is the next increment.
+- **PDSL tick performance — FIXED (2026-06-11/12): comfortably under budget at both
+  buffer sizes.** The PDSL full tick was ≈1.9 s vs the CellList's ≈0.3 s; it is now
+  66–139 ms at 8192 frames (1.34–2.81× realtime) and 44 ms at 4096 (2.12×), parity
+  unchanged (windowed-RMS overall 0.97 on the re-run A/B). Root cause (confirmed by
+  thread dumps, not the profile — the cost was invisible to OperationProfile):
+  `Process.optimize` fragmented composed producer trees into many `IsolatedProcess`
+  stages, and every forward evaluated them serially — each a dispatch on a freshly
+  spawned thread plus a synchronous completion-latch wait. Two structural fixes:
+  1. The `delay_network` ring update became single computations over the raw state
+     collections — `CollectionSlotUpdateComputation` (new, general: replaces one
+     runtime-positioned slot per block; also the KV-cache-update shape) plus fused
+     ring-read+routing and head-advance expressions in `MultiChannelDspFeatures`
+     (reverb bus forward 1382 ms → 3 ms). The fused in-place ring write needed an
+     explicit one-op materialization of the new frame (the old fragmentation had
+     been *accidentally* providing it), caught by `DelayNetworkBehaviorTest.test11`.
+  2. `for each channel` bodies of channel-uniform primitives now compile ONCE over
+     `[channels, signalSize]` with bank-form arguments — `[channel]` subscripts
+     yield a `PdslChannelBank`, and bank-aware primitives (`fir` via the new
+     multi-channel `MultiOrderFilter` mode, `scale` row-broadcast, `delay` via
+     `multiChannelDelayBlock`) apply the whole bank in one kernel; non-bank-aware
+     bodies fall back to per-channel dispatch automatically
+     (`PdslInterpreter.enableVectorizedForEach`). `mixdown_master_wet` forward
+     77 ms → 21 ms, build 2.3 s → 0.8 s.
+  Also: `RAM` no longer captures a 16-frame stack trace on every allocation by
+  default (`AR_HARDWARE_ALLOCATION_TRACE_FRAMES` now defaults to 0; set it to
+  diagnose leaks). Remaining per-tick cost is per-note pattern preparation (~64 ms;
+  the open a2 batched-dispatch integration). A deeper framework lever, not yet
+  taken: `Evaluable.async` spawns a thread per dispatch issuance — a pool or
+  same-thread issuance would cut per-op cost everywhere.
 - **Lean pattern prep.** `createPdsl` still builds the unused Java mixdown CellList as
   a side effect of reusing `getCells` for pattern preparation. Build-time-only cost
   (PDSL build ≈52 s vs CellList ≈70 s — the PDSL build already skips compiling the

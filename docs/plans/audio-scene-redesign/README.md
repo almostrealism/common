@@ -4,12 +4,12 @@
 > duration of that tick; ~92.9 ms/tick at 44.1 kHz / 4096 frames).
 >
 > **Where it stands (2026-06-12, `feature/audio-scene-pdsl`):** the **a3 DSP/mixdown
-> migration to PDSL is done, parity-validated by ear, and at ratio-of-1** — the full
+> migration to PDSL is done, parity-validated by ear, and well under the realtime budget** — the full
 > mixdown/efx/reverb path runs as one compiled PDSL model per buffer behind the
-> `MixdownManager.enablePdslMixdown` A/B flag (default off), ticking at 0.80–1.05×
-> realtime at 8192 frames (faster than the CellList path) after the
-> dispatch-fragmentation fix. What remains: shaving the ~100–150 ms fixed per-tick
-> cost, true stereo, and the accepted-difference review before flipping the default.
+> `MixdownManager.enablePdslMixdown` A/B flag (default off), ticking at 1.34–2.81×
+> realtime at 8192 frames and 2.12× at 4096 (several times faster than the CellList
+> path) after the dispatch-fragmentation fixes. What remains: true stereo and the
+> accepted-difference review before flipping the default.
 > See STATE_OF_PLAY §5 for the to-do list and PDSL_SIGNAL_PATH_DIFFERENCES for the
 > swap impact.
 

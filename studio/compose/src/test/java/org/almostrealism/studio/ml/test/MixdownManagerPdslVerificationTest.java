@@ -17,7 +17,6 @@
 package org.almostrealism.studio.ml.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.audio.AudioTestFeatures;
 import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.CellList;
@@ -25,7 +24,6 @@ import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.layers.LayerFeatures;
@@ -89,16 +87,14 @@ import java.util.function.IntToDoubleFunction;
  * divergence is the primary deliverable.</p>
  */
 public class MixdownManagerPdslVerificationTest extends TestSuiteBase
-		implements CellFeatures, AudioTestFeatures, FirFilterTestFeatures, LayerFeatures {
+		implements CellFeatures, AudioTestFeatures, FirFilterTestFeatures, LayerFeatures,
+					MixdownPdslTestFeatures {
 
 	/** Number of audio channels used for both paths. */
 	private static final int CHANNELS = 2;
 
 	/** Number of delay layers in the EFX bus. Matches CHANNELS for square routing. */
 	private static final int DELAY_LAYERS = CHANNELS;
-
-	/** Audio sample rate. Matches the production line. */
-	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
 	/** Render duration in seconds. Short enough to keep CI runtime modest. */
 	private static final double DURATION_SECONDS = 2.0;
@@ -108,15 +104,6 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 
 	/** Samples per PDSL forward pass — must divide TOTAL_FRAMES evenly. */
 	private static final int PDSL_SIGNAL_SIZE = SAMPLE_RATE / 16;
-
-	/** FIR filter order for the PDSL wet bus. */
-	private static final int PDSL_FILTER_ORDER = 40;
-
-	/** Wet-bus level constant. */
-	private static final double WET_LEVEL = 0.35;
-
-	/** Static delay length used by the PDSL path's delay primitive. */
-	private static final int PDSL_DELAY_SAMPLES = 256;
 
 	/** Genome parameter count. Oversized so any chromosome layout fits. */
 	private static final int GENOME_PARAMS = 256;
@@ -411,324 +398,6 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 */
 	private Map<String, Object> neutralEfxArgs() {
 		return neutralEfxArgs(CHANNELS, PDSL_SIGNAL_SIZE);
-	}
-
-	/**
-	 * Builds the neutral efx/reverb argument entries for an arbitrary channel count and
-	 * signal size, so timing experiments can use production-scale dimensions while the
-	 * fixture tests keep their small defaults.
-	 *
-	 * @param channels   number of channels
-	 * @param signalSize samples per channel per forward pass
-	 * @return argument entries to merge over the adapter-built map
-	 */
-	private Map<String, Object> neutralEfxArgs(int channels, int signalSize) {
-		int firTaps = PDSL_FILTER_ORDER + 1;
-		PackedCollection efxCoeffs = new PackedCollection(new TraversalPolicy(channels, firTaps));
-		PackedCollection efxWet = new PackedCollection(new TraversalPolicy(channels));
-		PackedCollection efxAuto = onesCollection(channels);
-
-		PackedCollection fbDelay = new PackedCollection(new TraversalPolicy(channels));
-		double[] fbDelayData = new double[channels];
-		Arrays.fill(fbDelayData, PDSL_DELAY_SAMPLES);
-		fbDelay.setMem(fbDelayData);
-		PackedCollection fbTransmission = new PackedCollection(new TraversalPolicy(channels, channels));
-		PackedCollection fbPassthrough = new PackedCollection(new TraversalPolicy(channels, channels));
-		double[] passthroughData = new double[channels * channels];
-		for (int i = 0; i < channels; i++) passthroughData[i * channels + i] = 1.0;
-		fbPassthrough.setMem(passthroughData);
-		PackedCollection fbBuffers = new PackedCollection(channels * signalSize);
-		PackedCollection fbHeads = new PackedCollection(channels);
-
-		int reverbFrames = 4;
-		PackedCollection reverbSend = new PackedCollection(new TraversalPolicy(channels));
-		PackedCollection reverbDelays = new PackedCollection(new TraversalPolicy(channels));
-		double[] reverbDelayData = new double[channels];
-		Arrays.fill(reverbDelayData, signalSize);
-		reverbDelays.setMem(reverbDelayData);
-		PackedCollection reverbFeedback = new PackedCollection(new TraversalPolicy(channels, channels));
-		PackedCollection reverbBuffers = new PackedCollection(channels * reverbFrames * signalSize);
-		PackedCollection reverbHeads = new PackedCollection(channels);
-
-		Map<String, Object> neutralEfx = new HashMap<>();
-		neutralEfx.put("efx_filter_coeffs", efxCoeffs);
-		neutralEfx.put("efx_wet_level", efxWet);
-		neutralEfx.put("efx_automation", efxAuto);
-		neutralEfx.put("efx_fb_delay", fbDelay);
-		neutralEfx.put("efx_fb_transmission", fbTransmission);
-		neutralEfx.put("efx_fb_passthrough", fbPassthrough);
-		neutralEfx.put("fb_buffers", fbBuffers);
-		neutralEfx.put("fb_heads", fbHeads);
-		neutralEfx.put("reverb_send", reverbSend);
-		neutralEfx.put("reverb_delays", reverbDelays);
-		neutralEfx.put("reverb_feedback", reverbFeedback);
-		neutralEfx.put("reverb_buffers", reverbBuffers);
-		neutralEfx.put("reverb_heads", reverbHeads);
-		neutralEfx.put("main_arm_gain", 1.0);
-		neutralEfx.put("efx_arm_gain", 1.0);
-		neutralEfx.put("reverb_arm_gain", 1.0);
-		neutralEfx.put("reverb_network_gain", 0.1);
-		neutralEfx.put("reverb_tap_mean", 1.0 / channels);
-		return neutralEfx;
-	}
-
-	/**
-	 * Times the compiled forward pass of each mixdown layer in isolation at the
-	 * production scale (6 channels, 8192 frames) with fully synthetic collection
-	 * arguments, bisecting the realtime benchmark's ~2s {@code mixdown_master_wet}
-	 * forward into the per-arm constructs: the main-bus FIR chain, the efx bus
-	 * (delay + route), the reverb {@code delay_network}, and the full wet master.
-	 * Synthetic args remove the genome/automation producers entirely, so a slow
-	 * forward here is attributable to the layer's compiled structure alone.
-	 *
-	 * @throws IOException if a layer cannot be built
-	 */
-	@Test(timeout = 1_080_000)
-	@TestDepth(2)
-	public void mixdownLayerForwardTiming() throws IOException {
-		int channels = 6;
-		int signal = 8192;
-		int taps = PDSL_FILTER_ORDER + 1;
-
-		Map<String, Object> main = new HashMap<>();
-		main.put("channels", channels);
-		main.put("signal_size", signal);
-		main.put("hp_cutoff", new PackedCollection(channels).fill(0.0));
-		main.put("volume", onesCollection(channels));
-		main.put("sample_rate", (double) SAMPLE_RATE);
-		main.put("filter_order", (double) PDSL_FILTER_ORDER);
-		timeLayerForward("mixdown_main_bus", "mixdown_main_bus",
-				new TraversalPolicy(channels, signal), main);
-
-		Map<String, Object> efx = new HashMap<>();
-		efx.put("channels", channels);
-		efx.put("signal_size", signal);
-		efx.put("fir_taps", taps);
-		efx.put("wet_filter_coeffs", identityFirBank(channels, taps));
-		efx.put("wet_level", WET_LEVEL);
-		efx.put("delay_samples", 6500);
-		efx.put("transmission", new PackedCollection(
-				new TraversalPolicy(channels, channels)).fill(0.0));
-		efx.put("buffers", new PackedCollection(channels * signal).fill(0.0));
-		efx.put("heads", new PackedCollection(channels).fill(0.0));
-		timeLayerForward("mixdown_efx_bus", "mixdown_efx_bus",
-				new TraversalPolicy(channels, signal), efx);
-
-		// The reverb ring length is the structural suspect: a 1-frame ring takes the
-		// ringWrite short-circuit (whole-buffer overwrite) while multi-frame rings
-		// rebuild every slot through a masked concat chain. Time 1, 2 (production
-		// REVERB_FRAMES), and 4 frame rings to expose the scaling.
-		for (int frames : new int[] { 1, 2, 4 }) {
-			timeLayerForward("mixdown_reverb_bus[frames=" + frames + "]",
-					"mixdown_reverb_bus", new TraversalPolicy(1, signal),
-					reverbBusArgs(channels, signal, frames));
-		}
-
-		Map<String, Object> wet = new HashMap<>(neutralEfxArgs(channels, signal));
-		wet.put("channels", channels);
-		wet.put("signal_size", signal);
-		wet.put("fir_taps", taps);
-		wet.put("sample_rate", (double) SAMPLE_RATE);
-		wet.put("filter_order", (double) PDSL_FILTER_ORDER);
-		wet.put("hp_coeffs", identityFirBank(channels, taps));
-		wet.put("volume", onesCollection(channels));
-		wet.put("lp_coeffs", identityFir(taps));
-		wet.put("wet_filter_coeffs", identityFirBank(channels, taps));
-		wet.put("wet_level", WET_LEVEL);
-		wet.put("delay_samples", 6500);
-		wet.put("master_gain", 0.5);
-		wet.put("buffers", new PackedCollection(channels * signal).fill(0.0));
-		wet.put("heads", new PackedCollection(channels).fill(0.0));
-		timeLayerForward("mixdown_master_wet", "mixdown_master_wet",
-				new TraversalPolicy(2 * channels, signal), wet);
-	}
-
-	/**
-	 * Captures an {@link OperationProfileNode} over the production-ring (2-frame) reverb
-	 * bus alone — build plus a short forward window — so the layer's ~1.4s forward can be
-	 * attributed precisely. The profile must be assigned before the layer is built,
-	 * because operations bind to the active profile at compile time.
-	 *
-	 * @throws IOException if the layer cannot be built or the profile cannot be saved
-	 */
-	@Test(timeout = 1_080_000)
-	@TestDepth(2)
-	public void reverbBusForwardProfile() throws IOException {
-		int channels = 6;
-		int signal = 8192;
-		int frames = 2;
-
-		OperationProfileNode profile = new OperationProfileNode("reverb_bus_forward");
-		Hardware.getLocalHardware().assignProfile(profile);
-
-		try {
-			timeLayerForward("mixdown_reverb_bus[profiled,frames=" + frames + "]",
-					"mixdown_reverb_bus", new TraversalPolicy(1, signal),
-					reverbBusArgs(channels, signal, frames));
-		} finally {
-			Hardware.getLocalHardware().assignProfile(null);
-		}
-
-		File profileFile = new File("results/pdsl-cutover/reverb_bus_profile.xml");
-		profileFile.getParentFile().mkdirs();
-		profile.save(profileFile.getPath());
-		log("Reverb bus profile written to " + profileFile.getAbsolutePath());
-	}
-
-	/**
-	 * Runs a sustained loop of forward passes over the production-ring (2-frame) reverb
-	 * bus so a JVM-level profiler (thread dumps, JFR via ar-jmx) can observe where the
-	 * per-forward wall time goes. The operation profile cannot see this cost — compiled
-	 * operations record microseconds while the forward takes ~1.4s — so the answer is in
-	 * Java frames between operations.
-	 *
-	 * @throws IOException if the layer cannot be built
-	 */
-	@Test(timeout = 600_000)
-	@TestDepth(2)
-	public void reverbBusForwardSoak() throws IOException {
-		int channels = 6;
-		int signal = 8192;
-		int frames = 2;
-		int forwards = 60;
-
-		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
-		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_manager.pdsl");
-		TraversalPolicy inputShape = new TraversalPolicy(1, signal);
-		Block block = loader.buildLayer(program, "mixdown_reverb_bus", inputShape,
-				reverbBusArgs(channels, signal, frames));
-		Model model = new Model(inputShape);
-		model.add(block);
-		CompiledModel compiled = model.compile();
-
-		PackedCollection input = new PackedCollection(inputShape);
-		input.fill(0.1);
-		compiled.forward(input);
-
-		log("soak starting forwards=" + forwards);
-		long start = System.nanoTime();
-		for (int i = 0; i < forwards; i++) {
-			compiled.forward(input);
-		}
-		double totalMs = (System.nanoTime() - start) / 1e6;
-		log(String.format("soak complete forwards=%d totalMs=%.2f perForwardMs=%.2f",
-				forwards, totalMs, totalMs / forwards));
-	}
-
-	/**
-	 * Builds the synthetic argument map for a standalone {@code mixdown_reverb_bus} build:
-	 * per-tap delays of one frame, a zero feedback matrix, and a ring spanning the given
-	 * number of frames.
-	 *
-	 * @param channels number of delay lines
-	 * @param signal   samples per forward pass
-	 * @param frames   ring length in frames
-	 * @return the argument map
-	 */
-	private Map<String, Object> reverbBusArgs(int channels, int signal, int frames) {
-		Map<String, Object> reverb = new HashMap<>();
-		reverb.put("channels", channels);
-		reverb.put("signal_size", signal);
-		PackedCollection reverbDelays = new PackedCollection(new TraversalPolicy(channels));
-		double[] delayData = new double[channels];
-		Arrays.fill(delayData, signal);
-		reverbDelays.setMem(delayData);
-		reverb.put("delay_samples", reverbDelays);
-		reverb.put("feedback_matrix", new PackedCollection(
-				new TraversalPolicy(channels, channels)).fill(0.0));
-		reverb.put("reverb_buffers",
-				new PackedCollection(channels * frames * signal).fill(0.0));
-		reverb.put("reverb_heads", new PackedCollection(channels).fill(0.0));
-		return reverb;
-	}
-
-	/**
-	 * Builds and compiles the given mixdown layer, then logs its build time and the
-	 * median/max of five timed forward passes (after two warm-ups).
-	 *
-	 * @param label      report label for the timing line
-	 * @param layerName  the layer to build from {@code mixdown_manager.pdsl}
-	 * @param inputShape model input shape
-	 * @param args       layer arguments
-	 * @throws IOException if the layer cannot be built
-	 */
-	private void timeLayerForward(String label, String layerName, TraversalPolicy inputShape,
-								  Map<String, Object> args) throws IOException {
-		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
-		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_manager.pdsl");
-
-		long buildStart = System.nanoTime();
-		Block block = loader.buildLayer(program, layerName, inputShape, args);
-		Model model = new Model(inputShape);
-		model.add(block);
-		CompiledModel compiled = model.compile();
-		double buildMs = (System.nanoTime() - buildStart) / 1e6;
-
-		PackedCollection input = new PackedCollection(inputShape);
-		input.fill(0.1);
-
-		for (int i = 0; i < 2; i++) {
-			compiled.forward(input);
-		}
-
-		double[] forwardMs = new double[5];
-		for (int i = 0; i < forwardMs.length; i++) {
-			long start = System.nanoTime();
-			compiled.forward(input);
-			forwardMs[i] = (System.nanoTime() - start) / 1e6;
-		}
-		Arrays.sort(forwardMs);
-
-		log(String.format(
-				"layerTiming layer=%s input=%s buildMs=%.2f medianForwardMs=%.2f maxForwardMs=%.2f",
-				label, inputShape, buildMs,
-				forwardMs[forwardMs.length / 2], forwardMs[forwardMs.length - 1]));
-	}
-
-	/**
-	 * Returns a collection of the given size with every element set to {@code 1.0}.
-	 *
-	 * @param size element count
-	 * @return a ones-filled collection
-	 */
-	private PackedCollection onesCollection(int size) {
-		PackedCollection ones = new PackedCollection(new TraversalPolicy(size));
-		double[] data = new double[size];
-		Arrays.fill(data, 1.0);
-		ones.setMem(data);
-		return ones;
-	}
-
-	/**
-	 * Returns a {@code [channels, taps]} FIR coefficient bank where every channel holds
-	 * an identity (centered delta) response.
-	 *
-	 * @param channels number of channels
-	 * @param taps     coefficients per channel
-	 * @return the identity coefficient bank
-	 */
-	private PackedCollection identityFirBank(int channels, int taps) {
-		PackedCollection bank = new PackedCollection(new TraversalPolicy(channels, taps));
-		double[] data = new double[channels * taps];
-		for (int ch = 0; ch < channels; ch++) {
-			data[ch * taps + taps / 2] = 1.0;
-		}
-		bank.setMem(data);
-		return bank;
-	}
-
-	/**
-	 * Returns a {@code [taps]} identity (centered delta) FIR coefficient vector.
-	 *
-	 * @param taps coefficient count
-	 * @return the identity coefficients
-	 */
-	private PackedCollection identityFir(int taps) {
-		PackedCollection coeffs = new PackedCollection(taps);
-		double[] data = new double[taps];
-		data[taps / 2] = 1.0;
-		coeffs.setMem(data);
-		return coeffs;
 	}
 
 	/**

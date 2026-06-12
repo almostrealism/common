@@ -225,7 +225,14 @@ public class MultiOrderFilter extends CollectionProducerComputationBase {
 	private final int filterOrder;
 
 	/**
-	 * Constructs a multi-order filter with explicit output shape.
+	 * Number of independent channels in the input signal. With more than one channel,
+	 * the input is treated as {@code [channels, rowSize]} rows that are each convolved
+	 * independently (no bleed across row boundaries) using that row's coefficient set.
+	 */
+	private final int channels;
+
+	/**
+	 * Constructs a single-channel multi-order filter with explicit output shape.
 	 *
 	 * @param shape The output shape (typically matches series shape)
 	 * @param series Producer providing the input signal
@@ -233,6 +240,29 @@ public class MultiOrderFilter extends CollectionProducerComputationBase {
 	 * @throws UnsupportedOperationException if series or coefficients have size <= 1
 	 */
 	public MultiOrderFilter(TraversalPolicy shape, Producer<PackedCollection> series, Producer<PackedCollection> coefficients) {
+		this(shape, series, coefficients, 1);
+	}
+
+	/**
+	 * Constructs a multi-order filter over one or more independent channels.
+	 *
+	 * <p>With {@code channels > 1}, the series is {@code channels} contiguous rows and
+	 * the coefficients are a {@code [channels, taps]} bank: row {@code c} of the input
+	 * is convolved with coefficient row {@code c}, and the convolution window is
+	 * clamped to the row (boundary samples use partial windows, exactly as the
+	 * single-channel form does at the start and end of the signal). The whole bank
+	 * runs as one kernel.</p>
+	 *
+	 * @param shape The output shape (typically matches series shape)
+	 * @param series Producer providing the input signal
+	 * @param coefficients Producer providing the filter coefficients
+	 * @param channels Number of independent rows in the series
+	 * @throws UnsupportedOperationException if series or coefficients have size <= 1
+	 * @throws IllegalArgumentException if the series or coefficients do not divide
+	 *                                  evenly into {@code channels} rows
+	 */
+	public MultiOrderFilter(TraversalPolicy shape, Producer<PackedCollection> series,
+							Producer<PackedCollection> coefficients, int channels) {
 		super("multiOrderFilter", shape, series, coefficients);
 
 		TraversalPolicy seriesShape = CollectionFeatures.getInstance().shape(series);
@@ -246,7 +276,22 @@ public class MultiOrderFilter extends CollectionProducerComputationBase {
 			throw new UnsupportedOperationException();
 		}
 
-		this.filterOrder = coeffShape.getSize() - 1;
+		this.channels = channels;
+
+		if (channels > 1) {
+			if (shape.getTotalSizeLong() % channels != 0) {
+				throw new IllegalArgumentException("Series of size " + shape.getTotalSizeLong()
+						+ " does not divide into " + channels + " channels");
+			}
+			long coeffTotal = coeffShape.getTotalSizeLong();
+			if (coeffTotal % channels != 0) {
+				throw new IllegalArgumentException("Coefficients of size " + coeffTotal
+						+ " do not divide into " + channels + " rows");
+			}
+			this.filterOrder = (int) (coeffTotal / channels) - 1;
+		} else {
+			this.filterOrder = coeffShape.getSize() - 1;
+		}
 	}
 
 	@Override
@@ -257,7 +302,14 @@ public class MultiOrderFilter extends CollectionProducerComputationBase {
 		CollectionVariable input = getCollectionArgumentVariable(1);
 		CollectionVariable coefficients = getCollectionArgumentVariable(2);
 
+		int rowSize = channels > 1 ?
+				(int) (getShape().getTotalSizeLong() / channels) : 0;
+
 		Expression result = scope.declareDouble("result", e(0.0));
+		Expression row = channels > 1 ?
+				scope.declareInteger("row", kernel(context).divide(e(rowSize))) : null;
+		Expression pos = channels > 1 ?
+				scope.declareInteger("pos", kernel(context).imod(e(rowSize))) : null;
 
 		Repeated loop = new Repeated<>();
 		{
@@ -270,11 +322,22 @@ public class MultiOrderFilter extends CollectionProducerComputationBase {
 			{
 				Expression index = body.declareInteger("index", kernel(context).add(i.subtract(e(filterOrder / 2))));
 
-				Expression coeff = coefficients.getShape().getDimensions() == 1 ?
-						coefficients.getValueAt(i) : coefficients.getValue(kernel(), i);
+				if (channels > 1) {
+					// Window position within this channel's row; reads are clamped to the
+					// row so the convolution never bleeds into a neighboring channel.
+					Expression offset = body.declareInteger("offset",
+							pos.add(i.subtract(e(filterOrder / 2))));
+					Expression coeff = coefficients.getValue(row, i);
 
-				body.addCase(index.greaterThanOrEqual(e(0)).and(index.lessThan(input.length())),
-						result.assign(result.add(input.getValueAt(index).multiply(coeff))));
+					body.addCase(offset.greaterThanOrEqual(e(0)).and(offset.lessThan(e(rowSize))),
+							result.assign(result.add(input.getValueAt(index).multiply(coeff))));
+				} else {
+					Expression coeff = coefficients.getShape().getDimensions() == 1 ?
+							coefficients.getValueAt(i) : coefficients.getValue(kernel(), i);
+
+					body.addCase(index.greaterThanOrEqual(e(0)).and(index.lessThan(input.length())),
+							result.assign(result.add(input.getValueAt(index).multiply(coeff))));
+				}
 			}
 
 			loop.add(body);
@@ -295,7 +358,7 @@ public class MultiOrderFilter extends CollectionProducerComputationBase {
 
 	@Override
 	public MultiOrderFilter generate(List<Process<?, ?>> children) {
-		return new MultiOrderFilter(getShape(), (Producer) children.get(1), (Producer) children.get(2));
+		return new MultiOrderFilter(getShape(), (Producer) children.get(1), (Producer) children.get(2), channels);
 	}
 
 	/**
@@ -326,5 +389,27 @@ public class MultiOrderFilter extends CollectionProducerComputationBase {
 		}
 
 		return new MultiOrderFilter(shape.traverseEach(), series, coefficients);
+	}
+
+	/**
+	 * Factory method for a multi-channel coefficient bank: the series is treated as
+	 * {@code channels} contiguous rows, each convolved independently (no bleed across
+	 * row boundaries) with its own row of the {@code [channels, taps]} coefficient
+	 * bank, in a single kernel.
+	 *
+	 * @param series Producer providing {@code channels} rows of signal
+	 * @param coefficients Producer providing a {@code [channels, taps]} coefficient bank
+	 * @param channels Number of independent rows in the series
+	 * @return A new MultiOrderFilter instance ready for evaluation
+	 */
+	public static MultiOrderFilter createMultiChannel(Producer<PackedCollection> series,
+													  Producer<PackedCollection> coefficients,
+													  int channels) {
+		TraversalPolicy shape = CollectionFeatures.getInstance().shape(series);
+		if (shape.getTraversalAxis() != shape.getDimensions() - 1) {
+			series = CollectionFeatures.getInstance().traverse(shape.getDimensions() - 1, series);
+		}
+
+		return new MultiOrderFilter(shape.traverseEach(), series, coefficients, channels);
 	}
 }

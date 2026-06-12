@@ -252,10 +252,10 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 					// every isolated stage is then dispatched-and-awaited separately on
 					// every forward — the cost is the per-dispatch glue, not the math.
 					CollectionProducer output = routedRingRead("delay-network-output",
-							flatBuffer, heads1D, delays1D, passthroughMatrix,
+							flatBuffer, heads1D, delays1D, false, passthroughMatrix,
 							channels, signalSize, bufSize);
 					CollectionProducer fbAll = routedRingRead("delay-network-feedback",
-							flatBuffer, heads1D, delays1D, feedbackMatrix,
+							flatBuffer, heads1D, delays1D, false, feedbackMatrix,
 							channels, signalSize, bufSize);
 					CollectionProducer framesAll = c(in).add(fbAll)
 							.reshape(shape(channels * signalSize));
@@ -298,6 +298,69 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 	}
 
 	/**
+	 * Builds a multi-channel delay block as the bank form of the {@code delay}
+	 * primitive: every channel's delayed ring value is read in one computation, and the
+	 * incoming frame is written back to each channel's ring in one operation. The ring
+	 * spans {@code shape(buffer) / channels} samples per channel; a one-frame ring is
+	 * overwritten whole, while longer rings update the head-aligned slot via
+	 * {@link CollectionSlotUpdateComputation}.
+	 *
+	 * @param delaySamples delay in samples — shape {@code [channels]} for per-channel
+	 *                     delays or {@code [1]} shared across channels
+	 * @param buffer       per-channel ring buffers, total {@code channels * bufSize}
+	 * @param heads        per-channel write head positions, shape {@code [channels]}
+	 * @param channels     number of channels
+	 * @param signalSize   samples per channel per forward pass
+	 * @return a Block with shape {@code [channels, signalSize] → [channels, signalSize]}
+	 */
+	default Block multiChannelDelayBlock(CollectionProducer delaySamples,
+										 CollectionProducer buffer,
+										 CollectionProducer heads,
+										 int channels, int signalSize) {
+		int totalBuf = shape(buffer).getTotalSize();
+		int bufSize = totalBuf / channels;
+		if (totalBuf != channels * bufSize || bufSize % signalSize != 0) {
+			throw new IllegalArgumentException("delay() bank requires per-channel rings"
+					+ " spanning whole frames; buffer size " + totalBuf
+					+ " does not divide into " + channels
+					+ " channels of whole " + signalSize + "-sample frames");
+		}
+		if (shape(heads).getTotalSize() != channels) {
+			throw new IllegalArgumentException("delay() bank requires one head per channel;"
+					+ " got " + shape(heads).getTotalSize() + " for " + channels + " channels");
+		}
+		boolean scalarDelay = shape(delaySamples).getTotalSize() == 1;
+
+		TraversalPolicy multiShape = shape(channels, signalSize);
+		CollectionProducer heads1D = heads.reshape(shape(channels));
+		CollectionProducer flatBuffer = buffer.reshape(shape(channels * bufSize));
+		Cell<PackedCollection> forward = Cell.of(
+				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
+						Supplier<Runnable>>) (in, next) -> {
+					CollectionProducer output = routedRingRead("delay-bank-read",
+							flatBuffer, heads1D, delaySamples, scalarDelay, null,
+							channels, signalSize, bufSize);
+					CollectionProducer framesAll = c(in)
+							.reshape(shape(channels * signalSize));
+					CollectionProducer newBuffer = bufSize == signalSize ? framesAll
+							: new CollectionSlotUpdateComputation(
+									shape(channels * bufSize), channels, bufSize, signalSize,
+									flatBuffer, framesAll, heads1D);
+					OperationList ops = new OperationList("delay-bank");
+					ops.add(next.push(output));
+					ops.add(into("delay-bank-buffer-write", newBuffer, buffer, false));
+					ops.add(into("delay-bank-head-write",
+							ringHeadAdvance(heads1D, channels, signalSize, bufSize),
+							heads, false));
+					return ops;
+				});
+		Cell<PackedCollection> backward = Cell.of(
+				(BiFunction<Producer<PackedCollection>, Receptor<PackedCollection>,
+						Supplier<Runnable>>) (in, next) -> new OperationList("delay-bank-backward"));
+		return new DefaultBlock(multiShape, multiShape, forward, backward);
+	}
+
+	/**
 	 * Builds a single computation that reads every channel's delayed ring value and
 	 * (optionally) routes the channels through an {@code [channels, channels]} matrix:
 	 * {@code out[n, i] = sum_m matrix[n, m] * ring_m(i)} where
@@ -308,20 +371,23 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 	 * <p>The whole read-and-route is one expression over the raw state collections, so
 	 * the process tree has nothing to isolate and the stage compiles to one kernel.</p>
 	 *
-	 * @param name       operation name
-	 * @param flatBuffer flat ring buffer, total {@code channels * bufSize}
-	 * @param heads      per-channel write head positions, shape {@code [channels]}
-	 * @param delays     per-channel delay in samples, shape {@code [channels]}
-	 * @param matrix     routing matrix, shape {@code [channels, channels]}, or {@code null}
-	 * @param channels   number of channels
-	 * @param signalSize samples per channel per pass
-	 * @param bufSize    per-channel ring size in samples
+	 * @param name        operation name
+	 * @param flatBuffer  flat ring buffer, total {@code channels * bufSize}
+	 * @param heads       per-channel write head positions, shape {@code [channels]}
+	 * @param delays      delay in samples, shape {@code [channels]} (or {@code [1]} when
+	 *                    {@code scalarDelay} is set)
+	 * @param scalarDelay whether every channel shares the single delay at index 0
+	 * @param matrix      routing matrix, shape {@code [channels, channels]}, or {@code null}
+	 * @param channels    number of channels
+	 * @param signalSize  samples per channel per pass
+	 * @param bufSize     per-channel ring size in samples
 	 * @return the routed delayed signal, shape {@code [channels, signalSize]}
 	 */
 	private CollectionProducer routedRingRead(String name,
 											  CollectionProducer flatBuffer,
 											  CollectionProducer heads,
 											  CollectionProducer delays,
+											  boolean scalarDelay,
 											  CollectionProducer matrix,
 											  int channels, int signalSize, int bufSize) {
 		TraversalPolicy outShape = shape(channels, signalSize);
@@ -336,12 +402,13 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 							Expression<?> i = idx.imod((long) signalSize);
 
 							if (matrix == null) {
-								return ringValueAt(exprArgs, n, i, bufSize);
+								return ringValueAt(exprArgs, n, i, bufSize, scalarDelay);
 							}
 
 							Expression<?> result = null;
 							for (int m = 0; m < channels; m++) {
-								Expression<?> value = ringValueAt(exprArgs, e(m), i, bufSize);
+								Expression<?> value = ringValueAt(
+										exprArgs, e(m), i, bufSize, scalarDelay);
 								Expression<?> weight = exprArgs[4].getValueAt(
 										n.multiply((long) channels).add(m));
 								Expression<?> term = weight.multiply(value);
@@ -356,17 +423,20 @@ public interface MultiChannelDspFeatures extends LayerFeatures {
 	 * Expression for one channel's delayed ring value:
 	 * {@code buffer[channel * bufSize + (heads[channel] + i - delays[channel] + bufSize) % bufSize]}.
 	 *
-	 * @param args    traversable arguments where {@code args[1]} is the flat ring buffer,
-	 *                {@code args[2]} the heads, and {@code args[3]} the delays
-	 * @param channel the channel index expression
-	 * @param i       the sample offset expression within the pass
-	 * @param bufSize per-channel ring size in samples
+	 * @param args        traversable arguments where {@code args[1]} is the flat ring
+	 *                    buffer, {@code args[2]} the heads, and {@code args[3]} the delays
+	 * @param channel     the channel index expression
+	 * @param i           the sample offset expression within the pass
+	 * @param bufSize     per-channel ring size in samples
+	 * @param scalarDelay whether every channel shares the single delay at index 0
 	 * @return the delayed value expression
 	 */
 	private Expression<?> ringValueAt(TraversableExpression[] args,
-									  Expression<?> channel, Expression<?> i, int bufSize) {
+									  Expression<?> channel, Expression<?> i, int bufSize,
+									  boolean scalarDelay) {
 		Expression<Integer> head = args[2].getValueAt(channel).toInt();
-		Expression<Integer> delay = args[3].getValueAt(channel).toInt();
+		Expression<Integer> delay = args[3]
+				.getValueAt(scalarDelay ? e(0) : channel).toInt();
 		Expression<?> position = head.add(i).subtract(delay).add(bufSize)
 				.imod((long) bufSize);
 		return args[1].getValueAt(channel.multiply((long) bufSize).add(position));

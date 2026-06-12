@@ -16,10 +16,14 @@
 
 package org.almostrealism.ml.dsl;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.DefaultCollectionExpression;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.model.Block;
 
@@ -116,6 +120,29 @@ final class PdslBuiltins {
 			throw new PdslParseException(
 					"scale() expects 1 argument (factor), got " + args.size());
 		}
+
+		if (args.get(0) instanceof PdslChannelBank) {
+			// Vectorized for-each: one factor per channel, applied to every row of the
+			// [channels, signalSize] input in a single computation.
+			PdslChannelBank bank = (PdslChannelBank) args.get(0);
+			int channels = bank.getChannels();
+			CollectionProducer factors = PdslInterpreter.normalizeToProducer(bank.getSource(),
+					FEATURES.shape(channels), "scale() factor bank");
+			return (Function<TraversalPolicy, Block>) (inputShape -> {
+				long rowSize = inputShape.getTotalSizeLong() / channels;
+				return FEATURES.layer("scale", inputShape, inputShape,
+						input -> new DefaultTraversableExpressionComputation("scaleBank",
+								inputShape,
+								(Function<TraversableExpression[], CollectionExpression>)
+										exprArgs -> DefaultCollectionExpression.create(
+												inputShape, idx ->
+														exprArgs[1].getValueAt(idx).multiply(
+																exprArgs[2].getValueAt(
+																		idx.divide(rowSize)))),
+								(Producer) input, (Producer) factors));
+			});
+		}
+
 		CollectionProducer factor = PdslInterpreter.normalizeToProducer(args.get(0),
 				FEATURES.shape(1), "scale() factor");
 		return (Function<TraversalPolicy, Block>) (inputShape ->
