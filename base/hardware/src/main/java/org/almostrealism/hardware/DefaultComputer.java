@@ -584,16 +584,25 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 																							Computation<?> computation,
 																							ComputeContext<?> context,
 																							Supplier<Scope<?>> scope) {
+		// The cache key must include the ComputeContext: a compiled kernel is permanently
+		// bound to the context it was compiled under (its command runner dispatches the
+		// kernel), so an operation from another context that adopts it via a bare signature
+		// match would encode commands into a runner that nothing in its own pipeline ever
+		// commits - the kernel never executes and the operation silently produces nothing.
+		// Reuse is therefore scoped to operations that share both structure and context.
+		String cacheKey = Objects.requireNonNull(signature)
+				+ "&context=" + Integer.toHexString(System.identityHashCode(context));
+
 		Consumer<ScopeInstructionsManager<ScopeSignatureExecutionKey>>
 				accessListener =mgr -> {
 					// Ensure that usage of any InstructionSets updates
 					// the access frequency in the cache if it is present
 					// or restores it to the cache if it had previously
 					// been evicted
-					instructionsCache.computeIfAbsent(signature, () -> mgr);
+					instructionsCache.computeIfAbsent(cacheKey, () -> mgr);
 				};
 
-		return instructionsCache.computeIfAbsent(Objects.requireNonNull(signature),
+		return instructionsCache.computeIfAbsent(cacheKey,
 				() -> {
 					ScopeInstructionsManager<ScopeSignatureExecutionKey> mgr =
 							new ScopeInstructionsManager<>(context, scope, accessListener);

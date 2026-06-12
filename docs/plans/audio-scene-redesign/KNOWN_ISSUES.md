@@ -105,14 +105,25 @@ climbs past the pool size and **cascades into failures of unrelated `AudioScene`
 The pool was expanded (currently up to `GeneratedOperation5999`) to buy headroom, but that
 is a **stopgap, not a fix** — the underlying recompilation churn remains.
 
-The reuse path has the inverse defect as well: when two models DO contain
-structurally-identical computations (identical generated expressions, differing only
-in work-item count or bound buffers), the signature-keyed instruction reuse rebinds
-them incorrectly and the second model silently computes wrong results (observed as
-exactly-zero output). Concrete reproducer: enable `AR_PDSL_VECTOR_FOREACH` and run
-`MixdownManagerPdslTest`'s `testMixdownEfxBusProducesOutput` followed by
-`testMixdownManagerRectangularRoute` in one JVM; `AR_INSTRUCTION_SET_REUSE=disabled`
-makes the pair pass. This is why the PDSL vectorized for-each ships opt-in.
+The reuse path had the inverse defect as well — **root-caused and fixed 2026-06-12**.
+When two models contain structurally-identical computations, both hash to the same
+signature (leaf signatures are offset/length/shape-based, not buffer-identity-based —
+intentional). The instruction-set cache (`DefaultComputer.getScopeInstructionsManager`)
+was keyed by signature alone, but a compiled kernel is permanently bound to the
+`ComputeContext` it compiled under — its `MetalOperator` encodes dispatches into that
+context's `MetalCommandRunner`. A second model running under a *different* context that
+adopted the kernel via the bare signature match encoded its commands into the first
+context's runner, which nothing in the second pipeline ever commits: the kernel never
+executed, no error surfaced, and the second model produced exactly-zero output.
+(Argument substitution via `ProcessArgumentMap` was verified correct throughout — both
+kernel arguments rebind to the right buffers; only the dispatch route was wrong.)
+The fix scopes the cache key to signature + compute-context identity, so reuse still
+applies within a context (the common case) but never crosses contexts. The former
+reproducer (`MixdownManagerPdslTest` square then rectangular efx bus in one JVM with
+vectorized for-each) now passes with reuse enabled, and `AR_PDSL_VECTOR_FOREACH` is
+enabled by default. Reuse diagnostics remain available via
+`AR_HARDWARE_REUSE_LOGGING=enabled` (substitution, argument coverage, and process-tree
+dumps at each reuse event).
 
 This gap gates re-enabling `BatchedRealSceneRenderTest` and any sustained full-scene
 render. Full analysis and candidate fixes:

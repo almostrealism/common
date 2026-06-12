@@ -114,16 +114,15 @@ public class PdslInterpreter {
 	 * misinterpret it). Vectorized bodies avoid the per-channel slice/dispatch/concat
 	 * structure, whose per-stage dispatch overhead dominates small per-channel kernels.
 	 *
-	 * <p>OFF BY DEFAULT (enable via {@code AR_PDSL_VECTOR_FOREACH=enabled}): vectorized
-	 * bodies built for different channel layouts in one JVM can be structurally
-	 * identical, and the signature-keyed instruction reuse currently rebinds such twins
-	 * incorrectly across models (silent wrong results — reproduced by running
-	 * {@code MixdownManagerPdslTest}'s square and rectangular efx bus tests together;
-	 * {@code AR_INSTRUCTION_SET_REUSE=disabled} makes the combination safe). Flip the
-	 * default once instruction rebinding handles structural twins.</p>
+	 * <p>ON BY DEFAULT (disable via {@code AR_PDSL_VECTOR_FOREACH=disabled}). An earlier
+	 * defect made this unsafe: structurally-identical vectorized bodies from different
+	 * models share a signature, and the instruction-set cache was keyed by signature
+	 * alone, so the second model adopted a kernel bound to the first model's compute
+	 * context and its dispatches were never executed (silent zero output). The cache is
+	 * now scoped per compute context, which makes cross-model structural twins safe.</p>
 	 */
 	public static boolean enableVectorizedForEach =
-			SystemUtils.isEnabled("AR_PDSL_VECTOR_FOREACH").orElse(false);
+			SystemUtils.isEnabled("AR_PDSL_VECTOR_FOREACH").orElse(true);
 
 	/**
 	 * Sentinel bound to {@code channel} during vectorized {@code for each channel}
