@@ -95,11 +95,8 @@ public abstract class PolicyViolationDetector implements ConsoleFeatures {
 	}
 
 	/**
-	 * Files or path patterns to exclude from scanning. Includes the detector
-	 * infrastructure itself. The {@code /test/} entry is a <strong>temporary</strong>
-	 * exemption (see its inline note) — test files are <strong>not</strong> meant to be
-	 * exempt from code policy, and the exemption should be removed once existing
-	 * test-file violations are remediated.
+	 * Files or path patterns to exclude from scanning.
+	 * Includes the detector infrastructure itself and test files.
 	 */
 	protected static final List<String> EXCLUDED_PATHS = List.of(
 			"PolicyViolationDetector.java",            // This parent class
@@ -111,10 +108,7 @@ public abstract class PolicyViolationDetector implements ConsoleFeatures {
 			"PlanningDocumentReferenceDetector.java",  // Sub-detector (scans for planning-doc refs)
 			"LineNumberReferenceDetector.java",        // Sub-detector (scans for line-number refs)
 			"CodePolicyEnforcementTest.java",          // The test that runs this
-			// TEMPORARY: test files are NOT exempt from code policy by design. This
-			// exemption only exists so we do not have to remediate every pre-existing
-			// test-file violation at once; remove it once those are cleaned up.
-			"/test/",
+			"/test/",                                  // Test files may have intentional examples
 			"/target/"                                 // Maven build output (mirrors src; not a source location)
 	);
 

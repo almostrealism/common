@@ -1,7 +1,11 @@
 # PDSL for Audio DSP Processing
 
 > Part of the audio-scene-redesign consolidation — see [STATE_OF_PLAY.md](STATE_OF_PLAY.md)
-> for the big picture. This is the design reference for migrating all signal processing to PDSL.
+> for the big picture. This is the design reference for migrating all signal processing to
+> PDSL. **The migration it designs is now complete** (`mixdown_master_wet` renders the full
+> path; parity record in [EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md), remaining
+> differences in [PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md)), so
+> read this as the substrate/capability reference it grew from, not a to-do list.
 
 PDSL declaratively describes the multi-channel DSP pipeline that backs `MixdownManager`,
 `EfxManager`, and `AutomationManager`. A `layer` body composes FIR primitives

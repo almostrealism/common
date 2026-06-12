@@ -2,12 +2,13 @@
 
 > The single big-picture document for the **audio scene redesign / real-time
 > playback / PDSL DSP** effort. Read this first; the other docs in this folder are
-> evidence and reference for what is asserted here. Last re-baselined 2026-06-09
-> against `master` (the `feature/batched-audio-mtl` work is fully merged; that
-> branch no longer carries unique commits). Development has moved from the M4
-> laptop to an M1 desktop — more memory, older chip — so timing figures will not
-> line up exactly: figures carried over from the M4 are labelled *historical*, and
-> figures re-measured on the M1 are labelled *(M1)*.
+> evidence and reference for what is asserted here. Last re-baselined 2026-06-11
+> against `feature/audio-scene-pdsl` (the PDSL mixdown cutover branch, PR #296;
+> the earlier `feature/batched-audio-mtl` work is fully merged to master).
+> Development has moved from the M4 laptop to an M1 desktop — more memory, older
+> chip — so timing figures will not line up exactly: figures carried over from
+> the M4 are labelled *historical*, and figures re-measured on the M1 are
+> labelled *(M1)*.
 
 ---
 
@@ -44,7 +45,7 @@ full-scene work.
 | **a2 batching — real-scene integration** | **OPEN.** On the full curated-library scene, batched dispatch does **not** reliably fire for the real pattern path (some methods render `peak=0.0` / silence), and full-scene renders exhaust the native kernel pool (next row). The full-scene test `BatchedRealSceneRenderTest` is `@Ignore`d for this reason. This is integration/scaling work, *not* a defect in the batching kernel. |
 | **Compile-reuse / `GeneratedOperation` pool** | **OPEN (cross-cutting blocker).** Structurally-identical computations recompile instead of reusing a cached kernel because argument-aggregation-target buffers have a `null` signature; each rebuild consumes a slot from a fixed pool. The pool was expanded (to `GeneratedOperation5999`) as a **stopgap, not a fix**. See [../SIGNATURE_AGGREGATION_GAP.md](../SIGNATURE_AGGREGATION_GAP.md). |
 | **Metal dispatch ceiling** (host wedged forever past ~2300–2560 cumulative dispatches) | **SOLVED.** Fixed and merged; 3000+ sustained Metal dispatches verified, re-confirmed (M1) by the sustained-dispatch sentinel test. See [METAL_SUSTAINED_DISPATCH.md](METAL_SUSTAINED_DISPATCH.md). |
-| **a3 — frame-buffer DSP/mixdown** | **THE STANDING BOTTLENECK** for the full pipeline. The per-frame mixdown/effects loop is the dominant cost once a2 is amortized; migrating it to PDSL is the next phase. |
+| **a3 — frame-buffer DSP/mixdown** | **MIGRATED TO PDSL (this branch, 2026-06-11), parity validated by ear — but NOT yet realtime.** The full mixdown/efx/reverb DSP runs as one compiled PDSL model per buffer (`mixdown_master_wet`). Benchmarked (M1): the PDSL full tick is ~1.9 s vs the CellList's ~0.3 s at 8192 frames (budget 185.76 ms) — a constant per-tick overhead independent of buffer size and pattern density that must be eliminated (§5). Acoustic gaps are accepted approximations, inventoried in [PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md). |
 
 **Verified (M1, 2026-06-09) — synthetic sentinel path, `studio/music`:** the batched
 pattern mechanism fires and is correct in isolation. `BatchedDispatchSentinelTest`
@@ -55,9 +56,9 @@ budget → ratio ≈ 0.084** at 4096-frame buffers, drift stable). These use *sy
 `FileNoteSource` inputs — they validate the kernel/dispatch, not the full scene.
 
 **Historical (M4, 2026-06-03) — real curated library, full fx/mixdown, default hybrid
-routing.** *Not re-verified on the M1: the curated sample library
-(`/Users/Shared/Music/Samples`) and `pattern-factory.json` are absent on this machine, and
-the full-scene test is currently `@Ignore`d.*
+routing.** *The library is now present on the M1 (real-scene PDSL A/B and benchmark run
+against it), but `BatchedRealSceneRenderTest` itself remains `@Ignore`d on the
+compile-reuse blocker, so these specific batched-path figures are still M4-historical.*
 - All 6 channels rendered **real, non-silent audio** end-to-end; a 5-minute continuous
   render completed near real-time (**~1.1× the budget at 4096–8192-frame buffers**) with
   bounded memory.
@@ -178,84 +179,72 @@ allows) instead of being stuck with one sequential JNI loop.
   dispatch fire for every production note shape — the a1→a2 seam is "classify-and-dispatch"
   over a closed set of shapes (see §7 and [NOTE_GRAPH_SHAPES.md](NOTE_GRAPH_SHAPES.md)),
   so an unhandled real shape silently falls through to silence.
-- **Curated library on this machine.** The real-scene tests and any full-render
-  experiment need `/Users/Shared/Music/Samples` and `/Users/Shared/Music/pattern-factory.json`,
-  which are absent on the M1. Copy them over before attempting real-scene verification.
+- ~~Curated library on this machine~~ — **resolved:** `/Users/Shared/Music/Samples`
+  (~6k WAVs) and a valid `pattern-factory.json` are present on the M1; all real-scene
+  tests run (they skip gracefully where the library is absent, e.g. CI).
 
-**Then the redesign work itself:**
-- **Production cutover (Block-forward runner, A/B flag) — WIRED (wire-first), validated on
-  real samples.** Runner construction has been extracted from `AudioScene` into
-  `AudioSceneRealtimeRunner` (same package); `AudioScene.runnerRealTime` delegates to it, and
-  `AudioScene` is back under the file-length limit. The runner houses both strategies behind
-  `MixdownManager.enablePdslMixdown` (`AR_PDSL_MIXDOWN`, default off): the established CellList
-  path and a Block-forward PDSL path. The PDSL path keeps the pattern-prepare phase unchanged
-  (it still calls `getCells`, but does **not** tick the returned Java mixdown `CellList`),
-  feeds the consolidated render buffer's LEFT/MAIN region as a zero-copy `[channels,bufferSize]`
-  input to a once-compiled `mixdown_master` `CompiledModel`, runs one `forward()` per buffer,
-  and streams the output frame-by-frame to the master line. `wrapBlockAsCellList` is **not**
-  the mechanism (see [KNOWN_ISSUES.md](KNOWN_ISSUES.md) §5). Validated by
-  `AudioScenePdslCutoverTest` (real curated library): both paths render the same genome
-  non-silent and finite (CellList peak ≈ 1.0, PDSL peak ≈ 1.0), WAVs written to
-  `results/pdsl-cutover/` for by-ear A/B. **By-ear A/B confirmed (owner, 2026-06-09):** with
-  both paths rendered from a *single shared scene* (`AudioScenePdslCutoverTest.realSceneAbReview`
-  builds one scene and renders both DSP paths — a separate scene per path does **not** reproduce
-  the arrangement because scene construction uses unseeded chromosome factories) the **arrangement
-  is identical**; the PDSL render is the same track with *less DSP* and a hotter master, which is
-  the expected wire-first state. The remaining work is closing the DSP gap, not the pattern path.
-  **Accepted wire-first gaps:** PDSL input is the
-  LEFT/MAIN dry signal with wet derived internally (no separate WET voicing — not bit-parity);
-  mono master duplicated to both stereo writers (dual-mono); the unused Java mixdown CellList
-  is still built as a side effect of reusing `getCells`; the adapter requires `channels ≥ 2`
-  (single-channel `concat` is unsupported); automation (filter sweep, volume) advances once
-  per buffer rather than per frame (the PDSL runner ticks the clock by `bufferSize` each
-  `forward`, versus the CellList path's per-frame `time::tick`); and the master stage differs
-  (PDSL `scale(gain)+tanh` runs hotter than Java `masterBusGain+hard-clip`, kept by owner
-  choice). **Status update (2026-06-10):** the per-channel `EfxManager` feedforward chain,
-  the recursive feedback echo, and the reverb (DelayNetwork) bus are now rendered in PDSL and
-  validated by ear — see [EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md) for the per-stage
-  detail and the remaining follow-ups (true stereo, graph-compatible HP/LP filter choice,
-  per-frame automation).
-  **Status update (2026-06-11): LEVEL/SWEEP PARITY REACHED on the full 40s A/B with a
-  faithful (reverb-ON) control.** Six independent defects were found and fixed (the
-  `sum_channels` channel-conflation that collapsed the whole mix to channel 0; NaN
-  poisoning of stateful rings via the pre-setup warm-up forward; the missing
-  `AudioPassFilter` ±0.99 input clamps and [10, 20000] cutoff bound; windowed-sinc FIR
-  slope replaced by the truncated impulse response of Java's exact biquad; per-buffer
-  slot delivery for all time-varying automation; and the reverb arm's gain structure
-  mirrored to Java's `DelayNetwork`). The master is now `clip(±0.99); lowpass;
-  scale(gain); clip(±1)`, matching Java's hard limiter (the earlier tanh choice was
-  superseded once levels mattered). Windowed RMS ratios 0.88–1.03 across the render,
-  overall 0.94; the audible high-pass sweep tracks in both. The A/B scene is now
-  reproducible across runs (persisted `scene-settings.json` + fixed genome seed); the
-  PDSL steady-state tick is ~20 ms per 8192-frame buffer (~9× faster than real time),
-  with render wall-clock dominated by one-time compilation (mostly the unused Java
-  CellList that pattern prep still builds). Details + remaining accepted approximations
-  (per-channel apply-echo on the dry bus, per-buffer automation steps, reverb diffusion
-  texture) in [EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md) §0b.
-- **Stereo (wanted, not yet implemented).** The PDSL path is currently dual-mono (one master
-  duplicated to both writers). True stereo IS a real, expected feature — many input samples
-  are stereo with distinct L/R channels that users expect carried through independently. It
-  must be one model carrying twice the channels in a single forward (never the whole pipeline
-  run twice). See [EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md) Stereo entry.
-- **Live genome swapping (goal #1) — mechanism exists, correctness not yet validated.**
-  In-place genome reassignment on a live runner is already implemented and exercised:
-  `AudioSceneMultiGenomeTest.multiGenomeFullRunner` builds `scene.runnerRealTime(...)`
-  **once**, then loops `applyGenome(scene, seed)` + `temporal.reset()` + re-render per
-  genome — swapping the timeline-defining `Genome` without rebuilding the pipeline. That
-  test validates **memory stability** (Java heap growth < 256 MB across swaps), with EFX
-  disabled, and `Assume`-skips without the curated library. Open work: validate the swap's
-  **audio correctness** (that the new genome's arrangement actually renders) and exercise it
-  under **continuous live output**, not just the offline health loop.
+**The cutover itself — DONE (2026-06-11, this branch): parity reached.**
+`AudioSceneRealtimeRunner` houses both strategies behind
+`MixdownManager.enablePdslMixdown` (`AR_PDSL_MIXDOWN`, default off): the established
+CellList path and a Block-forward PDSL path (pattern prep unchanged; one compiled
+`mixdown_master_wet` forward per buffer; output streamed to the master line; never
+`wrapBlockAsCellList`). Level/sweep parity on the full 40s real-scene A/B with a
+faithful reverb-ON control was validated by ear by the owner: windowed RMS ratios
+0.88–1.03, overall 0.94–0.99, sweeps tracking, deterministic re-render via persisted
+`scene-settings.json` + fixed genome seed (`AudioScenePdslCutoverTest.realSceneAbReview`).
+The defect history (six masking defects) and durable lessons:
+[EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md). The complete inventory of remaining
+(accepted) path differences and their swap impact:
+[PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md).
+
+**Outstanding work (the actual to-do list):**
+- **Eliminate the PDSL tick's constant ~1.6 s overhead (top performance item).**
+  Benchmarked (M1, `AudioScenePdslBenchmarkTest`, 2026-06-11,
+  `studio/compose/results/pdsl-cutover/benchmark.txt`): PDSL full tick ≈1.9 s vs
+  CellList ≈0.3 s at 8192 frames; the same ≈1.9 s at 4096 frames and across 318–1126
+  element genomes, unchanged by `AR_PATTERN_CACHE_PERSIST`. Both paths share pattern
+  prep, so the constant lives in the PDSL-only stages — per-buffer automation refresh,
+  the compiled `forward` (dispatch-count-bound), the frame-by-frame output streaming
+  loop, and the per-buffer clock-advance loop. Profile one tick (ar-profile-analyzer)
+  to localize, then attack. An earlier "~20 ms steady state" note measured the DSP
+  portion alone and must not be cited as the tick rate.
+- **Lean pattern prep.** `createPdsl` still builds the unused Java mixdown CellList as
+  a side effect of reusing `getCells` for pattern preparation. Build-time-only cost
+  (PDSL build ≈52 s vs CellList ≈70 s — the PDSL build already skips compiling the
+  CellList's tick loop); worth removing, but it is not the tick-rate problem.
+- **True stereo.** The PDSL path is dual-mono (one master duplicated to both writers).
+  Stereo is a real, expected feature (stereo samples with distinct L/R must carry
+  through independently) and must be one model carrying twice the channels in a
+  *single* forward — never the pipeline run twice (that attempt was reverted).
+- **Flip the default.** `enablePdslMixdown` is off by default; turning it on for
+  production (ringsdesktop) awaits the swap-impact review
+  ([PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md) §7) and CI.
+- **Gene HP/LP `choice()` in compiled models.** The efx gene filter renders LP-only
+  until PDSL supports `choice(...)` inside a compiled graph.
+- **Per-frame automation (only if ever audible).** Automation steps per buffer
+  (~186 ms at 8192); production envelopes are slow enough that this is inaudible.
+- **Live genome swapping (goal #1) — mechanism exists, correctness partially open.**
+  `AudioSceneMultiGenomeTest.multiGenomeFullRunner` swaps genomes on a live runner
+  (memory-stability validated); `AudioScenePdslBenchmarkTest` exercises the same
+  protocol on the PDSL path. Open: validating the swap's *audio* correctness under
+  continuous live output, and the build-time-sampled argument staleness
+  ([PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md) §5 — wet/efx
+  filter coefficient banks lag the genome until rebuild).
 - **Variable channel count.** PDSL `channels` is fixed at block-build time; gene-driven
-  channel activation is still Java.
+  channel activation is still Java. The runner guards: selections that are not a
+  zero-based contiguous prefix of size ≥ 2 fall back to the CellList path.
 - **a1/a2/a3 ring decoupling** (to reach Diagram A): make `PatternAudioBuffer` rolling,
   run a2 on a worker K buffers ahead, point a3 at PDSL `Block`s pumped by
   `BufferedOutputScheduler`.
 
-**The confirmation question this phase must answer** (to be designed next): *can all
-signal processing be expressed in PDSL with acoustic parity and at/under the real-time
-budget?* — i.e. an A/B equivalence + performance gate across the full
-MixdownManager/EfxManager surface, on hybrid routing.
+**The confirmation question this phase had to answer — HALF ANSWERED (2026-06-11):**
+*can all signal processing be expressed in PDSL with acoustic parity and at/under the
+real-time budget?* **Parity: YES** — validated by ear + windowed RMS on the full
+real-scene A/B. **Budget: NOT YET** — the full PDSL tick runs ~10× over budget on the
+M1 (vs ~1.6–2× for the CellList tick), dominated by a constant per-tick overhead that
+is independent of buffer size and pattern density (see the benchmark item above). The
+expressiveness question is settled; the remaining work is engineering the constant out
+of the tick, not re-architecting the DSP.
 
 ## 6. Options that are moot
 
@@ -309,9 +298,13 @@ makes a graph-analysis pass unnecessary. Do not revive these; build on PDSL.
 - **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)** — live platform constraints (Metal 31-buffer
   limit, `floor()` resample ambiguity, cache-persist requirement, compile-reuse /
   kernel-pool exhaustion, real-scene dispatch gap).
-- **[EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md)** — phased plan for the next phase:
-  bringing the full per-channel `EfxManager` chain + WET voicing + master parity into the
-  PDSL path (the cutover's remaining DSP gap). Source-grounded, A/B-testable per stage.
+- **[PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md)** — the
+  authoritative inventory of every remaining difference between the PDSL and CellList
+  paths (DSP approximations, determinism, staleness, swap impact). Read before flipping
+  `enablePdslMixdown` anywhere.
+- **[EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md)** — done-record of the DSP parity
+  work: the parity standard, the six masking defects and their lessons, and pointers to
+  the remaining follow-ups.
 - **[../SIGNATURE_AGGREGATION_GAP.md](../SIGNATURE_AGGREGATION_GAP.md)** — the cross-cutting
   compile-reuse blocker (null signature on argument-aggregation targets →
   `GeneratedOperation` pool exhaustion). Lives one level up because it is not

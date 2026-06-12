@@ -37,6 +37,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.almostrealism.heredity.ProjectedGenome;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.List;
 import java.util.Random;
 
@@ -68,6 +69,21 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 		File dir = new File(SAMPLES_PATH);
 		return dir.exists() ? dir : null;
 	}
+
+	/** Curated pattern factory; the real arrangement that decides which samples play where. */
+	protected static final String PATTERN_FACTORY =
+			SystemUtils.getProperty("AR_RINGS_PATTERNS", "/Users/Shared/Music/pattern-factory.json");
+
+	/**
+	 * Persisted scene settings making the real-scene arrangement reproducible across JVM runs.
+	 * Loading with a {@code null} settings file falls back to
+	 * {@code PatternSystemManager.Settings.defaultSettings}, which draws fresh random selection
+	 * functions ({@code ParameterFunction.random()}) for every pattern — a different arrangement
+	 * every run. The first run writes the constructed settings here; later runs load them, so the
+	 * same genome seed reproduces the identical arrangement and render.
+	 */
+	protected static final String SCENE_SETTINGS =
+			SystemUtils.getProperty("AR_RINGS_SETTINGS", "results/pdsl-cutover/scene-settings.json");
 
 	/** Sample rate used for all tests. */
 	protected static final int SAMPLE_RATE = OutputLine.sampleRate;
@@ -126,6 +142,40 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 
 		scene.setPatternActivityBias(1.0);
 		scene.setTotalMeasures(16);
+
+		return scene;
+	}
+
+	/**
+	 * Loads a fresh scene from the real curated arrangement (recursive library + pattern
+	 * factory), mirroring {@link org.almostrealism.studio.optimize.AudioSceneOptimizer#createScene()}
+	 * but with explicit paths so it does not depend on the working directory. Settings are
+	 * persisted to {@link #SCENE_SETTINGS} on first load so every later run (and every later
+	 * session) reconstructs the identical arrangement.
+	 *
+	 * @param library        the recursive sample library root
+	 * @param patternFactory the curated pattern factory JSON
+	 * @param bpm            tempo for the scene
+	 * @param totalMeasures  total measures in the arrangement
+	 * @return a freshly loaded scene
+	 * @throws IOException if the scene cannot be loaded
+	 */
+	protected AudioScene<?> loadCuratedScene(File library, File patternFactory,
+											 double bpm, int totalMeasures) throws IOException {
+		File settings = new File(SCENE_SETTINGS);
+		AudioScene<?> scene = AudioScene.load(
+				settings.exists() ? settings.getAbsolutePath() : null,
+				patternFactory.getAbsolutePath(),
+				library.getAbsolutePath(), bpm, SAMPLE_RATE);
+		scene.setTotalMeasures(totalMeasures);
+
+		if (!settings.exists()) {
+			// First run: persist the randomly-drawn settings so every later run (and every
+			// later session) reconstructs this exact arrangement. See SCENE_SETTINGS.
+			settings.getParentFile().mkdirs();
+			scene.saveSettings(settings);
+			log("Persisted scene settings for reproducibility: " + settings.getAbsolutePath());
+		}
 
 		return scene;
 	}

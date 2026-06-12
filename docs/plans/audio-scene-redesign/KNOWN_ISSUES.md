@@ -1,8 +1,8 @@
 # Known Issues & Platform Constraints
 
 > Live constraints relevant to the audio scene redesign / real-time / PDSL DSP work,
-> as of 2026-06-09 (`master`; the `feature/batched-audio-mtl` work is merged). These are
-> referenced from [STATE_OF_PLAY.md](STATE_OF_PLAY.md) and the other docs in this folder.
+> as of 2026-06-11 (`feature/audio-scene-pdsl`). These are referenced from
+> [STATE_OF_PLAY.md](STATE_OF_PLAY.md) and the other docs in this folder.
 > Verify against current code before acting — these reflect what was true when written.
 
 ## 1. Hybrid routing is mandatory — never force `AR_HARDWARE_DRIVER`
@@ -80,18 +80,17 @@ that contract and is blind to whatever backs it. So the PDSL path is a **Block-f
 for the DSP, and writes the result straight to the output line. `wrapBlockAsCellList` is
 **not** used. This is why the Block never needs to masquerade as a `CellList`.
 
-**Implemented (wire-first).** This runner now exists as `AudioSceneRealtimeRunner`
-(`org.almostrealism.studio`, `studio/compose`); `AudioScene.runnerRealTime` delegates to it,
-and the two strategies are selected by `MixdownManager.enablePdslMixdown`. Validated on the
-real curated library by `AudioScenePdslCutoverTest` (both paths non-silent and finite).
-Two runtime constraints surfaced and must be respected by callers/parity work:
-- **`channels ≥ 2`.** `MixdownManagerPdslAdapter.buildArgsMap` concatenates one per-channel
-  producer; `CollectionFeatures.concat` throws `UnsupportedOperationException` on a single
-  input (no differing axis). So the PDSL runner cannot drive a single-channel render
-  (`AudioScene.renderChannel`, which uses `List.of(channel)`, would trip this).
+**Implemented.** The runner exists as `AudioSceneRealtimeRunner` (`studio/compose`),
+strategies selected by `MixdownManager.enablePdslMixdown`; parity validated (see
+[EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md)). Two runtime constraints remain live
+for callers:
+- **`channels ≥ 2`, zero-based contiguous.** `MixdownManagerPdslAdapter.buildArgsMap`
+  concatenates per-channel producers (`concat` rejects a single input) and reads genes
+  positionally, so `AudioSceneRealtimeRunner.supportsPdsl` falls back to the CellList
+  path for any other selection (e.g. `AudioScene.renderChannel`'s single channel).
 - **Stereo write gating.** `WaveOutput.write` gates on the *minimum* frame count across
-  channels; the mono `mixdown_master` output is streamed to **both** stereo writers
-  (dual-mono) so the file is actually written.
+  channels; the mono master output is streamed to **both** stereo writers (dual-mono)
+  so the file is actually written.
 
 ## 6. Compile-reuse / `GeneratedOperation` pool exhaustion (cross-cutting blocker)
 
@@ -120,19 +119,13 @@ trips issue §6). The a1→a2 seam is "classify-and-dispatch" over a closed set 
 (see `NOTE_GRAPH_SHAPES.md`); an unhandled real shape falls through to silence rather than
 erroring, so the fix is to ensure every production note shape is classified and dispatched.
 
-## 8. Curated samples present on the M1, but the pattern factory is empty
+## 8. Real-scene tests depend on the absolute-path curated library
 
-The real-scene tests and any full-render experiment read an absolute-path curated library:
-`/Users/Shared/Music/Samples` and `/Users/Shared/Music/pattern-factory.json` (samples via
-`AudioSceneOptimizer.LIBRARY`; patterns via
-`AudioScene.loadPatterns(SystemUtils.getLocalDestination("pattern-factory.json"))`,
-`AudioSceneOptimizer.java:425`).
-
-As of 2026-06-09 on the M1: **`/Users/Shared/Music/Samples` is present (~6097 `.wav`
-files)** — real-sample rendering works (verified: `MixdownManagerPdslVerificationTest`
-renders real audio) — and **`/Users/Shared/Music/pattern-factory.json` has been replaced
-with a valid factory** (it was briefly `[]`; the owner populated it the same day). Both the
-mixdown-path verification (constructed genome + real loop samples) and the **full real-scene
-by-ear A/B** (`RealtimeContinuousRenderer` → `createScene()` → `loadPatterns(...)`) are
-therefore unblocked on this machine. If a future render comes out silent / "no working
-genome," re-check that this file is still a valid non-empty factory.
+The real-scene tests and any full-render experiment read `/Users/Shared/Music/Samples`
+and `/Users/Shared/Music/pattern-factory.json` (overridable via `AR_RINGS_LIBRARY` /
+`AR_RINGS_PATTERNS`). Both are present and valid on the M1; tests skip gracefully where
+they are absent (CI). If a future render comes out silent / "no working genome,"
+re-check that the pattern factory is still a valid non-empty JSON (it was briefly `[]`
+once). Reproducibility additionally depends on the persisted
+`results/pdsl-cutover/scene-settings.json` (`AR_RINGS_SETTINGS`): deleting it makes the
+next run draw a fresh random arrangement.

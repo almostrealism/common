@@ -22,7 +22,6 @@ import org.almostrealism.audio.WaveOutput;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.TemporalCellular;
-import org.almostrealism.io.SystemUtils;
 import org.almostrealism.music.notes.NoteAudioChoice;
 import org.almostrealism.music.notes.NoteAudioSource;
 import org.almostrealism.studio.AudioScene;
@@ -89,23 +88,8 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	/** Tempo for the review scene. */
 	private static final double REVIEW_BPM = 120.0;
 
-	/** Curated pattern factory; the real arrangement that decides which samples play where. */
-	private static final String PATTERN_FACTORY =
-			SystemUtils.getProperty("AR_RINGS_PATTERNS", "/Users/Shared/Music/pattern-factory.json");
-
 	/** Minimum peak amplitude below which output is considered silent. */
 	private static final double SILENCE_THRESHOLD = 1e-4;
-
-	/**
-	 * Persisted scene settings making the real-scene arrangement reproducible across JVM runs.
-	 * Loading with a {@code null} settings file falls back to
-	 * {@code PatternSystemManager.Settings.defaultSettings}, which draws fresh random selection
-	 * functions ({@code ParameterFunction.random()}) for every pattern — a different arrangement
-	 * every run. The first run writes the constructed settings here; later runs load them, so the
-	 * same genome seed reproduces the identical arrangement and render.
-	 */
-	private static final String SCENE_SETTINGS =
-			SystemUtils.getProperty("AR_RINGS_SETTINGS", "results/pdsl-cutover/scene-settings.json");
 
 	/**
 	 * Renders the real curated arrangement for {@link #REVIEW_SECONDS} seconds through both
@@ -1040,9 +1024,8 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	}
 
 	/**
-	 * Loads a fresh scene from the real curated arrangement (recursive library + pattern
-	 * factory), mirroring {@link org.almostrealism.studio.optimize.AudioSceneOptimizer#createScene()}
-	 * but with explicit paths so it does not depend on the working directory.
+	 * Loads the real curated arrangement at the review tempo and length via
+	 * {@link #loadCuratedScene(File, File, double, int)}.
 	 *
 	 * @param library        the recursive sample library root
 	 * @param patternFactory the curated pattern factory JSON
@@ -1050,22 +1033,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 * @throws IOException if the scene cannot be loaded
 	 */
 	private AudioScene<?> loadRealScene(File library, File patternFactory) throws IOException {
-		File settings = new File(SCENE_SETTINGS);
-		AudioScene<?> scene = AudioScene.load(
-				settings.exists() ? settings.getAbsolutePath() : null,
-				patternFactory.getAbsolutePath(),
-				library.getAbsolutePath(), REVIEW_BPM, SAMPLE_RATE);
-		scene.setTotalMeasures(REVIEW_MEASURES);
-
-		if (!settings.exists()) {
-			// First run: persist the randomly-drawn settings so every later run (and every
-			// later session) reconstructs this exact arrangement. See SCENE_SETTINGS.
-			settings.getParentFile().mkdirs();
-			scene.saveSettings(settings);
-			log("Persisted scene settings for reproducibility: " + settings.getAbsolutePath());
-		}
-
-		return scene;
+		return loadCuratedScene(library, patternFactory, REVIEW_BPM, REVIEW_MEASURES);
 	}
 
 	/**
