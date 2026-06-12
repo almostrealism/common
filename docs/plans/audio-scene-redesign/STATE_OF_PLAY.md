@@ -198,16 +198,26 @@ The defect history (six masking defects) and durable lessons:
 [PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md).
 
 **Outstanding work (the actual to-do list):**
-- **Eliminate the PDSL tick's constant ~1.6 s overhead (top performance item).**
-  Benchmarked (M1, `AudioScenePdslBenchmarkTest`, 2026-06-11,
-  `studio/compose/results/pdsl-cutover/benchmark.txt`): PDSL full tick ≈1.9 s vs
-  CellList ≈0.3 s at 8192 frames; the same ≈1.9 s at 4096 frames and across 318–1126
-  element genomes, unchanged by `AR_PATTERN_CACHE_PERSIST`. Both paths share pattern
-  prep, so the constant lives in the PDSL-only stages — per-buffer automation refresh,
-  the compiled `forward` (dispatch-count-bound), the frame-by-frame output streaming
-  loop, and the per-buffer clock-advance loop. Profile one tick (ar-profile-analyzer)
-  to localize, then attack. An earlier "~20 ms steady state" note measured the DSP
-  portion alone and must not be cited as the tick rate.
+- **Fix `ringWrite`'s multi-frame ring rebuild (top performance item — ROOT CAUSE
+  LOCALIZED 2026-06-11).** The PDSL full tick is ≈1.9 s vs the CellList's ≈0.3 s at
+  8192 frames (M1, `AudioScenePdslBenchmarkTest`,
+  `studio/compose/results/pdsl-cutover/benchmark.txt`; constant per tick, genome- and
+  buffer-size-independent). Stage timing
+  (`AudioScenePdslBenchmarkTest.pdslTickStageTiming`) attributed 2067 ms of the
+  2134 ms tick to `compiled.forward`; layer bisection
+  (`MixdownManagerPdslVerificationTest.mixdownLayerForwardTiming`, synthetic args at
+  6×8192) attributed THAT to the reverb `delay_network`: main bus 22 ms, efx bus
+  66 ms, reverb 1382 ms at the production 2-frame ring (128 ms at 1 frame, 2921 ms at
+  4 frames — ≈1.4 s per additional ring frame). The cause is
+  `MultiChannelDspFeatures.ringWrite`: for rings longer than one frame it rebuilds the
+  ENTIRE ring as a per-slot masked `concat` chain (concat compiles to pad+add, so the
+  graph becomes hundreds of tiny kernels whose per-dispatch overhead dwarfs their
+  ~0.01 ms kernel time — the OperationProfile shows ops invoked ~500× per forward).
+  Fix: express the ring update as ONE kernel over `[channels * bufSize]` using
+  index-derived masks (compare `floor(offset/signalSize)` to the frame-aligned head)
+  and gathers, with no concat; then re-validate parity (the construct is in the
+  validated signal path) and re-run the benchmark. An earlier "~20 ms steady state"
+  note measured the DSP portion alone and must not be cited as the tick rate.
 - **Lean pattern prep.** `createPdsl` still builds the unused Java mixdown CellList as
   a side effect of reusing `getCells` for pattern preparation. Build-time-only cost
   (PDSL build ≈52 s vs CellList ≈70 s — the PDSL build already skips compiling the

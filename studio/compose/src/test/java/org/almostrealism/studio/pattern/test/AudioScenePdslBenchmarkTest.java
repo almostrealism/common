@@ -16,7 +16,10 @@
 
 package org.almostrealism.studio.pattern.test;
 
+import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.studio.AudioScene;
 import org.almostrealism.studio.arrange.MixdownManager;
@@ -33,6 +36,7 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Steady-state realtime throughput benchmark for the PDSL mixdown path across an array of
@@ -89,6 +93,12 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 	/** Report file written alongside the cutover review artifacts. */
 	private static final String REPORT_PATH = "results/pdsl-cutover/benchmark.txt";
 
+	/** Steady-state ticks recorded under the operation profile. */
+	private static final int PROFILE_TICKS = 5;
+
+	/** Profile XML written alongside the cutover review artifacts. */
+	private static final String PROFILE_PATH = "results/pdsl-cutover/pdsl_tick_profile.xml";
+
 	/**
 	 * Benchmarks steady-state tick wall time for the PDSL path across genomes and buffer
 	 * sizes, plus a one-genome CellList baseline, and writes a line-per-measurement report
@@ -99,23 +109,9 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 	@Test(timeout = 1_080_000)
 	@TestDepth(2)
 	public void pdslRealtimeBenchmark() throws IOException {
-		File library = getSamplesDir();
-		File patternFactory = new File(PATTERN_FACTORY);
-		if (library == null || !patternFactory.exists()) {
-			log("Skipping pdslRealtimeBenchmark - need the curated library (" + SAMPLES_PATH
-					+ ") and pattern factory (" + PATTERN_FACTORY + ")");
-			return;
-		}
+		AudioScene<?> scene = loadBenchmarkScene("pdslRealtimeBenchmark");
+		if (scene == null) return;
 
-		// Production flag configuration, mirroring the review render so the benchmark
-		// measures the same compiled mixdown the cutover validated.
-		MixdownManager.enableMainFilterUp = true;
-		MixdownManager.enableEfx = true;
-		MixdownManager.enableEfxFilters = true;
-		MixdownManager.enableReverb = true;
-		PatternSystemManager.enableWarnings = false;
-
-		AudioScene<?> scene = loadCuratedScene(library, patternFactory, BENCH_BPM, BENCH_MEASURES);
 		List<long[]> genomes = selectBenchmarkGenomes(scene);
 		Assert.assertFalse("No viable genomes found in the real arrangement", genomes.isEmpty());
 
@@ -141,6 +137,173 @@ public class AudioScenePdslBenchmarkTest extends AudioSceneTestBase {
 		reportFile.getParentFile().mkdirs();
 		Files.write(reportFile.toPath(), report.toString().getBytes(StandardCharsets.UTF_8));
 		log("Benchmark report written to " + reportFile.getAbsolutePath());
+	}
+
+	/**
+	 * Captures an {@link OperationProfileNode} over the PDSL runner's build and a short
+	 * steady-state tick window, attributing the tick's wall time to its compiled
+	 * operations (pattern prepare, automation refresh, model forward, output streaming,
+	 * clock advance). The profile must be assigned to the hardware <em>before</em> the
+	 * runner is built, because operations bind to the active profile at compile time.
+	 * The saved XML is analyzed offline (ar-profile-analyzer) to localize the constant
+	 * per-tick overhead the realtime benchmark exposed.
+	 *
+	 * @throws IOException if the scene cannot be loaded or the profile cannot be saved
+	 */
+	@Test(timeout = 1_080_000)
+	@TestDepth(2)
+	public void pdslTickProfile() throws IOException {
+		AudioScene<?> scene = loadBenchmarkScene("pdslTickProfile");
+		if (scene == null) return;
+
+		long seed = findWorkingGenomeSeed(scene, getSamplesDir());
+		Assert.assertTrue("No working genome found in the real arrangement", seed >= 0);
+		applyGenome(scene, seed);
+
+		OperationProfileNode profile = new OperationProfileNode("pdsl_tick");
+		Hardware.getLocalHardware().assignProfile(profile);
+
+		boolean previous = MixdownManager.enablePdslMixdown;
+		File scratch = new File("results/pdsl-cutover/benchmark_scratch.wav");
+		WaveOutput out = new WaveOutput(() -> scratch, 24, true);
+
+		try {
+			MixdownManager.enablePdslMixdown = true;
+			TemporalCellular runner = scene.runnerRealTime(
+					new MultiChannelAudioOutput(out), null, PRIMARY_BUFFER);
+			Runnable setup = runner.setup().get();
+			Runnable tick = runner.tick().get();
+
+			try {
+				setup.run();
+				for (int i = 0; i < WARMUP_TICKS; i++) {
+					tick.run();
+				}
+
+				long start = System.nanoTime();
+				for (int i = 0; i < PROFILE_TICKS; i++) {
+					tick.run();
+				}
+				double totalMs = (System.nanoTime() - start) / 1e6;
+				log("profiledTicks=" + PROFILE_TICKS
+						+ " totalMs=" + format(totalMs)
+						+ " perTickMs=" + format(totalMs / PROFILE_TICKS));
+			} finally {
+				out.reset();
+				runner.reset();
+			}
+		} finally {
+			MixdownManager.enablePdslMixdown = previous;
+			Hardware.getLocalHardware().assignProfile(null);
+		}
+
+		File profileFile = new File(PROFILE_PATH);
+		profileFile.getParentFile().mkdirs();
+		profile.save(profileFile.getPath());
+		log("Tick profile written to " + profileFile.getAbsolutePath());
+	}
+
+	/**
+	 * Times each stage of the PDSL runner's tick {@link OperationList} individually —
+	 * the per-buffer frame-index reset, the per-cell pattern prepares, the automation
+	 * refresh, the model forward, the output-streaming loop, and the clock advance —
+	 * to attribute the tick's wall time to a stage. The full-tick profile showed the
+	 * compiled operations' recorded run time accounts for almost none of the tick wall
+	 * time, so this isolates where the Java-side time goes.
+	 *
+	 * @throws IOException if the scene cannot be loaded
+	 */
+	@Test(timeout = 1_080_000)
+	@TestDepth(2)
+	public void pdslTickStageTiming() throws IOException {
+		AudioScene<?> scene = loadBenchmarkScene("pdslTickStageTiming");
+		if (scene == null) return;
+
+		long seed = findWorkingGenomeSeed(scene, getSamplesDir());
+		Assert.assertTrue("No working genome found in the real arrangement", seed >= 0);
+		applyGenome(scene, seed);
+
+		boolean previous = MixdownManager.enablePdslMixdown;
+		File scratch = new File("results/pdsl-cutover/benchmark_scratch.wav");
+		WaveOutput out = new WaveOutput(() -> scratch, 24, true);
+
+		try {
+			MixdownManager.enablePdslMixdown = true;
+			TemporalCellular runner = scene.runnerRealTime(
+					new MultiChannelAudioOutput(out), null, PRIMARY_BUFFER);
+			runner.setup().get().run();
+
+			Supplier<Runnable> tickSupplier = runner.tick();
+			Assert.assertTrue("Expected the PDSL tick to be an OperationList",
+					tickSupplier instanceof OperationList);
+			OperationList tick = (OperationList) tickSupplier;
+
+			List<String> names = new ArrayList<>();
+			List<Runnable> stages = new ArrayList<>();
+			for (Supplier<Runnable> child : tick) {
+				names.add(child instanceof OperationList ?
+						((OperationList) child).getDescription() : child.getClass().getSimpleName());
+				stages.add(child.get());
+			}
+
+			try {
+				for (int w = 0; w < WARMUP_TICKS; w++) {
+					stages.forEach(Runnable::run);
+				}
+
+				long[] stageNanos = new long[stages.size()];
+				for (int i = 0; i < PROFILE_TICKS; i++) {
+					for (int s = 0; s < stages.size(); s++) {
+						long start = System.nanoTime();
+						stages.get(s).run();
+						stageNanos[s] += System.nanoTime() - start;
+					}
+				}
+
+				double totalMs = 0;
+				for (int s = 0; s < stages.size(); s++) {
+					double perTickMs = stageNanos[s] / 1e6 / PROFILE_TICKS;
+					totalMs += perTickMs;
+					log("stage=" + s + " name=" + names.get(s)
+							+ " perTickMs=" + format(perTickMs));
+				}
+				log("stageTotalPerTickMs=" + format(totalMs));
+			} finally {
+				out.reset();
+				runner.reset();
+			}
+		} finally {
+			MixdownManager.enablePdslMixdown = previous;
+		}
+	}
+
+	/**
+	 * Loads the curated benchmark scene with the production flag configuration, or
+	 * returns {@code null} (after logging) when the curated library or pattern factory
+	 * is unavailable and the calling test should skip.
+	 *
+	 * @param caller test name for the skip log line
+	 * @return the loaded scene, or {@code null} to skip
+	 * @throws IOException if the scene cannot be loaded
+	 */
+	private AudioScene<?> loadBenchmarkScene(String caller) throws IOException {
+		File library = getSamplesDir();
+		File patternFactory = new File(PATTERN_FACTORY);
+		if (library == null || !patternFactory.exists()) {
+			log("Skipping " + caller + " - need the curated library (" + SAMPLES_PATH
+					+ ") and pattern factory (" + PATTERN_FACTORY + ")");
+			return null;
+		}
+
+		// Production flag configuration, mirroring the review render so the benchmark
+		// measures the same compiled mixdown the cutover validated.
+		MixdownManager.enableMainFilterUp = true;
+		MixdownManager.enableEfx = true;
+		MixdownManager.enableEfxFilters = true;
+		MixdownManager.enableReverb = true;
+		PatternSystemManager.enableWarnings = false;
+
+		return loadCuratedScene(library, patternFactory, BENCH_BPM, BENCH_MEASURES);
 	}
 
 	/**

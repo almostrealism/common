@@ -224,14 +224,14 @@ What the numbers say:
 - **The PDSL full tick is currently ~6× slower than the CellList tick**, and ~10× over
   the realtime budget. An earlier "~20 ms steady state" figure referred to the DSP
   portion in isolation, not the full tick — the full tick is the realtime criterion.
-- **The PDSL overhead is a constant ~1.5–1.6 s per tick**: it does not scale with
-  buffer size (4096 costs the same as 8192) or with pattern density (318 vs 1126
-  elements are within noise), and `AR_PATTERN_CACHE_PERSIST` does not change it. Both
-  paths share the identical pattern-prepare phase, so the delta lives in the PDSL-only
-  tick stages: the per-buffer automation refresh, the compiled `forward` (whose cost is
-  dispatch-count-bound, not size-bound), the frame-by-frame Java output streaming, and
-  the per-buffer clock-advance loop. **Localizing and eliminating this constant is the
-  top open performance item** — see STATE_OF_PLAY §5.
+- **The PDSL overhead is a constant ~1.5–1.6 s per tick, localized to the reverb
+  `delay_network`'s multi-frame ring update** (`MultiChannelDspFeatures.ringWrite`):
+  stage timing put 2067 ms of the 2134 ms tick in `compiled.forward`, and layer
+  bisection put that in the reverb bus (1382 ms at the production 2-frame ring vs
+  128 ms at 1 frame; main bus 22 ms, efx bus 66 ms). The multi-frame ring rebuild
+  compiles to a masked per-slot `concat` chain — hundreds of tiny kernels whose
+  dispatch overhead dwarfs their kernel time. **Replacing it with a single-kernel
+  index-expression update is the top open performance item** — see STATE_OF_PLAY §5.
 - Neither path currently meets ratio-of-1 in this harness; the CellList path is in the
   same order as the historical ~1.1×-of-budget M4 measurement (the M1 is slower).
 - Build time (one-time): PDSL ≈51–53 s, CellList ≈70 s — the PDSL build is *faster*

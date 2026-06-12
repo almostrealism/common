@@ -196,7 +196,7 @@ public class CollectionZerosComputationTest extends TestSuiteBase implements Col
 	 * commonly a producer multiplied by a literal {@code 0.0}, which folds to one. See
 	 * {@link #multiplyByZeroConstantOptimizesAndEvaluatesToZero()}.</p>
 	 */
-	@Test(timeout = 30000)
+	@Test(timeout = 5000)
 	public void isolateReturnsProcessRatherThanThrowing() {
 		CollectionZerosComputation zeros =
 				new CollectionZerosComputation(new TraversalPolicy(3));
