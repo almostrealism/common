@@ -21,11 +21,21 @@
 > Oobleck VAE (§3.1 / Risk 1) → the AE is a **BUILD**, not a config tweak; the text encoder is
 > **T5Gemma**, not T5 and not CLAP (§3.3); the open DiTs are **433M / 433M / 1.4B** with separate
 > **SAME-S 266M / SAME-L 1.7B** autoencoders (§3.5); inpainting is **input-channel concatenation** of
-> a latent mask + masked latent, not a fifth model input (§3.3 / Risk 3); and SA3's default sampler is
-> **ping-pong rectified flow**, matching the existing `PingPongSamplingStrategy`. The **only** residual
-> gap is the exact per-variant numeric hyperparameters, which live in **gated** Hugging Face
-> `model_config.json` files (HTTP 401) and must be supplied by a credentialed session (companion §4).
-> Read the companion alongside this document.
+ a latent mask + masked latent (corrected below); and SA3's default sampler is
+> **ping-pong rectified flow**, matching the existing `PingPongSamplingStrategy`.
+>
+> **Per-variant configs now retrieved (2026-06-13).** Using an authenticated Hugging Face token, the
+> gated `model_config.json` files were pulled and the exact numbers recorded in companion §1.3. Key
+> consequences that revise this document further: (1) **`downsampling_ratio = 4096`** is authoritative
+> — SA3's SAME latent runs at **≈ 10.77 frames/s** (10 s → ≈ 108×256), **half** the SA-Open latent
+> frame rate, not equal to it; the earlier "216×256 / 21.6 Hz" figures were wrong. (2) The released
+> DiTs use **adaLN** conditioning (not the prepend AR's `DiffusionTransformer` implements), **64 memory
+> tokens**, and a **`local_add_cond`** inpaint path (257→embedDim, added per block — `io_channels`
+> stays 256, **not** channel-concatenated to 513); **`medium` also uses differential attention**. So
+> the DiT is an **EXTEND**, not a config-only reuse. (3) Exact dims: embed/depth/heads = **1024/20/16**
+> (small-music, small-sfx) and **1536/24/24** (medium); `cond_token_dim`/`global_cond_dim` = 768;
+> `qk_norm` = rms; T5Gemma cross-attention length = **256** tokens (not 128). No SA3 numeric config item
+> remains gated. Read the companion alongside this document.
 
 ---
 
