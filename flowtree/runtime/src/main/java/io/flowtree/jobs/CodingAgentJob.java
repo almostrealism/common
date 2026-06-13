@@ -1442,9 +1442,9 @@ public class CodingAgentJob extends GitManagedJob {
         // before exitCode because an enforce_changes retry can overwrite
         // exitCode with a successful value; the flag, captured in doWork()
         // before the retry ran, is the durable signal.
-        if (primaryPhaseHardFailed)
+        if (primaryPhaseHardFailed && exitCode == 0)
             return CodingAgentJobEvent.failed(getTaskId(), getTaskString(),
-                "Primary phase hard-failed (non-zero exit, 0s duration, no work performed); subsequent attempts cannot recover the original failure", null);
+                "Primary phase hard-failed (non-zero exit, 0s duration, no work performed)", null);
         if (exitCode != 0) return CodingAgentJobEvent.failed(getTaskId(), getTaskString(), "Claude Code exited with code " + exitCode, null);
         if (postCompletionCapHit)
             return CodingAgentJobEvent.degraded(getTaskId(), getTaskString(),

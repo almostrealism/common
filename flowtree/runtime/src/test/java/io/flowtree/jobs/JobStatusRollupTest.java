@@ -115,9 +115,9 @@ public class JobStatusRollupTest extends TestSuiteBase {
 		/** Returns the last scripted committed-flag, or {@code false} if none. */
 		@Override
 		protected boolean hasAgentCommitted() {
-			int i = Math.max(0, callIndex.get() - 1);
-			if (i >= committedPerCall.size()) return false;
-			return committedPerCall.get(i);
+			int lastCall = callIndex.get() - 1;
+			if (lastCall < 0 || lastCall >= committedPerCall.size()) return false;
+			return committedPerCall.get(lastCall);
 		}
 
 		/** Absorbs the next scripted result instead of dispatching a real agent. */
@@ -199,16 +199,15 @@ public class JobStatusRollupTest extends TestSuiteBase {
 	 * A primary that succeeds must still roll up to {@code SUCCESS}. This is
 	 * the most common path and must not be disturbed by the fix.
 	 */
-	// TODO(review): test never calls executeSingleRun() — it verifies the default field state
-	// (exitCode=0, primaryPhaseHardFailed=false), not the actual execution path through
-	// absorbResult/isHardPrimaryFailure. Consider adding executeSingleRun()+flag-capture
-	// before createEventNow(), mirroring normalPrimaryFailureWithRecoveryRollsUpToSuccess.
 	@Test(timeout = 30000)
 	public void primarySuccessRollsUpToSuccess() throws Exception {
 		RollupTestJob job = new RollupTestJob("ok", "do the work",
 				List.of(success(2000L)),
 				List.of(true));
 		job.setWorkingDirectory(workDir.toString());
+
+		job.executeSingleRun();
+		job.setPrimaryPhaseHardFailed(job.isHardPrimaryFailure());
 
 		JobCompletionEvent event = job.createEventNow(null);
 		assertEquals(JobCompletionEvent.Status.SUCCESS, event.getStatus());
@@ -304,10 +303,8 @@ public class JobStatusRollupTest extends TestSuiteBase {
 				List.of(false));
 		job.executeSingleRun();
 		boolean actual = job.isHardPrimaryFailure();
-		if (expected != actual) {
-			throw new AssertionError("predicate for exit=" + exitCode
-					+ " durationMs=" + durationMs + " killed=" + killedForInactivity
-					+ " expected=" + expected + " actual=" + actual);
-		}
+		assertEquals("predicate for exit=" + exitCode
+						+ " durationMs=" + durationMs + " killed=" + killedForInactivity,
+				expected, actual);
 	}
 }
