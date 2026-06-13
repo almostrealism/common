@@ -291,7 +291,7 @@ public class JobStatusRollupTest extends TestSuiteBase {
 	}
 
 	/** Drives one scenario through the predicate and asserts the result. */
-	private static void assertHardFailurePredicate(boolean expected, int exitCode,
+	private void assertHardFailurePredicate(boolean expected, int exitCode,
 			long durationMs, boolean killedForInactivity) {
 		RollupTestJob job = new RollupTestJob("predicate", "x",
 				List.of(new AgentRunResult(
