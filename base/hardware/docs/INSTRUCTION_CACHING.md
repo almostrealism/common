@@ -64,15 +64,17 @@ Two operations are "structurally identical" if they perform the same computation
 |                                                           |
 |  instructionsCache (FrequencyCache, 500 entries, 0.4 bias)|
 |  +-- ScopeInstructionsManager instances                   |
-|  +-- Keyed by signature string + ComputeContext identity  |
+|  +-- Keyed by computation signature                       |
 |  +-- Auto-destroys evicted managers                       |
 |                                                           |
 +-----------------------------------------------------------+
 ```
 
-The `instructionsCache` maps cache keys to `ScopeInstructionsManager` instances, each of which lazily compiles and caches an `InstructionSet`.
+The `instructionsCache` maps signatures to `ScopeInstructionsManager` instances, each of which lazily compiles and caches an `InstructionSet`.
 
-**The cache key combines the computation signature with the identity of the `ComputeContext`.** A compiled kernel is permanently bound to the context it was compiled under — its operator dispatches through that context's command runner. If a structurally-identical operation from a *different* context were to adopt the kernel via a bare signature match, its dispatches would be encoded into a command runner that nothing in its own pipeline ever commits: the kernel would never execute and the operation would silently produce nothing (observed as exactly-zero output). Scoping the key per context preserves reuse within a context — the common case — while making cross-context structural twins compile independently.
+**The cache is keyed by signature alone and is shared across the whole `DataContext`,** so structurally identical computations reuse one compiled kernel regardless of which thread builds them. This is sound because a `DataContext` exposes a single `ComputeContext` per backend (and therefore a single command runner): a reused kernel always encodes into — and is committed by — the same runner.
+
+> A compiled kernel is bound to the `ComputeContext` that compiled it: its operator dispatches through that context's command runner. This only matters when more than one context exists for a backend. Metal previously handed out a `MetalComputeContext` per thread (proliferated by `Evaluable.async`'s thread-per-dispatch issuance), so a kernel cached at the `DataContext` level and reused on another thread encoded into a command buffer the executing thread never committed — the kernel silently never ran (exactly-zero output). `MetalDataContext` now shares one context across threads (`OpenCL` remains per-thread; `Native` was already shared), which removes the only multi-context-per-backend case and lets the cache key stay signature-only.
 
 ### Class Structure
 
@@ -126,7 +128,7 @@ AcceleratedComputationOperation.getInstructionSetManager()
     |       |
     |       +-- YES: DefaultComputer.getScopeInstructionsManager(signature, ...)
     |       |       |
-    |       |       +-- instructionsCache.computeIfAbsent(signature + context, ...)
+    |       |       +-- instructionsCache.computeIfAbsent(signature, ...)
     |       |       |       |
     |       |       |       +-- CACHE HIT: Return existing ScopeInstructionsManager
     |       |       |       |
@@ -399,7 +401,7 @@ where `age = (clock - lastAccessTime) / clock`. Entries with the lowest score ar
 
 **Eviction listener:** `DefaultComputer` registers `(key, mgr) -> mgr.destroy()` to release native resources when a manager is evicted.
 
-**Access listener pattern:** `DefaultComputer` creates `ScopeInstructionsManager` instances with an access listener that calls `instructionsCache.computeIfAbsent(cacheKey, () -> mgr)` (the signature + context key). This ensures that even if a manager was previously evicted, using it (via a lingering reference from an operation that still holds the manager) restores it to the cache.
+**Access listener pattern:** `DefaultComputer` creates `ScopeInstructionsManager` instances with an access listener that calls `instructionsCache.computeIfAbsent(signature, () -> mgr)`. This ensures that even if a manager was previously evicted, using it (via a lingering reference from an operation that still holds the manager) restores it to the cache.
 
 ---
 
@@ -458,7 +460,7 @@ At execution time, when the kernel needs argument N at tree position P:
     +-- getInstructionSetManager()
     |       +-- signature = "abc123"
     |       +-- DefaultComputer.getScopeInstructionsManager("abc123", ...)
-    |       |       +-- instructionsCache.computeIfAbsent("abc123&context=...", ...)
+    |       |       +-- instructionsCache.computeIfAbsent("abc123", ...)
     |       |       +-- MISS: Create new ScopeInstructionsManager
     |       +-- Return manager
     |
@@ -479,7 +481,7 @@ At execution time, when the kernel needs argument N at tree position P:
     +-- getInstructionSetManager()
     |       +-- signature = "abc123"
     |       +-- DefaultComputer.getScopeInstructionsManager("abc123", ...)
-    |       |       +-- instructionsCache.computeIfAbsent("abc123&context=...", ...)
+    |       |       +-- instructionsCache.computeIfAbsent("abc123", ...)
     |       |       +-- HIT: Return existing ScopeInstructionsManager
     |       |           (an operation from a DIFFERENT context misses here
     |       |            and compiles its own kernel)

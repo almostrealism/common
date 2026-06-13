@@ -524,14 +524,14 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 																							Computation<?> computation,
 																							ComputeContext<?> context,
 																							Supplier<Scope<?>> scope) {
-		// The cache key must include the ComputeContext: a compiled kernel is permanently
-		// bound to the context it was compiled under (its command runner dispatches the
-		// kernel), so an operation from another context that adopts it via a bare signature
-		// match would encode commands into a runner that nothing in its own pipeline ever
-		// commits - the kernel never executes and the operation silently produces nothing.
-		// Reuse is therefore scoped to operations that share both structure and context.
-		String cacheKey = Objects.requireNonNull(signature)
-				+ "&context=" + Integer.toHexString(System.identityHashCode(context));
+		// Keyed by signature alone: structurally identical computations share one compiled
+		// kernel across the whole DataContext. This is safe because a DataContext exposes a
+		// single ComputeContext (and therefore a single command runner) per backend, so a
+		// reused kernel always encodes into — and is committed by — the same runner. (Earlier
+		// this had to include the ComputeContext identity because Metal handed out a context
+		// per thread, which let a reused kernel encode into a command buffer the executing
+		// thread never committed; MetalDataContext now shares one context.)
+		String cacheKey = Objects.requireNonNull(signature);
 
 		Consumer<ScopeInstructionsManager<ScopeSignatureExecutionKey>>
 				accessListener =mgr -> {

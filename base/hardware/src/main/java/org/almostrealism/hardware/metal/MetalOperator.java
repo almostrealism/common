@@ -33,7 +33,10 @@ import java.util.stream.IntStream;
  * {@link HardwareOperator} that executes compiled Metal compute kernels.
  *
  * <p>Wraps {@link MTLComputePipelineState} and manages threadgroup sizing,
- * argument encoding, and kernel dispatch on Metal GPU. Thread-local to avoid synchronization.</p>
+ * argument encoding, and kernel dispatch on Metal GPU. An operator may be shared across
+ * threads (its {@link MetalComputeContext} is shared per data context), so
+ * {@link #accept(Object[], io.almostrealism.concurrent.Semaphore)} is synchronized and
+ * the actual encoding is serialized by the context's {@link MetalCommandRunner}.</p>
  *
  * <h2>Threadgroup Sizing</h2>
  *
