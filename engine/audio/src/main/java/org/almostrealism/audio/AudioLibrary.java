@@ -600,6 +600,30 @@ public class AudioLibrary implements ConsoleFeatures {
 		}
 	}
 
+	/**
+	 * Removes the entry for the given content identifier from this library,
+	 * clearing it from the backing store (or in-memory cache), the complete
+	 * and persistent identifier sets, and the details cache.
+	 *
+	 * <p>This is the inverse of {@link #include(WaveDetails)} and the
+	 * store-backed analysis path, used to undo a partially-applied batch of
+	 * additions (for example, rolling back a multi-layer group save when a
+	 * later member fails). Removing an unknown identifier is a no-op.</p>
+	 *
+	 * @param identifier the content identifier to remove
+	 */
+	public void remove(String identifier) {
+		if (identifier == null) return;
+
+		if (store != null) {
+			store.delete(identifier);
+		}
+
+		detailsCache.evict(identifier);
+		completeIdentifiers.remove(identifier);
+		persistentIdentifiers.remove(identifier);
+	}
+
 	// ── Identifier-based retrieval (primary API) ─────────────────────
 
 	/**

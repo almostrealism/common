@@ -67,6 +67,14 @@ public interface WaveDetailsStore extends Closeable {
 	void put(String identifier, WaveDetails details, PackedCollection embeddingVector);
 
 	/**
+	 * Remove the record (and any indexed embedding) for the given identifier.
+	 * Implementations should treat removal of an absent identifier as a no-op.
+	 *
+	 * @param identifier the content identifier to remove
+	 */
+	void delete(String identifier);
+
+	/**
 	 * Check whether a record with the given identifier exists.
 	 *
 	 * @param identifier the content identifier

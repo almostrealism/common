@@ -108,6 +108,13 @@ message AudioLayer {
 
     // MIDI payload. See MidiPattern.
     MidiPattern midi = 3;
+
+    // Library reference. The MD5 identifier (same namespace as
+    // WaveDetailData.identifier) of an audio buffer stored as a first-class
+    // entry in the main library details index. Used by layers in saved
+    // groups: the bulky inline `audio` payload is stripped to this reference
+    // once the buffer is a standalone, similarity-indexed library entry.
+    string audio_ref = 9;
   }
 
   // Transform that produced this layer from its parents, when applicable.
