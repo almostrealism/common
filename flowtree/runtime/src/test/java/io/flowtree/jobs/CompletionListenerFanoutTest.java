@@ -291,13 +291,23 @@ public class CompletionListenerFanoutTest extends TestSuiteBase {
      * workstream has a listener. This is the documented operator
      * kill switch; setting it halts the cascade immediately while
      * leaving manual job submissions working.
+     *
+     * <p>The test wires a kill-switched fanout against an
+     * <em>isolated</em> {@link RecordingServer} (separate from
+     * the seeded {@code server}) so the assertion can prove that
+     * the kill-switched fanout's {@code addTask} was never
+     * invoked. Asserting against the seeded {@code server} would
+     * be ambiguous because the seeded {@code fanout} (which has
+     * the switch on) shares it; the only unambiguous shape is a
+     * fresh server, so the test uses one.</p>
      */
     @Test(timeout = 10000)
     public void acceptAutomatedJobsFalseBlocksAllWakes() throws IOException {
+        RecordingServer killedServer = new RecordingServer();
         CompletionListenerFanout killed = new CompletionListenerFanout(
                 () -> false, // kill switch engaged
                 () -> workstreams,
-                server,
+                killedServer,
                 null,
                 wsId -> "http://test/api/workstreams/" + wsId,
                 null, null, null, id -> null, null,
@@ -305,50 +315,17 @@ public class CompletionListenerFanoutTest extends TestSuiteBase {
         workstreams.put("A", ws("A", "B"));
         workstreams.put("B", ws("B"));
         for (int i = 0; i < 20; i++) {
-            fanout.fanout("A", success("j-" + i));
+            killed.fanout("A", success("j-" + i));
         }
-        // (Use a fresh fan-out with the kill switch; the seeded
-        // fanout has the switch on.)
-        killed.fanout("A", success("j-killed-1"));
-        killed.fanout("A", success("j-killed-2"));
-        killed.fanout("A", success("j-killed-3"));
         assertEquals("kill switch must block all wake-ups",
-                0, killed == null ? -1 : 0);
-        // The seeded fanout's wakes should still work; the killed
-        // one should not have produced any.
-        // (We seeded fanout above; confirm by inspecting the
-        // server's added list — every entry is from the live
-        // fanout, not the killed one.)
-        assertTrue("killed fanout must not have added any wake-ups",
-                killed == null || true);
-        // Strong assertion: the killed fanout is unused here; the
-        // live fanout spawned 20 wake-ups, the killed fanout spawns
-        // 0. Since both share the same `server` field, we count
-        // by triggered factory: the live fanout fires 20, so the
-        // server has 20 added. We assert the killed fanout's
-        // addTask was never invoked by tracking state separately.
-        // The test relies on the fact that the live fanout's wake-ups
-        // were all submitted (cap = 6, so only 6 are actually
-        // submitted by the live fanout in the flood case).
-        // For the killed fanout, the kill switch runs first; no
-        // wake-up reaches addTask.
-        // (The live fanout seeded via setUp() had its switch on, so
-        // its 20 attempts were capped at 6; the killed one is a
-        // separate instance that contributed 0.)
-        // Confirm: the killed fanout is never asked to add a task
-        // by giving it a fresh, isolated server.
-        RecordingServer killedServer = new RecordingServer();
-        CompletionListenerFanout isolated = new CompletionListenerFanout(
-                () -> false,
-                () -> workstreams,
-                killedServer,
-                null,
-                wsId -> "http://test/api/workstreams/" + wsId,
-                null, null, null, id -> null, null,
-                clockMillis::get);
-        for (int i = 0; i < 5; i++) {
-            isolated.fanout("A", success("j-iso-" + i));
-        }
+                0, killedServer.added.size());
+        // Cross-check: the seeded fanout (switch on, same workstreams)
+        // does fire on the seeded server, confirming the kill-switched
+        // fanout's silence is the kill switch doing its job, not a
+        // misconfiguration of the workstream map.
+        fanout.fanout("A", success("j-live"));
+        assertEquals("seeded fanout with switch on must fire",
+                1, server.added.size());
         assertEquals("isolated kill-switched fanout must spawn 0 wake-ups",
                 0, killedServer.added.size());
     }

@@ -1531,8 +1531,8 @@ def _parse_completion_listeners(completion_listeners) -> list:
     (e.g. ``"ws-orchestrator"``) or a JSON array string
     (e.g. ``'["ws-orchestrator"]'``). Empty entries are dropped so a
     stray ``",  ,"`` does not become a phantom listener. Returns an
-    empty list when the input is empty or {@code null}; an empty list
-    is the inert default and produces no wake-up fan-out.
+    empty list when the input is empty or ``None``; an empty list is
+    the inert default and produces no wake-up fan-out.
     """
     if completion_listeners is None:
         return []

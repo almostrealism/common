@@ -59,8 +59,10 @@ import static org.junit.Assert.assertTrue;
  * missing or weakened ceiling is a real safety defect, not a
  * test-side false positive.</p>
  *
- * <p>Marked at {@code @TestDepth(2)} per the plan: safety tests
- * should run on CI, just below the deepest core depth.</p>
+ * <p>These tests run unconditionally — no {@code @TestDepth}
+ * filtering. Safety tests must always run on CI; a ceiling test
+ * that is silently gated by depth is a coverage gap and a
+ * false-confidence risk for the cascade's bound.</p>
  */
 public class CompletionListenerSafetyIntegrationTest extends TestSuiteBase {
 

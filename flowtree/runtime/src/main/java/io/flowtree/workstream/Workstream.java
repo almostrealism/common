@@ -557,6 +557,12 @@ public class Workstream {
      * resulting workstream is the inert default and will spawn no
      * wake-up jobs on completion.</p>
      *
+     * <p>Entries that are {@code null} or blank are dropped so a stray
+     * entry from YAML or a tool caller cannot end up as a phantom
+     * listener ID; the invariant
+     * ({@link #getCompletionListeners()} never returns {@code null}
+     * entries) is enforced at the setter, not just on read.</p>
+     *
      * <p>Kill switch: this is gated by
      * {@link io.flowtree.api.FlowTreeApiEndpoint#setAcceptAutomatedJobs(boolean)
      * acceptAutomatedJobs}. Setting that flag to {@code false} halts all
@@ -565,8 +571,16 @@ public class Workstream {
      * @param completionListeners the listener workstream IDs, or {@code null}
      */
     public void setCompletionListeners(List<String> completionListeners) {
-        this.completionListeners = (completionListeners == null)
-                ? new ArrayList<>() : new ArrayList<>(completionListeners);
+        List<String> copy = new ArrayList<>();
+        if (completionListeners != null) {
+            for (String id : completionListeners) {
+                if (id == null) continue;
+                String trimmed = id.trim();
+                if (trimmed.isEmpty()) continue;
+                copy.add(trimmed);
+            }
+        }
+        this.completionListeners = copy;
     }
 
     /**

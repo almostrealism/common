@@ -1,6 +1,6 @@
 # Completion Listeners — Design Plan
 
-**Status:** design only (no implementation in this PR)
+**Status:** implemented in PR #299
 **Branch:** `feature/completion-listeners`
 **Author:** coding agent session for job `abe8b084-eee6-40f2-9408-c41ae345a82b`
 
@@ -28,9 +28,9 @@ The whole feature is a *loop* by design. The hard part of the design —
 the part this plan spends the most time on — is making sure that loop
 cannot run away. Every other axis is in service of that goal.
 
-This is a planning document only. **Do not implement this plan in this
-PR.** A follow-up implementation PR will be opened after the design is
-reviewed.
+This document is the design record for the feature; the implementation
+landed in the same PR that introduced the plan, on branch
+`feature/completion-listeners`.
 
 ---
 

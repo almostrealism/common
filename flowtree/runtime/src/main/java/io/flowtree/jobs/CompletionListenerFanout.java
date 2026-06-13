@@ -140,21 +140,46 @@ public class CompletionListenerFanout implements ConsoleFeatures {
      * Per-pair coalesce state. The first completion in a window fires
      * a wake-up and stores its own job ID; subsequent completions
      * append to {@link #consolidatedJobIds} and are dropped.
+     *
+     * <p>Instances are mutated from the controller's status-event
+     * thread, which may run multiple completions for the same
+     * (source, listener) pair concurrently. All accesses to
+     * {@link #consolidatedJobIds} (the only mutable field) are
+     * guarded by synchronizing on the {@code CoalesceState} instance
+     * itself, so a {@code dispatchToListener} call that finds the
+     * pair inside the coalesce window can append without racing
+     * against a sibling dispatch. The fanout's outer contract is
+     * &quot;never throw, never spawn more than the ceiling allows&quot;,
+     * so this synchronization is a hard requirement, not an
+     * optimisation.</p>
      */
     private static final class CoalesceState {
         /** Wall-clock millis at which the coalesce-window wake-up fired. */
         final long firedAtMillis;
-        /** Job ID of the wake-up that fired (the "primary" coalesced job). */
+        /**
+         * Source job ID of the completion that fired the coalesce
+         * wake-up (NOT the wake-up's own job ID — the wake-up is
+         * created <em>after</em> this state is recorded and does not
+         * yet have a job ID at the moment of storage). Operators
+         * reading the coalesce state view should treat this as the
+         * &quot;primary&quot; source-side identifier for the burst.
+         */
         final String primaryJobId;
-        /** Additional job IDs coalesced into the same wake-up. */
+        /**
+         * Additional source-side job IDs that landed inside the
+         * coalesce window and were merged into the same wake-up.
+         * Guarded by synchronizing on the enclosing
+         * {@code CoalesceState} instance.
+         */
         final List<String> consolidatedJobIds;
 
         /**
          * Records a new coalesce-window wake-up that fired at
-         * {@code firedAtMillis} for the primary job {@code primaryJobId}.
+         * {@code firedAtMillis} for the source job {@code primaryJobId}.
          *
          * @param firedAtMillis wall-clock millis at which the wake-up fired
-         * @param primaryJobId  the job ID of the wake-up itself
+         * @param primaryJobId  the source-side job ID of the completion
+         *                      that opened the coalesce window
          */
         CoalesceState(long firedAtMillis, String primaryJobId) {
             this.firedAtMillis = firedAtMillis;
@@ -468,12 +493,20 @@ public class CompletionListenerFanout implements ConsoleFeatures {
         // 3. Coalesce window. Within the window, the first completion
         //    fires a wake-up carrying the primary job ID; subsequent
         //    completions append to a consolidated list and skip.
+        //    The append is synchronized on the CoalesceState instance
+        //    so concurrent completions on the same (source, listener)
+        //    pair cannot corrupt the underlying ArrayList; the outer
+        //    fanout promise is "never throw, never spawn more than
+        //    the ceiling allows," so this synchronization is a hard
+        //    requirement, not a performance optimisation.
         long now = clock.get();
         long windowMs = DEFAULT_COALESCE_WINDOW_SECONDS * 1000L;
         String coalesceKey = sourceWorkstreamId + "|" + listenerId;
         CoalesceState existing = coalesceState.get(coalesceKey);
         if (existing != null && (now - existing.firedAtMillis) < windowMs) {
-            existing.consolidatedJobIds.add(event.getJobId());
+            synchronized (existing) {
+                existing.consolidatedJobIds.add(event.getJobId());
+            }
             return;
         }
 
@@ -725,7 +758,7 @@ public class CompletionListenerFanout implements ConsoleFeatures {
         sb.append("  Chain ID: ").append(chainId).append('\n');
         sb.append("  Chain depth: ").append(chainDepth).append('\n');
         sb.append('\n');
-        sb.append("You are worker workstream ")
+        sb.append("You are listener workstream ")
                 .append(listener.getWorkstreamId())
                 .append(". Your standing goal is in your planning document; read it before"
                         + " deciding what to do. To inspect the finished job's full result,"
@@ -734,10 +767,10 @@ public class CompletionListenerFanout implements ConsoleFeatures {
         sb.append('\n');
         sb.append("IMPORTANT: this wake-up is a trigger to reconcile the full state of"
                 + " every workstream you have delegated to — not a command to act on the"
-                + " specific finished job named above. Re-read worker workstreams via"
-                + " workstream_context / workstream_get_job on every wake. Coalesced or"
-                + " dropped wake-ups (when the controller's flood ceilings trip) are"
-                + " lossless: the next successful wake picks up whatever was missed by"
+                + " specific finished job named above. Re-read the workstreams you have"
+                + " delegated to via workstream_context / workstream_get_job on every wake."
+                + " Coalesced or dropped wake-ups (when the controller's flood ceilings trip)"
+                + " are lossless: the next successful wake picks up whatever was missed by"
                 + " re-reading the world.\n");
         return sb.toString();
     }
@@ -822,11 +855,27 @@ public class CompletionListenerFanout implements ConsoleFeatures {
         CoalesceStateView(CoalesceState state) { this.state = state; }
         /** Returns the wall-clock millis when the coalesce-window wake-up fired. */
         public long firedAtMillis() { return state.firedAtMillis; }
-        /** Returns the job ID of the wake-up that fired (the "primary" coalesced job). */
+        /**
+         * Returns the source-side job ID of the completion that
+         * opened the coalesce window (the &quot;primary&quot; entry
+         * in the consolidated burst). This is the source job ID, not
+         * the wake-up's own job ID — the wake-up factory is created
+         * <em>after</em> the state is recorded, so its job ID is not
+         * known at the moment this value is stored.
+         */
         public String primaryJobId() { return state.primaryJobId; }
-        /** Returns the list of additional job IDs coalesced into the same wake-up. */
+        /**
+         * Returns the list of additional source-side job IDs that
+         * landed inside the coalesce window and were merged into
+         * the same wake-up. Backed by a defensive unmodifiable view;
+         * the underlying list is guarded by synchronizing on the
+         * {@code CoalesceState} instance.
+         */
         public List<String> consolidatedJobIds() {
-            return Collections.unmodifiableList(state.consolidatedJobIds);
+            synchronized (state) {
+                return Collections.unmodifiableList(
+                        new ArrayList<>(state.consolidatedJobIds));
+            }
         }
         /**
          * Returns the underlying coalesce state, used by the parent
