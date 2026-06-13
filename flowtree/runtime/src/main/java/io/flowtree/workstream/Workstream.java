@@ -156,6 +156,31 @@ public class Workstream {
     /** Additional repository URLs to clone alongside the primary repo. */
     private List<String> dependentRepos;
 
+    /**
+     * Workstream IDs that should be woken up automatically when a job on this
+     * workstream reaches a terminal status. Each entry is a workstream ID, not
+     * a branch or repo URL — workstream IDs are unambiguous and the same
+     * identifier the controller already uses for routing and notifier lookups.
+     *
+     * <p>The listener graph must be a DAG. A registration or update that would
+     * create a cycle (including a self-listing) is rejected at config time by
+     * {@link io.flowtree.workstream.ListenerCycleChecker} with a 400 response.
+     * Cycles are rejected by construction so the wake-up cascade cannot
+     * ping-pong between two workstreams.</p>
+     *
+     * <p>Wake-up jobs spawned on a listener are submitted with
+     * {@code automated: true}, so the
+     * {@link io.flowtree.api.FlowTreeApiEndpoint#setAcceptAutomatedJobs(boolean)
+     * acceptAutomatedJobs} gate doubles as the kill switch: setting it to
+     * {@code false} halts all wake-up generation globally while leaving
+     * manual job submissions working. The wake-up handler is required to
+     * reconcile the full state of every workstream it has delegated to on
+     * every wake, so a dropped or coalesced wake-up loses no work — the next
+     * successful wake (or the first manual job after the kill switch is
+     * re-enabled) re-reads the world and resumes.</p>
+     */
+    private List<String> completionListeners;
+
     /** Default Node labels applied to jobs when no job-level labels are specified. */
     private Map<String, String> requiredLabels;
 
@@ -501,6 +526,47 @@ public class Workstream {
      */
     public void setDependentRepos(List<String> dependentRepos) {
         this.dependentRepos = dependentRepos;
+    }
+
+    /**
+     * Returns the workstream IDs of completion listeners that should be
+     * woken up automatically when a job on this workstream reaches a
+     * terminal status. The returned list is never {@code null} and never
+     * contains {@code null} entries; the empty list means "no listeners
+     * configured," which is the default and produces no fan-out at all.
+     *
+     * @return immutable view of the listener list; may be empty
+     */
+    public List<String> getCompletionListeners() {
+        if (completionListeners == null) {
+            return Collections.emptyList();
+        }
+        return Collections.unmodifiableList(completionListeners);
+    }
+
+    /**
+     * Sets the workstream IDs of completion listeners that should be woken
+     * up automatically when a job on this workstream reaches a terminal
+     * status. Each entry must be a workstream ID; the controller's cycle
+     * checker rejects configurations that would create a cycle in the
+     * listener graph (including self-listing) at config time, so it is
+     * safe to call this without re-checking the graph for the immediate
+     * setter call.
+     *
+     * <p>Pass {@code null} or an empty list to clear all listeners; the
+     * resulting workstream is the inert default and will spawn no
+     * wake-up jobs on completion.</p>
+     *
+     * <p>Kill switch: this is gated by
+     * {@link io.flowtree.api.FlowTreeApiEndpoint#setAcceptAutomatedJobs(boolean)
+     * acceptAutomatedJobs}. Setting that flag to {@code false} halts all
+     * wake-up generation globally, regardless of the listener list.</p>
+     *
+     * @param completionListeners the listener workstream IDs, or {@code null}
+     */
+    public void setCompletionListeners(List<String> completionListeners) {
+        this.completionListeners = (completionListeners == null)
+                ? new ArrayList<>() : new ArrayList<>(completionListeners);
     }
 
     /**
