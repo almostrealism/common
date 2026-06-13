@@ -207,7 +207,7 @@ public interface DifferentialAttentionFeatures extends AttentionFeatures {
 		// 7. Main path Q1: first attention map, then subtract the lambda-scaled second map
 		q1.add(scaledDotProductAttention(batchSize, seqLen, heads, dimHead, k1Tensor, vTensor));
 		q1.add(layer("differentialCombine", headShape, headShape, map1 -> {
-			CollectionProducer lambda = c(diffLambda)
+			CollectionProducer lambda = c(diffLambda).reshape(shape(heads))
 					.repeat(1, seqLen)
 					.repeat(2, dimHead)
 					.repeat(0, batchSize);

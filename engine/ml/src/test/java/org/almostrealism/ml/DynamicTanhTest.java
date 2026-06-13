@@ -22,7 +22,6 @@ import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
-import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 

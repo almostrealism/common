@@ -105,10 +105,7 @@ public class SoftNormBottleneck implements Bottleneck, LayerFeatures {
 		this.dim = dim;
 		this.scalingFactor = scalingFactor.flatten();
 		this.bias = bias.flatten();
-		// TODO(review): flatten runningStd for shape consistency with scalingFactor and bias;
-		// callers may supply a non-flat shape(1,1) tensor that satisfies the TotalSize==1
-		// validation but is not normalized.
-		this.runningStd = runningStd;
+		this.runningStd = runningStd == null ? null : runningStd.flatten();
 	}
 
 	/**
