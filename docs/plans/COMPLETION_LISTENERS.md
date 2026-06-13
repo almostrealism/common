@@ -401,10 +401,10 @@ rely on the same reconciliation pass to recover.
 **Concrete prompt shape (v1):**
 
 ```
-A job you were waiting for has finished on workstream A.
+A job you were waiting for has finished on a source workstream.
 
-  Source workstream: ws-orchestrator
-  Source workstream branch: feature/plan-20260513-foo
+  Source workstream: ws-worker-a
+  Source workstream branch: feature/worker-foo
   Finished job ID: j-abc-123
   Finished job status: SUCCESS
   Finished job description: <truncated to 200 chars>
@@ -414,10 +414,10 @@ A job you were waiting for has finished on workstream A.
   Chain ID: ch-7c97e4dde
   Chain depth: 2
 
-You are worker workstream B. Your standing goal is in your planning
-document; read it before deciding what to do. To inspect the finished
-job's full result, use the workstream_get_job MCP tool with the
-job ID above, or workstream_context to see the workstream's recent
+You are listener workstream B (the orchestrator). Your standing goal is in
+your planning document; read it before deciding what to do. To inspect the
+finished job's full result, use the workstream_get_job MCP tool with the
+job ID above, or workstream_context to see the source workstream's recent
 job history.
 ```
 
@@ -516,7 +516,7 @@ one wake-up carrying a "5 jobs finished" summary.
   before the orchestrator learns about the first job. The
   orchestrator can't act until the window closes.
 
-**Recommendation: (ii) with persistent state (in-memory map keyed
+**Recommendation: (ii) with in-memory coalesce state (in-memory map keyed
 by `(sourceWorkstreamId, listenerWorkstreamId)`, with last-fired
 timestamp and a "consolidated IDs" list).** Trade-off
 justification:
@@ -524,9 +524,9 @@ justification:
 - 30s of coalescing is invisible to the orchestrator's planning
   loop. The orchestrator is doing multi-minute work; a 30s delay
   is in the noise.
-- The persistent state survives controller restarts cleanly: a
-  restart's first completion after restart still fires a
-  wake-up (the map was empty, no "already notified" entry).
+- Coalesce state is intentionally in-memory only; controller restarts
+  lose it (failing safe), which may cause extra wake-ups right after
+  restart but does not prevent new wake-ups from being generated.
   Subsequent completions in the same 30s window may double-fire,
   but the orchestrator's branch lock and `startedAfter`
   guard will dedupe at the *job* level. The coalescing is
