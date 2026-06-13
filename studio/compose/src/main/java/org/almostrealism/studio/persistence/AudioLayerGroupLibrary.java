@@ -128,7 +128,11 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 		Audio.AudioLayerGroup.Builder slim = group.toBuilder();
 
 		try {
-			if (!libraryRoot.exists() && !libraryRoot.mkdirs()) {
+			if (libraryRoot.exists()) {
+				if (!libraryRoot.isDirectory()) {
+					throw new GroupSaveException("Library root is not a directory: " + libraryRoot);
+				}
+			} else if (!libraryRoot.mkdirs()) {
 				throw new GroupSaveException("Could not access library folder " + libraryRoot);
 			}
 
@@ -177,8 +181,9 @@ public class AudioLayerGroupLibrary implements ConsoleFeatures {
 		}
 
 		File target = new File(libraryRoot, md5 + ".wav");
-		boolean storeHadBefore = library.getStore() != null && library.getStore().containsKey(md5);
-
+		boolean storeHadBefore = (library.getStore() != null)
+				? library.getStore().containsKey(md5)
+				: library.get(md5) != null;
 		if (target.exists()) {
 			String existing = identifierOf(target);
 			if (!md5.equals(existing)) {
