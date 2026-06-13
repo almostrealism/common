@@ -121,13 +121,45 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		return a + " % " + b;
 	}
 
+	/**
+	 * Computes integer modulo consistent with the generated code.
+	 *
+	 * <p>{@link #getExpression} emits {@link LanguageOperations#floorMod} when the dividend
+	 * may be negative, and a plain {@code %} otherwise. Constant folding must make the same
+	 * choice so that a folded result matches what the compiled kernel would compute;
+	 * otherwise {@code imod}, which the framework relies on to keep indices in
+	 * {@code [0, divisor)}, can fold a negative dividend to a negative result.</p>
+	 *
+	 * @param dividend the left operand value
+	 * @param divisor  the right operand value (must be non-zero)
+	 * @return the modulo result matching the generated code
+	 */
+	private long intMod(long dividend, long divisor) {
+		return foldIntMod(dividend, divisor, getChildren().get(0).isPossiblyNegative());
+	}
+
+	/**
+	 * Folds an integer modulo to the value the generated code would compute.
+	 *
+	 * @param dividend                 the left operand value
+	 * @param divisor                  the right operand value (must be non-zero)
+	 * @param dividendPossiblyNegative whether the dividend may be negative, mirroring the
+	 *                                 condition under which {@link #getExpression} emits
+	 *                                 {@link LanguageOperations#floorMod}
+	 * @return {@code Math.floorMod(dividend, divisor)} when the dividend may be negative,
+	 *         otherwise {@code dividend % divisor}
+	 */
+	static long foldIntMod(long dividend, long divisor, boolean dividendPossiblyNegative) {
+		return dividendPossiblyNegative ? Math.floorMod(dividend, divisor) : dividend % divisor;
+	}
+
 	@Override
 	public OptionalInt intValue() {
 		Expression input = getChildren().get(0);
 		Expression mod = getChildren().get(1);
 
 		if (input.intValue().isPresent() && mod.intValue().isPresent() && mod.intValue().getAsInt() != 0) {
-			return OptionalInt.of(input.intValue().getAsInt() % mod.intValue().getAsInt());
+			return OptionalInt.of((int) intMod(input.intValue().getAsInt(), mod.intValue().getAsInt()));
 		}
 
 		return super.intValue();
@@ -144,8 +176,8 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			return getChildren().get(0).value(indexValues).doubleValue() % getChildren().get(1).value(indexValues).doubleValue();
 		} else {
 			return adjustType(getType(),
-					getChildren().get(0).value(indexValues).longValue()
-							% getChildren().get(1).value(indexValues).longValue());
+					intMod(getChildren().get(0).value(indexValues).longValue(),
+							getChildren().get(1).value(indexValues).longValue()));
 		}
 	}
 
@@ -154,7 +186,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (fp) {
 			return children[0].doubleValue() % children[1].doubleValue();
 		} else {
-			return children[0].intValue() % children[1].intValue();
+			return (int) intMod(children[0].intValue(), children[1].intValue());
 		}
 	}
 
@@ -321,7 +353,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (m == 1) return new IntegerConstant(0);
 
 		if (id.isPresent()) {
-			return ExpressionFeatures.getInstance().e(id.getAsLong() % m);
+			return ExpressionFeatures.getInstance().e(foldIntMod(id.getAsLong(), m, input.isPossiblyNegative()));
 		}
 
 		if (input instanceof Mod && !input.isFP()) {
