@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml.audio;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AttentionFeatures;
@@ -61,22 +62,44 @@ public interface DiffusionTransformerFeatures extends AttentionFeatures, Diffusi
 		return layer("fourierFeatures",
 				shape(batchSize, inFeatures),
 				shape(batchSize, outFeatures),
-				in -> {
-					CollectionProducer input = c(in);
-					CollectionProducer weights = cp(learnedWeights);
-
-					CollectionProducer f = multiply(
-							c(2.0 * Math.PI),
-							matmul(input, weights.transpose(1))
-					);
-
-					CollectionProducer cosValues = cos(f);
-					CollectionProducer sinValues = sin(f);
-
-					return concat(shape(batchSize, outFeatures),
-							cosValues, sinValues);
-				},
+				in -> fourierFeatures(batchSize, outFeatures, in, learnedWeights),
 				List.of(learnedWeights));
+	}
+
+	/**
+	 * Builds the Fourier feature projection as a {@link CollectionProducer}, the producer-level
+	 * counterpart of {@link #fourierFeatures(int, int, int, PackedCollection)}.
+	 * <p>
+	 * Projects {@code input} through {@code learnedWeights}, scales by {@code 2*pi}, and concatenates
+	 * the cosine components ({@code outFeatures / 2}) followed by the sine components
+	 * ({@code outFeatures / 2}) into a single {@code [batchSize, outFeatures]} producer. Returning a
+	 * producer (rather than a {@link Block}) lets callers compose the Fourier features directly into a
+	 * larger computation graph without an intervening host evaluation; this is the form reused by
+	 * {@link NumberConditioner}.
+	 * </p>
+	 *
+	 * @param batchSize      batch dimension
+	 * @param outFeatures    number of output features; must be even for sin/cos pairs
+	 * @param input          the scalar input producer of shape {@code [batchSize, inFeatures]}
+	 * @param learnedWeights the projection weight matrix of shape {@code [outFeatures/2, inFeatures]}
+	 * @return a producer of the Fourier feature projection
+	 */
+	default CollectionProducer fourierFeatures(int batchSize, int outFeatures,
+											   Producer<PackedCollection> input, PackedCollection learnedWeights) {
+		// Output dim should be even for sin/cos pairs
+		if (outFeatures % 2 != 0) {
+			throw new IllegalArgumentException("Output features must be even for Fourier features");
+		}
+
+		CollectionProducer values = c(input);
+		CollectionProducer weights = cp(learnedWeights);
+
+		CollectionProducer f = multiply(
+				c(2.0 * Math.PI),
+				matmul(values, weights.transpose(1))
+		);
+
+		return concat(shape(batchSize, outFeatures), cos(f), sin(f));
 	}
 
 	/**
