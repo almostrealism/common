@@ -260,10 +260,7 @@ and tabulated in §1.3 (where they revise items 2–5 below). Citations are pack
    **DiT-only**: 433M (small-music / small-sfx) and 1.4B (medium) (`docs/guides/model-overview.md:100-105`,
    `README.md:19-22`) — note the prior doc's "459M" was an estimate; the source says **433M**. The
    autoencoders are **separate** and sizeable: **SAME-S 266M**, **SAME-L 1.7B**
-   (`docs/guides/model-overview.md:55-59`). The text encoder (`google/t5gemma-b-b-ul2`) is an
-<!-- TODO(review): §1.2-3 (line ~176) and §2.2 both use "t5gemma-b-b-ul2" (no google/ prefix);
-     the retrieved config shows the encoder is bundled as a subfolder, not a google/ HF repo.
-     Change to "t5gemma-b-b-ul2" for consistency. -->
+   (`docs/guides/model-overview.md:55-59`). The text encoder (`t5gemma-b-b-ul2`) is an
    additional frozen model. So an at-rest *small* deployment is ≈ 433M (DiT) + 266M (SAME-S) + the
    T5Gemma encoder, and *medium* is ≈ 1.4B (DiT) + 1.7B (SAME-L) + T5Gemma — i.e. **the autoencoder
    dominates the medium footprint** (1.7B AE vs 1.4B DiT). The exact byte sizes still depend on the
