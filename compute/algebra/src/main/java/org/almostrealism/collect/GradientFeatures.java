@@ -30,11 +30,14 @@ import org.almostrealism.algebra.MatrixFeatures;
 public interface GradientFeatures extends ComparisonFeatures {
 
 	/**
-	 * Computes the derivative (delta) of a producer with respect to a target.
+	 * Computes the derivative of a collection producer with respect to a target producer,
+	 * for use in automatic differentiation and gradient computation. A matrix-based delta
+	 * is attempted first; if unavailable, the computation falls back to the standard
+	 * {@link CollectionProducer#delta} mechanism.
 	 *
-	 * @param producer the producer to differentiate
-	 * @param target the target with respect to which to compute the derivative
-	 * @return a {@link CollectionProducer} that generates the derivative
+	 * @param producer the collection producer to differentiate
+	 * @param target   the producer with respect to which the derivative is taken
+	 * @return a {@link CollectionProducer} representing the derivative
 	 */
 	default CollectionProducer delta(Producer<PackedCollection> producer, Producer<?> target) {
 		CollectionProducer result = MatrixFeatures.getInstance().attemptDelta(producer, target);
@@ -44,13 +47,16 @@ public interface GradientFeatures extends ComparisonFeatures {
 	}
 
 	/**
-	 * Combines a function's gradient with the input and upstream gradient.
-	 * This implements the chain rule for backpropagation.
+	 * Combines the Jacobian of a function with an upstream gradient to produce the
+	 * input gradient via the chain rule. The Jacobian is computed as
+	 * {@code func.delta(input)}, reshaped to {@code [outSize, inSize]}, multiplied
+	 * by the upstream gradient (broadcast over inputs), then summed over output dimensions
+	 * to yield the gradient with respect to {@code input}.
 	 *
-	 * @param func the function whose gradient to combine
-	 * @param input the input to the function
-	 * @param gradient the upstream gradient
-	 * @return a {@link CollectionProducer} that generates the combined gradient
+	 * @param func     the differentiable collection producer representing the forward function
+	 * @param input    the input collection producer for which the gradient is computed
+	 * @param gradient the upstream gradient producer (output gradient from the next layer)
+	 * @return a {@link CollectionProducer} containing the gradient with respect to {@code input}
 	 */
 	default CollectionProducer combineGradient(
 			CollectionProducer func,
@@ -67,12 +73,15 @@ public interface GradientFeatures extends ComparisonFeatures {
 	}
 
 	/**
-	 * Multiplies a gradient matrix with the upstream gradient.
+	 * Multiplies a Jacobian-shaped producer by an upstream gradient broadcast over
+	 * the input dimension. The gradient is reshaped to {@code [outSize]}, traversed
+	 * at axis 1, and repeated {@code inSize} times so each input position receives
+	 * the corresponding output gradient for element-wise multiplication.
 	 *
-	 * @param p the gradient matrix
-	 * @param gradient the upstream gradient
-	 * @param inSize the input size
-	 * @return a {@link CollectionProducer} that generates the multiplied gradient
+	 * @param p        the Jacobian producer shaped {@code [outSize, inSize]} traversed at axis 1
+	 * @param gradient the upstream gradient producer
+	 * @param inSize   the number of input elements (repeat count for broadcast)
+	 * @return a {@link CollectionProducer} with the gradient broadcast and applied
 	 */
 	default CollectionProducer multiplyGradient(
 			CollectionProducer p, Producer<PackedCollection> gradient, int inSize) {
