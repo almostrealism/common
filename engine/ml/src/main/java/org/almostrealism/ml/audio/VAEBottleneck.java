@@ -45,11 +45,15 @@ import org.almostrealism.model.Block;
  * Decoder Input: (B, 64, L)
  * </pre>
  *
+ * <p>This is the autoencoder's {@link Bottleneck} &mdash; the encoder-output to latent stage. The
+ * VAE realisation of that contract is the deterministic mean split described above.</p>
+ *
+ * @see Bottleneck
  * @see OobleckEncoder
  * @see OobleckDecoder
  * @see OobleckAutoEncoder
  */
-public class VAEBottleneck implements LayerFeatures {
+public class VAEBottleneck implements Bottleneck, LayerFeatures {
 
 	/** Encoder output dimension (mean + logvar concatenated). */
 	private static final int ENCODER_DIM = 128;
@@ -102,7 +106,8 @@ public class VAEBottleneck implements LayerFeatures {
 	}
 
 	/**
-	 * Gets the bottleneck block.
+	 * Gets the bottleneck block that was built for the batch size and sequence length supplied at
+	 * construction.
 	 *
 	 * @return The bottleneck Block
 	 */
@@ -111,10 +116,26 @@ public class VAEBottleneck implements LayerFeatures {
 	}
 
 	/**
+	 * Builds a bottleneck block for the given batch size and latent sequence length. The transform
+	 * is the same deterministic {@value #ENCODER_DIM} to {@value #LATENT_DIM} mean split used by
+	 * {@link #getBottleneck()}; the parameters allow a block to be built for a configuration other
+	 * than the one supplied at construction.
+	 *
+	 * @param batchSize Batch size
+	 * @param seqLength Latent sequence length
+	 * @return The bottleneck Block
+	 */
+	@Override
+	public Block bottleneck(int batchSize, int seqLength) {
+		return buildBottleneck(batchSize, seqLength);
+	}
+
+	/**
 	 * Gets the input dimension (encoder output channels).
 	 *
 	 * @return Input dimension (128)
 	 */
+	@Override
 	public int getInputDim() {
 		return ENCODER_DIM;
 	}
@@ -124,6 +145,7 @@ public class VAEBottleneck implements LayerFeatures {
 	 *
 	 * @return Output dimension (64)
 	 */
+	@Override
 	public int getOutputDim() {
 		return LATENT_DIM;
 	}
