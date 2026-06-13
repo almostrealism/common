@@ -21,6 +21,7 @@ import io.flowtree.JsonFieldExtractor;
 import io.flowtree.Server;
 import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobEvent;
+import io.flowtree.jobs.CompletionListenerFanout;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
 import io.flowtree.jobs.SensitiveFileBypassTrailer;
@@ -158,6 +159,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     private Server server;
     /** Slack listener that receives inbound messages and dispatches them to jobs. */
     private SlackListener listener;
+    /**
+     * Fan-out for completion-listener wake-up jobs. Wired by
+     * {@link io.flowtree.controller.FlowTreeController} after the
+     * controller, server, and stats store are all constructed.
+     * {@code null} when not wired (e.g. in unit tests that exercise
+     * only the registration / update handlers); the status-event
+     * handler skips the fanout in that case so a misconfigured test
+     * harness cannot crash the controller.
+     */
+    private CompletionListenerFanout completionListenerFanout;
 
     /** Base URL of the ar-memory HTTP server (e.g., "http://localhost:8020"). */
     private String memoryServerUrl;
@@ -209,6 +220,23 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     public void setListener(SlackListener listener) { this.listener = listener; }
 
     /**
+     * Sets the {@link CompletionListenerFanout} used to spawn wake-up
+     * jobs when a workstream's terminal completion fires its
+     * listeners. Wired by
+     * {@link io.flowtree.controller.FlowTreeController} after the
+     * server, stats store, and listener are all constructed so the
+     * fanout has everything it needs (kill-switch supplier, server
+     * for {@code addTask}, ar-manager URL, shared secret, etc.).
+     *
+     * @param fanout the fan-out to invoke from the status-event
+     *               handler; {@code null} disables the feature
+     *               (status events still record normally)
+     */
+    public void setCompletionListenerFanout(CompletionListenerFanout fanout) {
+        this.completionListenerFanout = fanout;
+    }
+
+    /**
      * Sets per-organization GitHub tokens for the proxy endpoint.
      *
      * <p>When a proxy request includes an {@code org} query parameter,
@@ -238,6 +266,19 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /** Sets the workspace lookup feeding the workspace layer of {@link SubmissionConfigResolver}; {@code null} disables it. */
     public void setWorkspaceLookup(Function<String, WorkstreamConfig.WorkspaceEntry> lookup) {
         this.workspaceLookup = lookup != null ? lookup : id -> null;
+    }
+
+    /**
+     * Returns the workspace lookup registered via
+     * {@link #setWorkspaceLookup(Function)}, or {@code null} when none is
+     * configured. The completion-listener fan-out uses this to resolve
+     * the workspace for a listener workstream and propagate any
+     * workspace-level routing defaults.
+     */
+    public WorkstreamConfig.WorkspaceEntry workspaceLookupOrNull(String workspaceId) {
+        if (workspaceId == null || workspaceId.isEmpty()) return null;
+        WorkstreamConfig.WorkspaceEntry entry = workspaceLookup.apply(workspaceId);
+        return entry;
     }
 
     /** Rename hook for {@code newId} on workspace config; {@code null} disables. */
@@ -1087,6 +1128,22 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             targetNotifier.onJobStarted(workstreamId, event);
         } else {
             targetNotifier.onJobCompleted(workstreamId, event);
+            // Fan the terminal completion out to every completion
+            // listener of the source workstream. This is the single
+            // entry point the listener-graph uses to spawn wake-up
+            // jobs; it never throws, so a misbehaving listener cannot
+            // poison the source job's completion recording. The
+            // fanout is a no-op when the workstream has no listeners,
+            // so the inert default (the v0 behavior) is preserved
+            // automatically.
+            if (completionListenerFanout != null) {
+                try {
+                    completionListenerFanout.fanout(workstreamId, event);
+                } catch (RuntimeException ex) {
+                    log("Completion-listener fanout failed for workstream "
+                            + workstreamId + ": " + ex.getMessage());
+                }
+            }
         }
 
         return newFixedLengthResponse(Response.Status.OK,
