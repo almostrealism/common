@@ -48,7 +48,12 @@ finishes:
    `workstream_get_job` / `workstream_context` for full details."
 3. The orchestrator's wake-up job runs. The orchestrator consults its
    *own* planning doc (read at wake-up time, never pasted into the
-   prompt), inspects the finished worker job, and decides the next
+   prompt), then **reconciles the full state of every workstream it
+   has delegated to** — not only the single worker whose completion
+   triggered this wake. The wake-up prompt is treated as a *trigger
+   to re-check the world*, not as the authoritative list of what
+   needs doing; the orchestrator queries `workstream_context` /
+   `workstream_get_job` for every active worker and decides the next
    step: dispatch more workers, integrate, or stop.
 4. If the orchestrator dispatches more work, those new worker jobs
    finish and re-trigger the listener. The cycle continues until the
@@ -66,7 +71,7 @@ priority lanes) is explicitly out of scope (see §11).
 
 The delegation pattern is *intentionally* a loop: worker → orchestrator
 → worker → …, bounded only by the orchestrator choosing to stop. That
-makes safety the design's central problem, not an afterthought. Five
+makes safety the design's central problem, not an afterthought. Six
 distinct sub-axes matter.
 
 #### 2.1.1 Cycle detection in the listener graph
@@ -107,14 +112,15 @@ Two failure modes to distinguish:
   ceiling to be high enough for the legitimate work, which is a worse
   tradeoff than rejecting the cycle up front.
 
-<!-- TODO(review): The phrasing "workers do not list the orchestrator as their listener" appears to contradict Section 1, which says each worker DOES list the orchestrator. The intended meaning is that the orchestrator does not list the workers as its own listeners (making the graph acyclic). Suggest rewriting this parenthetical for clarity before implementation. -->
 **Recommendation: (i) reject every cycle at config time, including
 self-listing.** Rationale: the motivating use case is acyclic by
-construction (orchestrator with workers listening to it; workers do
-not list the orchestrator as their listener — the orchestrator lists
-itself on the *workers'* listener list, not vice versa). Rejecting
-cycles costs us nothing for the design's use case and forecloses a
-whole class of misconfiguration. A `workstream_update_config` that
+construction. The listener graph runs in one direction: each worker
+lists the orchestrator as its completion listener, and the
+orchestrator does not list the workers as its own listeners. The
+edge set is `{worker → orchestrator}` and never the reverse, so the
+graph is a DAG by construction. Rejecting cycles costs us nothing
+for the design's use case and forecloses a whole class of
+misconfiguration. A `workstream_update_config` that
 would introduce a cycle returns 400 with a precise error:
 `cycle: A -> B -> A`. The check is a single DFS over the registered
 listener graph at config time.
@@ -157,13 +163,42 @@ Four ceilings, all enforced server-side at the controller:
    enough to express realistic orchestrator → sub-orchestrator →
    worker patterns; small enough that no legitimate graph exceeds
    it.
-2. **`maxWakeUpsPerWindow`** — the maximum number of wake-up jobs
-   the controller will submit *per listener workstream* per
-   `windowSeconds` time window. Default: **6 per 600s (10 min)**.
-   Rationale: a healthy orchestrator that is woken 6 times in 10
-   minutes is being kept very busy; the seventh is rejected and
-   logged. The window is a sliding counter, not a fixed
-   bucket, so a long quiet stretch doesn't accumulate budget.
+2. **`maxWakeUpsPerWindow`** — **this is the primary runaway / flood
+   protection** (the other ceilings are defense-in-depth; see §12
+   for the precise breakdown of what each bounds). The maximum
+   number of wake-up jobs the controller will submit *per listener
+   workstream* per `windowSeconds` time window. Default: **6 per
+   600s (10 min)**.
+
+   - **Scope:** per-listener-workstream. The counter is keyed by
+     listener workstream ID, not by source workstream. A given
+     listener workstream cannot be woken more than N times per
+     window regardless of how many distinct source completions
+     occur — the flood case (many sources waking the same listener
+     repeatedly) is the scenario this ceiling is sized for.
+   - **Why 6 per 600s fits the motivating use case:** the
+     orchestrator manages a fleet of workers and is woken roughly
+     once per round-trip, where a round-trip is "dispatch workers
+     → workers finish → orchestrator processes results → dispatch
+     more." Each round-trip takes minutes (the worker jobs run for
+     minutes, and the orchestrator's own processing is non-trivial),
+     so 6 wake-ups in 10 minutes gives roughly 1 wake-up per
+     100 seconds — at least an order of magnitude more than a
+     healthy orchestrator needs, while bounding the worst-case
+     flood cost to a fixed, small number of wake-ups per window.
+   - **Fail-safe on limit hit:** excess wake-ups are **dropped,
+     not queued unboundedly**. The 7th wake-up inside the 600s
+     window is rejected, a `ceiling_hit` line is logged with the
+     listener ID, and the source job's completion still records
+     normally. There is no retry; the counter advances; the next
+     wake-up that fits the window is the one that fires. Stopping
+     is the safe default — the wake-up job handler is required to
+     reconcile the full state of its delegated workstreams on
+     every wake (see §2.1.6), so a dropped wake-up loses no work:
+     whatever was missed is picked up on the next successful wake
+     by re-reading the world. The window is a sliding counter, not
+     a fixed bucket, so a long quiet stretch does not accumulate
+     budget.
 3. **`maxActiveWakeUpJobsPerWorkstream`** — the maximum number of
    wake-up jobs the controller will allow to be simultaneously
    `STARTED` on the listener workstream. Default: **1**. Rationale:
@@ -176,19 +211,33 @@ Four ceilings, all enforced server-side at the controller:
 4. **`maxWakeUpsPerSourceChain`** — the maximum number of wake-up
    jobs the controller will submit, *across all listeners*, that
    share a single `chainId` (see §2.2 for the chain identifier).
-   Default: **25**. Rationale: the same 25 as
-   `DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS`; large enough for a
-   real delegation run, small enough that even a runaway orchestrator
-   can't burn more than ~25 wake-ups per chain before the ceiling
-   trips.
-   <!-- TODO(review): The chain ID resets per source event (§2.2, §3). In the motivating use case (N workers, 1 orchestrator), each worker completion creates a new chain ID with count=1 — so this ceiling caps fan-out breadth (listeners per event), not recurrence. The primary runaway ceiling for the flood scenario is maxWakeUpsPerWindow. Reviewer should verify §12's summary does not overstate the protection offered by maxWakeUpsPerSourceChain. -->
+   Default: **25**. **Scope:** this bounds fan-out **breadth per
+   single source event** (how many listeners one completion can
+   notify in one shot), NOT recurrence across source events. The
+   chain ID resets per source event: in the motivating use case
+   (N workers each listing the orchestrator), every worker
+   completion creates a fresh chain ID with chain count = 1, so
+   the per-chain counter is effectively 1 for each wake-up. The
+   ceiling still earns its keep as defense-in-depth — it bounds a
+   listener-list misconfiguration where one workstream lists 25+
+   listeners, preventing a single completion from spawning a
+   huge immediate fan-out — but it is not, on its own, a flood
+   protection. The primary recurrence ceiling is
+   `maxWakeUpsPerWindow` (item 2 above). The value 25 is the same
+   as `DEFAULT_MAX_TOTAL_ENFORCEMENT_ATTEMPTS`; large enough for
+   a real listener fan-out, small enough to catch a
+   listener-list misconfiguration.
 
-All four ceilings are **per-listener-workstream** and
-**per-source-event** where applicable. The ceilings compound: hitting
-any one of them stops *that* wake-up, not the whole system. The
-behavior on hitting a ceiling is **fail-safe** (skip the wake-up,
-log a `ceiling_hit` line, do not retry) — never a partial submission
-and never an exception. Default values are documented in
+`maxWakeUpsPerWindow` is the primary flood protection; the other
+three ceilings are defense-in-depth. The four ceilings do not
+provide equivalent guarantees — each bounds a different axis of
+badness (recurrence, breadth, lineage depth, in-flight count), and
+the per-axis scope is detailed inline above and summarized in §12.
+The ceilings compound: hitting any one of them stops *that*
+wake-up, not the whole system. The behavior on hitting a ceiling is
+**fail-safe** (skip the wake-up, log a `ceiling_hit` line, do not
+retry) — never a partial submission and never an exception. Default
+values are documented in
 `flowtree/runtime/.../api/FlowTreeApiEndpoint.java` next to the
 related ceiling constants; they are not configurable from MCP in v1
 to keep the surface area small (operators can read & edit them in
@@ -260,6 +309,70 @@ The plan recommends documenting this in the workstream's
 configuration docstring (Javadoc on the new `setCompletionListeners`
 method) so an operator reading the code sees the kill switch
 adjacent to the configuration.
+
+#### 2.1.6 The reconciliation invariant — why dropping or coalescing wake-ups loses no work
+
+Relying on `maxWakeUpsPerWindow` to bound recurrence (item 2 in
+§2.1.2) and on the coalesce window in §2.4 to dedupe bursts only
+works because the wake-up job handler is required to treat the
+wake-up prompt as a *trigger to re-check the world*, not as the
+authoritative list of work to do. This is a property of the
+listener's wake-up handler design, and it is the reason rate
+limiting is sound rather than lossy.
+
+**The invariant.** On every wake-up, the listener's handler MUST
+reconcile the *full* state of every workstream it has delegated
+to, not only the single completion mentioned in the wake-up
+prompt. Concretely:
+
+- The wake-up prompt carries a compact summary of one finished
+  job (§2.2). The handler reads that summary as a *signal that
+  something may have changed*.
+- The handler then issues its own `workstream_context` /
+  `workstream_get_job` calls to inspect the state of every
+  worker workstream it has dispatched, regardless of whether
+  *those* workers' completions are mentioned in this particular
+  wake-up.
+- The handler's next step (dispatch more, integrate, stop) is
+  decided from this reconciled view, not from the prompt's
+  single-event mention.
+
+**Why this makes dropping safe.** With the invariant in place,
+the controller is free to drop or coalesce wake-ups aggressively
+because whatever the listener missed, it picks up on the next
+successful wake by re-reading the world:
+
+- A wake-up dropped by `maxWakeUpsPerWindow` (excess over the
+  6-per-600s budget) is not a lost signal — the source job's
+  completion still records normally, and the next wake-up the
+  listener receives (within minutes, the next round-trip) will
+  re-read the worker's status and act on it then.
+- A wake-up coalesced by the §2.4 30s sliding window does not
+  strand the listener — the consolidated wake-up prompt
+  *already* carries the full list of coalesced job IDs, and the
+  handler's reconciliation pass catches anything the next round
+  would have caught anyway.
+- A wake-up blocked by `acceptAutomatedJobs = false` (the kill
+  switch in §2.1.5) does not strand the listener either: the
+  listener is in an automated-job-submission-free state by
+  design, and will re-discover the world's state on the first
+  manual job or first re-enabled wake-up.
+
+**This is a design requirement, not a suggestion.** The
+implementation PR must document the invariant on the wake-up
+handler's entry point (the equivalent of
+`CodingAgentJob.handleWakeUp` in the new
+`CompletionListenerWakeUpHandler`) so that any future handler
+implementer is forced to read the worker state at the start of
+every wake. The safety test in §9.3
+(`runawayCeilingStopsSpawning`) implicitly relies on this — the
+orchestrator in that test does not need every wake-up to act
+on the *prompt's* job; it only needs every wake-up to act on
+*the world*. A handler that trusts the prompt without
+re-reading the workers would be subtly wrong even when no
+ceiling has tripped, because a controller restart can lose
+in-memory coalesce state (§2.6) and force the orchestrator to
+rely on the same reconciliation pass to recover.
 
 ### 2.2 Wake-up job content & context payload
 
@@ -423,7 +536,7 @@ justification:
   demand.
 
 Burst handling is bounded by `maxWakeUpsPerWindow` (§2.1.2):
-6 wake-ups per 10 minutes is the absolute floor. Coalescing
+6 wake-ups per 10 minutes is the absolute ceiling. Coalescing
 is a soft optimization on top.
 
 ### 2.5 Configuration & wiring
@@ -645,12 +758,27 @@ For each listener:
    completion in a window fires a wake-up; subsequent completions
    in the same window are added to a "consolidated IDs" list and
    do not fire additional wake-ups.
-3. **Apply four hard ceilings**, in order, all per-listener:
-   - `maxChainDepth = 8` (counts edges in the source chain)
-   - `maxWakeUpsPerWindow = 6 per 600s` (sliding counter)
-   - `maxActiveWakeUpJobsPerWorkstream = 1` (existing branch lock
-     is the floor)
-   - `maxWakeUpsPerSourceChain = 25` (chain-keyed counter)
+3. **Apply four hard ceilings**, in order, per-listener. These do
+   NOT provide equivalent guarantees — each bounds a different
+   axis of badness. The primary recurrence / flood protection is
+   `maxWakeUpsPerWindow`; the other three are defense-in-depth:
+   - `maxWakeUpsPerWindow = 6 per 600s` (sliding counter) —
+     **PRIMARY**: bounds how many times a given listener can be
+     woken in a window, regardless of source count. Dropped
+     wake-ups are safe because the wake-up handler reconciles
+     the full state of its delegated workstreams on every wake
+     (§2.1.6).
+   - `maxChainDepth = 8` (counts edges in the source chain) —
+     bounds lineage depth of an automatically-fired chain.
+   - `maxActiveWakeUpJobsPerWorkstream = 1` (existing branch
+     lock is the floor) — bounds in-flight wake-ups per
+     listener; documents the policy of the existing branch
+     lock at the listener level.
+   - `maxWakeUpsPerSourceChain = 25` (chain-keyed counter) —
+     bounds fan-out **breadth per single source event** (how
+     many listeners one completion notifies); resets per
+     source event. This is NOT a flood protection on its own
+     (§2.1.2 item 4).
    Hitting any ceiling logs `ceiling_hit` at WARN with chain ID
    and listener ID, and skips the wake-up. No retries.
 4. **Submit the wake-up** as a coding-agent job with
@@ -1112,26 +1240,78 @@ on this work. The implementation PR for this plan is the
 
 ## 12. Summary of safety guarantees (the only section a hurried reviewer needs)
 
+The four protections below are **not equivalent guarantees**. Each
+bounds a distinct axis of badness. Conflating them — e.g. reading
+"four ceilings" as four redundant ways to stop a flood — is
+exactly the misreading this section is here to prevent.
+
 - **Cycle rejection at config time** (DFS over the live graph
-  including self-listing). A bad graph cannot exist.
-- **Four hard ceilings, all per-listener and per-chain**:
-  - `maxChainDepth = 8`
-  - `maxWakeUpsPerWindow = 6 per 600s` (sliding)
-  - `maxActiveWakeUpJobsPerWorkstream = 1` (existing branch
-    lock is the floor)
-  - `maxWakeUpsPerSourceChain = 25`
-- **Coalescing within 30s windows** (advisory; not a
-  guarantee, but reduces fan-out work).
+  including self-listing). A bad graph cannot exist. This is a
+  *config-time* guarantee, not a runtime cap; it forecloses the
+  ping-pong class of bugs by construction.
+
+- **`maxWakeUpsPerWindow = 6 per 600s`** (per-listener, sliding
+  counter) — **PRIMARY flood / recurrence protection.** Bounds
+  how many times a given listener workstream can be woken in a
+  10-minute window, regardless of how many distinct source
+  completions occur. Excess wake-ups are **dropped, not queued**;
+  the 7th wake-up inside the window is rejected and logged at
+  WARN. This is the single guard that actually bounds the
+  runaway-orchestrator / flood case the design is protecting
+  against. The other three ceilings below are defense-in-depth;
+  on their own, none of them stops a flood.
+
+- **Dropping is sound because of the reconciliation invariant**
+  (§2.1.6). The wake-up job handler is required to reconcile
+  the *full* state of every workstream it has delegated to on
+  every wake, not only the single completion mentioned in the
+  wake-up prompt. A dropped wake-up therefore loses no work:
+  whatever was missed is picked up on the next successful wake
+  by re-reading the world. This invariant is required, not
+  optional, and the wake-up handler's entry point must document
+  it.
+
+- **`maxWakeUpsPerSourceChain = 25`** — bounds fan-out **breadth
+  per single source event** (how many listeners one completion
+  can notify in one shot), NOT recurrence across source events.
+  The chain ID resets per source event (§2.2), so in the
+  motivating use case (N workers each listing the orchestrator)
+  the per-chain counter is effectively 1 per wake-up.
+  Defense-in-depth against a listener-list misconfiguration (one
+  workstream listing 25+ listeners), not a flood protection.
+
+- **`maxChainDepth = 8`** — bounds the lineage depth of an
+  automatically-fired chain. Not a flood protection.
+
+- **`maxActiveWakeUpJobsPerWorkstream = 1`** — bounds in-flight
+  wake-ups per listener. Reuses the existing branch lock as the
+  floor. Not a flood protection; documents the policy of the
+  existing branch lock at the listener level.
+
+- **Coalescing within 30s windows** (advisory; not a guarantee,
+  but reduces fan-out work). Combined with the reconciliation
+  invariant, coalesced wake-ups lose no work — the consolidated
+  wake-up prompt already lists the coalesced job IDs and the
+  handler's reconciliation pass catches anything the next round
+  would have caught anyway.
+
 - **Kill switch** via the existing `acceptAutomatedJobs` gate:
-  `false` halts *all* wake-up generation globally.
+  `false` halts *all* wake-up generation globally. This is the
+  force-stop, not a ceiling. Combined with the reconciliation
+  invariant, the listener is never stranded: the first manual
+  job or first re-enabled wake-up re-reads the world and resumes.
+
 - **Fail-safe behavior on every limit hit**: skip the wake-up,
-  log a precise reason, do not retry, do not block the
-  finished job from recording.
+  log a precise reason, do not retry, do not block the finished
+  job from recording. The source job always records normally.
+
 - **No new Maven modules.** Configuration is added to the
   existing `Workstream` / `WorkstreamConfig` data model.
+
 - **No new model / effort / runner params.** The MCP wiring
   follows the existing `dependent_repos` /
   `required_labels` / `phase_configs` patterns.
+
 - **No new lock.** The existing branch lock is reused as the
   "max one wake-up in flight per workstream" floor.
 - **English only.** The plan, the Javadoc, the log lines, the
