@@ -53,33 +53,26 @@ Two operations are "structurally identical" if they perform the same computation
 
 ## Architecture
 
-### Cache Hierarchy
+### Cache Structure
 
-`DefaultComputer` maintains three levels of caching:
+`DefaultComputer` maintains a single instruction cache:
 
 ```
 +-----------------------------------------------------------+
 |                    DefaultComputer                         |
 |-----------------------------------------------------------|
 |                                                           |
-|  operationsCache (Map)                                    |
-|  +-- Instruction containers (unlimited)                   |
-|      Used by HardwareFeatures.instruct() pattern          |
-|                                                           |
-|  processTreeCache (FrequencyCache, 500 entries, 0.4 bias) |
-|  +-- Process tree instruction managers                    |
-|      Used for ProcessTree-level caching                   |
-|                                                           |
 |  instructionsCache (FrequencyCache, 500 entries, 0.4 bias)|
 |  +-- ScopeInstructionsManager instances                   |
-|  +-- Keyed by computation signature strings               |
+|  +-- Keyed by signature string + ComputeContext identity  |
 |  +-- Auto-destroys evicted managers                       |
-|      THIS IS THE PRIMARY INSTRUCTION CACHE                |
 |                                                           |
 +-----------------------------------------------------------+
 ```
 
-The `instructionsCache` is the primary cache for compiled kernels. It maps signature strings to `ScopeInstructionsManager` instances, each of which lazily compiles and caches an `InstructionSet`.
+The `instructionsCache` maps cache keys to `ScopeInstructionsManager` instances, each of which lazily compiles and caches an `InstructionSet`.
+
+**The cache key combines the computation signature with the identity of the `ComputeContext`.** A compiled kernel is permanently bound to the context it was compiled under — its operator dispatches through that context's command runner. If a structurally-identical operation from a *different* context were to adopt the kernel via a bare signature match, its dispatches would be encoded into a command runner that nothing in its own pipeline ever commits: the kernel would never execute and the operation would silently produce nothing (observed as exactly-zero output). Scoping the key per context preserves reuse within a context — the common case — while making cross-context structural twins compile independently.
 
 ### Class Structure
 
@@ -133,7 +126,7 @@ AcceleratedComputationOperation.getInstructionSetManager()
     |       |
     |       +-- YES: DefaultComputer.getScopeInstructionsManager(signature, ...)
     |       |       |
-    |       |       +-- instructionsCache.computeIfAbsent(signature, ...)
+    |       |       +-- instructionsCache.computeIfAbsent(signature + context, ...)
     |       |       |       |
     |       |       |       +-- CACHE HIT: Return existing ScopeInstructionsManager
     |       |       |       |
@@ -406,7 +399,7 @@ where `age = (clock - lastAccessTime) / clock`. Entries with the lowest score ar
 
 **Eviction listener:** `DefaultComputer` registers `(key, mgr) -> mgr.destroy()` to release native resources when a manager is evicted.
 
-**Access listener pattern:** `DefaultComputer` creates `ScopeInstructionsManager` instances with an access listener that calls `instructionsCache.computeIfAbsent(signature, () -> mgr)`. This ensures that even if a manager was previously evicted, using it (via a lingering reference from an operation that still holds the manager) restores it to the cache.
+**Access listener pattern:** `DefaultComputer` creates `ScopeInstructionsManager` instances with an access listener that calls `instructionsCache.computeIfAbsent(cacheKey, () -> mgr)` (the signature + context key). This ensures that even if a manager was previously evicted, using it (via a lingering reference from an operation that still holds the manager) restores it to the cache.
 
 ---
 
@@ -465,7 +458,7 @@ At execution time, when the kernel needs argument N at tree position P:
     +-- getInstructionSetManager()
     |       +-- signature = "abc123"
     |       +-- DefaultComputer.getScopeInstructionsManager("abc123", ...)
-    |       |       +-- instructionsCache.computeIfAbsent("abc123", ...)
+    |       |       +-- instructionsCache.computeIfAbsent("abc123&context=...", ...)
     |       |       +-- MISS: Create new ScopeInstructionsManager
     |       +-- Return manager
     |
@@ -481,13 +474,15 @@ At execution time, when the kernel needs argument N at tree position P:
 ### Reuse Path
 
 ```
-[Second operation with same signature "abc123"]
+[Second operation with same signature "abc123" in the SAME ComputeContext]
     |
     +-- getInstructionSetManager()
     |       +-- signature = "abc123"
     |       +-- DefaultComputer.getScopeInstructionsManager("abc123", ...)
-    |       |       +-- instructionsCache.computeIfAbsent("abc123", ...)
+    |       |       +-- instructionsCache.computeIfAbsent("abc123&context=...", ...)
     |       |       +-- HIT: Return existing ScopeInstructionsManager
+    |       |           (an operation from a DIFFERENT context misses here
+    |       |            and compiles its own kernel)
     |       +-- Return manager (same instance)
     |
     +-- load()
@@ -522,6 +517,7 @@ When the `FrequencyCache` exceeds capacity 500:
 | `AR_INSTRUCTION_SET_REUSE` | `true` | Enable/disable signature-based instruction caching |
 | `AR_REDUNDANT_COMPILATION` | `true` | Allow multiple evaluables with same signature to compile independently |
 | `AR_HARDWARE_VERBOSE_COMPILE` | `false` | Log compilation events |
+| `AR_HARDWARE_REUSE_LOGGING` | `false` | Log every kernel reuse event: the colliding signature, per-argument position coverage and substitutions (with backing memory identity), the reusing computation's own inputs, and a position-keyed dump of both process trees |
 
 **In code:**
 

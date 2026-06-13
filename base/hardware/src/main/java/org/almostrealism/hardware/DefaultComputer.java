@@ -55,8 +55,6 @@ import java.util.function.Supplier;
  *   <li><strong>Instruction Caching:</strong> Maintaining multi-level caches to avoid redundant kernel compilation</li>
  *   <li><strong>Requirements Management:</strong> Thread-local stack of {@link ComputeRequirement}s for
  *       controlling execution targets</li>
- *   <li><strong>Container Creation:</strong> Supporting the {@link HardwareFeatures#instruct} pattern for
- *       cacheable instruction sequences</li>
  *   <li><strong>Compilation:</strong> Converting {@link Computation}s into executable {@link Runnable}s
  *       and {@link Evaluable}s</li>
  * </ul>
@@ -76,18 +74,11 @@ import java.util.function.Supplier;
  * -  - (default)    -                                        -
  * -  ---------------                                        -
  * -                                                           -
- * -  Instruction Caches                                      -
- * -  ----------------------------------------------          -
- * -  - operationsCache (Map)                      -          -
- * -  - - Instruction containers (unlimited)        -          -
- * -  ---------------------------------------------          -
- * -  ----------------------------------------------          -
- * -  - processTreeCache (FrequencyCache 500*0.4)  -          -
- * -  - - Process tree instruction managers         -          -
- * -  ---------------------------------------------          -
+ * -  Instruction Cache                                       -
  * -  ----------------------------------------------          -
  * -  - instructionsCache (FrequencyCache 500*0.4) -          -
  * -  - - Scope instruction managers                -          -
+ * -  - - Keyed by signature + compute context      -          -
  * -  - - Auto-destroys evicted managers            -          -
  * -  ---------------------------------------------          -
  * -                                                           -
@@ -202,6 +193,11 @@ import java.util.function.Supplier;
  * );
  * }</pre>
  *
+ * <p>Entries are keyed by the operation signature <em>and</em> the {@link ComputeContext},
+ * because a compiled kernel dispatches through the command runner of the context it was
+ * compiled under. Operations reuse a kernel only when they share both structure and
+ * context; a structurally-identical operation from another context compiles its own.</p>
+ *
  * <p><strong>Cache Properties:</strong></p>
  * <ul>
  *   <li>Type: {@link FrequencyCache} (LFU-based)</li>
@@ -222,29 +218,6 @@ import java.util.function.Supplier;
  * ScopeInstructionsManager mgr2 = computer.getScopeInstructionsManager(...);
  * // Either returns cached instance or creates new one
  * }</pre>
- *
- * <h2>Instruction Container Pattern</h2>
- *
- * <p>The {@code createContainer} method implements the caching strategy for
- * {@code HardwareFeatures.instruct}:</p>
- *
- * <h3>Container Creation Flow</h3>
- * <pre>
- * 1. Check operationsCache for key
- *    - Found: Reuse container
- *    -         Apply argument substitutions
- *    -         Return delegated producer
- *    -
- *    - Not Found: Create new container
- *                  Apply function to arguments
- *                  Extract/apply instruction managers
- *                  Cache container
- *                  Return delegated producer
- * </pre>
- *
- * <h3>Argument Substitution</h3>
- * <p>Containers store argument templates and substitute actual data at evaluation time.
- * The argument evaluator handles mapping template arguments to actual data during evaluation.</p>
  *
  * <h2>Compilation Methods</h2>
  *
@@ -303,22 +276,6 @@ import java.util.function.Supplier;
  * }
  * }</pre>
  *
- * <h3>Cached Instruction Patterns</h3>
- * <pre>{@code
- * public class AudioProcessor implements HardwareFeatures {
- *     private static final String FILTER_KEY = "lowpass_1000hz";
- *
- *     public Producer<PackedCollection> filter(Producer<PackedCollection> input) {
- *         // First call: compiles and caches
- *         // Subsequent calls: reuse cached kernel with new input
- *         return instruct(FILTER_KEY,
- *             args -> lowPass(args[0], c(1000.0), 44100),
- *             input
- *         );
- *     }
- * }
- * }</pre>
- *
  * <h3>Inspecting Active Requirements</h3>
  * <pre>{@code
  * List<ComputeRequirement> active = computer.getActiveRequirements();
@@ -330,8 +287,6 @@ import java.util.function.Supplier;
  *
  * <h3>Cache Efficiency</h3>
  * <ul>
- *   <li><strong>Instruction keys should be stable:</strong> Use constant strings for {@code instruct()} keys</li>
- *   <li><strong>Avoid dynamic keys:</strong> {@code instruct("key_" + Math.random(), ...)} defeats caching</li>
  *   <li><strong>FrequencyCache tuning:</strong> 500 entries @ 0.4 eviction works for most workloads</li>
  *   <li><strong>Cache hits are 1000x+ faster than compilation</strong></li>
  * </ul>
@@ -355,8 +310,8 @@ import java.util.function.Supplier;
  * <p>{@link DefaultComputer} uses {@link ThreadLocal} for the requirements stack, making
  * it thread-safe for concurrent access. Each thread maintains its own requirements stack.</p>
  *
- * <p>The caches ({@code operationsCache}, {@code processTreeCache}, {@code instructionsCache})
- * are shared across threads but use thread-safe data structures.</p>
+ * <p>The instruction cache ({@code instructionsCache}) is shared across threads but uses
+ * a thread-safe data structure.</p>
  *
  * <h2>Integration with Hardware</h2>
  *
@@ -384,21 +339,6 @@ import java.util.function.Supplier;
  *     operation.get().run();
  * } finally {
  *     computer.popRequirements();
- * }
- * }</pre>
- *
- * <h3>Using Dynamic Instruction Keys</h3>
- * <pre>{@code
- * // BAD: Cache never hits
- * for (int i = 0; i < 1000; i++) {
- *     instruct("scale_" + i, args -> multiply(args[0], c(2.0)), data);
- *     // Creates 1000 cache entries, no reuse
- * }
- *
- * // GOOD: Single cache entry, 1000 reuses
- * for (int i = 0; i < 1000; i++) {
- *     instruct("scale_op", args -> multiply(args[0], c(2.0)), data);
- *     // Compiles once, reuses 999 times
  * }
  * }</pre>
  *
