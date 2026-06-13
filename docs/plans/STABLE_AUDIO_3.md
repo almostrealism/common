@@ -6,6 +6,16 @@
 **Paper:** arXiv:2605.17991
 **Status:** Research — Implementation not started
 
+> **Update (2026-06-13):** A code-grounded verification pass is recorded in the companion
+> [`stable-audio-3/MILESTONE_0_FINDINGS.md`](stable-audio-3/MILESTONE_0_FINDINGS.md). It corrects
+> several claims here against the actual source — notably that `DiffusionSampler` does **not**
+> support a per-call latent shape (§3.4 / Risk 2), that there is **no native** text conditioner
+> (§2.4 / §3.3), that the existing extraction script covers the autoencoder **only** (§8), and that
+> the LoRA adapter key format is **not** directly compatible with SA3 adapters (§3.7). It also
+> documents that the Milestone 0 *source-reading* gate (the paper and HF cards) could **not** be
+> cleared in that session because web access was unavailable — those architecture facts remain
+> unverified. Read the companion alongside this document.
+
 ---
 
 ## 1. Executive Summary
