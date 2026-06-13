@@ -306,7 +306,7 @@ export SLACK_APP_TOKEN="xapp-..."
 Starts a FlowTree agent that connects OUT to a controller. The agent uses `FLOWTREE_ROOT_HOST` and `FLOWTREE_ROOT_PORT` environment variables to locate the controller and auto-reconnects every 30 seconds if the connection drops.
 
 ```bash
-# Connect to controller on the Docker host (default)
+# Connect to a controller running locally (default: localhost:7766)
 ./flowtree/runtime/bin/start-agent.sh
 
 # Connect to a specific controller
