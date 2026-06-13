@@ -11,10 +11,21 @@
 > several claims here against the actual source — notably that `DiffusionSampler` does **not**
 > support a per-call latent shape (§3.4 / Risk 2), that there is **no native** text conditioner
 > (§2.4 / §3.3), that the existing extraction script covers the autoencoder **only** (§8), and that
-> the LoRA adapter key format is **not** directly compatible with SA3 adapters (§3.7). It also
-> documents that the Milestone 0 *source-reading* gate (the paper and HF cards) could **not** be
-> cleared in that session because web access was unavailable — those architecture facts remain
-> unverified. Read the companion alongside this document.
+> the LoRA adapter key format is **not** directly compatible with SA3 adapters (§3.7).
+>
+> **Objective 1 now resolved (same date).** The SA3 architecture facts that were previously blocked
+> (web access was unavailable) have been read directly from the official MIT-licensed source,
+> `github.com/Stability-AI/stable-audio-3` @ commit `bccf5b7b`, and are recorded with `path:line`
+> citations in the companion (§1.2, §2.2). Headline corrections to **this** document: the autoencoder
+> is **SAME**, a *new transformer-resampling autoencoder* (256-dim latents), **not** a modified
+> Oobleck VAE (§3.1 / Risk 1) → the AE is a **BUILD**, not a config tweak; the text encoder is
+> **T5Gemma**, not T5 and not CLAP (§3.3); the open DiTs are **433M / 433M / 1.4B** with separate
+> **SAME-S 266M / SAME-L 1.7B** autoencoders (§3.5); inpainting is **input-channel concatenation** of
+> a latent mask + masked latent, not a fifth model input (§3.3 / Risk 3); and SA3's default sampler is
+> **ping-pong rectified flow**, matching the existing `PingPongSamplingStrategy`. The **only** residual
+> gap is the exact per-variant numeric hyperparameters, which live in **gated** Hugging Face
+> `model_config.json` files (HTTP 401) and must be supplied by a credentialed session (companion §4).
+> Read the companion alongside this document.
 
 ---
 

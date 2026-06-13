@@ -3,41 +3,60 @@
 **Branch:** `feature/stable-audio-3-research`
 **Companion to:** [`../STABLE_AUDIO_3.md`](../STABLE_AUDIO_3.md)
 **Status:** Research — Objective 2 (codebase grounding) complete; Objective 1 (primary-source
-reading) **blocked** in this environment (see §0).
+reading) **resolved from the official GitHub package** (see §0). One residual item (the exact
+per-variant numeric hyperparameters) remains gated behind Hugging Face authentication.
 **Date:** 2026-06-13
 
 This document grounds the claims in `STABLE_AUDIO_3.md` against (a) the real source code in this
-repository and (b) the primary sources for Stable Audio 3. The parent document was written largely
-from expectation and is explicit that its architecture details are unverified estimates; the goal
-here is to replace expectation with evidence wherever evidence is obtainable.
+repository and (b) the primary source for Stable Audio 3 — the official `Stability-AI/stable-audio-3`
+package on GitHub (§0). The parent document was written largely from expectation and is explicit that
+its architecture details are unverified estimates; the goal here is to replace expectation with
+evidence wherever evidence is obtainable.
 
-Every infrastructure claim below cites the file and line that supports it. Every architecture claim
-that could *not* be verified is marked **UNVERIFIED** rather than asserted.
+Every **infrastructure** claim cites the AR file and line that supports it. Every **SA3 architecture**
+claim cites a `path:line` in the pinned GitHub commit (§0). The handful of scalars that genuinely
+could not be obtained (they live in gated Hugging Face configs) are marked **GATED** rather than
+guessed (§4).
 
 ---
 
 ## 0. Method and the Milestone 0 source-reading gate
 
-Milestone 0 (parent doc §9, §12) requires reading **arXiv:2605.17991** in full and the Hugging
-Face model cards for the open SA3 variants. **This could not be done in this session:** the
-`WebFetch` and `WebSearch` tools are denied in this environment, and arXiv / Hugging Face are
-external sources past the assistant's knowledge cutoff. No primary SA3 source was accessible.
+Milestone 0 (parent doc §9, §12) requires reading the SA3 architecture in full. A prior session
+left this **blocked** because `WebFetch` / `WebSearch` are denied in this environment and the
+arXiv paper / Hugging Face model cards are past the assistant's knowledge cutoff. **This session
+closed Objective 1 using a source that *is* reachable: the official Stability AI source code on
+GitHub**, read directly rather than through the web tools.
 
-Consequences and the integrity rule applied here:
+**Primary source used (authoritative for engineering facts, over the paper):**
 
-- The SA3 *architecture* facts the parent doc lists (semantic-acoustic autoencoder design, the
-  459M / 459M / 1.4B parameter split, "second-level control," `.safetensors` vs `.ckpt`, the
-  weight-key prefix, the inpainting API, the real HF repo names, the corrected total parameter
-  counts) **cannot be confirmed from this environment.** They are recorded below as **open items**,
-  not as confirmed facts. Fabricating a "confirmed" reading of a paper that was not read would be a
-  false-evidence pattern and is explicitly avoided.
-- What *can* be established with certainty is the **existing SA-Open code baseline** that any SA3
-  delta is measured against. That baseline is fully verifiable from source and is the substance of
-  §2 (the reuse ledger). It is also the most useful thing to have nailed down before the paper is
-  read, because it defines exactly which SA3 facts matter.
+- Repository: `github.com/Stability-AI/stable-audio-3` (MIT-licensed).
+- Cloned into a scratch directory **outside** the common working tree (`/tmp/sa3-src`), so it is
+  never part of the common change set.
+- Pinned commit: **`bccf5b7b75734c95a3049bb43bdbc7b3070a31bc`** ("Update README", 2026-06-08).
+- Files read: the `stable_audio_3` package (`models/autoencoders.py`, `models/dit.py`,
+  `models/transformer.py`, `models/conditioners.py`, `models/diffusion.py`, `models/inpainting.py`,
+  `models/bottleneck.py`, `models/lora/{loader,utils}.py`, `inference/sampling.py`,
+  `model.py`, `model_configs.py`, `loading_utils.py`, `factory.py`) plus
+  `docs/guides/model-overview.md` and `docs/workflows/{inference,autoencoder,lora}.md`.
 
-**To close Milestone 0, a follow-up session needs web access** (or a local copy of the paper and the
-model `config.json` files) to answer the items in §1.2.
+**All ten §1.2 open items are now answered** (§1.2 below), each with a `path:line` citation into
+that pinned commit. Every citation in §1.2 is reproducible by cloning the repo at the commit above;
+the cited paths are **package-relative** (e.g. `models/dit.py:13`) within that repo, *not* paths in
+the common repository.
+
+**The one residual item that could NOT be obtained.** The exact *trained, per-variant* numeric
+hyperparameters (each DiT's `embed_dim` / `depth` / `num_heads`; each SAME's stride list and channel
+multipliers; the precise weight-key dumps) do **not** live in the GitHub package — the package reads
+them at load time from a `model_config.json` inside each **Hugging Face** repo (`model_configs.py:54-107`).
+Those HF repos are **gated**: anonymous access returns `HTTP 401` ("Access to model … is restricted.
+You must … be authenticated"). With no HF credentials in this environment, the numeric configs could
+not be retrieved. They are listed precisely in §4 so a follow-up session (or a credentialed
+maintainer) can drop them in. Per the integrity rule, **no numbers are invented** — the
+architecture-level answers below come from source; the per-variant scalars are marked **GATED**.
+
+Note the arXiv references are, per the task, citation-only and the **repo source is treated as
+authoritative over the paper** for engineering facts: 2605.17991 (Stable Audio 3) and 2605.18613 (SAME).
 
 ---
 
@@ -71,55 +90,149 @@ figure is the one used by the diffusion path and is the correct reference for SA
 in the Oobleck javadoc appears to be stale documentation. (Existing-code issue; out of scope to fix
 here, flagged for the SA-Open maintainers.)
 
-### 1.2 Open items — require the paper / model cards (UNVERIFIED)
+### 1.2 Resolved from SA3 source (commit `bccf5b7b`)
 
-Each maps to a parent-doc §12 question. None can be resolved from this environment.
+Each item maps to a parent-doc §12 question. All ten are now answered from the GitHub package; the
+only scalars left open are the **GATED** per-variant numbers (§4). Citations are package-relative
+into `Stability-AI/stable-audio-3@bccf5b7b`.
 
-1. **Semantic-acoustic autoencoder architecture & latent shape.** Whether SA3 keeps 64×256 / 2048×
-   / 44.1 kHz stereo, or changes channels/frame rate, and whether the "semantic" path is a separate
-   encoder branch producing conditioning embeddings vs. a single restructured bottleneck. **UNVERIFIED.**
-   *Why it matters:* drives whether `OobleckAutoEncoder`/`OobleckEncoder`/`OobleckDecoder`/`VAEBottleneck`
-   can be reused (they hardcode 2-in / 128-mid / 64-latent / 5 blocks / Snake / weight-norm).
+1. **SAME autoencoder architecture & latent shape — RESOLVED. It is entirely new code, not Oobleck.**
+   The autoencoder is **SAME (Semantic-Acoustic Music Encoder)**. `SAMEEncoder` / `SAMEDecoder`
+   (`models/autoencoders.py:225,290`) are **transformer-based resampling autoencoders**, structurally
+   unrelated to SA-Open's Conv1d + Snake Oobleck stack. Each is a stack of `TransformerResamplingBlock`
+   (`models/autoencoders.py:34`): a `WNConv1d` 1×1 channel mapping plus `TransformerBlock`s with RoPE,
+   DyT/RMS-norm, optional **differential attention**, a GLU/SwiGLU FFN, and a **learned `new_tokens`
+   resampling mechanism** (`:75,141-148`) that changes sequence length by `stride` — followed by a final
+   `Linear` to the latent dim (`:262,318`). The bottleneck is a `SoftNormBottleneck`
+   (`models/bottleneck.py:4`), **not** a mean/log-var VAE split. **Latent: 256-dim, stereo (2 ch),
+   44.1 kHz, downsampling_ratio 4096** (`docs/guides/model-overview.md:41`,
+   `docs/workflows/autoencoder.md:17`): a 10 s stereo clip → **216 × 256** latent (≈ 21.6 latent
+   frames/s — essentially the SA-Open latent frame rate, but **4× the channel depth: 64 → 256**).
+<!-- TODO(review): verify downsampling_ratio; "4096" is inconsistent with the 216-frame/21.6-Hz
+     figures in this paragraph (44100/4096 ≈ 10.77 Hz → ~108 frames for 10 s; 216 frames and
+     21.6 Hz both match 2048×, not 4096×). Same figure repeated in §2.2 OobleckAutoEncoder row.
+     Re-read /tmp/sa3-src docs/guides/model-overview.md:41 to confirm the actual value. -->
+   Two variants: **SAME-S (266M)** uses *chunked attention with midpoint shift* for CPU/edge;
+   **SAME-L (1.7B)** uses *sliding-window attention* and needs a GPU/flash-attention
+   (`docs/guides/model-overview.md:53-64`).
+   *Consequence:* AR's `OobleckAutoEncoder` / `OobleckEncoder` / `OobleckDecoder` / `VAEBottleneck`
+   (Conv1d + Snake + weight-norm, 128→64 mean bottleneck) **cannot be reused** — a new
+   `StableAudio3AutoEncoder` must be **BUILT**, and it is a *large* build (transformer resampling,
+   sliding/chunked attention, learned resampling tokens, SoftNorm bottleneck), none of which exist in
+   the AR audio code. This confirms the external note that "the SAME decoder is new code, not the
+   SA-Open VAE."
 
-2. **DiT hyperparameters for Small, Small SFX, Medium** (embedDim, depth, numHeads, patchSize,
-   condTokenDim, globalCondDim). **UNVERIFIED.** *Why it matters:* if SA3 keeps the SA-Open block
-   structure, these are pure constructor arguments (§2, ledger row "DiffusionTransformer").
+2. **DiT hyperparameters & block structure — RESOLVED at the structural level; per-variant scalars GATED.**
+   The DiT is `models/dit.py:13` `DiffusionTransformer`, wrapped by `DiTWrapper.model`
+   (`models/diffusion.py:200-211`) inside `ConditionedDiffusionModelWrapper.model`
+   (`models/diffusion.py:28,54`). Its transformer is a `ContinuousTransformer`
+   (`models/dit.py:117`). Structural facts that matter for reuse:
+   - **Conditioning is prepended, not AdaLN, by default** (`global_cond_type` default `"prepend"`,
+     `models/dit.py:27`; the timestep embedding is added to the global cond and prepended,
+     `:243-262`). AdaLN is an *option*, not the default. → matches AR's prepend assumption.
+   - `diffusion_objective` includes `"rf_denoiser"` and `"rectified_flow"` (`models/dit.py:30`),
+     matching the `rf_denoiser` objective AR's tests already exercise.
+   - Attention uses a **fused `to_qkv`** (`dim*3`, or **`dim*5` when differential attention is on**),
+     `to_out`, and a **GLU/SwiGLU `ff`** (`models/transformer.py:421-444,549-560`). QK-norm options
+     include `'dyt'` (DynamicTanh) (`:577`).
+   - Patch size, cross-attention (`cond_token_dim>0`), global cond projection are all constructor
+     args (`models/dit.py:14-35`).
+   - **Variants** (`docs/guides/model-overview.md:98-105`, `README.md:19-22`): `small-music` and
+     `small-sfx` = **433M** DiT on **SAME-S**, max ~120 s; `medium` = **1.4B** DiT on **SAME-L**, max
+     ~380 s; `large` = 2.7B, **API-only / out of scope**.
+   *Consequence:* the SA-Open `model.model.transformer.layers.N.*` key path **holds** (item 5), so the
+   variants are config-only **iff** SA3's released DiTs use the plain (non-differential) block with
+   standard QK-norm. **If they use differential attention (`to_qkv` = `dim*5`) or DyT QK-norm, AR's
+   block and key layout will not match → EXTEND.** Which of these the released checkpoints use is in
+   the **GATED** `model_config.json` (§4), along with the exact `embed_dim` / `depth` / `num_heads`.
 
-3. **Text conditioner** — still T5 (same 128-token length, same 768 output dim), or CLAP / T5-large /
-   multi-modal. **UNVERIFIED.** *Why it matters:* the conditioner is **ONNX-only** in this repo (§2);
-   a change means a new ONNX export and possibly new input wiring.
+3. **Text conditioner — RESOLVED: it changed from plain T5 to T5Gemma; CLAP is *not* the conditioner.**
+   `models/conditioners.py:157` `T5GemmaConditioner` uses **`google/t5gemma-b-b-ul2`**, output
+   **768-dim**, **`max_length = 128`** (`:159-182`), cross-attention. It is **not** plain T5 and
+   **not** CLAP — CLAP appears only as a *training loss* in adversarial post-training
+   (`docs/guides/model-overview.md:96`), never as an inference conditioner.
+   *Consequence:* AR's `OnnxAudioConditioner` (a T5 ONNX export) must be replaced by a **T5Gemma-encoder
+   export**. The output contract (token embeddings → cross-attention) is the same shape (768-d, 128
+   tokens), but the model weights/graph differ, so this is a new conditioner export, not a drop-in.
 
-4. **"Second-level control" mechanism** — additional global-cond vector, different global-cond dim,
-   or a new conditioning path. **UNVERIFIED.** *Why it matters:* affects `ConditionerOutput` and the
-   `globalCond` contract.
+4. **"Second-level control" — RESOLVED: it is duration-in-seconds via a learned `NumberConditioner`.**
+   Duration is encoded by `NumberConditioner` / `NumberEmbedder` (`models/conditioners.py:95-155`) —
+   a learned Fourier/positional embedding of the seconds value — and fed as a **global conditioning**
+   vector (alongside the timestep embed), *not* through the text encoder. The user-facing control is
+   simply `duration` in seconds (`docs/workflows/inference.md:48`,
+   `docs/guides/model-overview.md:73`). There is no separate richer "second-level" path beyond this
+   learned duration embedder.
+   *Consequence:* in SA-Open the duration scalar was an *input to the conditioner ONNX*; in SA3 it is
+   its **own learned global-cond embedder**. AR's conditioner contract must produce this duration
+   global-cond separately from the text cross-attention.
 
-5. **Audio-inpainting API at the model level** — a mask tensor as an *additional DiT input* vs.
-   latent-sampling-level masking. **UNVERIFIED.** *Why it matters:* `DiffusionModel.forward` is fixed
-   at 4 inputs (`x, t, crossAttnCond, globalCond`, `DiffusionModel.java:47-49`); an extra mask input
-   would not fit the interface or the ONNX `OnnxDiffusionModel` 4-input signature
-   (`OnnxDiffusionModel.java:87-90`).
+5. **Audio-inpainting / continuation API — RESOLVED: input-channel concatenation, not a 5th input and
+   not pure sampler masking.** Inpainting is wired as **two `input_concat` conditioning tensors**
+   (`model.py:280-296`, surfaced via `ConditionedDiffusionModelWrapper.get_conditioning_inputs`
+   `models/diffusion.py:142-145`):
+   - `inpaint_mask` — shape `(B, 1, latent_len)`, **1 = provided/keep, 0 = regenerate**, interpolated
+     from audio-sample resolution down to latent resolution (`model.py:276-285`).
+   - `inpaint_masked_input` — shape `(B, latent_dim, latent_len)`, the **SAME-encoded** source audio
+     multiplied by that mask (`model.py:287-296`).
+   Both are **concatenated to the noisy latent `x` along the *channel* dim before the transformer**
+   (`models/dit.py:217-222`: `x = torch.cat([x, input_concat_cond], dim=1)`). So the **released
+   checkpoints are inherently inpaint-capable** (a `diffusion_cond_inpaint`-type model): the DiT's
+   input channel count is `latent_dim` (noise) + `latent_dim` (masked input) + `1` (mask). For plain
+   text-to-audio those concat channels are zeros (`model.py:281-293`). Multiple non-contiguous regions
+   are encoded as several zeroed spans in one mask (lists of `inpaint_mask_start/end_seconds`,
+   `docs/workflows/inference.md:99-111`); continuation is just an inpaint mask that starts at the end
+   of the source audio (`:113-127`).
+   *Consequence:* this does **not** fit AR's 4-input `DiffusionModel.forward(x, t, crossAttnCond,
+   globalCond)` (`DiffusionModel.java:47-49`) as a fifth argument, and it is **not** the
+   latent-sampling-level masking the parent doc speculated about. AR must feed the masked latent + the
+   mask as **extra input channels** of the DiT — i.e. either pre-concatenate them into `x` (keeping the
+   4-arg forward but requiring an inpaint-capable checkpoint with the larger `io_channels`) or extend
+   the model interface. This sharpens the `DiffusionSampler.sampleFrom` extension the ledger calls for:
+   the mask input is a **latent-resolution 1-channel mask plus a latent_dim-channel masked latent**,
+   both at the DiT input, not a guidance-time overlay.
 
-6. **Checkpoint format & weight-key prefix** — `.safetensors` vs `.ckpt`; is the AE prefix still
-   `pretransform.model.`. **UNVERIFIED.** *Why it matters:* the existing extractor uses
-   `torch.load` + `pretransform.model.` (`extract_stable_audio_autoencoder.py:77,86`); safetensors or
-   a renamed prefix changes the extraction script.
+6. **Checkpoint format & weight-key prefix — RESOLVED.** Each repo ships **`model.safetensors`** +
+   **`model_config.json`** (`model_configs.py:54-85`). In a full DiT checkpoint the autoencoder is
+   nested under **`pretransform.model.*`** (`loading_utils.py:41-49`) — the **same prefix SA-Open
+   used** — while standalone SAME repos (`stabilityai/SAME-S`, `SAME-L`) carry **bare** AE keys
+   (`loading_utils.py:43-49`). The DiT weights live under `model.*` within the wrapper, i.e. the
+   transformer is `model.model.transformer.*` (item 2).
+   *Consequence for AR's extractor:* the AE prefix `pretransform.model.` **still holds**, but the
+   format is **safetensors** (`safe_open`, not `torch.load` on a `.ckpt`), and the DiT extraction to
+   `model.model.*` is **new** (as the prior session already flagged for the AE-only script).
 
-7. **Real HF repo names & public availability** of Small SFX / Small / Medium. **UNVERIFIED** — the
-   parent doc's `stabilityai/stable-audio-3-*` names are flagged there as guesses and remain guesses.
+7. **Real HF repo names & availability — RESOLVED (names) / GATED (download).** The registry
+   (`model_configs.py:54-107`) confirms: post-trained `stabilityai/stable-audio-3-small-music`,
+   `stabilityai/stable-audio-3-small-sfx`, `stabilityai/stable-audio-3-medium`; base
+   `…-small-music-base`, `…-small-sfx-base`, `…-medium-base`; autoencoders `stabilityai/SAME-S`,
+   `stabilityai/SAME-L`. README links these and points to a `stable-audio-3-extra` collection for the
+   base + SAME + optimized variants (`README.md:19-24`). All of these are **gated**: anonymous
+   `git`/`huggingface_hub`/`curl` access returns `HTTP 401` (see §0, §4).
 
-8. **Parameter-count totals.** The task states external coverage treats 459M/459M/1.4B as
-   *DiT-only* and puts *total* sizes (DiT + semantic-acoustic AE + text encoder) higher (~567M small,
-   ~2.25B medium). This is internally plausible — a total is necessarily ≥ the DiT-only figure, and a
-   ~108M autoencoder+encoder delta for the small model is reasonable — **but the actual numbers are
-   UNVERIFIED here.** They drive the memory-scale planning in parent §3.5 / Risk 5 and must be read
-   from the paper/cards before that planning is treated as final. As a rough sanity anchor only: an
-   SA-Open-style 1536-dim / 24-layer DiT is itself on the order of ~1B parameters, so a "Small 459M"
-   SA3 DiT is materially smaller than the SA-Open reference DiT — worth confirming against the cards.
+8. **Parameter-count totals — partially RESOLVED.** The published figures are now confirmed as
+   **DiT-only**: 433M (small-music / small-sfx) and 1.4B (medium) (`docs/guides/model-overview.md:100-105`,
+   `README.md:19-22`) — note the prior doc's "459M" was an estimate; the source says **433M**. The
+   autoencoders are **separate** and sizeable: **SAME-S 266M**, **SAME-L 1.7B**
+   (`docs/guides/model-overview.md:55-59`). The text encoder (`google/t5gemma-b-b-ul2`) is an
+   additional frozen model. So an at-rest *small* deployment is ≈ 433M (DiT) + 266M (SAME-S) + the
+   T5Gemma encoder, and *medium* is ≈ 1.4B (DiT) + 1.7B (SAME-L) + T5Gemma — i.e. **the autoencoder
+   dominates the medium footprint** (1.7B AE vs 1.4B DiT). The exact byte sizes still depend on the
+   GATED per-tensor dtypes, but the component split is now firm and should drive the memory-scale
+   planning in parent §3.5 / Risk 5. The README's measured peak VRAM is a useful anchor: `small`
+   ≈ 1.7–2.4 GB, `medium` ≈ 5.1–6.5 GB (unchunked decode) (`README.md:30-39`).
 
-9. **LoRA adapter examples / community fine-tunes** for Phase 3 validation. **UNVERIFIED / unavailable.**
+9. **LoRA adapter examples / community fine-tunes — RESOLVED at the format level (item 6 of §2).**
+   The on-disk format, adapter family, and config metadata are fully specified in source
+   (`models/lora/{loader,utils}.py`); a concrete community adapter to test against is still external
+   (the LoRA guide points to third-party tooling, `docs/workflows/lora.md:46`), but the format is no
+   longer unknown.
 
-10. **License in-code attribution** beyond documentation. **UNVERIFIED** (requires the current
-    license text from the model card).
+10. **License in-code attribution — note.** SA3 is MIT-licensed *as code* (the GitHub `LICENSE`), but
+    the **weights** are governed by the Stability AI Community License referenced from the gated model
+    cards (not readable here). The parent doc's licensing analysis (Common ships no weights, so the
+    weight license does not constrain Common's code) is unaffected; any in-output attribution
+    requirement would attach to the application that ships the weights, not to Common. The exact
+    current weight-license text remains behind the gate.
 
 ---
 
@@ -128,6 +241,12 @@ Each maps to a parent-doc §12 question. None can be resolved from this environm
 Legend for **Verdict**: **REUSE** = usable for SA3 with configuration only; **REUSE\*** = usable
 only if a specific SA3 assumption holds (stated); **EXTEND** = needs additive code; **BUILD** = needs
 new code regardless.
+
+> **Update (this session):** the table below was written when the SA3-side assumptions in the
+> **REUSE\*** rows were still unknown. Those assumptions are now **resolved** against SA3 source
+> (§1.2). The table is left intact as the audit of the *AR baseline*; **§2.2 records every verdict
+> that the resolved SA3 facts now settle or change.** Where a row's "SA3 delta" speculates ("the name
+> strongly implies…", "an extra mask input would…"), read §2.2 for the confirmed answer.
 
 | Component | File (evidence) | Verdict | SA3 delta required |
 |---|---|---|---|
@@ -164,6 +283,21 @@ new code regardless.
 - **Is the LoRA adapter key format compatible with SA3?** **No.** Positional `lora.<i>.A/.B` in an AR
   `ModelBundle`; SA3 LoRA is named-module safetensors. A **BUILD** converter is required.
 
+### 2.2 Verdict updates after reading SA3 source (commit `bccf5b7b`)
+
+These supersede the speculative "SA3 delta" cells above wherever they differ.
+
+| Component | Prior verdict | **Settled verdict** | What the source decided (§1.2 item) |
+|---|---|---|---|
+| `OobleckAutoEncoder` / `OobleckEncoder` / `OobleckDecoder` / `VAEBottleneck` | REUSE\* / "likely BUILD" | **BUILD (large)** | SA3's AE is **SAME**, a transformer-resampling autoencoder (sliding/chunked attention, learned resampling tokens, `SoftNormBottleneck`), **not** Oobleck. None of the AR Oobleck/Snake/Conv1d AE code applies. A new `StableAudio3AutoEncoder implements AutoEncoder` is required, and it is a substantial modeling effort, **not** a config tweak. Latent is **256-ch** (vs SA-Open's 64), `downsampling_ratio` 4096, 44.1 kHz stereo, ≈ 21.6 latent frames/s (10 s stereo → 216×256). (§1.2-1) |
+| `DiffusionTransformer` | REUSE\* | **REUSE\* — condition now precise** | Key path `model.model.transformer.layers.N.*` **confirmed** and default conditioning is **prepend, not AdaLN** — both AR assumptions hold. Remaining condition: SA3's released DiT must use the *plain* block (standard QK-norm, non-differential `to_qkv`=`dim*3`, GLU FFN). If it uses **differential attention** (`to_qkv`=`dim*5`) or **DyT** QK-norm → **EXTEND**. The deciding scalars/flags are GATED (§4). (§1.2-2) |
+| `DiffusionModel` (interface) + `OnnxDiffusionModel` | REUSE\* ("EXTEND if 5th mask input") | **EXTEND — but as input *channels*, not a 5th arg** | Inpainting is **input-channel concatenation**: the masked SAME latent (`latent_dim` ch) + a 1-ch mask are concatenated to the noisy latent **before** the transformer. The 4-arg `forward(x,t,crossAttnCond,globalCond)` can stay **iff** AR pre-concatenates these into `x` and uses an inpaint-capable checkpoint with the larger `io_channels`; otherwise extend the interface. Not a guidance-time overlay. (§1.2-5) |
+| `AudioAttentionConditioner` + `OnnxAudioConditioner` | REUSE / EXTEND ("CLAP?") | **BUILD new conditioner export; EXTEND interface** | Text encoder changed **T5 → T5Gemma** (`google/t5gemma-b-b-ul2`, 768-d, 128 tok) → a **new** encoder export, not the existing T5 ONNX. CLAP is **not** a conditioner (training-loss only). Duration is a **separate learned `NumberConditioner`** global-cond, not an ONNX conditioner input. The `runConditioners(tokenIds, durationSeconds)` contract must split into a T5Gemma cross-attn path + a learned duration global-cond. (§1.2-3, §1.2-4) |
+| `PingPongSamplingStrategy` | REUSE ("likely-relevant") | **REUSE — match CONFIRMED**; schedule is the EXTEND | SA3's default sampler for `rf_denoiser` is `sample_flow_pingpong`, update `x=(1-t_next)·denoised + t_next·noise` — **identical** to AR's PingPong. 8 steps (post-trained) / ~50 (-base). **However** SA3 warps the linear `t∈[1,0]` schedule with a **distribution shift** (default `LogSNRShift`; `FluxDistributionShift` available) and supports **per-element** schedules for variable length — AR's fixed sigmoid log-SNR schedule must be extended to match and to do varlen. img2img mixing `init_data·(1-σ)+noise·σ` matches AR `sampleFrom`. (§1.2 / sampler) |
+| `DiffusionNoiseScheduler` / `DDIMSamplingStrategy` | REUSE\* | **Not on the SA3 path** | SA3 is rectified-flow end-to-end (`rf_denoiser` → pingpong). The discrete cosine-DDPM scheduler + DDIM are **not** used by SA3; the PingPong path is the relevant reuse. |
+| `LoRADiffusionTransformer` | BUILD converter | **BUILD converter — and AR can represent only `adapter_type=="lora"`** | SA3 LoRA keys are `…parametrizations.weight.0.{lora_A,lora_B,M_xs,magnitude,magnitude_r,magnitude_c}` in safetensors with a `lora_config` JSON in metadata (rank default 16). The adapter **family** is `lora`, `dora-rows`(default)/`dora-cols`, `bora`, `lora-xs`, and `-xs` hybrids — applied to **both** the DiT and the conditioner. AR's positional `lora.<i>.A/.B` rank-8 standard LoRA maps **only** to `adapter_type=="lora"`; DoRA/BoRA/LoRA-XS need new math, not just a key remap. (§1.2-9, item 6 below) |
+| `extract_stable_audio_autoencoder.py` | EXTEND / partial | **EXTEND — format & scope confirmed** | AE prefix `pretransform.model.` **still holds**, but the format is **safetensors** (`safe_open`, not `torch.load` `.ckpt`). DiT extraction to `model.model.*` and a T5Gemma-encoder export are **new**. (§1.2-6) |
+
 ---
 
 ## 3. Corrections to `STABLE_AUDIO_3.md`
@@ -193,13 +327,54 @@ corrections (the parent remains a planning doc; this companion is the corrected 
    `rf_denoiser` objective); `CompiledModelAutoEncoder` is the native `AutoEncoder` adapter. Both
    strengthen the reuse story and were missing from the parent ledger.
 
+6. **§3.1 / Risk 1 — "semantic-acoustic autoencoder may be a modified Oobleck."** Confirmed **not**
+   Oobleck: SAME is a *transformer-resampling* autoencoder with a `SoftNormBottleneck` (§1.2-1). The
+   AE stack is a **BUILD**, and a larger one than the parent doc anticipated.
+
+7. **§2.4 / §3.3 — "SA3 may add CLAP alongside T5."** The text conditioner is **T5Gemma**, not T5 and
+   not CLAP; CLAP is only an adversarial-post-training *loss* (§1.2-3). Duration is a separate learned
+   `NumberConditioner` global-cond (§1.2-4).
+
+8. **§3.5 — parameter counts.** The open-variant figures are **DiT-only 433M / 433M / 1.4B** (parent
+   doc's "459M" was an estimate), and the **autoencoder is a separate, large model** (SAME-S 266M,
+   SAME-L 1.7B) that dominates the medium footprint (§1.2-8). Memory planning must budget DiT + SAME +
+   T5Gemma, not the DiT figure alone.
+
+9. **Inpainting (§3.3 / Phase 3 / Risk 3).** Resolved as **input-channel concatenation** of a
+   latent-resolution mask + masked SAME latent, not a sampler-level mask and not a fifth `forward`
+   argument (§1.2-5).
+
 ---
 
 ## 4. What remains to clear Milestone 0
 
-1. Obtain web access (or local copies) and read arXiv:2605.17991 + the three model cards.
-2. Answer the ten open items in §1.2 — especially the autoencoder architecture (decides REUSE vs
-   BUILD for the whole AE stack), the conditioner identity (T5 vs CLAP/multimodal), the inpainting
-   API shape (interface impact), and the true total parameter counts (memory planning).
-3. Confirm the real HF repo names and that Small SFX / Small / Medium are publicly downloadable,
-   then inspect one checkpoint to settle format (`.safetensors` vs `.ckpt`) and the weight-key prefix.
+Objective 1 is **resolved at the architecture level** from `Stability-AI/stable-audio-3@bccf5b7b`
+(§0, §1.2, §2.2). What is **still genuinely unobtainable in this environment** is narrow and specific:
+
+1. **The exact per-variant `model_config.json` (GATED behind Hugging Face auth).** The trained scalars
+   live only in the HF repos, which return `HTTP 401` (gated) to anonymous `git` /
+   `huggingface_hub` / `curl`. Needed, per repo, the small text files only (skip the multi-GB weights,
+   e.g. `GIT_LFS_SKIP_SMUDGE=1`):
+   - `stabilityai/stable-audio-3-small-music` → `model_config.json` (+ `model.safetensors` *index*/header only)
+   - `stabilityai/stable-audio-3-small-sfx` → `model_config.json`
+   - `stabilityai/stable-audio-3-medium` → `model_config.json`
+   - `stabilityai/SAME-S` and `stabilityai/SAME-L` → `model_config.json`
+   - (optionally the matching `-base` repos for LoRA-training parity)
+
+   From each `model_config.json`, extract for the **DiT**: `embed_dim`, `depth`, `num_heads`,
+   `patch_size`, `cond_token_dim`, `global_cond_dim`, `io_channels` (note the inpaint concat channels),
+   `diffusion_objective`, and the attention flags (`differential`, `qk_norm` = `dyt`/`rms`/…) that
+   decide REUSE-vs-EXTEND for `DiffusionTransformer` (§2.2). For **SAME**: `latent_dim` (expect 256),
+   `strides` / `c_mults` / `transformer_depths`, `sliding_window` vs chunked, and `downsampling_ratio`.
+   A credentialed maintainer should commit these JSONs into the branch as local reference so a
+   follow-up session can finalize the per-variant configs without network access.
+
+2. **A concrete SA3 LoRA adapter** to validate the converter end-to-end (format is fully known from
+   source, §1.2-9; only a real sample file is external).
+
+3. **The current weight-license text** from the gated model cards (does not affect Common's code,
+   which ships no weights; §1.2-10).
+
+Everything else the parent doc gated on — autoencoder architecture, conditioner identity, the
+inpainting mechanism, the sampler match, checkpoint format and weight-key layout, the adapter family
+— **is answered above from source** and no longer blocks design work.
