@@ -59,7 +59,15 @@ import java.util.function.Supplier;
  * makes the same shape available from the Block side without changing
  * AudioScene. CellList is being deprecated long-term in favour of Block;
  * the helper is intentionally narrow and does not invent abstractions.</p>
+ *
+ * @deprecated This adapter is transitional. Once PDSL is the standard mixdown
+ * path, the adapter disappears and {@link MixdownManager} itself becomes the
+ * adapter — building its own argument map directly rather than routing through
+ * this boundary-layer glue. The class exists only to keep the legacy
+ * {@code MixdownManager} genome state and the PDSL {@code mixdown_master} layer
+ * decoupled during the cutover.
  */
+@Deprecated
 public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFeatures,
 		FirFilterTestFeatures {
 
