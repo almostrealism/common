@@ -48,9 +48,10 @@ import java.util.stream.Stream;
  *
  * <h2>Scanned files</h2>
  * <p>{@code .java}, {@code .proto}, and {@code .pdsl} sources under the project
- * root, excluding {@code /test/} paths and the policy framework's own files.
- * Documentation files ({@code .md}, {@code .txt}, {@code .html}) are not
- * scanned — they are the right place to reference planning documents.</p>
+ * root, including test sources — a pointer to a planning document goes stale in
+ * a test comment just as in production code. The policy framework's own files
+ * are excluded. Documentation files ({@code .md}, {@code .txt}, {@code .html})
+ * are not scanned — they are the right place to reference planning documents.</p>
  *
  * <h2>File-level allow-list</h2>
  * <p>A small set of files is exempt because the planning-document reference is
@@ -112,7 +113,19 @@ public class PlanningDocumentReferenceDetector extends PolicyViolationDetector {
 			// Runtime instruction string that tells agents the directory convention
 			// for new documents (planning docs go under docs/plans/, etc.). The
 			// reference describes WHERE planning docs live, not WHICH one to read.
-			"flowtree/runtime/src/main/java/io/flowtree/jobs/OrganizationalPlacementRule.java");
+			"flowtree/runtime/src/main/java/io/flowtree/jobs/OrganizationalPlacementRule.java",
+			// The detector's own unit test. Its fixtures embed deliberate
+			// "docs/plans/..." paths and all-caps .md filenames as inputs the
+			// detector is expected to flag; they are not reader pointers.
+			"tools/src/test/java/org/almostrealism/util/test/SourceReferenceDetectorTest.java",
+			// Exercises the workstream planningDocument field, whose value is a
+			// path to a planning document (the test counterpart of the already
+			// allow-listed FlowTreeApiEndpoint). The path is the data under test.
+			"flowtree/runtime/src/test/java/io/flowtree/slack/SlackApiWorkstreamTest.java",
+			// Asserts that the placement prompt documents the docs/plans/ directory
+			// convention (the test counterpart of the already allow-listed
+			// OrganizationalPlacementRule). The reference describes WHERE docs live.
+			"flowtree/runtime/src/test/java/io/flowtree/jobs/OrganizationalPlacementRulePromptTest.java");
 
 	/**
 	 * Creates a detector that will scan source files under the given directory.

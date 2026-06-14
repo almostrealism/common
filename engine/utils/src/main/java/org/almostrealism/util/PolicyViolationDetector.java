@@ -95,8 +95,15 @@ public abstract class PolicyViolationDetector implements ConsoleFeatures {
 	}
 
 	/**
-	 * Files or path patterns to exclude from scanning.
-	 * Includes the detector infrastructure itself and test files.
+	 * Files or path patterns to exclude from scanning. Includes the detector
+	 * infrastructure itself (so it does not flag its own pattern strings) and
+	 * build output. Test sources are <em>not</em> excluded here: the hygiene
+	 * detectors (version markers, planning-document and line-number references,
+	 * naming conventions) apply to test code just as to production code.
+	 * Detectors that must remain exempt on test sources — the GPU-memory-model
+	 * checks in {@link PackedCollectionDetector} and {@link ProducerPatternDetector},
+	 * where host-side reference data and boundary {@code .evaluate()} calls are
+	 * legitimate — skip them explicitly via {@link #isTestSource(Path)}.
 	 */
 	protected static final List<String> EXCLUDED_PATHS = List.of(
 			"PolicyViolationDetector.java",            // This parent class
@@ -108,9 +115,11 @@ public abstract class PolicyViolationDetector implements ConsoleFeatures {
 			"PlanningDocumentReferenceDetector.java",  // Sub-detector (scans for planning-doc refs)
 			"LineNumberReferenceDetector.java",        // Sub-detector (scans for line-number refs)
 			"CodePolicyEnforcementTest.java",          // The test that runs this
-			"/test/",                                  // Test files may have intentional examples
 			"/target/"                                 // Maven build output (mirrors src; not a source location)
 	);
+
+	/** Path fragment identifying a Maven test source tree ({@code src/test}). */
+	protected static final String TEST_SOURCE_FRAGMENT = "/src/test/";
 
 	/**
 	 * Method name patterns that indicate one-time initialization code.
@@ -224,6 +233,26 @@ public abstract class PolicyViolationDetector implements ConsoleFeatures {
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Returns {@code true} if the given path is within a Maven test source tree.
+	 *
+	 * <p>The GPU-memory-model detectors ({@link PackedCollectionDetector} and
+	 * {@link ProducerPatternDetector}) call this to remain exempt on test code.
+	 * The project's documented policy permits host-side computation in tests:
+	 * building reference data with Java loops to validate device output, and
+	 * calling {@code .evaluate()} / {@code .toDouble()} at the test-method
+	 * boundary (the top of the call stack). The hygiene detectors do not use
+	 * this exemption — version markers, planning-document references,
+	 * line-number references, and naming-convention violations are equally
+	 * undesirable in test code.
+	 *
+	 * @param path  the file path to test
+	 * @return      whether the path is under a {@code src/test} directory
+	 */
+	protected boolean isTestSource(Path path) {
+		return path.toString().replace('\\', '/').contains(TEST_SOURCE_FRAGMENT);
 	}
 
 	/**

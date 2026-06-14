@@ -36,8 +36,6 @@ import org.junit.Test;
  * <p>These tests isolate individual components to identify which parts of the
  * decoder architecture are slow to compile. Each test measures build time,
  * compile time, and forward pass time.</p>
- *
- * <p>See AUTOENCODER_PLAN.md for the full test plan and probability estimates.</p>
  */
 public class OobleckComponentTests extends TestSuiteBase {
 
