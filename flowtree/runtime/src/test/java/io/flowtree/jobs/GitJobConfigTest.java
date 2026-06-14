@@ -129,7 +129,7 @@ public class GitJobConfigTest extends TestSuiteBase {
 	 * other project-shared content from agent commits. The blanket
 	 * pattern must be replaced with narrow patterns targeting only
 	 * machine-local paths (per-project state, local settings, lock
-	 * files). See {@code docs/plans/OPENCODE_HOOKS.md} for context.</p>
+	 * files).</p>
 	 */
 	@Test(timeout = 30000)
 	public void defaultExclusionsDoNotContainBlanketClaudePattern() {

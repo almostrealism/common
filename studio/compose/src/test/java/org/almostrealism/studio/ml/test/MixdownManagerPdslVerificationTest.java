@@ -66,9 +66,7 @@ import java.util.function.IntToDoubleFunction;
  * written for both paths to {@code results/pdsl-audio-dsp/} so the comparison
  * is auditable rather than just numeric.</p>
  *
- * <p>Acoustic differences between the two paths are documented in
- * {@code docs/plans/PDSL_AUDIO_DSP.md} Section 8 and Section 12. The most
- * load-bearing structural mismatches are:
+ * <p>The most load-bearing structural mismatches between the two paths are:
  * <ul>
  *   <li>Java's per-channel HP cutoff comes from a per-channel automation gene;
  *       PDSL applies one shared cutoff producer to every channel — the adapter
@@ -282,8 +280,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		// sub-octave (≤ ~6×) energy gap that cannot be closed without changing
 		// either path. This bound is tight enough to catch a regression that
 		// re-removes the master-bus stage (which produced ratios ~24×) while
-		// honest about the residual structural drift; see PDSL_AUDIO_DSP.md
-		// Section 8 ("What Is Complete" → real-audio verification).
+		// honest about the residual structural drift between the IIR and FIR paths.
 		Assert.assertTrue(
 				"PDSL/Java energy ratio out of range — expected within 1/6× to 6× "
 						+ "of Java energy after master shaping (ratio=" + ratio + ")",

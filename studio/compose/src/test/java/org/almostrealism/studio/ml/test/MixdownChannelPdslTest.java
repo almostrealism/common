@@ -45,8 +45,8 @@ import java.util.Map;
  *
  * <p>The PDSL layers use FIR approximations of the IIR biquad filters used by
  * {@link org.almostrealism.studio.arrange.MixdownManager}. Audible differences may
- * occur near the cutoff frequency. This is documented as an open issue in
- * {@code docs/plans/PDSL_AUDIO_DSP.md}.</p>
+ * occur near the cutoff frequency; this is a known open issue with the FIR
+ * approximation.</p>
  *
  * <h2>What these tests verify</h2>
  * <ul>

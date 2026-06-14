@@ -39,8 +39,7 @@ import java.util.stream.Stream;
  *
  * <p>This prevented {@link io.almostrealism.compute.ExpansionWidthTargetOptimization} from
  * ever seeing producers below a reshape, including the {@code GreaterThanCollection} nodes
- * that cause the 44 MB kernel expression blow-up described in
- * {@code docs/plans/EXPANSION_WIDTH_OPTIMIZATION.md}.</p>
+ * that cause the 44 MB kernel expression blow-up.</p>
  *
  * <p>The two tests progress from baseline to regression guard:</p>
  * <ol>
