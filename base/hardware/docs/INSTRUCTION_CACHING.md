@@ -519,7 +519,6 @@ When the `FrequencyCache` exceeds capacity 500:
 | `AR_INSTRUCTION_SET_REUSE` | `true` | Enable/disable signature-based instruction caching |
 | `AR_REDUNDANT_COMPILATION` | `true` | Allow multiple evaluables with same signature to compile independently |
 | `AR_HARDWARE_VERBOSE_COMPILE` | `false` | Log compilation events |
-| `AR_HARDWARE_REUSE_LOGGING` | `false` | Log every kernel reuse event: the colliding signature, per-argument position coverage and substitutions (with backing memory identity), the reusing computation's own inputs, and a position-keyed dump of both process trees |
 
 **In code:**
 

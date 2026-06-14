@@ -124,9 +124,9 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 			PdslChannelBank bank = (PdslChannelBank) args.get(0);
 			CollectionProducer coefficients =
 					ctx.toProducer(bank.getSource(), null, "fir() coefficients");
-			int channels = bank.getChannels();
+			// channels are inferred from the [channels, taps] coefficient bank shape
 			return shape -> new ForwardOnlyBlock(layer("fir", shape, shape,
-					input -> MultiOrderFilter.createMultiChannel(input, coefficients, channels)));
+					input -> MultiOrderFilter.create(input, coefficients)));
 		}
 
 		CollectionProducer coefficients = ctx.toProducer(args.get(0), null, "fir() coefficients");

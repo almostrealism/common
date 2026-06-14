@@ -117,13 +117,11 @@ context's runner, which nothing in the second pipeline ever commits: the kernel 
 executed, no error surfaced, and the second model produced exactly-zero output.
 (Argument substitution via `ProcessArgumentMap` was verified correct throughout — both
 kernel arguments rebind to the right buffers; only the dispatch route was wrong.)
-The fix scopes the cache key to signature + compute-context identity, so reuse still
-applies within a context (the common case) but never crosses contexts. The former
-reproducer (`MixdownManagerPdslTest` square then rectangular efx bus in one JVM with
-vectorized for-each) now passes with reuse enabled, and `AR_PDSL_VECTOR_FOREACH` is
-enabled by default. Reuse diagnostics remain available via
-`AR_HARDWARE_REUSE_LOGGING=enabled` (substitution, argument coverage, and process-tree
-dumps at each reuse event).
+The fix makes `MetalDataContext` share a single `MetalComputeContext` across threads, so a
+cached kernel always encodes into — and is committed by — the one command runner, and the
+`DefaultComputer` instruction cache stays keyed by signature alone. The former reproducer
+(`MixdownManagerPdslTest` square then rectangular efx bus in one JVM with vectorized
+for-each) now passes with reuse enabled, and `AR_PDSL_VECTOR_FOREACH` is enabled by default.
 
 This gap gates re-enabling `BatchedRealSceneRenderTest` and any sustained full-scene
 render. Full analysis and candidate fixes:

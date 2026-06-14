@@ -401,27 +401,11 @@ public class MultiOrderFilter extends CollectionProducerComputationBase {
 			series = CollectionFeatures.getInstance().traverse(shape.getDimensions() - 1, series);
 		}
 
-		return new MultiOrderFilter(shape.traverseEach(), series, coefficients);
-	}
-
-	/**
-	 * Factory method for a multi-channel coefficient bank: the series is treated as
-	 * {@code channels} contiguous rows, each convolved independently (no bleed across
-	 * row boundaries) with its own row of the {@code [channels, taps]} coefficient
-	 * bank, in a single kernel.
-	 *
-	 * @param series Producer providing {@code channels} rows of signal
-	 * @param coefficients Producer providing a {@code [channels, taps]} coefficient bank
-	 * @param channels Number of independent rows in the series
-	 * @return A new MultiOrderFilter instance ready for evaluation
-	 */
-	public static MultiOrderFilter createMultiChannel(Producer<PackedCollection> series,
-													  Producer<PackedCollection> coefficients,
-													  int channels) {
-		TraversalPolicy shape = CollectionFeatures.getInstance().shape(series);
-		if (shape.getTraversalAxis() != shape.getDimensions() - 1) {
-			series = CollectionFeatures.getInstance().traverse(shape.getDimensions() - 1, series);
-		}
+		// The channel count is the coefficient bank's leading dimension: a flat [taps]
+		// coefficient vector is single-channel, while a [channels, taps] bank convolves
+		// each of that many contiguous rows of the series independently in one kernel.
+		TraversalPolicy coeffShape = CollectionFeatures.getInstance().shape(coefficients);
+		int channels = coeffShape.getDimensions() <= 1 ? 1 : coeffShape.length(0);
 
 		return new MultiOrderFilter(shape.traverseEach(), series, coefficients, channels);
 	}

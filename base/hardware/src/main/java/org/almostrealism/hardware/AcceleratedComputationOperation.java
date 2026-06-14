@@ -23,7 +23,6 @@ import io.almostrealism.code.DefaultNameProvider;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.NamedFunction;
-import io.almostrealism.code.ComputableBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.ParallelProcess;
@@ -378,12 +377,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 			if (ScopeSettings.enableInstructionSetReuse && signature != null) {
 				DefaultComputer computer = Hardware.getLocalHardware().getComputer();
 
-				if (ProcessArgumentMap.enableSubstitutionLogging) {
-					log("signatureLookup function=" + getFunctionName()
-							+ " computation=" + getMetadata().getDisplayName()
-							+ " signature=" + signature);
-					logOwnInputs();
-				}
 				instructions = computer.getScopeInstructionsManager(
 						signature, getComputation(), getComputeContext(), this::getScope);
 				((ScopeInstructionsManager) instructions)
@@ -521,23 +514,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 				ProcessArgumentMap map = new ProcessArgumentMap(manager.getArgumentMap());
 				map.putSubstitutions((Process<?,?>) getComputation());
 				setEvaluator(map);
-
-				if (ProcessArgumentMap.enableSubstitutionLogging) {
-					log("instructionReuse function=" + getFunctionName()
-							+ " computation=" + getMetadata().getDisplayName()
-							+ " outputArgIndex=" + manager.getOutputArgumentIndex(getExecutionKey())
-							+ " opContext=" + getComputeContext()
-							+ " managerContext=" + manager.getComputeContext()
-							+ " signature=" + getMetadata().getSignature());
-					map.logCoverage();
-					logOwnInputs();
-
-					if (manager.getProcess() != null) {
-						map.logTree("original", manager.getProcess());
-					}
-
-					map.logTree("reuse", (Process<?, ?>) getComputation());
-				}
 			} else {
 				warn("Unable to reuse instructions for " + getFunctionName() +
 						" because " + getComputation() + " is not a Process");
@@ -546,23 +522,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		}
 
 		return operator;
-	}
-
-	/**
-	 * Logs the bindings of this operation's own {@link Computation} inputs
-	 * (index 0 is the destination for assignment-style operations), allowing
-	 * substituted argument bindings to be compared against the operation's
-	 * true producers when diagnosing instruction reuse.
-	 */
-	private void logOwnInputs() {
-		if (getComputation() instanceof ComputableBase) {
-			List<? extends Supplier<?>> inputs =
-					((ComputableBase<?, ?>) getComputation()).getInputs();
-			for (int i = 0; i < inputs.size(); i++) {
-				log("ownInput index=" + i + " producer="
-						+ ProcessArgumentMap.describe(inputs.get(i)));
-			}
-		}
 	}
 
 	/**
