@@ -44,10 +44,8 @@ import static org.junit.Assert.fail;
 /**
  * Unit tests for {@link CompletionListenerFanout}, the runtime side
  * of the completion-listener cascade. These tests cover the unit
- * cases listed in
- * <em>docs/plans/COMPLETION_LISTENERS.md</em> §9.1
- * (CompletionListenerFanoutTest) and the most critical safety
- * ceilings from §9.3.
+ * cases for the fanout and the most critical safety ceilings of
+ * the cascade.
  *
  * <p>The flood / depth / kill-switch integration tests live in
  * {@code CompletionListenerSafetyIntegrationTest}, which spins up a
@@ -414,8 +412,7 @@ public class CompletionListenerFanoutTest extends TestSuiteBase {
      * and the reconciliation-invariant paragraph. The reconciliation
      * text is the load-bearing requirement: a handler that trusts
      * the prompt's specific event without re-reading its worker
-     * workstreams would be subtly wrong (see
-     * <em>docs/plans/COMPLETION_LISTENERS.md</em> §2.1.6).
+     * workstreams would be subtly wrong.
      */
     @Test(timeout = 10000)
     public void wakeUpPromptContainsChainIdAndDepth() {
