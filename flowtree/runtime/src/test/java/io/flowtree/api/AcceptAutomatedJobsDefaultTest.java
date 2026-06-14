@@ -185,6 +185,7 @@ public class AcceptAutomatedJobsDefaultTest extends TestSuiteBase {
                 null,
                 wsId -> "http://test/api/workstreams/" + wsId,
                 null, null, null, id -> null, null,
+                wsId -> notifier.getWorkstream(wsId) != null ? notifier : null,
                 clock::get);
         endpoint.setServer(server);
         endpoint.setCompletionListenerFanout(fanout);
@@ -241,6 +242,7 @@ public class AcceptAutomatedJobsDefaultTest extends TestSuiteBase {
                 null,
                 wsId -> "http://test/api/workstreams/" + wsId,
                 null, null, null, id -> null, null,
+                wsId -> notifier.getWorkstream(wsId) != null ? notifier : null,
                 clock::get);
         endpoint.setServer(server);
         endpoint.setCompletionListenerFanout(fanout);
