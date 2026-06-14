@@ -204,6 +204,10 @@ public class ProducerPatternDetector extends PolicyViolationDetector {
 	 */
 	@Override
 	public ProducerPatternDetector scanFile(Path file) {
+		// Test sources are exempt: .evaluate() / .toDouble() at the test-method
+		// boundary (top of the call stack) is legitimate per the project policy.
+		if (isTestSource(file)) return this;
+
 		try {
 			List<String> lines = Files.readAllLines(file);
 			checkProducerPatternViolations(file, lines);

@@ -115,6 +115,10 @@ public class PackedCollectionDetector extends PolicyViolationDetector {
 	 */
 	@Override
 	public PackedCollectionDetector scanFile(Path file) {
+		// Test sources are exempt: building host-side reference data to validate
+		// device output is a legitimate, expected pattern in tests.
+		if (isTestSource(file)) return this;
+
 		try {
 			String content = Files.readString(file);
 
