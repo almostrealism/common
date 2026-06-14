@@ -2679,12 +2679,11 @@ def workstream_update_config(
         dispatch_capable: When ``True``, agents running on this workstream
             are granted access to the dispatch / orchestration MCP tools
             (``workstream_register`` and ``workstream_update_config``).
-            The flag is forwarded to the controller only when the caller
-            has opted in by passing the field — passing ``False`` is
-            treated as an explicit revoke; omitting the field from the
-            update body is a presence signal meaning "no change" (see
-            ``completion_listeners`` for the same pattern). Defaults to
-            ``False``.
+            The flag is forwarded to the controller only when explicitly
+            passed — passing ``False`` is an explicit revoke; omitting
+            the parameter entirely leaves the existing controller value
+            unchanged (presence-signal semantics, same pattern as
+            ``completion_listeners``). Defaults to ``None`` (no change).
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
             ``default_phase_config`` or ``phase_configs`` to set models.

@@ -20,7 +20,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.flowtree.workstream.Workstream;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
@@ -144,7 +143,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * <p>Some of these tools (currently {@code workstream_register} and
      * {@code workstream_update_config}) are deliberately opted in to on
      * a per-workstream basis through
-     * {@link Workstream#isDispatchCapable()}. The set is the BASE
+     * {@link io.flowtree.workstream.Workstream#isDispatchCapable()}. The set is the BASE
      * default; the per-workstream override is applied at CSV-assembly
      * time in {@link #buildAllowedTools(String)} when the flag is set.
      * The two paths consult different sets: the exclusion set answers
@@ -189,7 +188,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
     /**
      * ar-manager tool names that are conditionally re-added to the agent
      * allowlist when a workstream has
-     * {@link Workstream#isDispatchCapable() dispatchCapable} set to
+     * {@link io.flowtree.workstream.Workstream#isDispatchCapable() dispatchCapable} set to
      * {@code true}. The names are a subset of
      * {@link #EXCLUDED_AR_MANAGER_TOOLS} — the base default excludes
      * them for every workstream; an orchestrator workstream that opts
@@ -291,7 +290,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * {@link #DISPATCH_AR_MANAGER_TOOLS} entries (currently
      * {@code workstream_register} and {@code workstream_update_config})
      * to the agent's allowlist. Default {@code false}, matching the
-     * {@link Workstream#isDispatchCapable()} default. The flag is set
+     * {@link io.flowtree.workstream.Workstream#isDispatchCapable()} default. The flag is set
      * by the call sites that build the agent allowlist (see
      * {@link io.flowtree.jobs.CodingAgentJob#configureMcpBuilder()}) from
      * the workstream the job is running on.
@@ -362,7 +361,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * When {@code false} (the default), the CSV is unchanged from the
      * base allowlist and the dispatch tools remain excluded.
      *
-     * <p>Set from {@link Workstream#isDispatchCapable()} at the call
+     * <p>Set from {@link io.flowtree.workstream.Workstream#isDispatchCapable()} at the call
      * sites that build the allowlist for an agent job. A
      * {@code false} value does NOT shorten the CSV — the base
      * allowlist is authoritative when dispatch is off; this flag is

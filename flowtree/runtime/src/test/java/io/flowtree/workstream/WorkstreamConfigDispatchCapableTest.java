@@ -100,7 +100,7 @@ public class WorkstreamConfigDispatchCapableTest extends TestSuiteBase {
 		config.saveToYaml(tempFile);
 		String written = new String(Files.readAllBytes(tempFile.toPath()));
 		assertFalse("Saved YAML must NOT contain 'dispatchCapable:' when"
-			+ " the flag is false (NON_NULL serialisation): " + written,
+			+ " the flag is false (NON_DEFAULT serialisation): " + written,
 			written.contains("dispatchCapable:"));
 	}
 
