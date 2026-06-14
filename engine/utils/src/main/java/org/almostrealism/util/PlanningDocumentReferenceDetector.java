@@ -48,9 +48,12 @@ import java.util.stream.Stream;
  *
  * <h2>Scanned files</h2>
  * <p>{@code .java}, {@code .proto}, and {@code .pdsl} sources under the project
- * root, excluding {@code /test/} paths and the policy framework's own files.
- * Documentation files ({@code .md}, {@code .txt}, {@code .html}) are not
- * scanned — they are the right place to reference planning documents.</p>
+ * root, excluding the policy framework's own files. {@code /test/} paths are also
+ * excluded for now, but that is a <strong>temporary</strong> exemption pending
+ * remediation — test files are <strong>not</strong> exempt from this policy by design
+ * (see {@code PolicyViolationDetector.EXCLUDED_PATHS}). Documentation files
+ * ({@code .md}, {@code .txt}, {@code .html}) are not scanned — they are the right
+ * place to reference planning documents.</p>
  *
  * <h2>File-level allow-list</h2>
  * <p>A small set of files is exempt because the planning-document reference is

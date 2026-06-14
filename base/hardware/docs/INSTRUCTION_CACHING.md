@@ -53,33 +53,28 @@ Two operations are "structurally identical" if they perform the same computation
 
 ## Architecture
 
-### Cache Hierarchy
+### Cache Structure
 
-`DefaultComputer` maintains three levels of caching:
+`DefaultComputer` maintains a single instruction cache:
 
 ```
 +-----------------------------------------------------------+
 |                    DefaultComputer                         |
 |-----------------------------------------------------------|
 |                                                           |
-|  operationsCache (Map)                                    |
-|  +-- Instruction containers (unlimited)                   |
-|      Used by HardwareFeatures.instruct() pattern          |
-|                                                           |
-|  processTreeCache (FrequencyCache, 500 entries, 0.4 bias) |
-|  +-- Process tree instruction managers                    |
-|      Used for ProcessTree-level caching                   |
-|                                                           |
 |  instructionsCache (FrequencyCache, 500 entries, 0.4 bias)|
 |  +-- ScopeInstructionsManager instances                   |
-|  +-- Keyed by computation signature strings               |
+|  +-- Keyed by computation signature                       |
 |  +-- Auto-destroys evicted managers                       |
-|      THIS IS THE PRIMARY INSTRUCTION CACHE                |
 |                                                           |
 +-----------------------------------------------------------+
 ```
 
-The `instructionsCache` is the primary cache for compiled kernels. It maps signature strings to `ScopeInstructionsManager` instances, each of which lazily compiles and caches an `InstructionSet`.
+The `instructionsCache` maps signatures to `ScopeInstructionsManager` instances, each of which lazily compiles and caches an `InstructionSet`.
+
+**The cache is keyed by signature alone and is shared across the whole `DataContext`,** so structurally identical computations reuse one compiled kernel regardless of which thread builds them. This is sound because a `DataContext` exposes a single `ComputeContext` per backend (and therefore a single command runner): a reused kernel always encodes into — and is committed by — the same runner.
+
+> A compiled kernel is bound to the `ComputeContext` that compiled it: its operator dispatches through that context's command runner. This only matters when more than one context exists for a backend. Metal previously handed out a `MetalComputeContext` per thread (proliferated by `Evaluable.async`'s thread-per-dispatch issuance), so a kernel cached at the `DataContext` level and reused on another thread encoded into a command buffer the executing thread never committed — the kernel silently never ran (exactly-zero output). `MetalDataContext` now shares one context across threads (`OpenCL` remains per-thread; `Native` was already shared), which removes the only multi-context-per-backend case and lets the cache key stay signature-only.
 
 ### Class Structure
 
@@ -481,13 +476,15 @@ At execution time, when the kernel needs argument N at tree position P:
 ### Reuse Path
 
 ```
-[Second operation with same signature "abc123"]
+[Second operation with same signature "abc123" in the SAME ComputeContext]
     |
     +-- getInstructionSetManager()
     |       +-- signature = "abc123"
     |       +-- DefaultComputer.getScopeInstructionsManager("abc123", ...)
     |       |       +-- instructionsCache.computeIfAbsent("abc123", ...)
     |       |       +-- HIT: Return existing ScopeInstructionsManager
+    |       |           (an operation from a DIFFERENT context misses here
+    |       |            and compiles its own kernel)
     |       +-- Return manager (same instance)
     |
     +-- load()
@@ -522,6 +519,7 @@ When the `FrequencyCache` exceeds capacity 500:
 | `AR_INSTRUCTION_SET_REUSE` | `true` | Enable/disable signature-based instruction caching |
 | `AR_REDUNDANT_COMPILATION` | `true` | Allow multiple evaluables with same signature to compile independently |
 | `AR_HARDWARE_VERBOSE_COMPILE` | `false` | Log compilation events |
+| `AR_HARDWARE_REUSE_LOGGING` | `false` | Log every kernel reuse event: the colliding signature, per-argument position coverage and substitutions (with backing memory identity), the reusing computation's own inputs, and a position-keyed dump of both process trees |
 
 **In code:**
 

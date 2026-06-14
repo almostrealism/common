@@ -1,9 +1,9 @@
 # Known Issues & Platform Constraints
 
 > Live constraints relevant to the audio scene redesign / real-time / PDSL DSP work,
-> as of 2026-06-03 (branch `feature/batched-audio-mtl`). These are referenced from
-> [STATE_OF_PLAY.md](STATE_OF_PLAY.md) and the other docs in this folder. Verify
-> against current code before acting — these reflect what was true when written.
+> as of 2026-06-11 (`feature/audio-scene-pdsl`). These are referenced from
+> [STATE_OF_PLAY.md](STATE_OF_PLAY.md) and the other docs in this folder.
+> Verify against current code before acting — these reflect what was true when written.
 
 ## 1. Hybrid routing is mandatory — never force `AR_HARDWARE_DRIVER`
 
@@ -69,3 +69,85 @@ wrong direction and must not be the cutover mechanism. If a compatibility adapte
 unavoidable, `Block` stays on the outside (adapt `Cell` → `Block`, never the reverse) —
 a consumer that accepts `Block` can hold any `Cell` implementation, so this is the
 universal direction. See `PDSL_AUDIO_DSP.md` §14.
+
+**In practice the chosen cutover does not adapt at the cell level at all.** The
+integration contract for real-time rendering is `TemporalCellular`
+(`setup()`/`tick()`/`reset()`), **not** `CellList` — every consumer outside `AudioScene`
+(the health computation, `BufferedOutputScheduler`, `RealtimeContinuousRenderer`) drives
+that contract and is blind to whatever backs it. So the PDSL path is a **Block-forward
+`TemporalCellular` runner**: its `tick()` keeps the Java pattern-prepare phase
+(`PatternAudioBuffer.prepareBatch`), calls `compiledModel.forward(buffer)` once per buffer
+for the DSP, and writes the result straight to the output line. `wrapBlockAsCellList` is
+**not** used. This is why the Block never needs to masquerade as a `CellList`.
+
+**Implemented.** The runner exists as `AudioSceneRealtimeRunner` (`studio/compose`),
+strategies selected by `MixdownManager.enablePdslMixdown`; parity validated (see
+[EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md)). Two runtime constraints remain live
+for callers:
+- **`channels ≥ 2`, zero-based contiguous.** `MixdownManagerPdslAdapter.buildArgsMap`
+  concatenates per-channel producers (`concat` rejects a single input) and reads genes
+  positionally, so `AudioSceneRealtimeRunner.supportsPdsl` falls back to the CellList
+  path for any other selection (e.g. `AudioScene.renderChannel`'s single channel).
+- **Stereo write gating.** `WaveOutput.write` gates on the *minimum* frame count across
+  channels; the mono master output is streamed to **both** stereo writers (dual-mono)
+  so the file is actually written.
+
+## 6. Compile-reuse / `GeneratedOperation` pool exhaustion (cross-cutting blocker)
+
+Structurally-identical computations do **not** reuse a compiled native kernel: building
+the *same* `AudioScene` twice with the same genome produces ~44 then ~43 fresh native
+programs (essentially no reuse). The cause is that `CollectionProviderProducer.signature()`
+returns `null` for argument-aggregation-target buffers (and one null leaf nulls the whole
+graph's signature), which disables instruction-set caching; every rebuild then consumes a
+slot from a fixed, monotonically-consumed `GeneratedOperation` pool. A full-scene render
+climbs past the pool size and **cascades into failures of unrelated `AudioScene` tests**.
+
+The pool was expanded (currently up to `GeneratedOperation5999`) to buy headroom, but that
+is a **stopgap, not a fix** — the underlying recompilation churn remains.
+
+The reuse path had the inverse defect as well — **root-caused and fixed 2026-06-12**.
+When two models contain structurally-identical computations, both hash to the same
+signature (leaf signatures are offset/length/shape-based, not buffer-identity-based —
+intentional). The instruction-set cache (`DefaultComputer.getScopeInstructionsManager`)
+was keyed by signature alone, but a compiled kernel is permanently bound to the
+`ComputeContext` it compiled under — its `MetalOperator` encodes dispatches into that
+context's `MetalCommandRunner`. A second model running under a *different* context that
+adopted the kernel via the bare signature match encoded its commands into the first
+context's runner, which nothing in the second pipeline ever commits: the kernel never
+executed, no error surfaced, and the second model produced exactly-zero output.
+(Argument substitution via `ProcessArgumentMap` was verified correct throughout — both
+kernel arguments rebind to the right buffers; only the dispatch route was wrong.)
+The fix scopes the cache key to signature + compute-context identity, so reuse still
+applies within a context (the common case) but never crosses contexts. The former
+reproducer (`MixdownManagerPdslTest` square then rectangular efx bus in one JVM with
+vectorized for-each) now passes with reuse enabled, and `AR_PDSL_VECTOR_FOREACH` is
+enabled by default. Reuse diagnostics remain available via
+`AR_HARDWARE_REUSE_LOGGING=enabled` (substitution, argument coverage, and process-tree
+dumps at each reuse event).
+
+This gap gates re-enabling `BatchedRealSceneRenderTest` and any sustained full-scene
+render. Full analysis and candidate fixes:
+[../SIGNATURE_AGGREGATION_GAP.md](../SIGNATURE_AGGREGATION_GAP.md).
+
+## 7. a2 batched dispatch does not fire for the full real-scene pattern path
+
+The batched-pattern *mechanism* is correctness-validated on the **synthetic** sentinel
+path (`studio/music`: `BatchedDispatchSentinelTest`, `BatchedVsPerNoteRmsTest`,
+`BatchedRealtimeTickTest` — all passing, batched matches per-note within <1% RMS, 3000
+sustained dispatches). But on the **full curated-library scene**, batched dispatch does not
+reliably fire for the real pattern path — some methods render `peak=0.0` (silence). This is
+why `studio/compose/.../pattern/test/BatchedRealSceneRenderTest.java` is `@Ignore`d (it also
+trips issue §6). The a1→a2 seam is "classify-and-dispatch" over a closed set of note shapes
+(see `NOTE_GRAPH_SHAPES.md`); an unhandled real shape falls through to silence rather than
+erroring, so the fix is to ensure every production note shape is classified and dispatched.
+
+## 8. Real-scene tests depend on the absolute-path curated library
+
+The real-scene tests and any full-render experiment read `/Users/Shared/Music/Samples`
+and `/Users/Shared/Music/pattern-factory.json` (overridable via `AR_RINGS_LIBRARY` /
+`AR_RINGS_PATTERNS`). Both are present and valid on the M1; tests skip gracefully where
+they are absent (CI). If a future render comes out silent / "no working genome,"
+re-check that the pattern factory is still a valid non-empty JSON (it was briefly `[]`
+once). Reproducibility additionally depends on the persisted
+`results/pdsl-cutover/scene-settings.json` (`AR_RINGS_SETTINGS`): deleting it makes the
+next run draw a fresh random arrangement.

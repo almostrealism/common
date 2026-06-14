@@ -35,6 +35,7 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.graph.ReceptorCell;
 import org.almostrealism.graph.TimeCell;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.heredity.Chromosome;
 import org.almostrealism.heredity.Gene;
 import org.almostrealism.heredity.ProjectedChromosome;
@@ -149,6 +150,15 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 
 	/** When {@code true}, wet (effects-processed) sources are mixed into the output. */
 	public static boolean enableWetSources = true;
+
+	/**
+	 * When {@code true}, the mixdown signal path is produced by the PDSL
+	 * {@code mixdown_master} layer (via {@link MixdownManagerPdslAdapter}) instead of
+	 * the hand-wired Java {@link #createCells} path. Off by default; this is the A/B
+	 * cutover flag, selectable at scene-build time and via {@code AR_PDSL_MIXDOWN}.
+	 */
+	public static boolean enablePdslMixdown =
+			SystemUtils.isEnabled("AR_PDSL_MIXDOWN").orElse(false);
 
 	/** Global reverb wet-level multiplier applied during reverb processing. */
 	protected static double reverbLevel = 2.0;
@@ -369,6 +379,30 @@ public class MixdownManager implements Setup, Destroyable, CellFeatures, Optimiz
 	public List<Integer> getReverbChannels() {
 		return reverbChannels;
 	}
+
+	/**
+	 * Returns the per-channel reverb genes. Exposed for {@link MixdownManagerPdslAdapter} to
+	 * source the PDSL reverb send level.
+	 *
+	 * @return the reverb chromosome
+	 */
+	Chromosome<PackedCollection> getReverb() { return reverb; }
+
+	/**
+	 * Returns the per-channel reverb automation genes. Exposed for
+	 * {@link MixdownManagerPdslAdapter} to drive the time-varying reverb send.
+	 *
+	 * @return the reverb automation chromosome
+	 */
+	Chromosome<PackedCollection> getReverbAutomation() { return reverbAutomation; }
+
+	/**
+	 * Returns the reverb-level adjustment scale collection. Exposed for
+	 * {@link MixdownManagerPdslAdapter}.
+	 *
+	 * @return the reverb adjustment scale
+	 */
+	PackedCollection getReverbAdjustmentScale() { return reverbAdjustmentScale; }
 
 	/**
 	 * Sets the list of channel indices to which reverb is applied.

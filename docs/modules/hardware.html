@@ -540,7 +540,7 @@ Runnable compiled = op.get();</pre>
 
                 <h3>Best Practices</h3>
                 <ol>
-                    <li><strong>Cache kernels with instruct():</strong> First call compiles, subsequent calls reuse</li>
+                    <li><strong>Kernel caching is automatic:</strong> structurally-identical operations in the same compute context share one compiled kernel (signature-based instruction caching)</li>
                     <li><strong>Use <a href="../apidocs/org/almostrealism/hardware/PassThroughProducer.html">PassThroughProducer</a> for dynamic inputs:</strong> Compile once, evaluate many times</li>
                     <li><strong>Minimize CPU↔GPU transfers:</strong> Compose operations on GPU via <a href="../apidocs/org/almostrealism/hardware/OperationList.html">OperationList</a></li>
                     <li><strong>Batch operations:</strong> Process arrays instead of scalars</li>
@@ -647,14 +647,12 @@ gpuOps.setComputeRequirements(List.of(<a href="../apidocs/org/almostrealism/hard
 gpuOps.add(matrixMultiply);
 gpuOps.get().run();  // GPU only</code></pre>
 
-                <h3>Instruction Caching Pattern</h3>
+                <h3>Instruction Caching</h3>
                 <pre><code class="language-java">public class CachedOperations implements <a href="../apidocs/org/almostrealism/hardware/HardwareFeatures.html">HardwareFeatures</a> {
     public <a href="../apidocs/io/almostrealism/relation/Producer.html">Producer</a><?> scale(<a href="../apidocs/io/almostrealism/relation/Producer.html">Producer</a><?> input, double factor) {
-        // Cached by signature: "scale_2x" + hash(input shape)
-        return instruct("scale",
-            args -> multiply(args[0], c(factor)),
-            input
-        );
+        // Reuse is automatic: operations with the same structural
+        // signature in the same compute context share one kernel
+        return multiply(input, c(factor));
     }
 
     public void demo() {
@@ -809,7 +807,7 @@ encoder.dispatchThreadgroups(
                 <div class="warning">
                     <strong>Issue:</strong> Slow first execution<br>
                     <strong>Expected:</strong> First call takes 100-1000ms (kernel compilation), subsequent calls take 1-10ms<br>
-                    <strong>Solution:</strong> Use instruct() pattern or <a href="../apidocs/org/almostrealism/hardware/PassThroughProducer.html">PassThroughProducer</a> to amortize compilation cost
+                    <strong>Solution:</strong> Reuse compiled Evaluables, or use <a href="../apidocs/org/almostrealism/hardware/PassThroughProducer.html">PassThroughProducer</a>; signature-based instruction caching amortizes compilation across structurally-identical operations automatically
                 </div>
 
                 <div class="warning">

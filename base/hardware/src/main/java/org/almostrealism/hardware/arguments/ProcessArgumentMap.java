@@ -20,6 +20,8 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.SystemUtils;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.uml.Multiple;
@@ -182,6 +184,16 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 	/** If true, fall back to the original argument producer when no substitution is registered for a position. */
 	public static boolean enableSubstitutionFallback = false;
 
+	/**
+	 * If true, every argument resolution during kernel reuse is logged: the argument, its
+	 * recorded tree position, and the producer substituted for it (or the fact that no
+	 * position was recorded and the original producer is used). Controlled by
+	 * {@code AR_HARDWARE_REUSE_LOGGING}; for diagnosing reused kernels that silently bind
+	 * another operation's data.
+	 */
+	public static boolean enableSubstitutionLogging =
+			SystemUtils.isEnabled("AR_HARDWARE_REUSE_LOGGING").orElse(false);
+
 	/** Ordered list of kernel arguments, one per slot in the argument array. */
 	private List<ArrayVariable<?>> arguments;
 	/** Maps process tree position keys to their corresponding argument variables. */
@@ -312,6 +324,93 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 	}
 
 	/**
+	 * Logs every kernel argument with its position coverage: whether a tree position was
+	 * recorded for it (making it substitutable on reuse) and what its original producer
+	 * is. Arguments without positions keep their original (first operation's) binding
+	 * when the kernel is reused, which is exactly the state this diagnostic exposes.
+	 */
+	public void logCoverage() {
+		for (ArrayVariable<?> argument : arguments) {
+			if (argument == null) continue;
+			ProcessTreePositionKey position = positionsForArguments.get(argument);
+			Console.root().features(ProcessArgumentMap.class)
+					.log("argumentCoverage argument=" + argument.getName()
+							+ " position=" + (position == null ? "NONE" : position)
+							+ " producer=" + describe(argument.getProducer()));
+		}
+	}
+
+	/**
+	 * Logs the entire process tree rooted at {@code process}, one line per node, with
+	 * each node's tree position, the kernel argument recorded at that position (if any),
+	 * and a description of the node. Comparing this dump for the originally-compiled
+	 * process against the reusing process shows whether the two trees agree about what
+	 * lives at each argument-mapped position.
+	 *
+	 * @param label tag distinguishing which tree is being dumped
+	 * @param process root of the tree
+	 */
+	public void logTree(String label, Process<?, ?> process) {
+		logTree(label, new ProcessTreePositionKey(), process);
+	}
+
+	/**
+	 * Recursive worker for {@link #logTree(String, Process)}.
+	 *
+	 * @param label tag distinguishing which tree is being dumped
+	 * @param key position of the current node
+	 * @param process current node
+	 */
+	private void logTree(String label, ProcessTreePositionKey key, Process<?, ?> process) {
+		ArrayVariable<?> argument = argumentsByPosition.get(key);
+		Console.root().features(ProcessArgumentMap.class)
+				.log("tree=" + label + " position=" + key
+						+ (argument == null ? "" : " argument=" + argument.getName())
+						+ " node=" + describe(process));
+
+		List<Process<?, ?>> children = children(process);
+		IntStream.range(0, children.size()).forEach(i ->
+				logTree(label, key.append(i), children.get(i)));
+	}
+
+	/**
+	 * Renders a short diagnostic description of a producer for substitution logging:
+	 * its class, identity, and (for providers of {@link MemoryData}) the referenced
+	 * buffer's offset and length.
+	 *
+	 * @param producer the producer to describe
+	 * @return a one-line description
+	 */
+	public static String describe(Supplier<?> producer) {
+		if (producer == null) return "null";
+
+		String description = producer.getClass().getSimpleName()
+				+ "@" + Integer.toHexString(System.identityHashCode(producer));
+
+		MemoryData data = null;
+		if (producer instanceof Provider && ((Provider) producer).get() instanceof MemoryData) {
+			data = (MemoryData) ((Provider) producer).get();
+		} else if (producer instanceof RootDelegateProviderSupplier) {
+			Object value = ((RootDelegateProviderSupplier) producer).get().evaluate();
+			if (value instanceof MemoryData) data = (MemoryData) value;
+		} else if (producer instanceof Producer && ((Producer) producer).isProvider()) {
+			// Evaluating a provider has no side effects; it simply returns the
+			// referenced value, which is what identifies the bound memory.
+			Object value = ((Producer<?>) producer).get().evaluate();
+			if (value instanceof MemoryData) data = (MemoryData) value;
+		}
+
+		if (data != null) {
+			description += "[mem=" + Integer.toHexString(
+							System.identityHashCode(data.getRootDelegate()))
+					+ ",offset=" + data.getOffset()
+					+ ",len=" + data.getMemLength() + "]";
+		}
+
+		return description;
+	}
+
+	/**
 	 * Traverses the given process tree and registers each {@link Producer} as a substitution
 	 * at its corresponding tree position.
 	 *
@@ -345,6 +444,14 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 			producer = getProducerForPosition(positionsForArguments.get(argument),
 						enableSubstitutionFallback || substitutions.isEmpty());
 
+			if (enableSubstitutionLogging) {
+				Console.root().features(ProcessArgumentMap.class)
+						.log("substitution argument=" + argument.getName()
+								+ " position=" + positionsForArguments.get(argument)
+								+ " original=" + describe(argument.getProducer())
+								+ " substituted=" + describe(producer));
+			}
+
 			Supplier original = argument.getProducer();
 
 			if (original instanceof RootDelegateProviderSupplier) {
@@ -358,6 +465,13 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 			// The argument isn't associated with a position,
 			// so no substitution should be expected
 			producer = argument.getProducer();
+
+			if (enableSubstitutionLogging) {
+				Console.root().features(ProcessArgumentMap.class)
+						.log("substitution argument=" + argument.getName()
+								+ " position=NONE original=" + describe(producer)
+								+ " (unsubstituted)");
+			}
 		}
 
 		if (producer == null) {
