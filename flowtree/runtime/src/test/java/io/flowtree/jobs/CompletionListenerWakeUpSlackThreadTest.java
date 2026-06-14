@@ -62,8 +62,7 @@ import static org.junit.Assert.assertTrue;
  * {@code CompletionListenerFanoutTest} so this new assertion does
  * not modify base-branch test files that the agent write-lock
  * would block. The existing tests stay focused on safety ceilings
- * and the unit cases documented in
- * {@code docs/plans/COMPLETION_LISTENERS.md} §9.1; this class
+ * and the documented unit cases; this class
  * covers the thread-root requirement explicitly.</p>
  */
 public class CompletionListenerWakeUpSlackThreadTest extends TestSuiteBase {

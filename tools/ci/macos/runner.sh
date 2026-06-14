@@ -91,8 +91,8 @@ if [ ! -f "${RUNNER_DIR}/config.sh" ]; then
             ;;
     esac
 
-    API_RESPONSE="$(curl -sS https://api.github.com/repos/actions/runner/releases/latest)"
-    RUNNER_VERSION="$(echo "${API_RESPONSE}" | jq -r '.tag_name // empty' | sed 's/^v//')"
+    RUNNER_VERSION="$(curl -sS https://api.github.com/repos/actions/runner/releases/latest \
+        | jq -r '.tag_name // empty' | sed 's/^v//')"
 
     if [ -z "${RUNNER_VERSION}" ]; then
         echo "ERROR: Could not determine latest runner version."

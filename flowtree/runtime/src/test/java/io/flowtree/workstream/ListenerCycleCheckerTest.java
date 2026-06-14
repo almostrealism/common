@@ -32,10 +32,8 @@ import static org.junit.Assert.assertFalse;
 
 /**
  * Unit tests for {@link ListenerCycleChecker}, the config-time
- * cycle detection for the completion-listener graph. The acceptance
- * criteria for this checker are documented in
- * <em>docs/plans/COMPLETION_LISTENERS.md</em> §2.1.1 (cycle
- * rejection at config time).
+ * cycle detection for the completion-listener graph. The checker
+ * must reject cycles in the listener graph at config time.
  */
 public class ListenerCycleCheckerTest extends TestSuiteBase {
 
