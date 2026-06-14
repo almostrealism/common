@@ -320,6 +320,9 @@ public class SlackListener implements ConsoleFeatures {
     /** Sets the pushed-tools JSON forwarded to every submitted job. */
     public void setPushedToolsConfig(String c) { this.pushedToolsConfig = c; }
 
+    /** Returns the pushed-tools JSON forwarded to every submitted job, or {@code null}. */
+    public String getPushedToolsConfig() { return pushedToolsConfig; }
+
     /** Returns the shared secret for HMAC token generation. */
     public String getArManagerSharedSecret() {
         return arManagerSharedSecret;

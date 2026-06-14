@@ -1524,6 +1524,36 @@ def _parse_dependent_repos(dependent_repos: str) -> list:
     return [r.strip() for r in stripped.split(",") if r.strip()]
 
 
+def _parse_completion_listeners(completion_listeners) -> list:
+    """Parse the completion_listeners parameter into a list of workstream IDs.
+
+    Accepts the same shapes as dependent_repos: a comma-separated string
+    (e.g. ``"ws-orchestrator"``) or a JSON array string
+    (e.g. ``'["ws-orchestrator"]'``). Empty entries are dropped so a
+    stray ``",  ,"`` does not become a phantom listener. Returns an
+    empty list when the input is empty or ``None``; an empty list is
+    the inert default and produces no wake-up fan-out.
+    """
+    if completion_listeners is None:
+        return []
+    if isinstance(completion_listeners, list):
+        return [str(s).strip() for s in completion_listeners if str(s).strip()]
+    if not isinstance(completion_listeners, str):
+        completion_listeners = str(completion_listeners)
+    stripped = completion_listeners.strip()
+    if not stripped:
+        return []
+    if stripped.startswith("["):
+        import json as _json
+        try:
+            parsed = _json.loads(stripped)
+            if isinstance(parsed, list):
+                return [str(s).strip() for s in parsed if str(s).strip()]
+        except ValueError:
+            pass
+    return [s.strip() for s in stripped.split(",") if s.strip()]
+
+
 def _parse_activities_param(include_activities) -> str:
     """Normalize include_activities to a comma-separated string.
 
@@ -2093,6 +2123,7 @@ def workstream_register(
     channel_name: str = "",
     required_labels: str = "",
     dependent_repos: str = "",
+    completion_listeners: str = "",
     workspace_id: str = "",
     plan_content: str = "",
     plan_instructions: str = "",
@@ -2129,10 +2160,19 @@ def workstream_register(
             (e.g., "platform:macos,gpu:true"). Job-level labels always override
             these workstream-level defaults.
         dependent_repos: Comma-separated list of git clone URLs for additional
-            repositories that agents should clone alongside the primary repo
+            repositories that agents will clone alongside the primary repo
             (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
             Also accepts a JSON array string. Dependent repos follow the same
             branch lifecycle as the primary repo (create/checkout/pull/commit/push).
+        completion_listeners: Comma-separated list of workstream IDs that
+            should be woken up automatically when a job on this workstream
+            reaches a terminal status. Also accepts a JSON array string.
+            The listener graph is checked for cycles at config time; a
+            registration that would create a cycle (including a
+            self-listing) is rejected with a 400. The feature ships
+            inert: a workstream with no listeners configured spawns no
+            wake-up jobs. Wake-up generation is gated by the
+            controller's automated-jobs gate, which is the kill switch.
         workspace_id: Workspace ID (operator-chosen identifier) to
             register this workstream under. When omitted, unscoped
             (superadmin) tokens allow the controller to derive the
@@ -2276,6 +2316,10 @@ def workstream_register(
         repos_list = _parse_dependent_repos(dependent_repos)
         if repos_list:
             payload["dependentRepos"] = repos_list
+    if completion_listeners:
+        listeners_list = _parse_completion_listeners(completion_listeners)
+        if listeners_list:
+            payload["completionListeners"] = listeners_list
     if parsed_default_phase_config:
         payload["defaultPhaseConfig"] = parsed_default_phase_config
     if parsed_phase_configs:
@@ -2453,6 +2497,7 @@ def workstream_update_config(
     channel_name: str = "",
     required_labels: str = "",
     dependent_repos: str = "",
+    completion_listeners: str = "",
     default_phase_config: str = "",
     phase_configs: str = "",
     # Removed legacy config parameters — see _reject_removed_config_params.
@@ -2555,6 +2600,15 @@ def workstream_update_config(
         repos_list = _parse_dependent_repos(dependent_repos)
         if repos_list:
             payload["dependentRepos"] = repos_list
+    # completion_listeners is treated as a presence signal: an empty
+    # value means "do not change," while a populated value (even one
+    # that parses to an empty list) means "clear the listener list."
+    # We forward an empty list explicitly when the field is present
+    # so the controller can distinguish "no change" (omitted) from
+    # "set to empty" (passed).
+    if completion_listeners:
+        listeners_list = _parse_completion_listeners(completion_listeners)
+        payload["completionListeners"] = listeners_list
     # Use `is not None` so that an empty-dict clear signal ({}) is forwarded.
     if parsed_default_phase_config is not None:
         payload["defaultPhaseConfig"] = parsed_default_phase_config

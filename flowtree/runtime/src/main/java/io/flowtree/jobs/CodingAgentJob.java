@@ -213,6 +213,16 @@ public class CodingAgentJob extends GitManagedJob {
     /** {@code true} when the pass cap was exhausted without a zero exit. */
     private boolean postCompletionCapHit;
 
+    /**
+     * Set to {@code true} when the primary phase ended in a hard failure:
+     * non-zero exit, 0s wall-clock duration, not killed for inactivity.
+     * Captured in {@link #doWork()} after the first {@link #executeSingleRun()}
+     * and never reset, so it survives any subsequent retry that overwrites
+     * {@link #exitCode} with a zero. The rollup in
+     * {@link #createEvent(Exception)} treats this as terminal.
+     */
+    private boolean primaryPhaseHardFailed;
+
     /** Additional enforcement rules from {@link #addEnforcementRule}; built-ins are created by {@link EnforcementRunner}. */
     private final List<EnforcementRule> customEnforcementRules = new ArrayList<>();
 
@@ -694,6 +704,27 @@ public class CodingAgentJob extends GitManagedJob {
     /** Marks that the post-completion command rule hit its retry cap. */
     void setPostCompletionCapHit(boolean postCompletionCapHit) { this.postCompletionCapHit = postCompletionCapHit; }
 
+    /**
+     * Records whether the primary phase ended in a hard failure (non-zero
+     * exit, 0s duration, not killed for inactivity). Package-private; set by
+     * {@link #doWork()} and by tests that drive {@link #createEvent(Exception)}
+     * directly.
+     */
+    void setPrimaryPhaseHardFailed(boolean primaryPhaseHardFailed) {
+        this.primaryPhaseHardFailed = primaryPhaseHardFailed;
+    }
+
+    /** Returns whether the primary phase ended in a hard failure. */
+    public boolean isPrimaryPhaseHardFailed() { return primaryPhaseHardFailed; }
+
+    /**
+     * Records the inactivity-kill flag for the last session. Used by
+     * {@link #isHardPrimaryFailure()} and normally set by
+     * {@link #executeSingleRun()}; package-private so test spies that drive
+     * {@link #executeSingleRun()} directly can mirror the production wiring.
+     */
+    void setWasKilledForInactivity(boolean killed) { this.wasKilledForInactivity = killed; }
+
     /** Returns the custom enforcement rules registered via {@link #addEnforcementRule}. */
     List<EnforcementRule> getCustomEnforcementRules() { return customEnforcementRules; }
 
@@ -972,6 +1003,10 @@ public class CodingAgentJob extends GitManagedJob {
     protected void doWork() {
         if (sessionStartedAt == null) sessionStartedAt = Instant.now();
         executeSingleRun();
+
+        // Capture the primary phase outcome before any enforce_changes retry
+        // overwrites exitCode with a successful result.
+        primaryPhaseHardFailed = isHardPrimaryFailure();
 
         // Git integrity violations handled by onGitTampering in GitManagedJob.
         if (!hasAgentCommitted()) {
@@ -1338,6 +1373,19 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
+     * Returns whether the most recent {@link #executeSingleRun()} call ended
+     * in a hard failure: non-zero exit, 0s wall-clock duration, not killed by
+     * the inactivity watchdog. This is the "failed (exit N) in 0s" signature
+     * the per-phase {@code harness_status} messages report.
+     *
+     * <p>Called by {@link #doWork()} to capture the primary phase outcome
+     * before any enforcement retry overwrites {@link #exitCode}.</p>
+     */
+    boolean isHardPrimaryFailure() {
+        return exitCode != 0 && durationMs == 0L && !wasKilledForInactivity;
+    }
+
+    /**
      * Absorbs {@code result} into the orchestrator's accumulated session
      * fields. Across primary and correction sessions, duration / cost / turn
      * metrics are summed; identification fields (session id, stop reason)
@@ -1390,6 +1438,13 @@ public class CodingAgentJob extends GitManagedJob {
     @Override
     protected JobCompletionEvent createEvent(Exception error) {
         if (error != null) return CodingAgentJobEvent.failed(getTaskId(), getTaskString(), error.getMessage(), error);
+        // Hard primary-phase failure is terminal at the rollup level. Checked
+        // before exitCode because an enforce_changes retry can overwrite
+        // exitCode with a successful value; the flag, captured in doWork()
+        // before the retry ran, is the durable signal.
+        if (primaryPhaseHardFailed && exitCode == 0)
+            return CodingAgentJobEvent.failed(getTaskId(), getTaskString(),
+                "Primary phase hard-failed (non-zero exit, 0s duration, no work performed)", null);
         if (exitCode != 0) return CodingAgentJobEvent.failed(getTaskId(), getTaskString(), "Claude Code exited with code " + exitCode, null);
         if (postCompletionCapHit)
             return CodingAgentJobEvent.degraded(getTaskId(), getTaskString(),

@@ -41,10 +41,8 @@ import java.util.List;
  * {@code results/} that show the source frequency distribution and the
  * canvas state after simulated mouse drags.
  *
- * <p>The intent is described in
- * {@code ringsdesktop/docs/AUDIO_SAMPLE_BRUSH_TEST.md}: dragging the brush
- * uniformly across the canvas should reproduce the source's frequency
- * distribution at the same time positions.</p>
+ * <p>The intent: dragging the brush uniformly across the canvas should
+ * reproduce the source's frequency distribution at the same time positions.</p>
  *
  * <p>The renders use the same {@link TemporalSpatialContext#position}
  * transform that the live UI uses, so PNG content matches what would
