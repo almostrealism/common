@@ -296,6 +296,14 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	default CollectionProducer multiply(
 			Producer<PackedCollection> a, Producer<PackedCollection> b,
 			Evaluable<PackedCollection> shortCircuit) {
+		// anything * 0 = 0: collapse to a zeros computation eagerly so the *result* is recognized
+		// as zero (Algebraic.isZero) and propagates through the graph. Otherwise the zero detection
+		// below happens inside the product expression, leaving a product wrapper around a zeros that
+		// the optimizer must carry and isolate — a zeros must never become an isolated child.
+		if (Algebraic.isZero(a) || Algebraic.isZero(b)) {
+			return zeros(outputShape(a, b));
+		}
+
 		if (checkComputable(a) && checkComputable(b)) {
 			if (shape(a).getTotalSizeLong() == 1 && Algebraic.isIdentity(1, a)) {
 				return withShortCircuit(CollectionFeatures.getInstance().c(b), shortCircuit);

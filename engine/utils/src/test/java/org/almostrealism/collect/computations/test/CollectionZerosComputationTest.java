@@ -197,13 +197,19 @@ public class CollectionZerosComputationTest extends TestSuiteBase implements Col
 	 * {@link #multiplyByZeroConstantOptimizesAndEvaluatesToZero()}.</p>
 	 */
 	@Test(timeout = 5000)
-	public void isolateReturnsProcessRatherThanThrowing() {
+	public void isolateAlwaysThrows() {
 		CollectionZerosComputation zeros =
 				new CollectionZerosComputation(new TraversalPolicy(3));
 
-		Process<?, ?> isolated = zeros.isolate();
-
-		Assert.assertNotNull("zeros.isolate() must return a process, not throw", isolated);
+		// A zeros must never be isolated: no parent benefits from materialising a zero buffer
+		// rather than an inline constant. Reaching isolate() means an operation failed to respect
+		// Algebraic.isZero; it must fail loudly rather than silently embed the zeros.
+		try {
+			zeros.isolate();
+			Assert.fail("zeros.isolate() must throw; a zeros must never be isolated");
+		} catch (UnsupportedOperationException expected) {
+			// expected
+		}
 	}
 
 	/**

@@ -77,6 +77,9 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	/** Whether this is a floating-point modulo ({@code true}) or integer modulo ({@code false}). */
 	private boolean fp;
 
+	/** Cached result of {@link #dividendPossiblyNegative()}; {@code null} until first computed. */
+	private Boolean dividendPossiblyNegative;
+
 	/**
 	 * Constructs a modulo expression.
 	 *
@@ -135,7 +138,26 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	 * @return the modulo result matching the generated code
 	 */
 	private long intMod(long dividend, long divisor) {
-		return foldIntMod(dividend, divisor, getChildren().get(0).isPossiblyNegative());
+		return foldIntMod(dividend, divisor, dividendPossiblyNegative());
+	}
+
+	/**
+	 * Returns whether the dividend may be negative, computed once and cached.
+	 *
+	 * <p>{@link Expression#isPossiblyNegative()} walks the dividend subtree
+	 * (via {@link Expression#lowerBound}), which is recursive and not memoized.
+	 * Because an {@link Expression} is immutable, the result is invariant for this
+	 * node, so it is cached to keep it out of the per-index constant-folding loop
+	 * ({@link #intValue()}, {@link #computeValue}, {@link #evaluate}).</p>
+	 *
+	 * @return {@code true} if the dividend may be negative
+	 */
+	private boolean dividendPossiblyNegative() {
+		if (dividendPossiblyNegative == null) {
+			dividendPossiblyNegative = getChildren().get(0).isPossiblyNegative();
+		}
+
+		return dividendPossiblyNegative;
 	}
 
 	/**
@@ -353,7 +375,9 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (m == 1) return new IntegerConstant(0);
 
 		if (id.isPresent()) {
-			return ExpressionFeatures.getInstance().e(foldIntMod(id.getAsLong(), m, input.isPossiblyNegative()));
+			// The dividend is a constant here, so it is possibly-negative exactly when it is
+			// negative — no need for the recursive isPossiblyNegative() bounds walk.
+			return ExpressionFeatures.getInstance().e(foldIntMod(id.getAsLong(), m, id.getAsLong() < 0));
 		}
 
 		if (input instanceof Mod && !input.isFP()) {
