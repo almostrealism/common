@@ -96,7 +96,8 @@ public class McpToolWorkstreamConfigSurfaceTest extends TestSuiteBase {
 		"dependent_repos",
 		"completion_listeners",
 		"default_phase_config",
-		"phase_configs"
+		"phase_configs",
+		"dispatch_capable"
 	));
 
 	/**
@@ -216,6 +217,45 @@ public class McpToolWorkstreamConfigSurfaceTest extends TestSuiteBase {
 			"workstream_update_config must declare the completion_listeners parameter so" +
 				" operators can update a workstream's completion-listener list via MCP.",
 			updateParams.contains("completion_listeners"));
+	}
+
+	/**
+	 * Asserts that {@code dispatch_capable} is declared on both
+	 * {@code workstream_register} and {@code workstream_update_config}.
+	 *
+	 * <p>The dispatch-capable flag is the operator-facing switch that
+	 * grants an agent session permission to call
+	 * {@code workstream_register} and {@code workstream_update_config}.
+	 * A workstream that does not have the param in its MCP tool
+	 * signature is silently stuck with the inert default (no dispatch),
+	 * which is exactly the failure mode this whole change is meant to
+	 * prevent. A failure here points the operator directly at the
+	 * missing param.</p>
+	 */
+	@Test(timeout = 30000)
+	public void dispatchCapableParamIsDeclaredOnBothRegisterAndUpdateTools() {
+		Path serverFile = locateManagerServerPy();
+		assertNotNull(
+			"Could not locate tools/mcp/manager/server.py from working directory " +
+				Path.of("").toAbsolutePath() +
+				". The dispatch-capable param check cannot run without it.",
+			serverFile);
+
+		List<String> registerParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
+		assertTrue(
+			"workstream_register must declare the dispatch_capable parameter so" +
+				" operators can opt a workstream into the dispatch / orchestration" +
+				" MCP tools via MCP.",
+			registerParams.contains("dispatch_capable"));
+
+		List<String> updateParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
+		assertTrue(
+			"workstream_update_config must declare the dispatch_capable parameter so" +
+				" operators can flip the dispatch-capable flag on an existing" +
+				" workstream via MCP.",
+			updateParams.contains("dispatch_capable"));
 	}
 
 	/**

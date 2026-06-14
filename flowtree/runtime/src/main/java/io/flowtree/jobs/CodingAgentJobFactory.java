@@ -75,6 +75,17 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private String arManagerToken;
 
     /**
+     * Whether the workstream this job is for is
+     * {@link io.flowtree.workstream.Workstream#isDispatchCapable() dispatchCapable}.
+     * When {@code true}, the agent's MCP allowlist re-adds the
+     * {@code workstream_register} and {@code workstream_update_config}
+     * tools at buildAllowedTools() time. Propagated to
+     * {@link CodingAgentJob#setDispatchCapable(boolean)} in
+     * {@link #nextJob()}.
+     */
+    private boolean dispatchCapable;
+
+    /**
      * JSON describing pushed MCP tools the controller is serving for this
      * job (always includes ar-secrets; may include additional operator
      * declarations). Format matches {@code FlowTreeController.getPushedToolsConfig()}.
@@ -548,6 +559,20 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     public void setArManagerToken(String arManagerToken) {
         this.arManagerToken = arManagerToken;
         set("arManagerToken", GitManagedJob.base64Encode(arManagerToken));
+    }
+
+    /**
+     * Sets the dispatch-capable flag. Sourced from the workstream's
+     * {@link io.flowtree.workstream.Workstream#isDispatchCapable()} at
+     * the call sites that build the factory. The flag is purely a
+     * harness-CSV switch; the controller-side check is the real
+     * backstop for the opencode harness (per-SERVER filtering).
+     *
+     * @param dispatchCapable {@code true} to grant the workstream's
+     *                        dispatch tools to this agent
+     */
+    public void setDispatchCapable(boolean dispatchCapable) {
+        this.dispatchCapable = dispatchCapable;
     }
 
     /**
@@ -1261,6 +1286,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         if (arManagerToken != null) {
             job.setArManagerToken(arManagerToken);
         }
+        job.setDispatchCapable(dispatchCapable);
         if (pushedToolsConfig != null) {
             job.setPushedToolsConfig(pushedToolsConfig);
         } else {

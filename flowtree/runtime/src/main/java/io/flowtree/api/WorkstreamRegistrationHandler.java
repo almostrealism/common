@@ -153,6 +153,7 @@ final class WorkstreamRegistrationHandler {
         Map<String, String> requiredLabels = JsonFieldExtractor.extractStringObject(body, "requiredLabels");
         List<String> dependentRepos = JsonFieldExtractor.extractStringArray(body, "dependentRepos");
         List<String> completionListeners = extractCompletionListeners(body);
+        boolean dispatchCapable = JsonFieldExtractor.extractBoolean(body, "dispatchCapable");
 
         // Resolve the target Slack workspace: explicit slackWorkspaceId wins,
         // then a workspace derived from the repoUrl's GitHub org, then (in
@@ -252,6 +253,12 @@ final class WorkstreamRegistrationHandler {
         String cycleErr = checkListenerCycle(workstream, completionListeners);
         if (cycleErr != null) return errorResponse.apply(cycleErr);
         workstream.setCompletionListeners(completionListeners);
+        // Dispatch capability: the default is false; only opt-in workstreams
+        // can register or update child workstreams. The flag is purely a
+        // harness-CSV switch on the agent allowlist (see McpConfigBuilder);
+        // the controller-side backstop is enforced on the calling workstream
+        // when an ar-manager tool that requires dispatch is invoked.
+        workstream.setDispatchCapable(dispatchCapable);
 
         if (listener != null) {
             listener.registerAndPersistWorkstream(workstream);
@@ -358,6 +365,16 @@ final class WorkstreamRegistrationHandler {
             String cycleErr = checkListenerCycle(workstream, completionListeners);
             if (cycleErr != null) return errorResponse.apply(cycleErr);
             workstream.setCompletionListeners(completionListeners);
+        }
+        // Dispatch capability: only mutated when the field is present in
+        // the body (presence signal mirrors the completion_listeners
+        // pattern). Omitting the field leaves the workstream's existing
+        // value untouched so an unrelated update does not silently
+        // revoke dispatch. A boolean false in the body explicitly
+        // clears the flag.
+        if (JsonFieldExtractor.hasField(body, "dispatchCapable")) {
+            workstream.setDispatchCapable(
+                    JsonFieldExtractor.extractBoolean(body, "dispatchCapable"));
         }
 
         if (listener != null) {

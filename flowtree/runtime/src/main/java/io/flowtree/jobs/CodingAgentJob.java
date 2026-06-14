@@ -126,6 +126,8 @@ public class CodingAgentJob extends GitManagedJob {
     private String arManagerToken;
     /** Pushed-tools JSON; null when no controller is in the loop. */
     private String pushedToolsConfig;
+    /** Whether the workstream is dispatch-capable; sourced from {@code Workstream.isDispatchCapable()}. */
+    private boolean dispatchCapable;
     /** Per-workstream env vars set on the agent subprocess; null when none configured. */
     private Map<String, String> agentEnv;
     /** Optional planning document text injected into the Claude Code system prompt. */
@@ -469,7 +471,10 @@ public class CodingAgentJob extends GitManagedJob {
     public void setArManagerToken(String arManagerToken) {
         this.arManagerToken = arManagerToken;
     }
-
+    // TODO(review): setDispatchCapable is a public method added in this diff but has no Javadoc;
+    // the adjacent setArManagerToken (lines above) has full Javadoc. Add a @param/@see block
+    // matching the CodingAgentJobFactory.setDispatchCapable javadoc before next CI run.
+    public void setDispatchCapable(boolean dispatchCapable) { this.dispatchCapable = dispatchCapable; }
     /** Returns the pushed-tools configuration JSON, or {@code null}. */
     public String getPushedToolsConfig() { return pushedToolsConfig; }
 
@@ -968,8 +973,8 @@ public class CodingAgentJob extends GitManagedJob {
         mcpConfigBuilder.setArManagerToken(arManagerToken);
         mcpConfigBuilder.setPushedToolsConfig(pushedToolsConfig);
         mcpConfigBuilder.setPythonCommand(getPythonCommand());
-        Path workDir = getWorkingDirectory() != null
-            ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
+        mcpConfigBuilder.setDispatchCapable(dispatchCapable);
+        Path workDir = getWorkingDirectory() != null ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
         mcpConfigBuilder.setWorkingDirectory(workDir);
     }
 
@@ -1503,7 +1508,6 @@ public class CodingAgentJob extends GitManagedJob {
         return true;
     }
 
-
     /** Returns new Java method names introduced since the base branch. */
     List<String> extractNewMethodNames() {
         String base = getBaseBranch() != null ? getBaseBranch() : "master";
@@ -1550,14 +1554,12 @@ public class CodingAgentJob extends GitManagedJob {
         return Path.of(filename);
     }
 
-
     @Override
     public String encode() {
         StringBuilder sb = new StringBuilder(super.encode());
         CodingAgentJobCodec.appendEncoded(sb, this);
         return sb.toString();
     }
-
 
     @Override
     public void set(String key, String value) {
@@ -1584,11 +1586,7 @@ public class CodingAgentJob extends GitManagedJob {
         }
     }
 
-    /**
-     * Backward-compatible alias for {@link CodingAgentJobFactory}; new code should use that class directly.
-     * Exists so that {@code new CodingAgentJob.Factory(...)} call sites and
-     * {@code CodingAgentJob$Factory} wire-format strings continue to work.
-     */
+    /** Backward-compatible alias for {@link CodingAgentJobFactory}; new code should use that class directly. */
     public static class Factory extends CodingAgentJobFactory {
         /** Default constructor for deserialization. */
         public Factory() { super(); }
