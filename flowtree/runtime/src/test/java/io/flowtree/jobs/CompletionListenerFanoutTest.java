@@ -88,6 +88,16 @@ public class CompletionListenerFanoutTest extends TestSuiteBase {
                 null,
                 id -> null,
                 null,
+                // The unit tests in this class do not exercise
+                // the Slack submission-notification path; the
+                // thread-root lookup is intentionally null so the
+                // fan-out logs wakeup_listener_notifier_missing
+                // and proceeds to server.addTask without writing
+                // to Slack. The dedicated thread-root test in
+                // CompletionListenerWakeUpSlackThreadTest wires
+                // a real notifier and asserts the submission
+                // message is posted.
+                null,
                 clockMillis::get);
     }
 

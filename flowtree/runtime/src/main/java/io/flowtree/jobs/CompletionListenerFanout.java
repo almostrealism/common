@@ -137,6 +137,30 @@ public class CompletionListenerFanout implements ConsoleFeatures {
     }
 
     /**
+     * Resolves the {@link SlackNotifier} that owns a given listener
+     * workstream, used to post the wake-up's Slack submission
+     * notification (the thread root). The wake-up is submitted <em>to
+     * the listener</em>, so the submission message must land on the
+     * listener's channel — not the source's. Returns {@code null} when
+     * the listener has no registered notifier; in that case the
+     * fan-out logs {@code wakeup_listener_notifier_missing} and
+     * proceeds with {@code server.addTask} (the server-side wake-up
+     * path is unaffected — the listener just won't get a Slack
+     * submission notification).
+     */
+    public interface ListenerNotifierLookup {
+        /**
+         * Returns the notifier that owns the given listener
+         * workstream, or {@code null} when no notifier is registered
+         * for that workstream.
+         *
+         * @param workstreamId the listener workstream identifier
+         * @return the notifier, or {@code null}
+         */
+        SlackNotifier forListener(String workstreamId);
+    }
+
+    /**
      * Per-pair coalesce state. The first completion in a window fires
      * a wake-up and stores its own job ID; subsequent completions
      * append to {@link #consolidatedJobIds} and are dropped.
@@ -299,6 +323,20 @@ public class CompletionListenerFanout implements ConsoleFeatures {
     private final Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup;
     /** Default workspace path; propagated to wake-up factories when set. */
     private final String defaultWorkspacePath;
+    /**
+     * Resolves the listener's owning {@link SlackNotifier}, used to
+     * post the wake-up's Slack submission notification (the thread
+     * root) on the listener's channel. Mirrors the call
+     * {@link io.flowtree.api.FlowTreeApiEndpoint} makes for any other
+     * job: the submission message is the thread root and seeds
+     * {@link SlackNotifier#getThreadTs(String)} for the wake-up job
+     * ID so subsequent messages from the wake-up will thread as replies.
+     * {@code null} is treated as &quot;no notifier resolves&quot;; the
+     * fan-out logs {@code wakeup_listener_notifier_missing} and the
+     * wake-up still proceeds to {@link Server#addTask} (the listener
+     * just won't get a thread-root message).
+     */
+    private final ListenerNotifierLookup listenerNotifierLookup;
 
     /**
      * Constructs a new fanout bound to a specific endpoint, server, and
@@ -319,12 +357,16 @@ public class CompletionListenerFanout implements ConsoleFeatures {
         this(acceptSupplier, allWorkstreams, server, statsStore,
                 workstreamUrlBuilder, arManagerUrl, sharedSecret,
                 pushedToolsConfig, workspaceLookup, defaultWorkspacePath,
-                System::currentTimeMillis);
+                null, System::currentTimeMillis);
     }
 
     /**
-     * Test-only constructor that exposes the clock supplier so
-     * ceiling / coalesce tests can advance time without sleeping.
+     * Backward-compatible constructor without a listener-notifier
+     * lookup. The wake-up's Slack submission notification is
+     * suppressed when no lookup is provided; equivalent to the
+     * pre-thread-root behavior. New callers should prefer the
+     * 12-argument overload that takes a
+     * {@link ListenerNotifierLookup}.
      */
     public CompletionListenerFanout(AcceptAutomatedJobsSupplier acceptSupplier,
                                     Supplier<Map<String, Workstream>> allWorkstreams,
@@ -337,6 +379,34 @@ public class CompletionListenerFanout implements ConsoleFeatures {
                                     Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup,
                                     String defaultWorkspacePath,
                                     Supplier<Long> clock) {
+        this(acceptSupplier, allWorkstreams, server, statsStore,
+                workstreamUrlBuilder, arManagerUrl, sharedSecret,
+                pushedToolsConfig, workspaceLookup, defaultWorkspacePath,
+                null, clock);
+    }
+
+    /**
+     * Test-only constructor that exposes the clock supplier so
+     * ceiling / coalesce tests can advance time without sleeping, and
+     * the listener-notifier lookup so wake-up thread-root tests can
+     * post a Slack submission notification on the listener's channel
+     * exactly the way the normal API path does. New callers should
+     * prefer this overload; the 9- and 10-argument variants delegate
+     * here with a {@code null} listener-notifier lookup for backward
+     * compatibility.
+     */
+    public CompletionListenerFanout(AcceptAutomatedJobsSupplier acceptSupplier,
+                                    Supplier<Map<String, Workstream>> allWorkstreams,
+                                    Server server,
+                                    JobStatsStore statsStore,
+                                    Function<String, String> workstreamUrlBuilder,
+                                    String arManagerUrl,
+                                    String sharedSecret,
+                                    String pushedToolsConfig,
+                                    Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup,
+                                    String defaultWorkspacePath,
+                                    ListenerNotifierLookup listenerNotifierLookup,
+                                    Supplier<Long> clock) {
         this.acceptSupplier = acceptSupplier == null ? () -> true : acceptSupplier;
         this.allWorkstreams = allWorkstreams;
         this.server = server;
@@ -347,6 +417,7 @@ public class CompletionListenerFanout implements ConsoleFeatures {
         this.pushedToolsConfig = pushedToolsConfig;
         this.workspaceLookup = workspaceLookup == null ? id -> null : workspaceLookup;
         this.defaultWorkspacePath = defaultWorkspacePath;
+        this.listenerNotifierLookup = listenerNotifierLookup;
         this.clock = clock == null ? System::currentTimeMillis : clock;
     }
 
@@ -380,9 +451,15 @@ public class CompletionListenerFanout implements ConsoleFeatures {
             defaultWorkspacePath = listener.getDefaultWorkspacePath();
         }
         Function<String, WorkstreamConfig.WorkspaceEntry> wsLookup = endpoint::workspaceLookupOrNull;
+        ListenerNotifierLookup listenerLookup = listenerWsId -> {
+            SlackNotifier n = notifiers.notifierFor(listenerWsId);
+            if (n == null || n.getWorkstream(listenerWsId) == null) return null;
+            return n;
+        };
         return new CompletionListenerFanout(acceptSupplier, allWs,
                 server, statsStore, urlBuilder, arManagerUrl, sharedSecret,
-                pushedToolsConfig, wsLookup, defaultWorkspacePath);
+                pushedToolsConfig, wsLookup, defaultWorkspacePath,
+                listenerLookup, System::currentTimeMillis);
     }
 
     /**
@@ -571,6 +648,21 @@ public class CompletionListenerFanout implements ConsoleFeatures {
                         + " chain=" + chainId);
                 return;
             }
+            // Mirror the normal API submission path: post a Slack
+            // submission notification on the listener's channel
+            // before dispatching the task, so the wake-up has a
+            // thread root. The submission message seeds
+            // {@link SlackNotifier#jobThreadTs} for the wake-up's
+            // job ID, which means subsequent messages from the
+            // wake-up (started / completed / send_message) will thread
+            // as replies under that root instead of landing at
+            // the top of the channel. Without this call a wake-up
+            // job has no thread_ts, and per-request thread_ts
+            // resolution (see
+            // MessageEndpointHandler.handle and the
+            // send_message token-context fix) cannot find a thread
+            // to attach to.
+            notifyWakeUpSubmitted(listenerId, factory);
             server.addTask(factory);
             // Surface a clear line so an operator can confirm the
             // fanout fired. Cheap; logged at INFO via the Console
@@ -795,6 +887,75 @@ public class CompletionListenerFanout implements ConsoleFeatures {
         if (s == null) return "";
         if (s.length() <= max) return s;
         return s.substring(0, max);
+    }
+
+    /**
+     * Posts a Slack submission notification for a wake-up factory on
+     * the listener's channel, mirroring the call
+     * {@link io.flowtree.api.FlowTreeApiEndpoint} makes for every
+     * other job submission. The submission message becomes the
+     * wake-up's thread root and seeds
+     * {@link SlackNotifier#getThreadTs(String)} so subsequent
+     * messages from the wake-up job (started / completed /
+     * send_message) will thread as replies under it.
+     *
+     * <p>Failures are logged and swallowed: the fan-out's outer
+     * contract is "never throw, never spawn more than the ceiling
+     * allows", so a misconfigured notifier must not poison the
+     * wake-up submission. The wake-up still proceeds to
+     * {@link Server#addTask} (the listener just won't get a
+     * thread-root Slack message until the notifier is reachable).</p>
+     *
+     * <p>When no listener-notifier lookup is configured (legacy
+     * callers using the 9- or 10-argument constructors) this method
+     * is a no-op: the wake-up path falls back to the pre-thread-root
+     * behavior, equivalent to the original implementation.</p>
+     */
+    private void notifyWakeUpSubmitted(String listenerId, CodingAgentJob.Factory factory) {
+        if (listenerNotifierLookup == null || factory == null) return;
+        String taskId = factory.getTaskId();
+        if (taskId == null || taskId.isEmpty()) return;
+        SlackNotifier notifier;
+        try {
+            notifier = listenerNotifierLookup.forListener(listenerId);
+        } catch (RuntimeException ex) {
+            warn("wakeup_listener_notifier_lookup_failed listener=" + listenerId
+                    + " chain=" + factory.getDescription() + ": " + ex.getMessage());
+            return;
+        }
+        if (notifier == null) {
+            // The listener has no registered notifier. This is
+            // expected for listeners that have been registered on
+            // the controller but whose Slack channel isn't
+            // associated with a notifier (e.g. shell-only
+            // listeners). The wake-up still proceeds; only the
+            // Slack thread-root seeding is skipped.
+            warn("wakeup_listener_notifier_missing listener=" + listenerId
+                    + " chain=" + factory.getDescription());
+            return;
+        }
+        // Build the submission event from the wake-up factory's
+        // description, exactly the way the normal API path does.
+        // The branch + description are what the listener's
+        // existing thread-reply code reads back when the wake-up
+        // job reports started / completed events.
+        String displaySummary = factory.getDescription();
+        if (displaySummary == null || displaySummary.isEmpty()) {
+            displaySummary = "wake-up: " + listenerId;
+        }
+        // TODO(review): FlowTreeApiEndpoint.submitJob also calls
+        //   startEvent.withGitInfo(effectiveBranch, ...) before onJobSubmitted.
+        //   The wake-up's listener branch is available from the listener
+        //   workstream config but is not accessible here from factory alone;
+        //   consider threading it through or passing the listener Workstream
+        //   to this method so the event carries branch info for Slack display.
+        JobCompletionEvent startEvent = JobCompletionEvent.started(taskId, displaySummary);
+        try {
+            notifier.onJobSubmitted(listenerId, startEvent);
+        } catch (RuntimeException ex) {
+            warn("wakeup_submit_notify_failed listener=" + listenerId
+                    + " chain=" + factory.getDescription() + ": " + ex.getMessage());
+        }
     }
 
     /**

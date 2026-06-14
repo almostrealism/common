@@ -114,6 +114,7 @@ public class CompletionListenerSafetyIntegrationTest extends TestSuiteBase {
                 null,
                 wsId -> "http://localhost:" + port + "/api/workstreams/" + wsId,
                 null, null, null, id -> null, null,
+                wsId -> notifier.getWorkstream(wsId) != null ? notifier : null,
                 clock::get);
         endpoint.setServer(server);
         endpoint.setCompletionListenerFanout(fanout);
