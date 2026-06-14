@@ -23,6 +23,7 @@ import java.io.File;
 import java.io.IOException;
 import io.flowtree.controller.FlowTreeController;
 import io.flowtree.workstream.WorkstreamConfig;
+import io.flowtree.workstream.WorkspaceEntry;
 
 /**
  * Holds Slack API tokens (bot token and app token) and provides
@@ -99,7 +100,7 @@ public class SlackTokens {
 	 * @return a {@link SlackTokens} instance
 	 * @throws IOException if {@code tokensFile} is set but cannot be read
 	 */
-	public static SlackTokens from(WorkstreamConfig.WorkspaceEntry entry) throws IOException {
+	public static SlackTokens from(WorkspaceEntry entry) throws IOException {
 		if (entry.getTokensFile() != null && !entry.getTokensFile().isEmpty()) {
 			return loadFromFile(new File(entry.getTokensFile()));
 		}

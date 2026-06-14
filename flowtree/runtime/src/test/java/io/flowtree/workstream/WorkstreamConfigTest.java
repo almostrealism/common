@@ -31,6 +31,8 @@ import io.flowtree.slack.SlackNotifier;
 import io.flowtree.slack.SlackTokens;
 
 import static org.junit.Assert.*;
+import io.flowtree.workstream.WorkspaceEntry;
+import io.flowtree.workstream.WorkstreamEntry;
 
 /**
  * Tests for {@link WorkstreamConfig} loading, defaults, persistence, and
@@ -68,7 +70,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals(2, config.getWorkstreams().size());
 
         // First workstream
-        WorkstreamConfig.WorkstreamEntry entry1 = config.getWorkstreams().get(0);
+        WorkstreamEntry entry1 = config.getWorkstreams().get(0);
         assertEquals("C0123456789", entry1.getChannelId());
         assertEquals("#project-alpha", entry1.getChannelName());
         assertEquals(2, entry1.getAgents().size());
@@ -79,7 +81,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals(25.0, entry1.getMaxBudgetUsd(), 0.001);
 
         // Second workstream
-        WorkstreamConfig.WorkstreamEntry entry2 = config.getWorkstreams().get(1);
+        WorkstreamEntry entry2 = config.getWorkstreams().get(1);
         assertEquals("C9876543210", entry2.getChannelId());
         assertEquals("192.168.1.100", entry2.getAgents().get(0).getHost());
 
@@ -182,7 +184,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
                       "      - host: \"localhost\"\n";
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        WorkstreamEntry entry = config.getWorkstreams().get(0);
 
         // Check defaults
         assertEquals(7766, entry.getAgents().get(0).getPort()); // default port
@@ -210,7 +212,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         config.addWorkstream(ws);
 
         assertEquals(1, config.getWorkstreams().size());
-        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        WorkstreamEntry entry = config.getWorkstreams().get(0);
         assertEquals("C_ADD_1", entry.getChannelId());
         assertEquals("#add-channel", entry.getChannelName());
         assertEquals("/workspace/test", entry.getWorkingDirectory());
@@ -248,7 +250,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         config.syncFromWorkstreams(wsList);
 
         // Verify the entry was updated
-        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        WorkstreamEntry entry = config.getWorkstreams().get(0);
         assertEquals("develop", entry.getDefaultBranch());
         assertEquals(25.0, entry.getMaxBudgetUsd(), 0.001);
         assertEquals("/new/path", entry.getWorkingDirectory());
@@ -283,7 +285,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
 
         // slackWorkspaces must survive the round-trip
         assertEquals(1, reloaded.getSlackWorkspaces().size());
-        WorkstreamConfig.WorkspaceEntry ws = reloaded.getSlackWorkspaces().get(0);
+        WorkspaceEntry ws = reloaded.getSlackWorkspaces().get(0);
         assertEquals("T111", ws.getId());
         // Legacy slackWorkspaces entries auto-migrate so slackTeamId mirrors
         // the original workspace ID — preserving channel routing after the
@@ -335,7 +337,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
 
         // Verify the migrated structure loads correctly
         assertEquals(1, config.getSlackWorkspaces().size());
-        WorkstreamConfig.WorkspaceEntry migratedWs = config.getSlackWorkspaces().get(0);
+        WorkspaceEntry migratedWs = config.getSlackWorkspaces().get(0);
         assertEquals("T111", migratedWs.getId());
         // Legacy migration also populates slackTeamId from the YAML
         // workspaceId so existing Slack routing continues to work.
@@ -347,7 +349,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals(3, config.getWorkstreams().size());
 
         // All workstreams must have slackWorkspaceId
-        for (WorkstreamConfig.WorkstreamEntry entry : config.getWorkstreams()) {
+        for (WorkstreamEntry entry : config.getWorkstreams()) {
             assertEquals("T111", entry.getWorkspaceId());
         }
 
@@ -377,7 +379,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
                 + "  tokensFile: /t.json\n"
                 + "  channelOwnerUserId: U0222\n";
         WorkstreamConfig cfg = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkspaceEntry ws = cfg.getSlackWorkspaces().get(0);
+        WorkspaceEntry ws = cfg.getSlackWorkspaces().get(0);
         assertEquals(List.of("U0222"), ws.effectiveChannelOwnerUserIds());
     }
 
@@ -405,7 +407,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
                 + "  - U0BBB\n"
                 + "  - U0CCC\n";
         WorkstreamConfig cfg = WorkstreamConfig.loadFromYamlString(wsYaml);
-        WorkstreamConfig.WorkspaceEntry ws = cfg.getSlackWorkspaces().get(0);
+        WorkspaceEntry ws = cfg.getSlackWorkspaces().get(0);
         assertEquals(List.of("U0BBB", "U0CCC"), ws.effectiveChannelOwnerUserIds());
     }
 
@@ -487,7 +489,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
             + "    archived: true\n";
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        WorkstreamEntry entry = config.getWorkstreams().get(0);
         assertTrue("entry must reflect archived=true", entry.isArchived());
 
         Workstream ws = entry.toWorkstream();
@@ -553,10 +555,10 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         // Reloaded legacy getters being empty proves no legacy entry-level
         // key was written (a legacy key in the output would repopulate them).
         WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
-        WorkstreamConfig.WorkstreamEntry wsEntry = reloaded.getWorkstreams().get(0);
+        WorkstreamEntry wsEntry = reloaded.getWorkstreams().get(0);
         assertNull(wsEntry.getDefaultRunner());
         assertTrue(wsEntry.getRunners().isEmpty());
-        WorkstreamConfig.WorkspaceEntry wspEntry = reloaded.findSlackWorkspace("T-LEGACY");
+        WorkspaceEntry wspEntry = reloaded.findSlackWorkspace("T-LEGACY");
         assertNull(wspEntry.getDefaultRunner());
         assertTrue(wspEntry.getRunners().isEmpty());
 
@@ -585,7 +587,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
             + "      commit-message: \"claude\"\n";
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        WorkstreamEntry entry = config.getWorkstreams().get(0);
         assertEquals("opencode", entry.getDefaultRunner());
         assertEquals("claude", entry.getRunners().get("primary"));
         assertEquals("opencode", entry.getRunners().get("deduplication"));
@@ -603,7 +605,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         tempFile.deleteOnExit();
         config.saveToYaml(tempFile);
         WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
-        WorkstreamConfig.WorkstreamEntry rEntry = reloaded.getWorkstreams().get(0);
+        WorkstreamEntry rEntry = reloaded.getWorkstreams().get(0);
         assertNull("legacy defaultRunner must not survive a save", rEntry.getDefaultRunner());
         assertTrue("legacy runners map must not survive a save", rEntry.getRunners().isEmpty());
         PhaseConfigBundle rBundle = rEntry.toPhaseConfigBundle();
@@ -623,7 +625,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
             + "    defaultBranch: \"feature/no-runners\"\n";
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        WorkstreamEntry entry = config.getWorkstreams().get(0);
         assertNull(entry.getDefaultRunner());
         assertTrue("runners map must default to empty",
                 entry.getRunners().isEmpty());
@@ -651,7 +653,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
             + "      commit-message: \"opencode\"\n";
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkspaceEntry entry =
+        WorkspaceEntry entry =
                 config.findSlackWorkspace("T-RUNNERS");
         assertNotNull(entry);
         assertEquals("opencode", entry.getDefaultRunner());
@@ -662,7 +664,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         tempFile.deleteOnExit();
         config.saveToYaml(tempFile);
         WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
-        WorkstreamConfig.WorkspaceEntry rEntry =
+        WorkspaceEntry rEntry =
                 reloaded.findSlackWorkspace("T-RUNNERS");
         assertNotNull(rEntry);
         // Legacy runner fields are dropped on save; the configuration is
@@ -688,7 +690,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
             + "    defaultRunner: \"opencode\"\n";
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkspaceEntry entry =
+        WorkspaceEntry entry =
                 config.findSlackWorkspace("T-DEF");
         assertNotNull(entry);
         assertEquals("opencode", entry.getDefaultRunner());
@@ -699,7 +701,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         tempFile.deleteOnExit();
         config.saveToYaml(tempFile);
         WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
-        WorkstreamConfig.WorkspaceEntry rEntry =
+        WorkspaceEntry rEntry =
                 reloaded.findSlackWorkspace("T-DEF");
         assertNotNull(rEntry);
         // The legacy defaultRunner is dropped on save but migrated into the
@@ -722,7 +724,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
             + "    appToken: \"xapp\"\n";
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkspaceEntry entry =
+        WorkspaceEntry entry =
                 config.findSlackWorkspace("T-PLAIN");
         assertNotNull(entry);
         assertNull(entry.getDefaultRunner());
@@ -732,7 +734,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         tempFile.deleteOnExit();
         config.saveToYaml(tempFile);
         WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
-        WorkstreamConfig.WorkspaceEntry rEntry =
+        WorkspaceEntry rEntry =
                 reloaded.findSlackWorkspace("T-PLAIN");
         assertNotNull(rEntry);
         assertNull(rEntry.getDefaultRunner());
@@ -761,7 +763,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
             + "        model: \"claude-haiku-4-5-20251001\"\n";
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkspaceEntry entry =
+        WorkspaceEntry entry =
                 config.findSlackWorkspace("T-PC");
         assertNotNull(entry);
         assertNotNull(entry.getDefaultPhaseConfig());
@@ -775,7 +777,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         tempFile.deleteOnExit();
         config.saveToYaml(tempFile);
         WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
-        WorkstreamConfig.WorkspaceEntry rEntry =
+        WorkspaceEntry rEntry =
                 reloaded.findSlackWorkspace("T-PC");
         assertNotNull(rEntry);
         assertNotNull("defaultPhaseConfig must survive round-trip",
@@ -808,7 +810,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
             + "        model: \"claude-haiku-4-5-20251001\"\n";
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        WorkstreamEntry entry = config.getWorkstreams().get(0);
         assertNotNull(entry.getDefaultPhaseConfig());
         assertEquals("claude-opus-4-7", entry.getDefaultPhaseConfig().model());
         assertEquals("claude-haiku-4-5-20251001",
@@ -818,7 +820,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         tempFile.deleteOnExit();
         config.saveToYaml(tempFile);
         WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
-        WorkstreamConfig.WorkstreamEntry rEntry =
+        WorkstreamEntry rEntry =
                 reloaded.getWorkstreams().get(0);
         assertNotNull("defaultPhaseConfig must survive round-trip",
                 rEntry.getDefaultPhaseConfig());
@@ -896,7 +898,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
         assertEquals(1, config.getWorkspaces().size());
-        WorkstreamConfig.WorkspaceEntry ws = config.getWorkspaces().get(0);
+        WorkspaceEntry ws = config.getWorkspaces().get(0);
         assertEquals("almostrealism", ws.getId());
         assertEquals("T0123456789", ws.getSlackTeamId());
         assertEquals(1, config.getWorkstreams().size());
@@ -917,7 +919,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
             + "workstreams: []\n";
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkspaceEntry ws =
+        WorkspaceEntry ws =
                 config.findWorkspace("local-only");
         assertNotNull(ws);
         assertNull("slackTeamId must be absent when no Slack integration",
@@ -999,7 +1001,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         // Slack team binding is preserved across the rename.
         assertEquals("T0123456789",
                 config.findWorkspace("almostrealism").getSlackTeamId());
-        for (WorkstreamConfig.WorkstreamEntry entry : config.getWorkstreams()) {
+        for (WorkstreamEntry entry : config.getWorkstreams()) {
             assertEquals("almostrealism", entry.getWorkspaceId());
         }
     }
@@ -1007,8 +1009,8 @@ public class WorkstreamConfigTest extends TestSuiteBase {
     /**
      * Regression test for the lost-provider defect: a workspace-level
      * {@code phaseConfigs.primary.provider} entry must survive YAML
-     * deserialization into the {@link WorkstreamConfig.WorkspaceEntry}
-     * and emerge from {@link WorkstreamConfig.WorkspaceEntry#toPhaseConfigBundle()}
+     * deserialization into the {@link WorkspaceEntry}
+     * and emerge from {@link WorkspaceEntry#toPhaseConfigBundle()}
      * in the per-phase entry where the resolver can read it. Without this,
      * agents fall back to the runner's default provider (e.g. opencode →
      * "local"), bypassing the configured openrouter/anthropic route.
@@ -1029,7 +1031,7 @@ public class WorkstreamConfigTest extends TestSuiteBase {
             + "        provider: \"openrouter\"\n";
 
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkspaceEntry ws = config.findWorkspace("almostrealism");
+        WorkspaceEntry ws = config.findWorkspace("almostrealism");
         assertNotNull(ws);
 
         PhaseConfigBundle bundle = ws.toPhaseConfigBundle();

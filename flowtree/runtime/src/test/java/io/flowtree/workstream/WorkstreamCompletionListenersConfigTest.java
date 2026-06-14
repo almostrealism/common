@@ -29,10 +29,11 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import io.flowtree.workstream.WorkstreamEntry;
 
 /**
  * Tests for the {@code completionListeners} field on
- * {@link WorkstreamConfig.WorkstreamEntry} and its
+ * {@link WorkstreamEntry} and its
  * round-trip through YAML load / save.
  *
  * <p>The listener list is a new workstream-level field with the
@@ -47,7 +48,7 @@ public class WorkstreamCompletionListenersConfigTest extends TestSuiteBase {
     /**
      * A non-empty listener list survives a YAML save-and-reload
      * round-trip on the entry, and propagates to the runtime
-     * {@link Workstream} when {@link WorkstreamConfig.WorkstreamEntry#toWorkstream()}
+     * {@link Workstream} when {@link WorkstreamEntry#toWorkstream()}
      * is called.
      */
     @Test(timeout = 10000)
@@ -61,7 +62,7 @@ public class WorkstreamCompletionListenersConfigTest extends TestSuiteBase {
                 + "      - \"ws-orchestrator\"\n"
                 + "      - \"ws-monitor\"\n";
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        WorkstreamEntry entry = config.getWorkstreams().get(0);
         List<String> listeners = entry.getCompletionListeners();
         assertNotNull(listeners);
         assertEquals(2, listeners.size());
@@ -77,7 +78,7 @@ public class WorkstreamCompletionListenersConfigTest extends TestSuiteBase {
         tempFile.deleteOnExit();
         config.saveToYaml(tempFile);
         WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
-        WorkstreamConfig.WorkstreamEntry reloadedEntry =
+        WorkstreamEntry reloadedEntry =
                 reloaded.getWorkstreams().get(0);
         assertEquals(2, reloadedEntry.getCompletionListeners().size());
         assertTrue(reloadedEntry.getCompletionListeners()
@@ -101,7 +102,7 @@ public class WorkstreamCompletionListenersConfigTest extends TestSuiteBase {
                 + "    channelName: \"#X\"\n"
                 + "    defaultBranch: \"feature/X\"\n";
         WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
-        WorkstreamConfig.WorkstreamEntry entry = config.getWorkstreams().get(0);
+        WorkstreamEntry entry = config.getWorkstreams().get(0);
         assertNotNull("entry must have a non-null listener list",
                 entry.getCompletionListeners());
         assertTrue("entry must default to empty listener list",

@@ -196,7 +196,7 @@ public class Workstream {
      * Whether this workstream is archived. Archived workstreams remain in the
      * config (so historical job records and memories stay queryable) but are
      * hidden from default list responses. Persisted by
-     * {@link WorkstreamConfig.WorkstreamEntry#toWorkstream()} and the inverse
+     * {@link WorkstreamEntry#toWorkstream()} and the inverse
      * sync path, so editing {@code archived: true} into a workstream's YAML
      * entry brings it back hidden on the next controller load. The archive /
      * unarchive MCP tools are the intended runtime entry points.

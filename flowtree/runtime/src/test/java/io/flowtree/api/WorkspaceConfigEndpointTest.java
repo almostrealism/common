@@ -40,6 +40,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import io.flowtree.workstream.WorkspaceEntry;
+import io.flowtree.workstream.WorkstreamEntry;
 
 /**
  * Integration tests for the {@code POST /api/workspaces/{id}/config}
@@ -55,7 +57,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
     private static final String WORKSPACE_ID = "T1234567890";
 
     /** The configured workspace entry under test; mutated by the endpoint. */
-    private WorkstreamConfig.WorkspaceEntry workspaceEntry;
+    private WorkspaceEntry workspaceEntry;
     /** Loaded config used to back the workspace lookup and persistence. */
     private WorkstreamConfig config;
     /** YAML file backing the listener's persistence; tests verify content lands here. */
@@ -71,7 +73,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
     @Before
     public void setUp() throws Exception {
         config = new WorkstreamConfig();
-        workspaceEntry = new WorkstreamConfig.WorkspaceEntry();
+        workspaceEntry = new WorkspaceEntry();
         workspaceEntry.setId(WORKSPACE_ID);
         workspaceEntry.setSlackTeamId(WORKSPACE_ID);
         workspaceEntry.setName("Initial Name");
@@ -200,7 +202,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         // shared in-memory reference. The per-phase shape (not the removed
         // legacy runner fields) is what survives the round-trip.
         WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(configFile);
-        WorkstreamConfig.WorkspaceEntry reloadedEntry =
+        WorkspaceEntry reloadedEntry =
                 reloaded.findSlackWorkspace(WORKSPACE_ID);
         assertNotNull(reloadedEntry);
         assertEquals("Persisted Name", reloadedEntry.getName());
@@ -243,8 +245,8 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         // Seed a workstream that references the workspace by its current ID.
         Workstream ws = new Workstream("ws-1", "C-x", "#x");
         ws.setWorkspaceId(WORKSPACE_ID);
-        WorkstreamConfig.WorkstreamEntry wsEntry =
-                new WorkstreamConfig.WorkstreamEntry();
+        WorkstreamEntry wsEntry =
+                new WorkstreamEntry();
         wsEntry.setChannelId("C-x");
         wsEntry.setChannelName("#x");
         wsEntry.setWorkspaceId(WORKSPACE_ID);
@@ -310,7 +312,7 @@ public class WorkspaceConfigEndpointTest extends TestSuiteBase {
         // gap-fix sessions only verified in-memory state, which would pass
         // even if persistConfig() dropped the new fields on the floor.
         WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(configFile);
-        WorkstreamConfig.WorkspaceEntry reloadedEntry =
+        WorkspaceEntry reloadedEntry =
                 reloaded.findSlackWorkspace(WORKSPACE_ID);
         assertNotNull(reloadedEntry);
         assertNotNull("defaultPhaseConfig must survive YAML round-trip",

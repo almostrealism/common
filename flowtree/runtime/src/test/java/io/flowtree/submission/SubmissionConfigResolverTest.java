@@ -34,6 +34,7 @@ import io.flowtree.workstream.WorkstreamConfig;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import io.flowtree.workstream.WorkspaceEntry;
 
 /**
  * Tests for {@link SubmissionConfigResolver}. The runner-only and Phase-config
@@ -64,11 +65,11 @@ public class SubmissionConfigResolverTest extends TestSuiteBase {
     }
 
     /**
-     * Returns a {@link WorkstreamConfig.WorkspaceEntry} with the given identifier
+     * Returns a {@link WorkspaceEntry} with the given identifier
      * and no other configuration.
      */
-    private static WorkstreamConfig.WorkspaceEntry workspace(String id) {
-        WorkstreamConfig.WorkspaceEntry entry = new WorkstreamConfig.WorkspaceEntry();
+    private static WorkspaceEntry workspace(String id) {
+        WorkspaceEntry entry = new WorkspaceEntry();
         entry.setId(id);
         return entry;
     }
@@ -110,7 +111,7 @@ public class SubmissionConfigResolverTest extends TestSuiteBase {
      */
     @Test(timeout = 5000)
     public void workspaceDefaultRunnerPropagatesWhenWorkstreamEmpty() {
-        WorkstreamConfig.WorkspaceEntry wsEntry = workspace("acme");
+        WorkspaceEntry wsEntry = workspace("acme");
         wsEntry.setDefaultRunner(TEST_RUNNER);
         SubmissionConfigResolver r = SubmissionConfigResolver.resolve(
                 PhaseConfigBundle.EMPTY, workstream(), wsEntry);
@@ -126,7 +127,7 @@ public class SubmissionConfigResolverTest extends TestSuiteBase {
      */
     @Test(timeout = 5000)
     public void workspacePhaseConfigBundleReachesFactory() {
-        WorkstreamConfig.WorkspaceEntry wsEntry = workspace("acme");
+        WorkspaceEntry wsEntry = workspace("acme");
         wsEntry.setDefaultPhaseConfig(new PhaseConfig(TEST_RUNNER, "model-x", null));
         SubmissionConfigResolver r = SubmissionConfigResolver.resolve(
                 PhaseConfigBundle.EMPTY, workstream(), wsEntry);
@@ -146,7 +147,7 @@ public class SubmissionConfigResolverTest extends TestSuiteBase {
      */
     @Test(timeout = 5000)
     public void workstreamDefaultBeatsWorkspaceDefault() {
-        WorkstreamConfig.WorkspaceEntry wsEntry = workspace("acme");
+        WorkspaceEntry wsEntry = workspace("acme");
         wsEntry.setDefaultRunner(TEST_RUNNER);
         Workstream ws = workstream();
         ws.setDefaultRunner(AgentRunnerRegistry.CLAUDE);
@@ -172,7 +173,7 @@ public class SubmissionConfigResolverTest extends TestSuiteBase {
         Workstream ws = workstream();
         ws.setPhaseConfigBundle(bundle(
                 new PhaseConfig(AgentRunnerRegistry.CLAUDE, null, null), null, null));
-        WorkstreamConfig.WorkspaceEntry wsEntry = workspace("acme");
+        WorkspaceEntry wsEntry = workspace("acme");
         wsEntry.setDefaultPhaseConfig(new PhaseConfig(AgentRunnerRegistry.CLAUDE, "ws-model", null));
         PhaseConfigBundle request = bundle(
                 new PhaseConfig(TEST_RUNNER, "req-model", null), null, null);

@@ -16,9 +16,7 @@
 
 package io.flowtree.workstream;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,7 +30,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,13 +37,23 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
-import io.flowtree.submission.SubmissionRunnerResolver;
 
 /**
  * Configuration for Slack workstreams, loadable from YAML or JSON files.
  *
  * <p>Agents connect inbound to the controller's FlowTree server, so the
  * {@code agents} field is optional and typically omitted.</p>
+ *
+ * <p>The configuration is organized into three tiers of entries:</p>
+ * <ul>
+ *   <li>{@link WorkspaceEntry} — operator's organizational unit, optionally
+ *       connected to a Slack team. Holds Slack credentials, GitHub org tokens,
+ *       and workspace-level phase config defaults.</li>
+ *   <li>{@link WorkstreamEntry} — binds a git branch to a Slack channel and
+ *       declares job parameters. One entry per active branch/project.</li>
+ *   <li>{@link PushedToolEntry} / {@link McpServerEntry} — MCP tool serving
+ *       configuration pushed to agent containers.</li>
+ * </ul>
  *
  * <p>Example YAML configuration:</p>
  * <pre>
@@ -64,8 +71,9 @@ import io.flowtree.submission.SubmissionRunnerResolver;
  *
  * @author Michael Murray
  * @see Workstream
+ * @see WorkspaceEntry
+ * @see WorkstreamEntry
  */
-@JsonIgnoreProperties(ignoreUnknown = true)
 public class WorkstreamConfig {
 
     /** Global default path for repo checkouts; used when no workingDirectory is set. */
@@ -102,735 +110,6 @@ public class WorkstreamConfig {
     private List<WorkspaceEntry> workspaces = new ArrayList<>();
 
     /**
-     * Configuration entry for a workspace — the operator's organizational
-     * unit, optionally connected to a Slack team.
-     *
-     * <p>The {@code id} field is operator-chosen and is the identifier
-     * referenced by {@link WorkstreamEntry#getWorkspaceId()}. The optional
-     * {@code slackTeamId} field carries the Slack team ID (e.g.
-     * {@code "T0123456789"}) when the workspace is connected to Slack;
-     * when absent the workspace has no Slack integration and channel/notifier
-     * operations skip cleanly. Legacy {@code slackWorkspaces:} entries are
-     * auto-migrated on load so {@code id == slackTeamId}.</p>
-     *
-     * <p>Slack-credential fields ({@code tokensFile}/{@code botToken}/
-     * {@code appToken}) only have effect when {@code slackTeamId} is set.</p>
-     */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class WorkspaceEntry {
-        /**
-         * Operator-chosen workspace identifier. For legacy {@code slackWorkspaces:}
-         * entries the YAML key {@code workspaceId} is accepted via
-         * {@link JsonAlias} and double-loaded as both {@code id} and
-         * {@code slackTeamId} so that older configs continue to resolve.
-         */
-        @JsonAlias({"workspaceId"})
-        private String id;
-        /**
-         * Optional Slack team ID (e.g. {@code "T0123456789"}) identifying the
-         * Slack workspace this entry routes to. {@code null} when this
-         * workspace has no Slack connection.
-         */
-        private String slackTeamId;
-        /** Human-readable label for this workspace (used in logs and diagnostics). */
-        private String name;
-        /** Path to a JSON file with {@code botToken} and {@code appToken}. */
-        private String tokensFile;
-        /** Inline bot token (xoxb-...); used when {@code tokensFile} is absent. */
-        private String botToken;
-        /** Inline app token (xapp-...); used when {@code tokensFile} is absent. */
-        private String appToken;
-        /** Default Slack channel ID for fallback message delivery in this workspace. */
-        private String defaultChannel;
-        /**
-         * Single Slack user ID auto-invited to newly created channels in this
-         * workspace. Superseded by {@link #channelOwnerUserIds} when that list
-         * is non-empty; retained for backwards compatibility with configs that
-         * predate multi-user invites.
-         */
-        private String channelOwnerUserId;
-        /**
-         * Slack user IDs auto-invited to newly created channels in this
-         * workspace. When set, takes precedence over {@link #channelOwnerUserId}.
-         */
-        private List<String> channelOwnerUserIds;
-        /** Per-organization GitHub tokens scoped to this workspace. */
-        private Map<String, GitHubOrgEntry> githubOrgs = new LinkedHashMap<>();
-        /** Secrets declared as available to workstreams in this workspace. */
-        private List<WorkspaceSecretEntry> secrets = new ArrayList<>();
-        /**
-         * Workspace-level default {@link io.flowtree.jobs.agent.AgentRunner}
-         * applied to workstreams in this workspace when neither the workstream
-         * itself nor the per-job override sets one. Sits between the
-         * workstream default and the controller default in the routing
-         * ladder. Optional; {@code null} omits the field from serialized YAML.
-         *
-         * <p>Legacy field: still accepted on load and auto-migrated into
-         * {@link #defaultPhaseConfig}, but never written back — serialization
-         * is write-only so a save-then-load cycle drops it in favour of the
-         * per-phase shape.</p>
-         */
-        @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
-        private String defaultRunner;
-        /**
-         * Workspace-level per-phase runner overrides keyed by phase wire name
-         * (e.g. {@code primary}, {@code commit-message}). Consulted by the
-         * resolver only when the workstream has no per-phase entry for the
-         * same phase <em>and</em> no workstream-level {@code defaultRunner};
-         * see {@link SubmissionRunnerResolver} for the full ladder.
-         *
-         * <p>Legacy field: accepted on load and auto-migrated into
-         * {@link #phaseConfigs}, but write-only for serialization.</p>
-         */
-        @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
-        private Map<String, String> runners = new LinkedHashMap<>();
-
-        /**
-         * Workspace-level default {@link PhaseConfig} for the unified
-         * per-phase config ladder. Optional; {@code null} omits the field
-         * from serialized YAML. New form — supersedes the legacy
-         * {@link #defaultRunner} for runner selection, and is the only
-         * source of workspace-level {@code model} / {@code effort}.
-         */
-        @JsonInclude(JsonInclude.Include.NON_NULL)
-        private PhaseConfig defaultPhaseConfig;
-        /**
-         * Workspace-level per-phase {@link PhaseConfig} overrides keyed by
-         * phase wire name (e.g. {@code review}). Supersedes the legacy
-         * {@link #runners} map. Optional; an empty map is omitted from
-         * serialized YAML.
-         */
-        @JsonInclude(JsonInclude.Include.NON_EMPTY)
-        private Map<String, PhaseConfig> phaseConfigs = new LinkedHashMap<>();
-
-        /** Returns the operator-chosen workspace ID. */
-        public String getId() { return id; }
-        /** Sets the operator-chosen workspace ID. */
-        public void setId(String id) { this.id = id; }
-
-        /**
-         * Returns the Slack team ID this workspace is connected to, or
-         * {@code null} when the workspace has no Slack integration.
-         */
-        @JsonInclude(JsonInclude.Include.NON_NULL)
-        public String getSlackTeamId() { return slackTeamId; }
-        /**
-         * Sets the Slack team ID for this workspace. Pass {@code null} or
-         * empty to clear the Slack connection — channel-routing operations
-         * will then skip this workspace cleanly.
-         */
-        public void setSlackTeamId(String slackTeamId) {
-            this.slackTeamId = (slackTeamId == null || slackTeamId.isEmpty()) ? null : slackTeamId;
-        }
-
-        /** Returns the human-readable workspace label. */
-        public String getName() { return name; }
-        /** Sets the human-readable workspace label. */
-        public void setName(String name) { this.name = name; }
-
-        /** Returns the path to the JSON tokens file, or {@code null} for inline tokens. */
-        public String getTokensFile() { return tokensFile; }
-        /** Sets the path to the JSON tokens file. */
-        public void setTokensFile(String tokensFile) { this.tokensFile = tokensFile; }
-
-        /** Returns the inline bot token (xoxb-...). */
-        public String getBotToken() { return botToken; }
-        /** Sets the inline bot token. */
-        public void setBotToken(String botToken) { this.botToken = botToken; }
-
-        /** Returns the inline app token (xapp-...). */
-        public String getAppToken() { return appToken; }
-        /** Sets the inline app token. */
-        public void setAppToken(String appToken) { this.appToken = appToken; }
-
-        /** Returns the default fallback channel ID for this workspace. */
-        public String getDefaultChannel() { return defaultChannel; }
-        /** Sets the default fallback channel ID. */
-        public void setDefaultChannel(String defaultChannel) { this.defaultChannel = defaultChannel; }
-
-        /** Returns the legacy single Slack user ID auto-invited to new channels in this workspace. */
-        public String getChannelOwnerUserId() { return channelOwnerUserId; }
-        /** Sets the legacy single Slack user ID for auto-invite on channel creation. */
-        public void setChannelOwnerUserId(String channelOwnerUserId) { this.channelOwnerUserId = channelOwnerUserId; }
-
-        /** Returns the list of Slack user IDs auto-invited to new channels (nullable). */
-        public List<String> getChannelOwnerUserIds() { return channelOwnerUserIds; }
-        /** Sets the list of Slack user IDs for auto-invite on channel creation. */
-        public void setChannelOwnerUserIds(List<String> channelOwnerUserIds) {
-            this.channelOwnerUserIds = channelOwnerUserIds;
-        }
-
-        /**
-         * Returns the effective list of Slack user IDs to auto-invite when a
-         * new channel is created in this workspace. Resolves the legacy single
-         * {@code channelOwnerUserId} field and the plural
-         * {@code channelOwnerUserIds} list into one canonical list: the plural
-         * list wins when non-empty; otherwise the singular value becomes a
-         * one-element list; otherwise an empty list is returned.
-         *
-         * @return never {@code null}; empty when no auto-invite is configured
-         */
-        public List<String> effectiveChannelOwnerUserIds() {
-            if (channelOwnerUserIds != null && !channelOwnerUserIds.isEmpty()) {
-                return channelOwnerUserIds;
-            }
-            if (channelOwnerUserId != null && !channelOwnerUserId.isEmpty()) {
-                return List.of(channelOwnerUserId);
-            }
-            return List.of();
-        }
-
-        /** Returns the per-organization GitHub token map for this workspace. */
-        public Map<String, GitHubOrgEntry> getGithubOrgs() { return githubOrgs; }
-        /** Sets the per-organization GitHub token map. */
-        public void setGithubOrgs(Map<String, GitHubOrgEntry> githubOrgs) { this.githubOrgs = githubOrgs; }
-
-        /** Returns the list of secrets declared for this workspace. */
-        public List<WorkspaceSecretEntry> getSecrets() { return secrets; }
-        /** Sets the list of secrets declared for this workspace. */
-        public void setSecrets(List<WorkspaceSecretEntry> secrets) {
-            this.secrets = secrets != null ? secrets : new ArrayList<>();
-        }
-
-        /** Returns the workspace-level default agent runner, or {@code null} when none is configured. */
-        @JsonInclude(JsonInclude.Include.NON_NULL)
-        public String getDefaultRunner() { return defaultRunner; }
-        /** Sets the workspace-level default agent runner. */
-        public void setDefaultRunner(String defaultRunner) { this.defaultRunner = defaultRunner; }
-
-        /** Returns the workspace-level per-phase runner overrides (keyed by phase wire name); never {@code null}. */
-        @JsonInclude(JsonInclude.Include.NON_EMPTY)
-        public Map<String, String> getRunners() { return runners; }
-        /** Replaces the workspace-level per-phase runner override map; {@code null} is treated as empty. */
-        public void setRunners(Map<String, String> runners) {
-            this.runners = runners != null ? new LinkedHashMap<>(runners) : new LinkedHashMap<>();
-        }
-
-        /** Returns the workspace-level default {@link PhaseConfig}, or {@code null}. */
-        public PhaseConfig getDefaultPhaseConfig() { return defaultPhaseConfig; }
-        /** Sets the workspace-level default {@link PhaseConfig}. */
-        public void setDefaultPhaseConfig(PhaseConfig defaultPhaseConfig) {
-            this.defaultPhaseConfig = defaultPhaseConfig;
-        }
-
-        /** Returns the workspace-level per-phase {@link PhaseConfig} overrides; never {@code null}. */
-        public Map<String, PhaseConfig> getPhaseConfigs() { return phaseConfigs; }
-        /** Replaces the workspace-level per-phase {@link PhaseConfig} overrides. */
-        public void setPhaseConfigs(Map<String, PhaseConfig> phaseConfigs) {
-            this.phaseConfigs = phaseConfigs != null ? new LinkedHashMap<>(phaseConfigs) : new LinkedHashMap<>();
-        }
-
-        /**
-         * Builds the effective {@link PhaseConfigBundle} for this workspace,
-         * merging the new {@code defaultPhaseConfig}/{@code phaseConfigs}
-         * fields with the legacy {@code defaultRunner}/{@code runners} fields.
-         * The new fields take precedence field-by-field when both are
-         * supplied; legacy fields fill in {@code null} positions.
-         *
-         * @return the merged bundle; never {@code null}
-         */
-        public PhaseConfigBundle toPhaseConfigBundle() {
-            return PhaseConfigBundle.mergeLegacyWithNew(defaultRunner, runners,
-                    defaultPhaseConfig, phaseConfigs);
-        }
-    }
-
-    /**
-     * Declares a single workspace-scoped secret available to agent workstreams.
-     *
-     * <p>Each entry maps a logical name to the JSON file on disk that holds
-     * the secret payload. The file must exist and must be readable only by the
-     * controller process (permissions {@code 0600}). The controller logs a
-     * warning at startup when a declared file is world- or group-readable.</p>
-     */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class WorkspaceSecretEntry {
-        /** Unique name within the workspace; URL-safe (lowercase letters, digits, hyphens). */
-        private String name;
-        /** Absolute path to the JSON payload file on disk. */
-        private String file;
-
-        /** Returns the secret name. */
-        public String getName() { return name; }
-        /** Sets the secret name. */
-        public void setName(String name) { this.name = name; }
-
-        /** Returns the absolute path to the JSON payload file. */
-        public String getFile() { return file; }
-        /** Sets the path to the JSON payload file. */
-        public void setFile(String file) { this.file = file; }
-    }
-
-    /**
-     * Configuration entry for a single workstream.
-     */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class WorkstreamEntry {
-        /** Persistent identifier; generated if absent and saved back to YAML. */
-        private String workstreamId;
-        /** The Slack channel ID this workstream is bound to. */
-        private String channelId;
-        /** The human-readable Slack channel name. */
-        private String channelName;
-        /** Optional agent endpoints; typically empty since agents connect inbound. */
-        private List<AgentEntry> agents = new ArrayList<>();
-        /** Branch agents commit to by default. */
-        private String defaultBranch;
-        /** Branch used as the base when the controller creates a new branch. */
-        private String baseBranch;
-        /** Whether agents push commits to the remote origin. */
-        private boolean pushToOrigin = true;
-        /** Local filesystem path to the checked-out repository. */
-        private String workingDirectory;
-        /** Git clone URL for automatic repository checkout. */
-        private String repoUrl;
-        /** Comma-separated list of Claude Code tool names the agent may use. */
-        private String allowedTools = "Read,Edit,Write,Bash,Glob,Grep";
-        /** Maximum number of agent turns per job. */
-        private int maxTurns = 800;
-        /** Maximum spending budget per job in USD. */
-        private double maxBudgetUsd = 100.0;
-        /** Git author name for commits. */
-        private String gitUserName;
-        /** Git author email for commits. */
-        private String gitUserEmail;
-        /** Per-workstream environment variables injected into pushed tool MCP configs. */
-        private Map<String, String> env;
-        /** Per-workstream environment variables set on the agent subprocess itself. */
-        private Map<String, String> agentEnv;
-        /** Optional path to a planning document the agent consults for context. */
-        private String planningDocument;
-        /** GitHub organization name for org-based token selection. */
-        private String githubOrg;
-        /** Additional repository URLs cloned alongside the primary repo. */
-        private List<String> dependentRepos;
-        /**
-         * Workstream IDs of completion listeners that should be woken up
-         * automatically when a job on this workstream reaches a terminal
-         * status. The listener graph must be a DAG; the cycle check runs
-         * on register / update and rejects configurations that would
-         * introduce a cycle, including self-listing. See
-         * {@link Workstream#setCompletionListeners(List)} for the kill
-         * switch and reconciliation-invariant details.
-         */
-        private List<String> completionListeners;
-        /** Node labels that jobs submitted to this workstream must match by default. */
-        private Map<String, String> requiredLabels;
-        /**
-         * The workspace ID this workstream is bound to. Accepts the legacy
-         * YAML key {@code slackWorkspaceId} via {@link JsonAlias} so existing
-         * configs continue to load; the field now holds an operator-chosen
-         * workspace ID rather than a Slack team ID.
-         */
-        @JsonAlias({"slackWorkspaceId"})
-        private String workspaceId;
-        /**
-         * Default {@link io.flowtree.jobs.agent.AgentRunner} applied to jobs
-         * in this workstream when no per-phase or per-job override is set.
-         * Legacy field: accepted on load and auto-migrated into
-         * {@link #defaultPhaseConfig}, but write-only for serialization.
-         */
-        @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
-        private String defaultRunner;
-        /**
-         * Per-phase runner overrides keyed by phase wire name (e.g.
-         * {@code primary}, {@code deduplication}). Phases not listed inherit
-         * {@link #defaultRunner}. Legacy field: accepted on load and
-         * auto-migrated into {@link #phaseConfigs}, but write-only for
-         * serialization.
-         */
-        @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
-        private Map<String, String> runners = new LinkedHashMap<>();
-        /**
-         * Workstream-level default {@link PhaseConfig}; new form for the
-         * unified per-phase config ladder. Optional; {@code null} omits the
-         * field from serialized YAML.
-         */
-        @JsonInclude(JsonInclude.Include.NON_NULL)
-        private PhaseConfig defaultPhaseConfig;
-        /**
-         * Workstream-level per-phase {@link PhaseConfig} overrides keyed by
-         * phase wire name. Optional; an empty map is omitted from
-         * serialized YAML.
-         */
-        @JsonInclude(JsonInclude.Include.NON_EMPTY)
-        private Map<String, PhaseConfig> phaseConfigs = new LinkedHashMap<>();
-        /**
-         * Whether this workstream is archived. Archived workstreams are
-         * hidden from default {@code workstream_list} responses but their
-         * job history and memories remain queryable.
-         */
-        private boolean archived;
-
-        /** Returns the persistent workstream identifier. */
-        public String getWorkstreamId() { return workstreamId; }
-        /** Sets the persistent workstream identifier. */
-        public void setWorkstreamId(String workstreamId) { this.workstreamId = workstreamId; }
-
-        /** Returns the Slack channel ID (e.g., "C0123456789"). */
-        public String getChannelId() { return channelId; }
-        /** Sets the Slack channel ID. */
-        public void setChannelId(String channelId) { this.channelId = channelId; }
-
-        /** Returns the human-readable Slack channel name (e.g., "#project-agent"). */
-        public String getChannelName() { return channelName; }
-        /** Sets the human-readable Slack channel name. */
-        public void setChannelName(String channelName) { this.channelName = channelName; }
-
-        /** Returns the list of agent endpoint entries for this workstream. */
-        public List<AgentEntry> getAgents() { return agents; }
-        /** Sets the list of agent endpoint entries for this workstream. */
-        public void setAgents(List<AgentEntry> agents) { this.agents = agents; }
-
-        /** Returns the default git branch for agent commits. */
-        public String getDefaultBranch() { return defaultBranch; }
-        /** Sets the default git branch for agent commits. */
-        public void setDefaultBranch(String defaultBranch) { this.defaultBranch = defaultBranch; }
-
-        /** Returns the base branch used as the starting point for new branch creation. */
-        public String getBaseBranch() { return baseBranch; }
-        /** Sets the base branch used when creating new target branches. */
-        public void setBaseBranch(String baseBranch) { this.baseBranch = baseBranch; }
-
-        /** Returns whether agents should push commits to the remote origin. */
-        public boolean isPushToOrigin() { return pushToOrigin; }
-        /** Sets whether agents should push commits to the remote origin. */
-        public void setPushToOrigin(boolean pushToOrigin) { this.pushToOrigin = pushToOrigin; }
-
-        /** Returns the local working directory for the agent's git repository. */
-        public String getWorkingDirectory() { return workingDirectory; }
-        /** Sets the local working directory for the agent's git repository. */
-        public void setWorkingDirectory(String workingDirectory) { this.workingDirectory = workingDirectory; }
-
-        /** Returns the git repository URL for automatic checkout. */
-        public String getRepoUrl() { return repoUrl; }
-        /** Sets the git repository URL for automatic checkout. */
-        public void setRepoUrl(String repoUrl) { this.repoUrl = repoUrl; }
-
-        /** Returns the comma-separated list of Claude Code tool names the agent may use. */
-        public String getAllowedTools() { return allowedTools; }
-        /** Sets the comma-separated list of allowed Claude Code tool names. */
-        public void setAllowedTools(String allowedTools) { this.allowedTools = allowedTools; }
-
-        /** Returns the maximum number of turns a Claude Code agent may take per job. */
-        public int getMaxTurns() { return maxTurns; }
-        /** Sets the maximum number of turns per job. */
-        public void setMaxTurns(int maxTurns) { this.maxTurns = maxTurns; }
-
-        /** Returns the maximum spending budget per job in USD. */
-        public double getMaxBudgetUsd() { return maxBudgetUsd; }
-        /** Sets the maximum spending budget per job in USD. */
-        public void setMaxBudgetUsd(double maxBudgetUsd) { this.maxBudgetUsd = maxBudgetUsd; }
-
-        /** Returns the git author name used for commits made by this workstream. */
-        public String getGitUserName() { return gitUserName; }
-        /** Sets the git author name used for commits. */
-        public void setGitUserName(String gitUserName) { this.gitUserName = gitUserName; }
-
-        /** Returns the git author email used for commits made by this workstream. */
-        public String getGitUserEmail() { return gitUserEmail; }
-        /** Sets the git author email used for commits. */
-        public void setGitUserEmail(String gitUserEmail) { this.gitUserEmail = gitUserEmail; }
-
-        /** Returns per-workstream environment variables injected into pushed tool MCP configs. */
-        public Map<String, String> getEnv() { return env; }
-        /** Sets per-workstream environment variables for pushed tools. */
-        public void setEnv(Map<String, String> env) { this.env = env; }
-        /** Returns per-workstream environment variables set on the agent subprocess. */
-        public Map<String, String> getAgentEnv() { return agentEnv; }
-        /** Sets per-workstream environment variables for the agent subprocess. */
-        public void setAgentEnv(Map<String, String> agentEnv) { this.agentEnv = agentEnv; }
-
-        /** Returns the optional planning document path for broader goal context. */
-        public String getPlanningDocument() { return planningDocument; }
-        /** Sets the planning document path for this workstream. */
-        public void setPlanningDocument(String planningDocument) { this.planningDocument = planningDocument; }
-
-        /** Returns the GitHub organization name for org-based token selection. */
-        public String getGithubOrg() { return githubOrg; }
-        /** Sets the GitHub organization name for org-based token selection. */
-        public void setGithubOrg(String githubOrg) { this.githubOrg = githubOrg; }
-
-        /**
-         * Returns the list of dependent repository URLs that should be
-         * checked out alongside the primary repo. Each repo is cloned
-         * as a sibling directory and managed with the same branch/commit
-         * lifecycle as the primary repo.
-         */
-        public List<String> getDependentRepos() { return dependentRepos; }
-        /** Sets the dependent repository URLs. */
-        public void setDependentRepos(List<String> dependentRepos) { this.dependentRepos = dependentRepos; }
-
-        /**
-         * Returns the workstream IDs of completion listeners that should
-         * be woken up automatically when a job on this workstream reaches
-         * a terminal status. The cycle check rejects configurations that
-         * would create a cycle in the listener graph at config time.
-         *
-         * <p>The returned list is never {@code null}: a YAML entry that
-         * omits {@code completionListeners} (older configs that pre-date
-         * the field) loads with an empty list, the inert default. Callers
-         * can iterate without null-guarding.</p>
-         *
-         * @return listener workstream IDs; never {@code null}, may be empty
-         */
-        public List<String> getCompletionListeners() {
-            return completionListeners == null
-                    ? Collections.emptyList() : completionListeners;
-        }
-        /**
-         * Sets the listener workstream IDs. Pass {@code null} or empty
-         * to clear (the inert default, which spawns no wake-up jobs).
-         */
-        public void setCompletionListeners(List<String> completionListeners) {
-            this.completionListeners = (completionListeners == null)
-                    ? new ArrayList<>() : new ArrayList<>(completionListeners);
-        }
-
-        /**
-         * Returns the Node labels that jobs submitted to this workstream must match by default.
-         * When a job submission does not include {@code requiredLabels}, these are applied.
-         */
-        public Map<String, String> getRequiredLabels() { return requiredLabels; }
-        /** Sets the default Node label requirements for jobs in this workstream. */
-        public void setRequiredLabels(Map<String, String> requiredLabels) { this.requiredLabels = requiredLabels; }
-
-        /**
-         * Returns the workspace ID this workstream is assigned to. Accepts
-         * the legacy YAML alias {@code slackWorkspaceId} on load; the value is
-         * now an operator-chosen workspace ID, not necessarily a Slack team
-         * ID. When absent, the workstream is assigned to the first (or only)
-         * workspace connection in the {@code workspaces} list.
-         */
-        public String getWorkspaceId() { return workspaceId; }
-        /** Sets the workspace ID for this workstream. */
-        public void setWorkspaceId(String workspaceId) { this.workspaceId = workspaceId; }
-
-        /** Returns the default agent runner for jobs in this workstream, or {@code null}. */
-        public String getDefaultRunner() { return defaultRunner; }
-        /** Sets the default agent runner for jobs in this workstream. */
-        public void setDefaultRunner(String defaultRunner) { this.defaultRunner = defaultRunner; }
-
-        /** Returns the per-phase runner override map (keyed by phase wire name); never {@code null}. */
-        public Map<String, String> getRunners() { return runners; }
-        /** Replaces the per-phase runner override map; {@code null} is treated as empty. */
-        public void setRunners(Map<String, String> runners) {
-            this.runners = runners != null ? new LinkedHashMap<>(runners) : new LinkedHashMap<>();
-        }
-
-        /** Returns the workstream-level default {@link PhaseConfig}, or {@code null}. */
-        public PhaseConfig getDefaultPhaseConfig() { return defaultPhaseConfig; }
-        /** Sets the workstream-level default {@link PhaseConfig}. */
-        public void setDefaultPhaseConfig(PhaseConfig defaultPhaseConfig) {
-            this.defaultPhaseConfig = defaultPhaseConfig;
-        }
-
-        /** Returns the workstream-level per-phase {@link PhaseConfig} overrides; never {@code null}. */
-        public Map<String, PhaseConfig> getPhaseConfigs() { return phaseConfigs; }
-        /** Replaces the workstream-level per-phase {@link PhaseConfig} overrides. */
-        public void setPhaseConfigs(Map<String, PhaseConfig> phaseConfigs) {
-            this.phaseConfigs = phaseConfigs != null ? new LinkedHashMap<>(phaseConfigs) : new LinkedHashMap<>();
-        }
-
-        /**
-         * Builds the effective {@link PhaseConfigBundle} for this workstream
-         * entry, merging the new fields with the legacy
-         * {@code defaultRunner}/{@code runners} runner fields. The new fields
-         * take precedence field-by-field. Model, effort, and provider come
-         * solely from {@code defaultPhaseConfig}/{@code phaseConfigs}.
-         *
-         * @return the merged bundle; never {@code null}
-         */
-        public PhaseConfigBundle toPhaseConfigBundle() {
-            return PhaseConfigBundle.mergeLegacyWithNew(
-                    defaultRunner, runners, defaultPhaseConfig, phaseConfigs);
-        }
-
-        /** Returns {@code true} when this workstream is archived. */
-        public boolean isArchived() { return archived; }
-        /** Sets the archived flag. */
-        public void setArchived(boolean archived) { this.archived = archived; }
-
-        /**
-         * Converts this entry to a {@link Workstream} instance.
-         *
-         * <p>If a {@code workstreamId} is present, it is used as the persistent
-         * identifier. Otherwise, a random UUID is generated.</p>
-         */
-        public Workstream toWorkstream() {
-            Workstream ws;
-            if (workstreamId != null && !workstreamId.isEmpty()) {
-                ws = new Workstream(workstreamId, channelId, channelName);
-            } else {
-                ws = new Workstream(channelId, channelName);
-            }
-            for (AgentEntry agent : agents) {
-                ws.addAgent(agent.getHost(), agent.getPort());
-            }
-            ws.setDefaultBranch(defaultBranch);
-            ws.setBaseBranch(baseBranch);
-            ws.setPushToOrigin(pushToOrigin);
-            ws.setWorkingDirectory(workingDirectory);
-            ws.setRepoUrl(repoUrl);
-            ws.setAllowedTools(allowedTools);
-            ws.setMaxTurns(maxTurns);
-            ws.setMaxBudgetUsd(maxBudgetUsd);
-            ws.setGitUserName(gitUserName);
-            ws.setGitUserEmail(gitUserEmail);
-            ws.setEnv(env);
-            ws.setAgentEnv(agentEnv);
-            ws.setPlanningDocument(planningDocument);
-            ws.setGithubOrg(githubOrg);
-            ws.setDependentRepos(dependentRepos);
-            ws.setRequiredLabels(requiredLabels);
-            ws.setWorkspaceId(workspaceId);
-            ws.setDefaultRunner(defaultRunner);
-            ws.setRunners(runners);
-            // Layer the new bundle fields on top of the legacy runner values
-            // just applied above. The bundle setter rewrites the runner-
-            // resolution fields, so any runner present in the bundle wins over
-            // the legacy values (matching "new wins" precedence on YAML load).
-            PhaseConfigBundle bundle = toPhaseConfigBundle();
-            if (!bundle.isEmpty()) {
-                ws.setPhaseConfigBundle(bundle);
-            }
-            ws.setArchived(archived);
-            ws.setCompletionListeners(completionListeners);
-            return ws;
-        }
-    }
-
-    /**
-     * Configuration entry for an agent endpoint.
-     */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class AgentEntry {
-        /** The agent hostname or IP address (default: {@code "localhost"}). */
-        private String host = "localhost";
-        /** The port the agent's FlowTree node listens on (default: 7766). */
-        private int port = 7766;
-
-        /** No-arg constructor for Jackson deserialization. */
-        public AgentEntry() {}
-
-        /**
-         * Creates a new agent entry with the specified host and port.
-         *
-         * @param host the agent hostname or IP address
-         * @param port the agent port number
-         */
-        public AgentEntry(String host, int port) {
-            this.host = host;
-            this.port = port;
-        }
-
-        /** Returns the agent hostname or IP address. */
-        public String getHost() { return host; }
-        /** Sets the agent hostname or IP address. */
-        public void setHost(String host) { this.host = host; }
-
-        /** Returns the agent port number. */
-        public int getPort() { return port; }
-        /** Sets the agent port number. */
-        public void setPort(int port) { this.port = port; }
-    }
-
-    /**
-     * Configuration entry for a centralized MCP server.
-     *
-     * <p>When present in the YAML configuration, the controller starts
-     * each server as an HTTP process and agents connect over HTTP
-     * instead of stdio.</p>
-     */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class McpServerEntry {
-        /** Python source file path relative to the project root (for managed servers). */
-        private String source;
-        /** HTTP port the managed server process listens on. */
-        private int port;
-        /** URL of an already-running external server; when set, no subprocess is launched. */
-        private String url;
-        /** Explicit tool names exposed by this server; required when {@code url} is set. */
-        private List<String> tools;
-
-        /** Returns the Python source file path (relative to project root). */
-        public String getSource() { return source; }
-        /** Sets the Python source file path (relative to project root). */
-        public void setSource(String source) { this.source = source; }
-
-        /** Returns the HTTP port to listen on. */
-        public int getPort() { return port; }
-        /** Sets the HTTP port for the managed MCP server process. */
-        public void setPort(int port) { this.port = port; }
-
-        /**
-         * Returns the URL of an already-running centralized server.
-         * When set, the controller does not launch a subprocess —
-         * it simply passes the URL through to agents.
-         */
-        public String getUrl() { return url; }
-        /** Sets the URL of an already-running external MCP server. */
-        public void setUrl(String url) { this.url = url; }
-
-        /**
-         * Returns the explicit tool names for this server.
-         * Required when {@code url} is set (no source file to discover from).
-         */
-        public List<String> getTools() { return tools; }
-        /** Sets the explicit tool names exposed by this server. */
-        public void setTools(List<String> tools) { this.tools = tools; }
-
-        /** Returns true if this entry references an external server by URL. */
-        public boolean isExternal() {
-            return url != null && !url.isEmpty();
-        }
-    }
-
-    /**
-     * Configuration entry for a pushed MCP tool.
-     *
-     * <p>Pushed tools are served as files by the controller and downloaded
-     * into dev containers on first use. Unlike centralized servers (which
-     * run as HTTP processes on the controller), pushed tools run locally
-     * inside each container via stdio.</p>
-     */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class PushedToolEntry {
-        /** Python source file path relative to the config directory. */
-        private String source;
-        /** Per-tool environment variables injected into the agent's MCP stdio config. */
-        private Map<String, String> env;
-
-        /** Returns the Python source file path (relative to config directory). */
-        public String getSource() { return source; }
-        /** Sets the Python source file path (relative to config directory). */
-        public void setSource(String source) { this.source = source; }
-
-        /** Returns per-tool environment variables to inject into the MCP stdio config. */
-        public Map<String, String> getEnv() { return env; }
-        /** Sets per-tool environment variables for the MCP stdio config. */
-        public void setEnv(Map<String, String> env) { this.env = env; }
-    }
-
-    /**
-     * Configuration entry for a GitHub organization token.
-     *
-     * <p>Maps an organization name to a GitHub personal access token.
-     * When a workstream specifies a {@code githubOrg}, the controller
-     * proxy selects the matching token for GitHub API calls.</p>
-     */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class GitHubOrgEntry {
-        /** The GitHub personal access token for authenticating as this organization. */
-        private String token;
-
-        /** Returns the GitHub personal access token for this organization. */
-        public String getToken() { return token; }
-        /** Sets the GitHub personal access token for this organization. */
-        public void setToken(String token) { this.token = token; }
-    }
-
-    /**
      * Returns the global default workspace path for repo checkouts.
      *
      * <p>When a workstream specifies {@code repoUrl} but no
@@ -839,6 +118,7 @@ public class WorkstreamConfig {
      * or a temporary directory under {@code /tmp}.</p>
      */
     public String getDefaultWorkspacePath() { return defaultWorkspacePath; }
+    /** Sets the global default workspace path. */
     public void setDefaultWorkspacePath(String defaultWorkspacePath) { this.defaultWorkspacePath = defaultWorkspacePath; }
 
     /**
@@ -848,6 +128,7 @@ public class WorkstreamConfig {
      * invite this user. This is typically the project owner's Slack user ID.</p>
      */
     public String getChannelOwnerUserId() { return channelOwnerUserId; }
+    /** Sets the legacy single Slack user ID for auto-invite on channel creation. */
     public void setChannelOwnerUserId(String channelOwnerUserId) { this.channelOwnerUserId = channelOwnerUserId; }
 
     /** Returns the list of Slack user IDs auto-invited to new channels (nullable). */
@@ -880,24 +161,24 @@ public class WorkstreamConfig {
      * Returns the default Slack channel ID to use as a fallback when a
      * workstream has no channel configured or when publishing to the
      * configured channel fails.
-     *
-     * <p>This is a global setting. When set in the YAML configuration,
-     * all workstreams without a valid channel will fall back to this
-     * channel instead of silently dropping messages.</p>
      */
     public String getDefaultChannel() { return defaultChannel; }
+    /** Sets the global fallback Slack channel ID. */
     public void setDefaultChannel(String defaultChannel) { this.defaultChannel = defaultChannel; }
 
     /** Returns the centralized MCP server configurations. */
     public Map<String, McpServerEntry> getMcpServers() { return mcpServers; }
+    /** Sets the centralized MCP server configurations. */
     public void setMcpServers(Map<String, McpServerEntry> mcpServers) { this.mcpServers = mcpServers; }
 
     /** Returns the pushed MCP tool configurations. */
     public Map<String, PushedToolEntry> getPushedTools() { return pushedTools; }
+    /** Sets the pushed MCP tool configurations. */
     public void setPushedTools(Map<String, PushedToolEntry> pushedTools) { this.pushedTools = pushedTools; }
 
     /** Returns the per-organization GitHub token configurations. */
     public Map<String, GitHubOrgEntry> getGithubOrgs() { return githubOrgs; }
+    /** Sets the per-organization GitHub token configurations. */
     public void setGithubOrgs(Map<String, GitHubOrgEntry> githubOrgs) { this.githubOrgs = githubOrgs; }
 
     /**
@@ -935,13 +216,8 @@ public class WorkstreamConfig {
 
     /**
      * Returns a map from GitHub org name to the workspace ID that owns it.
-     * Only orgs that are declared inside a workspace's {@code githubOrgs}
-     * section produce a mapping; globally-declared orgs (top-level
-     * {@code githubOrgs}) are excluded because the multi-workspace schema
-     * treats top-level orgs as unscoped fallbacks.
-     *
-     * <p>When the same org is declared under multiple workspaces the last
-     * workspace wins, matching the merge order of {@link #mergedGithubOrgTokens()}.</p>
+     * Only orgs declared inside a workspace's {@code githubOrgs} section
+     * produce a mapping; globally-declared orgs are excluded.
      *
      * @return org-name → workspace-ID map, in insertion order
      */
@@ -981,8 +257,7 @@ public class WorkstreamConfig {
      * entries already present (e.g. those previously added by the legacy
      * {@code slackWorkspaces:} setter) so that both YAML keys can appear in
      * the same file during the migration window. Entries with the same
-     * {@code id} as a pre-existing entry are skipped on the assumption that
-     * the existing entry is the authoritative one.
+     * {@code id} as a pre-existing entry are skipped.
      */
     @JsonProperty("workspaces")
     public void setWorkspaces(List<WorkspaceEntry> workspaces) {
@@ -1007,9 +282,8 @@ public class WorkstreamConfig {
 
     /**
      * Returns the workspace entries as a "Slack workspaces" view for callers
-     * that still iterate the legacy projection (each entry treated as a Slack
-     * workspace connection). Identical to {@link #getWorkspaces()} for now;
-     * preserved so older callers compile.
+     * that still iterate the legacy projection. Identical to
+     * {@link #getWorkspaces()} for now; preserved so older callers compile.
      */
     @JsonIgnore
     public List<WorkspaceEntry> getSlackWorkspaces() { return workspaces; }
@@ -1019,16 +293,10 @@ public class WorkstreamConfig {
      * entries into the unified {@link #workspaces} list. Each legacy entry is
      * migrated on the fly so that its operator-chosen {@code id} doubles as
      * its {@code slackTeamId} — this preserves the historical invariant that
-     * the workspace identifier IS the Slack team ID, while letting operators
-     * later rename the workspace via the {@code workspace_update_config} MCP
-     * tool without losing the Slack connection.
+     * the workspace identifier IS the Slack team ID.
      *
      * <p>De-duplicates by {@code id} against any entries already present in
-     * {@link #workspaces}. Jackson invokes the setters in the order the keys
-     * appear in the YAML file, so when a file lists both {@code workspaces:}
-     * and {@code slackWorkspaces:} the canonical {@code workspaces:} entries
-     * win regardless of which key comes first; legacy entries that share an
-     * id with a canonical entry are silently dropped.</p>
+     * {@link #workspaces}.</p>
      *
      * @param legacy parsed entries from the legacy YAML key; never serialized back
      */
@@ -1124,13 +392,10 @@ public class WorkstreamConfig {
 
     /**
      * Returns the {@link WorkspaceEntry} matching the given workspace ID, or
-     * {@code null} when no entry has been configured with that ID. The lookup
-     * is linear over {@link #workspaces} — acceptable because the list is
-     * small (one entry per workspace).
+     * {@code null} when no entry has been configured with that ID.
      *
-     * @param id the operator-chosen workspace ID (or, for legacy entries that
-     *           have not been renamed, the Slack team ID); {@code null} or
-     *           empty always returns {@code null}
+     * @param id the operator-chosen workspace ID; {@code null} or empty always
+     *           returns {@code null}
      * @return the matching entry, or {@code null} when no match
      */
     public WorkspaceEntry findWorkspace(String id) {
@@ -1143,9 +408,7 @@ public class WorkstreamConfig {
     }
 
     /**
-     * Backward-compatible alias for {@link #findWorkspace(String)}. Retained so
-     * callers (including external scripts and the test suite) that have not
-     * migrated to the new name continue to compile.
+     * Backward-compatible alias for {@link #findWorkspace(String)}.
      *
      * @param id the workspace ID
      * @return the matching entry, or {@code null}
@@ -1156,11 +419,7 @@ public class WorkstreamConfig {
 
     /**
      * Renames a workspace, updating every workstream that referenced the old
-     * ID. Used by the {@code workspace_update_config} MCP tool when an
-     * operator passes a new {@code new_id}. The Slack-team-ID connection
-     * (when set) is preserved unchanged so renaming a workspace from
-     * {@code "T0123456789"} to {@code "almostrealism"} does not disrupt
-     * channel routing.
+     * ID. The Slack-team-ID connection (when set) is preserved unchanged.
      *
      * @param oldId current workspace ID; must match an existing entry
      * @param newId new workspace ID; must not collide with another entry
@@ -1175,20 +434,15 @@ public class WorkstreamConfig {
 
     /**
      * Renames a workspace and propagates the new ID to live {@link Workstream}
-     * instances in addition to the persisted entries. Callers that hold live
-     * {@code Workstream} objects (e.g. {@code SlackListener.channelToWorkstream})
-     * MUST use this overload so that a subsequent
-     * {@link #syncFromWorkstreams(Collection)} does not see a stale workspaceId
-     * on the live object and revert the rename.
+     * instances in addition to the persisted entries.
      *
-     * @param oldId current workspace ID; must match an existing entry
-     * @param newId new workspace ID; must not collide with another entry
+     * @param oldId          current workspace ID; must match an existing entry
+     * @param newId          new workspace ID; must not collide with another entry
      * @param liveWorkstreams live workstream objects to update in place; may
      *        be {@code null} when the caller manages no live state
      * @return {@code true} when the rename happened, {@code false} when the
      *         old ID was not found
-     * @throws IllegalArgumentException when {@code newId} collides with an
-     *         existing different workspace
+     * @throws IllegalArgumentException when {@code newId} collides
      */
     public boolean renameWorkspace(String oldId, String newId,
                                    Collection<Workstream> liveWorkstreams) {
@@ -1199,8 +453,7 @@ public class WorkstreamConfig {
         WorkspaceEntry target = findWorkspace(oldId);
         if (target == null) return false;
         if (findWorkspace(newId) != null) {
-            throw new IllegalArgumentException("Workspace ID '" + newId
-                    + "' is already taken");
+            throw new IllegalArgumentException("Workspace ID '" + newId + "' is already taken");
         }
         target.setId(newId);
         for (WorkstreamEntry entry : workstreams) {
@@ -1220,18 +473,8 @@ public class WorkstreamConfig {
 
     /**
      * Validates the workspace-level runner configuration. Unknown phase keys
-     * in any {@code slackWorkspaces[].runners} map are rejected with a clear
-     * message naming the offending workspace; the rest of the config is left
-     * intact. Called automatically after every {@code loadFromYaml*} /
-     * {@code loadFromJson*}.
-     *
-     * <p>Workstream-level {@code runners} maps are <strong>not</strong>
-     * validated here; bad keys there are silently skipped by
-     * {@link SubmissionRunnerResolver} at submission time so a single mistyped
-     * workstream cannot brick the entire controller. Workspace-level entries
-     * apply to many workstreams at once, so the same forgiveness would
-     * silently mis-route every workstream sharing the workspace — the
-     * stricter load-time check is the safer default.</p>
+     * in any workspace's {@code runners} map are rejected with a clear message.
+     * Called automatically after every {@code loadFromYaml*} / {@code loadFromJson*}.
      *
      * @throws IOException when any workspace runner map references an unknown
      *                     phase wire name
@@ -1241,8 +484,7 @@ public class WorkstreamConfig {
         for (WorkspaceEntry entry : workspaces) {
             Map<String, String> entryRunners = entry.getRunners();
             if (entryRunners == null || entryRunners.isEmpty()) continue;
-            String label = entry.getId() != null
-                    ? entry.getId() : entry.getName();
+            String label = entry.getId() != null ? entry.getId() : entry.getName();
             for (String phaseKey : entryRunners.keySet()) {
                 try {
                     Phase.fromWireName(phaseKey);
@@ -1256,8 +498,7 @@ public class WorkstreamConfig {
                     throw new IOException("Unknown phase '" + phaseKey
                             + "' in workspaces["
                             + (label != null ? label : "<unnamed>")
-                            + "].runners; expected one of "
-                            + known);
+                            + "].runners; expected one of " + known);
                 }
             }
         }
@@ -1278,14 +519,7 @@ public class WorkstreamConfig {
 
     /**
      * Returns INFO-level deprecation messages for any legacy configuration
-     * fields still present in the loaded configuration. The legacy runner
-     * fields ({@code defaultRunner}, {@code runners})
-     * are accepted on load and auto-migrated into the per-phase shape
-     * ({@code defaultPhaseConfig} / {@code phaseConfigs}) by
-     * {@link WorkstreamEntry#toPhaseConfigBundle()} and
-     * {@link WorkspaceEntry#toPhaseConfigBundle()}, but are never written
-     * back — a save-then-load cycle drops them. Operators should migrate
-     * their YAML to the per-phase shape.
+     * fields still present in the loaded configuration.
      *
      * @return one message per entry that still carries a legacy field; empty
      *         when the configuration is already fully migrated
@@ -1351,9 +585,9 @@ public class WorkstreamConfig {
 
     /**
      * Copies every mutable field from a live {@link Workstream} onto the
-     * supplied {@link WorkstreamEntry}. Shared by {@link #addWorkstream} (which
-     * creates a new entry) and {@link #syncFromWorkstreams} (which updates an
-     * existing one) so the canonical field list is maintained in exactly one place.
+     * supplied {@link WorkstreamEntry}. Shared by {@link #addWorkstream} and
+     * {@link #syncFromWorkstreams} so the canonical field list is maintained
+     * in exactly one place.
      *
      * @param entry the entry to populate
      * @param ws    the live workstream whose current state to copy
@@ -1386,29 +620,18 @@ public class WorkstreamConfig {
     }
 
     /**
-     * Copies every non-empty per-phase entry of {@code bundle} — runner,
-     * model, effort, and provider alike — onto {@code entry}'s new
-     * {@code phaseConfigs} field so the full configuration round-trips through
-     * YAML serialization. The legacy {@code runners} map is write-only and is
-     * no longer serialized, so per-phase runner values must be carried by
-     * {@code phaseConfigs} rather than mirrored to {@code runners}.
+     * Copies every non-empty per-phase entry of {@code bundle} onto
+     * {@code entry}'s new {@code phaseConfigs} field so the full configuration
+     * round-trips through YAML serialization.
      */
     private static void applyBundleToEntry(WorkstreamEntry entry, PhaseConfigBundle bundle) {
         applyBundleToFields(bundle, entry::setDefaultPhaseConfig, entry::setPhaseConfigs);
     }
 
     /**
-     * Writes the contents of {@code bundle} into a container's new
+     * Writes the contents of {@code bundle} into a container's
      * {@code defaultPhaseConfig} / {@code phaseConfigs} fields via the
-     * supplied setters. Every non-empty per-phase entry is emitted; the
-     * bundle default is written when non-empty and cleared otherwise.
-     *
-     * <p>Unlike a phase-only copy, a bundle that carries only a default —
-     * e.g. a model-only workstream or a {@code defaultRunner}-only workspace
-     * with no per-phase overrides — still has that default persisted. This
-     * matters under write-only legacy serialization: the default is the only
-     * place a migrated {@code model} / {@code effort} / {@code defaultRunner}
-     * survives once the legacy fields stop being written.</p>
+     * supplied setters.
      *
      * @param bundle          the bundle to copy; {@code null} clears both fields
      * @param setDefault      receives the bundle's default, or {@code null}
@@ -1435,13 +658,8 @@ public class WorkstreamConfig {
      * Synchronizes the configuration entries from the in-memory workstream state.
      *
      * <p>For each active workstream, locates the matching entry via
-     * {@link #findEntryToSync} (workstreamId first, channelId as fallback) and
-     * updates its mutable fields; otherwise adds a new entry via
-     * {@link #addWorkstream}. Matching by ID prevents the duplicate-entry
-     * defect where a {@code /flowtree setup} call wrote an entry with a null
-     * {@code channelId} and a later sync — after Slack assigned the channel —
-     * could not find that entry by channel and appended a second entry with
-     * the same workstreamId.</p>
+     * {@link #findEntryToSync} and updates its mutable fields; otherwise adds
+     * a new entry via {@link #addWorkstream}.</p>
      *
      * @param activeWorkstreams the current in-memory workstreams
      */
@@ -1459,8 +677,7 @@ public class WorkstreamConfig {
     /**
      * Locates the {@link WorkstreamEntry} that should receive sync updates for
      * the given live {@link Workstream}. Matching by {@code workstreamId} is
-     * preferred; {@code channelId} is a fallback for legacy entries created
-     * before IDs were universal.
+     * preferred; {@code channelId} is a fallback for legacy entries.
      *
      * @param ws the active workstream being synced
      * @return the matching entry, or {@code null} when no entry exists yet
@@ -1497,25 +714,9 @@ public class WorkstreamConfig {
     }
 
     /**
-     * Folds every container's legacy configuration fields
-     * ({@code model} / {@code effort} / {@code defaultRunner} /
-     * {@code runners}) into the new per-phase shape
-     * ({@code defaultPhaseConfig} / {@code phaseConfigs}) and clears the
-     * legacy fields.
-     *
-     * <p>Called by {@link #saveToYaml(File)} so that persisted YAML only ever
-     * contains the new shape: a save-then-load cycle migrates legacy YAML in
-     * place without losing data. The fold reads {@link
-     * WorkstreamEntry#toPhaseConfigBundle()} /
-     * {@link WorkspaceEntry#toPhaseConfigBundle()}, which already merge the
-     * legacy and new fields field-by-field (new wins), so any value present
-     * in either form survives. Idempotent: a container already in the new
-     * shape is left unchanged.</p>
-     *
-     * <p>This is the only migration trigger. Loading legacy YAML leaves the
-     * legacy fields readable (so the controller keeps functioning across a
-     * restart on an unmigrated file); the rewrite to the new shape happens
-     * the next time the configuration is written back.</p>
+     * Folds every container's legacy configuration fields into the new per-phase
+     * shape and clears the legacy fields. Called by {@link #saveToYaml(File)}.
+     * Idempotent: a container already in the new shape is left unchanged.
      */
     void migrateLegacyConfigToPhaseConfig() {
         for (WorkstreamEntry entry : workstreams) {

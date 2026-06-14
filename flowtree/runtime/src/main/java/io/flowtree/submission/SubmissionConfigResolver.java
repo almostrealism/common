@@ -22,6 +22,7 @@ import io.flowtree.jobs.agent.PhaseConfigBundle;
 import java.util.Map;
 import io.flowtree.workstream.Workstream;
 import io.flowtree.workstream.WorkstreamConfig;
+import io.flowtree.workstream.WorkspaceEntry;
 
 /**
  * Orchestrator that runs {@link SubmissionRunnerResolver} and
@@ -50,7 +51,7 @@ public final class SubmissionConfigResolver {
     /** Underlying Phase-config resolver; never {@code null}. */
     private final PhaseConfigResolver phaseConfigResolver;
 
-    /** Private constructor; use {@link #resolve(PhaseConfigBundle, Workstream, WorkstreamConfig.WorkspaceEntry)}. */
+    /** Private constructor; use {@link #resolve(PhaseConfigBundle, Workstream, WorkspaceEntry)}. */
     private SubmissionConfigResolver(SubmissionRunnerResolver runnerResolver,
                                      PhaseConfigResolver phaseConfigResolver) {
         this.runnerResolver = runnerResolver;
@@ -76,7 +77,7 @@ public final class SubmissionConfigResolver {
      */
     public static SubmissionConfigResolver resolve(PhaseConfigBundle requestBundle,
                                                    Workstream workstream,
-                                                   WorkstreamConfig.WorkspaceEntry wsEntry) {
+                                                   WorkspaceEntry wsEntry) {
         PhaseConfigBundle req = requestBundle != null ? requestBundle : PhaseConfigBundle.EMPTY;
 
         // Legacy runner ladder. Request-side runners are no longer accepted on

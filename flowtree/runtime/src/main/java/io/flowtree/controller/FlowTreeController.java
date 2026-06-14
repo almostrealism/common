@@ -25,7 +25,6 @@ import com.slack.api.methods.response.auth.AuthTestResponse;
 import com.slack.api.model.event.AppMentionEvent;
 import com.slack.api.model.event.MessageEvent;
 import io.flowtree.Server;
-import io.flowtree.jobs.GitOperations;
 import io.flowtree.jobs.McpToolDiscovery;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
@@ -56,6 +55,9 @@ import io.flowtree.workstream.WorkstreamConfig;
 import io.flowtree.slack.SlackListener;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.slack.SlackTokens;
+import io.flowtree.workstream.WorkspaceEntry;
+import io.flowtree.workstream.WorkspaceSecretEntry;
+import io.flowtree.workstream.PushedToolEntry;
 
 /**
  * Main controller for FlowTree orchestration with optional Slack integration.
@@ -98,43 +100,6 @@ import io.flowtree.slack.SlackTokens;
  * @see Workstream
  */
 public class FlowTreeController implements ConsoleFeatures {
-
-    /**
-     * Runtime state for a single Slack workspace connection (tokens, Bolt app,
-     * SocketModeApp, notifier). In single-workspace mode only
-     * {@link #defaultConnection} is populated; in multi-workspace mode
-     * {@link #workspaceConnections} holds one entry per workspace.
-     */
-    public static class WorkspaceConnection {
-        /** Slack team ID (T...) identifying this workspace. */
-        public final String workspaceId;
-        /** Bot User OAuth token for posting messages (xoxb-...). */
-        public final String botToken;
-        /** App-level token for Socket Mode delivery (xapp-...). */
-        public final String appToken;
-        /** Bolt application instance for this workspace. */
-        public App app;
-        /** Socket Mode connection for this workspace. */
-        public SocketModeApp socketModeApp;
-        /** Bot's own Slack user ID; used to suppress echoed messages. */
-        public String botUserId;
-        /** Notifier backed by this workspace's bot token. */
-        public final SlackNotifier notifier;
-
-        /**
-         * Creates a workspace connection with the given tokens.
-         *
-         * @param workspaceId human-readable or team-ID label
-         * @param botToken    Slack bot user token (xoxb-...)
-         * @param appToken    Slack app-level token (xapp-...)
-         */
-        public WorkspaceConnection(String workspaceId, String botToken, String appToken) {
-            this.workspaceId = workspaceId;
-            this.botToken = botToken;
-            this.appToken = appToken;
-            this.notifier = new SlackNotifier(botToken);
-        }
-    }
 
     /**
      * Per-workspace Slack connections, keyed by workspace ID.
@@ -197,7 +162,7 @@ public class FlowTreeController implements ConsoleFeatures {
      * {@link #buildSecretsCache(WorkstreamConfig)} during config load and
      * passed to the API endpoint via {@link FlowTreeApiEndpoint#setSecretsCache}.
      */
-    private Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> secretsCache =
+    private Map<String, Map<String, WorkspaceSecretEntry>> secretsCache =
             new HashMap<>();
 
     /**
@@ -396,23 +361,23 @@ public class FlowTreeController implements ConsoleFeatures {
      * Builds the in-memory secrets index from the loaded workstream config.
      *
      * <p>Iterates all {@code slackWorkspaces} entries and indexes their declared
-     * {@link WorkstreamConfig.WorkspaceSecretEntry} instances by workspace ID and name.
+     * {@link WorkspaceSecretEntry} instances by workspace ID and name.
      * Also logs a warning for any declared secrets file that is readable by group or
      * world (permissions wider than {@code 0600}).</p>
      *
      * @param config the loaded workstream configuration
      */
     private void buildSecretsCache(WorkstreamConfig config) {
-        Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> cache = new HashMap<>();
+        Map<String, Map<String, WorkspaceSecretEntry>> cache = new HashMap<>();
         if (config.getWorkspaces() == null) {
             this.secretsCache = cache;
             return;
         }
-        for (WorkstreamConfig.WorkspaceEntry wsEntry : config.getWorkspaces()) {
+        for (WorkspaceEntry wsEntry : config.getWorkspaces()) {
             if (wsEntry.getSecrets() == null || wsEntry.getSecrets().isEmpty()) continue;
             String workspaceId = wsEntry.getId();
-            Map<String, WorkstreamConfig.WorkspaceSecretEntry> byName = new HashMap<>();
-            for (WorkstreamConfig.WorkspaceSecretEntry entry : wsEntry.getSecrets()) {
+            Map<String, WorkspaceSecretEntry> byName = new HashMap<>();
+            for (WorkspaceSecretEntry entry : wsEntry.getSecrets()) {
                 if (entry.getName() == null || entry.getFile() == null) continue;
                 byName.put(entry.getName(), entry);
                 checkSecretFilePermissions(entry, workspaceId);
@@ -434,7 +399,7 @@ public class FlowTreeController implements ConsoleFeatures {
      * @param workspaceId workspace owning this secret (for log context only)
      */
     private void checkSecretFilePermissions(
-            WorkstreamConfig.WorkspaceSecretEntry entry, String workspaceId) {
+            WorkspaceSecretEntry entry, String workspaceId) {
         Path filePath = Path.of(entry.getFile());
         if (!Files.exists(filePath)) {
             warn("Secret file not found: " + entry.getFile()
@@ -634,9 +599,9 @@ public class FlowTreeController implements ConsoleFeatures {
      *
      * @param entries the Slack workspace entries from the YAML configuration
      */
-    private void buildWorkspaceConnections(List<WorkstreamConfig.WorkspaceEntry> entries) {
+    private void buildWorkspaceConnections(List<WorkspaceEntry> entries) {
         workspaceConnections.clear();
-        for (WorkstreamConfig.WorkspaceEntry wsEntry : entries) {
+        for (WorkspaceEntry wsEntry : entries) {
             if (wsEntry.getSlackTeamId() == null || wsEntry.getSlackTeamId().isEmpty()) {
                 // No Slack integration — register a no-op connection so
                 // multi-workspace routing stays active and start() does not
@@ -877,108 +842,6 @@ public class FlowTreeController implements ConsoleFeatures {
     }
 
     /**
-     * Starts centralized MCP servers as HTTP processes and builds the
-     * centralized config JSON for passing to agents.
-     *
-     * <p>Each server in the YAML {@code mcpServers} section is started as a
-     * Python subprocess with {@code MCP_TRANSPORT=http} and its configured
-     * port. The source file paths are resolved relative to the config file's
-     * parent directory.</p>
-     *
-     * <p><b>Deprecated:</b> Centralized MCP servers are no longer managed by the controller.
-     * ar-manager is the single centralized tool, running as a separate Docker service.
-     * This method is retained for reference but is not called during normal startup.</p>
-     *
-     * @param config    the parsed workstream configuration
-     * @param configDir the directory containing the YAML config file, used to
-     *                  resolve relative source paths (may be null)
-     * @deprecated ar-manager replaces all centralized MCP servers
-     */
-    @Deprecated
-    private void startCentralizedMcpServers(WorkstreamConfig config, File configDir) {
-        // No-op: ar-manager replaces all centralized MCP servers.
-        // Agents access ar-manager over HTTP with HMAC temp tokens.
-        Map<String, WorkstreamConfig.McpServerEntry> mcpServers = config.getMcpServers();
-        if (mcpServers == null || mcpServers.isEmpty()) return;
-
-        log("Configuring " + mcpServers.size() + " centralized MCP server(s)...");
-
-        // Build the centralized config JSON as we register each server
-        StringBuilder configJson = new StringBuilder("{");
-        boolean first = true;
-
-        for (Map.Entry<String, WorkstreamConfig.McpServerEntry> entry : mcpServers.entrySet()) {
-            String serverName = entry.getKey();
-            WorkstreamConfig.McpServerEntry serverEntry = entry.getValue();
-
-            String url;
-            List<String> tools;
-
-            if (serverEntry.isExternal()) {
-                // External server: already running, just reference by URL
-                url = serverEntry.getUrl();
-                tools = serverEntry.getTools();
-                if (tools == null || tools.isEmpty()) {
-                    warn("External server " + serverName + " has no tools listed — "
-                        + "agents will not be able to use it");
-                    tools = List.of();
-                }
-                log("External " + serverName + " at " + url
-                    + " (" + tools.size() + " tools)");
-            } else {
-                // Managed server: resolve source, discover tools, launch process
-                Path sourcePath = resolveToolSource(serverEntry.getSource(), configDir);
-
-                tools = McpToolDiscovery.discoverToolNames(sourcePath);
-                if (tools.isEmpty()) {
-                    warn("No tools discovered from " + sourcePath + " for server " + serverName);
-                }
-
-                try {
-                    ProcessBuilder pb = new ProcessBuilder("python3", sourcePath.toString());
-                    pb.environment().put("MCP_TRANSPORT", "http");
-                    pb.environment().put("MCP_PORT", String.valueOf(serverEntry.getPort()));
-
-                    for (Map.Entry<String, String> env : System.getenv().entrySet()) {
-                        if (env.getKey().startsWith("AR_")) {
-                            pb.environment().put(env.getKey(), env.getValue());
-                        }
-                    }
-
-                    pb.inheritIO();
-                    GitOperations.augmentPath(pb);
-
-                    Process process = pb.start();
-                    mcpProcesses.add(process);
-                    log("Started " + serverName + " on port " + serverEntry.getPort()
-                        + " (PID " + process.pid() + ", " + tools.size() + " tools)");
-                } catch (IOException e) {
-                    warn("Failed to start " + serverName + ": " + e.getMessage());
-                    continue;
-                }
-
-                url = "http://0.0.0.0:" + serverEntry.getPort() + "/mcp";
-            }
-
-            if (!first) configJson.append(",");
-            first = false;
-            configJson.append("\"").append(serverName).append("\":{");
-            configJson.append("\"url\":\"").append(url).append("\",");
-            configJson.append("\"tools\":[");
-            for (int i = 0; i < tools.size(); i++) {
-                if (i > 0) configJson.append(",");
-                configJson.append("\"").append(tools.get(i)).append("\"");
-            }
-            configJson.append("]}");
-        }
-
-        configJson.append("}");
-        String centralizedConfig = configJson.toString();
-
-        log("Centralized MCP config (legacy, not used): " + centralizedConfig);
-    }
-
-    /**
      * Loads the ar-manager shared secret from a file or environment variable.
      *
      * <p>Checks {@code AR_MANAGER_SHARED_SECRET_FILE} first (path to a file
@@ -1077,7 +940,7 @@ public class FlowTreeController implements ConsoleFeatures {
         // workstreams.yaml entries. The built-ins go first so that
         // operator entries with the same name silently override them
         // (giving operators a release valve if they need a custom build).
-        Map<String, WorkstreamConfig.PushedToolEntry> pushedTools = new LinkedHashMap<>();
+        Map<String, PushedToolEntry> pushedTools = new LinkedHashMap<>();
         pushedTools.put("ar-secrets", builtInSecretsEntry());
         if (loadedConfig != null && loadedConfig.getPushedTools() != null) {
             pushedTools.putAll(loadedConfig.getPushedTools());
@@ -1088,9 +951,9 @@ public class FlowTreeController implements ConsoleFeatures {
         StringBuilder configJson = new StringBuilder("{");
         boolean first = true;
 
-        for (Map.Entry<String, WorkstreamConfig.PushedToolEntry> entry : pushedTools.entrySet()) {
+        for (Map.Entry<String, PushedToolEntry> entry : pushedTools.entrySet()) {
             String serverName = entry.getKey();
-            WorkstreamConfig.PushedToolEntry toolEntry = entry.getValue();
+            PushedToolEntry toolEntry = entry.getValue();
 
             Path sourcePath = resolveToolSource(toolEntry.getSource(), configDir);
             if (!Files.exists(sourcePath)) {
@@ -1152,7 +1015,7 @@ public class FlowTreeController implements ConsoleFeatures {
     }
 
     /**
-     * Builds the synthetic {@link WorkstreamConfig.PushedToolEntry} for the
+     * Builds the synthetic {@link PushedToolEntry} for the
      * built-in {@code ar-secrets} MCP server. Source path
      * ({@code tools/mcp/secrets/server.py}) is resolved through the same
      * {@link #resolveToolSource(String, File)} fallback chain as
@@ -1162,10 +1025,10 @@ public class FlowTreeController implements ConsoleFeatures {
      * {@code AR_WORKSTREAM_ID}, and {@code AR_MANAGER_TOKEN} from the
      * process environment that {@code CodingAgentJob} sets per job.
      *
-     * @return a {@link WorkstreamConfig.PushedToolEntry} for ar-secrets
+     * @return a {@link PushedToolEntry} for ar-secrets
      */
-    private static WorkstreamConfig.PushedToolEntry builtInSecretsEntry() {
-        WorkstreamConfig.PushedToolEntry entry = new WorkstreamConfig.PushedToolEntry();
+    private static PushedToolEntry builtInSecretsEntry() {
+        PushedToolEntry entry = new PushedToolEntry();
         entry.setSource("tools/mcp/secrets/server.py");
         return entry;
     }
@@ -1432,169 +1295,15 @@ public class FlowTreeController implements ConsoleFeatures {
         return json.substring(valueStart, valueEnd);
     }
 
-    // Command-line interface
-
     /**
-     * Main entry point for running the FlowTree controller.
+     * Delegates to {@link FlowTreeControllerLauncher#main(String[])} for
+     * backwards compatibility with existing scripts and container entrypoints
+     * that reference this class as the main class.
      *
-     * <p>The controller starts a FlowTree {@link Server} that listens for
-     * inbound agent connections. Agents connect to this server by setting
-     * {@code FLOWTREE_ROOT_HOST} and {@code FLOWTREE_ROOT_PORT}.</p>
-     *
-     * <p>Environment variables:</p>
-     * <ul>
-     *   <li>SLACK_BOT_TOKEN - Required for Slack integration</li>
-     *   <li>SLACK_APP_TOKEN - Required for Socket Mode</li>
-     *   <li>FLOWTREE_PORT - FlowTree listening port (default: 7766)</li>
-     * </ul>
-     *
-     * <p>Arguments:</p>
-     * <ul>
-     *   <li>--tokens &lt;file&gt; - JSON file containing botToken and appToken</li>
-     *   <li>--config &lt;file&gt; - YAML configuration file</li>
-     *   <li>--channel &lt;id&gt; - Single channel to monitor</li>
-     *   <li>--branch &lt;name&gt; - Default branch</li>
-     *   <li>--flowtree-port &lt;port&gt; - FlowTree listening port</li>
-     * </ul>
+     * @param args command-line arguments
+     * @throws Exception if startup fails
      */
     public static void main(String[] args) throws Exception {
-        String configFile = null;
-        String tokensFile = null;
-        String channelId = System.getenv("SLACK_CHANNEL_ID");
-        String channelName = System.getenv("SLACK_CHANNEL_NAME");
-        String defaultBranch = System.getenv("GIT_DEFAULT_BRANCH");
-        int apiPort = FlowTreeApiEndpoint.DEFAULT_PORT;
-        int flowtreePort = Integer.parseInt(
-                System.getenv().getOrDefault("FLOWTREE_PORT",
-                        String.valueOf(Server.defaultPort)));
-
-        // Parse command-line arguments
-        for (int i = 0; i < args.length; i++) {
-            switch (args[i]) {
-                case "--config":
-                case "-c":
-                    configFile = args[++i];
-                    break;
-                case "--tokens":
-                case "-t":
-                    tokensFile = args[++i];
-                    break;
-                case "--channel":
-                    channelId = args[++i];
-                    break;
-                case "--channel-name":
-                    channelName = args[++i];
-                    break;
-                case "--branch":
-                    defaultBranch = args[++i];
-                    break;
-                case "--api-port":
-                    apiPort = Integer.parseInt(args[++i]);
-                    break;
-                case "--flowtree-port":
-                    flowtreePort = Integer.parseInt(args[++i]);
-                    break;
-                case "--log-file":
-                    System.setProperty("flowtree.log.file", args[++i]);
-                    break;
-                case "--help":
-                case "-h":
-                    printUsage();
-                    return;
-            }
-        }
-
-        // Resolve tokens
-        File tokensPath = tokensFile != null ? new File(tokensFile) : null;
-        SlackTokens tokens = SlackTokens.resolve(tokensPath);
-
-        // Create controller
-        FlowTreeController controller = new FlowTreeController(tokens);
-        controller.setApiPort(apiPort);
-        controller.setFlowtreePort(flowtreePort);
-
-        // Load configuration
-        if (configFile != null) {
-            controller.loadConfig(new File(configFile));
-        } else if (channelId != null && !channelId.isEmpty()) {
-            // Single workstream from environment/args
-            Workstream workstream = new Workstream(
-                channelId,
-                channelName != null ? channelName : channelId
-            );
-            if (defaultBranch != null) {
-                workstream.setDefaultBranch(defaultBranch);
-            }
-            controller.registerWorkstream(workstream);
-        } else {
-            Console.root().warn("Error: No workstream configuration provided");
-            Console.root().warn("Use --config <file> or --channel <id>");
-            printUsage();
-            System.exit(1);
-        }
-
-        // Start controller
-        controller.start();
-
-        // Keep main thread alive
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            try {
-                controller.stop();
-            } catch (Exception e) {
-                Console.root().warn(e.getMessage());
-            }
-        }));
-
-        Thread.currentThread().join();
-    }
-
-    /**
-     * Prints CLI usage information to standard output and returns.
-     *
-     * <p>Called when {@code --help} or {@code -h} is passed on the command line,
-     * or when no workstream configuration is found. Lists all supported flags,
-     * environment variables, token resolution order, and example invocations.</p>
-     */
-    private static void printUsage() {
-        Console.root().println("Usage: FlowTreeController [options]");
-        Console.root().println("");
-        Console.root().println("Options:");
-        Console.root().println("  --tokens, -t <file>    JSON file with botToken/appToken");
-        Console.root().println("  --config, -c <file>    YAML configuration file");
-        Console.root().println("  --channel <id>         Slack channel ID to monitor");
-        Console.root().println("  --channel-name <name>  Human-readable channel name");
-        Console.root().println("  --branch <name>        Default git branch for commits");
-        Console.root().println("  --api-port <port>      Port for the HTTP API endpoint (default: 7780)");
-        Console.root().println("  --flowtree-port <port> Port for the FlowTree server (default: 7766)");
-        Console.root().println("  --log-file <path>      Log file path (default: flowtree-controller.log)");
-        Console.root().println("  --help, -h             Show this help");
-        Console.root().println("");
-        Console.root().println("Agents connect TO this controller on the FlowTree port.");
-        Console.root().println("Set FLOWTREE_ROOT_HOST and FLOWTREE_ROOT_PORT on each agent.");
-        Console.root().println("");
-        Console.root().println("Token resolution (first match wins):");
-        Console.root().println("  1. --tokens <file>           Explicit token file");
-        Console.root().println("  2. ./slack-tokens.json       Convention file in working directory");
-        Console.root().println("  3. SLACK_BOT_TOKEN / SLACK_APP_TOKEN environment variables");
-        Console.root().println("");
-        Console.root().println("Token file format (JSON):");
-        Console.root().println("  { \"botToken\": \"xoxb-...\", \"appToken\": \"xapp-...\" }");
-        Console.root().println("");
-        Console.root().println("Environment variables:");
-        Console.root().println("  SLACK_BOT_TOKEN        Bot User OAuth Token (xoxb-...)");
-        Console.root().println("  SLACK_APP_TOKEN        App-level token for Socket Mode (xapp-...)");
-        Console.root().println("  SLACK_CHANNEL_ID       Default channel to monitor");
-        Console.root().println("  FLOWTREE_PORT          FlowTree listening port (default: 7766)");
-        Console.root().println("  GIT_DEFAULT_BRANCH     Default git branch for commits");
-        Console.root().println("");
-        Console.root().println("Example with token file:");
-        Console.root().println("  java -cp flowtree.jar io.flowtree.controller.FlowTreeController \\");
-        Console.root().println("      --tokens slack-tokens.json --config workstreams.yaml");
-        Console.root().println("");
-        Console.root().println("Example with environment variables:");
-        Console.root().println("  export SLACK_BOT_TOKEN=xoxb-...");
-        Console.root().println("  export SLACK_APP_TOKEN=xapp-...");
-        Console.root().println("  java -cp flowtree.jar io.flowtree.controller.FlowTreeController \\");
-        Console.root().println("      --config workstreams.yaml");
+        FlowTreeControllerLauncher.main(args);
     }
 }

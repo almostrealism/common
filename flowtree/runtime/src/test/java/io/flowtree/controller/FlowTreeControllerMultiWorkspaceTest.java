@@ -80,7 +80,7 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
         assertTrue("No workspace connections in single-token mode",
                 controller.getWorkspaceConnections().isEmpty());
 
-        FlowTreeController.WorkspaceConnection conn = controller.getDefaultConnection();
+        WorkspaceConnection conn = controller.getDefaultConnection();
         assertNotNull(conn);
         assertEquals("xoxb-test", conn.botToken);
         assertEquals("xapp-test", conn.appToken);
@@ -139,7 +139,7 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
         assertEquals("One workspace connection expected", 1,
                 controller.getWorkspaceConnections().size());
 
-        FlowTreeController.WorkspaceConnection conn =
+        WorkspaceConnection conn =
                 controller.getWorkspaceConnections().get("T111");
         assertNotNull("Workspace T111 connection should exist", conn);
         assertEquals("T111", conn.workspaceId);
@@ -166,7 +166,7 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
         controller.loadConfig(tmpFile);
 
         // After loading, defaultConnection should point to the first workspace
-        FlowTreeController.WorkspaceConnection defaultConn = controller.getDefaultConnection();
+        WorkspaceConnection defaultConn = controller.getDefaultConnection();
         assertNotNull(defaultConn);
         Assert.assertEquals("Default connection should be the first workspace",
                 "T111", defaultConn.workspaceId);
@@ -203,12 +203,12 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
         assertEquals("Two workspace connections expected", 2,
                 controller.getWorkspaceConnections().size());
 
-        FlowTreeController.WorkspaceConnection alpha =
+        WorkspaceConnection alpha =
                 controller.getWorkspaceConnections().get("T111");
         assertNotNull(alpha);
         assertEquals("xoxb-alpha", alpha.botToken);
 
-        FlowTreeController.WorkspaceConnection beta =
+        WorkspaceConnection beta =
                 controller.getWorkspaceConnections().get("T222");
         assertNotNull(beta);
         assertEquals("xoxb-beta", beta.botToken);
@@ -233,9 +233,9 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
         FlowTreeController controller = new FlowTreeController(null, null);
         controller.loadConfig(tmpFile);
 
-        FlowTreeController.WorkspaceConnection alpha =
+        WorkspaceConnection alpha =
                 controller.getWorkspaceConnections().get("T111");
-        FlowTreeController.WorkspaceConnection beta =
+        WorkspaceConnection beta =
                 controller.getWorkspaceConnections().get("T222");
 
         assertNotNull(alpha.notifier);
@@ -264,7 +264,7 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
                 controller.getWorkspaceConnections().isEmpty());
 
         // Default connection still holds the original tokens
-        FlowTreeController.WorkspaceConnection conn = controller.getDefaultConnection();
+        WorkspaceConnection conn = controller.getDefaultConnection();
         assertNotNull(conn);
         assertEquals("xoxb-legacy", conn.botToken);
         assertEquals("xapp-legacy", conn.appToken);
@@ -331,7 +331,7 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
     }
 
     /**
-     * Verifies that a loaded {@link FlowTreeController.WorkspaceConnection} stores
+     * Verifies that a loaded {@link WorkspaceConnection} stores
      * the workspace ID exactly as declared in the config file.
      */
     @Test(timeout = 10000)
@@ -346,7 +346,7 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
         FlowTreeController controller = new FlowTreeController(null, null);
         controller.loadConfig(tmpFile);
 
-        FlowTreeController.WorkspaceConnection conn =
+        WorkspaceConnection conn =
                 controller.getWorkspaceConnections().get("T_EXPECTED");
         assertNotNull(conn);
         Assert.assertEquals("WorkspaceConnection must store the workspace ID",
@@ -407,7 +407,7 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
      * reloaded its config.
      *
      * <p>Root cause: {@link FlowTreeController#buildWorkspaceConnections} was
-     * rebuilding every {@link FlowTreeController.WorkspaceConnection} (and
+     * rebuilding every {@link WorkspaceConnection} (and
      * therefore every {@link SlackNotifier}) on each reload, without
      * propagating the controller-owned {@link JobStatsStore} onto the freshly
      * constructed notifiers. The listener's primary notifier was then a
@@ -534,7 +534,7 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
         FlowTreeController controller = new FlowTreeController(null, null);
         controller.loadConfig(tmpFile);
 
-        FlowTreeController.WorkspaceConnection conn =
+        WorkspaceConnection conn =
                 controller.getWorkspaceConnections().get("T111");
         assertNotNull(conn);
 

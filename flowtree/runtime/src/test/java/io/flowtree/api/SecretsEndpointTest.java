@@ -47,6 +47,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import io.flowtree.workstream.WorkspaceSecretEntry;
 
 /**
  * Integration tests for the {@code /api/secrets/*} endpoints in
@@ -111,14 +112,14 @@ public class SecretsEndpointTest extends TestSuiteBase {
         Console.root().addListener(auditListener);
 
         // Build secrets cache
-        WorkstreamConfig.WorkspaceSecretEntry entry = new WorkstreamConfig.WorkspaceSecretEntry();
+        WorkspaceSecretEntry entry = new WorkspaceSecretEntry();
         entry.setName("aws-prod");
         entry.setFile(secretFile.toAbsolutePath().toString());
 
-        Map<String, WorkstreamConfig.WorkspaceSecretEntry> wsASecrets = new HashMap<>();
+        Map<String, WorkspaceSecretEntry> wsASecrets = new HashMap<>();
         wsASecrets.put("aws-prod", entry);
 
-        Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> cache = new HashMap<>();
+        Map<String, Map<String, WorkspaceSecretEntry>> cache = new HashMap<>();
         cache.put(WORKSPACE_A, wsASecrets);
 
         // Workstream registered on notifier for workspace-A
@@ -302,7 +303,7 @@ public class SecretsEndpointTest extends TestSuiteBase {
     @Test(timeout = 10000)
     public void testAdminCreateWritesFile() throws Exception {
         Path newFile = secretsDir.resolve(WORKSPACE_A + "__gh-token.json");
-        WorkstreamConfig.WorkspaceSecretEntry newEntry = new WorkstreamConfig.WorkspaceSecretEntry();
+        WorkspaceSecretEntry newEntry = new WorkspaceSecretEntry();
         newEntry.setName("gh-token");
         newEntry.setFile(newFile.toAbsolutePath().toString());
 
@@ -313,15 +314,15 @@ public class SecretsEndpointTest extends TestSuiteBase {
         ws.setWorkspaceId(WORKSPACE_A);
         notifier.registerWorkstream(ws);
 
-        WorkstreamConfig.WorkspaceSecretEntry existEntry = new WorkstreamConfig.WorkspaceSecretEntry();
+        WorkspaceSecretEntry existEntry = new WorkspaceSecretEntry();
         existEntry.setName("aws-prod");
         existEntry.setFile(secretFile.toAbsolutePath().toString());
 
-        Map<String, WorkstreamConfig.WorkspaceSecretEntry> wsASecrets = new HashMap<>();
+        Map<String, WorkspaceSecretEntry> wsASecrets = new HashMap<>();
         wsASecrets.put("aws-prod", existEntry);
         wsASecrets.put("gh-token", newEntry);
 
-        Map<String, Map<String, WorkstreamConfig.WorkspaceSecretEntry>> cache = new HashMap<>();
+        Map<String, Map<String, WorkspaceSecretEntry>> cache = new HashMap<>();
         cache.put(WORKSPACE_A, wsASecrets);
 
         endpoint = new FlowTreeApiEndpoint(0, notifier);

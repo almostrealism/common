@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Set;
 import io.flowtree.controller.FlowTreeController;
 import io.flowtree.workstream.WorkstreamConfig;
+import io.flowtree.workstream.WorkstreamEntry;
 
 /**
  * Validates GitHub API tokens at controller startup.
@@ -254,7 +255,7 @@ public class GitHubTokenValidator implements ConsoleFeatures {
 		}
 
 		// Scan workstreams to determine which token handles which repo
-		for (WorkstreamConfig.WorkstreamEntry ws : config.getWorkstreams()) {
+		for (WorkstreamEntry ws : config.getWorkstreams()) {
 			String ownerRepo = extractOwnerRepo(ws.getRepoUrl());
 			if (ownerRepo == null) continue;
 
@@ -286,7 +287,7 @@ public class GitHubTokenValidator implements ConsoleFeatures {
 	 * @param orgTokens map of org name to token
 	 * @return the resolved token, or null if none available
 	 */
-	private String resolveWorkstreamToken(WorkstreamConfig.WorkstreamEntry ws,
+	private String resolveWorkstreamToken(WorkstreamEntry ws,
 										  Map<String, String> orgTokens) {
 		// Per-org token via explicit githubOrg field
 		if (ws.getGithubOrg() != null && orgTokens.containsKey(ws.getGithubOrg())) {

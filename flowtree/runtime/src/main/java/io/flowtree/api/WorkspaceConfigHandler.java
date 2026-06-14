@@ -28,13 +28,14 @@ import java.util.function.Function;
 import io.flowtree.submission.PhaseConfigResolver;
 import io.flowtree.workstream.WorkstreamConfig;
 import io.flowtree.slack.SlackListener;
+import io.flowtree.workstream.WorkspaceEntry;
 
 /**
  * Handles the workspace config endpoint ({@code POST /api/workspaces/{id}/config})
  * for {@link FlowTreeApiEndpoint}.
  *
  * <p>The endpoint exposes a deliberately narrow set of {@link
- * WorkstreamConfig.WorkspaceEntry} fields:</p>
+ * WorkspaceEntry} fields:</p>
  * <ul>
  *   <li>{@code name} — human-readable label.</li>
  *   <li>{@code defaultChannel} — fallback Slack channel ID.</li>
@@ -64,7 +65,7 @@ import io.flowtree.slack.SlackListener;
 final class WorkspaceConfigHandler {
 
     /** Resolves a workspace ID to its config entry, or {@code null}. */
-    private final Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup;
+    private final Function<String, WorkspaceEntry> workspaceLookup;
     /**
      * Renames a workspace: applies {@code (oldId, newId)} to the loaded
      * config. Returns {@code true} on success, {@code false} when the old ID
@@ -92,7 +93,7 @@ final class WorkspaceConfigHandler {
      * @param errorResponse   400-error response factory
      * @param log             log line consumer
      */
-    WorkspaceConfigHandler(Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup,
+    WorkspaceConfigHandler(Function<String, WorkspaceEntry> workspaceLookup,
                            SlackListener listener,
                            Function<IHTTPSession, String> readBody,
                            Function<String, Response> errorResponse,
@@ -113,7 +114,7 @@ final class WorkspaceConfigHandler {
      * @param errorResponse   400-error response factory
      * @param log             log line consumer
      */
-    WorkspaceConfigHandler(Function<String, WorkstreamConfig.WorkspaceEntry> workspaceLookup,
+    WorkspaceConfigHandler(Function<String, WorkspaceEntry> workspaceLookup,
                            BiFunction<String, String, Boolean> renameWorkspace,
                            SlackListener listener,
                            Function<IHTTPSession, String> readBody,
@@ -169,7 +170,7 @@ final class WorkspaceConfigHandler {
         String legacyErr = PhaseConfigResolver.rejectLegacyRequestFields(body);
         if (legacyErr != null) return errorResponse.apply(legacyErr);
 
-        WorkstreamConfig.WorkspaceEntry entry = workspaceLookup.apply(workspaceId);
+        WorkspaceEntry entry = workspaceLookup.apply(workspaceId);
         if (entry == null) {
             String json = "{\"ok\":false,\"error\":\"Unknown workspace: "
                     + JsonFieldExtractor.escapeJson(workspaceId) + "\"}";

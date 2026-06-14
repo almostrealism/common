@@ -45,6 +45,7 @@ import io.flowtree.workstream.Workstream;
 import io.flowtree.workstream.WorkstreamConfig;
 
 import static org.junit.Assert.*;
+import io.flowtree.workstream.WorkstreamEntry;
 
 /**
  * Tests for the FlowTree orchestration and Slack integration components.
@@ -852,8 +853,8 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertEquals(2, reloaded.getWorkstreams().size());
 
         // Find the new entry
-        WorkstreamConfig.WorkstreamEntry newEntry = null;
-        for (WorkstreamConfig.WorkstreamEntry entry : reloaded.getWorkstreams()) {
+        WorkstreamEntry newEntry = null;
+        for (WorkstreamEntry entry : reloaded.getWorkstreams()) {
             if ("C_NEW".equals(entry.getChannelId())) {
                 newEntry = entry;
                 break;

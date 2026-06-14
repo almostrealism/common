@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 import io.flowtree.workstream.Workstream;
 import io.flowtree.workstream.WorkstreamConfig;
+import io.flowtree.workstream.WorkspaceEntry;
 
 /**
  * Helper that resolves per-phase agent runner configuration for a submitted
@@ -37,9 +38,9 @@ import io.flowtree.workstream.WorkstreamConfig;
  *   <li>Workstream per-phase map ({@link Workstream#getRunners()})</li>
  *   <li>Workstream default ({@link Workstream#getDefaultRunner()})</li>
  *   <li>Workspace per-phase map
- *       ({@link WorkstreamConfig.WorkspaceEntry#getRunners()})</li>
+ *       ({@link WorkspaceEntry#getRunners()})</li>
  *   <li>Workspace default
- *       ({@link WorkstreamConfig.WorkspaceEntry#getDefaultRunner()})</li>
+ *       ({@link WorkspaceEntry#getDefaultRunner()})</li>
  *   <li>Controller default ({@code "claude"})</li>
  * </ol>
  *
@@ -241,7 +242,7 @@ public final class SubmissionRunnerResolver {
      * Applies a parsed {@code runners} object to a workspace as its
      * persistent runner configuration. The {@code "default"} key, when
      * present, becomes
-     * {@link WorkstreamConfig.WorkspaceEntry#setDefaultRunner(String)};
+     * {@link WorkspaceEntry#setDefaultRunner(String)};
      * remaining keys (which must be valid {@link Phase} wire names) replace
      * the workspace's per-phase map.
      *
@@ -255,7 +256,7 @@ public final class SubmissionRunnerResolver {
      * @return {@code null} on success, or a 400-able error message on
      *         unknown phase name or unknown runner name
      */
-    public static String applyToWorkspace(WorkstreamConfig.WorkspaceEntry entry,
+    public static String applyToWorkspace(WorkspaceEntry entry,
                                    Map<String, String> requestRunners) {
         return applyRunnerConfig(requestRunners,
                 entry::setDefaultRunner, entry::setRunners);
