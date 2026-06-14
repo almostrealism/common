@@ -78,6 +78,17 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	}
 
 	/**
+	 * Computes the arc-cosine (inverse cosine) of each element in the input collection.
+	 *
+	 * @param input the input values, each defined on {@code [-1, 1]}
+	 * @return a producer for the arc-cosine of the input
+	 */
+	default CollectionProducer acos(Producer<PackedCollection> input) {
+		return compute("acos",
+				shape -> args -> acos(shape, args[1]), input);
+	}
+
+	/**
 	 * Computes the tangent of each element in the input collection.
 	 *
 	 * @param input the input values

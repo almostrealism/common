@@ -304,9 +304,26 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 
 	/**
 	 * Builds the {@code [FILTER_TABLE_BINS, taps]} table of truncated biquad impulse
-	 * responses over log-spaced cutoffs in {@code [MIN_FREQUENCY, 20000]} Hz. Computed
-	 * once at argument-build time from closed-form coefficient math (no device reads);
-	 * per-buffer refresh selects a row with a device-side gather.
+	 * responses over log-spaced cutoffs in {@code [MIN_FREQUENCY, 20000]} Hz, entirely as a
+	 * {@link CollectionProducer} graph evaluated once at argument-build time; per-buffer
+	 * refresh selects a row with a device-side gather.
+	 *
+	 * <p>The table is the FIR realisation of
+	 * {@link org.almostrealism.audio.filter.AudioPassFilter}'s biquad. With
+	 * {@code c = tan(PI*f/sr)} (high-pass) or its reciprocal (low-pass) and
+	 * {@code a1 = 1/(1 + r*c + c*c)}, the impulse response follows the recurrence
+	 * {@code y[n] = a1*x[n] + a2*x[n-1] + a3*x[n-2] - b1*y[n-1] - b2*y[n-2]} driven by a unit
+	 * impulse. Rather than unroll that recurrence (whose naive expression tree grows
+	 * exponentially), the response is generated in closed form: for the project resonance
+	 * the discriminant {@code b1*b1 - 4*b2} reduces to {@code -c*c*(4 - r*r) < 0}, so the
+	 * poles are <em>always</em> a complex-conjugate pair {@code rho*exp(+/- i*theta)} with
+	 * {@code rho = sqrt(b2)} and {@code theta = acos(-b1 / (2*rho))}. The homogeneous IR is
+	 * therefore {@code y[n] = rho^n * (A*cos(n*theta) + B*sin(n*theta))} for {@code n >= 1}
+	 * (with {@code A}, {@code B} fit to {@code y[1]}, {@code y[2]}), and {@code y[0] = a1}.
+	 * Every coefficient is a per-bin scalar producer; the {@code [bins, taps]} table is the
+	 * outer combination of those with the tap index. This matches Java's exact 12 dB/oct
+	 * biquad (a windowed-sinc FIR of the same order is far steeper and audibly diverged from
+	 * the CellList render during the cutoff sweep).</p>
 	 *
 	 * @param high       true for the high-pass design; false for low-pass
 	 * @param sampleRate audio sample rate in Hz
@@ -314,16 +331,67 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * @return the response table
 	 */
 	private static PackedCollection biquadResponseTable(boolean high, int sampleRate, int taps) {
-		PackedCollection table = new PackedCollection(
-				new TraversalPolicy(FILTER_TABLE_BINS, taps));
-		double[] data = new double[FILTER_TABLE_BINS * taps];
+		int bins = FILTER_TABLE_BINS;
+		int tail = taps - 1;
+		double r = FixedFilterChromosome.defaultResonance;
 		double span = Math.log(20000.0 / AudioPassFilter.MIN_FREQUENCY);
-		for (int b = 0; b < FILTER_TABLE_BINS; b++) {
-			double cutoff = AudioPassFilter.MIN_FREQUENCY
-					* Math.exp(span * b / (FILTER_TABLE_BINS - 1.0));
-			biquadImpulseResponse(high, cutoff, sampleRate, data, b * taps, taps);
-		}
-		table.setMem(data);
+		double piOverSr = Math.PI / sampleRate;
+
+		// Per-bin scalar coefficients (shape [bins]).
+		CollectionProducer cutoff = ADAPTER.exp(
+				ADAPTER.integers(0, bins).multiply(span / (bins - 1.0)))
+				.multiply(AudioPassFilter.MIN_FREQUENCY);
+		CollectionProducer t = ADAPTER.tan(cutoff.multiply(piOverSr));
+		CollectionProducer c = high ? t : t.pow(-1.0);
+		CollectionProducer csq = c.multiply(c);
+		CollectionProducer rc = c.multiply(r);
+		CollectionProducer a1 = ADAPTER.add(rc, csq).add(1.0).pow(-1.0);
+		CollectionProducer a2 = high ? a1.multiply(-2.0) : a1.multiply(2.0);
+		CollectionProducer a3 = a1;
+		CollectionProducer b1 = high
+				? csq.subtract(1.0).multiply(2.0).multiply(a1)
+				: csq.multiply(-1.0).add(1.0).multiply(2.0).multiply(a1);
+		CollectionProducer b2 = ADAPTER.add(rc.multiply(-1.0), csq).add(1.0).multiply(a1);
+
+		CollectionProducer rho = ADAPTER.sqrt(b2);
+		CollectionProducer theta = ADAPTER.acos(
+				ADAPTER.divide(b1.multiply(-1.0), rho.multiply(2.0)));
+
+		// Impulse-response seeds y[0], y[1], y[2].
+		CollectionProducer y0 = a1;
+		CollectionProducer y1 = ADAPTER.subtract(a2, ADAPTER.multiply(b1, y0));
+		CollectionProducer y2 = ADAPTER.subtract(
+				ADAPTER.subtract(a3, ADAPTER.multiply(b1, y1)), ADAPTER.multiply(b2, y0));
+
+		// Closed-form amplitudes: det = cos(t)sin(2t) - cos(2t)sin(t) = sin(t).
+		CollectionProducer c1 = ADAPTER.cos(theta);
+		CollectionProducer s1 = ADAPTER.sin(theta);
+		CollectionProducer c2 = ADAPTER.cos(theta.multiply(2.0));
+		CollectionProducer s2 = ADAPTER.sin(theta.multiply(2.0));
+		CollectionProducer y1n = ADAPTER.divide(y1, rho);
+		CollectionProducer y2n = ADAPTER.divide(y2, b2);
+		CollectionProducer aCoef = ADAPTER.divide(
+				ADAPTER.subtract(ADAPTER.multiply(y1n, s2), ADAPTER.multiply(y2n, s1)), s1);
+		CollectionProducer bCoef = ADAPTER.divide(
+				ADAPTER.subtract(ADAPTER.multiply(y2n, c1), ADAPTER.multiply(y1n, c2)), s1);
+
+		// Tap-indexed response for n >= 1. repeat(axis, n) inserts a new dimension, so a
+		// [bins] column repeated on axis 1 and a [tail] row repeated on axis 0 both broadcast
+		// to [bins, tail]; their product is the n*theta / n*ln(rho) outer combination.
+		CollectionProducer nRow = ADAPTER.integers(0, tail).add(1.0).repeat(0, bins);
+		CollectionProducer nTheta = ADAPTER.multiply(theta.repeat(1, tail), nRow);
+		CollectionProducer rhoPow = ADAPTER.exp(
+				ADAPTER.multiply(ADAPTER.log(rho).repeat(1, tail), nRow));
+		CollectionProducer aTile = aCoef.repeat(1, tail);
+		CollectionProducer bTile = bCoef.repeat(1, tail);
+		CollectionProducer general = ADAPTER.multiply(rhoPow,
+				ADAPTER.add(ADAPTER.multiply(aTile, ADAPTER.cos(nTheta)),
+						ADAPTER.multiply(bTile, ADAPTER.sin(nTheta))));
+
+		// Prepend y[0] = a1 as the first tap, materialising the table at the build boundary.
+		CollectionProducer response = ADAPTER.concat(1, a1.reshape(bins, 1), general);
+		PackedCollection table = new PackedCollection(new TraversalPolicy(bins, taps));
+		ADAPTER.a(bins * taps, ADAPTER.cp(table), response).get().run();
 		return table;
 	}
 
@@ -350,50 +418,6 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 				ADAPTER.multiply(bin, ADAPTER.c((double) taps)),
 				ADAPTER.integers(0, taps));
 		return ADAPTER.c(ADAPTER.shape(taps), ADAPTER.cp(table), positions);
-	}
-
-	/**
-	 * Writes the TRUNCATED IMPULSE RESPONSE of
-	 * {@link org.almostrealism.audio.filter.AudioPassFilter}'s biquad at the given cutoff
-	 * into {@code out} — the FIR realisation of Java's exact filter. With
-	 * {@code c = tan(PI*f/sr)} (high-pass) or its reciprocal (low-pass) and
-	 * {@code a1 = 1/(1 + r*c + c*c)}, the IR follows the recurrence
-	 * {@code y[n] = a1*x[n] + a2*x[n-1] + a3*x[n-2] - b1*y[n-1] - b2*y[n-2]} driven by a
-	 * unit impulse. At audible cutoffs the biquad's poles decay within a handful of
-	 * samples, so the truncation is essentially exact and the FIR matches Java's
-	 * 12 dB/oct slope; a windowed-sinc FIR of the same order is far steeper, which audibly
-	 * diverged from the CellList render during the cutoff sweep. Near-zero cutoffs leave a
-	 * long IR tail that truncation drops, making the filter an identity passband there —
-	 * matching Java's ~identity response at its bounded 10 Hz minimum cutoff. Runs on the
-	 * host at the per-buffer step boundary: the recurrence cannot be expressed as a
-	 * producer graph without an exponential expression tree (each unrolled step embeds
-	 * copies of the two previous subtrees).
-	 *
-	 * @param high       true for the high-pass design; false for low-pass
-	 * @param cutoff     cutoff frequency in Hz (already bounded to [10, 20000])
-	 * @param sampleRate audio sample rate in Hz
-	 * @param out        destination array
-	 * @param offset     index of the first coefficient within {@code out}
-	 * @param count      number of taps to write
-	 */
-	private static void biquadImpulseResponse(boolean high, double cutoff,
-											  int sampleRate, double[] out,
-											  int offset, int count) {
-		double r = FixedFilterChromosome.defaultResonance;
-		double t = Math.tan(Math.PI * cutoff / sampleRate);
-		double c = high ? t : 1.0 / t;
-		double a1 = 1.0 / (1.0 + r * c + c * c);
-		double a2 = high ? -2.0 * a1 : 2.0 * a1;
-		double a3 = a1;
-		double b1 = high ? 2.0 * (c * c - 1.0) * a1 : 2.0 * (1.0 - c * c) * a1;
-		double b2 = (1.0 - r * c + c * c) * a1;
-
-		out[offset] = a1;
-		if (count > 1) out[offset + 1] = a2 - b1 * out[offset];
-		if (count > 2) out[offset + 2] = a3 - b1 * out[offset + 1] - b2 * out[offset];
-		for (int n = 3; n < count; n++) {
-			out[offset + n] = -b1 * out[offset + n - 1] - b2 * out[offset + n - 2];
-		}
 	}
 
 	/**
