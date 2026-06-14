@@ -192,8 +192,11 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
 
     /**
      * Verifies the full lifecycle of the accept-automated-jobs controller config:
-     * default is false, POST with accept:true enables it, GET reflects the change,
-     * and POST with accept:false disables it again.
+     * default is true (a freshly started controller accepts automated jobs
+     * — CI auto-resolve retries, completion-listener wake-ups — without an
+     * operator having to call {@code controller_update_config} first),
+     * POST with accept:false disables it, GET reflects the change,
+     * and POST with accept:true re-enables it again.
      */
     @Test(timeout = 10000)
     public void testAcceptAutomatedJobsConfig() throws Exception {
@@ -206,7 +209,12 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
             String configUrl = "http://localhost:" + port
                     + "/api/config/accept-automated-jobs";
 
-            assertFalse("Default should reject automated jobs",
+            assertTrue("Default should accept automated jobs (the"
+                    + " default was intentionally flipped to true so a"
+                    + " freshly started or redeployed controller accepts"
+                    + " automated submissions without a separate"
+                    + " controller_update_config call; the existing"
+                    + " kill switch — POST accept:false — remains)",
                     endpoint.isAcceptAutomatedJobs());
 
             HttpURLConnection getConn = (HttpURLConnection)
@@ -216,8 +224,8 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
             String getResponse = new String(
                     getConn.getInputStream().readAllBytes(),
                     StandardCharsets.UTF_8);
-            assertTrue("GET should report false",
-                    getResponse.contains("\"acceptAutomatedJobs\":false"));
+            assertTrue("GET should report true",
+                    getResponse.contains("\"acceptAutomatedJobs\":true"));
 
             HttpURLConnection postConn = (HttpURLConnection)
                     new URL(configUrl).openConnection();
@@ -225,15 +233,15 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
             postConn.setDoOutput(true);
             postConn.setRequestProperty("Content-Type", "application/json");
             try (OutputStream os = postConn.getOutputStream()) {
-                os.write("{\"accept\":true}".getBytes(StandardCharsets.UTF_8));
+                os.write("{\"accept\":false}".getBytes(StandardCharsets.UTF_8));
             }
             assertEquals(200, postConn.getResponseCode());
             String postResponse = new String(
                     postConn.getInputStream().readAllBytes(),
                     StandardCharsets.UTF_8);
-            assertTrue("POST response should confirm true",
-                    postResponse.contains("\"acceptAutomatedJobs\":true"));
-            assertTrue("Endpoint field should now be true",
+            assertTrue("POST response should confirm false",
+                    postResponse.contains("\"acceptAutomatedJobs\":false"));
+            assertFalse("Endpoint field should now be false",
                     endpoint.isAcceptAutomatedJobs());
 
             HttpURLConnection getConn2 = (HttpURLConnection)
@@ -243,8 +251,8 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
             String getResponse2 = new String(
                     getConn2.getInputStream().readAllBytes(),
                     StandardCharsets.UTF_8);
-            assertTrue("GET should report true after update",
-                    getResponse2.contains("\"acceptAutomatedJobs\":true"));
+            assertTrue("GET should report false after update",
+                    getResponse2.contains("\"acceptAutomatedJobs\":false"));
 
             HttpURLConnection postConn2 = (HttpURLConnection)
                     new URL(configUrl).openConnection();
@@ -252,15 +260,15 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
             postConn2.setDoOutput(true);
             postConn2.setRequestProperty("Content-Type", "application/json");
             try (OutputStream os = postConn2.getOutputStream()) {
-                os.write("{\"accept\":false}".getBytes(StandardCharsets.UTF_8));
+                os.write("{\"accept\":true}".getBytes(StandardCharsets.UTF_8));
             }
             assertEquals(200, postConn2.getResponseCode());
             String postResponse2 = new String(
                     postConn2.getInputStream().readAllBytes(),
                     StandardCharsets.UTF_8);
-            assertTrue("POST response should confirm false",
-                    postResponse2.contains("\"acceptAutomatedJobs\":false"));
-            assertFalse("Endpoint field should now be false",
+            assertTrue("POST response should confirm true",
+                    postResponse2.contains("\"acceptAutomatedJobs\":true"));
+            assertTrue("Endpoint field should now be true",
                     endpoint.isAcceptAutomatedJobs());
         } finally {
             endpoint.stop();
