@@ -19,7 +19,6 @@ package io.flowtree.jobs;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -226,22 +225,19 @@ public class McpToolWorkstreamConfigSurfaceTest extends TestSuiteBase {
 	 * single relative path like {@code tools/...} only resolves when the
 	 * test is launched from the project root.
 	 *
-	 * <p>This is the same pattern as
-	 * {@code McpConfigBuilderTest.locateManagerServerPy}. Both tests need the
-	 * helper; keeping a copy in this file avoids a base-branch test-file
-	 * modification (the write-lock on agent commits would otherwise reject
-	 * an edit to the other test).</p>
+	 * <p>Delegates to
+	 * {@link io.flowtree.jobs.McpToolDiscovery#locateManagerServerPy()} so
+	 * the resolution path stays in a single place; a copy of this helper
+	 * still exists in {@code McpConfigBuilderTest} because that test
+	 * file is on the base branch and the agent write-lock prevents
+	 * editing it. Once the duplication can be removed the
+	 * {@code McpConfigBuilderTest} caller can switch to the same
+	 * production helper without changing the resolution semantics.</p>
 	 *
-	 * @return the resolved path, or {@code null} if not found within five
-	 *         levels of ancestor directories
+	 * @return the resolved path, or {@code null} if not found within the
+	 *         helper's search budget
 	 */
 	private static Path locateManagerServerPy() {
-		Path cwd = Path.of("").toAbsolutePath();
-		for (int i = 0; i < 5 && cwd != null; i++) {
-			Path candidate = cwd.resolve("tools/mcp/manager/server.py");
-			if (Files.exists(candidate)) return candidate;
-			cwd = cwd.getParent();
-		}
-		return null;
+		return McpToolDiscovery.locateManagerServerPy();
 	}
 }
