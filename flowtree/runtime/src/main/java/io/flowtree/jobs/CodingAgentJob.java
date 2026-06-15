@@ -471,6 +471,20 @@ public class CodingAgentJob extends GitManagedJob {
     public void setDispatchCapable(boolean dispatchCapable) {
         this.dispatchCapable = dispatchCapable;
     }
+    /**
+     * Returns whether this job's workstream is dispatch-capable. When
+     * {@code true}, {@link #configureMcpBuilder()} grants the agent the
+     * {@code workstream_register} and {@code workstream_update_config}
+     * tools. The value is carried across the wire by
+     * {@link CodingAgentJobCodec} so a job dispatched to a remote agent
+     * node retains the grant.
+     *
+     * @return {@code true} when the dispatch tools are granted to this agent
+     * @see McpConfigBuilder#buildAllowedTools(String)
+     */
+    public boolean isDispatchCapable() {
+        return dispatchCapable;
+    }
     /** Returns the pushed-tools configuration JSON, or {@code null}. */
     public String getPushedToolsConfig() { return pushedToolsConfig; }
 
@@ -979,9 +993,11 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Configures the MCP config builder with current job state.
+     * Configures the MCP config builder with current job state. Package
+     * private so the dispatch-capable plumbing (job flag to builder to
+     * allowed-tools CSV) can be exercised end to end in a unit test.
      */
-    private void configureMcpBuilder() {
+    void configureMcpBuilder() {
         mcpConfigBuilder.setArManagerUrl(arManagerUrl);
         mcpConfigBuilder.setArManagerToken(arManagerToken);
         mcpConfigBuilder.setPushedToolsConfig(pushedToolsConfig);
@@ -989,6 +1005,19 @@ public class CodingAgentJob extends GitManagedJob {
         mcpConfigBuilder.setDispatchCapable(dispatchCapable);
         Path workDir = getWorkingDirectory() != null ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
         mcpConfigBuilder.setWorkingDirectory(workDir);
+    }
+
+    /**
+     * Composes the allowed-tools CSV handed to the launched agent, layering
+     * ar-manager, dispatch (only when {@link #isDispatchCapable()}), pushed,
+     * and project-server entries onto the base tools. {@link #configureMcpBuilder()}
+     * must run first so the builder reflects current job state; this is the
+     * real artifact that grants the dispatch tools to an orchestrator.
+     *
+     * @return the composed comma-separated allowed-tools list
+     */
+    String buildComposedAllowedTools() {
+        return mcpConfigBuilder.buildAllowedTools(allowedTools);
     }
 
     /**
@@ -1203,7 +1232,7 @@ public class CodingAgentJob extends GitManagedJob {
         toolsDownloader.ensurePushedTools(pushedToolsConfig);
         configureMcpBuilder();
         String mcpConfigJson = mcpConfigBuilder.buildMcpConfig();
-        String composedAllowedTools = mcpConfigBuilder.buildAllowedTools(allowedTools);
+        String composedAllowedTools = buildComposedAllowedTools();
 
         if (getTargetBranch() != null) {
             log("Target branch: " + getTargetBranch());

@@ -332,7 +332,7 @@ class TestDispatchCapableCache(unittest.TestCase):
             {"workstreamId": "ws-yes", "dispatchCapable": True},
             {"workstreamId": "ws-no", "dispatchCapable": False},
             {"workstreamId": "ws-absent"},  # field absent
-            {"workstreamId": "ws-string"},  # not a Python bool
+            {"workstreamId": "ws-string", "dispatchCapable": "true"},  # string, not a Python bool
         ]
         ids = server._refresh_dispatch_capable_ids()
         self.assertIn("ws-yes", ids)
