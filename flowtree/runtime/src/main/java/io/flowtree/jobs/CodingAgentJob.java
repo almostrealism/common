@@ -145,6 +145,13 @@ public class CodingAgentJob extends GitManagedJob {
     /** Set by the monitor when it kills the Claude subprocess; consumed by the retry loop. */
     private volatile boolean wasKilledForInactivity;
     /**
+     * When {@code true}, the agent subprocess is launched inside a tmux session
+     * (real controlling tty) rather than as a direct child process. Defaults to
+     * {@code false}; the runner additionally honours the {@code AR_AGENT_USE_TMUX}
+     * environment variable, so either source enabling tmux is sufficient.
+     */
+    private boolean useTmux;
+    /**
      * Controls post-work deduplication behaviour.
      * {@code null} (the default) disables deduplication — the factory sets
      * this to {@link #DEDUP_LOCAL} when creating jobs.
@@ -218,7 +225,7 @@ public class CodingAgentJob extends GitManagedJob {
      * non-zero exit, 0s wall-clock duration, not killed for inactivity.
      * Captured in {@link #doWork()} after the first {@link #executeSingleRun()}
      * and never reset, so it survives any subsequent retry that overwrites
-     * {@link #exitCode} with a zero. The rollup in
+     * the exit code with a zero. The rollup in
      * {@link #createEvent(Exception)} treats this as terminal.
      */
     private boolean primaryPhaseHardFailed;
@@ -255,30 +262,10 @@ public class CodingAgentJob extends GitManagedJob {
     private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
     /** Downloads pushed MCP tool source files before each agent launch. */
     private final ManagedToolsDownloader toolsDownloader = new ManagedToolsDownloader(mcpConfigBuilder);
-    /** The Claude Code session identifier assigned during execution. */
-    private String sessionId;
-    /** Raw text output produced by the Claude Code process. */
-    private String output;
-    /** Exit code returned by the Claude Code process. */
-    private int exitCode;
-    /** Total wall-clock duration of the Claude Code session in milliseconds. */
-    private long durationMs;
-    /** Time spent in API calls during the Claude Code session, in milliseconds. */
-    private long durationApiMs;
-    /** Total cost of the Claude Code session in US dollars. */
-    private double costUsd;
+    /** Accumulated result of this job's agent sessions (output, exit code, cost, timing, denials). */
+    private final AgentSessionMetrics metrics = new AgentSessionMetrics();
     /** Per-runner and per-model USD cost accumulation across every phase invocation. */
     private final JobCostTracker costTracker = new JobCostTracker();
-    /** Number of agentic turns taken during the Claude Code session. */
-    private int numTurns;
-    /** Session subtype / stop reason reported by Claude Code (e.g. "success"). */
-    private String subtype;
-    /** Whether Claude Code flagged the session result as an error. */
-    private boolean isError;
-    /** Number of tool-use permission denials recorded during the session. */
-    private int permissionDenials;
-    /** Names of the tools that were denied during the session. */
-    private List<String> deniedToolNames;
     /** How the commit message was produced: {@code "agent"}, {@code "prompt_fallback"}, or {@code "commit_rule_recovered"}. */
     private String commitMessageSource;
 
@@ -600,6 +587,28 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
+     * Returns whether the agent subprocess should be launched inside a tmux
+     * session for this job.
+     *
+     * @return {@code true} when a tmux-backed launch is requested
+     */
+    public boolean isUseTmux() {
+        return useTmux;
+    }
+
+    /**
+     * Sets whether the agent subprocess should be launched inside a tmux
+     * session (a real controlling tty) for this job. Operator-controlled at job
+     * submission time. When {@code false} (the default) the runner may still
+     * enable tmux from the {@code AR_AGENT_USE_TMUX} environment variable.
+     *
+     * @param useTmux {@code true} to launch the agent inside a tmux session
+     */
+    public void setUseTmux(boolean useTmux) {
+        this.useTmux = useTmux;
+    }
+
+    /**
      * Returns whether the organizational placement rule is active for this job.
      *
      * <p>When active, a correction session is run after the agent's primary work to
@@ -909,21 +918,21 @@ public class CodingAgentJob extends GitManagedJob {
      * Can be used to resume the session later.
      */
     public String getSessionId() {
-        return sessionId;
+        return metrics.sessionId();
     }
 
     /**
      * Returns the full output from the last execution.
      */
     public String getOutput() {
-        return output;
+        return metrics.output();
     }
 
     /**
      * Returns the exit code from the last execution.
      */
     public int getExitCode() {
-        return exitCode;
+        return metrics.exitCode();
     }
 
     /**
@@ -1197,7 +1206,7 @@ public class CodingAgentJob extends GitManagedJob {
         PhaseConfig effective = resolveEffectivePhaseConfig(currentPhase);
         String modelKey = effective.toModelKey();
 
-        output = "";
+        metrics.setOutput("");
         AgentRunResult finalResult = null;
         for (int attempt = 0; attempt <= maxInactivityRestarts; attempt++) {
             inactivityRestartAttempt = attempt;
@@ -1205,7 +1214,7 @@ public class CodingAgentJob extends GitManagedJob {
             AgentRunRequest request = buildRunRequest(
                     composedAllowedTools, mcpConfigJson, outputCapturePath, attempt);
             AgentRunResult result = runner.run(request, this);
-            output = result.rawOutput();
+            metrics.setOutput(result.rawOutput());
             wasKilledForInactivity = result.killedForInactivity();
             finalResult = result;
             if (!wasKilledForInactivity) break;
@@ -1228,7 +1237,7 @@ public class CodingAgentJob extends GitManagedJob {
 
         if (getOutputConsumer() != null) {
             getOutputConsumer().accept(new CodingAgentJobOutput(
-                getTaskId(), prompt, output, sessionId, exitCode));
+                getTaskId(), prompt, metrics.output(), metrics.sessionId(), metrics.exitCode()));
         }
     }
 
@@ -1345,6 +1354,7 @@ public class CodingAgentJob extends GitManagedJob {
                 .taskId(getTaskId())
                 .activityTag(currentActivity)
                 .outputCapturePath(outputCapturePath)
+                .useTmux(useTmux)
                 .build();
     }
 
@@ -1379,10 +1389,10 @@ public class CodingAgentJob extends GitManagedJob {
      * the per-phase {@code harness_status} messages report.
      *
      * <p>Called by {@link #doWork()} to capture the primary phase outcome
-     * before any enforcement retry overwrites {@link #exitCode}.</p>
+     * before any enforcement retry overwrites the exit code.</p>
      */
     boolean isHardPrimaryFailure() {
-        return exitCode != 0 && durationMs == 0L && !wasKilledForInactivity;
+        return metrics.exitCode() != 0 && metrics.durationMs() == 0L && !wasKilledForInactivity;
     }
 
     /**
@@ -1394,21 +1404,7 @@ public class CodingAgentJob extends GitManagedJob {
      * @param result the result returned by {@link AgentRunner#run}
      */
     void absorbResult(AgentRunResult result) {
-        exitCode = result.exitCode();
-        sessionId = result.sessionId();
-        subtype = result.stopReason();
-        isError = result.sessionIsError();
-        durationMs += result.durationMs();
-        durationApiMs += result.durationApiMs();
-        numTurns += result.numTurns();
-        costUsd += result.costUsd();
-        if (!result.deniedToolNames().isEmpty()) {
-            if (deniedToolNames == null) {
-                deniedToolNames = new ArrayList<>();
-            }
-            deniedToolNames.addAll(result.deniedToolNames());
-            permissionDenials += result.deniedToolNames().size();
-        }
+        metrics.absorb(result);
     }
 
     /**
@@ -1442,10 +1438,10 @@ public class CodingAgentJob extends GitManagedJob {
         // before exitCode because an enforce_changes retry can overwrite
         // exitCode with a successful value; the flag, captured in doWork()
         // before the retry ran, is the durable signal.
-        if (primaryPhaseHardFailed && exitCode == 0)
+        if (primaryPhaseHardFailed && metrics.exitCode() == 0)
             return CodingAgentJobEvent.failed(getTaskId(), getTaskString(),
                 "Primary phase hard-failed (non-zero exit, 0s duration, no work performed)", null);
-        if (exitCode != 0) return CodingAgentJobEvent.failed(getTaskId(), getTaskString(), "Claude Code exited with code " + exitCode, null);
+        if (metrics.exitCode() != 0) return CodingAgentJobEvent.failed(getTaskId(), getTaskString(), "Claude Code exited with code " + metrics.exitCode(), null);
         if (postCompletionCapHit)
             return CodingAgentJobEvent.degraded(getTaskId(), getTaskString(),
                 "Post-completion command did not exit zero within " + maxPostCompletionPasses + " pass(es) — gate abandoned, work may be incomplete");
@@ -1459,9 +1455,11 @@ public class CodingAgentJob extends GitManagedJob {
     protected void populateEventDetails(JobCompletionEvent event) {
         if (event instanceof CodingAgentJobEvent) {
             CodingAgentJobEvent ccEvent = (CodingAgentJobEvent) event;
-            ccEvent.withClaudeCodeInfo(prompt, sessionId, exitCode);
-            ccEvent.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
-            ccEvent.withSessionDetails(subtype, isError, permissionDenials, deniedToolNames);
+            ccEvent.withClaudeCodeInfo(prompt, metrics.sessionId(), metrics.exitCode());
+            ccEvent.withTimingInfo(metrics.durationMs(), metrics.durationApiMs(),
+                    metrics.costUsd(), metrics.numTurns());
+            ccEvent.withSessionDetails(metrics.subtype(), metrics.isError(),
+                    metrics.permissionDenials(), metrics.deniedToolNames());
             if (commitMessageSource != null) {
                 ccEvent.withCommitMessageSource(commitMessageSource);
             }

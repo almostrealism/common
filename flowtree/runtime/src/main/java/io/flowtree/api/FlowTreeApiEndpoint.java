@@ -787,6 +787,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (extractJsonHasField(body, "retrospectiveEnabled"))
             factory.setRetrospectiveEnabled(
                     extractJsonBooleanField(body, "retrospectiveEnabled"));
+        // tmux-backed agent launch — disabled by default; opt in explicitly.
+        // The runner also honours AR_AGENT_USE_TMUX, so leaving this unset
+        // preserves any environment-level enablement.
+        if (extractJsonHasField(body, "useTmux"))
+            factory.setUseTmux(extractJsonBooleanField(body, "useTmux"));
         // Sensitive-file protections — enabled by default; only forwarded
         // when the operator has explicitly disabled them for this job. The
         // bypass signature is controller-computed from AR_AGENT_BYPASS_SECRET

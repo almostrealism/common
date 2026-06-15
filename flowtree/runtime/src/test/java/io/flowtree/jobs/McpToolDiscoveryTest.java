@@ -451,6 +451,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			+ " in signature so callers can opt out of the per-job sensitive-file"
 			+ " protections (test/CI write lock, harness-side staging block, etc.)",
 			submitParams.contains("sensitive_file_protection_enabled"));
+		assertTrue("workstream_submit_task must declare use_tmux in signature so callers"
+			+ " can opt in to launching the agent subprocess inside a tmux session",
+			submitParams.contains("use_tmux"));
 		assertTrue("workstream_submit_task must declare job_type in signature so callers"
 			+ " can select a shell-command job instead of a coding-agent job",
 			submitParams.contains("job_type"));

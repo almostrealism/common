@@ -738,6 +738,38 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertNotIn("retrospectiveEnabled", payload)
 
     @patch.object(server, "_controller_post")
+    def test_submit_use_tmux_omitted_by_default(self, mock_post):
+        """use_tmux is opt-in (default false), so the wire payload must omit
+        useTmux when the caller did not pass it (the runner still honours the
+        AR_AGENT_USE_TMUX env var on the node)."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-tmux1"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("useTmux", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_use_tmux_true_forwarded(self, mock_post):
+        """use_tmux=True must reach the controller as useTmux=True so the job
+        launches its agent subprocess inside a tmux session."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-tmux2"}
+        server.workstream_submit_task(prompt="Task", use_tmux=True)
+        payload = mock_post.call_args[0][1]
+        self.assertIs(payload["useTmux"], True)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_use_tmux_false_omitted(self, mock_post):
+        """use_tmux=False is the default; the wire payload must omit the key
+        rather than forward an explicit false (matches the
+        retrospective_enabled behaviour)."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-tmux3"}
+        server.workstream_submit_task(prompt="Task", use_tmux=False)
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("useTmux", payload)
+
+    @patch.object(server, "_controller_post")
     def test_submit_sensitive_file_protection_default_omitted(self, mock_post):
         """sensitive_file_protection_enabled defaults to TRUE (protections
         active), so the wire payload must omit the key when the caller

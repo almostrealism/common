@@ -106,6 +106,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         job.setMaxBudgetUsd(3.0);
         job.setPhaseConfigBundle(
                 PhaseConfigBundle.EMPTY.withDefaultModel("opus").withDefaultEffort("high"));
+        job.setUseTmux(true);
 
         AgentRunRequest req = job.buildRunRequest(
                 "Read,Edit,mcp__ar-manager__send_message",
@@ -123,6 +124,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         assertEquals("high", req.getEffort());
         assertEquals("t-2", req.getTaskId());
         assertEquals(Path.of("/tmp/x.json"), req.getOutputCapturePath());
+        assertTrue(req.isUseTmux());
     }
 
     /** Verifies that {@code executeSingleRun} dispatches through the configured runner and captures the result. */

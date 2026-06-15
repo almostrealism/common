@@ -119,6 +119,15 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private boolean enforceOrganizationalPlacement = false;
 
     /**
+     * When {@code true}, jobs created by this factory launch the agent
+     * subprocess inside a tmux session (a real controlling tty) instead of a
+     * direct child process. Defaults to {@code false}; the runner additionally
+     * honours the {@code AR_AGENT_USE_TMUX} environment variable, so either
+     * source enabling tmux is sufficient.
+     */
+    private boolean useTmux = false;
+
+    /**
      * When {@code true} (the default), jobs created by this factory activate the
      * {@link ReviewRule} (second-pass sanity check by a separate runner).
      */
@@ -733,6 +742,27 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
+     * Returns whether jobs created by this factory launch the agent subprocess
+     * inside a tmux session.
+     *
+     * @return {@code true} when tmux-backed launch is enabled; {@code false} by default
+     */
+    public boolean isUseTmux() {
+        return useTmux;
+    }
+
+    /**
+     * Sets whether jobs created by this factory launch the agent subprocess
+     * inside a tmux session (a real controlling tty).
+     *
+     * @param useTmux {@code true} to launch agents inside a tmux session
+     */
+    public void setUseTmux(boolean useTmux) {
+        this.useTmux = useTmux;
+        set("useTmux", String.valueOf(useTmux));
+    }
+
+    /**
      * Returns whether the {@link ReviewRule} (second-pass sanity check) is active
      * for jobs created by this factory.
      *
@@ -1281,6 +1311,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         job.setMaxDeduplicationPasses(maxDeduplicationPasses);
         job.setEnforceMavenDependencies(enforceMavenDependencies);
         job.setEnforceOrganizationalPlacement(enforceOrganizationalPlacement);
+        job.setUseTmux(useTmux);
         job.setReviewEnabled(reviewEnabled);
         job.setMaxReviewPasses(maxReviewPasses);
         job.setRetrospectiveEnabled(retrospectiveEnabled);
@@ -1448,6 +1479,9 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 return;
             case "enforceOrgPlacement":
                 this.enforceOrganizationalPlacement = Boolean.parseBoolean(value);
+                return;
+            case "useTmux":
+                this.useTmux = Boolean.parseBoolean(value);
                 return;
             case "reviewEnabled":
                 this.reviewEnabled = Boolean.parseBoolean(value);
