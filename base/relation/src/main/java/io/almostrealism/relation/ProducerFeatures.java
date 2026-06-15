@@ -17,40 +17,15 @@
 package io.almostrealism.relation;
 
 /**
- * A mixin interface providing utility methods for working with {@link Producer}s.
+ * A mixin interface reserved for utility methods that operate on {@link Producer}s.
  *
- * <p>{@link ProducerFeatures} is designed to be implemented by classes that need
- * convenient methods for producer manipulation, particularly delegation and
- * substitution. This follows the "features" pattern common in the framework,
- * where interfaces provide default implementations of utility methods.</p>
- *
- * <h2>Key Operations</h2>
- * <ul>
- *   <li><b>Delegation:</b> Create a producer that delegates to another</li>
- *   <li><b>Substitution:</b> Record a mapping from one producer to its replacement</li>
- * </ul>
- *
- * <h2>Usage Pattern</h2>
- * <pre>{@code
- * public class MyComputationBuilder implements ProducerFeatures {
- *     public Producer<Tensor> build() {
- *         Producer<Tensor> original = createOriginal();
- *         Producer<Tensor> optimized = optimize(original);
- *
- *         // Create delegation relationship
- *         return delegate(original, optimized);
- *     }
- *
- *     @Override
- *     public <T> Producer<?> delegate(Producer<T> original, Producer<T> actual) {
- *         // Custom delegation implementation
- *         return new DelegatingProducer<>(original, actual);
- *     }
- * }
- * }</pre>
+ * <p>This follows the "features" pattern common in the framework, where interfaces
+ * provide default implementations of utility methods. {@link ProducerFeatures}
+ * currently declares no methods and has no implementors; it exists as an extension
+ * point for producer-level utilities that belong in the relation module rather
+ * than in a higher layer.</p>
  *
  * @see Producer
- * @see Delegated
  *
  * @author Michael Murray
  */

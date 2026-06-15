@@ -51,9 +51,29 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 
 	/**
 	 * Finds the maximum element in a collection.
+	 * This reduction operation scans through all elements and returns
+	 * the largest value as a single-element collection.
 	 *
 	 * @param input the collection to find the maximum element in
 	 * @return a {@link CollectionProducerComputationBase} that generates the maximum value
+	 * 
+	 *
+	 * <pre>{@code
+	 * // Find maximum in a vector
+	 * CollectionProducer values = c(3.0, 7.0, 2.0, 9.0, 5.0);
+	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> maximum = max(values);
+	 * // Result: Producer that generates [9.0]
+	 * 
+	 * // Find maximum in a matrix (flattened)
+	 * CollectionProducer matrix = c(shape(2, 3), 1.0, 8.0, 3.0, 4.0, 2.0, 6.0);
+	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> matrixMax = max(matrix);
+	 * // Result: Producer that generates [8.0] (maximum across all elements)
+	 * 
+	 * // Maximum of negative numbers
+	 * CollectionProducer negatives = c(-5.0, -2.0, -8.0, -1.0);
+	 * CollectionProducerComputationBase<PackedCollection, PackedCollection> negMax = max(negatives);
+	 * // Result: Producer that generates [-1.0] (least negative = maximum)
+	 * }</pre>
 	 */
 	default CollectionProducerComputationBase max(Producer<PackedCollection> input) {
 		DynamicIndexProjectionProducerComputation projection =
@@ -68,8 +88,18 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 
 	/**
 	 * Creates a computation that finds the index of the maximum value in a collection.
-	 *
+	 * <p>
+	 * This method uses {@link TraversableRepeatedProducerComputation} to identify the index.
+	 * 
+	 * <p>The computation works by:
+	 * <ul>
+	 *   <li>Initializing with index 0 as the current maximum location</li>
+	 *   <li>Iterating through all elements comparing values</li>
+	 *   <li>Updating the stored index when a larger value is found</li>
+	 * </ul>
+	 * 
 	 * @param input The collection to find the maximum index in
+	 *
 	 * @return A computation that produces the index of the maximum element
 	 */
 	default CollectionProducerComputationBase indexOfMax(Producer<PackedCollection> input) {
@@ -87,14 +117,35 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 
 	/**
 	 * Computes the sum of all elements in a collection.
-	 *
+	 * This reduction operation adds up all elements to produce a single scalar result.
+	 * It's one of the most common aggregation operations in numerical computing.
+	 * 
 	 * @param input the collection to sum
-	 * @return a {@link CollectionProducer} that generates a single-element collection containing the sum
+	 * @return a {@link CollectionProducerComputation} that generates a single-element collection containing the sum
+	 * 
+	 *
+	 * <pre>{@code
+	 * // Sum all elements in a vector
+	 * CollectionProducer vector = c(1.0, 2.0, 3.0, 4.0);
+	 * CollectionProducer total = sum(vector);
+	 * // Result: Producer that generates [10.0] (1+2+3+4)
+	 * 
+	 * // Sum elements in a matrix (flattened)
+	 * CollectionProducer matrix = c(shape(2, 2), 1.0, 2.0, 3.0, 4.0);
+	 * CollectionProducer matrixSum = sum(matrix);
+	 * // Result: Producer that generates [10.0] (1+2+3+4)
+	 * 
+	 * // Sum of zeros returns zero
+	 * CollectionProducer zeros = zeros(shape(5));
+	 * CollectionProducer zeroSum = sum(zeros);
+	 * // Result: Producer that generates [0.0]
+	 * }</pre>
 	 */
 	default CollectionProducer sum(Producer<PackedCollection> input) {
 		TraversalPolicy targetShape = shape(input).replace(shape(1));
 
 		if (Algebraic.isZero(input)) {
+			// Mathematical optimization: sum(zeros) = 0
 			return zeros(targetShape);
 		}
 
@@ -144,19 +195,40 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 
 	/**
 	 * Computes the arithmetic mean (average) of all elements in a collection.
+	 * This is calculated as the sum of all elements divided by the number of elements.
+	 * 
 	 *
 	 * @param input the collection to compute the mean for
 	 * @return a {@link CollectionProducer} that generates a single-element collection containing the mean
+	 * 
+	 *
+	 * <pre>{@code
+	 * // Calculate mean of a vector
+	 * CollectionProducer vector = c(2.0, 4.0, 6.0, 8.0);
+	 * CollectionProducer average = mean(vector);
+	 * // Result: Producer that generates [5.0] ((2+4+6+8)/4)
+	 * 
+	 * // Mean of a single element
+	 * CollectionProducer single = c(42.0);
+	 * CollectionProducer singleMean = mean(single);
+	 * // Result: Producer that generates [42.0] (42/1)
+	 * 
+	 * // Mean of mixed positive/negative values
+	 * CollectionProducer mixed = c(-2.0, 0.0, 2.0);
+	 * CollectionProducer mixedMean = mean(mixed);
+	 * // Result: Producer that generates [0.0] ((-2+0+2)/3)
+	 * }</pre>
 	 */
 	default CollectionProducer mean(Producer<PackedCollection> input) {
 		return sum(input).divide(c(shape(input).getSize()));
 	}
 
 	/**
-	 * Subtracts the mean from each element in the collection.
+	 * Subtracts the mean of a collection from each of its elements (mean-centering).
+	 * The mean is computed over all elements and broadcast back for subtraction.
 	 *
-	 * @param input the collection to center
-	 * @return a {@link CollectionProducer} that generates the centered values
+	 * @param input the collection producer whose elements are mean-centered
+	 * @return a {@link CollectionProducer} containing the mean-centered values
 	 */
 	default CollectionProducer subtractMean(Producer<PackedCollection> input) {
 		CollectionProducer mean = mean(input);
@@ -164,23 +236,27 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 	}
 
 	/**
-	 * Computes the variance of all elements in a collection.
+	 * Computes the variance of a collection as the mean of the squared deviations from
+	 * the collection's mean. Equivalent to {@code mean(sq(subtractMean(input)))}.
 	 *
-	 * @param input the collection to compute the variance for
-	 * @return a {@link CollectionProducer} that generates the variance
+	 * @param input the collection producer to compute variance over
+	 * @return a {@link CollectionProducer} producing the scalar variance value
 	 */
 	default CollectionProducer variance(Producer<PackedCollection> input) {
 		return mean(sq(subtractMean(input)));
 	}
 
 	/**
-	 * Attempts to apply the given operation to the input by subdividing it into chunks
-	 * based on the preferred work subdivision unit from {@link KernelPreferences}.
-	 * Returns null if no valid subdivision size is found.
+	 * Attempts to subdivide a large collection producer into smaller slices and apply an
+	 * operation to each slice, then combine the results. The slice size starts at the
+	 * kernel work-subdivision unit and halves until a valid subdivision is found or
+	 * no subdivision is possible. Returns {@code null} if the collection cannot be
+	 * subdivided (e.g. its size is below the threshold).
 	 *
-	 * @param input     the collection to subdivide and process
-	 * @param operation a function from a slice producer to a result producer
-	 * @return a producer for the subdivided result, or null if subdivision is not applicable
+	 * @param input     the large collection producer to subdivide
+	 * @param operation a function to apply to each slice of the subdivided collection
+	 * @return a {@link CollectionProducer} over the combined result, or {@code null}
+	 *         if no valid subdivision exists
 	 */
 	default CollectionProducer subdivide(
 			Producer<PackedCollection> input, Function<Producer<PackedCollection>, CollectionProducer> operation) {
@@ -201,13 +277,16 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 	}
 
 	/**
-	 * Applies the given operation to slices of the input collection, each of size {@code sliceSize}.
-	 * Returns null if the input size is not evenly divisible by {@code sliceSize}.
+	 * Subdivides a collection producer into slices of the given size and applies an operation
+	 * to the resulting traversal, consolidating the intermediate result before applying the
+	 * operation a second time. Returns {@code null} if the collection's total size is not
+	 * evenly divisible by {@code sliceSize}.
 	 *
-	 * @param input     the collection to slice and process
-	 * @param operation a function from a slice producer to a result producer
-	 * @param sliceSize the number of elements per slice
-	 * @return a producer for the aggregated result, or null if the sizes are incompatible
+	 * @param input     the collection producer to subdivide
+	 * @param operation a function applied first to the sliced input and then to its consolidation
+	 * @param sliceSize the number of elements per slice; must evenly divide the total size
+	 * @return a {@link CollectionProducer} over the subdivided and recombined result,
+	 *         or {@code null} if the size is not divisible by {@code sliceSize}
 	 */
 	default CollectionProducer subdivide(
 			Producer<PackedCollection> input, Function<Producer<PackedCollection>, CollectionProducer> operation, int sliceSize) {

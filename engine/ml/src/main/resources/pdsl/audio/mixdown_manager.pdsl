@@ -342,6 +342,10 @@ layer mixdown_master(channels: int, signal_size: int, fir_taps: int,
     accum_blocks(
         {
             for each channel {
+                // Java's mainFilterUp (AudioPassFilter) clamps its input to [-0.99, 0.99]
+                // every sample before filtering; mirror that here so hot per-channel
+                // sources are limited identically on the dry bus.
+                clip(-0.99, 0.99)
                 highpass(hp_cutoff[channel], sample_rate, filter_order)
                 scale(volume[channel])
             }
@@ -357,9 +361,182 @@ layer mixdown_master(channels: int, signal_size: int, fir_taps: int,
             sum_channels()
         }
     )
+    // Master tail, mirroring MixdownManager.createEfx exactly: the Java masterFilterDown is an
+    // AudioPassFilter, which clamps ITS input to [-0.99, 0.99] per sample before filtering;
+    // then masterBusGain (0.5) and a HARD limiter bound(-1, 1). The previous tanh_act() soft
+    // saturation bent the signal (tanh(0.5) = 0.46) even at matched levels, so it is replaced
+    // by the same hard clip Java uses.
+    clip(-0.99, 0.99)
     lowpass(lp_cutoff, sample_rate, filter_order)
     scale(master_gain)
-    tanh_act()
+    clip(-1.0, 1.0)
+}
+
+// ---------------------------------------------------------------------------
+// Master with a separately-voiced WET input — same DSP as mixdown_master, but
+// the dry (main) arm and the wet (efx) arm read DIFFERENT halves of the input.
+//
+// In the production Java path the MAIN and WET pattern voicings are rendered as
+// SEPARATE channels (AudioScene.getPatternCells builds MAIN cells then WET cells
+// per channel); the dry mix reads MAIN and the efx/wet bus reads WET. The single-
+// input mixdown_master above feeds the same signal to both arms, which is only
+// correct when MAIN == WET. This variant restores the real routing.
+//
+// Input shape:  [2 * channels, signal_size]
+//   rows [0, channels)            = MAIN (dry) voicing — fed to the main arm
+//   rows [channels, 2*channels)   = WET voicing        — fed to the efx arm
+// Output shape: [1, signal_size]
+//
+// The two regions are the first 2*channels rows of AudioScene's consolidated
+// render buffer (LEFT-MAIN then LEFT-WET, contiguous), so the runner passes a
+// single zero-copy view.
+//
+// Each arm slices its half then reshapes back to [channels, signal_size]. The
+// arm bodies are inlined (rather than calling mixdown_main_bus / mixdown_efx_bus)
+// for the same reason mixdown_master inlines them: a user-layer call infers its
+// input shape from its return annotation (PdslInterpreter.inferInputShape), so a
+// multi-channel sub-layer cannot be composed inside an arm — its input would be
+// mis-inferred as [1, signal_size].
+//
+// Parameters: identical to mixdown_master. `channels` is the per-region channel
+// count (NOT the doubled input row count). Requires mixdown_efx_state populated
+// as in mixdown_efx_bus.
+// ---------------------------------------------------------------------------
+// Per-channel feedback ring state for the efx bus's recursive feedback grid
+// (the PDSL analogue of MixdownManager.createEfx's .mself(transmission)). Distinct
+// from mixdown_efx_state (the feedforward per-channel delay) so the two delay stages
+// keep independent ring buffers.
+state mixdown_efx_feedback_state {
+    fb_buffers: weight
+    fb_heads: weight
+}
+
+// The {@code efx_*} parameters render EfxManager.apply() (the per-channel chain applied
+// to each voicing before the mixdown bus): the feedforward portion (gene-chosen filter,
+// wet level, automation, blended with the channel's dry signal) plus the recursive
+// feedback grid (efx_fb_*) that replaces the feedforward route — the PDSL analogue of
+// the mixdown efx bus's .mself(transmission) decaying echo/tail. PDSL feedback is
+// block-parallel (frame-quantized), so it approximates the per-sample Java recurrence,
+// and efx_fb_transmission is scaled to a contraction for stability.
+layer mixdown_master_wet(channels: int, signal_size: int, fir_taps: int,
+                         hp_coeffs: producer([channels, fir_taps]), volume: producer([channels]),
+                         lp_coeffs: producer([fir_taps]),
+                         sample_rate: scalar, filter_order: scalar,
+                         wet_filter_coeffs: producer([channels, fir_taps]), wet_level: scalar,
+                         delay_samples: producer([1]),
+                         master_gain: producer([1]),
+                         efx_filter_coeffs: producer([channels, fir_taps]),
+                         efx_wet_level: producer([channels]),
+                         efx_automation: producer([channels]),
+                         efx_fb_delay: producer([channels]),
+                         efx_fb_transmission: producer([channels, channels]),
+                         efx_fb_passthrough: producer([channels, channels]),
+                         reverb_send: producer([channels]),
+                         reverb_delays: producer([channels]),
+                         reverb_feedback: producer([channels, channels]),
+                         reverb_network_gain: producer([1]),
+                         reverb_tap_mean: producer([1]),
+                         main_arm_gain: producer([1]),
+                         efx_arm_gain: producer([1]),
+                         reverb_arm_gain: producer([1])) -> [1, signal_size] {
+    accum_blocks(
+        {
+            // MAIN region: rows [0, channels). slice() subsets a flat 1-D view (it
+            // cannot subset a 2-D shape), so flatten, take the first region, restore.
+            reshape(shape(2 * channels * signal_size))
+            slice(0, channels * signal_size)
+            reshape(shape(channels, signal_size))
+            for each channel {
+                // mainFilterUp, matching Java's AudioPassFilter: the Java filter hard clamps
+                // its input to [-0.99, 0.99] EVERY sample before filtering
+                // (AudioPassFilter.MAX_INPUT), so hot pattern sources are per-channel limited
+                // on the dry bus. Omitting this clamp left the PDSL dry bus ~1.5-2x hotter
+                // than Java for hot content. The high-pass is a FIR whose coefficients come
+                // from the hp_coeffs SLOT, refreshed once per buffer by the runner with the
+                // windowed-sinc response at the gene cutoff (bounded to [10, 20000] Hz like
+                // the AudioPassFilter constructor). Coefficients must be slot-delivered
+                // VALUES: a coefficient computation embedded in the graph is input-
+                // independent and gets frozen at its build-time cutoff, so the sweep never
+                // engages. FIR-vs-IIR shape during the sweep is the accepted sub-perceptual
+                // approximation.
+                clip(-0.99, 0.99)
+                fir(hp_coeffs[channel])
+                scale(volume[channel])
+            }
+            sum_channels()
+            // Diagnostic arm-isolation gain (default 1.0). Lets the bisection test zero an
+            // individual arm to localize a level divergence without altering the wiring.
+            scale(main_arm_gain)
+        },
+        {
+            // WET region: rows [channels, 2*channels) — the second flat region.
+            reshape(shape(2 * channels * signal_size))
+            slice(channels * signal_size, channels * signal_size)
+            reshape(shape(channels, signal_size))
+            for each channel {
+                // EfxManager.apply() feedforward: dry + (HP/LP filter -> wet level ->
+                // automation modulation).
+                accum_blocks(
+                    { identity() },
+                    {
+                        fir(efx_filter_coeffs[channel])
+                        scale(efx_wet_level[channel])
+                        scale(efx_automation[channel])
+                    }
+                )
+                // Mixdown efx bus: per-channel wet filter then the per-channel VOLUME, mirroring
+                // Java's efxFactor = v ∘ wetFilter (MixdownManager.createCells:654-656). The
+                // previous static wet_level here was spurious (no Java counterpart) and, together
+                // with the missing volume, made the efx bus ~1/v too hot.
+                fir(wet_filter_coeffs[channel])
+                scale(volume[channel])
+                delay(delay_samples, buffers[channel], heads[channel])
+            }
+            // Recursive cross-channel feedback grid — the decaying echo/tail. Replaces the
+            // feedforward route(transmission) with MixdownManager.createEfx's .mself(transmission):
+            // delayed output is routed back through efx_fb_transmission and emitted through
+            // efx_fb_passthrough. Frame-quantized (block-parallel) and contraction-scaled.
+            feedback(efx_fb_delay, efx_fb_transmission, efx_fb_passthrough, fb_buffers, fb_heads)
+            sum_channels()
+            scale(efx_arm_gain)
+        },
+        {
+            // Reverb bus — MixdownManager.createEfx's reverb.sum().map(DelayNetwork). Java sends
+            // only the reverb-channel SUBSET, scaled per channel by reverbFactor, from the WET
+            // voicing (wetSources.branch(..., reverbFactor)). So slice the WET region, apply the
+            // per-channel reverb send (reverb_send[channel], 0 for non-reverb channels), sum to a
+            // mono send, then fan across the reverb taps and run the closed-loop multi-tap
+            // feedback delay network (Householder feedback for a stable, diffuse tail). The
+            // network's GAIN STRUCTURE mirrors Java's DelayNetwork: the send enters the lines
+            // scaled by reverb_network_gain (DelayNetwork's `gain`, 0.1) and the wet output is
+            // the MEAN over the lines (sum * 1/size), so the wet level sits at roughly
+            // input * gain. Without these two stages the arm ran ~15x hotter than Java once
+            // the reverb automation grew past unity, swamping the swept dry bus.
+            reshape(shape(2 * channels * signal_size))
+            slice(channels * signal_size, channels * signal_size)
+            reshape(shape(channels, signal_size))
+            for each channel {
+                scale(reverb_send[channel])
+            }
+            sum_channels()
+            scale(reverb_network_gain)
+            repeat(channels)
+            delay_network(reverb_delays, reverb_feedback, reverb_buffers, reverb_heads)
+            sum_channels()
+            scale(reverb_tap_mean)
+            scale(reverb_arm_gain)
+        }
+    )
+    // Master tail, mirroring MixdownManager.createEfx exactly: the Java masterFilterDown is an
+    // AudioPassFilter, which clamps ITS input to [-0.99, 0.99] per sample before filtering;
+    // then masterBusGain (0.5) and a HARD limiter bound(-1, 1). The previous tanh_act() soft
+    // saturation bent the signal (tanh(0.5) = 0.46) even at matched levels, so it is replaced
+    // by the same hard clip Java uses. The master low-pass coefficients come from the
+    // lp_coeffs slot (per-buffer refreshed, like hp_coeffs) so its sweep engages too.
+    clip(-0.99, 0.99)
+    fir(lp_coeffs)
+    scale(master_gain)
+    clip(-1.0, 1.0)
 }
 
 // ---------------------------------------------------------------------------

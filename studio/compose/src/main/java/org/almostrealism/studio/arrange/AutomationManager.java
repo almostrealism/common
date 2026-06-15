@@ -68,7 +68,12 @@ public class AutomationManager implements Setup, CellFeatures {
 		this.clock = clock;
 		this.measureDuration = measureDuration;
 		this.sampleRate = sampleRate;
-		this.scale = PackedCollection.factory().apply(1);
+		// Initialize to a safe non-zero scale (mirroring MixdownManager's adjustment
+		// scales). Every automation producer divides by this value; if any producer is
+		// evaluated before setup() stores the real measure duration (e.g. a model
+		// warm-up forward pass at build time), a zero here yields NaN/Inf that can be
+		// written into stateful DSP buffers and recirculated by feedback indefinitely.
+		this.scale = PackedCollection.factory().apply(1).fill(1.0);
 	}
 
 	/**

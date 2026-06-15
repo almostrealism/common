@@ -1095,4 +1095,21 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 
 		Assert.assertArrayEquals(seqA, seqB);
 	}
+
+	/**
+	 * Regression test for integer {@code imod} constant folding. The generated code uses
+	 * {@code floorMod} for a possibly-negative dividend, so the folded constant must use the
+	 * same semantics; a truncated fold leaves a negative index that reads memory out of bounds
+	 * during compilation (observed via masked-branch reads in concatenation expressions).
+	 */
+	@Test(timeout = 30000)
+	public void negativeConstantImodFloors() {
+		Assert.assertEquals(3, new IntegerConstant(-1).imod(4).intValue().orElseThrow());
+		Assert.assertEquals(2, new IntegerConstant(-6).imod(4).intValue().orElseThrow());
+		Assert.assertEquals(0, new IntegerConstant(-8).imod(4).intValue().orElseThrow());
+
+		// Non-negative dividends are unaffected, since floorMod and % agree there.
+		Assert.assertEquals(1, new IntegerConstant(5).imod(4).intValue().orElseThrow());
+		Assert.assertEquals(0, new IntegerConstant(8).imod(4).intValue().orElseThrow());
+	}
 }

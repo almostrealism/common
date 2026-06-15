@@ -168,6 +168,119 @@ public class MyTest {
 }'
 }
 
+# ── Scenario: new test method with a higher timeout — FALSE-POSITIVE REGRESSION ──
+#
+# An existing test keeps its timeout (5000); only its `expected=` clause is
+# dropped. A brand-new test method is added with a legitimately larger timeout
+# (30000). The removed `timeout = 5000` line must NOT be mis-paired against the
+# new method's `timeout = 30000`. The script MUST NOT fire TIMEOUT_INFLATED
+# (expected exit 0).
+setup_new_method_higher_timeout() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+public class MyTest {
+    @Test(timeout = 5000, expected = RuntimeException.class)
+    public void testA() {
+        throw new RuntimeException();
+    }
+}' \
+'package test;
+import org.junit.Test;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        // no longer expects a throw
+    }
+
+    @Test(timeout = 30000)
+    public void testB() {
+        // brand-new test that is legitimately slower
+    }
+}'
+}
+
+# ── Scenario: existing method timeout inflated >2x — TRUE POSITIVE ──────────
+#
+# An EXISTING test method's timeout is raised from 5000 to 30000. The script
+# MUST report TIMEOUT_INFLATED (expected exit 2).
+setup_existing_timeout_inflated() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, 1);
+    }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 30000)
+    public void testA() {
+        assertEquals(1, 1);
+    }
+}'
+}
+
+# ── Scenario: RENAME a test method AND inflate its timeout — TRUE POSITIVE ──
+#
+# The dodge attempt: rename testFoo (timeout 5000) to testFooV2 and bump the
+# timeout to 60000 in one change. Because the comparison is by value (not by
+# method name), the removed 5000 does not cancel against the added 60000, so
+# the inflation is still caught. The script MUST report TIMEOUT_INFLATED
+# (expected exit 2).
+setup_rename_and_inflate() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testFoo() {
+        assertEquals(1, 1);
+    }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 60000)
+    public void testFooV2() {
+        assertEquals(1, 1);
+    }
+}'
+}
+
+# ── Scenario: RENAME a test method, timeout unchanged — NO FALSE POSITIVE ───
+#
+# A legitimate rename that keeps the same timeout. The removed 5000 cancels the
+# added 5000, so nothing flags (expected exit 0).
+setup_rename_no_inflate() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testFoo() {
+        assertEquals(1, 1);
+    }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testFooV2() {
+        assertEquals(1, 1);
+    }
+}'
+}
+
 # ── Scenario: no test files changed — CLEAN BRANCH ─────────────────────────
 setup_no_test_changes() {
     mkdir -p src/main/java
@@ -190,6 +303,10 @@ echo ""
 run_case "javadoc-assert-prose [false-positive regression]" 0 setup_javadoc_assert_prose
 run_case "real-assertion-removed [true positive]"           2 setup_real_assertion_removed
 run_case "new-method-with-assert-javadoc [no false positive]" 0 setup_new_method_javadoc_assert
+run_case "new-method-higher-timeout [false-positive regression]" 0 setup_new_method_higher_timeout
+run_case "existing-timeout-inflated [true positive]"        2 setup_existing_timeout_inflated
+run_case "rename-and-inflate [true positive / dodge caught]" 2 setup_rename_and_inflate
+run_case "rename-no-inflate [no false positive]"            0 setup_rename_no_inflate
 run_case "no-test-changes [clean branch]"                   0 setup_no_test_changes
 
 echo ""

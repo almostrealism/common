@@ -79,29 +79,25 @@
             <section id="architecture">
                 <h2>Architecture</h2>
 
-                <h3>Cache Hierarchy in DefaultComputer</h3>
+                <h3>Instruction Cache in DefaultComputer</h3>
                 <div class="diagram">
 <pre>
 +-----------------------------------------------------------+
 |                    DefaultComputer                         |
 |-----------------------------------------------------------|
 |                                                           |
-|  operationsCache (Map)                                    |
-|  +-- Instruction containers (unlimited)                   |
-|      Used by HardwareFeatures.instruct() pattern          |
-|                                                           |
-|  processTreeCache (FrequencyCache, 500 entries, 0.4 bias) |
-|  +-- Process tree instruction managers                    |
-|                                                           |
 |  instructionsCache (FrequencyCache, 500 entries, 0.4 bias)|
 |  +-- ScopeInstructionsManager instances                   |
-|  +-- Keyed by computation signature strings               |
+|  +-- Keyed by signature string + ComputeContext identity  |
 |  +-- Auto-destroys evicted managers                       |
-|      PRIMARY INSTRUCTION CACHE                            |
 |                                                           |
 +-----------------------------------------------------------+
 </pre>
                 </div>
+                <p>The cache key combines the computation signature with the identity of the
+                <code>ComputeContext</code>: a compiled kernel dispatches through the command
+                runner of the context it was compiled under, so reuse is scoped to operations
+                that share both structure and context.</p>
 
                 <h3>Class Hierarchy</h3>
                 <div class="class-list">
