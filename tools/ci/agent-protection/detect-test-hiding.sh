@@ -478,23 +478,62 @@ for FILE in $MODIFIED_TEST_FILES; do
     fi
 
     # ── Pattern 9: Timeout value INCREASED by more than 2x ──
-    # Catches inflating timeouts to prevent timeout-based failure detection
-    REMOVED_TIMEOUTS=$(echo "$DIFF" | grep -oP '^\-.*timeout\s*=\s*\K[0-9]+(\s*\*\s*[0-9]+)*' || true)
-    ADDED_TIMEOUTS=$(echo "$DIFF" | grep -oP '^\+.*timeout\s*=\s*\K[0-9]+(\s*\*\s*[0-9]+)*' || true)
-    if [ -n "$REMOVED_TIMEOUTS" ] && [ -n "$ADDED_TIMEOUTS" ]; then
-        # Evaluate expressions like "5 * 60000" to get actual values
-        for OLD_TIMEOUT_EXPR in $REMOVED_TIMEOUTS; do
-            OLD_TIMEOUT=$((OLD_TIMEOUT_EXPR)) 2>/dev/null || OLD_TIMEOUT=0
-            if [ "$OLD_TIMEOUT" -gt 0 ]; then
-                for NEW_TIMEOUT_EXPR in $ADDED_TIMEOUTS; do
-                    NEW_TIMEOUT=$((NEW_TIMEOUT_EXPR)) 2>/dev/null || NEW_TIMEOUT=0
-                    if [ "$NEW_TIMEOUT" -gt "$((OLD_TIMEOUT * 2))" ]; then
-                        record_violation "$FILE" "TIMEOUT_INFLATED" \
-                            "Timeout increased by more than 2x (${OLD_TIMEOUT} -> ${NEW_TIMEOUT}) — may hide performance regressions"
-                        break 2
-                    fi
-                done
-            fi
+    # Catches inflating a timeout to mask a slow/flaky test. The comparison is by
+    # VALUE, never by method name, so it cannot be dodged by renaming the method:
+    # the multiset of removed timeout values is cancelled against the multiset of
+    # added values (a preserved timeout, or a rename that keeps the same timeout,
+    # cancels out). Whatever does not cancel is a genuine change — flag if any
+    # net-added timeout exceeds 2x any net-removed timeout. A brand-new test that
+    # merely adds a larger timeout has no net-removed counterpart, so it does not
+    # fire. (Residual gap: an inflation can be masked by also adding a decoy test
+    # whose timeout equals the old value — that decoy is visible in review.)
+    #
+    # ERE + sed is used (not grep -oP \K) so extraction works under both GNU grep
+    # and BSD grep / ugrep; -P silently extracts nothing outside GNU grep.
+    TIMEOUT_RE='timeout[[:space:]]*=[[:space:]]*[0-9]+([[:space:]]*\*[[:space:]]*[0-9]+)*'
+    # `|| true` keeps a grep no-match from aborting the script under `set -e`.
+    REMOVED_TIMEOUT_RAW=$(echo "$DIFF" | grep -E '^-' | grep -oE "$TIMEOUT_RE" \
+        | sed -E 's/^timeout[[:space:]]*=[[:space:]]*//' || true)
+    ADDED_TIMEOUT_RAW=$(echo "$DIFF" | grep -E '^\+' | grep -oE "$TIMEOUT_RE" \
+        | sed -E 's/^timeout[[:space:]]*=[[:space:]]*//' || true)
+
+    # Evaluate each extracted expression (e.g. "5 * 60000") to a positive integer.
+    REMOVED_TIMEOUT_INTS=""
+    while IFS= read -r e; do
+        [ -z "$e" ] && continue
+        v=$((e)) || v=0
+        [ "$v" -gt 0 ] && REMOVED_TIMEOUT_INTS="${REMOVED_TIMEOUT_INTS}${v}"$'\n'
+    done <<< "$REMOVED_TIMEOUT_RAW" || true
+    ADDED_TIMEOUT_INTS=""
+    while IFS= read -r e; do
+        [ -z "$e" ] && continue
+        v=$((e)) || v=0
+        [ "$v" -gt 0 ] && ADDED_TIMEOUT_INTS="${ADDED_TIMEOUT_INTS}${v}"$'\n'
+    done <<< "$ADDED_TIMEOUT_RAW" || true
+
+    # Cancel equal values (multiset difference): each removed value that also
+    # appears among the added values is a no-op (preserved / renamed-unchanged).
+    ADDED_POOL="$ADDED_TIMEOUT_INTS"
+    NET_REMOVED=""
+    for OLD_TIMEOUT in $REMOVED_TIMEOUT_INTS; do
+        if echo "$ADDED_POOL" | grep -qxF "$OLD_TIMEOUT"; then
+            ADDED_POOL=$(printf '%s\n' "$ADDED_POOL" \
+                | awk -v r="$OLD_TIMEOUT" 'BEGIN{dropped=0} {if(!dropped && $0==r){dropped=1; next} print}')
+        else
+            NET_REMOVED="$NET_REMOVED $OLD_TIMEOUT"
+        fi
+    done
+
+    # Flag if any net-added timeout exceeds 2x any net-removed timeout.
+    if [ -n "$NET_REMOVED" ] && [ -n "$(echo "$ADDED_POOL" | tr -d '[:space:]')" ]; then
+        for OLD_TIMEOUT in $NET_REMOVED; do
+            for NEW_TIMEOUT in $ADDED_POOL; do
+                if [ "$NEW_TIMEOUT" -gt "$((OLD_TIMEOUT * 2))" ]; then
+                    record_violation "$FILE" "TIMEOUT_INFLATED" \
+                        "Timeout increased by more than 2x (${OLD_TIMEOUT} -> ${NEW_TIMEOUT}) — may hide performance regressions"
+                    break 2
+                fi
+            done
         done
     fi
 
