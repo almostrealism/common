@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -508,4 +509,81 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
      * summarize context. 0 when not reported.
      */
     public int getReflectionContextPressureEvents() { return reflectionContextPressureEvents; }
+
+    /**
+     * Creates the appropriate completion event for the given job outcome.
+     *
+     * <p>Encapsulates the terminal-state logic previously in
+     * {@code CodingAgentJob.createEvent}, now expressed in terms of the public
+     * job API and the {@link JobSessionAccumulator} so that
+     * {@link CodingAgentJob} does not need to hold a copy of this decision tree.</p>
+     *
+     * @param job   the job being completed
+     * @param acc   accumulated session state across all runs of the job
+     * @param error the exception that terminated the job, or {@code null} for normal exit
+     * @return the appropriate {@link JobCompletionEvent} subtype
+     */
+    static JobCompletionEvent forJob(CodingAgentJob job, JobSessionAccumulator acc, Exception error) {
+        if (error != null) {
+            return failed(job.getTaskId(), job.getTaskString(), error.getMessage(), error);
+        }
+        if (job.isPrimaryPhaseHardFailed() && acc.getExitCode() == 0) {
+            return failed(job.getTaskId(), job.getTaskString(),
+                    "Primary phase hard-failed (non-zero exit, 0s duration, no work performed)", null);
+        }
+        if (acc.getExitCode() != 0) {
+            return failed(job.getTaskId(), job.getTaskString(),
+                    "Claude Code exited with code " + acc.getExitCode(), null);
+        }
+        if (job.isPostCompletionCapHit()) {
+            return degraded(job.getTaskId(), job.getTaskString(),
+                    "Post-completion command did not exit zero within "
+                    + job.getMaxPostCompletionPasses()
+                    + " pass(es) — gate abandoned, work may be incomplete");
+        }
+        List<String> abandoned = AbandonedTestRunDetector.findAbandonedRunsForJob(
+                job.getWorkingDirectory(), job.getSessionStartedAt());
+        if (abandoned.isEmpty()) {
+            return success(job.getTaskId(), job.getTaskString());
+        }
+        return degraded(job.getTaskId(), job.getTaskString(),
+                "Agent abandoned " + abandoned.size() + " test-runner run(s): "
+                + String.join(", ", abandoned));
+    }
+
+    /**
+     * Populates this event with the final execution state of the given job.
+     *
+     * <p>Called from {@link CodingAgentJob#populateEventDetails(JobCompletionEvent)}.
+     * The cost maps are snapshotted at call time so the event is an immutable
+     * record of the job's final state.</p>
+     *
+     * @param job job that produced this event
+     * @param acc accumulated session state across all runs of the job
+     */
+    void populateFrom(CodingAgentJob job, JobSessionAccumulator acc) {
+        withClaudeCodeInfo(job.getPrompt(), acc.getSessionId(), acc.getExitCode());
+        withTimingInfo(acc.getDurationMs(), acc.getDurationApiMs(), acc.getCostUsd(), acc.getNumTurns());
+        withSessionDetails(acc.getSubtype(), acc.isError(), acc.getPermissionDenials(), acc.getDeniedToolNames());
+        if (job.getCommitMessageSource() != null) {
+            withCommitMessageSource(job.getCommitMessageSource());
+        }
+        withRunnerName(job.getRunnerName());
+        withCostByRunner(job.getCostByRunner());
+        withCostByModel(job.getCostByModel());
+        if (job.isPostCompletionCapHit()) {
+            withPostCompletionCapHit(true);
+        }
+        if (job.isReviewRan()) {
+            withReviewInfo(true, job.getReviewFilesModified(),
+                    job.getReviewMemoriesStored(), job.isReviewExitedCleanly());
+        }
+        if (job.isRetrospectiveRan()) {
+            withReflectionInfo(true, job.getRetrospectiveCostUsd(),
+                    job.isRetrospectiveTranscriptFound(), job.getRetrospectiveFindingsCount());
+            withReflectionContextUsage(
+                    job.getRetrospectiveContextUpfrontTokenEstimate(),
+                    job.getRetrospectiveContextPressureEvents());
+        }
+    }
 }

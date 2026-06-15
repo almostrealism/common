@@ -884,6 +884,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 factory.setArManagerToken(arToken);
             }
         }
+        // Dispatch capability: opt-in workstreams get the dispatch tools.
+        factory.setDispatchCapable(workstream.isDispatchCapable());
         if (pushedToolsConfig != null && !pushedToolsConfig.isEmpty()) {
             factory.setPushedToolsConfig(pushedToolsConfig);
         } else {

@@ -596,6 +596,8 @@ public class SlackListener implements ConsoleFeatures {
                 factory.setArManagerToken(arToken);
             }
         }
+        // Dispatch capability: opt-in workstreams get the dispatch tools.
+        factory.setDispatchCapable(workstream.isDispatchCapable());
         if (pushedToolsConfig != null && !pushedToolsConfig.isEmpty()) {
             factory.setPushedToolsConfig(pushedToolsConfig);
         } else {
@@ -1299,7 +1301,7 @@ public class SlackListener implements ConsoleFeatures {
                     JobStatsStore.WeeklyStats stats = entry.getValue();
                     sb.append("  *").append(label).append("*: ");
                     sb.append(stats.jobCount).append(" jobs, ");
-                    sb.append(formatDuration(stats.totalWallClockMs)).append(", ");
+                    sb.append(HarnessStatusReporter.formatDuration(stats.totalWallClockMs)).append(", ");
                     sb.append("$").append(String.format("%.2f", stats.totalCostUsd)).append("\n");
                 }
             }
@@ -1500,7 +1502,7 @@ public class SlackListener implements ConsoleFeatures {
         StringBuilder sb = new StringBuilder();
         sb.append("*").append(label).append("* (");
         sb.append(weekStart.format(fmt)).append(" \u2014 ").append(weekEnd.format(fmt)).append(")\n");
-        sb.append("  :clock1: Total time: ").append(formatDuration(stats.totalWallClockMs)).append("\n");
+        sb.append("  :clock1: Total time: ").append(HarnessStatusReporter.formatDuration(stats.totalWallClockMs)).append("\n");
         sb.append("  :hammer: Jobs: ").append(stats.jobCount);
         sb.append(" (:white_check_mark: ").append(stats.successCount);
         sb.append("  :x: ").append(stats.failedCount);
@@ -1511,18 +1513,6 @@ public class SlackListener implements ConsoleFeatures {
         sb.append("\n");
         sb.append("  :speech_balloon: Turns: ").append(String.format("%,d", stats.totalTurns)).append("\n");
         return sb.toString();
-    }
-
-    /**
-     * Formats a duration in milliseconds as a human-readable string.
-     * Delegates to {@link HarnessStatusReporter#formatDuration(long)} for a shared
-     * implementation across harness status reporting, per-job Slack output, and stats.
-     *
-     * @param ms the duration in milliseconds
-     * @return a human-readable duration string
-     */
-    private static String formatDuration(long ms) {
-        return HarnessStatusReporter.formatDuration(ms);
     }
 
     /**
