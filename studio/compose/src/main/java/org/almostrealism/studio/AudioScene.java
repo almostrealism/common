@@ -1052,6 +1052,92 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	}
 
 	/**
+	 * Prepares pattern-audio rendering for the PDSL runner <em>without</em> building the
+	 * Java mixdown {@link CellList}.
+	 *
+	 * <p>{@link #getCells} performs two jobs: it wires the pattern-prepare phase (render
+	 * cells filling the consolidated render buffer) and it builds the per-frame mixdown
+	 * {@link CellList}. The PDSL runner performs all DSP in its compiled
+	 * {@code mixdown_master[_wet]} block and never ticks that CellList, so building it is
+	 * wasted work (compiling an effects/mixdown graph that is discarded). This method
+	 * reproduces only the pattern-prepare side effects {@code getCells} relies on — common
+	 * setup, consolidated-buffer allocation, EFX filter-buffer consolidation, and
+	 * render-cell registration in the same {@code [LEFT-MAIN, LEFT-WET, RIGHT-MAIN,
+	 * RIGHT-WET]} order — and returns the setup operation, omitting the CellList build.</p>
+	 *
+	 * <p>Render cells are created in the identical order {@link #getCells} uses (LEFT then
+	 * RIGHT, MAIN for every channel then WET for every channel, WET skipped when
+	 * {@link MixdownManager#enableEfx} is off), so the consolidated buffer layout the PDSL
+	 * block reads is byte-for-byte the same as on the CellList path.</p>
+	 *
+	 * @param channels      channel indices to render (already resolved, non-null)
+	 * @param bufferSize    frames per render buffer
+	 * @param frameSupplier supplies the current frame position for pattern rendering
+	 * @return the setup operation that allocates and pre-renders the first buffer
+	 */
+	public Supplier<Runnable> prepareRenderBuffers(List<Integer> channels, int bufferSize,
+												   IntSupplier frameSupplier) {
+		long start = System.nanoTime();
+		try {
+			setup = new OperationList("AudioScene Setup");
+			addCommonSetup(setup);
+			setup.add(() -> () -> patterns.setTuning(tuning));
+			setup.add(sections.setup());
+
+			renderBuffers.consolidate(channels.size(), bufferSize);
+			efx.consolidateFilterBuffers(channels.size(), bufferSize);
+
+			if (activeCells != null) {
+				activeCells.destroy();
+				activeCells = null;
+			}
+
+			prepareRenderCells(channels, ChannelInfo.StereoChannel.LEFT, bufferSize, frameSupplier, setup);
+			prepareRenderCells(channels, ChannelInfo.StereoChannel.RIGHT, bufferSize, frameSupplier, setup);
+
+			return setup;
+		} finally {
+			getCellsTime.addEntry(System.nanoTime() - start);
+		}
+	}
+
+	/**
+	 * Creates the render cells for one stereo side, MAIN voicing for every channel
+	 * followed by WET voicing for every channel — the same order {@link #getPatternCells}
+	 * produces them, so {@link PatternRenderBuffers#nextRegion} hands out regions in the
+	 * layout PDSL consumers rely on. WET cells are skipped when
+	 * {@link MixdownManager#enableEfx} is off, matching {@link #getPatternCells}.
+	 *
+	 * @param channels      channel indices to render
+	 * @param audioChannel  LEFT or RIGHT stereo channel
+	 * @param bufferSize    frames per render buffer
+	 * @param frameSupplier supplies the current frame position for pattern rendering
+	 * @param setup         the setup OperationList to accumulate operations in
+	 */
+	private void prepareRenderCells(List<Integer> channels,
+									ChannelInfo.StereoChannel audioChannel,
+									int bufferSize,
+									IntSupplier frameSupplier,
+									OperationList setup) {
+		int[] idx = channels.stream().mapToInt(i -> i).toArray();
+
+		for (int i = 0; i < idx.length; i++) {
+			createRenderCell(new ChannelInfo(idx[i], ChannelInfo.Voicing.MAIN, audioChannel),
+					bufferSize, frameSupplier, setup);
+		}
+
+		// Skip WET cells when enableEfx is false — mirrors getPatternCells, which omits the
+		// WET voicing on the fast path. The consolidated buffer still reserves the WET regions
+		// (consolidate allocates channels * 4), they simply stay zero-filled.
+		if (MixdownManager.enableEfx) {
+			for (int i = 0; i < idx.length; i++) {
+				createRenderCell(new ChannelInfo(idx[i], ChannelInfo.Voicing.WET, audioChannel),
+						bufferSize, frameSupplier, setup);
+			}
+		}
+	}
+
+	/**
 	 * Creates pattern cells with optional external frame control for WaveCells.
 	 *
 	 * @param output         the audio output
@@ -1140,6 +1226,33 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 									  IntSupplier frameSupplier,
 									  OperationList setup,
 									  Producer<PackedCollection> waveCellFrame) {
+		PatternAudioBuffer renderCell = createRenderCell(channel, bufferSize, frameSupplier, setup);
+
+		return efx.apply(channel, renderCell.getOutputProducer(),
+				getTotalDuration(), setup, waveCellFrame);
+	}
+
+	/**
+	 * Creates and registers a {@link PatternAudioBuffer} render cell for one channel
+	 * voicing, carving its region from the consolidated render buffer and wiring its
+	 * setup and initial-render operations into {@code setup}.
+	 *
+	 * <p>This is the pattern-prepare half of {@link #getPatternChannel} — the part both
+	 * runner paths need. The CellList runner then applies the Java effects chain to the
+	 * cell's output ({@link #getPatternChannel}); the PDSL runner reads the consolidated
+	 * render buffer directly and never builds the Java chain, so it calls this method via
+	 * {@link #prepareRenderBuffers} instead of {@code getPatternChannel}.</p>
+	 *
+	 * @param channel       the channel (index, voicing, stereo channel)
+	 * @param bufferSize    frames per render buffer
+	 * @param frameSupplier supplies the current frame position for pattern rendering
+	 * @param setup         the setup OperationList (render cell setup and initial render are added here)
+	 * @return the created and registered render cell
+	 */
+	private PatternAudioBuffer createRenderCell(ChannelInfo channel,
+												int bufferSize,
+												IntSupplier frameSupplier,
+												OperationList setup) {
 		Supplier<AudioSceneContext> ctx = () -> getContext(List.of(channel));
 
 		PatternAudioBuffer renderCell = new PatternAudioBuffer(
@@ -1148,12 +1261,9 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 
 		setup.add(renderCell.setup());
 		setup.add(renderCell.prepareBatch());
-
-		CellList cells = efx.apply(channel, renderCell.getOutputProducer(),
-				getTotalDuration(), setup, waveCellFrame);
 		renderBuffers.add(renderCell);
 
-		return cells;
+		return renderCell;
 	}
 
 	/**

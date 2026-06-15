@@ -139,7 +139,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 		writeManifest(scene, channelCount, seed, new File(outDir, "manifest.txt"));
 
 		int frames = (int) (REVIEW_SECONDS * SAMPLE_RATE);
-		renderBothPaths(scene, frames, REVIEW_BUFFER, outDir, "review", channelCount + "ch");
+		renderBothPaths(scene, null, frames, REVIEW_BUFFER, outDir, "review", channelCount + "ch");
 	}
 
 	/**
@@ -168,8 +168,47 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 		applyGenome(scene, seed);
 
 		int frames = (int) (SMOKE_SECONDS * SAMPLE_RATE);
-		renderBothPaths(scene, frames, AudioScene.DEFAULT_REALTIME_BUFFER_SIZE,
+		renderBothPaths(scene, null, frames, AudioScene.DEFAULT_REALTIME_BUFFER_SIZE,
 				outDir, "smoke", SMOKE_SOURCE_COUNT + "ch");
+	}
+
+	/**
+	 * Single-channel A/B gate: renders one <em>non-zero</em> channel ({@code [1]}) through both
+	 * DSP paths and asserts finite, non-silent, windowed-RMS-comparable output. This exercises
+	 * the same single-channel selection path {@link AudioScene#renderChannel} uses
+	 * ({@code runnerRealTime(List.of(channel))}), which the PDSL runner historically rejected
+	 * (the {@code channels >= 2} floor) and now accepts.
+	 *
+	 * <p>The non-zero channel is the point: it validates that the PDSL adapter maps its
+	 * per-channel genome reads to the <em>selected</em> scene channel (channel 1's volume,
+	 * filters, efx, reverb) rather than channel 0's. If the mapping were wrong, the PDSL
+	 * render's level envelope would diverge from the CellList render of the same channel,
+	 * breaking the windowed-RMS comparison below.</p>
+	 *
+	 * @throws IOException if a rendered WAV cannot be read back
+	 */
+	@Test(timeout = 600_000)
+	@TestDepth(2)
+	public void pdslVsCellListSingleChannel() throws IOException {
+		MixdownManager.enableMainFilterUp = true;
+		MixdownManager.enableEfx = true;
+		MixdownManager.enableEfxFilters = true;
+		MixdownManager.enableReverb = false;
+		PatternSystemManager.enableWarnings = false;
+
+		File outDir = new File("results/pdsl-cutover");
+		outDir.mkdirs();
+
+		File samplesDir = getSamplesDir();
+		AudioScene<?> scene = createBaselineScene(samplesDir, SMOKE_SOURCE_COUNT);
+		long seed = findWorkingGenomeSeed(scene, samplesDir);
+		Assert.assertTrue("No working genome found for single-channel scene", seed >= 0);
+		applyGenome(scene, seed);
+
+		int channel = 1;
+		int frames = (int) (SMOKE_SECONDS * SAMPLE_RATE);
+		renderBothPaths(scene, List.of(channel), frames, AudioScene.DEFAULT_REALTIME_BUFFER_SIZE,
+				outDir, "single", "ch" + channel);
 	}
 
 	/**
@@ -178,6 +217,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 * asserting each is finite and non-silent.
 	 *
 	 * @param scene        the shared scene (genome already applied)
+	 * @param channels     channel indices to render, or {@code null} for all channels
 	 * @param frames       number of frames to render per path
 	 * @param bufferSize   frames per buffer
 	 * @param outDir       output directory
@@ -185,17 +225,17 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 * @param channelLabel channel descriptor for the file name (e.g. "6ch")
 	 * @throws IOException if a rendered WAV cannot be read back
 	 */
-	private void renderBothPaths(AudioScene<?> scene, int frames, int bufferSize,
+	private void renderBothPaths(AudioScene<?> scene, List<Integer> channels, int frames, int bufferSize,
 								 File outDir, String prefix, String channelLabel) throws IOException {
 		boolean previous = MixdownManager.enablePdslMixdown;
 		try {
 			MixdownManager.enablePdslMixdown = false;
-			double[] cellList = renderAndRead(scene, null, frames, bufferSize,
+			double[] cellList = renderAndRead(scene, channels, frames, bufferSize,
 					new File(outDir, prefix + "_celllist_" + channelLabel + ".wav"));
 			assertFiniteNonSilent(prefix + " CellList", cellList);
 
 			MixdownManager.enablePdslMixdown = true;
-			double[] pdsl = renderAndRead(scene, null, frames, bufferSize,
+			double[] pdsl = renderAndRead(scene, channels, frames, bufferSize,
 					new File(outDir, prefix + "_pdsl_" + channelLabel + ".wav"));
 			assertFiniteNonSilent(prefix + " PDSL", pdsl);
 

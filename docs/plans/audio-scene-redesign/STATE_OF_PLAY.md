@@ -235,10 +235,12 @@ The defect history (six masking defects) and durable lessons:
   the open a2 batched-dispatch integration). A deeper framework lever, not yet
   taken: `Evaluable.async` spawns a thread per dispatch issuance — a pool or
   same-thread issuance would cut per-op cost everywhere.
-- **Lean pattern prep.** `createPdsl` still builds the unused Java mixdown CellList as
-  a side effect of reusing `getCells` for pattern preparation. Build-time-only cost
-  (PDSL build ≈52 s vs CellList ≈70 s — the PDSL build already skips compiling the
-  CellList's tick loop); worth removing, but it is not the tick-rate problem.
+- **Lean pattern prep — DONE.** `createPdsl` no longer builds the unused Java mixdown
+  CellList. `AudioScene.prepareRenderBuffers` reproduces only the pattern-prepare side
+  effects (render cells + consolidated buffer, same `[LEFT-MAIN, LEFT-WET, RIGHT-MAIN,
+  RIGHT-WET]` layout) the PDSL path needs; the mixdown CellList is never constructed.
+  Build-time-only saving (it was never the tick-rate problem); the realtime ratios are
+  unchanged.
 - **True stereo.** The PDSL path is dual-mono (one master duplicated to both writers).
   Stereo is a real, expected feature (stereo samples with distinct L/R must carry
   through independently) and must be one model carrying twice the channels in a
@@ -258,8 +260,11 @@ The defect history (six masking defects) and durable lessons:
   ([PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md) §5 — wet/efx
   filter coefficient banks lag the genome until rebuild).
 - **Variable channel count.** PDSL `channels` is fixed at block-build time; gene-driven
-  channel activation is still Java. The runner guards: selections that are not a
-  zero-based contiguous prefix of size ≥ 2 fall back to the CellList path.
+  channel activation is still Java. The runner now accepts **any single channel**
+  (including `renderChannel`'s non-zero `[c]` — the adapter maps genome reads to the
+  selected scene channel) and the **zero-based contiguous multi-channel prefix**
+  `[0,1,…,n-1]`. A *non-contiguous* multi-channel subset still falls back to the CellList
+  path (the transmission feedback grid is indexed by bank position, not scene channel).
 - **a1/a2/a3 ring decoupling** (to reach Diagram A): make `PatternAudioBuffer` rolling,
   run a2 on a worker K buffers ahead, point a3 at PDSL `Block`s pumped by
   `BufferedOutputScheduler`.
