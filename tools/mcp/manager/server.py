@@ -1123,7 +1123,12 @@ def _refresh_dispatch_capable_ids() -> set:
         result = _controller_get("/api/workstreams")
     except Exception:
         return set()
-    entries = result if isinstance(result, list) else result.get("workstreams", [])
+    if isinstance(result, list):
+        entries = result
+    elif isinstance(result, dict):
+        entries = result.get("workstreams", [])
+    else:
+        return set()
     if not isinstance(entries, list):
         return set()
     ids = set()
