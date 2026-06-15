@@ -222,10 +222,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// signal_size samples per channel; heads indexed similarly carves 1 head
 		// per channel). Mirrors MixdownManager.createEfx(), where
 		// each AdjustableDelayCell owns its own internal delay state.
-		PackedCollection buffers = new PackedCollection(config.channels * config.signalSize);
-		buffers.setMem(new double[config.channels * config.signalSize]);
-		PackedCollection heads = new PackedCollection(config.channels);
-		heads.setMem(new double[config.channels]);
+		PackedCollection buffers = new PackedCollection(config.channels * config.signalSize).fill(0.0);
+		PackedCollection heads = new PackedCollection(config.channels).fill(0.0);
 		args.put("buffers", buffers);
 		args.put("heads", heads);
 
@@ -457,13 +455,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		//
 		// efx_fb_delay: producer([channels]) — per-channel feedback delay in samples
 		// (constant = config.delaySamples; must be < the ring buffer = signal_size).
-		PackedCollection fbDelay = new PackedCollection(config.channels);
-		double[] fbDelayData = new double[config.channels];
-		for (int ch = 0; ch < config.channels; ch++) {
-			fbDelayData[ch] = config.delaySamples;
-		}
-		fbDelay.setMem(fbDelayData);
-		args.put("efx_fb_delay", fbDelay);
+		args.put("efx_fb_delay",
+				new PackedCollection(config.channels).fill((double) config.delaySamples));
 
 		// efx_fb_transmission: producer([channels, channels]) — the genome routing matrix
 		// scaled to a guaranteed-contraction (max row sum <= feedbackGain < 1) so the
@@ -478,10 +471,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 
 		// Fresh feedback ring state: buffers span channels * signal_size (one frame; the
 		// delay is < signal_size), heads one write position per channel.
-		PackedCollection fbBuffers = new PackedCollection(config.channels * config.signalSize);
-		fbBuffers.setMem(new double[config.channels * config.signalSize]);
-		PackedCollection fbHeads = new PackedCollection(config.channels);
-		fbHeads.setMem(new double[config.channels]);
+		PackedCollection fbBuffers = new PackedCollection(config.channels * config.signalSize).fill(0.0);
+		PackedCollection fbHeads = new PackedCollection(config.channels).fill(0.0);
 		args.put("fb_buffers", fbBuffers);
 		args.put("fb_heads", fbHeads);
 
@@ -519,10 +510,8 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 		// Reverb ring state: a multi-frame ring (REVERB_FRAMES * signal_size) so the tail can
 		// extend beyond one buffer; heads one write position per tap.
 		int reverbRing = config.channels * REVERB_FRAMES * config.signalSize;
-		PackedCollection reverbBuffers = new PackedCollection(reverbRing);
-		reverbBuffers.setMem(new double[reverbRing]);
-		PackedCollection reverbHeads = new PackedCollection(config.channels);
-		reverbHeads.setMem(new double[config.channels]);
+		PackedCollection reverbBuffers = new PackedCollection(reverbRing).fill(0.0);
+		PackedCollection reverbHeads = new PackedCollection(config.channels).fill(0.0);
 		args.put("reverb_buffers", reverbBuffers);
 		args.put("reverb_heads", reverbHeads);
 
@@ -599,13 +588,12 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 */
 	private static PackedCollection reverbTapDelays(Config config) {
 		int ring = REVERB_FRAMES * config.signalSize;
+		// fraction[ch] = 0.3 + 0.55*(ch+1)/(channels+1); delay[ch] = floor(fraction * ring).
+		CollectionProducer fraction = ADAPTER.integers(0, config.channels).add(1.0)
+				.multiply(0.55 / (config.channels + 1.0)).add(0.3);
 		PackedCollection delays = new PackedCollection(config.channels);
-		double[] data = new double[config.channels];
-		for (int ch = 0; ch < config.channels; ch++) {
-			double fraction = 0.3 + 0.55 * (ch + 1.0) / (config.channels + 1.0);
-			data[ch] = (int) (fraction * ring);
-		}
-		delays.setMem(data);
+		ADAPTER.a(config.channels, ADAPTER.cp(delays),
+				ADAPTER.floor(fraction.multiply((double) ring))).get().run();
 		return delays;
 	}
 
@@ -620,16 +608,12 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * @return an {@code [n, n]} {@link PackedCollection} feedback matrix
 	 */
 	private static PackedCollection householderMatrix(int n, double gain) {
-		PackedCollection matrix = new PackedCollection(new TraversalPolicy(n, n));
-		double[] data = new double[n * n];
+		// gain * (I - off), with off = 2/n applied to every element:
+		// diagonal = gain*(1 - off), off-diagonal = -gain*off.
 		double off = 2.0 / n;
-		for (int i = 0; i < n; i++) {
-			for (int j = 0; j < n; j++) {
-				double h = (i == j ? 1.0 : 0.0) - off;
-				data[i * n + j] = gain * h;
-			}
-		}
-		matrix.setMem(data);
+		PackedCollection matrix = new PackedCollection(new TraversalPolicy(n, n));
+		ADAPTER.a(n * n, ADAPTER.cp(matrix),
+				ADAPTER.identity(n).multiply(gain).subtract(gain * off)).get().run();
 		return matrix;
 	}
 
@@ -642,11 +626,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 */
 	private static PackedCollection diagonalMatrix(int n, double value) {
 		PackedCollection matrix = new PackedCollection(new TraversalPolicy(n, n));
-		double[] data = new double[n * n];
-		for (int i = 0; i < n; i++) {
-			data[i * n + i] = value;
-		}
-		matrix.setMem(data);
+		ADAPTER.a(n * n, ADAPTER.cp(matrix), ADAPTER.identity(n).multiply(value)).get().run();
 		return matrix;
 	}
 
