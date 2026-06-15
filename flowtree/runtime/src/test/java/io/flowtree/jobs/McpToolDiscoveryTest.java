@@ -779,4 +779,26 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			Files.deleteIfExists(tempFile);
 		}
 	}
+
+	/**
+	 * Verifies that the {@code workstream_register} and {@code workstream_update_config} tools
+	 * declare the {@code dispatch_capable} parameter in their signatures. The dispatch-capable
+	 * feature requires this parameter to be visible to MCP clients; without it, orchestrator
+	 * workstreams cannot opt in to the dispatch tools via the MCP interface.
+	 */
+	@Test(timeout = 30000)
+	public void managerRegisterAndUpdateConfigHaveDispatchCapable() {
+		Path serverFile = Path.of("tools/mcp/manager/server.py");
+		if (!Files.exists(serverFile)) return;
+
+		List<String> registerParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
+		assertTrue("workstream_register must declare dispatch_capable parameter",
+			registerParams.contains("dispatch_capable"));
+
+		List<String> updateParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
+		assertTrue("workstream_update_config must declare dispatch_capable parameter",
+			updateParams.contains("dispatch_capable"));
+	}
 }

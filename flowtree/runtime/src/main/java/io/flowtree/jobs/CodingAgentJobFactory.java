@@ -74,6 +74,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     /** Bearer token for authenticating against the ar-manager service. */
     private String arManagerToken;
 
+
     /**
      * JSON describing pushed MCP tools the controller is serving for this
      * job (always includes ar-secrets; may include additional operator
@@ -557,6 +558,39 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     public void setArManagerToken(String arManagerToken) {
         this.arManagerToken = arManagerToken;
         set("arManagerToken", GitManagedJob.base64Encode(arManagerToken));
+    }
+
+    /**
+     * Sets the dispatch-capable flag. Sourced from the workstream's
+     * {@link io.flowtree.workstream.Workstream#isDispatchCapable()} at
+     * the call sites that build the factory. The flag is purely a
+     * harness-CSV switch; the controller-side check is the real
+     * backstop for the opencode harness (per-SERVER filtering).
+     *
+     * <p>The value is stored in the inherited {@link AbstractJobFactory}
+     * properties map (not a plain field) so that it survives the
+     * {@link #encode()} / {@link #set(String, String)} wire round-trip
+     * used to ship the factory to a remote agent node. A plain field
+     * would be silently dropped on serialization, leaving the
+     * reconstructed factory — and the job it builds — non-dispatch.</p>
+     *
+     * @param dispatchCapable {@code true} to grant the workstream's
+     *                        dispatch tools to this agent
+     */
+    public void setDispatchCapable(boolean dispatchCapable) {
+        set("dispatchCapable", String.valueOf(dispatchCapable));
+    }
+
+    /**
+     * Returns whether this factory's workstream is dispatch-capable.
+     * Reads from the inherited properties map so the value reflects a
+     * wire-deserialized factory as well as one configured in-process.
+     *
+     * @return {@code true} when the dispatch tools should be granted
+     * @see #setDispatchCapable(boolean)
+     */
+    public boolean isDispatchCapable() {
+        return "true".equals(get("dispatchCapable"));
     }
 
     /**
@@ -1291,6 +1325,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         if (arManagerToken != null) {
             job.setArManagerToken(arManagerToken);
         }
+        job.setDispatchCapable(isDispatchCapable());
         if (pushedToolsConfig != null) {
             job.setPushedToolsConfig(pushedToolsConfig);
         } else {

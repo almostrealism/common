@@ -203,6 +203,37 @@ public class Workstream {
      */
     private boolean archived;
 
+    /**
+     * Whether agents running on this workstream are permitted to call the
+     * dispatch / orchestration MCP tools on the ar-manager server
+     * (currently {@code workstream_register} and
+     * {@code workstream_update_config}). The default is {@code false}:
+     * most workstreams do not need this power, and granting it is an
+     * explicit operator decision. An opt-in workstream can register and
+     * update child workstreams, which is the building block for
+     * orchestrator / worker delegation graphs.
+     *
+     * <p>When the flag is {@code true}, {@link io.flowtree.jobs.McpConfigBuilder}
+     * conditionally re-adds the dispatch tool names to the agent
+     * allowlist at CSV-assembly time. The base exclusion set
+     * ({@code EXCLUDED_AR_MANAGER_TOOLS}) is unchanged so the controller's
+     * invariant tests
+     * ({@code McpConfigBuilderTest.allowlistCoversEveryArManagerTool} and
+     * {@code allowlistAndExclusionsAreDisjoint}) continue to pass: a tool
+     * in the exclusion set that is also conditionally appended when a
+     * per-workstream flag is set is not a disjointness violation, because
+     * the two sets are consulted for different questions (the exclusion
+     * set defines the BASE default, the conditional append defines the
+     * opt-in override).</p>
+     *
+     * <p>Granting dispatch is bounded by the completion-listener safety
+     * model — the {@code acceptAutomatedJobs} kill switch still halts
+     * wake-up generation, and the per-window / per-chain ceilings still
+     * bound blast radius. The flag is the gate; the ceilings are the
+     * backstop.</p>
+     */
+    private boolean dispatchCapable;
+
     /** Default git user name for new workstreams. */
     public static final String DEFAULT_GIT_USER_NAME = "Flowtree Coding Agent";
 
@@ -645,6 +676,33 @@ public class Workstream {
     }
 
     /**
+     * Returns whether agents running on this workstream are permitted to
+     * call the dispatch / orchestration MCP tools. Default {@code false}.
+     * See {@link #dispatchCapable} for the full safety model and the
+     * interaction with the allowlist and the controller-side backstop.
+     */
+    public boolean isDispatchCapable() {
+        return dispatchCapable;
+    }
+
+    /**
+     * Sets whether agents on this workstream are permitted to call the
+     * dispatch / orchestration MCP tools. Setting {@code true} exposes
+     * {@code workstream_register} and {@code workstream_update_config}
+     * to the agent harness (the per-workstream allowlist re-adds them at
+     * CSV-assembly time) and unblocks the controller-side dispatch
+     * enforcement for the workstream. Operators should enable this only
+     * for orchestrator workstreams that need to register or update
+     * child workstreams as part of a delegation graph.
+     *
+     * @param dispatchCapable {@code true} to grant dispatch, {@code false}
+     *                        to revoke (the default)
+     */
+    public void setDispatchCapable(boolean dispatchCapable) {
+        this.dispatchCapable = dispatchCapable;
+    }
+
+    /**
      * Returns the default agent runner identifier for this workstream, or
      * {@code null} when no workstream-level default is set.
      */
@@ -802,6 +860,9 @@ public class Workstream {
         json.append(",\"pipelineCapable\":").append(pipelineCapable);
         if (archived) {
             json.append(",\"archived\":true");
+        }
+        if (dispatchCapable) {
+            json.append(",\"dispatchCapable\":true");
         }
 
         if (dependentRepos != null && !dependentRepos.isEmpty()) {

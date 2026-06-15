@@ -135,6 +135,14 @@ final class CodingAgentJobCodec {
         }
         sb.append("::protectTests:=").append(job.isProtectTestFiles());
         sb.append("::enforceChanges:=").append(job.isEnforceChanges());
+        // dispatchCapable defaults to false; emit only when set so the wire
+        // stays minimal. Without this key the flag is dropped on any
+        // encode/decode round-trip (e.g. dispatch to a remote agent node),
+        // which silently denies an orchestrator the workstream_register /
+        // workstream_update_config tools it was granted.
+        if (job.isDispatchCapable()) {
+            sb.append("::dispatchCapable:=true");
+        }
         if (job.getDeduplicationMode() != null) {
             sb.append("::dedupMode:=").append(job.getDeduplicationMode());
         }
@@ -234,6 +242,9 @@ final class CodingAgentJobCodec {
                 return true;
             case "enforceChanges":
                 job.setEnforceChanges(Boolean.parseBoolean(value));
+                return true;
+            case "dispatchCapable":
+                job.setDispatchCapable(Boolean.parseBoolean(value));
                 return true;
             case "dedupMode":
                 job.setDeduplicationMode(value);

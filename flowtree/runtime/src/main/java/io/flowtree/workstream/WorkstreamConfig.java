@@ -461,6 +461,24 @@ public class WorkstreamConfig {
          * job history and memories remain queryable.
          */
         private boolean archived;
+        /**
+         * Whether agents running on this workstream are permitted to call
+         * the dispatch / orchestration MCP tools ({@code workstream_register}
+         * and {@code workstream_update_config}). Default {@code false}:
+         * most workstreams do not need this power. An opt-in workstream
+         * can register and update child workstreams, which is the
+         * building block for orchestrator / worker delegation graphs.
+         *
+         * <p>Persisted as {@code dispatchCapable: true} in the workstream's
+         * YAML entry. The flag is consulted at agent allowlist assembly
+         * time ({@code McpConfigBuilder.buildAllowedTools}) and at
+         * ar-manager dispatch-tool invocation time (the controller-side
+         * backstop that catches the opencode harness's per-tool
+         * granularity gap). See {@link Workstream#dispatchCapable} for
+         * the full safety model.</p>
+         */
+        @JsonInclude(JsonInclude.Include.NON_DEFAULT)
+        private boolean dispatchCapable;
 
         /** Returns the persistent workstream identifier. */
         public String getWorkstreamId() { return workstreamId; }
@@ -652,6 +670,19 @@ public class WorkstreamConfig {
         public void setArchived(boolean archived) { this.archived = archived; }
 
         /**
+         * Returns whether agents on this workstream are permitted to call
+         * the dispatch / orchestration MCP tools. See
+         * {@link Workstream#isDispatchCapable()} for the runtime view.
+         */
+        public boolean isDispatchCapable() { return dispatchCapable; }
+        /**
+         * Sets the dispatch-capable flag. The YAML serializes this as
+         * {@code dispatchCapable: true} so operators can see the
+         * orchestrator's grant at a glance in the workstream config.
+         */
+        public void setDispatchCapable(boolean dispatchCapable) { this.dispatchCapable = dispatchCapable; }
+
+        /**
          * Converts this entry to a {@link Workstream} instance.
          *
          * <p>If a {@code workstreamId} is present, it is used as the persistent
@@ -696,6 +727,7 @@ public class WorkstreamConfig {
             }
             ws.setArchived(archived);
             ws.setCompletionListeners(completionListeners);
+            ws.setDispatchCapable(dispatchCapable);
             return ws;
         }
     }
@@ -1383,6 +1415,7 @@ public class WorkstreamConfig {
         applyBundleToEntry(entry, ws.getPhaseConfigBundle());
         entry.setArchived(ws.isArchived());
         entry.setCompletionListeners(ws.getCompletionListeners());
+        entry.setDispatchCapable(ws.isDispatchCapable());
     }
 
     /**
