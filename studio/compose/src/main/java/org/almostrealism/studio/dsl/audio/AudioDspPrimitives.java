@@ -24,6 +24,7 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.ml.dsl.PdslChannelBank;
 import org.almostrealism.ml.dsl.PdslInterpreter;
 import org.almostrealism.ml.dsl.PdslParseException;
 import org.almostrealism.ml.dsl.PdslPrimitiveContext;
@@ -92,6 +93,7 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 		interpreter.registerPrimitive("lowpass", self::dispatchLowpass);
 		interpreter.registerPrimitive("highpass", self::dispatchHighpass);
 		interpreter.registerPrimitive("biquad", self::dispatchBiquad);
+		interpreter.registerPrimitive("clip", self::dispatchClip);
 		interpreter.registerPrimitive("delay", self::dispatchDelay);
 		interpreter.registerPrimitive("lfo", self::dispatchLfo);
 		interpreter.registerPrimitive("route", self::dispatchRoute);
@@ -109,12 +111,24 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 
 	// ---- Single-channel DSP primitives ------------------------------------
 
-	/** {@code fir(coefficients)}. */
+	/** {@code fir(coefficients)} — accepts a per-channel coefficient bank when vectorized. */
 	private Function<TraversalPolicy, Block> dispatchFir(List<Object> args, PdslPrimitiveContext ctx) {
 		if (args.size() != 1) {
 			throw new PdslParseException(
 					"fir() expects 1 coefficients argument, got " + args.size());
 		}
+
+		if (args.get(0) instanceof PdslChannelBank) {
+			// Vectorized for-each: the [channels, taps] bank is applied to every channel
+			// of the [channels, signalSize] input in a single kernel.
+			PdslChannelBank bank = (PdslChannelBank) args.get(0);
+			CollectionProducer coefficients =
+					ctx.toProducer(bank.getSource(), null, "fir() coefficients");
+			// channels are inferred from the [channels, taps] coefficient bank shape
+			return shape -> new ForwardOnlyBlock(layer("fir", shape, shape,
+					input -> MultiOrderFilter.create(input, coefficients)));
+		}
+
 		CollectionProducer coefficients = ctx.toProducer(args.get(0), null, "fir() coefficients");
 		return firFilterBlock("fir", coefficients);
 	}
@@ -141,6 +155,36 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 		int sampleRate = PdslPrimitiveContext.toInt(args.get(1));
 		int order = PdslPrimitiveContext.toInt(args.get(2));
 		return firFilterBlock("highpass", highPassCoefficients(cutoff, sampleRate, order));
+	}
+
+	/**
+	 * {@code clip(lo, hi)} — element-wise hard clamp of the signal into {@code [lo, hi]}.
+	 * This is the PDSL counterpart of the two hard bounds in the Java mixdown chain:
+	 * {@link org.almostrealism.audio.filter.AudioPassFilter} clamps its input to
+	 * {@code [-MAX_INPUT, MAX_INPUT]} every sample before filtering, and the master bus
+	 * applies {@code bound(in * gain, -1, 1)} as its limiter. Stateless and fully
+	 * vectorised, so it composes with any buffer shape.
+	 *
+	 * @param args the two bound arguments (lo, hi)
+	 * @param ctx  the primitive context
+	 * @return a clamp block factory
+	 */
+	private Function<TraversalPolicy, Block> dispatchClip(List<Object> args, PdslPrimitiveContext ctx) {
+		if (args.size() != 2) {
+			throw new PdslParseException(
+					"clip() expects 2 arguments (lo, hi), got " + args.size());
+		}
+		double lo = toDouble(args.get(0));
+		double hi = toDouble(args.get(1));
+		if (lo >= hi) {
+			throw new PdslParseException(
+					"clip() requires lo < hi, got lo=" + lo + " hi=" + hi);
+		}
+		// bound() delegates to min()/max(), which collapse to a scalar shape when the two
+		// operand sizes differ — so the bounds must be expanded to the block shape for the
+		// clamp to stay element-wise over the whole buffer.
+		return shape -> new ForwardOnlyBlock(layer("clip", shape, shape,
+				input -> min(max(input, constant(shape, lo)), constant(shape, hi))));
 	}
 
 	/** {@code biquad(b0, b1, b2, a1, a2, history)} — stateful biquad IIR. */
@@ -199,6 +243,30 @@ public class AudioDspPrimitives implements MultiChannelDspFeatures, TemporalFeat
 			throw new PdslParseException(
 					"delay() expects 3 arguments (delaySamples, buffer, head), got " + args.size());
 		}
+
+		if (args.get(1) instanceof PdslChannelBank || args.get(2) instanceof PdslChannelBank) {
+			// Vectorized for-each: every channel's ring state arrives as one bank, and
+			// the whole multi-channel delay runs as one read and one write per pass.
+			if (!(args.get(1) instanceof PdslChannelBank)
+					|| !(args.get(2) instanceof PdslChannelBank)) {
+				throw new PdslParseException("delay() requires the buffer and head"
+						+ " to both be per-channel banks when vectorized");
+			}
+			PdslChannelBank bufferBank = (PdslChannelBank) args.get(1);
+			PdslChannelBank headBank = (PdslChannelBank) args.get(2);
+			Object delayArg = args.get(0) instanceof PdslChannelBank
+					? ((PdslChannelBank) args.get(0)).getSource() : args.get(0);
+			CollectionProducer delaySamples =
+					ctx.toProducer(delayArg, null, "delay() delaySamples");
+			CollectionProducer bankBuffer =
+					ctx.toProducer(bufferBank.getSource(), null, "delay() buffer");
+			CollectionProducer bankHeads =
+					ctx.toProducer(headBank.getSource(), null, "delay() head");
+			int channels = bufferBank.getChannels();
+			return shape -> multiChannelDelayBlock(delaySamples, bankBuffer, bankHeads,
+					channels, shape.getTotalSize() / channels);
+		}
+
 		CollectionProducer delaySamplesP = ctx.toProducer(args.get(0), shape(1),
 				"delay() delaySamples");
 		CollectionProducer buffer = ctx.toProducer(args.get(1), null, "delay() buffer");

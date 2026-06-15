@@ -23,6 +23,7 @@ import io.almostrealism.collect.ProductCollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
+import io.almostrealism.expression.ArcCosine;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Cosine;
@@ -441,6 +442,17 @@ public interface ExpressionFeatures {
 	 */
 	default CollectionExpression cos(TraversalPolicy shape, TraversableExpression<Double> input) {
 		return new UniformCollectionExpression("cos", shape, args -> Cosine.of(args[0]), input);
+	}
+
+	/**
+	 * Creates a collection expression that applies {@code acos(x)} element-wise.
+	 *
+	 * @param shape the traversal policy defining the output shape
+	 * @param input the input expression, defined on {@code [-1, 1]}
+	 * @return an arc-cosine collection expression
+	 */
+	default CollectionExpression acos(TraversalPolicy shape, TraversableExpression<Double> input) {
+		return new UniformCollectionExpression("acos", shape, args -> ArcCosine.of(args[0]), input);
 	}
 
 	/**

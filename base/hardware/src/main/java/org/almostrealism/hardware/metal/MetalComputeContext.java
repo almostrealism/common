@@ -81,6 +81,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 									"using metal::log;\n" +
 									"using metal::sin;\n" +
 									"using metal::cos;\n" +
+									"using metal::acos;\n" +
 									"using metal::tan;\n" +
 									"using metal::tanh;\n";
 
@@ -160,7 +161,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 * @return {@link MetalOperatorMap} containing compiled Metal operators
 	 */
 	@Override
-	public InstructionSet deliver(Scope scope) {
+	public synchronized InstructionSet deliver(Scope scope) {
 		if (instructionSets.containsKey(key(scope.getName(), scope.signature()))) {
 			if (ScopeSettings.enableInstructionSetReuse) {
 				warn("Compiling instruction set " + scope.getName() +
@@ -226,7 +227,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 * @param signature Scope signature
 	 * @throws IllegalArgumentException if no instruction set found with that key
 	 */
-	protected void destroyed(String name, String signature) {
+	protected synchronized void destroyed(String name, String signature) {
 		if (instructionSets != null) {
 			String key = key(name, signature);
 
@@ -243,7 +244,7 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 * clears internal state. After calling destroy, this context cannot be used.</p>
 	 */
 	@Override
-	public void destroy() {
+	public synchronized void destroy() {
 		List<MetalOperatorMap> toDestroy = new ArrayList<>(instructionSets.values());
 		toDestroy.forEach(MetalOperatorMap::destroy);
 

@@ -18,7 +18,6 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.ProducerFeatures;
 import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.hardware.computations.Periodic;
 import org.almostrealism.hardware.mem.Bytes;
@@ -60,36 +59,11 @@ import java.util.stream.IntStream;
  * <h2>Core Capabilities</h2>
  *
  * <h3>Instruction Caching and Reuse</h3>
- * <p>The {@code instruct(String, Function, Producer[])} method enables caching of compiled
- * operations. When the same operation is invoked multiple times, the framework can reuse
- * previously compiled kernels, significantly reducing overhead:</p>
- * <pre>{@code
- * // First call: compiles kernel and caches it under "scale_operation"
- * Producer<T> result1 = instruct("scale_operation",
- *     args -> multiply(args[0], c(2.0)),
- *     inputData);
- *
- * // Subsequent calls: reuses cached kernel (much faster)
- * Producer<T> result2 = instruct("scale_operation",
- *     args -> multiply(args[0], c(2.0)),
- *     otherData);
- * }</pre>
- *
- * <p><strong>Key Benefits:</strong>
- * <ul>
- *   <li>Eliminates repeated kernel compilation overhead</li>
- *   <li>Consistent performance for repeated operations</li>
- *   <li>Automatic optimization based on instruction history</li>
- * </ul>
- *
- * <h3>Producer Delegation</h3>
- * <p>The {@code delegate(Producer, Producer)} method creates delegated producers that can
- * be substituted at execution time. This enables optimization techniques like:
- * <ul>
- *   <li><strong>Constant Propagation:</strong> Replacing computed values with constants</li>
- *   <li><strong>Common Subexpression Elimination:</strong> Reusing computed intermediate results</li>
- *   <li><strong>Memory Layout Optimization:</strong> Adapting to preferred hardware formats</li>
- * </ul>
+ * <p>Kernel reuse is automatic: every compiled operation carries a structural signature,
+ * and operations that share both signature and {@link io.almostrealism.code.ComputeContext}
+ * reuse the same compiled kernel with their own argument bindings. No explicit caching API
+ * is required; simply building the same computation structure again reuses the kernel.
+ * See {@link DefaultComputer#getScopeInstructionsManager} for the caching mechanism.</p>
  *
  * <h3>Hardware-Accelerated Looping</h3>
  * <p>The {@link #loop(Computation, int)} method (aliased as {@link #lp(Computation, int)})
@@ -109,15 +83,6 @@ import java.util.stream.IntStream;
  * </ul>
  *
  * <h2>Integration with Other Features</h2>
- *
- * <h3>ProducerFeatures</h3>
- * <p>Provides methods for creating and manipulating producers:</p>
- * <ul>
- *   <li>{@code c(double)} - Create constant producers</li>
- *   <li>{@code v(shape, index)} - Create pass-through producers (dynamic inputs)</li>
- *   <li>{@code p(MemoryData)} - Wrap memory data as producers</li>
- *   <li>{@code multiply}, {@code add}, {@code subtract} - Arithmetic operations</li>
- * </ul>
  *
  * <h3>MemoryDataFeatures</h3>
  * <p>Provides memory-related operations:</p>
@@ -169,19 +134,6 @@ import java.util.stream.IntStream;
  * }
  * }</pre>
  *
- * <h3>Cached Instructions for Repeated Operations</h3>
- * <pre>{@code
- * public class FilterBank implements HardwareFeatures {
- *     private static final String FILTER_KEY = "gaussian_blur_3x3";
- *
- *     public Producer<PackedCollection> blur(Producer<PackedCollection> image) {
- *         return instruct(FILTER_KEY,
- *             args -> applyConvolution(args[0], getGaussianKernel()),
- *             image);
- *     }
- * }
- * }</pre>
- *
  * <h3>Iterative Algorithms</h3>
  * <pre>{@code
  * public class GradientDescent implements HardwareFeatures {
@@ -198,12 +150,11 @@ import java.util.stream.IntStream;
  * <h2>Performance Considerations</h2>
  *
  * <ul>
- *   <li><strong>Instruction Caching:</strong> Use {@code instruct} for operations that repeat
- *       with different data - saves kernel compilation time</li>
+ *   <li><strong>Instruction Caching:</strong> Structurally-identical operations in the same
+ *       compute context automatically share compiled kernels - repeated structures cost one
+ *       compilation</li>
  *   <li><strong>Loop Optimization:</strong> {@link #loop} is much more efficient than Java
  *       loops when the computation can be kernelized</li>
- *   <li><strong>Delegation Overhead:</strong> Delegated producers add minimal runtime overhead
- *       but enable powerful optimizations</li>
  * </ul>
  *
  * <h2>Thread Safety</h2>
@@ -212,7 +163,6 @@ import java.util.stream.IntStream;
  * but the underlying {@link Hardware} context and computations themselves may have
  * thread-specific state. Consult individual operation documentation for thread safety details.</p>
  *
- * @see ProducerFeatures
  * @see MemoryDataFeatures
  * @see ConsoleFeatures
  * @see Hardware
