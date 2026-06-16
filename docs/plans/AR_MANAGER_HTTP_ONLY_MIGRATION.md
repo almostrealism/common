@@ -1,6 +1,6 @@
 # ar-manager HTTP-Only Migration
 
-Status: **IN PROGRESS — Phases 0–1 done; Phase 2 (server hardening) next**
+Status: **IN PROGRESS — Phases 0–2 done; Phase 3 (fail jobs w/o token) next**
 Author: planning session, 2026-06-16
 
 ## Decisions (owner, 2026-06-16)
@@ -389,10 +389,19 @@ Still open:
   six servers (ar-docs, ar-test-runner, ar-build-validator, ar-profile-analyzer,
   ar-consultant, ar-jmx) + onyx intact. Workers keep all other servers via merge.
   Interactive devs now reach ar-manager via the user-scoped HTTP entry (Phase 0).
-- **Phase 2 — make the server token-only (closes the hatch).** Remove stdio mode
-  and the no-auth branch from `server.py`; remove the no-secret-admin branch from
-  `SecretsRequestHandler` (§5.1). After this, a tokenless/stdio ar-manager simply
-  cannot function.
+- **Phase 2 — make the server token-only (closes the hatch).** ✅ **Done.**
+  `server.py` `__main__` now `sys.exit(1)`s unless `MCP_TRANSPORT` is `http`/`sse`
+  AND tokens are configured (removed the stdio `mcp.run()` and no-auth HTTP
+  branches); `_require_scope` fails closed (no scopes ⇒ `PermissionError`, was
+  permit-all); `SecretsRequestHandler.isAdminToken()` returns `false` when no
+  shared secret (was `true`/admin). Verified: confirmed OAuth/claude.ai is
+  unaffected because OAuth access tokens are entries in the same token table
+  (`oauth.py:686–699,828`) so `BearerAuthMiddleware` sets scopes. Unscoped/
+  superadmin workspace semantics (`_is_workspace_allowed` → True when no workspace
+  scopes) left intact — that is the personal interactive token, not a hole. Tests:
+  Python 417 + 176 pass, new `TestStartupGuard` (stdio refused, http-without-tokens
+  refused) + renamed `test_no_scopes_denies_all`; Java `SecretsEndpointTest` 15/15;
+  checkstyle 0 violations.
 - **Phase 3 — fail jobs without a token.** Make `buildMcpConfig` error when an
   agent job lacks a token (§5.2). OAuth is untouched throughout.
 - **Phase 4 — docs/tests.** Update the doc set in §6 and the affected tests;

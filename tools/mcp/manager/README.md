@@ -102,7 +102,7 @@ summaries when a backend is available.
 | `AR_MANAGER_TOKENS` | (none) | JSON string of token config (overrides file) |
 | `AR_CONSULTANT_BACKEND` | `llamacpp` | LLM backend for memory synthesis |
 | `AR_CONSULTANT_LLAMA_URL` | (auto-discovered) | llama.cpp server URL |
-| `MCP_TRANSPORT` | `stdio` | Transport: `stdio`, `http`, or `sse` |
+| `MCP_TRANSPORT` | `http` | Transport: `http` or `sse`. `stdio` is rejected (auth-only HTTP server) |
 | `MCP_PORT` | `8010` | Port for http/sse transport |
 
 ## Authentication
@@ -197,18 +197,18 @@ way — there is no OAuth callback to forward. (This is why repo-originated acce
 uses a personal token rather than the OAuth flow that Claude mobile / claude.ai
 use.)
 
-### No-auth mode
+### Authentication is mandatory (no no-auth / stdio mode)
 
-When no token file exists and `AR_MANAGER_TOKENS` is unset, the server runs
-without authentication (for trusted LAN use). A warning is logged on startup.
+ar-manager runs **only** as an authenticated HTTP/SSE server. It refuses to start
+when:
 
-> **Deprecated / being removed.** No-auth mode and the stdio transport are the
-> tokenless escape hatch the ar-manager HTTP-only consolidation closes: a caller
-> with no token is indistinguishable from any other, so the job/permission
-> context the token carries is silently lost. After that work lands, ar-manager
-> will refuse to start without auth configured and will not run as a stdio
-> server. Do not rely on no-auth mode for new setups; use a personal token
-> (above) instead.
+- `MCP_TRANSPORT` is not `http` or `sse` (the old stdio mode is rejected), or
+- no tokens are configured (neither `AR_MANAGER_TOKENS` nor a token file).
+
+This closes the tokenless escape hatch: a caller with no token is
+indistinguishable from any other, so the job / workspace / permission context an
+ar-manager token carries would be silently lost. There is no "trusted LAN"
+fallback — configure a token (see above) and reach the server over HTTP.
 
 ## Deployment
 
