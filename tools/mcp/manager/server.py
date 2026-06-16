@@ -2249,6 +2249,7 @@ def workstream_register(
     default_phase_config: str = "",
     phase_configs: str = "",
     dispatch_capable: bool = False,
+    default_use_tmux: bool = False,
     slack_workspace_id: str = "",
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
@@ -2347,6 +2348,14 @@ def workstream_register(
             ceilings, so the flag is the gate but not the only safety
             mechanism. Operators should enable it only on workstreams
             that genuinely orchestrate.
+        default_use_tmux: When ``True``, coding-agent jobs on this workstream
+            launch the agent subprocess inside a tmux session (a real
+            controlling tty) by default. The per-job ``use_tmux`` flag
+            still wins on a per-job basis, so a particular job submission
+            can override the workstream default. Defaults to ``False`` —
+            opt in explicitly. The runner additionally honours the
+            ``AR_AGENT_USE_TMUX`` environment variable as an independent
+            enable, which is unaffected by this flag.
 
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
@@ -2468,6 +2477,13 @@ def workstream_register(
     # boolean directly is simpler and the controller's extractBoolean
     # helper handles a missing field identically.
     payload["dispatchCapable"] = bool(dispatch_capable)
+    # defaultUseTmux follows the same unconditional-forward pattern as
+    # dispatchCapable: a boolean forwarded verbatim so the controller
+    # sees the operator's intent regardless of whether the field
+    # appears in the body. The workstream-level default takes effect on
+    # every job on this workstream that does not set the per-job
+    # use_tmux flag explicitly.
+    payload["defaultUseTmux"] = bool(default_use_tmux)
 
     result = _controller_post("/api/workstreams", payload)
 
@@ -2645,6 +2661,7 @@ def workstream_update_config(
     default_phase_config: str = "",
     phase_configs: str = "",
     dispatch_capable: Optional[bool] = None,
+    default_use_tmux: Optional[bool] = None,
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
     # captured here for a clear rejection error.
@@ -2700,6 +2717,14 @@ def workstream_update_config(
             the parameter entirely leaves the existing controller value
             unchanged (presence-signal semantics, same pattern as
             ``completion_listeners``). Defaults to ``None`` (no change).
+        default_use_tmux: When ``True``, coding-agent jobs on this workstream
+            launch the agent subprocess inside a tmux session (a real
+            controlling tty) by default. The per-job ``use_tmux`` flag
+            still wins on a per-job basis. Same presence-signal
+            semantics as ``dispatch_capable``: omitted leaves the
+            workstream's existing default unchanged; an explicit
+            ``False`` clears the opt-in. Defaults to ``None``
+            (no change).
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
             ``default_phase_config`` or ``phase_configs`` to set models.
@@ -2783,6 +2808,11 @@ def workstream_update_config(
     # value (true or false) wins.
     if dispatch_capable is not None:
         payload["dispatchCapable"] = bool(dispatch_capable)
+    # default_use_tmux follows the same Optional-presence pattern as
+    # dispatch_capable: omitted = no change, ``False`` = clear the
+    # workstream-level tmux opt-in, ``True`` = opt the workstream in.
+    if default_use_tmux is not None:
+        payload["defaultUseTmux"] = bool(default_use_tmux)
 
     if not payload:
         return {

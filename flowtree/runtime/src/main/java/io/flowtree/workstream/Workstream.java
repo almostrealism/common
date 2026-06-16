@@ -234,6 +234,23 @@ public class Workstream {
      */
     private boolean dispatchCapable;
 
+    /**
+     * Workstream-level default for {@code useTmux}: when {@code true},
+     * coding-agent jobs on this workstream launch the agent subprocess
+     * inside a tmux session (a real controlling tty) by default, mirroring
+     * the per-job {@code use_tmux} flag's effect. The default applies only
+     * when a job submission does not set the per-job flag explicitly — an
+     * explicit {@code use_tmux=false} or {@code use_tmux=true} on a
+     * particular job always wins. Default {@code false}: opt in explicitly
+     * by editing the workstream entry or calling
+     * {@link #setUseTmux(boolean)} so deployments do not flip launch
+     * backends on registration without an explicit operator decision. The
+     * runner additionally honours the {@code AR_AGENT_USE_TMUX} environment
+     * variable, which is an independent enable and unaffected by this
+     * flag.
+     */
+    private boolean useTmux;
+
     /** Default git user name for new workstreams. */
     public static final String DEFAULT_GIT_USER_NAME = "Flowtree Coding Agent";
 
@@ -703,6 +720,35 @@ public class Workstream {
     }
 
     /**
+     * Returns the workstream-level default for {@code useTmux}. When
+     * {@code true}, coding-agent jobs on this workstream that do not set
+     * the per-job {@code use_tmux} flag explicitly are launched inside a
+     * tmux session (a real controlling tty). An explicit per-job value
+     * always wins over this default.
+     *
+     * @return the workstream-level tmux default; {@code false} by default
+     */
+    public boolean isUseTmux() {
+        return useTmux;
+    }
+
+    /**
+     * Sets the workstream-level default for {@code useTmux}. When
+     * {@code true}, coding-agent jobs on this workstream that omit the
+     * per-job {@code use_tmux} flag will be launched inside a tmux
+     * session. A per-job value supplied at submission time still wins
+     * over this default, so the per-job path can opt in or out of tmux
+     * for individual jobs as needed.
+     *
+     * @param useTmux {@code true} to opt the workstream into tmux-backed
+     *                agent launches by default; {@code false} to use
+     *                direct child-process launches (the default)
+     */
+    public void setUseTmux(boolean useTmux) {
+        this.useTmux = useTmux;
+    }
+
+    /**
      * Returns the default agent runner identifier for this workstream, or
      * {@code null} when no workstream-level default is set.
      */
@@ -863,6 +909,9 @@ public class Workstream {
         }
         if (dispatchCapable) {
             json.append(",\"dispatchCapable\":true");
+        }
+        if (useTmux) {
+            json.append(",\"useTmux\":true");
         }
 
         if (dependentRepos != null && !dependentRepos.isEmpty()) {
