@@ -153,10 +153,62 @@ unscoped/superadmin token.
 - Audit logging with token labels
 - Auth-exempt `/_health` endpoint for Docker healthchecks
 
+### Interactive access from a repo checkout (personal tokens)
+
+A developer running Claude Code against the `common` repo reaches ar-manager over
+HTTP with a **personal bearer token** — the same static-token mechanism Claude
+mobile uses, but scoped to the human rather than a job. The repo's `.mcp.json`
+does **not** define `ar-manager`; you configure it once in your *user-scoped*
+Claude config so the token (a secret) never lands in a committed file.
+
+1. **Mint a personal token on the ar-manager host** (where the token file lives):
+
+   ```bash
+   ./tools/mcp/manager/generate-token.sh "your-name-laptop"
+   ```
+
+   This appends an entry to `manager-tokens.json` and prints the token value.
+   Restart ar-manager so it loads the new token (tokens are read at startup).
+
+2. **Register ar-manager in your user-scoped Claude config** (not in the repo),
+   with the token value in the header:
+
+   ```bash
+   claude mcp add --transport http --scope user ar-manager \
+     https://<your-public-ar-manager-url>/ \
+     --header "Authorization: Bearer armt_…"
+   ```
+
+   This writes the entry into your user config (`~/.claude.json`), which lives
+   outside any repo. `--scope user` makes it apply to every project/session
+   automatically. Treat `~/.claude.json` as a secret (`chmod 600`) since the token
+   is stored there literally.
+
+   *Alternative:* if you prefer not to keep the literal value in the config file,
+   use `--header "Authorization: Bearer ${AR_MANAGER_TOKEN}"` and export
+   `AR_MANAGER_TOKEN` in your environment before launching Claude Code (it is
+   expanded at session start; Claude Code does not autoload `.env` files). Note
+   this exposes the token to every child process of that shell, which is why the
+   literal-in-config form above is usually preferable.
+
+**Over SSH this just works.** A static bearer needs no browser and no localhost
+redirect, so a remote Claude Code session over SSH authenticates exactly the same
+way — there is no OAuth callback to forward. (This is why repo-originated access
+uses a personal token rather than the OAuth flow that Claude mobile / claude.ai
+use.)
+
 ### No-auth mode
 
 When no token file exists and `AR_MANAGER_TOKENS` is unset, the server runs
 without authentication (for trusted LAN use). A warning is logged on startup.
+
+> **Deprecated / being removed.** No-auth mode and the stdio transport are the
+> tokenless escape hatch the ar-manager HTTP-only consolidation closes: a caller
+> with no token is indistinguishable from any other, so the job/permission
+> context the token carries is silently lost. After that work lands, ar-manager
+> will refuse to start without auth configured and will not run as a stdio
+> server. Do not rely on no-auth mode for new setups; use a personal token
+> (above) instead.
 
 ## Deployment
 
