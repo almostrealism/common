@@ -5,8 +5,12 @@ Scripts for extracting model weights and generating reference data for compariso
 ## Prerequisites
 
 ```bash
-pip install torch numpy protobuf
+pip install torch numpy protobuf            # torch only for the .ckpt extractors
+pip install safetensors ml_dtypes pytest    # for the safetensors core + its tests
 ```
+
+`ml_dtypes` is what lets numpy read `bfloat16` safetensors; without it, fp32/fp16
+checkpoints still load but a bf16 checkpoint raises a clear error.
 
 ## Generated Files
 
@@ -23,6 +27,50 @@ cp ../target/generated-sources/protobuf/python/collections_pb2.py .
 ```
 
 ## Scripts
+
+### safetensors_extractor.py (generalized core)
+
+Reusable, model-agnostic engine for `.safetensors` -> StateDictionary extraction.
+Has **no torch dependency**, so it and its tests run without PyTorch or model
+weights. It exposes:
+
+- `load_safetensors(path)` -> `dict[str, ndarray]` (upcasts bf16/fp16 -> fp32)
+- `remap(state, rules)` -> applies an ordered list of `dict -> dict` rules; build
+  them with `select_prefix`, `strip_prefix`, `rename_prefix`, `rename_regex`,
+  `rule(match, rename, transform)`, `fold_weight_norm`, and `check_shapes`
+- `write_state_dictionary(state, out_dir)` / `read_state_dictionary(path)` -- the
+  shared protobuf shard writer/reader (the torch-based extractors import the
+  writer from here so there is a single implementation)
+- `dump_reference_activations(stages, out_dir)` / `run_reference_stages(model, x)`
+  -- per-stage reference `.bin` dumps for the SAME parity tests
+
+A concrete extractor is a thin config that declares its remap rules and calls
+`core.extract(...)` (see `extract_sa3_weights.py`).
+
+### extract_sa3_weights.py
+
+Stable Audio 3 config over the generalized core. Extracts either the diffusion
+transformer or the embedded/standalone SAME autoencoder.
+
+```bash
+# DiT weights (what DiffusionTransformer loads):
+python extract_sa3_weights.py model.safetensors out_dir --target dit
+# Embedded autoencoder (strip the pretransform.model. prefix, fold weight-norm):
+python extract_sa3_weights.py model.safetensors out_dir --target ae
+# Standalone SAME-S/SAME-L repo (bare keys):
+python extract_sa3_weights.py same.safetensors out_dir --target ae --ae-mode standalone
+```
+
+### Tests
+
+```bash
+# Core + SA3 config tests (synthetic only; no torch, no weights):
+python -m pytest test_safetensors_extractor.py -v
+# Best-effort validation of the SA3 remap config against the REAL released key
+# set (fetches only the safetensors header, never the weights). Skips cleanly
+# when no Hugging Face token / network is available:
+python -m pytest test_sa3_real_keys.py -v
+```
 
 ### extract_stable_audio_autoencoder.py
 

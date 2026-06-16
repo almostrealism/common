@@ -13,7 +13,6 @@ Usage:
 
 import os
 import sys
-import struct
 import torch
 import numpy as np
 from pathlib import Path
@@ -31,44 +30,17 @@ except ImportError:
     print("This requires: pip install grpcio-tools")
     sys.exit(1)
 
+# Reuse the shared protobuf writer / reference-output serialization from the
+# generalized core so there is a single implementation (see Block E).
+import safetensors_extractor as core
 
-def numpy_to_collection_data(array):
-    """Convert numpy array to CollectionData protobuf."""
-    collection_data = collections.CollectionData()
-
-    # Set traversal policy with shape dimensions
-    traversal_policy = collections.TraversalPolicyData()
-    for dim in array.shape:
-        traversal_policy.dims.append(int(dim))
-    traversal_policy.traversal_axis = 0
-    collection_data.traversal_policy.CopyFrom(traversal_policy)
-
-    # Use float32 for efficiency
-    flattened = array.flatten().astype(np.float32)
-    collection_data.data_32.extend(flattened.tolist())
-
-    return collection_data
-
-
-def write_protobuf_file(entries, file_path):
-    """Serialize and write CollectionLibraryData to binary file."""
-    library_data = collections.CollectionLibraryData()
-    library_data.collections.extend(entries)
-
-    with open(file_path, 'wb') as f:
-        f.write(library_data.SerializeToString())
-
-    print(f"  Wrote {len(entries)} weight tensors to {file_path}")
+numpy_to_collection_data = core.numpy_to_collection_data
+write_protobuf_file = core.write_protobuf_file
 
 
 def save_reference_output(tensor: torch.Tensor, filepath: str):
-    """Save reference output for validation (simple binary format)."""
-    arr = tensor.detach().cpu().float().numpy().flatten()
-
-    with open(filepath, 'wb') as f:
-        f.write(struct.pack('<I', len(arr)))
-        for val in arr:
-            f.write(struct.pack('<f', val))
+    """Save a torch reference output via the shared serializer."""
+    core.save_reference_output(tensor.detach().cpu().float().numpy(), filepath)
 
 
 def extract_autoencoder_weights(ckpt_path: str, output_dir: str):
