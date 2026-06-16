@@ -23,13 +23,17 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -295,8 +299,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void managerAllExpectedToolsAreRegisteredInServerPy() {
-		Path serverFile = Path.of("tools/mcp/manager/server.py");
-		if (!Files.exists(serverFile)) return;
+		Path serverFile = McpToolDiscovery.locateManagerServerPy();
+		assertNotNull("manager server.py must be locatable from the test working directory;"
+			+ " a silent skip here would let MCP tool/schema drift go undetected", serverFile);
 
 		Set<String> expected = new HashSet<>(Arrays.asList(
 			"controller_health",
@@ -375,8 +380,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void managerToolParametersAreProperlyDeclaredInSignatures() {
-		Path serverFile = Path.of("tools/mcp/manager/server.py");
-		if (!Files.exists(serverFile)) return;
+		Path serverFile = McpToolDiscovery.locateManagerServerPy();
+		assertNotNull("manager server.py must be locatable from the test working directory;"
+			+ " a silent skip here would let MCP tool/schema drift go undetected", serverFile);
 
 		List<String> copilotParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "github_request_copilot_review");
@@ -659,13 +665,110 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Cross-process parity guard: every JSON key the {@code workstream_submit_task}
+	 * MCP tool emits in its submit payload MUST be consumed by the controller's
+	 * {@code /api/submit} path. A key the tool sends but the controller never
+	 * reads is silently ignored — exactly the divergence that lets a new
+	 * capability look wired end-to-end while doing nothing.
+	 *
+	 * <p>The tool side is the source of truth (what the client can send). The
+	 * controller side is scanned for genuine consumption: {@code (body, "key")}
+	 * extraction calls in {@code FlowTreeApiEndpoint} and {@code .get("key")} /
+	 * {@code .has("key")} reads in {@code PhaseConfigResolver}. The check is
+	 * one-directional on purpose — the controller may read keys no MCP tool
+	 * sends (Slack, CI, and other clients post the same endpoint), but a tool
+	 * key the controller drops is always a bug.</p>
+	 */
+	@Test(timeout = 30000)
+	public void submitTaskPayloadKeysAreAllConsumedByController() {
+		Path serverFile = McpToolDiscovery.locateManagerServerPy();
+		assertNotNull("manager server.py must be locatable for the submit parity guard to run",
+			serverFile);
+
+		List<String> toolKeys =
+			McpToolDiscovery.discoverToolPayloadKeys(serverFile, "workstream_submit_task");
+		assertTrue("workstream_submit_task must emit payload keys; none were discovered, which"
+			+ " means the payload parser is broken (it should find at least useTmux)",
+			toolKeys.contains("useTmux"));
+
+		Path endpoint = locateModuleSource("src/main/java/io/flowtree/api/FlowTreeApiEndpoint.java");
+		assertNotNull("FlowTreeApiEndpoint.java must be locatable for the submit parity guard",
+			endpoint);
+		Path resolver = locateModuleSource("src/main/java/io/flowtree/submission/PhaseConfigResolver.java");
+		assertNotNull("PhaseConfigResolver.java must be locatable for the submit parity guard",
+			resolver);
+
+		Set<String> consumed = new HashSet<>();
+		consumed.addAll(controllerConsumedKeys(endpoint));
+		consumed.addAll(controllerConsumedKeys(resolver));
+
+		List<String> missing = new ArrayList<>();
+		for (String key : toolKeys) {
+			if (!consumed.contains(key)) missing.add(key);
+		}
+		assertTrue("workstream_submit_task emits payload key(s) the controller /api/submit path"
+			+ " never consumes: " + missing + ". Wire each one in"
+			+ " FlowTreeApiEndpoint.handleSubmit (extractJson*(body, \"key\") -> factory setter),"
+			+ " or in PhaseConfigResolver for phase-config keys. A tool key the controller"
+			+ " ignores is a silent no-op.",
+			missing.isEmpty());
+	}
+
+	/**
+	 * Reads the JSON request-body keys a controller source file consumes:
+	 * {@code (body, "key")} extraction-helper arguments and {@code .get("key")} /
+	 * {@code .has("key")} {@code JsonNode} reads. Returns an empty set when the
+	 * file is {@code null} or cannot be read.
+	 *
+	 * @param source the controller source file to scan; may be {@code null}
+	 * @return the set of request-body keys the file consumes
+	 */
+	private static Set<String> controllerConsumedKeys(Path source) {
+		Set<String> keys = new HashSet<>();
+		if (source == null) return keys;
+		String text;
+		try {
+			text = Files.readString(source, StandardCharsets.UTF_8);
+		} catch (IOException e) {
+			return keys;
+		}
+		Matcher body = Pattern.compile("body\\s*,\\s*\"([A-Za-z0-9_]+)\"").matcher(text);
+		while (body.find()) keys.add(body.group(1));
+		Matcher node = Pattern.compile("\\.(?:get|has)\\(\\s*\"([A-Za-z0-9_]+)\"").matcher(text);
+		while (node.find()) keys.add(node.group(1));
+		return keys;
+	}
+
+	/**
+	 * Locates a source file under the {@code flowtree/runtime} module, tolerating
+	 * either the module basedir or the repository root as the working directory
+	 * (Surefire forks default to the module basedir). Returns {@code null} when
+	 * the file is not found within five ancestor levels.
+	 *
+	 * @param moduleRelativePath path relative to the {@code flowtree/runtime} module root
+	 * @return the resolved regular file, or {@code null} if not found
+	 */
+	private static Path locateModuleSource(String moduleRelativePath) {
+		Path cwd = Path.of("").toAbsolutePath();
+		for (int i = 0; i < 5 && cwd != null; i++) {
+			Path direct = cwd.resolve(moduleRelativePath);
+			if (Files.isRegularFile(direct)) return direct;
+			Path viaModule = cwd.resolve("flowtree/runtime").resolve(moduleRelativePath);
+			if (Files.isRegularFile(viaModule)) return viaModule;
+			cwd = cwd.getParent();
+		}
+		return null;
+	}
+
+	/**
 	 * Verifies that the {@code workstream_register} and {@code workstream_update_config} tools
 	 * declare the {@code required_labels} and {@code dependent_repos} parameters in their signatures.
 	 */
 	@Test(timeout = 30000)
 	public void managerRegisterAndUpdateConfigHaveRequiredLabelsAndDependentRepos() {
-		Path serverFile = Path.of("tools/mcp/manager/server.py");
-		if (!Files.exists(serverFile)) return;
+		Path serverFile = McpToolDiscovery.locateManagerServerPy();
+		assertNotNull("manager server.py must be locatable from the test working directory;"
+			+ " a silent skip here would let MCP tool/schema drift go undetected", serverFile);
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
@@ -690,8 +793,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void managerRegisterAndUpdateConfigHaveCompletionListeners() {
-		Path serverFile = Path.of("tools/mcp/manager/server.py");
-		if (!Files.exists(serverFile)) return;
+		Path serverFile = McpToolDiscovery.locateManagerServerPy();
+		assertNotNull("manager server.py must be locatable from the test working directory;"
+			+ " a silent skip here would let MCP tool/schema drift go undetected", serverFile);
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
@@ -788,8 +892,9 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void managerRegisterAndUpdateConfigHaveDispatchCapable() {
-		Path serverFile = Path.of("tools/mcp/manager/server.py");
-		if (!Files.exists(serverFile)) return;
+		Path serverFile = McpToolDiscovery.locateManagerServerPy();
+		assertNotNull("manager server.py must be locatable from the test working directory;"
+			+ " a silent skip here would let MCP tool/schema drift go undetected", serverFile);
 
 		List<String> registerParams =
 			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");

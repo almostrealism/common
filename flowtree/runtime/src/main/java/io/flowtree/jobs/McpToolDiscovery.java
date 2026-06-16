@@ -23,6 +23,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -82,6 +84,25 @@ public class McpToolDiscovery {
         Pattern.compile("^(\\w+)");
 
     /**
+     * Matches a {@code payload["key"]} subscript assignment, e.g.
+     * {@code payload["useTmux"] = True}. Group 1 is the wire key the tool emits.
+     */
+    private static final Pattern PAYLOAD_SUBSCRIPT_PATTERN =
+        Pattern.compile("payload\\[\\s*[\"']([A-Za-z0-9_]+)[\"']\\s*\\]");
+
+    /**
+     * Matches a {@code payload = { ... }} dict-literal initializer so its inline
+     * {@code "key":} entries can be harvested, e.g.
+     * {@code payload = {"jobType": "shell", "command": command}}.
+     */
+    private static final Pattern PAYLOAD_LITERAL_PATTERN =
+        Pattern.compile("payload\\s*=\\s*\\{([^}]*)\\}");
+
+    /** Matches a {@code "key":} entry inside a dict literal. Group 1 is the key. */
+    private static final Pattern DICT_KEY_PATTERN =
+        Pattern.compile("[\"']([A-Za-z0-9_]+)[\"']\\s*:");
+
+    /**
      * Scans a Python MCP server source file for tool definitions and
      * returns their names.
      *
@@ -133,6 +154,52 @@ public class McpToolDiscovery {
         List<String> lines = readLines(serverFile);
         if (lines.isEmpty()) return new ArrayList<>();
         return discoverParametersForTool(lines, toolName);
+    }
+
+    /**
+     * Discovers the wire-format keys a tool function emits into the JSON
+     * {@code payload} it posts to the controller.
+     *
+     * <p>Harvests both forms used in the manager server: the
+     * {@code payload = {"key": value}} dict-literal initializer and every
+     * subsequent {@code payload["key"] = value} subscript assignment, across the
+     * full body of the named function. These keys are the cross-process contract
+     * the controller's HTTP endpoint must consume; a key emitted here but not
+     * read by the controller is silently ignored, which is the divergence the
+     * parity tests guard against.</p>
+     *
+     * <p>Scanning starts at the {@code def toolName(} line and stops at the next
+     * module-level construct (a column-zero {@code def}/{@code class}/{@code @}
+     * line), so only the target function's body is considered.</p>
+     *
+     * @param serverFile path to the Python server source file
+     * @param toolName   the tool function name whose payload to inspect
+     * @return the emitted wire keys in sorted order, empty if the file does not
+     *         exist or the tool is not found
+     */
+    public static List<String> discoverToolPayloadKeys(Path serverFile, String toolName) {
+        List<String> lines = readLines(serverFile);
+        if (lines.isEmpty()) return new ArrayList<>();
+
+        Pattern funcDefStart = Pattern.compile("def\\s+" + Pattern.quote(toolName) + "\\s*\\(");
+        Set<String> keys = new TreeSet<>();
+        for (int i = 0; i < lines.size(); i++) {
+            if (!funcDefStart.matcher(lines.get(i)).find()) continue;
+            for (int j = i + 1; j < lines.size(); j++) {
+                String line = lines.get(j);
+                // Stop at the next module-level construct (column-zero def/class/decorator).
+                if (line.matches("^(def\\s|class\\s|@).*")) break;
+                Matcher literal = PAYLOAD_LITERAL_PATTERN.matcher(line);
+                while (literal.find()) {
+                    Matcher key = DICT_KEY_PATTERN.matcher(literal.group(1));
+                    while (key.find()) keys.add(key.group(1));
+                }
+                Matcher subscript = PAYLOAD_SUBSCRIPT_PATTERN.matcher(line);
+                while (subscript.find()) keys.add(subscript.group(1));
+            }
+            break;
+        }
+        return new ArrayList<>(keys);
     }
 
     /**
