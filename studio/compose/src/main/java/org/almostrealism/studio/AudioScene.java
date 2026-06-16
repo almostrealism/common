@@ -1127,8 +1127,9 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		}
 
 		// Skip WET cells when enableEfx is false — mirrors getPatternCells, which omits the
-		// WET voicing on the fast path. The consolidated buffer still reserves the WET regions
-		// (consolidate allocates channels * 4), they simply stay zero-filled.
+		// WET voicing on the fast path. The consolidated buffer is still sized for 4 regions per
+		// channel (consolidate allocates channels * 4), but the skipped regions are never rendered
+		// (remain zero-filled) and subsequent regions are allocated in creation order.
 		if (MixdownManager.enableEfx) {
 			for (int i = 0; i < idx.length; i++) {
 				createRenderCell(new ChannelInfo(idx[i], ChannelInfo.Voicing.WET, audioChannel),
