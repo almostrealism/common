@@ -288,6 +288,13 @@ public interface ExpressionArithmetic<T> {
 	public default Expression<Double> cos() { return Cosine.of((Expression) self()); }
 
 	/**
+	 * Returns the arc-cosine (inverse cosine) of this expression.
+	 *
+	 * @return an expression representing {@code acos(this)}
+	 */
+	public default Expression<Double> acos() { return ArcCosine.of((Expression) self()); }
+
+	/**
 	 * Returns the tangent of this expression.
 	 *
 	 * @return an expression representing {@code tan(this)}

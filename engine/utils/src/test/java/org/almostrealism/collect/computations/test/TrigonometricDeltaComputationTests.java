@@ -111,6 +111,73 @@ public class TrigonometricDeltaComputationTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests that {@code acos(x)} matches {@link Math#acos} and that
+	 * d/dx[acos(x)] = -1/sqrt(1 - x^2) for a simple scalar case.
+	 */
+	@Test(timeout = 120000)
+	public void arcCosineDeltaScalar() {
+		PackedCollection input = pack(-0.5, -0.25, 0.0, 0.25, 0.5);
+		CollectionProducer x = cp(input);
+
+		// acos(x)
+		CollectionProducer acosX = acos(x);
+
+		// Verify forward pass
+		PackedCollection forward = acosX.get().evaluate();
+		log("acos(x) = " + forward.toArrayString());
+
+		for (int i = 0; i < 5; i++) {
+			assertEquals(Math.acos(input.toDouble(i)), forward.toDouble(i));
+		}
+
+		// d/dx[acos(x)] = -1/sqrt(1 - x^2)
+		CollectionProducer delta = acosX.delta(x);
+		PackedCollection gradient = delta.get().evaluate().reshape(5, 5);
+		log("d/dx[acos(x)] = ");
+		gradient.traverse().print();
+
+		for (int i = 0; i < 5; i++) {
+			for (int j = 0; j < 5; j++) {
+				double xi = input.toDouble(i);
+				double expected = (i == j) ? -1.0 / Math.sqrt(1.0 - xi * xi) : 0.0;
+				assertEquals(expected, gradient.valueAt(i, j));
+			}
+		}
+	}
+
+	/**
+	 * Tests the chain rule: d/dx[acos(x/2)] = (-1/sqrt(1 - (x/2)^2)) * (1/2).
+	 */
+	@Test(timeout = 120000)
+	public void arcCosineChainRule() {
+		PackedCollection input = pack(-1.0, -0.5, 0.0, 0.5, 1.0);
+		CollectionProducer x = cp(input);
+
+		// acos(x/2)
+		CollectionProducer acosHalfX = acos(x.multiply(0.5));
+
+		// Verify forward pass
+		PackedCollection forward = acosHalfX.get().evaluate();
+		log("acos(x/2) = " + forward.toArrayString());
+
+		for (int i = 0; i < 5; i++) {
+			assertEquals(Math.acos(input.toDouble(i) * 0.5), forward.toDouble(i));
+		}
+
+		// d/dx[acos(x/2)] = (-1/sqrt(1 - (x/2)^2)) * (1/2)
+		CollectionProducer delta = acosHalfX.delta(x);
+		PackedCollection gradient = delta.get().evaluate().reshape(5, 5);
+
+		for (int i = 0; i < 5; i++) {
+			for (int j = 0; j < 5; j++) {
+				double half = input.toDouble(i) * 0.5;
+				double expected = (i == j) ? (-1.0 / Math.sqrt(1.0 - half * half)) * 0.5 : 0.0;
+				assertEquals(expected, gradient.valueAt(i, j));
+			}
+		}
+	}
+
+	/**
 	 * Tests the chain rule: d/dx[sin(2x)] = 2*cos(2x).
 	 */
 	@Test(timeout = 120000)

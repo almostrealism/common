@@ -292,8 +292,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
     public void reviewPhaseOrderedBetweenEnforceChangesAndDeduplication() {
         // The declaration order of Phase governs encode/decode iteration, so
         // verify the REVIEW phase appears between ENFORCE_CHANGES and
-        // DEDUPLICATION — matching the runtime execution order documented in
-        // PHASES.md.
+        // DEDUPLICATION — matching the runtime execution order.
         Phase[] values = Phase.values();
         int ec = -1, rv = -1, dd = -1;
         for (int i = 0; i < values.length; i++) {

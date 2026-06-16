@@ -21,13 +21,17 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.ForwardOnlyBlock;
 import org.almostrealism.model.Model;
+import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.studio.dsl.audio.MultiChannelDspFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * Focused behavioural tests for
@@ -588,6 +592,235 @@ public class DelayNetworkBehaviorTest extends TestSuiteBase
 				"at least one pass must observe a non-zero feedback echo; "
 						+ "max-observed=" + anyNonZeroEcho,
 				anyNonZeroEcho > EPS);
+	}
+
+	// =====================================================================
+	// Test 00 — per-channel dispatch routes each channel its OWN row
+	// =====================================================================
+	/**
+	 * Regression for the {@code for each channel} dispatch: builds a
+	 * {@link MultiChannelDspFeatures#perChannelBlock} whose per-channel blocks each scale by a
+	 * distinct constant, feeds DISTINCT content per channel, and asserts every output row is
+	 * its own input row times its own gain. The original implementation passed a flat sample
+	 * offset where {@code subset} expects per-dimension coordinates, so every channel chain
+	 * silently received channel 0's row — invisible to any test whose channels carry
+	 * identical content.
+	 */
+	@Test(timeout = 120000)
+	public void test00PerChannelDispatchUsesOwnRow() {
+		int channels = 3;
+		int signalSize = 4;
+		TraversalPolicy singleShape = new TraversalPolicy(1, signalSize);
+		double[] gains = {2.0, 3.0, 5.0};
+		List<Block> blocks = new ArrayList<>();
+		for (double g : gains) {
+			final double gain = g;
+			blocks.add(new ForwardOnlyBlock(layer("gain", singleShape, singleShape,
+					input -> multiply(input, constant(singleShape, gain)))));
+		}
+		Block block = perChannelBlock(blocks, channels, signalSize);
+		Model m = new Model(new TraversalPolicy(channels, signalSize));
+		m.add(block);
+		CompiledModel compiled = m.compile();
+
+		double[] flat = new double[channels * signalSize];
+		for (int i = 0; i < flat.length; i++) flat[i] = i + 1;
+		PackedCollection input = new PackedCollection(new TraversalPolicy(channels, signalSize));
+		input.setMem(flat);
+		double[] out = compiled.forward(input).toArray(0, channels * signalSize);
+
+		for (int ch = 0; ch < channels; ch++) {
+			for (int i = 0; i < signalSize; i++) {
+				double expected = gains[ch] * flat[ch * signalSize + i];
+				Assert.assertEquals(
+						"channel " + ch + " sample " + i
+								+ " must be its own input row times its own gain",
+						expected, out[ch * signalSize + i], EPS);
+			}
+		}
+	}
+
+	// =====================================================================
+	// Test 00b — per-channel dispatch with SequentialBlock channel bodies
+	// =====================================================================
+	/**
+	 * The same distinct-rows routing property as {@link #test00PerChannelDispatchUsesOwnRow},
+	 * but with each channel body wrapped in a {@link SequentialBlock} — the exact structure
+	 * the PDSL interpreter builds for {@code for each channel} bodies. Distinguishes a fault
+	 * in {@link MultiChannelDspFeatures#perChannelBlock} composed with chained blocks from a
+	 * fault in the interpreter-level wiring around it.
+	 */
+	@Test(timeout = 120000)
+	public void test00bPerChannelDispatchWithSequentialBodies() {
+		int channels = 3;
+		int signalSize = 4;
+		TraversalPolicy singleShape = new TraversalPolicy(1, signalSize);
+		double[] gains = {2.0, 3.0, 5.0};
+		List<Block> blocks = new ArrayList<>();
+		for (double g : gains) {
+			final double gain = g;
+			SequentialBlock body = new SequentialBlock(singleShape);
+			body.add(new ForwardOnlyBlock(layer("gain", singleShape, singleShape,
+					input -> multiply(input, constant(singleShape, gain)))));
+			blocks.add(body);
+		}
+		Block block = perChannelBlock(blocks, channels, signalSize);
+		Model m = new Model(new TraversalPolicy(channels, signalSize));
+		m.add(block);
+		CompiledModel compiled = m.compile();
+
+		double[] flat = new double[channels * signalSize];
+		for (int i = 0; i < flat.length; i++) flat[i] = i + 1;
+		PackedCollection input = new PackedCollection(new TraversalPolicy(channels, signalSize));
+		input.setMem(flat);
+		double[] out = compiled.forward(input).toArray(0, channels * signalSize);
+
+		for (int ch = 0; ch < channels; ch++) {
+			for (int i = 0; i < signalSize; i++) {
+				double expected = gains[ch] * flat[ch * signalSize + i];
+				Assert.assertEquals(
+						"channel " + ch + " sample " + i
+								+ " must be its own input row times its own gain",
+						expected, out[ch * signalSize + i], EPS);
+			}
+		}
+	}
+
+	// =====================================================================
+	// Test 00c — per-channel dispatch nested inside an outer SequentialBlock
+	// =====================================================================
+	/**
+	 * Like {@link #test00bPerChannelDispatchWithSequentialBodies} but with the per-channel
+	 * dispatch block itself nested inside an outer {@link SequentialBlock} — the exact
+	 * containment the PDSL interpreter produces when building a layer body. The PDSL-level
+	 * {@code for each channel} collapses every chain to row 0 while the directly-driven
+	 * dispatch routes correctly, so the enclosing wiring is the remaining variable.
+	 */
+	@Test(timeout = 120000)
+	public void test00cPerChannelDispatchInsideOuterSequentialBlock() {
+		int channels = 3;
+		int signalSize = 4;
+		TraversalPolicy multiShape = new TraversalPolicy(channels, signalSize);
+		TraversalPolicy singleShape = new TraversalPolicy(1, signalSize);
+		double[] gains = {2.0, 3.0, 5.0};
+		List<Block> blocks = new ArrayList<>();
+		for (double g : gains) {
+			final double gain = g;
+			SequentialBlock body = new SequentialBlock(singleShape);
+			body.add(new ForwardOnlyBlock(layer("gain", singleShape, singleShape,
+					input -> multiply(input, constant(singleShape, gain)))));
+			blocks.add(body);
+		}
+		SequentialBlock outer = new SequentialBlock(multiShape);
+		outer.add(perChannelBlock(blocks, channels, signalSize));
+		Model m = new Model(multiShape);
+		m.add(outer);
+		CompiledModel compiled = m.compile();
+
+		double[] flat = new double[channels * signalSize];
+		for (int i = 0; i < flat.length; i++) flat[i] = i + 1;
+		PackedCollection input = new PackedCollection(multiShape);
+		input.setMem(flat);
+		double[] out = compiled.forward(input).toArray(0, channels * signalSize);
+
+		for (int ch = 0; ch < channels; ch++) {
+			for (int i = 0; i < signalSize; i++) {
+				double expected = gains[ch] * flat[ch * signalSize + i];
+				Assert.assertEquals(
+						"channel " + ch + " sample " + i
+								+ " must be its own input row times its own gain",
+						expected, out[ch * signalSize + i], EPS);
+			}
+		}
+	}
+
+	// =====================================================================
+	// Test 10b — production-shaped network with contraction feedback stays bounded
+	// =====================================================================
+	/**
+	 * Regression for the mixdown efx feedback grid runaway: a network with the production
+	 * STRUCTURE in miniature — multiple channels, a one-frame ring ({@code bufSize ==
+	 * signalSize}), a SUB-FRAME delay ({@code delay < signalSize}), a feedback matrix whose
+	 * row sums are well under 1 (a strong contraction), and a diagonal 0.5 passthrough — fed
+	 * a small constant signal every pass. With loop gain ~0.15, the steady-state output is
+	 * bounded by {@code passthrough * input / (1 - 0.15)}; saturation indicates the kernel
+	 * implements a different recurrence from the documented one.
+	 */
+	@Test(timeout = 120000)
+	public void test10bSubFrameDelayContractionStaysBounded() {
+		int channels = 3;
+		int signalSize = 8;
+		double[] fb = new double[channels * channels];
+		for (int i = 0; i < fb.length; i++) fb[i] = 0.05;
+		double[] pass = new double[channels * channels];
+		for (int n = 0; n < channels; n++) pass[n * channels + n] = 0.5;
+		Harness h = build(channels, signalSize, signalSize,
+				new double[]{6.0, 6.0, 6.0}, fb, pass);
+
+		double[] input = new double[channels * signalSize];
+		for (int i = 0; i < input.length; i++) input[i] = 0.01;
+
+		double bound = 0.5 * 0.01 / (1.0 - 0.15) + 1e-6;
+		double observedMax = 0.0;
+		for (int passIdx = 0; passIdx < 50; passIdx++) {
+			double[] out = h.forwardMulti(input);
+			for (double v : out) observedMax = Math.max(observedMax, Math.abs(v));
+			Assert.assertTrue(
+					"pass " + passIdx + " output magnitude " + observedMax
+							+ " exceeds the closed-loop bound " + bound
+							+ " for a contraction feedback network",
+					observedMax <= bound);
+		}
+		Assert.assertTrue("the network must produce non-zero output", observedMax > EPS);
+	}
+
+	// =====================================================================
+	// Test 10c — full production scale: 6 channels x 8192, sub-frame delay
+	// =====================================================================
+	/**
+	 * The same bounded-output property as {@link #test10bSubFrameDelayContractionStaysBounded}
+	 * at the EXACT production dimensions of the mixdown efx feedback grid: 6 channels,
+	 * signalSize 8192, a one-frame ring, delay 6500 (sub-frame), the measured genome
+	 * transmission scaled by 0.1 (row sums ~0.15), and a 0.5 diagonal passthrough. The
+	 * production render saturates instantly at these dimensions while the miniature
+	 * configuration stays bounded; this isolates whether the divergence is scale-dependent
+	 * in the primitive itself or comes from the surrounding mixdown graph.
+	 */
+	@Test(timeout = 300000)
+	public void test10cProductionScaleContractionStaysBounded() {
+		int channels = 6;
+		int signalSize = 8192;
+		// The measured genome transmission (3 active rows), scaled by feedbackGain/channels
+		// = 0.1, exactly as MixdownManagerPdslAdapter supplies it.
+		double[] t3 = {
+				0.0573, 0.0347, 0.0502,
+				0.0372, 0.0309, 0.0596,
+				0.0596, 0.0456, 0.0558 };
+		double[] fb = new double[channels * channels];
+		for (int n = 0; n < 3; n++) {
+			System.arraycopy(t3, n * 3, fb, n * channels, 3);
+		}
+		double[] pass = new double[channels * channels];
+		for (int n = 0; n < channels; n++) pass[n * channels + n] = 0.5;
+		double[] delays = new double[channels];
+		for (int n = 0; n < channels; n++) delays[n] = 6500.0;
+		Harness h = build(channels, signalSize, signalSize, delays, fb, pass);
+
+		double[] input = new double[channels * signalSize];
+		for (int i = 0; i < input.length; i++) input[i] = 0.01;
+
+		double bound = 0.5 * 0.01 / (1.0 - 0.16) + 1e-6;
+		double observedMax = 0.0;
+		for (int passIdx = 0; passIdx < 20; passIdx++) {
+			double[] out = h.forwardMulti(input);
+			for (double v : out) observedMax = Math.max(observedMax, Math.abs(v));
+			Assert.assertTrue(
+					"pass " + passIdx + " output magnitude " + observedMax
+							+ " exceeds the closed-loop bound " + bound
+							+ " at production scale",
+					observedMax <= bound);
+		}
+		Assert.assertTrue("the network must produce non-zero output", observedMax > EPS);
 	}
 
 	// =====================================================================

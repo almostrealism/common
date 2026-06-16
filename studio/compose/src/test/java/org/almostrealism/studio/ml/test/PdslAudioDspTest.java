@@ -606,7 +606,7 @@ public class PdslAudioDspTest extends TestSuiteBase implements FirFilterTestFeat
 	// These tests exercise the producer-valued `scale` primitive: a parameter
 	// declared as `producer([1])` accepts a Number (constant-folded), a
 	// 1-element PackedCollection (mutable slot), or a Producer<PackedCollection>
-	// (general expression). See docs/plans/PDSL_AUDIO_DSP.md Section 11.
+	// (general expression).
 
 	/**
 	 * Verifies that a {@code producer([1])} parameter supplied as a Number literal

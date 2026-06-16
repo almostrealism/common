@@ -77,6 +77,9 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	/** Whether this is a floating-point modulo ({@code true}) or integer modulo ({@code false}). */
 	private boolean fp;
 
+	/** Cached result of {@link #dividendPossiblyNegative()}; {@code null} until first computed. */
+	private Boolean dividendPossiblyNegative;
+
 	/**
 	 * Constructs a modulo expression.
 	 *
@@ -121,13 +124,64 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		return a + " % " + b;
 	}
 
+	/**
+	 * Computes integer modulo consistent with the generated code.
+	 *
+	 * <p>{@link #getExpression} emits {@link LanguageOperations#floorMod} when the dividend
+	 * may be negative, and a plain {@code %} otherwise. Constant folding must make the same
+	 * choice so that a folded result matches what the compiled kernel would compute;
+	 * otherwise {@code imod}, which the framework relies on to keep indices in
+	 * {@code [0, divisor)}, can fold a negative dividend to a negative result.</p>
+	 *
+	 * @param dividend the left operand value
+	 * @param divisor  the right operand value (must be non-zero)
+	 * @return the modulo result matching the generated code
+	 */
+	private long intMod(long dividend, long divisor) {
+		return foldIntMod(dividend, divisor, dividendPossiblyNegative());
+	}
+
+	/**
+	 * Returns whether the dividend may be negative, computed once and cached.
+	 *
+	 * <p>{@link Expression#isPossiblyNegative()} walks the dividend subtree
+	 * (via {@link Expression#lowerBound}), which is recursive and not memoized.
+	 * Because an {@link Expression} is immutable, the result is invariant for this
+	 * node, so it is cached to keep it out of the per-index constant-folding loop
+	 * ({@link #intValue()}, {@link #computeValue}, {@link #evaluate}).</p>
+	 *
+	 * @return {@code true} if the dividend may be negative
+	 */
+	private boolean dividendPossiblyNegative() {
+		if (dividendPossiblyNegative == null) {
+			dividendPossiblyNegative = getChildren().get(0).isPossiblyNegative();
+		}
+
+		return dividendPossiblyNegative;
+	}
+
+	/**
+	 * Folds an integer modulo to the value the generated code would compute.
+	 *
+	 * @param dividend                 the left operand value
+	 * @param divisor                  the right operand value (must be non-zero)
+	 * @param dividendPossiblyNegative whether the dividend may be negative, mirroring the
+	 *                                 condition under which {@link #getExpression} emits
+	 *                                 {@link LanguageOperations#floorMod}
+	 * @return {@code Math.floorMod(dividend, divisor)} when the dividend may be negative,
+	 *         otherwise {@code dividend % divisor}
+	 */
+	static long foldIntMod(long dividend, long divisor, boolean dividendPossiblyNegative) {
+		return dividendPossiblyNegative ? Math.floorMod(dividend, divisor) : dividend % divisor;
+	}
+
 	@Override
 	public OptionalInt intValue() {
 		Expression input = getChildren().get(0);
 		Expression mod = getChildren().get(1);
 
 		if (input.intValue().isPresent() && mod.intValue().isPresent() && mod.intValue().getAsInt() != 0) {
-			return OptionalInt.of(input.intValue().getAsInt() % mod.intValue().getAsInt());
+			return OptionalInt.of((int) intMod(input.intValue().getAsInt(), mod.intValue().getAsInt()));
 		}
 
 		return super.intValue();
@@ -144,8 +198,8 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			return getChildren().get(0).value(indexValues).doubleValue() % getChildren().get(1).value(indexValues).doubleValue();
 		} else {
 			return adjustType(getType(),
-					getChildren().get(0).value(indexValues).longValue()
-							% getChildren().get(1).value(indexValues).longValue());
+					intMod(getChildren().get(0).value(indexValues).longValue(),
+							getChildren().get(1).value(indexValues).longValue()));
 		}
 	}
 
@@ -154,7 +208,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (fp) {
 			return children[0].doubleValue() % children[1].doubleValue();
 		} else {
-			return children[0].intValue() % children[1].intValue();
+			return (int) intMod(children[0].intValue(), children[1].intValue());
 		}
 	}
 
@@ -321,7 +375,9 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (m == 1) return new IntegerConstant(0);
 
 		if (id.isPresent()) {
-			return ExpressionFeatures.getInstance().e(id.getAsLong() % m);
+			// The dividend is a constant here, so it is possibly-negative exactly when it is
+			// negative — no need for the recursive isPossiblyNegative() bounds walk.
+			return ExpressionFeatures.getInstance().e(foldIntMod(id.getAsLong(), m, id.getAsLong() < 0));
 		}
 
 		if (input instanceof Mod && !input.isFP()) {

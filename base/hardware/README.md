@@ -351,26 +351,25 @@ void loop_x10() {
 
 ### Instruction Caching
 
-The `instruct()` pattern caches compiled operations for reuse:
+Kernel reuse is automatic. Every compiled operation carries a structural signature
+(derived from its type, shapes, and input structure - not data values), and operations
+that share both signature and `ComputeContext` reuse the same compiled kernel with
+their own argument bindings:
 
 ```java
-// First call: compiles and caches
-Producer<?> result1 = instruct("scale_2x",
-    args -> multiply(args[0], c(2.0)),
-    data1
-);
+// First evaluation: compiles the kernel
+multiply(cp(data1), c(2.0)).get().evaluate();
 
-// Subsequent calls: reuse cached kernel
-Producer<?> result2 = instruct("scale_2x",
-    args -> multiply(args[0], c(2.0)),
-    data2  // Only recomputation: argument substitution
-);
+// A structurally-identical computation in the same context
+// reuses the compiled kernel (argument substitution only)
+multiply(cp(data2), c(2.0)).get().evaluate();
 ```
 
 **Performance Impact:**
 - First call: ~100ms (compilation)
 - Subsequent calls: ~0.01ms (substitution only)
-- **10,000x speedup** for repeated operations
+
+See [docs/INSTRUCTION_CACHING.md](docs/INSTRUCTION_CACHING.md) for the caching architecture.
 
 ## Memory Management Patterns
 
@@ -716,14 +715,10 @@ public class MyProcessor implements HardwareFeatures {
 
 ```java
 public class FilterBank implements HardwareFeatures {
-    private static final String LOWPASS_KEY = "lowpass_1000hz";
-
     public Producer<?> lowpass(Producer<?> input) {
-        // Kernel cached under LOWPASS_KEY
-        return instruct(LOWPASS_KEY,
-            args -> lowPass(args[0], c(1000.0), 44100),
-            input
-        );
+        // Structurally-identical filters share one compiled kernel
+        // automatically (signature-based instruction caching)
+        return lowPass(input, c(1000.0), 44100);
     }
 }
 ```
@@ -790,16 +785,11 @@ Evaluable<?> cached = multiply(v1, v2).get();
 for (int i = 0; i < 1000; i++) {
     cached.evaluate();
 }
-
-// BEST: Use instruct() for automatic caching
-Producer<?> result = instruct("multiply",
-    args -> multiply(args[0], args[1]),
-    v1, v2
-);
-for (int i = 0; i < 1000; i++) {
-    result.get().evaluate();  // Automatic kernel reuse
-}
 ```
+
+Even when an `Evaluable` is rebuilt, signature-based instruction caching avoids
+recompiling structurally-identical operations - but holding onto the compiled
+`Evaluable` also avoids the (cheaper) cache lookup and argument setup.
 
 ### 2. Use PassThroughProducer for Kernel Reuse
 
@@ -936,7 +926,7 @@ if (deep.getDepth() > 500) {
 
 **Expected:** First execution takes 100-1000ms, subsequent executions take 1-10ms.
 
-**Solution:** Use instruction caching patterns to amortize compilation cost.
+**Solution:** Reuse compiled `Evaluable`s; signature-based instruction caching amortizes compilation across structurally-identical operations automatically.
 
 ### OperationList Not Compiling
 

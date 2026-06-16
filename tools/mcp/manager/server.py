@@ -1097,6 +1097,112 @@ def _require_workstream_in_scope(workstream_id: str) -> None:
     _require_workspace(ws_id)
 
 
+# Short-lived cache of the per-workstream ``dispatchCapable`` flag. The
+# controller's ``toSummaryJson`` (Java side, Workstream.java) emits the
+# field as ``"dispatchCapable": true`` only when set, so the cached map
+# holds a small set of dispatch-capable workstream IDs rather than a
+# full {id: bool} map. The TTL matches ``WORKSPACE_CACHE_TTL`` so the
+# two caches refresh on the same cadence — both come from the same
+# /api/workstreams list.
+_dispatch_capable_cache: dict = {"ids": None, "fetched": 0.0}
+_dispatch_capable_lock = threading.Lock()
+
+
+def _refresh_dispatch_capable_ids() -> set:
+    """Fetch the workstream list from the controller and return the set
+    of workstream IDs that have ``dispatchCapable: true``.
+
+    Returns an empty set when the controller is unreachable or returns
+    a non-list payload. The empty set is the fail-closed default: an
+    ar-manager that cannot reach its controller refuses to grant
+    dispatch, which is the safer direction (false negatives do not
+    silently expose the dispatch tools; false positives are exactly
+    what the controller-side check is designed to prevent).
+    """
+    try:
+        result = _controller_get("/api/workstreams")
+    except Exception:
+        return set()
+    if isinstance(result, list):
+        entries = result
+    elif isinstance(result, dict):
+        entries = result.get("workstreams", [])
+    else:
+        return set()
+    if not isinstance(entries, list):
+        return set()
+    ids = set()
+    for ws in entries:
+        if not isinstance(ws, dict):
+            continue
+        if ws.get("dispatchCapable") is True:
+            wid = ws.get("workstreamId")
+            if wid:
+                ids.add(wid)
+    return ids
+
+
+def _get_dispatch_capable_ids() -> set:
+    """Return the cached set of dispatch-capable workstream IDs,
+    refreshing if the cache is older than ``WORKSPACE_CACHE_TTL``.
+    """
+    now = time.monotonic()
+    with _dispatch_capable_lock:
+        ids = _dispatch_capable_cache.get("ids")
+        fetched = _dispatch_capable_cache.get("fetched", 0.0)
+        fresh = (ids is not None
+                 and (now - fetched) <= WORKSPACE_CACHE_TTL)
+    if fresh:
+        return ids
+    new_ids = _refresh_dispatch_capable_ids()
+    with _dispatch_capable_lock:
+        _dispatch_capable_cache["ids"] = new_ids
+        _dispatch_capable_cache["fetched"] = time.monotonic()
+    return new_ids
+
+
+def _require_dispatch_capable() -> None:
+    """Raise :class:`PermissionError` when the calling workstream is
+    not dispatch-capable. The check is the controller-side backstop
+    for the opencode harness's per-SERVER filtering — the harness
+    CSV cannot precisely gate individual MCP tools for opencode
+    sessions, so the controller must enforce.
+
+    Behavior:
+      - Unscoped tokens (``"unscoped"`` / superadmin): always permitted.
+        The operator-level caller is trusted to register and update
+        workstreams directly.
+      - Job-scoped HMAC tokens (a calling workstream is identified):
+        denied when the calling workstream's ``dispatchCapable`` flag
+        is not ``true``. A no-op when the flag is ``true``.
+      - Callers that are neither unscoped nor job-scoped (e.g. an
+        admin token without a workstream binding): always permitted.
+        The check is specifically for the agent path; admin flows
+        have their own auth.
+
+    The fail-closed default (a fresh cache returns an empty set, so a
+    workstream that just opted in is not yet recognized) trades a
+    short window after enabling dispatch for the guarantee that a
+    broken controller cannot silently grant it. Operators setting up
+    a new orchestrator wait at most ``WORKSPACE_CACHE_TTL`` seconds
+    before the first dispatch call succeeds.
+    """
+    caller_ws_id = _get_token_workstream_id()
+    if not caller_ws_id:
+        # No job-scoped identity; the check does not apply.
+        return
+    if caller_ws_id in _get_dispatch_capable_ids():
+        return
+    raise PermissionError(
+        "workstream_register / workstream_update_config require the"
+        " calling workstream to be dispatch-capable. The current"
+        " workstream ('" + caller_ws_id + "') has dispatchCapable=false"
+        " in the controller config. Operators enable this flag per"
+        " workstream with workstream_update_config(...,"
+        " dispatch_capable=True)."
+    )
+
+
 def _filter_workstreams_by_scope(entries: list) -> list:
     """Return only those workstream-dict entries whose workspaceId is
     permitted by the current request's workspace scope. Unscoped callers
@@ -1522,6 +1628,36 @@ def _parse_dependent_repos(dependent_repos: str) -> list:
         except ValueError:
             pass
     return [r.strip() for r in stripped.split(",") if r.strip()]
+
+
+def _parse_completion_listeners(completion_listeners) -> list:
+    """Parse the completion_listeners parameter into a list of workstream IDs.
+
+    Accepts the same shapes as dependent_repos: a comma-separated string
+    (e.g. ``"ws-orchestrator"``) or a JSON array string
+    (e.g. ``'["ws-orchestrator"]'``). Empty entries are dropped so a
+    stray ``",  ,"`` does not become a phantom listener. Returns an
+    empty list when the input is empty or ``None``; an empty list is
+    the inert default and produces no wake-up fan-out.
+    """
+    if completion_listeners is None:
+        return []
+    if isinstance(completion_listeners, list):
+        return [str(s).strip() for s in completion_listeners if str(s).strip()]
+    if not isinstance(completion_listeners, str):
+        completion_listeners = str(completion_listeners)
+    stripped = completion_listeners.strip()
+    if not stripped:
+        return []
+    if stripped.startswith("["):
+        import json as _json
+        try:
+            parsed = _json.loads(stripped)
+            if isinstance(parsed, list):
+                return [str(s).strip() for s in parsed if str(s).strip()]
+        except ValueError:
+            pass
+    return [s.strip() for s in stripped.split(",") if s.strip()]
 
 
 def _parse_activities_param(include_activities) -> str:
@@ -2093,6 +2229,7 @@ def workstream_register(
     channel_name: str = "",
     required_labels: str = "",
     dependent_repos: str = "",
+    completion_listeners: str = "",
     workspace_id: str = "",
     plan_content: str = "",
     plan_instructions: str = "",
@@ -2100,6 +2237,7 @@ def workstream_register(
     plan_commit_message: str = "",
     default_phase_config: str = "",
     phase_configs: str = "",
+    dispatch_capable: bool = False,
     slack_workspace_id: str = "",
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
@@ -2129,10 +2267,19 @@ def workstream_register(
             (e.g., "platform:macos,gpu:true"). Job-level labels always override
             these workstream-level defaults.
         dependent_repos: Comma-separated list of git clone URLs for additional
-            repositories that agents should clone alongside the primary repo
+            repositories that agents will clone alongside the primary repo
             (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
             Also accepts a JSON array string. Dependent repos follow the same
             branch lifecycle as the primary repo (create/checkout/pull/commit/push).
+        completion_listeners: Comma-separated list of workstream IDs that
+            should be woken up automatically when a job on this workstream
+            reaches a terminal status. Also accepts a JSON array string.
+            The listener graph is checked for cycles at config time; a
+            registration that would create a cycle (including a
+            self-listing) is rejected with a 400. The feature ships
+            inert: a workstream with no listeners configured spawns no
+            wake-up jobs. Wake-up generation is gated by the
+            controller's automated-jobs gate, which is the kill switch.
         workspace_id: Workspace ID (operator-chosen identifier) to
             register this workstream under. When omitted, unscoped
             (superadmin) tokens allow the controller to derive the
@@ -2171,12 +2318,24 @@ def workstream_register(
 
         phase_configs: Workstream-level per-phase overrides as a JSON object
             whose keys are phase wire names and whose values are
-            ``{runner, model, effort, provider}`` objects (all keys
-            optional). Each named phase overrides ``default_phase_config``
-            field-by-field. Example::
+            ``{runner, model, effort, provider}`` objects (all keys optional).
+            Each named phase overrides ``default_phase_config`` field-by-field.
+            Example::
 
                 '{"review": {"runner": "claude"},
                   "deduplication": {"runner": "opencode"}}'
+
+        dispatch_capable: When ``True``, agents running on this workstream
+            are granted access to the dispatch / orchestration MCP tools
+            (currently ``workstream_register`` and
+            ``workstream_update_config``). The flag is required to set up
+            orchestrator workstreams that register or update child
+            workstreams. Defaults to ``False`` — most workstreams do not
+            need this power. Granting dispatch is bounded by the
+            ``acceptAutomatedJobs`` kill switch and the completion-listener
+            ceilings, so the flag is the gate but not the only safety
+            mechanism. Operators should enable it only on workstreams
+            that genuinely orchestrate.
 
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
@@ -2199,6 +2358,14 @@ def workstream_register(
         - ``error`` and ``fallback_instructions``: only when ``mode=="failed"``.
     """
     _require_scope("write")
+    # Controller-side enforcement: a job-scoped agent on a workstream
+    # that is not dispatch-capable cannot register workstreams. The
+    # harness-CSV half of the contract is in
+    # ``McpConfigBuilder.buildAllowedTools``; this is the backstop
+    # for the opencode harness's per-SERVER filtering (see
+    # ``OpencodeConfigBuilder.translateAllowlist``). Admin / operator
+    # callers (no caller workstream bound) are always permitted.
+    _require_dispatch_capable()
     # slack_workspace_id is the legacy name; the new canonical name is
     # workspace_id. Accept either, preferring the new name.
     if not workspace_id and slack_workspace_id:
@@ -2276,10 +2443,20 @@ def workstream_register(
         repos_list = _parse_dependent_repos(dependent_repos)
         if repos_list:
             payload["dependentRepos"] = repos_list
+    if completion_listeners:
+        listeners_list = _parse_completion_listeners(completion_listeners)
+        if listeners_list:
+            payload["completionListeners"] = listeners_list
     if parsed_default_phase_config:
         payload["defaultPhaseConfig"] = parsed_default_phase_config
     if parsed_phase_configs:
         payload["phaseConfigs"] = parsed_phase_configs
+    # dispatchCapable is forwarded unconditionally because it is a
+    # boolean; omitting the field on the controller side would default
+    # to false, but only if the field is missing. Forwarding the
+    # boolean directly is simpler and the controller's extractBoolean
+    # helper handles a missing field identically.
+    payload["dispatchCapable"] = bool(dispatch_capable)
 
     result = _controller_post("/api/workstreams", payload)
 
@@ -2453,8 +2630,10 @@ def workstream_update_config(
     channel_name: str = "",
     required_labels: str = "",
     dependent_repos: str = "",
+    completion_listeners: str = "",
     default_phase_config: str = "",
     phase_configs: str = "",
+    dispatch_capable: Optional[bool] = None,
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
     # captured here for a clear rejection error.
@@ -2502,6 +2681,14 @@ def workstream_update_config(
             to ``null`` (e.g. ``'{"review": null}'``) to clear just that
             phase's override. Empty string leaves the per-phase map unchanged.
             Each named phase overrides ``default_phase_config`` field-by-field.
+        dispatch_capable: When ``True``, agents running on this workstream
+            are granted access to the dispatch / orchestration MCP tools
+            (``workstream_register`` and ``workstream_update_config``).
+            The flag is forwarded to the controller only when explicitly
+            passed — passing ``False`` is an explicit revoke; omitting
+            the parameter entirely leaves the existing controller value
+            unchanged (presence-signal semantics, same pattern as
+            ``completion_listeners``). Defaults to ``None`` (no change).
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
             ``default_phase_config`` or ``phase_configs`` to set models.
@@ -2516,6 +2703,13 @@ def workstream_update_config(
         Dictionary confirming the update.
     """
     _require_scope("write")
+    # Controller-side enforcement: a job-scoped agent on a workstream
+    # that is not dispatch-capable cannot update workstreams. The
+    # harness-CSV half of the contract is in
+    # ``McpConfigBuilder.buildAllowedTools``; this is the backstop
+    # for the opencode harness's per-SERVER filtering. Admin / operator
+    # callers (no caller workstream bound) are always permitted.
+    _require_dispatch_capable()
     err = _reject_removed_config_params(
         model=model, effort=effort, default_runner=default_runner, runners=runners)
     if err:
@@ -2555,11 +2749,29 @@ def workstream_update_config(
         repos_list = _parse_dependent_repos(dependent_repos)
         if repos_list:
             payload["dependentRepos"] = repos_list
+    # completion_listeners is treated as a presence signal: an empty
+    # value means "do not change," while a populated value (even one
+    # that parses to an empty list) means "clear the listener list."
+    # We forward an empty list explicitly when the field is present
+    # so the controller can distinguish "no change" (omitted) from
+    # "set to empty" (passed).
+    if completion_listeners:
+        listeners_list = _parse_completion_listeners(completion_listeners)
+        payload["completionListeners"] = listeners_list
     # Use `is not None` so that an empty-dict clear signal ({}) is forwarded.
     if parsed_default_phase_config is not None:
         payload["defaultPhaseConfig"] = parsed_default_phase_config
     if parsed_phase_configs is not None:
         payload["phaseConfigs"] = parsed_phase_configs
+    # dispatch_capable uses an Optional default so a caller that does
+    # not pass the field ("no change") is distinguishable from a caller
+    # that explicitly passes ``False`` ("revoke"). The controller's
+    # ``JsonFieldExtractor.hasField`` check on the body side mirrors
+    # this presence signal: when the field is omitted the workstream's
+    # existing value is preserved; when the field is present the body
+    # value (true or false) wins.
+    if dispatch_capable is not None:
+        payload["dispatchCapable"] = bool(dispatch_capable)
 
     if not payload:
         return {

@@ -226,7 +226,7 @@ public class KernelMemoryGuardTest extends TestSuiteBase {
 		guard.release(data);
 		// Known limitation: the entry leaks because resolveRAM returns null
 		Assert.assertFalse("Entry leaks when resolveRAM returns null during release "
-				+ "(known limitation — see NATIVE_MEMORY_GC_LIFECYCLE_REVIEW.md Issue 1)",
+				+ "(known limitation: the guard cannot reclaim an entry whose backing RAM was already cleared)",
 				guard.canDeallocate(700L));
 	}
 

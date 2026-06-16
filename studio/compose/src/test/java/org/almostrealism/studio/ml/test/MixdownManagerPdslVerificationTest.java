@@ -49,6 +49,7 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.IntToDoubleFunction;
@@ -66,9 +67,7 @@ import java.util.function.IntToDoubleFunction;
  * written for both paths to {@code results/pdsl-audio-dsp/} so the comparison
  * is auditable rather than just numeric.</p>
  *
- * <p>Acoustic differences between the two paths are documented in
- * {@code docs/plans/PDSL_AUDIO_DSP.md} Section 8 and Section 12. The most
- * load-bearing structural mismatches are:
+ * <p>The most load-bearing structural mismatches between the two paths are:
  * <ul>
  *   <li>Java's per-channel HP cutoff comes from a per-channel automation gene;
  *       PDSL applies one shared cutoff producer to every channel — the adapter
@@ -86,16 +85,14 @@ import java.util.function.IntToDoubleFunction;
  * divergence is the primary deliverable.</p>
  */
 public class MixdownManagerPdslVerificationTest extends TestSuiteBase
-		implements CellFeatures, AudioTestFeatures, FirFilterTestFeatures, LayerFeatures {
+		implements CellFeatures, AudioTestFeatures, FirFilterTestFeatures, LayerFeatures,
+					MixdownPdslTestFeatures {
 
 	/** Number of audio channels used for both paths. */
 	private static final int CHANNELS = 2;
 
 	/** Number of delay layers in the EFX bus. Matches CHANNELS for square routing. */
 	private static final int DELAY_LAYERS = CHANNELS;
-
-	/** Audio sample rate. Matches the production line. */
-	private static final int SAMPLE_RATE = OutputLine.sampleRate;
 
 	/** Render duration in seconds. Short enough to keep CI runtime modest. */
 	private static final double DURATION_SECONDS = 2.0;
@@ -106,17 +103,11 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	/** Samples per PDSL forward pass — must divide TOTAL_FRAMES evenly. */
 	private static final int PDSL_SIGNAL_SIZE = SAMPLE_RATE / 16;
 
-	/** FIR filter order for the PDSL wet bus. */
-	private static final int PDSL_FILTER_ORDER = 40;
-
-	/** Wet-bus level constant. */
-	private static final double WET_LEVEL = 0.35;
-
-	/** Static delay length used by the PDSL path's delay primitive. */
-	private static final int PDSL_DELAY_SAMPLES = 256;
-
 	/** Genome parameter count. Oversized so any chromosome layout fits. */
 	private static final int GENOME_PARAMS = 256;
+
+	/** Test-only PDSL layers (slot liveness probes and distinct-row routing regressions). */
+	private static final String VERIFICATION_PDSL = "/pdsl/audio/test_mixdown_verification.pdsl";
 
 	/** Source sine frequency for the deterministic test signal. */
 	private static final double SOURCE_FREQ_BASE = 220.0;
@@ -225,6 +216,58 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	}
 
 	/**
+	 * Measures the broadband RMS gain of the FIR {@code highPass}/{@code lowPass} coefficients
+	 * used by the PDSL {@code highpass}/{@code lowpass} primitives. The PDSL mixdown main arm
+	 * applies a {@code highpass} per channel; if that FIR has a passband gain &gt; 1 it would
+	 * inflate the dry mix relative to the Java resonant-IIR path. Logs gain at several cutoffs
+	 * so a level divergence can be attributed to (or cleared of) the filter coefficients.
+	 */
+	@Test(timeout = 120_000)
+	public void firFilterGainProbe() {
+		int n = 16384;
+		double[] s = new double[n];
+		double inEnergy = 0.0;
+		for (int i = 0; i < n; i++) {
+			double t = i;
+			double v = Math.sin(2 * Math.PI * 100 * t / 44100)
+					+ Math.sin(2 * Math.PI * 1000 * t / 44100)
+					+ Math.sin(2 * Math.PI * 6000 * t / 44100);
+			s[i] = v;
+			inEnergy += v * v;
+		}
+		double inRms = Math.sqrt(inEnergy / n);
+		PackedCollection signal = new PackedCollection(n);
+		signal.setMem(s);
+
+		for (double cutoff : new double[] {50.0, 200.0, 1000.0, 5000.0}) {
+			PackedCollection out = highPass(cp(signal), c(cutoff), 44100, 40).get().evaluate();
+			log("highpass cutoff=" + cutoff + " order=40 inRms=" + inRms
+					+ " outRms=" + rmsOf(out) + " gain=" + (rmsOf(out) / inRms));
+		}
+		for (double cutoff : new double[] {20000.0, 12000.0, 5000.0}) {
+			PackedCollection out = lowPass(cp(signal), c(cutoff), 44100, 40).get().evaluate();
+			log("lowpass cutoff=" + cutoff + " order=40 inRms=" + inRms
+					+ " outRms=" + rmsOf(out) + " gain=" + (rmsOf(out) / inRms));
+		}
+	}
+
+	/**
+	 * Computes the RMS of a rendered collection.
+	 *
+	 * @param data the collection to measure
+	 * @return the root-mean-square of all elements
+	 */
+	private double rmsOf(PackedCollection data) {
+		double energy = 0.0;
+		int len = data.getMemLength();
+		for (int i = 0; i < len; i++) {
+			double x = data.toDouble(i);
+			energy += x * x;
+		}
+		return Math.sqrt(energy / Math.max(1, len));
+	}
+
+	/**
 	 * Renders identical fixtures through the Java MixdownManager.cells() path
 	 * and the PDSL mixdown_master layer, writes both WAVs, and asserts that
 	 * neither path collapses to silence. The comparison is documented as
@@ -282,12 +325,280 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		// sub-octave (≤ ~6×) energy gap that cannot be closed without changing
 		// either path. This bound is tight enough to catch a regression that
 		// re-removes the master-bus stage (which produced ratios ~24×) while
-		// honest about the residual structural drift; see PDSL_AUDIO_DSP.md
-		// Section 8 ("What Is Complete" → real-audio verification).
+		// honest about the residual structural drift between the IIR and FIR paths.
 		Assert.assertTrue(
 				"PDSL/Java energy ratio out of range — expected within 1/6× to 6× "
 						+ "of Java energy after master shaping (ratio=" + ratio + ")",
 				ratio > 1.0 / 6.0 && ratio < 6.0);
+	}
+
+	/**
+	 * Smoke test for the {@code mixdown_master_wet} layer: it slices the MAIN rows
+	 * {@code [0, channels)} into the dry arm and the WET rows {@code [channels, 2*channels)}
+	 * into the efx arm, then runs the per-channel efx feedforward chain and the recursive
+	 * feedback grid. This builds the full wet layer (with the efx feedforward neutralised and a
+	 * stable no-regeneration feedback) and asserts it compiles, runs, and produces finite,
+	 * non-silent output. (Exact equality against the single-input {@code mixdown_master} no
+	 * longer holds: the wet layer's efx arm now applies the feedback grid rather than the
+	 * feedforward {@code route} of the single-input layer.) The full efx behaviour is judged
+	 * by ear via the real-scene A/B.
+	 *
+	 * @throws IOException if a WAV cannot be written
+	 */
+	@Test(timeout = 300_000)
+	@TestDepth(2)
+	public void mixdownMasterWetRoutesMainAndWetHalves() throws IOException {
+		File outputDir = new File("results/pdsl-audio-dsp");
+		outputDir.mkdirs();
+
+		MixdownManager mixdown = buildFixtureMixdown();
+		runFixtureSetup(mixdown);
+
+		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
+				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
+				WET_LEVEL, PDSL_DELAY_SAMPLES);
+		IntToDoubleFunction source =
+				t -> Math.sin(2.0 * Math.PI * SOURCE_FREQ_BASE * t / SAMPLE_RATE);
+
+		double[] single = renderPdslMaster(mixdown, "mixdown_master", config, CHANNELS,
+				source, TOTAL_FRAMES, false,
+				new File(outputDir, "mixdown_master_single.wav"));
+
+		Map<String, Object> neutralEfx = neutralEfxArgs();
+
+		double[] wet = renderPdslMaster(mixdown, "mixdown_master_wet", config, 2 * CHANNELS,
+				neutralEfx, source, TOTAL_FRAMES, false,
+				new File(outputDir, "mixdown_master_wet_equal.wav"));
+
+		Assert.assertEquals("Both layers must produce the same sample count",
+				single.length, wet.length);
+
+		double energy = 0.0;
+		for (int i = 0; i < wet.length; i++) {
+			Assert.assertTrue("mixdown_master_wet produced a non-finite sample at " + i,
+					Double.isFinite(wet[i]));
+			energy += wet[i] * wet[i];
+		}
+		log(String.format("mixdown_master_wet smoke: samples=%d energy=%.6f", wet.length, energy));
+
+		Assert.assertTrue("mixdown_master_wet output must be non-silent (energy=" + energy + ")",
+				energy > 1e-9);
+	}
+
+	/**
+	 * Builds the neutral efx/reverb argument entries for {@code mixdown_master_wet}: wet level
+	 * 0 (the per-channel feedforward reduces to dry), transmission 0 (the feedback grid passes
+	 * the delayed signal once without recirculating), identity passthrough, and a zero reverb
+	 * send, plus validly-shaped state buffers for every ring.
+	 *
+	 * @return argument entries to merge over the adapter-built map
+	 */
+	private Map<String, Object> neutralEfxArgs() {
+		return neutralEfxArgs(CHANNELS, PDSL_SIGNAL_SIZE);
+	}
+
+	/**
+	 * Verifies that a collection-valued layer argument is read LIVE on every forward pass
+	 * of the compiled model rather than being baked into the graph at build time. The
+	 * real-time runner depends on this: all time-varying automation (filter cutoffs,
+	 * volume, sends) is delivered through collection slots mutated between forwards.
+	 */
+	@Test(timeout = 600_000)
+	@TestDepth(2)
+	public void collectionArgIsReadLivePerForward() {
+		int sig = 8;
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
+		PdslNode.Program program = loader.parseResource(VERIFICATION_PDSL);
+
+		PackedCollection gain = new PackedCollection(1).fill(2.0);
+		Map<String, Object> args = new HashMap<>();
+		args.put("signal_size", sig);
+		args.put("gain", gain);
+
+		TraversalPolicy inputShape = new TraversalPolicy(1, sig);
+		Block block = loader.buildLayer(program, "live_test", inputShape, args);
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		PackedCollection input = new PackedCollection(inputShape);
+		double[] ones = new double[sig];
+		Arrays.fill(ones, 1.0);
+		input.setMem(ones);
+
+		double first = compiled.forward(input).toArray(0, sig)[0];
+		gain.setMem(0, 3.0);
+		double second = compiled.forward(input).toArray(0, sig)[0];
+		log(String.format("live-arg probe: first=%.4f (expect 2) second=%.4f (expect 3)",
+				first, second));
+		Assert.assertEquals("initial gain must apply", 2.0, first, 1e-6);
+		Assert.assertEquals(
+				"the compiled model must re-read the gain slot on every forward pass; "
+						+ "2.0 here means the slot value was baked into the graph at build",
+				3.0, second, 1e-6);
+
+		// Same liveness property for fir() coefficients — the delivery mechanism for the
+		// per-buffer swept filter responses (coefficient PRODUCERS are input-independent
+		// subgraphs and get frozen at compile, so the runner refreshes coefficient VALUES
+		// into slots instead; that only works if fir() re-reads its slot per forward).
+		int taps = 3;
+		PackedCollection coeffs = new PackedCollection(taps);
+		coeffs.setMem(new double[]{1.0, 0.0, 0.0});
+		Map<String, Object> firArgs = new HashMap<>();
+		firArgs.put("signal_size", sig);
+		firArgs.put("fir_taps", taps);
+		firArgs.put("coeffs", coeffs);
+		Block firBlock = loader.buildLayer(program, "fir_live", inputShape, firArgs);
+		Model firModel = new Model(inputShape);
+		firModel.add(firBlock);
+		CompiledModel firCompiled = firModel.compile();
+
+		double firFirst = firCompiled.forward(input).toArray(0, sig)[sig - 1];
+		coeffs.setMem(new double[]{0.5, 0.0, 0.0});
+		double firSecond = firCompiled.forward(input).toArray(0, sig)[sig - 1];
+		log(String.format("live-fir probe: first=%.4f (expect 1) second=%.4f (expect 0.5)",
+				firFirst, firSecond));
+		Assert.assertEquals("initial coefficients must apply", 1.0, firFirst, 1e-6);
+		Assert.assertEquals(
+				"fir() must re-read its coefficient slot on every forward pass",
+				0.5, firSecond, 1e-6);
+	}
+
+	/**
+	 * Minimal bisection of the per-channel row-0 collapse: a bare {@code for each channel}
+	 * over {@code scale(volume[channel])} (no reshape/slice prefix), fed distinct rows. If
+	 * this sums correctly while {@link #mixdownMasterWetSumsDistinctChannels} collapses to
+	 * row 0, the collapse comes from the arm's {@code reshape -> slice -> reshape} prefix;
+	 * if this also collapses, the {@code for each channel} construct itself is at fault.
+	 */
+	@Test(timeout = 600_000)
+	@TestDepth(2)
+	public void forEachChannelSumsDistinctRows() {
+		int channels = 2;
+		int sig = 64;
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
+		PdslNode.Program program = loader.parseResource(VERIFICATION_PDSL);
+
+		PackedCollection volume = new PackedCollection(new TraversalPolicy(channels));
+		volume.setMem(new double[]{2.0, 3.0});
+		Map<String, Object> args = new HashMap<>();
+		args.put("channels", channels);
+		args.put("signal_size", sig);
+		args.put("volume", volume);
+
+		TraversalPolicy inputShape = new TraversalPolicy(channels, sig);
+		PackedCollection input = new PackedCollection(inputShape);
+		double[] inData = new double[channels * sig];
+		Arrays.fill(inData, 0, sig, 0.01);
+		Arrays.fill(inData, sig, 2 * sig, 0.02);
+		input.setMem(inData);
+
+		// Stage A: rows preserved (no sum) — shows exactly which input row each chain saw.
+		Block rowsBlock = loader.buildLayer(program, "fe_rows", inputShape, args);
+		Model rowsModel = new Model(inputShape);
+		rowsModel.add(rowsBlock);
+		double[] rows = rowsModel.compile().forward(input).toArray(0, channels * sig);
+		double row0 = rows[0];
+		double row1 = rows[sig];
+		log(String.format("forEach rows: row0=%.6f (expect 0.020000) row1=%.6f (expect 0.060000; "
+				+ "0.030000 means chain 1 received row 0)", row0, row1));
+
+		// Stage B: summed — the production usage.
+		Block sumBlock = loader.buildLayer(program, "fe_test", inputShape, args);
+		Model sumModel = new Model(inputShape);
+		sumModel.add(sumBlock);
+		double[] out = sumModel.compile().forward(input).toArray(0, sig);
+		double mean = 0.0;
+		for (double v : out) mean += v;
+		mean /= sig;
+		log(String.format("forEach sum: expected=0.080000 measured=%.6f", mean));
+
+		Assert.assertEquals("chain 0 must process its own row times its own gain",
+				0.02, row0, 1e-6);
+		Assert.assertEquals("chain 1 must process ITS OWN row (0.02 x 3); 0.03 means it "
+				+ "received channel 0's row", 0.06, row1, 1e-6);
+		Assert.assertEquals("`for each channel` + sum_channels must sum the distinct rows",
+				0.08, mean, 1e-6);
+	}
+
+	/**
+	 * Routing regression with DISTINCT per-channel content: feeds each MAIN row a different DC
+	 * value (with the WET rows zero and every gene-driven stage neutralised) and asserts the
+	 * master output equals the SUM of the distinct rows. Every earlier routing check fed
+	 * identical content to all channels, which cannot detect a dispatch that feeds channel 0's
+	 * row to every per-channel chain (the steady output is then {@code channels * row0} —
+	 * asserted against explicitly below).
+	 *
+	 * @throws IOException if the layer cannot be built
+	 */
+	@Test(timeout = 600_000)
+	@TestDepth(2)
+	public void mixdownMasterWetSumsDistinctChannels() throws IOException {
+		MixdownManager mixdown = buildFixtureMixdown();
+		runFixtureSetup(mixdown);
+
+		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
+				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
+				WET_LEVEL, PDSL_DELAY_SAMPLES, 1.0);
+
+		Map<String, Object> args = MixdownManagerPdslAdapter.buildArgsMap(mixdown, config);
+		args.putAll(neutralEfxArgs());
+
+		// Neutralise the gene-driven main-arm stages so the expected output is exact
+		// arithmetic: unity volume, identity (delta) FIR coefficients for the per-channel
+		// high-pass and the master low-pass, unity master gain.
+		args.put("volume", onesCollection(CHANNELS));
+		int taps = PDSL_FILTER_ORDER + 1;
+		args.put("hp_coeffs", identityFirBank(CHANNELS, taps));
+		args.put("lp_coeffs", identityFir(taps));
+		args.put("master_gain", 1.0);
+
+		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
+		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_manager.pdsl");
+		TraversalPolicy inputShape = new TraversalPolicy(2 * CHANNELS, PDSL_SIGNAL_SIZE);
+		Block block = loader.buildLayer(program, "mixdown_master_wet", inputShape, args);
+		Model model = new Model(inputShape);
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		// MAIN rows carry DISTINCT DC values; WET rows are silent.
+		double[] channelValues = new double[CHANNELS];
+		double expected = 0.0;
+		for (int ch = 0; ch < CHANNELS; ch++) {
+			// Row 0 deliberately SILENT: a dispatch that feeds every chain row 0 then
+			// produces total silence, which is unmistakable in the failure message.
+			channelValues[ch] = 0.01 * ch;
+			expected += channelValues[ch];
+		}
+		double conflated = CHANNELS * channelValues[0];
+
+		PackedCollection input = new PackedCollection(inputShape);
+		double[] inData = new double[2 * CHANNELS * PDSL_SIGNAL_SIZE];
+		for (int ch = 0; ch < CHANNELS; ch++) {
+			Arrays.fill(inData, ch * PDSL_SIGNAL_SIZE, (ch + 1) * PDSL_SIGNAL_SIZE,
+					channelValues[ch]);
+		}
+		input.setMem(inData);
+
+		double[] out = compiled.forward(input).toArray(0, PDSL_SIGNAL_SIZE);
+		// Skip the FIR settling region at the start of the buffer.
+		int settle = 4 * (PDSL_FILTER_ORDER + 1);
+		double mean = 0.0;
+		for (int i = settle; i < PDSL_SIGNAL_SIZE; i++) {
+			mean += out[i];
+		}
+		mean /= (PDSL_SIGNAL_SIZE - settle);
+
+		log(String.format("distinct-channel sum: expected=%.6f conflated=%.6f measured=%.6f",
+				expected, conflated, mean));
+		Assert.assertTrue(
+				"master output (" + mean + ") must NOT equal channels x row0 ("
+						+ conflated + ") — that indicates every per-channel chain "
+						+ "received channel 0's row",
+				Math.abs(mean - conflated) > Math.abs(expected - conflated) / 2.0);
+		Assert.assertEquals(
+				"master output must equal the sum of the distinct per-channel rows",
+				expected, mean, 0.1 * expected);
 	}
 
 	/**
@@ -379,7 +690,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		MixdownManagerPdslAdapter.Config config = new MixdownManagerPdslAdapter.Config(
 				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
 				WET_LEVEL, PDSL_DELAY_SAMPLES);
-		return renderPdslMaster(mixdown, "mixdown_master", config,
+		return renderPdslMaster(mixdown, "mixdown_master", config, CHANNELS,
 				t -> Math.sin(2.0 * Math.PI * SOURCE_FREQ_BASE * t / SAMPLE_RATE),
 				TOTAL_FRAMES, false, outputFile);
 	}
@@ -396,15 +707,41 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 	 * @return mono audio samples
 	 */
 	private double[] renderPdslMaster(MixdownManager mixdown, String layerName,
-			MixdownManagerPdslAdapter.Config config, IntToDoubleFunction sampleAt,
+			MixdownManagerPdslAdapter.Config config, int inputChannels, IntToDoubleFunction sampleAt,
+			int totalFrames, boolean advanceClock, File outputFile) throws IOException {
+		return renderPdslMaster(mixdown, layerName, config, inputChannels,
+				Collections.emptyMap(), sampleAt, totalFrames, advanceClock, outputFile);
+	}
+
+	/**
+	 * Compiles {@code layerName} from {@code mixdown}'s genome (with {@code extraArgs} merged
+	 * over the adapter-built argument map) and renders {@code totalFrames} frames through it,
+	 * drawing each input sample (shared across all {@code inputChannels} rows) from
+	 * {@code sampleAt}. Writes the mono output to {@code outputFile} and returns the samples.
+	 *
+	 * @param mixdown       constructed mixdown manager whose chromosomes drive the args
+	 * @param layerName     the PDSL layer to build
+	 * @param config        structural configuration
+	 * @param inputChannels number of input rows to fill (e.g. {@code 2*channels} for the wet layer)
+	 * @param extraArgs     extra argument-map entries merged over the adapter args (may be empty)
+	 * @param sampleAt      supplies the input sample value at an absolute frame index
+	 * @param totalFrames   number of frames to render
+	 * @param advanceClock  whether to advance the shared clock one buffer per pass
+	 * @param outputFile    destination WAV file
+	 * @return mono audio samples
+	 */
+	private double[] renderPdslMaster(MixdownManager mixdown, String layerName,
+			MixdownManagerPdslAdapter.Config config, int inputChannels,
+			Map<String, Object> extraArgs, IntToDoubleFunction sampleAt,
 			int totalFrames, boolean advanceClock, File outputFile) throws IOException {
 		int sig = config.signalSize;
 		Map<String, Object> args = MixdownManagerPdslAdapter.buildArgsMap(mixdown, config);
+		args.putAll(extraArgs);
 
 		PdslLoader loader = new PdslLoader(AudioDspPrimitives::registerWith);
 		PdslNode.Program program = loader.parseResource("/pdsl/audio/mixdown_manager.pdsl");
 
-		TraversalPolicy inputShape = new TraversalPolicy(CHANNELS, sig);
+		TraversalPolicy inputShape = new TraversalPolicy(inputChannels, sig);
 		Block block = loader.buildLayer(program, layerName, inputShape, args);
 
 		Model model = new Model(inputShape);
@@ -424,7 +761,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 		float[] floatSamples = new float[samples.length];
 
 		PackedCollection input = new PackedCollection(inputShape);
-		double[] inData = new double[CHANNELS * sig];
+		double[] inData = new double[inputChannels * sig];
 
 		// When advanceClock is set, step the shared clock forward one buffer's worth of frames
 		// after each forward pass, so the genome/automation producers (HP/LP cutoffs, volume)
@@ -436,7 +773,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 			int sampleOffset = pass * sig;
 			for (int t = 0; t < sig; t++) {
 				double v = sampleAt.applyAsDouble(sampleOffset + t);
-				for (int c = 0; c < CHANNELS; c++) {
+				for (int c = 0; c < inputChannels; c++) {
 					inData[c * sig + t] = v;
 				}
 			}
@@ -483,7 +820,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 				CHANNELS, DEMO_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
 				DEMO_WET_LEVEL, DEMO_DELAY_SAMPLES);
 		File demoWav = new File(outputDir, "pdsl_mixdown_looped_sample.wav");
-		double[] out = renderPdslMaster(mixdown, "mixdown_master", config, looped,
+		double[] out = renderPdslMaster(mixdown, "mixdown_master", config, CHANNELS, looped,
 				(int) (DEMO_SECONDS * SAMPLE_RATE), true, demoWav);
 		double e = energy(out, 0);
 
@@ -769,7 +1106,7 @@ public class MixdownManagerPdslVerificationTest extends TestSuiteBase
 				CHANNELS, PDSL_SIGNAL_SIZE, SAMPLE_RATE, PDSL_FILTER_ORDER,
 				WET_LEVEL, PDSL_DELAY_SAMPLES);
 		File probeWav = new File("results/pdsl-audio-dsp/pdsl_main_bus_probe.wav");
-		double[] out = renderPdslMaster(mixdown, "mixdown_main_bus", config, looped,
+		double[] out = renderPdslMaster(mixdown, "mixdown_main_bus", config, CHANNELS, looped,
 				TOTAL_FRAMES, false, probeWav);
 
 		int firstBad = -1;

@@ -156,6 +156,31 @@ public class Workstream {
     /** Additional repository URLs to clone alongside the primary repo. */
     private List<String> dependentRepos;
 
+    /**
+     * Workstream IDs that should be woken up automatically when a job on this
+     * workstream reaches a terminal status. Each entry is a workstream ID, not
+     * a branch or repo URL — workstream IDs are unambiguous and the same
+     * identifier the controller already uses for routing and notifier lookups.
+     *
+     * <p>The listener graph must be a DAG. A registration or update that would
+     * create a cycle (including a self-listing) is rejected at config time by
+     * {@link io.flowtree.workstream.ListenerCycleChecker} with a 400 response.
+     * Cycles are rejected by construction so the wake-up cascade cannot
+     * ping-pong between two workstreams.</p>
+     *
+     * <p>Wake-up jobs spawned on a listener are submitted with
+     * {@code automated: true}, so the
+     * {@link io.flowtree.api.FlowTreeApiEndpoint#setAcceptAutomatedJobs(boolean)
+     * acceptAutomatedJobs} gate doubles as the kill switch: setting it to
+     * {@code false} halts all wake-up generation globally while leaving
+     * manual job submissions working. The wake-up handler is required to
+     * reconcile the full state of every workstream it has delegated to on
+     * every wake, so a dropped or coalesced wake-up loses no work — the next
+     * successful wake (or the first manual job after the kill switch is
+     * re-enabled) re-reads the world and resumes.</p>
+     */
+    private List<String> completionListeners;
+
     /** Default Node labels applied to jobs when no job-level labels are specified. */
     private Map<String, String> requiredLabels;
 
@@ -177,6 +202,37 @@ public class Workstream {
      * unarchive MCP tools are the intended runtime entry points.
      */
     private boolean archived;
+
+    /**
+     * Whether agents running on this workstream are permitted to call the
+     * dispatch / orchestration MCP tools on the ar-manager server
+     * (currently {@code workstream_register} and
+     * {@code workstream_update_config}). The default is {@code false}:
+     * most workstreams do not need this power, and granting it is an
+     * explicit operator decision. An opt-in workstream can register and
+     * update child workstreams, which is the building block for
+     * orchestrator / worker delegation graphs.
+     *
+     * <p>When the flag is {@code true}, {@link io.flowtree.jobs.McpConfigBuilder}
+     * conditionally re-adds the dispatch tool names to the agent
+     * allowlist at CSV-assembly time. The base exclusion set
+     * ({@code EXCLUDED_AR_MANAGER_TOOLS}) is unchanged so the controller's
+     * invariant tests
+     * ({@code McpConfigBuilderTest.allowlistCoversEveryArManagerTool} and
+     * {@code allowlistAndExclusionsAreDisjoint}) continue to pass: a tool
+     * in the exclusion set that is also conditionally appended when a
+     * per-workstream flag is set is not a disjointness violation, because
+     * the two sets are consulted for different questions (the exclusion
+     * set defines the BASE default, the conditional append defines the
+     * opt-in override).</p>
+     *
+     * <p>Granting dispatch is bounded by the completion-listener safety
+     * model — the {@code acceptAutomatedJobs} kill switch still halts
+     * wake-up generation, and the per-window / per-chain ceilings still
+     * bound blast radius. The flag is the gate; the ceilings are the
+     * backstop.</p>
+     */
+    private boolean dispatchCapable;
 
     /** Default git user name for new workstreams. */
     public static final String DEFAULT_GIT_USER_NAME = "Flowtree Coding Agent";
@@ -504,6 +560,61 @@ public class Workstream {
     }
 
     /**
+     * Returns the workstream IDs of completion listeners that should be
+     * woken up automatically when a job on this workstream reaches a
+     * terminal status. The returned list is never {@code null} and never
+     * contains {@code null} entries; the empty list means "no listeners
+     * configured," which is the default and produces no fan-out at all.
+     *
+     * @return immutable view of the listener list; may be empty
+     */
+    public List<String> getCompletionListeners() {
+        if (completionListeners == null) {
+            return Collections.emptyList();
+        }
+        return Collections.unmodifiableList(completionListeners);
+    }
+
+    /**
+     * Sets the workstream IDs of completion listeners that should be woken
+     * up automatically when a job on this workstream reaches a terminal
+     * status. Each entry must be a workstream ID; the controller's cycle
+     * checker rejects configurations that would create a cycle in the
+     * listener graph (including self-listing) at config time, so it is
+     * safe to call this without re-checking the graph for the immediate
+     * setter call.
+     *
+     * <p>Pass {@code null} or an empty list to clear all listeners; the
+     * resulting workstream is the inert default and will spawn no
+     * wake-up jobs on completion.</p>
+     *
+     * <p>Entries that are {@code null} or blank are dropped so a stray
+     * entry from YAML or a tool caller cannot end up as a phantom
+     * listener ID; the invariant
+     * ({@link #getCompletionListeners()} never returns {@code null}
+     * entries) is enforced at the setter, not just on read.</p>
+     *
+     * <p>Kill switch: this is gated by
+     * {@link io.flowtree.api.FlowTreeApiEndpoint#setAcceptAutomatedJobs(boolean)
+     * acceptAutomatedJobs}. Setting that flag to {@code false} halts all
+     * wake-up generation globally, regardless of the listener list.</p>
+     *
+     * @param completionListeners the listener workstream IDs, or {@code null}
+     */
+    public void setCompletionListeners(List<String> completionListeners) {
+        List<String> copy = new ArrayList<>();
+        if (completionListeners != null) {
+            for (String id : completionListeners) {
+                if (id == null) continue;
+                String trimmed = id.trim();
+                if (trimmed.isEmpty()) continue;
+                copy.add(trimmed);
+            }
+        }
+        this.completionListeners = copy;
+    }
+
+    /**
      * Returns the Node labels that jobs submitted to this workstream must match by default.
      * When a job submission does not specify {@code requiredLabels}, these labels are applied.
      * Job-level labels always take precedence over workstream-level defaults.
@@ -562,6 +673,33 @@ public class Workstream {
      */
     public void setArchived(boolean archived) {
         this.archived = archived;
+    }
+
+    /**
+     * Returns whether agents running on this workstream are permitted to
+     * call the dispatch / orchestration MCP tools. Default {@code false}.
+     * See {@link #dispatchCapable} for the full safety model and the
+     * interaction with the allowlist and the controller-side backstop.
+     */
+    public boolean isDispatchCapable() {
+        return dispatchCapable;
+    }
+
+    /**
+     * Sets whether agents on this workstream are permitted to call the
+     * dispatch / orchestration MCP tools. Setting {@code true} exposes
+     * {@code workstream_register} and {@code workstream_update_config}
+     * to the agent harness (the per-workstream allowlist re-adds them at
+     * CSV-assembly time) and unblocks the controller-side dispatch
+     * enforcement for the workstream. Operators should enable this only
+     * for orchestrator workstreams that need to register or update
+     * child workstreams as part of a delegation graph.
+     *
+     * @param dispatchCapable {@code true} to grant dispatch, {@code false}
+     *                        to revoke (the default)
+     */
+    public void setDispatchCapable(boolean dispatchCapable) {
+        this.dispatchCapable = dispatchCapable;
     }
 
     /**
@@ -722,6 +860,9 @@ public class Workstream {
         json.append(",\"pipelineCapable\":").append(pipelineCapable);
         if (archived) {
             json.append(",\"archived\":true");
+        }
+        if (dispatchCapable) {
+            json.append(",\"dispatchCapable\":true");
         }
 
         if (dependentRepos != null && !dependentRepos.isEmpty()) {

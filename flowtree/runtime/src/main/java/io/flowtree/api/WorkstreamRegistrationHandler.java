@@ -27,11 +27,17 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import io.flowtree.submission.PhaseConfigResolver;
+import io.flowtree.workstream.ListenerCycleChecker;
 import io.flowtree.workstream.Workstream;
 import io.flowtree.slack.SlackListener;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.slack.NotifierRegistry;
 import io.flowtree.github.GitHubProxyHandler;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Handles workstream registration and update endpoints
@@ -146,6 +152,8 @@ final class WorkstreamRegistrationHandler {
         }
         Map<String, String> requiredLabels = JsonFieldExtractor.extractStringObject(body, "requiredLabels");
         List<String> dependentRepos = JsonFieldExtractor.extractStringArray(body, "dependentRepos");
+        List<String> completionListeners = extractCompletionListeners(body);
+        boolean dispatchCapable = JsonFieldExtractor.extractBoolean(body, "dispatchCapable");
 
         // Resolve the target Slack workspace: explicit slackWorkspaceId wins,
         // then a workspace derived from the repoUrl's GitHub org, then (in
@@ -238,6 +246,20 @@ final class WorkstreamRegistrationHandler {
             workstream.setWorkspaceId(targetWorkspaceId);
         }
 
+        // Cycle-check the proposed listener list against the live graph
+        // BEFORE persisting. A self-edge or a 2-node / N-node cycle is
+        // rejected with a 400; the error message names the offending
+        // path so the operator can correct the registration.
+        String cycleErr = checkListenerCycle(workstream, completionListeners);
+        if (cycleErr != null) return errorResponse.apply(cycleErr);
+        workstream.setCompletionListeners(completionListeners);
+        // Dispatch capability: the default is false; only opt-in workstreams
+        // can register or update child workstreams. The flag is purely a
+        // harness-CSV switch on the agent allowlist (see McpConfigBuilder);
+        // the controller-side backstop is enforced on the calling workstream
+        // when an ar-manager tool that requires dispatch is invoked.
+        workstream.setDispatchCapable(dispatchCapable);
+
         if (listener != null) {
             listener.registerAndPersistWorkstream(workstream);
         } else {
@@ -304,6 +326,9 @@ final class WorkstreamRegistrationHandler {
         String planningDocument = JsonFieldExtractor.extractString(body, "planningDocument");
         Map<String, String> requiredLabels = JsonFieldExtractor.extractStringObject(body, "requiredLabels");
         List<String> dependentRepos = JsonFieldExtractor.extractStringArray(body, "dependentRepos");
+        boolean hasCompletionListeners = JsonFieldExtractor.hasField(body, "completionListeners");
+        List<String> completionListeners = hasCompletionListeners
+                ? extractCompletionListeners(body) : null;
 
         if (channelId != null && !channelId.isEmpty()) {
             workstream.setChannelId(channelId);
@@ -331,6 +356,26 @@ final class WorkstreamRegistrationHandler {
         if (dependentRepos != null && !dependentRepos.isEmpty()) {
             workstream.setDependentRepos(dependentRepos);
         }
+        if (hasCompletionListeners) {
+            // Cycle-check the proposed listener list against the live
+            // graph BEFORE persisting. The check accepts the new state
+            // of {@code workstream} (including the proposed listener list
+            // when present) so the update is validated against the
+            // post-update graph, not the pre-update one.
+            String cycleErr = checkListenerCycle(workstream, completionListeners);
+            if (cycleErr != null) return errorResponse.apply(cycleErr);
+            workstream.setCompletionListeners(completionListeners);
+        }
+        // Dispatch capability: only mutated when the field is present in
+        // the body (presence signal mirrors the completion_listeners
+        // pattern). Omitting the field leaves the workstream's existing
+        // value untouched so an unrelated update does not silently
+        // revoke dispatch. A boolean false in the body explicitly
+        // clears the flag.
+        if (JsonFieldExtractor.hasField(body, "dispatchCapable")) {
+            workstream.setDispatchCapable(
+                    JsonFieldExtractor.extractBoolean(body, "dispatchCapable"));
+        }
 
         if (listener != null) {
             listener.registerAndPersistWorkstream(workstream);
@@ -348,5 +393,75 @@ final class WorkstreamRegistrationHandler {
 
         return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
                 "application/json", json.toString());
+    }
+
+    /**
+     * Extracts the {@code completionListeners} array from a request
+     * body. The field is always emitted as a JSON array; the MCP
+     * layer translates a comma-separated string into one before
+     * posting to the controller, so this method reads the array
+     * shape directly. A missing or null field maps to an empty list
+     * (the inert default — no fan-out, no error).
+     *
+     * @param body the request body JSON
+     * @return the listener list; never {@code null}
+     */
+    private static List<String> extractCompletionListeners(String body) {
+        if (body == null) return Collections.emptyList();
+        List<String> parsed = JsonFieldExtractor.extractStringArray(body, "completionListeners");
+        if (parsed == null) return Collections.emptyList();
+        // Strip blanks and nulls so a stray "  ,  " entry from a
+        // hand-rolled client does not become a phantom listener.
+        List<String> cleaned = new ArrayList<>(parsed.size());
+        for (String s : parsed) {
+            if (s == null) continue;
+            String trimmed = s.trim();
+            if (trimmed.isEmpty()) continue;
+            cleaned.add(trimmed);
+        }
+        return cleaned;
+    }
+
+    /**
+     * Runs the {@link ListenerCycleChecker} on the proposed listener
+     * list against the live listener graph and translates a non-empty
+     * cycle path into a 400-style error string. The check accepts the
+     * in-flight workstream's current listener list (which may have
+     * been pre-populated for an update) so the validation reflects
+     * the post-update graph, not the pre-update one.
+     *
+     * @param workstream        the workstream being configured
+     * @param proposedListeners the proposed listener list (may be
+     *                          empty or {@code null})
+     * @return the error string to return in a 400 response, or
+     *         {@code null} when the configuration is valid
+     */
+    private String checkListenerCycle(Workstream workstream,
+                                      List<String> proposedListeners) {
+        if (proposedListeners == null) return null;
+        Map<String, Workstream> all = notifiers.allWorkstreams();
+        // Build a snapshot that includes the in-flight workstream with
+        // its POST-update listener list, so the DFS sees the graph as
+        // it will exist after this registration completes.
+        Map<String, Workstream> effective = new LinkedHashMap<>(all);
+        effective.put(workstream.getWorkstreamId(), workstream);
+        List<String> path = ListenerCycleChecker.check(
+                workstream.getWorkstreamId(), proposedListeners, effective);
+        if (path == null || path.isEmpty()) return null;
+        if ("self-listing".equals(path.get(0))) {
+            return "self-listing: workstream " + path.get(1)
+                    + " cannot list itself as a completion listener";
+        }
+        StringBuilder sb = new StringBuilder("cycle: ");
+        for (int i = 1; i < path.size(); i++) {
+            if (i > 1) sb.append(" -> ");
+            sb.append(path.get(i));
+        }
+        // Close the loop visually so the operator sees the cycle as
+        // an actual cycle, not just a chain.
+        if (path.size() > 2) {
+            sb.append(" -> ").append(path.get(1));
+        }
+        return sb.toString();
     }
 }

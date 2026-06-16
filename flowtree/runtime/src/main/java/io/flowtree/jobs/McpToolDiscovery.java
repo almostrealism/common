@@ -183,6 +183,44 @@ public class McpToolDiscovery {
     }
 
     /**
+     * Walks up from the current working directory looking for the
+     * {@code tools/mcp/manager/server.py} source file. Maven Surefire
+     * defaults the working directory of a forked test JVM to the
+     * module's basedir ({@code flowtree/runtime/}) so a single
+     * relative path like {@code tools/...} only resolves when the
+     * test is launched from the project root. Walking the ancestor
+     * chain is the standard mitigation: a path like
+     * {@code /workspace/project/almostrealism-common} resolves from
+     * either a module-basedir or a project-root working directory.
+     *
+     * <p>Uses {@link Files#isRegularFile(Path)} rather than
+     * {@link Files#exists(Path)} so a directory that happens to be
+     * named {@code server.py} cannot produce a false positive — the
+     * helper's contract is to find a Python source file, not any
+     * filesystem entry with that name.</p>
+     *
+     * <p>Centralised so the resolution path lives in one place;
+     * {@code McpToolDiscoveryTest} and
+     * {@code McpToolWorkstreamConfigSurfaceTest} both call this
+     * helper, eliminating the silent-skip failure mode that
+     * historical copies were re-introducing when their search depth
+     * or path drifted between test classes.</p>
+     *
+     * @return the resolved regular file path, or {@code null} if the
+     *         file is not found within five levels of ancestor
+     *         directories
+     */
+    public static Path locateManagerServerPy() {
+        Path cwd = Path.of("").toAbsolutePath();
+        for (int i = 0; i < 5 && cwd != null; i++) {
+            Path candidate = cwd.resolve("tools/mcp/manager/server.py");
+            if (Files.isRegularFile(candidate)) return candidate;
+            cwd = cwd.getParent();
+        }
+        return null;
+    }
+
+    /**
      * Discovers tools from the {@code @mcp.tool()} decorator pattern.
      * Each decorated function's name is used as the tool name.
      */

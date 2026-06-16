@@ -1222,6 +1222,8 @@ public class FlowTreeController implements ConsoleFeatures {
             apiEndpoint.setServer(flowtreeServer);
             apiEndpoint.setListener(listener);
             apiEndpoint.setStatsStore(statsStore);
+            CompletionListenerFanoutWiring.wire(apiEndpoint, flowtreeServer, statsStore,
+                    listener, primaryNotifier, notifiersByWorkspace);
 
             // Populate per-org GitHub tokens: global githubOrgs merged with per-workspace
             // overrides via WorkstreamConfig.mergedGithubOrgTokens().

@@ -398,6 +398,33 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	/**
+	 * Asserts that two boolean values are equal, with a custom error message.
+	 *
+	 * @param msg      the message to display if the assertion fails
+	 * @param expected the expected value
+	 * @param actual   the actual value
+	 * @throws AssertionError if the values are not equal
+	 */
+	default void assertEquals(String msg, boolean expected, boolean actual) {
+		if (actual != expected) {
+			throw new AssertionError(msg == null ? actual + " != " + expected : msg);
+		}
+	}
+
+	/**
+	 * Asserts that two boolean values are equal.
+	 *
+	 * @param expected the expected value
+	 * @param actual   the actual value
+	 * @throws AssertionError if the values are not equal
+	 */
+	default void assertEquals(boolean expected, boolean actual) {
+		if (actual != expected) {
+			throw new AssertionError(actual + " != " + expected);
+		}
+	}
+
+	/**
 	 * Asserts that two double values are not equal within hardware precision tolerance.
 	 *
 	 * @param a the first value
