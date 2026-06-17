@@ -116,6 +116,11 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore {
 	}
 
 	@Override
+	public void delete(String identifier) {
+		diskStore.delete(identifier);
+	}
+
+	@Override
 	public boolean containsKey(String identifier) {
 		return diskStore.containsKey(identifier);
 	}
