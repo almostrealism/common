@@ -30,14 +30,6 @@
       "args": ["tools/mcp/jmx/server.py"],
       "description": "JVM memory analysis and leak detection via JDK diagnostic tools"
     },
-    "ar-manager": {
-      "command": "python3",
-      "args": ["tools/mcp/manager/server.py"],
-      "env": {
-        "AR_CONTROLLER_URL": "http://mac-studio:7780"
-      },
-      "description": "Internet-facing endpoint for managing workstreams and triggering project workflows"
-    },
     "onyx": {
       "command": "/Users/Shared/flowtree/tools/OnyxMCP",
       "env": {

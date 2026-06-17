@@ -291,8 +291,12 @@ entire plan (§6).**
 - **(a) General capability & reuse.** A *bottleneck* is the general "encoder-output → latent" stage of
   any autoencoder (VAE mean-split, SoftNorm, FSQ, etc.). Today AR has exactly one, hardcoded as a
   class. Factoring a `Bottleneck` interface makes bottlenecks pluggable across all AR autoencoders.
-  SoftNorm itself (L2-normalize the latent onto a learned-radius hypersphere) is a general bottleneck
-  reusable by any future AE.
+  SoftNorm itself (a learned per-channel affine transform of the latent,
+  `latent = (x * scalingFactor + bias) / runningStd`) is a general bottleneck reusable by any future
+  AE. Despite the name, the inference-time transform is this affine rather than an L2 normalization
+  onto a hypersphere — the "soft" normalization is induced during training by a KL-style
+  regularization loss, leaving only the per-channel affine and an optional running-standard-deviation
+  rescale at inference.
 - **(b) AR anchor & verdict.** Anchor: `VAEBottleneck` (`VAEBottleneck.java:52`), a concrete class
   implementing `LayerFeatures` that exposes `getBottleneck() : Block` plus `getInputDim()/getOutputDim()`.
   **There is no `Bottleneck` interface** (verified: no match for `interface Bottleneck` in the tree).
@@ -312,14 +316,15 @@ entire plan (§6).**
   // VAEBottleneck implements Bottleneck (retrofit; existing 128->64 mean-split unchanged).
 
   // SoftNormBottleneck implements Bottleneck (NEW):
-  //   latent = scale * L2normalize(x, axis=channel)   (dim 256 -> 256), learned scale.
+  //   latent = (x * scalingFactor + bias) / runningStd   (dim 256 -> 256): a learned per-channel
+  //   affine with an optional learned scalar standard-deviation divisor.
   public class SoftNormBottleneck implements Bottleneck, LayerFeatures { /* dim=256 */ }
   ```
 - **(d) Standalone unit-test strategy.** `SoftNormBottleneckTest extends TestSuiteBase`: feed a known
-  `[B,256,L]` tensor; assert each output channel-vector has L2 norm equal to the learned scale
-  (within tolerance) and direction preserved (cosine similarity ≈ 1 with the input). A separate
-  `BottleneckInterfaceTest` asserts the retrofitted `VAEBottleneck` still produces its original
-  128→64 mean output (regression guard). No SA3 weights.
+  `[B,256,L]` tensor; assert each output element equals the per-channel affine reference
+  `(x * scalingFactor + bias) / runningStd` (within tolerance), covering both the with- and
+  without-`runningStd` configurations. A separate `BottleneckInterfaceTest` asserts the retrofitted
+  `VAEBottleneck` still produces its original 128→64 mean output (regression guard). No SA3 weights.
 - **(e) Dependency position.** Tier 1 (AE primitives). Independent of Block A.
 
 #### C2. Transformer-resampling block / learned-resampling primitive — **HARDEST ITEM**

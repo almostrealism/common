@@ -165,7 +165,7 @@ import java.util.function.Function;
  * @see org.almostrealism.layers.LayerFeatures
  * @see org.almostrealism.model.Block
  */
-public interface AttentionFeatures extends RotationFeatures {
+public interface AttentionFeatures extends RotationFeatures, FeedForwardFeatures {
 
 	/**
 	 * Creates a layer that reshapes input for split-half RoPE format.
@@ -1221,245 +1221,6 @@ public interface AttentionFeatures extends RotationFeatures {
 	}
 
 	/**
-	 * Creates a SwiGLU feed-forward block with RMSNorm (simplified version without biases).
-	 * Delegates to the full feedForward method with null biases.
-	 *
-	 * @param rms RMSNorm weights
-	 * @param w1 Gate projection weights
-	 * @param w2 Down projection weights
-	 * @param w3 Up projection weights
-	 * @param requirements Compute requirements
-	 * @return Feed-forward block
-	 */
-	default Block feedForward(
-			PackedCollection rms,
-			PackedCollection w1, PackedCollection w2, PackedCollection w3,
-			ComputeRequirement... requirements) {
-		int dim = w2.getShape().length(0);
-		return feedForward(shape(1, dim), rms, null,
-				w1, w2, w3, null, null, null,
-				requirements);
-	}
-
-	/**
-	 * Creates a SwiGLU feed-forward block with configurable RMSNorm epsilon.
-	 *
-	 * @param rms RMSNorm weights
-	 * @param w1 Gate projection weights
-	 * @param w2 Down projection weights
-	 * @param w3 Up projection weights
-	 * @param epsilon RMSNorm epsilon (e.g., 1e-5 for Llama, 1e-6 for Qwen3)
-	 * @param requirements Compute requirements
-	 * @return Feed-forward block
-	 */
-	default Block feedForward(
-			PackedCollection rms,
-			PackedCollection w1, PackedCollection w2, PackedCollection w3,
-			double epsilon,
-			ComputeRequirement... requirements) {
-		int dim = w2.getShape().length(0);
-		return feedForward(shape(1, dim), rms, null,
-				w1, w2, w3, null, null, null, epsilon,
-				requirements);
-	}
-
-	/**
-	 * Creates a SwiGLU feed-forward block with optional biases.
-	 *
-	 * <p>Implements the SwiGLU activation: FFN(x) = (SiLU(x @ W1 + b1) * (x @ W3 + b3)) @ W2 + b2
-	 * This is the standard feed-forward layer used in modern transformers.</p>
-	 *
-	 * @param shape Input/output shape
-	 * @param normWeights Normalization weights (RMSNorm or LayerNorm)
-	 * @param normBiases Normalization biases (null for RMSNorm)
-	 * @param w1 Gate projection weights
-	 * @param w2 Down projection weights
-	 * @param w3 Up projection weights
-	 * @param w1Bias Gate projection bias (null if not used)
-	 * @param w2Bias Down projection bias (null if not used)
-	 * @param w3Bias Up projection bias (null if not used)
-	 * @param requirements Compute requirements
-	 * @return Feed-forward block
-	 */
-	default Block feedForward(
-			TraversalPolicy shape,
-			PackedCollection normWeights, PackedCollection normBiases,
-			PackedCollection w1, PackedCollection w2, PackedCollection w3,
-			PackedCollection w1Bias, PackedCollection w2Bias, PackedCollection w3Bias,
-			ComputeRequirement... requirements) {
-		return feedForward(shape, normWeights, normBiases, w1, w2, w3,
-				w1Bias, w2Bias, w3Bias, 1e-5, requirements);
-	}
-
-	/**
-	 * Creates a SwiGLU feed-forward block with configurable RMSNorm epsilon.
-	 *
-	 * @param shape Input/output shape
-	 * @param normWeights Normalization weights (RMSNorm or LayerNorm)
-	 * @param normBiases Normalization biases (null for RMSNorm)
-	 * @param w1 Gate projection weights
-	 * @param w2 Down projection weights
-	 * @param w3 Up projection weights
-	 * @param w1Bias Gate projection bias (null if not used)
-	 * @param w2Bias Down projection bias (null if not used)
-	 * @param w3Bias Up projection bias (null if not used)
-	 * @param epsilon RMSNorm epsilon (e.g., 1e-5 for Llama, 1e-6 for Qwen3)
-	 * @param requirements Compute requirements
-	 * @return Feed-forward block
-	 */
-	default Block feedForward(
-			TraversalPolicy shape,
-			PackedCollection normWeights, PackedCollection normBiases,
-			PackedCollection w1, PackedCollection w2, PackedCollection w3,
-			PackedCollection w1Bias, PackedCollection w2Bias, PackedCollection w3Bias,
-			double epsilon,
-			ComputeRequirement... requirements) {
-		SequentialBlock feedForward = new SequentialBlock(shape);
-		feedForward.add(rmsnorm(shape, normWeights, normBiases, epsilon, requirements));
-
-		SequentialBlock hidden = new SequentialBlock(shape);
-		hidden.add(dense(w1, w1Bias));
-		hidden.add(silu());
-
-		feedForward.product(dense(w3, w3Bias), hidden);
-		feedForward.add(dense(w2, w2Bias));
-		return feedForward;
-	}
-
-	/**
-	 * Creates a gated linear unit (GLU) function that can be applied to different input shapes.
-	 *
-	 * @param weight Linear projection weights (projects to 2x output dimension)
-	 * @param bias Linear projection bias
-	 * @return A function that creates a GLU block for a given input shape
-	 */
-	default Function<TraversalPolicy, Block> gatedLinear(PackedCollection weight,
-														 PackedCollection bias) {
-		return inputShape -> gatedLinear(inputShape, weight, bias);
-	}
-
-	/**
-	 * Creates a gated linear unit (GLU) block with SiLU activation.
-	 *
-	 * <p>Implements GLU(x) = Linear(x)_left * SiLU(Linear(x)_right)
-	 * The linear projection outputs 2x the input dimension, which is then split
-	 * into two equal parts for gating.</p>
-	 *
-	 * @param inputShape Input shape
-	 * @param weight Linear projection weights
-	 * @param bias Linear projection bias
-	 * @return Gated linear block
-	 */
-	default Block gatedLinear(TraversalPolicy inputShape,
-							  PackedCollection weight,
-							  PackedCollection bias) {
-		SequentialBlock glu = new SequentialBlock(inputShape);
-		glu.add(dense(weight, bias));
-
-		// Split the output into two parts, one for
-		// the linear transform and one for the gate
-		List<Block> split = glu.split(2, glu.getOutputShape().getDimensions() - 1, 0);
-		Block gate = split.get(1).andThen(silu());
-
-		// Apply activation to the gate and multiply
-		// it with the linear output
-		glu.add(product(gate));
-		return glu;
-	}
-
-	/**
-	 * Creates a gated linear feed-forward function with normalization.
-	 *
-	 * @param normWeights Normalization weights
-	 * @param normBiases Normalization biases
-	 * @param weightIn Input projection weights (GLU)
-	 * @param biasIn Input projection bias
-	 * @param weightOut Output projection weights
-	 * @param biasOut Output projection bias
-	 * @param requirements Compute requirements
-	 * @return A function that creates a gated linear FFN block for a given input shape
-	 */
-	default Function<TraversalPolicy, Block> gatedLinearFeedForward(PackedCollection normWeights, PackedCollection normBiases,
-																	 PackedCollection weightIn, PackedCollection biasIn,
-																	 PackedCollection weightOut, PackedCollection biasOut,
-																	ComputeRequirement... requirements) {
-		return inputShape ->
-				gatedLinearFeedForward(inputShape, normWeights, normBiases,
-										weightIn, biasIn, weightOut, biasOut,
-										requirements);
-	}
-
-	/**
-	 * Creates a gated linear feed-forward block with normalization.
-	 *
-	 * <p>Combines normalization, gated linear unit, and output projection:
-	 * FFN(x) = Linear_out(GLU(Norm(x)))</p>
-	 *
-	 * @param inputShape Input/output shape
-	 * @param normWeights Normalization weights
-	 * @param normBiases Normalization biases
-	 * @param weightIn Input projection weights (GLU)
-	 * @param biasIn Input projection bias
-	 * @param weightOut Output projection weights
-	 * @param biasOut Output projection bias
-	 * @param requirements Compute requirements
-	 * @return Gated linear feed-forward block
-	 */
-	default Block gatedLinearFeedForward(TraversalPolicy inputShape,
-										 PackedCollection normWeights, PackedCollection normBiases,
-										 PackedCollection weightIn, PackedCollection biasIn,
-										 PackedCollection weightOut, PackedCollection biasOut,
-										 ComputeRequirement... requirements) {
-		return gatedLinearFeedForward(inputShape, normWeights, normBiases,
-				weightIn, biasIn, weightOut, biasOut,
-				ProjectionFactory.dense(), requirements);
-	}
-
-	/**
-	 * Creates a gated linear feed-forward block with customizable projection layers.
-	 *
-	 * <p>This version accepts a {@link ProjectionFactory} to customize how projection
-	 * layers are created, enabling LoRA or other adapter patterns without code duplication.</p>
-	 *
-	 * @param inputShape Input/output shape
-	 * @param normWeights Normalization weights
-	 * @param normBiases Normalization biases
-	 * @param weightIn Input projection weights (GLU)
-	 * @param biasIn Input projection bias
-	 * @param weightOut Output projection weights
-	 * @param biasOut Output projection bias
-	 * @param projectionFactory Factory for creating projection layers
-	 * @param requirements Compute requirements
-	 * @return Gated linear feed-forward block
-	 */
-	default Block gatedLinearFeedForward(TraversalPolicy inputShape,
-										 PackedCollection normWeights, PackedCollection normBiases,
-										 PackedCollection weightIn, PackedCollection biasIn,
-										 PackedCollection weightOut, PackedCollection biasOut,
-										 ProjectionFactory projectionFactory,
-										 ComputeRequirement... requirements) {
-		SequentialBlock feedForward = new SequentialBlock(inputShape);
-		feedForward.add(norm(normWeights, normBiases, requirements));
-
-		// Gate projection with factory
-		feedForward.add(projectionFactory.create(feedForward.getOutputShape(), weightIn, biasIn,
-				AdapterConfig.TargetLayer.FFN_GATE));
-
-		// Split into gate and up projections, apply SwiGLU gating
-		List<Block> split = feedForward.split(2, feedForward.getOutputShape().getDimensions() - 1, 0);
-		Block gate = split.get(1).andThen(silu());
-
-		// Multiply linear output with gated branch
-		feedForward.add(product(gate));
-
-		// Output projection with factory
-		feedForward.add(projectionFactory.create(feedForward.getOutputShape(), weightOut, biasOut,
-				AdapterConfig.TargetLayer.FFN_OUT));
-
-		return feedForward;
-	}
-
-	/**
 	 * Creates a complete transformer block with self-attention, optional cross-attention, and feed-forward.
 	 * Simplified version without attention score capturing - delegates to the full transformerBlock method.
 	 *
@@ -1679,18 +1440,157 @@ public interface AttentionFeatures extends RotationFeatures {
 								   PackedCollection w1Bias, PackedCollection w2Bias,
 								   Receptor<PackedCollection> attentionScores,
 								   ProjectionFactory projectionFactory) {
+		return transformerBlock(batchSize, dim, seqLen, heads, crossAttend,
+				contextSeqLen, context,
+				preNormWeight, preNormBias,
+				selfQkv, selfWo,
+				selfQNormWeight, selfQNormBias,
+				selfKNormWeight, selfKNormBias,
+				invFreq,
+				crossAttPreNormWeight, crossAttPreNormBias,
+				crossWq, crossKv, crossWo,
+				crossQNormWeight, crossQNormBias,
+				crossKNormWeight, crossKNormBias,
+				ffnNormWeight, ffnNormBias,
+				w1, w2, w1Bias, w2Bias,
+				attentionScores, projectionFactory,
+				AttentionVariant.STANDARD, null);
+	}
+
+	/**
+	 * Constructs the self-attention sub-computation for the selected {@link AttentionVariant}.
+	 *
+	 * <p>This is the attention-variant seam threaded through {@link #transformerBlock}. The base
+	 * implementation supports {@link AttentionVariant#STANDARD} only, delegating to
+	 * {@link #sequenceAttention(int, int, int, int, PackedCollection, PackedCollection,
+	 * PackedCollection, PackedCollection, PackedCollection, PackedCollection, PackedCollection,
+	 * ProjectionFactory) sequenceAttention} so the default path is unchanged. Alternative variants
+	 * are provided by sub-interfaces that override this method (for example
+	 * {@link DifferentialAttentionFeatures}). Because the call site in {@code transformerBlock} is a
+	 * virtual dispatch, a consumer that implements such a sub-interface automatically obtains the
+	 * variant without forking the block builder.</p>
+	 *
+	 * @param batchSize         batch dimension
+	 * @param seqLen            sequence length
+	 * @param dim               model dimension
+	 * @param heads             number of attention heads
+	 * @param variant           the attention variant to construct ({@code null} is treated as
+	 *                          {@link AttentionVariant#STANDARD})
+	 * @param toQkvWeight       fused projection weights ({@code dim*3} for STANDARD, wider variants
+	 *                          define their own width)
+	 * @param toOutWeight       output projection weights
+	 * @param qNormWeight       query normalization weights
+	 * @param qNormBias         query normalization biases
+	 * @param kNormWeight       key normalization weights
+	 * @param kNormBias         key normalization biases
+	 * @param invFreq           RoPE inverse frequencies
+	 * @param diffLambda        learned lambda for variants that require it (unused by STANDARD,
+	 *                          may be {@code null})
+	 * @param projectionFactory factory for creating projection layers
+	 * @return the self-attention block for the requested variant
+	 */
+	default Block selfAttention(int batchSize, int seqLen, int dim, int heads,
+								AttentionVariant variant,
+								PackedCollection toQkvWeight, PackedCollection toOutWeight,
+								PackedCollection qNormWeight, PackedCollection qNormBias,
+								PackedCollection kNormWeight, PackedCollection kNormBias,
+								PackedCollection invFreq,
+								Producer<PackedCollection> diffLambda,
+								ProjectionFactory projectionFactory) {
+		if (variant == null || variant == AttentionVariant.STANDARD) {
+			return sequenceAttention(batchSize, seqLen, dim, heads,
+					toQkvWeight, toOutWeight,
+					qNormWeight, qNormBias, kNormWeight, kNormBias,
+					invFreq, projectionFactory);
+		}
+
+		throw new UnsupportedOperationException("Attention variant " + variant +
+				" is not available on the base AttentionFeatures; implement DifferentialAttentionFeatures" +
+				" (or another sub-interface) to use it");
+	}
+
+	/**
+	 * Creates a complete transformer block, selecting the self-attention implementation via an
+	 * {@link AttentionVariant}.
+	 *
+	 * <p>This is the variant-aware base overload. All other {@code transformerBlock} overloads
+	 * delegate here with {@link AttentionVariant#STANDARD} and a {@code null} lambda, so the
+	 * standard scaled-dot-product path is byte-for-byte identical to the previous behaviour. The
+	 * only difference from the standard path is that the self-attention sub-block is built through
+	 * {@link #selfAttention} rather than {@link #sequenceAttention} directly, which routes the
+	 * construction to the selected variant.</p>
+	 *
+	 * @param batchSize Batch dimension
+	 * @param dim Model dimension
+	 * @param seqLen Sequence length
+	 * @param heads Number of attention heads
+	 * @param crossAttend Whether to include cross-attention layer
+	 * @param contextSeqLen Context sequence length (for cross-attention)
+	 * @param context Context input block (for cross-attention)
+	 * @param preNormWeight Self-attention pre-normalization weights
+	 * @param preNormBias Self-attention pre-normalization biases
+	 * @param selfQkv Self-attention fused projection weights (width depends on {@code variant})
+	 * @param selfWo Self-attention output projection weights
+	 * @param selfQNormWeight Self-attention Q normalization weights
+	 * @param selfQNormBias Self-attention Q normalization biases
+	 * @param selfKNormWeight Self-attention K normalization weights
+	 * @param selfKNormBias Self-attention K normalization biases
+	 * @param invFreq RoPE inverse frequencies
+	 * @param crossAttPreNormWeight Cross-attention pre-normalization weights
+	 * @param crossAttPreNormBias Cross-attention pre-normalization biases
+	 * @param crossWq Cross-attention Q projection weights
+	 * @param crossKv Cross-attention KV projection weights
+	 * @param crossWo Cross-attention output projection weights
+	 * @param crossQNormWeight Cross-attention Q normalization weights
+	 * @param crossQNormBias Cross-attention Q normalization biases
+	 * @param crossKNormWeight Cross-attention K normalization weights
+	 * @param crossKNormBias Cross-attention K normalization biases
+	 * @param ffnNormWeight Feed-forward pre-normalization weights
+	 * @param ffnNormBias Feed-forward pre-normalization biases
+	 * @param w1 Feed-forward gate projection weights
+	 * @param w2 Feed-forward output projection weights
+	 * @param w1Bias Feed-forward gate projection bias
+	 * @param w2Bias Feed-forward output projection bias
+	 * @param attentionScores Optional receptor to capture cross-attention scores
+	 * @param projectionFactory Factory for creating projection layers (enables LoRA support)
+	 * @param variant Attention variant for the self-attention sub-block
+	 * @param diffLambda Learned lambda supplied to variants that require it (may be {@code null})
+	 * @return Complete transformer block
+	 */
+	default Block transformerBlock(int batchSize, int dim, int seqLen, int heads,
+								   boolean crossAttend,
+								   int contextSeqLen, Block context,
+								   // Self-attention weights
+								   PackedCollection preNormWeight, PackedCollection preNormBias,
+								   PackedCollection selfQkv, PackedCollection selfWo,
+								   PackedCollection selfQNormWeight, PackedCollection selfQNormBias,
+								   PackedCollection selfKNormWeight, PackedCollection selfKNormBias,
+								   PackedCollection invFreq,
+								   // Cross-attention weights
+								   PackedCollection crossAttPreNormWeight, PackedCollection crossAttPreNormBias,
+								   PackedCollection crossWq, PackedCollection crossKv, PackedCollection crossWo,
+								   PackedCollection crossQNormWeight, PackedCollection crossQNormBias,
+								   PackedCollection crossKNormWeight, PackedCollection crossKNormBias,
+								   // Feed-forward weights
+								   PackedCollection ffnNormWeight, PackedCollection ffnNormBias,
+								   PackedCollection w1, PackedCollection w2,
+								   PackedCollection w1Bias, PackedCollection w2Bias,
+								   Receptor<PackedCollection> attentionScores,
+								   ProjectionFactory projectionFactory,
+								   AttentionVariant variant,
+								   Producer<PackedCollection> diffLambda) {
 		SequentialBlock block = new SequentialBlock(shape(batchSize, seqLen, dim));
 
 		// Self-attention with pre-normalization inside residual branch
 		// Python: x = x + self_attn(pre_norm(x))
 		SequentialBlock selfAttentionWithNorm = new SequentialBlock(shape(batchSize, seqLen, dim));
 		selfAttentionWithNorm.add(norm(preNormWeight, preNormBias));
-		selfAttentionWithNorm.add(sequenceAttention(
-				batchSize, seqLen, dim, heads,
+		selfAttentionWithNorm.add(selfAttention(
+				batchSize, seqLen, dim, heads, variant,
 				selfQkv, selfWo,
 				selfQNormWeight, selfQNormBias,
 				selfKNormWeight, selfKNormBias,
-				invFreq, projectionFactory));
+				invFreq, diffLambda, projectionFactory));
 		block.add(residual(selfAttentionWithNorm));
 
 		// Cross-attention with pre-normalization inside residual branch (if needed)

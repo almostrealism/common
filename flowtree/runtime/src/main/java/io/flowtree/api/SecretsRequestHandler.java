@@ -375,15 +375,19 @@ public class SecretsRequestHandler implements ConsoleFeatures {
 
     /**
      * Returns {@code true} when the request carries the admin shared secret as
-     * a Bearer token. When no shared secret is configured, all requests are
-     * treated as authenticated.
+     * a Bearer token. When no shared secret is configured the request cannot be
+     * authenticated as admin and this returns {@code false}: the controller
+     * fails closed rather than treating an unconfigured deployment as
+     * implicitly trusted. A request with no shared secret was previously
+     * granted admin access, which let a caller act with no identity at all —
+     * the same tokenless escape hatch the ar-manager HTTP-only model removes.
      *
      * @param session the incoming HTTP session
      * @return {@code true} if the request is authenticated as admin
      */
     private boolean isAdminToken(IHTTPSession session) {
         if (sharedSecret == null || sharedSecret.isEmpty()) {
-            return true;
+            return false;
         }
         String auth = session.getHeaders().get("authorization");
         if (auth == null || !auth.startsWith("Bearer ")) {

@@ -597,4 +597,88 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 			return ss.reshape(shape);
 		}, biases != null ? List.of(weights, biases) : List.of(weights), requirements);
 	}
+
+	/**
+	 * Creates a {@code DynamicTanh} (DyT) normalization layer factory, deriving the layer
+	 * shape from the input at construction time.
+	 *
+	 * <p>DyT replaces a statistical normalization layer (LayerNorm / RMSNorm) with a learnable
+	 * element-wise hyperbolic tangent and a per-channel affine transform. Because it carries no
+	 * mean/variance reduction it is selectable anywhere {@link #norm(PackedCollection, PackedCollection,
+	 * ComputeRequirement...) norm} or {@link #rmsnorm(PackedCollection, PackedCollection,
+	 * ComputeRequirement...) rmsnorm} are used.</p>
+	 *
+	 * @param alpha        the learnable scale applied inside {@code tanh}; either a scalar
+	 *                     ({@code [1]}) or one value per feature
+	 * @param weight       the learnable per-feature output scale (may be {@code null})
+	 * @param bias         the learnable per-feature output shift (may be {@code null})
+	 * @param requirements optional compute requirements
+	 * @return a function that creates the DyT {@link CellularLayer} for any input shape
+	 */
+	default Function<TraversalPolicy, CellularLayer> dynamicTanh(PackedCollection alpha,
+																 PackedCollection weight,
+																 PackedCollection bias,
+																 ComputeRequirement... requirements) {
+		return shape -> dynamicTanh(shape, alpha, weight, bias, requirements);
+	}
+
+	/**
+	 * {@code DynamicTanh} (DyT) normalization layer.
+	 *
+	 * <p>Computes {@code y = weight ⊙ tanh(alpha · x) + bias} element-wise, applying the affine
+	 * parameters over the trailing feature axis (the same axis {@link #rmsnorm(TraversalPolicy,
+	 * PackedCollection, PackedCollection, double, ComputeRequirement...) rmsnorm} normalizes). Unlike
+	 * LayerNorm/RMSNorm it computes no reduction statistics, so the entire operation is a single
+	 * differentiable {@link CollectionProducer} graph rather than a host-side calculation.</p>
+	 *
+	 * @param shape        the input and output shape
+	 * @param alpha        the learnable scale applied inside {@code tanh}; a scalar ({@code [1]})
+	 *                     applies to every feature, otherwise one value per feature is required
+	 * @param weight       the learnable per-feature output scale (may be {@code null} for no scale)
+	 * @param bias         the learnable per-feature output shift (may be {@code null} for no shift)
+	 * @param requirements optional compute requirements
+	 * @return the constructed DyT {@link CellularLayer}
+	 */
+	default CellularLayer dynamicTanh(TraversalPolicy shape,
+									  PackedCollection alpha,
+									  PackedCollection weight,
+									  PackedCollection bias,
+									  ComputeRequirement... requirements) {
+		if (alpha == null) {
+			throw new IllegalArgumentException("DynamicTanh requires a learnable alpha");
+		}
+
+		if ((weight != null && weight.getShape().getDimensions() != 1) ||
+				(bias != null && bias.getShape().getDimensions() != 1)) {
+			throw new IllegalArgumentException("DynamicTanh weight and bias must be 1-dimensional");
+		}
+
+		int size = weight != null ? weight.getShape().getTotalSize()
+				: bias != null ? bias.getShape().getTotalSize()
+				: shape.length(shape.getDimensions() - 1);
+
+		int alphaSize = alpha.getShape().getTotalSize();
+		if (alphaSize != 1 && alphaSize != size) {
+			throw new IllegalArgumentException("DynamicTanh alpha must be a scalar or match the feature size");
+		}
+
+		List<PackedCollection> params = new ArrayList<>();
+		params.add(alpha);
+		if (weight != null) params.add(weight);
+		if (bias != null) params.add(bias);
+
+		PackedCollection a = alpha.flatten();
+		PackedCollection w = weight == null ? null : weight.flatten();
+		PackedCollection b = bias == null ? null : bias.flatten();
+
+		return layer("dynamicTanh", shape, shape, input -> {
+			CollectionProducer in = c(input).reshape(-1, size).traverse(1);
+			CollectionProducer out = tanh(in.multiply(cp(a)));
+
+			if (w != null) out = out.multiply(cp(w));
+			if (b != null) out = out.add(cp(b));
+
+			return out.reshape(shape);
+		}, params, requirements);
+	}
 }

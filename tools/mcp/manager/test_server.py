@@ -8,6 +8,7 @@ so no running controller, GitHub, or ar-memory server is required.
 import importlib
 import json
 import os
+import subprocess
 import sys
 import unittest
 from unittest import mock
@@ -46,7 +47,7 @@ def _grant_scopes(*scopes):
 
 
 def _clear_scopes():
-    """Clear scopes (simulates no-auth mode)."""
+    """Clear the request scope context (an unauthenticated request)."""
     server._request_scopes.set(None)
     server._request_token_label.set(None)
     if hasattr(server._thread_local, "scopes"):
@@ -3711,13 +3712,15 @@ class TestInputValidation(unittest.TestCase):
 
 class TestScopeEnforcement(unittest.TestCase):
 
-    def test_no_auth_permits_all(self):
+    def test_no_scopes_denies_all(self):
+        # ar-manager fails closed: a request with no authenticated scopes
+        # (which a properly-started server never serves, since it refuses
+        # stdio / no-token operation) is denied every scope rather than
+        # implicitly granted all of them.
         _clear_scopes()
-        # Should not raise
-        server._require_scope("read")
-        server._require_scope("write")
-        server._require_scope("pipeline")
-        server._require_scope("memory")
+        for scope in ("read", "write", "pipeline", "memory"):
+            with self.assertRaises(PermissionError):
+                server._require_scope(scope)
 
     def test_scope_mismatch_raises(self):
         _grant_scopes("read")
@@ -3728,6 +3731,40 @@ class TestScopeEnforcement(unittest.TestCase):
         _grant_scopes("read", "write")
         server._require_scope("read")
         server._require_scope("write")
+
+
+class TestStartupGuard(unittest.TestCase):
+    """ar-manager refuses to start without HTTP transport + auth, closing the
+    tokenless / stdio escape hatch. Each case launches server.py as a
+    subprocess and asserts it exits non-zero with the expected FATAL message
+    before binding any socket."""
+
+    _TOKENS = json.dumps({"tokens": [{"value": "t", "scopes": ["read"],
+                                      "label": "x"}]})
+
+    def _run_server(self, env_overrides):
+        env = dict(os.environ)
+        for key in ("MCP_TRANSPORT", "AR_MANAGER_TOKENS", "AR_MANAGER_TOKEN_FILE"):
+            env.pop(key, None)
+        env.update(env_overrides)
+        return subprocess.run(
+            [sys.executable, os.path.join(_MANAGER_DIR, "server.py")],
+            cwd=_MANAGER_DIR, env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30,
+        )
+
+    def test_stdio_transport_refused(self):
+        # Explicit stdio must be refused even with tokens present (the default
+        # transport is http; stdio only happens when set deliberately).
+        proc = self._run_server({"MCP_TRANSPORT": "stdio",
+                                 "AR_MANAGER_TOKENS": self._TOKENS})
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("unsupported MCP_TRANSPORT", proc.stdout.decode())
+
+    def test_http_without_tokens_refused(self):
+        proc = self._run_server({"MCP_TRANSPORT": "http"})
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("no auth tokens configured", proc.stdout.decode())
 
 
 class TestExtractOwnerRepo(unittest.TestCase):
