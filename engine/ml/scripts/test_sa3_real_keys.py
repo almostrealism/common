@@ -62,7 +62,10 @@ def _range(url, token, start, end):
     request = urllib.request.Request(
         url, headers={"Authorization": "Bearer %s" % token,
                       "Range": "bytes=%d-%d" % (start, end)})
-    return urllib.request.urlopen(request, timeout=TIMEOUT).read()
+    # Use a context manager so the response (and its underlying socket/fd) is
+    # closed promptly, even when the test is run repeatedly in-process.
+    with urllib.request.urlopen(request, timeout=TIMEOUT) as resp:
+        return resp.read()
 
 
 def _fetch_safetensors_keys(url, token):

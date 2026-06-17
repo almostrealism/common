@@ -334,10 +334,15 @@ def write_protobuf_file(entries, file_path):
 
 
 def write_group(entries, output_dir, prefix):
-    """Write a group of entries, splitting into shards under the size limit."""
-    if not entries:
-        return
+    """Write a group of entries, splitting into shards under the size limit.
 
+    Returns the list of file paths actually written (in write order), so callers
+    can report exactly what was produced rather than re-scanning the directory.
+    """
+    if not entries:
+        return []
+
+    written = []
     current = []
     current_size = 0
     file_index = 0
@@ -345,7 +350,9 @@ def write_group(entries, output_dir, prefix):
     for entry in entries:
         entry_size = estimate_size(entry)
         if current_size + entry_size > PROTOBUF_SIZE_LIMIT and current:
-            write_protobuf_file(current, os.path.join(output_dir, f"{prefix}_{file_index}"))
+            path = os.path.join(output_dir, f"{prefix}_{file_index}")
+            write_protobuf_file(current, path)
+            written.append(path)
             current = []
             current_size = 0
             file_index += 1
@@ -354,7 +361,11 @@ def write_group(entries, output_dir, prefix):
 
     if current:
         suffix = f"_{file_index}" if file_index > 0 else ""
-        write_protobuf_file(current, os.path.join(output_dir, f"{prefix}{suffix}"))
+        path = os.path.join(output_dir, f"{prefix}{suffix}")
+        write_protobuf_file(current, path)
+        written.append(path)
+
+    return written
 
 
 def write_state_dictionary(state, out_dir, shard_prefix="weights"):
@@ -364,20 +375,26 @@ def write_state_dictionary(state, out_dir, shard_prefix="weights"):
     ``shard_prefix_1`` / ... when the size limit forces multiple shards. The
     StateDictionary loader reads every non-hidden file in the directory, so the
     shard names are arbitrary. Keys are written in sorted order for a stable,
-    diff-friendly layout. Returns the list of written file paths.
+    diff-friendly layout.
+
+    Any stale shard left from a prior run with the same ``shard_prefix`` is
+    removed before writing: because the loader reads every non-hidden file in the
+    directory, a leftover same-prefix shard would silently pollute a later load.
+    Returns exactly the list of file paths written by this call (sorted), tracked
+    from :func:`write_group` rather than re-scanned from disk.
     """
     os.makedirs(out_dir, exist_ok=True)
-    entries = [make_entry(key, state[key]) for key in sorted(state.keys())]
 
-    write_group(entries, out_dir, shard_prefix)
-    # TODO(review): scans dir after writing — stale shards from a prior run with the same prefix
-    # would be included, silently polluting the StateDictionary load. Have write_group return
-    # the paths it wrote, or clear matching files before writing.
-    written = [
-        os.path.join(out_dir, name)
-        for name in os.listdir(out_dir)
-        if name == shard_prefix or name.startswith(shard_prefix + "_")
-    ]
+    # Clear stale same-prefix shards from a previous run so they cannot pollute a
+    # later StateDictionary load (the loader reads every non-hidden file).
+    for name in os.listdir(out_dir):
+        if name == shard_prefix or name.startswith(shard_prefix + "_"):
+            stale = os.path.join(out_dir, name)
+            if os.path.isfile(stale):
+                os.remove(stale)
+
+    entries = [make_entry(key, state[key]) for key in sorted(state.keys())]
+    written = write_group(entries, out_dir, shard_prefix)
     return sorted(written)
 
 

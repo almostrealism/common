@@ -108,6 +108,40 @@ def test_round_trip_single_shard_file(tmp_path):
     np.testing.assert_array_equal(reloaded["a.weight"], src["a.weight"])
 
 
+def test_write_state_dictionary_excludes_stale_same_prefix_shard(tmp_path):
+    """A reused out_dir must not let a stale same-prefix shard pollute the load.
+
+    The StateDictionary loader reads every non-hidden file in the directory, so
+    ``write_state_dictionary`` must (a) return only the files it actually wrote
+    and (b) clear any stale same-prefix shard left by a prior, larger run so a
+    later directory load does not pick up old weights.
+    """
+    out_dir = str(tmp_path / "w")
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Simulate a prior run that needed two shards ("weights" + "weights_1"); the
+    # current, smaller state only produces the single "weights" shard, leaving
+    # "weights_1" stale on disk.
+    stale = os.path.join(out_dir, "weights_1")
+    core.write_protobuf_file(
+        [core.make_entry("stale.weight", np.full((2,), 99.0, np.float32))], stale)
+    assert os.path.isfile(stale)
+
+    new_state = {"fresh.weight": np.arange(3, dtype=np.float32)}
+    paths = core.write_state_dictionary(new_state, out_dir)
+
+    # The returned list is exactly what was written, excluding the stale shard.
+    assert stale not in paths
+    assert all(os.path.basename(p) != "weights_1" for p in paths)
+    assert os.path.basename(paths[0]) == "weights"
+
+    # The stale shard was removed, so a directory load sees only the fresh state.
+    assert not os.path.exists(stale)
+    reloaded = core.read_state_dictionary(out_dir)
+    assert set(reloaded.keys()) == {"fresh.weight"}
+    np.testing.assert_array_equal(reloaded["fresh.weight"], new_state["fresh.weight"])
+
+
 def test_zero_sized_dimension_round_trips(tmp_path):
     # The SA3 SoftNorm bottleneck has noise_scaling_factor with shape [1, 0, 1].
     src = {"bottleneck.noise_scaling_factor": np.zeros((1, 0, 1), dtype=np.float32)}

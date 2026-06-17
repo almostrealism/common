@@ -110,7 +110,7 @@ SA3_DIT_EXPECTED_KEYS = frozenset([
 AE_EMBEDDED_PREFIX = "pretransform.model."
 
 
-def sa3_ae_rules(mode="embedded", fold_weight_norm=True):  # TODO(review): param `fold_weight_norm` shadows core.fold_weight_norm — rename to `with_weight_norm` to avoid hazard
+def sa3_ae_rules(mode="embedded", with_weight_norm=True):
     """Rule list mapping a SAME autoencoder to bare StateDictionary keys.
 
     ``mode="embedded"`` strips the ``pretransform.model.`` prefix used when the
@@ -118,9 +118,12 @@ def sa3_ae_rules(mode="embedded", fold_weight_norm=True):  # TODO(review): param
     the dedicated SAME-S / SAME-L repos whose keys are already bare.
 
     The SAME resampling blocks carry a handful of weight-norm ``mapping`` convs
-    (``...mapping.weight_g`` / ``...mapping.weight_v``); ``fold_weight_norm``
-    folds them into a single ``...mapping.weight`` so the consumer loads a plain
-    convolution weight (the pre-folding the C2 plan calls for).
+    (``...mapping.weight_g`` / ``...mapping.weight_v``); when ``with_weight_norm``
+    is set the rule list folds them into a single ``...mapping.weight`` (via
+    :func:`core.fold_weight_norm`) so the consumer loads a plain convolution
+    weight (the pre-folding the C2 plan calls for). The parameter is named
+    ``with_weight_norm`` rather than ``fold_weight_norm`` so it does not shadow
+    the ``core.fold_weight_norm`` function it invokes.
     """
     rules = []
     if mode == "embedded":
@@ -133,7 +136,7 @@ def sa3_ae_rules(mode="embedded", fold_weight_norm=True):  # TODO(review): param
     else:
         raise ValueError("Unknown ae mode: %r (expected 'embedded' or 'standalone')" % mode)
 
-    if fold_weight_norm:
+    if with_weight_norm:
         rules.append(core.fold_weight_norm())
     return rules
 
