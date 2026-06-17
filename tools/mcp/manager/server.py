@@ -20,7 +20,9 @@ Configuration via environment variables:
                               (default: ~/.config/ar/manager-tokens.json)
     AR_MANAGER_TOKENS       - JSON string of token config (overrides file)
     AR_MEMORY_URL           - ar-memory HTTP server URL (auto-discovered if not set)
-    MCP_TRANSPORT           - Transport: stdio (default), http, or sse
+    MCP_TRANSPORT           - Transport: http (default) or sse. stdio is
+                              refused; ar-manager runs only as an authenticated
+                              HTTP server (no tokenless / stdio mode).
     MCP_PORT                - Port for http/sse transport (default: 8010)
 
 GitHub authentication: ar-manager never holds a GitHub token itself. Every
@@ -491,12 +493,17 @@ def _mint_temp_token(workstream_id: str, job_id: str = "ar-manager",
 def _require_scope(scope: str) -> None:
     """Raise if the current request does not have the required scope.
 
-    In no-auth mode (no tokens configured), all scopes are implicitly granted.
+    ar-manager only ever serves authenticated requests (it refuses to start
+    without tokens and only runs over HTTP/SSE), so a request that reaches a
+    tool always carries a validated token's scopes, set by
+    ``BearerAuthMiddleware``. Absent scopes mean the request did not
+    authenticate — fail closed rather than granting access.
     """
     scopes = _get_scopes()
     if scopes is None:
-        # No auth configured — permit everything
-        return
+        raise PermissionError(
+            "Unauthenticated request: ar-manager requires a valid token"
+        )
     if scope not in scopes:
         raise PermissionError(
             f"Token does not have required scope: {scope}"
@@ -6586,94 +6593,103 @@ def workspace_secret_render_file(
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    # Default to http: ar-manager only runs as an authenticated HTTP/SSE
+    # server, so http is the sole sensible default. An explicit
+    # MCP_TRANSPORT=stdio (or anything else) is still rejected below.
+    transport = os.environ.get("MCP_TRANSPORT", "http")
     tokens = _load_tokens()
 
-    if tokens is None:
-        print("ar-manager: WARNING: No auth tokens configured — running without authentication",
-              file=sys.stderr)
-    else:
-        print(f"ar-manager: Auth enabled with {len(tokens)} token(s)", file=sys.stderr)
+    # ar-manager runs ONLY as an authenticated HTTP/SSE server. Both the
+    # stdio transport and the former tokenless ("no-auth") mode are refused:
+    # a request with no bearer token is indistinguishable from any other, so
+    # the job / workspace / permission context an ar-manager token carries
+    # would be silently discarded. Refuse to start rather than serve in a
+    # mode where that context can be lost.
+    if transport not in ("http", "sse"):
+        print(
+            f"ar-manager: FATAL: unsupported MCP_TRANSPORT={transport!r}. "
+            "ar-manager runs only as an authenticated HTTP server; set "
+            "MCP_TRANSPORT=http (or sse). Point interactive MCP clients at "
+            "the public HTTPS endpoint instead of launching this file over "
+            "stdio.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-    if transport in ("http", "sse"):
-        port = int(os.environ.get("MCP_PORT", "8010"))
+    if not tokens:
+        print(
+            "ar-manager: FATAL: no auth tokens configured. Set "
+            "AR_MANAGER_TOKENS or AR_MANAGER_TOKEN_FILE (see the README); "
+            "ar-manager refuses to serve without authentication.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-        if tokens:
-            # Wrap the MCP app with auth + rate-limiting middleware
-            # Serve MCP at "/" — Claude mobile ignores the path component
-            # and always sends requests to the root.
-            mcp.settings.streamable_http_path = "/"
-            # Run the streamable-HTTP transport STATELESS so a client is not
-            # required to echo the ``mcp-session-id`` from ``initialize`` on
-            # follow-up requests. The default stateful transport rejects any
-            # follow-up that omits the session id with 400 "Missing session
-            # ID"; OpenAI's MCP client (ChatGPT) does not resend the id, so
-            # its first post-initialize call fails and the OpenAI gateway
-            # surfaces a 502. Stateless mode is safe here: every tool call
-            # decodes its bearer from the request's own Authorization header
-            # (see BearerAuthMiddleware) rather than from session-bound
-            # context, and the tools are independent request/response RPCs
-            # with no server-initiated streaming, so no per-session state is
-            # lost. It is also strictly more lenient for every other client.
-            mcp.settings.stateless_http = True
-            # Disable DNS rebinding protection — the server runs behind a
-            # TLS-terminating reverse proxy (Tailscale Funnel) where the
-            # Host header is the public DNS name, not localhost.
-            from mcp.server.transport_security import TransportSecuritySettings
-            mcp.settings.transport_security = TransportSecuritySettings(
-                enable_dns_rebinding_protection=False,
-            )
-            try:
-                app = mcp.streamable_http_app()
-            except AttributeError:
-                # CRITICAL: If streamable_http_app() is unavailable we cannot
-                # apply auth middleware. Refuse to start rather than silently
-                # running without authentication.
-                print(
-                    "ar-manager: FATAL: Cannot apply auth middleware — "
-                    "streamable_http_app() not available in this MCP version. "
-                    "Upgrade the mcp package or remove tokens to run without auth.",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
+    print(f"ar-manager: Auth enabled with {len(tokens)} token(s)",
+          file=sys.stderr)
 
-            # Middleware order (outermost first):
-            #   Health -> RateLimit -> OAuth -> BearerAuth -> app
-            # OAuth sits outside BearerAuth so its endpoints (metadata,
-            # registration, authorize, token) are accessible without an
-            # existing bearer token.
-            from oauth import OAuthMiddleware
-            issuer_url = os.environ.get("AR_MANAGER_ISSUER_URL")
-            oauth_state_file = os.environ.get("AR_MANAGER_OAUTH_STATE_FILE")
-            app = BearerAuthMiddleware(app, tokens, issuer_url=issuer_url)
-            app = OAuthMiddleware(app, tokens, issuer_url=issuer_url,
-                                  state_file=oauth_state_file)
-            app = RateLimitMiddleware(app, requests_per_minute=RATE_LIMIT)
-            app = HealthMiddleware(app)
+    port = int(os.environ.get("MCP_PORT", "8010"))
 
-            # Warn if binding publicly without TLS
-            print(f"ar-manager: Starting with auth on port {port}", file=sys.stderr)
-            print(
-                "ar-manager: WARNING: Listening on 0.0.0.0 without TLS. "
-                "Bearer tokens will be transmitted in cleartext. "
-                "Use a TLS-terminating reverse proxy for public deployments.",
-                file=sys.stderr,
-            )
+    # Wrap the MCP app with auth + rate-limiting middleware.
+    # Serve MCP at "/" — Claude mobile ignores the path component and always
+    # sends requests to the root.
+    mcp.settings.streamable_http_path = "/"
+    # Run the streamable-HTTP transport STATELESS so a client is not
+    # required to echo the ``mcp-session-id`` from ``initialize`` on
+    # follow-up requests. The default stateful transport rejects any
+    # follow-up that omits the session id with 400 "Missing session
+    # ID"; OpenAI's MCP client (ChatGPT) does not resend the id, so
+    # its first post-initialize call fails and the OpenAI gateway
+    # surfaces a 502. Stateless mode is safe here: every tool call
+    # decodes its bearer from the request's own Authorization header
+    # (see BearerAuthMiddleware) rather than from session-bound
+    # context, and the tools are independent request/response RPCs
+    # with no server-initiated streaming, so no per-session state is
+    # lost. It is also strictly more lenient for every other client.
+    mcp.settings.stateless_http = True
+    # Disable DNS rebinding protection — the server runs behind a
+    # TLS-terminating reverse proxy (Tailscale Funnel) where the
+    # Host header is the public DNS name, not localhost.
+    from mcp.server.transport_security import TransportSecuritySettings
+    mcp.settings.transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=False,
+    )
+    try:
+        app = mcp.streamable_http_app()
+    except AttributeError:
+        # CRITICAL: If streamable_http_app() is unavailable we cannot
+        # apply auth middleware. Refuse to start rather than silently
+        # running without authentication.
+        print(
+            "ar-manager: FATAL: Cannot apply auth middleware — "
+            "streamable_http_app() not available in this MCP version. "
+            "Upgrade the mcp package.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-            import uvicorn
-            uvicorn.run(app, host="0.0.0.0", port=port)
-        else:
-            from mcp.server.transport_security import TransportSecuritySettings
-            mcp.settings.host = "0.0.0.0"
-            mcp.settings.port = port
-            # DNS rebinding protection is disabled because the server is
-            # typically deployed behind a TLS-terminating reverse proxy
-            # (Tailscale Funnel, Caddy, nginx) where the Host header does
-            # not match localhost.
-            mcp.settings.transport_security = TransportSecuritySettings(
-                enable_dns_rebinding_protection=False,
-            )
-            print(f"ar-manager: Starting (no auth) on port {port}", file=sys.stderr)
-            mcp.run(transport="streamable-http" if transport == "http" else "sse")
-    else:
-        mcp.run()
+    # Middleware order (outermost first):
+    #   Health -> RateLimit -> OAuth -> BearerAuth -> app
+    # OAuth sits outside BearerAuth so its endpoints (metadata,
+    # registration, authorize, token) are accessible without an
+    # existing bearer token.
+    from oauth import OAuthMiddleware
+    issuer_url = os.environ.get("AR_MANAGER_ISSUER_URL")
+    oauth_state_file = os.environ.get("AR_MANAGER_OAUTH_STATE_FILE")
+    app = BearerAuthMiddleware(app, tokens, issuer_url=issuer_url)
+    app = OAuthMiddleware(app, tokens, issuer_url=issuer_url,
+                          state_file=oauth_state_file)
+    app = RateLimitMiddleware(app, requests_per_minute=RATE_LIMIT)
+    app = HealthMiddleware(app)
+
+    # Warn if binding publicly without TLS
+    print(f"ar-manager: Starting with auth on port {port}", file=sys.stderr)
+    print(
+        "ar-manager: WARNING: Listening on 0.0.0.0 without TLS. "
+        "Bearer tokens will be transmitted in cleartext. "
+        "Use a TLS-terminating reverse proxy for public deployments.",
+        file=sys.stderr,
+    )
+
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=port)

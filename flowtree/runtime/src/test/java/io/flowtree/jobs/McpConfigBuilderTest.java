@@ -34,6 +34,7 @@ import java.util.TreeSet;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Tests for {@link McpConfigBuilder} covering ar-manager HTTP entry,
@@ -60,17 +61,39 @@ public class McpConfigBuilderTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that the ar-manager server entry is omitted when no token is configured.
+	 * Verifies that configuring an ar-manager URL without a token is a loud
+	 * failure rather than a silent omission. ar-manager only serves
+	 * authenticated requests, so a tokenless agent could not use it at all;
+	 * building such a config is a misconfiguration and must fail fast.
 	 */
 	@Test(timeout = 30000)
-	public void omitsArManagerWithoutToken() {
+	public void failsWhenArManagerUrlSetWithoutToken() {
 		McpConfigBuilder builder = new McpConfigBuilder();
 		builder.setArManagerUrl("http://ar-manager:8010");
 		// No token set
 
+		try {
+			builder.buildMcpConfig();
+			fail("Expected IllegalStateException when ar-manager URL is set without a token");
+		} catch (IllegalStateException e) {
+			assertTrue("Message should explain the missing token",
+				e.getMessage().contains("token"));
+		}
+	}
+
+	/**
+	 * Verifies that when neither an ar-manager URL nor token is set, ar-manager
+	 * is simply absent from the config (no error) — a valid deployment that
+	 * does not use ar-manager at all.
+	 */
+	@Test(timeout = 30000)
+	public void omitsArManagerWhenNoUrlConfigured() {
+		McpConfigBuilder builder = new McpConfigBuilder();
+		// Neither URL nor token set
+
 		String config = builder.buildMcpConfig();
 		assertNotNull(config);
-		assertFalse("Config should not contain ar-manager without token",
+		assertFalse("Config should not contain ar-manager when no URL is configured",
 			config.contains("ar-manager"));
 	}
 
