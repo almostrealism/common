@@ -154,12 +154,15 @@ public class ClaudeCodeRunner implements AgentRunner {
         logger.log("Working directory: "
                 + (workDir != null ? workDir.toString() : System.getProperty("user.dir")));
 
-        // Tmux is opt-in via AR_AGENT_USE_TMUX=enabled. Default is off so deployments
-        // do not flip launch backends on merge without an explicit operator decision.
-        boolean tmuxRequested = SystemUtils.isEnabled("AR_AGENT_USE_TMUX").orElse(false);
+        // Tmux is opt-in. The per-job request flag (set at submission time) and
+        // the AR_AGENT_USE_TMUX env var are independent enables: either one being
+        // on requests tmux. Default is off so deployments do not flip launch
+        // backends on merge without an explicit operator or submitter decision.
+        boolean tmuxRequested = request.isUseTmux()
+                || SystemUtils.isEnabled("AR_AGENT_USE_TMUX").orElse(false);
         boolean useTmux = tmuxRequested && TmuxSession.isAvailable();
         if (tmuxRequested && !useTmux) {
-            logger.warn("AR_AGENT_USE_TMUX is enabled but tmux is not on PATH;"
+            logger.warn("tmux launch was requested but tmux is not on PATH;"
                     + " falling back to direct process launch.");
         }
         AgentProcessRunner.Result processResult = AgentProcessRunner.runAttempt(
