@@ -18,6 +18,7 @@ package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.AdapterConfig;
 import org.almostrealism.layers.LayerFeatures;
@@ -43,7 +44,7 @@ import java.util.function.Function;
  *
  * @author  Michael Murray
  */
-public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures {
+public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures, AdaptiveLayerNormFeatures {
 	/**
 	 * Creates a SwiGLU feed-forward block with RMSNorm (simplified version without biases).
 	 * Delegates to the full feedForward method with null biases.
@@ -262,8 +263,48 @@ public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures
 										 PackedCollection weightOut, PackedCollection biasOut,
 										 ProjectionFactory projectionFactory,
 										 ComputeRequirement... requirements) {
+		return gatedLinearFeedForward(inputShape, normWeights, normBiases,
+				weightIn, biasIn, weightOut, biasOut,
+				null, null, projectionFactory, requirements);
+	}
+
+	/**
+	 * Creates a gated linear feed-forward block with optional adaLN modulation of the normalized
+	 * activations.
+	 *
+	 * <p>When {@code modScale} and {@code modShift} are supplied, the affine modulation
+	 * {@code modScale * norm(x) + modShift} is applied immediately after the internal
+	 * normalization (and before the gate projection), implementing the adaptive layer-normalization
+	 * (adaLN-Zero) modulation of the feed-forward sub-layer. When both are {@code null} the block is
+	 * identical to the unmodulated {@code gatedLinearFeedForward}, so the default path is unchanged.</p>
+	 *
+	 * @param inputShape Input/output shape
+	 * @param normWeights Normalization weights
+	 * @param normBiases Normalization biases
+	 * @param weightIn Input projection weights (GLU)
+	 * @param biasIn Input projection bias
+	 * @param weightOut Output projection weights
+	 * @param biasOut Output projection bias
+	 * @param modScale adaLN multiplicative modulation applied after norm ({@code null} to disable)
+	 * @param modShift adaLN additive modulation applied after norm ({@code null} to disable)
+	 * @param projectionFactory Factory for creating projection layers
+	 * @param requirements Compute requirements
+	 * @return Gated linear feed-forward block
+	 */
+	default Block gatedLinearFeedForward(TraversalPolicy inputShape,
+										 PackedCollection normWeights, PackedCollection normBiases,
+										 PackedCollection weightIn, PackedCollection biasIn,
+										 PackedCollection weightOut, PackedCollection biasOut,
+										 Producer<PackedCollection> modScale, Producer<PackedCollection> modShift,
+										 ProjectionFactory projectionFactory,
+										 ComputeRequirement... requirements) {
 		SequentialBlock feedForward = new SequentialBlock(inputShape);
 		feedForward.add(norm(normWeights, normBiases, requirements));
+
+		// adaLN modulation of the normalized activations (identity when no modulation supplied)
+		if (modScale != null && modShift != null) {
+			feedForward.add(adaptiveModulate(feedForward.getOutputShape(), modScale, modShift));
+		}
 
 		// Gate projection with factory
 		feedForward.add(projectionFactory.create(feedForward.getOutputShape(), weightIn, biasIn,
