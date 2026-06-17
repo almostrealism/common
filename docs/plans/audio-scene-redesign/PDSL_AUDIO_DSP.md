@@ -1,7 +1,11 @@
 # PDSL for Audio DSP Processing
 
 > Part of the audio-scene-redesign consolidation — see [STATE_OF_PLAY.md](STATE_OF_PLAY.md)
-> for the big picture. This is the design reference for migrating all signal processing to PDSL.
+> for the big picture. This is the design reference for migrating all signal processing to
+> PDSL. **The migration it designs is now complete** (`mixdown_master_wet` renders the full
+> path; parity record in [EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md), remaining
+> differences in [PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md)), so
+> read this as the substrate/capability reference it grew from, not a to-do list.
 
 PDSL declaratively describes the multi-channel DSP pipeline that backs `MixdownManager`,
 `EfxManager`, and `AutomationManager`. A `layer` body composes FIR primitives
@@ -13,8 +17,8 @@ and multi-channel constructs (`channels: N`, `for each channel { }`, `repeat(N)`
 the audio path, and the closed-loop reverb bus (`delay_network`) and time-varying
 parameters — gene-driven, clock-driven, and automation-driven, via `producer([shape])`
 arguments — have since landed. Section 11 is the design reference for the producer-valued
-parameter form; Section 14 explains why migrating this DSP path is the current priority,
-and Section 15 covers the production cutover.
+parameter form; Section 13 explains why migrating this DSP path is the current priority,
+and Section 14 covers the production cutover.
 
 **Related:** [STATE_OF_PLAY.md](STATE_OF_PLAY.md), [KNOWN_ISSUES.md](KNOWN_ISSUES.md)
 
@@ -517,6 +521,12 @@ The PDSL `state` block and `into()` mechanism make PDSL Blocks structurally equi
 
 ### Implications for AudioScene
 
+> **Note (cutover direction):** the cell-level splice described in this subsection — adding
+> a PDSL block's forward `Cell` into the existing `CellList` — is **background, not the
+> chosen cutover**. The cutover keeps the `Block` outside `CellList` entirely via a
+> Block-forward `TemporalCellular` runner (§14). This subsection documents what is
+> *possible* at the cell level; do not implement the splice.
+
 `AudioScene.getCells()` builds a `CellList` pipeline. To incorporate PDSL-defined DSP:
 
 1. Replace a Java-defined cell (e.g., `BiquadFilterCell`) with the PDSL equivalent:
@@ -573,7 +583,7 @@ cells.addRequirement(temporal);
   `[N, M]` for square or rectangular routing). The argument-binding plumbing is
   `PdslPrimitiveContext.toProducer(value, shape, name)`, called once per argument
   at each `AudioDspPrimitives` dispatch site (e.g.
-  `AudioDspPrimitives.java:117,127,139,151-156`); it dispatches over
+  `AudioDspPrimitives.java:118,128,140,152-157`); it dispatches over
   Number / PackedCollection / Producer at the declared shape. Subscript indexing
   (`coeffs[channel]`) accepts producers as
   well as PackedCollections, so per-channel slicing of a
@@ -614,8 +624,9 @@ cells.addRequirement(temporal);
   audio in the same dynamic-range neighbourhood and reports the divergence
   honestly rather than loosening tolerance.
 - **`delay_network` reverb bus** — registered at `AudioDspPrimitives.java:98`,
-  dispatched at `:311`, and built as a real `delayNetworkBlock(...)` (an
-  `OperationList`) at `MultiChannelDspFeatures.java:168-228`. The
+  dispatched at `:312`, and built as a real `delayNetworkBlock(...)` (an
+  `OperationList`) at `MultiChannelDspFeatures.java:168-175`, delegating to
+  `feedbackNetworkBlock(...)` at `:206-274`. The
   `mixdown_reverb_bus` layer in `mixdown_manager.pdsl` exercises it
   (`delay_network(delay_samples, feedback_matrix, ...)`), so the multi-tap
   closed-loop reverb equivalent to `org.almostrealism.audio.filter.DelayNetwork`
@@ -659,9 +670,12 @@ bus, the genome→args adapter, the Block→CellList helper, and the real-audio
 verification test have all landed. The remaining work is the production cutover
 and the surfaces not yet expressed in PDSL:
 
-1. **Production cutover.** Swap the compiled PDSL model into the live
-   `MixdownManager.createCells()` path behind a feature flag, gated on acoustic
-   parity and real-time performance on hybrid routing. See Section 15.
+1. **Production cutover.** Add a Block-forward `TemporalCellular` runner selected by the
+   `MixdownManager.enablePdslMixdown` / `AR_PDSL_MIXDOWN` flag (default off): keep the Java
+   pattern-prepare phase, run the compiled PDSL model via `forward()` per buffer for the DSP,
+   write straight to the output line. **Not** a CellList splice and **not**
+   `wrapBlockAsCellList`. Build the A/B mechanism first (default off); flipping default-on is
+   gated on acoustic parity and real-time performance on hybrid routing. See Section 14.
 2. **`EfxManager` migration.** Same shape of work as the `MixdownManager`
    migration, against `EfxManager.apply()`. `efx_channel.pdsl` renders only the
    feedforward wet chain so far — the automation-driven wet/dry path is not yet
@@ -671,9 +685,12 @@ and the surfaces not yet expressed in PDSL:
    `knownIssue` framing.
 4. **Variable channel count.** Today `channels` is fixed at build time.
    Supporting gene-driven channel activation requires runtime branching.
-5. **Full retirement of CellList in favour of Block.** Long-arc consolidation:
-   the `wrapBlockAsCellList` bridge is the minimum stop-gap while CellList
-   remains AudioScene's primary topology container.
+5. **Full retirement of CellList in favour of Block.** Long-arc consolidation. The
+   Block-forward `TemporalCellular` runner (item 1) is the first concrete step: it drives the
+   DSP stage with `Block.forward()` and bypasses `CellList` for that stage entirely, while
+   still satisfying the `TemporalCellular` contract every consumer depends on. The
+   `wrapBlockAsCellList` bridge is **not** used by the cutover and is a candidate for
+   removal once nothing else depends on it.
 
 ---
 
@@ -714,6 +731,15 @@ run under default hybrid routing — Metal alone cannot compile the mixdown loop
 ---
 
 ## 10. MixdownManager Migration: Structural Plan
+
+> **Line numbers below are indicative, not exact.** They were captured against an
+> earlier revision; `MixdownManager.java` has since grown, so the `Line(s)` column now
+> runs roughly **+47** low through `createCells()`/`createEfx()` and **+62** low for the
+> `Configuration` inner class (verified 2026-06-09 on `master`). The *method name and
+> statement description* are the durable anchor — navigate by those, not by the line
+> number. **Status note:** `MixdownManager.createCells()`/`createEfx()` and
+> `EfxManager.apply()` are still the **live Java path**; `MixdownManagerPdslAdapter` is
+> built and tested but **not yet invoked from production** (no cutover has happened).
 
 This section catalogs every statement in
 `studio/compose/src/main/java/org/almostrealism/studio/arrange/MixdownManager.java`
@@ -1233,15 +1259,40 @@ already sources every PDSL parameter from the manager's constructed chromosomes.
 > compatibility adapter is unavoidable, **`Block` stays on the outside** (adapt
 > `Cell` → `Block`, never the reverse). See [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
-**Parity first, then a Block-outward A/B cutover.** Do not wire anything into the
-render path until the PDSL DSP is confidently acoustically correct (the §16 gates).
-Only then add the cutover, behind a flag:
+**The integration contract is `TemporalCellular`, not `CellList`.** `runnerRealTime(...)`
+(`AudioScene.java:1227`) returns a `TemporalCellular` (`setup()`/`tick()`/`reset()`); every
+consumer outside `AudioScene` — the health computation, `BufferedOutputScheduler`,
+`RealtimeContinuousRenderer` — drives that contract and is blind to whether a `CellList`
+backs it. Its `tick()` already has three separable phases: **prepare** (Java —
+`PatternAudioBuffer.prepareBatch()` renders the a2 batched pattern audio, outside the
+per-frame loop), **DSP** (`loop(cells.tick(), bufferSize)` — the per-frame mixdown), and
+**advance** (frame counter + `time.getClock()`).
 
-1. The default path stays `createCells()`.
-2. With the flag enabled, `cells(...)` builds and compiles the PDSL model via the
-   adapter (in a background thread during scene init, double-buffered so the audio
-   path only swaps once compilation completes) and hands the resulting `Block` to a
-   consumer that accepts `Block` directly — never re-wrapped as a `CellList`.
+**Cutover mechanism — a Block-forward runner (NOT a CellList splice).** Because the
+contract is `TemporalCellular`, the cutover does not wire a `Block` into the existing
+`CellList`, and does not use `wrapBlockAsCellList`. Instead, with the flag enabled,
+`AudioScene` builds an alternative `TemporalCellular` whose `tick()` keeps the **prepare**
+phase unchanged, replaces the **DSP** phase with a single per-buffer
+`compiledPdslModel.forward(patternBuffer)` (the compiled `mixdown_master` Block; stateful
+biquad/delay/reverb primitives carry state across `forward()` calls — proven by
+`MixdownManagerPdslVerificationTest`), writes the result straight to the
+`MultiChannelAudioOutput` line, and **advances** the clock independently (the clock is a
+`TimeCell`, tickable outside `CellList`). The `CellList`-backed runner stays as the A/B
+baseline (flag off). This removes the one genuinely hard part of the earlier framing —
+splicing a `Block` into per-frame `CellList` tick ordering.
+
+1. The default path stays the `CellList` runner (`createCells()` DSP).
+2. The flag — `MixdownManager.enablePdslMixdown` / `AR_PDSL_MIXDOWN`, default **off**,
+   matching the existing `enableEfx`/`enableReverb` convention — selects the Block-forward
+   runner. Runner construction is being extracted out of `AudioScene` into a dedicated
+   collaborator (`AudioScene` is over the file-length limit).
+
+**Wire first, then parity (current phase).** Per owner direction, the A/B *mechanism* is
+built default-off **now**, without waiting on acoustic parity; flipping it default-on still
+requires the two gates below. Two feasibility details are confirmed before claiming the
+runner works: (a) `prepareBatch` yields a `[channels, bufferSize]` buffer feedable to
+`forward()`; (b) writing `forward()` output to `MultiChannelAudioOutput`/`WaveOutput`
+replaces the receptor-cell push (master/measures/stems).
 
 **Two gates before the flag can flip to default-on:**
 
@@ -1344,24 +1395,27 @@ measured warm steady-state via the continuous-render harness with
 baseline. A regression vs. the Cell path on hybrid routing blocks the cutover. Never
 force `AR_HARDWARE_DRIVER`.
 
-### Step 4 — A/B cutover mechanism (Block-outward, after parity)
+### Step 4 — A/B cutover mechanism (Block-forward runner)
 
-Once the DSP is confidently correct, an `enablePdsl`-style flag (default **off**,
-matching the existing `enableEfx` / `enableReverb` static-flag convention) routes
-`MixdownManager.cells(...)` through the adapter-built, compiled PDSL `Block` instead
-of `createCells()`. The consumer must accept a `Block` (or `List<Block>`) — **never
-wrap the Block in a Cell/CellList** (§14 direction principle). Mechanism and the
-per-channel-automation gap: §14.
+The `MixdownManager.enablePdslMixdown` / `AR_PDSL_MIXDOWN` flag (default **off**, matching
+the existing `enableEfx` / `enableReverb` static-flag convention) selects a Block-forward
+`TemporalCellular` runner instead of the `CellList` runner: prepare (unchanged) → compiled
+PDSL `forward()` per buffer → write to the output line → advance. **Not** a CellList splice;
+`wrapBlockAsCellList` is not used (§14 direction principle and mechanism). Per owner
+direction this mechanism is built **first** (default-off), independent of parity — it is
+also what the perf gate (step 3) needs in order to measure the PDSL path in the real render.
+Per-channel-automation gap: §14.
 
 ### Sequencing
 
-Step 1 is complete (this section). **Close the parity gaps first** — be confident the
-PDSL DSP path reproduces the Java path before touching the render path. The order:
-(a) extend the parity gate (step 2) to the full surface to quantify the current
-divergence; (b) close the step-1 Approx/Gap items, tightening the parity tolerance as
-each lands; (c) stand up the perf gate (step 3) — which needs the cutover to measure
-the PDSL path in the real render; (d) add the Block-outward A/B cutover (step 4),
-shipping default-off until both gates pass.
+Step 1 is complete (this section). Per owner direction the order is **wire first, then
+parity** — the A/B cutover *mechanism* ships default-off without waiting on parity, and is
+in fact a prerequisite for the perf gate. The order: (a) build the Block-forward A/B cutover
+runner (step 4), default-off; (b) stand up the perf gate (step 3), which needs that runner to
+measure the PDSL path in the real render; (c) extend the parity gate (step 2) to the full
+surface to quantify the current divergence; (d) close the step-1 Approx/Gap items, tightening
+the parity tolerance as each lands. The flag flips to default-on only once both the
+acoustic-parity and perf gates pass.
 
 ---
 

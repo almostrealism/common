@@ -48,7 +48,8 @@ import java.util.stream.Stream;
  *
  * <h2>Scanned files</h2>
  * <p>{@code .java}, {@code .proto}, and {@code .pdsl} sources under the project
- * root, excluding {@code /test/} paths and the policy framework's own files.
+ * root, including test sources — a release marker is stale in a test comment
+ * just as in production code. The policy framework's own files are excluded.
  * Build configuration ({@code pom.xml}) and documentation ({@code .md},
  * {@code .txt}, {@code .html}) are not scanned — version numbers are
  * legitimate there.</p>
@@ -110,7 +111,11 @@ public class VersionReferenceDetector extends PolicyViolationDetector {
 	private static final List<String> ALLOWLISTED_PATH_FRAGMENTS = List.of(
 			// NFS protocol versions ("v3", "v4.1"). These are protocol versions
 			// of an external standard, not project release tags.
-			"flowtree/graphpersist/src/main/java/io/almostrealism/nfs/NetworkFileSystemServer.java");
+			"flowtree/graphpersist/src/main/java/io/almostrealism/nfs/NetworkFileSystemServer.java",
+			// The detector's own unit test. Its fixtures embed deliberate release
+			// markers ("Common 0.74", "Rings 0.39", "v0.74") as inputs that the
+			// detector is expected to flag; they are not real version references.
+			"tools/src/test/java/org/almostrealism/util/test/SourceReferenceDetectorTest.java");
 
 	/**
 	 * Creates a detector that will scan source files under the given directory.

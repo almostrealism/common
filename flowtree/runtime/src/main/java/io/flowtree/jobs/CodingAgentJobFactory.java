@@ -74,6 +74,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     /** Bearer token for authenticating against the ar-manager service. */
     private String arManagerToken;
 
+
     /**
      * JSON describing pushed MCP tools the controller is serving for this
      * job (always includes ar-secrets; may include additional operator
@@ -117,6 +118,15 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * {@link #setEnforceOrganizationalPlacement(boolean)} directly.
      */
     private boolean enforceOrganizationalPlacement = false;
+
+    /**
+     * When {@code true}, jobs created by this factory launch the agent
+     * subprocess inside a tmux session (a real controlling tty) instead of a
+     * direct child process. Defaults to {@code false}; the runner additionally
+     * honours the {@code AR_AGENT_USE_TMUX} environment variable, so either
+     * source enabling tmux is sufficient.
+     */
+    private boolean useTmux = false;
 
     /**
      * When {@code true} (the default), jobs created by this factory activate the
@@ -551,6 +561,39 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
+     * Sets the dispatch-capable flag. Sourced from the workstream's
+     * {@link io.flowtree.workstream.Workstream#isDispatchCapable()} at
+     * the call sites that build the factory. The flag is purely a
+     * harness-CSV switch; the controller-side check is the real
+     * backstop for the opencode harness (per-SERVER filtering).
+     *
+     * <p>The value is stored in the inherited {@link AbstractJobFactory}
+     * properties map (not a plain field) so that it survives the
+     * {@link #encode()} / {@link #set(String, String)} wire round-trip
+     * used to ship the factory to a remote agent node. A plain field
+     * would be silently dropped on serialization, leaving the
+     * reconstructed factory — and the job it builds — non-dispatch.</p>
+     *
+     * @param dispatchCapable {@code true} to grant the workstream's
+     *                        dispatch tools to this agent
+     */
+    public void setDispatchCapable(boolean dispatchCapable) {
+        set("dispatchCapable", String.valueOf(dispatchCapable));
+    }
+
+    /**
+     * Returns whether this factory's workstream is dispatch-capable.
+     * Reads from the inherited properties map so the value reflects a
+     * wire-deserialized factory as well as one configured in-process.
+     *
+     * @return {@code true} when the dispatch tools should be granted
+     * @see #setDispatchCapable(boolean)
+     */
+    public boolean isDispatchCapable() {
+        return "true".equals(get("dispatchCapable"));
+    }
+
+    /**
      * Returns the pushed-tools configuration JSON. May be {@code null}.
      */
     public String getPushedToolsConfig() {
@@ -730,6 +773,27 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     public void setEnforceOrganizationalPlacement(boolean enforceOrganizationalPlacement) {
         this.enforceOrganizationalPlacement = enforceOrganizationalPlacement;
         set("enforceOrgPlacement", String.valueOf(enforceOrganizationalPlacement));
+    }
+
+    /**
+     * Returns whether jobs created by this factory launch the agent subprocess
+     * inside a tmux session.
+     *
+     * @return {@code true} when tmux-backed launch is enabled; {@code false} by default
+     */
+    public boolean isUseTmux() {
+        return useTmux;
+    }
+
+    /**
+     * Sets whether jobs created by this factory launch the agent subprocess
+     * inside a tmux session (a real controlling tty).
+     *
+     * @param useTmux {@code true} to launch agents inside a tmux session
+     */
+    public void setUseTmux(boolean useTmux) {
+        this.useTmux = useTmux;
+        set("useTmux", String.valueOf(useTmux));
     }
 
     /**
@@ -1261,6 +1325,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         if (arManagerToken != null) {
             job.setArManagerToken(arManagerToken);
         }
+        job.setDispatchCapable(isDispatchCapable());
         if (pushedToolsConfig != null) {
             job.setPushedToolsConfig(pushedToolsConfig);
         } else {
@@ -1281,6 +1346,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         job.setMaxDeduplicationPasses(maxDeduplicationPasses);
         job.setEnforceMavenDependencies(enforceMavenDependencies);
         job.setEnforceOrganizationalPlacement(enforceOrganizationalPlacement);
+        job.setUseTmux(useTmux);
         job.setReviewEnabled(reviewEnabled);
         job.setMaxReviewPasses(maxReviewPasses);
         job.setRetrospectiveEnabled(retrospectiveEnabled);
@@ -1448,6 +1514,9 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
                 return;
             case "enforceOrgPlacement":
                 this.enforceOrganizationalPlacement = Boolean.parseBoolean(value);
+                return;
+            case "useTmux":
+                this.useTmux = Boolean.parseBoolean(value);
                 return;
             case "reviewEnabled":
                 this.reviewEnabled = Boolean.parseBoolean(value);

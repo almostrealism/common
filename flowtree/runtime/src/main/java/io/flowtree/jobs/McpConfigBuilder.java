@@ -139,6 +139,17 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * {@code tools/mcp/manager/server.py}. The
      * {@code allowlistCoversEveryArManagerTool} test fails if a tool
      * is missing from both sets.</p>
+     *
+     * <p>Some of these tools (currently {@code workstream_register} and
+     * {@code workstream_update_config}) are deliberately opted in to on
+     * a per-workstream basis through
+     * {@link io.flowtree.workstream.Workstream#isDispatchCapable()}. The set is the BASE
+     * default; the per-workstream override is applied at CSV-assembly
+     * time in {@link #buildAllowedTools(String)} when the flag is set.
+     * The two paths consult different sets: the exclusion set answers
+     * "what does the default look like?", the conditional append
+     * answers "what does the dispatch-capable override look like?" —
+     * so a tool appearing in both is not a disjointness violation.</p>
      */
     static final Set<String> EXCLUDED_AR_MANAGER_TOOLS = Collections.unmodifiableSet(
         new LinkedHashSet<>(Arrays.asList(
@@ -171,6 +182,39 @@ public class McpConfigBuilder implements ConsoleFeatures {
             // lands in the agent's filesystem rather than ar-manager's.
             "workspace_secret_list_names",
             "workspace_secret_render_file"
+        ))
+    );
+
+    /**
+     * ar-manager tool names that are conditionally re-added to the agent
+     * allowlist when a workstream has
+     * {@link io.flowtree.workstream.Workstream#isDispatchCapable() dispatchCapable} set to
+     * {@code true}. The names are a subset of
+     * {@link #EXCLUDED_AR_MANAGER_TOOLS} — the base default excludes
+     * them for every workstream; an orchestrator workstream that opts
+     * in re-adds them at CSV-assembly time.
+     *
+     * <p>The set is intentionally narrow: only the tools an
+     * orchestrator needs to wire up a delegation graph. Destructive /
+     * admin tools ({@code workstream_delete}, {@code workstream_archive},
+     * {@code workspace_update_config}, the secrets, etc.) stay excluded
+     * regardless of the flag. An orchestrator can register a child
+     * workstream ({@code workstream_register}) and update it
+     * ({@code workstream_update_config}) so it can set
+     * {@code completion_listeners} and the child's other config — but
+     * it cannot delete or archive a child via this flag.</p>
+     *
+     * <p>The set must be a subset of {@link #EXCLUDED_AR_MANAGER_TOOLS}
+     * by construction; the {@code McpConfigBuilderTest.allowlistCoversEveryArManagerTool}
+     * and {@code allowlistAndExclusionsAreDisjoint} invariant tests are
+     * unaffected by a tool appearing in both this set and the base
+     * exclusion set, because the conditional append happens at
+     * build-time, not at the classification step the tests inspect.</p>
+     */
+    static final Set<String> DISPATCH_AR_MANAGER_TOOLS = Collections.unmodifiableSet(
+        new LinkedHashSet<>(Arrays.asList(
+            "workstream_register",
+            "workstream_update_config"
         ))
     );
 
@@ -242,6 +286,18 @@ public class McpConfigBuilder implements ConsoleFeatures {
     private String pythonCommand = "python3";
 
     /**
+     * When {@code true}, {@link #buildAllowedTools(String)} appends the
+     * {@link #DISPATCH_AR_MANAGER_TOOLS} entries (currently
+     * {@code workstream_register} and {@code workstream_update_config})
+     * to the agent's allowlist. Default {@code false}, matching the
+     * {@link io.flowtree.workstream.Workstream#isDispatchCapable()} default. The flag is set
+     * by the call sites that build the agent allowlist (see
+     * {@link io.flowtree.jobs.CodingAgentJob#configureMcpBuilder()}) from
+     * the workstream the job is running on.
+     */
+    private boolean dispatchCapable;
+
+    /**
      * Sets the ar-manager HTTP URL for centralized tool access.
      *
      * @param url the ar-manager service URL (e.g., "http://ar-manager:8010")
@@ -294,6 +350,29 @@ public class McpConfigBuilder implements ConsoleFeatures {
      */
     public void setPythonCommand(String pythonCommand) {
         this.pythonCommand = pythonCommand;
+    }
+
+    /**
+     * Sets the dispatch-capable flag. When {@code true}, the
+     * {@link #DISPATCH_AR_MANAGER_TOOLS} entries are appended to the
+     * agent allowlist at {@link #buildAllowedTools(String)} time —
+     * opt-in workstreams (typically orchestrators) gain access to
+     * {@code workstream_register} and {@code workstream_update_config}.
+     * When {@code false} (the default), the CSV is unchanged from the
+     * base allowlist and the dispatch tools remain excluded.
+     *
+     * <p>Set from {@link io.flowtree.workstream.Workstream#isDispatchCapable()} at the call
+     * sites that build the allowlist for an agent job. A
+     * {@code false} value does NOT shorten the CSV — the base
+     * allowlist is authoritative when dispatch is off; this flag is
+     * purely an additive opt-in.</p>
+     *
+     * @param dispatchCapable {@code true} to grant the dispatch tool
+     *                        entries to this agent session,
+     *                        {@code false} to use the base allowlist
+     */
+    public void setDispatchCapable(boolean dispatchCapable) {
+        this.dispatchCapable = dispatchCapable;
     }
 
     /**
@@ -444,6 +523,16 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * <p>Starting with the provided base tools string, this method appends:</p>
      * <ul>
      *   <li>ar-manager tools (when URL and token are configured)</li>
+     *   <li>Dispatch / orchestration tools (when {@link #dispatchCapable}
+     *       is {@code true} and ar-manager is configured). The dispatch
+     *       tools are a small subset of the base exclusion set —
+     *       currently {@code workstream_register} and
+     *       {@code workstream_update_config} — re-added at CSV-assembly
+     *       time so opt-in workstreams (typically orchestrators) can
+     *       register and update child workstreams. The exclusion set is
+     *       the BASE default; this conditional append is the opt-in
+     *       override. Destructive admin tools remain excluded
+     *       regardless of the flag.</li>
      *   <li>Tools from discovered project servers</li>
      * </ul>
      *
@@ -458,6 +547,29 @@ public class McpConfigBuilder implements ConsoleFeatures {
                 && arManagerToken != null && !arManagerToken.isEmpty()) {
             sb.append(",").append(AR_MANAGER_TOOLS);
             log("Added ar-manager tools");
+
+            // Dispatch / orchestration tools: re-added from the base
+            // exclusion set when the workstream is dispatchCapable. This
+            // is the per-workstream override; the base exclusion set
+            // remains the default for every other workstream. The
+            // disjointness invariants in McpConfigBuilderTest
+            // (allowlistCoversEveryArManagerTool and
+            // allowlistAndExclusionsAreDisjoint) classify tools into
+            // one of two sets at compile time, and they continue to
+            // pass because the conditional append happens at
+            // buildAllowedTools time, not at the classification step.
+            // The opencode harness filters per-SERVER rather than
+            // per-tool (see OpencodeConfigBuilder.translateAllowlist),
+            // so the dispatch-flag has no precision for opencode
+            // sessions at the harness layer — the controller-side
+            // check on the calling workstream's dispatchCapable flag
+            // is the real backstop there.
+            if (dispatchCapable) {
+                for (String name : DISPATCH_AR_MANAGER_TOOLS) {
+                    sb.append(",mcp__ar-manager__").append(name);
+                }
+                log("Added dispatch tools (dispatchCapable=true)");
+            }
         }
 
         // Pushed-tool tools: tool names are listed verbatim in the JSON.

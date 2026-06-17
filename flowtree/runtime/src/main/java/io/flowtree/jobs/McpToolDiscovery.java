@@ -23,6 +23,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -82,6 +84,25 @@ public class McpToolDiscovery {
         Pattern.compile("^(\\w+)");
 
     /**
+     * Matches a {@code payload["key"]} subscript assignment, e.g.
+     * {@code payload["useTmux"] = True}. Group 1 is the wire key the tool emits.
+     */
+    private static final Pattern PAYLOAD_SUBSCRIPT_PATTERN =
+        Pattern.compile("payload\\[\\s*[\"']([A-Za-z0-9_]+)[\"']\\s*\\]");
+
+    /**
+     * Matches a {@code payload = { ... }} dict-literal initializer so its inline
+     * {@code "key":} entries can be harvested, e.g.
+     * {@code payload = {"jobType": "shell", "command": command}}.
+     */
+    private static final Pattern PAYLOAD_LITERAL_PATTERN =
+        Pattern.compile("payload\\s*=\\s*\\{([^}]*)\\}");
+
+    /** Matches a {@code "key":} entry inside a dict literal. Group 1 is the key. */
+    private static final Pattern DICT_KEY_PATTERN =
+        Pattern.compile("[\"']([A-Za-z0-9_]+)[\"']\\s*:");
+
+    /**
      * Scans a Python MCP server source file for tool definitions and
      * returns their names.
      *
@@ -136,6 +157,52 @@ public class McpToolDiscovery {
     }
 
     /**
+     * Discovers the wire-format keys a tool function emits into the JSON
+     * {@code payload} it posts to the controller.
+     *
+     * <p>Harvests both forms used in the manager server: the
+     * {@code payload = {"key": value}} dict-literal initializer and every
+     * subsequent {@code payload["key"] = value} subscript assignment, across the
+     * full body of the named function. These keys are the cross-process contract
+     * the controller's HTTP endpoint must consume; a key emitted here but not
+     * read by the controller is silently ignored, which is the divergence the
+     * parity tests guard against.</p>
+     *
+     * <p>Scanning starts at the {@code def toolName(} line and stops at the next
+     * module-level construct (a column-zero {@code def}/{@code class}/{@code @}
+     * line), so only the target function's body is considered.</p>
+     *
+     * @param serverFile path to the Python server source file
+     * @param toolName   the tool function name whose payload to inspect
+     * @return the emitted wire keys in sorted order, empty if the file does not
+     *         exist or the tool is not found
+     */
+    public static List<String> discoverToolPayloadKeys(Path serverFile, String toolName) {
+        List<String> lines = readLines(serverFile);
+        if (lines.isEmpty()) return new ArrayList<>();
+
+        Pattern funcDefStart = Pattern.compile("def\\s+" + Pattern.quote(toolName) + "\\s*\\(");
+        Set<String> keys = new TreeSet<>();
+        for (int i = 0; i < lines.size(); i++) {
+            if (!funcDefStart.matcher(lines.get(i)).find()) continue;
+            for (int j = i + 1; j < lines.size(); j++) {
+                String line = lines.get(j);
+                // Stop at the next module-level construct (column-zero def/class/decorator).
+                if (line.matches("^(def\\s|class\\s|@).*")) break;
+                Matcher literal = PAYLOAD_LITERAL_PATTERN.matcher(line);
+                while (literal.find()) {
+                    Matcher key = DICT_KEY_PATTERN.matcher(literal.group(1));
+                    while (key.find()) keys.add(key.group(1));
+                }
+                Matcher subscript = PAYLOAD_SUBSCRIPT_PATTERN.matcher(line);
+                while (subscript.find()) keys.add(subscript.group(1));
+            }
+            break;
+        }
+        return new ArrayList<>(keys);
+    }
+
+    /**
      * Reports whether the given parameter of the named tool has a default value
      * in its Python function signature — i.e. whether the parameter is
      * <em>optional</em> from the MCP client's perspective.
@@ -180,6 +247,44 @@ public class McpToolDiscovery {
         } catch (IOException e) {
             return new ArrayList<>();
         }
+    }
+
+    /**
+     * Walks up from the current working directory looking for the
+     * {@code tools/mcp/manager/server.py} source file. Maven Surefire
+     * defaults the working directory of a forked test JVM to the
+     * module's basedir ({@code flowtree/runtime/}) so a single
+     * relative path like {@code tools/...} only resolves when the
+     * test is launched from the project root. Walking the ancestor
+     * chain is the standard mitigation: a path like
+     * {@code /workspace/project/almostrealism-common} resolves from
+     * either a module-basedir or a project-root working directory.
+     *
+     * <p>Uses {@link Files#isRegularFile(Path)} rather than
+     * {@link Files#exists(Path)} so a directory that happens to be
+     * named {@code server.py} cannot produce a false positive — the
+     * helper's contract is to find a Python source file, not any
+     * filesystem entry with that name.</p>
+     *
+     * <p>Centralised so the resolution path lives in one place;
+     * {@code McpToolDiscoveryTest} and
+     * {@code McpToolWorkstreamConfigSurfaceTest} both call this
+     * helper, eliminating the silent-skip failure mode that
+     * historical copies were re-introducing when their search depth
+     * or path drifted between test classes.</p>
+     *
+     * @return the resolved regular file path, or {@code null} if the
+     *         file is not found within five levels of ancestor
+     *         directories
+     */
+    public static Path locateManagerServerPy() {
+        Path cwd = Path.of("").toAbsolutePath();
+        for (int i = 0; i < 5 && cwd != null; i++) {
+            Path candidate = cwd.resolve("tools/mcp/manager/server.py");
+            if (Files.isRegularFile(candidate)) return candidate;
+            cwd = cwd.getParent();
+        }
+        return null;
     }
 
     /**

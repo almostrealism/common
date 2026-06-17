@@ -146,6 +146,11 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
             "description": "Block edits to ~/.claude/projects/*/memory/ \u2014 use ar-consultant/ar-manager"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/capability-process-reminder.sh",
+            "description": "Remind of the full add-a-capability chain (MCP tool -> API -> factory -> job -> codec -> request -> runner -> tests) when editing any file implicated in it"
           }
         ]
       },
@@ -161,6 +166,11 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
             "description": "Block MultiEdit in ~/.claude/projects/*/memory/ \u2014 use ar-consultant/ar-manager"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/capability-process-reminder.sh",
+            "description": "Remind of the full add-a-capability chain (MCP tool -> API -> factory -> job -> codec -> request -> runner -> tests) when editing any file implicated in it"
           }
         ]
       },
@@ -216,6 +226,11 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
             "description": "Block writes to ~/.claude/projects/*/memory/ \u2014 use ar-consultant/ar-manager"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/capability-process-reminder.sh",
+            "description": "Remind of the full add-a-capability chain (MCP tool -> API -> factory -> job -> codec -> request -> runner -> tests) when editing any file implicated in it"
           }
         ]
       },

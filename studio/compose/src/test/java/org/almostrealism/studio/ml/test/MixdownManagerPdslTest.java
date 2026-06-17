@@ -51,9 +51,7 @@ import java.util.Map;
  *
  * <p>The {@code @Ignore}-annotated tests document the capabilities that
  * {@code MixdownManager} requires but that PDSL does not yet express.
- * Each carries a reason string naming the missing capability and
- * cross-referencing the decomposition table in
- * {@code docs/plans/PDSL_AUDIO_DSP.md} Section 10. These tests are
+ * Each carries a reason string naming the missing capability. These tests are
  * written in their intended final form; when the missing capability
  * lands, each one should pass after removing only its {@code @Ignore}.</p>
  *
@@ -343,8 +341,6 @@ public class MixdownManagerPdslTest extends TestSuiteBase implements FirFilterTe
 
 	// ====================================================================
 	// @Ignore tests — capabilities currently not in PDSL.
-	// See docs/plans/PDSL_AUDIO_DSP.md Section 11 for the index and
-	// estimated implementation cost.
 	// ====================================================================
 
 	/**

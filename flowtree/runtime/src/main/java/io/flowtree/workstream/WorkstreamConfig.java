@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -403,6 +404,16 @@ public class WorkstreamConfig {
         private String githubOrg;
         /** Additional repository URLs cloned alongside the primary repo. */
         private List<String> dependentRepos;
+        /**
+         * Workstream IDs of completion listeners that should be woken up
+         * automatically when a job on this workstream reaches a terminal
+         * status. The listener graph must be a DAG; the cycle check runs
+         * on register / update and rejects configurations that would
+         * introduce a cycle, including self-listing. See
+         * {@link Workstream#setCompletionListeners(List)} for the kill
+         * switch and reconciliation-invariant details.
+         */
+        private List<String> completionListeners;
         /** Node labels that jobs submitted to this workstream must match by default. */
         private Map<String, String> requiredLabels;
         /**
@@ -450,6 +461,24 @@ public class WorkstreamConfig {
          * job history and memories remain queryable.
          */
         private boolean archived;
+        /**
+         * Whether agents running on this workstream are permitted to call
+         * the dispatch / orchestration MCP tools ({@code workstream_register}
+         * and {@code workstream_update_config}). Default {@code false}:
+         * most workstreams do not need this power. An opt-in workstream
+         * can register and update child workstreams, which is the
+         * building block for orchestrator / worker delegation graphs.
+         *
+         * <p>Persisted as {@code dispatchCapable: true} in the workstream's
+         * YAML entry. The flag is consulted at agent allowlist assembly
+         * time ({@code McpConfigBuilder.buildAllowedTools}) and at
+         * ar-manager dispatch-tool invocation time (the controller-side
+         * backstop that catches the opencode harness's per-tool
+         * granularity gap). See {@link Workstream#dispatchCapable} for
+         * the full safety model.</p>
+         */
+        @JsonInclude(JsonInclude.Include.NON_DEFAULT)
+        private boolean dispatchCapable;
 
         /** Returns the persistent workstream identifier. */
         public String getWorkstreamId() { return workstreamId; }
@@ -551,6 +580,32 @@ public class WorkstreamConfig {
         public void setDependentRepos(List<String> dependentRepos) { this.dependentRepos = dependentRepos; }
 
         /**
+         * Returns the workstream IDs of completion listeners that should
+         * be woken up automatically when a job on this workstream reaches
+         * a terminal status. The cycle check rejects configurations that
+         * would create a cycle in the listener graph at config time.
+         *
+         * <p>The returned list is never {@code null}: a YAML entry that
+         * omits {@code completionListeners} (older configs that pre-date
+         * the field) loads with an empty list, the inert default. Callers
+         * can iterate without null-guarding.</p>
+         *
+         * @return listener workstream IDs; never {@code null}, may be empty
+         */
+        public List<String> getCompletionListeners() {
+            return completionListeners == null
+                    ? Collections.emptyList() : completionListeners;
+        }
+        /**
+         * Sets the listener workstream IDs. Pass {@code null} or empty
+         * to clear (the inert default, which spawns no wake-up jobs).
+         */
+        public void setCompletionListeners(List<String> completionListeners) {
+            this.completionListeners = (completionListeners == null)
+                    ? new ArrayList<>() : new ArrayList<>(completionListeners);
+        }
+
+        /**
          * Returns the Node labels that jobs submitted to this workstream must match by default.
          * When a job submission does not include {@code requiredLabels}, these are applied.
          */
@@ -615,6 +670,19 @@ public class WorkstreamConfig {
         public void setArchived(boolean archived) { this.archived = archived; }
 
         /**
+         * Returns whether agents on this workstream are permitted to call
+         * the dispatch / orchestration MCP tools. See
+         * {@link Workstream#isDispatchCapable()} for the runtime view.
+         */
+        public boolean isDispatchCapable() { return dispatchCapable; }
+        /**
+         * Sets the dispatch-capable flag. The YAML serializes this as
+         * {@code dispatchCapable: true} so operators can see the
+         * orchestrator's grant at a glance in the workstream config.
+         */
+        public void setDispatchCapable(boolean dispatchCapable) { this.dispatchCapable = dispatchCapable; }
+
+        /**
          * Converts this entry to a {@link Workstream} instance.
          *
          * <p>If a {@code workstreamId} is present, it is used as the persistent
@@ -658,6 +726,8 @@ public class WorkstreamConfig {
                 ws.setPhaseConfigBundle(bundle);
             }
             ws.setArchived(archived);
+            ws.setCompletionListeners(completionListeners);
+            ws.setDispatchCapable(dispatchCapable);
             return ws;
         }
     }
@@ -1344,6 +1414,8 @@ public class WorkstreamConfig {
         entry.setRunners(ws.getRunners());
         applyBundleToEntry(entry, ws.getPhaseConfigBundle());
         entry.setArchived(ws.isArchived());
+        entry.setCompletionListeners(ws.getCompletionListeners());
+        entry.setDispatchCapable(ws.isDispatchCapable());
     }
 
     /**

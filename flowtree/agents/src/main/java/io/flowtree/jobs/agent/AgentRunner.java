@@ -39,11 +39,15 @@ public interface AgentRunner extends Named {
 
     /**
      * Default stdout-silence duration applied by the orchestrator's inactivity
-     * watchdog when a runner declares no runner-specific override. Twenty
-     * minutes is tuned for Claude Code's cadence, which streams NDJSON events
-     * frequently while it works.
+     * watchdog when a runner declares no runner-specific override. Claude Code
+     * streams NDJSON events frequently while it works, but emits nothing between
+     * lines while a single long-running tool call is in flight (for example a
+     * multi-minute {@code mvn install} or test run). Thirty-five minutes leaves
+     * room for those legitimately long, output-silent tool calls to finish
+     * before the watchdog mistakes a healthy session for a wedged process,
+     * while still bounding a truly hung subprocess.
      */
-    long DEFAULT_INACTIVITY_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(20);
+    long DEFAULT_INACTIVITY_TIMEOUT_MILLIS = TimeUnit.MINUTES.toMillis(35);
 
     /**
      * Runs one agent session.

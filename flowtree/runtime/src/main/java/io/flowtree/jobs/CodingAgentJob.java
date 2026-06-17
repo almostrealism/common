@@ -55,6 +55,9 @@ import java.util.Map;
  * @see GitManagedJob
  * @see CodingAgentJobFactory
  */
+// TODO(review): CodingAgentJob is 1558 lines (soft limit 1500). Next split: extract enforcement-rule
+// orchestration (EnforcementRunner loop) and MCP/harness config (configureMcpBuilder, toolsDownloader)
+// into separate classes; consider whether CodingAgentJobCodec can absorb more of encode/set.
 public class CodingAgentJob extends GitManagedJob {
     /** Sentinel string used to delimit multiple prompts in the serialized wire format. */
     public static final String PROMPT_SEPARATOR = ";;PROMPT;;";
@@ -126,6 +129,8 @@ public class CodingAgentJob extends GitManagedJob {
     private String arManagerToken;
     /** Pushed-tools JSON; null when no controller is in the loop. */
     private String pushedToolsConfig;
+    /** Whether the workstream is dispatch-capable; sourced from {@code Workstream.isDispatchCapable()}. */
+    private boolean dispatchCapable;
     /** Per-workstream env vars set on the agent subprocess; null when none configured. */
     private Map<String, String> agentEnv;
     /** Optional planning document text injected into the Claude Code system prompt. */
@@ -144,6 +149,8 @@ public class CodingAgentJob extends GitManagedJob {
     private int inactivityRestartAttempt;
     /** Set by the monitor when it kills the Claude subprocess; consumed by the retry loop. */
     private volatile boolean wasKilledForInactivity;
+    /** When {@code true}, launch the agent subprocess inside a tmux session (real tty); runner also honours {@code AR_AGENT_USE_TMUX}. */
+    private boolean useTmux;
     /**
      * Controls post-work deduplication behaviour.
      * {@code null} (the default) disables deduplication — the factory sets
@@ -213,6 +220,16 @@ public class CodingAgentJob extends GitManagedJob {
     /** {@code true} when the pass cap was exhausted without a zero exit. */
     private boolean postCompletionCapHit;
 
+    /**
+     * Set to {@code true} when the primary phase ended in a hard failure:
+     * non-zero exit, 0s wall-clock duration, not killed for inactivity.
+     * Captured in {@link #doWork()} after the first {@link #executeSingleRun()}
+     * and never reset, so it survives any subsequent retry that absorbs a new,
+     * successful result into the accumulator. The rollup in
+     * {@link #createEvent(Exception)} treats this as terminal.
+     */
+    private boolean primaryPhaseHardFailed;
+
     /** Additional enforcement rules from {@link #addEnforcementRule}; built-ins are created by {@link EnforcementRunner}. */
     private final List<EnforcementRule> customEnforcementRules = new ArrayList<>();
 
@@ -245,30 +262,14 @@ public class CodingAgentJob extends GitManagedJob {
     private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
     /** Downloads pushed MCP tool source files before each agent launch. */
     private final ManagedToolsDownloader toolsDownloader = new ManagedToolsDownloader(mcpConfigBuilder);
-    /** The Claude Code session identifier assigned during execution. */
-    private String sessionId;
-    /** Raw text output produced by the Claude Code process. */
-    private String output;
-    /** Exit code returned by the Claude Code process. */
-    private int exitCode;
-    /** Total wall-clock duration of the Claude Code session in milliseconds. */
-    private long durationMs;
-    /** Time spent in API calls during the Claude Code session, in milliseconds. */
-    private long durationApiMs;
-    /** Total cost of the Claude Code session in US dollars. */
-    private double costUsd;
     /** Per-runner and per-model USD cost accumulation across every phase invocation. */
     private final JobCostTracker costTracker = new JobCostTracker();
-    /** Number of agentic turns taken during the Claude Code session. */
-    private int numTurns;
-    /** Session subtype / stop reason reported by Claude Code (e.g. "success"). */
-    private String subtype;
-    /** Whether Claude Code flagged the session result as an error. */
-    private boolean isError;
-    /** Number of tool-use permission denials recorded during the session. */
-    private int permissionDenials;
-    /** Names of the tools that were denied during the session. */
-    private List<String> deniedToolNames;
+    /**
+     * Accumulates session-level result state (exit code, session ID, timing, cost,
+     * turn count, permission denials) across all phase runs within this job.
+     * @see JobSessionAccumulator
+     */
+    private final JobSessionAccumulator accumulator = new JobSessionAccumulator();
     /** How the commit message was produced: {@code "agent"}, {@code "prompt_fallback"}, or {@code "commit_rule_recovered"}. */
     private String commitMessageSource;
 
@@ -459,7 +460,31 @@ public class CodingAgentJob extends GitManagedJob {
     public void setArManagerToken(String arManagerToken) {
         this.arManagerToken = arManagerToken;
     }
-
+    /**
+     * Sets whether agents on this workstream may use dispatch / orchestration tools.
+     *
+     * @param dispatchCapable {@code true} to grant access to {@code workstream_register}
+     *                        and {@code workstream_update_config}; {@code false} (default)
+     *                        to restrict the agent to its own workstream's tools
+     * @see McpConfigBuilder#setDispatchCapable(boolean)
+     */
+    public void setDispatchCapable(boolean dispatchCapable) {
+        this.dispatchCapable = dispatchCapable;
+    }
+    /**
+     * Returns whether this job's workstream is dispatch-capable. When
+     * {@code true}, {@link #configureMcpBuilder()} grants the agent the
+     * {@code workstream_register} and {@code workstream_update_config}
+     * tools. The value is carried across the wire by
+     * {@link CodingAgentJobCodec} so a job dispatched to a remote agent
+     * node retains the grant.
+     *
+     * @return {@code true} when the dispatch tools are granted to this agent
+     * @see McpConfigBuilder#buildAllowedTools(String)
+     */
+    public boolean isDispatchCapable() {
+        return dispatchCapable;
+    }
     /** Returns the pushed-tools configuration JSON, or {@code null}. */
     public String getPushedToolsConfig() { return pushedToolsConfig; }
 
@@ -589,6 +614,12 @@ public class CodingAgentJob extends GitManagedJob {
         this.enforceMavenDependencies = enforceMavenDependencies;
     }
 
+    /** Returns whether the agent subprocess is launched inside a tmux session for this job. */
+    public boolean isUseTmux() { return useTmux; }
+
+    /** Sets whether the agent subprocess launches inside a tmux session; the runner also honours {@code AR_AGENT_USE_TMUX}. */
+    public void setUseTmux(boolean useTmux) { this.useTmux = useTmux; }
+
     /**
      * Returns whether the organizational placement rule is active for this job.
      *
@@ -693,6 +724,44 @@ public class CodingAgentJob extends GitManagedJob {
 
     /** Marks that the post-completion command rule hit its retry cap. */
     void setPostCompletionCapHit(boolean postCompletionCapHit) { this.postCompletionCapHit = postCompletionCapHit; }
+
+    /**
+     * Records whether the primary phase ended in a hard failure (non-zero
+     * exit, 0s duration, not killed for inactivity). Package-private; set by
+     * {@link #doWork()} and by tests that drive {@link #createEvent(Exception)}
+     * directly.
+     */
+    void setPrimaryPhaseHardFailed(boolean primaryPhaseHardFailed) {
+        this.primaryPhaseHardFailed = primaryPhaseHardFailed;
+    }
+
+    /** Returns whether the primary phase ended in a hard failure. */
+    public boolean isPrimaryPhaseHardFailed() { return primaryPhaseHardFailed; }
+
+    /** Returns whether the post-completion command hit its retry cap. Package-private for event population. */
+    boolean isPostCompletionCapHit() { return postCompletionCapHit; }
+    /** Returns the instant at which {@link #doWork()} began. Package-private for event population. */
+    Instant getSessionStartedAt() { return sessionStartedAt; }
+    /** Returns whether the retrospective phase ran. Package-private for event population. */
+    boolean isRetrospectiveRan() { return retrospective.ran(); }
+    /** Returns the retrospective phase's USD cost. Package-private for event population. */
+    double getRetrospectiveCostUsd() { return retrospective.costUsd(); }
+    /** Returns whether the retrospective found a primary-phase transcript. Package-private for event population. */
+    boolean isRetrospectiveTranscriptFound() { return retrospective.transcriptFound(); }
+    /** Returns the number of improvement findings from the retrospective. Package-private for event population. */
+    int getRetrospectiveFindingsCount() { return retrospective.findingsCount(); }
+    /** Returns the retrospective's upfront token estimate. Package-private for event population. */
+    int getRetrospectiveContextUpfrontTokenEstimate() { return retrospective.contextUpfrontTokenEstimate(); }
+    /** Returns the retrospective's context-pressure event count. Package-private for event population. */
+    int getRetrospectiveContextPressureEvents() { return retrospective.contextPressureEvents(); }
+
+    /**
+     * Records the inactivity-kill flag for the last session. Used by
+     * {@link #isHardPrimaryFailure()} and normally set by
+     * {@link #executeSingleRun()}; package-private so test spies that drive
+     * {@link #executeSingleRun()} directly can mirror the production wiring.
+     */
+    void setWasKilledForInactivity(boolean killed) { this.wasKilledForInactivity = killed; }
 
     /** Returns the custom enforcement rules registered via {@link #addEnforcementRule}. */
     List<EnforcementRule> getCustomEnforcementRules() { return customEnforcementRules; }
@@ -878,21 +947,21 @@ public class CodingAgentJob extends GitManagedJob {
      * Can be used to resume the session later.
      */
     public String getSessionId() {
-        return sessionId;
+        return accumulator.getSessionId();
     }
 
     /**
      * Returns the full output from the last execution.
      */
     public String getOutput() {
-        return output;
+        return accumulator.getOutput();
     }
 
     /**
      * Returns the exit code from the last execution.
      */
     public int getExitCode() {
-        return exitCode;
+        return accumulator.getExitCode();
     }
 
     /**
@@ -930,16 +999,31 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Configures the MCP config builder with current job state.
+     * Configures the MCP config builder with current job state. Package
+     * private so the dispatch-capable plumbing (job flag to builder to
+     * allowed-tools CSV) can be exercised end to end in a unit test.
      */
-    private void configureMcpBuilder() {
+    void configureMcpBuilder() {
         mcpConfigBuilder.setArManagerUrl(arManagerUrl);
         mcpConfigBuilder.setArManagerToken(arManagerToken);
         mcpConfigBuilder.setPushedToolsConfig(pushedToolsConfig);
         mcpConfigBuilder.setPythonCommand(getPythonCommand());
-        Path workDir = getWorkingDirectory() != null
-            ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
+        mcpConfigBuilder.setDispatchCapable(dispatchCapable);
+        Path workDir = getWorkingDirectory() != null ? Path.of(getWorkingDirectory()) : Path.of(System.getProperty("user.dir"));
         mcpConfigBuilder.setWorkingDirectory(workDir);
+    }
+
+    /**
+     * Composes the allowed-tools CSV handed to the launched agent, layering
+     * ar-manager, dispatch (only when {@link #isDispatchCapable()}), pushed,
+     * and project-server entries onto the base tools. {@link #configureMcpBuilder()}
+     * must run first so the builder reflects current job state; this is the
+     * real artifact that grants the dispatch tools to an orchestrator.
+     *
+     * @return the composed comma-separated allowed-tools list
+     */
+    String buildComposedAllowedTools() {
+        return mcpConfigBuilder.buildAllowedTools(allowedTools);
     }
 
     /**
@@ -972,6 +1056,10 @@ public class CodingAgentJob extends GitManagedJob {
     protected void doWork() {
         if (sessionStartedAt == null) sessionStartedAt = Instant.now();
         executeSingleRun();
+
+        // Capture the primary phase outcome before any enforce_changes retry
+        // overwrites exitCode with a successful result.
+        primaryPhaseHardFailed = isHardPrimaryFailure();
 
         // Git integrity violations handled by onGitTampering in GitManagedJob.
         if (!hasAgentCommitted()) {
@@ -1150,7 +1238,7 @@ public class CodingAgentJob extends GitManagedJob {
         toolsDownloader.ensurePushedTools(pushedToolsConfig);
         configureMcpBuilder();
         String mcpConfigJson = mcpConfigBuilder.buildMcpConfig();
-        String composedAllowedTools = mcpConfigBuilder.buildAllowedTools(allowedTools);
+        String composedAllowedTools = buildComposedAllowedTools();
 
         if (getTargetBranch() != null) {
             log("Target branch: " + getTargetBranch());
@@ -1162,7 +1250,7 @@ public class CodingAgentJob extends GitManagedJob {
         PhaseConfig effective = resolveEffectivePhaseConfig(currentPhase);
         String modelKey = effective.toModelKey();
 
-        output = "";
+        accumulator.setOutput("");
         AgentRunResult finalResult = null;
         for (int attempt = 0; attempt <= maxInactivityRestarts; attempt++) {
             inactivityRestartAttempt = attempt;
@@ -1170,7 +1258,7 @@ public class CodingAgentJob extends GitManagedJob {
             AgentRunRequest request = buildRunRequest(
                     composedAllowedTools, mcpConfigJson, outputCapturePath, attempt);
             AgentRunResult result = runner.run(request, this);
-            output = result.rawOutput();
+            accumulator.setOutput(result.rawOutput());
             wasKilledForInactivity = result.killedForInactivity();
             finalResult = result;
             if (!wasKilledForInactivity) break;
@@ -1193,7 +1281,7 @@ public class CodingAgentJob extends GitManagedJob {
 
         if (getOutputConsumer() != null) {
             getOutputConsumer().accept(new CodingAgentJobOutput(
-                getTaskId(), prompt, output, sessionId, exitCode));
+                getTaskId(), prompt, accumulator.getOutput(), accumulator.getSessionId(), accumulator.getExitCode()));
         }
     }
 
@@ -1310,6 +1398,7 @@ public class CodingAgentJob extends GitManagedJob {
                 .taskId(getTaskId())
                 .activityTag(currentActivity)
                 .outputCapturePath(outputCapturePath)
+                .useTmux(useTmux)
                 .build();
     }
 
@@ -1338,29 +1427,28 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Absorbs {@code result} into the orchestrator's accumulated session
-     * fields. Across primary and correction sessions, duration / cost / turn
-     * metrics are summed; identification fields (session id, stop reason)
-     * track only the latest session.
+     * Returns whether the most recent {@link #executeSingleRun()} call ended
+     * in a hard failure: non-zero exit, 0s wall-clock duration, not killed by
+     * the inactivity watchdog. This is the "failed (exit N) in 0s" signature
+     * the per-phase {@code harness_status} messages report.
+     *
+     * <p>Called by {@link #doWork()} to capture the primary phase outcome
+     * before any enforcement retry can absorb a new, successful result.</p>
+     */
+    boolean isHardPrimaryFailure() {
+        return accumulator.getExitCode() != 0 && accumulator.getDurationMs() == 0L && !wasKilledForInactivity;
+    }
+
+    /**
+     * Absorbs {@code result} into the {@link JobSessionAccumulator}. Across
+     * primary and correction sessions, duration / cost / turn metrics are
+     * summed; identification fields (session id, stop reason) track only the
+     * latest session.
      *
      * @param result the result returned by {@link AgentRunner#run}
      */
     void absorbResult(AgentRunResult result) {
-        exitCode = result.exitCode();
-        sessionId = result.sessionId();
-        subtype = result.stopReason();
-        isError = result.sessionIsError();
-        durationMs += result.durationMs();
-        durationApiMs += result.durationApiMs();
-        numTurns += result.numTurns();
-        costUsd += result.costUsd();
-        if (!result.deniedToolNames().isEmpty()) {
-            if (deniedToolNames == null) {
-                deniedToolNames = new ArrayList<>();
-            }
-            deniedToolNames.addAll(result.deniedToolNames());
-            permissionDenials += result.deniedToolNames().size();
-        }
+        accumulator.absorb(result);
     }
 
     /**
@@ -1389,42 +1477,13 @@ public class CodingAgentJob extends GitManagedJob {
 
     @Override
     protected JobCompletionEvent createEvent(Exception error) {
-        if (error != null) return CodingAgentJobEvent.failed(getTaskId(), getTaskString(), error.getMessage(), error);
-        if (exitCode != 0) return CodingAgentJobEvent.failed(getTaskId(), getTaskString(), "Claude Code exited with code " + exitCode, null);
-        if (postCompletionCapHit)
-            return CodingAgentJobEvent.degraded(getTaskId(), getTaskString(),
-                "Post-completion command did not exit zero within " + maxPostCompletionPasses + " pass(es) — gate abandoned, work may be incomplete");
-        List<String> abandoned = AbandonedTestRunDetector.findAbandonedRunsForJob(getWorkingDirectory(), sessionStartedAt);
-        if (abandoned.isEmpty()) return CodingAgentJobEvent.success(getTaskId(), getTaskString());
-        return CodingAgentJobEvent.degraded(getTaskId(), getTaskString(),
-            "Agent abandoned " + abandoned.size() + " test-runner run(s): " + String.join(", ", abandoned));
+        return CodingAgentJobEvent.forJob(this, accumulator, error);
     }
 
     @Override
     protected void populateEventDetails(JobCompletionEvent event) {
         if (event instanceof CodingAgentJobEvent) {
-            CodingAgentJobEvent ccEvent = (CodingAgentJobEvent) event;
-            ccEvent.withClaudeCodeInfo(prompt, sessionId, exitCode);
-            ccEvent.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
-            ccEvent.withSessionDetails(subtype, isError, permissionDenials, deniedToolNames);
-            if (commitMessageSource != null) {
-                ccEvent.withCommitMessageSource(commitMessageSource);
-            }
-            ccEvent.withRunnerName(runnerName);
-            ccEvent.withCostByRunner(costTracker.liveByRunner());
-            ccEvent.withCostByModel(costTracker.liveByModel());
-            if (postCompletionCapHit) ccEvent.withPostCompletionCapHit(true);
-            if (activeReviewRule != null && activeReviewRule.hasRun()) {
-                ccEvent.withReviewInfo(true, activeReviewRule.getFilesModified(),
-                        activeReviewRule.getMemoriesStored(), activeReviewRule.isExitedCleanly());
-            }
-            if (retrospective.ran()) {
-                ccEvent.withReflectionInfo(true, retrospective.costUsd(),
-                        retrospective.transcriptFound(), retrospective.findingsCount());
-                ccEvent.withReflectionContextUsage(
-                        retrospective.contextUpfrontTokenEstimate(),
-                        retrospective.contextPressureEvents());
-            }
+            ((CodingAgentJobEvent) event).populateFrom(this, accumulator);
         }
     }
 
@@ -1447,7 +1506,6 @@ public class CodingAgentJob extends GitManagedJob {
 
         return true;
     }
-
 
     /** Returns new Java method names introduced since the base branch. */
     List<String> extractNewMethodNames() {
@@ -1495,14 +1553,12 @@ public class CodingAgentJob extends GitManagedJob {
         return Path.of(filename);
     }
 
-
     @Override
     public String encode() {
         StringBuilder sb = new StringBuilder(super.encode());
         CodingAgentJobCodec.appendEncoded(sb, this);
         return sb.toString();
     }
-
 
     @Override
     public void set(String key, String value) {
@@ -1529,11 +1585,7 @@ public class CodingAgentJob extends GitManagedJob {
         }
     }
 
-    /**
-     * Backward-compatible alias for {@link CodingAgentJobFactory}; new code should use that class directly.
-     * Exists so that {@code new CodingAgentJob.Factory(...)} call sites and
-     * {@code CodingAgentJob$Factory} wire-format strings continue to work.
-     */
+    /** Backward-compatible alias for {@link CodingAgentJobFactory}; new code should use that class directly. */
     public static class Factory extends CodingAgentJobFactory {
         /** Default constructor for deserialization. */
         public Factory() { super(); }

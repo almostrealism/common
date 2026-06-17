@@ -29,12 +29,12 @@ import java.util.List;
  * small, independent kernel operations.
  *
  * <p>This is the reference harness for the submission-batching and deferred-completion
- * work described in {@code docs/plans/METAL_SUSTAINED_DISPATCH.md} (options A and C). It
+ * work for sustained kernel dispatch. It
  * deliberately avoids the complexity of the real-time audio pipeline: it builds an
  * {@link OperationList} of {@code N} tiny element-wise operations, each of which compiles
  * to its own kernel and is dispatched separately (the {@code false} argument to
  * {@link OperationList#OperationList(String, boolean)} keeps the operations from being
- * fused into a single kernel — kernel fusion is a separate concern, "option B", and is
+ * fused into a single kernel — kernel fusion is a separate concern and is
  * intentionally out of scope here).</p>
  *
  * <h2>The seam being measured</h2>

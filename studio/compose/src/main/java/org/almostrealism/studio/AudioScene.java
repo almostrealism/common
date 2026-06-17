@@ -323,14 +323,8 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	/** One-shot setup operation compiled during the first {@link #getCells} call. */
 	private OperationList setup;
 
-	/** Pattern audio buffers created for each channel during setup. */
-	private List<PatternAudioBuffer> renderCells = new ArrayList<>();
-
-	/** Consolidated backing buffer for all render cell outputs; allocated during {@code getCells}. */
-	private PackedCollection consolidatedRenderBuffer;
-
-	/** Index into the consolidated render buffer for the next allocation. */
-	private int renderBufferIndex;
+	/** Consolidated pattern-render storage and render-cell tracking for runner builds. */
+	private final PatternRenderBuffers renderBuffers = new PatternRenderBuffers();
 
 	/** The active cell list produced by the most recent {@code getCells} call. */
 	private CellList activeCells;
@@ -675,13 +669,22 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	 *
 	 * <p>Exposed for testing to verify that output buffer consolidation is active.</p>
 	 */
-	public PackedCollection getConsolidatedRenderBuffer() { return consolidatedRenderBuffer; }
+	public PackedCollection getConsolidatedRenderBuffer() { return renderBuffers.getBuffer(); }
 	/**
 	 * Returns the mixdown manager that handles delay, reverb, and final mix bus processing.
 	 *
 	 * @return the mixdown manager
 	 */
 	public MixdownManager getMixdownManager() { return mixdown; }
+
+	/**
+	 * Returns the {@link PatternAudioBuffer} render cells created by the most recent
+	 * {@link #getCells} call. Used by {@link AudioSceneRealtimeRunner} to drive the
+	 * per-buffer pattern-prepare phase.
+	 *
+	 * @return the render cells from the current build
+	 */
+	List<PatternAudioBuffer> getRenderCells() { return renderBuffers.getCells(); }
 
 	/**
 	 * Returns the generation manager for ML-based audio generation integration.
@@ -1020,14 +1023,13 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		long start = System.nanoTime();
 		try {
 			setup = new OperationList("AudioScene Setup");
-			renderCells = new ArrayList<>();
 			addCommonSetup(setup);
 			setup.add(() -> () -> patterns.setTuning(tuning));
 			setup.add(sections.setup());
 
 			// Consolidate render buffers into one root so the compiled Loop collapses
 			// all PatternAudioBuffer arguments into a single kernel argument.
-			consolidateRenderBuffers(channels.size(), bufferSize);
+			renderBuffers.consolidate(channels.size(), bufferSize);
 			efx.consolidateFilterBuffers(channels.size(), bufferSize);
 
 			if (activeCells != null) {
@@ -1047,28 +1049,6 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 		} finally {
 			getCellsTime.addEntry(System.nanoTime() - start);
 		}
-	}
-
-	/**
-	 * Pre-allocates a single contiguous buffer for all {@link PatternAudioBuffer}
-	 * output buffers.
-	 *
-	 * <p>Each {@link PatternAudioBuffer} receives a delegate (range) into this
-	 * consolidated buffer instead of its own independent {@link PackedCollection}.
-	 * When the compiled {@code Loop} scope collects arguments, the scope's
-	 * deduplication resolves each delegate to the shared root, collapsing all
-	 * render buffer arguments into a single kernel argument.</p>
-	 *
-	 * <p>The total number of render cells is {@code channelCount x 4}
-	 * (MAIN + WET voicing x LEFT + RIGHT stereo).</p>
-	 *
-	 * @param channelCount number of audio channels
-	 * @param bufferSize   frames per render buffer
-	 */
-	private void consolidateRenderBuffers(int channelCount, int bufferSize) {
-		int totalRenderCells = channelCount * 4;
-		consolidatedRenderBuffer = new PackedCollection(bufferSize * totalRenderCells);
-		renderBufferIndex = 0;
 	}
 
 	/**
@@ -1162,22 +1142,16 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 									  Producer<PackedCollection> waveCellFrame) {
 		Supplier<AudioSceneContext> ctx = () -> getContext(List.of(channel));
 
-		PackedCollection outputBuffer = null;
-		if (consolidatedRenderBuffer != null) {
-			outputBuffer = consolidatedRenderBuffer.range(
-					shape(bufferSize), renderBufferIndex * bufferSize);
-			renderBufferIndex++;
-		}
-
 		PatternAudioBuffer renderCell = new PatternAudioBuffer(
-				patterns, ctx, channel, bufferSize, frameSupplier, outputBuffer);
+				patterns, ctx, channel, bufferSize, frameSupplier,
+				renderBuffers.nextRegion(bufferSize));
 
 		setup.add(renderCell.setup());
 		setup.add(renderCell.prepareBatch());
 
 		CellList cells = efx.apply(channel, renderCell.getOutputProducer(),
 				getTotalDuration(), setup, waveCellFrame);
-		renderCells.add(renderCell);
+		renderBuffers.add(renderCell);
 
 		return cells;
 	}
@@ -1227,67 +1201,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 	public TemporalCellular runnerRealTime(MultiChannelAudioOutput output,
 										   List<Integer> channels,
 										   int bufferSize) {
-		final int[] currentFrame = {0};
-
-		if (channels == null) {
-			channels = IntStream.range(0, getChannelCount()).boxed().collect(Collectors.toList());
-		}
-
-		// Create per-buffer frame index for WaveCell external frame control
-		// This tracks position 0 to bufferSize-1 within each buffer
-		PackedCollection bufferFrameIndex = new PackedCollection(1);
-		Producer<PackedCollection> bufferFrameProducer = cp(bufferFrameIndex);
-
-		CellList cells = (CellList) getCells(output, channels, bufferSize,
-				() -> currentFrame[0], bufferFrameProducer);
-
-		// Per-frame operation (must be compilable)
-		Supplier<Runnable> frameOp = cells.tick();
-
-		// Create loop body: tick + increment buffer frame index
-		OperationList loopBody = new OperationList("RealTime Per-Frame Body");
-		loopBody.add(frameOp);
-		// Increment buffer frame index: bufferFrameIndex = bufferFrameIndex + 1
-		loopBody.add(a(1, cp(bufferFrameIndex), c(1.0).add(cp(bufferFrameIndex))));
-
-		return new TemporalCellular() {
-			@Override
-			public Supplier<Runnable> setup() {
-				return cells.setup();
-			}
-
-			@Override
-			public Supplier<Runnable> tick() {
-				OperationList tick = new OperationList("AudioScene RealTime Runner Tick");
-
-				// OUTSIDE LOOP: Reset buffer frame index and prepare pattern data
-				tick.add(() -> () -> bufferFrameIndex.setMem(0, 0));
-				for (PatternAudioBuffer renderCell : renderCells) {
-					tick.add(renderCell.prepareBatch());
-				}
-
-				// INSIDE LOOP: Compilable per-frame processing with frame index increment
-				tick.add(loop(loopBody, bufferSize));
-
-				// AFTER LOOP: Advance global frame position
-				tick.add(() -> () -> currentFrame[0] += bufferSize);
-				return tick;
-			}
-
-			@Override
-			public void reset() {
-				currentFrame[0] = 0;
-				cells.reset();
-				// Rewind the global clock so time-driven envelopes (volume,
-				// filter, AutomationManager outputs) start fresh on the next
-				// genome. Without this, evaluating multiple genomes in
-				// sequence makes every genome after the first run with the
-				// clock parked in the post-decay region of the volume
-				// envelope (gene 4 has scale = -1, a fade-out), so pattern
-				// channels come out near-silent.
-				time.getClock().setFrame(0);
-			}
-		};
+		return new AudioSceneRealtimeRunner(this).create(output, channels, bufferSize);
 	}
 
 	/**
@@ -1402,11 +1316,7 @@ public class AudioScene<T extends ShadableSurface> implements Setup, Destroyable
 			activeCells = null;
 		}
 
-		if (consolidatedRenderBuffer != null) {
-			consolidatedRenderBuffer.destroy();
-			consolidatedRenderBuffer = null;
-		}
-
+		renderBuffers.destroy();
 		efx.destroyConsolidatedBuffers();
 		activeInstances.remove(this);
 	}

@@ -106,6 +106,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         job.setMaxBudgetUsd(3.0);
         job.setPhaseConfigBundle(
                 PhaseConfigBundle.EMPTY.withDefaultModel("opus").withDefaultEffort("high"));
+        job.setUseTmux(true);
 
         AgentRunRequest req = job.buildRunRequest(
                 "Read,Edit,mcp__ar-manager__send_message",
@@ -123,6 +124,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
         assertEquals("high", req.getEffort());
         assertEquals("t-2", req.getTaskId());
         assertEquals(Path.of("/tmp/x.json"), req.getOutputCapturePath());
+        assertTrue(req.isUseTmux());
     }
 
     /** Verifies that {@code executeSingleRun} dispatches through the configured runner and captures the result. */
@@ -292,8 +294,7 @@ public class CodingAgentJobDispatchTest extends TestSuiteBase {
     public void reviewPhaseOrderedBetweenEnforceChangesAndDeduplication() {
         // The declaration order of Phase governs encode/decode iteration, so
         // verify the REVIEW phase appears between ENFORCE_CHANGES and
-        // DEDUPLICATION — matching the runtime execution order documented in
-        // PHASES.md.
+        // DEDUPLICATION — matching the runtime execution order.
         Phase[] values = Phase.values();
         int ec = -1, rv = -1, dd = -1;
         for (int i = 0; i < values.length; i++) {

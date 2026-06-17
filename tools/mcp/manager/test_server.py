@@ -738,6 +738,38 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertNotIn("retrospectiveEnabled", payload)
 
     @patch.object(server, "_controller_post")
+    def test_submit_use_tmux_omitted_by_default(self, mock_post):
+        """use_tmux is opt-in (default false), so the wire payload must omit
+        useTmux when the caller did not pass it (the runner still honours the
+        AR_AGENT_USE_TMUX env var on the node)."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-tmux1"}
+        server.workstream_submit_task(prompt="Task")
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("useTmux", payload)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_use_tmux_true_forwarded(self, mock_post):
+        """use_tmux=True must reach the controller as useTmux=True so the job
+        launches its agent subprocess inside a tmux session."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-tmux2"}
+        server.workstream_submit_task(prompt="Task", use_tmux=True)
+        payload = mock_post.call_args[0][1]
+        self.assertIs(payload["useTmux"], True)
+
+    @patch.object(server, "_controller_post")
+    def test_submit_use_tmux_false_omitted(self, mock_post):
+        """use_tmux=False is the default; the wire payload must omit the key
+        rather than forward an explicit false (matches the
+        retrospective_enabled behaviour)."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-tmux3"}
+        server.workstream_submit_task(prompt="Task", use_tmux=False)
+        payload = mock_post.call_args[0][1]
+        self.assertNotIn("useTmux", payload)
+
+    @patch.object(server, "_controller_post")
     def test_submit_sensitive_file_protection_default_omitted(self, mock_post):
         """sensitive_file_protection_enabled defaults to TRUE (protections
         active), so the wire payload must omit the key when the caller
@@ -4100,6 +4132,63 @@ class TestToolRegistration(unittest.TestCase):
         extra = registered - expected
         self.assertFalse(missing, f"Missing tools: {missing}")
         self.assertFalse(extra, f"Unexpected tools: {extra}")
+
+    def test_completion_listeners_field_parsed(self):
+        """The completion_listeners parameter must be parsed and forwarded to the controller.
+
+        The completion-listener feature depends on this parameter being
+        correctly parsed from the comma-separated / JSON-array string
+        shape, and the parsed value being forwarded under the
+        ``completionListeners`` key in the controller request body.
+        Without this, the listener field is silently dropped and the
+        workstream has no wake-up fan-out.
+        """
+        _grant_all_scopes()
+        with patch.object(server, "_controller_post",
+                          return_value={"ok": True, "workstreamId": "ws-x"}) as mock_post:
+            result = server.workstream_register(
+                default_branch="feature/completion-listeners",
+                completion_listeners="ws-orchestrator,ws-orchestrator-2",
+            )
+            self.assertTrue(result.get("ok"), result)
+            self.assertEqual(1, mock_post.call_count)
+            url, body = mock_post.call_args[0]
+            self.assertEqual("/api/workstreams", url)
+            listeners = body.get("completionListeners")
+            self.assertEqual(["ws-orchestrator", "ws-orchestrator-2"],
+                             listeners)
+
+    def test_completion_listeners_empty_string_no_field(self):
+        """An empty completion_listeners value must NOT forward the field.
+
+        The controller distinguishes "no change" (field omitted) from
+        "set to empty" (passed an empty list). For the register path
+        the only sensible interpretation is "no listeners" — the
+        inert default — so an empty input produces no payload entry.
+        """
+        _grant_all_scopes()
+        with patch.object(server, "_controller_post",
+                          return_value={"ok": True, "workstreamId": "ws-y"}) as mock_post:
+            result = server.workstream_register(
+                default_branch="feature/no-listeners",
+                completion_listeners="",
+            )
+            self.assertTrue(result.get("ok"), result)
+            body = mock_post.call_args[0][1]
+            self.assertNotIn("completionListeners", body)
+
+    def test_completion_listeners_json_array_parsed(self):
+        """A JSON-array string for completion_listeners is accepted."""
+        _grant_all_scopes()
+        with patch.object(server, "_controller_post",
+                          return_value={"ok": True, "workstreamId": "ws-z"}) as mock_post:
+            result = server.workstream_register(
+                default_branch="feature/json-listeners",
+                completion_listeners='["ws-a", "ws-b"]',
+            )
+            self.assertTrue(result.get("ok"), result)
+            body = mock_post.call_args[0][1]
+            self.assertEqual(["ws-a", "ws-b"], body.get("completionListeners"))
 
 
 # -----------------------------------------------------------------------

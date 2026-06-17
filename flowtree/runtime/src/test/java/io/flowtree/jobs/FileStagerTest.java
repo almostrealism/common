@@ -269,7 +269,7 @@ public class FileStagerTest extends TestSuiteBase {
 	 * {@code .claude/**} exclusion silently dropped
 	 * {@code .claude/hooks/lib/*.py} and other project-shared content from
 	 * agent commits (see memory {@code harness-commit-investigation} /
-	 * {@code root-cause} and {@code docs/plans/OPENCODE_HOOKS.md}). The
+	 * {@code root-cause}). The
 	 * blanket pattern was replaced with narrow patterns targeting only
 	 * machine-local paths, so hooks / agents / commands must be committable.</p>
 	 */

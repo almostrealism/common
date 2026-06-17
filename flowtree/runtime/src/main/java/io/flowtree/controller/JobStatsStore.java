@@ -34,6 +34,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import io.flowtree.api.FlowTreeApiEndpoint;
 
 /**
@@ -71,7 +72,8 @@ public class JobStatsStore implements ConsoleFeatures {
         + "    target_branch  VARCHAR(255),"
         + "    commit_hash    VARCHAR(64),"
         + "    pull_request_url VARCHAR(1000),"
-        + "    error_message  VARCHAR(2000)"
+        + "    error_message  VARCHAR(2000),"
+        + "    trigger_reason VARCHAR(64) DEFAULT 'manual'"
         + ")";
 
     /** DDL statement that creates an index on {@code (workstream_id, started_at)} for efficient queries. */
@@ -119,7 +121,8 @@ public class JobStatsStore implements ConsoleFeatures {
         "ALTER TABLE job_timing ADD COLUMN commit_hash VARCHAR(64)",
         "ALTER TABLE job_timing ADD COLUMN pull_request_url VARCHAR(1000)",
         "ALTER TABLE job_timing ADD COLUMN error_message VARCHAR(2000)",
-        "ALTER TABLE job_timing ADD COLUMN slack_message_ts VARCHAR(64)"
+        "ALTER TABLE job_timing ADD COLUMN slack_message_ts VARCHAR(64)",
+        "ALTER TABLE job_timing ADD COLUMN trigger_reason VARCHAR(64) DEFAULT 'manual'"
     };
 
     /** DML statement that removes stale {@code STARTED} rows older than a given cutoff timestamp. */
@@ -130,6 +133,16 @@ public class JobStatsStore implements ConsoleFeatures {
     private final String dbPath;
     /** Active JDBC connection to the backing HSQLDB database. */
     private Connection connection;
+    /**
+     * Trigger reasons registered before the job_timing row exists, applied
+     * on the next {@link #recordJobStarted} call. The completion-listener
+     * fan-out calls {@link #setTriggerReason(String, String)} immediately
+     * after submitting a wake-up factory; the agent's {@code STARTED} status
+     * event can race ahead of that registration, so the pending reason is
+     * applied at insert time when present.
+     */
+    private final ConcurrentHashMap<String, String> pendingTriggerReasons =
+            new ConcurrentHashMap<>();
 
     /**
      * Creates a new stats store backed by an HSQLDB file database.
@@ -211,10 +224,14 @@ public class JobStatsStore implements ConsoleFeatures {
                                                String description, Instant startedAt) {
         if (connection == null) return;
 
-        String sql = "MERGE INTO job_timing USING (VALUES(?, ?, ?, ?, ?)) "
-            + "AS vals(jid, wid, sts, sta, dsc) ON job_timing.job_id = vals.jid "
-            + "WHEN NOT MATCHED THEN INSERT (job_id, workstream_id, status, started_at, description) "
-            + "VALUES (vals.jid, vals.wid, vals.sts, vals.sta, vals.dsc)";
+        String pendingReason = pendingTriggerReasons.remove(jobId);
+        String triggerReason = (pendingReason != null && !pendingReason.isEmpty())
+                ? pendingReason : "manual";
+
+        String sql = "MERGE INTO job_timing USING (VALUES(?, ?, ?, ?, ?, ?)) "
+            + "AS vals(jid, wid, sts, sta, dsc, tr) ON job_timing.job_id = vals.jid "
+            + "WHEN NOT MATCHED THEN INSERT (job_id, workstream_id, status, started_at, description, trigger_reason) "
+            + "VALUES (vals.jid, vals.wid, vals.sts, vals.sta, vals.dsc, vals.tr)";
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, jobId);
@@ -222,9 +239,48 @@ public class JobStatsStore implements ConsoleFeatures {
             ps.setString(3, "STARTED");
             ps.setTimestamp(4, Timestamp.from(startedAt));
             ps.setString(5, truncate(description, 1000));
+            ps.setString(6, triggerReason);
             ps.executeUpdate();
         } catch (SQLException e) {
             warn("Failed to record job started: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Records (or updates) the {@code trigger_reason} for a job. Called by
+     * the completion-listener fan-out immediately after submitting a
+     * wake-up factory, before the agent has had a chance to fire the
+     * {@code STARTED} event. If the row already exists, the column is
+     * updated in place; if not, the reason is staged in an in-memory map
+     * and applied on the next {@link #recordJobStarted} call. The
+     * trigger_reason column lets operators filter wake-up jobs out of
+     * the manual-job history.
+     *
+     * @param jobId          the job identifier (the factory task ID)
+     * @param triggerReason  one of {@code "manual"}, {@code "auto_resolve"},
+     *                        or {@code "completion_listener"}; {@code null} or
+     *                        empty clears any pending reason
+     */
+    public synchronized void setTriggerReason(String jobId, String triggerReason) {
+        if (jobId == null || jobId.isEmpty() || connection == null) return;
+        if (triggerReason == null || triggerReason.isEmpty()) {
+            pendingTriggerReasons.remove(jobId);
+            return;
+        }
+        String trimmed = triggerReason;
+        if (trimmed.length() > 64) trimmed = trimmed.substring(0, 64);
+        // Stage for the (common) race where STARTED hasn't been recorded yet;
+        // recordJobStarted applies the pending value at insert time. The
+        // immediate UPDATE also handles the case where STARTED has already
+        // been recorded by the time the fan-out calls us.
+        pendingTriggerReasons.put(jobId, trimmed);
+        String updateSql = "UPDATE job_timing SET trigger_reason = ? WHERE job_id = ?";
+        try (PreparedStatement ps = connection.prepareStatement(updateSql)) {
+            ps.setString(1, trimmed);
+            ps.setString(2, jobId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            warn("Failed to set trigger_reason: " + e.getMessage());
         }
     }
 
