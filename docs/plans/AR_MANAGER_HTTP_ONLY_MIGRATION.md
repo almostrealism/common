@@ -1,6 +1,7 @@
 # ar-manager HTTP-Only Migration
 
-Status: **IN PROGRESS — Phases 0–2 done; Phase 3 (fail jobs w/o token) next**
+Status: **IN PROGRESS — Phases 0–3 implemented in this PR; Phase 4 (docs/tests
+cleanup) and the server.py split are the remaining follow-ups**
 Author: planning session, 2026-06-16
 
 ## Decisions (owner, 2026-06-16)
@@ -68,9 +69,12 @@ and are not constrained by the token's scopes. The two paths are not equivalent,
 so "which one am I on?" silently changes behavior. We want a single model:
 **HTTP only, token always required, no tokenless escape hatch anywhere.**
 
-This document is the result of studying the current implementation end to end. It
-records what exists (with evidence), the hazards, and a phased plan. **Nothing
-here is implemented yet.**
+This document began as a pure study of the current implementation (evidence,
+hazards, and a phased plan). It has since been carried into implementation:
+Phases 0–3 are done (see the per-phase status in §8), and the changes they
+describe land in this PR. The "Evidence" and "Design" sections below describe
+the pre-migration state and the target design respectively; §8 is the source of
+truth for what is actually implemented.
 
 ## 2. Evidence — how it works today
 
@@ -402,8 +406,11 @@ Still open:
   Python 417 + 176 pass, new `TestStartupGuard` (stdio refused, http-without-tokens
   refused) + renamed `test_no_scopes_denies_all`; Java `SecretsEndpointTest` 15/15;
   checkstyle 0 violations.
-- **Phase 3 — fail jobs without a token.** Make `buildMcpConfig` error when an
-  agent job lacks a token (§5.2). OAuth is untouched throughout.
+- **Phase 3 — fail jobs without a token.** ✅ **Done.** `McpConfigBuilder`
+  (`arManagerEnabled()`) throws `IllegalStateException` when an ar-manager URL is
+  configured but no token is present; both `buildMcpConfig` and
+  `buildAllowedTools` use it. No URL configured ⇒ ar-manager simply absent (valid,
+  no error). OAuth is untouched throughout.
 - **Phase 4 — docs/tests.** Update the doc set in §6 and the affected tests;
   verify `test_oauth.py` still passes (claude.ai/mobile path intact).
 

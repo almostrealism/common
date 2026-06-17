@@ -3754,8 +3754,10 @@ class TestStartupGuard(unittest.TestCase):
         )
 
     def test_stdio_transport_refused(self):
-        # Transport defaults to stdio; even with tokens present it must refuse.
-        proc = self._run_server({"AR_MANAGER_TOKENS": self._TOKENS})
+        # Explicit stdio must be refused even with tokens present (the default
+        # transport is http; stdio only happens when set deliberately).
+        proc = self._run_server({"MCP_TRANSPORT": "stdio",
+                                 "AR_MANAGER_TOKENS": self._TOKENS})
         self.assertNotEqual(proc.returncode, 0)
         self.assertIn("unsupported MCP_TRANSPORT", proc.stdout.decode())
 

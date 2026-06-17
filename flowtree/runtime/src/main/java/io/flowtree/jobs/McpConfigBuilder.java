@@ -401,10 +401,8 @@ public class McpConfigBuilder implements ConsoleFeatures {
         }
         if (arManagerToken == null || arManagerToken.isEmpty()) {
             throw new IllegalStateException(
-                "ar-manager URL is configured (" + arManagerUrl + ") but no auth "
-                + "token was provided. ar-manager only serves authenticated "
-                + "requests, so an agent job must be given a token; refusing to "
-                + "build an MCP configuration that would silently omit ar-manager.");
+                "ar-manager is configured but no auth token was provided; "
+                + "refusing to build an MCP configuration without a token.");
         }
         return true;
     }

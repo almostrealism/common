@@ -18,6 +18,7 @@ package org.almostrealism.io;
 
 import org.junit.After;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.util.Optional;
@@ -38,11 +39,40 @@ public class SystemUtilsIsEnabledTest {
 	/** A disposable property key used only by these tests. */
 	private static final String KEY = "AR_TEST_ISENABLED_CONTRACT";
 
-	/** Clears the properties touched by each test so cases never bleed together. */
+	/** The production key one test exercises; captured/restored, not wiped. */
+	private static final String PDSL_KEY = "AR_PDSL_MIXDOWN";
+
+	/** Original value of {@link #KEY}, captured before each test for restore. */
+	private String originalKey;
+
+	/** Original value of {@link #PDSL_KEY}, captured before each test for restore. */
+	private String originalPdslMixdown;
+
+	/** Captures the properties these tests mutate so they can be restored. */
+	@Before
+	public void captureProperties() {
+		originalKey = System.getProperty(KEY);
+		originalPdslMixdown = System.getProperty(PDSL_KEY);
+	}
+
+	/**
+	 * Restores the properties touched by each test to their original values so
+	 * cases never bleed together and a pre-set property (e.g. a JVM-wide
+	 * {@code AR_PDSL_MIXDOWN}) is not permanently wiped for later tests.
+	 */
 	@After
-	public void clearProperty() {
-		System.clearProperty(KEY);
-		System.clearProperty("AR_PDSL_MIXDOWN");
+	public void restoreProperties() {
+		restoreProperty(KEY, originalKey);
+		restoreProperty(PDSL_KEY, originalPdslMixdown);
+	}
+
+	/** Restores a single property: re-set when it had a value, else clear. */
+	private static void restoreProperty(String key, String original) {
+		if (original == null) {
+			System.clearProperty(key);
+		} else {
+			System.setProperty(key, original);
+		}
 	}
 
 	/** {@code "enabled"} resolves to {@code Optional.of(true)}. */

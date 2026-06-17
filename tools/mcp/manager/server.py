@@ -20,9 +20,9 @@ Configuration via environment variables:
                               (default: ~/.config/ar/manager-tokens.json)
     AR_MANAGER_TOKENS       - JSON string of token config (overrides file)
     AR_MEMORY_URL           - ar-memory HTTP server URL (auto-discovered if not set)
-    MCP_TRANSPORT           - Transport: must be http or sse. stdio is refused;
-                              ar-manager runs only as an authenticated HTTP
-                              server (no tokenless / stdio mode).
+    MCP_TRANSPORT           - Transport: http (default) or sse. stdio is
+                              refused; ar-manager runs only as an authenticated
+                              HTTP server (no tokenless / stdio mode).
     MCP_PORT                - Port for http/sse transport (default: 8010)
 
 GitHub authentication: ar-manager never holds a GitHub token itself. Every
@@ -6593,7 +6593,10 @@ def workspace_secret_render_file(
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    transport = os.environ.get("MCP_TRANSPORT", "stdio")
+    # Default to http: ar-manager only runs as an authenticated HTTP/SSE
+    # server, so http is the sole sensible default. An explicit
+    # MCP_TRANSPORT=stdio (or anything else) is still rejected below.
+    transport = os.environ.get("MCP_TRANSPORT", "http")
     tokens = _load_tokens()
 
     # ar-manager runs ONLY as an authenticated HTTP/SSE server. Both the
