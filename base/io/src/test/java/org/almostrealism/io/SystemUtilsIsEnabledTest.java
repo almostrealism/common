@@ -76,49 +76,49 @@ public class SystemUtilsIsEnabledTest {
 	}
 
 	/** {@code "enabled"} resolves to {@code Optional.of(true)}. */
-	@Test
+	@Test(timeout = 30000)
 	public void enabledResolvesToTrue() {
 		System.setProperty(KEY, "enabled");
 		Assert.assertEquals(Optional.of(true), SystemUtils.isEnabled(KEY));
 	}
 
 	/** {@code "disabled"} resolves to {@code Optional.of(false)}. */
-	@Test
+	@Test(timeout = 30000)
 	public void disabledResolvesToFalse() {
 		System.setProperty(KEY, "disabled");
 		Assert.assertEquals(Optional.of(false), SystemUtils.isEnabled(KEY));
 	}
 
 	/** The accepted tokens are matched case-insensitively. */
-	@Test
+	@Test(timeout = 30000)
 	public void valueIsCaseInsensitive() {
 		System.setProperty(KEY, "ENABLED");
 		Assert.assertEquals(Optional.of(true), SystemUtils.isEnabled(KEY));
 	}
 
 	/** An unset key resolves to {@code Optional.empty()} (the caller's default applies). */
-	@Test
+	@Test(timeout = 30000)
 	public void unsetResolvesToEmpty() {
 		System.clearProperty(KEY);
 		Assert.assertEquals(Optional.empty(), SystemUtils.isEnabled(KEY));
 	}
 
 	/** {@code "true"} is rejected — the trap that shipped a broken flag. */
-	@Test(expected = IllegalArgumentException.class)
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
 	public void trueIsRejected() {
 		System.setProperty(KEY, "true");
 		SystemUtils.isEnabled(KEY);
 	}
 
 	/** {@code "false"} is rejected for the same reason as {@code "true"}. */
-	@Test(expected = IllegalArgumentException.class)
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
 	public void falseIsRejected() {
 		System.setProperty(KEY, "false");
 		SystemUtils.isEnabled(KEY);
 	}
 
 	/** Any value other than enabled/disabled is rejected, not silently ignored. */
-	@Test(expected = IllegalArgumentException.class)
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
 	public void arbitraryValueIsRejected() {
 		System.setProperty(KEY, "on");
 		SystemUtils.isEnabled(KEY);
@@ -129,7 +129,7 @@ public class SystemUtilsIsEnabledTest {
 	 * {@code AudioUnit/Rings/Info.plist} ({@code -DAR_PDSL_MIXDOWN=enabled})
 	 * must resolve to {@code true} the way {@code MixdownManager} reads it.
 	 */
-	@Test
+	@Test(timeout = 30000)
 	public void pdslMixdownEnabledRoundTrips() {
 		System.setProperty("AR_PDSL_MIXDOWN", "enabled");
 		Assert.assertEquals(Optional.of(true), SystemUtils.isEnabled("AR_PDSL_MIXDOWN"));
