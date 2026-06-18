@@ -16,6 +16,7 @@
 
 package org.almostrealism.ml;
 
+// TODO(review): TransformerResamplingFeatures does not exist yet — update @link below when Block C2 creates it
 /**
  * Configuration for a learned-resampling transformer block (see
  * {@link TransformerResamplingFeatures#transformerResamplingBlock}).

@@ -292,8 +292,8 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 		CollectionProducer freqs = computeRotaryFreqs(seqLen, invFreq);
 		int rotaryDim = freqs.getShape().length(1);
 		if (freqs.getShape().length(0) != seqLen) {
-			// TODO(review): add a descriptive message — reader cannot diagnose this failure without one
-			throw new IllegalArgumentException();
+			throw new IllegalArgumentException("computeRotaryFreqs returned "
+					+ freqs.getShape().length(0) + " time steps but expected " + seqLen);
 		}
 		if (rotaryDim > dimHead) {
 			throw new IllegalArgumentException("rotaryDim " + rotaryDim + " exceeds dimHead " + dimHead);
