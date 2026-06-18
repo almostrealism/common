@@ -290,6 +290,7 @@ public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures
 	 * @param projectionFactory Factory for creating projection layers
 	 * @param requirements Compute requirements
 	 * @return Gated linear feed-forward block
+	 * @throws IllegalArgumentException if exactly one of {@code modScale}/{@code modShift} is supplied
 	 */
 	default Block gatedLinearFeedForward(TraversalPolicy inputShape,
 										 PackedCollection normWeights, PackedCollection normBiases,
@@ -301,8 +302,14 @@ public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures
 		SequentialBlock feedForward = new SequentialBlock(inputShape);
 		feedForward.add(norm(normWeights, normBiases, requirements));
 
-		// adaLN modulation of the normalized activations (identity when no modulation supplied)
-		if (modScale != null && modShift != null) {
+		// adaLN modulation of the normalized activations: enabled when both modScale and modShift are
+		// supplied, disabled when both are null. Supplying exactly one is a misconfiguration.
+		if ((modScale == null) != (modShift == null)) {
+			throw new IllegalArgumentException(
+					"modScale and modShift must both be supplied to enable adaLN modulation, " +
+					"or both be null to disable it");
+		}
+		if (modScale != null) {
 			feedForward.add(adaptiveModulate(feedForward.getOutputShape(), modScale, modShift));
 		}
 

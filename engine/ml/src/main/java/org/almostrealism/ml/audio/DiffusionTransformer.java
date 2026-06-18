@@ -540,6 +540,15 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 		boolean adaLN = conditioningMode == ConditioningMode.ADALN;
 		Producer<PackedCollection> conditioning = null;
 
+		// When adaLN conditioning is disabled, the per-layer to_scale_shift_gate weights are irrelevant;
+		// mark those keys as expected-unused so that validateWeights() does not reject checkpoints that
+		// happen to include them (mirroring the cross-attention handling above).
+		if (!adaLN) {
+			for (int i = 0; i < depth; i++) {
+				unusedWeights.remove("model.model.transformer.layers." + i + ".to_scale_shift_gate.weight");
+			}
+		}
+
 		if (adaLN) {
 			conditioning = adaptiveConditioning(timestepEmbed, globalEmbed);
 		} else if (globalCondDim > 0) {
@@ -606,8 +615,15 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 			Producer<PackedCollection> modulation = null;
 
 			if (adaLN) {
-				PackedCollection scaleShiftGate = createWeight(
-						"model.model.transformer.layers." + i + ".to_scale_shift_gate.weight", 6, dim);
+				String scaleShiftGateKey =
+						"model.model.transformer.layers." + i + ".to_scale_shift_gate.weight";
+				if (stateDictionary != null && !stateDictionary.containsKey(scaleShiftGateKey)) {
+					throw new IllegalArgumentException(scaleShiftGateKey +
+							" not found in StateDictionary; to_scale_shift_gate weights are required for " +
+							"ConditioningMode.ADALN. Use ConditioningMode.PREPEND for older checkpoints " +
+							"that do not provide adaLN modulation weights.");
+				}
+				PackedCollection scaleShiftGate = createWeight(scaleShiftGateKey, 6, dim);
 				modulation = adaptiveModulationParameters(conditioning, scaleShiftGate, batchSize, dim);
 			}
 

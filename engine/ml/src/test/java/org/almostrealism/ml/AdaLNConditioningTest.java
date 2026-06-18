@@ -30,6 +30,9 @@ import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Standalone tests for adaptive layer-normalization (adaLN-Zero) conditioning — Block B1 of the
  * Stable Audio 3 component plan — proven independently of any real Stable Audio 3 weights.
@@ -305,6 +308,196 @@ public class AdaLNConditioningTest extends TestSuiteBase implements AttentionFea
 
 		defaultMode.destroy();
 		prependMode.destroy();
+	}
+
+	/**
+	 * In {@link ConditioningMode#ADALN} mode, a non-null {@link StateDictionary} that is missing the
+	 * per-layer {@code to_scale_shift_gate.weight} key must fail with a mode-specific, descriptive error
+	 * (rather than the generic {@code createWeight} "not found" message) that names the missing weight,
+	 * states the weights are required for ADALN, and points to {@link ConditioningMode#PREPEND} for older
+	 * checkpoints that lack them.
+	 */
+	@Test(timeout = 240000)
+	public void adaLNMissingScaleShiftGateWeightThrows() {
+		StateDictionary stateDict = new StateDictionary(ditWeights(false));
+
+		DiffusionTransformer transformer = new DiffusionTransformer(
+				DIT_IO_CHANNELS, DIT_EMBED_DIM, DIT_DEPTH, DIT_NUM_HEADS, 1,
+				0, DIT_GLOBAL_COND_DIM, "rf_denoiser",
+				DIT_AUDIO_SEQ_LEN, DIT_COND_SEQ_LEN, ConditioningMode.ADALN,
+				stateDict, false);
+
+		int batchSize = DiffusionTransformer.batchSize;
+		PackedCollection input =
+				new PackedCollection(shape(batchSize, DIT_IO_CHANNELS, DIT_AUDIO_SEQ_LEN)).randnFill();
+		PackedCollection timestep = new PackedCollection(shape(batchSize, 1)).randnFill();
+		PackedCollection globalCond = new PackedCollection(shape(batchSize, DIT_GLOBAL_COND_DIM)).randnFill();
+
+		try {
+			transformer.forward(input, timestep, null, globalCond);
+			throw new AssertionError("ADALN with a missing to_scale_shift_gate weight must throw");
+		} catch (IllegalArgumentException e) {
+			String message = e.getMessage();
+			log("Got expected ADALN missing-weight error: " + message);
+			assertTrue("Error must name the to_scale_shift_gate weight",
+					message != null && message.contains("to_scale_shift_gate"));
+			assertTrue("Error must reference ADALN conditioning", message.contains("ADALN"));
+			assertTrue("Error must point to PREPEND for older checkpoints", message.contains("PREPEND"));
+		} finally {
+			transformer.destroy();
+		}
+	}
+
+	/**
+	 * A {@link ConditioningMode#PREPEND} load of a {@link StateDictionary} that contains per-layer
+	 * {@code to_scale_shift_gate.weight} entries must not be rejected by {@code validateWeights()}: those
+	 * weights are irrelevant when adaLN is disabled and are marked expected-unused, so the forward pass
+	 * builds and runs and the output keeps the input shape.
+	 */
+	@Test(timeout = 240000)
+	public void prependModeIgnoresScaleShiftGateWeights() {
+		StateDictionary stateDict = new StateDictionary(ditWeights(true));
+
+		DiffusionTransformer transformer = new DiffusionTransformer(
+				DIT_IO_CHANNELS, DIT_EMBED_DIM, DIT_DEPTH, DIT_NUM_HEADS, 1,
+				0, DIT_GLOBAL_COND_DIM, "rf_denoiser",
+				DIT_AUDIO_SEQ_LEN, DIT_COND_SEQ_LEN, ConditioningMode.PREPEND,
+				stateDict, false);
+
+		int batchSize = DiffusionTransformer.batchSize;
+		PackedCollection input =
+				new PackedCollection(shape(batchSize, DIT_IO_CHANNELS, DIT_AUDIO_SEQ_LEN)).randnFill();
+		PackedCollection timestep = new PackedCollection(shape(batchSize, 1)).randnFill();
+		PackedCollection globalCond = new PackedCollection(shape(batchSize, DIT_GLOBAL_COND_DIM)).randnFill();
+
+		PackedCollection output = transformer.forward(input, timestep, null, globalCond);
+
+		assertEquals("PREPEND output should keep the input shape",
+				input.getShape().getTotalSize(), output.getShape().getTotalSize());
+		transformer.destroy();
+		log("prepend-mode load with to_scale_shift_gate keys succeeded; output shape = " + output.getShape());
+	}
+
+	/**
+	 * The {@code gatedLinearFeedForward} modulation overload enables modulation only when both
+	 * {@code modScale} and {@code modShift} are supplied. Supplying exactly one is a misconfiguration and
+	 * must fail fast with an {@link IllegalArgumentException}; supplying neither must build the unmodulated
+	 * block.
+	 */
+	@Test(timeout = 120000)
+	public void feedForwardModulationRequiresBothOrNeither() {
+		TraversalPolicy shape = shape(BATCH, SEQ_LEN, DIM);
+		int hiddenDim = DIM * 4;
+		PackedCollection normWeights = new PackedCollection(shape(DIM)).fill(1.0);
+		PackedCollection normBiases = new PackedCollection(shape(DIM));
+		PackedCollection weightIn = new PackedCollection(shape(2 * hiddenDim, DIM)).randnFill();
+		PackedCollection biasIn = new PackedCollection(shape(2 * hiddenDim));
+		PackedCollection weightOut = new PackedCollection(shape(DIM, hiddenDim)).randnFill();
+		PackedCollection biasOut = new PackedCollection(shape(DIM));
+		Producer<PackedCollection> mod = cp(new PackedCollection(shape(BATCH, DIM)).randnFill());
+
+		try {
+			gatedLinearFeedForward(shape, normWeights, normBiases, weightIn, biasIn, weightOut, biasOut,
+					mod, null, ProjectionFactory.dense());
+			throw new AssertionError("Supplying only modScale must throw");
+		} catch (IllegalArgumentException e) {
+			log("Got expected error for modScale-only: " + e.getMessage());
+		}
+
+		try {
+			gatedLinearFeedForward(shape, normWeights, normBiases, weightIn, biasIn, weightOut, biasOut,
+					null, mod, ProjectionFactory.dense());
+			throw new AssertionError("Supplying only modShift must throw");
+		} catch (IllegalArgumentException e) {
+			log("Got expected error for modShift-only: " + e.getMessage());
+		}
+
+		Block plain = gatedLinearFeedForward(shape, normWeights, normBiases, weightIn, biasIn, weightOut,
+				biasOut, null, null, ProjectionFactory.dense());
+		assertTrue("Both-null modulation must build an unmodulated block", plain != null);
+	}
+
+	/** Synthetic DiT configuration shared by the weight-validation tests: input/output channel count. */
+	private static final int DIT_IO_CHANNELS = 2;
+	/** Synthetic DiT configuration: transformer embedding dimension. */
+	private static final int DIT_EMBED_DIM = 32;
+	/** Synthetic DiT configuration: number of transformer blocks. */
+	private static final int DIT_DEPTH = 1;
+	/** Synthetic DiT configuration: number of self-attention heads. */
+	private static final int DIT_NUM_HEADS = 2;
+	/** Synthetic DiT configuration: global conditioning vector dimension. */
+	private static final int DIT_GLOBAL_COND_DIM = 16;
+	/** Synthetic DiT configuration: audio sequence length (patches). */
+	private static final int DIT_AUDIO_SEQ_LEN = 8;
+	/** Synthetic DiT configuration: conditioning sequence length. */
+	private static final int DIT_COND_SEQ_LEN = 4;
+
+	/**
+	 * Builds the complete set of weights a {@link DiffusionTransformer} consumes for the synthetic
+	 * configuration above (no cross-attention, with global conditioning), optionally including the
+	 * per-layer {@code to_scale_shift_gate.weight} adaLN parameter. The shapes exactly match the
+	 * {@code createWeight} calls in {@code DiffusionTransformer} so that {@code validateWeights()} sees no
+	 * extraneous keys (other than the optional adaLN weights, which exercise the expected-unused handling).
+	 *
+	 * @param includeScaleShiftGate whether to include the per-layer {@code to_scale_shift_gate.weight}
+	 * @return the weight map for a {@link StateDictionary}
+	 */
+	private Map<String, PackedCollection> ditWeights(boolean includeScaleShiftGate) {
+		int dimHead = DIT_EMBED_DIM / DIT_NUM_HEADS;
+		int hiddenDim = DIT_EMBED_DIM * 4;
+		Map<String, PackedCollection> w = new HashMap<>();
+
+		// Timestep embedding
+		put(w, "model.model.timestep_features.weight", 128, 1);
+		put(w, "model.model.to_timestep_embed.0.weight", DIT_EMBED_DIM, 256);
+		put(w, "model.model.to_timestep_embed.0.bias", DIT_EMBED_DIM);
+		put(w, "model.model.to_timestep_embed.2.weight", DIT_EMBED_DIM, DIT_EMBED_DIM);
+		put(w, "model.model.to_timestep_embed.2.bias", DIT_EMBED_DIM);
+
+		// Global conditioning embedding
+		put(w, "model.model.to_global_embed.0.weight", DIT_EMBED_DIM, DIT_GLOBAL_COND_DIM);
+		put(w, "model.model.to_global_embed.2.weight", DIT_EMBED_DIM, DIT_EMBED_DIM);
+
+		// Input/output projections
+		put(w, "model.model.preprocess_conv.weight", DIT_IO_CHANNELS, DIT_IO_CHANNELS);
+		put(w, "model.model.postprocess_conv.weight", DIT_IO_CHANNELS, DIT_IO_CHANNELS);
+		put(w, "model.model.transformer.project_in.weight", DIT_EMBED_DIM, DIT_IO_CHANNELS);
+		put(w, "model.model.transformer.project_out.weight", DIT_IO_CHANNELS, DIT_EMBED_DIM);
+		put(w, "model.model.transformer.rotary_pos_emb.inv_freq", dimHead / 4);
+
+		for (int i = 0; i < DIT_DEPTH; i++) {
+			String p = "model.model.transformer.layers." + i;
+			put(w, p + ".pre_norm.gamma", DIT_EMBED_DIM);
+			put(w, p + ".pre_norm.beta", DIT_EMBED_DIM);
+			put(w, p + ".self_attn.to_qkv.weight", DIT_EMBED_DIM * 3, DIT_EMBED_DIM);
+			put(w, p + ".self_attn.to_out.weight", DIT_EMBED_DIM, DIT_EMBED_DIM);
+			put(w, p + ".self_attn.q_norm.weight", dimHead);
+			put(w, p + ".self_attn.q_norm.bias", dimHead);
+			put(w, p + ".self_attn.k_norm.weight", dimHead);
+			put(w, p + ".self_attn.k_norm.bias", dimHead);
+			put(w, p + ".ff_norm.gamma", DIT_EMBED_DIM);
+			put(w, p + ".ff_norm.beta", DIT_EMBED_DIM);
+			put(w, p + ".ff.ff.0.proj.weight", 2 * hiddenDim, DIT_EMBED_DIM);
+			put(w, p + ".ff.ff.0.proj.bias", 2 * hiddenDim);
+			put(w, p + ".ff.ff.2.weight", DIT_EMBED_DIM, hiddenDim);
+			put(w, p + ".ff.ff.2.bias", DIT_EMBED_DIM);
+			if (includeScaleShiftGate) {
+				put(w, p + ".to_scale_shift_gate.weight",
+						AdaptiveLayerNormFeatures.MODULATION_COMPONENTS, DIT_EMBED_DIM);
+			}
+		}
+		return w;
+	}
+
+	/**
+	 * Adds a randomly-initialized weight of the given shape to the weight map.
+	 *
+	 * @param weights the weight map
+	 * @param key     the weight key
+	 * @param dims    the weight dimensions
+	 */
+	private void put(Map<String, PackedCollection> weights, String key, int... dims) {
+		weights.put(key, new PackedCollection(shape(dims)).randnFill());
 	}
 
 	/**
