@@ -20,6 +20,7 @@ import static io.flowtree.JsonFieldExtractor.MAPPER;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import io.flowtree.jobs.AgentProcessRunner;
+import io.flowtree.jobs.TmuxSession;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.FileWriter;
@@ -338,9 +339,14 @@ public class OpencodeRunner implements AgentRunner {
 
         try {
             long start = System.currentTimeMillis();
+            boolean useTmux = request.isUseTmux() && TmuxSession.isAvailable();
+            if (request.isUseTmux() && !useTmux) {
+                logger.warn("tmux launch was requested but tmux is not on PATH;"
+                        + " falling back to direct process launch.");
+            }
             AgentProcessRunner.Result processResult = AgentProcessRunner.runAttempt(
                     pb,
-                    false,
+                    useTmux,
                     request.getInactivityTimeoutMillis(),
                     request.getTaskId(),
                     OpencodeOutputParser::toActionSignature,

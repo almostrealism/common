@@ -45,6 +45,9 @@ import java.util.List;
  */
 class JobSessionAccumulator {
 
+    /** Raw text output produced by the most recent session run (latest only). */
+    private String output = "";
+
     /** Exit code returned by the most recent session run. */
     private int exitCode;
 
@@ -102,6 +105,12 @@ class JobSessionAccumulator {
             permissionDenials += result.deniedToolNames().size();
         }
     }
+
+    /** Returns the raw output from the most recent session run; never {@code null}. */
+    String getOutput() { return output; }
+
+    /** Sets the raw output of the most recent session run (overwritten each attempt). */
+    void setOutput(String output) { this.output = output; }
 
     /** Returns the exit code from the most recent session run. */
     int getExitCode() { return exitCode; }

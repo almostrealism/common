@@ -66,6 +66,8 @@ public final class AgentRunRequest {
     private final String activityTag;
     /** File path where the runner should dump its raw output. */
     private final Path outputCapturePath;
+    /** When {@code true}, the runner launches the agent inside a tmux session (real tty). */
+    private final boolean useTmux;
 
     /**
      * Key in {@link #getEnvironment()} that carries the workstream identifier
@@ -94,6 +96,7 @@ public final class AgentRunRequest {
         this.taskId = b.taskId;
         this.activityTag = b.activityTag;
         this.outputCapturePath = b.outputCapturePath;
+        this.useTmux = b.useTmux;
     }
 
     /** Returns the full instruction prompt to send to the agent. */
@@ -156,6 +159,16 @@ public final class AgentRunRequest {
     public Path getOutputCapturePath() { return outputCapturePath; }
 
     /**
+     * Returns whether the runner should launch the agent inside a tmux session
+     * so the child process receives a real controlling tty. {@code false} by
+     * default; runners may additionally honour their own environment-based
+     * opt-in (e.g. {@code AR_AGENT_USE_TMUX}).
+     *
+     * @return {@code true} to request a tmux-backed launch
+     */
+    public boolean isUseTmux() { return useTmux; }
+
+    /**
      * Returns the workstream identifier from the request environment, or
      * {@code null} if {@link #ENV_WORKSTREAM_ID} is absent from the map.
      */
@@ -202,6 +215,8 @@ public final class AgentRunRequest {
         private String activityTag;
         /** Pending raw-output capture path; see {@link AgentRunRequest#getOutputCapturePath()}. */
         private Path outputCapturePath;
+        /** Pending tmux-launch flag; see {@link AgentRunRequest#isUseTmux()}. */
+        private boolean useTmux;
 
         /** Hidden default constructor; obtain instances via {@link AgentRunRequest#builder()}. */
         private Builder() {}
@@ -238,6 +253,8 @@ public final class AgentRunRequest {
         public Builder activityTag(String activityTag) { this.activityTag = activityTag; return this; }
         /** Sets the file path to which the runner should dump its raw output. */
         public Builder outputCapturePath(Path outputCapturePath) { this.outputCapturePath = outputCapturePath; return this; }
+        /** Sets whether the runner should launch the agent inside a tmux session. */
+        public Builder useTmux(boolean useTmux) { this.useTmux = useTmux; return this; }
 
         /** Builds the immutable request. */
         public AgentRunRequest build() { return new AgentRunRequest(this); }

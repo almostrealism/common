@@ -155,6 +155,9 @@ final class CodingAgentJobCodec {
         if (job.isEnforceOrganizationalPlacement()) {
             sb.append("::enforceOrgPlacement:=true");
         }
+        if (job.isUseTmux()) {
+            sb.append("::useTmux:=true");
+        }
         if (!job.isReviewEnabled()) {
             sb.append("::reviewEnabled:=false");
         }
@@ -254,6 +257,9 @@ final class CodingAgentJobCodec {
                 return true;
             case "enforceOrgPlacement":
                 job.setEnforceOrganizationalPlacement(Boolean.parseBoolean(value));
+                return true;
+            case "useTmux":
+                job.setUseTmux(Boolean.parseBoolean(value));
                 return true;
             case "reviewEnabled":
                 job.setReviewEnabled(Boolean.parseBoolean(value));

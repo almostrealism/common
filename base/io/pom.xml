@@ -18,5 +18,10 @@
 			<artifactId>ar-meta</artifactId>
 			<version>0.75</version>
 		</dependency>
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 </project>

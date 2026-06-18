@@ -376,6 +376,38 @@ public class McpConfigBuilder implements ConsoleFeatures {
     }
 
     /**
+     * Returns whether ar-manager should be wired into the agent's MCP
+     * configuration, enforcing that a configured ar-manager always carries a
+     * token.
+     *
+     * <p>When {@link #arManagerUrl} is set the agent is expected to reach
+     * ar-manager over HTTP, and ar-manager only serves authenticated requests
+     * (it refuses tokenless calls). Building a config with a URL but no
+     * {@link #arManagerToken} would produce an agent that silently cannot use
+     * ar-manager at all — a misconfiguration, not a valid "no ar-manager"
+     * state. Fail loudly in that case rather than dropping ar-manager. When no
+     * URL is set, ar-manager is simply not deployed for this job and is
+     * omitted without error.</p>
+     *
+     * @return {@code true} when ar-manager is configured (URL and token both
+     *         present), {@code false} when no ar-manager URL is set
+     * @throws IllegalStateException when an ar-manager URL is set but no token
+     *         is available
+     */
+    private boolean arManagerEnabled() {
+        boolean hasUrl = arManagerUrl != null && !arManagerUrl.isEmpty();
+        if (!hasUrl) {
+            return false;
+        }
+        if (arManagerToken == null || arManagerToken.isEmpty()) {
+            throw new IllegalStateException(
+                "ar-manager is configured but no auth token was provided; "
+                + "refusing to build an MCP configuration without a token.");
+        }
+        return true;
+    }
+
+    /**
      * Builds the JSON MCP configuration string for the {@code --mcp-config} flag.
      *
      * <p>The output has the structure {@code {"mcpServers":{...}}} containing:</p>
@@ -386,6 +418,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * </ul>
      *
      * @return the MCP configuration JSON string
+     * @throws IllegalStateException when an ar-manager URL is configured without a token
      */
     public String buildMcpConfig() {
         String rootHost = System.getenv("FLOWTREE_ROOT_HOST");
@@ -394,8 +427,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
         ObjectNode mcpServers = root.putObject("mcpServers");
 
         // ar-manager: centralized HTTP entry with auth
-        if (arManagerUrl != null && !arManagerUrl.isEmpty()
-                && arManagerToken != null && !arManagerToken.isEmpty()) {
+        if (arManagerEnabled()) {
             String url = arManagerUrl;
             if (rootHost != null && !rootHost.isEmpty()) {
                 url = url.replace("0.0.0.0", rootHost);
@@ -543,8 +575,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
         StringBuilder sb = new StringBuilder(baseTools);
 
         // Add ar-manager tools when configured
-        if (arManagerUrl != null && !arManagerUrl.isEmpty()
-                && arManagerToken != null && !arManagerToken.isEmpty()) {
+        if (arManagerEnabled()) {
             sb.append(",").append(AR_MANAGER_TOOLS);
             log("Added ar-manager tools");
 

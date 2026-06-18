@@ -149,6 +149,8 @@ public class CodingAgentJob extends GitManagedJob {
     private int inactivityRestartAttempt;
     /** Set by the monitor when it kills the Claude subprocess; consumed by the retry loop. */
     private volatile boolean wasKilledForInactivity;
+    /** When {@code true}, launch the agent subprocess inside a tmux session (real tty); runner also honours {@code AR_AGENT_USE_TMUX}. */
+    private boolean useTmux;
     /**
      * Controls post-work deduplication behaviour.
      * {@code null} (the default) disables deduplication — the factory sets
@@ -260,8 +262,6 @@ public class CodingAgentJob extends GitManagedJob {
     private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
     /** Downloads pushed MCP tool source files before each agent launch. */
     private final ManagedToolsDownloader toolsDownloader = new ManagedToolsDownloader(mcpConfigBuilder);
-    /** Raw text output produced by the Claude Code process; latest run only. */
-    private String output;
     /** Per-runner and per-model USD cost accumulation across every phase invocation. */
     private final JobCostTracker costTracker = new JobCostTracker();
     /**
@@ -614,6 +614,12 @@ public class CodingAgentJob extends GitManagedJob {
         this.enforceMavenDependencies = enforceMavenDependencies;
     }
 
+    /** Returns whether the agent subprocess is launched inside a tmux session for this job. */
+    public boolean isUseTmux() { return useTmux; }
+
+    /** Sets whether the agent subprocess launches inside a tmux session; the runner also honours {@code AR_AGENT_USE_TMUX}. */
+    public void setUseTmux(boolean useTmux) { this.useTmux = useTmux; }
+
     /**
      * Returns whether the organizational placement rule is active for this job.
      *
@@ -948,7 +954,7 @@ public class CodingAgentJob extends GitManagedJob {
      * Returns the full output from the last execution.
      */
     public String getOutput() {
-        return output;
+        return accumulator.getOutput();
     }
 
     /**
@@ -1244,7 +1250,7 @@ public class CodingAgentJob extends GitManagedJob {
         PhaseConfig effective = resolveEffectivePhaseConfig(currentPhase);
         String modelKey = effective.toModelKey();
 
-        output = "";
+        accumulator.setOutput("");
         AgentRunResult finalResult = null;
         for (int attempt = 0; attempt <= maxInactivityRestarts; attempt++) {
             inactivityRestartAttempt = attempt;
@@ -1252,7 +1258,7 @@ public class CodingAgentJob extends GitManagedJob {
             AgentRunRequest request = buildRunRequest(
                     composedAllowedTools, mcpConfigJson, outputCapturePath, attempt);
             AgentRunResult result = runner.run(request, this);
-            output = result.rawOutput();
+            accumulator.setOutput(result.rawOutput());
             wasKilledForInactivity = result.killedForInactivity();
             finalResult = result;
             if (!wasKilledForInactivity) break;
@@ -1275,7 +1281,7 @@ public class CodingAgentJob extends GitManagedJob {
 
         if (getOutputConsumer() != null) {
             getOutputConsumer().accept(new CodingAgentJobOutput(
-                getTaskId(), prompt, output, accumulator.getSessionId(), accumulator.getExitCode()));
+                getTaskId(), prompt, accumulator.getOutput(), accumulator.getSessionId(), accumulator.getExitCode()));
         }
     }
 
@@ -1392,6 +1398,7 @@ public class CodingAgentJob extends GitManagedJob {
                 .taskId(getTaskId())
                 .activityTag(currentActivity)
                 .outputCapturePath(outputCapturePath)
+                .useTmux(useTmux)
                 .build();
     }
 

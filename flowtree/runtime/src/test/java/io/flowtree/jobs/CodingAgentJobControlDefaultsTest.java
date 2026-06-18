@@ -186,4 +186,92 @@ public class CodingAgentJobControlDefaultsTest extends TestSuiteBase {
         CodingAgentJobFactory decoded = GitManagedJobSerializationTest.roundTripFactory(factory);
         assertFalse(decoded.isEnforceOrganizationalPlacement());
     }
+
+    // ── tmux-backed launch — disabled by default ─────────────────────────────
+
+    /**
+     * Verifies that a directly constructed job has tmux-backed launch disabled.
+     */
+    @Test(timeout = 30000)
+    public void jobUseTmuxDisabledByDefault() {
+        CodingAgentJob job = new CodingAgentJob("t1", "do something");
+        assertFalse(job.isUseTmux());
+    }
+
+    /**
+     * Verifies that a newly created factory has tmux-backed launch disabled.
+     */
+    @Test(timeout = 30000)
+    public void factoryUseTmuxDisabledByDefault() {
+        CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+        assertFalse(factory.isUseTmux());
+    }
+
+    /**
+     * Verifies that a job produced by a default factory inherits the disabled tmux setting.
+     */
+    @Test(timeout = 30000)
+    public void jobCreatedByFactoryInheritsUseTmuxDisabled() {
+        CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+        CodingAgentJob job = (CodingAgentJob) factory.nextJob();
+        assertNotNull(job);
+        assertFalse(job.isUseTmux());
+    }
+
+    // ── tmux-backed launch — explicit opt-in ──────────────────────────────────
+
+    /**
+     * Verifies that enabling tmux-backed launch on a factory is reflected by its getter.
+     */
+    @Test(timeout = 30000)
+    public void factoryUseTmuxOptIn() {
+        CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+        factory.setUseTmux(true);
+        assertTrue(factory.isUseTmux());
+    }
+
+    /**
+     * Verifies that a job produced by a factory with tmux enabled inherits that setting.
+     */
+    @Test(timeout = 30000)
+    public void jobCreatedByFactoryInheritsUseTmuxOptIn() {
+        CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+        factory.setUseTmux(true);
+        CodingAgentJob job = (CodingAgentJob) factory.nextJob();
+        assertNotNull(job);
+        assertTrue(job.isUseTmux());
+    }
+
+    /**
+     * Verifies that the tmux opt-in survives a factory serialization round-trip.
+     */
+    @Test(timeout = 30000)
+    public void useTmuxOptInFactoryWireRoundTrip() {
+        CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+        factory.setUseTmux(true);
+        CodingAgentJobFactory decoded = GitManagedJobSerializationTest.roundTripFactory(factory);
+        assertTrue(decoded.isUseTmux());
+    }
+
+    /**
+     * Verifies that the default disabled tmux setting survives a factory serialization round-trip.
+     */
+    @Test(timeout = 30000)
+    public void useTmuxDisabledDefaultFactoryWireRoundTrip() {
+        CodingAgentJobFactory factory = new CodingAgentJobFactory("prompt");
+        CodingAgentJobFactory decoded = GitManagedJobSerializationTest.roundTripFactory(factory);
+        assertFalse(decoded.isUseTmux());
+    }
+
+    /**
+     * Verifies that the tmux opt-in survives a {@link CodingAgentJob} wire
+     * round-trip, exercising {@link CodingAgentJobCodec} encode/decode.
+     */
+    @Test(timeout = 30000)
+    public void useTmuxOptInJobWireRoundTrip() {
+        CodingAgentJob job = new CodingAgentJob("t1", "do something");
+        job.setUseTmux(true);
+        CodingAgentJob decoded = GitManagedJobSerializationTest.roundTrip(job);
+        assertTrue(decoded.isUseTmux());
+    }
 }
