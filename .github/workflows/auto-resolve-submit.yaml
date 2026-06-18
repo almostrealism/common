@@ -1,0 +1,86 @@
+name: "Auto-Resolve Submit"
+
+# Submits the FlowTree coding-agent request prepared by the `auto-resolve` job
+# in the "Build and Test" workflow.
+#
+# Why this is a separate workflow_run workflow:
+# The submission is gated on the `worker` GitHub Environment (required-reviewers
+# approval). Any job that declares `environment:` inside a pull_request run
+# attaches a deployment status to the PR head commit. When that deployment is
+# left pending and then cancelled (e.g. the next pipeline supersedes it, or the
+# fix was applied manually so nobody approves), GitHub records it as a failed
+# deployment — surfacing as a spurious "had a problem deploying to worker" red X
+# on the PR, independent of the "All Checks" required status check.
+#
+# Running the environment-gated submission from a workflow_run workflow means it
+# executes in the default-branch context, so the `worker` deployment attaches to
+# master's deployment history rather than the PR head. The required-reviewers
+# approval gate is fully preserved — it just prompts on this run instead of
+# inside the main pipeline.
+#
+# It fires on every completion of "Build and Test" (success and failure), since
+# the prepare job stages a request on green pipelines too (a general review).
+# When no request artifact is present, this workflow is a no-op.
+
+on:
+  workflow_run:
+    workflows: ["Build and Test"]
+    types: [completed]
+
+concurrency:
+  group: auto-resolve-submit-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+jobs:
+  submit:
+    # Only for non-master branches whose pipeline was not cancelled. Pushes to
+    # master have head_branch == master and are excluded. The artifact presence
+    # check below handles the "nothing to submit" and "auto_resolve disabled"
+    # cases (no artifact is uploaded in those situations).
+    if: >-
+      github.event.workflow_run.head_branch != 'master' &&
+      github.event.workflow_run.conclusion != 'cancelled'
+    runs-on: ubuntu-latest
+    # Manual approval gate (required reviewers). Configure under:
+    #   Settings -> Environments -> worker
+    environment: worker
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download auto-resolve request
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: auto-resolve-request
+          path: auto-resolve-request
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for request
+        id: check
+        run: |
+          if [ -f auto-resolve-request/submit.env ] && [ -f auto-resolve-request/agent-prompt.txt ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Auto-resolve request found — submitting"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No auto-resolve request artifact — nothing to submit"
+          fi
+
+      - name: Load request parameters
+        if: steps.check.outputs.present == 'true'
+        run: cat auto-resolve-request/submit.env >> "$GITHUB_ENV"
+
+      - name: Submit agent job
+        if: steps.check.outputs.present == 'true'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          chmod +x ./tools/ci/submit-agent-job.sh
+          ./tools/ci/submit-agent-job.sh auto-resolve-request/agent-prompt.txt
