@@ -97,6 +97,7 @@ The `changes` job detects which top-level directories changed and sets flags:
 | `extern_changed`   | `extern/`                  | `test-media`                     |
 | `studio_changed`   | `studio/`                  | `test-media`                     |
 | `python_changed`   | any `*.py` + `tools/mcp/requirements.txt` | `python-tests`    |
+| `agent_isolation_changed` | agent compose/entrypoint + isolation validator (+ `analysis.yaml`) | `agent-volume-isolation` |
 
 **No flag exists for `flowtree/` or `tools/` Java code.**
 Changes to those directories set `code_changed=true` (triggering the build) but
@@ -104,6 +105,32 @@ no layer flag — so all layer-gated test jobs are skipped. This is intentional:
 flowtree tests always run in the `test-flowtree` job regardless of what changed.
 The `python_changed` flag is a path-based (not layer-based) flag that gates
 `python-tests`; Python sources are not part of the layered Java module graph.
+The `agent_isolation_changed` flag is likewise path-based and gates
+`agent-volume-isolation` (folded in from a former standalone workflow).
+
+### What the `agent-volume-isolation` job covers
+
+Runs the Python validator (`tools/ci/validate_agent_volume_isolation.py`) and its
+unit tests, enforcing that FlowTree agent containers cannot share a writable
+volume. Path-gated on `agent_isolation_changed`; depends only on `changes` (no
+Maven build). Does not upload coverage. Part of the `all-checks` gate (skipped →
+treated as passing).
+
+### What the `auto-resolve` job covers (and the `Auto-Resolve Submit` split)
+
+`auto-resolve` parses the pipeline results, decides which agent prompt to build,
+and **stages** the request as the `auto-resolve-request` artifact. It carries no
+`environment:` and never submits to the controller itself. A separate
+`workflow_run`-triggered workflow (`.github/workflows/auto-resolve-submit.yaml`)
+downloads that artifact and performs the `worker`-environment-gated submission.
+
+This split exists because a job with `environment:` in a `pull_request` run
+attaches a GitHub Deployment status to the PR head; an abandoned/cancelled
+`worker` deployment then shows as a spurious "had a problem deploying" red X on
+the PR. Running the environment-gated submit from `workflow_run` attaches the
+deployment to the default-branch context instead, keeping it off the PR while
+preserving the required-reviewers approval gate. `auto-resolve` is excluded from
+`all-checks`; neither it nor the submit workflow is a quality signal.
 
 ### What the `build` job covers
 
