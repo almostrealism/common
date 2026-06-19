@@ -21,6 +21,9 @@
 2. **[PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md)** — the complete
    inventory of expected differences between the PDSL and legacy signal paths; the
    impact assessment for flipping `enablePdslMixdown`.
+3. **[PERCEPTUAL_MAP.md](PERCEPTUAL_MAP.md)** — the listener's companion to the inventory:
+   what each difference *sounds like* (symptom → cause → lever), with triage for which to
+   chase toward the legacy sound vs accept. Open this during an A/B listening session.
 
 ## Reference
 
