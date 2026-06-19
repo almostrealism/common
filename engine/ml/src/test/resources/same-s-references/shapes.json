@@ -1,0 +1,67 @@
+{
+  "dec_layer0_input": [
+    3,
+    34,
+    768
+  ],
+  "dec_layer0_output": [
+    3,
+    34,
+    768
+  ],
+  "dec_resamp_input": [
+    1,
+    768,
+    6
+  ],
+  "dec_resamp_output": [
+    1,
+    512,
+    96
+  ],
+  "enc_after_mapping": [
+    1,
+    768,
+    96
+  ],
+  "enc_layer0_input": [
+    3,
+    34,
+    768
+  ],
+  "enc_layer0_output": [
+    3,
+    34,
+    768
+  ],
+  "enc_resamp_input": [
+    1,
+    512,
+    96
+  ],
+  "enc_resamp_output": [
+    1,
+    768,
+    6
+  ],
+  "enc_seg_input": [
+    1,
+    102,
+    768
+  ],
+  "encoder_output": [
+    1,
+    256,
+    6
+  ],
+  "latent": [
+    1,
+    256,
+    6
+  ],
+  "test_input": [
+    1,
+    2,
+    24576
+  ]
+}
