@@ -16,10 +16,10 @@
 
 package org.almostrealism.ml;
 
-// TODO(review): TransformerResamplingFeatures does not exist yet — update @link below when Block C2 creates it
 /**
  * Configuration for a learned-resampling transformer block (see
- * {@link TransformerResamplingFeatures#transformerResamplingBlock}).
+ * {@link TransformerResamplingFeatures#transformerResamplingBlock(int, int, ResamplingConfig,
+ * StateDictionary, String)}).
  *
  * <p>A learned-resampling block changes the length of a sequence by an integer {@code stride}
  * using a learned {@code new_tokens} mechanism instead of strided convolution. The block groups
@@ -65,18 +65,31 @@ public class ResamplingConfig {
 		SLIDING
 	}
 
+	/** Number of channels of the block input. */
 	private final int inChannels;
+	/** Number of channels of the block output. */
 	private final int outChannels;
+	/** Number of attention heads. */
 	private final int heads;
+	/** Per-head dimension; the transformer width is {@code heads * dimHead}. */
 	private final int dimHead;
+	/** Sequence-length change factor (downsample in encoder, upsample in decoder). */
 	private final int stride;
+	/** Attention chunk size in input positions; a multiple of {@code stride}. */
 	private final int chunkSize;
+	/** Number of transformer layers in the block. */
 	private final int depth;
+	/** {@code true} for a downsampling encoder block, {@code false} for an upsampling decoder block. */
 	private final boolean encoder;
+	/** Whether the learned token count tracks the output segment size. */
 	private final boolean variableStride;
+	/** Whether the second half of the layer stack runs on midpoint-shifted chunks. */
 	private final boolean chunkMidpointShift;
+	/** GLU feed-forward expansion factor. */
 	private final double ffMult;
+	/** Kernel size of the channel-mapping convolution ({@code 1} encoder, {@code 3} decoder). */
 	private final int mappingKernel;
+	/** Attention windowing strategy. */
 	private final AttentionWindow window;
 
 	/**
@@ -123,43 +136,43 @@ public class ResamplingConfig {
 		this.window = window;
 	}
 
-	/** @return number of channels of the block input. */
+	/** Returns the number of channels of the block input. */
 	public int getInChannels() { return inChannels; }
 
-	/** @return number of channels of the block output. */
+	/** Returns the number of channels of the block output. */
 	public int getOutChannels() { return outChannels; }
 
-	/** @return number of attention heads. */
+	/** Returns the number of attention heads. */
 	public int getHeads() { return heads; }
 
-	/** @return per-head dimension. */
+	/** Returns the per-head dimension. */
 	public int getDimHead() { return dimHead; }
 
-	/** @return sequence-length change factor. */
+	/** Returns the sequence-length change factor. */
 	public int getStride() { return stride; }
 
-	/** @return attention chunk size in input positions. */
+	/** Returns the attention chunk size in input positions. */
 	public int getChunkSize() { return chunkSize; }
 
-	/** @return number of transformer layers. */
+	/** Returns the number of transformer layers. */
 	public int getDepth() { return depth; }
 
-	/** @return whether this is a downsampling encoder block. */
+	/** Returns whether this is a downsampling encoder block. */
 	public boolean isEncoder() { return encoder; }
 
-	/** @return whether the learned token count tracks the output segment size. */
+	/** Returns whether the learned token count tracks the output segment size. */
 	public boolean isVariableStride() { return variableStride; }
 
-	/** @return whether the second half of the layer stack uses midpoint-shifted chunks. */
+	/** Returns whether the second half of the layer stack uses midpoint-shifted chunks. */
 	public boolean isChunkMidpointShift() { return chunkMidpointShift; }
 
-	/** @return GLU feed-forward expansion factor. */
+	/** Returns the GLU feed-forward expansion factor. */
 	public double getFfMult() { return ffMult; }
 
-	/** @return channel-mapping convolution kernel size. */
+	/** Returns the channel-mapping convolution kernel size. */
 	public int getMappingKernel() { return mappingKernel; }
 
-	/** @return attention windowing strategy. */
+	/** Returns the attention windowing strategy. */
 	public AttentionWindow getWindow() { return window; }
 
 	/**
@@ -192,10 +205,15 @@ public class ResamplingConfig {
 	}
 
 	/**
-	 * The number of learned tokens appended to each segment. With {@code variableStride}, this is the
-	 * output segment size; otherwise the {@code new_tokens} parameter already carries that many tokens.
+	 * The number of learned-token positions appended to each segment. This equals the output segment
+	 * size in both {@code variableStride} modes &mdash; the flag changes only how the positions are
+	 * sourced, not how many there are. With {@code variableStride == true} a single learned token
+	 * (the {@code new_tokens} parameter, which carries one token) is broadcast across all
+	 * {@code outputSegSize} positions; with {@code variableStride == false} the {@code new_tokens}
+	 * parameter itself already carries {@code outputSegSize} distinct tokens. Either way the segment
+	 * grows by {@code outputSegSize} positions, so the count returned here is the same.
 	 *
-	 * @return the learned-token count per segment
+	 * @return the learned-token count per segment ({@code outputSegSize})
 	 */
 	public int getNewTokenCount() {
 		return getOutputSegSize();

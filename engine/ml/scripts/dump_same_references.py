@@ -127,7 +127,13 @@ def same_reference_stages(autoencoder, audio):
 
     store = {}
     make = _capture(store)
+    # A hook on the encoder module itself captures encoder_out from the single
+    # encode() pass below: encode() runs pretransform.encode() -> encoder() ->
+    # bottleneck.encode(), so the encoder hook fires exactly once. This avoids a
+    # second explicit encoder() forward (which would double the encoder compute and,
+    # if stochastic noise were ever re-enabled, silently diverge from the encode pass).
     handles = [
+        encoder.register_forward_hook(make("encoder")),
         enc_block.register_forward_hook(make("enc_resamp")),
         enc_block.mapping.register_forward_hook(make("enc_mapping")),
         enc_block.transformers[0].register_forward_hook(make("enc_layer0")),
@@ -135,16 +141,11 @@ def same_reference_stages(autoencoder, audio):
         dec_block.transformers[0].register_forward_hook(make("dec_layer0")),
     ]
 
-    # TODO(review): encode() internally calls encoder(), so enc_block hooks fire twice —
-    # once inside encode() and once on the explicit encoder() call. Store values are
-    # overwritten by the second call. With noise disabled both passes are deterministic
-    # so results are correct, but it wastes ~2x encoder compute and could surprise
-    # readers. Consider extracting encoder_out via a hook on autoencoder.encoder or by
-    # restructuring to a single forward pass when C2 is redone.
     with torch.no_grad():
         latent = autoencoder.encode(audio)
-        encoder_out = autoencoder.encoder(autoencoder.pretransform.encode(audio))
         autoencoder.decode(latent)
+
+    encoder_out = store["encoder_out"]
 
     for h in handles:
         h.remove()
@@ -163,7 +164,7 @@ def same_reference_stages(autoencoder, audio):
         "enc_layer0_input": store["enc_layer0_in"],
         "enc_layer0_output": store["enc_layer0_out"],
         "enc_resamp_output": store["enc_resamp_out"],
-        "encoder_output": encoder_out.detach().cpu().float(),
+        "encoder_output": encoder_out,
         "latent": latent.detach().cpu().float(),
         "dec_resamp_input": store["dec_resamp_in"],
         "dec_layer0_input": store["dec_layer0_in"],
