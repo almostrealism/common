@@ -11,8 +11,8 @@ rebuild a ``StateDictionary`` (via its ``Map`` constructor) from the flat ``.bin
 
 These weights are ~214MB, so the output directory is **NOT committed** — it is a
 gated, local-only input to the parity test (the test skips when the directory is
-absent, mirroring the project's other real-weight tests). Only the small reference
-activations are committed.
+absent, mirroring the project's other real-weight tests). Reference activations are
+also NOT committed; regenerate them locally with dump_same_references.py.
 
 Usage::
 

@@ -135,6 +135,12 @@ def same_reference_stages(autoencoder, audio):
         dec_block.transformers[0].register_forward_hook(make("dec_layer0")),
     ]
 
+    # TODO(review): encode() internally calls encoder(), so enc_block hooks fire twice —
+    # once inside encode() and once on the explicit encoder() call. Store values are
+    # overwritten by the second call. With noise disabled both passes are deterministic
+    # so results are correct, but it wastes ~2x encoder compute and could surprise
+    # readers. Consider extracting encoder_out via a hook on autoencoder.encoder or by
+    # restructuring to a single forward pass when C2 is redone.
     with torch.no_grad():
         latent = autoencoder.encode(audio)
         encoder_out = autoencoder.encoder(autoencoder.pretransform.encode(audio))
