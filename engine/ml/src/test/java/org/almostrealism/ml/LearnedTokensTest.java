@@ -225,15 +225,33 @@ public class LearnedTokensTest extends TestSuiteBase implements LearnedTokenFeat
 	 */
 	@Test(timeout = 240000)
 	public void zeroMemoryTokensMatchesLegacyPrepend() {
+		int unusedMemoryTokens = 4;
+		Map<String, PackedCollection> weights = ditWeights(false, unusedMemoryTokens);
+
+		Map<String, PackedCollection> legacyWeights = new HashMap<>();
+		Map<String, PackedCollection> zeroWeights = new HashMap<>();
+		weights.forEach((k, v) -> { legacyWeights.put(k, v.clone()); zeroWeights.put(k, v.clone()); });
+
 		DiffusionTransformer legacy = new DiffusionTransformer(
 				DIT_IO_CHANNELS, DIT_EMBED_DIM, DIT_DEPTH, DIT_NUM_HEADS, 1,
 				0, DIT_GLOBAL_COND_DIM, "rf_denoiser",
-				DIT_AUDIO_SEQ_LEN, DIT_COND_SEQ_LEN, ConditioningMode.PREPEND, null, false);
-		DiffusionTransformer zeroMemory = newTransformer(ConditioningMode.PREPEND, 0, null);
+				DIT_AUDIO_SEQ_LEN, DIT_COND_SEQ_LEN, ConditioningMode.PREPEND,
+				new StateDictionary(legacyWeights), false);
+		DiffusionTransformer zeroMemory = new DiffusionTransformer(
+				DIT_IO_CHANNELS, DIT_EMBED_DIM, DIT_DEPTH, DIT_NUM_HEADS, 1,
+				0, DIT_GLOBAL_COND_DIM, "rf_denoiser",
+				DIT_AUDIO_SEQ_LEN, DIT_COND_SEQ_LEN, ConditioningMode.PREPEND, 0,
+				new StateDictionary(zeroWeights), false);
 
-		// TODO(review): forward() generates fresh random inputs per call; diff<1e-6 holds only because
-		// zero-initialized weights make both outputs zero regardless of input. Use shared inputs for robustness.
-		double diff = compare(forward(legacy), forward(zeroMemory));
+		int batchSize = DiffusionTransformer.batchSize;
+		PackedCollection input =
+				new PackedCollection(shape(batchSize, DIT_IO_CHANNELS, DIT_AUDIO_SEQ_LEN)).randnFill();
+		PackedCollection timestep = new PackedCollection(shape(batchSize, 1)).randnFill();
+		PackedCollection globalCond = new PackedCollection(shape(batchSize, DIT_GLOBAL_COND_DIM)).randnFill();
+
+		double diff = compare(
+				legacy.forward(input, timestep, null, globalCond),
+				zeroMemory.forward(input, timestep, null, globalCond));
 		log("prepend-mode legacy vs numMemoryTokens=0 difference = " + diff);
 		assertTrue("numMemoryTokens=0 must reproduce the legacy PREPEND path exactly", diff < 1e-6);
 
@@ -248,18 +266,33 @@ public class LearnedTokensTest extends TestSuiteBase implements LearnedTokenFeat
 	 */
 	@Test(timeout = 240000)
 	public void zeroMemoryTokensMatchesLegacyAdaLN() {
+		int unusedMemoryTokens = 4;
+		Map<String, PackedCollection> weights = ditWeights(true, unusedMemoryTokens);
+
+		Map<String, PackedCollection> legacyWeights = new HashMap<>();
+		Map<String, PackedCollection> zeroWeights = new HashMap<>();
+		weights.forEach((k, v) -> { legacyWeights.put(k, v.clone()); zeroWeights.put(k, v.clone()); });
+
 		DiffusionTransformer legacy = new DiffusionTransformer(
 				DIT_IO_CHANNELS, DIT_EMBED_DIM, DIT_DEPTH, DIT_NUM_HEADS, 1,
 				0, DIT_GLOBAL_COND_DIM, "rf_denoiser",
-				DIT_AUDIO_SEQ_LEN, DIT_COND_SEQ_LEN, ConditioningMode.ADALN, null, false);
+				DIT_AUDIO_SEQ_LEN, DIT_COND_SEQ_LEN, ConditioningMode.ADALN,
+				new StateDictionary(legacyWeights), false);
 		DiffusionTransformer zeroMemory = new DiffusionTransformer(
 				DIT_IO_CHANNELS, DIT_EMBED_DIM, DIT_DEPTH, DIT_NUM_HEADS, 1,
 				0, DIT_GLOBAL_COND_DIM, "rf_denoiser",
-				DIT_AUDIO_SEQ_LEN, DIT_COND_SEQ_LEN, ConditioningMode.ADALN, 0, null, false);
+				DIT_AUDIO_SEQ_LEN, DIT_COND_SEQ_LEN, ConditioningMode.ADALN, 0,
+				new StateDictionary(zeroWeights), false);
 
-		// TODO(review): forward() generates fresh random inputs per call; diff<1e-6 holds only because
-		// zero-initialized weights make both outputs zero regardless of input. Use shared inputs for robustness.
-		double diff = compare(forward(legacy), forward(zeroMemory));
+		int batchSize = DiffusionTransformer.batchSize;
+		PackedCollection input =
+				new PackedCollection(shape(batchSize, DIT_IO_CHANNELS, DIT_AUDIO_SEQ_LEN)).randnFill();
+		PackedCollection timestep = new PackedCollection(shape(batchSize, 1)).randnFill();
+		PackedCollection globalCond = new PackedCollection(shape(batchSize, DIT_GLOBAL_COND_DIM)).randnFill();
+
+		double diff = compare(
+				legacy.forward(input, timestep, null, globalCond),
+				zeroMemory.forward(input, timestep, null, globalCond));
 		log("adaLN-mode legacy vs numMemoryTokens=0 difference = " + diff);
 		assertTrue("numMemoryTokens=0 must reproduce the legacy ADALN path exactly", diff < 1e-6);
 
