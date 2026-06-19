@@ -649,6 +649,15 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
             server._parse_required_labels('{"platform": "macos"}'),
             {"platform": "macos"})
 
+    def test_parse_required_labels_malformed_json_returns_empty(self):
+        # A leading "{" signals JSON intent; malformed JSON must NOT fall back to
+        # the CSV splitter (which would re-create the mangled map this guards
+        # against). It returns an empty map instead.
+        self.assertEqual(
+            server._parse_required_labels('{"platform": "macos"'), {})
+        self.assertEqual(
+            server._parse_required_labels('{platform: macos}'), {})
+
     def test_parse_required_labels_json_non_string_values_coerced(self):
         # Booleans coerce to lowercase JSON form so they match the CSV form
         # (gpu:true) and node-side label values.

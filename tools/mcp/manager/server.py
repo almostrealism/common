@@ -1612,11 +1612,13 @@ def _parse_required_labels(required_labels: str) -> dict:
       ``platform:macos,gpu:true``.
     - A JSON object string, e.g. ``{"platform": "macos", "gpu": "true"}``.
 
-    The JSON form is detected first (leading ``{``) and parsed with the JSON
-    decoder. This prevents a JSON object from being fed to the CSV splitter,
-    which would split it on the first colon and produce a mangled single-entry
-    map such as ``{'{"platform"': '"macos"}'}`` that then corrupts
-    ``workstreams.yaml``. Non-string JSON values are coerced to strings.
+    A leading ``{`` is treated as JSON-object intent: the value is parsed with
+    the JSON decoder and never falls through to the CSV splitter. That fallthrough
+    is exactly what corrupts ``workstreams.yaml`` — the splitter would break a
+    JSON string on its first colon into a mangled single-entry map such as
+    ``{'{"platform"': '"macos"}'}``. Malformed JSON (or a non-object) therefore
+    yields an empty map rather than a mangled one. Non-string JSON values are
+    coerced to strings.
 
     Only pairs with a non-empty key and non-empty value are included. Pairs
     missing a colon or with an empty key/value are silently ignored.
@@ -1626,19 +1628,20 @@ def _parse_required_labels(required_labels: str) -> dict:
         import json as _json
         try:
             parsed = _json.loads(stripped)
-            if isinstance(parsed, dict):
-                result = {}
-                for key, value in parsed.items():
-                    key_str = str(key).strip()
-                    if isinstance(value, bool):
-                        value_str = "true" if value else "false"
-                    else:
-                        value_str = str(value).strip()
-                    if key_str and value_str:
-                        result[key_str] = value_str
-                return result
         except ValueError:
-            pass
+            return {}
+        if not isinstance(parsed, dict):
+            return {}
+        result = {}
+        for key, value in parsed.items():
+            key_str = str(key).strip()
+            if isinstance(value, bool):
+                value_str = "true" if value else "false"
+            else:
+                value_str = str(value).strip()
+            if key_str and value_str:
+                result[key_str] = value_str
+        return result
     result = {}
     for pair in stripped.split(","):
         parts = pair.strip().split(":", 1)

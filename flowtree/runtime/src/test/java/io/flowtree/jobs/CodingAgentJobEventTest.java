@@ -108,7 +108,7 @@ public class CodingAgentJobEventTest extends TestSuiteBase {
 	public void costIncompleteDefaultsToFalse() {
 		CodingAgentJobEvent event = CodingAgentJobEvent.success("cc-7", "Claude job");
 
-		assertTrue(!event.isCostIncomplete());
+		assertFalse(event.isCostIncomplete());
 	}
 
 	/** Verifies that the cost-incomplete flag survives a JSON round trip. */
