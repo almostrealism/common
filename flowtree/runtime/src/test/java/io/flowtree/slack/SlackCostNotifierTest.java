@@ -102,6 +102,41 @@ public class SlackCostNotifierTest extends TestSuiteBase {
     }
 
     /**
+     * Verifies that a job whose cost is incomplete (an agent session was killed
+     * for inactivity before reporting cost) is rendered with a lower-bound "+"
+     * marker and an explicit "incomplete" note, even when the recorded total is
+     * $0.00. Without this, an inactivity-killed Claude session would silently
+     * report no cost at all.
+     */
+    @Test(timeout = 10000)
+    public void testSlackCompletionWithIncompleteCost() {
+        List<String> messages = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json -> {
+            int start = json.indexOf("\"text\":\"") + 8;
+            int end = json.indexOf("\"", start);
+            if (start > 7 && end > start) {
+                messages.add(json.substring(start, end).replace("\\n", "\n"));
+            }
+        });
+
+        Workstream workstream = new Workstream("C_COST_2", "#cost-test");
+        notifier.registerWorkstream(workstream);
+
+        CodingAgentJobEvent killedEvent = CodingAgentJobEvent.success("job-cost-2", "Killed task");
+        killedEvent.withTimingInfo(0, 0, 0.0, 0);
+        killedEvent.withCostIncomplete(true);
+        notifier.onJobCompleted(workstream.getWorkstreamId(), killedEvent);
+
+        assertTrue(messages.size() > 0);
+        String msg = messages.get(0);
+        assertTrue("Incomplete cost should still render a cost figure",
+            msg.contains("$0.00+"));
+        assertTrue("Incomplete cost should be flagged as incomplete",
+            msg.contains("incomplete"));
+    }
+
+    /**
      * Verifies that the stats API endpoint returns aggregated weekly job stats
      * including per-workstream data, and that workstream filtering works correctly.
      */

@@ -1103,6 +1103,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             }
             ccEvent.withCostByRunner(JsonFieldExtractor.extractDoubleObject(body, "costByRunner"));
             ccEvent.withCostByModel(JsonFieldExtractor.extractDoubleObject(body, "costByModel"));
+            ccEvent.withCostIncomplete(extractJsonBooleanField(body, "costIncomplete"));
         }
 
         log("Status event: " + eventStatus + " for job " + jobId + " in workstream " + workstreamId);
@@ -1385,8 +1386,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             j.append(",\"errorMessage\":\"").append(JsonFieldExtractor.escapeJson(event.getErrorMessage())).append("\"");
         }
         double totalCost = event.getTotalCostUsd();
-        if (totalCost > 0) {
+        boolean costIncomplete = event.isCostIncomplete();
+        // Emit the cost block when there is a positive total OR when the cost is
+        // incomplete: an inactivity-killed session can leave totalCost at 0 even
+        // though real (uncosted) work happened, and consumers must still see the
+        // costIncomplete flag rather than no cost field at all.
+        if (totalCost > 0 || costIncomplete) {
             j.append(String.format(",\"totalCostUsd\":%.2f", totalCost));
+            if (costIncomplete) {
+                j.append(",\"costIncomplete\":true");
+            }
             Map<String, Double> costByRunner = event.getCostByRunner();
             if (costByRunner != null && !costByRunner.isEmpty()) {
                 j.append(",\"costByRunner\":{");

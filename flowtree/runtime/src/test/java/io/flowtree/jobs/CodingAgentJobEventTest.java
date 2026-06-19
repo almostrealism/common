@@ -102,4 +102,24 @@ public class CodingAgentJobEventTest extends TestSuiteBase {
 		assertEquals(0.42, parsed.get("claude"), 1e-9);
 		assertEquals(0.03, parsed.get("opencode"), 1e-9);
 	}
+
+	/** Verifies that the cost-incomplete flag defaults to false on a fresh event. */
+	@Test(timeout = 30000)
+	public void costIncompleteDefaultsToFalse() {
+		CodingAgentJobEvent event = CodingAgentJobEvent.success("cc-7", "Claude job");
+
+		assertTrue(!event.isCostIncomplete());
+	}
+
+	/** Verifies that the cost-incomplete flag survives a JSON round trip. */
+	@Test(timeout = 30000)
+	public void costIncompleteSurvivesJsonRoundTrip() {
+		CodingAgentJobEvent event = CodingAgentJobEvent.success("cc-8", "Killed job")
+				.withCostIncomplete(true);
+
+		String json = event.toJson();
+
+		assertTrue("toJson must emit the costIncomplete flag",
+				JsonFieldExtractor.extractBoolean(json, "costIncomplete"));
+	}
 }

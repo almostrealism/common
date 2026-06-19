@@ -1604,13 +1604,43 @@ from phase_config import (  # noqa: E402
 
 
 def _parse_required_labels(required_labels: str) -> dict:
-    """Parse a comma-separated key:value string into a labels dict.
+    """Parse a labels specification into a labels dict.
 
-    Only pairs with non-empty key and non-empty value are included.
-    Pairs missing a colon or with an empty key/value are silently ignored.
+    Accepts two input shapes:
+
+    - Comma-separated ``key:value`` pairs (the documented CSV form), e.g.
+      ``platform:macos,gpu:true``.
+    - A JSON object string, e.g. ``{"platform": "macos", "gpu": "true"}``.
+
+    The JSON form is detected first (leading ``{``) and parsed with the JSON
+    decoder. This prevents a JSON object from being fed to the CSV splitter,
+    which would split it on the first colon and produce a mangled single-entry
+    map such as ``{'{"platform"': '"macos"}'}`` that then corrupts
+    ``workstreams.yaml``. Non-string JSON values are coerced to strings.
+
+    Only pairs with a non-empty key and non-empty value are included. Pairs
+    missing a colon or with an empty key/value are silently ignored.
     """
+    stripped = required_labels.strip()
+    if stripped.startswith("{"):
+        import json as _json
+        try:
+            parsed = _json.loads(stripped)
+            if isinstance(parsed, dict):
+                result = {}
+                for key, value in parsed.items():
+                    key_str = str(key).strip()
+                    if isinstance(value, bool):
+                        value_str = "true" if value else "false"
+                    else:
+                        value_str = str(value).strip()
+                    if key_str and value_str:
+                        result[key_str] = value_str
+                return result
+        except ValueError:
+            pass
     result = {}
-    for pair in required_labels.split(","):
+    for pair in stripped.split(","):
         parts = pair.strip().split(":", 1)
         if len(parts) == 2 and parts[0].strip() and parts[1].strip():
             result[parts[0].strip()] = parts[1].strip()
@@ -1843,9 +1873,11 @@ def workstream_submit_task(
             exists on the workstream, the submission is skipped and the
             response includes ``skipped: true``. Used by CI pipelines to
             avoid stale auto-resolve jobs colliding with explicit submissions.
-        required_labels: Comma-separated key:value pairs specifying Node
-            labels required to execute this job (e.g., "platform:macos,gpu:true").
-            Only Nodes with matching labels will execute the job.
+        required_labels: Node labels required to execute this job. Accepts
+            either comma-separated key:value pairs (e.g.,
+            "platform:macos,gpu:true") or a JSON object (e.g.,
+            '{"platform": "macos", "gpu": "true"}'). Only Nodes with matching
+            labels will execute the job.
         deduplication_mode: Post-work deduplication behaviour. Disabled by
             default (empty string leaves the server default of "none" in
             effect). Pass ``"local"`` to run an inline Claude Code session
@@ -2280,10 +2312,11 @@ def workstream_register(
         repo_url: Git repository URL for automatic checkout.
         planning_document: Path to a planning document for broader context.
         channel_name: Slack channel name to create (optional).
-        required_labels: Comma-separated key:value pairs specifying Node labels
-            that all jobs in this workstream must match by default
-            (e.g., "platform:macos,gpu:true"). Job-level labels always override
-            these workstream-level defaults.
+        required_labels: Node labels that all jobs in this workstream must
+            match by default. Accepts either comma-separated key:value pairs
+            (e.g., "platform:macos,gpu:true") or a JSON object (e.g.,
+            '{"platform": "macos", "gpu": "true"}'). Job-level labels always
+            override these workstream-level defaults.
         dependent_repos: Comma-separated list of git clone URLs for additional
             repositories that agents will clone alongside the primary repo
             (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
@@ -2673,10 +2706,11 @@ def workstream_update_config(
         repo_url: Git repository URL (enables pipeline tools).
         planning_document: Path to planning document.
         channel_name: New Slack channel name.
-        required_labels: Comma-separated key:value pairs specifying Node labels
-            that all jobs in this workstream must match by default
-            (e.g., "platform:macos,gpu:true"). Job-level labels always override
-            these workstream-level defaults.
+        required_labels: Node labels that all jobs in this workstream must
+            match by default. Accepts either comma-separated key:value pairs
+            (e.g., "platform:macos,gpu:true") or a JSON object (e.g.,
+            '{"platform": "macos", "gpu": "true"}'). Job-level labels always
+            override these workstream-level defaults.
         dependent_repos: Comma-separated list of git clone URLs for additional
             repositories that agents should clone alongside the primary repo
             (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
