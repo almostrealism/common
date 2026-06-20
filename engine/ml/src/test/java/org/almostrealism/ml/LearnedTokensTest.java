@@ -445,6 +445,7 @@ public class LearnedTokensTest extends TestSuiteBase implements LearnedTokenFeat
 	 * @param input      the model input
 	 * @return the forward-pass output
 	 */
+	// TODO(review): model and compiled are Destroyable but never closed here; use try-with-resources or call destroy() after forward() (see review-followup memory 4c3128a8)
 	private PackedCollection run(Block block, TraversalPolicy inputShape, PackedCollection input) {
 		Model model = new Model(inputShape);
 		model.sequential().add(block);
