@@ -1772,7 +1772,7 @@ def workstream_submit_task(
     max_deduplication_passes: int = 0,
     organizational_placement_enabled: bool = False,
     retrospective_enabled: bool = False,
-    use_tmux: bool = False,
+    use_tmux: Optional[bool] = None,
     sensitive_file_protection_enabled: bool = True,
     review_enabled: bool = True,
     max_review_passes: int = 0,
@@ -1878,13 +1878,15 @@ def workstream_submit_task(
             or stronger, since analyzing a transcript benefits from strong
             reasoning. Configure via
             ``phase_configs='{"retrospective":{"model":"claude-sonnet-4-7"}}'``.
-        use_tmux: When ``True``, the agent subprocess is launched inside a
+        use_tmux: Per-job override for tmux-backed launch, using presence
+            semantics. When ``True``, the agent subprocess is launched inside a
             tmux session (a real controlling tty) instead of as a direct child
-            process. Useful for CLIs that behave differently when attached to a
-            terminal. Disabled by default. The runner also honours the
-            ``AR_AGENT_USE_TMUX`` environment variable, so leaving this unset
-            preserves any environment-level enablement; setting it ``True`` for
-            a job forces tmux on regardless of the env var. Falls back to a
+            process; when ``False``, it is forced to a direct launch even if the
+            workstream's ``default_use_tmux`` is on. Leave unset (``None``, the
+            default) to inherit the workstream default and the
+            ``AR_AGENT_USE_TMUX`` environment variable. Because the value is
+            only forwarded when explicitly set, an explicit ``False`` reaches
+            the controller and overrides the workstream default. Falls back to a
             direct launch with a warning if ``tmux`` is not on the node's PATH.
         sensitive_file_protection_enabled: When ``True`` (the default), the
             per-job sensitive-file protections are active: harness-side
@@ -2191,8 +2193,11 @@ def workstream_submit_task(
         payload["enforceOrganizationalPlacement"] = True
     if retrospective_enabled:
         payload["retrospectiveEnabled"] = True
-    if use_tmux:
-        payload["useTmux"] = True
+    # Presence semantics: forward useTmux only when explicitly set so an
+    # explicit False reaches the controller and overrides the workstream
+    # default (the controller distinguishes absent from false via hasField).
+    if use_tmux is not None:
+        payload["useTmux"] = bool(use_tmux)
     # sensitiveFileProtectionEnabled defaults to TRUE; forward only when the
     # operator has explicitly disabled it. Mirrors the inverted semantics of
     # the other activation booleans (which default to false and forward on true).

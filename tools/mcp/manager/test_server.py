@@ -740,9 +740,9 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
 
     @patch.object(server, "_controller_post")
     def test_submit_use_tmux_omitted_by_default(self, mock_post):
-        """use_tmux is opt-in (default false), so the wire payload must omit
-        useTmux when the caller did not pass it (the runner still honours the
-        AR_AGENT_USE_TMUX env var on the node)."""
+        """use_tmux uses presence semantics (default None), so the wire payload
+        must omit useTmux when the caller did not pass it. The job then inherits
+        the workstream default and the AR_AGENT_USE_TMUX env var on the node."""
         _grant_all_scopes()
         mock_post.return_value = {"ok": True, "jobId": "job-tmux1"}
         server.workstream_submit_task(prompt="Task")
@@ -760,15 +760,15 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertIs(payload["useTmux"], True)
 
     @patch.object(server, "_controller_post")
-    def test_submit_use_tmux_false_omitted(self, mock_post):
-        """use_tmux=False is the default; the wire payload must omit the key
-        rather than forward an explicit false (matches the
-        retrospective_enabled behaviour)."""
+    def test_submit_use_tmux_false_forwarded(self, mock_post):
+        """An explicit use_tmux=False must reach the controller as useTmux=False
+        (presence semantics) so a job can opt out of a workstream that defaults
+        tmux on. The controller distinguishes absent from false via hasField."""
         _grant_all_scopes()
         mock_post.return_value = {"ok": True, "jobId": "job-tmux3"}
         server.workstream_submit_task(prompt="Task", use_tmux=False)
         payload = mock_post.call_args[0][1]
-        self.assertNotIn("useTmux", payload)
+        self.assertIs(payload["useTmux"], False)
 
     @patch.object(server, "_controller_post")
     def test_submit_sensitive_file_protection_default_omitted(self, mock_post):
