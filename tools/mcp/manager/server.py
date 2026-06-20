@@ -1805,7 +1805,7 @@ def workstream_submit_task(
     max_deduplication_passes: int = 0,
     organizational_placement_enabled: bool = False,
     retrospective_enabled: bool = False,
-    use_tmux: bool = False,
+    use_tmux: Optional[bool] = None,
     sensitive_file_protection_enabled: bool = True,
     review_enabled: bool = True,
     max_review_passes: int = 0,
@@ -1913,13 +1913,15 @@ def workstream_submit_task(
             or stronger, since analyzing a transcript benefits from strong
             reasoning. Configure via
             ``phase_configs='{"retrospective":{"model":"claude-sonnet-4-7"}}'``.
-        use_tmux: When ``True``, the agent subprocess is launched inside a
+        use_tmux: Per-job override for tmux-backed launch, using presence
+            semantics. When ``True``, the agent subprocess is launched inside a
             tmux session (a real controlling tty) instead of as a direct child
-            process. Useful for CLIs that behave differently when attached to a
-            terminal. Disabled by default. The runner also honours the
-            ``AR_AGENT_USE_TMUX`` environment variable, so leaving this unset
-            preserves any environment-level enablement; setting it ``True`` for
-            a job forces tmux on regardless of the env var. Falls back to a
+            process; when ``False``, it is forced to a direct launch even if the
+            workstream's ``default_use_tmux`` is on. Leave unset (``None``, the
+            default) to inherit the workstream default and the
+            ``AR_AGENT_USE_TMUX`` environment variable. Because the value is
+            only forwarded when explicitly set, an explicit ``False`` reaches
+            the controller and overrides the workstream default. Falls back to a
             direct launch with a warning if ``tmux`` is not on the node's PATH.
         sensitive_file_protection_enabled: When ``True`` (the default), the
             per-job sensitive-file protections are active: harness-side
@@ -2226,8 +2228,11 @@ def workstream_submit_task(
         payload["enforceOrganizationalPlacement"] = True
     if retrospective_enabled:
         payload["retrospectiveEnabled"] = True
-    if use_tmux:
-        payload["useTmux"] = True
+    # Presence semantics: forward useTmux only when explicitly set so an
+    # explicit False reaches the controller and overrides the workstream
+    # default (the controller distinguishes absent from false via hasField).
+    if use_tmux is not None:
+        payload["useTmux"] = bool(use_tmux)
     # sensitiveFileProtectionEnabled defaults to TRUE; forward only when the
     # operator has explicitly disabled it. Mirrors the inverted semantics of
     # the other activation booleans (which default to false and forward on true).
@@ -2291,6 +2296,7 @@ def workstream_register(
     default_phase_config: str = "",
     phase_configs: str = "",
     dispatch_capable: bool = False,
+    default_use_tmux: bool = False,
     slack_workspace_id: str = "",
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
@@ -2390,6 +2396,14 @@ def workstream_register(
             ceilings, so the flag is the gate but not the only safety
             mechanism. Operators should enable it only on workstreams
             that genuinely orchestrate.
+        default_use_tmux: When ``True``, coding-agent jobs on this workstream
+            launch the agent subprocess inside a tmux session (a real
+            controlling tty) by default. The per-job ``use_tmux`` flag
+            still wins on a per-job basis, so a particular job submission
+            can override the workstream default. Defaults to ``False`` —
+            opt in explicitly. The runner additionally honours the
+            ``AR_AGENT_USE_TMUX`` environment variable as an independent
+            enable, which is unaffected by this flag.
 
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
@@ -2511,6 +2525,13 @@ def workstream_register(
     # boolean directly is simpler and the controller's extractBoolean
     # helper handles a missing field identically.
     payload["dispatchCapable"] = bool(dispatch_capable)
+    # defaultUseTmux follows the same unconditional-forward pattern as
+    # dispatchCapable: a boolean forwarded verbatim so the controller
+    # sees the operator's intent regardless of whether the field
+    # appears in the body. The workstream-level default takes effect on
+    # every job on this workstream that does not set the per-job
+    # use_tmux flag explicitly.
+    payload["defaultUseTmux"] = bool(default_use_tmux)
 
     result = _controller_post("/api/workstreams", payload)
 
@@ -2688,6 +2709,7 @@ def workstream_update_config(
     default_phase_config: str = "",
     phase_configs: str = "",
     dispatch_capable: Optional[bool] = None,
+    default_use_tmux: Optional[bool] = None,
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
     # captured here for a clear rejection error.
@@ -2744,6 +2766,14 @@ def workstream_update_config(
             the parameter entirely leaves the existing controller value
             unchanged (presence-signal semantics, same pattern as
             ``completion_listeners``). Defaults to ``None`` (no change).
+        default_use_tmux: When ``True``, coding-agent jobs on this workstream
+            launch the agent subprocess inside a tmux session (a real
+            controlling tty) by default. The per-job ``use_tmux`` flag
+            still wins on a per-job basis. Same presence-signal
+            semantics as ``dispatch_capable``: omitted leaves the
+            workstream's existing default unchanged; an explicit
+            ``False`` clears the opt-in. Defaults to ``None``
+            (no change).
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
             ``default_phase_config`` or ``phase_configs`` to set models.
@@ -2827,6 +2857,11 @@ def workstream_update_config(
     # value (true or false) wins.
     if dispatch_capable is not None:
         payload["dispatchCapable"] = bool(dispatch_capable)
+    # default_use_tmux follows the same Optional-presence pattern as
+    # dispatch_capable: omitted = no change, ``False`` = clear the
+    # workstream-level tmux opt-in, ``True`` = opt the workstream in.
+    if default_use_tmux is not None:
+        payload["defaultUseTmux"] = bool(default_use_tmux)
 
     if not payload:
         return {

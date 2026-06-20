@@ -154,6 +154,7 @@ final class WorkstreamRegistrationHandler {
         List<String> dependentRepos = JsonFieldExtractor.extractStringArray(body, "dependentRepos");
         List<String> completionListeners = extractCompletionListeners(body);
         boolean dispatchCapable = JsonFieldExtractor.extractBoolean(body, "dispatchCapable");
+        boolean defaultUseTmux = JsonFieldExtractor.extractBoolean(body, "defaultUseTmux");
 
         // Resolve the target Slack workspace: explicit slackWorkspaceId wins,
         // then a workspace derived from the repoUrl's GitHub org, then (in
@@ -259,6 +260,12 @@ final class WorkstreamRegistrationHandler {
         // the controller-side backstop is enforced on the calling workstream
         // when an ar-manager tool that requires dispatch is invoked.
         workstream.setDispatchCapable(dispatchCapable);
+        // Workstream-level default for tmux-backed agent launches. The
+        // default is false; opt in explicitly to make every job on this
+        // workstream launch inside a tmux session by default. The per-job
+        // use_tmux flag still wins on a per-job basis, so individual jobs
+        // can opt in or out of tmux even when the workstream default is on.
+        workstream.setUseTmux(defaultUseTmux);
 
         if (listener != null) {
             listener.registerAndPersistWorkstream(workstream);
@@ -375,6 +382,15 @@ final class WorkstreamRegistrationHandler {
         if (JsonFieldExtractor.hasField(body, "dispatchCapable")) {
             workstream.setDispatchCapable(
                     JsonFieldExtractor.extractBoolean(body, "dispatchCapable"));
+        }
+        // Workstream-level tmux default: same presence-signal pattern as
+        // dispatch_capable so an unrelated update does not silently flip
+        // the workstream's tmux opt-in. Omitting the field leaves the
+        // workstream's existing useTmux value untouched; a boolean false
+        // in the body explicitly clears the opt-in.
+        if (JsonFieldExtractor.hasField(body, "defaultUseTmux")) {
+            workstream.setUseTmux(
+                    JsonFieldExtractor.extractBoolean(body, "defaultUseTmux"));
         }
 
         if (listener != null) {

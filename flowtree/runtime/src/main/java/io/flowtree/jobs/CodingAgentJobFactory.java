@@ -23,6 +23,7 @@ import io.flowtree.jobs.agent.AgentRunnerRegistry;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
+import io.flowtree.workstream.Workstream;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.util.KeyUtils;
 
@@ -794,6 +795,36 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     public void setUseTmux(boolean useTmux) {
         this.useTmux = useTmux;
         set("useTmux", String.valueOf(useTmux));
+    }
+
+    /**
+     * Resolves the per-job {@code use_tmux} flag against the workstream
+     * default and applies the result to the factory. An explicit per-job
+     * value (with the body field actually present) always wins;
+     * otherwise the workstream's
+     * {@link Workstream#isUseTmux() defaultUseTmux} applies. A
+     * {@code null} workstream is treated as no default (false). Extracted
+     * from {@code FlowTreeApiEndpoint.handleSubmit} so the
+     * workstream-default rule is unit-testable; the caller is responsible
+     * for extracting the per-job flag from the body so the
+     * schema-alignment scanner can see the body consumption. The
+     * {@code AR_AGENT_USE_TMUX} env var is an independent enable
+     * unaffected by this helper.
+     *
+     * @param factory        the factory to mutate; must not be {@code null}
+     * @param hasPerJobFlag  whether the per-job field was present on the body
+     * @param perJobUseTmux  the per-job value (only when {@code hasPerJobFlag})
+     * @param workstream     the workstream supplying the default; may be {@code null}
+     */
+    public static void resolveUseTmux(CodingAgentJobFactory factory,
+                                      boolean hasPerJobFlag, boolean perJobUseTmux,
+                                      Workstream workstream) {
+        if (factory == null) return;
+        if (hasPerJobFlag) {
+            factory.setUseTmux(perJobUseTmux);
+        } else if (workstream != null && workstream.isUseTmux()) {
+            factory.setUseTmux(true);
+        }
     }
 
     /**

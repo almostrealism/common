@@ -479,6 +479,19 @@ public class WorkstreamConfig {
          */
         @JsonInclude(JsonInclude.Include.NON_DEFAULT)
         private boolean dispatchCapable;
+        /**
+         * Workstream-level default for the agent subprocess launch mode.
+         * When {@code true}, coding-agent jobs on this workstream that do
+         * not set the per-job {@code use_tmux} flag explicitly are launched
+         * inside a tmux session (a real controlling tty) instead of as a
+         * direct child process. The per-job {@code use_tmux} flag always
+         * wins over this default. Persisted as {@code useTmux: true} in
+         * YAML. The runner additionally honours the
+         * {@code AR_AGENT_USE_TMUX} environment variable as an independent
+         * enable; that path is unaffected by this flag.
+         */
+        @JsonInclude(JsonInclude.Include.NON_DEFAULT)
+        private boolean useTmux;
 
         /** Returns the persistent workstream identifier. */
         public String getWorkstreamId() { return workstreamId; }
@@ -683,6 +696,20 @@ public class WorkstreamConfig {
         public void setDispatchCapable(boolean dispatchCapable) { this.dispatchCapable = dispatchCapable; }
 
         /**
+         * Returns the workstream-level default for the agent subprocess
+         * launch mode. See {@link Workstream#isUseTmux()} for the runtime
+         * view, including the precedence over the per-job {@code use_tmux}
+         * flag.
+         */
+        public boolean isUseTmux() { return useTmux; }
+        /**
+         * Sets the workstream-level default for the agent subprocess
+         * launch mode. Persists as {@code useTmux: true} in YAML. The
+         * per-job {@code use_tmux} flag still wins over this default.
+         */
+        public void setUseTmux(boolean useTmux) { this.useTmux = useTmux; }
+
+        /**
          * Converts this entry to a {@link Workstream} instance.
          *
          * <p>If a {@code workstreamId} is present, it is used as the persistent
@@ -728,6 +755,7 @@ public class WorkstreamConfig {
             ws.setArchived(archived);
             ws.setCompletionListeners(completionListeners);
             ws.setDispatchCapable(dispatchCapable);
+            ws.setUseTmux(useTmux);
             return ws;
         }
     }
@@ -1416,6 +1444,7 @@ public class WorkstreamConfig {
         entry.setArchived(ws.isArchived());
         entry.setCompletionListeners(ws.getCompletionListeners());
         entry.setDispatchCapable(ws.isDispatchCapable());
+        entry.setUseTmux(ws.isUseTmux());
     }
 
     /**
