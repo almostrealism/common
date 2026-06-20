@@ -1134,7 +1134,8 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         boolean hasMetrics = event.getNumTurns() > 0
             || event.getDurationMs() > 0
             || event.getSubtype() != null
-            || event.getCostUsd() > 0;
+            || event.getCostUsd() > 0
+            || event.isCostIncomplete();
         if (!hasMetrics) return;
 
         sb.append("   ---\n");
@@ -1163,24 +1164,35 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
             sb.append("\n");
         }
 
-        // Cost
-        if (event.getCostUsd() > 0) {
+        // Cost. Rendered when there is a positive total OR when the cost is
+        // incomplete (an inactivity kill can leave the total at $0.00 even
+        // though real, uncosted work happened — we report that explicitly
+        // rather than implying the job was free).
+        if (event.getCostUsd() > 0 || event.isCostIncomplete()) {
             sb.append(JobStatsStore.formatModelCostLines(event.getCostByModel()));
             sb.append("   :dollar: $").append(String.format("%.2f", event.getCostUsd()));
-            sb.append(" total [");
+            // A "+" suffix marks the figure as a lower bound when cost is incomplete.
+            if (event.isCostIncomplete()) sb.append("+");
+            sb.append(" total");
+
+            // Collect non-zero runner lines first so the bracket wrapper is
+            // omitted entirely when there is nothing to show.
+            StringBuilder runners = new StringBuilder();
             Map<String, Double> costByRunner = event.getCostByRunner();
-            if (costByRunner != null && !costByRunner.isEmpty()) {
-                boolean first = true;
+            if (costByRunner != null) {
                 for (Map.Entry<String, Double> entry : costByRunner.entrySet()) {
                     if (entry.getValue() == null || entry.getValue() <= 0.0) continue;
-                    if (!first) sb.append(" | ");
-                    first = false;
-                    sb.append(entry.getKey()).append(" $").append(String.format("%.2f", entry.getValue()));
+                    if (runners.length() > 0) runners.append(" | ");
+                    runners.append(entry.getKey()).append(" $").append(String.format("%.2f", entry.getValue()));
                 }
             }
-            // TODO(review): if costByRunner is empty or all-zero, this emits "total []" with empty brackets.
-            // Fix: collect runner lines into a StringBuilder first; skip the bracket wrapper when nothing was written.
-            sb.append("]\n");
+            if (runners.length() > 0) {
+                sb.append(" [").append(runners).append("]");
+            }
+            if (event.isCostIncomplete()) {
+                sb.append(" (incomplete -- agent killed for inactivity; true cost unknown)");
+            }
+            sb.append("\n");
         }
 
         // Permission denials

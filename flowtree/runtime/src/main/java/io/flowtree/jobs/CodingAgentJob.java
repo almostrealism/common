@@ -1260,6 +1260,7 @@ public class CodingAgentJob extends GitManagedJob {
             AgentRunResult result = runner.run(request, this);
             accumulator.setOutput(result.rawOutput());
             wasKilledForInactivity = result.killedForInactivity();
+            if (wasKilledForInactivity) costTracker.markIncomplete();
             finalResult = result;
             if (!wasKilledForInactivity) break;
             harnessStatus().inactivitySuspended(runner.getName(), attempt, maxInactivityRestarts);
@@ -1416,14 +1417,14 @@ public class CodingAgentJob extends GitManagedJob {
         return harnessStatus;
     }
 
-    /** Returns an immutable snapshot of the cumulative per-runner USD cost for this job. */
-    Map<String, Double> getCostByRunner() {
-        return costTracker.snapshotByRunner();
-    }
-
-    /** Returns an immutable snapshot of the cumulative per-model USD cost for this job. */
-    Map<String, Double> getCostByModel() {
-        return costTracker.snapshotByModel();
+    /**
+     * Returns this job's cost tracker (per-runner/per-model USD cost plus the
+     * incomplete-cost flag), read by {@link CodingAgentJobEvent#populateFrom}.
+     *
+     * @return this job's cost tracker
+     */
+    JobCostTracker getCostTracker() {
+        return costTracker;
     }
 
     /**

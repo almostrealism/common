@@ -398,6 +398,19 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     }
 
     /**
+     * Marks whether the recorded cost is incomplete (a lower bound) because an
+     * agent session was killed for inactivity before reporting its cost.
+     *
+     * @param costIncomplete {@code true} when the true cost is unknown and
+     *                       exceeds the reported total
+     * @return this event for chaining
+     */
+    public CodingAgentJobEvent withCostIncomplete(boolean costIncomplete) {
+        setCostIncomplete(costIncomplete);
+        return this;
+    }
+
+    /**
      * Records whether the post-completion command gate was abandoned because the
      * per-job pass cap was exhausted without a successful exit.
      *
@@ -569,8 +582,10 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
             withCommitMessageSource(job.getCommitMessageSource());
         }
         withRunnerName(job.getRunnerName());
-        withCostByRunner(job.getCostByRunner());
-        withCostByModel(job.getCostByModel());
+        JobCostTracker costs = job.getCostTracker();
+        withCostByRunner(costs.snapshotByRunner());
+        withCostByModel(costs.snapshotByModel());
+        withCostIncomplete(costs.isIncomplete());
         if (job.isPostCompletionCapHit()) {
             withPostCompletionCapHit(true);
         }

@@ -315,7 +315,8 @@ Events are serialized to JSON in `GitManagedJob.buildEventJson()` using Jackson 
   "subtype": "string | null",
   "sessionIsError": false,
   "permissionDenials": 0,
-  "deniedToolNames": ["string", ...]
+  "deniedToolNames": ["string", ...],
+  "costIncomplete": false
 }
 ```
 
@@ -344,6 +345,7 @@ Events are serialized to JSON in `GitManagedJob.buildEventJson()` using Jackson 
 | `sessionIsError` | `isSessionError()` | boolean | `false` for non-Claude jobs. |
 | `permissionDenials` | `getPermissionDenials()` | int | `0` for non-Claude jobs. |
 | `deniedToolNames` | `getDeniedToolNames()` | array | Empty array for non-Claude jobs. |
+| `costIncomplete` | `isCostIncomplete()` | boolean | `true` when an agent session was killed for inactivity before reporting its cost, so `costUsd` and the per-runner/per-model breakdowns are a lower bound rather than the true total. Consumers should render the cost as a minimum ("at least") and flag it as incomplete. `false` for fully-accounted jobs. |
 
 ### Serialization Details
 
