@@ -45,6 +45,15 @@ final class JobCostTracker {
     private final Map<String, Double> costByModel = new LinkedHashMap<>();
 
     /**
+     * Whether the accumulated cost is a lower bound rather than the true total.
+     * Set once any agent session is killed for inactivity before it emits its
+     * terminal cost JSON: Claude reports {@code 0.0} in that case and opencode
+     * recovers only the steps written before the kill, so the lost cost cannot
+     * be accounted for. Sticky for the lifetime of the job.
+     */
+    private boolean incomplete;
+
+    /**
      * Records {@code costUsd} as additional cost for {@code runnerName}
      * (e.g. {@code "claude"}) and {@code modelKey} (e.g.
      * {@code "anthropic/claude-sonnet-4-7"}).
@@ -69,6 +78,24 @@ final class JobCostTracker {
      */
     double costForModel(String modelKey) {
         return costByModel.getOrDefault(modelKey, 0.0);
+    }
+
+    /**
+     * Marks the accumulated cost as incomplete (a lower bound), because an
+     * agent session was killed for inactivity before reporting its cost.
+     */
+    void markIncomplete() {
+        incomplete = true;
+    }
+
+    /**
+     * Returns whether the accumulated cost is a lower bound rather than the
+     * true total.
+     *
+     * @return {@code true} when an inactivity kill lost cost data
+     */
+    boolean isIncomplete() {
+        return incomplete;
     }
 
     /** Returns an unmodifiable snapshot of the per-runner cost map. */
