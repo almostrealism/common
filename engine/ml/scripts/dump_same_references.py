@@ -139,6 +139,8 @@ def same_reference_stages(autoencoder, audio):
         enc_block.transformers[0].register_forward_hook(make("enc_layer0")),
         dec_block.register_forward_hook(make("dec_resamp")),
         dec_block.transformers[0].register_forward_hook(make("dec_layer0")),
+        dec_block.transformers[-1].register_forward_hook(make("dec_laststack")),
+        dec_block.mapping.register_forward_hook(make("dec_mapping")),
     ]
 
     with torch.no_grad():
@@ -155,6 +157,15 @@ def same_reference_stages(autoencoder, audio):
     # stack (this is the post-new_tokens, pre-attention activation).
     enc_layer0_in = store["enc_layer0_in"]
     enc_seg = rearrange(enc_layer0_in, "(b nc) cc d -> b (nc cc) d", b=audio.shape[0])
+    # Same un-chunking for the decoder, giving the post-segment (pre-transformer) tensor.
+    dec_layer0_in = store["dec_layer0_in"]
+    dec_seg = rearrange(dec_layer0_in, "(b nc) cc d -> b (nc cc) d", b=audio.shape[0])
+    # Post-stack (pre-extract) tensor: un-chunk the last transformer layer's output and undo the
+    # midpoint-shift half-chunk padding (shift = (unchunked_len - seg_len) / 2; 0 when no shift).
+    dec_last = store["dec_laststack_out"]
+    dec_poststack = rearrange(dec_last, "(b nc) cc d -> b (nc cc) d", b=audio.shape[0])
+    dec_shift = (dec_poststack.shape[1] - dec_seg.shape[1]) // 2
+    dec_poststack = dec_poststack[:, dec_shift:dec_poststack.shape[1] - dec_shift, :]
 
     stages = {
         "test_input": audio.detach().cpu().float(),
@@ -167,8 +178,11 @@ def same_reference_stages(autoencoder, audio):
         "encoder_output": encoder_out,
         "latent": latent.detach().cpu().float(),
         "dec_resamp_input": store["dec_resamp_in"],
+        "dec_seg_input": dec_seg,
         "dec_layer0_input": store["dec_layer0_in"],
         "dec_layer0_output": store["dec_layer0_out"],
+        "dec_poststack": dec_poststack,
+        "dec_premap": store["dec_mapping_in"],
         "dec_resamp_output": store["dec_resamp_out"],
     }
     return {k: v.numpy() if torch.is_tensor(v) else np.asarray(v)

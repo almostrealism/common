@@ -40,7 +40,9 @@ import java.util.List;
  * <ol>
  *   <li><b>Channel mapping</b> &mdash; a {@code 1x1} (encoder) or {@code 3} -kernel (decoder)
  *       weight-normalized convolution maps {@code inChannels -> outChannels}
- *       ({@link #resamplingMapping}).</li>
+ *       ({@link #addResamplingMapping}). The decoder's {@code 3} -kernel mapping is split into a
+ *       zero-padding cell and a projection cell so the tap matmuls contract over a materialized leaf
+ *       rather than re-embedding the pad {@code concat}.</li>
  *   <li><b>Segmentation + learned tokens</b> &mdash; the sequence is grouped into segments of
  *       {@code inputSegSize} real positions, and {@code outputSegSize} learned token positions are
  *       appended to each segment ({@link #resamplingSegment}).</li>
@@ -55,9 +57,14 @@ import java.util.List;
  * mapping, with {@code inputSegSize} and {@code outputSegSize} swapped so the sequence is up-sampled.</p>
  *
  * <h2>AR idiom</h2>
- * <p>The individual stages are {@link CollectionProducer}-valued methods ({@link #resamplingMapping},
- * {@link #resamplingSegment}, {@link #resamplingAttentionWeights}, {@link #resamplingAttentionContext},
- * {@link #resamplingExtract}); none calls {@code evaluate()} or {@code get()}. The differential attention is built directly from
+ * <p>The resampling stages are {@link CollectionProducer}-valued methods ({@link #resamplingMapping},
+ * {@link #resamplingSegment}, {@link #resamplingExtract}); none calls {@code evaluate()} or
+ * {@code get()}. The windowed transformer stack is assembled by {@link #resamplingLayerBlock}, and its
+ * differential attention follows the {@code split} + {@link #into} materialization idiom: the fused
+ * {@code to_qkv} projection is split into per-head {@code Q1, K1, V, Q2, K2} branches, the {@code K1},
+ * {@code V} and {@code Q2} branches are materialized into leaves, and each of the two differential
+ * attention maps is built from three materializing cells (a score matmul, a softmax, and a value
+ * matmul) by {@link #addAttentionMap}. The attention is built directly from
  * {@link #scaledDotProduct} (which, unlike the block-level
  * {@link AttentionFeatures#scaledDotProductAttention}, places no batch-size-1 restriction, so chunked
  * attention keeps its chunk count as the batch dimension), the producer-level
@@ -69,9 +76,10 @@ import java.util.List;
  *
  * <p>{@link #transformerResamplingBlock} assembles those stages into a {@link Block} — a
  * {@link SequentialBlock} of materializing {@link org.almostrealism.layers.CellularLayer layers}: one per
- * resampling stage, and <em>several</em> per transformer layer (the fused {@code DyT}+{@code to_qkv}
- * projection, the differential attention, the output projection, and the two GLU feed-forward steps are
- * each their own cell, wrapped in {@code residual} skip-connections). This per-matmul granularity is
+ * resampling stage, and <em>several</em> per transformer layer (the pre-norm, the {@code to_qkv}
+ * projection, the differential attention, the output projection, the feed-forward norm, the GLU
+ * projection, the SwiGLU gating, and the feed-forward output projection are each their own cell, wrapped
+ * in {@code residual} skip-connections). This per-matmul granularity is
  * deliberate, not merely conventional. A single producer expression spanning a whole transformer layer —
  * let alone the depth-{@code N} stack — blows up twice over: at construction, because each residual
  * ({@code x = x + f(x)}) and each reused sub-projection (the fused {@code to_qkv} sliced five ways, the
@@ -128,8 +136,8 @@ public interface TransformerResamplingFeatures extends RotationFeatures, Normali
 		if (config.isEncoder()) {
 			// mapping (inChannels -> dim) runs first, then segment -> transformer stack -> extract.
 			SequentialBlock block = new SequentialBlock(shape(batchSize, inChannels, seqLen));
-			block.add(layer(keyPrefix + ".mapping", shape(batchSize, inChannels, seqLen), segmentShape,
-					in -> resamplingMapping(c(in), config, weights, keyPrefix)));
+			addResamplingMapping(block, config, weights, keyPrefix,
+					shape(batchSize, inChannels, seqLen), segmentShape);
 			block.add(layer(keyPrefix + ".segment", segmentShape, segmentedShape,
 					in -> resamplingSegment(c(in), batchSize, config, weights, keyPrefix)));
 			addResamplingTransformerStack(block, batchSize, config, weights, keyPrefix);
@@ -145,16 +153,57 @@ public interface TransformerResamplingFeatures extends RotationFeatures, Normali
 		addResamplingTransformerStack(block, batchSize, config, weights, keyPrefix);
 		block.add(layer(keyPrefix + ".extract", segmentedShape, extractedShape,
 				in -> resamplingExtract(c(in), batchSize, config)));
-		block.add(layer(keyPrefix + ".mapping", extractedShape, shape(batchSize, outChannels, extractLen),
-				in -> resamplingMapping(c(in), config, weights, keyPrefix)));
+		addResamplingMapping(block, config, weights, keyPrefix,
+				extractedShape, shape(batchSize, outChannels, extractLen));
 		return block;
 	}
 
 	/**
-	 * Applies the weight-normalized channel-mapping convolution. The encoder uses a {@code 1x1}
-	 * convolution (a per-position linear projection); the decoder uses a {@code 3} -kernel convolution
-	 * with {@code same} (zero) padding. The PyTorch weight-norm parameterization is expected to be
-	 * pre-folded into a single {@code [outChannels, inChannels, kernel]} weight by the extractor.
+	 * Appends the channel-mapping convolution to {@code block} as one or more materializing
+	 * {@link org.almostrealism.layers.CellularLayer layers}. The encoder's {@code 1x1} mapping is a
+	 * single cell (a per-position linear projection with no padding). The decoder's {@code k}-kernel
+	 * mapping ({@code k > 1}) is split into a zero-padding cell that materializes the padded,
+	 * channels-last input into a leaf and a projection cell that sums the {@code k} tap matmuls over
+	 * that leaf. The split keeps every compiled kernel bounded: a single fused cell would embed the
+	 * padding {@code concat}'s {@code Conditional} in each tap's matmul reduction and, summed over the
+	 * taps, blows up kernel-series simplification at full SAME dimensions &mdash; the same property that
+	 * routes the learned projections through {@link #addLinearCell}.
+	 *
+	 * @param block     the sequential block to append to
+	 * @param config    the resampling configuration
+	 * @param weights   the loaded weights
+	 * @param keyPrefix the weight key prefix
+	 * @param inShape   the mapping input shape {@code [batch, inChannels, L]}
+	 * @param outShape  the mapping output shape {@code [batch, outChannels, L]}
+	 */
+	default void addResamplingMapping(SequentialBlock block, ResamplingConfig config,
+									  StateDictionary weights, String keyPrefix,
+									  TraversalPolicy inShape, TraversalPolicy outShape) {
+		if (config.getMappingKernel() == 1) {
+			block.add(layer(keyPrefix + ".mapping", inShape, outShape,
+					in -> resamplingMapping(c(in), config, weights, keyPrefix)));
+			return;
+		}
+
+		int batchSize = inShape.length(0);
+		int inChannels = inShape.length(1);
+		int length = inShape.length(2);
+		int pad = config.getMappingKernel() / 2;
+		TraversalPolicy paddedShape = shape(batchSize, length + 2 * pad, inChannels);
+
+		block.add(layer(keyPrefix + ".mapping_pad", inShape, paddedShape,
+				in -> resamplingMappingPadded(c(in), config)));
+		block.add(layer(keyPrefix + ".mapping_proj", paddedShape, outShape,
+				in -> resamplingMappingProject(c(in), config, weights, keyPrefix)));
+	}
+
+	/**
+	 * Applies the weight-normalized channel-mapping convolution as a single producer (the encoder's
+	 * {@code 1x1} path; the decoder splits the same computation across two cells via
+	 * {@link #addResamplingMapping}). The encoder uses a {@code 1x1} convolution (a per-position linear
+	 * projection); the decoder uses a {@code 3} -kernel convolution with {@code same} (zero) padding.
+	 * The PyTorch weight-norm parameterization is expected to be pre-folded into a single
+	 * {@code [outChannels, inChannels, kernel]} weight by the extractor.
 	 *
 	 * @param x         the input; {@code [batch, inChannels, L]} (channels-first)
 	 * @param config    the resampling configuration
@@ -164,31 +213,70 @@ public interface TransformerResamplingFeatures extends RotationFeatures, Normali
 	 */
 	default CollectionProducer resamplingMapping(CollectionProducer x, ResamplingConfig config,
 												 StateDictionary weights, String keyPrefix) {
+		return resamplingMappingProject(resamplingMappingPadded(x, config), config, weights, keyPrefix);
+	}
+
+	/**
+	 * Transposes the channels-first input to channels-last and applies {@code same} (zero) padding of
+	 * {@code mappingKernel / 2} positions on each end of the sequence axis. For a {@code 1x1} mapping
+	 * (no padding) this is just the channels-last view. When this is materialized into a leaf by a
+	 * {@link org.almostrealism.layers.CellularLayer}, the subsequent tap matmuls read a clean buffer
+	 * rather than re-embedding the padding {@code concat}.
+	 *
+	 * @param x      the channels-first input; {@code [batch, inChannels, L]}
+	 * @param config the resampling configuration
+	 * @return the padded channels-last sequence; {@code [batch, L + 2 * (mappingKernel / 2), inChannels]}
+	 */
+	default CollectionProducer resamplingMappingPadded(CollectionProducer x, ResamplingConfig config) {
 		TraversalPolicy xs = x.getShape();
 		int batchSize = xs.length(0);
 		int inChannels = xs.length(1);
-		int length = xs.length(2);
-		int outChannels = config.getOutChannels();
+		int pad = config.getMappingKernel() / 2;
+
+		// Work in channels-last space so each kernel tap is a plain linear over the channel axis.
+		CollectionProducer channelsLast = permute(x, 0, 2, 1);
+		if (pad == 0) {
+			return channelsLast;
+		}
+
+		CollectionProducer zeros = cp(new PackedCollection(shape(batchSize, pad, inChannels)));
+		return concat(1, zeros, channelsLast, zeros);
+	}
+
+	/**
+	 * Sums the {@code mappingKernel} tap projections of the padded, channels-last sequence and adds the
+	 * bias, returning the channels-first mapped output. Each tap is a {@link #resamplingLinear} matmul
+	 * over a contiguous window of {@code paddedChannelsLast}; when that input is a materialized leaf the
+	 * matmul reductions never embed the padding {@code concat}, which is what keeps the compiled kernel
+	 * bounded at full SAME dimensions.
+	 *
+	 * @param paddedChannelsLast the padded channels-last sequence;
+	 *                           {@code [batch, L + 2 * (mappingKernel / 2), inChannels]}
+	 * @param config             the resampling configuration
+	 * @param weights            the loaded weights
+	 * @param keyPrefix          the weight key prefix
+	 * @return the mapped output; {@code [batch, outChannels, L]}
+	 */
+	default CollectionProducer resamplingMappingProject(CollectionProducer paddedChannelsLast,
+														ResamplingConfig config,
+														StateDictionary weights, String keyPrefix) {
+		TraversalPolicy ps = paddedChannelsLast.getShape();
+		int batchSize = ps.length(0);
+		int inChannels = ps.length(2);
 		int kernel = config.getMappingKernel();
 		int pad = kernel / 2;
+		int length = ps.length(1) - 2 * pad;
+		int outChannels = config.getOutChannels();
 
 		PackedCollection weight = weights.get(keyPrefix + ".mapping.weight");
 		PackedCollection bias = weights.get(keyPrefix + ".mapping.bias");
 		CollectionProducer w = cp(weight);
 
-		// Work in channels-last space so each kernel tap is a plain linear over the channel axis.
-		CollectionProducer channelsLast = permute(x, 0, 2, 1);
-		CollectionProducer padded = channelsLast;
-		if (pad > 0) {
-			CollectionProducer zeros = cp(new PackedCollection(shape(batchSize, pad, inChannels)));
-			padded = concat(1, zeros, channelsLast, zeros);
-		}
-
 		CollectionProducer accumulated = null;
 		for (int k = 0; k < kernel; k++) {
 			CollectionProducer tap = (kernel == 1)
-					? channelsLast
-					: padded.subset(shape(batchSize, length, inChannels), 0, k, 0);
+					? paddedChannelsLast
+					: paddedChannelsLast.subset(shape(batchSize, length, inChannels), 0, k, 0);
 			CollectionProducer tapWeight = w.subset(shape(outChannels, inChannels, 1), 0, 0, k)
 					.reshape(outChannels, inChannels);
 			CollectionProducer projection = resamplingLinear(tap, tapWeight, null);
@@ -314,7 +402,8 @@ public interface TransformerResamplingFeatures extends RotationFeatures, Normali
 	 *
 	 * <p>The differential attention follows the same {@code split} + {@link #into} materialization idiom
 	 * {@link AttentionFeatures#sequenceAttention} and {@link DifferentialAttentionFeatures} use. After the
-	 * {@code DyT}+fused-{@code to_qkv} projection produces {@code [Q1, K1, V, Q2, K2]}, the projection is
+	 * pre-norm {@code DyT} cell and the {@code to_qkv} projection cell produce {@code [Q1, K1, V, Q2, K2]},
+	 * the projection is
 	 * {@link SequentialBlock#split split} into five per-head branches (all DyT/rotary-normalized except
 	 * {@code V}). The {@code K1}, {@code V} and {@code Q2} branches are <em>materialized into leaves</em> via
 	 * {@link #into}; the {@code K2} branch (the last to run) then builds the entire second attention map
@@ -349,6 +438,7 @@ public interface TransformerResamplingFeatures extends RotationFeatures, Normali
 		TraversalPolicy qkvShape = shape(numChunks, effChunk, 5 * dim);
 		TraversalPolicy headShape = shape(numChunks, heads, effChunk, dimHead);
 		TraversalPolicy projShape = shape(numChunks, effChunk, 2 * config.getInnerFfDim());
+		TraversalPolicy innerShape = shape(numChunks, effChunk, config.getInnerFfDim());
 
 		PackedCollection qAlpha = weights.get(key + ".self_attn.q_norm.alpha");
 		PackedCollection qGamma = weights.get(key + ".self_attn.q_norm.gamma");
@@ -359,9 +449,16 @@ public interface TransformerResamplingFeatures extends RotationFeatures, Normali
 		PackedCollection invFreq = weights.get(key + ".rope.inv_freq");
 
 		SequentialBlock attention = new SequentialBlock(chunkShape);
-		// DyT pre-norm and the fused [Q1, K1, V, Q2, K2] projection.
-		attention.add(layer(key + ".attn_proj", chunkShape, qkvShape,
-				in -> resamplingAttentionProjection(c(in), weights, key)));
+		// Pre-norm DyT and the fused [Q1, K1, V, Q2, K2] projection as two materializing cells: the DyT
+		// normalizes into a leaf, then the bias-free to_qkv linear contracts over that leaf. Keeping the
+		// tanh out of the matmul reduction is what bounds the kernel — a fused norm+matmul embeds the tanh
+		// in every contraction term and times out during kernel-series simplification at full SAME dims.
+		attention.add(dynamicTanh(chunkShape,
+				weights.get(key + ".pre_norm.alpha"),
+				weights.get(key + ".pre_norm.gamma"),
+				weights.get(key + ".pre_norm.beta")));
+		addLinearCell(attention, key + ".attn_proj", chunkShape, qkvShape,
+				weights.get(key + ".self_attn.to_qkv.weight"), null);
 
 		// Split the fused projection into five per-head branches. The Q1 branch stays in the main path;
 		// the other four (K1, V, Q2, K2) are DyT/rotary-normalized and materialized into leaves via
@@ -420,16 +517,26 @@ public interface TransformerResamplingFeatures extends RotationFeatures, Normali
 		q1.add(layer(key + ".attn_diff", headShape, headShape,
 				m1 -> c(m1).subtract(cp(map2Tensor))));
 
-		// Merge the heads and apply the bias-free output projection.
+		// Merge the heads and apply the bias-free output projection (reads the merged leaf).
 		q1.permute(0, 2, 1, 3).reshape(numChunks, effChunk, dim);
-		q1.add(layer(key + ".attn_out", chunkShape, chunkShape,
-				in -> resamplingLinear(c(in), cp(weights.get(key + ".self_attn.to_out.weight")), null)));
+		addLinearCell(q1, key + ".attn_out", chunkShape, chunkShape,
+				weights.get(key + ".self_attn.to_out.weight"), null);
 
+		// SwiGLU feed-forward as four materializing cells: ff_norm DyT into a leaf, the dim -> 2*inner
+		// projection over that leaf, the SwiGLU gating (a * SiLU(gate)) into a leaf, and the
+		// inner -> dim output projection over that leaf. As with attn_proj, no matmul reduction embeds a
+		// norm or a SiLU; each linear contracts over a materialized leaf.
 		SequentialBlock feedForward = new SequentialBlock(chunkShape);
-		feedForward.add(layer(key + ".ff_proj", chunkShape, projShape,
-				in -> resamplingFeedForwardProjection(c(in), weights, key)));
-		feedForward.add(layer(key + ".ff_out", projShape, chunkShape,
-				in -> resamplingFeedForwardGate(c(in), config, weights, key)));
+		feedForward.add(dynamicTanh(chunkShape,
+				weights.get(key + ".ff_norm.alpha"),
+				weights.get(key + ".ff_norm.gamma"),
+				weights.get(key + ".ff_norm.beta")));
+		addLinearCell(feedForward, key + ".ff_proj", chunkShape, projShape,
+				weights.get(key + ".ff.ff.0.proj.weight"), weights.get(key + ".ff.ff.0.proj.bias"));
+		feedForward.add(layer(key + ".ff_gate", projShape, innerShape,
+				in -> resamplingSwiGLU(c(in), config)));
+		addLinearCell(feedForward, key + ".ff_out", innerShape, chunkShape,
+				weights.get(key + ".ff.ff.2.weight"), weights.get(key + ".ff.ff.2.bias"));
 
 		SequentialBlock layerBlock = new SequentialBlock(chunkShape);
 		layerBlock.add(residual(attention));
@@ -486,222 +593,36 @@ public interface TransformerResamplingFeatures extends RotationFeatures, Normali
 	}
 
 	/**
-	 * The pre-norm and fused query/key/value projection of the differential attention: applies the
-	 * {@code pre_norm} {@link NormalizationLayerFeatures#dynamicTanh DyT} normalization and the bias-free
-	 * {@code to_qkv} linear, producing the five concatenated sections in the order
-	 * {@code [Q1, K1, V, Q2, K2]}.
+	 * Appends a materializing linear-projection cell that reads the (already materialized) cell input as a
+	 * clean leaf and computes {@code y = x W^T + b}. Every learned projection in the resampling layer is
+	 * added through this helper so the matmul reduction always contracts over a materialized leaf rather
+	 * than an embedded norm or activation &mdash; the property that keeps each compiled kernel bounded. A
+	 * matmul that contracts over a fused nonlinearity embeds that nonlinearity in every contraction term
+	 * and times out during kernel-series simplification at full SAME dimensions.
 	 *
-	 * @param x        the layer input; {@code [numChunks, chunkLen, dim]}
-	 * @param weights  the loaded weights
-	 * @param layerKey the weight key prefix for this layer
-	 * @return the fused projection; {@code [numChunks, chunkLen, 5 * dim]}
+	 * @param block    the block to append the projection cell to
+	 * @param label    the cell label
+	 * @param inShape  the cell input shape
+	 * @param outShape the cell output shape
+	 * @param weight   the projection weight; logical {@code [out, in]}
+	 * @param bias     the bias ({@code [out]}), or {@code null} for no bias
 	 */
-	default CollectionProducer resamplingAttentionProjection(CollectionProducer x,
-															 StateDictionary weights, String layerKey) {
-		CollectionProducer normed = dynamicTanh(x,
-				weights.get(layerKey + ".pre_norm.alpha"),
-				weights.get(layerKey + ".pre_norm.gamma"),
-				weights.get(layerKey + ".pre_norm.beta"));
-		return resamplingLinear(normed, cp(weights.get(layerKey + ".self_attn.to_qkv.weight")), null);
-	}
-
-	// TODO(review): resamplingAttentionQk, resamplingAttentionScores, resamplingAttentionWeights, and
-	// resamplingAttentionContext below are dead code — resamplingLayerBlock now uses addAttentionMap with the
-	// split()+into() idiom instead. Remove in a cleanup pass and update the class Javadoc at line 59 which
-	// still lists resamplingAttentionWeights and resamplingAttentionContext as the named "individual stages".
-
-	/**
-	 * The per-head, DyT-normalized, rotary-embedded query/key tensors of the differential attention,
-	 * carrying the value tensor through unchanged. From the fused {@code [Q1, K1, V, Q2, K2]} projection it
-	 * reshapes each section to the multi-head layout {@code [numChunks, heads, chunkLen, dimHead]}, applies
-	 * the shared {@code q_norm}/{@code k_norm} {@link NormalizationLayerFeatures#dynamicTanh DyT} to the two
-	 * query and two key tensors and the partial rotary embedding to all four, and concatenates the result
-	 * in the order {@code [Q1, K1, V, Q2, K2]} along the trailing (head-feature) axis.
-	 *
-	 * <p>This is the first of three attention cells ({@code attn_qk}, then {@code attn_scores}, then
-	 * {@code attn_weights}). Materializing the rotary-embedded queries and keys here lets the score matmul
-	 * read leaf buffers, mirroring how {@link AttentionFeatures} materializes its rotary-embedded keys
-	 * before the {@code qkMatmul}. It bounds the per-kernel compile that blows up at full SAME dimensions
-	 * when the rotary diamonds, the score matmul and the (non-memoized) softmax share one cell — splitting
-	 * the prior single {@code attn_weights} cell across these three is what makes the per-layer compile
-	 * tractable.</p>
-	 *
-	 * @param qkv      the fused projection; {@code [numChunks, chunkLen, 5 * dim]}
-	 * @param config   the resampling configuration
-	 * @param weights  the loaded weights
-	 * @param layerKey the weight key prefix for this layer
-	 * @return the per-head normalized/embedded {@code [Q1, K1, V, Q2, K2]};
-	 *         {@code [numChunks, heads, chunkLen, 5 * dimHead]}
-	 */
-	default CollectionProducer resamplingAttentionQk(CollectionProducer qkv, ResamplingConfig config,
-													 StateDictionary weights, String layerKey) {
-		int dim = config.getDim();
-		int heads = config.getHeads();
-		int dimHead = config.getDimHead();
-
-		CollectionProducer q1 = attentionHeads(qkvSection(qkv, 0, dim), heads, dimHead);
-		CollectionProducer k1 = attentionHeads(qkvSection(qkv, 1, dim), heads, dimHead);
-		CollectionProducer v = attentionHeads(qkvSection(qkv, 2, dim), heads, dimHead);
-		CollectionProducer q2 = attentionHeads(qkvSection(qkv, 3, dim), heads, dimHead);
-		CollectionProducer k2 = attentionHeads(qkvSection(qkv, 4, dim), heads, dimHead);
-
-		PackedCollection qAlpha = weights.get(layerKey + ".self_attn.q_norm.alpha");
-		PackedCollection qGamma = weights.get(layerKey + ".self_attn.q_norm.gamma");
-		PackedCollection qBeta = weights.get(layerKey + ".self_attn.q_norm.beta");
-		PackedCollection kAlpha = weights.get(layerKey + ".self_attn.k_norm.alpha");
-		PackedCollection kGamma = weights.get(layerKey + ".self_attn.k_norm.gamma");
-		PackedCollection kBeta = weights.get(layerKey + ".self_attn.k_norm.beta");
-		q1 = dynamicTanh(q1, qAlpha, qGamma, qBeta);
-		q2 = dynamicTanh(q2, qAlpha, qGamma, qBeta);
-		k1 = dynamicTanh(k1, kAlpha, kGamma, kBeta);
-		k2 = dynamicTanh(k2, kAlpha, kGamma, kBeta);
-
-		PackedCollection invFreq = weights.get(layerKey + ".rope.inv_freq");
-		q1 = applyRotaryPositionEmbedding(q1, invFreq);
-		q2 = applyRotaryPositionEmbedding(q2, invFreq);
-		k1 = applyRotaryPositionEmbedding(k1, invFreq);
-		k2 = applyRotaryPositionEmbedding(k2, invFreq);
-
-		return concat(3, q1, k1, v, q2, k2);
+	default void addLinearCell(SequentialBlock block, String label, TraversalPolicy inShape,
+							   TraversalPolicy outShape, PackedCollection weight, PackedCollection bias) {
+		block.add(layer(label, inShape, outShape, in -> resamplingLinear(c(in), cp(weight), bias)));
 	}
 
 	/**
-	 * The two differential-attention score maps {@code Q1 K1^T / sqrt(d)} and {@code Q2 K2^T / sqrt(d)} from
-	 * the materialized {@link #resamplingAttentionQk} output, carrying the value tensor through unchanged.
-	 * It splits the per-head {@code [Q1, K1, V, Q2, K2]} sections, forms the two scaled score matrices, and
-	 * concatenates them with {@code V} along the trailing axis.
-	 *
-	 * <p>This is the second of the three attention cells. Because the queries and keys are read from a
-	 * materialized leaf the score matmul does not re-embed the rotary diamonds, and because the softmax is
-	 * deferred to the next cell ({@code attn_weights}) the scores are materialized before being normalized
-	 * &mdash; the same scores/softmax cell boundary {@link AttentionFeatures} uses, which is what keeps each
-	 * compiled kernel bounded at full SAME dimensions.</p>
-	 *
-	 * @param headQkv the materialized per-head {@code [Q1, K1, V, Q2, K2]};
-	 *                {@code [numChunks, heads, chunkLen, 5 * dimHead]}
-	 * @param config  the resampling configuration
-	 * @return the two scaled score maps concatenated with the values;
-	 *         {@code [numChunks, heads, chunkLen, 2 * chunkLen + dimHead]}
-	 */
-	default CollectionProducer resamplingAttentionScores(CollectionProducer headQkv, ResamplingConfig config) {
-		int heads = config.getHeads();
-		int dimHead = config.getDimHead();
-		TraversalPolicy s = headQkv.getShape();
-		int numChunks = s.length(0);
-		int chunkLen = s.length(2);
-		TraversalPolicy headShape = shape(numChunks, heads, chunkLen, dimHead);
-
-		CollectionProducer q1 = headQkv.subset(headShape, 0, 0, 0, 0);
-		CollectionProducer k1 = headQkv.subset(headShape, 0, 0, 0, dimHead);
-		CollectionProducer v = headQkv.subset(headShape, 0, 0, 0, 2 * dimHead);
-		CollectionProducer q2 = headQkv.subset(headShape, 0, 0, 0, 3 * dimHead);
-		CollectionProducer k2 = headQkv.subset(headShape, 0, 0, 0, 4 * dimHead);
-
-		double scale = 1.0 / Math.sqrt(dimHead);
-		CollectionProducer scores1 = scaledDotProduct(q1, k1, true).multiply(c(scale));
-		CollectionProducer scores2 = scaledDotProduct(q2, k2, true).multiply(c(scale));
-		return concat(3, scores1, scores2, v);
-	}
-
-	/**
-	 * The differential-attention weight difference {@code softmax(scores1) - softmax(scores2)} from the
-	 * materialized {@link #resamplingAttentionScores} output, carrying the value tensor through unchanged.
-	 * It splits the two score maps and {@code V}, applies the trailing-axis softmax to each score map, and
-	 * concatenates the difference {@code W1 - W2} with {@code V} along the trailing axis.
-	 *
-	 * <p>This is the third attention cell. Each softmax reads a materialized score leaf (so the non-memoized
-	 * softmax diamond does not re-embed the score matmul), and {@code V} is carried through so the companion
-	 * {@link #resamplingAttentionContext} can form the single value-weighted sum {@code (W1 - W2) V} with
-	 * {@code V} referenced exactly once. The weighted sum is distributed, {@code (W1 - W2) V = W1 V - W2 V},
-	 * so the result is numerically equivalent to the fused differential attention (no learned lambda); the
-	 * bias-free {@code to_out} projection is applied separately by the caller.</p>
-	 *
-	 * @param scoresAndValues the materialized {@link #resamplingAttentionScores} output;
-	 *                        {@code [numChunks, heads, chunkLen, 2 * chunkLen + dimHead]}
-	 * @param config          the resampling configuration
-	 * @return the attention-weight difference concatenated with the values;
-	 *         {@code [numChunks, heads, chunkLen, chunkLen + dimHead]}
-	 */
-	default CollectionProducer resamplingAttentionWeights(CollectionProducer scoresAndValues, ResamplingConfig config) {
-		int heads = config.getHeads();
-		int dimHead = config.getDimHead();
-		TraversalPolicy s = scoresAndValues.getShape();
-		int numChunks = s.length(0);
-		int chunkLen = s.length(2);
-
-		CollectionProducer scores1 = scoresAndValues.subset(
-				shape(numChunks, heads, chunkLen, chunkLen), 0, 0, 0, 0);
-		CollectionProducer scores2 = scoresAndValues.subset(
-				shape(numChunks, heads, chunkLen, chunkLen), 0, 0, 0, chunkLen);
-		CollectionProducer v = scoresAndValues.subset(
-				shape(numChunks, heads, chunkLen, dimHead), 0, 0, 0, 2 * chunkLen);
-
-		CollectionProducer attnDiff = softmaxLastAxis(scores1).subtract(softmaxLastAxis(scores2));
-		return concat(3, attnDiff, v);
-	}
-
-	/**
-	 * The differential-attention context from the materialized {@link #resamplingAttentionWeights} output:
-	 * splits off the attention-weight difference {@code W1 - W2} and the value tensor {@code V} (carried in
-	 * the trailing axis), computes the single value-weighted sum {@code (W1 - W2) V}, and merges the heads.
-	 * Because {@code V} is read from a materialized leaf and referenced exactly once, this cell's compiled
-	 * kernel stays bounded at full SAME dimensions.
-	 *
-	 * @param weightsAndValues the {@link #resamplingAttentionWeights} output;
-	 *                         {@code [numChunks, heads, chunkLen, chunkLen + dimHead]}
-	 * @param config           the resampling configuration
-	 * @return the merged attention context; {@code [numChunks, chunkLen, dim]}
-	 */
-	default CollectionProducer resamplingAttentionContext(CollectionProducer weightsAndValues,
-														  ResamplingConfig config) {
-		int heads = config.getHeads();
-		int dimHead = config.getDimHead();
-		TraversalPolicy s = weightsAndValues.getShape();
-		int numChunks = s.length(0);
-		int chunkLen = s.length(2);
-
-		CollectionProducer attnDiff = weightsAndValues.subset(
-				shape(numChunks, heads, chunkLen, chunkLen), 0, 0, 0, 0);
-		CollectionProducer v = weightsAndValues.subset(
-				shape(numChunks, heads, chunkLen, dimHead), 0, 0, 0, chunkLen);
-
-		return mergeAttentionHeads(scaledDotProduct(attnDiff, v));
-	}
-
-	/**
-	 * The pre-norm and input projection of the SwiGLU feed-forward: applies the {@code ff_norm}
-	 * {@link NormalizationLayerFeatures#dynamicTanh DyT} normalization and the {@code dim -> 2 * innerFfDim}
-	 * projection (with bias), producing the concatenated {@code [a, gate]} halves.
-	 *
-	 * @param x        the layer input; {@code [numChunks, chunkLen, dim]}
-	 * @param weights  the loaded weights
-	 * @param layerKey the weight key prefix for this layer
-	 * @return the projected halves; {@code [numChunks, chunkLen, 2 * innerFfDim]}
-	 */
-	default CollectionProducer resamplingFeedForwardProjection(CollectionProducer x,
-															   StateDictionary weights, String layerKey) {
-		CollectionProducer normed = dynamicTanh(x,
-				weights.get(layerKey + ".ff_norm.alpha"),
-				weights.get(layerKey + ".ff_norm.gamma"),
-				weights.get(layerKey + ".ff_norm.beta"));
-		return resamplingLinear(normed,
-				cp(weights.get(layerKey + ".ff.ff.0.proj.weight")),
-				weights.get(layerKey + ".ff.ff.0.proj.bias"));
-	}
-
-	/**
-	 * The SwiGLU gating and output projection: from the {@code [a, gate]} halves computes
-	 * {@code a * SiLU(gate)} (where {@code SiLU(z) = z * sigmoid(z)}) and applies the
-	 * {@code innerFfDim -> dim} output projection (with bias).
+	 * The SwiGLU gating {@code a * SiLU(gate)} (where {@code SiLU(z) = z * sigmoid(z)}) computed from the
+	 * {@code [a, gate]} halves, without the output projection. It is materialized into its own cell so the
+	 * following {@code innerFfDim -> dim} linear contracts over a leaf rather than embedding the
+	 * {@code sigmoid} in its reduction.
 	 *
 	 * @param projected the projected halves; {@code [numChunks, chunkLen, 2 * innerFfDim]}
 	 * @param config    the resampling configuration
-	 * @param weights   the loaded weights
-	 * @param layerKey  the weight key prefix for this layer
-	 * @return the feed-forward output; {@code [numChunks, chunkLen, dim]}
+	 * @return the gated activation; {@code [numChunks, chunkLen, innerFfDim]}
 	 */
-	default CollectionProducer resamplingFeedForwardGate(CollectionProducer projected, ResamplingConfig config,
-														StateDictionary weights, String layerKey) {
+	default CollectionProducer resamplingSwiGLU(CollectionProducer projected, ResamplingConfig config) {
 		int inner = config.getInnerFfDim();
 		TraversalPolicy xs = projected.getShape();
 		int rows0 = xs.length(0);
@@ -709,11 +630,7 @@ public interface TransformerResamplingFeatures extends RotationFeatures, Normali
 
 		CollectionProducer a = projected.subset(shape(rows0, rows1, inner), 0, 0, 0);
 		CollectionProducer gate = projected.subset(shape(rows0, rows1, inner), 0, 0, inner);
-		CollectionProducer gated = a.multiply(gate.multiply(sigmoid(gate)));
-
-		return resamplingLinear(gated,
-				cp(weights.get(layerKey + ".ff.ff.2.weight")),
-				weights.get(layerKey + ".ff.ff.2.bias"));
+		return a.multiply(gate.multiply(sigmoid(gate)));
 	}
 
 	/**
@@ -740,39 +657,6 @@ public interface TransformerResamplingFeatures extends RotationFeatures, Normali
 		// [batch * numSeg, outputSeg, dim] -> [batch, numSeg * outputSeg, dim] -> [batch, dim, ...]
 		CollectionProducer merged = learned.reshape(batchSize, numSeg * outputSeg, dim);
 		return permute(merged, 0, 2, 1);
-	}
-
-	/**
-	 * Computes standard scaled dot-product attention {@code softmax(Q K^T / sqrt(d)) V} for inputs laid
-	 * out as {@code [batch, heads, seqLen, dimHead]}. Unlike the block-level attention helper, this
-	 * places no restriction on the batch dimension, so chunked attention may keep its chunk count there.
-	 *
-	 * @param q       queries; {@code [batch, heads, seqLen, dimHead]}
-	 * @param k       keys; {@code [batch, heads, seqLen, dimHead]}
-	 * @param v       values; {@code [batch, heads, seqLen, dimHead]}
-	 * @param dimHead the per-head dimension (the softmax temperature is {@code 1/sqrt(dimHead)})
-	 * @return the attention output; {@code [batch, heads, seqLen, dimHead]}
-	 */
-	default CollectionProducer scaledDotProductAttention(CollectionProducer q, CollectionProducer k,
-														 CollectionProducer v, int dimHead) {
-		return scaledDotProduct(attentionWeights(q, k, dimHead), v);
-	}
-
-	/**
-	 * The attention-weight map {@code softmax(Q K^T / sqrt(dimHead))} for inputs laid out as
-	 * {@code [batch, heads, seqLen, dimHead]} &mdash; the post-softmax half of
-	 * {@link #scaledDotProductAttention}. Materializing this map separately from the value-weighted sum is
-	 * what lets the differential-attention context split into two bounded kernels (see
-	 * {@link #resamplingAttentionWeights}).
-	 *
-	 * @param q       queries; {@code [batch, heads, seqLen, dimHead]}
-	 * @param k       keys; {@code [batch, heads, seqLen, dimHead]}
-	 * @param dimHead the per-head dimension (the softmax temperature is {@code 1/sqrt(dimHead)})
-	 * @return the attention weights; {@code [batch, heads, seqLen, seqLen]}
-	 */
-	default CollectionProducer attentionWeights(CollectionProducer q, CollectionProducer k, int dimHead) {
-		CollectionProducer scores = scaledDotProduct(q, k, true).multiply(c(1.0 / Math.sqrt(dimHead)));
-		return softmaxLastAxis(scores);
 	}
 
 	/**
@@ -826,51 +710,6 @@ public interface TransformerResamplingFeatures extends RotationFeatures, Normali
 		}
 		outDims[rank - 1] = out;
 		return y.reshape(shape(outDims));
-	}
-
-	/**
-	 * Extracts one of the equal sections of a fused projection along the trailing feature axis.
-	 *
-	 * @param fused   the fused projection; {@code [a, b, sections * width]}
-	 * @param section the section index
-	 * @param width   the section width
-	 * @return the section; {@code [a, b, width]}
-	 */
-	default CollectionProducer qkvSection(CollectionProducer fused, int section, int width) {
-		TraversalPolicy s = fused.getShape();
-		return fused.subset(shape(s.length(0), s.length(1), width), 0, 0, section * width);
-	}
-
-	/**
-	 * Reshapes a {@code [batch, seqLen, heads * dimHead]} tensor to the multi-head attention layout
-	 * {@code [batch, heads, seqLen, dimHead]}.
-	 *
-	 * @param x       the input; {@code [batch, seqLen, heads * dimHead]}
-	 * @param heads   the number of heads
-	 * @param dimHead the per-head dimension
-	 * @return the multi-head layout; {@code [batch, heads, seqLen, dimHead]}
-	 */
-	default CollectionProducer attentionHeads(CollectionProducer x, int heads, int dimHead) {
-		TraversalPolicy s = x.getShape();
-		int batch = s.length(0);
-		int seqLen = s.length(1);
-		return x.reshape(batch, seqLen, heads, dimHead).permute(0, 2, 1, 3);
-	}
-
-	/**
-	 * Merges the multi-head attention layout {@code [batch, heads, seqLen, dimHead]} back to
-	 * {@code [batch, seqLen, heads * dimHead]}.
-	 *
-	 * @param x the multi-head layout; {@code [batch, heads, seqLen, dimHead]}
-	 * @return the merged layout; {@code [batch, seqLen, heads * dimHead]}
-	 */
-	default CollectionProducer mergeAttentionHeads(CollectionProducer x) {
-		TraversalPolicy s = x.getShape();
-		int batch = s.length(0);
-		int heads = s.length(1);
-		int seqLen = s.length(2);
-		int dimHead = s.length(3);
-		return x.permute(0, 2, 1, 3).reshape(batch, seqLen, heads * dimHead);
 	}
 
 	/**

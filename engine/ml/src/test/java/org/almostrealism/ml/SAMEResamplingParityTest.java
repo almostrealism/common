@@ -17,6 +17,7 @@
 package org.almostrealism.ml;
 
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.model.SequentialBlock;
 import org.junit.Test;
 
 import java.io.DataInputStream;
@@ -123,14 +124,22 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 	}
 
 	/**
-	 * Decoder parity: one transformer layer (fed the real chunked activation) and the full decoder block
-	 * (including the {@code 3} -kernel mapping convolution) from the real block input.
+	 * Decoder parity, stage by stage so a discrepancy localizes to one stage: the segmentation +
+	 * learned tokens (fed the real block input), the windowed transformer stack in isolation (fed the
+	 * real post-segment activation), the learned-token extraction in isolation (fed the real
+	 * post-stack activation), the {@code 3} -kernel mapping convolution in isolation (fed the real
+	 * pre-mapping activation, built exactly as the full block builds it), one transformer layer (fed
+	 * the real chunked activation), and the full decoder block from the real block input.
 	 *
 	 * @throws IOException if a reference or weight file cannot be read
 	 */
 	@Test(timeout = 600000)
 	public void decoderParity() throws IOException {
 		File weightDir = firstExisting(WEIGHT_DIRS, "decoder.layers.3.mapping.weight.bin");
+		// TODO(review): gate marker only checks for dec_resamp_input.bin (from the original ref set);
+		// dec_seg_input.bin, dec_poststack.bin, and dec_premap.bin are also required and were added
+		// by the updated dump script. A stale ref dir missing these files yields IOException rather
+		// than a clean skip. Consider expanding the marker or adding explicit file checks below.
 		File refDir = firstExisting(REFERENCE_DIRS, "dec_resamp_input.bin");
 		if (weightDir == null || refDir == null) {
 			log("skipping decoder parity; gated inputs absent (weights=" + weightDir + ", refs=" + refDir + ")");
@@ -142,18 +151,56 @@ public class SAMEResamplingParityTest extends SAMEResamplingTestBase {
 		StateDictionary weights = loadBlockWeights(weightDir, config, prefix);
 
 		PackedCollection blockInput = loadShaped(refDir, "dec_resamp_input", 1, 768, 6);
+		PackedCollection segInput = loadShaped(refDir, "dec_seg_input", 1, 102, 768);
+		PackedCollection poststackInput = loadShaped(refDir, "dec_poststack", 1, 102, 768);
+		PackedCollection premapInput = loadShaped(refDir, "dec_premap", 1, 768, 96);
 		PackedCollection layerInput = loadShaped(refDir, "dec_layer0_input", 3, 34, 768);
 
+		float[] refSegment = loadFlat(new File(refDir, "dec_seg_input.bin").toPath());
+		float[] refPoststack = loadFlat(new File(refDir, "dec_poststack.bin").toPath());
+		float[] refPremap = loadFlat(new File(refDir, "dec_premap.bin").toPath());
+		// TODO(review): refMapping and refOutput intentionally load the same file. Mapping is the
+		// last decoder stage, so its isolated output (Stage 4) equals the full block output (Stage 6).
+		float[] refMapping = loadFlat(new File(refDir, "dec_resamp_output.bin").toPath());
 		float[] refLayer = loadFlat(new File(refDir, "dec_layer0_output.bin").toPath());
 		float[] refOutput = loadFlat(new File(refDir, "dec_resamp_output.bin").toPath());
 
+		// Stage 1: segmentation + learned tokens (fed the real block input).
+		PackedCollection segment = eval(resamplingSegment(cp(blockInput), 1, config, weights, prefix));
+		report("decoder segment", segment, refSegment);
+
+		// Stage 2: the windowed transformer stack in isolation (fed the real post-segment activation).
+		SequentialBlock stackBlock = new SequentialBlock(shape(1, 102, 768));
+		addResamplingTransformerStack(stackBlock, 1, config, weights, prefix);
+		PackedCollection stack = evalBlock(stackBlock, segInput);
+		report("decoder stack", stack, refPoststack);
+
+		// Stage 3: learned-token extraction in isolation (fed the real post-stack activation).
+		PackedCollection extract = eval(resamplingExtract(cp(poststackInput), 1, config));
+		report("decoder extract", extract, refPremap);
+
+		// Stage 4: the 3-kernel channel mapping in isolation, fed the real post-extract activation and
+		// built exactly as transformerResamplingBlock builds it (the pad cell + projection cell), so the
+		// kernel=3 path is verified independently of the transformer stack.
+		SequentialBlock mappingBlock = new SequentialBlock(shape(1, 768, 96));
+		addResamplingMapping(mappingBlock, config, weights, prefix, shape(1, 768, 96), shape(1, 512, 96));
+		PackedCollection mapping = evalBlock(mappingBlock, premapInput);
+		report("decoder mapping", mapping, refMapping);
+
+		// Stage 5: one transformer layer (fed the real chunked activation).
 		PackedCollection layer = evalBlock(resamplingLayerBlock(
 				layerInput.getShape().length(0), config, weights, prefix + ".transformers.0"), layerInput);
 		report("decoder layer0", layer, refLayer);
-		assertWithin("decoder layer0", layer, refLayer, TOL_LAYER);
 
+		// Stage 6: full decoder block from the real block input.
 		PackedCollection output = evalBlock(transformerResamplingBlock(1, 6, config, weights, prefix), blockInput);
 		report("decoder block", output, refOutput);
+
+		assertWithin("decoder segment", segment, refSegment, TOL_SEGMENT);
+		assertWithin("decoder stack", stack, refPoststack, TOL_LAYER);
+		assertWithin("decoder extract", extract, refPremap, TOL_SEGMENT);
+		assertWithin("decoder mapping", mapping, refMapping, TOL_MAPPING);
+		assertWithin("decoder layer0", layer, refLayer, TOL_LAYER);
 		assertWithin("decoder block", output, refOutput, TOL_BLOCK);
 	}
 
