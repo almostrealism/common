@@ -249,6 +249,7 @@ public class LearnedTokensTest extends TestSuiteBase implements LearnedTokenFeat
 		PackedCollection timestep = new PackedCollection(shape(batchSize, 1)).randnFill();
 		PackedCollection globalCond = new PackedCollection(shape(batchSize, DIT_GLOBAL_COND_DIM)).randnFill();
 
+		// TODO(review): assertion below fails due to framework cross-compilation nondeterminism for odd seqLen=9 (audioSeqLen=8 + 1 PREPEND conditioning token); see workstream memory 1bd55507 for empirical root cause and framework-level fix recommendation
 		double diff = compare(
 				legacy.forward(input, timestep, null, globalCond),
 				zeroMemory.forward(input, timestep, null, globalCond));
