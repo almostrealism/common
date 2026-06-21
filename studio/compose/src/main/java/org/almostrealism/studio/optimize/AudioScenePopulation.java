@@ -236,7 +236,7 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 
 	/**
 	 * Builds a {@link Runnable} that iterates over all genomes in this population, generates
-	 * audio output for the specified channel and frame count, and reports results via the
+	 * audio output for a single channel and frame count, and reports results via the
 	 * {@code output} consumer.
 	 *
 	 * @param channel      the audio channel index to generate audio for
@@ -244,8 +244,32 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 	 * @param destinations supplier of output file path strings, or {@code null} for no file output
 	 * @param output       consumer that receives a {@link GenerationResult} for each completed genome
 	 * @return a {@link Runnable} that performs the generation when executed
+	 *
+	 * @see #generate(List, int, Supplier, Consumer)
 	 */
 	public Runnable generate(int channel, int frames, Supplier<String> destinations,
+							 Consumer<GenerationResult> output) {
+		return generate(List.of(channel), frames, destinations, output);
+	}
+
+	/**
+	 * Builds a {@link Runnable} that iterates over all genomes in this population, generates
+	 * audio output for the specified channels and frame count, and reports results via the
+	 * {@code output} consumer.
+	 *
+	 * <p>The {@code channels} argument selects which scene channels are rendered through the
+	 * real-time mixdown: a single-element list exercises the single-channel mixdown path, while
+	 * {@code null} renders all channels through the full multi-channel path. This mirrors the
+	 * channel selection accepted by {@link #init(Genome, MultiChannelAudioOutput, List, int)}
+	 * and {@link AudioScene#runnerRealTime(MultiChannelAudioOutput, List, int)}.</p>
+	 *
+	 * @param channels     the channel indices to render, or {@code null} for all channels
+	 * @param frames       the number of audio frames to generate per genome
+	 * @param destinations supplier of output file path strings, or {@code null} for no file output
+	 * @param output       consumer that receives a {@link GenerationResult} for each completed genome
+	 * @return a {@link Runnable} that performs the generation when executed
+	 */
+	public Runnable generate(List<Integer> channels, int frames, Supplier<String> destinations,
 							 Consumer<GenerationResult> output) {
 		return () -> {
 			WaveOutput out = new WaveOutput(() ->
@@ -255,7 +279,7 @@ public class AudioScenePopulation implements Population<PackedCollection, Tempor
 						return outputFile;
 					}).orElse(null), 24, true);
 
-			init(getGenomes().get(0), new MultiChannelAudioOutput(out), List.of(channel));
+			init(getGenomes().get(0), new MultiChannelAudioOutput(out), channels);
 
 			int bufferSize = AudioScene.DEFAULT_REALTIME_BUFFER_SIZE;
 			int bufferCount = (frames + bufferSize - 1) / bufferSize;

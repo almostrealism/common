@@ -16,6 +16,10 @@ arrangement (40s, 6 channels, seed 58) and by windowed RMS (per-window ratios
 References into source: every difference cites where the behavior is decided, so a
 later parity pass can find the lever.
 
+For the *listener's* view — what each of these differences would actually sound like, and a
+triage of which to chase toward the legacy sound vs accept — see the companion
+[PERCEPTUAL_MAP.md](PERCEPTUAL_MAP.md).
+
 ---
 
 ## 1. What is identical
@@ -118,7 +122,8 @@ this stage:
 
 Net effect: the echo/tail texture differs in decay timing and brightness from the
 legacy path while sitting at the same level. This is the largest *character* difference
-of the swap.
+of the swap — see [PERCEPTUAL_MAP.md](PERCEPTUAL_MAP.md) §"The big one" for how these four
+approximations combine into the audible "different FX colour" and which are cheap to close.
 
 ### 3.5 Reverb network topology differs
 Both are closed-loop multi-tap feedback delay networks with Householder mixing, but:
@@ -147,11 +152,15 @@ half the DSP work.
 ## 4. Structural / behavioral differences
 
 ### 4.1 Channel-selection guard with CellList fallback
-The PDSL path only engages for channel selections that are a zero-based contiguous
-prefix of size ≥ 2 (`AudioSceneRealtimeRunner.supportsPdsl`). Anything else — notably
-`AudioScene.renderChannel`'s single-channel render — silently (with a log line) uses
-the CellList runner even when `enablePdslMixdown` is on. Consumers that render channel
-subsets keep legacy behavior after the swap.
+The PDSL path engages for **any single channel** `[c]` (including
+`AudioScene.renderChannel`'s non-zero selection — its per-channel genome reads are mapped
+to the selected scene channel via `MixdownManagerPdslAdapter.Config.channel`) and for a
+zero-based contiguous multi-channel prefix `[0, 1, …, n-1]`
+(`AudioSceneRealtimeRunner.supportsPdsl`). A *non-contiguous* multi-channel subset (e.g.
+`[0, 2]`) still silently (with a log line) falls back to the CellList runner even when
+`enablePdslMixdown` is on, because the cross-channel transmission feedback grid is indexed
+by bank position rather than scene channel and would not reproduce the routing. Consumers
+that render such subsets keep legacy behavior after the swap.
 
 ### 4.2 One warm-up forward at build time
 `createPdsl` runs one throwaway `compiled.forward(...)` during construction to capture
@@ -172,9 +181,10 @@ buffer-sized steps.
 - PDSL: compiles one large per-buffer model once per (channel count, buffer size);
   genome changes also never require recompile (values flow through slots/collections),
   but **buffer size is baked in** — changing it means a rebuild.
-- The PDSL build currently *also* builds the unused Java mixdown CellList as a side
-  effect of reusing `getCells` for pattern preparation, which dominates one-time build
-  cost. Skipping it ("lean prep") is the identified next performance win.
+- The PDSL build no longer builds the unused Java mixdown CellList: `createPdsl` calls
+  `AudioScene.prepareRenderBuffers` to reproduce only the pattern-prepare side effects
+  `getCells` had supplied ("lean prep" — landed). This removed the dominant one-time build
+  cost; the A/B still shares an identical pattern-prepare phase between the two paths.
 
 ---
 
@@ -226,14 +236,17 @@ What the numbers say:
   than the CellList tick everywhere, after the `delay_network` ring update was
   de-fragmented into single-expression computations
   (`CollectionSlotUpdateComputation` + fused ring read/route, 1382 ms → 3 ms).
-- **Vectorized `for each channel` (opt-in) gives a further ~2–3×** by compiling
+- **Vectorized `for each channel` gives a further ~2–3×** by compiling
   channel-uniform bodies ONCE over `[channels, signalSize]` with bank-form
   arguments (`fir`/`scale`/`delay`) instead of per-channel blocks
-  (`mixdown_master_wet` forward 77 ms → 21 ms; build 2.3 s → 0.8 s). It is OFF by
-  default because structurally-identical vectorized kernels built for different
-  channel layouts in one JVM are mis-rebound by the signature-keyed instruction
-  reuse (see KNOWN_ISSUES §6 — `AR_INSTRUCTION_SET_REUSE=disabled` makes the
-  combination safe); flip it on once instruction rebinding handles structural twins.
+  (`mixdown_master_wet` forward 77 ms → 21 ms; build 2.3 s → 0.8 s). It is now **on by
+  default** (`AR_PDSL_VECTOR_FOREACH`): the instruction-rebinding defect that mis-bound
+  structurally-identical vectorized kernels built for different channel layouts in one JVM
+  was root-caused and fixed (KNOWN_ISSUES §6, 2026-06-12 — `MetalDataContext` now shares one
+  compute context so a cached kernel always commits through its own command runner). The
+  table rows below were measured *before* that flip, so the "default" row is the
+  non-vectorized tick and the "`AR_PDSL_VECTOR_FOREACH=enabled`" row is what the default now
+  produces.
 - The remaining per-tick cost is dominated by per-note pattern preparation
   (~64 ms, one busy channel accounts for half) — the open a2 batched-dispatch
   integration, tracked separately.
@@ -255,4 +268,10 @@ What a listener gets after flipping `enablePdslMixdown` on:
 7. **A faster tick than the CellList path** (§6) — 0.81–1.15× realtime at 8192 by
    default, 1.34–2.81× with vectorized for-each enabled, vs the CellList's
    0.50–0.62×.
-8. Single-channel renders (`renderChannel`) unchanged — they fall back to CellList.
+8. Single-channel renders (`renderChannel`) now also go through the PDSL path, mapped to
+   the selected channel's genes; only non-contiguous multi-channel subsets fall back to
+   CellList (§4.1).
+
+For a listener-facing translation of differences 2–6 into audible symptoms — and which are
+worth chasing toward the legacy sound vs accepting — see
+[PERCEPTUAL_MAP.md](PERCEPTUAL_MAP.md).

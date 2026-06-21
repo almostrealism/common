@@ -19,7 +19,6 @@ package org.almostrealism.studio.pattern.test;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.audio.WaveOutput;
-import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.TemporalCellular;
 import org.almostrealism.music.notes.NoteAudioChoice;
@@ -88,9 +87,6 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	/** Tempo for the review scene. */
 	private static final double REVIEW_BPM = 120.0;
 
-	/** Minimum peak amplitude below which output is considered silent. */
-	private static final double SILENCE_THRESHOLD = 1e-4;
-
 	/**
 	 * Renders the real curated arrangement for {@link #REVIEW_SECONDS} seconds through both
 	 * the CellList and PDSL DSP paths, writes named WAVs and a sample manifest, and asserts
@@ -139,7 +135,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 		writeManifest(scene, channelCount, seed, new File(outDir, "manifest.txt"));
 
 		int frames = (int) (REVIEW_SECONDS * SAMPLE_RATE);
-		renderBothPaths(scene, frames, REVIEW_BUFFER, outDir, "review", channelCount + "ch");
+		renderBothPaths(scene, null, frames, REVIEW_BUFFER, outDir, "review", channelCount + "ch");
 	}
 
 	/**
@@ -168,8 +164,47 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 		applyGenome(scene, seed);
 
 		int frames = (int) (SMOKE_SECONDS * SAMPLE_RATE);
-		renderBothPaths(scene, frames, AudioScene.DEFAULT_REALTIME_BUFFER_SIZE,
+		renderBothPaths(scene, null, frames, AudioScene.DEFAULT_REALTIME_BUFFER_SIZE,
 				outDir, "smoke", SMOKE_SOURCE_COUNT + "ch");
+	}
+
+	/**
+	 * Single-channel A/B gate: renders one <em>non-zero</em> channel ({@code [1]}) through both
+	 * DSP paths and asserts finite, non-silent, windowed-RMS-comparable output. This exercises
+	 * the same single-channel selection path {@link AudioScene#renderChannel} uses
+	 * ({@code runnerRealTime(List.of(channel))}), which the PDSL runner historically rejected
+	 * (the {@code channels >= 2} floor) and now accepts.
+	 *
+	 * <p>The non-zero channel is the point: it validates that the PDSL adapter maps its
+	 * per-channel genome reads to the <em>selected</em> scene channel (channel 1's volume,
+	 * filters, efx, reverb) rather than channel 0's. If the mapping were wrong, the PDSL
+	 * render's level envelope would diverge from the CellList render of the same channel,
+	 * breaking the windowed-RMS comparison below.</p>
+	 *
+	 * @throws IOException if a rendered WAV cannot be read back
+	 */
+	@Test(timeout = 600_000)
+	@TestDepth(2)
+	public void pdslVsCellListSingleChannel() throws IOException {
+		MixdownManager.enableMainFilterUp = true;
+		MixdownManager.enableEfx = true;
+		MixdownManager.enableEfxFilters = true;
+		MixdownManager.enableReverb = false;
+		PatternSystemManager.enableWarnings = false;
+
+		File outDir = new File("results/pdsl-cutover");
+		outDir.mkdirs();
+
+		File samplesDir = getSamplesDir();
+		AudioScene<?> scene = createBaselineScene(samplesDir, SMOKE_SOURCE_COUNT);
+		long seed = findWorkingGenomeSeed(scene, samplesDir);
+		Assert.assertTrue("No working genome found for single-channel scene", seed >= 0);
+		applyGenome(scene, seed);
+
+		int channel = 1;
+		int frames = (int) (SMOKE_SECONDS * SAMPLE_RATE);
+		renderBothPaths(scene, List.of(channel), frames, AudioScene.DEFAULT_REALTIME_BUFFER_SIZE,
+				outDir, "single", "ch" + channel);
 	}
 
 	/**
@@ -178,6 +213,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 * asserting each is finite and non-silent.
 	 *
 	 * @param scene        the shared scene (genome already applied)
+	 * @param channels     channel indices to render, or {@code null} for all channels
 	 * @param frames       number of frames to render per path
 	 * @param bufferSize   frames per buffer
 	 * @param outDir       output directory
@@ -185,17 +221,17 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	 * @param channelLabel channel descriptor for the file name (e.g. "6ch")
 	 * @throws IOException if a rendered WAV cannot be read back
 	 */
-	private void renderBothPaths(AudioScene<?> scene, int frames, int bufferSize,
+	private void renderBothPaths(AudioScene<?> scene, List<Integer> channels, int frames, int bufferSize,
 								 File outDir, String prefix, String channelLabel) throws IOException {
 		boolean previous = MixdownManager.enablePdslMixdown;
 		try {
 			MixdownManager.enablePdslMixdown = false;
-			double[] cellList = renderAndRead(scene, null, frames, bufferSize,
+			double[] cellList = renderAndRead(scene, channels, frames, bufferSize,
 					new File(outDir, prefix + "_celllist_" + channelLabel + ".wav"));
 			assertFiniteNonSilent(prefix + " CellList", cellList);
 
 			MixdownManager.enablePdslMixdown = true;
-			double[] pdsl = renderAndRead(scene, null, frames, bufferSize,
+			double[] pdsl = renderAndRead(scene, channels, frames, bufferSize,
 					new File(outDir, prefix + "_pdsl_" + channelLabel + ".wav"));
 			assertFiniteNonSilent(prefix + " PDSL", pdsl);
 
@@ -655,7 +691,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 			tick.run();
 			sink.write().get().run();
 
-			double[] sinkSamples = readWavMono(new File(outDir, "region_probe_sink.wav"));
+			double[] sinkSamples = readWavSamples(new File(outDir, "region_probe_sink.wav"));
 			for (int b = 0; b < 5; b++) {
 				int start = b * REVIEW_BUFFER;
 				int end = Math.min(sinkSamples.length, (b + 1) * REVIEW_BUFFER);
@@ -936,94 +972,6 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 	}
 
 	/**
-	 * Logs the peak amplitude, RMS, and non-finite count of a rendered signal for the
-	 * stage-bisection diagnostic.
-	 *
-	 * @param label   the variant label
-	 * @param samples the rendered samples
-	 */
-	private void reportLevels(String label, double[] samples) {
-		double peak = 0.0;
-		double energy = 0.0;
-		int nonFinite = 0;
-		for (double sample : samples) {
-			if (!Double.isFinite(sample)) {
-				nonFinite++;
-				continue;
-			}
-			peak = Math.max(peak, Math.abs(sample));
-			energy += sample * sample;
-		}
-		double rms = Math.sqrt(energy / Math.max(1, samples.length));
-		log(String.format("bisection stage=%s peak=%.4f rms=%.4f nonFinite=%d",
-				label, peak, rms, nonFinite));
-	}
-
-	/**
-	 * Logs a windowed RMS comparison of the two renders so level parity can be verified over
-	 * time (the automation sweeps mean a single whole-file RMS can hide a divergence that
-	 * grows over the duration). Windows are aligned sample ranges of both renders; for each,
-	 * the CellList RMS, the PDSL RMS, and their ratio are logged, then the whole-file ratio.
-	 *
-	 * @param label    render label for the log lines
-	 * @param cellList samples from the CellList (control) render
-	 * @param pdsl     samples from the PDSL render
-	 */
-	private void reportWindowedParity(String label, double[] cellList, double[] pdsl) {
-		int n = Math.min(cellList.length, pdsl.length);
-		int window = Math.max(1, n / 8);
-		for (int start = 0; start < n; start += window) {
-			int end = Math.min(n, start + window);
-			double ca = windowRms(cellList, start, end);
-			double pa = windowRms(pdsl, start, end);
-			log(String.format("parity %s window=%d-%d celllist=%.4f pdsl=%.4f ratio=%.3f",
-					label, start, end, ca, pa, ca > 0 ? pa / ca : Double.NaN));
-		}
-		double cAll = windowRms(cellList, 0, n);
-		double pAll = windowRms(pdsl, 0, n);
-		log(String.format("parity %s overall celllist=%.4f pdsl=%.4f ratio=%.3f",
-				label, cAll, pAll, cAll > 0 ? pAll / cAll : Double.NaN));
-	}
-
-	/**
-	 * Loads a WAV and returns its first-channel samples.
-	 *
-	 * @param file the WAV file
-	 * @return mono samples
-	 * @throws IOException if the file cannot be read
-	 */
-	private double[] readWavMono(File file) throws IOException {
-		WaveData wav = WaveData.load(file);
-		try {
-			PackedCollection data = wav.getData();
-			int n = data.getMemLength();
-			double[] samples = new double[n];
-			for (int i = 0; i < n; i++) {
-				samples[i] = data.toDouble(i);
-			}
-			return samples;
-		} finally {
-			wav.destroy();
-		}
-	}
-
-	/**
-	 * Computes the RMS of one sample range.
-	 *
-	 * @param samples the samples
-	 * @param start   inclusive start index
-	 * @param end     exclusive end index
-	 * @return the root-mean-square of the range
-	 */
-	private double windowRms(double[] samples, int start, int end) {
-		double energy = 0.0;
-		for (int i = start; i < end; i++) {
-			if (Double.isFinite(samples[i])) energy += samples[i] * samples[i];
-		}
-		return Math.sqrt(energy / Math.max(1, end - start));
-	}
-
-	/**
 	 * Loads the real curated arrangement at the review tempo and length via
 	 * {@link #loadCuratedScene(File, File, double, int)}.
 	 *
@@ -1068,18 +1016,7 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 			runner.reset();
 		}
 
-		WaveData wav = WaveData.load(outFile);
-		try {
-			PackedCollection data = wav.getData();
-			int n = data.getMemLength();
-			double[] samples = new double[n];
-			for (int i = 0; i < n; i++) {
-				samples[i] = data.toDouble(i);
-			}
-			return samples;
-		} finally {
-			wav.destroy();
-		}
+		return readWavSamples(outFile);
 	}
 
 	/**
@@ -1157,24 +1094,4 @@ public class AudioScenePdslCutoverTest extends AudioSceneTestBase {
 		return files;
 	}
 
-	/**
-	 * Asserts that the given samples are all finite and that the peak amplitude exceeds
-	 * {@link #SILENCE_THRESHOLD}.
-	 *
-	 * @param label   path label for assertion messages
-	 * @param samples the rendered samples
-	 */
-	private void assertFiniteNonSilent(String label, double[] samples) {
-		Assert.assertTrue(label + " produced no samples", samples.length > 0);
-
-		double peak = 0.0;
-		for (double sample : samples) {
-			Assert.assertTrue(label + " produced a non-finite sample", Double.isFinite(sample));
-			peak = Math.max(peak, Math.abs(sample));
-		}
-
-		log(label + " path: samples=" + samples.length + " peak=" + peak);
-		Assert.assertTrue(label + " output is silent (peak=" + peak + ")",
-				peak > SILENCE_THRESHOLD);
-	}
 }
