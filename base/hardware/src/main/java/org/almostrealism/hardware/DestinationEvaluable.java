@@ -278,7 +278,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	public T evaluate(Object... args) {
 		if (operation instanceof Provider<T>) {
 			operation.into(destination).evaluate(args);
-		} else if (operation instanceof AcceleratedOperation && ((AcceleratedOperation) operation).isKernel()) {
+		} else if (operation instanceof AcceleratedOperation) {
 			AcceleratedProcessDetails details = ((AcceleratedOperation) operation)
 					.apply(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
 			// Wait for the dispatch to be issued before reading the completion: until the whenReady
@@ -338,7 +338,7 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 */
 	@Override
 	public void request(Object[] args) {
-		if (operation instanceof AcceleratedOperation && ((AcceleratedOperation) operation).isKernel()) {
+		if (operation instanceof AcceleratedOperation) {
 			AcceleratedProcessDetails details = ((AcceleratedOperation) operation)
 					.apply(destination, Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
 			details.getSemaphore().onComplete(() -> downstream.accept((T) destination));

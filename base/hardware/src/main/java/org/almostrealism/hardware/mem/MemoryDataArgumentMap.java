@@ -50,9 +50,6 @@ import java.util.function.Supplier;
  * @param <A> Argument type
  */
 public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> {
-	/** If true, automatically detect and configure destination memory arguments for output. */
-	public static final boolean enableDestinationDetection = true;
-
 	/** Optional operation profile used for timing argument resolution. */
 	public static OperationProfile profile;
 
@@ -63,29 +60,16 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	private final Map<Memory, ArrayVariable<A>> mems;
 	/** All root delegate provider suppliers created by this map, for lifecycle management. */
 	private final List<RootDelegateProviderSupplier> rootDelegateSuppliers;
-	/** True if this map is being used for kernel (parallel) evaluation; false for scalar evaluation. */
-	private final boolean kernel;
-
-	/**
-	 * Creates an argument map for kernel (parallel) evaluation.
-	 *
-	 * @param metadata Operation metadata for argument naming
-	 */
-	public MemoryDataArgumentMap(OperationMetadata metadata) {
-		this(metadata, true);
-	}
 
 	/**
 	 * Creates an argument map.
 	 *
 	 * @param metadata Operation metadata for argument naming
-	 * @param kernel True if used for kernel evaluation; false for scalar evaluation
 	 */
-	public MemoryDataArgumentMap(OperationMetadata metadata, boolean kernel) {
+	public MemoryDataArgumentMap(OperationMetadata metadata) {
 		this.metadata = metadata;
 		this.mems = new HashMap<>();
 		this.rootDelegateSuppliers = new ArrayList<>();
-		this.kernel = kernel;
 	}
 
 	@Override
@@ -96,32 +80,11 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 			ArrayVariable<A> arg = super.get(key);
 			if (arg != null) return arg;
 
-			MemoryData md;
+			Object provider = key.get();
+			if (!(provider instanceof Provider)) return null;
+			if (!(((Provider) provider).get() instanceof MemoryData)) return null;
 
-			// A MemoryDataDestination carries information about how to produce
-			// the data in that destination, along with the MemoryData itself.
-			// There needs to be a way to return a delegated variable, as we do
-			// below, but not lose the knowledge that we rely on during the
-			// creation of required scopes, ie the knowledge of how that data
-			// is populated. The root delegate will have no logical way to do
-			// this because it may have many children produced in different
-			// ways, so it probably has to be stored with the Delegated variable,
-			// but it cannot be tracked using the delegate field because that
-			// is already used to point at the root delegate MemoryData
-			if (enableDestinationDetection && !kernel && key instanceof MemoryDataDestinationProducer) {
-				Object dest = ((MemoryDataDestinationProducer) key).get().evaluate();
-				if (dest != null && !(dest instanceof MemoryData)) {
-					throw new RuntimeException();
-				}
-
-				md = (MemoryData) dest;
-			} else {
-				Object provider = key.get();
-				if (!(provider instanceof Provider)) return null;
-				if (!(((Provider) provider).get() instanceof MemoryData)) return null;
-
-				md = (MemoryData) ((Provider) provider).get();
-			}
+			MemoryData md = (MemoryData) ((Provider) provider).get();
 
 			if (md == null) return null;
 			if (md.getMem() == null) {
@@ -174,11 +137,10 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	 *
 	 * @param context Compute context providing language and memory services
 	 * @param metadata Operation metadata for argument naming
-	 * @param kernel True if the map is used for kernel evaluation
 	 * @return Fully configured {@link MemoryDataArgumentMap}
 	 */
-	public static MemoryDataArgumentMap create(ComputeContext<MemoryData> context, OperationMetadata metadata, boolean kernel) {
-		MemoryDataArgumentMap map = new MemoryDataArgumentMap(metadata, kernel);
+	public static MemoryDataArgumentMap create(ComputeContext<MemoryData> context, OperationMetadata metadata) {
+		MemoryDataArgumentMap map = new MemoryDataArgumentMap(metadata);
 		map.setDelegateProvider(new DefaultScopeInputManager(context.getLanguage(),
 				(name, input) -> CollectionVariable.create(name, (Supplier) input)));
 		return map;

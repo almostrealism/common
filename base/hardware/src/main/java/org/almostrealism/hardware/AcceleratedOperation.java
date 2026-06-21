@@ -74,26 +74,22 @@ import java.util.List;
  * // When scope is prepared:
  * prepareScope() {
  *     // Creates MemoryDataArgumentMap
- *     argumentMap = MemoryDataArgumentMap.create(context, metadata, isKernel());
+ *     argumentMap = MemoryDataArgumentMap.create(context, metadata);
  *
  *     // Maps operation inputs to kernel arguments
  *     prepareArguments(argumentMap);
  * }
  * }</pre>
  *
- * <h2>Kernel vs Non-Kernel Operations</h2>
+ * <h2>Kernel vs Native Execution</h2>
  *
- * <p>Operations can be either kernel-based (executed on GPU/accelerator) or non-kernel (JNI/native):</p>
+ * <p>Whether an operation is dispatched as a GPU/OpenCL/Metal kernel or as JNI/native code is
+ * determined by the {@link ComputeContext} the operation was created within, not by the operation
+ * itself:</p>
  * <pre>{@code
- * // Kernel operation (GPU)
- * AcceleratedOperation kernelOp = new MyKernelOperation(context, true);
- * kernelOp.prepareScope();  // Creates argumentMap
- * kernelOp.load();          // Compiles OpenCL/Metal kernel
- *
- * // Non-kernel operation (JNI)
- * AcceleratedOperation nativeOp = new MyNativeOperation(context, false);
- * nativeOp.prepareScope();  // Simpler argument handling
- * nativeOp.load();          // Compiles C code via JNI
+ * AcceleratedOperation op = new MyOperation(context);
+ * op.prepareScope();  // Creates argumentMap
+ * op.load();          // Compiles via the context (OpenCL/Metal kernel, or C/JNI)
  * }</pre>
  *
  * <h2>Instruction Set Management</h2>
@@ -189,9 +185,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	/** Timing metric for wrapped evaluation. */
 	public static TimingMetric wrappedEvalMetric = console.timing("wrappedEval");
 
-	/** Indicates whether this operation executes as a kernel (GPU/OpenCL/Metal) or JNI native code. */
-	private final boolean kernel;
-
 	/** Enables or disables automatic argument mapping via {@link MemoryDataArgumentMap}. */
 	private boolean argumentMapping;
 
@@ -214,13 +207,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * Creates a new accelerated operation within the specified compute context.
 	 *
 	 * @param context The {@link ComputeContext} for compilation and execution (OpenCL, Metal, JNI, etc.)
-	 * @param kernel  {@code true} if this operation executes as a GPU/OpenCL/Metal kernel,
-	 *                {@code false} for JNI native code execution
 	 */
-	protected AcceleratedOperation(ComputeContext<MemoryData> context, boolean kernel) {
+	protected AcceleratedOperation(ComputeContext<MemoryData> context) {
 		setArgumentMapping(true);
 		this.context = context;
-		this.kernel = kernel;
 	}
 
 	/**
@@ -314,7 +304,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		resetArguments();
 
 		if (argumentMapping) {
-			argumentMap = MemoryDataArgumentMap.create(getComputeContext(), getMetadata(), isKernel());
+			argumentMap = MemoryDataArgumentMap.create(getComputeContext(), getMetadata());
 			prepareArguments(argumentMap);
 		}
 
@@ -461,7 +451,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		if (detailsFactory != null) return;
 
 		detailsFactory = new ProcessDetailsFactory<>(
-				isKernel(), isFixedCount(), getCount(),
+				isFixedCount(), getCount(),
 				getArgumentVariables(), getOutputArgumentIndex(),
 				this::createMemoryReplacementManager,
 				getComputeContext()::runLater);
@@ -664,13 +654,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	protected boolean isPreprocessingRequired(AcceleratedProcessDetails process) {
 		return !process.isEmpty();
 	}
-
-	/**
-	 * Returns true if this operation executes as a GPU/OpenCL/Metal kernel.
-	 *
-	 * @return true if kernel-based, false if JNI native
-	 */
-	public boolean isKernel() { return kernel; }
 
 	/**
 	 * Destroys this operation and releases associated resources.

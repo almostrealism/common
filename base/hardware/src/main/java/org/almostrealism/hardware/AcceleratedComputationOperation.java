@@ -71,8 +71,7 @@ import java.util.function.Supplier;
  * // Wrap for acceleration
  * AcceleratedComputationOperation op = new AcceleratedComputationOperation(
  *     Hardware.getLocalHardware().getComputeContext(),
- *     multiply,
- *     true  // kernel mode
+ *     multiply
  * );
  *
  * // Compilation happens during prepareScope or first execution
@@ -87,13 +86,13 @@ import java.util.function.Supplier;
  * // First computation with signature "vectorAdd"
  * Computation<PackedCollection> add1 = ...;
  * add1.getMetadata().setSignature("vectorAdd");
- * AcceleratedComputationOperation op1 = new AcceleratedComputationOperation(..., add1, true);
+ * AcceleratedComputationOperation op1 = new AcceleratedComputationOperation(..., add1);
  * op1.prepareScope();  // Compiles and caches under signature "vectorAdd"
  *
  * // Second computation with same signature
  * Computation<PackedCollection> add2 = ...;
  * add2.getMetadata().setSignature("vectorAdd");
- * AcceleratedComputationOperation op2 = new AcceleratedComputationOperation(..., add2, true);
+ * AcceleratedComputationOperation op2 = new AcceleratedComputationOperation(..., add2);
  * op2.prepareScope();  // Reuses cached kernel from "vectorAdd"
  * }</pre>
  *
@@ -144,7 +143,7 @@ import java.util.function.Supplier;
  *
  * <pre>{@code
  * // Create operation
- * AcceleratedComputationOperation op = new AcceleratedComputationOperation(context, computation, true);
+ * AcceleratedComputationOperation op = new AcceleratedComputationOperation(context, computation);
  *
  * // Prepare scope (triggers compilation if needed)
  * op.prepareScope();
@@ -166,8 +165,7 @@ import java.util.function.Supplier;
  * // Wrap for GPU execution
  * AcceleratedComputationOperation normalizeOp = new AcceleratedComputationOperation(
  *     Hardware.getLocalHardware().getComputeContext(),
- *     normalize,
- *     true
+ *     normalize
  * );
  * }</pre>
  *
@@ -181,7 +179,7 @@ import java.util.function.Supplier;
  * op.getMetadata().setSignature("myOperation");
  *
  * // All operations with this signature share compiled kernels
- * AcceleratedComputationOperation acc = new AcceleratedComputationOperation(context, op, true);
+ * AcceleratedComputationOperation acc = new AcceleratedComputationOperation(context, op);
  * }</pre>
  *
  * @param <T> The type of data produced by the wrapped {@link Computation}
@@ -214,10 +212,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 *
 	 * @param context The {@link ComputeContext} to execute on (OpenCL, Metal, JNI, etc.)
 	 * @param c The {@link Computation} to accelerate
-	 * @param kernel true to compile as a hardware kernel, false for operation-level execution
 	 */
-	public AcceleratedComputationOperation(ComputeContext<MemoryData> context, Computation<T> c, boolean kernel) {
-		super(context, kernel);
+	public AcceleratedComputationOperation(ComputeContext<MemoryData> context, Computation<T> c) {
+		super(context);
 		this.computation = c;
 		init();
 	}
