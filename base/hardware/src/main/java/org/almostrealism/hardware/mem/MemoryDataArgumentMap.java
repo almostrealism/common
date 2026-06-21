@@ -17,8 +17,9 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.Memory;
-import io.almostrealism.collect.CollectionScopeInputManager;
+import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Provider;
@@ -178,7 +179,8 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	 */
 	public static MemoryDataArgumentMap create(ComputeContext<MemoryData> context, OperationMetadata metadata, boolean kernel) {
 		MemoryDataArgumentMap map = new MemoryDataArgumentMap(metadata, kernel);
-		map.setDelegateProvider(CollectionScopeInputManager.getInstance(context.getLanguage()));
+		map.setDelegateProvider(new DefaultScopeInputManager(context.getLanguage(),
+				(name, input) -> CollectionVariable.create(name, (Supplier) input)));
 		return map;
 	}
 }
