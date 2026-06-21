@@ -19,7 +19,10 @@ package org.almostrealism.ml;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.collect.PackedCollection;
+import io.almostrealism.scope.ScopeSettings;
+import org.almostrealism.hardware.DefaultComputer;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.ml.audio.ConditioningMode;
 import org.almostrealism.ml.audio.DiffusionTransformer;
@@ -596,5 +599,499 @@ public class CompileDeterminismReproductionTest extends TestSuiteBase implements
 	 */
 	private String row(String label, double diff) {
 		return String.format("%-44s maxAbsDiff=%.3e %s", label, diff, diff > 0.0 ? "(DIVERGENT)" : "(identical)");
+	}
+
+	// ---- Structural fingerprint probe (H7 warmup-state vs identity-hash ordering) ---------------
+
+	/**
+	 * Disambiguation probe: compiles the same minimal graph several times in one JVM and records each
+	 * compile's structural fingerprint (operation-graph tree node count and the number of generated
+	 * kernel sources). This separates two candidate mechanisms for the cross-compile structural
+	 * divergence:
+	 *
+	 * <ul>
+	 *   <li><b>Warmup / static-cache state</b> — if the first compile is cold and every subsequent
+	 *       compile is warm, the fingerprints form a {@code [X, Y, Y, Y, ...]} step. The divergence is
+	 *       then a deterministic first-vs-second-compile effect, not object-identity ordering.</li>
+	 *   <li><b>Object-identity ordering</b> — if the fingerprints vary with no stable pattern, the
+	 *       divergence is driven by identity-hash iteration order, which differs from one compile to the
+	 *       next regardless of warmup.</li>
+	 * </ul>
+	 *
+	 * <p>Unlike the numeric divergence, the structural fingerprint diverges even at an even sequence
+	 * length (where the numeric output is byte-identical), so this probe is deterministic evidence
+	 * rather than probabilistic.</p>
+	 */
+	@Test(timeout = 600000)
+	public void compileOrderStructuralFingerprint() {
+		Map<String, PackedCollection> block = blockWeights();
+		PackedCollection inputOdd = new PackedCollection(shape(BATCH, AUDIO + 1, DIM)).randnFill();
+		PackedCollection inputEven = new PackedCollection(shape(BATCH, AUDIO, DIM)).randnFill();
+
+		int repetitions = 5;
+		log("==== compile-order structural fingerprint (same graph compiled N times in one JVM) ====");
+		fingerprintSequence("direct block odd seqLen=9", repetitions,
+				() -> directBlockModel(AUDIO + 1, block), inputOdd);
+		fingerprintSequence("direct block even seqLen=8", repetitions,
+				() -> directBlockModel(AUDIO, block), inputEven);
+		fingerprintSequence("attn-only odd seqLen=9", repetitions,
+				() -> attnOnlyModel(AUDIO + 1, block), inputOdd);
+
+		Hardware.getLocalHardware().assignProfile(null);
+	}
+
+	/**
+	 * Tests hypothesis H7a: the cold/warm structural split is caused by memory-residence-dependent
+	 * argument aggregation in {@code MemoryDataArgumentMap} (a host-resident weight is aggregated; once
+	 * it becomes kernel/device-resident after the first compile, it is not — yielding a different kernel
+	 * structure). Runs the same fingerprint sequence under three conditions:
+	 *
+	 * <ol>
+	 *   <li><b>shared weights, aggregation on</b> — the baseline; expected to show the {@code [X,Y,Y,Y]}
+	 *       cold/warm split (distinctFingerprints &gt; 1).</li>
+	 *   <li><b>fresh weights per compile, aggregation on</b> — every compile sees host-resident weights,
+	 *       so if residence drives the split this collapses to a single fingerprint.</li>
+	 *   <li><b>shared weights, aggregation off</b> — removes the aggregation path entirely; if
+	 *       aggregation is the mechanism this also collapses to a single fingerprint.</li>
+	 * </ol>
+	 *
+	 * <p>If conditions 2 and 3 both collapse to one fingerprint while condition 1 does not, H7a is
+	 * confirmed and the divergence is localized to residence-dependent argument aggregation.</p>
+	 */
+	@Test(timeout = 600000)
+	public void aggregationResidenceProbe() {
+		Map<String, PackedCollection> sharedBlock = blockWeights();
+		PackedCollection inputEven = new PackedCollection(shape(BATCH, AUDIO, DIM)).randnFill();
+		int repetitions = 4;
+
+		log("==== H7a probe: residence-dependent argument aggregation as the cold/warm cause ====");
+		fingerprintSequence("even8 sharedW aggON", repetitions,
+				() -> directBlockModel(AUDIO, sharedBlock), inputEven);
+		fingerprintSequence("even8 freshW aggON", repetitions,
+				() -> directBlockModel(AUDIO, blockWeights()), inputEven);
+
+		boolean previousAggregation = MemoryDataArgumentMap.enableArgumentAggregation;
+		MemoryDataArgumentMap.enableArgumentAggregation = false;
+		try {
+			fingerprintSequence("even8 sharedW aggOFF", repetitions,
+					() -> directBlockModel(AUDIO, sharedBlock), inputEven);
+		} finally {
+			MemoryDataArgumentMap.enableArgumentAggregation = previousAggregation;
+		}
+
+		Hardware.getLocalHardware().assignProfile(null);
+	}
+
+	/**
+	 * Saves the cold (first) and warm (second) compile profiles of a single shape so the two can be
+	 * diffed with the profile analyzer to see exactly which generated kernels change between the JVM's
+	 * first compile and its subsequent compiles. Run this as the first test in a fresh JVM so the first
+	 * compile is genuinely cold. An even sequence length isolates the structural difference from any
+	 * numeric divergence (the {@code _A.xml} is the cold compile, {@code _B.xml} the warm one).
+	 */
+	@Test(timeout = 600000)
+	public void saveColdWarmProfiles() {
+		String dir = outputDir();
+		Map<String, PackedCollection> sharedBlock = blockWeights();
+		PackedCollection inputEven = new PackedCollection(shape(BATCH, AUDIO, DIM)).randnFill();
+		double diff = compileTwiceMaxAbsDiff("coldwarm directBlock even8",
+				() -> directBlockModel(AUDIO, sharedBlock), inputEven, dir + "/coldwarm_directBlock_even8");
+		log("coldwarm directBlock even8 numericDiff=" + diff + " (A=cold, B=warm)");
+		Hardware.getLocalHardware().assignProfile(null);
+	}
+
+	/**
+	 * Tests hypothesis H8: the cold/warm structural split is caused by signature-keyed instruction-set
+	 * reuse ({@link ScopeSettings#enableInstructionSetReuse} plus {@code DefaultComputer}'s
+	 * signature-keyed {@code instructionsCache}). With reuse disabled from a cold JVM start, every
+	 * compile uses a fresh per-operation instruction manager, so if reuse is the cause every compile
+	 * should produce the same (fused) structure and the {@code [X,Y,Y,Y]} split should collapse to a
+	 * single fingerprint.
+	 *
+	 * <p>Run this alone in a fresh JVM so the first compile is genuinely cold.</p>
+	 */
+	@Test(timeout = 600000)
+	public void coldWarmReuseOff() {
+		boolean previousReuse = ScopeSettings.enableInstructionSetReuse;
+		ScopeSettings.enableInstructionSetReuse = false;
+		try {
+			Map<String, PackedCollection> block = blockWeights();
+			PackedCollection inputEven = new PackedCollection(shape(BATCH, AUDIO, DIM)).randnFill();
+			PackedCollection inputOdd = new PackedCollection(shape(BATCH, AUDIO + 1, DIM)).randnFill();
+			log("==== H8 probe: instruction-set reuse DISABLED (expect split to collapse) ====");
+			fingerprintSequence("even8 reuseOFF", 4, () -> directBlockModel(AUDIO, block), inputEven);
+			fingerprintSequence("odd9 reuseOFF", 4, () -> directBlockModel(AUDIO + 1, block), inputOdd);
+		} finally {
+			ScopeSettings.enableInstructionSetReuse = previousReuse;
+		}
+		Hardware.getLocalHardware().assignProfile(null);
+	}
+
+	/**
+	 * Three-way numeric comparison to determine which compile is canonical. Compiles the same
+	 * odd-sequence-length block on identical weights and input under three cache conditions and reports
+	 * pairwise max-abs differences:
+	 *
+	 * <ul>
+	 *   <li><b>R</b> — instruction-set reuse disabled (no shared cache populated): the no-reuse
+	 *       reference.</li>
+	 *   <li><b>A</b> — reuse enabled, first (cold) compile: populates the shared signature cache.</li>
+	 *   <li><b>B</b> — reuse enabled, second (warm) compile: may reuse kernels cached by A.</li>
+	 * </ul>
+	 *
+	 * <p>If {@code R == A != B}, the cold/fused compile matches the no-reuse reference and the warm
+	 * compile is the one whose value changed (reuse altered the result). If {@code R == B != A} the
+	 * opposite. This isolates whether reuse corrupts the value or merely re-associates a reduction.</p>
+	 */
+	@Test(timeout = 600000)
+	public void reuseThreeWayComparison() {
+		Map<String, PackedCollection> block = blockWeights();
+		PackedCollection input = new PackedCollection(shape(BATCH, AUDIO + 1, DIM)).randnFill();
+
+		boolean previousReuse = ScopeSettings.enableInstructionSetReuse;
+		ScopeSettings.enableInstructionSetReuse = false;
+		double[] r;
+		try {
+			r = compileForwardToArray(() -> directBlockModel(AUDIO + 1, block), input);
+		} finally {
+			ScopeSettings.enableInstructionSetReuse = previousReuse;
+		}
+		double[] a = compileForwardToArray(() -> directBlockModel(AUDIO + 1, block), input);
+		double[] b = compileForwardToArray(() -> directBlockModel(AUDIO + 1, block), input);
+
+		log(String.format("reuse 3-way: R-vs-A=%.3e R-vs-B=%.3e A-vs-B=%.3e",
+				maxAbsDiffArray(r, a), maxAbsDiffArray(r, b), maxAbsDiffArray(a, b)));
+		Hardware.getLocalHardware().assignProfile(null);
+	}
+
+	/**
+	 * Sanity check for the {@code AR_HARDWARE_OFF_HEAP_SIZE=0} configuration: compiles the minimal
+	 * self-attention sub-block twice (default instruction-set reuse) on identical input and reports both
+	 * the cross-compile difference AND the magnitude of the outputs, so that "consistent but correct"
+	 * can be distinguished from "consistent but garbage" (e.g. an uninitialized {@code 2^30} sentinel).
+	 * A healthy result has O(1) output magnitude and a cross-compile difference of {@code 0.0}.
+	 */
+	@Test(timeout = 600000)
+	public void offHeapValueSanity() {
+		Map<String, PackedCollection> block = blockWeights();
+		PackedCollection inputOdd = new PackedCollection(shape(BATCH, AUDIO + 1, DIM)).randnFill();
+		double[] a = compileForwardToArray(() -> attnOnlyModel(AUDIO + 1, block), inputOdd);
+		double[] b = compileForwardToArray(() -> attnOnlyModel(AUDIO + 1, block), inputOdd);
+		log(String.format("offHeapValueSanity attnOnly odd9: maxAbsValue=%.4e crossCompileDiff=%.3e sample[0..3]=%.4f,%.4f,%.4f,%.4f",
+				maxAbsValue(a), maxAbsDiffArray(a, b), a[0], a[1], a[2], a[3]));
+		Hardware.getLocalHardware().assignProfile(null);
+	}
+
+	/**
+	 * Returns the maximum absolute value in a host array (to distinguish sane O(1) outputs from
+	 * uninitialized-memory garbage).
+	 *
+	 * @param x the array
+	 * @return the maximum absolute value
+	 */
+	private double maxAbsValue(double[] x) {
+		double max = 0.0;
+		for (double v : x) {
+			if (Math.abs(v) > max) max = Math.abs(v);
+		}
+		return max;
+	}
+
+	/**
+	 * Captures a divergent pair of profiles with instruction-set reuse DISABLED, so every operation is
+	 * compiled fresh in both compiles. The two compiles share the same weights, so memory residence
+	 * flips between compile A (weights host-resident, aggregated) and compile B (weights device-resident,
+	 * not aggregated); the op whose kernel source differs between {@code _A.xml} and {@code _B.xml} is
+	 * the invalid kernel. Loops until the outputs differ, then saves both profiles for diffing.
+	 */
+	@Test(timeout = 600000)
+	public void saveDivergentReuseOffProfiles() {
+		String dir = outputDir();
+		boolean previousReuse = ScopeSettings.enableInstructionSetReuse;
+		ScopeSettings.enableInstructionSetReuse = false;
+		try {
+			for (int i = 0; i < 16; i++) {
+				Map<String, PackedCollection> block = blockWeights();
+				PackedCollection input = new PackedCollection(shape(BATCH, AUDIO + 1, DIM)).randnFill();
+
+				OperationProfileNode profileA = new OperationProfileNode("reuseOff_A");
+				Hardware.getLocalHardware().assignProfile(profileA);
+				Model a = directBlockModel(AUDIO + 1, block);
+				CompiledModel compiledA = a.compile(false, profileA);
+				double[] outA = compiledA.forward(input).toArray();
+
+				OperationProfileNode profileB = new OperationProfileNode("reuseOff_B");
+				Hardware.getLocalHardware().assignProfile(profileB);
+				Model b = directBlockModel(AUDIO + 1, block);
+				CompiledModel compiledB = b.compile(false, profileB);
+				double[] outB = compiledB.forward(input).toArray();
+
+				double diff = maxAbsDiffArray(outA, outB);
+				log("attempt " + i + " reuseOff directBlock odd9 diff=" + String.format("%.3e", diff));
+				if (diff > 1e-5) {
+					saveProfile(profileA, dir + "/reuseOff_divergent_A.xml");
+					saveProfile(profileB, dir + "/reuseOff_divergent_B.xml");
+					log("saved divergent reuse-off pair (diff=" + diff + ", A=host/cold, B=device/warm)");
+					compiledA.destroy();
+					compiledB.destroy();
+					a.destroy();
+					b.destroy();
+					break;
+				}
+				compiledA.destroy();
+				compiledB.destroy();
+				a.destroy();
+				b.destroy();
+			}
+		} finally {
+			ScopeSettings.enableInstructionSetReuse = previousReuse;
+		}
+		Hardware.getLocalHardware().assignProfile(null);
+	}
+
+	/**
+	 * Captures a genuinely divergent cold-vs-warm profile pair for the minimal self-attention sub-block
+	 * at odd seqLen. Because the divergence is probabilistic per random weights, this clears the
+	 * instruction-set reuse cache and compiles the same graph twice (A cold, B warm) repeatedly until
+	 * the two outputs differ, then saves both profiles so the generated reduction kernels can be diffed
+	 * with the profile analyzer. {@code _A.xml} is the cold compile, {@code _B.xml} the warm one.
+	 */
+	@Test(timeout = 600000)
+	public void saveDivergentColdWarmProfiles() {
+		String dir = outputDir();
+		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+
+		int attempts = 12;
+		for (int i = 0; i < attempts; i++) {
+			Map<String, PackedCollection> block = blockWeights();
+			PackedCollection inputOdd = new PackedCollection(shape(BATCH, AUDIO + 1, DIM)).randnFill();
+
+			computer.clearInstructionsCache();
+			OperationProfileNode profileA = new OperationProfileNode("attnOnly_odd9_A");
+			Hardware.getLocalHardware().assignProfile(profileA);
+			Model a = attnOnlyModel(AUDIO + 1, block);
+			CompiledModel compiledA = a.compile(false, profileA);
+			double[] outA = compiledA.forward(inputOdd).toArray();
+
+			OperationProfileNode profileB = new OperationProfileNode("attnOnly_odd9_B");
+			Hardware.getLocalHardware().assignProfile(profileB);
+			Model b = attnOnlyModel(AUDIO + 1, block);
+			CompiledModel compiledB = b.compile(false, profileB);
+			double[] outB = compiledB.forward(inputOdd).toArray();
+
+			double diff = maxAbsDiffArray(outA, outB);
+			log("attempt " + i + " cold-vs-warm attnOnly odd9 diff=" + String.format("%.3e", diff));
+			if (diff > 1e-5) {
+				saveProfile(profileA, dir + "/divergent_attnOnly_odd9_A.xml");
+				saveProfile(profileB, dir + "/divergent_attnOnly_odd9_B.xml");
+				log("saved divergent pair (diff=" + diff + ", A=cold, B=warm)");
+				compiledA.destroy();
+				compiledB.destroy();
+				a.destroy();
+				b.destroy();
+				break;
+			}
+			compiledA.destroy();
+			compiledB.destroy();
+			a.destroy();
+			b.destroy();
+		}
+		Hardware.getLocalHardware().assignProfile(null);
+	}
+
+	/**
+	 * Names the colliding operations: enables {@link DefaultComputer#enableReuseCollisionLog} and
+	 * compiles the minimal divergent graph (self-attention sub-block at odd seqLen) twice, so the
+	 * instruction-set reuse cache logs every hit where the cached computation's description differs from
+	 * the requesting one. Each {@code reuseSignatureCollision} line identifies a specific operation that
+	 * is being reused for a non-equivalent computation because the signature is too coarse.
+	 */
+	@Test(timeout = 600000)
+	public void reuseCollisionDiagnostic() {
+		Map<String, PackedCollection> block = blockWeights();
+		PackedCollection inputOdd = new PackedCollection(shape(BATCH, AUDIO + 1, DIM)).randnFill();
+
+		boolean previous = DefaultComputer.enableReuseCollisionLog;
+		DefaultComputer.enableReuseCollisionLog = true;
+		try {
+			log("==== reuse signature-collision diagnostic (attn-only odd seqLen=9, two compiles) ====");
+			for (int i = 0; i < 2; i++) {
+				Model model = attnOnlyModel(AUDIO + 1, block);
+				CompiledModel compiled = model.compile(false, null);
+				compiled.forward(inputOdd);
+				compiled.destroy();
+				model.destroy();
+			}
+		} finally {
+			DefaultComputer.enableReuseCollisionLog = previous;
+		}
+		Hardware.getLocalHardware().assignProfile(null);
+	}
+
+	/**
+	 * Confounder-free value sequence: computes a no-reuse reference, then compiles the same graph
+	 * several times with reuse enabled while keeping every compiled model alive (so no destroy can evict
+	 * cache entries), reporting each compile's value difference from the reference. This shows exactly
+	 * which compiles match the canonical (no-reuse) result. If the pattern is {@code [diff, 0, 0, 0]} the
+	 * only divergent compile is the first (cold) one and every warm compile is canonical.
+	 */
+	@Test(timeout = 600000)
+	public void valueSequenceVsReference() {
+		Map<String, PackedCollection> block = blockWeights();
+		PackedCollection input = new PackedCollection(shape(BATCH, AUDIO + 1, DIM)).randnFill();
+
+		boolean previousReuse = ScopeSettings.enableInstructionSetReuse;
+		ScopeSettings.enableInstructionSetReuse = false;
+		double[] reference;
+		try {
+			reference = compileForwardToArray(() -> directBlockModel(AUDIO + 1, block), input);
+		} finally {
+			ScopeSettings.enableInstructionSetReuse = previousReuse;
+		}
+
+		int compiles = 4;
+		List<Model> models = new ArrayList<>();
+		List<CompiledModel> compiled = new ArrayList<>();
+		List<String> diffs = new ArrayList<>();
+		for (int i = 0; i < compiles; i++) {
+			Model model = directBlockModel(AUDIO + 1, block);
+			CompiledModel cm = model.compile(false, null);
+			double[] out = cm.forward(input).toArray();
+			models.add(model);
+			compiled.add(cm);
+			diffs.add(String.format("%.3e", maxAbsDiffArray(reference, out)));
+		}
+		log("value sequence vs no-reuse reference (all models kept alive): " + diffs);
+		compiled.forEach(CompiledModel::destroy);
+		models.forEach(Model::destroy);
+		Hardware.getLocalHardware().assignProfile(null);
+	}
+
+	/**
+	 * Compiles the model produced by {@code builder} once and returns its forward output as a host
+	 * array. The model and compiled model are destroyed after the host copy is taken.
+	 *
+	 * @param builder supplies a fresh model
+	 * @param input   the input to run
+	 * @return the forward output copied to a host array
+	 */
+	private double[] compileForwardToArray(Supplier<Model> builder, PackedCollection input) {
+		Model model = builder.get();
+		CompiledModel compiled = model.compile(false, null);
+		double[] out = compiled.forward(input).toArray();
+		compiled.destroy();
+		model.destroy();
+		return out;
+	}
+
+	/**
+	 * Returns the maximum absolute element-wise difference between two host arrays.
+	 *
+	 * @param x the first array
+	 * @param y the second array
+	 * @return the maximum absolute difference
+	 */
+	private double maxAbsDiffArray(double[] x, double[] y) {
+		double max = 0.0;
+		for (int i = 0; i < x.length; i++) {
+			double d = Math.abs(x[i] - y[i]);
+			if (d > max) max = d;
+		}
+		return max;
+	}
+
+	/**
+	 * Numeric confirmation of H8: compiles the odd-sequence-length block twice with instruction-set
+	 * reuse enabled (the default — compile A cold/fused, compile B warm/decomposed, expected to diverge)
+	 * and again with reuse disabled (both compiles fused, expected to be byte-identical). Demonstrates
+	 * that the cross-compile numeric divergence is caused by reuse, not by the model graph. Run alone in
+	 * a fresh JVM so the reuse-enabled compile A is genuinely cold.
+	 */
+	@Test(timeout = 600000)
+	public void numericDeterminismReuseOff() {
+		Map<String, PackedCollection> block = blockWeights();
+		PackedCollection inputOdd = new PackedCollection(shape(BATCH, AUDIO + 1, DIM)).randnFill();
+		double diffReuseOn = compileTwiceMaxAbsDiff("odd9 reuseON",
+				() -> directBlockModel(AUDIO + 1, block), inputOdd, null);
+		log("odd9 reuseON numericDiff=" + diffReuseOn + " (A=cold, B=warm)");
+
+		boolean previousReuse = ScopeSettings.enableInstructionSetReuse;
+		ScopeSettings.enableInstructionSetReuse = false;
+		double diffReuseOff;
+		try {
+			Map<String, PackedCollection> freshBlock = blockWeights();
+			PackedCollection freshInputOdd = new PackedCollection(shape(BATCH, AUDIO + 1, DIM)).randnFill();
+			diffReuseOff = compileTwiceMaxAbsDiff("odd9 reuseOFF",
+					() -> directBlockModel(AUDIO + 1, freshBlock), freshInputOdd, null);
+		} finally {
+			ScopeSettings.enableInstructionSetReuse = previousReuse;
+		}
+		log("odd9 reuseOFF numericDiff=" + diffReuseOff);
+		log(String.format("H8 numeric: reuseON diff=%.3e, reuseOFF diff=%.3e", diffReuseOn, diffReuseOff));
+		Hardware.getLocalHardware().assignProfile(null);
+	}
+
+	/**
+	 * Compiles the model produced by {@code builder} {@code repetitions} times, running each compile on
+	 * {@code input}, and logs the per-compile structural fingerprint plus the number of distinct
+	 * fingerprints observed across the sequence.
+	 *
+	 * @param label       label for logging
+	 * @param repetitions number of independent compiles
+	 * @param builder     supplies a fresh model per compile (same weights, new graph objects)
+	 * @param input       shared input fed to every compile
+	 */
+	private void fingerprintSequence(String label, int repetitions, Supplier<Model> builder,
+									 PackedCollection input) {
+		List<String> fingerprints = new ArrayList<>();
+		for (int i = 0; i < repetitions; i++) {
+			Model model = builder.get();
+			OperationProfileNode profile = new OperationProfileNode(label + "_" + i);
+			Hardware.getLocalHardware().assignProfile(profile);
+			CompiledModel compiled = model.compile(false, profile);
+			compiled.forward(input);
+			int treeNodes = treeNodeCount(profile);
+			int kernelSources = totalKernelSources(profile);
+			fingerprints.add(treeNodes + "/" + kernelSources);
+			log(String.format("%-28s compile[%d] treeNodes=%d kernelSources=%d",
+					label, i, treeNodes, kernelSources));
+			compiled.destroy();
+			model.destroy();
+		}
+		log(String.format("%-28s sequence=%s distinctFingerprints=%d",
+				label, fingerprints, fingerprints.stream().distinct().count()));
+	}
+
+	/**
+	 * Counts the nodes in an operation-profile tree, inclusive of the root.
+	 *
+	 * @param node the subtree root
+	 * @return the total node count
+	 */
+	private int treeNodeCount(OperationProfileNode node) {
+		int total = 1;
+		for (OperationProfileNode child : node.getChildren()) {
+			total += treeNodeCount(child);
+		}
+		return total;
+	}
+
+	/**
+	 * Counts the total number of generated kernel sources recorded across an operation-profile tree.
+	 * A small count indicates the reductions were fused into compact kernels; a large count indicates
+	 * they were emitted as a swarm of separate kernels.
+	 *
+	 * @param node the profile root
+	 * @return the total number of generated kernel sources
+	 */
+	private int totalKernelSources(OperationProfileNode node) {
+		int total = 0;
+		if (node.getOperationSources() != null) {
+			total += node.getOperationSources().values().stream().mapToInt(List::size).sum();
+		}
+		for (OperationProfileNode child : node.getChildren()) {
+			total += totalKernelSources(child);
+		}
+		return total;
 	}
 }
