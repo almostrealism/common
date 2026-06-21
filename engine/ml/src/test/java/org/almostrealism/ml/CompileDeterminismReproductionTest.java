@@ -601,6 +601,134 @@ public class CompileDeterminismReproductionTest extends TestSuiteBase implements
 		return String.format("%-44s maxAbsDiff=%.3e %s", label, diff, diff > 0.0 ? "(DIVERGENT)" : "(identical)");
 	}
 
+	/**
+	 * Minimal reproduction attempt: tiny graphs with a few small (aggregatable) weights, each compiled
+	 * twice over shared weights/input so memory residence flips between the two compiles. If argument
+	 * aggregation is the cause of the cross-compile divergence, one of these trivial graphs should
+	 * diverge between its two compiles. Each variant is tried several times because the divergence is
+	 * probabilistic.
+	 */
+	@Test(timeout = 600000)
+	public void minimalAggregationRepro() {
+		int n = 8;
+		double maxV1 = 0.0;
+		double maxV2 = 0.0;
+		double maxV3 = 0.0;
+		for (int attempt = 0; attempt < 8; attempt++) {
+			PackedCollection x = new PackedCollection(shape(n)).randnFill();
+			PackedCollection a = new PackedCollection(shape(n)).randnFill();
+			PackedCollection b = new PackedCollection(shape(n)).randnFill();
+
+			// V1: input * a + b  (weights aggregated, input is the dynamic model input).
+			Supplier<Model> v1 = () -> {
+				Model m = new Model(shape(n));
+				m.sequential().add(layer("v1", shape(n), shape(n),
+						in -> c(in).multiply(cp(a)).add(cp(b))));
+				return m;
+			};
+			maxV1 = Math.max(maxV1, maxAbsDiffArray(compileForwardToArray(v1, x), compileForwardToArray(v1, x)));
+
+			// V2: materialize an intermediate, then intermediate * a + b  (so the consumer of the
+			// aggregated weights reads a materialized buffer, mirroring the ff_norm case).
+			PackedCollection c0 = new PackedCollection(shape(n)).randnFill();
+			Supplier<Model> v2 = () -> {
+				Model m = new Model(shape(n));
+				SequentialBlock seq = m.sequential();
+				seq.add(layer("v2a", shape(n), shape(n), in -> c(in).add(cp(c0))));
+				seq.add(layer("v2b", shape(n), shape(n), in -> c(in).multiply(cp(a)).add(cp(b))));
+				return m;
+			};
+			maxV2 = Math.max(maxV2, maxAbsDiffArray(compileForwardToArray(v2, x), compileForwardToArray(v2, x)));
+
+			// V3: a weight that is a VIEW at a non-zero offset into a larger reservation (tests whether
+			// the aggregate copy ignores the operand's own offset).
+			PackedCollection big = new PackedCollection(shape(2 * n)).randnFill();
+			PackedCollection bView = big.range(shape(n), n);
+			Supplier<Model> v3 = () -> {
+				Model m = new Model(shape(n));
+				m.sequential().add(layer("v3", shape(n), shape(n),
+						in -> c(in).multiply(cp(a)).add(cp(bView))));
+				return m;
+			};
+			maxV3 = Math.max(maxV3, maxAbsDiffArray(compileForwardToArray(v3, x), compileForwardToArray(v3, x)));
+		}
+
+		// V4 vs V5: a layer-norm that REDUCES over an ODD axis (9) vs an EVEN axis (8), each with
+		// aggregated gamma/beta. Combines the two ingredients the trivial cases above lack: a reduction
+		// and an odd length.
+		double maxV4 = 0.0;
+		double maxV5 = 0.0;
+		for (int attempt = 0; attempt < 8; attempt++) {
+			PackedCollection g9 = new PackedCollection(shape(9)).randnFill();
+			PackedCollection b9 = new PackedCollection(shape(9)).randnFill();
+			PackedCollection x9 = new PackedCollection(shape(9)).randnFill();
+			Supplier<Model> v4 = () -> {
+				Model m = new Model(shape(9));
+				m.sequential().add(norm(g9, b9));
+				return m;
+			};
+			maxV4 = Math.max(maxV4, maxAbsDiffArray(compileForwardToArray(v4, x9), compileForwardToArray(v4, x9)));
+
+			PackedCollection g8 = new PackedCollection(shape(8)).randnFill();
+			PackedCollection b8 = new PackedCollection(shape(8)).randnFill();
+			PackedCollection x8 = new PackedCollection(shape(8)).randnFill();
+			Supplier<Model> v5 = () -> {
+				Model m = new Model(shape(8));
+				m.sequential().add(norm(g8, b8));
+				return m;
+			};
+			maxV5 = Math.max(maxV5, maxAbsDiffArray(compileForwardToArray(v5, x8), compileForwardToArray(v5, x8)));
+		}
+
+		log("minimalAggregationRepro maxDiff: v1(in*a+b)=" + String.format("%.3e", maxV1)
+				+ " v2(materialized*a+b)=" + String.format("%.3e", maxV2)
+				+ " v3(view-offset-weight)=" + String.format("%.3e", maxV3)
+				+ " v4(norm-ODD-9)=" + String.format("%.3e", maxV4)
+				+ " v5(norm-even-8)=" + String.format("%.3e", maxV5));
+		Hardware.getLocalHardware().assignProfile(null);
+	}
+
+	/**
+	 * Minimal reuse-OFF test: a single layer-norm that reduces over an ODD axis (9) vs an EVEN axis (8),
+	 * each compiled twice over shared weights/input (residence flips between the two compiles). Reuse is
+	 * disabled so this is purely about aggregation. Few compiles, to avoid exhausting the operator pool.
+	 */
+	@Test(timeout = 600000)
+	public void minimalNormOddEvenReuseOff() {
+		boolean previousReuse = ScopeSettings.enableInstructionSetReuse;
+		ScopeSettings.enableInstructionSetReuse = false;
+		double maxOdd = 0.0;
+		double maxEven = 0.0;
+		try {
+			for (int attempt = 0; attempt < 5; attempt++) {
+				PackedCollection g9 = new PackedCollection(shape(9)).randnFill();
+				PackedCollection bn9 = new PackedCollection(shape(9)).randnFill();
+				PackedCollection x9 = new PackedCollection(shape(9)).randnFill();
+				Supplier<Model> odd = () -> {
+					Model m = new Model(shape(9));
+					m.sequential().add(norm(g9, bn9));
+					return m;
+				};
+				maxOdd = Math.max(maxOdd, maxAbsDiffArray(compileForwardToArray(odd, x9), compileForwardToArray(odd, x9)));
+
+				PackedCollection g8 = new PackedCollection(shape(8)).randnFill();
+				PackedCollection bn8 = new PackedCollection(shape(8)).randnFill();
+				PackedCollection x8 = new PackedCollection(shape(8)).randnFill();
+				Supplier<Model> even = () -> {
+					Model m = new Model(shape(8));
+					m.sequential().add(norm(g8, bn8));
+					return m;
+				};
+				maxEven = Math.max(maxEven, maxAbsDiffArray(compileForwardToArray(even, x8), compileForwardToArray(even, x8)));
+			}
+		} finally {
+			ScopeSettings.enableInstructionSetReuse = previousReuse;
+		}
+		log("minimalNormOddEvenReuseOff maxDiff: normODD9=" + String.format("%.3e", maxOdd)
+				+ " normEVEN8=" + String.format("%.3e", maxEven));
+		Hardware.getLocalHardware().assignProfile(null);
+	}
+
 	// ---- Structural fingerprint probe (H7 warmup-state vs identity-hash ordering) ---------------
 
 	/**
