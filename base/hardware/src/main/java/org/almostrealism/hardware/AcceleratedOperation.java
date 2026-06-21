@@ -62,36 +62,22 @@ import java.util.List;
  * 1. Scope Preparation:  prepareScope() -> creates ArgumentMap, prepares inputs
  * 2. Compilation:        load() -> compiles or retrieves cached kernel/native code
  * 3. Argument Setup:     getProcessDetails() -> prepares arguments for execution
- * 4. Preprocessing:      preApply() -> aggregates arguments if needed
- * 5. Execution:          operator.accept() -> runs kernel/native code
- * 6. Postprocessing:     postApply() -> disaggregates results
- * 7. Cleanup:            destroy() -> releases resources
+ * 4. Execution:          operator.accept() -> runs kernel/native code
+ * 5. Cleanup:            destroy() -> releases resources
  * </pre>
  *
- * <h2>Argument Mapping and Aggregation</h2>
+ * <h2>Argument Mapping</h2>
  *
  * <p>For kernel operations, {@link AcceleratedOperation} automatically manages argument preparation
  * via {@link MemoryDataArgumentMap}:</p>
  * <pre>{@code
  * // When scope is prepared:
  * prepareScope() {
- *     // Creates MemoryDataArgumentMap with aggregation support
- *     argumentMap = MemoryDataArgumentMap.create(context, metadata, ...);
+ *     // Creates MemoryDataArgumentMap
+ *     argumentMap = MemoryDataArgumentMap.create(context, metadata, isKernel());
  *
  *     // Maps operation inputs to kernel arguments
  *     prepareArguments(argumentMap);
- * }
- *
- * // Before execution:
- * preApply() {
- *     // Copies CPU memory -> aggregated GPU buffer
- *     argumentMap.getPrepareData().run();
- * }
- *
- * // After execution:
- * postApply() {
- *     // Copies aggregated buffer -> original CPU memory
- *     argumentMap.getPostprocessData().run();
  * }
  * }</pre>
  *
@@ -101,7 +87,7 @@ import java.util.List;
  * <pre>{@code
  * // Kernel operation (GPU)
  * AcceleratedOperation kernelOp = new MyKernelOperation(context, true);
- * kernelOp.prepareScope();  // Creates argumentMap with aggregation
+ * kernelOp.prepareScope();  // Creates argumentMap
  * kernelOp.load();          // Compiles OpenCL/Metal kernel
  *
  * // Non-kernel operation (JNI)
@@ -152,7 +138,6 @@ import java.util.List;
  * <ul>
  *   <li>{@link #getInstructionSetManager()} - Provide the manager for this operation type</li>
  *   <li>{@link #getExecutionKey()} - Create a unique key for caching this operation</li>
- *   <li>{@link #isAggregatedInput()} - Whether arguments should be aggregated</li>
  *   <li>{@link #getOutputArgumentIndex()} - Index of output argument in kernel signature</li>
  * </ul>
  *
@@ -307,16 +292,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	/**
-	 * Returns whether this operation uses aggregated input memory.
-	 *
-	 * <p>Operations with many small inputs benefit from aggregation, which reduces
-	 * kernel launch overhead and improves memory access patterns on GPU.</p>
-	 *
-	 * @return true if inputs are aggregated, false otherwise
-	 */
-	public abstract boolean isAggregatedInput();
-
-	/**
 	 * Returns the index of the output argument in the argument list.
 	 *
 	 * @return The output argument index
@@ -339,8 +314,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		resetArguments();
 
 		if (argumentMapping) {
-			argumentMap = MemoryDataArgumentMap.create(getComputeContext(), getMetadata(),
-					isAggregatedInput() ? i -> createAggregatedInput(i, i) : null, isKernel());
+			argumentMap = MemoryDataArgumentMap.create(getComputeContext(), getMetadata(), isKernel());
 			prepareArguments(argumentMap);
 		}
 
@@ -390,30 +364,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	@Override
 	public void prepareArguments(ArgumentMap map) {
 		if (getInputs() != null) ScopeLifecycle.prepareArguments(getInputs().stream(), map);
-	}
-
-	/**
-	 * Executes pre-application data preparation.
-	 *
-	 * <p>Runs the prepare data runnable from the argument map, which typically
-	 * handles memory transfers and argument packing before kernel dispatch.</p>
-	 */
-	public void preApply() {
-		if (argumentMap != null) {
-			argumentMap.getPrepareData().get().run();
-		}
-	}
-
-	/**
-	 * Executes post-application data processing.
-	 *
-	 * <p>Runs the postprocess data runnable from the argument map, which typically
-	 * handles result retrieval and memory cleanup after kernel execution.</p>
-	 */
-	public void postApply() {
-		if (argumentMap != null) {
-			argumentMap.getPostprocessData().get().run();
-		}
 	}
 
 	/**
@@ -609,9 +559,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			// Prepare the operator
 			Execution operator = setupOperator(process);
 
-			// "processing" means this operation needs argument AGGREGATION: its arguments are copied
-			// into a single shared memory reservation (prepare/preApply, below) to keep the kernel's
-			// argument count low, and the result is copied back out afterward (postprocess/postApply).
+			// "processing" means this operation needs cross-provider memory replacement: its arguments
+			// are copied into a shared memory reservation on the kernel's provider (prepare, below) and
+			// the result is copied back out afterward (postprocess).
 			//
 			// Aggregation is the signal that this operation CANNOT be batched into the provider's
 			// shared command buffer. The de-aggregation copies between memory in DIFFERENT
@@ -636,7 +586,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 			// Preprocessing
 			if (processing) {
-				preApply();
 				process.getPrepare().get().run();
 			}
 
@@ -667,7 +616,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				}
 
 				process.getPostprocess().get().run();
-				postApply();
 			}
 		});
 
@@ -708,16 +656,13 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	/**
-	 * Determines whether preprocessing (memory aggregation) is required before kernel execution.
+	 * Determines whether preprocessing (cross-provider memory replacement) is required before kernel execution.
 	 *
 	 * @param process The process details to check
 	 * @return true if preprocessing is required, false otherwise
 	 */
 	protected boolean isPreprocessingRequired(AcceleratedProcessDetails process) {
-		if (!process.isEmpty())
-			return true;
-
-		return argumentMap != null && argumentMap.hasReplacements();
+		return !process.isEmpty();
 	}
 
 	/**
