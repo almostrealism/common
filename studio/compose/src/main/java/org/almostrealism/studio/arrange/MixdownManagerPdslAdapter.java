@@ -410,7 +410,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * @param taps       FIR taps per response
 	 * @return the response table
 	 */
-	private static PackedCollection biquadResponseTable(boolean high, int sampleRate, int taps) {
+	public static PackedCollection biquadResponseTable(boolean high, int sampleRate, int taps) {
 		int bins = FILTER_TABLE_BINS;
 		int tail = taps - 1;
 		double r = FixedFilterChromosome.defaultResonance;
@@ -686,7 +686,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * @param config structural configuration
 	 * @return a {@code [channels]} {@link PackedCollection} of per-tap delay sample counts
 	 */
-	private static PackedCollection reverbTapDelays(Config config) {
+	public static PackedCollection reverbTapDelays(Config config) {
 		int ring = REVERB_FRAMES * config.signalSize;
 		// fraction[ch] = 0.3 + 0.55*(ch+1)/(channels+1); delay[ch] = floor(fraction * ring).
 		CollectionProducer fraction = ADAPTER.integers(0, config.channels).add(1.0)
@@ -707,7 +707,7 @@ public class MixdownManagerPdslAdapter implements CellFeatures, OptimizeFactorFe
 	 * @param gain scale factor / resulting spectral radius
 	 * @return an {@code [n, n]} {@link PackedCollection} feedback matrix
 	 */
-	private static PackedCollection householderMatrix(int n, double gain) {
+	public static PackedCollection householderMatrix(int n, double gain) {
 		// gain * (I - off), with off = 2/n applied to every element:
 		// diagonal = gain*(1 - off), off-diagonal = -gain*off.
 		double off = 2.0 / n;

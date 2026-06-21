@@ -258,8 +258,8 @@ public class CodingAgentJob extends GitManagedJob {
      */
     private PhaseConfigBundle phaseConfigBundle = PhaseConfigBundle.EMPTY;
 
-    /** Builder used to assemble the MCP tool configuration JSON for Claude Code. */
-    private final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
+    /** Builder used to assemble the MCP tool configuration JSON for Claude Code. Package private so the same-package pushed-tools test can assert propagated state without reflection. */
+    final McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
     /** Downloads pushed MCP tool source files before each agent launch. */
     private final ManagedToolsDownloader toolsDownloader = new ManagedToolsDownloader(mcpConfigBuilder);
     /** Per-runner and per-model USD cost accumulation across every phase invocation. */

@@ -19,9 +19,6 @@ package io.flowtree.jobs;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -62,29 +59,6 @@ public class CodingAgentJobPushedToolsTest {
     private static final String CTRL_CONFIG = "{\"ar-secrets\":{"
         + "\"url\":\"http://0.0.0.0:7780/api/tools/ar-secrets\","
         + "\"tools\":[\"secret_list_names\",\"secret_render_file\"]}}";
-
-    /**
-     * Drives the private {@code configureMcpBuilder} method via reflection.
-     * The method is intentionally package-private/private on
-     * {@link CodingAgentJob}; this test bypasses that because the goal is
-     * to assert the builder receives the propagated state, not to widen
-     * the public surface.
-     */
-    private static void invokeConfigureMcpBuilder(CodingAgentJob job) throws Exception {
-        Method m = CodingAgentJob.class.getDeclaredMethod("configureMcpBuilder");
-        m.setAccessible(true);
-        m.invoke(job);
-    }
-
-    /**
-     * Reads the private {@code mcpConfigBuilder} field from the given job via reflection.
-     */
-    private static McpConfigBuilder readMcpBuilder(CodingAgentJob job) throws Exception {
-        Field f = CodingAgentJob.class.getDeclaredField("mcpConfigBuilder");
-        f.setAccessible(true);
-        return (McpConfigBuilder) f.get(job);
-    }
-
 
     /**
      * Verifies that {@link CodingAgentJobFactory#setPushedToolsConfig} stores the value
@@ -157,8 +131,8 @@ public class CodingAgentJobPushedToolsTest {
         CodingAgentJob jobBeforeWire = (CodingAgentJob) factoryAtAgent.nextJob();
         CodingAgentJob job = GitManagedJobSerializationTest.roundTrip(jobBeforeWire);
 
-        invokeConfigureMcpBuilder(job);
-        McpConfigBuilder builder = readMcpBuilder(job);
+        job.configureMcpBuilder();
+        McpConfigBuilder builder = job.mcpConfigBuilder;
 
         String mcp = builder.buildMcpConfig();
         assertTrue("MCP config must register ar-secrets server: " + mcp,
@@ -192,8 +166,8 @@ public class CodingAgentJobPushedToolsTest {
         job.setArManagerUrl("http://ar-manager:8010");
         job.setArManagerToken("armt_tmp_x");
 
-        invokeConfigureMcpBuilder(job);
-        McpConfigBuilder builder = readMcpBuilder(job);
+        job.configureMcpBuilder();
+        McpConfigBuilder builder = job.mcpConfigBuilder;
         String mcp = builder.buildMcpConfig();
         assertTrue("Should still emit ar-manager HTTP entry: " + mcp,
                 mcp.contains("\"ar-manager\""));
