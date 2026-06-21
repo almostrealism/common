@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ComputationBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
@@ -247,18 +246,6 @@ public class TraversableDeltaComputation
 		return enableAtomicScope ? getShape().traverseEach().getCountLong() : super.getCountLong();
 	}
 
-	/**
-	 * Prepares the argument mapping for kernel compilation.
-	 *
-	 * <p>Delegates to the parent implementation to prepare standard argument mappings
-	 * for the input producers.</p>
-	 *
-	 * @param map The {@link ArgumentMap} for mapping arguments to kernel parameters
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-	}
 
 	/**
 	 * Prepares the computation scope for kernel compilation.

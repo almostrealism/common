@@ -31,26 +31,14 @@ import java.util.stream.Stream;
  *
  * <h2>Lifecycle Phases</h2>
  * <ol>
- *   <li>{@link #prepareArguments(ArgumentMap)} - Register required arguments before compilation</li>
  *   <li>{@link #prepareScope(ScopeInputManager, KernelStructureContext)} - Configure scope during compilation</li>
  *   <li>{@link #resetArguments()} - Clean up state after execution</li>
  * </ol>
  *
- * @see ArgumentMap
  * @see ScopeInputManager
  * @see KernelStructureContext
  */
 public interface ScopeLifecycle {
-	/**
-	 * Prepares arguments by registering them with the argument map.
-	 *
-	 * <p>Called before scope compilation to collect all required arguments
-	 * from participating components.</p>
-	 *
-	 * @param map the argument map to register arguments with
-	 */
-	default void prepareArguments(ArgumentMap map) { }
-
 	/**
 	 * Prepares the scope for compilation within the given context.
 	 *
@@ -69,20 +57,6 @@ public interface ScopeLifecycle {
 	 * to be reused with different arguments.</p>
 	 */
 	default void resetArguments() { }
-
-	/**
-	 * Calls {@link #prepareArguments(ArgumentMap)} on every element in the stream that implements
-	 * {@link ScopeLifecycle}, ignoring non-lifecycle objects.
-	 *
-	 * @param potentialLifecycles a stream of objects that may implement ScopeLifecycle
-	 * @param map the argument map to pass to each lifecycle component
-	 */
-	static void prepareArguments(Stream<?> potentialLifecycles, ArgumentMap map) {
-		potentialLifecycles
-				.map(p -> p instanceof ScopeLifecycle ? (ScopeLifecycle) p : null)
-				.filter(Objects::nonNull)
-				.forEach(sl -> sl.prepareArguments(map));
-	}
 
 	/**
 	 * Calls {@link #prepareScope(ScopeInputManager, KernelStructureContext)} on every element

@@ -16,7 +16,6 @@
 
 package org.almostrealism.hardware.computations;
 
-import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.code.ScopeInputManager;
@@ -206,11 +205,6 @@ public class Periodic extends OperationComputationAdapter<MemoryData>
 		return op;
 	}
 
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-		atom.prepareArguments(map);
-	}
 
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {

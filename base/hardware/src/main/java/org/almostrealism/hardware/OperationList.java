@@ -16,7 +16,6 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ComputableParallelProcess;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.NamedFunction;
@@ -688,9 +687,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	/** Thread-local flag set when a kernel abort has been triggered; holds the offending MemoryData. */
 	private static ThreadLocal<MemoryData> abortFlag;
-	/** If true, abort when argument evaluation fails; if false, abort when scope construction fails. */
-	private static boolean abortArgs;
-	/** If true, abort when scope construction (rather than argument evaluation) fails. */
+	/** If true, the abort operation's scope has already been prepared. */
 	private static boolean abortScope;
 	/** Optional abort handler invoked when compilation or evaluation is aborted. */
 	private static Abort abort;
@@ -942,24 +939,6 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		}).sum();
 
 		return nonComputations == 0;
-	}
-
-	/**
-	 * Prepares arguments for all operations in this list.
-	 *
-	 * <p>Delegates to {@link ScopeLifecycle#prepareArguments} for all operations.
-	 * If an abort flag is set, also prepares the abort operation.</p>
-	 *
-	 * @param map The argument map to populate
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		ScopeLifecycle.prepareArguments(stream(), map);
-		if (abortFlag != null & !abortArgs) {
-			if (abort == null) abort = new Abort(abortFlag::get);
-			abortArgs = true;
-			abort.prepareArguments(map);
-		}
 	}
 
 	/**

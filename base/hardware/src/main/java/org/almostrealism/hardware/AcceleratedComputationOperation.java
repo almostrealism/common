@@ -16,7 +16,6 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
@@ -408,21 +407,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	@Override
 	protected int getOutputArgumentIndex() {
 		return getInstructionSetManager().getOutputArgumentIndex(getExecutionKey());
-	}
-
-	/**
-	 * Prepares argument mappings for kernel execution.
-	 *
-	 * <p>Delegates to both the superclass and the {@link ComputationScopeCompiler}
-	 * to ensure all arguments (operation-level and computation-level) are properly
-	 * mapped before execution.</p>
-	 *
-	 * @param map The argument map to populate
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-		getCompiler().prepareArguments(map);
 	}
 
 	/**

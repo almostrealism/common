@@ -16,7 +16,6 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.code.ScopeInputManager;
@@ -388,17 +387,6 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		}
 
 		return new PassThroughProducer<>(shape, argIndex);
-	}
-
-	/**
-	 * Prepares arguments by adding this producer to the argument map.
-	 *
-	 * @param map The argument map to populate
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-		map.add(this);
 	}
 
 	/**

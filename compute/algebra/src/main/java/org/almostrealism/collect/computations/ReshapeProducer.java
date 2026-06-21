@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.Algebraic;
@@ -488,12 +487,6 @@ public class ReshapeProducer
 		}
 	}
 
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		if (producer instanceof ScopeLifecycle) {
-			((ScopeLifecycle) producer).prepareArguments(map);
-		}
-	}
 
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {

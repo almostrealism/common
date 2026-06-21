@@ -16,7 +16,6 @@
 
 package org.almostrealism.time;
 
-import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.OperationComputation;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
@@ -359,11 +358,6 @@ public class TemporalRunner implements OperationComputation<Void>, Setup, Tempor
 	@Override
 	public Supplier<Runnable> tick() { return run; }
 
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		ScopeLifecycle.prepareArguments(Stream.of(setup), map);
-		ScopeLifecycle.prepareArguments(Stream.of(run), map);
-	}
 
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {

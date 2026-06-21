@@ -16,7 +16,6 @@
 
 package org.almostrealism.color.computations;
 
-import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.Shape;
@@ -126,12 +125,6 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<PackedCo
 		return (CollectionProducer) ((Shape) getGenerated()).reshape(shape);
 	}
 
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		if (p instanceof Computation) {
-			((Computation) p).prepareArguments(map);
-		}
-	}
 
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {

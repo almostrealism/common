@@ -16,7 +16,6 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.Shape;
@@ -112,16 +111,6 @@ public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, PackedCol
 	@Override
 	public Producer<PackedCollection> getRank() { return rank; }
 
-	/**
-	 * Prepares arguments for both the producer and rank.
-	 *
-	 * @param map  the argument map
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		ScopeLifecycle.prepareArguments(Stream.of(getProducer()), map);
-		ScopeLifecycle.prepareArguments(Stream.of(getRank()), map);
-	}
 
 	/**
 	 * Prepares scope for both the producer and rank.

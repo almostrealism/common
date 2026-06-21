@@ -16,7 +16,6 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DefaultScopeInputManager;
@@ -75,9 +74,6 @@ import java.util.List;
  * prepareScope() {
  *     // Creates MemoryDataArgumentMap
  *     argumentMap = MemoryDataArgumentMap.create(context, metadata);
- *
- *     // Maps operation inputs to kernel arguments
- *     prepareArguments(argumentMap);
  * }
  * }</pre>
  *
@@ -305,7 +301,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		if (argumentMapping) {
 			argumentMap = MemoryDataArgumentMap.create(getComputeContext(), getMetadata());
-			prepareArguments(argumentMap);
 		}
 
 		prepareScope(argumentMap == null ?
@@ -342,18 +337,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		} catch (Exception e) {
 			throw new OperatorPoolExhaustedException(e);
 		}
-	}
-
-	/**
-	 * Prepares arguments for this operation by adding them to the argument map.
-	 *
-	 * <p>Delegates to {@link ScopeLifecycle#prepareArguments} for all inputs.</p>
-	 *
-	 * @param map The argument map to populate
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		if (getInputs() != null) ScopeLifecycle.prepareArguments(getInputs().stream(), map);
 	}
 
 	/**

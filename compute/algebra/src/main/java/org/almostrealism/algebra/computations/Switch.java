@@ -16,7 +16,6 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.code.ScopeInputManager;
@@ -91,16 +90,6 @@ public class Switch extends OperationComputationAdapter<PackedCollection> implem
 		return choices;
 	}
 
-	/**
-	 * Prepares arguments for this switch and all choice computations.
-	 *
-	 * @param map  the argument map
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-		choices.forEach(c -> c.prepareArguments(map));
-	}
 
 	/**
 	 * Prepares the scope for this switch and all choice computations.

@@ -16,7 +16,6 @@
 
 package org.almostrealism.hardware.computations;
 
-import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.code.ScopeInputManager;
@@ -101,12 +100,6 @@ import java.util.stream.IntStream;
  * <p>Delegates preparation to the atom computation:</p>
  *
  * <pre>{@code
- * @Override
- * public void prepareArguments(ArgumentMap map) {
- *     super.prepareArguments(map);
- *     atom.prepareArguments(map);  // Forward to atom
- * }
- *
  * @Override
  * public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
  *     super.prepareScope(manager, context);
@@ -209,12 +202,6 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 			return () -> IntStream.range(0, iterations).forEach(i -> r.run());
 		});
 		return op;
-	}
-
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-		atom.prepareArguments(map);
 	}
 
 	@Override

@@ -88,16 +88,6 @@ public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVar
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>This implementation is a no-op; suppliers are added via {@link #put}.
-	 *
-	 * @param key the supplier to add (ignored)
-	 */
-	@Override
-	public void add(Supplier key) { }
-
-	/**
-	 * {@inheritDoc}
-	 *
 	 * <p>If the key is a {@link Computation} that exposes an output variable via
 	 * {@link Computation#getOutputVariable()}, that variable is returned directly, reusing the
 	 * producer's output instead of allocating a new argument. Otherwise the cached variable for the

@@ -197,29 +197,6 @@ public abstract class ComputationBase<I, O, T>
 	protected LanguageOperations getLanguage() { return lang; }
 
 	/**
-	 * Prepares the arguments for this computation using the provided argument map.
-	 * This method is part of the {@link ScopeLifecycle} and is called during compilation.
-	 *
-	 * <p>If arguments have already been prepared (indicated by non-null argument
-	 * variables) and the same {@link ArgumentMap} is being used as on the
-	 * previous call, returns early to avoid redundant processing. If the
-	 * {@link ArgumentMap} differs (for example, because this node is being
-	 * recompiled into a new kernel), the cached argument state is invalidated
-	 * via {@link #resetArguments()} before being repopulated. This is necessary
-	 * because cached {@link ArrayVariable}s carry delegate pointers into the
-	 * previous map's aggregate buffer; reusing them under a different map would
-	 * cause the new kernel to read or write stale memory.
-	 *
-	 * @param map the argument map for resolving and registering arguments
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		if (getArgumentVariables() != null) return;
-		ScopeLifecycle.prepareArguments(getInputs().stream(), map);
-		getInputs().forEach(map::add);
-	}
-
-	/**
 	 * Prepares the scope for this computation using the provided scope input manager.
 	 * This method is part of the {@link ScopeLifecycle} and sets up the language
 	 * operations and argument variables.

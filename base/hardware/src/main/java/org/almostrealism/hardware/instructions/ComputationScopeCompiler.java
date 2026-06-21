@@ -16,7 +16,6 @@
 
 package org.almostrealism.hardware.instructions;
 
-import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
@@ -61,7 +60,6 @@ import java.util.stream.Collectors;
  *
  * <ol>
  *   <li><strong>Scope generation:</strong> Call {@code Computation.getScope()} to obtain AST</li>
- *   <li><strong>Argument preparation:</strong> Set up {@link io.almostrealism.code.ArgumentMap} for inputs</li>
  *   <li><strong>Scope simplification:</strong> Optimize and flatten the scope tree</li>
  *   <li><strong>Metadata enrichment:</strong> Add shape, signature, and traversal policy</li>
  *   <li><strong>Kernel structure support:</strong> Manage kernel series and traversal caching</li>
@@ -74,10 +72,6 @@ import java.util.stream.Collectors;
  * Computation<Matrix> computation = add(a, b);
  * ComputationScopeCompiler<Matrix> compiler =
  *     new ComputationScopeCompiler<>(computation);
- *
- * // Prepare arguments (optional, for Process trees)
- * ArgumentMap argMap = new ArgumentMap();
- * compiler.prepareArguments(argMap);
  *
  * // Prepare scope inputs
  * ScopeInputManager inputManager = ...;
@@ -334,17 +328,6 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	@Override
 	public KernelTraversalProvider getTraversalProvider() {
 		return isKernelStructureSupported() ? traversalGenerator : null;
-	}
-
-	/**
-	 * Prepares arguments for compilation by delegating to the underlying computation.
-	 *
-	 * @param map the argument map to populate
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		ScopeLifecycle.super.prepareArguments(map);
-		getComputation().prepareArguments(map);
 	}
 
 	/**

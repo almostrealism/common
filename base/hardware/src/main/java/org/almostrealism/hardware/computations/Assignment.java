@@ -16,7 +16,6 @@
 
 package org.almostrealism.hardware.computations;
 
-import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.Algebraic;
@@ -224,12 +223,6 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		}
 
 		return metadata;
-	}
-
-	/** {@inheritDoc} */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
 	}
 
 	/**

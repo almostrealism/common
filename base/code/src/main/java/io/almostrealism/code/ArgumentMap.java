@@ -19,29 +19,16 @@ package io.almostrealism.code;
 import io.almostrealism.scope.Variable;
 
 /**
- * Maps keys to scope variables, providing argument registration and lookup during compilation.
+ * Maps keys to scope variables, retrieving the variable for an argument during code generation.
  *
- * <p>{@link ArgumentMap} is used during scope preparation to register arguments that a
- * computation requires, and then to retrieve the corresponding variables during code
- * generation. The map tracks which arguments have been registered and creates variables
- * for them on demand.</p>
+ * <p>{@link ArgumentMap} is used during scope compilation to retrieve the variable corresponding
+ * to an argument key, creating it on demand.</p>
  *
  * @param <K> the type of keys used to identify arguments (typically Producer or Supplier)
  * @param <V> the type of variable created for arguments
- * @see ScopeLifecycle#prepareArguments(ArgumentMap)
  * @see Variable
  */
 public interface ArgumentMap<K, V extends Variable> {
-	/**
-	 * Registers an argument key with this map.
-	 *
-	 * <p>Called during argument preparation to indicate that a variable
-	 * will be needed for the given key.</p>
-	 *
-	 * @param key the key identifying the argument
-	 */
-	void add(K key);
-
 	/**
 	 * Retrieves or creates a variable for the given argument key.
 	 *
