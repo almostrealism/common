@@ -19,37 +19,42 @@ package org.almostrealism.hardware.mem;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.Memory;
+import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
+import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.ProviderAwareArgumentMap;
+import org.almostrealism.hardware.PassThroughProducer;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
  * Argument mapping for kernel compilation with provider adaptation.
  *
  * <p>{@link MemoryDataArgumentMap} manages the conversion of {@link MemoryData} instances into
- * kernel arguments. Arguments that share a root delegate are de-duplicated so that multiple views
- * into the same underlying memory resolve to a single kernel argument that delegates to the
- * appropriate offset.</p>
- *
- * <h2>Root Delegate Handling</h2>
- *
- * <p>Arguments that share a root delegate are automatically de-duplicated to avoid redundant
- * kernel arguments for views into the same underlying memory.</p>
+ * kernel arguments, recognizing when different argument suppliers represent the same underlying
+ * value so that a single kernel argument is shared:</p>
+ * <ul>
+ *   <li><b>PassThrough matching</b> &mdash; a {@link PassThroughProducer} key reuses an existing
+ *       argument with the same referenced argument index.</li>
+ *   <li><b>Provider value matching</b> &mdash; a {@link Provider} key reuses an existing argument
+ *       that provides the same value instance.</li>
+ *   <li><b>Root delegate handling</b> &mdash; views into the same underlying memory resolve to a
+ *       single kernel argument that delegates to the appropriate offset.</li>
+ * </ul>
  *
  * @param <S> Scope type
  * @param <A> Argument type
  */
-public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> {
+public class MemoryDataArgumentMap<S, A> extends SupplierArgumentMap<S, A> {
 	/** Optional operation profile used for timing argument resolution. */
 	public static OperationProfile profile;
 
@@ -80,13 +85,39 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 			ArrayVariable<A> arg = super.get(key);
 			if (arg != null) return arg;
 
+			// A PassThroughProducer key reuses an existing argument that passes through
+			// the same referenced argument index.
+			if (key instanceof Delegated<?> && ((Delegated) key).getDelegate() instanceof PassThroughProducer<?>) {
+				PassThroughProducer param = (PassThroughProducer) ((Delegated) key).getDelegate();
+
+				Optional<ArrayVariable<A>> passThrough = get(v -> {
+					if (!(v instanceof Delegated<?>)) return false;
+					if (!(((Delegated) v).getDelegate() instanceof PassThroughProducer)) return false;
+					return ((PassThroughProducer) ((Delegated) v).getDelegate()).getReferencedArgumentIndex() == param.getReferencedArgumentIndex();
+				});
+
+				if (passThrough.isPresent()) return passThrough.get();
+			}
+
 			Object provider = key.get();
 			if (!(provider instanceof Provider)) return null;
-			if (!(((Provider) provider).get() instanceof MemoryData)) return null;
 
-			MemoryData md = (MemoryData) ((Provider) provider).get();
+			Object value = ((Provider) provider).get();
 
-			if (md == null) return null;
+			// Reuse an existing argument that provides the same value instance.
+			Optional<ArrayVariable<A>> match = get(supplier -> {
+				Object v = supplier.get();
+				if (!(v instanceof Provider)) return false;
+				return ((Provider) v).get() == value;
+			});
+
+			if (match.isPresent()) return match.get();
+
+			// Otherwise register the MemoryData by its root delegate so that views into the
+			// same underlying memory resolve to a single kernel argument.
+			if (!(value instanceof MemoryData)) return null;
+
+			MemoryData md = (MemoryData) value;
 			if (md.getMem() == null) {
 				throw new IllegalArgumentException();
 			}

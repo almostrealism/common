@@ -98,11 +98,21 @@ public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVar
 	/**
 	 * {@inheritDoc}
 	 *
+	 * <p>If the key is a {@link Computation} that exposes an output variable via
+	 * {@link Computation#getOutputVariable()}, that variable is returned directly, reusing the
+	 * producer's output instead of allocating a new argument. Otherwise the cached variable for the
+	 * key is returned, or {@code null} if none has been registered.</p>
+	 *
 	 * @param key the supplier key to look up
 	 * @return the array variable for the given key, or {@code null} if not found
 	 */
 	@Override
 	public ArrayVariable<A> get(Supplier key) {
+		if (key instanceof Computation) {
+			ArrayVariable<A> out = (ArrayVariable<A>) ((Computation) key).getOutputVariable();
+			if (out != null) return out;
+		}
+
 		return arguments.get(key);
 	}
 
