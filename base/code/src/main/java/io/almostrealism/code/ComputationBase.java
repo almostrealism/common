@@ -113,12 +113,10 @@ public abstract class ComputationBase<I, O, T>
 	 * Weak reference to the {@link ScopeInputManager} that last drove
 	 * {@link #prepareScope(ScopeInputManager, KernelStructureContext)} for this
 	 * computation. Used to detect when a subsequent compilation is operating
-	 * against a different manager (and therefore a different
-	 * {@link ArgumentMap} / aggregate buffer), in which case any cached
-	 * argument variables on this node refer to memory aggregated by the
-	 * previous map and must be discarded. Held weakly so that retaining this
-	 * reference does not pin the previous map (and its aggregate buffer) in
-	 * memory.
+	 * against a different manager, in which case any cached argument variables
+	 * on this node refer to the previous compilation and must be discarded.
+	 * Held weakly so that retaining this reference does not pin the previous
+	 * manager in memory.
 	 */
 	private WeakReference<ScopeInputManager> lastScopeInputManager;
 

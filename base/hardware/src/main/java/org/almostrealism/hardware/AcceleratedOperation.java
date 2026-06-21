@@ -58,7 +58,7 @@ import java.util.List;
  *
  * <p>An accelerated operation progresses through several phases:</p>
  * <pre>
- * 1. Scope Preparation:  prepareScope() -> creates ArgumentMap, prepares inputs
+ * 1. Scope Preparation:  prepareScope() -> creates the argument map and prepares inputs
  * 2. Compilation:        load() -> compiles or retrieves cached kernel/native code
  * 3. Argument Setup:     getProcessDetails() -> prepares arguments for execution
  * 4. Execution:          operator.accept() -> runs kernel/native code

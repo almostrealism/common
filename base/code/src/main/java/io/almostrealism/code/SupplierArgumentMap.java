@@ -17,6 +17,7 @@
 package io.almostrealism.code;
 
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 
@@ -27,20 +28,20 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
- * An {@link ArgumentMap} that maps {@link Supplier} keys to {@link ArrayVariable} values.
+ * Maps {@link Supplier} keys to {@link ArrayVariable} values, caching the argument variables
+ * assigned during scope compilation.
  *
- * <p>{@code SupplierArgumentMap} is a general-purpose argument map backed by a {@link HashMap}.
- * It is used during scope compilation to track which input producers have already been assigned
- * argument variables, preventing duplicate allocations. A delegate {@link ScopeInputManager} is
- * used to create new argument variables for suppliers not yet in the map.</p>
+ * <p>{@code SupplierArgumentMap} is backed by a {@link HashMap} and is used during scope compilation
+ * to track which input producers have already been assigned argument variables, preventing duplicate
+ * allocations. A delegate {@link ScopeInputManager} is used to create new argument variables for
+ * suppliers not yet in the map.</p>
  *
  * @param <S> the supplier element type
  * @param <A> the array element type for the variables
  *
- * @see ArgumentMap
  * @see ScopeInputManager
  */
-public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVariable<A>> {
+public class SupplierArgumentMap<S, A> implements Destroyable {
 	/** The delegate scope input manager used to create new argument variables. */
 	protected ScopeInputManager delegateProvider;
 	/** The internal mapping from suppliers to their corresponding argument variables. */
@@ -86,7 +87,7 @@ public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVar
 	}
 
 	/**
-	 * {@inheritDoc}
+	 * Returns the argument variable for the given key.
 	 *
 	 * <p>If the key is a {@link Computation} that exposes an output variable via
 	 * {@link Computation#getOutputVariable()}, that variable is returned directly, reusing the
@@ -96,7 +97,6 @@ public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVar
 	 * @param key the supplier key to look up
 	 * @return the array variable for the given key, or {@code null} if not found
 	 */
-	@Override
 	public ArrayVariable<A> get(Supplier key) {
 		if (key instanceof Computation) {
 			ArrayVariable<A> out = (ArrayVariable<A>) ((Computation) key).getOutputVariable();
