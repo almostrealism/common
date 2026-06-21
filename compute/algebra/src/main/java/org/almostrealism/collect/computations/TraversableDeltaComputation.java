@@ -274,7 +274,7 @@ public class TraversableDeltaComputation
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
-		targetVariable = (CollectionVariable<?>) manager.argumentForInput(getNameProvider()).apply((Supplier) target);
+		targetVariable = (CollectionVariable<?>) manager.argumentForInput().apply((Supplier) target);
 	}
 
 	/**

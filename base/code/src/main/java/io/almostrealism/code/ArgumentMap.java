@@ -46,10 +46,9 @@ public interface ArgumentMap<K, V extends Variable> {
 	 * Retrieves or creates a variable for the given argument key.
 	 *
 	 * @param key the key identifying the argument
-	 * @param p   the name provider for generating variable names
 	 * @return the variable associated with the key
 	 */
-	V get(K key, NameProvider p);
+	V get(K key);
 
 	/**
 	 * Releases resources held by this argument map.

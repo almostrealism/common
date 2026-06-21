@@ -19,9 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.DefaultNameProvider;
 import io.almostrealism.code.Execution;
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.compute.ComputeRequirement;
@@ -239,22 +237,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	}
 
 	/**
-	 * Returns the {@link NameProvider} for the wrapped computation.
-	 *
-	 * <p>Provides naming services for scope variables and functions during compilation.</p>
-	 *
-	 * @return The name provider for this computation
-	 * @throws UnsupportedOperationException if computation is not a {@link NamedFunction}
-	 */
-	public NameProvider getNameProvider() {
-		if (getComputation() instanceof NamedFunction) {
-			return new DefaultNameProvider((NamedFunction) getComputation());
-		}
-
-		throw new UnsupportedOperationException();
-	}
-
-	/**
 	 * Returns the wrapped {@link Computation} being accelerated.
 	 *
 	 * @return The computation
@@ -271,7 +253,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 */
 	public ComputationScopeCompiler<T> getCompiler() {
 		if (compiler == null) {
-			compiler = new ComputationScopeCompiler<>(getComputation(), getNameProvider());
+			compiler = new ComputationScopeCompiler<>(getComputation());
 		}
 
 		return compiler;

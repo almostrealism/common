@@ -197,14 +197,6 @@ public abstract class ComputationBase<I, O, T>
 	protected LanguageOperations getLanguage() { return lang; }
 
 	/**
-	 * Returns a name provider for generating variable names.
-	 * The default implementation returns a {@link DefaultNameProvider} based on this computation.
-	 *
-	 * @return the name provider instance
-	 */
-	public NameProvider getNameProvider() { return new DefaultNameProvider(this); }
-
-	/**
 	 * Prepares the arguments for this computation using the provided argument map.
 	 * This method is part of the {@link ScopeLifecycle} and is called during compilation.
 	 *
@@ -280,7 +272,7 @@ public abstract class ComputationBase<I, O, T>
 	 */
 	protected void assignArguments(ArgumentProvider provider) {
 		setArguments(getInputs().stream()
-				.map(provider.argumentForInput(getNameProvider()))
+				.map(provider.argumentForInput())
 				.map(var ->
 						Optional.ofNullable(var).map(v ->
 								new Argument<>(v, Expectation.EVALUATE_AHEAD))

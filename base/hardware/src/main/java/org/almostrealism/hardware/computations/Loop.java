@@ -72,7 +72,7 @@ import java.util.stream.IntStream;
  * <h2>Loop Configuration</h2>
  *
  * <ul>
- *   <li><strong>Index variable:</strong> Named using {@code NameProvider} prefix + "_i"</li>
+ *   <li><strong>Index variable:</strong> Named using the function-name prefix + "_i"</li>
  *   <li><strong>Start value:</strong> 1 (not 0)</li>
  *   <li><strong>Condition:</strong> {@code i < iterations}</li>
  *   <li><strong>Increment:</strong> 1 per iteration</li>
@@ -226,7 +226,7 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
 		Repeated<Void> scope = new Repeated<>(getFunctionName(), getMetadata());
-		Variable<Integer, ?> i = Variable.integer(getNameProvider().getVariablePrefix() + "_i");
+		Variable<Integer, ?> i = Variable.integer(getVariablePrefix() + "_i");
 		scope.setInterval(e(1));
 		scope.setIndex(i);
 		scope.setCondition(i.ref().lessThan(e(iterations)));

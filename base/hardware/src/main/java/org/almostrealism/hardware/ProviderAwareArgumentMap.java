@@ -16,7 +16,6 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OutputVariablePreservationArgumentMap;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Provider;
@@ -60,7 +59,7 @@ import java.util.function.Supplier;
  *
  * <h2>Matching Strategies</h2>
  *
- * <p>The {@link #get(Supplier, NameProvider)} method uses three matching strategies in order:</p>
+ * <p>The {@link #get(Supplier)} method uses three matching strategies in order:</p>
  *
  * <h3>1. Identity Match (Base Class)</h3>
  * <pre>{@code
@@ -100,9 +99,9 @@ import java.util.function.Supplier;
  * Producer<PackedCollection> b = Input.value(1000, 0);
  * Producer<PackedCollection> c = Input.value(1000, 0);
  *
- * ArrayVariable<?> var1 = map.get(a, nameProvider);  // "arg0"
- * ArrayVariable<?> var2 = map.get(b, nameProvider);  // "arg0" (reused!)
- * ArrayVariable<?> var3 = map.get(c, nameProvider);  // "arg0" (reused!)
+ * ArrayVariable<?> var1 = map.get(a);  // "arg0"
+ * ArrayVariable<?> var2 = map.get(b);  // "arg0" (reused!)
+ * ArrayVariable<?> var3 = map.get(c);  // "arg0" (reused!)
  *
  * // All three map to same variable, preventing duplicates
  * }</pre>
@@ -114,8 +113,8 @@ import java.util.function.Supplier;
  * Producer<PackedCollection> p1 = () -> data;
  * Producer<PackedCollection> p2 = () -> data;
  *
- * ArrayVariable<?> var1 = map.get(p1, nameProvider);  // "data"
- * ArrayVariable<?> var2 = map.get(p2, nameProvider);  // "data" (same!)
+ * ArrayVariable<?> var1 = map.get(p1);  // "data"
+ * ArrayVariable<?> var2 = map.get(p2);  // "data" (same!)
  *
  * // Both producers map to same variable since they produce the same value
  * }</pre>
@@ -128,8 +127,8 @@ import java.util.function.Supplier;
  *
  * // During kernel compilation:
  * ProviderAwareArgumentMap map = new ProviderAwareArgumentMap<>();
- * ArrayVariable<?> left = map.get(input, nameProvider);   // "arg0"
- * ArrayVariable<?> right = map.get(input, nameProvider);  // "arg0" (same!)
+ * ArrayVariable<?> left = map.get(input);   // "arg0"
+ * ArrayVariable<?> right = map.get(input);  // "arg0" (same!)
  *
  * // Generated kernel:
  * // __kernel void add(__global double* arg0, __global double* output) {
@@ -154,7 +153,7 @@ import java.util.function.Supplier;
  * Producer<?> wrapper = new DelegatingProducer(passThrough);
  *
  * // Map recognizes wrapper delegates to argument 0
- * ArrayVariable<?> var = map.get(wrapper, nameProvider);  // "arg0"
+ * ArrayVariable<?> var = map.get(wrapper);  // "arg0"
  * }</pre>
  *
  * <h2>Integration with Kernel Compilation</h2>
@@ -197,8 +196,8 @@ import java.util.function.Supplier;
  */
 public class ProviderAwareArgumentMap<S, A> extends OutputVariablePreservationArgumentMap<S, A> implements ConsoleFeatures {
 	@Override
-	public ArrayVariable<A> get(Supplier key, NameProvider p) {
-		ArrayVariable<A> arg = super.get(key, p);
+	public ArrayVariable<A> get(Supplier key) {
+		ArrayVariable<A> arg = super.get(key);
 		if (arg != null) return arg;
 
 		if (key instanceof Delegated<?> && ((Delegated) key).getDelegate() instanceof PassThroughProducer<?>) {
@@ -208,7 +207,7 @@ public class ProviderAwareArgumentMap<S, A> extends OutputVariablePreservationAr
 				if (!(v instanceof Delegated<?>)) return false;
 				if (!(((Delegated) v).getDelegate() instanceof PassThroughProducer)) return false;
 				return ((PassThroughProducer) ((Delegated) v).getDelegate()).getReferencedArgumentIndex() == param.getReferencedArgumentIndex();
-			}, p);
+			});
 
 			if (passThrough.isPresent())
 				return passThrough.get();
@@ -223,7 +222,7 @@ public class ProviderAwareArgumentMap<S, A> extends OutputVariablePreservationAr
 			Object v = supplier.get();
 			if (!(v instanceof Provider)) return false;
 			return ((Provider) v).get() == value;
-		}, p).orElse(null);
+		}).orElse(null);
 	}
 
 	@Override

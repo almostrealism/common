@@ -18,7 +18,6 @@ package org.almostrealism.hardware.instructions;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.Shape;
@@ -73,9 +72,8 @@ import java.util.stream.Collectors;
  * <pre>{@code
  * // Create compiler
  * Computation<Matrix> computation = add(a, b);
- * NameProvider nameProvider = () -> "add_operation";
  * ComputationScopeCompiler<Matrix> compiler =
- *     new ComputationScopeCompiler<>(computation, nameProvider);
+ *     new ComputationScopeCompiler<>(computation);
  *
  * // Prepare arguments (optional, for Process trees)
  * ArgumentMap argMap = new ArgumentMap();
@@ -202,9 +200,6 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	/** The computation being compiled into a scope. */
 	private Computation<T> computation;
 
-	/** Provider for generating unique names during scope compilation. */
-	private NameProvider nameProvider;
-
 	/** Cache for kernel series data used in GPU optimization. */
 	private KernelSeriesCache kernelSeriesCache;
 
@@ -221,11 +216,9 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	 * Constructs a new compiler for the specified computation.
 	 *
 	 * @param computation  the computation to compile into a scope
-	 * @param nameProvider provider for generating unique argument names
 	 */
-	public ComputationScopeCompiler(Computation<T> computation, NameProvider nameProvider) {
+	public ComputationScopeCompiler(Computation<T> computation) {
 		this.computation = computation;
-		this.nameProvider = nameProvider;
 	}
 
 	/**
@@ -376,9 +369,9 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 		getComputation().prepareScope(manager, context);
 
 		this.kernelSeriesCache = KernelSeriesCache.create(getComputation(),
-				data -> manager.argumentForInput(nameProvider).apply(() -> new Provider<>(data)));
+				data -> manager.argumentForInput().apply(() -> new Provider<>(data)));
 		this.traversalGenerator = KernelTraversalOperationGenerator.create(getComputation(),
-				data -> manager.argumentForInput(nameProvider).apply((Supplier) data));
+				data -> manager.argumentForInput().apply((Supplier) data));
 	}
 
 	/**

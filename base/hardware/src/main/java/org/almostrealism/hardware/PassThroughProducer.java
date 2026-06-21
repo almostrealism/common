@@ -412,7 +412,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 		super.prepareScope(manager, context);
 
 		List<Argument<? extends T>> args = new ArrayList<>();
-		args.add(new Argument<>(manager.argumentForInput(getNameProvider()).apply((Supplier) this), Expectation.NOT_ALTERED));
+		args.add(new Argument<>(manager.argumentForInput().apply((Supplier) this), Expectation.NOT_ALTERED));
 		setArguments(args);
 	}
 

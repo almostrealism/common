@@ -20,13 +20,13 @@ import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 
-import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
  * Default implementation of {@link ScopeInputManager} that creates argument variables using a factory function.
  *
- * <p>The default factory names variables using a global counter and the name from the {@link NameProvider}.
+ * <p>The default factory names argument variables using a global counter (of the form {@code _v<n>}).
  * A custom factory can be supplied to override naming or variable construction behavior.</p>
  *
  * @see ScopeInputManager
@@ -39,7 +39,7 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 	/** The language operations for the compilation target. */
 	private LanguageOperations lang;
 	/** Factory function that creates array variables for input producers. */
-	private BiFunction<NameProvider, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory;
+	private Function<Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory;
 
 	/**
 	 * Creates a new scope input manager with the default variable factory that uses a global counter.
@@ -47,7 +47,7 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 	 * @param lang the language operations for the compilation target
 	 */
 	protected DefaultScopeInputManager(LanguageOperations lang) {
-		variableFactory = (p, input) -> new ArrayVariable(p.getArgumentName(counter++), input);
+		variableFactory = input -> new ArrayVariable(nextArgumentName(), input);
 		this.lang = lang;
 	}
 
@@ -58,7 +58,7 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 	 * @param variableFactory the factory that creates argument variables
 	 */
 	public DefaultScopeInputManager(LanguageOperations lang,
-									BiFunction<NameProvider, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory) {
+									Function<Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory) {
 		this.lang = lang;
 		this.variableFactory = variableFactory;
 	}
@@ -68,8 +68,17 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 	 *
 	 * @param variableFactory the factory to use
 	 */
-	protected void setVariableFactory(BiFunction<NameProvider, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory) {
+	protected void setVariableFactory(Function<Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory) {
 		this.variableFactory = variableFactory;
+	}
+
+	/**
+	 * Returns the next globally-unique argument variable name.
+	 *
+	 * @return a unique argument name of the form {@code _v<n>}
+	 */
+	protected static String nextArgumentName() {
+		return "_v" + counter++;
 	}
 
 	/**
@@ -86,16 +95,15 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 	 * <p>Creates a new argument variable using the factory, then applies any delegate and offset.
 	 *
 	 * @param <T> the type of value produced by the input
-	 * @param p the name provider for generating variable names
 	 * @param input the input producer
 	 * @param delegate the optional delegate variable for memory sharing
 	 * @param delegateOffset the offset into the delegate variable
 	 * @return the array variable for the input
 	 */
 	@Override
-	public <T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input,
+	public <T> ArrayVariable<T> getArgument(Supplier<Evaluable<? extends T>> input,
 											ArrayVariable<T> delegate, int delegateOffset) {
-		ArrayVariable arg = variableFactory.apply(p, (Supplier) input);
+		ArrayVariable arg = variableFactory.apply((Supplier) input);
 		arg.setDelegate(delegate);
 		arg.setDelegateOffset(delegateOffset);
 		return arg;

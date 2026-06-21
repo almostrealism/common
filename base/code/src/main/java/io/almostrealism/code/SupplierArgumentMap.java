@@ -99,11 +99,10 @@ public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVar
 	 * {@inheritDoc}
 	 *
 	 * @param key the supplier key to look up
-	 * @param p the name provider (unused in this implementation)
 	 * @return the array variable for the given key, or {@code null} if not found
 	 */
 	@Override
-	public ArrayVariable<A> get(Supplier key, NameProvider p) {
+	public ArrayVariable<A> get(Supplier key) {
 		return arguments.get(key);
 	}
 
@@ -111,13 +110,12 @@ public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVar
 	 * Returns the first array variable whose key satisfies the given predicate.
 	 *
 	 * @param filter the predicate to filter supplier keys
-	 * @param p the name provider (unused in this implementation)
 	 * @return an optional containing the matched variable, or empty if none found
 	 */
-	protected Optional<ArrayVariable<A>> get(Predicate<Supplier> filter, NameProvider p) {
+	protected Optional<ArrayVariable<A>> get(Predicate<Supplier> filter) {
 		Optional<Supplier<S>> existing = arguments.keySet().stream().filter(filter).findAny();
 		if (existing.isEmpty()) return Optional.empty();
-		return Optional.of(get(existing.get(), p));
+		return Optional.of(get(existing.get()));
 	}
 
 	/**
@@ -134,13 +132,13 @@ public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVar
 			}
 
 			@Override
-			public <T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input,
+			public <T> ArrayVariable<T> getArgument(Supplier<Evaluable<? extends T>> input,
 													ArrayVariable<T> delegate, int delegateOffset) {
-				ArrayVariable arg = get(input, p);
+				ArrayVariable arg = get(input);
 				if (arg != null) return arg;
 
-				arguments.put((Supplier) input, (ArrayVariable) getDelegateProvider().getArgument(p, input, delegate, delegateOffset));
-				return (ArrayVariable) get(input, p);
+				arguments.put((Supplier) input, (ArrayVariable) getDelegateProvider().getArgument(input, delegate, delegateOffset));
+				return (ArrayVariable) get(input);
 			}
 		};
 	}

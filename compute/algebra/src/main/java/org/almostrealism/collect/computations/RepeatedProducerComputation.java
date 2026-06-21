@@ -271,7 +271,7 @@ public class RepeatedProducerComputation extends CollectionProducerComputationBa
 		Repeated<PackedCollection> scope = new Repeated<>(getFunctionName(), getMetadata());
 		scope.setInterval(e(getMemLength()));
 
-		String i = getNameProvider().getVariablePrefix() + "_i";
+		String i = getVariablePrefix() + "_i";
 		scope.setIndex(new Variable<>(i));
 
 		DefaultIndex ref = new DefaultIndex(i);

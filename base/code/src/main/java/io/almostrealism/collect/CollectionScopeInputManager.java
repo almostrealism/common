@@ -45,7 +45,7 @@ public class CollectionScopeInputManager extends DefaultScopeInputManager {
 	 */
 	public CollectionScopeInputManager(LanguageOperations lang) {
 		super(lang);
-		setVariableFactory((p, input) -> CollectionVariable.create(p.getArgumentName(counter++), (Supplier) input));
+		setVariableFactory(input -> CollectionVariable.create(nextArgumentName(), (Supplier) input));
 	}
 
 	/**

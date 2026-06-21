@@ -306,10 +306,10 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 			inputArg = getCollectionArgumentVariable(1);
 			if (inputArg == null) return;
 
-			row = new DefaultIndex(getNameProvider().getVariablePrefix() + "_g");
+			row = new DefaultIndex(getVariablePrefix() + "_g");
 			row.setLimit(getShape().getCountLong());
 
-			ref = new DefaultIndex(getNameProvider().getVariablePrefix() + "_i");
+			ref = new DefaultIndex(getVariablePrefix() + "_i");
 			getIndexLimit().ifPresent(ref::setLimit);
 
 			Expression index = Index.child(row, ref);

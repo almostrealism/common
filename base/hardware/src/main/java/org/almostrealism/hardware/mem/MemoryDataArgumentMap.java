@@ -18,7 +18,6 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Memory;
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.collect.CollectionScopeInputManager;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.profile.OperationProfile;
@@ -89,11 +88,11 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	}
 
 	@Override
-	public ArrayVariable<A> get(Supplier key, NameProvider p) {
+	public ArrayVariable<A> get(Supplier key) {
 		long start = System.nanoTime();
 
 		try {
-			ArrayVariable<A> arg = super.get(key, p);
+			ArrayVariable<A> arg = super.get(key);
 			if (arg != null) return arg;
 
 			MemoryData md;
@@ -131,16 +130,16 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 			if (mems.containsKey(md.getMem())) {
 				// If the root delegate already had an argument produced for it,
 				// return that
-				return delegateProvider.getArgument(p, key, mems.get(md.getMem()), md.getOffset());
+				return delegateProvider.getArgument(key, mems.get(md.getMem()), md.getOffset());
 			} else {
 				// Obtain the array variable for the root delegate
-				ArrayVariable var = delegateProvider.getArgument(p, createDelegate(md), null, -1);
+				ArrayVariable var = delegateProvider.getArgument(createDelegate(md), null, -1);
 
 				// Record that this MemoryData has var as its root delegate
 				mems.put(md.getMem(), var);
 
 				// Return an ArrayVariable that delegates to the correct position of the root delegate
-				return delegateProvider.getArgument(p, key, var, md.getOffset());
+				return delegateProvider.getArgument(key, var, md.getOffset());
 			}
 		} finally {
 			if (profile != null) {
