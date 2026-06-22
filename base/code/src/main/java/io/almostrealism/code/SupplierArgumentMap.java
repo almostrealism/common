@@ -43,36 +43,26 @@ import java.util.function.Supplier;
  */
 public class SupplierArgumentMap<S, A> implements Destroyable {
 	/** The delegate scope input manager used to create new argument variables. */
-	protected ScopeInputManager delegateProvider;
+	protected final ScopeInputManager delegateProvider;
 	/** The internal mapping from suppliers to their corresponding argument variables. */
 	private final Map<Supplier<S>, ArrayVariable<A>> arguments;
 
 	/**
-	 * Creates a new empty supplier argument map.
+	 * Creates a new supplier argument map that delegates new variable creation to the given provider.
+	 *
+	 * @param delegateProvider the scope input manager used to create new argument variables
 	 */
-	public SupplierArgumentMap() {
+	public SupplierArgumentMap(ScopeInputManager delegateProvider) {
+		this.delegateProvider = delegateProvider;
 		this.arguments = new HashMap<>();
 	}
 
 	/**
-	 * Sets the delegate scope input manager used for creating new argument variables.
-	 *
-	 * @param provider the delegate provider to use
-	 */
-	public void setDelegateProvider(ScopeInputManager provider) {
-		this.delegateProvider = provider;
-	}
-
-	/**
-	 * Returns the delegate scope input manager, initializing a default one if needed.
+	 * Returns the delegate scope input manager used to create new argument variables.
 	 *
 	 * @return the delegate scope input manager
 	 */
 	public ScopeInputManager getDelegateProvider() {
-		if (delegateProvider == null) {
-			delegateProvider = DefaultScopeInputManager.getInstance(null);
-		}
-
 		return delegateProvider;
 	}
 

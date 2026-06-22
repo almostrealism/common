@@ -44,16 +44,6 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 	private BiFunction<String, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory;
 
 	/**
-	 * Creates a new scope input manager with the default variable factory.
-	 *
-	 * @param lang the language operations for the compilation target
-	 */
-	protected DefaultScopeInputManager(LanguageOperations lang) {
-		variableFactory = (name, input) -> new ArrayVariable(name, input);
-		this.lang = lang;
-	}
-
-	/**
 	 * Creates a new scope input manager with a custom variable factory.
 	 *
 	 * <p>The factory receives the generated argument name and the input producer; it is responsible
@@ -105,18 +95,4 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 		return arg;
 	}
 
-	/**
-	 * Returns a new {@link DefaultScopeInputManager} for the given language operations.
-	 *
-	 * @param lang the language operations (must not be {@code null})
-	 * @return a new default scope input manager
-	 * @throws UnsupportedOperationException if {@code lang} is {@code null}
-	 */
-	public static DefaultScopeInputManager getInstance(LanguageOperations lang) {
-		if (lang == null) {
-			throw new UnsupportedOperationException("LanguageOperations must be provided");
-		}
-
-		return new DefaultScopeInputManager(lang);
-	}
 }

@@ -18,7 +18,6 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
-import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.ScopeInputManager;
@@ -181,9 +180,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	/** Timing metric for wrapped evaluation. */
 	public static TimingMetric wrappedEvalMetric = console.timing("wrappedEval");
 
-	/** Enables or disables automatic argument mapping via {@link MemoryDataArgumentMap}. */
-	private boolean argumentMapping;
-
 	/** The {@link ComputeContext} this operation executes within (OpenCL, Metal, JNI, etc.). */
 	private ComputeContext<MemoryData> context;
 
@@ -205,7 +201,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @param context The {@link ComputeContext} for compilation and execution (OpenCL, Metal, JNI, etc.)
 	 */
 	protected AcceleratedOperation(ComputeContext<MemoryData> context) {
-		setArgumentMapping(true);
 		this.context = context;
 	}
 
@@ -240,15 +235,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * @return The execution key for this operation
 	 */
 	public abstract <K extends ExecutionKey> K getExecutionKey();
-
-	/**
-	 * Enables or disables automatic argument mapping via {@link MemoryDataArgumentMap}.
-	 *
-	 * @param enabled true to enable argument mapping, false to disable
-	 */
-	protected void setArgumentMapping(boolean enabled) {
-		this.argumentMapping = enabled;
-	}
 
 	/**
 	 * Returns the argument list for this operation.
@@ -299,12 +285,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		resetArguments();
 
-		if (argumentMapping) {
-			argumentMap = MemoryDataArgumentMap.create(getComputeContext(), getMetadata());
-		}
+		argumentMap = MemoryDataArgumentMap.create(getComputeContext(), getMetadata());
 
-		prepareScope(argumentMap == null ?
-				DefaultScopeInputManager.getInstance(getComputeContext().getLanguage()) : argumentMap.getScopeInputManager());
+		prepareScope(argumentMap.getScopeInputManager());
 	}
 
 	/**

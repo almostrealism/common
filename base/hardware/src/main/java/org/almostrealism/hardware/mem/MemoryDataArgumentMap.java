@@ -19,6 +19,7 @@ package org.almostrealism.hardware.mem;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.Memory;
+import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.profile.OperationMetadata;
@@ -70,8 +71,10 @@ public class MemoryDataArgumentMap<S, A> extends SupplierArgumentMap<S, A> {
 	 * Creates an argument map.
 	 *
 	 * @param metadata Operation metadata for argument naming
+	 * @param delegateProvider the scope input manager used to create new argument variables
 	 */
-	public MemoryDataArgumentMap(OperationMetadata metadata) {
+	public MemoryDataArgumentMap(OperationMetadata metadata, ScopeInputManager delegateProvider) {
+		super(delegateProvider);
 		this.metadata = metadata;
 		this.mems = new HashMap<>();
 		this.rootDelegateSuppliers = new ArrayList<>();
@@ -171,9 +174,8 @@ public class MemoryDataArgumentMap<S, A> extends SupplierArgumentMap<S, A> {
 	 * @return Fully configured {@link MemoryDataArgumentMap}
 	 */
 	public static MemoryDataArgumentMap create(ComputeContext<MemoryData> context, OperationMetadata metadata) {
-		MemoryDataArgumentMap map = new MemoryDataArgumentMap(metadata);
-		map.setDelegateProvider(new DefaultScopeInputManager(context.getLanguage(),
-				(name, input) -> CollectionVariable.create(name, (Supplier) input)));
-		return map;
+		return new MemoryDataArgumentMap(metadata,
+				new DefaultScopeInputManager(context.getLanguage(),
+						(name, input) -> CollectionVariable.create(name, (Supplier) input)));
 	}
 }
