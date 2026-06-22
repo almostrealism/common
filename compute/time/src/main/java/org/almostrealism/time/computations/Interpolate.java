@@ -349,7 +349,7 @@ public class Interpolate extends CollectionProducerComputationBase {
 			Scope<PackedCollection> bump = new Scope<>();
 			bump.assign(left, left.add(e(1)));
 			bump.assign(right, right.add(e(1)));
-			body.addCase(timeForIndex.apply(idx).eq(time).not(), bump);
+			body.addCase(timeForIndex.apply(idx).neq(time), bump);
 		}
 
 		// Default result; overwritten below only when a valid surrounding interval is found.
