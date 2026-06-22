@@ -16,8 +16,8 @@
 
 package org.almostrealism.graph.temporal;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
@@ -91,7 +91,7 @@ public class WaveCellPush extends WaveCellComputation implements ExpressionFeatu
 	 * bounds checking and amplitude scaling.</p>
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 
 		Expression<Boolean> condition = getWavePosition().valueAt(0).greaterThanOrEqual(e(0)).and(

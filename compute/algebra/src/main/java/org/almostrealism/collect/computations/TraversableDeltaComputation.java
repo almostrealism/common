@@ -16,8 +16,8 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ComputationBase;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
@@ -255,11 +255,11 @@ public class TraversableDeltaComputation
 	 * of the target {@link Producer}. This variable is used during gradient computation
 	 * to identify which variable we're differentiating with respect to.</p>
 	 *
-	 * @param manager The {@link ScopeInputManager} for managing scope inputs
+	 * @param manager The {@link ArgumentProvider} for managing scope inputs
 	 * @param context The {@link KernelStructureContext} providing kernel compilation context
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 		targetVariable = (CollectionVariable<?>) manager.argumentForInput().apply((Supplier) target);
 	}

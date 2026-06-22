@@ -16,8 +16,8 @@
 
 package org.almostrealism.hardware.computations;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ExpressionAssignment;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
@@ -232,7 +232,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	 * @param context the kernel structure context
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 
 		purgeVariables();

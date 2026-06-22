@@ -27,22 +27,22 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
- * A caching {@link ScopeInputManager} that maps {@link Supplier} keys to {@link ArrayVariable}
+ * A caching {@link ArgumentProvider} that maps {@link Supplier} keys to {@link ArrayVariable}
  * values assigned during scope compilation.
  *
  * <p>{@code SupplierArgumentMap} is backed by a {@link HashMap} and is used during scope compilation
  * to track which input producers have already been assigned argument variables, preventing duplicate
- * allocations. New argument variables are created by delegating to another {@link ScopeInputManager}
+ * allocations. New argument variables are created by delegating to another {@link ArgumentProvider}
  * (the {@link #getDelegateProvider() delegate provider}).</p>
  *
  * @param <S> the supplier element type
  * @param <A> the array element type for the variables
  *
- * @see ScopeInputManager
+ * @see ArgumentProvider
  */
-public class SupplierArgumentMap<S, A> implements ScopeInputManager, Destroyable {
+public class SupplierArgumentMap<S, A> implements ArgumentProvider, Destroyable {
 	/** The delegate scope input manager used to create new argument variables. */
-	protected final ScopeInputManager delegateProvider;
+	protected final ArgumentProvider delegateProvider;
 	/** The internal mapping from suppliers to their corresponding argument variables. */
 	private final Map<Supplier<S>, ArrayVariable<A>> arguments;
 
@@ -51,7 +51,7 @@ public class SupplierArgumentMap<S, A> implements ScopeInputManager, Destroyable
 	 *
 	 * @param delegateProvider the scope input manager used to create new argument variables
 	 */
-	public SupplierArgumentMap(ScopeInputManager delegateProvider) {
+	public SupplierArgumentMap(ArgumentProvider delegateProvider) {
 		this.delegateProvider = delegateProvider;
 		this.arguments = new HashMap<>();
 	}
@@ -61,7 +61,7 @@ public class SupplierArgumentMap<S, A> implements ScopeInputManager, Destroyable
 	 *
 	 * @return the delegate scope input manager
 	 */
-	public ScopeInputManager getDelegateProvider() {
+	public ArgumentProvider getDelegateProvider() {
 		return delegateProvider;
 	}
 

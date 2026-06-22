@@ -16,11 +16,11 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.Semaphore;
@@ -274,7 +274,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * Prepares the scope for compilation by creating argument mappings and input managers.
 	 *
 	 * <p>This method initializes the {@link MemoryDataArgumentMap} if argument mapping is enabled,
-	 * and delegates to {@link #prepareScope(ScopeInputManager)} for scope-specific setup.</p>
+	 * and delegates to {@link #prepareScope(ArgumentProvider)} for scope-specific setup.</p>
 	 *
 	 * @throws UnsupportedOperationException if prepareScope has already been called
 	 */
@@ -293,9 +293,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	/**
 	 * Prepares the scope with the specified input manager.
 	 *
-	 * @param manager The {@link ScopeInputManager} for handling input registration
+	 * @param manager The {@link ArgumentProvider} for handling input registration
 	 */
-	protected void prepareScope(ScopeInputManager manager) {
+	protected void prepareScope(ArgumentProvider manager) {
 		prepareScope(manager, null);
 	}
 

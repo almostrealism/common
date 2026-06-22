@@ -16,7 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
@@ -268,7 +268,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	 * @param replaceLoop {@code true} to enable loop replacement, {@code false} to use standard iteration
 	 * @return This computation instance for method chaining
 	 *
-	 * @see #prepareScope(ScopeInputManager, KernelStructureContext)
+	 * @see #prepareScope(ArgumentProvider, KernelStructureContext)
 	 */
 	public AggregatedProducerComputation setReplaceLoop(boolean replaceLoop) {
 		this.replaceLoop = replaceLoop;
@@ -292,7 +292,7 @@ public class AggregatedProducerComputation extends TraversableRepeatedProducerCo
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 
 		if (!replaceLoop || getMemLength() > 1 || getIndexLimit().isEmpty())

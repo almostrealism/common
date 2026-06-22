@@ -16,11 +16,11 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ComputableParallelProcess;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationComputation;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.ParallelProcess;
@@ -951,7 +951,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * @param context The kernel structure context
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		ScopeLifecycle.prepareScope(stream(), manager, context);
 		if (!abortScope) {
 			if (abort == null) abort = new Abort(abortFlag::get);

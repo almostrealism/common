@@ -16,9 +16,9 @@
 
 package org.almostrealism.hardware.computations;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
@@ -101,7 +101,7 @@ import java.util.stream.IntStream;
  *
  * <pre>{@code
  * @Override
- * public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+ * public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
  *     super.prepareScope(manager, context);
  *     atom.prepareScope(manager, context);  // Forward to atom
  * }
@@ -205,7 +205,7 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 		atom.prepareScope(manager, context);
 	}

@@ -52,7 +52,7 @@ public class AdaptProducer<T> implements Producer<T>, ScopeLifecycle {
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		ScopeLifecycle.prepareScope(Stream.of(p), manager, context);
 		ScopeLifecycle.prepareScope(Stream.of(args), manager, context);
 	}

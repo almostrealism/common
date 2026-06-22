@@ -16,8 +16,8 @@
 
 package org.almostrealism.time;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.OperationComputation;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.compute.Process;
 import io.almostrealism.lifecycle.Setup;
@@ -360,7 +360,7 @@ public class TemporalRunner implements OperationComputation<Void>, Setup, Tempor
 
 
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		ScopeLifecycle.prepareScope(Stream.of(setup), manager, context);
 		ScopeLifecycle.prepareScope(Stream.of(run), manager, context);
 	}

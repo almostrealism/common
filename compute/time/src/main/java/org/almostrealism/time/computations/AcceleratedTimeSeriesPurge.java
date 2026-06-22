@@ -139,6 +139,16 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 		// this operation and not observable elsewhere, so the only observable
 		// effect of that path was that the series was left untouched. That behavior
 		// is preserved by emitting the purge logic only when wavelength == 1.0.
+		//
+		// The throttling idea is nonetheless worth keeping in mind: a purge is an
+		// O(n) scan over the live region of the series, and for a series that grows
+		// slowly relative to how often purge() is invoked, running it on every call
+		// is wasteful. Gating it to run once every N calls amortises that scan
+		// without materially changing how much stale data is retained. To reintroduce
+		// it correctly, the counter would advance each call --
+		// count = fmod(count + 1, wavelength) -- and the purge would be guarded by a
+		// genuine comparison (count == 0, i.e. count.eq(e(0.0))), not an assignment,
+		// with the counter left intact rather than being clobbered inside the gate.
 		if (wavelength == 1.0) {
 			Expression left = getArgument(0).valueAt(0);
 			Expression right = getArgument(0).valueAt(1);

@@ -103,15 +103,15 @@ public abstract class ComputationBase<I, O, T>
 	protected ComputationBase<I, O, T> optimized;
 
 	/**
-	 * Weak reference to the {@link ScopeInputManager} that last drove
-	 * {@link #prepareScope(ScopeInputManager, KernelStructureContext)} for this
+	 * Weak reference to the {@link ArgumentProvider} that last drove
+	 * {@link #prepareScope(ArgumentProvider, KernelStructureContext)} for this
 	 * computation. Used to detect when a subsequent compilation is operating
 	 * against a different manager, in which case any cached argument variables
 	 * on this node refer to the previous compilation and must be discarded.
 	 * Held weakly so that retaining this reference does not pin the previous
 	 * manager in memory.
 	 */
-	private WeakReference<ScopeInputManager> lastScopeInputManager;
+	private WeakReference<ArgumentProvider> lastScopeInputManager;
 
 	/**
 	 * Prepares the operation metadata by incorporating process information and signature.
@@ -184,7 +184,7 @@ public abstract class ComputationBase<I, O, T>
 	 * Prepares the scope for this computation using the provided scope input manager.
 	 * This method is part of the {@link ScopeLifecycle} and sets up the argument variables.
 	 *
-	 * <p>If the scope has already been prepared by the same {@link ScopeInputManager}
+	 * <p>If the scope has already been prepared by the same {@link ArgumentProvider}
 	 * as on the previous call, returns early to avoid redundant processing. If the
 	 * manager differs (for example, because this node is being recompiled into a new
 	 * kernel), the cached argument state is invalidated via {@link #resetArguments()}
@@ -197,8 +197,8 @@ public abstract class ComputationBase<I, O, T>
 	 * @param context the kernel structure context for scope preparation
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
-		ScopeInputManager previous = lastScopeInputManager == null ? null : lastScopeInputManager.get();
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
+		ArgumentProvider previous = lastScopeInputManager == null ? null : lastScopeInputManager.get();
 		if (getArgumentVariables() != null && previous == manager) return;
 		if (getArgumentVariables() != null) resetArguments();
 		this.lastScopeInputManager = new WeakReference<>(manager);

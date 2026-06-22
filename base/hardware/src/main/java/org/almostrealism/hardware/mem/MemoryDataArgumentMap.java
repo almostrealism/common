@@ -16,9 +16,9 @@
 
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.Memory;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.profile.OperationMetadata;
@@ -72,7 +72,7 @@ public class MemoryDataArgumentMap<S, A> extends SupplierArgumentMap<S, A> {
 	 * @param metadata Operation metadata for argument naming
 	 * @param delegateProvider the scope input manager used to create new argument variables
 	 */
-	public MemoryDataArgumentMap(OperationMetadata metadata, ScopeInputManager delegateProvider) {
+	public MemoryDataArgumentMap(OperationMetadata metadata, ArgumentProvider delegateProvider) {
 		super(delegateProvider);
 		this.metadata = metadata;
 		this.mems = new HashMap<>();

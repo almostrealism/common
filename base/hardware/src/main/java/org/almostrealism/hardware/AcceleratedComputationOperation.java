@@ -16,11 +16,11 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.NamedFunction;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
@@ -418,7 +418,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * @param manager The scope input manager
 	 */
 	@Override
-	protected void prepareScope(ScopeInputManager manager) {
+	protected void prepareScope(ArgumentProvider manager) {
 		getCompiler().prepareScope(manager);
 	}
 
@@ -432,7 +432,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * @param context The kernel structure context
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 		getCompiler().prepareScope(manager, context);
 	}

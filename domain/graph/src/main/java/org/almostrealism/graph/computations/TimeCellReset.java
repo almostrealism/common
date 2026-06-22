@@ -16,8 +16,8 @@
 
 package org.almostrealism.graph.computations;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
@@ -136,7 +136,7 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection>
 	 * language is not consulted until the scope is rendered.</p>
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 
 		scope = new HybridScope(this);

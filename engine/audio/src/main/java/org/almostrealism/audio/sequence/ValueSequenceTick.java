@@ -16,7 +16,7 @@
 
 package org.almostrealism.audio.sequence;
 
-import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.HybridScope;
@@ -60,7 +60,7 @@ public class ValueSequenceTick extends ValueSequenceComputation {
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 
 		scope = new HybridScope(this);

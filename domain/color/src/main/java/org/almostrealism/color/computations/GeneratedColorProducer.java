@@ -16,8 +16,8 @@
 
 package org.almostrealism.color.computations;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
@@ -127,7 +127,7 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<PackedCo
 
 
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		if (p instanceof Computation) {
 			((Computation) p).prepareScope(manager, context);
 		}

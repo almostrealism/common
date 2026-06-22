@@ -16,8 +16,8 @@
 
 package org.almostrealism.hardware.instructions;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
@@ -74,7 +74,7 @@ import java.util.stream.Collectors;
  *     new ComputationScopeCompiler<>(computation);
  *
  * // Prepare scope inputs
- * ScopeInputManager inputManager = ...;
+ * ArgumentProvider inputManager = ...;
  * compiler.prepareScope(inputManager);
  *
  * // Compile to Scope
@@ -335,7 +335,7 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	 *
 	 * @param manager the scope input manager
 	 */
-	public void prepareScope(ScopeInputManager manager) {
+	public void prepareScope(ArgumentProvider manager) {
 		prepareScope(manager, this);
 	}
 
@@ -347,7 +347,7 @@ public class ComputationScopeCompiler<T> implements KernelStructureContext,
 	 * @param context the kernel structure context
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		ScopeLifecycle.super.prepareScope(manager, context);
 		getComputation().prepareScope(manager, context);
 

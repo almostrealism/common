@@ -16,9 +16,9 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -98,7 +98,7 @@ public class Switch extends OperationComputationAdapter<PackedCollection> implem
 	 * @param context  the kernel structure context
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 		choices.forEach(c -> c.prepareScope(manager, context));
 	}

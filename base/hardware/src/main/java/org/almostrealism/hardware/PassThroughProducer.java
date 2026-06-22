@@ -16,9 +16,9 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ProducerComputationBase;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.Algebraic;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -396,7 +396,7 @@ public class PassThroughProducer<T extends MemoryData> extends ProducerComputati
 	 * @param context The kernel structure context
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 
 		List<Argument<? extends T>> args = new ArrayList<>();
