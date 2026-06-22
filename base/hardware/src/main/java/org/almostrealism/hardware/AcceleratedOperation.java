@@ -287,7 +287,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		argumentMap = MemoryDataArgumentMap.create(getComputeContext(), getMetadata());
 
-		prepareScope(argumentMap.getScopeInputManager());
+		prepareScope(argumentMap);
 	}
 
 	/**

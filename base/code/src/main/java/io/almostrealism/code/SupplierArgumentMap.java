@@ -28,20 +28,20 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
- * Maps {@link Supplier} keys to {@link ArrayVariable} values, caching the argument variables
- * assigned during scope compilation.
+ * A caching {@link ScopeInputManager} that maps {@link Supplier} keys to {@link ArrayVariable}
+ * values assigned during scope compilation.
  *
  * <p>{@code SupplierArgumentMap} is backed by a {@link HashMap} and is used during scope compilation
  * to track which input producers have already been assigned argument variables, preventing duplicate
- * allocations. A delegate {@link ScopeInputManager} is used to create new argument variables for
- * suppliers not yet in the map.</p>
+ * allocations. New argument variables are created by delegating to another {@link ScopeInputManager}
+ * (the {@link #getDelegateProvider() delegate provider}).</p>
  *
  * @param <S> the supplier element type
  * @param <A> the array element type for the variables
  *
  * @see ScopeInputManager
  */
-public class SupplierArgumentMap<S, A> implements Destroyable {
+public class SupplierArgumentMap<S, A> implements ScopeInputManager, Destroyable {
 	/** The delegate scope input manager used to create new argument variables. */
 	protected final ScopeInputManager delegateProvider;
 	/** The internal mapping from suppliers to their corresponding argument variables. */
@@ -109,27 +109,34 @@ public class SupplierArgumentMap<S, A> implements Destroyable {
 	}
 
 	/**
-	 * Returns a {@link ScopeInputManager} that uses this map's entries as a cache
-	 * and delegates to the underlying provider for cache misses.
+	 * {@inheritDoc}
 	 *
-	 * @return a scope input manager backed by this argument map
+	 * @return the language operations of the delegate provider
 	 */
-	public ScopeInputManager getScopeInputManager() {
-		return new ScopeInputManager() {
-			@Override
-			public LanguageOperations getLanguage() {
-				return getDelegateProvider().getLanguage();
-			}
+	@Override
+	public LanguageOperations getLanguage() {
+		return delegateProvider.getLanguage();
+	}
 
-			@Override
-			public <T> ArrayVariable<T> getArgument(Supplier<Evaluable<? extends T>> input,
-													ArrayVariable<T> delegate, int delegateOffset) {
-				ArrayVariable arg = get(input);
-				if (arg != null) return arg;
+	/**
+	 * Returns the argument variable for the given input, creating and caching it on first request.
+	 *
+	 * <p>If a variable is already cached for the input it is returned; otherwise a new variable is
+	 * created via the {@link #getDelegateProvider() delegate provider} and cached.</p>
+	 *
+	 * @param <T> the type of value produced by the input
+	 * @param input the input producer
+	 * @param delegate the optional delegate variable for memory sharing
+	 * @param delegateOffset the offset into the delegate variable
+	 * @return the argument variable for the input
+	 */
+	@Override
+	public <T> ArrayVariable<T> getArgument(Supplier<Evaluable<? extends T>> input,
+											ArrayVariable<T> delegate, int delegateOffset) {
+		ArrayVariable arg = get(input);
+		if (arg != null) return arg;
 
-				arguments.put((Supplier) input, (ArrayVariable) getDelegateProvider().getArgument(input, delegate, delegateOffset));
-				return (ArrayVariable) get(input);
-			}
-		};
+		arguments.put((Supplier) input, (ArrayVariable) delegateProvider.getArgument(input, delegate, delegateOffset));
+		return (ArrayVariable) get(input);
 	}
 }
