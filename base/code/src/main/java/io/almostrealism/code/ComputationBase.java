@@ -48,7 +48,6 @@ import java.util.stream.Collectors;
  *   <li>Scope lifecycle integration for argument preparation and management</li>
  *   <li>Optimization caching to avoid redundant optimization passes</li>
  *   <li>Count-based iteration support via {@link io.almostrealism.relation.Countable}</li>
- *   <li>Language operations access for code generation</li>
  * </ul>
  *
  * <p>The class implements the {@link Signature} interface, allowing subclasses to provide
@@ -111,7 +110,7 @@ public abstract class ComputationBase<I, O, T>
 	 * Held weakly so that retaining this reference does not pin the previous
 	 * manager in memory.
 	 */
-	private WeakReference<ArgumentProvider> lastScopeInputManager;
+	private WeakReference<ArgumentProvider> lastArgumentProvider;
 
 	/**
 	 * Prepares the operation metadata by incorporating process information and signature.
@@ -198,10 +197,10 @@ public abstract class ComputationBase<I, O, T>
 	 */
 	@Override
 	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
-		ArgumentProvider previous = lastScopeInputManager == null ? null : lastScopeInputManager.get();
+		ArgumentProvider previous = lastArgumentProvider == null ? null : lastArgumentProvider.get();
 		if (getArgumentVariables() != null && previous == manager) return;
 		if (getArgumentVariables() != null) resetArguments();
-		this.lastScopeInputManager = new WeakReference<>(manager);
+		this.lastArgumentProvider = new WeakReference<>(manager);
 		ScopeLifecycle.prepareScope(getInputs().stream(), manager, context);
 		assignArguments(manager);
 	}
@@ -302,7 +301,7 @@ public abstract class ComputationBase<I, O, T>
 	 */
 	@Override
 	public Scope<O> getScope(KernelStructureContext context) {
-		if (optimized != null & optimized != this) {
+		if (optimized != null && optimized != this) {
 			throw new IllegalArgumentException("This Computation should not be used, as an optimized version already exists");
 		}
 

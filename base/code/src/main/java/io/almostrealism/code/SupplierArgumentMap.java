@@ -35,16 +35,13 @@ import java.util.function.Supplier;
  * allocations. New argument variables are created by delegating to another {@link ArgumentProvider}
  * (the {@link #getDelegateProvider() delegate provider}).</p>
  *
- * @param <S> the supplier element type
- * @param <A> the array element type for the variables
- *
  * @see ArgumentProvider
  */
-public class SupplierArgumentMap<S, A> implements ArgumentProvider, Destroyable {
-	/** The delegate scope input manager used to create new argument variables. */
+public class SupplierArgumentMap implements ArgumentProvider, Destroyable {
+	/** The delegate argument provider used to create new argument variables. */
 	protected final ArgumentProvider delegateProvider;
 	/** The internal mapping from suppliers to their corresponding argument variables. */
-	private final Map<Supplier<S>, ArrayVariable<A>> arguments;
+	private final Map<Supplier, ArrayVariable> arguments;
 
 	/**
 	 * Creates a new supplier argument map that delegates new variable creation to the given provider.
@@ -71,7 +68,7 @@ public class SupplierArgumentMap<S, A> implements ArgumentProvider, Destroyable 
 	 * @param key the supplier key
 	 * @param value the array variable to associate
 	 */
-	public void put(Supplier<S> key, ArrayVariable<A> value) {
+	public void put(Supplier key, ArrayVariable value) {
 		arguments.put(key, value);
 	}
 
@@ -86,9 +83,9 @@ public class SupplierArgumentMap<S, A> implements ArgumentProvider, Destroyable 
 	 * @param key the supplier key to look up
 	 * @return the array variable for the given key, or {@code null} if not found
 	 */
-	public ArrayVariable<A> get(Supplier key) {
+	public ArrayVariable get(Supplier key) {
 		if (key instanceof Computation) {
-			ArrayVariable<A> out = (ArrayVariable<A>) ((Computation) key).getOutputVariable();
+			ArrayVariable out = (ArrayVariable) ((Computation) key).getOutputVariable();
 			if (out != null) return out;
 		}
 
@@ -101,8 +98,8 @@ public class SupplierArgumentMap<S, A> implements ArgumentProvider, Destroyable 
 	 * @param filter the predicate to filter supplier keys
 	 * @return an optional containing the matched variable, or empty if none found
 	 */
-	protected Optional<ArrayVariable<A>> get(Predicate<Supplier> filter) {
-		Optional<Supplier<S>> existing = arguments.keySet().stream().filter(filter).findAny();
+	protected Optional<ArrayVariable> get(Predicate<Supplier> filter) {
+		Optional<Supplier> existing = arguments.keySet().stream().filter(filter).findAny();
 		if (existing.isEmpty()) return Optional.empty();
 		return Optional.of(get(existing.get()));
 	}

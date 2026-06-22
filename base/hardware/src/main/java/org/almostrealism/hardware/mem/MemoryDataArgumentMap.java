@@ -21,8 +21,6 @@ import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.collect.CollectionVariable;
-import io.almostrealism.profile.OperationMetadata;
-import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
@@ -50,98 +48,79 @@ import java.util.function.Supplier;
  *   <li><b>Root delegate handling</b> &mdash; views into the same underlying memory resolve to a
  *       single kernel argument that delegates to the appropriate offset.</li>
  * </ul>
- *
- * @param <S> Scope type
- * @param <A> Argument type
  */
-public class MemoryDataArgumentMap<S, A> extends SupplierArgumentMap<S, A> {
-	/** Optional operation profile used for timing argument resolution. */
-	public static OperationProfile profile;
-
-	/** Metadata for the operation being compiled, used for argument naming. */
-	private final OperationMetadata metadata;
-
+public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	/** Maps raw memory objects to the argument variables created for them. */
-	private final Map<Memory, ArrayVariable<A>> mems;
+	private final Map<Memory, ArrayVariable> mems;
 	/** All root delegate provider suppliers created by this map, for lifecycle management. */
 	private final List<RootDelegateProviderSupplier> rootDelegateSuppliers;
 
 	/**
 	 * Creates an argument map.
 	 *
-	 * @param metadata Operation metadata for argument naming
-	 * @param delegateProvider the scope input manager used to create new argument variables
+	 * @param delegateProvider the argument provider used to create new argument variables
 	 */
-	public MemoryDataArgumentMap(OperationMetadata metadata, ArgumentProvider delegateProvider) {
+	public MemoryDataArgumentMap(ArgumentProvider delegateProvider) {
 		super(delegateProvider);
-		this.metadata = metadata;
 		this.mems = new HashMap<>();
 		this.rootDelegateSuppliers = new ArrayList<>();
 	}
 
 	@Override
-	public ArrayVariable<A> get(Supplier key) {
-		long start = System.nanoTime();
+	public ArrayVariable get(Supplier key) {
+		ArrayVariable arg = super.get(key);
+		if (arg != null) return arg;
 
-		try {
-			ArrayVariable<A> arg = super.get(key);
-			if (arg != null) return arg;
+		// A PassThroughProducer key reuses an existing argument that passes through
+		// the same referenced argument index.
+		if (key instanceof Delegated<?> && ((Delegated) key).getDelegate() instanceof PassThroughProducer<?>) {
+			PassThroughProducer param = (PassThroughProducer) ((Delegated) key).getDelegate();
 
-			// A PassThroughProducer key reuses an existing argument that passes through
-			// the same referenced argument index.
-			if (key instanceof Delegated<?> && ((Delegated) key).getDelegate() instanceof PassThroughProducer<?>) {
-				PassThroughProducer param = (PassThroughProducer) ((Delegated) key).getDelegate();
-
-				Optional<ArrayVariable<A>> passThrough = get(v -> {
-					if (!(v instanceof Delegated<?>)) return false;
-					if (!(((Delegated) v).getDelegate() instanceof PassThroughProducer)) return false;
-					return ((PassThroughProducer) ((Delegated) v).getDelegate()).getReferencedArgumentIndex() == param.getReferencedArgumentIndex();
-				});
-
-				if (passThrough.isPresent()) return passThrough.get();
-			}
-
-			Object provider = key.get();
-			if (!(provider instanceof Provider)) return null;
-
-			Object value = ((Provider) provider).get();
-
-			// Reuse an existing argument that provides the same value instance.
-			Optional<ArrayVariable<A>> match = get(supplier -> {
-				Object v = supplier.get();
-				if (!(v instanceof Provider)) return false;
-				return ((Provider) v).get() == value;
+			Optional<ArrayVariable> passThrough = get(v -> {
+				if (!(v instanceof Delegated<?>)) return false;
+				if (!(((Delegated) v).getDelegate() instanceof PassThroughProducer)) return false;
+				return ((PassThroughProducer) ((Delegated) v).getDelegate()).getReferencedArgumentIndex() == param.getReferencedArgumentIndex();
 			});
 
-			if (match.isPresent()) return match.get();
+			if (passThrough.isPresent()) return passThrough.get();
+		}
 
-			// Otherwise register the MemoryData by its root delegate so that views into the
-			// same underlying memory resolve to a single kernel argument.
-			if (!(value instanceof MemoryData)) return null;
+		Object provider = key.get();
+		if (!(provider instanceof Provider)) return null;
 
-			MemoryData md = (MemoryData) value;
-			if (md.getMem() == null) {
-				throw new IllegalArgumentException();
-			}
+		Object value = ((Provider) provider).get();
 
-			if (mems.containsKey(md.getMem())) {
-				// If the root delegate already had an argument produced for it,
-				// return that
-				return delegateProvider.getArgument(key, mems.get(md.getMem()), md.getOffset());
-			} else {
-				// Obtain the array variable for the root delegate
-				ArrayVariable var = delegateProvider.getArgument(createDelegate(md), null, -1);
+		// Reuse an existing argument that provides the same value instance.
+		Optional<ArrayVariable> match = get(supplier -> {
+			Object v = supplier.get();
+			if (!(v instanceof Provider)) return false;
+			return ((Provider) v).get() == value;
+		});
 
-				// Record that this MemoryData has var as its root delegate
-				mems.put(md.getMem(), var);
+		if (match.isPresent()) return match.get();
 
-				// Return an ArrayVariable that delegates to the correct position of the root delegate
-				return delegateProvider.getArgument(key, var, md.getOffset());
-			}
-		} finally {
-			if (profile != null) {
-				profile.recordDuration(null, metadata.appendShortDescription(" get"), System.nanoTime() - start);
-			}
+		// Otherwise register the MemoryData by its root delegate so that views into the
+		// same underlying memory resolve to a single kernel argument.
+		if (!(value instanceof MemoryData)) return null;
+
+		MemoryData md = (MemoryData) value;
+		if (md.getMem() == null) {
+			throw new IllegalArgumentException();
+		}
+
+		if (mems.containsKey(md.getMem())) {
+			// If the root delegate already had an argument produced for it,
+			// return that
+			return delegateProvider.getArgument(key, mems.get(md.getMem()), md.getOffset());
+		} else {
+			// Obtain the array variable for the root delegate
+			ArrayVariable var = delegateProvider.getArgument(createDelegate(md), null, -1);
+
+			// Record that this MemoryData has var as its root delegate
+			mems.put(md.getMem(), var);
+
+			// Return an ArrayVariable that delegates to the correct position of the root delegate
+			return delegateProvider.getArgument(key, var, md.getOffset());
 		}
 	}
 
@@ -168,11 +147,10 @@ public class MemoryDataArgumentMap<S, A> extends SupplierArgumentMap<S, A> {
 	/**
 	 * Creates and configures a {@link MemoryDataArgumentMap} with the appropriate delegate provider.
 	 *
-	 * @param metadata Operation metadata for argument naming
 	 * @return Fully configured {@link MemoryDataArgumentMap}
 	 */
-	public static MemoryDataArgumentMap create(OperationMetadata metadata) {
-		return new MemoryDataArgumentMap(metadata,
+	public static MemoryDataArgumentMap create() {
+		return new MemoryDataArgumentMap(
 				new DefaultScopeInputManager(
 						(name, input) -> CollectionVariable.create(name, (Supplier) input)));
 	}

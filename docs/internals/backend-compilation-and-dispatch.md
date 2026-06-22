@@ -65,7 +65,7 @@ if (compiler.isCompiled()) {
 
 1. **Scope generation** — Calls `Computation.getScope(KernelStructureContext)` to produce
    the raw AST
-2. **Argument binding** — Sets up `ArgumentMap` connecting producer inputs to scope variables
+2. **Argument binding** — Sets up the `ArgumentProvider` (e.g. `MemoryDataArgumentMap`) connecting producer inputs to scope variables
 3. **Simplification** — Optimizes the expression tree (constant folding, identity elimination —
    see [expression-evaluation.md](expression-evaluation.md))
 4. **Metadata enrichment** — Adds shape information, operation signature, traversal policy
