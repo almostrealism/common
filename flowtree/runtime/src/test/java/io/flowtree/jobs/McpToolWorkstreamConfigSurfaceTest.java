@@ -97,7 +97,8 @@ public class McpToolWorkstreamConfigSurfaceTest extends TestSuiteBase {
 		"completion_listeners",
 		"default_phase_config",
 		"phase_configs",
-		"dispatch_capable"
+		"dispatch_capable",
+		"default_use_tmux"
 	));
 
 	/**
@@ -256,6 +257,45 @@ public class McpToolWorkstreamConfigSurfaceTest extends TestSuiteBase {
 				" operators can flip the dispatch-capable flag on an existing" +
 				" workstream via MCP.",
 			updateParams.contains("dispatch_capable"));
+	}
+
+	/**
+	 * Asserts that {@code default_use_tmux} is declared on both
+	 * {@code workstream_register} and {@code workstream_update_config}.
+	 *
+	 * <p>The default-use-tmux flag is the operator-facing switch that
+	 * makes every job on a workstream launch inside a tmux session by
+	 * default, with the per-job {@code use_tmux} flag still winning on
+	 * a per-job basis. A workstream that does not have the param in
+	 * its MCP tool signature is silently stuck with the inert default
+	 * (no tmux), so operators can never opt the workstream into tmux
+	 * from MCP clients. A failure here points the operator directly
+	 * at the missing param.</p>
+	 */
+	@Test(timeout = 30000)
+	public void defaultUseTmuxParamIsDeclaredOnBothRegisterAndUpdateTools() {
+		Path serverFile = locateManagerServerPy();
+		assertNotNull(
+			"Could not locate tools/mcp/manager/server.py from working directory " +
+				Path.of("").toAbsolutePath() +
+				". The default-use-tmux param check cannot run without it.",
+			serverFile);
+
+		List<String> registerParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_register");
+		assertTrue(
+			"workstream_register must declare the default_use_tmux parameter so" +
+				" operators can opt a workstream into tmux-backed agent launches" +
+				" by default via MCP.",
+			registerParams.contains("default_use_tmux"));
+
+		List<String> updateParams =
+			McpToolDiscovery.discoverToolParameters(serverFile, "workstream_update_config");
+		assertTrue(
+			"workstream_update_config must declare the default_use_tmux parameter" +
+				" so operators can flip the workstream's tmux default on an existing" +
+				" workstream via MCP.",
+			updateParams.contains("default_use_tmux"));
 	}
 
 	/**

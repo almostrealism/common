@@ -113,6 +113,16 @@ public class JobCompletionEvent {
     protected Map<String, Double> costByModel = Collections.emptyMap();
 
     /**
+     * Whether the recorded cost is a lower bound rather than the true total.
+     * Set when at least one agent session was killed by the inactivity watchdog
+     * before it emitted its terminal cost JSON, so the cost lost from that
+     * session cannot be accounted for. When {@code true}, {@link #totalCostUsd}
+     * and the per-runner/per-model breakdowns should be reported as a minimum
+     * ("at least") and flagged as incomplete rather than presented as exact.
+     */
+    protected boolean costIncomplete;
+
+    /**
      * Creates a new job completion event.
      *
      * @param jobId       the job identifier
@@ -323,7 +333,23 @@ public class JobCompletionEvent {
      */
     public Map<String, Double> getCostByModel() { return costByModel; }
 
+    /**
+     * Returns whether the recorded cost is incomplete (a lower bound) because
+     * an agent session was killed for inactivity before reporting its cost.
+     *
+     * @return {@code true} when the true cost is unknown and exceeds the
+     *         reported total; {@code false} when the cost is fully accounted for
+     */
+    public boolean isCostIncomplete() { return costIncomplete; }
+
     // ---- Public setters for use by JobStatsStore row reconstruction ----
+
+    /**
+     * Sets whether the recorded cost is incomplete (a lower bound).
+     *
+     * @param costIncomplete {@code true} when an inactivity kill lost cost data
+     */
+    public void setCostIncomplete(boolean costIncomplete) { this.costIncomplete = costIncomplete; }
 
     /**
      * Sets the total USD cost for this job.
@@ -436,6 +462,7 @@ public class JobCompletionEvent {
 
         putDoubleMap(root, "costByRunner", getCostByRunner());
         putDoubleMap(root, "costByModel", getCostByModel());
+        root.put("costIncomplete", isCostIncomplete());
 
         try {
             return EVENT_MAPPER.writeValueAsString(root);

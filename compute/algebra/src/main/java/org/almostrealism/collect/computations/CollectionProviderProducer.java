@@ -30,7 +30,6 @@ import io.almostrealism.util.DescribableParent;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -298,9 +297,7 @@ public class CollectionProviderProducer<T extends Shape>
 	 *
 	 * <p>The signature format depends on the type of value being provided:</p>
 	 * <ul>
-	 *   <li><strong>Aggregation Target MemoryData:</strong> Returns {@code null} because the
-	 *       signature depends on computation context that isn't available here</li>
-	 *   <li><strong>MemoryData (non-aggregation):</strong> Returns {@code "offset:memLength|shapeDetails"}
+	 *   <li><strong>MemoryData:</strong> Returns {@code "offset:memLength|shapeDetails"}
 	 *       including memory location information</li>
 	 *   <li><strong>Other Shapes:</strong> Returns {@code "|shapeDetails"} with only shape information</li>
 	 * </ul>
@@ -308,21 +305,13 @@ public class CollectionProviderProducer<T extends Shape>
 	 * <p>The signature is used for process graph analysis, caching, and identifying
 	 * equivalent producers.</p>
 	 *
-	 * @return A signature string, or {@code null} for aggregation targets
+	 * @return A signature string
 	 */
 	@Override
 	public String signature() {
 		String shape = "|" + value.getShape().toStringDetail();
 
 		if (value instanceof MemoryData) {
-			if (MemoryDataArgumentMap.isAggregationTarget((MemoryData) value)) {
-				// It should actually be possible to compute a valid signature
-				// for this anyway, but because argument aggregation for
-				// Computations depends on the other Computation arguments,
-				// it requires more information than is available here
-				return null;
-			}
-
 			return ((MemoryData) value).getOffset() + ":" +
 				((MemoryData) value).getMemLength() + shape;
 		}

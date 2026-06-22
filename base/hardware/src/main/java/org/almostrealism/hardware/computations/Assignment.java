@@ -44,7 +44,6 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.jvm.JVMMemory;
-import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 
 import java.util.List;
 import java.util.OptionalDouble;
@@ -126,9 +125,6 @@ import java.util.function.Supplier;
  * Runnable operation = assign.get();  // Returns DestinationEvaluable
  * }</pre>
  *
- * <p><strong>Note:</strong> Short-circuit is disabled for aggregation targets when
- * {@code enableAggregatedShortCircuit = false} to avoid double aggregation.</p>
- *
  * <h2>Generated Scope Structure</h2>
  *
  * <pre>{@code
@@ -181,7 +177,6 @@ import java.util.function.Supplier;
  *
  * <ul>
  *   <li><strong>enableAdaptiveMemLength:</strong> Auto-adjust memLength to kernel parallelism (default: true)</li>
- *   <li><strong>enableAggregatedShortCircuit:</strong> Allow short-circuit for aggregation targets (default: false)</li>
  * </ul>
  *
  * @param <T> The {@link MemoryData} type being assigned
@@ -192,8 +187,6 @@ import java.util.function.Supplier;
 public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
 	/** Controls automatic adjustment of memory length to match kernel parallelism. */
 	public static boolean enableAdaptiveMemLength = true;
-	/** Controls whether short-circuit optimization is allowed for aggregation targets. */
-	public static boolean enableAggregatedShortCircuit = false;
 
 	/** Number of values each kernel thread processes. */
 	private final int memLength;
@@ -395,18 +388,6 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 
 			// DestinationEvaluable can be used for AccelerationOperations and Providers
 			boolean shortCircuit = ev instanceof AcceleratedOperation<?> || ev instanceof Provider<?>;
-
-			if (!enableAggregatedShortCircuit &&
-					MemoryDataArgumentMap.isAggregationTarget(destination)) {
-				// Assignment operations that compute a value which itself
-				// depends on the destination, have issues when the destination
-				// is aggregated (when using DestinationEvaluable it will
-				// be aggregated twice, leading to inconsistent evaluation)
-				// TODO  It would be better to actually determine whether
-				// TODO  the destination is referenced by the the assignment
-				// TODO  value, but for now this is sufficient
-				shortCircuit = false;
-			}
 
 			if (shortCircuit) {
 				return new DestinationEvaluable(ev, destination);

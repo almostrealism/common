@@ -1604,13 +1604,46 @@ from phase_config import (  # noqa: E402
 
 
 def _parse_required_labels(required_labels: str) -> dict:
-    """Parse a comma-separated key:value string into a labels dict.
+    """Parse a labels specification into a labels dict.
 
-    Only pairs with non-empty key and non-empty value are included.
-    Pairs missing a colon or with an empty key/value are silently ignored.
+    Accepts two input shapes:
+
+    - Comma-separated ``key:value`` pairs (the documented CSV form), e.g.
+      ``platform:macos,gpu:true``.
+    - A JSON object string, e.g. ``{"platform": "macos", "gpu": "true"}``.
+
+    A leading ``{`` is treated as JSON-object intent: the value is parsed with
+    the JSON decoder and never falls through to the CSV splitter. That fallthrough
+    is exactly what corrupts ``workstreams.yaml`` — the splitter would break a
+    JSON string on its first colon into a mangled single-entry map such as
+    ``{'{"platform"': '"macos"}'}``. Malformed JSON (or a non-object) therefore
+    yields an empty map rather than a mangled one. Non-string JSON values are
+    coerced to strings.
+
+    Only pairs with a non-empty key and non-empty value are included. Pairs
+    missing a colon or with an empty key/value are silently ignored.
     """
+    stripped = required_labels.strip()
+    if stripped.startswith("{"):
+        import json as _json
+        try:
+            parsed = _json.loads(stripped)
+        except ValueError:
+            return {}
+        if not isinstance(parsed, dict):
+            return {}
+        result = {}
+        for key, value in parsed.items():
+            key_str = str(key).strip()
+            if isinstance(value, bool):
+                value_str = "true" if value else "false"
+            else:
+                value_str = str(value).strip()
+            if key_str and value_str:
+                result[key_str] = value_str
+        return result
     result = {}
-    for pair in required_labels.split(","):
+    for pair in stripped.split(","):
         parts = pair.strip().split(":", 1)
         if len(parts) == 2 and parts[0].strip() and parts[1].strip():
             result[parts[0].strip()] = parts[1].strip()
@@ -1772,7 +1805,7 @@ def workstream_submit_task(
     max_deduplication_passes: int = 0,
     organizational_placement_enabled: bool = False,
     retrospective_enabled: bool = False,
-    use_tmux: bool = False,
+    use_tmux: Optional[bool] = None,
     sensitive_file_protection_enabled: bool = True,
     review_enabled: bool = True,
     max_review_passes: int = 0,
@@ -1843,9 +1876,11 @@ def workstream_submit_task(
             exists on the workstream, the submission is skipped and the
             response includes ``skipped: true``. Used by CI pipelines to
             avoid stale auto-resolve jobs colliding with explicit submissions.
-        required_labels: Comma-separated key:value pairs specifying Node
-            labels required to execute this job (e.g., "platform:macos,gpu:true").
-            Only Nodes with matching labels will execute the job.
+        required_labels: Node labels required to execute this job. Accepts
+            either comma-separated key:value pairs (e.g.,
+            "platform:macos,gpu:true") or a JSON object (e.g.,
+            '{"platform": "macos", "gpu": "true"}'). Only Nodes with matching
+            labels will execute the job.
         deduplication_mode: Post-work deduplication behaviour. Disabled by
             default (empty string leaves the server default of "none" in
             effect). Pass ``"local"`` to run an inline Claude Code session
@@ -1878,13 +1913,15 @@ def workstream_submit_task(
             or stronger, since analyzing a transcript benefits from strong
             reasoning. Configure via
             ``phase_configs='{"retrospective":{"model":"claude-sonnet-4-7"}}'``.
-        use_tmux: When ``True``, the agent subprocess is launched inside a
+        use_tmux: Per-job override for tmux-backed launch, using presence
+            semantics. When ``True``, the agent subprocess is launched inside a
             tmux session (a real controlling tty) instead of as a direct child
-            process. Useful for CLIs that behave differently when attached to a
-            terminal. Disabled by default. The runner also honours the
-            ``AR_AGENT_USE_TMUX`` environment variable, so leaving this unset
-            preserves any environment-level enablement; setting it ``True`` for
-            a job forces tmux on regardless of the env var. Falls back to a
+            process; when ``False``, it is forced to a direct launch even if the
+            workstream's ``default_use_tmux`` is on. Leave unset (``None``, the
+            default) to inherit the workstream default and the
+            ``AR_AGENT_USE_TMUX`` environment variable. Because the value is
+            only forwarded when explicitly set, an explicit ``False`` reaches
+            the controller and overrides the workstream default. Falls back to a
             direct launch with a warning if ``tmux`` is not on the node's PATH.
         sensitive_file_protection_enabled: When ``True`` (the default), the
             per-job sensitive-file protections are active: harness-side
@@ -2191,8 +2228,11 @@ def workstream_submit_task(
         payload["enforceOrganizationalPlacement"] = True
     if retrospective_enabled:
         payload["retrospectiveEnabled"] = True
-    if use_tmux:
-        payload["useTmux"] = True
+    # Presence semantics: forward useTmux only when explicitly set so an
+    # explicit False reaches the controller and overrides the workstream
+    # default (the controller distinguishes absent from false via hasField).
+    if use_tmux is not None:
+        payload["useTmux"] = bool(use_tmux)
     # sensitiveFileProtectionEnabled defaults to TRUE; forward only when the
     # operator has explicitly disabled it. Mirrors the inverted semantics of
     # the other activation booleans (which default to false and forward on true).
@@ -2256,6 +2296,7 @@ def workstream_register(
     default_phase_config: str = "",
     phase_configs: str = "",
     dispatch_capable: bool = False,
+    default_use_tmux: bool = False,
     slack_workspace_id: str = "",
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
@@ -2280,10 +2321,11 @@ def workstream_register(
         repo_url: Git repository URL for automatic checkout.
         planning_document: Path to a planning document for broader context.
         channel_name: Slack channel name to create (optional).
-        required_labels: Comma-separated key:value pairs specifying Node labels
-            that all jobs in this workstream must match by default
-            (e.g., "platform:macos,gpu:true"). Job-level labels always override
-            these workstream-level defaults.
+        required_labels: Node labels that all jobs in this workstream must
+            match by default. Accepts either comma-separated key:value pairs
+            (e.g., "platform:macos,gpu:true") or a JSON object (e.g.,
+            '{"platform": "macos", "gpu": "true"}'). Job-level labels always
+            override these workstream-level defaults.
         dependent_repos: Comma-separated list of git clone URLs for additional
             repositories that agents will clone alongside the primary repo
             (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
@@ -2354,6 +2396,14 @@ def workstream_register(
             ceilings, so the flag is the gate but not the only safety
             mechanism. Operators should enable it only on workstreams
             that genuinely orchestrate.
+        default_use_tmux: When ``True``, coding-agent jobs on this workstream
+            launch the agent subprocess inside a tmux session (a real
+            controlling tty) by default. The per-job ``use_tmux`` flag
+            still wins on a per-job basis, so a particular job submission
+            can override the workstream default. Defaults to ``False`` —
+            opt in explicitly. The runner additionally honours the
+            ``AR_AGENT_USE_TMUX`` environment variable as an independent
+            enable, which is unaffected by this flag.
 
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
@@ -2475,6 +2525,13 @@ def workstream_register(
     # boolean directly is simpler and the controller's extractBoolean
     # helper handles a missing field identically.
     payload["dispatchCapable"] = bool(dispatch_capable)
+    # defaultUseTmux follows the same unconditional-forward pattern as
+    # dispatchCapable: a boolean forwarded verbatim so the controller
+    # sees the operator's intent regardless of whether the field
+    # appears in the body. The workstream-level default takes effect on
+    # every job on this workstream that does not set the per-job
+    # use_tmux flag explicitly.
+    payload["defaultUseTmux"] = bool(default_use_tmux)
 
     result = _controller_post("/api/workstreams", payload)
 
@@ -2652,6 +2709,7 @@ def workstream_update_config(
     default_phase_config: str = "",
     phase_configs: str = "",
     dispatch_capable: Optional[bool] = None,
+    default_use_tmux: Optional[bool] = None,
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
     # captured here for a clear rejection error.
@@ -2673,10 +2731,11 @@ def workstream_update_config(
         repo_url: Git repository URL (enables pipeline tools).
         planning_document: Path to planning document.
         channel_name: New Slack channel name.
-        required_labels: Comma-separated key:value pairs specifying Node labels
-            that all jobs in this workstream must match by default
-            (e.g., "platform:macos,gpu:true"). Job-level labels always override
-            these workstream-level defaults.
+        required_labels: Node labels that all jobs in this workstream must
+            match by default. Accepts either comma-separated key:value pairs
+            (e.g., "platform:macos,gpu:true") or a JSON object (e.g.,
+            '{"platform": "macos", "gpu": "true"}'). Job-level labels always
+            override these workstream-level defaults.
         dependent_repos: Comma-separated list of git clone URLs for additional
             repositories that agents should clone alongside the primary repo
             (e.g., "https://github.com/org/lib.git,https://github.com/org/tools.git").
@@ -2707,6 +2766,14 @@ def workstream_update_config(
             the parameter entirely leaves the existing controller value
             unchanged (presence-signal semantics, same pattern as
             ``completion_listeners``). Defaults to ``None`` (no change).
+        default_use_tmux: When ``True``, coding-agent jobs on this workstream
+            launch the agent subprocess inside a tmux session (a real
+            controlling tty) by default. The per-job ``use_tmux`` flag
+            still wins on a per-job basis. Same presence-signal
+            semantics as ``dispatch_capable``: omitted leaves the
+            workstream's existing default unchanged; an explicit
+            ``False`` clears the opt-in. Defaults to ``None``
+            (no change).
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
             ``default_phase_config`` or ``phase_configs`` to set models.
@@ -2790,6 +2857,11 @@ def workstream_update_config(
     # value (true or false) wins.
     if dispatch_capable is not None:
         payload["dispatchCapable"] = bool(dispatch_capable)
+    # default_use_tmux follows the same Optional-presence pattern as
+    # dispatch_capable: omitted = no change, ``False`` = clear the
+    # workstream-level tmux opt-in, ``True`` = opt the workstream in.
+    if default_use_tmux is not None:
+        payload["defaultUseTmux"] = bool(default_use_tmux)
 
     if not payload:
         return {

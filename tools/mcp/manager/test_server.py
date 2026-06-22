@@ -627,6 +627,45 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
             "platform": "macos", "gpu": "true"})
 
     @patch.object(server, "_controller_post")
+    def test_submit_required_labels_json_object(self, mock_post):
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True, "jobId": "job-3b"}
+        server.workstream_submit_task(
+            prompt="Task", required_labels='{"platform": "macos", "gpu": "true"}')
+        payload = mock_post.call_args[0][1]
+        self.assertEqual(payload["requiredLabels"], {
+            "platform": "macos", "gpu": "true"})
+
+    def test_parse_required_labels_csv(self):
+        self.assertEqual(
+            server._parse_required_labels("platform:macos,gpu:true"),
+            {"platform": "macos", "gpu": "true"})
+
+    def test_parse_required_labels_json_object_not_mangled(self):
+        # Regression: a JSON object string must not be split on the first colon
+        # into a mangled {'{"platform"': '"macos"}'} entry (which corrupted
+        # workstreams.yaml). It must parse as a proper labels map.
+        self.assertEqual(
+            server._parse_required_labels('{"platform": "macos"}'),
+            {"platform": "macos"})
+
+    def test_parse_required_labels_malformed_json_returns_empty(self):
+        # A leading "{" signals JSON intent; malformed JSON must NOT fall back to
+        # the CSV splitter (which would re-create the mangled map this guards
+        # against). It returns an empty map instead.
+        self.assertEqual(
+            server._parse_required_labels('{"platform": "macos"'), {})
+        self.assertEqual(
+            server._parse_required_labels('{platform: macos}'), {})
+
+    def test_parse_required_labels_json_non_string_values_coerced(self):
+        # Booleans coerce to lowercase JSON form so they match the CSV form
+        # (gpu:true) and node-side label values.
+        self.assertEqual(
+            server._parse_required_labels('{"gpu": true, "count": 2}'),
+            {"gpu": "true", "count": "2"})
+
+    @patch.object(server, "_controller_post")
     def test_submit_deduplication_mode_local(self, mock_post):
         _grant_all_scopes()
         mock_post.return_value = {"ok": True, "jobId": "job-d1"}
@@ -740,9 +779,9 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
 
     @patch.object(server, "_controller_post")
     def test_submit_use_tmux_omitted_by_default(self, mock_post):
-        """use_tmux is opt-in (default false), so the wire payload must omit
-        useTmux when the caller did not pass it (the runner still honours the
-        AR_AGENT_USE_TMUX env var on the node)."""
+        """use_tmux uses presence semantics (default None), so the wire payload
+        must omit useTmux when the caller did not pass it. The job then inherits
+        the workstream default and the AR_AGENT_USE_TMUX env var on the node."""
         _grant_all_scopes()
         mock_post.return_value = {"ok": True, "jobId": "job-tmux1"}
         server.workstream_submit_task(prompt="Task")
@@ -760,15 +799,15 @@ class TestWorkstreamSubmitTask(unittest.TestCase):
         self.assertIs(payload["useTmux"], True)
 
     @patch.object(server, "_controller_post")
-    def test_submit_use_tmux_false_omitted(self, mock_post):
-        """use_tmux=False is the default; the wire payload must omit the key
-        rather than forward an explicit false (matches the
-        retrospective_enabled behaviour)."""
+    def test_submit_use_tmux_false_forwarded(self, mock_post):
+        """An explicit use_tmux=False must reach the controller as useTmux=False
+        (presence semantics) so a job can opt out of a workstream that defaults
+        tmux on. The controller distinguishes absent from false via hasField."""
         _grant_all_scopes()
         mock_post.return_value = {"ok": True, "jobId": "job-tmux3"}
         server.workstream_submit_task(prompt="Task", use_tmux=False)
         payload = mock_post.call_args[0][1]
-        self.assertNotIn("useTmux", payload)
+        self.assertIs(payload["useTmux"], False)
 
     @patch.object(server, "_controller_post")
     def test_submit_sensitive_file_protection_default_omitted(self, mock_post):

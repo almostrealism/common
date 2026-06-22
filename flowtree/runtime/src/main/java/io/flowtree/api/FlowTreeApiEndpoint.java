@@ -21,6 +21,7 @@ import io.flowtree.JsonFieldExtractor;
 import io.flowtree.Server;
 import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobEvent;
+import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.jobs.CompletionListenerFanout;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
@@ -787,11 +788,20 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (extractJsonHasField(body, "retrospectiveEnabled"))
             factory.setRetrospectiveEnabled(
                     extractJsonBooleanField(body, "retrospectiveEnabled"));
-        // tmux-backed agent launch — disabled by default; opt in explicitly.
-        // The runner also honours AR_AGENT_USE_TMUX, so leaving this unset
-        // preserves any environment-level enablement.
-        if (extractJsonHasField(body, "useTmux"))
-            factory.setUseTmux(extractJsonBooleanField(body, "useTmux"));
+        // tmux-backed agent launch — per-job use_tmux flag wins when the
+        // request body sets it; otherwise the workstream's defaultUseTmux
+        // setting applies. The body is parsed here so the schema-alignment
+        // scanner can see the consumption, and the resolution is then
+        // handed off to CodingAgentJobFactory.resolveUseTmux so the
+        // workstream-default rule is unit-testable. The runner also
+        // honours AR_AGENT_USE_TMUX, so leaving the workstream default
+        // off and the per-job flag unset still preserves any
+        // environment-level enablement.
+        boolean perJobHasUseTmux = extractJsonHasField(body, "useTmux");
+        boolean perJobUseTmux = perJobHasUseTmux
+                ? extractJsonBooleanField(body, "useTmux") : false;
+        CodingAgentJobFactory.resolveUseTmux(factory, perJobHasUseTmux,
+                perJobUseTmux, workstream);
         // Sensitive-file protections — enabled by default; only forwarded
         // when the operator has explicitly disabled them for this job. The
         // bypass signature is controller-computed from AR_AGENT_BYPASS_SECRET
@@ -1103,6 +1113,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             }
             ccEvent.withCostByRunner(JsonFieldExtractor.extractDoubleObject(body, "costByRunner"));
             ccEvent.withCostByModel(JsonFieldExtractor.extractDoubleObject(body, "costByModel"));
+            ccEvent.withCostIncomplete(extractJsonBooleanField(body, "costIncomplete"));
         }
 
         log("Status event: " + eventStatus + " for job " + jobId + " in workstream " + workstreamId);
@@ -1385,7 +1396,16 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             j.append(",\"errorMessage\":\"").append(JsonFieldExtractor.escapeJson(event.getErrorMessage())).append("\"");
         }
         double totalCost = event.getTotalCostUsd();
-        if (totalCost > 0) {
+        boolean costIncomplete = event.isCostIncomplete();
+        // Always emit costIncomplete as a stable boolean, matching
+        // JobCompletionEvent.toJson() and the documented wire shape so consumers
+        // never have to treat its absence as false.
+        j.append(",\"costIncomplete\":").append(costIncomplete);
+        // Emit the cost block when there is a positive total OR when the cost is
+        // incomplete: an inactivity-killed session can leave totalCost at 0 even
+        // though real (uncosted) work happened, and the total/breakdowns should
+        // still be surfaced as a lower bound.
+        if (totalCost > 0 || costIncomplete) {
             j.append(String.format(",\"totalCostUsd\":%.2f", totalCost));
             Map<String, Double> costByRunner = event.getCostByRunner();
             if (costByRunner != null && !costByRunner.isEmpty()) {

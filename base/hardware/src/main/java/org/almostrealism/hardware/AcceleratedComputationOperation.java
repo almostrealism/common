@@ -681,18 +681,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	}
 
 	/**
-	 * Returns whether this operation uses aggregated input memory.
-	 *
-	 * <p>Aggregated inputs combine multiple separate allocations into a single
-	 * contiguous buffer, improving GPU performance. Always returns true for
-	 * {@link AcceleratedComputationOperation}.</p>
-	 *
-	 * @return true (always uses aggregated inputs)
-	 */
-	@Override
-	public boolean isAggregatedInput() { return true; }
-
-	/**
 	 * Returns the signature for instruction set caching.
 	 *
 	 * <p>The signature uniquely identifies the computation structure, enabling
