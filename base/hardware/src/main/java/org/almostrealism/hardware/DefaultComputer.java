@@ -22,7 +22,6 @@ import io.almostrealism.code.Computer;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationInfo;
-import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -36,7 +35,6 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.Collections;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -376,14 +374,6 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	public static boolean enableTargetingLog =
 			SystemUtils.isEnabled("AR_LOG_COMPUTE_TARGETING").orElse(false);
 
-	/**
-	 * When enabled, logs instruction-set reuse signature collisions: a cache hit where the cached
-	 * computation's description differs from the requesting computation's. TEMPORARY DIAGNOSTIC for the
-	 * compile-determinism investigation (signature too coarse → non-equivalent kernel reuse). Defaults
-	 * to OFF; enable from a diagnostic test. Remove once the signature narrowing lands.
-	 */
-	public static boolean enableReuseCollisionLog = false;
-
 	/** The hardware instance this computer is associated with. */
 	private Hardware hardware;
 
@@ -543,19 +533,6 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 		// thread never committed; MetalDataContext now shares one context.)
 		String cacheKey = Objects.requireNonNull(signature);
 
-		if (enableReuseCollisionLog) {
-			ScopeInstructionsManager<ScopeSignatureExecutionKey> existing = instructionsCache.get(cacheKey);
-			if (existing != null && existing.getProcess() != computation) {
-				String cachedDescription = reuseDescription(existing.getProcess());
-				String requestingDescription = reuseDescription(computation);
-				if (!Objects.equals(cachedDescription, requestingDescription)) {
-					log("reuseSignatureCollision sig=" + cacheKey
-							+ " cached=" + cachedDescription
-							+ " requesting=" + requestingDescription);
-				}
-			}
-		}
-
 		Consumer<ScopeInstructionsManager<ScopeSignatureExecutionKey>>
 				accessListener =mgr -> {
 					// Ensure that usage of any InstructionSets updates
@@ -576,35 +553,6 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 
 					return mgr;
 				});
-	}
-
-	/**
-	 * Clears the signature-keyed instruction-set reuse cache, destroying every cached manager. Used by
-	 * determinism diagnostics to force a genuinely cold compile (empty cache) on demand within a single
-	 * JVM. Cached managers are destroyed via the eviction listener semantics.
-	 */
-	public void clearInstructionsCache() {
-		List<String> keys = new ArrayList<>();
-		instructionsCache.forEach((key, mgr) -> keys.add(key));
-		keys.forEach(instructionsCache::evict);
-	}
-
-	/**
-	 * Returns a short human-readable description of a reuse-cache participant for the
-	 * {@link #enableReuseCollisionLog} diagnostic, including the output shape when available so two
-	 * computations that differ only in shape or reduction axis are distinguishable.
-	 *
-	 * @param value the cached or requesting computation, or {@code null}
-	 * @return a description string
-	 */
-	private static String reuseDescription(Object value) {
-		if (value == null) return "null";
-
-		OperationMetadata metadata = OperationInfo.metadataForValue(value);
-		if (metadata == null) return value.getClass().getSimpleName();
-
-		String shape = metadata.getShape() == null ? "" : metadata.getShape().toStringDetail();
-		return metadata.getShortDescription() + shape;
 	}
 
 	/**
