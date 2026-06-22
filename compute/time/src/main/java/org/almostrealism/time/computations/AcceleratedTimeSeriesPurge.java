@@ -155,7 +155,13 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 			Expression cursor0 = getArgument(1).valueAt(0);
 
 			Scope<Void> guard = new Scope<>();
-			Expression start = guard.declareInteger("_purge_start", left.add(e(1)).toInt());
+			// The snapshot variable must have an operation-unique name: the native (C)
+			// backend hoists declared variables to function scope, so a hardcoded name
+			// collides ("redefinition") when several purge operations are inlined into a
+			// single kernel. getVariableName() derives a name from this operation's
+			// (unique) function name. Loop indices do not need this since they are
+			// declared inside the for-statement and scoped to the loop.
+			Expression start = guard.declareInteger(getVariableName(0), left.add(e(1)).toInt());
 
 			// Advance the begin cursor to the last entry whose time precedes the
 			// purge cursor. The original loop broke once an entry at or beyond the
