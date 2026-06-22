@@ -161,21 +161,39 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 			// single kernel. getVariableName() derives a name from this operation's
 			// (unique) function name. Loop indices do not need this since they are
 			// declared inside the for-statement and scoped to the loop.
-			Expression start = guard.declareInteger(getVariableName(0), left.add(e(1)).toInt());
+			//
+			// The declaration is hoisted, and its initializer hoists with it: when this
+			// operation is inlined into an enclosing per-sample loop the initializer runs
+			// only ONCE for the whole loop. The snapshot must instead capture the CURRENT
+			// begin cursor on every invocation, so it is declared with a throwaway value
+			// and (re)assigned as an in-loop statement below. Relying on the hoisted
+			// initializer would freeze start at the first tick's begin cursor, making every
+			// later purge rescan from the original position -- O(n) per sample, O(n^2)
+			// across a delay line, and the begin cursor advances (line below) so it cannot
+			// be treated as loop-invariant.
+			Expression start = guard.declareInteger(getVariableName(0), e(0).toInt());
+			guard.assign(start, left.add(e(1)).toInt());
 
 			// Advance the begin cursor to the last entry whose time precedes the
-			// purge cursor. The original loop broke once an entry at or beyond the
-			// cursor was reached; because entries are stored in non-decreasing time
-			// order the begin cursor cannot advance past that point anyway, so the
-			// break-less Repeated loop yields the same result.
+			// purge cursor. The original loop broke as soon as it reached an entry at
+			// or beyond the cursor; the "cursor0 >= banki" term in the loop condition
+			// reproduces that early break (Repeated has no break statement). Without it
+			// the loop would scan the full live region on every call -- O(n) per sample,
+			// O(n^2) across a delay line -- which is correct but pathologically slow.
+			//
+			// The conjunction lowers to a bitwise "&" (no short-circuit), so banki is
+			// read even on the terminating check where idx == right. That read stays in
+			// bounds: the series allocates maxEntries + 1 slots (slot 0 is the cursor
+			// header) and add() caps the end cursor at maxEntries, so right <= maxEntries
+			// and bank[right * 2] is always the reserved final slot.
 			Repeated loop = new Repeated<>();
 			InstanceReference offset = Variable.integer("i").ref();
 			loop.setIndex(offset.getReferent());
 			Expression idx = start.add(offset);
-			loop.setCondition(idx.lessThan(right));
+			Expression banki = getArgument(0).reference(idx.multiply(2));
+			loop.setCondition(idx.lessThan(right).and(cursor0.greaterThanOrEqual(banki)));
 			loop.setInterval(e(1));
 
-			Expression banki = getArgument(0).reference(idx.multiply(2));
 			loop.addCase(cursor0.greaterThan(banki), getArgument(0).reference(e(0)).assign(idx));
 
 			guard.add(loop);

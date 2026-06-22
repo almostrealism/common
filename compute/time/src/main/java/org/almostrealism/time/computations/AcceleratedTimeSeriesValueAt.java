@@ -139,13 +139,16 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 		Expression bankr1 = getArgument(1).reference(right.multiply(2).add(1));
 
 		// Linear search for the first stored sample whose time is >= the cursor.
-		// The "right == -1" guard turns the body into a no-op once a match is
-		// found, reproducing the original loop's break (Repeated has no break).
+		// The "right == -1" term in the loop condition stops the scan as soon as a
+		// match is found, reproducing the original loop's early break (Repeated has no
+		// break statement). Without it the scan would traverse the full live region on
+		// every call -- O(n) per sample, O(n^2) across a delay line -- which is correct
+		// but pathologically slow.
 		Repeated loop = new Repeated<>();
 		InstanceReference k = Variable.integer("i").ref();
 		loop.setIndex(k.getReferent());
 		Expression i = bank0.toInt().add(k);
-		loop.setCondition(i.lessThan(bank1));
+		loop.setCondition(i.lessThan(bank1).and(right.eq(e(-1))));
 		loop.setInterval(e(1));
 
 		Expression banki = getArgument(1).reference(i.multiply(2));
@@ -153,7 +156,7 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 		match.assign(left, i.greaterThan(bank0).conditional(i.subtract(e(1)),
 				banki.eq(cursor0).conditional(i, e(-1))));
 		match.assign(right, i);
-		loop.addCase(right.eq(e(-1)).and(banki.greaterThanOrEqual(cursor0)), match);
+		loop.addCase(banki.greaterThanOrEqual(cursor0), match);
 
 		scope.add(loop);
 
