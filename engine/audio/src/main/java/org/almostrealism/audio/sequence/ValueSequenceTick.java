@@ -23,8 +23,6 @@ import io.almostrealism.scope.HybridScope;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.temporal.BaseAudioData;
 
-import java.util.function.Consumer;
-
 /**
  * Advances the wave position in a value sequence by the wave length, with optional
  * modulo wrapping for repeating sequences. This computation updates the temporal
@@ -67,20 +65,12 @@ public class ValueSequenceTick extends ValueSequenceComputation {
 
 		scope = new HybridScope(this);
 
-		Consumer<String> exp = scope.code();
-
-		exp.accept(getWavePosition().reference(e(0)).getSimpleExpression(getLanguage()));
-		exp.accept(" = ");
-		exp.accept(getWavePosition().valueAt(0).add(getWaveLength().valueAt(0)).getSimpleExpression(getLanguage()));
-		exp.accept(";\n");
+		scope.assign(getWavePosition().reference(e(0)),
+				getWavePosition().valueAt(0).add(getWaveLength().valueAt(0)));
 
 		if (repeat) {
-			exp.accept(getWavePosition().reference(e(0)).getSimpleExpression(getLanguage()));
-			exp.accept(" = fmod(");
-			exp.accept(getWavePosition().valueAt(0).getSimpleExpression(getLanguage()));
-			exp.accept(", ");
-			exp.accept(getDurationFrames().valueAt(0).getSimpleExpression(getLanguage()));
-			exp.accept(");\n");
+			scope.assign(getWavePosition().reference(e(0)),
+					getWavePosition().valueAt(0).mod(getDurationFrames().valueAt(0)));
 		}
 	}
 }

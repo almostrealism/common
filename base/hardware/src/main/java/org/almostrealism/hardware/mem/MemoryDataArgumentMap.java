@@ -16,7 +16,6 @@
 
 package org.almostrealism.hardware.mem;
 
-import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.ScopeInputManager;
@@ -169,13 +168,12 @@ public class MemoryDataArgumentMap<S, A> extends SupplierArgumentMap<S, A> {
 	/**
 	 * Creates and configures a {@link MemoryDataArgumentMap} with the appropriate delegate provider.
 	 *
-	 * @param context Compute context providing language and memory services
 	 * @param metadata Operation metadata for argument naming
 	 * @return Fully configured {@link MemoryDataArgumentMap}
 	 */
-	public static MemoryDataArgumentMap create(ComputeContext<MemoryData> context, OperationMetadata metadata) {
+	public static MemoryDataArgumentMap create(OperationMetadata metadata) {
 		return new MemoryDataArgumentMap(metadata,
-				new DefaultScopeInputManager(context.getLanguage(),
+				new DefaultScopeInputManager(
 						(name, input) -> CollectionVariable.create(name, (Supplier) input)));
 	}
 }

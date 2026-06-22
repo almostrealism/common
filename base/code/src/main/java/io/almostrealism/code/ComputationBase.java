@@ -20,7 +20,6 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Countable;
@@ -84,12 +83,6 @@ import java.util.stream.Collectors;
 public abstract class ComputationBase<I, O, T>
 					extends ComputableBase<I, T>
 					implements Computation<O>, Signature {
-
-	/**
-	 * Language operations provider for code generation.
-	 * Set during scope preparation and used for generating language-specific code.
-	 */
-	private LanguageOperations lang;
 
 	/**
 	 * List of compute requirements specifying execution preferences.
@@ -188,16 +181,8 @@ public abstract class ComputationBase<I, O, T>
 	}
 
 	/**
-	 * Returns the language operations provider for code generation.
-	 *
-	 * @return the language operations, or {@code null} if not yet set
-	 */
-	protected LanguageOperations getLanguage() { return lang; }
-
-	/**
 	 * Prepares the scope for this computation using the provided scope input manager.
-	 * This method is part of the {@link ScopeLifecycle} and sets up the language
-	 * operations and argument variables.
+	 * This method is part of the {@link ScopeLifecycle} and sets up the argument variables.
 	 *
 	 * <p>If the scope has already been prepared by the same {@link ScopeInputManager}
 	 * as on the previous call, returns early to avoid redundant processing. If the
@@ -208,7 +193,7 @@ public abstract class ComputationBase<I, O, T>
 	 * underlying argument map (and its aggregate buffer); reusing them under a
 	 * different manager would cause the new kernel to read or write stale memory.
 	 *
-	 * @param manager the scope input manager providing language and argument services
+	 * @param manager the scope input manager providing argument services
 	 * @param context the kernel structure context for scope preparation
 	 */
 	@Override
@@ -216,7 +201,6 @@ public abstract class ComputationBase<I, O, T>
 		ScopeInputManager previous = lastScopeInputManager == null ? null : lastScopeInputManager.get();
 		if (getArgumentVariables() != null && previous == manager) return;
 		if (getArgumentVariables() != null) resetArguments();
-		this.lang = manager.getLanguage();
 		this.lastScopeInputManager = new WeakReference<>(manager);
 		ScopeLifecycle.prepareScope(getInputs().stream(), manager, context);
 		assignArguments(manager);
@@ -225,13 +209,11 @@ public abstract class ComputationBase<I, O, T>
 	/**
 	 * Resets the arguments for this computation and all input producers.
 	 * This clears the compiled state, allowing the computation to be recompiled.
-	 * Also clears the language operations reference.
 	 */
 	@Override
 	public void resetArguments() {
 		super.resetArguments();
 		ScopeLifecycle.resetArguments(getInputs().stream());
-		this.lang = null;
 	}
 
 	/**

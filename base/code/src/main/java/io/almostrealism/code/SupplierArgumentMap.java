@@ -16,7 +16,6 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
@@ -106,16 +105,6 @@ public class SupplierArgumentMap<S, A> implements ScopeInputManager, Destroyable
 		Optional<Supplier<S>> existing = arguments.keySet().stream().filter(filter).findAny();
 		if (existing.isEmpty()) return Optional.empty();
 		return Optional.of(get(existing.get()));
-	}
-
-	/**
-	 * {@inheritDoc}
-	 *
-	 * @return the language operations of the delegate provider
-	 */
-	@Override
-	public LanguageOperations getLanguage() {
-		return delegateProvider.getLanguage();
 	}
 
 	/**

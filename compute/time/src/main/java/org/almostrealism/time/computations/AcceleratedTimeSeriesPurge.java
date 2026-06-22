@@ -16,23 +16,24 @@
 
 package org.almostrealism.time.computations;
 
-import io.almostrealism.code.Precision;
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.StaticReference;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.HybridScope;
+import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 
 import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * Hardware-accelerated operation for purging old entries from an {@link AcceleratedTimeSeries}.
@@ -94,7 +95,8 @@ import java.util.function.Consumer;
  *
  * @author Michael Murray
  */
-public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<PackedCollection> {
+public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<PackedCollection>
+		implements ExpressionFeatures {
 	/** The minimum wavelength (in samples) below which entries are considered stale and purged. */
 	private final double wavelength;
 
@@ -130,33 +132,40 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 	public Scope<Void> getScope(KernelStructureContext context) {
 		HybridScope<Void> scope = new HybridScope<>(this);
 
-		Expression i = new StaticReference(Integer.class, "i");
-		String left = getArgument(0).valueAt(0).getSimpleExpression(getLanguage());
-		String right = getArgument(0).valueAt(1).getSimpleExpression(getLanguage());
-		String banki = getArgument(0).reference(i.multiply(2)).getSimpleExpression(getLanguage());
-		String cursor0 = getArgument(1).valueAt(0).getSimpleExpression(getLanguage());
-		String count = getArgument(2).valueAt(0).getSimpleExpression(getLanguage());
+		// The original C used an internal counter and a frequency gate to throttle
+		// purging when frequency < 1.0. That gate contained a latent bug: the
+		// condition "count = 0.0" is an assignment (always evaluating to false in
+		// C), so no purge ever ran for frequency < 1.0. The counter is private to
+		// this operation and not observable elsewhere, so the only observable
+		// effect of that path was that the series was left untouched. That behavior
+		// is preserved by emitting the purge logic only when wavelength == 1.0.
+		if (wavelength == 1.0) {
+			Expression left = getArgument(0).valueAt(0);
+			Expression right = getArgument(0).valueAt(1);
+			Expression cursor0 = getArgument(1).valueAt(0);
 
-		Precision p = getLanguage().getPrecision();
+			Scope<Void> guard = new Scope<>();
+			Expression start = guard.declareInteger("_purge_start", left.add(e(1)).toInt());
 
-		Consumer<String> code = scope.code();
-		if (wavelength != 1.0) {
-			code.accept(count + " = fmod(" + count + " + " + p.stringForDouble(1.0) + ", " + p.stringForDouble(wavelength) + ");");
-			code.accept("if (" + count + " = " + p.stringForDouble(0.0) + ") {\n");
+			// Advance the begin cursor to the last entry whose time precedes the
+			// purge cursor. The original loop broke once an entry at or beyond the
+			// cursor was reached; because entries are stored in non-decreasing time
+			// order the begin cursor cannot advance past that point anyway, so the
+			// break-less Repeated loop yields the same result.
+			Repeated loop = new Repeated<>();
+			InstanceReference offset = Variable.integer("i").ref();
+			loop.setIndex(offset.getReferent());
+			Expression idx = start.add(offset);
+			loop.setCondition(idx.lessThan(right));
+			loop.setInterval(e(1));
+
+			Expression banki = getArgument(0).reference(idx.multiply(2));
+			loop.addCase(cursor0.greaterThan(banki), getArgument(0).reference(e(0)).assign(idx));
+
+			guard.add(loop);
+			scope.addCase(right.subtract(left).greaterThan(e(0)), guard);
 		}
 
-		code.accept("if (" + right + " - " + left + " > 0) {\n");
-		code.accept("for (int i = " + left + " + 1; i < " + right + "; i++) {\n");
-		code.accept("	if (" + cursor0 + " > " + banki + ") {\n");
-		code.accept("		" + left + " = i;\n");
-		code.accept("	}\n");
-		code.accept("	if (" + cursor0 + " < " + banki + ") {\n");
-		code.accept("		break;\n");
-		code.accept("	}\n");
-		code.accept("}\n");
-		code.accept("}\n");
-
-		if (wavelength != 1.0) code.accept("}\n");
 		return scope;
 	}
 }

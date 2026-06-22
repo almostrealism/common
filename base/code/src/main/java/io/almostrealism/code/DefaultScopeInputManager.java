@@ -16,7 +16,6 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 
@@ -38,8 +37,6 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 	/** Global counter used to generate unique argument variable names. */
 	private static int counter = 0;
 
-	/** The language operations for the compilation target. */
-	private LanguageOperations lang;
 	/** Factory that creates an array variable from a generated name and input producer. */
 	private BiFunction<String, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory;
 
@@ -49,12 +46,9 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 	 * <p>The factory receives the generated argument name and the input producer; it is responsible
 	 * only for constructing the variable, not for naming it.</p>
 	 *
-	 * @param lang the language operations for the compilation target
 	 * @param variableFactory the factory that creates argument variables from a name and input
 	 */
-	public DefaultScopeInputManager(LanguageOperations lang,
-									BiFunction<String, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory) {
-		this.lang = lang;
+	public DefaultScopeInputManager(BiFunction<String, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory) {
 		this.variableFactory = variableFactory;
 	}
 
@@ -66,14 +60,6 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 	private static String nextArgumentName() {
 		return "_v" + counter++;
 	}
-
-	/**
-	 * {@inheritDoc}
-	 *
-	 * @return the language operations
-	 */
-	@Override
-	public LanguageOperations getLanguage() { return lang; }
 
 	/**
 	 * {@inheritDoc}

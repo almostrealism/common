@@ -72,7 +72,7 @@ import java.util.List;
  * // When scope is prepared:
  * prepareScope() {
  *     // Creates MemoryDataArgumentMap
- *     argumentMap = MemoryDataArgumentMap.create(context, metadata);
+ *     argumentMap = MemoryDataArgumentMap.create(metadata);
  * }
  * }</pre>
  *
@@ -285,7 +285,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		resetArguments();
 
-		argumentMap = MemoryDataArgumentMap.create(getComputeContext(), getMetadata());
+		argumentMap = MemoryDataArgumentMap.create(getMetadata());
 
 		prepareScope(argumentMap);
 	}

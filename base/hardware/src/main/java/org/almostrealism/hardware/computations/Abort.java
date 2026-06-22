@@ -17,9 +17,9 @@
 package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.code.Termination;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Provider;
-import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationComputationAdapter;
@@ -175,10 +175,8 @@ public class Abort extends OperationComputationAdapter<MemoryData> implements Ex
 	 */
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
-		HybridScope<Void> scope = new HybridScope<>(this);
-		scope.code().accept("if (");
-		scope.code().accept(getArgument(0).reference(e(0)).getSimpleExpression(getLanguage()));
-		scope.code().accept(" > 0) { return; }");
+		Scope<Void> scope = new Scope<>(getFunctionName(), getMetadata());
+		scope.addCase(getArgument(0).reference(e(0)).greaterThan(e(0.0)), new Termination());
 		return scope;
 	}
 }

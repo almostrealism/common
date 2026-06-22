@@ -21,20 +21,21 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.StaticReference;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.HybridScope;
+import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
 import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * Computation that resets a {@link org.almostrealism.graph.TimeCell} frame counter
@@ -53,7 +54,6 @@ import java.util.function.Consumer;
  * for (int _reset_j = 0; _reset_j &lt; resetCount; _reset_j++) {
  *     if (reset[_reset_j] &gt; 0.0 &amp;&amp; time[1] == reset[_reset_j]) {
  *         time[0] = 0.0;
- *         break;
  *     }
  * }
  * </pre>
@@ -130,9 +130,10 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection>
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Prepares the scope by generating a loop that checks each reset slot
-	 * and resets the frame counter if a match is found. The loop uses a raw
-	 * C loop variable to avoid AR expression tracking limitations.</p>
+	 * <p>Prepares the scope by generating a {@link Repeated} loop that checks each reset slot
+	 * and resets the frame counter if a match is found. The loop is expressed entirely as
+	 * language-independent {@link Expression}s and {@link Scope} statements, so the target
+	 * language is not consulted until the scope is rendered.</p>
 	 */
 	@Override
 	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
@@ -140,26 +141,16 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection>
 
 		scope = new HybridScope(this);
 
-		Consumer<String> exp = scope.code();
+		Repeated loop = new Repeated<>();
+		InstanceReference j = Variable.integer("_reset_j").ref();
+		loop.setIndex(j.getReferent());
+		loop.setCondition(j.lessThan(e(len)));
+		loop.setInterval(e(1));
 
-		// Use a unique loop variable name to avoid conflicts with AR-generated names
-		String loopVar = "_reset_j";
+		Expression resetAtJ = getResets().valueAt(j);
+		loop.addCase(resetAtJ.greaterThan(e(0.0)).and(getTime().valueAt(1).eq(resetAtJ)),
+				getTime().reference(e(0)).assign(e(0.0)));
 
-		// Create expressions using the loop variable as a StaticReference
-		Expression<Integer> jRef = new StaticReference<>(Integer.class, loopVar);
-
-		// Get the expressions for array access using the loop variable
-		String resetAtJ = getResets().valueAt(jRef).getSimpleExpression(getLanguage());
-		String timeBase = getTime().valueAt(0).getSimpleExpression(getLanguage());
-		String time1 = getTime().valueAt(1).getSimpleExpression(getLanguage());
-		String zeroVal = getLanguage().getPrecision().stringForDouble(0.0);
-
-		// Generate a compact loop instead of an if-else chain
-		exp.accept("for (int " + loopVar + " = 0; " + loopVar + " < " + len + "; " + loopVar + "++) {\n");
-		exp.accept("\tif (" + resetAtJ + " > " + zeroVal + " && " + time1 + " == " + resetAtJ + ") {\n");
-		exp.accept("\t\t" + timeBase + " = " + zeroVal + ";\n");
-		exp.accept("\t\tbreak;\n");
-		exp.accept("\t}\n");
-		exp.accept("}\n");
+		scope.add(loop);
 	}
 }
