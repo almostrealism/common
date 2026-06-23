@@ -59,17 +59,18 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * If true, fold eligible small arguments into a single aggregate kernel argument. Controlled by
 	 * {@code AR_HARDWARE_ARGUMENT_AGGREGATION}.
 	 *
-	 * <p>Default is currently {@code false}. The compile-time collapse is correct on its own (it
-	 * fixes kernels that exceed the compute context's buffer limit), but the copy plan here only
-	 * copies aggregated inputs IN; it does not yet copy a written aggregate slice back OUT for the
-	 * argument the kernel writes. Enabling it unconditionally therefore regresses operations whose
-	 * small <em>output</em> is aggregated (the result stays in the aggregate) and in-place
-	 * operations (a read-only input aliasing the output). Making the copy-out apply to exactly the
-	 * written output argument -- via the reuse substitution -- is the next step, after which this
-	 * can default to {@code true}. Set the env var to {@code true} to exercise the collapse in
-	 * isolation (e.g. for kernels that only aggregate read-only inputs).</p>
+	 * <p>Defaults to {@code true}: the compile-time collapse keeps kernels under the compute
+	 * context's buffer-argument limit (e.g. Metal's ~31, and the native compiler's parameter
+	 * limit), which is required for fused kernels with many small inputs to evaluate at all. The
+	 * copy plan copies aggregated inputs IN before the kernel and copies written slices back OUT
+	 * afterward (skipping the slice that aliases an explicit {@code output}; see
+	 * {@link #getPostprocessData(MemoryData)}), and instruction reuse is aggregation-safe (each
+	 * reused operation gets its own aggregate buffer and the signature encodes the aggregate layout
+	 * -- see {@code AcceleratedComputationOperation.rebindAggregateForReuse} and
+	 * {@code CollectionProviderProducer.signature}). Set the env var to a disabled value to turn
+	 * the collapse off (e.g. for debugging a kernel without aggregation).</p>
 	 */
-	public static boolean enableArgumentAggregation = SystemUtils.isEnabled("AR_HARDWARE_ARGUMENT_AGGREGATION").orElse(false);
+	public static boolean enableArgumentAggregation = SystemUtils.isEnabled("AR_HARDWARE_ARGUMENT_AGGREGATION").orElse(true);
 
 	/**
 	 * Maximum element count for an argument to be eligible for aggregation. Controlled by
