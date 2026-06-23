@@ -6,6 +6,45 @@ instruction cache. Supersedes the count-gating idea in an earlier draft of this 
 §3 — that idea was wrong). Related: [SIGNATURE_AGGREGATION_GAP.md](SIGNATURE_AGGREGATION_GAP.md)
 (now partly stale; see §7).
 
+## UPDATE — implemented & validated copy-out policy (supersedes the §6 copy-out discussion)
+
+The earlier copy-out reasoning in this doc (input/output role, "read-only inputs never copy
+back") was wrong and is superseded. The correct, verified mechanism (see
+`docs/plans/ASSIGN_GET_TRACE_addInPlace.md` and `docs/plans/ARGVAR_addInPlace.md`): the only
+buffer that can be reassigned in a way aggregation cannot see is the one substituted at runtime
+for `Computation.getOutputVariable` via `AcceleratedOperation.apply(MemoryBank output, ...)`.
+`MemoryDataDestinationProducer` (the output) is never aggregated, so the output buffer is always
+independent. Therefore the copy-out policy keys on the `output` argument to `apply`:
+
+- **`output == null`** -> copy every aggregated slice back (normal allocate-your-own-output ops,
+  including aggregated reduction outputs, are correct).
+- **`output != null`, default** -> no aggregation copy-back. Supplying an explicit output is
+  taken as the caller declaring that side-effects to other aggregated buffers need not be
+  recorded. (An in-place `x = x + y` runs as `add.apply(output = x)`, writing `x` directly; no
+  copy-back means the aggregated read-copy of `x` cannot clobber it.)
+- **`output != null`, strict** (`AR_HARDWARE_STRICT_SIDE_EFFECTS=enabled`) -> copy back every
+  slice EXCEPT the one whose memory aliases `output`.
+
+Implemented in `AcceleratedOperation.apply` (`aggregateCopyOut = aggregating && (output == null
+|| MemoryDataArgumentMap.enableStrictSideEffects)`; copy-out via
+`MemoryDataArgumentMap.getPostprocessData()` / `getPostprocessData(output)`) and
+`MemoryDataArgumentMap` (`enableStrictSideEffects`, `getPostprocessData(MemoryData skipOutput)`).
+
+**Validated (aggregation on, `AR_HARDWARE_ARGUMENT_AGGREGATION=enabled`):**
+- `CollectionMathTests` 22/22 on native -- both default (`9f9c1b74`) and strict (`e56b867f`),
+  including `addInPlace` and the reductions (`mean`/`variance`/`subtractMean`/...).
+- `BatchedChainSeamTest` + `BatchedSssFromScalarsTest` pass on **Metal** (`f82579a5`).
+- Adversarial sweep, native, default: `AggregatedComputationTests, WeightedSumTests,
+  MatrixMathTests, CollectionExponentComputationTest, StandardMathTests` 31/31 (`e17641fb`);
+  `NormTests, SoftmaxTests, CollectionPermuteTests, PackedCollectionMapTests,
+  MatrixDeltaComputationTests` 80/80, 6 skipped (`d6e434b5`). No correctness breaks, no pool
+  exhaustion.
+
+Still default-OFF (`MemoryDataArgumentMap.enableArgumentAggregation`); the instruction-cache
+signature disable for aggregation targets (`CollectionProviderProducer.signature()` -> null)
+remains and is the next thing to remove before default-on. Open per-user: whether to eliminate
+the `apply(output=...)` substitution entirely.
+
 ## 1. The problem these tests expose
 
 Two tests fail on Metal, pass on JNI:
@@ -50,6 +89,30 @@ created**, exactly as the working `MemoryDataArgumentMap` on master does it — 
 inspecting a total. There is no "aggregate only if the Scope will have too many arguments"
 gate, because that count does not exist until the Scope is built (see §3).
 
+### 2.1 Eligibility must depend only on signature-stable properties
+
+**The aggregation decision for an argument must be a function only of properties that are
+intrinsic to the Computation's meaning — the same properties that participate in (or are
+consistent with) its signature.** Concretely:
+
+- **Allowed:** structural facts that cannot change without changing the Computation, above
+  all the argument's **size** (`memLength`, derived from shape). "This is small, aggregate
+  it" is a stable decision.
+- **Forbidden:** any mutable runtime property, above all **where the data currently lives**
+  (JVM heap vs. device memory, the memory provider). A `PackedCollection` — and therefore
+  anything a `CollectionProducer` produces — can be moved between heap and device at any time
+  for unrelated reasons. If aggregation keyed on that, the *same* Computation would aggregate
+  or not depending on incidental JVM history, producing a different kernel structure for no
+  semantic reason and silently invalidating any cached/reused InstructionSet.
+
+This is the specific mistake that wrecked the original debugging effort: the master code
+decided eligibility on the memory provider (`generateArg = md.getMem().getProvider() !=
+kernelMemoryProvider`, and `isAggregationTarget` requiring `JVMMemoryProvider`), so the
+decision drifted with runtime memory placement. **We do not reuse that criterion.**
+Eligibility is **size only**; the copy machinery then adapts to wherever the data happens to
+live at dispatch (copying from whatever provider it is in into the aggregate), but that
+runtime location never feeds the decision of *whether* to aggregate.
+
 ## 3. Why there is no count-based gate (retraction)
 
 An earlier draft proposed aggregating only when a Scope "would exceed" the argument limit.
@@ -79,6 +142,11 @@ not a globally gated one.
 Delegate variables are not separate kernel buffers — they resolve to offsets within
 `aggregateArgument` — so N small inputs collapse to **one** `[[buffer(n)]]`. That is the
 mechanism that lowers the slot count and fixes the Metal failure. No count is involved.
+
+We adopt this collapse mechanism but **not** master's eligibility test. Master's
+`generateArg` (`provider != kernelMemoryProvider`) and `isAggregationTarget`'s
+`JVMMemoryProvider` requirement are exactly the signature-unstable, runtime-location criteria
+forbidden by §2.1. They are replaced by a size-only predicate.
 
 ## 5. Why it was removed, and the real design problem
 
@@ -178,11 +246,9 @@ Stale docs to fix afterward: `base/hardware/README.md:507-544`,
 ## 8. Configuration
 
 - `aggregateMaxLength` — max element count of an aggregable buffer (default ~1024, the
-  requirement's "small"; configurable). The eligibility predicate stays "off-device + small",
-  not a count.
+  requirement's "small"; configurable). This **size** is the *entire* eligibility
+  predicate (per §2.1): no memory-provider / location check, no count.
 - An on/off master switch (default on) for diagnosis/rollback.
-- (`AR_HARDWARE_OFF_HEAP_SIZE` still governs whether small reservations are off-device at all,
-  `Hardware.java:1119` — interacts with the "off-device" half of eligibility.)
 
 ## 9. Implementation phases
 

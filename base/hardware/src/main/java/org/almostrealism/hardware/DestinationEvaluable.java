@@ -276,6 +276,35 @@ public class DestinationEvaluable<T extends MemoryBank> implements
 	 */
 	@Override
 	public T evaluate(Object... args) {
+		if (System.getProperty("AR_TRACE_DESTEVAL") != null) {
+			String branch = operation instanceof Provider ? "Provider.into"
+					: operation instanceof AcceleratedOperation ? "AcceleratedOperation.apply" : "element-wise";
+			StringBuilder t = new StringBuilder("destEvalTrace operation=")
+					.append(operation == null ? "null" : operation.getClass().getName())
+					.append(" branch=").append(branch)
+					.append(" destinationClass=").append(destination == null ? "null" : destination.getClass().getName());
+			if (destination instanceof MemoryData) {
+				MemoryData dm = (MemoryData) destination;
+				t.append(" destMemId=").append(dm.getMem() == null ? "null" : System.identityHashCode(dm.getMem()))
+						.append(" destOffset=").append(dm.getOffset())
+						.append(" destLength=").append(dm.getMemLength());
+			}
+			t.append(" argCount=").append(args == null ? 0 : args.length);
+			if (args != null) {
+				for (int i = 0; i < args.length; i++) {
+					t.append("\n      arg[").append(i).append("]=")
+							.append(args[i] == null ? "null" : args[i].getClass().getName());
+					if (args[i] instanceof MemoryData) {
+						MemoryData am = (MemoryData) args[i];
+						t.append(" memId=").append(am.getMem() == null ? "null" : System.identityHashCode(am.getMem()))
+								.append(" memOffset=").append(am.getOffset())
+								.append(" memLength=").append(am.getMemLength());
+					}
+				}
+			}
+			console().println(t.toString());
+		}
+
 		if (operation instanceof Provider<T>) {
 			operation.into(destination).evaluate(args);
 		} else if (operation instanceof AcceleratedOperation) {

@@ -285,7 +285,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		resetArguments();
 
-		argumentMap = MemoryDataArgumentMap.create();
+		// Provide an aggregate-buffer factory so that small input arguments can be folded into
+		// a single kernel argument (keeping the kernel's argument count under the compute
+		// context's limit). Eligibility is decided per argument by size inside the map.
+		argumentMap = MemoryDataArgumentMap.create(i -> createAggregatedInput(i, i));
 
 		prepareScope(argumentMap);
 	}
@@ -538,6 +541,27 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			// IMPORTANT: do NOT add a per-op wait for non-aggregated operations, and do NOT treat the
 			// mere presence of an aggregated operation as a reason to stop batching the others — only
 			// the aggregated operation itself pays the per-op commit.
+			// Compile-time argument aggregation folds small inputs into one shared kernel buffer;
+			// their data is copied into that buffer before the kernel runs (copy-in, below).
+			//
+			// Whether the aggregate is copied BACK out afterward depends on the side-effect policy.
+			// apply() lets the caller substitute a runtime value for the one variable returned by
+			// Computation.getOutputVariable (the `output` argument); that buffer is the only one
+			// that can be reassigned in a way the aggregation cannot see, so:
+			//   - output == null: nothing was substituted -> copy every aggregated slice back.
+			//   - output != null, default: an explicit output was supplied; the caller is taken to
+			//     not require side-effects to other aggregated buffers -> no copy-back.
+			//   - output != null, strict side-effects: copy back every slice EXCEPT the one that
+			//     aliases `output` (so an in-place x = x + y is not overwritten by x's stale read
+			//     copy).
+			boolean aggregating = argumentMap != null && argumentMap.hasReplacements();
+			boolean aggregateCopyOut = aggregating
+					&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
+
+			if (aggregating) {
+				argumentMap.getPrepareData().get().run();
+			}
+
 			boolean processing = isPreprocessingRequired(process);
 
 			// Preprocessing
@@ -563,7 +587,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			// arbitrarily: the de-aggregation below crosses MemoryProviders and must run after the
 			// kernel completes (see the "processing" explanation above). It only applies to
 			// aggregated operations; non-aggregated ones never reach here and stay batched.
-			if (processing) {
+			if (processing || aggregateCopyOut) {
 				if (nextSemaphore != null) {
 					// TODO  This should actually result in a new Semaphore
 					// TODO  that performs the post processing whenever the
@@ -571,7 +595,15 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 					nextSemaphore.waitFor();
 				}
 
-				process.getPostprocess().get().run();
+				if (aggregateCopyOut) {
+					(output == null ?
+							argumentMap.getPostprocessData() :
+							argumentMap.getPostprocessData((MemoryData) output)).get().run();
+				}
+
+				if (processing) {
+					process.getPostprocess().get().run();
+				}
 			}
 		});
 
