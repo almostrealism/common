@@ -595,14 +595,20 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 					nextSemaphore.waitFor();
 				}
 
+				// Unwind in the reverse order of the prepare phase. The cross-provider reservation
+				// (processing) copied the aggregate buffer into a kernel-provider temp, so the kernel's
+				// results must be copied back from that temp INTO the aggregate buffer
+				// (process.getPostprocess) BEFORE the de-aggregation reads the aggregate to scatter the
+				// results to the original arguments (argumentMap.getPostprocessData). The other order
+				// makes the de-aggregation read the stale aggregate (result reads as 0).
+				if (processing) {
+					process.getPostprocess().get().run();
+				}
+
 				if (aggregateCopyOut) {
 					(output == null ?
 							argumentMap.getPostprocessData() :
 							argumentMap.getPostprocessData((MemoryData) output)).get().run();
-				}
-
-				if (processing) {
-					process.getPostprocess().get().run();
 				}
 			}
 		});
