@@ -245,8 +245,16 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		return aggregateArgument;
 	}
 
-	/** Returns the producer that provides the aggregate buffer to the kernel, creating it on first access. */
-	private Producer<MemoryData> getAggregateSupplier() {
+	/**
+	 * Returns the producer that provides this map's aggregate buffer to the kernel, creating it on
+	 * first access.
+	 *
+	 * <p>Exposed so that a reused operation can bind the shared compiled scope's aggregate argument
+	 * to its own per-operation aggregate buffer (see {@code AcceleratedComputationOperation.load}).</p>
+	 *
+	 * @return Producer of this map's aggregate buffer
+	 */
+	public Producer<MemoryData> getAggregateSupplier() {
 		if (aggregateSupplier == null) {
 			aggregateSupplier = new AggregateProducer();
 		}
@@ -265,6 +273,18 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 
 	/** Returns true if at least one argument has been folded into the aggregate. */
 	public boolean hasReplacements() { return !replacements.isEmpty(); }
+
+	/** Returns the total number of elements folded into the aggregate buffer. */
+	public int getAggregateLength() { return aggregateLength; }
+
+	/** Returns a compact description of the aggregate layout (per-replacement offset:length). */
+	public String describeAggregate() {
+		StringBuilder b = new StringBuilder("len=").append(aggregateLength).append(" [");
+		for (Replacement r : replacements) {
+			b.append(r.getPosition()).append(':').append(r.getRoot().getMemLength()).append(',');
+		}
+		return b.append(']').toString();
+	}
 
 	/**
 	 * Returns the operations that copy each aggregated root into the aggregate buffer before
@@ -350,6 +370,22 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	public static boolean isAggregationTarget(MemoryData md) {
 		return enableArgumentAggregation && md != null && md.getMem() != null
 				&& md.getMemLength() <= maxAggregateLength;
+	}
+
+	/**
+	 * Returns true if the given argument variable is the synthesized aggregate buffer argument
+	 * produced by some {@link MemoryDataArgumentMap}.
+	 *
+	 * <p>The aggregate argument has no position in the {@link io.almostrealism.relation.Process}
+	 * tree, so it is identified by its producer type. A reused operation uses this to locate the
+	 * shared compiled scope's aggregate argument and rebind it to its own per-operation buffer.</p>
+	 *
+	 * @param arg The argument variable to test
+	 * @return True if the argument provides an aggregate buffer
+	 */
+	public static boolean isAggregateArgument(ArrayVariable<?> arg) {
+		Object producer = arg == null ? null : arg.getProducer();
+		return producer instanceof AggregateProducer;
 	}
 
 	/**

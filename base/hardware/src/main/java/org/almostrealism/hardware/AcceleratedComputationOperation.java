@@ -32,6 +32,7 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Argument;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.ExpressionCache;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
@@ -47,6 +48,7 @@ import org.almostrealism.hardware.instructions.ExecutionKey;
 import org.almostrealism.hardware.instructions.ScopeInstructionsManager;
 import org.almostrealism.hardware.instructions.ScopeSignatureExecutionKey;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.io.Describable;
 import org.almostrealism.lifecycle.WeakRunnable;
 
@@ -477,6 +479,8 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 				ProcessArgumentMap map = new ProcessArgumentMap(manager.getArgumentMap());
 				map.putSubstitutions((Process<?,?>) getComputation());
 				setEvaluator(map);
+
+				rebindAggregateForReuse(manager, map);
 			} else {
 				warn("Unable to reuse instructions for " + getFunctionName() +
 						" because " + getComputation() + " is not a Process");
@@ -485,6 +489,55 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		}
 
 		return operator;
+	}
+
+	/**
+	 * Rebinds argument aggregation for a reused instruction set so that this operation reads its
+	 * own inputs rather than those of the operation that originally compiled the scope.
+	 *
+	 * <p>A scope compiled with argument aggregation folds small inputs into a single aggregate
+	 * buffer that the kernel reads at fixed offsets. The standard reuse substitution cannot rebind
+	 * that buffer because it is synthesized and has no {@link Process} tree position, so a reused
+	 * operation would otherwise read the originally compiled operation's stale buffer. This method
+	 * replays the fold over this operation's own computation to obtain an equivalently laid-out
+	 * per-operation copy plan and aggregate buffer, installs it as this operation's
+	 * {@link #argumentMap} (so {@link AcceleratedOperation#apply} performs the copy-in/out), and
+	 * binds the shared scope's aggregate argument to the per-operation buffer.</p>
+	 *
+	 * @param manager The shared instruction set manager whose scope is being reused
+	 * @param map     The per-operation argument map for this reused operation
+	 */
+	private void rebindAggregateForReuse(ScopeInstructionsManager<?> manager, ProcessArgumentMap map) {
+		ArrayVariable<?> sharedAggregate = null;
+		for (Argument<?> arg : manager.getScopeArguments()) {
+			if (arg.getVariable() instanceof ArrayVariable<?> variable
+					&& MemoryDataArgumentMap.isAggregateArgument(variable)) {
+				sharedAggregate = variable;
+				break;
+			}
+		}
+
+		if (sharedAggregate == null) {
+			// The reused scope does not aggregate; standard substitution is already correct.
+			return;
+		}
+
+		// Replay the fold over this operation's own inputs to obtain a per-operation copy plan and
+		// aggregate buffer laid out identically to the shared scope (aggregation is signature-stable).
+		MemoryDataArgumentMap perOperation =
+				MemoryDataArgumentMap.create(length -> createAggregatedInput(length, length));
+		getCompiler().prepareScope(perOperation);
+		this.argumentMap = perOperation;
+
+		if (System.getProperty("AR_TRACE_AGGREGATE_REUSE") != null) {
+			log("aggregateReuse fn=" + getFunctionName() +
+					" perOp=" + perOperation.describeAggregate() +
+					" sig=" + signature());
+		}
+
+		// Bind the shared scope's aggregate argument to this operation's buffer so the reused
+		// kernel reads the data this operation copies in.
+		map.putDirect(sharedAggregate, perOperation.getAggregateSupplier());
 	}
 
 	/**
@@ -586,6 +639,12 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	public synchronized void postCompile() {
 		setupArguments(getCompiler().getScope());
 		getCompiler().postCompile();
+
+		if (System.getProperty("AR_TRACE_AGGREGATE_REUSE") != null
+				&& argumentMap != null && argumentMap.hasReplacements()) {
+			log("aggregateFresh fn=" + getFunctionName() + " " + argumentMap.describeAggregate()
+					+ " sig=" + signature());
+		}
 	}
 
 	/**

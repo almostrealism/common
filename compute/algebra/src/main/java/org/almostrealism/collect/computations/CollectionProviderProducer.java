@@ -30,6 +30,7 @@ import io.almostrealism.util.DescribableParent;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -312,8 +313,20 @@ public class CollectionProviderProducer<T extends Shape>
 		String shape = "|" + value.getShape().toStringDetail();
 
 		if (value instanceof MemoryData) {
-			return ((MemoryData) value).getOffset() + ":" +
-				((MemoryData) value).getMemLength() + shape;
+			MemoryData md = (MemoryData) value;
+			String sig = md.getOffset() + ":" + md.getMemLength() + shape;
+
+			// When this argument is eligible for aggregation, the compiled kernel bakes in the
+			// aggregate layout, which depends on the length of the root delegate that gets folded
+			// into the shared buffer. Two otherwise identical producers whose roots differ in size
+			// (e.g. a 2-element view of a 2-element root vs. of an 8-element root) would fold to
+			// different layouts and must therefore NOT share a compiled kernel. Encoding the root
+			// delegate length here keeps instruction reuse correctly scoped to compatible layouts.
+			if (MemoryDataArgumentMap.isAggregationTarget(md.getRootDelegate())) {
+				sig = sig + "&aggRoot=" + md.getRootDelegate().getMemLength();
+			}
+
+			return sig;
 		}
 
 		return shape;

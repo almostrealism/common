@@ -291,3 +291,45 @@ Stale docs to fix afterward: `base/hardware/README.md:507-544`,
   2 reserved slots); `MetalCommandRunner.MAX_ARGS = 512` (`:58`, runtime-only, unrelated to the
   real 31-slot limit).
 - Compile-time arg count (FYI only, not used for gating): `base/code/.../OperationAdapter.java:81`.
+
+## 12. IMPLEMENTED & VERIFIED — reuse-safe aggregation (2026-06-23)
+
+Two distinct defects had to be fixed for reuse to be safe with aggregation on; both were
+confirmed with diagnostics, not inference.
+
+**Defect A — reused ops never copied their inputs into the aggregate.** A freshly compiled op
+gets `argumentMap` (with the fold/copy plan) via `prepareScope`, so `apply` copies in/out. A
+reused op (`AcceleratedComputationOperation.load`, `getArguments()==null` branch) only sets up
+the `ProcessArgumentMap` substitution and never calls `prepareScope`, so `argumentMap` stayed
+null (no copy-in/out) and the synthesized aggregate argument — which has no `Process` tree
+position — resolved via `getEvaluable` fallback to the *originally compiled* op's stale buffer.
+
+Fix: `AcceleratedComputationOperation.rebindAggregateForReuse` — on reuse, replay the fold over
+this op's own computation (`getCompiler().prepareScope(perOp)`) to build a per-op aggregate
+buffer + copy plan, set it as `argumentMap` (so `apply` copies in/out), and bind the shared
+scope's aggregate argument to the per-op buffer via the new
+`ProcessArgumentMap.putDirect`/`directSubstitutions` (a position-less, argument-variable-keyed
+substitution checked in `getEvaluable` before the producer fallback). `MemoryDataArgumentMap`
+exposes `getAggregateSupplier()` and `isAggregateArgument(ArrayVariable)` for this.
+
+**Defect B — signature collision with incompatible aggregate layouts.** Aggregation folds the
+*root delegate* into one buffer at offsets baked into the kernel, so the kernel now depends on
+root sizes. But `CollectionProviderProducer.signature()` used only the view's `offset:memLength`
++ producer shape, so a 2-element group view of a 2-element root and of an 8-element root produced
+the *same* signature yet different layouts (`[0:2,2:2]` vs `[0:8,8:2]`) — the second reused the
+first's kernel and read garbage. (Confirmed via `AR_TRACE_AGGREGATE_REUSE`: distinct ops shared
+`sig=2207c16d…` with different `perOp` layouts.)
+
+Fix: `signature()` appends `&aggRoot=<rootDelegate.memLength>` when
+`MemoryDataArgumentMap.isAggregationTarget(rootDelegate)`. This scopes reuse to compatible
+layouts. It is the correct form of the old null-disable (which killed reuse for every small
+provider); with aggregation off `isAggregationTarget` is false, so the signature equals master.
+
+**Verification (all green):** aggregation ON + native, 4 classes
+(`CollectionMathTests`/`AggregatedComputationTests`/`NormTests`/`WeightedSumTests`) 61/0/0
+(was 20 failures); Metal-limit indicators (`BatchedChainSeamTest`, `BatchedSssFromScalarsTest`)
++ `KernelArgumentLimitTest` on `mtl` pass; aggregation OFF (CI default) 61/0/0 (no regression);
+build validator (checkstyle/code_policy/test_timeouts/duplicate_code) clean.
+
+Gated diagnostic `AR_TRACE_AGGREGATE_REUSE` (in `postCompile` and `rebindAggregateForReuse`)
+logs fresh vs. reused aggregate layouts; harmless when unset.
