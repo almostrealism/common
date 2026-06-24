@@ -22,8 +22,6 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.lang.reflect.Method;
-
 /**
  * Verifies that the {@link MixdownManagerPdslAdapter} constant-matrix / delay builders, after their
  * conversion from host {@code double[]} math to {@link org.almostrealism.collect.CollectionProducer}
@@ -31,16 +29,20 @@ import java.lang.reflect.Method;
  */
 public class MixdownAdapterConstantParityTest extends TestSuiteBase {
 
-	/** The producer-built diagonal matrix must carry {@code value} on the diagonal, zero elsewhere. */
+	/**
+	 * A constant-valued diagonal matrix must be built with the
+	 * {@link org.almostrealism.algebra.MatrixFeatures#identity(int)} CollectionProducer scaled by
+	 * {@code value} — the graph-native form that replaced the removed host-side
+	 * {@code diagonalMatrix(int, double)} builder (and the same {@code identity(n).multiply(...)}
+	 * idiom {@code MixdownManagerPdslAdapter.householderMatrix} uses). It must carry {@code value}
+	 * on the diagonal, zero elsewhere.
+	 */
 	@Test(timeout = 60000)
-	public void diagonalMatrixMatchesReference() throws Exception {
+	public void diagonalMatrixMatchesReference() {
 		int n = 5;
 		double value = 0.75;
 
-		Method method = MixdownManagerPdslAdapter.class.getDeclaredMethod(
-				"diagonalMatrix", int.class, double.class);
-		method.setAccessible(true);
-		PackedCollection matrix = (PackedCollection) method.invoke(null, n, value);
+		PackedCollection matrix = identity(n).multiply(value).evaluate();
 
 		for (int i = 0; i < n; i++) {
 			for (int j = 0; j < n; j++) {
@@ -52,14 +54,11 @@ public class MixdownAdapterConstantParityTest extends TestSuiteBase {
 
 	/** The producer-built scaled Householder reflection must match {@code gain*((i==j?1:0) - 2/n)}. */
 	@Test(timeout = 60000)
-	public void householderMatrixMatchesReference() throws Exception {
+	public void householderMatrixMatchesReference() {
 		int n = 6;
 		double gain = 1.0 / n;
 
-		Method method = MixdownManagerPdslAdapter.class.getDeclaredMethod(
-				"householderMatrix", int.class, double.class);
-		method.setAccessible(true);
-		PackedCollection matrix = (PackedCollection) method.invoke(null, n, gain);
+		PackedCollection matrix = MixdownManagerPdslAdapter.householderMatrix(n, gain);
 
 		double off = 2.0 / n;
 		for (int i = 0; i < n; i++) {
@@ -72,17 +71,14 @@ public class MixdownAdapterConstantParityTest extends TestSuiteBase {
 
 	/** The producer-built reverb tap delays must equal {@code floor(fraction*ring)} per channel. */
 	@Test(timeout = 60000)
-	public void reverbTapDelaysMatchReference() throws Exception {
+	public void reverbTapDelaysMatchReference() {
 		int channels = 7;
 		int signalSize = 1024;
 		int reverbFrames = 2;
 		MixdownManagerPdslAdapter.Config config =
 				new MixdownManagerPdslAdapter.Config(channels, signalSize, 44100, 40, 1.0, 100);
 
-		Method method = MixdownManagerPdslAdapter.class.getDeclaredMethod(
-				"reverbTapDelays", MixdownManagerPdslAdapter.Config.class);
-		method.setAccessible(true);
-		PackedCollection delays = (PackedCollection) method.invoke(null, config);
+		PackedCollection delays = MixdownManagerPdslAdapter.reverbTapDelays(config);
 
 		int ring = reverbFrames * signalSize;
 		for (int ch = 0; ch < channels; ch++) {

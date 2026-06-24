@@ -480,6 +480,84 @@ public class CodePolicyEnforcementTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that the detector catches reflective method invocation
+	 * ({@code getDeclaredMethod} + {@code Method.invoke}).
+	 */
+	@Test
+	public void testDetectorCatchesReflectiveInvocation() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-reflection");
+		Path testFile = tempDir.resolve("ReflectiveViolation.java");
+
+		String violatingCode = """
+				package test;
+				import java.lang.reflect.Method;
+				public class ReflectiveViolation {
+				    public void badMethod(Object target) throws Exception {
+				        Method m = target.getClass().getDeclaredMethod("secret");
+				        m.setAccessible(true);
+				        m.invoke(target);
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, violatingCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			boolean found = detector.getViolations().stream()
+					.anyMatch(v -> "REFLECTIVE_METHOD_INVOCATION".equals(v.getRule()));
+			Assert.assertTrue("Should detect reflective method invocation", found);
+
+			log("Detector correctly identified reflective method invocation.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
+	 * Verifies that the detector does not flag a {@code getMethod(...)} that merely
+	 * returns a {@link java.lang.reflect.Method} descriptor without invoking it — the
+	 * legitimate factory/plugin registration pattern.
+	 */
+	@Test
+	public void testDetectorAllowsMethodDescriptorWithoutInvoke() throws IOException {
+		Path tempDir = Files.createTempDirectory("policy-test-reflection-clean");
+		Path testFile = tempDir.resolve("MethodDescriptor.java");
+
+		String cleanCode = """
+				package test;
+				import java.lang.reflect.Method;
+				public class MethodDescriptor {
+				    public Method factoryMethod() throws Exception {
+				        return MethodDescriptor.class.getMethod("factoryMethod");
+				    }
+				}
+				""";
+
+		Files.writeString(testFile, cleanCode);
+
+		try {
+			CodePolicyViolationDetector detector = new CodePolicyViolationDetector(tempDir);
+			detector.scan();
+
+			boolean found = detector.getViolations().stream()
+					.anyMatch(v -> "REFLECTIVE_METHOD_INVOCATION".equals(v.getRule()));
+			Assert.assertFalse("Should not flag a getMethod descriptor that is never invoked",
+					found);
+
+			log("Detector correctly allowed a non-invoking getMethod descriptor.");
+
+		} finally {
+			Files.deleteIfExists(testFile);
+			Files.deleteIfExists(tempDir);
+		}
+	}
+
+	/**
 	 * Enforces that every {@code @Test} annotation includes a {@code timeout} parameter.
 	 *
 	 * <p>Tests without timeouts can hang indefinitely, blocking CI runners.

@@ -39,6 +39,9 @@ import java.nio.file.Path;
  *       in source files</li>
  *   <li>{@link LineNumberReferenceDetector} — source-line references in comments
  *       (e.g. {@code Foo.java:123}, "line 660-664") that go stale on the next edit</li>
+ *   <li>{@link ReflectiveInvocationDetector} — reflective method invocation
+ *       ({@code getDeclaredMethod} / {@code Method.invoke}) that bypasses access
+ *       modifiers and is unchecked at compile time</li>
  * </ul>
  *
  * <p><b>This tool exists because documentation alone does not prevent violations.</b>
@@ -57,6 +60,7 @@ import java.nio.file.Path;
  *   <li>Release version markers (e.g. "Common 0.74") in comments or string literals</li>
  *   <li>Planning-document references (e.g. {@code docs/plans/FOO.md}) in source files</li>
  *   <li>Source-line references in comments (e.g. {@code Foo.java:123}, "line 42")</li>
+ *   <li>Reflective method invocation (getDeclaredMethod / Method.invoke)</li>
  * </ul>
  *
  * @see PackedCollectionDetector
@@ -65,6 +69,7 @@ import java.nio.file.Path;
  * @see VersionReferenceDetector
  * @see PlanningDocumentReferenceDetector
  * @see LineNumberReferenceDetector
+ * @see ReflectiveInvocationDetector
  * @see PolicyViolationDetector
  */
 public class CodePolicyViolationDetector extends PolicyViolationDetector {
@@ -116,6 +121,10 @@ public class CodePolicyViolationDetector extends PolicyViolationDetector {
 		lineNumbers.scan();
 		violations.addAll(lineNumbers.getViolations());
 
+		ReflectiveInvocationDetector reflection = new ReflectiveInvocationDetector(rootDir);
+		reflection.scan();
+		violations.addAll(reflection.getViolations());
+
 		return this;
 	}
 
@@ -152,6 +161,10 @@ public class CodePolicyViolationDetector extends PolicyViolationDetector {
 		LineNumberReferenceDetector lineNumbers = new LineNumberReferenceDetector(rootDir);
 		lineNumbers.scanFile(file);
 		violations.addAll(lineNumbers.getViolations());
+
+		ReflectiveInvocationDetector reflection = new ReflectiveInvocationDetector(rootDir);
+		reflection.scanFile(file);
+		violations.addAll(reflection.getViolations());
 
 		return this;
 	}
