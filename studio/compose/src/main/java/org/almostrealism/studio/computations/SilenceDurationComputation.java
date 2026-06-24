@@ -65,9 +65,10 @@ public class SilenceDurationComputation extends OperationComputationAdapter<Pack
 		Expression<Double> min = getArgument(1).valueAt(0);
 		Expression<Double> duration = getArgument(0).valueAt(0);
 
-		// duration = (value > min) ? 0 : duration + 1
+		// duration = (value > min) ? 0 : (value <= min) ? duration + 1 : duration
 		scope.assign(getArgument(0).valueAt(0),
-				conditional(value.greaterThan(min), e(0.0), duration.add(e(1.0))));
+				conditional(value.greaterThan(min), e(0.0),
+						conditional(value.lessThanOrEqual(min), duration.add(e(1.0)), duration)));
 		return scope;
 	}
 }
