@@ -67,11 +67,13 @@ import java.util.List;
  * generated code size from O(n) branches to a constant-size loop construct.
  * With 30+ reset slots, this reduces generated code by ~100+ lines.</p>
  *
- * <p>Because {@link Repeated} has no {@code break} statement, the loop-local
- * {@code _reset_done} flag in the continuation condition reproduces the early
- * exit of the original {@code break}: once a slot matches, the flag is set and
- * the scan stops rather than traversing the remaining slots. This mirrors the
- * {@code right == -1} early-exit idiom in
+ * <p>Because {@link Repeated} has no {@code break} statement, an operation-unique
+ * early-exit flag in the continuation condition reproduces the early exit of the
+ * original {@code break}: once a slot matches, the flag is set and the scan stops
+ * rather than traversing the remaining slots. The flag is given an operation-unique
+ * name (via {@link #getVariableName(int)}) because the native backend hoists declared
+ * variables to function scope, so a hardcoded name would collide when multiple resets
+ * are inlined into one kernel. This mirrors the {@code right == -1} early-exit idiom in
  * {@link org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt}.</p>
  *
  * @author Michael Murray
@@ -153,10 +155,11 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection>
 
 		scope = new HybridScope(this);
 
-		// Loop-local flag implementing the early exit. Repeated has no break, so the
-		// scan stops by setting this flag when a slot matches and testing it in the
-		// loop condition -- the "right == -1" idiom from AcceleratedTimeSeriesValueAt.
-		Expression done = new StaticReference(Integer.class, "_reset_done");
+		// Operation-unique early-exit flag (Repeated has no break): set it when a slot matches
+		// and test it in the loop condition. The name MUST be operation-unique (getVariableName) --
+		// the native backend hoists declared variables to function scope, so a hardcoded name
+		// collides ("redefinition") when multiple TimeCellReset ops inline into one kernel.
+		Expression done = new StaticReference(Integer.class, getVariableName(0));
 		scope.getVariables().add(new ExpressionAssignment(true, done, e(0)));
 
 		Repeated loop = new Repeated<>();
