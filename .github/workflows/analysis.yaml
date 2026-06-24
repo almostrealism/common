@@ -1053,12 +1053,12 @@ jobs:
   # ─── macOS Test Jobs ────────────────────────────────────────────────
 
   test-mac:
-    needs: [changes, build, test-media]
+    needs: [changes, build, test]
     # Layer gate: engine tests only run when engine-or-below layers are modified.
-    # Must tolerate test-media being skipped (no layer changes).
+    # Must tolerate test being skipped (no layer changes).
     if: >-
       needs.build.result == 'success' &&
-      (needs.test-media.result == 'success' || needs.test-media.result == 'skipped') &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
       (needs.changes.outputs.engine_changed == 'true' ||
        needs.changes.outputs.domain_changed == 'true' ||
        needs.changes.outputs.compute_changed == 'true' ||
