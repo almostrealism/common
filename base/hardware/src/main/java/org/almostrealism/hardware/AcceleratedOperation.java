@@ -497,6 +497,36 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * {@link AcceleratedProcessDetails#getSemaphore() completion semaphore} is this
 	 * operation's completion, suitable for use as the next operation's {@code dependsOn}.</p>
 	 *
+	 * <p><strong>Execution model.</strong> Two independent host-mediated memory mechanisms may wrap
+	 * the kernel, and they unwind in reverse order of how they are set up:</p>
+	 * <ul>
+	 *   <li><strong>Cross-provider replacement</strong> (active when {@code !process.isEmpty()};
+	 *   managed by {@link org.almostrealism.hardware.mem.MemoryReplacementManager}). Arguments not
+	 *   already on the kernel's provider are reserved into a provider-owned temp:
+	 *   {@code process.getPrepare()} copies them in, {@code process.getPostprocess()} copies the
+	 *   results back. That copy-back crosses providers, so it must run only after the kernel has
+	 *   actually completed — which forces a per-operation completion wait (and, on Metal, a per-op
+	 *   command-buffer commit). Operations that need no replacement do NOT wait here: their dispatch
+	 *   accumulates into the provider's open command buffer and is committed once at the genuine
+	 *   boundary (the {@code OperationList} runner's trailing wait, or a top-level
+	 *   {@code run()}/{@code evaluate()}) — this is where Metal command-buffer batching happens, so
+	 *   only the replaced op pays the per-op commit.</li>
+	 *   <li><strong>Compile-time argument aggregation</strong> (active when the argument map has
+	 *   replacements; managed by {@link MemoryDataArgumentMap}). Small inputs are folded into one
+	 *   aggregate kernel buffer; their data is copied in before the kernel. Whether each slice is
+	 *   copied back afterward follows the side-effect policy: {@code output == null} copies every
+	 *   slice back; {@code output != null} (default) copies none (the caller's explicit output is
+	 *   taken to be the only result of interest); {@code output != null} with
+	 *   {@link MemoryDataArgumentMap#enableStrictSideEffects strict side-effects} copies back every
+	 *   slice except the one aliasing {@code output} (so an in-place {@code x = x + y} is not
+	 *   overwritten by the stale read copy of {@code x}).</li>
+	 * </ul>
+	 *
+	 * <p>When both apply, the unwind order is correctness-critical: the replacement's
+	 * {@code postprocess} (temp&rarr;aggregate) must run BEFORE aggregation's de-aggregation
+	 * (aggregate&rarr;originals), otherwise the de-aggregation reads a stale aggregate and the
+	 * result reads as zero.</p>
+	 *
 	 * @param output    The destination memory bank for operation results, or null
 	 * @param args      The input arguments for the operation
 	 * @param dependsOn The prior operation's completion {@link Semaphore} to chain on, or null
@@ -518,42 +548,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			// Prepare the operator
 			Execution operator = setupOperator(process);
 
-			// "processing" means this operation needs cross-provider memory replacement: its arguments
-			// are copied into a shared memory reservation on the kernel's provider (prepare, below) and
-			// the result is copied back out afterward (postprocess).
-			//
-			// Aggregation is the signal that this operation CANNOT be batched into the provider's
-			// shared command buffer. The de-aggregation copies between memory in DIFFERENT
-			// MemoryProviders — the aggregated buffer is provider-owned (e.g. a Metal command buffer's
-			// memory) while the originals usually are not — so it must run only after this kernel has
-			// actually completed. That forces a per-operation completion wait below (and, on Metal, a
-			// per-operation command-buffer commit). This per-op commit is correct and intended; it is
-			// also why a Metal command buffer that carries an aggregated op is not shared with others.
-			//
-			// The inverse is the case that matters for performance: when "processing" is false there
-			// is NO per-op wait here, so the dispatch simply accumulates into the provider's open
-			// command buffer and is committed ONCE at the genuine boundary (the OperationList runner's
-			// trailing wait, or a top-level run()/evaluate()). That is where Metal command-buffer
-			// batching happens. Aggregation rarely occurs for performance-critical work because those
-			// buffers exceed the off-heap threshold (AR_HARDWARE_OFF_HEAP_SIZE); setting it to 0 keeps
-			// every reservation provider-owned and avoids aggregation entirely.
-			//
-			// IMPORTANT: do NOT add a per-op wait for non-aggregated operations, and do NOT treat the
-			// mere presence of an aggregated operation as a reason to stop batching the others — only
-			// the aggregated operation itself pays the per-op commit.
-			// Compile-time argument aggregation folds small inputs into one shared kernel buffer;
-			// their data is copied into that buffer before the kernel runs (copy-in, below).
-			//
-			// Whether the aggregate is copied BACK out afterward depends on the side-effect policy.
-			// apply() lets the caller substitute a runtime value for the one variable returned by
-			// Computation.getOutputVariable (the `output` argument); that buffer is the only one
-			// that can be reassigned in a way the aggregation cannot see, so:
-			//   - output == null: nothing was substituted -> copy every aggregated slice back.
-			//   - output != null, default: an explicit output was supplied; the caller is taken to
-			//     not require side-effects to other aggregated buffers -> no copy-back.
-			//   - output != null, strict side-effects: copy back every slice EXCEPT the one that
-			//     aliases `output` (so an in-place x = x + y is not overwritten by x's stale read
-			//     copy).
+			// Two host-mediated memory mechanisms may wrap the kernel (see method javadoc):
+			// compile-time argument aggregation (aggregating) and cross-provider replacement
+			// (processing). They are set up here and unwound in reverse order after the kernel runs.
 			boolean aggregating = argumentMap != null && argumentMap.hasReplacements();
 			boolean aggregateCopyOut = aggregating
 					&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
@@ -562,7 +559,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				argumentMap.getPrepareData().get().run();
 			}
 
-			boolean processing = isPreprocessingRequired(process);
+			boolean processing = !process.isEmpty();
 
 			// Preprocessing
 			if (processing) {
@@ -583,24 +580,19 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			// unchanged.
 			process.setSemaphore(nextSemaphore);
 
-			// Postprocessing. This per-op wait is required, NOT batching being switched off
-			// arbitrarily: the de-aggregation below crosses MemoryProviders and must run after the
-			// kernel completes (see the "processing" explanation above). It only applies to
-			// aggregated operations; non-aggregated ones never reach here and stay batched.
+			// Postprocessing runs only for ops that need it (cross-provider replacement and/or
+			// aggregation copy-out); plain ops stay batched. The per-op wait ensures the kernel has
+			// completed before the host-mediated copy-backs read its results.
 			if (processing || aggregateCopyOut) {
 				if (nextSemaphore != null) {
-					// TODO  This should actually result in a new Semaphore
-					// TODO  that performs the post processing whenever the
-					// TODO  original semaphore is finished
+					// TODO  result in a new Semaphore that performs the postprocessing when the
+					// TODO  original semaphore finishes, rather than blocking the host here
 					nextSemaphore.waitFor();
 				}
 
-				// Unwind in the reverse order of the prepare phase. The cross-provider reservation
-				// (processing) copied the aggregate buffer into a kernel-provider temp, so the kernel's
-				// results must be copied back from that temp INTO the aggregate buffer
-				// (process.getPostprocess) BEFORE the de-aggregation reads the aggregate to scatter the
-				// results to the original arguments (argumentMap.getPostprocessData). The other order
-				// makes the de-aggregation read the stale aggregate (result reads as 0).
+				// Reverse-order unwind (see javadoc): the replacement copy-back (temp->aggregate) MUST
+				// precede aggregation's de-aggregation (aggregate->originals), or the de-aggregation
+				// reads a stale aggregate and the result reads as zero.
 				if (processing) {
 					process.getPostprocess().get().run();
 				}
@@ -647,16 +639,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		} catch (Exception e) {
 			throw new HardwareException("Could not setup operator", e);
 		}
-	}
-
-	/**
-	 * Determines whether preprocessing (cross-provider memory replacement) is required before kernel execution.
-	 *
-	 * @param process The process details to check
-	 * @return true if preprocessing is required, false otherwise
-	 */
-	protected boolean isPreprocessingRequired(AcceleratedProcessDetails process) {
-		return !process.isEmpty();
 	}
 
 	/**

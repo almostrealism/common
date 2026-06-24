@@ -41,21 +41,18 @@ prepares a `Computation` for compilation by generating and enriching its `Scope`
 
 ```java
 // 1. Create compiler from a Computation
-ComputationScopeCompiler<T> compiler = new ComputationScopeCompiler<>(computation, nameProvider);
+ComputationScopeCompiler<T> compiler = new ComputationScopeCompiler<>(computation);
 
-// 2. Prepare arguments (for Process tree wiring)
-compiler.prepareArguments(argumentMap);
+// 2. Prepare scope inputs (argument wiring happens here)
+compiler.prepareScope(argumentProvider, kernelStructureContext);
 
-// 3. Prepare scope inputs
-compiler.prepareScope(inputManager, kernelStructureContext);
-
-// 4. Compile — generates the Scope AST
+// 3. Compile — generates the Scope AST
 Scope<T> scope = compiler.compile();
 
-// 5. Post-compile enrichment — shape validation, metadata
+// 4. Post-compile enrichment — shape validation, metadata
 compiler.postCompile();
 
-// 6. Check status
+// 5. Check status
 if (compiler.isCompiled()) {
     // Scope is ready for backend compilation
 }

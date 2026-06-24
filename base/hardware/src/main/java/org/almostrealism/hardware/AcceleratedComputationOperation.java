@@ -529,12 +529,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		getCompiler().prepareScope(perOperation);
 		this.argumentMap = perOperation;
 
-		if (System.getProperty("AR_TRACE_AGGREGATE_REUSE") != null) {
-			log("aggregateReuse fn=" + getFunctionName() +
-					" perOp=" + perOperation.describeAggregate() +
-					" sig=" + signature());
-		}
-
 		// Bind the shared scope's aggregate argument to this operation's buffer so the reused
 		// kernel reads the data this operation copies in.
 		map.putDirect(sharedAggregate, perOperation.getAggregateSupplier());
@@ -639,12 +633,6 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	public synchronized void postCompile() {
 		setupArguments(getCompiler().getScope());
 		getCompiler().postCompile();
-
-		if (System.getProperty("AR_TRACE_AGGREGATE_REUSE") != null
-				&& argumentMap != null && argumentMap.hasReplacements()) {
-			log("aggregateFresh fn=" + getFunctionName() + " " + argumentMap.describeAggregate()
-					+ " sig=" + signature());
-		}
 	}
 
 	/**

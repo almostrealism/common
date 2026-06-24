@@ -43,7 +43,6 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.jvm.JVMMemory;
-import org.almostrealism.io.Console;
 
 import java.util.List;
 import java.util.OptionalDouble;
@@ -341,7 +340,6 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	public Runnable get() {
 		Supplier<Evaluable<? extends T>> out = getInputs().get(0);
 		Supplier<Evaluable<? extends T>> in = getInputs().get(1);
-		boolean trace = System.getProperty("AR_TRACE_ASSIGN") != null;
 
 		if (out instanceof Shape && in instanceof Shape) {
 			TraversalPolicy inShape = ((Shape<?>) in).getShape();
@@ -352,9 +350,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 				// There are some cases where it makes sense to just generate a Scope
 				// here, because (for example) the alternative might be to provide an
 				// Evaluable that repeats the same value many times over
-				Runnable r = super.get();
-				if (trace) traceGet("super.get/shape-mismatch", out, in, null, false, false, r);
-				return r;
+				return super.get();
 			}
 		}
 
@@ -378,9 +374,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 
 				if (d.getMem() instanceof JVMMemory) {
 					int len = getCount() * memLength;
-					Runnable r = JVMMemory.fill(d, len, s.getAsDouble());
-					if (trace) traceGet("JVMMemory.fill/constant-source", out, in, ev, true, false, r);
-					return r;
+					return JVMMemory.fill(d, len, s.getAsDouble());
 				}
 			}
 
@@ -389,50 +383,17 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			boolean shortCircuit = ev instanceof AcceleratedOperation<?> || ev instanceof Provider<?>;
 
 			if (shortCircuit) {
-				Runnable r = new DestinationEvaluable(ev, destination);
-				if (trace) traceGet("DestinationEvaluable/short-circuit", out, in, ev, true, true, r);
-				return r;
+				return new DestinationEvaluable(ev, destination);
 			}
 
-			Runnable r = super.get();
-			if (trace) traceGet("super.get/provider-no-shortcircuit", out, in, ev, true, false, r);
-			return r;
+			return super.get();
 		}
 
 		// TODO  It would be preferable to always use DestinationEvaluable, but it
 		// TODO  handles the evaluation of Producers which do not directly support
 		// TODO  kernel evaluation differently than ProcessDetailsFactory (which is
 		// TODO  sometimes not ideal - see DestinationEvaluable.evaluate)
-		Runnable r = super.get();
-		if (trace) traceGet("super.get/destination-not-provider", out, in, ev, false, false, r);
-		return r;
-	}
-
-	/**
-	 * Diagnostic trace (gated by the {@code AR_TRACE_ASSIGN} system property) recording which
-	 * branch of {@link #get()} produced the returned object, the classes of the destination
-	 * ({@code out}) and value ({@code in}) suppliers, whether the destination is a provider,
-	 * the resolved value {@link Evaluable} ({@code ev}), the short-circuit decision, the class
-	 * of the returned object, and the call stack that reached {@link #get()}. This makes the
-	 * "compiled an Assignment but produced an Evaluable" path inspectable as fact.
-	 */
-	private void traceGet(String path, Object out, Object in, Object ev,
-						  boolean providerOut, boolean shortCircuit, Object result) {
-		StringBuilder b = new StringBuilder("assignTrace path=").append(path)
-				.append(" out=").append(out == null ? "null" : out.getClass().getName())
-				.append(" in=").append(in == null ? "null" : in.getClass().getName())
-				.append(" providerOut=").append(providerOut)
-				.append(" ev=").append(ev == null ? "null" : ev.getClass().getName())
-				.append(" shortCircuit=").append(shortCircuit)
-				.append(" result=").append(result == null ? "null" : result.getClass().getName())
-				.append('\n');
-
-		StackTraceElement[] stack = new Throwable().getStackTrace();
-		for (int i = 1; i < Math.min(stack.length, 24); i++) {
-			b.append("    at ").append(stack[i]).append('\n');
-		}
-
-		Console.root().println(b.toString());
+		return super.get();
 	}
 
 	/**

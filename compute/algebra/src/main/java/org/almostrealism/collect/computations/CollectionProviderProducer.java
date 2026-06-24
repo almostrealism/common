@@ -306,6 +306,14 @@ public class CollectionProviderProducer<T extends Shape>
 	 * <p>The signature is used for process graph analysis, caching, and identifying
 	 * equivalent producers.</p>
 	 *
+	 * <p>When the value is eligible for argument aggregation, the signature additionally encodes
+	 * the root delegate's length as {@code &aggRoot=<length>}. A compiled kernel that aggregates
+	 * bakes in the aggregate layout, which depends on the size of the root delegate folded into
+	 * the shared buffer; two otherwise-identical producers whose roots differ in size (e.g. a
+	 * 2-element view of a 2-element root vs. of an 8-element root) fold to different layouts and
+	 * must not share a compiled kernel. Encoding the root length scopes instruction reuse to
+	 * compatible aggregate layouts.</p>
+	 *
 	 * @return A signature string
 	 */
 	@Override
@@ -316,12 +324,7 @@ public class CollectionProviderProducer<T extends Shape>
 			MemoryData md = (MemoryData) value;
 			String sig = md.getOffset() + ":" + md.getMemLength() + shape;
 
-			// When this argument is eligible for aggregation, the compiled kernel bakes in the
-			// aggregate layout, which depends on the length of the root delegate that gets folded
-			// into the shared buffer. Two otherwise identical producers whose roots differ in size
-			// (e.g. a 2-element view of a 2-element root vs. of an 8-element root) would fold to
-			// different layouts and must therefore NOT share a compiled kernel. Encoding the root
-			// delegate length here keeps instruction reuse correctly scoped to compatible layouts.
+			// Aggregation-eligible: scope reuse to compatible aggregate layouts (see javadoc).
 			if (MemoryDataArgumentMap.isAggregationTarget(md.getRootDelegate())) {
 				sig = sig + "&aggRoot=" + md.getRootDelegate().getMemLength();
 			}

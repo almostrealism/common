@@ -20,20 +20,15 @@ import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.compute.Process;
-import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.arguments.ProcessArgumentMap;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
-import org.almostrealism.io.Describable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -332,113 +327,11 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 		inputs = s.getInputs();
 		arguments = s.getArguments();
 
-		if (System.getProperty("AR_DUMP_ARGVARS") != null) {
-			dumpArguments(s);
-		}
-
 		if (process != null) {
 			populateArgumentMap(process);
 		}
 
 		return s;
-	}
-
-	/**
-	 * Writes a structural report of every kernel argument of the given scope, keyed by the
-	 * variable name used in generated code (e.g. {@code _v0}), in argument order (which matches
-	 * the {@code argArr} index in generated kernels). For each argument it records the
-	 * {@link Argument.Expectation}, the {@link ArrayVariable}'s delegate / delegate offset /
-	 * total offset / array size / physical scope, the backing producer (class and description),
-	 * and -- only when the producer resolves to a {@link Provider} (no evaluation of dynamic
-	 * destinations) -- the underlying {@link MemoryData} identity, offset, and length.
-	 *
-	 * <p>Enabled by the {@code AR_DUMP_ARGVARS} system property. This is a diagnostic asset: it
-	 * makes the exact identity of every variable reference in a piece of generated code
-	 * inspectable, so claims about that code can be grounded in fact rather than inference.</p>
-	 *
-	 * @param s the compiled scope whose arguments are reported
-	 */
-	private void dumpArguments(Scope<?> s) {
-		StringBuilder b = new StringBuilder();
-		b.append("argvarDump scope=").append(s.getName())
-				.append(" argCount=").append(s.getArguments().size()).append('\n');
-
-		for (int i = 0; i < s.getArguments().size(); i++) {
-			Argument<?> arg = (Argument<?>) s.getArguments().get(i);
-			Variable<?, ?> v = arg.getVariable();
-
-			b.append("  [").append(i).append("] name=").append(v.getName())
-					.append(" expect=").append(arg.getExpectation());
-
-			if (v instanceof ArrayVariable) {
-				ArrayVariable<?> av = (ArrayVariable<?>) v;
-				String delegateName = av.getDelegate() == null ? "null" : av.getDelegate().getName();
-				String totalOffset;
-				try {
-					totalOffset = String.valueOf(av.getOffset());
-				} catch (RuntimeException e) {
-					totalOffset = "ERR:" + e.getClass().getSimpleName();
-				}
-				String arraySize;
-				try {
-					arraySize = String.valueOf(av.getArraySize());
-				} catch (RuntimeException e) {
-					arraySize = "ERR:" + e.getClass().getSimpleName();
-				}
-				b.append(" delegate=").append(delegateName)
-						.append(" delegateOffset=").append(av.getDelegateOffset())
-						.append(" totalOffset=").append(totalOffset)
-						.append(" arraySize=").append(arraySize)
-						.append(" physicalScope=").append(av.getPhysicalScope());
-			}
-
-			Supplier<?> producer = v.getProducer();
-			b.append("\n      producer=").append(producer == null ? "null" : producer.getClass().getName());
-			if (producer instanceof Describable) {
-				b.append(" describe=\"").append(((Describable) producer).describe()).append('"');
-			}
-
-			// Walk the producer's own delegate chain (Delegated), e.g. a
-			// MemoryDataDestinationProducer delegates to the Countable it sizes from.
-			Object node = producer;
-			int depth = 0;
-			while (node instanceof Delegated && depth < 8) {
-				Object delegate = ((Delegated<?>) node).getDelegate();
-				b.append("\n        producerDelegate[").append(depth).append("]=")
-						.append(delegate == null ? "null" : delegate.getClass().getName());
-				if (delegate instanceof Describable) {
-					b.append(" describe=\"").append(((Describable) delegate).describe()).append('"');
-				}
-				if (delegate == node) break;
-				node = delegate;
-				depth++;
-			}
-
-			if (producer != null) {
-				try {
-					Object evaluable = producer.get();
-					b.append(" producer.get=").append(evaluable == null ? "null" : evaluable.getClass().getSimpleName());
-
-					if (evaluable instanceof Provider) {
-						Object value = ((Provider) evaluable).get();
-						b.append(" providerValue=").append(value == null ? "null" : value.getClass().getSimpleName());
-
-						if (value instanceof MemoryData) {
-							MemoryData md = (MemoryData) value;
-							b.append(" memId=").append(md.getMem() == null ? "null" : System.identityHashCode(md.getMem()))
-									.append(" memOffset=").append(md.getOffset())
-									.append(" memLength=").append(md.getMemLength());
-						}
-					}
-				} catch (RuntimeException e) {
-					b.append(" producer.get=ERR:").append(e.getClass().getSimpleName());
-				}
-			}
-
-			b.append('\n');
-		}
-
-		console().println(b.toString());
 	}
 
 	/**

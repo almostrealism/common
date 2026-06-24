@@ -128,64 +128,58 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 		return new AcceleratedTimeSeriesPurge(wavelength, children.toArray(Producer[]::new));
 	}
 
+	/**
+	 * Builds the scope that purges stale entries from the time series by advancing its begin
+	 * cursor past every entry whose time precedes the purge cursor.
+	 *
+	 * <p><strong>Frequency throttling (currently disabled).</strong> Purge logic is emitted only
+	 * when {@code wavelength == 1.0} (purge on every call). The original C used an internal counter
+	 * and a {@code frequency < 1.0} gate to throttle purging, but that gate had a latent bug: its
+	 * condition {@code count = 0.0} was an assignment (always false in C), so no purge ran for
+	 * {@code frequency < 1.0}. The counter is private and unobservable, so the only observable
+	 * effect was that the series was left untouched; emitting purge only at {@code wavelength == 1.0}
+	 * preserves that. Throttling is still worthwhile (a purge is an O(n) scan of the live region).
+	 * To reintroduce it correctly, advance the counter each call
+	 * ({@code count = fmod(count + 1, wavelength)}) and guard the purge with a genuine comparison
+	 * ({@code count == 0}), leaving the counter intact rather than clobbering it inside the gate.</p>
+	 *
+	 * <p><strong>Operation-unique snapshot variable.</strong> The begin-cursor snapshot is declared
+	 * with an operation-unique name via {@link #getVariableName(int)}: the native (C) backend hoists
+	 * declared variables to function scope, so a hardcoded name collides ("redefinition") when
+	 * several purge operations are inlined into one kernel (loop indices need no such treatment, as
+	 * they are declared inside the for-statement). Because the hoisted declaration carries its
+	 * initializer with it, that initializer runs only once when this operation is inlined into an
+	 * enclosing per-sample loop; the snapshot must instead capture the current begin cursor on every
+	 * invocation, so it is declared with a throwaway value and reassigned as an in-loop statement.</p>
+	 *
+	 * <p><strong>Early-break emulation.</strong> {@link io.almostrealism.scope.Repeated} has no break
+	 * statement, so the early break of the original loop (stop at the first entry at or beyond the
+	 * cursor) is reproduced by the {@code cursor0 >= banki} term in the loop condition; without it the
+	 * loop scans the full live region every call (O(n) per sample, O(n^2) across a delay line). The
+	 * conjunction lowers to a bitwise {@code &} (no short-circuit), so {@code banki} is read even on
+	 * the terminating check; that read stays in bounds because the series allocates
+	 * {@code maxEntries + 1} slots and {@code add()} caps the end cursor at {@code maxEntries}.</p>
+	 *
+	 * @param context the kernel structure context
+	 * @return the purge scope
+	 */
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
 		HybridScope<Void> scope = new HybridScope<>(this);
 
-		// The original C used an internal counter and a frequency gate to throttle
-		// purging when frequency < 1.0. That gate contained a latent bug: the
-		// condition "count = 0.0" is an assignment (always evaluating to false in
-		// C), so no purge ever ran for frequency < 1.0. The counter is private to
-		// this operation and not observable elsewhere, so the only observable
-		// effect of that path was that the series was left untouched. That behavior
-		// is preserved by emitting the purge logic only when wavelength == 1.0.
-		//
-		// The throttling idea is nonetheless worth keeping in mind: a purge is an
-		// O(n) scan over the live region of the series, and for a series that grows
-		// slowly relative to how often purge() is invoked, running it on every call
-		// is wasteful. Gating it to run once every N calls amortises that scan
-		// without materially changing how much stale data is retained. To reintroduce
-		// it correctly, the counter would advance each call --
-		// count = fmod(count + 1, wavelength) -- and the purge would be guarded by a
-		// genuine comparison (count == 0, i.e. count.eq(e(0.0))), not an assignment,
-		// with the counter left intact rather than being clobbered inside the gate.
+		// Purge only when not throttled; throttling is currently disabled (see javadoc).
 		if (wavelength == 1.0) {
 			Expression left = getArgument(0).valueAt(0);
 			Expression right = getArgument(0).valueAt(1);
 			Expression cursor0 = getArgument(1).valueAt(0);
 
 			Scope<Void> guard = new Scope<>();
-			// The snapshot variable must have an operation-unique name: the native (C)
-			// backend hoists declared variables to function scope, so a hardcoded name
-			// collides ("redefinition") when several purge operations are inlined into a
-			// single kernel. getVariableName() derives a name from this operation's
-			// (unique) function name. Loop indices do not need this since they are
-			// declared inside the for-statement and scoped to the loop.
-			//
-			// The declaration is hoisted, and its initializer hoists with it: when this
-			// operation is inlined into an enclosing per-sample loop the initializer runs
-			// only ONCE for the whole loop. The snapshot must instead capture the CURRENT
-			// begin cursor on every invocation, so it is declared with a throwaway value
-			// and (re)assigned as an in-loop statement below. Relying on the hoisted
-			// initializer would freeze start at the first tick's begin cursor, making every
-			// later purge rescan from the original position -- O(n) per sample, O(n^2)
-			// across a delay line, and the begin cursor advances (line below) so it cannot
-			// be treated as loop-invariant.
+			// Operation-unique name + per-invocation reassignment of the hoisted snapshot (see javadoc).
 			Expression start = guard.declareInteger(getVariableName(0), e(0).toInt());
 			guard.assign(start, left.add(e(1)).toInt());
 
-			// Advance the begin cursor to the last entry whose time precedes the
-			// purge cursor. The original loop broke as soon as it reached an entry at
-			// or beyond the cursor; the "cursor0 >= banki" term in the loop condition
-			// reproduces that early break (Repeated has no break statement). Without it
-			// the loop would scan the full live region on every call -- O(n) per sample,
-			// O(n^2) across a delay line -- which is correct but pathologically slow.
-			//
-			// The conjunction lowers to a bitwise "&" (no short-circuit), so banki is
-			// read even on the terminating check where idx == right. That read stays in
-			// bounds: the series allocates maxEntries + 1 slots (slot 0 is the cursor
-			// header) and add() caps the end cursor at maxEntries, so right <= maxEntries
-			// and bank[right * 2] is always the reserved final slot.
+			// Advance the begin cursor past entries older than the purge cursor; the loop
+			// condition emulates the original early break (see javadoc).
 			Repeated loop = new Repeated<>();
 			InstanceReference offset = Variable.integer("i").ref();
 			loop.setIndex(offset.getReferent());
