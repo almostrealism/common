@@ -84,10 +84,15 @@ for the DSP, and writes the result straight to the output line. `wrapBlockAsCell
 strategies selected by `MixdownManager.enablePdslMixdown`; parity validated (see
 [EFX_PDSL_PARITY_PLAN.md](EFX_PDSL_PARITY_PLAN.md)). Two runtime constraints remain live
 for callers:
-- **`channels ≥ 2`, zero-based contiguous.** `MixdownManagerPdslAdapter.buildArgsMap`
-  concatenates per-channel producers (`concat` rejects a single input) and reads genes
-  positionally, so `AudioSceneRealtimeRunner.supportsPdsl` falls back to the CellList
-  path for any other selection (e.g. `AudioScene.renderChannel`'s single channel).
+- **Single channel or zero-based contiguous multi-channel.** `AudioSceneRealtimeRunner.supportsPdsl`
+  accepts any single-channel selection (including `AudioScene.renderChannel`'s non-zero
+  `[c]`) and the zero-based contiguous multi-channel prefix `[0,1,…,n-1]`. The adapter
+  reshapes a single per-channel column directly when `concat`'s two-input floor would
+  otherwise reject it, and maps each bank's genome reads to the *selected* scene channel
+  (`MixdownManagerPdslAdapter.Config.channel`). A *non-contiguous* multi-channel subset
+  (e.g. `[0,2]`) still falls back to the CellList path — the cross-channel transmission
+  feedback grid is indexed by bank position rather than scene channel, so an arbitrary
+  subset would not reproduce the routing.
 - **Stereo write gating.** `WaveOutput.write` gates on the *minimum* frame count across
   channels; the mono master output is streamed to **both** stereo writers (dual-mono)
   so the file is actually written.

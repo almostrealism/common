@@ -144,6 +144,11 @@
           },
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-reflective-invocation.sh",
+            "description": "Block reflective method invocation (getDeclaredMethod/Method.invoke) in Java edits \u2014 call the method directly; mirror of the ReflectiveInvocationDetector CI gate"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
             "description": "Block edits to ~/.claude/projects/*/memory/ \u2014 use ar-consultant/ar-manager"
           },
@@ -164,6 +169,11 @@
           },
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-reflective-invocation.sh",
+            "description": "Block reflective method invocation (getDeclaredMethod/Method.invoke) in Java edits \u2014 call the method directly; mirror of the ReflectiveInvocationDetector CI gate"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-memory-write.sh",
             "description": "Block MultiEdit in ~/.claude/projects/*/memory/ \u2014 use ar-consultant/ar-manager"
           },
@@ -181,6 +191,11 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-checkstyle-edit.sh",
             "description": "Block NotebookEdit of checkstyle configuration — abandon the task rather than tamper with enforcement"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-reflective-invocation.sh",
+            "description": "Block reflective method invocation (getDeclaredMethod/Method.invoke) in Java edits \u2014 call the method directly; mirror of the ReflectiveInvocationDetector CI gate"
           },
           {
             "type": "command",
@@ -221,6 +236,11 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/warn-defensive-guard.sh",
             "description": "Warn on added defensive-tolerance patterns (see .claude/hooks/rules/fail-loud.md)"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-reflective-invocation.sh",
+            "description": "Block reflective method invocation (getDeclaredMethod/Method.invoke) in Java writes \u2014 call the method directly; mirror of the ReflectiveInvocationDetector CI gate"
           },
           {
             "type": "command",

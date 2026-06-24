@@ -21,6 +21,9 @@
 2. **[PDSL_SIGNAL_PATH_DIFFERENCES.md](PDSL_SIGNAL_PATH_DIFFERENCES.md)** — the complete
    inventory of expected differences between the PDSL and legacy signal paths; the
    impact assessment for flipping `enablePdslMixdown`.
+3. **[PERCEPTUAL_MAP.md](PERCEPTUAL_MAP.md)** — the listener's companion to the inventory:
+   what each difference *sounds like* (symptom → cause → lever), with triage for which to
+   chase toward the legacy sound vs accept. Open this during an A/B listening session.
 
 ## Reference
 
@@ -32,6 +35,7 @@
 | [PATTERN_RENDERING_FLOOR.md](PATTERN_RENDERING_FLOOR.md) | The benchmark evidence that justified a2 batching (the 100–1500× speedup; 99.4%-is-JNI-dispatch finding). |
 | [METAL_SUSTAINED_DISPATCH.md](METAL_SUSTAINED_DISPATCH.md) | The resolved Metal dispatch-ceiling fix — done-record with the durable invariants and failure lessons. |
 | [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | Live platform constraints: hybrid-routing requirement, Metal 31-buffer limit, `floor()` resample ambiguity, `AR_PATTERN_CACHE_PERSIST`, compile-reuse pool. |
+| [SINGLE_CHANNEL_PDSL_AND_DOC_PARITY.md](SINGLE_CHANNEL_PDSL_AND_DOC_PARITY.md) | Handoff request (from ringsdesktop's "Combine" tab): give the PDSL path single-channel support, drop the unused `getCells` mixdown CellList on the PDSL path, and correct the stale efx/reverb parity claims in the code/docs. |
 
 ## Related, elsewhere (out of scope for this folder)
 

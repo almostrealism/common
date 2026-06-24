@@ -33,6 +33,7 @@ import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 
 import org.almostrealism.heredity.ProjectedGenome;
 
@@ -93,6 +94,9 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 
 	/** Duration in seconds for rendered audio in tests. */
 	protected static final double RENDER_SECONDS = 4.0;
+
+	/** Minimum peak amplitude below which a rendered signal is considered silent. */
+	protected static final double SILENCE_THRESHOLD = 1e-4;
 
 	/**
 	 * Creates a baseline AudioScene with the default source count (6 channels).
@@ -192,6 +196,22 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	 * @param seed the seed for generating deterministic genome parameters
 	 */
 	protected void applyGenome(AudioScene<?> scene, long seed) {
+		scene.assignGenome(fixedGenome(scene, seed));
+	}
+
+	/**
+	 * Builds a deterministic {@link ProjectedGenome} for the scene from a fixed seed, without
+	 * assigning it. The genome's parameter vector matches the shape of the scene's genome and
+	 * is filled from a seeded {@link Random}, so the same seed reproduces the identical genome
+	 * across runs and across population instances. Use this when a genome must be reused (e.g.
+	 * rendered through several channel configurations) rather than regenerated.
+	 *
+	 * @param scene the AudioScene whose genome shape determines the parameter vector length
+	 * @param seed  the seed for generating deterministic genome parameters
+	 * @return a deterministic genome ready for {@link AudioScene#assignGenome(ProjectedGenome)}
+	 *         or inclusion in an {@code AudioScenePopulation}
+	 */
+	protected ProjectedGenome fixedGenome(AudioScene<?> scene, long seed) {
 		Random random = new Random(seed);
 
 		PackedCollection genomeParams = scene.getGenome().getParameters();
@@ -200,7 +220,7 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 			seededParams.setMem(i, random.nextDouble());
 		}
 
-		scene.assignGenome(new ProjectedGenome(seededParams));
+		return new ProjectedGenome(seededParams);
 	}
 
 	/**
@@ -317,6 +337,23 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 	}
 
 	/**
+	 * Counts pattern elements on a single channel, so a test can verify the selected channel
+	 * actually carries content for a given genome before rendering it.
+	 *
+	 * @param scene   the AudioScene to count elements in
+	 * @param channel the channel index to restrict the count to
+	 * @return the number of pattern elements on {@code channel}
+	 */
+	protected int countElements(AudioScene<?> scene, int channel) {
+		int total = 0;
+		for (PatternLayerManager plm : scene.getPatternManager().getPatterns()) {
+			if (plm.getChannel() != channel) continue;
+			total += plm.getAllElements(0.0, plm.getDuration()).size();
+		}
+		return total;
+	}
+
+	/**
 	 * Searches for a working genome seed without rendering audio.
 	 * Returns the seed that produces the most pattern elements.
 	 *
@@ -370,5 +407,113 @@ public abstract class AudioSceneTestBase extends TestSuiteBase implements CellFe
 		} catch (Exception e) {
 			log("Failed to generate spectrogram for " + wavPath + ": " + e.getMessage());
 		}
+	}
+
+	/**
+	 * Loads a WAV file and returns its first-channel samples as a {@code double[]}.
+	 *
+	 * @param file the WAV file to read
+	 * @return the mono sample values
+	 * @throws IOException if the file cannot be read
+	 */
+	protected double[] readWavSamples(File file) throws IOException {
+		WaveData wav = WaveData.load(file);
+		try {
+			PackedCollection data = wav.getData();
+			int n = data.getMemLength();
+			double[] samples = new double[n];
+			for (int i = 0; i < n; i++) {
+				samples[i] = data.toDouble(i);
+			}
+			return samples;
+		} finally {
+			wav.destroy();
+		}
+	}
+
+	/**
+	 * Computes the root-mean-square of one sample range, skipping non-finite values.
+	 *
+	 * @param samples the samples
+	 * @param start   inclusive start index
+	 * @param end     exclusive end index
+	 * @return the RMS of the range
+	 */
+	protected double windowRms(double[] samples, int start, int end) {
+		double energy = 0.0;
+		for (int i = start; i < end; i++) {
+			if (Double.isFinite(samples[i])) energy += samples[i] * samples[i];
+		}
+		return Math.sqrt(energy / Math.max(1, end - start));
+	}
+
+	/**
+	 * Logs a windowed RMS comparison of two renders so level parity can be verified over time.
+	 * A single whole-file RMS can hide a divergence that grows across the duration (e.g. as
+	 * automation sweeps), so the renders are split into aligned windows and the per-window RMS
+	 * of each plus their ratio is logged, followed by the whole-file ratio.
+	 *
+	 * @param label    label for the log lines
+	 * @param expected samples from the reference render (denominator of the ratio)
+	 * @param actual   samples from the comparison render (numerator of the ratio)
+	 */
+	protected void reportWindowedParity(String label, double[] expected, double[] actual) {
+		int n = Math.min(expected.length, actual.length);
+		int window = Math.max(1, n / 8);
+		for (int start = 0; start < n; start += window) {
+			int end = Math.min(n, start + window);
+			double ea = windowRms(expected, start, end);
+			double aa = windowRms(actual, start, end);
+			log(String.format("parity %s window=%d-%d expected=%.4f actual=%.4f ratio=%.3f",
+					label, start, end, ea, aa, ea > 0 ? aa / ea : Double.NaN));
+		}
+		double eAll = windowRms(expected, 0, n);
+		double aAll = windowRms(actual, 0, n);
+		log(String.format("parity %s overall expected=%.4f actual=%.4f ratio=%.3f",
+				label, eAll, aAll, eAll > 0 ? aAll / eAll : Double.NaN));
+	}
+
+	/**
+	 * Logs the peak amplitude, RMS, and non-finite count of a rendered signal.
+	 *
+	 * @param label   the variant label
+	 * @param samples the rendered samples
+	 */
+	protected void reportLevels(String label, double[] samples) {
+		double peak = 0.0;
+		double energy = 0.0;
+		int nonFinite = 0;
+		for (double sample : samples) {
+			if (!Double.isFinite(sample)) {
+				nonFinite++;
+				continue;
+			}
+			peak = Math.max(peak, Math.abs(sample));
+			energy += sample * sample;
+		}
+		double rms = Math.sqrt(energy / Math.max(1, samples.length));
+		log(String.format("levels stage=%s peak=%.4f rms=%.4f nonFinite=%d",
+				label, peak, rms, nonFinite));
+	}
+
+	/**
+	 * Asserts that the given samples are all finite and that the peak amplitude exceeds
+	 * {@link #SILENCE_THRESHOLD}.
+	 *
+	 * @param label   path label for assertion messages
+	 * @param samples the rendered samples
+	 */
+	protected void assertFiniteNonSilent(String label, double[] samples) {
+		Assert.assertTrue(label + " produced no samples", samples.length > 0);
+
+		double peak = 0.0;
+		for (double sample : samples) {
+			Assert.assertTrue(label + " produced a non-finite sample", Double.isFinite(sample));
+			peak = Math.max(peak, Math.abs(sample));
+		}
+
+		log(label + " path: samples=" + samples.length + " peak=" + peak);
+		Assert.assertTrue(label + " output is silent (peak=" + peak + ")",
+				peak > SILENCE_THRESHOLD);
 	}
 }

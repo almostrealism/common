@@ -114,6 +114,7 @@ public abstract class PolicyViolationDetector implements ConsoleFeatures {
 			"VersionReferenceDetector.java",           // Sub-detector (scans for version markers)
 			"PlanningDocumentReferenceDetector.java",  // Sub-detector (scans for planning-doc refs)
 			"LineNumberReferenceDetector.java",        // Sub-detector (scans for line-number refs)
+			"ReflectiveInvocationDetector.java",       // Sub-detector (scans for reflective invocation)
 			"CodePolicyEnforcementTest.java",          // The test that runs this
 			"/target/"                                 // Maven build output (mirrors src; not a source location)
 	);
