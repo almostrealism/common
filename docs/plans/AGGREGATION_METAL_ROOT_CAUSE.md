@@ -137,9 +137,17 @@ Native is unaffected (`processing == false` there). Diff: `AcceleratedOperation.
 - native regression (forced `native`): the engine/utils trio — 24/0/0.
 - `checkstyle` + `code_policy` — clean.
 
-**Still open:**
-- **Comprehensive CI run** (owner commits/pushes) — local `*` mirrors the macOS job but
-  CI covers both jobs and the full grouped suite.
+**CI result + follow-ups:**
+- **CI ran with the ordering fix: the broad `0.0` failures cleared.** The macOS/Metal job
+  surfaced one remaining failure, `BatchedSamplingOffsetTest.volumeEnvelopeSplitsAcrossWindows`
+  (shares `assertSplitMatches` with `layerEnvelopeSplitsAcrossWindows`): the
+  split-vs-single-render invariant diverged by exactly one float32 ULP (`2^-24`). Cause =
+  aggregation changes the generated kernel's argument layout between the windowed and single
+  paths, reordering a sum (FP non-associativity); confirmed by toggle (passes with
+  aggregation disabled). The test's `1e-9` tolerance was below a float32 ULP (~6e-8 at O(1)) —
+  it demanded bit-exact agreement. Resolved by relaxing the (base-branch) test tolerance to
+  `1e-6` (owner-authorized; owner bypasses the test-tamper CI gate). Both split tests pass
+  under `*` at the new tolerance.
 - **Perf follow-up (optional, the owner's "option 3"):** allocate the aggregate on the
   kernel target provider (`getKernelMemoryProvider`) so `MemoryReplacementManager` does
   not reserve/copy it at all (no temp round-trip). `createAggregatedInput` currently uses
