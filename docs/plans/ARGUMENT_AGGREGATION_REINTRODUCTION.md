@@ -40,10 +40,8 @@ Implemented in `AcceleratedOperation.apply` (`aggregateCopyOut = aggregating && 
   MatrixDeltaComputationTests` 80/80, 6 skipped (`d6e434b5`). No correctness breaks, no pool
   exhaustion.
 
-Still default-OFF (`MemoryDataArgumentMap.enableArgumentAggregation`); the instruction-cache
-signature disable for aggregation targets (`CollectionProviderProducer.signature()` -> null)
-remains and is the next thing to remove before default-on. Open per-user: whether to eliminate
-the `apply(output=...)` substitution entirely.
+Aggregation is enabled by default (`MemoryDataArgumentMap.enableArgumentAggregation`), unless disabled via `AR_HARDWARE_ARGUMENT_AGGREGATION`.
+The instruction-cache signature null-disable for aggregation targets has been replaced by an aggregate-layout disambiguator (`&aggRoot=<rootLen>` in `CollectionProviderProducer.signature()`).
 
 ## 1. The problem these tests expose
 
