@@ -17,11 +17,13 @@
 package org.almostrealism.graph.computations;
 
 import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
@@ -49,11 +51,14 @@ import java.util.List;
  * <p>This is used by {@link org.almostrealism.graph.TimeCell} to support scheduled
  * restarts of temporal sequences at specific points during playback.</p>
  *
- * <p>The computation generates a compact loop that checks each reset slot:</p>
+ * <p>The computation generates a compact loop that checks each reset slot,
+ * stopping as soon as a matching slot is found:</p>
  * <pre>
- * for (int _reset_j = 0; _reset_j &lt; resetCount; _reset_j++) {
+ * int _reset_done = 0;
+ * for (int _reset_j = 0; _reset_j &lt; resetCount &amp;&amp; _reset_done == 0; _reset_j++) {
  *     if (reset[_reset_j] &gt; 0.0 &amp;&amp; time[1] == reset[_reset_j]) {
  *         time[0] = 0.0;
+ *         _reset_done = 1;
  *     }
  * }
  * </pre>
@@ -61,6 +66,13 @@ import java.util.List;
  * <p>This loop-based approach replaces the previous if-else chain, reducing
  * generated code size from O(n) branches to a constant-size loop construct.
  * With 30+ reset slots, this reduces generated code by ~100+ lines.</p>
+ *
+ * <p>Because {@link Repeated} has no {@code break} statement, the loop-local
+ * {@code _reset_done} flag in the continuation condition reproduces the early
+ * exit of the original {@code break}: once a slot matches, the flag is set and
+ * the scan stops rather than traversing the remaining slots. This mirrors the
+ * {@code right == -1} early-exit idiom in
+ * {@link org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt}.</p>
  *
  * @author Michael Murray
  * @see org.almostrealism.graph.TimeCell
@@ -141,15 +153,23 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection>
 
 		scope = new HybridScope(this);
 
+		// Loop-local flag implementing the early exit. Repeated has no break, so the
+		// scan stops by setting this flag when a slot matches and testing it in the
+		// loop condition -- the "right == -1" idiom from AcceleratedTimeSeriesValueAt.
+		Expression done = new StaticReference(Integer.class, "_reset_done");
+		scope.getVariables().add(new ExpressionAssignment(true, done, e(0)));
+
 		Repeated loop = new Repeated<>();
 		InstanceReference j = Variable.integer("_reset_j").ref();
 		loop.setIndex(j.getReferent());
-		loop.setCondition(j.lessThan(e(len)));
+		loop.setCondition(j.lessThan(e(len)).and(done.eq(e(0))));
 		loop.setInterval(e(1));
 
 		Expression resetAtJ = getResets().valueAt(j);
-		loop.addCase(resetAtJ.greaterThan(e(0.0)).and(getTime().valueAt(1).eq(resetAtJ)),
-				getTime().reference(e(0)).assign(e(0.0)));
+		Scope<PackedCollection> match = new Scope<>();
+		match.assign(getTime().reference(e(0)), e(0.0));
+		match.assign(done, e(1));
+		loop.addCase(resetAtJ.greaterThan(e(0.0)).and(getTime().valueAt(1).eq(resetAtJ)), match);
 
 		scope.add(loop);
 	}
