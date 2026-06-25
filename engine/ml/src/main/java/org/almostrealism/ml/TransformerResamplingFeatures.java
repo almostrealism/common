@@ -239,8 +239,13 @@ public interface TransformerResamplingFeatures extends RotationFeatures, Normali
 			return channelsLast;
 		}
 
-		CollectionProducer zeros = cp(new PackedCollection(shape(batchSize, pad, inChannels)));
-		return concat(1, zeros, channelsLast, zeros);
+		// The padding must be a producer that generates zeros, not a freshly-allocated
+		// PackedCollection: an allocation is only zero-filled on backends that happen to clear new
+		// memory (the native/CPU backend), while the Metal backend leaves managed-buffer contents
+		// undefined, so reading an unwritten allocation feeds garbage (often non-finite) through the
+		// mapping taps. zeros(...) is the backend-independent zero constant.
+		CollectionProducer padding = zeros(shape(batchSize, pad, inChannels));
+		return concat(1, padding, channelsLast, padding);
 	}
 
 	/**
