@@ -321,6 +321,16 @@ public class CollectionConcatenateComputation extends TransitiveDeltaExpressionC
 				.addAllDependentLifecycles(getDependentLifecycles());
 	}
 
+	/**
+	 * Returns a signature that distinguishes this concatenation from any other with a different
+	 * geometry. The compiled kernel bakes in the per-input axis lengths and element counts (it indexes
+	 * each operand by those dimensions rather than reading them from a runtime size argument), so the
+	 * signature must encode the input shapes in addition to the output shape and axis. Without the input
+	 * shapes a kernel compiled for one geometry could be reused for operands of a different shape,
+	 * producing incorrect indices.
+	 *
+	 * @return the signature, or {@code null} if the base signature is unavailable
+	 */
 	@Override
 	public String signature() {
 		String signature = super.signature();
@@ -328,6 +338,17 @@ public class CollectionConcatenateComputation extends TransitiveDeltaExpressionC
 			return null;
 		}
 
-		return signature + "{axis=" + axis + "}";
+		StringBuilder builder = new StringBuilder(signature);
+		builder.append("{axis=").append(axis);
+		// inputShapes is null during the super constructor's initial prepareMetadata call (before this
+		// subclass assigns its fields); the constructor re-runs init() after the fields are set, so the
+		// final signature includes the input shapes.
+		if (inputShapes != null) {
+			for (TraversalPolicy inputShape : inputShapes) {
+				builder.append("|").append(inputShape.toStringDetail());
+			}
+		}
+		builder.append("}");
+		return builder.toString();
 	}
 }
