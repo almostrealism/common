@@ -151,12 +151,51 @@ All configuration is via the `.env` file (see `.env.example`).
 | Variable | Default | Description |
 |---|---|---|
 | `GITHUB_PAT` | *(required)* | GitHub personal access token |
+| `RUNNER_SCOPE` | `repo` | `repo` (single repository) or `org` (shared across the org) |
 | `GITHUB_OWNER` | `almostrealism` | GitHub org or user |
-| `GITHUB_REPO` | `common` | Repository name |
+| `GITHUB_REPO` | `common` | Repository name (required for `repo` scope, ignored for `org`) |
 | `RUNNER_NAME` | `$(hostname)-macos` | Runner display name in GitHub |
 | `RUNNER_GROUP` | `Default` | Runner group |
 | `RUNNER_WORKDIR` | `~/actions-runner/_work` | Job working directory |
 | `RUNNER_CPU_LIMIT` | *(unset — no limit)* | Max CPUs for jobs (requires `cpulimit`) |
+
+## Sharing Runners Across Repositories (Org-Level)
+
+A repository-scoped runner only serves the one repo it registered against. To
+let several repos in the `almostrealism` org (e.g. `common` and `ringsdesktop`)
+share the same physical Macs, register the runners at the **organization**
+level instead:
+
+```bash
+# In .env
+RUNNER_SCOPE=org
+GITHUB_OWNER=almostrealism
+# GITHUB_REPO is ignored in org scope
+```
+
+Then, **once per org**, grant the relevant repositories access to the runner
+group the runners join (the script uses `RUNNER_GROUP`, default `Default`):
+
+**Org Settings -> Actions -> Runner groups -> (group) -> Repository access** —
+select "All repositories" or add `common` and `ringsdesktop` explicitly.
+
+Workflows continue to target the runners by label
+(`runs-on: [self-hosted, macos, ar-ci]`); nothing in the workflow files needs to
+change. The PAT needs the `admin:org` scope (classic) or the organization
+"Self-hosted runners" administration permission (fine-grained).
+
+> **Security note:** GitHub recommends against using self-hosted runners with
+> **public** repositories, because a pull request from a fork can execute
+> arbitrary code on the runner host. If any repo sharing the group is public,
+> restrict the group to private repositories and/or require approval for
+> fork-PR workflow runs.
+
+Verify org-level runners:
+
+```bash
+gh api orgs/almostrealism/actions/runners \
+    --jq '.runners[] | select(.labels[].name == "ar-ci") | {name, status, labels: [.labels[].name]}'
+```
 
 ## CPU Limiting
 

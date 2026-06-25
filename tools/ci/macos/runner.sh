@@ -39,12 +39,42 @@ fi
 # shellcheck source=/dev/null
 source "${ENV_FILE}"
 
-for var in GITHUB_PAT GITHUB_OWNER GITHUB_REPO; do
+for var in GITHUB_PAT GITHUB_OWNER; do
     if [ -z "${!var:-}" ]; then
         echo "ERROR: ${var} is not set in ${ENV_FILE}."
         exit 1
     fi
 done
+
+# Registration scope: "repo" (default) registers the runner against a single
+# repository; "org" registers it at the organization level so every repository
+# in the org (subject to the runner group's access policy) can share it.
+RUNNER_SCOPE="${RUNNER_SCOPE:-repo}"
+
+case "${RUNNER_SCOPE}" in
+    repo)
+        if [ -z "${GITHUB_REPO:-}" ]; then
+            echo "ERROR: GITHUB_REPO is required when RUNNER_SCOPE=repo."
+            exit 1
+        fi
+        API_BASE="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}"
+        CONFIG_URL="https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}"
+        SCOPE_LABEL="${GITHUB_OWNER}/${GITHUB_REPO}"
+        ;;
+    org)
+        # Org-level registration needs a PAT with the admin:org scope (classic)
+        # or the organization "Self-hosted runners" administration permission
+        # (fine-grained). The runner group's repository-access policy (Org
+        # Settings -> Actions -> Runner groups) decides which repos may use it.
+        API_BASE="https://api.github.com/orgs/${GITHUB_OWNER}"
+        CONFIG_URL="https://github.com/${GITHUB_OWNER}"
+        SCOPE_LABEL="${GITHUB_OWNER} (org)"
+        ;;
+    *)
+        echo "ERROR: RUNNER_SCOPE must be 'repo' or 'org' (got '${RUNNER_SCOPE}')."
+        exit 1
+        ;;
+esac
 
 # ---------- Verify prerequisites ----------
 
@@ -137,7 +167,7 @@ remove_runner() {
     REMOVE_TOKEN=$(curl -s -X POST \
         -H "Authorization: token ${GITHUB_PAT}" \
         -H "Accept: application/vnd.github.v3+json" \
-        "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runners/remove-token" \
+        "${API_BASE}/actions/runners/remove-token" \
         | jq -r '.token // empty')
 
     if [ -n "${REMOVE_TOKEN}" ]; then
@@ -156,7 +186,7 @@ configure_runner() {
     REG_TOKEN=$(curl -s -X POST \
         -H "Authorization: token ${GITHUB_PAT}" \
         -H "Accept: application/vnd.github.v3+json" \
-        "https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/runners/registration-token" \
+        "${API_BASE}/actions/runners/registration-token" \
         | jq -r '.token // empty')
 
     if [ -z "${REG_TOKEN}" ]; then
@@ -167,7 +197,7 @@ configure_runner() {
     echo "Configuring runner (ephemeral)..."
     cd "${RUNNER_DIR}"
     ./config.sh \
-        --url "https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}" \
+        --url "${CONFIG_URL}" \
         --token "${REG_TOKEN}" \
         --name "${RUNNER_NAME}" \
         --labels "self-hosted,macos,ar-ci" \
@@ -194,7 +224,8 @@ trap cleanup SIGTERM SIGINT
 
 # ---------- Runner loop ----------
 
-echo "Starting macOS runner loop for ${GITHUB_OWNER}/${GITHUB_REPO}"
+echo "Starting macOS runner loop for ${SCOPE_LABEL}"
+echo "  Scope:        ${RUNNER_SCOPE}"
 echo "  Runner name:  ${RUNNER_NAME}"
 echo "  Runner dir:   ${RUNNER_DIR}"
 echo "  Work dir:     ${RUNNER_WORKDIR}"
