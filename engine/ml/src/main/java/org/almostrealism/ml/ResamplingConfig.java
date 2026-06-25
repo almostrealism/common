@@ -121,6 +121,10 @@ public class ResamplingConfig {
 			throw new IllegalArgumentException("chunkSize must be a multiple of stride");
 		}
 
+		if (mappingKernel <= 0) {
+			throw new IllegalArgumentException("mappingKernel must be positive");
+		}
+
 		this.inChannels = inChannels;
 		this.outChannels = outChannels;
 		this.heads = heads;
