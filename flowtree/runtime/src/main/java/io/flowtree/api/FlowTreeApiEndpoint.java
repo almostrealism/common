@@ -1327,8 +1327,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     /**
      * Builds the {@code 500} response returned when an operation mutated
      * workstream config in memory but the YAML write failed. Centralised so
-     * every endpoint reports a non-durable write identically — never as
-     * success — honouring the rule that no operation may confirm completion
+     * endpoints can report a non-durable write identically — never as success —
+     * honouring the rule that an operation should not confirm completion
      * before the workstreams file is written.
      *
      * @param operation a short label for the attempted operation (e.g. {@code "Archive"})

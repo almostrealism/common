@@ -1530,10 +1530,9 @@ public class WorkstreamConfig {
             // permissions onto the temp file first (or a sane default for a
             // brand-new file). No-op on non-POSIX filesystems.
             try {
-                Set<PosixFilePermission> perms = Files.exists(target)
-                        ? Files.getPosixFilePermissions(target)
-                        : PosixFilePermissions.fromString("rw-r--r--");
-                Files.setPosixFilePermissions(temp, perms);
+                if (Files.exists(target)) {
+                    Files.setPosixFilePermissions(temp, Files.getPosixFilePermissions(target));
+                }
             } catch (UnsupportedOperationException ignored) {
                 // Non-POSIX filesystem; permissions are managed by the OS.
             }
