@@ -20,13 +20,18 @@ import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.slack.SlackTokens;
 
@@ -1217,6 +1222,40 @@ public class WorkstreamConfigTest extends TestSuiteBase {
                 1, reloaded.getWorkstreams().size());
         assertTrue("archived flag must survive persistence despite duplicates",
                 reloaded.getWorkstreams().get(0).isArchived());
+    }
+
+    /**
+     * The atomic write must preserve the destination file's permissions.
+     * {@link Files#createTempFile} creates the staging file as {@code 0600};
+     * without restoring the target's permissions, {@code ATOMIC_MOVE} would
+     * silently narrow a world-readable config to owner-only.
+     */
+    @Test(timeout = 10000)
+    public void testSaveToYamlPreservesFilePermissions() throws IOException {
+        Assume.assumeTrue("POSIX-only test", FileSystems.getDefault()
+                .supportedFileAttributeViews().contains("posix"));
+
+        String yaml = "workstreams:\n"
+            + "  - workstreamId: \"ws-perm\"\n"
+            + "    channelId: \"C500\"\n"
+            + "    channelName: \"#perm\"\n"
+            + "    defaultBranch: \"main\"\n";
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+        File dir = Files.createTempDirectory("ws-perms").toFile();
+        dir.deleteOnExit();
+        File target = new File(dir, "workstreams.yaml");
+
+        // Create the file, then explicitly set 0644 so the next save has a
+        // world-readable destination to preserve.
+        config.saveToYaml(target);
+        Files.setPosixFilePermissions(target.toPath(),
+                PosixFilePermissions.fromString("rw-r--r--"));
+
+        config.saveToYaml(target);
+
+        Set<PosixFilePermission> perms = Files.getPosixFilePermissions(target.toPath());
+        assertEquals("rw-r--r--", PosixFilePermissions.toString(perms));
     }
 
     /**

@@ -269,23 +269,26 @@ public class SlackListener implements ConsoleFeatures {
      * Intended for programmatic registration via the HTTP API.
      *
      * @param workstream the workstream to register and persist
+     * @return {@code true} when the config was durably persisted (see
+     *         {@link #persistConfig()}); {@code false} when the write failed
      */
-    public synchronized void registerAndPersistWorkstream(Workstream workstream) {
+    public synchronized boolean registerAndPersistWorkstream(Workstream workstream) {
         registerWorkstream(workstream);
         if (workstreamConfig != null) workstreamConfig.addWorkstream(workstream);
-        persistConfig();
+        return persistConfig();
     }
 
     /** Removes a workstream from all notifiers and {@link #channelToWorkstream} entries
-     *  and from the persisted YAML config; does not touch Slack. */
-    public synchronized void unregisterAndPersistWorkstream(Workstream w) {
-        if (w == null) return;
+     *  and from the persisted YAML config; does not touch Slack. Returns whether the
+     *  resulting config was durably persisted ({@code false} when the write failed). */
+    public synchronized boolean unregisterAndPersistWorkstream(Workstream w) {
+        if (w == null) return false;
         String id = w.getWorkstreamId();
         if (notifier != null) notifier.removeWorkstream(id);
         for (SlackNotifier wsNotifier : notifiersByWorkspace.values()) wsNotifier.removeWorkstream(id);
         channelToWorkstream.values().removeIf(ws -> id.equals(ws.getWorkstreamId()));
         if (workstreamConfig != null) workstreamConfig.getWorkstreams().removeIf(e -> id.equals(e.getWorkstreamId()));
-        persistConfig();
+        return persistConfig();
     }
 
     /**
@@ -1509,27 +1512,40 @@ public class SlackListener implements ConsoleFeatures {
      * Persists the current in-memory workstream state back to the YAML config file.
      *
      * <p>Syncs all {@link #channelToWorkstream} entries into the {@link #workstreamConfig}
-     * model via {@link WorkstreamConfig#syncFromWorkstreams} and then writes the
+     * model via {@link WorkstreamConfig#syncAndSave} and then writes the
      * updated config to {@link #configFile}. If either is {@code null} (e.g., when
      * the controller was configured programmatically without a file), changes
-     * are runtime-only and a warning is logged.</p>
+     * are runtime-only.</p>
+     *
+     * @return {@code true} when the state is durable — written to the config
+     *         file, or intentionally runtime-only with no file configured;
+     *         {@code false} only when a file is configured but the write failed,
+     *         in which case callers must not report success
      */
-    public synchronized void persistConfig() {
+    public synchronized boolean persistConfig() {
         if (workstreamConfig == null || configFile == null) {
             log("No config file loaded - changes are runtime-only");
-            return;
+            return true;
         }
 
-        // Snapshot the live channel map before handing it to the config so
-        // the sync iterates a stable collection, then sync and save as one
-        // atomic critical section so a concurrent reload cannot read a
-        // half-written file.
-        Collection<Workstream> snapshot = new ArrayList<>(channelToWorkstream.values());
+        // Snapshot EVERY registered workstream, not just channel-bound ones:
+        // a workstream with a null channelId is absent from channelToWorkstream,
+        // so syncing only that map would drop its state changes (e.g. an archive
+        // flag). The per-notifier by-id maps hold them all. Snapshotting also
+        // lets the sync-and-save run as one atomic step a reload cannot split.
+        Map<String, Workstream> registered = new HashMap<>();
+        if (notifier != null) registered.putAll(notifier.getWorkstreams());
+        for (SlackNotifier wsNotifier : notifiersByWorkspace.values()) {
+            registered.putAll(wsNotifier.getWorkstreams());
+        }
+        Collection<Workstream> snapshot = new ArrayList<>(registered.values());
         try {
             workstreamConfig.syncAndSave(snapshot, configFile);
             log("Persisted config to " + configFile.getName());
+            return true;
         } catch (IOException e) {
             warn("Failed to persist config: " + e.getMessage());
+            return false;
         }
     }
 

@@ -267,10 +267,18 @@ final class WorkstreamRegistrationHandler {
         // can opt in or out of tmux even when the workstream default is on.
         workstream.setUseTmux(defaultUseTmux);
 
+        boolean persisted;
         if (listener != null) {
-            listener.registerAndPersistWorkstream(workstream);
+            persisted = listener.registerAndPersistWorkstream(workstream);
         } else {
             targetNotifier.registerWorkstream(workstream);
+            persisted = true;
+        }
+        // Never confirm a registration whose record did not reach disk.
+        if (!persisted) {
+            log.accept("Registration persist failed for " + workstream.getWorkstreamId()
+                + " (branch=" + defaultBranch + ", channel=" + channelName + ")");
+            return FlowTreeApiEndpoint.persistFailureResponse("Registration");
         }
 
         // Read the workstream back through the same view the list and context
@@ -409,8 +417,8 @@ final class WorkstreamRegistrationHandler {
                     JsonFieldExtractor.extractBoolean(body, "defaultUseTmux"));
         }
 
-        if (listener != null) {
-            listener.registerAndPersistWorkstream(workstream);
+        if (listener != null && !listener.registerAndPersistWorkstream(workstream)) {
+            return FlowTreeApiEndpoint.persistFailureResponse("Update");
         }
 
         log.accept("Updated workstream via API: " + workstreamId);

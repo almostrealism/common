@@ -34,6 +34,8 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -1522,6 +1524,19 @@ public class WorkstreamConfig {
         Path temp = Files.createTempFile(directory, file.getName() + ".", ".tmp");
         try {
             mapper.writeValue(temp.toFile(), this);
+            // Files.createTempFile makes the temp file 0600, and ATOMIC_MOVE
+            // would impose that on the destination — silently narrowing a
+            // previously world-readable config. Carry the destination's own
+            // permissions onto the temp file first (or a sane default for a
+            // brand-new file). No-op on non-POSIX filesystems.
+            try {
+                Set<PosixFilePermission> perms = Files.exists(target)
+                        ? Files.getPosixFilePermissions(target)
+                        : PosixFilePermissions.fromString("rw-r--r--");
+                Files.setPosixFilePermissions(temp, perms);
+            } catch (UnsupportedOperationException ignored) {
+                // Non-POSIX filesystem; permissions are managed by the OS.
+            }
             try {
                 Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE,
                         StandardCopyOption.REPLACE_EXISTING);
