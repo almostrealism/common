@@ -252,15 +252,30 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	/**
 	 * Creates aggregated input memory for kernel execution.
 	 *
-	 * <p>Aggregated inputs combine multiple separate memory allocations into a single
-	 * contiguous buffer, improving GPU kernel performance by reducing memory indirection.</p>
+	 * <p>Aggregated inputs combine multiple separate small inputs into a single contiguous
+	 * buffer, reducing the kernel's argument count. The buffer is allocated on the kernel's
+	 * target memory provider ({@link io.almostrealism.code.DataContext#getKernelMemoryProvider()})
+	 * so that {@link org.almostrealism.hardware.mem.MemoryReplacementManager} leaves it in place
+	 * — that manager only reserves arguments not already on the target provider — avoiding a
+	 * redundant copy of the aggregate into a per-op reservation temp around every aggregated
+	 * kernel. (The previous {@code deviceMemory()} allocation routed small buffers to a different,
+	 * size-selected provider, which forced that redundant reservation under the auto-select
+	 * compute context.)</p>
 	 *
-	 * @param memLength Total memory length in bytes
-	 * @param atomicLength Atomic memory length (element size) in bytes
-	 * @return Allocated aggregated input memory on the device
+	 * @param memLength Total element count of the aggregate buffer
+	 * @param atomicLength Atomic element size; expected equal to {@code memLength} for the aggregate
+	 * @return Aggregated input memory allocated on the kernel's target provider
 	 */
 	public MemoryData createAggregatedInput(int memLength, int atomicLength) {
-		return getComputeContext().getDataContext().deviceMemory(() -> new Bytes(memLength, atomicLength));
+		// The aggregate is a flat buffer; all callers pass atomicLength == memLength.
+		if (atomicLength != memLength) {
+			throw new IllegalArgumentException("Aggregate atomicLength must equal memLength");
+		}
+
+		// Allocate on the kernel's target provider so MemoryReplacementManager leaves it in place
+		// (no reservation temp); the kernel reads/writes it directly. See method javadoc.
+		return Bytes.of(getComputeContext().getDataContext()
+				.getKernelMemoryProvider().allocate(memLength), memLength);
 	}
 
 	/**
