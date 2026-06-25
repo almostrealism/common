@@ -273,6 +273,22 @@ final class WorkstreamRegistrationHandler {
             targetNotifier.registerWorkstream(workstream);
         }
 
+        // Read the workstream back through the same view the list and context
+        // endpoints use (notifiers.allWorkstreams()) before reporting success.
+        // Registration mutates several in-memory maps and persists to YAML; if
+        // any step silently failed — or a concurrent reload raced the persist —
+        // this catches it so the caller gets an honest failure instead of a
+        // green ok:true for a workstream that cannot actually be used.
+        if (!notifiers.allWorkstreams().containsKey(workstream.getWorkstreamId())) {
+            log.accept("Registration read-back failed for " + workstream.getWorkstreamId()
+                + " (branch=" + defaultBranch + ", channel=" + channelName + ")"
+                + " — workstream not resolvable after register");
+            return NanoHTTPD.newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
+                "application/json",
+                "{\"ok\":false,\"error\":\"Workstream registered but not resolvable after"
+                + " persistence; registration is not durable. Retry.\"}");
+        }
+
         log.accept("Registered workstream via API: " + workstream.getWorkstreamId()
             + " (branch=" + defaultBranch + ", channel=" + channelName + ")");
 

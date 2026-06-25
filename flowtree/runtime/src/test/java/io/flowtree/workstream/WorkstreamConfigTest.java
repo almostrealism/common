@@ -1072,6 +1072,111 @@ public class WorkstreamConfigTest extends TestSuiteBase {
     }
 
     /**
+     * {@link WorkstreamConfig#addWorkstream} must be idempotent by
+     * {@code workstreamId}: re-adding a workstream with an ID that already
+     * has an entry replaces that entry in place rather than appending a
+     * second one. This is the guard against the unbounded duplicate
+     * accumulation that bloated the persisted YAML when a workstream was
+     * registered, lost from memory, and re-registered.
+     */
+    @Test(timeout = 10000)
+    public void testAddWorkstreamIsIdempotentByWorkstreamId() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - workstreamId: \"ws-dup\"\n"
+            + "    channelId: \"C100\"\n"
+            + "    channelName: \"#dup\"\n"
+            + "    defaultBranch: \"main\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertEquals(1, config.getWorkstreams().size());
+
+        Workstream live = config.toWorkstreams().get(0);
+        live.setDefaultBranch("feature/updated");
+        config.addWorkstream(live);
+
+        assertEquals("addWorkstream must not append a duplicate workstreamId",
+                1, config.getWorkstreams().size());
+        assertEquals("feature/updated", config.getWorkstreams().get(0).getDefaultBranch());
+    }
+
+    /**
+     * Saving must collapse duplicate entries that share a
+     * {@code workstreamId}, keeping the last occurrence, so a YAML file that
+     * has already accumulated duplicates from historic unsynchronized
+     * append-then-save races self-heals to one entry per workstream on the
+     * next write.
+     */
+    @Test(timeout = 10000)
+    public void testSaveCollapsesDuplicateWorkstreamIdEntries() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - workstreamId: \"ws-x\"\n"
+            + "    channelId: \"C200\"\n"
+            + "    channelName: \"#x-old\"\n"
+            + "    defaultBranch: \"main\"\n"
+            + "  - workstreamId: \"ws-y\"\n"
+            + "    channelId: \"C201\"\n"
+            + "    channelName: \"#y\"\n"
+            + "    defaultBranch: \"main\"\n"
+            + "  - workstreamId: \"ws-x\"\n"
+            + "    channelId: \"C200\"\n"
+            + "    channelName: \"#x-new\"\n"
+            + "    defaultBranch: \"main\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertEquals("fixture should load all three raw entries",
+                3, config.getWorkstreams().size());
+
+        File tempFile = File.createTempFile("workstreams-dedupe", ".yaml");
+        tempFile.deleteOnExit();
+        config.saveToYaml(tempFile);
+
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        assertEquals("save must collapse duplicate workstreamId entries",
+                2, reloaded.getWorkstreams().size());
+
+        boolean foundNew = false;
+        boolean foundOld = false;
+        for (WorkstreamConfig.WorkstreamEntry entry : reloaded.getWorkstreams()) {
+            if ("#x-new".equals(entry.getChannelName())) foundNew = true;
+            if ("#x-old".equals(entry.getChannelName())) foundOld = true;
+        }
+        assertTrue("the last duplicate must win", foundNew);
+        assertFalse("the stale duplicate must be removed", foundOld);
+    }
+
+    /**
+     * The atomic write must leave no temporary artifacts behind: the YAML is
+     * serialized to a sibling temp file and moved onto the target, and the
+     * temp file is always cleaned up. A leftover {@code .tmp} would indicate
+     * the move failed silently.
+     */
+    @Test(timeout = 10000)
+    public void testSaveToYamlLeavesNoTempArtifacts() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - workstreamId: \"ws-z\"\n"
+            + "    channelId: \"C300\"\n"
+            + "    channelName: \"#z\"\n"
+            + "    defaultBranch: \"main\"\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+
+        File dir = Files.createTempDirectory("ws-atomic").toFile();
+        dir.deleteOnExit();
+        File target = new File(dir, "workstreams.yaml");
+        config.saveToYaml(target);
+
+        assertTrue("target file must exist after save", target.exists());
+        File[] leftovers = dir.listFiles((d, name) -> name.endsWith(".tmp"));
+        assertNotNull(leftovers);
+        assertEquals("atomic save must not leave .tmp files behind",
+                0, leftovers.length);
+
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(target);
+        assertEquals(1, reloaded.getWorkstreams().size());
+        assertEquals("#z", reloaded.getWorkstreams().get(0).getChannelName());
+    }
+
+    /**
      * Regression test for the rename-revert bug: when callers use the
      * 3-arg {@link WorkstreamConfig#renameWorkspace(String, String,
      * java.util.Collection)} overload to propagate the new workspaceId to

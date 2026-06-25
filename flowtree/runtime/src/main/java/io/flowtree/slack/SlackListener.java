@@ -30,11 +30,11 @@ import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAdjusters;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -227,7 +227,7 @@ public class SlackListener implements ConsoleFeatures {
      * Called by {@link FlowTreeController#reloadConfig()} before re-registering
      * so removed or relocated workstreams do not remain active after reload.
      */
-    public void clearWorkstreams() {
+    public synchronized void clearWorkstreams() {
         channelToWorkstream.clear();
         if (notifier != null) notifier.clearWorkstreams();
         for (SlackNotifier wsNotifier : notifiersByWorkspace.values()) wsNotifier.clearWorkstreams();
@@ -239,7 +239,7 @@ public class SlackListener implements ConsoleFeatures {
      *
      * @param workstream the workstream to register
      */
-    public void registerWorkstream(Workstream workstream) {
+    public synchronized void registerWorkstream(Workstream workstream) {
         resolveNotifier(workstream.getWorkspaceId()).registerWorkstream(workstream);
         if (workstream.getChannelId() != null) {
             channelToWorkstream.put(channelKey(workstream.getWorkspaceId(),
@@ -249,12 +249,28 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
+     * Atomically clears every registered workstream and re-registers the
+     * supplied set under a single lock. Used by the controller when
+     * (re)loading the YAML configuration so a concurrent registration or
+     * persist cannot observe — or write to disk — the empty intermediate
+     * state that a separate clear-then-register loop would briefly expose.
+     *
+     * @param workstreams the full set of workstreams to register
+     */
+    public synchronized void reregisterWorkstreams(Collection<Workstream> workstreams) {
+        clearWorkstreams();
+        for (Workstream workstream : workstreams) {
+            registerWorkstream(workstream);
+        }
+    }
+
+    /**
      * Registers a workstream and persists the configuration to the YAML file.
      * Intended for programmatic registration via the HTTP API.
      *
      * @param workstream the workstream to register and persist
      */
-    public void registerAndPersistWorkstream(Workstream workstream) {
+    public synchronized void registerAndPersistWorkstream(Workstream workstream) {
         registerWorkstream(workstream);
         if (workstreamConfig != null) workstreamConfig.addWorkstream(workstream);
         persistConfig();
@@ -262,7 +278,7 @@ public class SlackListener implements ConsoleFeatures {
 
     /** Removes a workstream from all notifiers and {@link #channelToWorkstream} entries
      *  and from the persisted YAML config; does not touch Slack. */
-    public void unregisterAndPersistWorkstream(Workstream w) {
+    public synchronized void unregisterAndPersistWorkstream(Workstream w) {
         if (w == null) return;
         String id = w.getWorkstreamId();
         if (notifier != null) notifier.removeWorkstream(id);
@@ -1273,9 +1289,9 @@ public class SlackListener implements ConsoleFeatures {
 
             StringBuilder sb = new StringBuilder();
             sb.append(":bar_chart: *Agent Activity \u2014 ").append(ws.getChannelName()).append("*\n\n");
-            sb.append(formatWeeklyStats("This Week", thisWeekStart, thisWeek));
+            sb.append(thisWeek.toSlackMrkdwn("This Week", thisWeekStart));
             sb.append("\n");
-            sb.append(formatWeeklyStats("Last Week", lastWeekStart, lastWeek));
+            sb.append(lastWeek.toSlackMrkdwn("Last Week", lastWeekStart));
 
             ctx.respond(sb.toString());
         } else {
@@ -1295,9 +1311,9 @@ public class SlackListener implements ConsoleFeatures {
             // Global totals
             JobStatsStore.WeeklyStats thisWeekTotal = statsStore.getWeeklyStats(thisWeekStart);
             JobStatsStore.WeeklyStats lastWeekTotal = statsStore.getWeeklyStats(lastWeekStart);
-            sb.append(formatWeeklyStats("This Week (total)", thisWeekStart, thisWeekTotal));
+            sb.append(thisWeekTotal.toSlackMrkdwn("This Week (total)", thisWeekStart));
             sb.append("\n");
-            sb.append(formatWeeklyStats("Last Week (total)", lastWeekStart, lastWeekTotal));
+            sb.append(lastWeekTotal.toSlackMrkdwn("Last Week (total)", lastWeekStart));
 
             // Per-workstream breakdown for this week
             Map<String, JobStatsStore.WeeklyStats> thisWeekByWs = statsStore.getWeeklyStatsByWorkstream(thisWeekStart);
@@ -1490,39 +1506,6 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
-     * Formats a week's statistics as a Slack mrkdwn block for display.
-     *
-     * <p>Outputs a header line with the label and date range, followed by
-     * total wall-clock time, job counts by status, total USD cost, and
-     * total agent turns.</p>
-     *
-     * @param label     display label for the block (e.g., "This Week")
-     * @param weekStart the Monday that begins this week
-     * @param stats     the aggregated statistics for the week
-     * @return a formatted mrkdwn string ready for posting to Slack
-     */
-    private String formatWeeklyStats(String label, LocalDate weekStart,
-                                      JobStatsStore.WeeklyStats stats) {
-        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("EEE MMM d", Locale.US);
-        LocalDate weekEnd = weekStart.plusDays(6);
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("*").append(label).append("* (");
-        sb.append(weekStart.format(fmt)).append(" \u2014 ").append(weekEnd.format(fmt)).append(")\n");
-        sb.append("  :clock1: Total time: ").append(HarnessStatusReporter.formatDuration(stats.totalWallClockMs)).append("\n");
-        sb.append("  :hammer: Jobs: ").append(stats.jobCount);
-        sb.append(" (:white_check_mark: ").append(stats.successCount);
-        sb.append("  :x: ").append(stats.failedCount);
-        sb.append("  :no_entry_sign: ").append(stats.cancelledCount).append(")\n");
-        sb.append("  :moneybag: Cost: $").append(String.format("%.2f", stats.totalCostUsd));
-        sb.append(JobStatsStore.formatCostBreakdown(stats.costByRunner));
-        sb.append(JobStatsStore.formatCostBreakdown(stats.costByModel));
-        sb.append("\n");
-        sb.append("  :speech_balloon: Turns: ").append(String.format("%,d", stats.totalTurns)).append("\n");
-        return sb.toString();
-    }
-
-    /**
      * Persists the current in-memory workstream state back to the YAML config file.
      *
      * <p>Syncs all {@link #channelToWorkstream} entries into the {@link #workstreamConfig}
@@ -1531,17 +1514,19 @@ public class SlackListener implements ConsoleFeatures {
      * the controller was configured programmatically without a file), changes
      * are runtime-only and a warning is logged.</p>
      */
-    public void persistConfig() {
+    public synchronized void persistConfig() {
         if (workstreamConfig == null || configFile == null) {
             log("No config file loaded - changes are runtime-only");
             return;
         }
 
-        // Sync in-memory workstream state back to config entries
-        workstreamConfig.syncFromWorkstreams(channelToWorkstream.values());
-
+        // Snapshot the live channel map before handing it to the config so
+        // the sync iterates a stable collection, then sync and save as one
+        // atomic critical section so a concurrent reload cannot read a
+        // half-written file.
+        Collection<Workstream> snapshot = new ArrayList<>(channelToWorkstream.values());
         try {
-            workstreamConfig.saveToYaml(configFile);
+            workstreamConfig.syncAndSave(snapshot, configFile);
             log("Persisted config to " + configFile.getName());
         } catch (IOException e) {
             warn("Failed to persist config: " + e.getMessage());
