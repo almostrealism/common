@@ -824,7 +824,7 @@ public class SlackListener implements ConsoleFeatures {
                 String oldUrl = existing.getRepoUrl();
                 existing.setRepoUrl(location);
                 existing.setDefaultBranch(branch);
-                persistConfig();
+                if (!persistOrWarn(ctx)) return;
                 ctx.respond(":white_check_mark: *Workstream updated*\n"
                     + "   Repo URL: `" + (oldUrl != null ? oldUrl : "(none)") + "` \u2192 `" + location + "`\n"
                     + "   Branch: `" + (oldBranch != null ? oldBranch : "(none)") + "` \u2192 `" + branch + "`");
@@ -832,7 +832,7 @@ public class SlackListener implements ConsoleFeatures {
                 String oldDir = existing.getWorkingDirectory();
                 existing.setWorkingDirectory(location);
                 existing.setDefaultBranch(branch);
-                persistConfig();
+                if (!persistOrWarn(ctx)) return;
                 ctx.respond(":white_check_mark: *Workstream updated*\n"
                     + "   Working directory: `" + (oldDir != null ? oldDir : "(none)") + "` \u2192 `" + location + "`\n"
                     + "   Branch: `" + (oldBranch != null ? oldBranch : "(none)") + "` \u2192 `" + branch + "`");
@@ -851,7 +851,7 @@ public class SlackListener implements ConsoleFeatures {
             if (workstreamConfig != null) {
                 workstreamConfig.addWorkstream(ws);
             }
-            persistConfig();
+            if (!persistOrWarn(ctx)) return;
 
             String locationLabel = isRepoUrl ? "Repo URL" : "Working directory";
             ctx.respond(":white_check_mark: *Workstream created*\n"
@@ -1064,7 +1064,7 @@ public class SlackListener implements ConsoleFeatures {
 
         if (value == null) {
             // Show single setting
-            String currentValue = getConfigValue(ws, key);
+            String currentValue = ws.describeSetting(key);
             if (currentValue == null) {
                 ctx.respond(":warning: Unknown setting: `" + key + "`\n"
                     + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
@@ -1077,11 +1077,10 @@ public class SlackListener implements ConsoleFeatures {
         }
 
         // Update setting
-        String result = setConfigValue(ws, key, value);
+        String result = ws.applySetting(key, value);
         if (result != null) {
             ctx.respond(":warning: " + result);
-        } else {
-            persistConfig();
+        } else if (persistOrWarn(ctx)) {
             ctx.respond(":white_check_mark: Updated `" + key + "` = " + value);
         }
     }
@@ -1147,105 +1146,6 @@ public class SlackListener implements ConsoleFeatures {
         }
 
         ctx.respond(sb.toString());
-    }
-
-    /**
-     * Returns the current string value of a named workstream configuration key.
-     *
-     * <p>Returns {@code "(not set)"} for optional fields that have not been
-     * assigned, and {@code null} if the key is not recognized.</p>
-     *
-     * @param ws  the workstream to read from
-     * @param key the setting name (e.g., {@code "maxBudgetUsd"}, {@code "defaultBranch"})
-     * @return the string representation of the current value, or {@code null} if unknown
-     */
-    private String getConfigValue(Workstream ws, String key) {
-        switch (key) {
-            case "maxBudgetUsd": return String.format("%.2f", ws.getMaxBudgetUsd());
-            case "maxTurns": return String.valueOf(ws.getMaxTurns());
-            case "defaultBranch": return ws.getDefaultBranch() != null ? ws.getDefaultBranch() : "(not set)";
-            case "baseBranch": return ws.getBaseBranch() != null ? ws.getBaseBranch() : "(not set)";
-            case "repoUrl": return ws.getRepoUrl() != null ? ws.getRepoUrl() : "(not set)";
-            case "workingDirectory": return ws.getWorkingDirectory() != null ? ws.getWorkingDirectory() : "(not set)";
-            case "pushToOrigin": return String.valueOf(ws.isPushToOrigin());
-            case "allowedTools": return ws.getAllowedTools();
-            case "gitUserName": return ws.getGitUserName() != null ? ws.getGitUserName() : "(not set)";
-            case "gitUserEmail": return ws.getGitUserEmail() != null ? ws.getGitUserEmail() : "(not set)";
-            case "planningDocument": return ws.getPlanningDocument() != null ? ws.getPlanningDocument() : "(not set)";
-            case "workstreamId": return ws.getWorkstreamId();
-            case "channelId": return ws.getChannelId();
-            case "channelName": return ws.getChannelName();
-            default: return null;
-        }
-    }
-
-    /**
-     * Applies a new value to a named workstream configuration key.
-     *
-     * <p>Read-only keys ({@code workstreamId}, {@code channelId},
-     * {@code channelName}) return an error message. Numeric keys
-     * ({@code maxBudgetUsd}, {@code maxTurns}) return an error if the
-     * value cannot be parsed. The caller is responsible for persisting
-     * the change to YAML after a successful update.</p>
-     *
-     * @param ws    the workstream to update
-     * @param key   the setting name
-     * @param value the new value as a string
-     * @return an error message if the update failed, or {@code null} on success
-     */
-    private String setConfigValue(Workstream ws, String key, String value) {
-        switch (key) {
-            case "maxBudgetUsd":
-                try {
-                    ws.setMaxBudgetUsd(Double.parseDouble(value));
-                } catch (NumberFormatException e) {
-                    return "Invalid number: `" + value + "`";
-                }
-                return null;
-            case "maxTurns":
-                try {
-                    ws.setMaxTurns(Integer.parseInt(value));
-                } catch (NumberFormatException e) {
-                    return "Invalid integer: `" + value + "`";
-                }
-                return null;
-            case "defaultBranch":
-                ws.setDefaultBranch(value);
-                return null;
-            case "baseBranch":
-                ws.setBaseBranch(value);
-                return null;
-            case "repoUrl":
-                ws.setRepoUrl(value);
-                return null;
-            case "workingDirectory":
-                ws.setWorkingDirectory(value);
-                return null;
-            case "pushToOrigin":
-                ws.setPushToOrigin(Boolean.parseBoolean(value));
-                return null;
-            case "allowedTools":
-                ws.setAllowedTools(value);
-                return null;
-            case "gitUserName":
-                ws.setGitUserName(value);
-                return null;
-            case "gitUserEmail":
-                ws.setGitUserEmail(value);
-                return null;
-            case "planningDocument":
-                ws.setPlanningDocument(value);
-                return null;
-            case "workstreamId":
-            case "channelId":
-            case "channelName":
-                return "`" + key + "` is read-only and cannot be modified.";
-            default:
-                return "Unknown setting: `" + key + "`\n"
-                    + "Modifiable settings: `maxBudgetUsd`, `maxTurns`, `defaultBranch`, "
-                    + "`baseBranch`, `repoUrl`, `workingDirectory`, `pushToOrigin`, `allowedTools`, "
-                    + "`gitUserName`, `gitUserEmail`, `planningDocument`";
-        }
     }
 
     /**
@@ -1502,7 +1402,7 @@ public class SlackListener implements ConsoleFeatures {
             workstreamConfig.setDefaultChannel(channel);
         }
 
-        persistConfig();
+        if (!persistOrWarn(ctx)) return;
 
         ctx.respond(":white_check_mark: Default channel set to `" + channel + "`\n"
             + "Messages without a configured workstream channel will now fall back here.");
@@ -1547,6 +1447,22 @@ public class SlackListener implements ConsoleFeatures {
             warn("Failed to persist config: " + e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Persists the config and, when the write fails, notifies the slash-command
+     * invoker that the change was not saved. Returns whether the persist
+     * succeeded so the caller can suppress its own success message otherwise.
+     *
+     * @param ctx the responder for the originating slash command
+     * @return {@code true} when the config was durably persisted
+     * @throws IOException if the failure notice cannot be delivered to Slack
+     */
+    private boolean persistOrWarn(SlashCommandResponder ctx) throws IOException {
+        if (persistConfig()) return true;
+        ctx.respond(":warning: The change was applied in memory but could not be"
+            + " saved to disk; it will be lost when the controller restarts. Please retry.");
+        return false;
     }
 
     /**
