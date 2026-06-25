@@ -1417,12 +1417,22 @@ public class WorkstreamConfig {
      * a half-written file or a stale snapshot drop a just-registered
      * workstream.
      *
+     * <p>Duplicate entries are collapsed <em>before</em> the sync, not just at
+     * save time. This matters because {@link #findEntryToSync} updates the
+     * first entry matching a {@code workstreamId} while the save-time dedupe
+     * keeps the last: with duplicates still present, a field the sync writes
+     * (for example an {@code archived} flag flipped by an archive request)
+     * would land on the first entry and then be discarded when the last
+     * survives. Collapsing first guarantees the sync updates the single entry
+     * that is persisted.</p>
+     *
      * @param activeWorkstreams the current in-memory workstreams
      * @param file              the target YAML file
      * @throws IOException if the file cannot be written
      */
     public synchronized void syncAndSave(Collection<Workstream> activeWorkstreams,
                                          File file) throws IOException {
+        dedupeWorkstreamsKeepingLast();
         syncFromWorkstreams(activeWorkstreams);
         saveToYaml(file);
     }

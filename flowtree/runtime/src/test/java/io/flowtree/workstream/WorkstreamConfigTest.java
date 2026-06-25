@@ -1177,6 +1177,49 @@ public class WorkstreamConfigTest extends TestSuiteBase {
     }
 
     /**
+     * Regression test for the archive-flag-loss defect: when a workstream
+     * still has duplicate YAML entries, {@link WorkstreamConfig#syncAndSave}
+     * must persist a flag flipped on the live workstream (here {@code
+     * archived}) so it survives a reload. The defect was that the sync
+     * updated the first matching entry while the save-time dedupe kept the
+     * last, silently dropping the flag and resurrecting the workstream on
+     * restart. {@code syncAndSave} now collapses duplicates before syncing.
+     */
+    @Test(timeout = 10000)
+    public void testSyncAndSavePersistsArchivedFlagDespiteDuplicates() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - workstreamId: \"ws-arch\"\n"
+            + "    channelId: \"C400\"\n"
+            + "    channelName: \"#arch\"\n"
+            + "    defaultBranch: \"main\"\n"
+            + "    archived: false\n"
+            + "  - workstreamId: \"ws-arch\"\n"
+            + "    channelId: \"C400\"\n"
+            + "    channelName: \"#arch\"\n"
+            + "    defaultBranch: \"main\"\n"
+            + "    archived: false\n";
+
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        assertEquals("fixture should load both duplicate entries",
+                2, config.getWorkstreams().size());
+
+        // Archive the live workstream and persist through the combined path
+        // the controller's archive endpoint uses.
+        Workstream live = config.toWorkstreams().get(0);
+        live.setArchived(true);
+
+        File tempFile = File.createTempFile("workstreams-archive", ".yaml");
+        tempFile.deleteOnExit();
+        config.syncAndSave(Collections.singletonList(live), tempFile);
+
+        WorkstreamConfig reloaded = WorkstreamConfig.loadFromYaml(tempFile);
+        assertEquals("duplicates must collapse to a single entry",
+                1, reloaded.getWorkstreams().size());
+        assertTrue("archived flag must survive persistence despite duplicates",
+                reloaded.getWorkstreams().get(0).isArchived());
+    }
+
+    /**
      * Regression test for the rename-revert bug: when callers use the
      * 3-arg {@link WorkstreamConfig#renameWorkspace(String, String,
      * java.util.Collection)} overload to propagate the new workspaceId to
