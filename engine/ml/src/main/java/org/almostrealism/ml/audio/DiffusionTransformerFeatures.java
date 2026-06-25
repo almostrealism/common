@@ -21,6 +21,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.DiffusionFeatures;
+import org.almostrealism.ml.LearnedTokenFeatures;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 
@@ -37,7 +38,7 @@ import java.util.List;
  * @see DiffusionTransformer
  * @see org.almostrealism.ml.AttentionFeatures
  */
-public interface DiffusionTransformerFeatures extends AttentionFeatures, DiffusionFeatures {
+public interface DiffusionTransformerFeatures extends AttentionFeatures, DiffusionFeatures, LearnedTokenFeatures {
 
 	/**
 	 * Builds a Fourier feature projection layer.
