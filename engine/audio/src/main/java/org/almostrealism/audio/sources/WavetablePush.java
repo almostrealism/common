@@ -16,8 +16,8 @@
 
 package org.almostrealism.audio.sources;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -68,7 +68,7 @@ public class WavetablePush extends OperationComputationAdapter<PackedCollection>
 	private ArrayVariable<Double> getWavetable() { return getArgument(6); }
 
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 		purgeVariables();
 

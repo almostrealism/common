@@ -24,7 +24,6 @@ import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Signature;
-import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.io.Describable;
 
 import java.util.Collection;
@@ -136,9 +135,6 @@ import java.util.List;
  * //   - Count: 1024
  * //   - Fixed count: true
  * }</pre>
- *
- * <p><strong>Note:</strong> Returns {@code null} for aggregation targets to avoid
- * signature conflicts (see {@link org.almostrealism.hardware.mem.MemoryDataArgumentMap}).</p>
  *
  * <h2>Limitations</h2>
  *
@@ -321,21 +317,10 @@ public class DelegatedProducer<T> implements
 	/**
 	 * Returns a signature string for this delegated producer.
 	 *
-	 * <p>Returns null for aggregation targets (see {@link MemoryDataArgumentMap#isAggregationTarget(Object)})
-	 * since their signatures depend on additional context not available here.</p>
-	 *
-	 * @return a signature string in format "delegate|count|isFixedCount", or null for aggregation targets
+	 * @return a signature string in format "delegate|count|isFixedCount"
 	 */
 	@Override
 	public String signature() {
-		if (MemoryDataArgumentMap.isAggregationTarget(op)) {
-			// It should actually be possible to compute a valid signature
-			// for this anyway, but because argument aggregation for
-			// Computations depends on the other Computation arguments,
-			// it requires more information than is available here
-			return null;
-		}
-
 		return "delegate|" + getCountLong() + "|" + isFixedCount();
 	}
 

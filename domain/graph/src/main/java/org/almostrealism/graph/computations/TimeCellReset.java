@@ -16,25 +16,28 @@
 
 package org.almostrealism.graph.computations;
 
+import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.HybridScope;
+import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
 import java.util.List;
-import java.util.function.Consumer;
 
 /**
  * Computation that resets a {@link org.almostrealism.graph.TimeCell} frame counter
@@ -48,12 +51,14 @@ import java.util.function.Consumer;
  * <p>This is used by {@link org.almostrealism.graph.TimeCell} to support scheduled
  * restarts of temporal sequences at specific points during playback.</p>
  *
- * <p>The computation generates a compact loop that checks each reset slot:</p>
+ * <p>The computation generates a compact loop that checks each reset slot,
+ * stopping as soon as a matching slot is found:</p>
  * <pre>
- * for (int _reset_j = 0; _reset_j &lt; resetCount; _reset_j++) {
+ * int _reset_done = 0;
+ * for (int _reset_j = 0; _reset_j &lt; resetCount &amp;&amp; _reset_done == 0; _reset_j++) {
  *     if (reset[_reset_j] &gt; 0.0 &amp;&amp; time[1] == reset[_reset_j]) {
  *         time[0] = 0.0;
- *         break;
+ *         _reset_done = 1;
  *     }
  * }
  * </pre>
@@ -61,6 +66,15 @@ import java.util.function.Consumer;
  * <p>This loop-based approach replaces the previous if-else chain, reducing
  * generated code size from O(n) branches to a constant-size loop construct.
  * With 30+ reset slots, this reduces generated code by ~100+ lines.</p>
+ *
+ * <p>Because {@link Repeated} has no {@code break} statement, an operation-unique
+ * early-exit flag in the continuation condition reproduces the early exit of the
+ * original {@code break}: once a slot matches, the flag is set and the scan stops
+ * rather than traversing the remaining slots. The flag is given an operation-unique
+ * name (via {@link #getVariableName(int)}) because the native backend hoists declared
+ * variables to function scope, so a hardcoded name would collide when multiple resets
+ * are inlined into one kernel. This mirrors the {@code right == -1} early-exit idiom in
+ * {@link org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt}.</p>
  *
  * @author Michael Murray
  * @see org.almostrealism.graph.TimeCell
@@ -130,36 +144,36 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection>
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Prepares the scope by generating a loop that checks each reset slot
-	 * and resets the frame counter if a match is found. The loop uses a raw
-	 * C loop variable to avoid AR expression tracking limitations.</p>
+	 * <p>Prepares the scope by generating a {@link Repeated} loop that checks each reset slot
+	 * and resets the frame counter if a match is found. The loop is expressed entirely as
+	 * language-independent {@link Expression}s and {@link Scope} statements, so the target
+	 * language is not consulted until the scope is rendered.</p>
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 
 		scope = new HybridScope(this);
 
-		Consumer<String> exp = scope.code();
+		// Operation-unique early-exit flag (Repeated has no break): set it when a slot matches
+		// and test it in the loop condition. The name MUST be operation-unique (getVariableName) --
+		// the native backend hoists declared variables to function scope, so a hardcoded name
+		// collides ("redefinition") when multiple TimeCellReset ops inline into one kernel.
+		Expression done = new StaticReference(Integer.class, getVariableName(0));
+		scope.getVariables().add(new ExpressionAssignment(true, done, e(0)));
 
-		// Use a unique loop variable name to avoid conflicts with AR-generated names
-		String loopVar = "_reset_j";
+		Repeated loop = new Repeated<>();
+		InstanceReference j = Variable.integer("_reset_j").ref();
+		loop.setIndex(j.getReferent());
+		loop.setCondition(j.lessThan(e(len)).and(done.eq(e(0))));
+		loop.setInterval(e(1));
 
-		// Create expressions using the loop variable as a StaticReference
-		Expression<Integer> jRef = new StaticReference<>(Integer.class, loopVar);
+		Expression resetAtJ = getResets().valueAt(j);
+		Scope<PackedCollection> match = new Scope<>();
+		match.assign(getTime().reference(e(0)), e(0.0));
+		match.assign(done, e(1));
+		loop.addCase(resetAtJ.greaterThan(e(0.0)).and(getTime().valueAt(1).eq(resetAtJ)), match);
 
-		// Get the expressions for array access using the loop variable
-		String resetAtJ = getResets().valueAt(jRef).getSimpleExpression(getLanguage());
-		String timeBase = getTime().valueAt(0).getSimpleExpression(getLanguage());
-		String time1 = getTime().valueAt(1).getSimpleExpression(getLanguage());
-		String zeroVal = getLanguage().getPrecision().stringForDouble(0.0);
-
-		// Generate a compact loop instead of an if-else chain
-		exp.accept("for (int " + loopVar + " = 0; " + loopVar + " < " + len + "; " + loopVar + "++) {\n");
-		exp.accept("\tif (" + resetAtJ + " > " + zeroVal + " && " + time1 + " == " + resetAtJ + ") {\n");
-		exp.accept("\t\t" + timeBase + " = " + zeroVal + ";\n");
-		exp.accept("\t\tbreak;\n");
-		exp.accept("\t}\n");
-		exp.accept("}\n");
+		scope.add(loop);
 	}
 }

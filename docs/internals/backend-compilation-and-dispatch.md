@@ -41,21 +41,18 @@ prepares a `Computation` for compilation by generating and enriching its `Scope`
 
 ```java
 // 1. Create compiler from a Computation
-ComputationScopeCompiler<T> compiler = new ComputationScopeCompiler<>(computation, nameProvider);
+ComputationScopeCompiler<T> compiler = new ComputationScopeCompiler<>(computation);
 
-// 2. Prepare arguments (for Process tree wiring)
-compiler.prepareArguments(argumentMap);
+// 2. Prepare scope inputs (argument wiring happens here)
+compiler.prepareScope(argumentProvider, kernelStructureContext);
 
-// 3. Prepare scope inputs
-compiler.prepareScope(inputManager, kernelStructureContext);
-
-// 4. Compile — generates the Scope AST
+// 3. Compile — generates the Scope AST
 Scope<T> scope = compiler.compile();
 
-// 5. Post-compile enrichment — shape validation, metadata
+// 4. Post-compile enrichment — shape validation, metadata
 compiler.postCompile();
 
-// 6. Check status
+// 5. Check status
 if (compiler.isCompiled()) {
     // Scope is ready for backend compilation
 }
@@ -65,7 +62,7 @@ if (compiler.isCompiled()) {
 
 1. **Scope generation** — Calls `Computation.getScope(KernelStructureContext)` to produce
    the raw AST
-2. **Argument binding** — Sets up `ArgumentMap` connecting producer inputs to scope variables
+2. **Argument binding** — Sets up the `ArgumentProvider` (e.g. `MemoryDataArgumentMap`) connecting producer inputs to scope variables
 3. **Simplification** — Optimizes the expression tree (constant folding, identity elimination —
    see [expression-evaluation.md](expression-evaluation.md))
 4. **Metadata enrichment** — Adds shape information, operation signature, traversal policy

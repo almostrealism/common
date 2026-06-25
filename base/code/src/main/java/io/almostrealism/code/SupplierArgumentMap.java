@@ -16,7 +16,7 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 
@@ -27,51 +27,38 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
- * An {@link ArgumentMap} that maps {@link Supplier} keys to {@link ArrayVariable} values.
+ * A caching {@link ArgumentProvider} that maps {@link Supplier} keys to {@link ArrayVariable}
+ * values assigned during scope compilation.
  *
- * <p>{@code SupplierArgumentMap} is a general-purpose argument map backed by a {@link HashMap}.
- * It is used during scope compilation to track which input producers have already been assigned
- * argument variables, preventing duplicate allocations. A delegate {@link ScopeInputManager} is
- * used to create new argument variables for suppliers not yet in the map.</p>
+ * <p>{@code SupplierArgumentMap} is backed by a {@link HashMap} and is used during scope compilation
+ * to track which input producers have already been assigned argument variables, preventing duplicate
+ * allocations. New argument variables are created by delegating to another {@link ArgumentProvider}
+ * (the {@link #getDelegateProvider() delegate provider}).</p>
  *
- * @param <S> the supplier element type
- * @param <A> the array element type for the variables
- *
- * @see ArgumentMap
- * @see ScopeInputManager
+ * @see ArgumentProvider
  */
-public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVariable<A>> {
-	/** The delegate scope input manager used to create new argument variables. */
-	protected ScopeInputManager delegateProvider;
+public class SupplierArgumentMap implements ArgumentProvider, Destroyable {
+	/** The delegate argument provider used to create new argument variables. */
+	protected final ArgumentProvider delegateProvider;
 	/** The internal mapping from suppliers to their corresponding argument variables. */
-	private final Map<Supplier<S>, ArrayVariable<A>> arguments;
+	private final Map<Supplier, ArrayVariable> arguments;
 
 	/**
-	 * Creates a new empty supplier argument map.
+	 * Creates a new supplier argument map that delegates new variable creation to the given provider.
+	 *
+	 * @param delegateProvider the scope input manager used to create new argument variables
 	 */
-	public SupplierArgumentMap() {
+	public SupplierArgumentMap(ArgumentProvider delegateProvider) {
+		this.delegateProvider = delegateProvider;
 		this.arguments = new HashMap<>();
 	}
 
 	/**
-	 * Sets the delegate scope input manager used for creating new argument variables.
-	 *
-	 * @param provider the delegate provider to use
-	 */
-	public void setDelegateProvider(ScopeInputManager provider) {
-		this.delegateProvider = provider;
-	}
-
-	/**
-	 * Returns the delegate scope input manager, initializing a default one if needed.
+	 * Returns the delegate scope input manager used to create new argument variables.
 	 *
 	 * @return the delegate scope input manager
 	 */
-	public ScopeInputManager getDelegateProvider() {
-		if (delegateProvider == null) {
-			delegateProvider = DefaultScopeInputManager.getInstance(null);
-		}
-
+	public ArgumentProvider getDelegateProvider() {
 		return delegateProvider;
 	}
 
@@ -81,29 +68,27 @@ public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVar
 	 * @param key the supplier key
 	 * @param value the array variable to associate
 	 */
-	public void put(Supplier<S> key, ArrayVariable<A> value) {
+	public void put(Supplier key, ArrayVariable value) {
 		arguments.put(key, value);
 	}
 
 	/**
-	 * {@inheritDoc}
+	 * Returns the argument variable for the given key.
 	 *
-	 * <p>This implementation is a no-op; suppliers are added via {@link #put}.
-	 *
-	 * @param key the supplier to add (ignored)
-	 */
-	@Override
-	public void add(Supplier key) { }
-
-	/**
-	 * {@inheritDoc}
+	 * <p>If the key is a {@link Computation} that exposes an output variable via
+	 * {@link Computation#getOutputVariable()}, that variable is returned directly, reusing the
+	 * producer's output instead of allocating a new argument. Otherwise the cached variable for the
+	 * key is returned, or {@code null} if none has been registered.</p>
 	 *
 	 * @param key the supplier key to look up
-	 * @param p the name provider (unused in this implementation)
 	 * @return the array variable for the given key, or {@code null} if not found
 	 */
-	@Override
-	public ArrayVariable<A> get(Supplier key, NameProvider p) {
+	public ArrayVariable get(Supplier key) {
+		if (key instanceof Computation) {
+			ArrayVariable out = (ArrayVariable) ((Computation) key).getOutputVariable();
+			if (out != null) return out;
+		}
+
 		return arguments.get(key);
 	}
 
@@ -111,37 +96,33 @@ public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVar
 	 * Returns the first array variable whose key satisfies the given predicate.
 	 *
 	 * @param filter the predicate to filter supplier keys
-	 * @param p the name provider (unused in this implementation)
 	 * @return an optional containing the matched variable, or empty if none found
 	 */
-	protected Optional<ArrayVariable<A>> get(Predicate<Supplier> filter, NameProvider p) {
-		Optional<Supplier<S>> existing = arguments.keySet().stream().filter(filter).findAny();
+	protected Optional<ArrayVariable> get(Predicate<Supplier> filter) {
+		Optional<Supplier> existing = arguments.keySet().stream().filter(filter).findAny();
 		if (existing.isEmpty()) return Optional.empty();
-		return Optional.of(get(existing.get(), p));
+		return Optional.of(get(existing.get()));
 	}
 
 	/**
-	 * Returns a {@link ScopeInputManager} that uses this map's entries as a cache
-	 * and delegates to the underlying provider for cache misses.
+	 * Returns the argument variable for the given input, creating and caching it on first request.
 	 *
-	 * @return a scope input manager backed by this argument map
+	 * <p>If a variable is already cached for the input it is returned; otherwise a new variable is
+	 * created via the {@link #getDelegateProvider() delegate provider} and cached.</p>
+	 *
+	 * @param <T> the type of value produced by the input
+	 * @param input the input producer
+	 * @param delegate the optional delegate variable for memory sharing
+	 * @param delegateOffset the offset into the delegate variable
+	 * @return the argument variable for the input
 	 */
-	public ScopeInputManager getScopeInputManager() {
-		return new ScopeInputManager() {
-			@Override
-			public LanguageOperations getLanguage() {
-				return getDelegateProvider().getLanguage();
-			}
+	@Override
+	public <T> ArrayVariable<T> getArgument(Supplier<Evaluable<? extends T>> input,
+											ArrayVariable<T> delegate, int delegateOffset) {
+		ArrayVariable arg = get(input);
+		if (arg != null) return arg;
 
-			@Override
-			public <T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input,
-													ArrayVariable<T> delegate, int delegateOffset) {
-				ArrayVariable arg = get(input, p);
-				if (arg != null) return arg;
-
-				arguments.put((Supplier) input, (ArrayVariable) getDelegateProvider().getArgument(p, input, delegate, delegateOffset));
-				return (ArrayVariable) get(input, p);
-			}
-		};
+		arguments.put((Supplier) input, (ArrayVariable) delegateProvider.getArgument(input, delegate, delegateOffset));
+		return (ArrayVariable) get(input);
 	}
 }
