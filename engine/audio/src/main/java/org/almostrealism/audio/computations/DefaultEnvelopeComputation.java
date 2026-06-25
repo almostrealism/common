@@ -18,6 +18,7 @@ package org.almostrealism.audio.computations;
 
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -25,8 +26,6 @@ import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-
-import java.util.function.Consumer;
 
 /**
  * Computes a default envelope curve for audio notes based on position. The envelope
@@ -52,17 +51,14 @@ public class DefaultEnvelopeComputation extends CollectionProducerComputationBas
 	public Scope<PackedCollection> getScope(KernelStructureContext context) {
 		HybridScope<PackedCollection> scope = new HybridScope<>(this);
 
-		String position = getArgument(1).valueAt(0).getSimpleExpression(getLanguage());
-		String result = ((ArrayVariable) getOutputVariable()).valueAt(0).getSimpleExpression(getLanguage());
+		Expression<Double> position = getArgument(1).valueAt(0);
+		Expression<Double> result = ((ArrayVariable) getOutputVariable()).valueAt(0);
 
-		Consumer<String> code = scope.code();
-		code.accept("if (" + position + " > 1.0) {\n");
-		code.accept("	" + result + " = 0.0;\n");
-		code.accept("} else if (" + position + " < 0.1) {\n");
-		code.accept("	" + result + " = " + position + " / 0.1;\n");
-		code.accept("} else {\n");
-		code.accept("	" + result + " = cos(" + position + " * M_PI_2);\n");
-		code.accept("}\n");
+		// result = (position > 1.0) ? 0 : (position < 0.1) ? position / 0.1 : cos(position * PI/2)
+		scope.assign(result,
+				conditional(position.greaterThan(e(1.0)), e(0.0),
+						conditional(position.lessThan(e(0.1)), position.divide(e(0.1)),
+								position.multiply(e(Math.PI / 2.0)).cos())));
 
 		return scope;
 	}

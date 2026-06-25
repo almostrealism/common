@@ -298,9 +298,7 @@ public class CollectionProviderProducer<T extends Shape>
 	 *
 	 * <p>The signature format depends on the type of value being provided:</p>
 	 * <ul>
-	 *   <li><strong>Aggregation Target MemoryData:</strong> Returns {@code null} because the
-	 *       signature depends on computation context that isn't available here</li>
-	 *   <li><strong>MemoryData (non-aggregation):</strong> Returns {@code "offset:memLength|shapeDetails"}
+	 *   <li><strong>MemoryData:</strong> Returns {@code "offset:memLength|shapeDetails"}
 	 *       including memory location information</li>
 	 *   <li><strong>Other Shapes:</strong> Returns {@code "|shapeDetails"} with only shape information</li>
 	 * </ul>
@@ -308,23 +306,30 @@ public class CollectionProviderProducer<T extends Shape>
 	 * <p>The signature is used for process graph analysis, caching, and identifying
 	 * equivalent producers.</p>
 	 *
-	 * @return A signature string, or {@code null} for aggregation targets
+	 * <p>When the value is eligible for argument aggregation, the signature additionally encodes
+	 * the root delegate's length as {@code &aggRoot=<length>}. A compiled kernel that aggregates
+	 * bakes in the aggregate layout, which depends on the size of the root delegate folded into
+	 * the shared buffer; two otherwise-identical producers whose roots differ in size (e.g. a
+	 * 2-element view of a 2-element root vs. of an 8-element root) fold to different layouts and
+	 * must not share a compiled kernel. Encoding the root length scopes instruction reuse to
+	 * compatible aggregate layouts.</p>
+	 *
+	 * @return A signature string
 	 */
 	@Override
 	public String signature() {
 		String shape = "|" + value.getShape().toStringDetail();
 
 		if (value instanceof MemoryData) {
-			if (MemoryDataArgumentMap.isAggregationTarget((MemoryData) value)) {
-				// It should actually be possible to compute a valid signature
-				// for this anyway, but because argument aggregation for
-				// Computations depends on the other Computation arguments,
-				// it requires more information than is available here
-				return null;
+			MemoryData md = (MemoryData) value;
+			String sig = md.getOffset() + ":" + md.getMemLength() + shape;
+
+			// Aggregation-eligible: scope reuse to compatible aggregate layouts (see javadoc).
+			if (MemoryDataArgumentMap.isAggregationTarget(md.getRootDelegate())) {
+				sig = sig + "&aggRoot=" + md.getRootDelegate().getMemLength();
 			}
 
-			return ((MemoryData) value).getOffset() + ":" +
-				((MemoryData) value).getMemLength() + shape;
+			return sig;
 		}
 
 		return shape;

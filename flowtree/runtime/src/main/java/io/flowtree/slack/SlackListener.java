@@ -598,6 +598,13 @@ public class SlackListener implements ConsoleFeatures {
         }
         // Dispatch capability: opt-in workstreams get the dispatch tools.
         factory.setDispatchCapable(workstream.isDispatchCapable());
+        // Workstream-level default for tmux-backed agent launches. The
+        // Slack path has no per-job use_tmux override (Slack submissions
+        // always come from the workstream owner), so the workstream
+        // default flows through directly to the factory. The runner
+        // additionally honours AR_AGENT_USE_TMUX, which is unaffected
+        // by this flag.
+        factory.setUseTmux(workstream.isUseTmux());
         if (pushedToolsConfig != null && !pushedToolsConfig.isEmpty()) {
             factory.setPushedToolsConfig(pushedToolsConfig);
         } else {

@@ -30,7 +30,6 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.ProcessDetailsFactory;
-import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.time.TemporalRunner;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
@@ -248,45 +247,6 @@ public class ProducerEvalCachesKernelTest extends TestSuiteBase implements CellF
 				+ ", provider=" + providerName
 				+ ", offset=" + coll.getOffset()
 				+ ", len=" + coll.getMemLength() + "}";
-	}
-
-	/**
-	 * Same as {@link #preEvalFreezesAssignmentInsideLoop} but runs with
-	 * {@link MemoryDataArgumentMap#enableArgumentAggregation} set to
-	 * {@code false}. If aggregation is what's allowing the read-side and
-	 * write-side of {@code buffer} to be merged into a single kernel arg in
-	 * the no-pre-eval case (and what's split apart by the pre-eval),
-	 * disabling it should make BOTH variants behave the same way: either
-	 * both pass (each gets its own arg, kernel reads live) or both fail
-	 * (each gets its own arg but the read side still reads a stale snapshot).
-	 */
-	@Test(timeout = 30_000)
-	public void preEvalWithAggregationDisabled() throws IOException {
-		boolean previous = MemoryDataArgumentMap.enableArgumentAggregation;
-		MemoryDataArgumentMap.enableArgumentAggregation = false;
-		try {
-			runLoopAssignmentScenario("preEvalWithAggregationDisabled",
-					/* doPreEval */ true);
-		} finally {
-			MemoryDataArgumentMap.enableArgumentAggregation = previous;
-		}
-	}
-
-	/**
-	 * Same as {@link #assignmentReadsLiveBufferInsideLoopWithoutPreEval} but
-	 * runs with aggregation disabled. Companion to
-	 * {@link #preEvalWithAggregationDisabled}.
-	 */
-	@Test(timeout = 30_000)
-	public void noPreEvalWithAggregationDisabled() throws IOException {
-		boolean previous = MemoryDataArgumentMap.enableArgumentAggregation;
-		MemoryDataArgumentMap.enableArgumentAggregation = false;
-		try {
-			runLoopAssignmentScenario("noPreEvalWithAggregationDisabled",
-					/* doPreEval */ false);
-		} finally {
-			MemoryDataArgumentMap.enableArgumentAggregation = previous;
-		}
 	}
 
 	/**

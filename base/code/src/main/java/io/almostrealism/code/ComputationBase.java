@@ -20,7 +20,6 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Countable;
@@ -49,7 +48,6 @@ import java.util.stream.Collectors;
  *   <li>Scope lifecycle integration for argument preparation and management</li>
  *   <li>Optimization caching to avoid redundant optimization passes</li>
  *   <li>Count-based iteration support via {@link io.almostrealism.relation.Countable}</li>
- *   <li>Language operations access for code generation</li>
  * </ul>
  *
  * <p>The class implements the {@link Signature} interface, allowing subclasses to provide
@@ -86,12 +84,6 @@ public abstract class ComputationBase<I, O, T>
 					implements Computation<O>, Signature {
 
 	/**
-	 * Language operations provider for code generation.
-	 * Set during scope preparation and used for generating language-specific code.
-	 */
-	private LanguageOperations lang;
-
-	/**
 	 * List of compute requirements specifying execution preferences.
 	 * These requirements indicate hardware preferences such as CPU or GPU execution.
 	 */
@@ -110,17 +102,15 @@ public abstract class ComputationBase<I, O, T>
 	protected ComputationBase<I, O, T> optimized;
 
 	/**
-	 * Weak reference to the {@link ScopeInputManager} that last drove
-	 * {@link #prepareScope(ScopeInputManager, KernelStructureContext)} for this
+	 * Weak reference to the {@link ArgumentProvider} that last drove
+	 * {@link #prepareScope(ArgumentProvider, KernelStructureContext)} for this
 	 * computation. Used to detect when a subsequent compilation is operating
-	 * against a different manager (and therefore a different
-	 * {@link ArgumentMap} / aggregate buffer), in which case any cached
-	 * argument variables on this node refer to memory aggregated by the
-	 * previous map and must be discarded. Held weakly so that retaining this
-	 * reference does not pin the previous map (and its aggregate buffer) in
-	 * memory.
+	 * against a different manager, in which case any cached argument variables
+	 * on this node refer to the previous compilation and must be discarded.
+	 * Held weakly so that retaining this reference does not pin the previous
+	 * manager in memory.
 	 */
-	private WeakReference<ScopeInputManager> lastScopeInputManager;
+	private WeakReference<ArgumentProvider> lastArgumentProvider;
 
 	/**
 	 * Prepares the operation metadata by incorporating process information and signature.
@@ -190,49 +180,10 @@ public abstract class ComputationBase<I, O, T>
 	}
 
 	/**
-	 * Returns the language operations provider for code generation.
-	 *
-	 * @return the language operations, or {@code null} if not yet set
-	 */
-	protected LanguageOperations getLanguage() { return lang; }
-
-	/**
-	 * Returns a name provider for generating variable names.
-	 * The default implementation returns a {@link DefaultNameProvider} based on this computation.
-	 *
-	 * @return the name provider instance
-	 */
-	public NameProvider getNameProvider() { return new DefaultNameProvider(this); }
-
-	/**
-	 * Prepares the arguments for this computation using the provided argument map.
-	 * This method is part of the {@link ScopeLifecycle} and is called during compilation.
-	 *
-	 * <p>If arguments have already been prepared (indicated by non-null argument
-	 * variables) and the same {@link ArgumentMap} is being used as on the
-	 * previous call, returns early to avoid redundant processing. If the
-	 * {@link ArgumentMap} differs (for example, because this node is being
-	 * recompiled into a new kernel), the cached argument state is invalidated
-	 * via {@link #resetArguments()} before being repopulated. This is necessary
-	 * because cached {@link ArrayVariable}s carry delegate pointers into the
-	 * previous map's aggregate buffer; reusing them under a different map would
-	 * cause the new kernel to read or write stale memory.
-	 *
-	 * @param map the argument map for resolving and registering arguments
-	 */
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		if (getArgumentVariables() != null) return;
-		ScopeLifecycle.prepareArguments(getInputs().stream(), map);
-		getInputs().forEach(map::add);
-	}
-
-	/**
 	 * Prepares the scope for this computation using the provided scope input manager.
-	 * This method is part of the {@link ScopeLifecycle} and sets up the language
-	 * operations and argument variables.
+	 * This method is part of the {@link ScopeLifecycle} and sets up the argument variables.
 	 *
-	 * <p>If the scope has already been prepared by the same {@link ScopeInputManager}
+	 * <p>If the scope has already been prepared by the same {@link ArgumentProvider}
 	 * as on the previous call, returns early to avoid redundant processing. If the
 	 * manager differs (for example, because this node is being recompiled into a new
 	 * kernel), the cached argument state is invalidated via {@link #resetArguments()}
@@ -241,16 +192,15 @@ public abstract class ComputationBase<I, O, T>
 	 * underlying argument map (and its aggregate buffer); reusing them under a
 	 * different manager would cause the new kernel to read or write stale memory.
 	 *
-	 * @param manager the scope input manager providing language and argument services
+	 * @param manager the scope input manager providing argument services
 	 * @param context the kernel structure context for scope preparation
 	 */
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
-		ScopeInputManager previous = lastScopeInputManager == null ? null : lastScopeInputManager.get();
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
+		ArgumentProvider previous = lastArgumentProvider == null ? null : lastArgumentProvider.get();
 		if (getArgumentVariables() != null && previous == manager) return;
 		if (getArgumentVariables() != null) resetArguments();
-		this.lang = manager.getLanguage();
-		this.lastScopeInputManager = new WeakReference<>(manager);
+		this.lastArgumentProvider = new WeakReference<>(manager);
 		ScopeLifecycle.prepareScope(getInputs().stream(), manager, context);
 		assignArguments(manager);
 	}
@@ -258,13 +208,11 @@ public abstract class ComputationBase<I, O, T>
 	/**
 	 * Resets the arguments for this computation and all input producers.
 	 * This clears the compiled state, allowing the computation to be recompiled.
-	 * Also clears the language operations reference.
 	 */
 	@Override
 	public void resetArguments() {
 		super.resetArguments();
 		ScopeLifecycle.resetArguments(getInputs().stream());
-		this.lang = null;
 	}
 
 	/**
@@ -280,7 +228,7 @@ public abstract class ComputationBase<I, O, T>
 	 */
 	protected void assignArguments(ArgumentProvider provider) {
 		setArguments(getInputs().stream()
-				.map(provider.argumentForInput(getNameProvider()))
+				.map(provider.argumentForInput())
 				.map(var ->
 						Optional.ofNullable(var).map(v ->
 								new Argument<>(v, Expectation.EVALUATE_AHEAD))
@@ -353,7 +301,7 @@ public abstract class ComputationBase<I, O, T>
 	 */
 	@Override
 	public Scope<O> getScope(KernelStructureContext context) {
-		if (optimized != null & optimized != this) {
+		if (optimized != null && optimized != this) {
 			throw new IllegalArgumentException("This Computation should not be used, as an optimized version already exists");
 		}
 

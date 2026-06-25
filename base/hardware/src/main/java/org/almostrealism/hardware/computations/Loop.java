@@ -16,10 +16,9 @@
 
 package org.almostrealism.hardware.computations;
 
-import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
@@ -72,7 +71,7 @@ import java.util.stream.IntStream;
  * <h2>Loop Configuration</h2>
  *
  * <ul>
- *   <li><strong>Index variable:</strong> Named using {@code NameProvider} prefix + "_i"</li>
+ *   <li><strong>Index variable:</strong> Named using the function-name prefix + "_i"</li>
  *   <li><strong>Start value:</strong> 1 (not 0)</li>
  *   <li><strong>Condition:</strong> {@code i < iterations}</li>
  *   <li><strong>Increment:</strong> 1 per iteration</li>
@@ -102,13 +101,7 @@ import java.util.stream.IntStream;
  *
  * <pre>{@code
  * @Override
- * public void prepareArguments(ArgumentMap map) {
- *     super.prepareArguments(map);
- *     atom.prepareArguments(map);  // Forward to atom
- * }
- *
- * @Override
- * public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+ * public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
  *     super.prepareScope(manager, context);
  *     atom.prepareScope(manager, context);  // Forward to atom
  * }
@@ -212,13 +205,7 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 	}
 
 	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-		atom.prepareArguments(map);
-	}
-
-	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 		atom.prepareScope(manager, context);
 	}
@@ -226,7 +213,7 @@ public class Loop extends OperationComputationAdapter<Void> implements Expressio
 	@Override
 	public Scope<Void> getScope(KernelStructureContext context) {
 		Repeated<Void> scope = new Repeated<>(getFunctionName(), getMetadata());
-		Variable<Integer, ?> i = Variable.integer(getNameProvider().getVariablePrefix() + "_i");
+		Variable<Integer, ?> i = Variable.integer(getVariablePrefix() + "_i");
 		scope.setInterval(e(1));
 		scope.setIndex(i);
 		scope.setCondition(i.ref().lessThan(e(iterations)));

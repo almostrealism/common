@@ -16,8 +16,8 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ComputableBase;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
@@ -154,7 +154,7 @@ public class PackedCollectionMap
 	}
 
 	@Override
-	public void prepareScope(ScopeInputManager manager, KernelStructureContext context) {
+	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 
 		ArrayVariable arg = getArgumentForInput(getInputs().get(1));

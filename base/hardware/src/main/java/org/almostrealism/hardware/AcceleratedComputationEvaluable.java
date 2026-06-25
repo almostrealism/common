@@ -215,7 +215,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData>
 	 * @param c The {@link Computation} to evaluate
 	 */
 	public AcceleratedComputationEvaluable(ComputeContext<MemoryData> context, Computation<T> c) {
-		super(context, c, true);
+		super(context, c);
 	}
 
 	/**
